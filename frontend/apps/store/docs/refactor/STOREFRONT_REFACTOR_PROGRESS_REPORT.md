@@ -1778,3 +1778,199 @@ Validation:
 
 Notes / next step:
 - Keep these records in `frontend/apps/store/docs/refactor/` and update the progress report after every bounded refactor slice.
+
+## 2026-07-22 - Wave 0: zustand store scaffolding + state-management standard
+
+Slice: Stand up a proper, documented state-management layer for the storefront (sliced zustand),
+the enabler for decomposing `StorefrontApp.jsx` below 1,000 lines. No behavior change — scaffold only.
+
+Files added:
+- `frontend/apps/store/src/store/useStorefrontStore.js` (composed store + devtools + official reset)
+- `frontend/apps/store/src/store/slices/{ui,session,catalog,cart,checkout,serviceBooking,discovery}Slice.js`
+  (`uiSlice` is the fully-worked reference; the rest are documented scaffolds filled in later waves)
+- `frontend/apps/store/src/store/selectors/uiSelectors.js`
+- `frontend/apps/store/src/store/__tests__/useStorefrontStore.test.js`
+- `frontend/apps/store/docs/refactor/STOREFRONT_STATE_MANAGEMENT.md`
+
+Files changed:
+- `frontend/apps/store/docs/refactor/STOREFRONT_FRONTEND_ARCHITECTURE_GUIDE.md`
+  (required-reading entry + State Management section)
+
+StorefrontApp.jsx line count: 9,221 (unchanged — scaffold not yet wired)
+
+Decisions:
+- Library: zustand (repo already standardises on it via `frontend/src/store/useStore.js`); not Redux/Context.
+- Structure: slice pattern — state nested per domain (`s.cart`), actions flat (`s.cartAdd`).
+- Middleware: `devtools` only now; `persist` deferred to Wave 3 (cart), `immer` not used (not a repo dep).
+- Migration uses the in-place bridge (relocate state keeping the same shell-local name → then collapse props).
+
+Validation:
+- Targeted Vitest: passed (`1` file, `6` tests) — scaffolding, ui reference actions, reset.
+- Lint (`apps/store/src/store`): passed, 0 errors.
+- Storefront production build: passed (`npm --prefix frontend run build:store`).
+
+Notes / next step:
+- Wave 1 migrates low-risk slices (session, ui, discovery-wiring, catalog read paths) via the bridge,
+  each with unit tests, gated on browser QA (account/session, modal open/close, discovery, storefront load).
+
+## 2026-07-22 - Wave 1a: migrate ui slice (viewport + online-payment modal) to the store
+
+Slice: First real in-place bridge migration proving the zustand pattern end-to-end in the shell.
+Behavior-preserving — state ownership moved, not behavior.
+
+Files changed:
+- `frontend/apps/store/src/store/slices/uiSlice.js` (real shape: `viewportWidth`, `isOnlinePaymentModalOpen`, `showOrderSuccessAnimation`)
+- `frontend/apps/store/src/store/selectors/uiSelectors.js` (viewport + derived breakpoint selectors)
+- `frontend/apps/store/src/store/__tests__/useStorefrontStore.test.js` (7 tests)
+- `frontend/apps/store/src/StorefrontApp.jsx`
+
+Migrated via bridge (local names preserved → read sites untouched):
+- `viewportWidth` (was `useState`, resize listener) → `s.ui.viewportWidth` + `uiSetViewportWidth`. All
+  ~12 read sites and derived `isMobileViewport`/`isDesktopViewport` unchanged.
+- `isOnlinePaymentModalOpen` → `s.ui.isOnlinePaymentModalOpen` + `uiOpenOnlinePaymentModal`/`uiClose...`
+  (2 call sites in `handlePaymentTypeChange` and the modal `onClose`).
+- `showOrderSuccessAnimation` flag defined in the slice but NOT yet wired — deferred to Wave 3 (it is set
+  inside `handleCheckout`, a money path).
+
+StorefrontApp.jsx line count: 9,230 (+9 — bridge adds a few lines; the drop comes in Wave 2 when the
+prop-drilled JSX zones reading this state collapse).
+
+Validation:
+- Targeted Vitest: passed (`1` file, `7` tests).
+- Lint: 0 errors (pre-existing warnings only).
+- Storefront production build: passed.
+
+QA gate 1 (browser, dev.dgfy.ph) — responsive layout at mobile/desktop widths; selecting "Online" payment
+opens the Payment Unavailable modal and "Okay"/backdrop closes it.
+
+Notes / next step:
+- Remaining Wave 1 slices (session bootstrap, catalog read paths, discovery wiring) are larger, each its
+  own bridge commit + QA gate.
+
+## 2026-07-22 - Wave 2: extract pure-display JSX zones (shell reduction)
+
+Slice: Extract self-contained presentational render blocks out of StorefrontApp.jsx into
+owner-folder components. Each is a verbatim, behavior-preserving move; the enclosing
+conditional and any handler wiring stay at the call site. Safety net: ESLint `no-undef`
+guarantees no referenced identifier was left unpassed/unimported (headless-verifiable given
+the WebGL flows can't be clicked here).
+
+Extractions:
+- `ServicesPerformanceSidebar` → `modes/services/storefront/components/` (desktop services aside:
+  performance summary + service-family nav + promo card). 9,231 → 9,181 (-50).
+- `FnbCommunitySection` → `modes/fnb/storefront/components/` (promo + reviews + footer tail).
+  9,181 → 9,116 (-65).
+
+StorefrontApp.jsx line count: 9,116 (down 115 across Wave 2 so far).
+
+Validation per extraction: 0 lint errors (no-undef clean), `build:store` passes.
+
+QA gate 2 (browser, dev.dgfy.ph): services storefront desktop sidebar renders (score, families,
+promo); F&B storefront community tail renders (promo/reviews/footer, "Write a review" opens modal).
+
+Notes / next step: continue extracting the remaining safe pure-display zones; the catalog grid and
+checkout mount are deliberately excluded (too large / money-path — reserved for QA-gated waves).
+
+## 2026-07-22 - Wave 2 (cont.): dead-code purge + modal/pager extractions
+
+Continued shell reduction, all behavior-preserving, each commit gated on 0 lint errors
+(no-undef as the missing-prop safety net) + `build:store`.
+
+- Deleted three `{false && …}` dead render blocks (legacy services hero + fnb mobile/desktop
+  catalog, superseded): -735.
+- `ServicesFilterModal` → modes/services/storefront/components/: -111.
+- Consolidated the two near-duplicate review composers into one shared
+  `shared/components/storefront/StorefrontReviewModal.jsx` (props: accent colours, title font,
+  star-key prefix, message copy): -272.
+- Dropped 7 imports left unused by the dead-code purge (map/discovery imports untouched): -7.
+- `ServicesPaginationBar` → modes/services/storefront/components/: -46.
+
+StorefrontApp.jsx line count: **7,945** (down from 9,231 at the start of this branch; -1,286 total
+across Wave 0→2). Lint warnings 130→125; still 0 errors.
+
+QA gate 2 (browser, dev.dgfy.ph): services storefront (desktop sidebar, filter modal open/apply/clear,
+pagination), F&B community tail, services + simple "Write a review" modals (name/anon/stars/message,
+Send), online-payment modal, responsive layout.
+
+Next (require QA — not done unsupervised): the catalog grid IIFE (~2.6k lines, cart-mutation), the
+checkout drawer/mount (~1.4k lines, quote/checkout/OTP), and the state-slice migration of the
+money-path domains (cart/checkout/serviceBooking) + route containers to cross under 1,000. These are
+the QA-gated Waves 3–4.
+
+## 2026-07-22 - Wave 3a: migrate cart items to the store (cartSlice) [QA-REQUIRED]
+
+Slice: Move the cart line-items array out of StorefrontApp.jsx into the zustand store — the
+foundational money-path state read by totals, drawers, FAB, checkout, and the catalog. First
+Wave 3 increment; behavior-preserving via the in-place bridge.
+
+Files changed:
+- `frontend/apps/store/src/store/slices/cartSlice.js` (`cart.items` + useState-compatible `cartSet`)
+- `frontend/apps/store/src/store/__tests__/useStorefrontStore.test.js` (+5 cart tests; fixed bleed assertion)
+- `frontend/apps/store/src/StorefrontApp.jsx`
+
+Migration (local names preserved → 51 reads, 9 setters, all prop/hook passes and `[cart]` memo deps unchanged):
+- `const [cart, setCart] = useState([])` → `cart = s.cart.items`, `setCart = s.cartSet`.
+- `cartSet` accepts both a value (`setCart([])`) and an updater (`setCart(prev => …)`), matching every call site.
+- Cart persistence unchanged (still `useStorefrontCartPersistence`); zustand `persist` intentionally NOT wired.
+
+StorefrontApp.jsx line count: 7,949 (+4 — bridge comment).
+
+Validation: 198 non-integration tests pass (40 files; +5 cart); 0 lint errors; `build:store` passes.
+
+QA gate 3a (browser, dev.dgfy.ph) — **money path, please verify:** add items to cart (F&B / services /
+simple); update quantity; remove a line; cart count/subtotal/total update in the drawer + floating FAB;
+service vs product cart lines split correctly; cart survives navigation and reload (persistence);
+proceeding to checkout shows the right cart. No checkout submission changed in this increment.
+
+## 2026-07-22 - Wave 4 (cont.): cart FAB extraction + dead-code sweep
+
+Files changed:
+- `frontend/apps/store/src/shared/components/storefront/StorefrontCartFab.jsx` (new — pure view,
+  the floating view-cart/booking/checkout button; mode flags, cart data, and navigation callbacks
+  passed as props).
+- `frontend/apps/store/src/StorefrontApp.jsx` — dropped the dead `renderCheckoutAccountGate` render
+  helper, dead consts (`fnbCartActionLabel`, `fnbDrawerSupportLabel` and their `buildFnb*Label`
+  imports, unused account strings), and 29 unused lucide icons freed by earlier extractions.
+
+StorefrontApp.jsx line count: **7,730** (down from 7,949). Lint warnings 125→84; still 0 errors.
+
+Validation: 198 non-integration tests pass; 0 lint errors; `build:store` passes.
+
+## 2026-07-23 - Wave 4: extract services-mode branch (catalog + booking + detail pages)
+
+The single largest remaining view-only-shaped zone: the entire `if (isServicesMode) { ... }` render
+branch — service detail subpage, booking subpage (steps 1–3 + confirmation), and the services catalog
+grid + promo/reviews/review-modal/footer fallback — moved verbatim into one new owner-folder component.
+
+Files changed:
+- `frontend/apps/store/src/modes/services/storefront/components/StorefrontServicesCatalog.jsx` (new,
+  1,216 lines). Faithful extraction: JSX/logic unchanged, only de-indented. Imports its own icons,
+  shared UI (`STYLES`, `Badge`, `GhostButton`, `PrimaryButton`, `StorefrontDropdown`,
+  `ServicesFilterModal`, `ServicesPaginationBar`, the `ServiceBooking*` step/summary/confirmation
+  components, `SharedStorefront*Section`, `StorefrontReviewModal`) and helpers
+  (`filterCatalogItems`, `isItemAvailable`, `openStorefrontActionLink`, `money`, `withAssetOrigin`,
+  `formatLongDateLabel`, `formatTimeSlotLabel`, `combineDateAndTimeParts`,
+  `getPreferredBookingTimeForDate`, `formatBookingReviewValue`, `buildServicePaymentOptions`,
+  `shouldBookingFieldSpanFullWidth`, `BOOKING_FIELD_STYLE`, `SERVICE_CATEGORY_ICON_MAP`,
+  `STOREFRONT_CLOSED_TITLE`) directly. `DeliveryPinMap` is received as a plain prop and passed
+  straight through unchanged — the map runtime itself is untouched.
+- `frontend/apps/store/src/StorefrontApp.jsx` — the branch is now `<StorefrontServicesCatalog {...} />`
+  (130 props, money-path handlers like `addToCart`/`handleCheckout` passed through as `on*`/direct
+  props, not owned by the new component). Removed 15 imports that became fully unused in the shell
+  (4 lucide icons, 6 `ServiceBooking*` step/summary/confirmation components, `ServicesFilterModal`,
+  `ServicesPaginationBar`, `CheckoutStepProgressHeader`, and 3 booking-field helpers/constants).
+- Removed 5 dead consts carried over from the original block (`reviewCount`, `reviewGridColumns`,
+  `isDirectoryLayout`, `detailPageIntakeFields`, a shadowed `currentStep`).
+- `frontend/apps/store/src/__tests__/storefrontClosedHoursMessaging.contract.test.js` — updated to
+  assert the closed-hours notice prop wiring against the new file's source instead of
+  `StorefrontApp.jsx`'s, since that JSX moved (mirrors the test's existing callee-side pattern).
+
+StorefrontApp.jsx line count: **6,815** (down from 7,730; **-915** net this step). Lint warnings 84→79;
+still 0 errors. `build:store` passes. 198 non-integration tests pass (40 files, 0 failures).
+
+QA gate 4 (browser, dev.dgfy.ph) — **money path, please verify:** services storefront — service detail
+page (image, price, Add to Cart, Back to Services), the full booking flow (steps 1–3: details form,
+review, payment/checkout submission via `handleCheckout`), catalog grid (search/filter/sort/pagination,
+Add to Cart), promo section, reviews section + "Write a review" modal, footer links. No behavior was
+intentionally changed — this is a verbatim move — but the prop surface is large (130 props) so this
+needs a real click-through before merge.

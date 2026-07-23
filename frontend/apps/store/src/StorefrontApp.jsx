@@ -3,53 +3,17 @@ import { toast } from 'sonner';
 import SavedAddressCard from './shared/components/checkout/SavedAddressCard.jsx';
 import {
   ArrowLeft,
-  CalendarDays,
-  CheckCircle2,
-  Clock,
-  MessageSquare,
-  ThumbsUp,
-  Bike,
-  Clock3,
-  FileText,
-  Mail,
   MapPin,
-  MessageCircle,
-  MousePointer2,
   Phone,
   Plus,
-  Minus,
-  Search,
-  ShoppingBag,
-  ShoppingCart,
-  SlidersHorizontal,
   Sparkles,
-  Star,
-  List,
-  LayoutGrid,
-  CupSoda,
-  Coffee,
-  Sandwich,
-  ChefHat,
   Copy,
-  User,
-  ChevronDown,
-  Share2,
   Trash2,
   X,
-  Lock,
   Navigation,
   Map,
-  MoreHorizontal,
-  Store,
-   ShieldCheck,
-  Heart,
-  LogOut,
-  ChevronLeft,
   ChevronRight,
   Info,
-  ArrowUpDown,
-  ArrowUpRight,
-  ArrowUpNarrowWide,
   Maximize,
 } from 'lucide-react';
 import { canCheckout, getCheckoutBlockReason } from './shared/model/checkoutRules.js';
@@ -112,11 +76,10 @@ import {
 } from './shared/model/storefrontConstants.js';
 import {
   getStorefrontClosedBody,
-  getStorefrontClosedToastMessage,
-  STOREFRONT_CLOSED_TITLE
+  getStorefrontClosedToastMessage
 } from './shared/model/storefrontClosedState.js';
 import { formatStorefrontHoursLabel } from './shared/model/storefrontHoursModel.js';
-import { parseBooleanFlag, parseOptionalArray, parseOptionalObject } from './shared/model/storefrontJsonModel.js';
+import { parseBooleanFlag, parseOptionalObject } from './shared/model/storefrontJsonModel.js';
 import {
   buildAccessPolicyStorePatch,
   canUseBooking,
@@ -129,7 +92,7 @@ import {
 } from './shared/model/customerAccess.js';
 import { getFoodBeverageStorefrontViewModel } from './modes/fnb/storefront/model/fnbStorefrontViewModel.js';
 import { buildFnbCommunityModel } from './modes/fnb/storefront/model/fnbCommunityModel.js';
-import { buildFnbFallbackReasons, FNB_CATEGORY_ICON_MAP } from './modes/fnb/storefront/model/fnbStorefrontPresentation.js';
+import { FNB_CATEGORY_ICON_MAP } from './modes/fnb/storefront/model/fnbStorefrontPresentation.js';
 import { Badge, GhostButton, PrimaryButton } from './shared/components/StorefrontActionPrimitives.jsx';
 import { StorefrontCheckoutDrawerFrame } from './shared/components/StorefrontCheckoutDrawerFrame.jsx';
 import { StorefrontCartFlyAnimations } from './shared/components/StorefrontCartFlyAnimations.jsx';
@@ -164,13 +127,8 @@ import {
 import { createStoreMarkerPreviewNode } from './discovery/model/storefrontMarkerPreview.js';
 import { FnbProductDetailsRoute } from './modes/fnb/storefront/pages/FnbProductDetailsRoute.jsx';
 import { buildFnbMobileLayout } from './modes/fnb/storefront/model/fnbMobileLayout.js';
-import { buildStorefrontQrUrl } from './shared/utils/storefrontQrUrl.js';
 import { FNB_RECOMMENDED_LOCATION } from './modes/fnb/checkout/model/fnbCheckoutAddressLocations.js';
-import {
-  buildFnbCartActionLabel,
-  buildFnbCartStatusLabel,
-  buildFnbDrawerSupportLabel
-} from './modes/fnb/checkout/model/fnbCartPresentation.js';
+import { buildFnbCartStatusLabel } from './modes/fnb/checkout/model/fnbCartPresentation.js';
 import {
   isEnabledStorefrontCheckoutPaymentType,
   STOREFRONT_CHECKOUT_PAYMENT_OPTIONS
@@ -263,6 +221,8 @@ import { StorefrontDropdown } from './features/shared-storefront/components/Stor
 import { StorefrontFollowFloatingAction } from './shared/components/storefront/StorefrontFollowFloatingAction.jsx';
 import { useStorefrontShareActions } from './shared/hooks/useStorefrontShareActions.js';
 import { StorefrontOrderSuccessOverlay } from './shared/components/storefront/StorefrontOrderSuccessOverlay.jsx';
+import { StorefrontReviewModal } from './shared/components/storefront/StorefrontReviewModal.jsx';
+import { StorefrontCartFab } from './shared/components/storefront/StorefrontCartFab.jsx';
 import { StorefrontPaymentUnavailableModal } from './shared/components/storefront/StorefrontPaymentUnavailableModal.jsx';
 import {
   deriveStorefrontRegistrationYear,
@@ -294,21 +254,16 @@ import { ServicesHero } from './modes/services/storefront/components/ServicesHer
 import { buildServiceFallbackReasons } from './modes/services/storefront/model/servicesHeroPresentation.js';
 import { SERVICE_CATEGORY_ICON_MAP } from './modes/services/storefront/model/serviceCategoryIconMap.jsx';
 import {
-  BOOKING_FIELD_STYLE,
   buildServiceBookingFieldPlan,
   buildServicePaymentOptions,
-  formatBookingReviewValue,
   isBookingFieldComplete,
-  normalizeServiceFormFields,
-  shouldBookingFieldSpanFullWidth
+  normalizeServiceFormFields
 } from './modes/services/booking/model/serviceBookingFields.js';
 import {
   buildServiceDateOptions,
   buildServiceTimeSlotOptions,
   combineDateAndTimeParts,
-  formatLongDateLabel,
   formatServiceAppointmentSummary,
-  formatTimeSlotLabel,
   getDatePartFromAppointment,
   getPreferredBookingTimeForDate,
   getTimePartFromAppointment
@@ -319,6 +274,8 @@ import { useServiceCartDrawerProps } from './modes/services/booking/hooks/useSer
 import { buildServiceCartValidationIssues } from './modes/services/booking/model/serviceBookingValidation.js';
 import { SimpleProductCard } from './modes/simple/storefront/components/SimpleProductCard.jsx';
 import { ServiceProductCard } from './modes/services/storefront/components/ServiceProductCard.jsx';
+import { ServicesPerformanceSidebar } from './modes/services/storefront/components/ServicesPerformanceSidebar.jsx';
+import { StorefrontServicesCatalog } from './modes/services/storefront/components/StorefrontServicesCatalog.jsx';
 import { SimpleHero } from './modes/simple/storefront/components/SimpleHero.jsx';
 import { SimpleCartFloatingButton } from './modes/simple/checkout/components/SimpleCartFloatingButton.jsx';
 import { SimpleCartDrawerSurface } from './modes/simple/checkout/components/SimpleCartDrawerSurface.jsx';
@@ -345,9 +302,6 @@ import { useDiscoverySearchActions } from './discovery/hooks/useDiscoverySearchA
 import { useDiscoveryState } from './discovery/hooks/useDiscoveryState.js';
 import { useDiscoveryStoreLoader } from './discovery/hooks/useDiscoveryStoreLoader.js';
 import { useDiscoveryViewport } from './discovery/hooks/useDiscoveryViewport.js';
-import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from './shared/components/storefront/hero/StorefrontHeroNameCluster.jsx';
-import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from './shared/components/storefront/hero/StorefrontHeaderNav.jsx';
-import { StorefrontShareQr as SharedStorefrontShareQr } from './shared/components/storefront/hero/StorefrontShareQr.jsx';
 import { StorefrontPromoSection as SharedStorefrontPromoSection } from './shared/components/storefront/sections/StorefrontPromoSection.jsx';
 import { StorefrontReviewsSection as SharedStorefrontReviewsSection } from './shared/components/storefront/sections/StorefrontReviewsSection.jsx';
 import { StorefrontFooterSection as SharedStorefrontFooterSection } from './shared/components/storefront/sections/StorefrontFooterSection.jsx';
@@ -364,10 +318,6 @@ import { useFnbProductModifiers } from './modes/fnb/storefront/hooks/useFnbProdu
 import { buildFnbPromoSectionModel } from './modes/fnb/promos/model/fnbPromoModel.js';
 import { FnbProductCard } from './modes/fnb/storefront/components/FnbProductCard.jsx';
 import { FnbItemReviewModal } from './modes/fnb/storefront/components/FnbItemReviewModal.jsx';
-import { FnbHeroDesktopAboutGallery } from './modes/fnb/storefront/components/FnbHeroDesktopAboutGallery.jsx';
-import { FnbHeroDesktopContactLocation } from './modes/fnb/storefront/components/FnbHeroDesktopContactLocation.jsx';
-import { FnbHeroDesktopWhyChooseUs } from './modes/fnb/storefront/components/FnbHeroDesktopWhyChooseUs.jsx';
-import { getServicesResponsiveLayout } from './shared/utils/storefrontViewport.js';
 import { createTrackingAdapterRegistry } from './tracking/core.js';
 import {
   fnbTrackingAdapter,
@@ -424,24 +374,21 @@ import {
   writeStoreAuthToken
 } from './auth/storefrontSessionStorage.js';
 import { requestJson } from './services/requestJson.js';
-import { hasCustomerName, hasPrimaryContact, hasDeliveryAddress, isCustomerStepComplete } from './checkout/checkoutValidation.js';
+import { hasCustomerName, hasPrimaryContact, isCustomerStepComplete } from './checkout/checkoutValidation.js';
 import { PaymentMethodSelectorBlock } from './shared/components/checkout/PaymentMethodSelectorBlock.jsx';
-import { CheckoutStepProgressHeader } from './shared/components/checkout/CheckoutStepProgressHeader.jsx';
 import { FnbTrackingRouteContainer } from './modes/fnb/tracking/pages/FnbTrackingRouteContainer.jsx';
 import { buildFnbTrackingRouteProps } from './modes/fnb/tracking/model/buildFnbTrackingRouteProps.js';
-import { DeliveryTrackingView } from './features/tracking/components/DeliveryTrackingView.jsx';
-import { ServiceBookingConfirmation } from './modes/services/booking/components/ServiceBookingConfirmation.jsx';
-import { ServiceBookingEmptyState } from './modes/services/booking/components/ServiceBookingEmptyState.jsx';
-import { ServiceBookingLocationSection } from './modes/services/booking/components/ServiceBookingLocationSection.jsx';
-import { ServiceBookingSelectedServiceCard } from './modes/services/booking/components/ServiceBookingSelectedServiceCard.jsx';
-import { ServiceBookingSummaryCard } from './modes/services/booking/components/ServiceBookingSummaryCard.jsx';
-import { ServiceBookingStepOne, ServiceBookingStepTwo, ServiceBookingStepThree } from './modes/services/booking/components/ServiceBookingSteps.jsx';
 import { ServiceCartDrawer } from './modes/services/booking/components/ServiceCartDrawer.jsx';
-import { FnbHeroMobileInfoCards } from './modes/fnb/storefront/components/FnbHeroMobileInfoCards.jsx';
+import { FnbCommunitySection } from './modes/fnb/storefront/components/FnbCommunitySection.jsx';
 import {
   formatServicesBookingFailureMessage,
   resolveServicesBookingSubmitContract
 } from './services/servicesBookingContract.js';
+import { useStorefrontStore } from './store/useStorefrontStore.js';
+import {
+  selectIsOnlinePaymentModalOpen,
+  selectViewportWidth
+} from './store/selectors/uiSelectors.js';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
 /* Legacy storefront contract anchors (frontend-only compatibility)
@@ -501,9 +448,8 @@ export default function StorefrontApp() {
   const [routeItemId, setRouteItemId] = useState(() => readStoreItemId());
   const [routeReviewToken, setRouteReviewToken] = useState(() => readStoreReviewToken());
   const previousRouteSlugRef = useRef(routeSlug);
-  const [viewportWidth, setViewportWidth] = useState(() => (
-    typeof window === 'undefined' ? 1280 : window.innerWidth
-  ));
+  const viewportWidth = useStorefrontStore(selectViewportWidth);
+  const setViewportWidth = useStorefrontStore((s) => s.uiSetViewportWidth);
   const isMobileViewport = viewportWidth < 840;
   const isDesktopViewport = viewportWidth >= 1024;
   const isCompactPaginationViewport = viewportWidth < 768;
@@ -730,11 +676,13 @@ export default function StorefrontApp() {
     showMobileAddressModal,
   } = useFnbCheckoutRouteState();
   const [simpleOrderStep, setSimpleOrderStep] = useState(1);
-  const [isOnlinePaymentModalOpen, setIsOnlinePaymentModalOpen] = useState(false);
+  const isOnlinePaymentModalOpen = useStorefrontStore(selectIsOnlinePaymentModalOpen);
+  const uiOpenOnlinePaymentModal = useStorefrontStore((s) => s.uiOpenOnlinePaymentModal);
+  const uiCloseOnlinePaymentModal = useStorefrontStore((s) => s.uiCloseOnlinePaymentModal);
 
   const handlePaymentTypeChange = useCallback((val) => {
     if (val === 'online') {
-      setIsOnlinePaymentModalOpen(true);
+      uiOpenOnlinePaymentModal();
       setFnbPaymentType('cash');
     } else {
       setFnbPaymentType(val);
@@ -756,7 +704,8 @@ export default function StorefrontApp() {
   const [catalogErrorGuidance, setCatalogErrorGuidance] = useState('');
 
   const [orderMethod, setOrderMethod] = useState('delivery');
-  const [cart, setCart] = useState([]);
+  const cart = useStorefrontStore((s) => s.cart.items);
+  const setCart = useStorefrontStore((s) => s.cartSet);
   const [catalogImageErrors, setCatalogImageErrors] = useState(() => new Set());
   const [cartImageErrors, setCartImageErrors] = useState(() => new Set());
   const [brandingImageErrors, setBrandingImageErrors] = useState(() => new Set());
@@ -1247,11 +1196,6 @@ export default function StorefrontApp() {
     maskValue
   });
   const isGuestAccountDrawerState = !isStorefrontAccountAuthenticated;
-  const accountDrawerTitle = isGuestAccountDrawerState ? 'DGFY Account' : 'My Account';
-  const accountDrawerSubtitle = isGuestAccountDrawerState
-    ? 'Orders, tracking, profile, addresses, loyalty, and company invitations.'
-    : 'Manage your bookings, orders, tickets and more.';
-  const accountPrimaryDescription = 'View and manage your saved bookings, orders, tickets, receipts, and the latest linked transaction.';
   const trackingDrawerOrders = isDgfyCustomerSignedIn ? accountTrackedOrders : guestTrackedOrders;
 
   const applySavedCustomerDetails = useCallback(() => {
@@ -1396,59 +1340,6 @@ export default function StorefrontApp() {
       setGuestCheckoutUnlocked(false);
     }
   }, [selectedStore?.slug]);
-  const renderCheckoutAccountGate = ({
-    title = 'Continue to your order',
-    description = 'Create an account or log in to continue your order.',
-    createLabel = 'Create DGFY Account',
-    loginLabel = 'Have an account? Log in to DGFY',
-    createMode = 'create-account',
-    resumeTarget = {}
-  } = {}) => (
-    <section style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: isMobileViewport ? 16 : 22, background: '#ffffff', boxShadow: '0 8px 24px rgba(15,23,42,.04)', display: 'grid', gap: 16 }}>
-      <div style={{ borderRadius: 16, border: '1px solid #dbeafe', background: 'linear-gradient(135deg,#eff6ff,#f8fbff)', padding: isMobileViewport ? 16 : 18, display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1.15fr 180px', gap: 16, alignItems: 'center' }}>
-        <div style={{ display: 'grid', gap: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: '#1a4e8d', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            Account Required
-          </div>
-          <div style={{ fontSize: isMobileViewport ? 24 : 28, fontWeight: 900, color: '#0f172a', lineHeight: 1.08 }}>
-            Sign in or create your DGFY Account
-          </div>
-          <div style={{ fontSize: 14, color: '#64748b', lineHeight: 1.6 }}>
-            Use your DGFY account to continue this order or booking and keep it under your own customer dashboard.
-          </div>
-        </div>
-        <div style={{ justifySelf: isMobileViewport ? 'stretch' : 'end', width: isMobileViewport ? '100%' : 160, minHeight: 116, borderRadius: 18, background: 'linear-gradient(135deg,#dbeafe,#eff6ff)', display: 'grid', placeItems: 'center', color: '#1a4e8d' }}>
-          <ShoppingBag size={isMobileViewport ? 34 : 40} />
-        </div>
-      </div>
-      <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#fff', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 14 }}>
-        <div style={{ textAlign: 'center', display: 'grid', gap: 6 }}>
-          <div style={{ fontSize: isMobileViewport ? 20 : 22, fontWeight: 800, color: '#0f172a' }}>{title}</div>
-          <div style={{ fontSize: 13, color: '#64748b' }}>{description}</div>
-        </div>
-        <button
-          type="button"
-          onClick={() => openCheckoutAuthFlow(createMode, resumeTarget)}
-          style={{ minHeight: 48, borderRadius: 12, border: 'none', background: '#1a4e8d', color: '#fff', fontWeight: 700, cursor: 'pointer', boxShadow: '0 10px 24px rgba(26,78,141,.18)', fontFamily: servicesBodyFont }}
-        >
-          {createLabel}
-        </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>or</span>
-          <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
-        </div>
-        <button
-          type="button"
-          onClick={() => openCheckoutAuthFlow('sign-in', resumeTarget)}
-          style={{ minHeight: 46, borderRadius: 12, border: '1px solid #1a4e8d', background: '#fff', color: '#1a4e8d', fontWeight: 800, cursor: 'pointer' }}
-        >
-          {loginLabel}
-        </button>
-      </div>
-    </section>
-  );
-
   const openStoreBySlug = useCallback(async (slug) => {
     const normalized = toSlug(slug);
     if (!normalized) return;
@@ -2500,24 +2391,6 @@ export default function StorefrontApp() {
     quoteNeedsRefresh,
     checkoutAllowed
   }), [cartCount, storefrontClosedByHours, hasStockViolation, isFnbMode, quoteResult, quoteNeedsRefresh, checkoutAllowed]);
-  const fnbCartActionLabel = useMemo(() => buildFnbCartActionLabel({
-    cartCount,
-    isCheckoutOpen,
-    hasStockViolation,
-    isFnbMode,
-    isMobileViewport,
-    quoteResult,
-    quoteNeedsRefresh
-  }), [cartCount, hasStockViolation, isCheckoutOpen, isFnbMode, isMobileViewport, quoteResult, quoteNeedsRefresh]);
-  const fnbDrawerSupportLabel = useMemo(() => buildFnbDrawerSupportLabel({
-    cartCount,
-    storefrontClosedByHours,
-    storefrontClosedMessageBody,
-    hasStockViolation,
-    isFnbMode,
-    quoteResult,
-    quoteNeedsRefresh
-  }), [cartCount, storefrontClosedByHours, storefrontClosedMessageBody, hasStockViolation, isFnbMode, quoteResult, quoteNeedsRefresh]);
   const activeBookingService = activeServiceCartLine || selectedServiceDetail || null;
   const bookingPageIntakeFields = hasServiceCart ? serviceIntakeFields : selectedServiceIntakeFields;
   const bookingPageMissingRequiredIntake = hasServiceCart ? missingRequiredIntake : missingRequiredSelectedServiceIntake;
@@ -3302,18 +3175,6 @@ export default function StorefrontApp() {
       toast.error(normalizeStorefrontErrorMessage(error, 'Unable to start business registration.'));
     }
   }, [dgfyAuthToken, isDgfyCustomerSignedIn, openCanonicalDgfyAuth]);
-  const beginServiceBooking = (serviceItem) => {
-    if (!serviceItem) return;
-    setSelectedServiceDetail(serviceItem);
-    setCheckoutError('');
-    setQuoteError('');
-    setCheckoutResult(null);
-    if (isServicesMode) {
-      goStoreBookingPage({ preserveSelectedService: true });
-      return;
-    }
-    openServiceBookingPanel('review');
-  };
   const saveServiceBookingDraft = (serviceItem = selectedServiceDetail, nextTab = 'review') => {
     if (!serviceItem) return;
     if (storefrontClosedByHours) {
@@ -4686,213 +4547,6 @@ export default function StorefrontApp() {
                   }}
                 />
             )}
-            {false && isServicesMode && selectedStore && serviceHeroModel && (
-              <section style={{ marginBottom: 40 }}>
-                {/* Modernized Header/Nav */}
-                <div style={{
-                  display: 'grid',
-                  gridTemplateColumns: isMobileViewport ? '1fr' : 'auto minmax(240px, 1fr) auto',
-                  alignItems: 'center',
-                  gap: 14,
-                  padding: isMobileViewport ? '14px 16px' : '14px 24px',
-                  background: '#fff',
-                  borderRadius: 20,
-                  border: '1px solid #e2e8f0',
-                  boxShadow: '0 14px 34px rgba(15,23,42,.05)',
-                  marginBottom: 16
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                    <button type="button" onClick={goDiscovery} style={{ border: 'none', background: '#f8fafc', color: STYLES.colors.dark, width: 42, height: 42, borderRadius: 999, cursor: 'pointer', fontSize: 20, fontWeight: 700 }}>
-                      {'<'}
-                    </button>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 17, fontWeight: 800, color: STYLES.colors.dark, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{serviceHeroModel.name}</div>
-                      <div style={{ fontSize: 12, color: STYLES.colors.muted }}>{routeSlug || 'service storefront'}</div>
-                    </div>
-                  </div>
-                  <label style={{ display: 'flex', alignItems: 'center', gap: 10, border: '1px solid #dbe5ee', borderRadius: 999, background: '#f8fafc', padding: '0 14px', minHeight: 48 }}>
-                    <input
-                      value={catalogSearch}
-                      onChange={(event) => setCatalogSearch(event.target.value)}
-                      placeholder={modeAdapter.catalogSearchPlaceholder}
-                      style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', fontSize: 14, color: STYLES.colors.text }}
-                    />
-                    <span style={{ width: 28, height: 28, borderRadius: 999, background: STYLES.colors.brand, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 900 }}>S</span>
-                  </label>
-                  <div style={{ display: 'flex', justifyContent: isMobileViewport ? 'space-between' : 'flex-end', gap: 10, flexWrap: 'wrap' }}>
-                    <button
-                      type="button"
-                      onClick={() => document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                      style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
-                    >
-                      Shop
-                    </button>
-                    {!isServicesMode && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (hasServiceCart) {
-                            goStoreBookingPage();
-                            return;
-                          }
-                          document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }}
-                        style={{ border: 'none', background: 'transparent', color: STYLES.colors.dark, fontSize: 14, fontWeight: 700, cursor: 'pointer' }}
-                      >
-                        Cart ({cartCount})
-                      </button>
-                    )}
-                  </div>
-                </div>
-
-                {/* Hero Section with Overlapping Avatar */}
-                <div style={{ position: 'relative' }}>
-                  <section style={{
-                    position: 'relative',
-                    minHeight: isMobileViewport ? 300 : 340,
-                    borderRadius: '28px 28px 0 0',
-                    overflow: 'hidden',
-                    background: serviceHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`)
-                      ? `url(${serviceHeroModel.coverImageUrl}) center/cover`
-                      : 'linear-gradient(120deg,#1e293b 0%,#334155 100%)',
-                    boxShadow: STYLES.shadow.lg
-                  }}>
-                    <div style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,0.4)' }} />
-                    <div style={{ position: 'relative', zIndex: 1, padding: isMobileViewport ? '40px 20px' : '60px 40px 60px 280px', minHeight: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-                        <Badge background={selectedStore?.storefront_open ? '#16a34a' : '#b45309'} color="#fff">{serviceHeroModel.statusLabel}</Badge>
-                        <Badge background="rgba(15,23,42,0.6)" color="#fff">Closes 10:00 PM</Badge>
-                      </div>
-                      <h1 style={{ margin: 0, color: '#fff', fontSize: isMobileViewport ? 36 : 52, fontWeight: 900, lineHeight: 1.1 }}>{serviceHeroModel.name}</h1>
-                      {serviceHeroModel.tagline && (
-                        <p style={{ margin: '8px 0 0 0', color: '#fbbf24', fontSize: isMobileViewport ? 18 : 24, fontWeight: 700 }}>{serviceHeroModel.tagline}</p>
-                      )}
-                      <div style={{ marginTop: 16, display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 16, color: '#fff', fontSize: 14, fontWeight: 600 }}>
-                        <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Star size={14} fill="#fbbf24" color="#fbbf24" />{serviceHeroModel.ratingLabel}</span>
-                        <span>| {serviceHeroModel.modeLabel}</span>
-                        <span><MapPin size={14} style={{ display: 'inline-block', verticalAlign: 'text-bottom', marginRight: 4 }} />{serviceHeroModel.locationLabel}</span>
-                      </div>
-                      <div style={{ marginTop: 24, display: 'flex', gap: 12 }}>
-                        <GhostButton onClick={() => openStorefrontActionLink(serviceHeroModel.actions?.callHref)} style={{ background: 'rgba(255,255,255,0.2)', color: '#fff', border: '1px solid rgba(255,255,255,0.3)', minWidth: 100 }}>
-                          Call
-                        </GhostButton>
-                        <PrimaryButton onClick={() => {
-                          if (hasServiceCart) {
-                            goStoreBookingPage();
-                            return;
-                          }
-                          document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        }} style={{ minWidth: 140 }}>
-                          {serviceHeroModel.actions.orderLabel}
-                        </PrimaryButton>
-                      </div>
-                    </div>
-                  </section>
-
-                  {/* Overlapping Avatar */}
-                  <div style={{
-                    position: 'absolute',
-                    left: isMobileViewport ? '50%' : '40px',
-                    bottom: '-60px',
-                    transform: isMobileViewport ? 'translateX(-50%)' : 'none',
-                    width: 200,
-                    height: 200,
-                    borderRadius: '50%',
-                    background: '#fff',
-                    border: '8px solid #fff',
-                    boxShadow: STYLES.shadow.lg,
-                    overflow: 'hidden',
-                    zIndex: 10,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}>
-                    {serviceHeroModel.profileImageUrl && !isBrandingImageBlocked(`hero-profile:${selectedStore.slug}`) ? (
-                      <img src={serviceHeroModel.profileImageUrl} alt="Logo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                    ) : (
-                      <div style={{ fontSize: 64, fontWeight: 900, color: STYLES.colors.brandDark }}>{serviceHeroModel.name.charAt(0)}</div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Mission Control Info Panels */}
-                <div style={{
-                  background: '#fff',
-                  borderRadius: '0 0 28px 28px',
-                  padding: isMobileViewport ? '80px 20px 40px' : '40px 40px 40px 280px',
-                  border: '1px solid #e2e8f0',
-                  borderTop: 'none',
-                  display: 'grid',
-                  gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr 1fr',
-                  gap: 32,
-                  boxShadow: STYLES.shadow.sm
-                }}>
-                  {/* Column 1: Contact & Location */}
-                  <div style={{ display: 'grid', gap: 16 }}>
-                    <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contact & Location</h3>
-                    <div style={{ borderRadius: 16, overflow: 'hidden', border: '1px solid #e2e8f0', height: 160 }}>
-                      <StoresMap
-                        stores={[{ ...selectedStore, location_id: selectedLocationId }]}
-                        selectedKey={selectedLocationId}
-                        onSelectStore={() => { }}
-                      />
-                    </div>
-                    <div style={{ display: 'grid', gap: 12 }}>
-                      {serviceHeroModel.contactRows.map((row, i) => (
-                        <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                          <span style={{ color: row.label === 'Call' ? STYLES.colors.brand : row.label === 'Facebook' ? '#1a4e8d' : STYLES.colors.teal, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{row.label === 'Call' ? <Phone size={16} /> : row.label === 'Facebook' ? <MessageCircle size={16} /> : <Clock3 size={16} />}</span>
-                          <div>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: STYLES.colors.dark }}>{row.value}</div>
-                            {row.label === 'Hours' && <div style={{ fontSize: 12, color: '#16a34a', fontWeight: 700 }}>Open Now</div>}
-                          </div>
-                        </div>
-                      ))}
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                        <span style={{ color: STYLES.colors.brand, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}><MapPin size={16} /></span>
-                        <div>
-                          <div style={{ fontSize: 14, fontWeight: 700, color: STYLES.colors.dark }}>{serviceHeroModel.addressLine}</div>
-                          <button style={{ border: 'none', background: 'transparent', color: STYLES.colors.brand, fontSize: 12, fontWeight: 800, padding: 0, cursor: 'pointer' }}>Get Directions</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Column 2: About Us */}
-                  <div style={{ display: 'grid', gap: 16 }}>
-                    <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.05em' }}>About Us</h3>
-                    <p style={{ margin: 0, fontSize: 14, color: STYLES.colors.text, lineHeight: 1.6 }}>
-                      {serviceHeroModel.aboutText}
-                    </p>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 8 }}>
-                      {serviceHeroModel.galleryPreview.map((url, i) => (
-                        <div key={i} style={{ aspectRatio: '1/1', borderRadius: 8, overflow: 'hidden', position: 'relative' }}>
-                          <img src={url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Gallery" />
-                          {i === 3 && <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.5)', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 800 }}>+3</div>}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Column 3: Why Choose Us */}
-                  <div style={{ display: 'grid', gap: 16 }}>
-                    <h3 style={{ margin: 0, fontSize: 14, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Why Choose Us</h3>
-                    <div style={{ display: 'grid', gap: 14 }}>
-                      {[
-                        { icon: 'S', text: 'Laundry and aircon services in one place' },
-                        { icon: 'H', text: 'Suitable for regular household and small business needs' },
-                        { icon: 'M', text: 'Options for everyday garments, bulky laundry, and multiple aircon unit types' },
-                        { icon: 'B', text: 'Simple booking-friendly service catalog for faster inquiries and checkout' }
-                      ].map((item, i) => (
-                        <div key={i} style={{ display: 'flex', gap: 12, alignItems: 'start' }}>
-                          <span style={{ fontSize: 18, color: STYLES.colors.brand }}>{item.icon}</span>
-                          <span style={{ fontSize: 14, color: STYLES.colors.text, lineHeight: 1.4 }}>{item.text}</span>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </section>
-            )}
             {!isServicesMode && (
               <>
                 {/* ZONE 1: Navigation & Header */}
@@ -5060,1331 +4714,139 @@ export default function StorefrontApp() {
               }
 
               if (isServicesMode) {
-                const searchFilteredServices = filterCatalogItems(itemsToRender, catalogSearch);
-                const availabilityFilteredServices = searchFilteredServices.filter((item) => {
-                  if (serviceAvailabilityFilter === 'available') return isItemAvailable(item);
-                  if (serviceAvailabilityFilter === 'unavailable') return !isItemAvailable(item);
-                  return true;
-                });
-                const areaFilteredServices = availabilityFilteredServices.filter((item) => {
-                  const areaType = String(item?.service_detail?.service_area_type || '').trim().toLowerCase();
-                  if (serviceAreaFilter === 'all') return true;
-                  return areaType === serviceAreaFilter;
-                });
-                const durationFilteredServices = areaFilteredServices.filter((item) => {
-                  const duration = Number(item?.service_detail?.duration_minutes || 0);
-                  if (serviceDurationFilter === 'all') return true;
-                  if (!Number.isFinite(duration) || duration <= 0) return false;
-                  if (serviceDurationFilter === 'short') return duration < 60;
-                  if (serviceDurationFilter === 'standard') return duration >= 60 && duration < 120;
-                  if (serviceDurationFilter === 'extended') return duration >= 120;
-                  return true;
-                });
-                const sortedServices = [...durationFilteredServices].sort((left, right) => {
-                  if (serviceSortOption === 'price_asc') return Number(left?.default_sale_price || 0) - Number(right?.default_sale_price || 0);
-                  if (serviceSortOption === 'price_desc') return Number(right?.default_sale_price || 0) - Number(left?.default_sale_price || 0);
-                  return String(left?.variantName || left?.name || '').localeCompare(String(right?.variantName || right?.name || ''));
-                });
-                const totalServicePages = Math.max(1, Math.ceil(sortedServices.length / Math.max(1, Number(servicePageSize || 8))));
-                const resolvedServicePage = Math.min(Math.max(1, Number(servicePage || 1)), totalServicePages);
-                const paginatedServices = sortedServices.slice((resolvedServicePage - 1) * servicePageSize, resolvedServicePage * servicePageSize);
-                const servicePageStart = sortedServices.length === 0 ? 0 : ((resolvedServicePage - 1) * servicePageSize) + 1;
-                const servicePageEnd = Math.min(sortedServices.length, resolvedServicePage * servicePageSize);
-                const hasActiveFilters = serviceAvailabilityFilter !== 'all' || serviceAreaFilter !== 'all' || serviceDurationFilter !== 'all';
-                const hasSearchQuery = catalogSearch.trim().length > 0;
-                const reviewHighlights = Array.isArray(serviceHeroModel?.reviewHighlights) ? serviceHeroModel.reviewHighlights.filter(Boolean) : [];
-                const reviewSummary = serviceHeroModel?.reviewSummary || null;
-                const reviewScore = Number(reviewSummary?.score);
-                const reviewCount = Number(reviewSummary?.total_count ?? reviewSummary?.totalCount ?? reviewHighlights.length);
-                const hasReviewSummary = Number.isFinite(reviewScore) && reviewScore > 0;
-                const reviewGridColumns = isMobileViewport ? '1fr' : viewportWidth < 1024 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(3, minmax(0, 1fr))';
-                const resolvedServicesLayoutMode = String(serviceHeroModel?.servicesLayoutMode || servicesLayoutMode || 'directory').trim().toLowerCase();
-                const isLeadGenLayout = resolvedServicesLayoutMode === 'lead_gen';
-                const isBookingHeavyLayout = resolvedServicesLayoutMode === 'booking_heavy';
-                const isDirectoryLayout = !isLeadGenLayout && !isBookingHeavyLayout;
-                const controlRadius = 18;
-                const serviceCategoryOptions = [
-                  {
-                    key: '',
-                    label: 'All Services',
-                    count: servicesViewModel.allServices.length,
-                    icon: Sparkles
-                  },
-                  ...servicesViewModel.serviceGroups.map((group) => ({
-                    key: group.categoryKey,
-                    label: group.categoryMeta?.label || group.categoryKey,
-                    count: group.items.length,
-                    icon: SERVICE_CATEGORY_ICON_MAP[group.categoryMeta?.iconToken] || Sparkles
-                  }))
-                ];
-                const detailPageServiceItem = selectedServiceDetail || (routeServiceItemId ? catalog.find((item) => String(item?.item_id) === String(routeServiceItemId)) || null : null);
-                const detailPagePaymentOptions = buildServicePaymentOptions(detailPageServiceItem?.service_detail?.payment_policy || 'customer_choice');
-                const detailPageIntakeFields = normalizeServiceFormFields(detailPageServiceItem?.service_detail?.intake_form_schema);
-                const servicesSectionTitle = isLeadGenLayout
-                  ? 'Service Highlights'
-                  : isBookingHeavyLayout
-                    ? 'Choose a Service'
-                    : 'Services';
-                const servicesSectionSubtitle = isLeadGenLayout
-                  ? 'Start with the core services, then contact or book the team from the storefront.'
-                  : isBookingHeavyLayout
-                    ? 'Pick the service you need, review what to prepare, and continue to booking when you are ready.'
-                    : 'Browse available services from this storefront.';
-                const servicesGridColumns = isMobileViewport
-                  ? '1fr'
-                  : isLeadGenLayout
-                    ? 'repeat(2, minmax(0, 1fr))'
-                    : (viewportWidth < 1200 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))');
-                if (isServiceDetailsSubpage) {
-                  const supportHref = String(serviceHeroModel?.actions?.messageHref || serviceHeroModel?.actions?.callHref || '').trim();
-                  return (
-                    <section style={{ display: 'grid', gap: 0, paddingTop: 0 }}>
-                      <div style={{
-                        position: 'sticky',
-                        top: 0,
-                        zIndex: 100,
-                        background: '#ffffff',
-                        borderBottom: '1px solid #e5e7eb',
-                        boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
-                        width: '100vw',
-                        marginLeft: 'calc(50% - 50vw)'
-                      }}>
-                        <div style={{ maxWidth: 1320, margin: '0 auto', padding: isMobileViewport ? '10px 16px' : '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 12 : 24, minWidth: 0, flex: 1 }}>
-                            <button type="button" onClick={goStoreCatalogPage} style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', color: '#0f172a' }}>
-                              <ArrowLeft size={22} strokeWidth={2.5} />
-                            </button>
-                            <div style={{ display: 'grid', gap: 2, minWidth: 0 }}>
-                              <div style={{ fontSize: 11, fontWeight: 900, color: '#f97316', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                                Service details
-                              </div>
-                              <div style={{ fontSize: isMobileViewport ? 14 : 16, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                                Review the service before booking
-                              </div>
-                            </div>
-                          </div>
-
-                          {!isMobileViewport && (
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flex: 1, justifyContent: 'center' }}>
-                              {serviceHeroModel.profileImageUrl ? (
-                                <img src={serviceHeroModel.profileImageUrl} alt="" style={{ width: 34, height: 34, borderRadius: '50%', objectFit: 'cover', border: '2px solid #fff', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }} />
-                              ) : (
-                                <div style={{ width: 34, height: 34, borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', border: '1px solid #e2e8f0' }}>
-                                  <ShoppingBag size={18} color="#f97316" />
-                                </div>
-                              )}
-                              <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.01em' }}>
-                                {serviceHeroModel.name}
-                              </div>
-                            </div>
-                          )}
-
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flex: 1 }}>
-                            {supportHref ? (
-                              <button type="button" onClick={() => openStorefrontActionLink(supportHref)} style={{ display: 'inline-flex', alignItems: 'center', gap: 8, height: 42, padding: isMobileViewport ? '0 12px' : '0 20px', borderRadius: 12, background: '#f97316', color: '#fff', border: 'none', fontWeight: 800, fontSize: 14, cursor: 'pointer', boxShadow: '0 4px 12px rgba(249, 115, 22, 0.25)', whiteSpace: 'nowrap' }}>
-                                <MessageCircle size={18} fill="currentColor" fillOpacity={0.2} />
-                                {isMobileViewport ? 'Message' : 'Message Us'}
-                              </button>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', background: '#eef4fb', padding: isMobileViewport ? '24px 0 40px' : '32px 0 56px' }}>
-                        <div style={{ maxWidth: 1320, margin: '0 auto', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
-                          {!detailPageServiceItem ? (
-                            <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', padding: isMobileViewport ? 20 : 28, boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 16, maxWidth: 760 }}>
-                              <div style={{ display: 'grid', gap: 8 }}>
-                                <div style={{ fontSize: 24, fontWeight: 900, color: STYLES.colors.dark }}>No service details available</div>
-                                <p style={{ margin: 0, fontSize: 15, lineHeight: 1.65, color: STYLES.colors.muted }}>
-                                  Go back to the services page and choose a service to view its details.
-                                </p>
-                              </div>
-                              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12 }}>
-                                <PrimaryButton onClick={goStoreCatalogPage} style={{ minHeight: 46 }}>Browse Services</PrimaryButton>
-                              </div>
-                            </section>
-                          ) : (
-                            <div style={{ display: 'grid', gap: 24 }}>
-                              <div style={{ display: 'grid', gap: 10 }}>
-                                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                                  <Badge background="#fff7ed" color={STYLES.colors.brand} border="#fdba74">
-                                    {detailPageServiceItem.categoryMeta?.label || 'Service'}
-                                  </Badge>
-                                  <Badge background="#ffffff" color={STYLES.colors.dark} border="#dbe5ee">
-                                    {detailPageServiceItem.serviceAreaLabel}
-                                  </Badge>
-                                </div>
-                                <h1 style={{ margin: 0, fontSize: isMobileViewport ? 28 : 40, lineHeight: 1.05, fontWeight: 900, color: STYLES.colors.dark, letterSpacing: '-0.03em' }}>
-                                  {detailPageServiceItem.variantName || detailPageServiceItem.name}
-                                </h1>
-                                <p style={{ margin: 0, maxWidth: 760, fontSize: 15, lineHeight: 1.7, color: STYLES.colors.muted }}>
-                                  {detailPageServiceItem.description || 'Service details are synced from SKUpervisor. Review the service information below before continuing to booking.'}
-                                </p>
-                              </div>
-
-                              <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(340px, 400px) minmax(0, 1fr)', gap: isMobileViewport ? 18 : 28, alignItems: 'start' }}>
-                                <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', overflow: 'hidden', boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 0, position: isMobileViewport ? 'static' : 'sticky', top: isMobileViewport ? 'auto' : 96 }}>
-                                  <div style={{ width: '100%', height: isMobileViewport ? 260 : 240, background: '#f8fafc' }}>
-                                    {withAssetOrigin(detailPageServiceItem.image_url) ? (
-                                      <img src={withAssetOrigin(detailPageServiceItem.image_url)} alt={detailPageServiceItem.variantName || detailPageServiceItem.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                    ) : (
-                                      <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: STYLES.colors.muted, fontSize: 14 }}>
-                                        No image
-                                      </div>
-                                    )}
-                                  </div>
-                                  <div style={{ padding: isMobileViewport ? 18 : 22, display: 'grid', gap: 18 }}>
-                                    <div style={{ display: 'grid', gap: 6, paddingTop: 2 }}>
-                                      <div style={{ fontSize: 12, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                                        Starting at
-                                      </div>
-                                      <div style={{ fontSize: 30, fontWeight: 900, color: STYLES.colors.dark }}>
-                                        {money(detailPageServiceItem.default_sale_price ?? 0)}
-                                      </div>
-                                    </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
-                                      <PrimaryButton style={{ minHeight: 46 }} onClick={(event) => addToCart(detailPageServiceItem, { sourceRect: getCartFlySourceRect(event) })}>
-                                        Add to Cart
-                                      </PrimaryButton>
-                                      <GhostButton style={{ minHeight: 46 }} onClick={goStoreCatalogPage}>
-                                        Back to Services
-                                      </GhostButton>
-                                    </div>
-                                  </div>
-                                </section>
-
-                                <div style={{ display: 'grid', gap: 18 }}>
-                                  <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', padding: isMobileViewport ? 20 : 24, boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 16 }}>
-                                    <div style={{ display: 'grid', gap: 6 }}>
-                                      <div style={{ fontSize: 20, fontWeight: 900, color: STYLES.colors.dark }}>
-                                        Service details
-                                      </div>
-                                      <div style={{ fontSize: 14, lineHeight: 1.65, color: STYLES.colors.muted }}>
-                                        Core service information from SKUpervisor.
-                                      </div>
-                                    </div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))', gap: 14 }}>
-                                      <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff', minWidth: 0 }}>
-                                        <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Category</div>
-                                        <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark, lineHeight: 1.35 }}>{detailPageServiceItem.categoryMeta?.label || 'Service'}</div>
-                                      </div>
-                                      <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff', minWidth: 0 }}>
-                                        <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Service area</div>
-                                        <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark, lineHeight: 1.35 }}>{detailPageServiceItem.serviceAreaLabel}</div>
-                                      </div>
-                                      <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff', minWidth: 0 }}>
-                                        <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Estimated duration</div>
-                                        <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark, lineHeight: 1.35 }}>{detailPageServiceItem.durationLabel}</div>
-                                      </div>
-                                      <div style={{ display: 'grid', gap: 4, padding: '14px 16px', border: '1px solid #e2e8f0', borderRadius: 18, background: '#fcfdff', minWidth: 0 }}>
-                                        <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Payment options</div>
-                                        <div style={{ fontSize: 15, fontWeight: 800, color: STYLES.colors.dark, lineHeight: 1.35 }}>{detailPagePaymentOptions.map((option) => option.label).join(' / ')}</div>
-                                      </div>
-                                    </div>
-                                  </section>
-
-                                  <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', padding: isMobileViewport ? 20 : 24, boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 10 }}>
-                                    <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark }}>Description</div>
-                                    <div style={{ fontSize: 14, lineHeight: 1.7, color: '#334155' }}>
-                                      {detailPageServiceItem.description || 'This service does not have a detailed description yet in SKUpervisor.'}
-                                    </div>
-                                  </section>
-                                </div>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </section>
-                  );
-                }
-                if (isBookingSubpage) {
-                  const currentStep = serviceBookingStep;
-                  const supportHref = String(serviceHeroModel?.actions?.messageHref || serviceHeroModel?.actions?.callHref || '').trim();
-                  const bookingConfirmation = checkoutResult?.booking || null;
-                  const confirmationLine = Array.isArray(checkoutResult?.cart_lines) ? checkoutResult.cart_lines[0] || null : null;
-                  const confirmationReference = String(bookingConfirmation?.public_reference || checkoutResult?.tracking_pin || '').trim();
-                  const confirmationServiceName = confirmationLine?.variantName || confirmationLine?.name || serviceBookingSummaryTitle;
-                  const confirmationAmount = bookingConfirmation?.total_amount ?? ((Number(confirmationLine?.price ?? 0) || 0) * Math.max(1, Number(confirmationLine?.quantity || 1)));
-                  const serviceBookingProgressSteps = [
-                    { realStep: 1, displayStep: 1, label: 'Details', allow: true },
-                    { realStep: 2, displayStep: 2, label: 'Review', allow: stepOneComplete },
-                    { realStep: 3, displayStep: 3, label: 'Payment', allow: stepOneComplete }
-                  ];
-                  const reviewSections = [
-                    {
-                      title: 'Customer Information',
-                      step: 1,
-                      rows: [
-                        { label: 'Customer Name', value: customerName || 'Not provided', fieldKey: 'customer_name' },
-                        { label: 'Contact Number', value: customerPhone || 'Not provided', fieldKey: 'customer_phone' },
-                        { label: 'Email', value: customerEmail || 'Not provided', fieldKey: 'customer_email' },
-                        ...(bookingFieldPlan.requiresAddress ? [{ label: 'Service Location', value: activeServiceLocationSummary || 'Not selected', fieldKey: 'customer_address' }] : [])
-                      ]
-                    },
-                    {
-                      title: 'Schedule and Service Information',
-                      step: 1,
-                      rows: [
-                        { label: 'Preferred Date', value: selectedServiceDatePart ? formatLongDateLabel(selectedServiceDatePart) : 'Not selected', fieldKey: 'preferred_date' },
-                        { label: 'Preferred Time Slot', value: selectedServiceTimePart ? formatTimeSlotLabel(selectedServiceTimePart) : 'Not selected', fieldKey: 'preferred_time' },
-                        ...(bookingFieldPlan.unitTypeField ? [{ label: bookingFieldPlan.unitTypeField.label, value: serviceUnitType || 'Not provided', fieldKey: 'unit_type' }] : []),
-                        { label: bookingFieldPlan.unitCountField?.label || 'Number of Units', value: String(bookingSummaryQuantity), fieldKey: 'unit_count' }
-                      ]
-                    },
-                    {
-                      title: 'Additional Service Details',
-                      step: 1,
-                      rows: [
-                        { label: 'Special Instructions', value: serviceIntakeResponses.special_instructions || serviceIntakeResponses.instructions || 'Not provided', fieldKey: 'special_instructions' },
-                        ...bookingStepOneAdditionalFields
-                          .filter(field => field.id !== 'special_instructions' && field.id !== 'instructions')
-                          .map((field) => ({
-                            label: field.label,
-                            value: formatBookingReviewValue(field, serviceIntakeResponses[field.id]),
-                            fieldKey: `intake_${field.id}`
-                          }))
-                      ]
-                    }
-                  ];
-                  return (
-                    <section style={{ display: 'grid', gap: 0, paddingTop: 0 }}>
-                      <div style={{
-                        position: 'sticky',
-                        top: 0,
-                        zIndex: 100,
-                        background: '#ffffff',
-                        borderBottom: '1px solid #e5e7eb',
-                        boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
-                        width: '100vw',
-                        marginLeft: 'calc(50% - 50vw)',
-                        backdropFilter: 'blur(8px)'
-                      }}>
-                        <div style={{
-                          maxWidth: 1320,
-                          margin: '0 auto',
-                          padding: isMobileViewport ? '10px 16px' : '12px 24px',
-                          display: 'flex',
-                          justifyContent: 'space-between',
-                          alignItems: 'center',
-                          gap: 16
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 12 : 16, minWidth: 0, flex: 1 }}>
-                            <button
-                              type="button"
-                              onClick={goStoreCatalogPage}
-                              style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', color: '#0f172a' }}
-                            >
-                              <ArrowLeft size={22} strokeWidth={2.5} />
-                            </button>
-                            {serviceHeroModel.profileImageUrl ? (
-                              <img
-                                src={serviceHeroModel.profileImageUrl}
-                                alt=""
-                                style={{ width: isMobileViewport ? 36 : 38, height: isMobileViewport ? 36 : 38, borderRadius: '50%', objectFit: 'cover', border: '2px solid #fff', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
-                              />
-                            ) : (
-                              <div style={{ width: isMobileViewport ? 36 : 38, height: isMobileViewport ? 36 : 38, borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', border: '1px solid #e2e8f0' }}>
-                                <ShoppingBag size={18} color="#f97316" />
-                              </div>
-                            )}
-                            <div style={{ fontSize: isMobileViewport ? 16 : 18, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                              {serviceHeroModel.name}
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'flex', justifyContent: 'flex-end', flex: 1 }}>
-                            {supportHref ? (
-                              <button
-                                type="button"
-                                onClick={() => openStorefrontActionLink(supportHref)}
-                                style={{
-                                  display: 'inline-flex',
-                                  alignItems: 'center',
-                                  gap: 8,
-                                  height: 42,
-                                  padding: isMobileViewport ? '0 12px' : '0 20px',
-                                  borderRadius: 12,
-                                  background: '#f97316',
-                                  color: '#fff',
-                                  border: 'none',
-                                  fontWeight: 800,
-                                  fontSize: 14,
-                                  cursor: 'pointer',
-                                  boxShadow: '0 4px 12px rgba(249, 115, 22, 0.25)',
-                                  whiteSpace: 'nowrap'
-                                }}
-                              >
-                                <MessageCircle size={18} fill="currentColor" fillOpacity={0.2} />
-                                {isMobileViewport ? 'Message' : 'Message Us'}
-                              </button>
-                            ) : <div style={{ width: 40 }} />}
-                          </div>
-                        </div>
-                      </div>
-
-                      <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', background: '#eef4fb', padding: isMobileViewport ? '24px 0 40px' : '32px 0 56px' }}>
-                        <div style={{ maxWidth: 1320, margin: '0 auto', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
-                          <div style={{ display: 'grid', gap: 10, marginBottom: 20 }}>
-                            <h1 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, lineHeight: 1.08, fontWeight: 900, color: STYLES.colors.dark, letterSpacing: '-0.03em' }}>
-                              Book Your Service
-                            </h1>
-                            <p style={{ margin: 0, maxWidth: 760, fontSize: isMobileViewport ? 15 : 17, lineHeight: 1.65, color: STYLES.colors.muted }}>
-                              Confirm your details once, choose the schedule that works for you, review the booking, and send it to the store team.
-                            </p>
-                          </div>
-
-                          {bookingConfirmation ? (
-                            <ServiceBookingConfirmation
-                              isMobileViewport={isMobileViewport}
-                              confirmationReference={confirmationReference}
-                              confirmationServiceName={confirmationServiceName}
-                              confirmationAmount={confirmationAmount}
-                              checkoutResult={checkoutResult}
-                              money={money}
-                              onResetAndBackToServices={() => {
-                                setCheckoutResult(null);
-                                goStoreCatalogPage();
-                              }}
-                            />
-                          ) : !activeBookingService ? (
-                            <ServiceBookingEmptyState
-                              isMobileViewport={isMobileViewport}
-                              onBrowseServices={goStoreCatalogPage}
-                            />
-                          ) : (
-                          <>
-                          <div style={{ display: 'grid', gap: 24, gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.2fr) minmax(320px, 360px)', alignItems: 'start' }}>
-                            <div style={{ display: 'grid', gap: 18 }}>
-                              <CheckoutStepProgressHeader
-                                steps={serviceBookingProgressSteps}
-                                activeStep={serviceBookingStep}
-                                onStepClick={(item) => {
-                                  if (item.allow === false) return;
-                                  setServiceBookingStep(item.realStep);
-                                }}
-                                variant="connected"
-                                isMobileViewport={isMobileViewport}
-                                accentColor={servicesPrimary}
-                                accentSoft={servicesPrimarySoft}
-                                accentBorder={servicesPrimaryBorder}
-                                completeColor={servicesPrimary}
-                                activeText={servicesPrimary}
-                              />
-
-                              <section style={{ display: 'grid', gap: 18, minWidth: 0 }}>
-                                <ServiceBookingSelectedServiceCard
-                                  STYLES={STYLES}
-                                  servicesPrimary={servicesPrimary}
-                                  servicesPrimarySoft={servicesPrimarySoft}
-                                  servicesPrimaryBorder={servicesPrimaryBorder}
-                                  isMobileViewport={isMobileViewport}
-                                  activeBookingService={activeBookingService}
-                                  serviceBookingSummaryTitle={serviceBookingSummaryTitle}
-                                  bookingSummaryQuantity={bookingSummaryQuantity}
-                                  hasServiceCart={hasServiceCart}
-                                  serviceCartLines={serviceCartLines}
-                                  selectedServiceCartLineId={selectedServiceCartLineId}
-                                  openServiceCartEditor={openServiceCartEditor}
-                                />
-
-                                {serviceBookingStep === 1 && (
-                                  <ServiceBookingStepOne
-                                    STYLES={STYLES}
-                                    BOOKING_FIELD_STYLE={BOOKING_FIELD_STYLE}
-                                    StorefrontDropdown={StorefrontDropdown}
-                                    PrimaryButton={PrimaryButton}
-                                    renderAccountOwnedIdentitySummary={renderAccountOwnedIdentitySummary}
-                                    renderGuestIdentityFields={renderGuestIdentityFields}
-                                    renderGuestCheckoutEntry={renderGuestCheckoutEntry}
-                                    registerBookingFieldRef={registerBookingFieldRef}
-                                    shouldBookingFieldSpanFullWidth={shouldBookingFieldSpanFullWidth}
-                                    formatLongDateLabel={formatLongDateLabel}
-                                    combineDateAndTimeParts={combineDateAndTimeParts}
-                                    getPreferredBookingTimeForDate={getPreferredBookingTimeForDate}
-                                    openPreferredBookingDatePicker={openPreferredBookingDatePicker}
-                                    activeBookingService={activeBookingService}
-                                    isMobileViewport={isMobileViewport}
-                                    isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
-                                    canUseGuestCheckoutFlow={canUseGuestCheckoutFlow}
-                                    bookingFieldPlan={bookingFieldPlan}
-                                    selectedServiceDatePart={selectedServiceDatePart}
-                                    bookingDateOptions={bookingDateOptions}
-                                    bookingPreferredDateInputRef={bookingPreferredDateInputRef}
-                                    selectedServiceTimePart={selectedServiceTimePart}
-                                    bookingTimeSlotOptions={bookingTimeSlotOptions}
-                                    setServiceAppointmentAt={setServiceAppointmentAt}
-                                    serviceUnitType={serviceUnitType}
-                                    setServiceUnitType={setServiceUnitType}
-                                    serviceDraftQuantity={serviceDraftQuantity}
-                                    setServiceDraftQuantity={setServiceDraftQuantity}
-                                    bookingStepOneAdditionalFields={bookingStepOneAdditionalFields}
-                                    serviceIntakeResponses={serviceIntakeResponses}
-                                    setServiceIntakeResponses={setServiceIntakeResponses}
-                                    missingCustomerInformation={missingCustomerInformation}
-                                    missingScheduleAndServiceInfo={missingScheduleAndServiceInfo}
-                                    missingStepOneAdditionalFields={missingStepOneAdditionalFields}
-                                    stepOneComplete={stepOneComplete}
-                                    servicesPrimary={servicesPrimary}
-                                    servicesDisplayFont={servicesDisplayFont}
-                                    toast={toast}
-                                    setServiceBookingStep={setServiceBookingStep}
-                                    renderLocationSection={() => (
-                                      <ServiceBookingLocationSection
-                                        STYLES={STYLES}
-                                        servicesPrimary={servicesPrimary}
-                                        servicesPrimarySoft={servicesPrimarySoft}
-                                        servicesPrimaryBorder={servicesPrimaryBorder}
-                                        servicesDisplayFont={servicesDisplayFont}
-                                        servicesBodyFont={servicesBodyFont}
-                                        isMobileViewport={isMobileViewport}
-                                        DeliveryPinMap={DeliveryPinMap}
-                                        deliverySavedLocations={deliverySavedLocations}
-                                        selectedSavedLocationId={selectedSavedLocationId}
-                                        setSelectedSavedLocationId={setSelectedSavedLocationId}
-                                        setDeliveryLocationAction={setDeliveryLocationAction}
-                                        customerPin={customerPin}
-                                        setCustomerPin={setCustomerPin}
-                                        serviceLocationLandmarkNote={serviceLocationLandmarkNote}
-                                        setServiceLocationLandmarkNote={setServiceLocationLandmarkNote}
-                                        handlePinMyLocation={handlePinMyLocation}
-                                        pinLocationLoading={pinLocationLoading}
-                                        deliveryLocationAction={deliveryLocationAction}
-                                        deliveryLocationDisplayAddress={deliveryLocationDisplayAddress}
-                                        handleAddPinnedLocation={handleAddPinnedLocation}
-                                        canAddPinnedLocation={canAddPinnedLocation}
-                                        isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
-                                        pinLocationError={pinLocationError}
-                                        showExpandedDeliveryMap={showExpandedDeliveryMap}
-                                        setShowExpandedDeliveryMap={setShowExpandedDeliveryMap}
-                                      />
-                                    )}
-                                  />
-                                )}
-
-                                {serviceBookingStep === 2 && (
-                                  <ServiceBookingStepTwo
-                                    STYLES={STYLES}
-                                    GhostButton={GhostButton}
-                                    PrimaryButton={PrimaryButton}
-                                    isMobileViewport={isMobileViewport}
-                                    servicesPrimary={servicesPrimary}
-                                    servicesDisplayFont={servicesDisplayFont}
-                                    reviewServiceLines={reviewServiceLines}
-                                    reviewSections={reviewSections}
-                                    jumpToBookingField={jumpToBookingField}
-                                    selectedLocation={selectedLocation}
-                                    setServiceBookingStep={setServiceBookingStep}
-                                  />
-                                )}
-
-                                {serviceBookingStep === 3 && (
-                                  <ServiceBookingStepThree
-                                    STYLES={STYLES}
-                                    BOOKING_FIELD_STYLE={BOOKING_FIELD_STYLE}
-                                    StorefrontDropdown={StorefrontDropdown}
-                                    GhostButton={GhostButton}
-                                    PrimaryButton={PrimaryButton}
-                                    servicesPrimary={servicesPrimary}
-                                    money={money}
-                                    registerBookingFieldRef={registerBookingFieldRef}
-                                    isMobileViewport={isMobileViewport}
-                                    servicePaymentTiming={servicePaymentTiming}
-                                    setServicePaymentTiming={setServicePaymentTiming}
-                                    bookingPagePaymentOptions={bookingPagePaymentOptions}
-                                    servicePaymentPreviewMethod={servicePaymentPreviewMethod}
-                                    setServicePaymentPreviewMethod={setServicePaymentPreviewMethod}
-                                    bookingSummaryAmount={bookingSummaryAmount}
-                                    servicePaymentPreviewReceiptName={servicePaymentPreviewReceiptName}
-                                    setServicePaymentPreviewReceiptName={setServicePaymentPreviewReceiptName}
-                                    servicePaymentPreviewCard={servicePaymentPreviewCard}
-                                    setServicePaymentPreviewCard={setServicePaymentPreviewCard}
-                                    servicesDisplayFont={servicesDisplayFont}
-                                    checkoutError={checkoutError}
-                                    storefrontClosedByHours={storefrontClosedByHours}
-                                    storefrontClosedTitle={STOREFRONT_CLOSED_TITLE}
-                                    storefrontClosedMessageBody={storefrontClosedMessageBody}
-                                    setServiceBookingStep={setServiceBookingStep}
-                                    toast={toast}
-                                    handleCheckout={handleCheckout}
-                                  />
-                                )}
-                              </section>
-                            </div>
-
-                            <ServiceBookingSummaryCard
-                              isMobileViewport={isMobileViewport}
-                              STYLES={STYLES}
-                              servicesPrimary={servicesPrimary}
-                              money={money}
-                              bookingSummaryAmount={bookingSummaryAmount}
-                              summaryRows={serviceBookingSummaryRows}
-                              serviceLineItems={serviceBookingSummaryLineItems}
-                              bookingPagePaymentOptions={bookingPagePaymentOptions}
-                              servicePaymentTiming={servicePaymentTiming}
-                            />
-                          </div>
-                          </>
-                          )}
-                        </div>
-                      </div>
-                    </section>
-                  );
-                }
                 return (
-                  <>
-                    <section
-                      id="storefront-catalog-section"
-                      style={{
-                        display: 'grid',
-                        gap: 18,
-                        background: '#ffffff',
-                        borderRadius: 0,
-                        padding: isMobileViewport ? '24px 0 44px' : '34px 0 64px',
-                        marginLeft: 'calc(50% - 50vw)',
-                        width: '100vw'
-                      }}
-                    >
-                      <div
-                        style={{
-                          maxWidth: 1320,
-                          width: '100%',
-                          margin: '0 auto',
-                          paddingLeft: isMobileViewport ? 16 : 24,
-                          paddingRight: isMobileViewport ? 16 : 24,
-                          display: 'grid',
-                          gap: 18
-                        }}
-                      >
-                        <div style={{ display: 'grid', gap: 6 }}>
-                          <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, fontWeight: 900, color: STYLES.colors.dark }}>
-                            {servicesSectionTitle}
-                          </h2>
-                          <p style={{ margin: 0, fontSize: 14, color: STYLES.colors.muted }}>{servicesSectionSubtitle}</p>
-                        </div>
-
-                        <div
-                          style={{
-                            display: 'flex',
-                            flexDirection: isMobileViewport ? 'column' : 'row',
-                            gap: 12,
-                            alignItems: isMobileViewport ? 'stretch' : 'center',
-                            width: '100%'
-                          }}
-                        >
-                          <label
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              gap: 10,
-                              border: '1px solid #e5e7eb',
-                              borderRadius: controlRadius,
-                              background: '#f8fafc',
-                              padding: '0 12px 0 14px',
-                              minHeight: 44,
-                              width: '100%',
-                              flex: isMobileViewport ? '0 0 auto' : '1 1 0',
-                              maxWidth: isMobileViewport ? '100%' : 620
-                            }}
-                          >
-                            <Search size={16} color="#64748b" />
-                            <input
-                              value={catalogSearch}
-                              onChange={(event) => setCatalogSearch(event.target.value)}
-                              placeholder="Search items in this store catalog..."
-                              style={{
-                                border: 'none',
-                                outline: 'none',
-                                background: 'transparent',
-                                width: '100%',
-                                minWidth: 0,
-                                fontSize: 14,
-                                color: STYLES.colors.text
-                              }}
-                            />
-                          </label>
-
-                          <div
-                            style={{
-                              display: 'flex',
-                              flexDirection: isMobileViewport ? 'column' : 'row',
-                              gap: 12,
-                              alignItems: isMobileViewport ? 'stretch' : 'center',
-                              marginLeft: isMobileViewport ? 0 : 'auto',
-                              width: isMobileViewport ? '100%' : 'auto',
-                              flexShrink: 0
-                            }}
-                          >
-                            <StorefrontDropdown
-                              value={resolvedTab}
-                              onChange={setActiveServiceTab}
-                              options={serviceCategoryOptions.map((option) => ({
-                                value: option.key,
-                                label: `${option.label} (${option.count})`,
-                                icon: option.icon
-                              }))}
-                              triggerStyle={{
-                                minHeight: 44,
-                                borderRadius: controlRadius,
-                                width: isMobileViewport ? '100%' : 240,
-                                flexShrink: 0,
-                                boxShadow: '0 10px 24px rgba(15,23,42,0.06)'
-                              }}
-                              containerStyle={{
-                                width: isMobileViewport ? '100%' : 240,
-                                flexShrink: 0
-                              }}
-                              menuStyle={{ borderRadius: 20 }}
-                            />
-
-                            <StorefrontDropdown
-                              value={serviceSortOption}
-                              onChange={setServiceSortOption}
-                              options={[
-                                { value: 'recommended', label: 'Recommended' },
-                                { value: 'price_asc', label: 'Price: Low to High' },
-                                { value: 'price_desc', label: 'Price: High to Low' }
-                              ]}
-                              triggerStyle={{
-                                minHeight: 44,
-                                borderRadius: controlRadius,
-                                width: isMobileViewport ? '100%' : 240,
-                                flexShrink: 0,
-                                boxShadow: '0 10px 24px rgba(15,23,42,0.06)'
-                              }}
-                              containerStyle={{
-                                width: isMobileViewport ? '100%' : 240,
-                                flexShrink: 0
-                              }}
-                              menuStyle={{ borderRadius: 20 }}
-                            />
-
-                            <button
-                              type="button"
-                              onClick={() => setIsServiceFilterOpen((prev) => !prev)}
-                              style={{
-                                minHeight: 44,
-                                borderRadius: controlRadius,
-                                border: `1px solid ${servicesPrimary}`,
-                                background: isServiceFilterOpen || hasActiveFilters ? servicesPrimaryDark : servicesPrimary,
-                                color: '#ffffff',
-                                padding: '0 18px',
-                                fontSize: 14,
-                                fontWeight: 700,
-                                cursor: 'pointer',
-                                display: 'inline-flex',
-                                alignItems: 'center',
-                                justifyContent: 'center',
-                                gap: 8,
-                                width: isMobileViewport ? '100%' : 'auto',
-                                minWidth: isMobileViewport ? 0 : 128,
-                                flexShrink: 0,
-                                boxShadow:
-                                  isServiceFilterOpen || hasActiveFilters
-                                    ? `0 10px 24px ${servicesPrimaryShadowStrong}`
-                                    : `0 8px 20px ${servicesPrimaryShadow}`
-                              }}
-                            >
-                              <SlidersHorizontal size={16} />
-                              Filters
-                            </button>
-                          </div>
-                        </div>
-                        {filteredCatalog.length === 0 && !loadingCatalog && !catalogError && (
-                          <div style={{ display: 'flex', justifyContent: 'flex-start' }}>
-                            <button
-                              type="button"
-                              onClick={refreshStorePageForTenantSetup}
-                              style={{ borderRadius: 10, border: '1px solid #0f766e', background: '#fff', color: '#0f766e', padding: '8px 12px', fontWeight: 700 }}
-                            >
-                              Check Again
-                            </button>
-                          </div>
-                        )}
-
-                        <div
-                          style={{
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'flex-end',
-                            gap: 12,
-                            flexWrap: 'wrap'
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: isMobileViewport ? 'flex-start' : 'flex-end',
-                              gap: 12,
-                              flexWrap: 'wrap',
-                              marginLeft: isMobileViewport ? 0 : 'auto'
-                            }}
-                          >
-                            <div style={{ fontSize: 13, color: STYLES.colors.muted }}>
-                              {sortedServices.length} service{sortedServices.length === 1 ? '' : 's'} shown
-                            </div>
-                            {sortedServices.length > 0 && (
-                              <div style={{ fontSize: 13, color: STYLES.colors.muted }}>
-                                Showing {servicePageStart}-{servicePageEnd}
-                              </div>
-                            )}
-                            {hasActiveFilters && (
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setServiceAvailabilityFilter('all');
-                                  setServiceAreaFilter('all');
-                                  setServiceDurationFilter('all');
-                                }}
-                                style={{
-                                  border: 'none',
-                                  background: 'transparent',
-                                  color: servicesPrimary,
-                                  fontSize: 13,
-                                  fontWeight: 700,
-                                  padding: 0,
-                                  cursor: 'pointer'
-                                }}
-                              >
-                                Clear filters
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        {isServiceFilterOpen && (
-                          <div
-                            style={{
-                              position: 'fixed',
-                              inset: 0,
-                              zIndex: 2200,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              padding: isMobileViewport ? 16 : 24
-                            }}
-                          >
-                            <div
-                              style={{
-                                position: 'absolute',
-                                inset: 0,
-                                background: 'rgba(15,23,42,0.45)',
-                                backdropFilter: 'blur(4px)'
-                              }}
-                            />
-                            <div
-                              style={{
-                                position: 'relative',
-                                zIndex: 1,
-                                width: '100%',
-                                maxWidth: 560,
-                                background: '#ffffff',
-                                borderRadius: 22,
-                                border: '1px solid #e5e7eb',
-                                boxShadow: '0 24px 60px rgba(15,23,42,0.18)',
-                                padding: isMobileViewport ? 18 : 22,
-                                display: 'grid',
-                                gap: 16
-                              }}
-                            >
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-                                <div>
-                                  <div style={{ fontSize: 18, fontWeight: 900, color: STYLES.colors.dark }}>Filter Services</div>
-                                  <div style={{ marginTop: 4, fontSize: 13, color: STYLES.colors.muted }}>
-                                    Applies services-mode filters using storefront availability, service area, and duration fields from SKUpervisor-backed catalog records.
-                                  </div>
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={() => setIsServiceFilterOpen(false)}
-                                  style={{
-                                    width: 36,
-                                    height: 36,
-                                    borderRadius: 999,
-                                    border: '1px solid #e5e7eb',
-                                    background: '#fff',
-                                    color: STYLES.colors.dark,
-                                    cursor: 'pointer',
-                                    fontWeight: 800
-                                  }}
-                                >
-                                  {'\u00D7'}
-                                </button>
-                              </div>
-
-                              <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
-                                <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
-                                  Availability
-                                  <StorefrontDropdown
-                                    value={serviceAvailabilityFilter}
-                                    onChange={setServiceAvailabilityFilter}
-                                    options={[
-                                      { value: 'all', label: 'All services' },
-                                      { value: 'available', label: 'Available now' },
-                                      { value: 'unavailable', label: 'Unavailable' }
-                                    ]}
-                                    triggerStyle={{ minHeight: 42, borderRadius: 14 }}
-                                    menuStyle={{ borderRadius: 18 }}
-                                  />
-                                </label>
-                                <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
-                                  Service area
-                                  <StorefrontDropdown
-                                    value={serviceAreaFilter}
-                                    onChange={setServiceAreaFilter}
-                                    options={[
-                                      { value: 'all', label: 'All areas' },
-                                      { value: 'in_store', label: 'In-store' },
-                                      { value: 'customer_location', label: 'Home / on-site' }
-                                    ]}
-                                    triggerStyle={{ minHeight: 42, borderRadius: 14 }}
-                                    menuStyle={{ borderRadius: 18 }}
-                                  />
-                                </label>
-                                <label style={{ display: 'grid', gap: 6, fontSize: 12, fontWeight: 700, color: STYLES.colors.muted }}>
-                                  Duration
-                                  <StorefrontDropdown
-                                    value={serviceDurationFilter}
-                                    onChange={setServiceDurationFilter}
-                                    options={[
-                                      { value: 'all', label: 'Any duration' },
-                                      { value: 'short', label: 'Short under 1 hr' },
-                                      { value: 'standard', label: 'Standard 1-2 hrs' },
-                                      { value: 'extended', label: 'Extended 2+ hrs' }
-                                    ]}
-                                    triggerStyle={{ minHeight: 42, borderRadius: 14 }}
-                                    menuStyle={{ borderRadius: 18 }}
-                                  />
-                                </label>
-                              </div>
-
-                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 10, flexWrap: 'wrap' }}>
-                                <GhostButton
-                                  style={{ minHeight: 42, fontSize: 13 }}
-                                  onClick={() => {
-                                    setServiceAvailabilityFilter('all');
-                                    setServiceAreaFilter('all');
-                                    setServiceDurationFilter('all');
-                                  }}
-                                >
-                                  Clear filters
-                                </GhostButton>
-                                <PrimaryButton style={{ minHeight: 42, fontSize: 13 }} onClick={() => setIsServiceFilterOpen(false)}>
-                                  Apply filters
-                                </PrimaryButton>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-
-                        <div style={{ display: 'grid', gridTemplateColumns: servicesGridColumns, gap: 22 }}>
-                          {paginatedServices.map((item) => {
-                            const imageUrl = withAssetOrigin(item.image_url);
-                            const available = isItemAvailable(item);
-                            const ServiceCategoryIcon = SERVICE_CATEGORY_ICON_MAP[item.categoryMeta?.iconToken] || Sparkles;
-                            return (
-                              <div
-                                key={item.item_id}
-                                style={{
-                                  background: '#ffffff',
-                                  border: '1px solid #e5e7eb',
-                                  borderRadius: 18,
-                                  overflow: 'hidden',
-                                  boxShadow: '0 10px 28px rgba(15, 23, 42, 0.08)',
-                                  display: 'flex',
-                                  flexDirection: 'column',
-                                  cursor: 'pointer'
-                                }}
-                                onClick={() => openServiceDetail(item)}
-                              >
-                                <div style={{ width: '100%', height: 184, minHeight: 184, maxHeight: 184, background: '#f3f4f6', position: 'relative', overflow: 'hidden' }}>
-                                  {imageUrl ? (
-                                    <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
-                                  ) : (
-                                    <div
-                                      style={{
-                                        width: '100%',
-                                        height: '100%',
-                                        display: 'grid',
-                                        placeItems: 'center',
-                                        color: STYLES.colors.muted,
-                                        fontSize: 13
-                                      }}
-                                    >
-                                      No image
-                                    </div>
-                                  )}
-                                  {!available && (
-                                    <div style={{ position: 'absolute', top: 12, right: 12 }}>
-                                      <Badge background="#fff7ed" color="#c2410c" border="#fdba74">
-                                        Unavailable
-                                      </Badge>
-                                    </div>
-                                  )}
-                                </div>
-                                <div style={{ padding: 16, display: 'grid', gap: 10, flex: 1 }}>
-                                  <div>
-                                      <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', marginBottom: 4 }}>
-                                      <ServiceCategoryIcon size={13} />
-                                      <span>{item.categoryMeta?.label || 'Service'}</span>
-                                    </div>
-                                    <h4 style={{ margin: 0, fontSize: 16, fontWeight: 800, lineHeight: 1.25, color: STYLES.colors.dark }}>
-                                      {item.variantName || item.name}
-                                    </h4>
-                                  </div>
-                                  <p
-                                    style={{
-                                      margin: 0,
-                                      fontSize: 12,
-                                      color: STYLES.colors.text,
-                                      lineHeight: 1.45,
-                                      display: '-webkit-box',
-                                      WebkitLineClamp: 2,
-                                      WebkitBoxOrient: 'vertical',
-                                      overflow: 'hidden'
-                                    }}
-                                  >
-                                    {item.description || 'Professional service options synced from SKUpervisor.'}
-                                  </p>
-                                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                                    <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 999, padding: '4px 8px' }}>
-                                      {item.serviceAreaLabel}
-                                    </span>
-                                    <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e5e7eb', borderRadius: 999, padding: '4px 8px' }}>
-                                      {item.durationLabel}
-                                    </span>
-                                  </div>
-                                  <div style={{ marginTop: 'auto', display: 'grid', gap: 10 }}>
-                                    <div style={{ fontSize: 13, color: STYLES.colors.muted }}>Starting at</div>
-                                    <div style={{ fontSize: 18, fontWeight: 900, color: servicesPrimaryDark }}>{money(item.default_sale_price ?? 0)}</div>
-                                    <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 8 }}>
-                                      <GhostButton style={{ minHeight: 38, fontSize: 13 }} onClick={(event) => { event.stopPropagation(); openServiceDetail(item); }}>
-                                        View Details
-                                      </GhostButton>
-                                      <PrimaryButton style={{ minHeight: 38, fontSize: 13 }} onClick={(event) => { event.stopPropagation(); addToCart(item, { sourceRect: getCartFlySourceRect(event) }); }} disabled={!available}>
-                                        Add to Cart
-                                      </PrimaryButton>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-
-                          {sortedServices.length === 0 && (
-                            <div
-                              style={{
-                                gridColumn: '1 / -1',
-                                textAlign: 'center',
-                                padding: isMobileViewport ? 24 : 48,
-                                color: STYLES.colors.muted,
-                                border: '1px dashed #cbd5e1',
-                                borderRadius: 18,
-                                background: '#f8fafc'
-                              }}
-                            >
-                              {hasSearchQuery ? 'No services found. Try another keyword.' : 'No services available in this category yet.'}
-                            </div>
-                          )}
-                        </div>
-
-                        {sortedServices.length > 0 && totalServicePages > 1 && (
-                          <div style={{ display: 'flex', alignItems: 'center', justifyContent: isMobileViewport ? 'center' : 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-                              <div style={{ fontSize: 13, color: STYLES.colors.muted }}>
-                                Page {resolvedServicePage} of {totalServicePages}
-                              </div>
-                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 500, color: STYLES.colors.muted }}>
-                                Per page
-                                <StorefrontDropdown
-                                  value={servicePageSize}
-                                  onChange={(nextValue) => setServicePageSize(Number(nextValue) || 8)}
-                                  options={[4, 8, 12, 16].map((size) => ({ value: size, label: String(size) }))}
-                                  triggerStyle={{ minHeight: 36, borderRadius: 14, minWidth: 88, padding: '8px 42px 8px 12px' }}
-                                  containerStyle={{ minWidth: 88 }}
-                                  menuStyle={{ borderRadius: 16 }}
-                                  selectedLabelStyle={{ fontSize: 13 }}
-                                />
-                              </label>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-                              <GhostButton
-                                style={{ minHeight: 38, padding: '0 14px', opacity: resolvedServicePage === 1 ? 0.5 : 1 }}
-                                onClick={() => setServicePage((previous) => Math.max(1, previous - 1))}
-                                disabled={resolvedServicePage === 1}
-                              >
-                                Previous
-                              </GhostButton>
-                              {Array.from({ length: totalServicePages }, (_, index) => index + 1)
-                                .slice(Math.max(0, resolvedServicePage - 3), Math.max(0, resolvedServicePage - 3) + 5)
-                                .map((pageNumber) => (
-                                  <button
-                                    key={`service-page-${pageNumber}`}
-                                    type="button"
-                                    onClick={() => setServicePage(pageNumber)}
-                                    style={{
-                                      minWidth: 38,
-                                      minHeight: 38,
-                                      borderRadius: 10,
-                                      border: `1px solid ${pageNumber === resolvedServicePage ? servicesPrimary : '#e5e7eb'}`,
-                                      background: pageNumber === resolvedServicePage ? servicesPrimary : '#fff',
-                                      color: pageNumber === resolvedServicePage ? '#fff' : STYLES.colors.dark,
-                                      fontWeight: 500,
-                                      cursor: 'pointer'
-                                    }}
-                                  >
-                                    {pageNumber}
-                                  </button>
-                                ))}
-                              <GhostButton
-                                style={{ minHeight: 38, padding: '0 14px', opacity: resolvedServicePage === totalServicePages ? 0.5 : 1 }}
-                                onClick={() => setServicePage((previous) => Math.min(totalServicePages, previous + 1))}
-                                disabled={resolvedServicePage === totalServicePages}
-                              >
-                                Next
-                              </GhostButton>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    </section>
-
-                    <SharedStorefrontPromoSection
-                      items={promoSectionModel}
-                      isMobileViewport={isMobileViewport}
-                      layoutVariant="compact"
-                      palette="teal"
-                      titleFontFamily={servicesDisplayFont}
-                      bodyFontFamily={servicesBodyFont}
-                      sectionPadding={isMobileViewport ? '20px 0 24px' : '36px 0 40px'}
-                      contentMaxWidth={1280}
-                      sectionBackground="#ffffff"
-                      titleSize={isMobileViewport ? 28 : 36}
-                      subtitleSize={isMobileViewport ? 14 : 16}
-                      activePromoCode={checkoutPromoCode}
-                      onApplyPromo={handlePromoCardApply}
-                      collapseSpacing
-                    />
-
-                    <SharedStorefrontReviewsSection
-                      isMobileViewport={isMobileViewport}
-                      viewportWidth={viewportWidth}
-                      title="Customer Reviews"
-                      subtitle="See what customers say about this storefront"
-                      onWriteReview={() => setIsReviewModalOpen(true)}
-                      reviewSummary={reviewSummary}
-                      reviewHighlights={reviewHighlights}
-                      emptyMessage={hasReviewSummary
-                        ? 'Customer review highlights will appear here once detailed review entries are added in SKUpervisor.'
-                        : 'Customer reviews will appear here once this storefront adds review data in SKUpervisor.'}
-                      titleFontFamily={servicesDisplayFont}
-                      bodyFontFamily={servicesBodyFont}
-                      cardVariant="white"
-                      writeButtonColor={servicesPrimary}
-                      sectionPadding={isMobileViewport ? '20px 0 24px' : '36px 0 40px'}
-                      contentMaxWidth={1280}
-                      titleSize={isMobileViewport ? 28 : 36}
-                      subtitleSize={isMobileViewport ? 14 : 16}
-                      collapseSpacing
-                      summaryEnabled
-                      starSymbol="*"
-                    />
-
-                    {isReviewModalOpen && (
-                      <div
-                        style={{
-                          position: 'fixed',
-                          inset: 0,
-                          zIndex: 2300,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          padding: isMobileViewport ? 16 : 24
-                        }}
-                      >
-                        <div
-                          style={{
-                            position: 'absolute',
-                            inset: 0,
-                            background: 'rgba(15,23,42,0.52)',
-                            backdropFilter: 'blur(5px)'
-                          }}
-                        />
-                        <section
-                          style={{
-                            position: 'relative',
-                            zIndex: 1,
-                            width: '100%',
-                            maxWidth: 640,
-                            maxHeight: 'min(90vh, 760px)',
-                            overflowY: 'auto',
-                            borderRadius: 28,
-                            border: '1px solid #dbe5ee',
-                            background: '#ffffff',
-                            boxShadow: '0 28px 64px rgba(15,23,42,0.22)',
-                            padding: isMobileViewport ? 20 : 28,
-                            display: 'grid',
-                            gap: 20
-                          }}
-                        >
-                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-                            <div style={{ display: 'grid', gap: 8 }}>
-                              <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                                Customer Review
-                              </div>
-                              <div style={{ fontSize: isMobileViewport ? 26 : 30, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.08, fontFamily: servicesDisplayFont }}>
-                                Share your experience
-                              </div>
-                              <div style={{ fontSize: 14, lineHeight: 1.65, color: STYLES.colors.muted }}>
-                                Rate the storefront experience and leave a short message. Publishing will be connected once the review backend is ready.
-                              </div>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => setIsReviewModalOpen(false)}
-                              style={{
-                                width: 40,
-                                height: 40,
-                                borderRadius: 999,
-                                border: '1px solid #cbd5e1',
-                                background: '#fff',
-                                color: '#0f172a',
-                                cursor: 'pointer',
-                                display: 'grid',
-                                placeItems: 'center',
-                                flexShrink: 0
-                              }}
-                              aria-label="Close review modal"
-                            >
-                              <X size={18} />
-                            </button>
-                          </div>
-
-                          <div style={{ display: 'grid', gap: 16 }}>
-                            <label style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
-                              Your name
-                              <input
-                                value={reviewDraft.name}
-                                onChange={(event) => setReviewDraft((previous) => ({ ...previous, name: event.target.value }))}
-                                placeholder="How should we identify your review?"
-                                style={BOOKING_FIELD_STYLE}
-                              />
-                            </label>
-
-                            <div style={{ display: 'grid', gap: 10 }}>
-                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#334155', cursor: 'pointer', width: 'fit-content' }}>
-                                <input
-                                  type="checkbox"
-                                  checked={reviewDraft.anonymous}
-                                  onChange={(event) => setReviewDraft((previous) => ({ ...previous, anonymous: event.target.checked }))}
-                                />
-                                Post this review anonymously
-                              </label>
-                              <div style={{ fontSize: 12, color: '#64748b' }}>
-                                Public name preview: <strong style={{ color: '#0f172a' }}>{reviewDraft.anonymous ? maskReviewerName(reviewDraft.name) : (String(reviewDraft.name || '').trim() || 'Your name')}</strong>
-                              </div>
-                            </div>
-
-                            <div style={{ display: 'grid', gap: 10 }}>
-                              <div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Your rating</div>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                                {Array.from({ length: 5 }, (_, index) => {
-                                  const starValue = index + 1;
-                                  const selected = reviewDraft.rating >= starValue;
-                                  return (
-                                    <button
-                                      key={`review-rating-${starValue}`}
-                                      type="button"
-                                      onClick={() => setReviewDraft((previous) => ({ ...previous, rating: starValue }))}
-                                      style={{
-                                        width: 46,
-                                        height: 46,
-                                        borderRadius: 14,
-                                        border: `1px solid ${selected ? '#f59e0b' : '#dbe5ee'}`,
-                                        background: selected ? '#fff7ed' : '#ffffff',
-                                        color: selected ? '#f59e0b' : '#94a3b8',
-                                        cursor: 'pointer',
-                                        display: 'grid',
-                                        placeItems: 'center',
-                                        boxShadow: selected ? '0 10px 20px rgba(245,158,11,0.16)' : 'none'
-                                      }}
-                                      aria-label={`Rate ${starValue} star${starValue === 1 ? '' : 's'}`}
-                                    >
-                                      <Star size={18} fill={selected ? '#f59e0b' : 'none'} color={selected ? '#f59e0b' : '#94a3b8'} />
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            </div>
-
-                            <label style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
-                              Your review
-                              <textarea
-                                value={reviewDraft.message}
-                                onChange={(event) => setReviewDraft((previous) => ({ ...previous, message: event.target.value }))}
-                                placeholder="Tell customers what stood out about the service, response time, or booking experience."
-                                style={{ ...BOOKING_FIELD_STYLE, minHeight: 144, resize: 'vertical' }}
-                              />
-                            </label>
-                          </div>
-
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobileViewport ? 'stretch' : 'center', flexDirection: isMobileViewport ? 'column' : 'row', gap: 12 }}>
-                            <div style={{ fontSize: 12, lineHeight: 1.6, color: '#64748b' }}>
-                              Reviews are prepared on the storefront now. Submission and moderation will connect once backend review support is available.
-                            </div>
-                            <PrimaryButton
-                              onClick={submitFnbItemReview}
-                              style={{ minHeight: 46, minWidth: isMobileViewport ? '100%' : 180, justifyContent: 'center' }}
-                            >
-                              Send Review
-                            </PrimaryButton>
-                          </div>
-                        </section>
-                      </div>
-                    )}
-
-                    <SharedStorefrontFooterSection
-                      isMobileViewport={isMobileViewport}
-                      name={serviceHeroModel.name}
-                      registrationYear={serviceHeroModel.registrationYear}
-                      description={serviceHeroModel.tagline || serviceHeroModel.aboutText || 'Service storefront powered by SKUpervisor content.'}
-                      displayFont={servicesDisplayFont}
-                      bodyFontFamily={servicesBodyFont}
-                      sectionPadding={isMobileViewport ? '28px 16px 24px' : '48px 32px 36px'}
-                      badgeLinks={serviceHeroModel.footerLinks.filter((link) => ['Website', 'Facebook', 'Instagram', 'TikTok', 'Messenger'].includes(link.label))}
-                      columns={[
-                        {
-                          title: 'Services',
-                          items: (serviceHeroModel.serviceGroups || []).slice(0, 5).map((group) => ({
-                            label: group.categoryMeta?.label || group.categoryKey
-                          })),
-                          emptyText: 'No services yet.'
-                        },
-                        {
-                          title: 'Socials',
-                          items: serviceHeroModel.footerLinks
-                            .filter((link) => ['Website', 'Facebook', 'Instagram', 'TikTok', 'Messenger'].includes(link.label))
-                            .map((link) => ({ label: link.label, href: link.href })),
-                          emptyText: 'No social links yet.'
-                        },
-                        {
-                          title: 'Contact',
-                          items: [
-                            ...serviceHeroModel.footerLinks
-                              .filter((link) => ['Call', 'Email'].includes(link.label))
-                              .map((link) => ({
-                                label: link.label === 'Call' ? String(link.href).replace('tel:', '') : String(link.href).replace('mailto:', ''),
-                                href: link.href
-                              })),
-                            ...(serviceHeroModel.hours ? [{ label: serviceHeroModel.hours }] : []),
-                            { label: serviceHeroModel.locationLabel }
-                          ]
-                        }
-                      ]}
-                    />
-                  </>
+                  <StorefrontServicesCatalog
+                    DeliveryPinMap={DeliveryPinMap}
+                    activeBookingService={activeBookingService}
+                    activeServiceLocationSummary={activeServiceLocationSummary}
+                    addToCart={addToCart}
+                    bookingDateOptions={bookingDateOptions}
+                    bookingFieldPlan={bookingFieldPlan}
+                    bookingPagePaymentOptions={bookingPagePaymentOptions}
+                    bookingPreferredDateInputRef={bookingPreferredDateInputRef}
+                    bookingStepOneAdditionalFields={bookingStepOneAdditionalFields}
+                    bookingSummaryAmount={bookingSummaryAmount}
+                    bookingSummaryQuantity={bookingSummaryQuantity}
+                    bookingTimeSlotOptions={bookingTimeSlotOptions}
+                    canAddPinnedLocation={canAddPinnedLocation}
+                    canUseGuestCheckoutFlow={canUseGuestCheckoutFlow}
+                    catalog={catalog}
+                    catalogError={catalogError}
+                    catalogSearch={catalogSearch}
+                    checkoutError={checkoutError}
+                    checkoutPromoCode={checkoutPromoCode}
+                    checkoutResult={checkoutResult}
+                    customerEmail={customerEmail}
+                    customerName={customerName}
+                    customerPhone={customerPhone}
+                    customerPin={customerPin}
+                    deliveryLocationAction={deliveryLocationAction}
+                    deliveryLocationDisplayAddress={deliveryLocationDisplayAddress}
+                    deliverySavedLocations={deliverySavedLocations}
+                    filteredCatalog={filteredCatalog}
+                    getCartFlySourceRect={getCartFlySourceRect}
+                    goStoreCatalogPage={goStoreCatalogPage}
+                    handleAddPinnedLocation={handleAddPinnedLocation}
+                    handleCheckout={handleCheckout}
+                    handlePinMyLocation={handlePinMyLocation}
+                    handlePromoCardApply={handlePromoCardApply}
+                    hasServiceCart={hasServiceCart}
+                    isBookingSubpage={isBookingSubpage}
+                    isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
+                    isMobileViewport={isMobileViewport}
+                    isReviewModalOpen={isReviewModalOpen}
+                    isServiceDetailsSubpage={isServiceDetailsSubpage}
+                    isServiceFilterOpen={isServiceFilterOpen}
+                    itemsToRender={itemsToRender}
+                    jumpToBookingField={jumpToBookingField}
+                    loadingCatalog={loadingCatalog}
+                    missingCustomerInformation={missingCustomerInformation}
+                    missingScheduleAndServiceInfo={missingScheduleAndServiceInfo}
+                    missingStepOneAdditionalFields={missingStepOneAdditionalFields}
+                    openPreferredBookingDatePicker={openPreferredBookingDatePicker}
+                    openServiceCartEditor={openServiceCartEditor}
+                    openServiceDetail={openServiceDetail}
+                    pinLocationError={pinLocationError}
+                    pinLocationLoading={pinLocationLoading}
+                    promoSectionModel={promoSectionModel}
+                    refreshStorePageForTenantSetup={refreshStorePageForTenantSetup}
+                    registerBookingFieldRef={registerBookingFieldRef}
+                    renderAccountOwnedIdentitySummary={renderAccountOwnedIdentitySummary}
+                    renderGuestCheckoutEntry={renderGuestCheckoutEntry}
+                    renderGuestIdentityFields={renderGuestIdentityFields}
+                    resolvedTab={resolvedTab}
+                    reviewDraft={reviewDraft}
+                    reviewServiceLines={reviewServiceLines}
+                    routeServiceItemId={routeServiceItemId}
+                    selectedLocation={selectedLocation}
+                    selectedSavedLocationId={selectedSavedLocationId}
+                    selectedServiceCartLineId={selectedServiceCartLineId}
+                    selectedServiceDatePart={selectedServiceDatePart}
+                    selectedServiceDetail={selectedServiceDetail}
+                    selectedServiceTimePart={selectedServiceTimePart}
+                    serviceAreaFilter={serviceAreaFilter}
+                    serviceAvailabilityFilter={serviceAvailabilityFilter}
+                    serviceBookingStep={serviceBookingStep}
+                    serviceBookingSummaryLineItems={serviceBookingSummaryLineItems}
+                    serviceBookingSummaryRows={serviceBookingSummaryRows}
+                    serviceBookingSummaryTitle={serviceBookingSummaryTitle}
+                    serviceCartLines={serviceCartLines}
+                    serviceDraftQuantity={serviceDraftQuantity}
+                    serviceDurationFilter={serviceDurationFilter}
+                    serviceHeroModel={serviceHeroModel}
+                    serviceIntakeResponses={serviceIntakeResponses}
+                    serviceLocationLandmarkNote={serviceLocationLandmarkNote}
+                    servicePage={servicePage}
+                    servicePageSize={servicePageSize}
+                    servicePaymentPreviewCard={servicePaymentPreviewCard}
+                    servicePaymentPreviewMethod={servicePaymentPreviewMethod}
+                    servicePaymentPreviewReceiptName={servicePaymentPreviewReceiptName}
+                    servicePaymentTiming={servicePaymentTiming}
+                    serviceSortOption={serviceSortOption}
+                    serviceUnitType={serviceUnitType}
+                    servicesBodyFont={servicesBodyFont}
+                    servicesDisplayFont={servicesDisplayFont}
+                    servicesLayoutMode={servicesLayoutMode}
+                    servicesPrimary={servicesPrimary}
+                    servicesPrimaryBorder={servicesPrimaryBorder}
+                    servicesPrimaryDark={servicesPrimaryDark}
+                    servicesPrimaryShadow={servicesPrimaryShadow}
+                    servicesPrimaryShadowStrong={servicesPrimaryShadowStrong}
+                    servicesPrimarySoft={servicesPrimarySoft}
+                    servicesViewModel={servicesViewModel}
+                    setActiveServiceTab={setActiveServiceTab}
+                    setCatalogSearch={setCatalogSearch}
+                    setCheckoutResult={setCheckoutResult}
+                    setCustomerPin={setCustomerPin}
+                    setDeliveryLocationAction={setDeliveryLocationAction}
+                    setIsReviewModalOpen={setIsReviewModalOpen}
+                    setIsServiceFilterOpen={setIsServiceFilterOpen}
+                    setReviewDraft={setReviewDraft}
+                    setSelectedSavedLocationId={setSelectedSavedLocationId}
+                    setServiceAppointmentAt={setServiceAppointmentAt}
+                    setServiceAreaFilter={setServiceAreaFilter}
+                    setServiceAvailabilityFilter={setServiceAvailabilityFilter}
+                    setServiceBookingStep={setServiceBookingStep}
+                    setServiceDraftQuantity={setServiceDraftQuantity}
+                    setServiceDurationFilter={setServiceDurationFilter}
+                    setServiceIntakeResponses={setServiceIntakeResponses}
+                    setServiceLocationLandmarkNote={setServiceLocationLandmarkNote}
+                    setServicePage={setServicePage}
+                    setServicePageSize={setServicePageSize}
+                    setServicePaymentPreviewCard={setServicePaymentPreviewCard}
+                    setServicePaymentPreviewMethod={setServicePaymentPreviewMethod}
+                    setServicePaymentPreviewReceiptName={setServicePaymentPreviewReceiptName}
+                    setServicePaymentTiming={setServicePaymentTiming}
+                    setServiceSortOption={setServiceSortOption}
+                    setServiceUnitType={setServiceUnitType}
+                    setShowExpandedDeliveryMap={setShowExpandedDeliveryMap}
+                    showExpandedDeliveryMap={showExpandedDeliveryMap}
+                    stepOneComplete={stepOneComplete}
+                    storefrontClosedByHours={storefrontClosedByHours}
+                    storefrontClosedMessageBody={storefrontClosedMessageBody}
+                    submitFnbItemReview={submitFnbItemReview}
+                    viewportWidth={viewportWidth}
+                  />
                 );
               }
 
@@ -6455,534 +4917,6 @@ return (
           />
         )}
 
-        {false && isFnbMode && isMobileViewport && (
-          <div style={{ width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box', padding: fnbMobileCatalogInlinePadding, display: 'grid', gap: 16, marginTop: 4 }}>
-            {/* Header Section */}
-            <div style={{ display: 'grid', gap: 8, width: fnbMobileMenuInnerWidth, maxWidth: fnbMobileMenuInnerWidth, margin: '0 auto' }}>
-              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 800, color: '#22c55e', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                <span style={{ width: 24, height: 1.5, background: '#f97316' }} />
-                CURATED MENU
-              </div>
-              <h2 style={{ margin: 0, fontSize: 28, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em' }}>
-                Menu Highlights
-              </h2>
-              <p style={{ margin: 0, color: '#64748b', fontSize: 14, lineHeight: 1.5, fontFamily: modeAdapter.heroTheme?.bodyFont }}>
-                Browse food and beverage sections, compare serving options, and add ready-to-order menu items to the cart.
-              </p>
-            </div>
-
-            {/* Search Bar */}
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              background: '#fff',
-              border: '1px solid #e2e8f0',
-              borderRadius: 24,
-              padding: '6px 6px 6px 16px',
-              boxShadow: '0 4px 12px rgba(15,23,42,0.03)',
-              height: 54,
-              width: fnbMobileMenuInnerWidth,
-              maxWidth: '100%',
-              minWidth: 0,
-              boxSizing: 'border-box',
-              alignSelf: 'start',
-              margin: '0 auto'
-            }}>
-              <Search size={20} color="#94a3b8" style={{ flexShrink: 0 }} />
-              <input
-                value={catalogSearch}
-                onChange={(event) => setCatalogSearch(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') {
-                    document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  }
-                }}
-                placeholder="Search meals, drinks, desserts..."
-                style={{ border: 'none', outline: 'none', background: 'transparent', flex: '1 1 auto', minWidth: 0, width: 'auto', fontSize: 16, color: '#0f172a', padding: '0 8px', fontFamily: modeAdapter.heroTheme?.bodyFont }}
-              />
-              <button
-                type="button"
-                onClick={() => {
-                  document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                }}
-                style={{
-                  background: '#f97316',
-                  color: '#fff',
-                  border: 'none',
-                  borderRadius: 18,
-                  padding: '0 16px',
-                  height: '100%',
-                  fontWeight: 800,
-                  fontSize: 14,
-                  cursor: 'pointer',
-                  flexShrink: 0,
-                  fontFamily: modeAdapter.heroTheme?.bodyFont
-                }}
-              >
-                Search
-              </button>
-            </div>
-
-            {/* Category Section */}
-            {(() => {
-                const fnbSections = Array.isArray(filteredFnbViewModel.menuSections) ? filteredFnbViewModel.menuSections : [];
-                const categoryOptions = [
-                  {
-                    key: '',
-                    label: 'All',
-                    count: filteredFnbViewModel.menuItems.length,
-                    iconToken: 'menu',
-                  },
-                  ...fnbSections.map((section) => ({
-                    key: section.sectionKey,
-                    label: section.sectionLabel,
-                    count: section.items?.length || 0,
-                    iconToken: section.visualMeta?.iconToken || 'menu',
-                  }))
-                ];
-
-                return (
-                  <div style={{ display: 'grid', gap: 10, width: fnbMobileMenuInnerWidth, maxWidth: fnbMobileMenuInnerWidth, minWidth: 0, boxSizing: 'border-box', margin: '0 auto' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%', maxWidth: '100%', minWidth: 0, gap: 12, boxSizing: 'border-box' }}>
-                      <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', fontFamily: modeAdapter.heroTheme?.bodyFont }}>Browse by Category</div>
-                      <button
-                        type="button"
-                        onClick={() => setActiveServiceTab('')}
-                        style={{ padding: '0 6px 0 0', border: 'none', background: 'transparent', fontSize: 14, fontWeight: 700, color: '#3b82f6', cursor: 'pointer', flexShrink: 0, fontFamily: modeAdapter.heroTheme?.bodyFont }}
-                      >
-                        View all
-                      </button>
-                    </div>
-                    <div className="no-scrollbar" style={{ display: 'flex', gap: 8, width: '100%', maxWidth: '100%', minWidth: 0, overflowX: 'auto', overflowY: 'hidden', scrollSnapType: 'x mandatory', paddingRight: 4, paddingBottom: 2, boxSizing: 'border-box', overscrollBehaviorX: 'contain' }}>
-                      {categoryOptions.map(option => {
-                        const isActive = option.key === (resolvedFnbSection || '');
-                        const OptionIcon = FNB_CATEGORY_ICON_MAP[option.iconToken] || Sparkles;
-                        return (
-                          <button
-                            key={option.key || 'all'}
-                            type="button"
-                            onClick={() => setActiveServiceTab(option.key)}
-                            style={{
-                              scrollSnapAlign: 'start',
-                              flexShrink: 0,
-                              width: 80,
-                              height: 76,
-                              borderRadius: 16,
-                              background: isActive ? '#fff7ed' : '#fff',
-                              border: isActive ? '1px solid #fed7aa' : '1px solid #f1f5f9',
-                              display: 'flex',
-                              flexDirection: 'column',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              padding: '8px 6px 7px',
-                              cursor: 'pointer',
-                              boxShadow: isActive ? 'none' : '0 4px 12px rgba(15,23,42,0.03)',
-                              transition: 'all 0.2s ease'
-                            }}
-                          >
-                            <div style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6, color: isActive ? '#f97316' : '#64748b' }}>
-                              <OptionIcon size={18} />
-                            </div>
-                            <div style={{ fontSize: 12, fontWeight: isActive ? 800 : 700, color: isActive ? '#f97316' : '#475569', textAlign: 'center', lineHeight: 1.15, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis', minHeight: 28, maxWidth: '100%', fontFamily: modeAdapter.heroTheme?.bodyFont }}>
-                              {option.label}
-                            </div>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-            })()}
-
-            {/* Items Count and Filter Row */}
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: fnbMobileMenuInnerWidth, maxWidth: fnbMobileMenuInnerWidth, minWidth: 0, gap: 10, boxSizing: 'border-box', margin: '0 auto' }}>
-              <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', flex: '1 1 auto', minWidth: 0, fontFamily: modeAdapter.heroTheme?.bodyFont }}>
-                {isFnbMode ? (resolvedFnbSection ? (filteredFnbViewModel.menuSections.find(s => s.sectionKey === resolvedFnbSection)?.items?.length || 0) : filteredFnbViewModel.menuItems.length) : 0} items available
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                <StorefrontDropdown
-                  value={fnbSortOption}
-                  onChange={(nextValue) => setFnbSortOption(String(nextValue))}
-                  options={[
-                    { value: 'name_asc', label: 'All Prices' },
-                    { value: 'price_asc', label: 'Low to High' },
-                    { value: 'price_desc', label: 'High to Low' }
-                  ]}
-                  leading={(
-                    <span style={{ display: 'inline-flex', alignItems: 'center', color: '#f97316' }}>
-                      <SlidersHorizontal size={16} />
-                    </span>
-                  )}
-                  containerStyle={{ minWidth: 118 }}
-                  triggerStyle={{
-                    minHeight: 36,
-                    borderRadius: 18,
-                    border: '1px solid #e2e8f0',
-                    background: '#fff',
-                    boxShadow: '0 2px 8px rgba(15,23,42,0.04)',
-                    padding: '0 36px 0 10px'
-                  }}
-                  selectedLabelStyle={{ color: '#0f172a', fontSize: 14, fontWeight: 700, fontFamily: modeAdapter.heroTheme?.bodyFont }}
-                />
-                <div style={{ display: 'flex', background: '#f1f5f9', borderRadius: 18, padding: 2, alignItems: 'center' }}>
-                  <button
-                    type="button"
-                    onClick={() => setFnbViewMode('list')}
-                    style={{
-                      width: 30,
-                      height: 32,
-                      borderRadius: 16,
-                      border: 'none',
-                      background: fnbViewMode === 'list' ? '#fff' : 'transparent',
-                      color: fnbViewMode === 'list' ? '#f97316' : '#64748b',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      boxShadow: fnbViewMode === 'list' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none',
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    <List size={16} strokeWidth={fnbViewMode === 'list' ? 3 : 2} />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setFnbViewMode('grid')}
-                    style={{
-                      width: 30,
-                      height: 32,
-                      borderRadius: 16,
-                      border: 'none',
-                      background: fnbViewMode === 'grid' ? '#fff' : 'transparent',
-                      color: fnbViewMode === 'grid' ? '#f97316' : '#64748b',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      boxShadow: fnbViewMode === 'grid' ? '0 2px 6px rgba(0,0,0,0.06)' : 'none',
-                      transition: 'all 0.2s ease'
-                    }}
-                  >
-                    <LayoutGrid size={16} strokeWidth={fnbViewMode === 'grid' ? 2.5 : 2} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {false && isFnbMode && !isMobileViewport && (
-          <>
-            <div style={{ maxWidth: 1320, margin: '0 auto', width: '100%', padding: '0 24px', display: 'grid', gap: 22 }}>
-              <div style={{
-                display: 'flex',
-                alignItems: 'flex-end',
-                justifyContent: 'space-between',
-                gap: 14,
-                flexDirection: 'row'
-              }}>
-                <div style={{ display: 'grid', gap: 8 }}>
-                  <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 800, color: modeAdapter.heroTheme?.accentDark || '#6f3415', textTransform: 'uppercase', letterSpacing: '0.1em' }}>
-                    <span style={{ width: 30, height: 1, background: modeAdapter.heroTheme?.accent || '#c96a2b' }} />
-                    Curated Menu
-                  </div>
-                  <h2 style={{ margin: 0, fontSize: 36, fontWeight: 900, color: modeAdapter.heroTheme?.textPrimary || STYLES.colors.dark, letterSpacing: '-0.03em', fontFamily: modeAdapter.heroTheme?.displayFont }}>{modeAdapter.catalogHeading}</h2>
-                  <p style={{ margin: 0, color: modeAdapter.heroTheme?.textMuted || STYLES.colors.muted, fontSize: 15, maxWidth: 720 }}>{modeAdapter.catalogSubtitle}</p>
-                </div>
-                <div style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '10px 14px',
-                  borderRadius: 999,
-                  background: modeAdapter.heroTheme?.surfaceInset || '#fff3e8',
-                  border: `1px solid ${modeAdapter.heroTheme?.borderSoft || '#edd4bc'}`,
-                  color: modeAdapter.heroTheme?.textPrimary || STYLES.colors.dark,
-                  fontSize: 13,
-                  fontWeight: 800
-                }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 999, background: modeAdapter.heroTheme?.accent || '#c96a2b' }} />
-                  {filteredFnbViewModel.totalItems || 0} menu item{Number(filteredFnbViewModel.totalItems || 0) === 1 ? '' : 's'} available
-                </div>
-              </div>
-
-              {(() => {
-                const fnbTheme = modeAdapter.heroTheme || {};
-                const toolbarAccent = fnbTheme.accent || '#c96a2b';
-                const toolbarAccentDark = fnbTheme.accentDark || '#6f3415';
-                const toolbarAccentSoft = fnbTheme.accentSoft || '#fff0e2';
-                const toolbarSurface = '#ffffff';
-                const toolbarSurfaceInset = fnbTheme.surfaceInset || '#fff3e8';
-                const toolbarBorder = fnbTheme.borderSoft || '#edd4bc';
-                const toolbarTextPrimary = fnbTheme.textPrimary || '#2f1f16';
-                const toolbarTextMuted = fnbTheme.textMuted || '#7c6757';
-                const fnbSections = isFnbMode && Array.isArray(filteredFnbViewModel.menuSections) ? filteredFnbViewModel.menuSections : [];
-                const categoryOptions = [
-                  {
-                    key: '',
-                    label: 'All',
-                    count: filteredFnbViewModel.menuItems.length,
-                    iconToken: 'menu',
-                    glyph: 'A',
-                    accent: toolbarAccent,
-                    accentSoft: toolbarAccentSoft
-                  },
-                  ...fnbSections.map((section) => ({
-                    key: section.sectionKey,
-                    label: section.sectionLabel,
-                    count: section.items?.length || 0,
-                    iconToken: section.visualMeta?.iconToken || 'menu',
-                    glyph: section.visualMeta?.glyph || String(section.sectionLabel || '').charAt(0).toUpperCase(),
-                    accent: section.visualMeta?.accent || '#475569',
-                    accentSoft: section.visualMeta?.accentSoft || '#f1f5f9'
-                  }))
-                ];
-                const activeCategoryOption = categoryOptions.find((option) => option.key === (resolvedFnbSection || '')) || categoryOptions[0];
-                const ActiveCategoryIcon = FNB_CATEGORY_ICON_MAP[activeCategoryOption.iconToken] || Sparkles;
-                const controlHeight = 56;
-                const controlRadius = 18;
-
-                return (
-                  <div style={{ display: 'grid', gap: 14 }}>
-                    <div style={{
-                      display: 'flex',
-                      flexDirection: 'row',
-                      alignItems: 'center',
-                      gap: 12,
-                      flexWrap: 'wrap'
-                    }}>
-                      <label style={{
-                        position: 'relative',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 12,
-                        border: `1px solid ${toolbarBorder}`,
-                        borderRadius: controlRadius,
-                        background: '#fff',
-                        padding: '0 18px 0 42px',
-                        minHeight: controlHeight,
-                        flex: '1 1 320px',
-                        minWidth: 0,
-                        boxShadow: '0 14px 28px rgba(73,38,20,0.06)'
-                      }}>
-                        <span style={{
-                          width: 2,
-                          position: 'absolute',
-                          left: 28,
-                          top: 12,
-                          bottom: 12,
-                          borderRadius: 999,
-                          background: toolbarAccent,
-                          opacity: 0.65,
-                          pointerEvents: 'none'
-                        }} />
-                        <input
-                          value={catalogSearch}
-                          onChange={(event) => setCatalogSearch(event.target.value)}
-                          placeholder={modeAdapter.catalogSearchPlaceholder}
-                          style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, fontSize: 14, color: toolbarTextPrimary }}
-                        />
-                        <span style={{
-                          width: 42,
-                          height: 42,
-                          borderRadius: 999,
-                          background: toolbarAccent,
-                          color: '#fff',
-                          display: 'inline-flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          boxShadow: '0 10px 20px rgba(201,106,43,0.24)',
-                          flexShrink: 0
-                        }}>
-                          <Search size={20} />
-                        </span>
-                      </label>
-
-                      <StorefrontDropdown
-                        value={fnbSortOption}
-                        onChange={(nextValue) => setFnbSortOption(String(nextValue))}
-                        options={[
-                          { value: 'name_asc', label: 'All Prices' },
-                          { value: 'price_asc', label: 'Price: Low to High' },
-                          { value: 'price_desc', label: 'Price: High to Low' }
-                        ]}
-                        leading={(
-                          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, color: toolbarAccent }}>
-                            <SlidersHorizontal size={18} />
-                            <span style={{ width: 1, height: '60%', minHeight: 24, borderRadius: 999, background: 'rgba(201,106,43,0.18)' }} />
-                          </span>
-                        )}
-                        containerStyle={{
-                          minWidth: 240,
-                          flex: '0 0 240px'
-                        }}
-                        triggerStyle={{
-                          minHeight: controlHeight,
-                          borderRadius: controlRadius,
-                          border: `1px solid ${toolbarBorder}`,
-                          background: '#fff',
-                          boxShadow: '0 14px 28px rgba(73,38,20,0.06)',
-                          padding: '0 44px 0 16px'
-                        }}
-                        selectedLabelStyle={{ color: toolbarTextPrimary, fontSize: 14, fontWeight: 700 }}
-                      />
-
-                      <div
-                        ref={fnbCategoryDropdownRef}
-                        style={{ position: 'relative', width: 290, flex: '0 0 290px' }}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => setIsFnbCategoryDropdownOpen((previous) => !previous)}
-                          style={{
-                            position: 'relative',
-                            width: '100%',
-                            minHeight: controlHeight,
-                            borderRadius: controlRadius,
-                            border: `1px solid ${toolbarBorder}`,
-                            background: '#fff',
-                            padding: '0 18px 0 20px',
-                            display: 'flex',
-                            alignItems: 'center',
-                            gap: 12,
-                            cursor: 'pointer',
-                            boxShadow: '0 14px 28px rgba(73,38,20,0.06)'
-                          }}
-                        >
-                          <span style={{
-                            width: 38,
-                            height: 38,
-                            borderRadius: 14,
-                            background: activeCategoryOption.accentSoft,
-                            color: activeCategoryOption.accent,
-                            display: 'inline-flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            position: 'relative',
-                            flexShrink: 0
-                          }}>
-                            {React.createElement(ActiveCategoryIcon, { size: 18 })}
-                            <span style={{
-                              position: 'absolute',
-                              right: -4,
-                              bottom: -4,
-                              width: 18,
-                              height: 18,
-                              borderRadius: 999,
-                              background: '#fff',
-                              border: `1px solid ${toolbarBorder}`,
-                              color: toolbarTextPrimary,
-                              fontSize: 10,
-                              fontWeight: 900,
-                              display: 'inline-flex',
-                              alignItems: 'center',
-                              justifyContent: 'center'
-                            }}>
-                              {String(activeCategoryOption.glyph || 'A').slice(0, 1)}
-                            </span>
-                          </span>
-                        <span style={{ display: 'grid', gap: 2, minWidth: 0, textAlign: 'left', flex: 1 }}>
-                            <span style={{ fontSize: 12, fontWeight: 800, color: toolbarAccentDark, textTransform: 'uppercase', letterSpacing: '0.06em', lineHeight: 1 }}>Category</span>
-                            <span style={{ fontSize: 14, fontWeight: 800, color: toolbarTextPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.15 }}>
-                              {activeCategoryOption.label}
-                            </span>
-                          </span>
-                          <span style={{ fontSize: 12, fontWeight: 800, color: toolbarTextMuted }}>{activeCategoryOption.count}</span>
-                          <ChevronDown size={18} color={toolbarTextMuted} />
-                        </button>
-
-                        {isFnbCategoryDropdownOpen && (
-                          <div style={{
-                            position: 'absolute',
-                            top: 'calc(100% + 10px)',
-                            left: 0,
-                            right: 0,
-                            zIndex: 40,
-                            padding: 10,
-                            borderRadius: 18,
-                            border: `1px solid ${toolbarBorder}`,
-                            background: toolbarSurface,
-                            boxShadow: '0 22px 48px rgba(15,23,42,0.14)',
-                            display: 'grid',
-                            gap: 8,
-                            maxHeight: 360,
-                            overflowY: 'auto'
-                          }}>
-                            {categoryOptions.map((option) => {
-                              const isActive = option.key === (resolvedFnbSection || '');
-                              const OptionIcon = FNB_CATEGORY_ICON_MAP[option.iconToken] || Sparkles;
-                              return (
-                                <button
-                                  key={`fnb-category-dropdown-${option.key || 'all'}`}
-                                  type="button"
-                                  onClick={() => {
-                                    setActiveServiceTab(option.key);
-                                    setIsFnbCategoryDropdownOpen(false);
-                                  }}
-                                  style={{
-                                    width: '100%',
-                                    borderRadius: 16,
-                                    border: isActive ? '1px solid transparent' : `1px solid ${toolbarBorder}`,
-                                    background: isActive ? toolbarAccent : toolbarSurface,
-                                    color: isActive ? '#fff' : toolbarTextPrimary,
-                                    padding: '10px 12px',
-                                    display: 'flex',
-                                    alignItems: 'center',
-                                    gap: 12,
-                                    cursor: 'pointer'
-                                  }}
-                                >
-                                  <span style={{
-                                    width: 38,
-                                    height: 38,
-                                    borderRadius: 14,
-                                    background: isActive ? 'rgba(255,255,255,0.16)' : option.accentSoft,
-                                    color: isActive ? '#fff' : option.accent,
-                                    display: 'inline-flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    position: 'relative',
-                                    flexShrink: 0
-                                  }}>
-                                    {React.createElement(OptionIcon, { size: 18 })}
-                                    <span style={{
-                                      position: 'absolute',
-                                      right: -4,
-                                      bottom: -4,
-                                      width: 18,
-                                      height: 18,
-                                      borderRadius: 999,
-                                      background: '#fff',
-                                      border: `1px solid ${isActive ? 'rgba(255,255,255,0.3)' : toolbarBorder}`,
-                                      color: toolbarTextPrimary,
-                                      fontSize: 10,
-                                      fontWeight: 900,
-                                      display: 'inline-flex',
-                                      alignItems: 'center',
-                                      justifyContent: 'center'
-                                    }}>
-                                      {String(option.glyph || 'A').slice(0, 1)}
-                                    </span>
-                                  </span>
-                                  <span style={{ display: 'grid', gap: 2, minWidth: 0, textAlign: 'left', flex: 1 }}>
-                                    <span style={{ fontSize: 14, fontWeight: 800, lineHeight: 1.15 }}>{option.label}</span>
-                                    <span style={{ fontSize: 11, fontWeight: 700, opacity: isActive ? 0.82 : 0.6 }}>
-                                      {option.count} item{option.count === 1 ? '' : 's'}
-                                    </span>
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })()}
-            </div>
-          </>
-        )}
 
         {/* Section header */}
         {((!isFnbMode && !isSimpleMode) || isMultiGroup) && (
@@ -7485,297 +5419,44 @@ return (
       )}
 
       {isFnbMode && !isOrderSubpage && !isFnbDetailsSubpage && fnbCommunityModel && (
-        <>
-          <SharedStorefrontPromoSection
-            items={promoSectionModel}
-            isMobileViewport={isMobileViewport}
-            layoutVariant="compact"
-            palette="fnb"
-            titleFontFamily={modeAdapter.heroTheme?.displayFont}
-            bodyFontFamily={modeAdapter.heroTheme?.bodyFont}
-            sectionPadding={isMobileViewport ? '20px 0 24px' : '36px 0 40px'}
-            contentMaxWidth={1280}
-            sectionBackground="#ffffff"
-            titleSize={isMobileViewport ? 28 : 36}
-            subtitleSize={isMobileViewport ? 14 : 16}
-            activePromoCode={checkoutPromoCode}
-            onApplyPromo={handlePromoCardApply}
-            collapseSpacing
-          />
-
-          <SharedStorefrontReviewsSection
-            isMobileViewport={isMobileViewport}
-            viewportWidth={viewportWidth}
-            title="Customer Reviews"
-            subtitle="See what diners are saying about this menu storefront."
-            onWriteReview={() => setIsReviewModalOpen(true)}
-            reviewHighlights={fnbCommunityModel.reviewHighlights}
-            emptyMessage="Customer reviews will appear here once this storefront adds review data in SKUpervisor."
-            titleFontFamily={modeAdapter.heroTheme?.displayFont}
-            bodyFontFamily={modeAdapter.heroTheme?.bodyFont}
-            cardVariant="white"
-            writeButtonColor="#f97316"
-            sectionPadding={isMobileViewport ? '20px 0 24px' : '36px 0 40px'}
-            contentMaxWidth={1280}
-            titleSize={isMobileViewport ? 28 : 36}
-            subtitleSize={isMobileViewport ? 14 : 16}
-            collapseSpacing
-            starSymbol="*"
-          />
-
-          <SharedStorefrontFooterSection
-            isMobileViewport={isMobileViewport}
-            name={fnbCommunityModel.name}
-            registrationYear={fnbCommunityModel.registrationYear}
-            description={fnbCommunityModel.tagline || fnbCommunityModel.aboutText || 'Food and beverage storefront powered by SKUpervisor content.'}
-            displayFont={modeAdapter.heroTheme?.displayFont}
-            bodyFontFamily={modeAdapter.heroTheme?.bodyFont}
-            sectionPadding={isMobileViewport ? '28px 16px 24px' : '48px 32px 36px'}
-            badgeLinks={getStorefrontSocialFooterLinks(fnbCommunityModel.footerLinks)}
-            columns={[
-              {
-                title: 'Menu Categories',
-                items: fnbCommunityModel.menuCategories.slice(0, 5).map((group) => ({ label: group.label })),
-                emptyText: 'No categories yet.'
-              },
-              {
-                title: 'Socials',
-                items: fnbCommunityModel.footerLinks
-                  .filter((link) => ['Website', 'Facebook', 'Instagram', 'TikTok', 'Messenger'].includes(link.label))
-                  .map((link) => ({ label: link.label, href: link.href })),
-                emptyText: 'No social links yet.'
-              },
-              {
-                title: 'Contact',
-                items: [
-                  ...fnbCommunityModel.footerLinks
-                    .filter((link) => ['Call', 'Email'].includes(link.label))
-                    .map((link) => ({
-                      label: link.label === 'Call' ? String(link.href).replace('tel:', '') : String(link.href).replace('mailto:', ''),
-                      href: link.href
-                    })),
-                  ...(fnbCommunityModel.hours ? [{ label: fnbCommunityModel.hours }] : []),
-                  { label: fnbCommunityModel.locationLabel }
-                ]
-              }
-            ]}
-          />
-        </>
+        <FnbCommunitySection
+          fnbCommunityModel={fnbCommunityModel}
+          promoSectionModel={promoSectionModel}
+          isMobileViewport={isMobileViewport}
+          viewportWidth={viewportWidth}
+          modeAdapter={modeAdapter}
+          checkoutPromoCode={checkoutPromoCode}
+          onApplyPromo={handlePromoCardApply}
+          onWriteReview={() => setIsReviewModalOpen(true)}
+        />
       )}
     </div>
 
     {/* ZONE 5: Sidebar (Desktop) */}
     {isServicesMode && !isMobileViewport && (
-      <aside style={{ display: 'grid', gap: 24, alignContent: 'start' }}>
-        <div style={{ padding: 24, background: '#fff', borderRadius: STYLES.radius.card, border: `1px solid ${STYLES.colors.border}`, boxShadow: STYLES.shadow.sm }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: STYLES.colors.dark, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 20 }}>Performance Summary</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 20 }}>
-            <div style={{ fontSize: 48, fontWeight: 900, color: STYLES.colors.dark }}>{selectedStore.storefront_review_summary?.score?.toFixed(1) || '0.0'}</div>
-            <div>
-              <div style={{ color: STYLES.colors.amber, fontSize: 18 }}>*****</div>
-              <div style={{ fontSize: 12, color: STYLES.colors.muted }}>from {selectedStore.storefront_review_summary?.total_count || 0} reviews</div>
-            </div>
-          </div>
-          {isMultiGroup && (
-            <div style={{ display: 'grid', gap: 8 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: STYLES.colors.muted, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 4 }}>Service Families</div>
-              {servicesViewModel.serviceGroups.map(group => {
-                const GroupIcon = SERVICE_CATEGORY_ICON_MAP[group.categoryMeta?.iconToken] || Sparkles;
-                return (
-                  <button
-                    key={group.categoryKey}
-                    type="button"
-                    onClick={() => setActiveServiceTab(group.categoryKey)}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '10px 14px', borderRadius: 12,
-                      border: resolvedTab === group.categoryKey ? `1.5px solid ${group.categoryMeta.accent}` : `1px solid ${STYLES.colors.border}`,
-                      background: resolvedTab === group.categoryKey ? group.categoryMeta.accentBg || '#f0fdfa' : '#fff',
-                      color: resolvedTab === group.categoryKey ? group.categoryMeta.accent : STYLES.colors.text,
-                      fontWeight: 700, fontSize: 13, cursor: 'pointer', textAlign: 'left',
-                      transition: 'all 0.16s ease'
-                    }}
-                  >
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                      <GroupIcon size={16} />
-                      <span>{group.categoryMeta.label}</span>
-                    </span>
-                    <span style={{ fontSize: 12, fontWeight: 800, opacity: 0.8 }}>{group.items.length} services</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-
-        {(() => {
-          const promo = parseOptionalObject(selectedStore.storefront_promo);
-          if (!promo || !promo.active) return null;
-          return (
-            <div style={{
-              padding: 24, borderRadius: STYLES.radius.card, background: `linear-gradient(135deg, ${STYLES.colors.brand}, ${STYLES.colors.brandDark})`,
-              color: '#fff', boxShadow: STYLES.shadow.md
-            }}>
-              <Badge background="rgba(255,255,255,0.2)" color="#fff">{promo.badge || 'PROMO'}</Badge>
-              <div style={{ marginTop: 16, fontSize: 24, fontWeight: 900 }}>{promo.title}</div>
-              <p style={{ marginTop: 8, fontSize: 14, opacity: 0.9 }}>{promo.subtitle}</p>
-            </div>
-          );
-        })()}
-      </aside>
+      <ServicesPerformanceSidebar
+        selectedStore={selectedStore}
+        isMultiGroup={isMultiGroup}
+        servicesViewModel={servicesViewModel}
+        resolvedTab={resolvedTab}
+        onSelectServiceTab={setActiveServiceTab}
+      />
     )}
 
     {isReviewModalOpen && isSimpleMode && (
-      <div
-        style={{
-          position: 'fixed',
-          inset: 0,
-          zIndex: 2300,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          padding: isMobileViewport ? 16 : 24
-        }}
-      >
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background: 'rgba(15,23,42,0.52)',
-            backdropFilter: 'blur(5px)'
-          }}
-        />
-        <section
-          style={{
-            position: 'relative',
-            zIndex: 1,
-            width: '100%',
-            maxWidth: 640,
-            maxHeight: 'min(90vh, 760px)',
-            overflowY: 'auto',
-            borderRadius: 28,
-            border: '1px solid #dbe5ee',
-            background: '#ffffff',
-            boxShadow: '0 28px 64px rgba(15,23,42,0.22)',
-            padding: isMobileViewport ? 20 : 28,
-            display: 'grid',
-            gap: 20
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
-            <div style={{ display: 'grid', gap: 8 }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: modeAdapter.heroTheme?.accent || '#0f766e', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                Customer Review
-              </div>
-              <div style={{ fontSize: isMobileViewport ? 26 : 30, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1.08 }}>
-                Share your experience
-              </div>
-              <div style={{ fontSize: 14, lineHeight: 1.65, color: STYLES.colors.muted }}>
-                Rate the storefront experience and leave a short message. Publishing will be connected once the review backend is ready.
-              </div>
-            </div>
-            <button
-              type="button"
-              onClick={() => setIsReviewModalOpen(false)}
-              style={{
-                width: 40,
-                height: 40,
-                borderRadius: 999,
-                border: '1px solid #cbd5e1',
-                background: '#fff',
-                color: '#0f172a',
-                cursor: 'pointer',
-                display: 'grid',
-                placeItems: 'center',
-                flexShrink: 0
-              }}
-              aria-label="Close review modal"
-            >
-              <X size={18} />
-            </button>
-          </div>
-
-          <div style={{ display: 'grid', gap: 16 }}>
-            <label style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
-              Your name
-              <input
-                value={reviewDraft.name}
-                onChange={(event) => setReviewDraft((previous) => ({ ...previous, name: event.target.value }))}
-                placeholder="How should we identify your review?"
-                style={BOOKING_FIELD_STYLE}
-              />
-            </label>
-
-            <div style={{ display: 'grid', gap: 10 }}>
-              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#334155', cursor: 'pointer', width: 'fit-content' }}>
-                <input
-                  type="checkbox"
-                  checked={reviewDraft.anonymous}
-                  onChange={(event) => setReviewDraft((previous) => ({ ...previous, anonymous: event.target.checked }))}
-                />
-                Post this review anonymously
-              </label>
-              <div style={{ fontSize: 12, color: '#64748b' }}>
-                Public name preview: <strong style={{ color: '#0f172a' }}>{reviewDraft.anonymous ? maskReviewerName(reviewDraft.name) : (String(reviewDraft.name || '').trim() || 'Your name')}</strong>
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gap: 10 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: '#334155' }}>Your rating</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                {Array.from({ length: 5 }, (_, index) => {
-                  const starValue = index + 1;
-                  const selected = reviewDraft.rating >= starValue;
-                  return (
-                    <button
-                      key={`simple-review-rating-${starValue}`}
-                      type="button"
-                      onClick={() => setReviewDraft((previous) => ({ ...previous, rating: starValue }))}
-                      style={{
-                        width: 46,
-                        height: 46,
-                        borderRadius: 14,
-                        border: `1px solid ${selected ? '#14b8a6' : '#dbe5ee'}`,
-                        background: selected ? '#ecfeff' : '#ffffff',
-                        color: selected ? '#14b8a6' : '#94a3b8',
-                        cursor: 'pointer',
-                        display: 'grid',
-                        placeItems: 'center',
-                        boxShadow: selected ? '0 10px 20px rgba(20,184,166,0.16)' : 'none'
-                      }}
-                      aria-label={`Rate ${starValue} star${starValue === 1 ? '' : 's'}`}
-                    >
-                      <Star size={18} fill={selected ? '#14b8a6' : 'none'} color={selected ? '#14b8a6' : '#94a3b8'} />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <label style={{ display: 'grid', gap: 8, fontSize: 13, color: '#334155' }}>
-              Your review
-              <textarea
-                value={reviewDraft.message}
-                onChange={(event) => setReviewDraft((previous) => ({ ...previous, message: event.target.value }))}
-                placeholder="Tell customers what stood out about the product selection, ordering, or pickup experience."
-                style={{ ...BOOKING_FIELD_STYLE, minHeight: 144, resize: 'vertical' }}
-              />
-            </label>
-          </div>
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: isMobileViewport ? 'stretch' : 'center', flexDirection: isMobileViewport ? 'column' : 'row', gap: 12 }}>
-            <div style={{ fontSize: 12, lineHeight: 1.6, color: '#64748b' }}>
-              Reviews are prepared on the storefront now. Submission and moderation will connect once backend review support is available.
-            </div>
-            <PrimaryButton
-              onClick={submitFnbItemReview}
-              style={{ minHeight: 46, minWidth: isMobileViewport ? '100%' : 180, justifyContent: 'center' }}
-            >
-              Send Review
-            </PrimaryButton>
-          </div>
-        </section>
-      </div>
+      <StorefrontReviewModal
+        isMobileViewport={isMobileViewport}
+        eyebrowColor={modeAdapter.heroTheme?.accent || '#0f766e'}
+        starColor="#14b8a6"
+        starBg="#ecfeff"
+        starShadow="0 10px 20px rgba(20,184,166,0.16)"
+        keyPrefix="simple-review-rating"
+        messagePlaceholder="Tell customers what stood out about the product selection, ordering, or pickup experience."
+        reviewDraft={reviewDraft}
+        onReviewDraftChange={setReviewDraft}
+        onClose={() => setIsReviewModalOpen(false)}
+        onSubmit={submitFnbItemReview}
+      />
     )}
 
     {isReviewModalOpen && isFnbMode && (
@@ -7818,120 +5499,33 @@ return (
           <SimpleCartDrawerSurface {...simpleCartDrawerProps.drawerSurfaceProps} />
         </>
       )}
-      <button
-        type="button"
-        ref={isFnbMode ? serviceCartFabRef : undefined}
-        onClick={() => {
-          if (isServicesMode) {
-            goStoreBookingPage();
-            return;
-          }
-          setIsCheckoutOpen((prev) => {
-            const next = !prev;
-            if (next) setCheckoutTab(isServicesMode && hasServiceCart ? 'review' : (isFnbMode ? 'cart' : 'checkout'));
-            return next;
-          });
-        }}
-        style={{
-          position: 'fixed',
-          zIndex: 2100,
-          border: (isServicesMode && hasServiceCart)
-            ? '1px solid #dbe5ee'
-            : (isFnbMode ? 'none' : 'none'),
-          borderRadius: isFnbMode ? 999 : (isMobileViewport ? 16 : 22),
-          background: (isServicesMode && hasServiceCart)
-            ? '#ffffff'
-            : (isFnbMode ? '#f97316' : 'linear-gradient(135deg,#1a4586,#1a4e8d)'),
-          color: (isServicesMode && hasServiceCart)
-            ? '#0f172a'
-            : '#fff',
-          boxShadow: (isServicesMode && hasServiceCart)
-            ? '0 22px 48px rgba(15,23,42,.16)'
-            : (isFnbMode ? '0 14px 34px rgba(249,115,22,.38)' : '0 14px 34px rgba(26,69,134,.38)'),
-          padding: (isServicesMode && hasServiceCart) ? (isMobileViewport ? '12px 14px' : '16px 18px') : (isFnbMode ? 0 : '12px 18px'),
-          width: isFnbMode ? (isMobileViewport ? 62 : 68) : undefined,
-          height: isFnbMode ? (isMobileViewport ? 62 : 68) : undefined,
-          minWidth: (isServicesMode && hasServiceCart) ? (isMobileViewport ? 0 : 320) : (isFnbMode ? undefined : (isMobileViewport ? 0 : 255)),
-          textAlign: 'left',
-          cursor: 'pointer',
-          right: isMobileViewport ? 20 : 36,
-          left: isFnbMode ? 'auto' : (isMobileViewport ? 10 : 'auto'),
-          bottom: isMobileViewport ? 10 : 18,
-          display: isAccountDrawerOpen
-            ? 'none'
-            : isServicesCartDrawerMode
-            ? 'none'
-            : (
-              isServicesMode && isDesktopViewport
-                ? 'none'
-                : (((isFnbOrderSubpage || isFnbDetailsSubpage || (isFnbMode && isCheckoutOpen)) || (isSimpleMode && isResolvedOrderSubpage) || isSimpleCartSurfaceMode) ? 'none' : 'block')
-            )
-        }}
-      >
-        {isServicesMode && hasServiceCart ? (
-          <div style={{ display: 'grid', gap: 8 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <div>
-                <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Your Booking Summary</div>
-                <div style={{ marginTop: 3, fontSize: 18, fontWeight: 900, color: '#0f172a' }}>{serviceBookingSummaryTitle}</div>
-              </div>
-              {!isMobileViewport && (
-                <div style={{ fontSize: 11, fontWeight: 800, color: '#0f766e', background: '#ecfeff', border: '1px solid #99f6e4', borderRadius: 999, padding: '4px 8px' }}>
-                  {cartCount} service
-                </div>
-              )}
-            </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, fontSize: 12, color: '#475569' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <CalendarDays size={14} color={servicesPrimary} />
-                {serviceBookingSummarySchedule}
-              </span>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                <CheckCircle2 size={14} color={servicesPrimary} />
-                {servicePaymentOptions.find((option) => option.value === servicePaymentTiming)?.label || 'Payment pending'}
-              </span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-              <div style={{ fontSize: 22, fontWeight: 900, color: '#0f172a' }}>{money(cartTotal)}</div>
-              <div style={{ fontSize: 13, color: '#0f766e', fontWeight: 800 }}>
-                {isCheckoutOpen ? 'Close booking' : (isMobileViewport ? 'View booking' : 'View cart and checkout')}
-              </div>
-            </div>
-          </div>
-        ) : isFnbMode ? (
-          <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <ShoppingCart size={24} strokeWidth={2.2} />
-            <div
-              style={{
-                position: 'absolute',
-                top: 8,
-                right: 8,
-                minWidth: 22,
-                height: 22,
-                padding: '0 6px',
-                borderRadius: 999,
-                background: '#15803d',
-                color: '#fff',
-                border: '2px solid #fff',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontSize: 11,
-                fontWeight: 900,
-                lineHeight: 1
-              }}
-            >
-              {cartCount}
-            </div>
-          </div>
-        ) : (
-          <>
-            <div style={{ fontSize: 13, opacity: .95 }}>{cartCount} item(s) in cart</div>
-            <div style={{ fontSize: 18, fontWeight: 800 }}>{money(cartTotal)}</div>
-            <div style={{ marginTop: 2, fontSize: 12, textDecoration: 'underline' }}>{isCheckoutOpen ? 'Close checkout' : 'View Cart'}</div>
-          </>
-        )}
-        </button>
+      <StorefrontCartFab
+        serviceCartFabRef={serviceCartFabRef}
+        isFnbMode={isFnbMode}
+        isServicesMode={isServicesMode}
+        isMobileViewport={isMobileViewport}
+        isDesktopViewport={isDesktopViewport}
+        hasServiceCart={hasServiceCart}
+        isAccountDrawerOpen={isAccountDrawerOpen}
+        isServicesCartDrawerMode={isServicesCartDrawerMode}
+        isFnbOrderSubpage={isFnbOrderSubpage}
+        isFnbDetailsSubpage={isFnbDetailsSubpage}
+        isCheckoutOpen={isCheckoutOpen}
+        isSimpleMode={isSimpleMode}
+        isResolvedOrderSubpage={isResolvedOrderSubpage}
+        isSimpleCartSurfaceMode={isSimpleCartSurfaceMode}
+        goStoreBookingPage={goStoreBookingPage}
+        setIsCheckoutOpen={setIsCheckoutOpen}
+        setCheckoutTab={setCheckoutTab}
+        servicesPrimary={servicesPrimary}
+        serviceBookingSummaryTitle={serviceBookingSummaryTitle}
+        cartCount={cartCount}
+        serviceBookingSummarySchedule={serviceBookingSummarySchedule}
+        servicePaymentOptions={servicePaymentOptions}
+        servicePaymentTiming={servicePaymentTiming}
+        money={money}
+        cartTotal={cartTotal}
+      />
 
         <FnbCartDrawerSurface
           cartCount={cartCount}
@@ -9214,7 +6808,7 @@ return (
 
       <StorefrontPaymentUnavailableModal
         open={isOnlinePaymentModalOpen}
-        onClose={() => setIsOnlinePaymentModalOpen(false)}
+        onClose={uiCloseOnlinePaymentModal}
       />
     </main >
   );

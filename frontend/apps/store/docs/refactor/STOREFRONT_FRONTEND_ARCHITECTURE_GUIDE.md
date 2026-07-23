@@ -23,8 +23,9 @@ Before editing storefront frontend code, read these files:
 
 1. `frontend/apps/store/docs/refactor/STOREFRONT_REFACTOR_PLAN.md`
 2. `frontend/apps/store/docs/refactor/STOREFRONT_FRONTEND_ARCHITECTURE_GUIDE.md`
-3. `docs/development/STOREFRONT_FRONTEND_CODING_STANDARD_AND_FILE_OWNERSHIP.md`
-4. `docs/features/STOREFRONT_MODE_IMPLEMENTATION_STANDARD.md`
+3. `frontend/apps/store/docs/refactor/STOREFRONT_STATE_MANAGEMENT.md`
+4. `docs/development/STOREFRONT_FRONTEND_CODING_STANDARD_AND_FILE_OWNERSHIP.md`
+5. `docs/features/STOREFRONT_MODE_IMPLEMENTATION_STANDARD.md`
 
 If these documents conflict, prefer the more specific storefront mode ownership rule and preserve existing backend contracts.
 
@@ -51,6 +52,16 @@ It must not own:
 - API payload building
 - backend response normalization
 - large JSX sections
+
+## State Management
+
+Shared, cross-cutting runtime state lives in the sliced **zustand** store at
+`apps/store/src/store/` — see `STOREFRONT_STATE_MANAGEMENT.md` for the full contract. The shell's
+"minimal shared runtime context" is delivered by store selectors, **not** by prop-drilling from
+`StorefrontApp.jsx`. Feature hooks/components read the state they need via
+`useStorefrontStore((s) => …)` instead of receiving it through props. Truly component-local UI
+state stays as `useState` (the store is not a dumping ground — see the store-vs-local table in that
+doc).
 
 ## Architecture Pattern
 
