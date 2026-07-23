@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { filterCatalogItems } from '../catalogSearch.js';
+import { filterCatalogItems } from '../shared/model/catalogSearch.js';
 
 describe('catalog search filter', () => {
   const catalog = [

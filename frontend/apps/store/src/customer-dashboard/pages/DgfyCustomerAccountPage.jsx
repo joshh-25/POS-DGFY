@@ -13,9 +13,9 @@ import {
   COMPLETED_CUSTOMER_ORDER_STATUSES
 } from '../model/customerOrderStatus.js';
 import {
-  getCustomerBusinessCategoryLabel,
   getCustomerBusinessCoverUrl,
   getCustomerBusinessProfileUrl,
+  getCustomerBusinessRoleLabel,
   getCustomerBusinessStatusLabel
 } from '../model/customerBusinessAssets.js';
 import {
@@ -156,7 +156,8 @@ export function DgfyCustomerAccountPage({
   const startBusinessAction = async (type, company) => {
     const action = { type, company };
     setBusinessActionError('');
-    if (type === 'reject' || type === 'leave' || businessStepUp?.verified === true) {
+    // A signed-in DGFY account can accept its own pending invitation directly.
+    if (type === 'accept' || type === 'reject' || type === 'leave' || businessStepUp?.verified === true) {
       setBusinessActionLoading(true);
       try { await performBusinessAction(action); } catch (error) { setBusinessActionError(error?.message || 'Unable to complete this business action.'); } finally { setBusinessActionLoading(false); }
       return;
@@ -201,7 +202,7 @@ export function DgfyCustomerAccountPage({
     addresses: <AddressesSection addresses={allAddresses} isMobileViewport={isMobileViewport} onSaveAddress={onSaveAddress} onDeleteAddress={onDeleteAddress} onSetDefaultAddress={onSetDefaultAddress} onUseAddressForCheckout={onUseAddressForCheckout} renderAddressPinEditor={renderAddressPinEditor} accountAddressActionId={accountAddressActionId} theme={theme} />,
     loyalty: <LoyaltySection loyalty={loyalty} transactions={loyaltyTransactions} EmptyState={EmptyState} formatDate={formatCustomerDate} prettyStatus={prettyCustomerStatus} theme={theme} />,
     account: <AccountSettingsSection isMobileViewport={isMobileViewport} theme={theme} accountIdentityInitials={accountIdentityInitials} accountIdentityName={accountIdentityName} accountPanel={accountPanel} overviewPhone={overviewPhone} overviewEmail={overviewEmail} />,
-    business: <BusinessSection isMobileViewport={isMobileViewport} theme={theme} businessCompanies={businessCompanies} businessMemberships={businessMemberships} businessActionError={businessActionError} businessActionLoading={businessActionLoading} businessStepUpAction={businessStepUpAction} businessEmailOtpCode={businessEmailOtpCode} setBusinessEmailOtpCode={setBusinessEmailOtpCode} setBusinessStepUpAction={setBusinessStepUpAction} startBusinessAction={startBusinessAction} submitBusinessStepUpAction={submitBusinessStepUpAction} onRegisterBusiness={onRegisterBusiness} onOpenBusinessPos={onOpenBusinessPos} resolveBusinessAssetUrl={resolveBusinessAssetUrl} getBusinessCoverUrl={getCustomerBusinessCoverUrl} getBusinessProfileUrl={getCustomerBusinessProfileUrl} getBusinessCategoryLabel={getCustomerBusinessCategoryLabel} getBusinessStatusLabel={businessStatusLabel} />
+    business: <BusinessSection isMobileViewport={isMobileViewport} theme={theme} businessCompanies={businessCompanies} businessMemberships={businessMemberships} businessActionError={businessActionError} businessActionLoading={businessActionLoading} businessStepUpAction={businessStepUpAction} businessEmailOtpCode={businessEmailOtpCode} setBusinessEmailOtpCode={setBusinessEmailOtpCode} setBusinessStepUpAction={setBusinessStepUpAction} startBusinessAction={startBusinessAction} submitBusinessStepUpAction={submitBusinessStepUpAction} onRegisterBusiness={onRegisterBusiness} onOpenBusinessPos={onOpenBusinessPos} resolveBusinessAssetUrl={resolveBusinessAssetUrl} getBusinessCoverUrl={getCustomerBusinessCoverUrl} getBusinessProfileUrl={getCustomerBusinessProfileUrl} getBusinessRoleLabel={(company) => getCustomerBusinessRoleLabel(company, prettyCustomerStatus)} getBusinessStatusLabel={businessStatusLabel} />
   };
 
   return (

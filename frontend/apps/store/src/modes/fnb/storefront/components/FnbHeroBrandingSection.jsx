@@ -2,8 +2,8 @@ import React from 'react';
 import { MousePointer2, Phone } from 'lucide-react';
 import { Badge, GhostButton, PrimaryButton } from '../../../../shared/components/StorefrontActionPrimitives.jsx';
 import { StorefrontHeroShell } from '../../../../shared/components/StorefrontHeroShell.jsx';
-import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from '../../../../Components/storefront/hero/StorefrontHeroNameCluster.jsx';
-import { StorefrontShareQr as SharedStorefrontShareQr } from '../../../../Components/storefront/hero/StorefrontShareQr.jsx';
+import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from '../../../../shared/components/storefront/hero/StorefrontHeroNameCluster.jsx';
+import { StorefrontShareQr as SharedStorefrontShareQr } from '../../../../shared/components/storefront/hero/StorefrontShareQr.jsx';
 import { formatFnbCurrency } from '../utils/fnbCurrency.js';
 
 export const FnbHeroBrandingSection = ({

@@ -1,4 +1,4 @@
-import { normalizeStorefrontErrorMessage } from '../storefrontErrorMessages.js';
+import { normalizeStorefrontErrorMessage } from '../shared/model/storefrontErrorMessages.js';
 
 export const SERVICES_MULTI_LINE_RUNTIME_MESSAGE =
   'Multiple services in one submitted booking are not available yet. Please complete one service booking at a time.';

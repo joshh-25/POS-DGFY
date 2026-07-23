@@ -76,3 +76,42 @@ export function countSelectedModifiersByGroup(selectedModifiers = []) {
     return counts;
   }, {});
 }
+
+export function resolveFnbProductDetailItem({
+  selectedDetail,
+  routeItemId,
+  catalog
+}) {
+  if (selectedDetail) return selectedDetail;
+  if (!routeItemId) return null;
+  return (Array.isArray(catalog) ? catalog : []).find((item) => String(item?.item_id) === String(routeItemId)) || null;
+}
+
+export function buildFnbProductDetailMetadata({
+  detailItem,
+  selectedModifiers
+}) {
+  return {
+    modifierGroups: normalizeFnbModifierGroups(detailItem),
+    modifierCounts: countSelectedModifiersByGroup(selectedModifiers),
+    nutritionCards: buildFnbNutritionCards(detailItem),
+    allergens: buildFnbAllergens(detailItem)
+  };
+}
+
+export function buildFnbRelatedItems({
+  detailItem,
+  menuItems,
+  limit = 3
+}) {
+  if (!detailItem) return [];
+  const currentSection = String(detailItem.sectionKey || '').trim();
+  const currentItemId = Number(detailItem.item_id);
+  const baseItems = Array.isArray(menuItems) ? menuItems : [];
+  const sameSection = baseItems.filter((item) => (
+    Number(item?.item_id) !== currentItemId
+    && String(item?.sectionKey || '').trim() === currentSection
+  ));
+  const fallbackItems = baseItems.filter((item) => Number(item?.item_id) !== currentItemId);
+  return (sameSection.length > 0 ? sameSection : fallbackItems).slice(0, limit);
+}
