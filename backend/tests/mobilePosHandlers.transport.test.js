@@ -4,6 +4,7 @@ const mockGetMobilePosCatalogBootstrapUseCase = jest.fn();
 const mockGetMobilePosSettingsBootstrapUseCase = jest.fn();
 const mockGetMobilePosDevicePolicyUseCase = jest.fn();
 const mockSyncMobilePosCheckoutsUseCase = jest.fn();
+const mockSyncMobilePosItemsUseCase = jest.fn();
 const mockSyncMobilePosShiftsUseCase = jest.fn();
 const mockSyncMobilePosHardwareEventsUseCase = jest.fn();
 const mockAcknowledgeMobilePosCheckpointUseCase = jest.fn();
@@ -13,6 +14,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     getMobilePosSettingsBootstrapUseCase: mockGetMobilePosSettingsBootstrapUseCase,
     getMobilePosDevicePolicyUseCase: mockGetMobilePosDevicePolicyUseCase,
     syncMobilePosCheckoutsUseCase: mockSyncMobilePosCheckoutsUseCase,
+    syncMobilePosItemsUseCase: mockSyncMobilePosItemsUseCase,
     syncMobilePosShiftsUseCase: mockSyncMobilePosShiftsUseCase,
     syncMobilePosHardwareEventsUseCase: mockSyncMobilePosHardwareEventsUseCase,
     acknowledgeMobilePosCheckpointUseCase: mockAcknowledgeMobilePosCheckpointUseCase
@@ -22,6 +24,7 @@ let getCatalogBootstrap;
 let getSettingsBootstrap;
 let getDevicePolicy;
 let syncCheckouts;
+let syncItems;
 let syncShifts;
 let syncHardwareEvents;
 let acknowledgeCheckpoint;
@@ -32,6 +35,7 @@ beforeAll(async () => {
     getSettingsBootstrap = mod.getSettingsBootstrap;
     getDevicePolicy = mod.getDevicePolicy;
     syncCheckouts = mod.syncCheckouts;
+    syncItems = mod.syncItems;
     syncShifts = mod.syncShifts;
     syncHardwareEvents = mod.syncHardwareEvents;
     acknowledgeCheckpoint = mod.acknowledgeCheckpoint;
@@ -174,6 +178,45 @@ describe('mobilePosHandlers transport contracts', () => {
                 summary: expect.objectContaining({ total_entries: 1 })
             }),
             message: 'Mobile POS checkout sync processed',
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('syncItems returns success message contract', async () => {
+        mockSyncMobilePosItemsUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                results: [{ local_transaction_id: 'prod-1', status: 'accepted', server_item_id: 42 }],
+                summary: { total_entries: 1, accepted_count: 1, replayed_count: 0, rejected_count: 0 }
+            }
+        });
+
+        const req = {
+            validatedData: {
+                device_id: 'IMIN-01',
+                entries: [{ local_transaction_id: 'prod-1', payload: { op: 'create', sku_code: 'SKU-1', name: 'Item 1', category: 'product', max_capacity: 10, unit_of_measure: 'pcs' } }]
+            },
+            body: {},
+            user: { user_id: 7, tenant_id: 'tenant-1' },
+            requestId: 'req-mobile-items'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await syncItems(req, res, next);
+
+        expect(mockSyncMobilePosItemsUseCase).toHaveBeenCalledWith({
+            payload: expect.objectContaining({ device_id: 'IMIN-01' }),
+            user: expect.objectContaining({ user_id: 7 })
+        });
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: expect.objectContaining({
+                summary: expect.objectContaining({ total_entries: 1, accepted_count: 1 })
+            }),
+            message: 'Mobile POS item sync processed',
             timestamp: expect.any(String)
         });
         expect(next).not.toHaveBeenCalled();
