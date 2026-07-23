@@ -200,6 +200,7 @@ export function useDiscoveryRuntime({
     handleDiscoveryClusterSelect,
     isClusterResultsActive: clusterResultStores.length > 0,
     isCategoryFilterActive: filterState.isCategoryFilterActive,
+    isDistanceFilterActive: filterState.isDistanceFilterActive,
     isOpenNowFilterActive: filterState.isOpenNowFilterActive,
     isSortFilterActive: filterState.isSortFilterActive,
     paginatedDiscoveryStores,

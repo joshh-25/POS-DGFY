@@ -610,6 +610,7 @@ export default function StorefrontApp() {
   const serviceCartFabRef = useRef(null);
   const {
     discoveryBusinessModeOptions,
+    discoveryDistanceFilterOptions,
     discoverySortLabelByValue
   } = useDiscoveryFilterOptions({
     workflowModeLabels: WORKFLOW_MODE_LABELS,
@@ -3172,6 +3173,7 @@ export default function StorefrontApp() {
     discoveryCategoryFilter,
     discoveryCoords,
     discoveryDistanceFilter,
+    discoveryDistanceFilterOptions,
     discoveryFilterToolbarRef,
     discoveryLayout,
     discoveryPinsBySlug,

@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: engineering
-last_reviewed: 2026-05-21
+last_reviewed: 2026-07-23
 applies_to: geo_search
 topic: geospatial_item_search
 ---
@@ -34,7 +34,7 @@ geoSearchHandlers.js -> geoSearchUseCase()
         |-- FULLTEXT search on geo_items + approved geo_item_aliases -> itemIds[]
         `-- ST_Distance_Sphere join on storefront_discovery_index -> stores[]
 
-Tenant (POST /api/v1/store/inventory/push)
+Tenant (POST /api/v1/store/inventory/push)          [manual/opt-in path]
     |
     |-- requireTenantContext
     |-- inventoryPushLimiter
@@ -50,9 +50,46 @@ geoInventoryWorker
     |-- RPOP polling with adaptive idle delay
     |-- resolveItemId(): approved alias -> normalized item -> create item + pending alias
     `-- upsertStoreItem(): INSERT ... ON DUPLICATE KEY UPDATE geo_store_items
+
+Storefront Discovery index reconciliation           [automatic path, in-process]
+    (services/storefrontDiscoveryIndexService.js -> reconcileStorefrontDiscoveryIndex)
+    |
+    |-- builds each tenant's item_search_snapshot (as before)
+    `-- fire-and-forget: geoCatalogSyncService.syncTenantGeoCatalog(tenantId, itemSearchSnapshot)
+            |-- resolveItemId() / upsertStoreItem() (same functions as the queue worker, called
+            |   directly in-process — no Redis/queue involved for this path)
+            `-- matchCuisineCategoryHeads(): auto-adds an *approved* global alias for the item's
+                broad category (e.g. "Grilled Shrimp" -> alias "seafood") using the same synonym
+                groups as publicSearchAliasPolicy.js, so a category-level query finds items whose
+                name doesn't literally contain the query term.
 ```
 
-The public Storefront discovery page currently uses `/api/v1/storefront/discovery` as the visible-result authority, including coordinate-aware ranking parameters when customer coordinates are available. The dedicated `/api/v1/storefront/geo-search` API remains available as a geospatial service endpoint, but the Storefront web client does not use it as a visible no-match authority. This avoids transient empty search states when geo-search indexing lags behind the Storefront discovery index.
+## Role in live Discovery search (updated 2026-07-23)
+
+The public Storefront discovery page's **visible-result authority is still**
+`/api/v1/storefront/discovery` (`storefrontDiscoveryRepository.js`) — the dedicated
+`/api/v1/storefront/geo-search` route above is still not called directly by the Storefront web
+client. However, `storefrontDiscoveryRepository.js` now calls `geoSearchRepository.searchNearbyStores(...)`
+**in-process** (same function the route uses, no HTTP hop) whenever a Discovery search includes
+customer coordinates, and unions any tenant it finds into the existing snapshot-based item matches.
+
+This is deliberately **additive-only, never a replacement**:
+- If geo-search finds a match the snapshot-based text/alias matching didn't (e.g. an item whose
+  name only shares a category, not literal text, with the query), that tenant is *added* to the
+  results.
+- If geo-search fails, times out, or returns nothing (e.g. its tables haven't been populated yet
+  for a given tenant), the snapshot-based matching still runs exactly as before — a tenant already
+  found by discovery-index text/alias matching is never removed or hidden because of geo-search.
+
+This union-only design is what avoids the exact regression the original design intentionally
+avoided (a transient empty-result state caused by geo-search lagging the Discovery index): geo-search
+can only ever add candidate stores to a Discovery search, never gate or replace the existing result set.
+
+Data freshness: geo_items/geo_store_items are now populated automatically as part of the same
+reconciliation job that rebuilds the Discovery index (fire-and-forget, so it never slows down
+reconciliation or the synchronous auto-repair path), rather than requiring tenants to call
+`POST /store/inventory/push` themselves. That endpoint and its Redis queue still exist and still work
+for any future opt-in/real-time ingestion use case, but are no longer the only way these tables get data.
 
 ---
 
