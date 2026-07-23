@@ -60,19 +60,24 @@ export const getDiscoveryFilterState = ({
   const isOpenNowFilterActive = discoveryOpenFilter === 'open';
   const isSortFilterActive = discoverySortBy !== 'nearest';
   const isCategoryFilterActive = discoveryCategoryFilter !== 'all';
+  const isDistanceFilterActive = discoveryDistanceFilter !== 'all';
   const hasActiveDiscoveryFilters = (
     isSortFilterActive
     || isCategoryFilterActive
     || discoveryOpenFilter !== 'all'
-    || discoveryDistanceFilter !== 'all'
+    || isDistanceFilterActive
     || discoveryRatingFilter !== 'all'
     || discoveryAvailabilityFilter !== 'all'
   );
 
   return {
-    activeDiscoveryFilterCount: Number(isOpenNowFilterActive) + Number(isSortFilterActive) + Number(isCategoryFilterActive),
+    activeDiscoveryFilterCount: Number(isOpenNowFilterActive)
+      + Number(isSortFilterActive)
+      + Number(isCategoryFilterActive)
+      + Number(isDistanceFilterActive),
     hasActiveDiscoveryFilters,
     isCategoryFilterActive,
+    isDistanceFilterActive,
     isOpenNowFilterActive,
     isSortFilterActive
   };

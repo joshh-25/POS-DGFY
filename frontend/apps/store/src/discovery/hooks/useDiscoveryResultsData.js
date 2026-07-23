@@ -61,8 +61,9 @@ export function useDiscoveryResultsData({
     discoverySortBy,
     hasDiscoverySearch,
     normalizeStorefrontReviewSummary,
+    search,
     storesWithNearestBranch
-  }), [discoveryCoords, discoverySortBy, hasDiscoverySearch, normalizeStorefrontReviewSummary, storesWithNearestBranch]);
+  }), [discoveryCoords, discoverySortBy, hasDiscoverySearch, normalizeStorefrontReviewSummary, search, storesWithNearestBranch]);
 
   const filteredDiscoveryStores = useMemo(() => filterDiscoveryStores({
     DISCOVERY_CATEGORY_MATCHERS,
