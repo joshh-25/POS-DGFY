@@ -2316,3 +2316,72 @@ step — flag before merging.
 Next: `useCheckoutSubmission` (`handleQuote`, `handleCheckout`, `handleDownloadCheckoutImage`,
 the F&B auto-quote effect), per the re-map's step 3 — the largest and riskiest remaining
 handler in this wave.
+
+## 2026-07-23 — Wave 7 step 3 + follow-on unsupervised pass
+
+New branch `claude/storefront-shell-wave7-step2-n67w18` (despite the name, this branch now
+carries step 2 onward), cut after PR #72 (Waves 5-6 + step 1) merged to `develop`. Merged
+`origin/develop` in cleanly first (no conflicts — this branch's history already contained
+everything PR #72 added). User then asked for an unsupervised multi-step pass targeting a
+500-1000 line reduction, so steps 3 onward proceeded back-to-back without a per-step go/no-go,
+each fully verified (lint/build/test/guardrail) and committed before starting the next.
+
+- **`shared/hooks/useCheckoutSubmission.js`** (step 3, new) — `handleQuote`, `handleCheckout`,
+  `handleDownloadCheckoutImage`, moved verbatim. Every dependency (state/derivations/setters)
+  was confirmed by grep to be declared before the handlers' original position — no ordering
+  cycle here, unlike step 2's `goStoreBookingPage`. `goStoreTrackPage` in particular is its own
+  early standalone handler in the shell (not part of the later `useStorefrontNavigation()`
+  destructure), so it's a plain param, no lazy getter needed. Updated
+  `fnbStorefront.contract.test.js`: the `'payment_type: fnbPaymentType'` literal moved with
+  `handleCheckout`, so that assertion now checks the new hook's source.
+- **`shared/hooks/useDeliveryPinResolution.js`** (new) — `handlePinMyLocation`, the
+  reverse-geocode effect, and `activeServiceLocationSummary`, moved together since all three
+  depend on `hasPinnedDeliveryLocation`/`deliveryLocationDisplayAddress` from
+  `useSignedInCheckoutAddresses()` — call site stays at the same position, right after that hook.
+- **`shared/utils/clipboard.js`** (new) — `copyTextToClipboard` moved out as a plain function,
+  not a hook: it had zero component-scoped dependencies (only the module-level `toast` import),
+  so a hook wrapper would have been unnecessary ceremony.
+- **`shared/hooks/useCustomerAuthNavigation.js`** (new) — the customer-auth/dashboard navigation
+  cluster: `buildCustomerDashboardReturnUrl`, `openCustomerDashboard`, `openAccountPanel`,
+  `buildContextualCustomerReturnUrl`, `persistCheckoutAuthResume`, `openCanonicalDgfyAuth`,
+  `openStorefrontHeaderAccount`, `openCheckoutAuthFlow`, `openBusinessRegistrationFlow` — seven
+  closures that reference each other, moved as one unit. `openBusinessRegistrationFlow` is
+  hoisted up from its original position (after the untouched guest-checkout-OTP block); nothing
+  in between depended on it, and all of its dependencies were already available earlier in the
+  shell. The existing `getOpenCheckoutAuthFlow: () => openCheckoutAuthFlow` lazy getter
+  elsewhere in the shell is untouched — it resolves the same local binding regardless of where
+  it's assigned from. This is the "knot" flagged in the step-1 write-up as risky to touch:
+  on closer inspection, `persistCheckoutAuthResume` (write) and the restore effect (below) only
+  share an implicit `writeCheckoutAuthResumeDraft`/`readCheckoutAuthResumeDraft` localStorage
+  contract, not a live JS reference, so extracting the write half doesn't require touching the
+  restore half. `openAccountPanel`/`buildContextualCustomerReturnUrl`/`persistCheckoutAuthResume`
+  are kept in the hook's return but not destructured in the shell (no external consumer left in
+  `StorefrontApp.jsx` — same pattern as `cartTotals` in step 1's `useCartMutations`).
+- **`shared/hooks/useCheckoutAuthResumeRestore.js`** (new) — the restore-side effect, moved
+  independently right after, closing out the "knot" story symmetrically.
+
+StorefrontApp.jsx line count: **4,839** (down from 5,264 at the start of step 2 in this
+session; **-425** across 5 commits). Discovery guardrail (`git diff --name-only origin/develop
+-- frontend/apps/store/src/discovery frontend/apps/store/src/features/discovery`) stayed empty
+after every commit.
+
+Verification per commit: `eslint apps/store/src/StorefrontApp.jsx` (plus each new hook file) →
+0 errors throughout (warning count held steady or dropped slightly — no new warning classes
+introduced). `build:store` succeeds after every commit. `vitest run apps/store --exclude
+'**/discoveryFlow.integration.test.jsx'` → 222/222 pass after every commit (the excluded file
+has 20 pre-existing failures confirmed unrelated to this work — reproduced identically with
+this branch's changes stashed out, traced to the custom-domain-routing merge from PR #71, not
+touched here).
+
+**QA still open:** none of this pass's changes (checkout submission, delivery-pin resolution,
+auth navigation, checkout-resume restore) have been walked in a browser or the local-test
+Docker stack yet. Given the auth-navigation and checkout-resume-restore extractions touch
+sign-in/resume behavior specifically, that flow (sign out → add to cart → attempt checkout →
+sign in → confirm cart/step state resumes correctly) should be checked before merging, in
+addition to a full checkout run (quote → checkout → ticket image download).
+
+Remaining candidates for further reduction, not attempted in this pass: the render/JSX band
+(route containers — the re-map's step 5, higher risk since JSX regressions aren't as fully
+caught by lint/vitest as logic moves are) and general dead-code cleanup (several
+already-unused variables flagged by ESLint predate this wave and were left alone as out of
+scope).
