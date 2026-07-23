@@ -489,6 +489,22 @@ api.interceptors.response.use(
       window.location.href = getPhoneCompletionRedirect();
     }
 
+    // Handle 429 rate-limit responses: attach a normalized retryAfterSeconds
+    // (mirroring what apps/store/src/services/requestJson.js already exposes)
+    // so callers can back off instead of retrying at their normal cadence into
+    // a limiter that's already rejecting them.
+    if (error.response?.status === 429) {
+      const headers = error.response?.headers || {};
+      const retryAfterHeader = headers['retry-after'] ?? headers['Retry-After'];
+      const retryAfterSeconds = Number(
+        error.response?.data?.retryAfterSeconds
+        ?? retryAfterHeader
+      );
+      error.retryAfterSeconds = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+        ? retryAfterSeconds
+        : null;
+    }
+
     // Log detailed validation errors for 422 responses
     if (error.response?.status === 422) {
       logError(`❌ API 422 Validation Error: ${formatApiValidationError(error.response.data)}`);

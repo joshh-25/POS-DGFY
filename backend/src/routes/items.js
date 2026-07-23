@@ -24,6 +24,7 @@ import {
 } from '../validators/itemValidator.js';
 import { authenticate, checkPermission, requireTenantAdmin } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
+import { itemOperationsLimiter } from '../middleware/rateLimiter.js';
 import {
   storefrontCatalogBulkImageUpload,
   storefrontCatalogGalleryImageUpload,
@@ -34,7 +35,11 @@ const router = express.Router();
 
 // All routes require authentication
 router.use(authenticate);
-
+// Authenticated item traffic is exempt from generalLimiter's shared IP bucket
+// (see isAuthenticatedItemOperation in rateLimiter.js) so a busy store network
+// doesn't block ordinary inventory work. This tenant/user-scoped limiter is
+// what stands in that bucket's place instead of leaving these routes uncapped.
+router.use(itemOperationsLimiter);
 // CSV Import routes - must be before :item_id routes to avoid conflicts
 router.get('/import/template', checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS), csvImportController.getTemplate);
 router.post('/import/preview', checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS), csvImportController.previewImport);
