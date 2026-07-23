@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-07-20
 declaration_id: 2026-07-20-pos-mobile-catalog-best-seller-tagging
-classification: major
-surfaces: pos,terminal,settings
+classification: regulatory
+surfaces: pos,terminal,settings,compliance
 reason_codes_impacted: POS_CATALOG_PRESENTATION,POS_BEST_SELLER_TAGGING_POLICY
 policy_version: 2026.07.20
 verification_evidence: backend-architecture-guardrails,backend-controller-boundaries,frontend-lint

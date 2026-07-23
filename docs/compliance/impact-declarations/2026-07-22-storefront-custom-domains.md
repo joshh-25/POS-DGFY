@@ -5,7 +5,7 @@ last_reviewed: 2026-07-22
 related_adr: docs/architecture/adr/0036-verified-storefront-custom-domains.md
 declaration_id: 2026-07-22-storefront-custom-domains
 classification: regulatory
-surfaces: settings,compliance
+surfaces: settings,compliance,pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.07.22
 verification_evidence: npm run check:compliance,npm run check:architecture,npm --prefix backend test -- --runTestsByPath tests/storefrontDomain.hostnamePolicy.test.js tests/storefrontDomain.dnsVerification.test.js tests/storefrontDomain.usecases.test.js tests/tenantHandler.storefrontDomain.test.js tests/corsPolicy.test.js,npm --prefix frontend run build:store
