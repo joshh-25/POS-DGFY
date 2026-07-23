@@ -39,6 +39,7 @@ import {
 } from './shared/model/storefrontCartModel.js';
 import { copyTextToClipboard as copyTextToClipboardUtil } from './shared/utils/clipboard.js';
 import { useCartMutations } from './shared/hooks/useCartMutations.js';
+import { useCheckoutAuthResumeRestore } from './shared/hooks/useCheckoutAuthResumeRestore.js';
 import { useCheckoutSubmission } from './shared/hooks/useCheckoutSubmission.js';
 import { useCustomerAuthNavigation } from './shared/hooks/useCustomerAuthNavigation.js';
 import { useDeliveryPinResolution } from './shared/hooks/useDeliveryPinResolution.js';
@@ -2412,53 +2413,39 @@ export default function StorefrontApp() {
       setCheckoutTab('checkout');
     }
   }, [canOpenTrackingDrawer, currentPathSubpage, isDgfyCustomerSignedIn, isFnbMode, routeSubpage, selectedTrackingPin, trackingResult]);
-  useEffect(() => {
-    if (typeof window === 'undefined' || hasAppliedCheckoutAuthResume || !isDgfyCustomerSignedIn) return;
-    const draft = readCheckoutAuthResumeDraft();
-    const normalizedDraftSlug = toSlug(draft?.routeSlug || '');
-    const normalizedCurrentSlug = toSlug(selectedStore?.slug || routeSlug || '');
-    if (!draft || !normalizedDraftSlug || !normalizedCurrentSlug || normalizedDraftSlug !== normalizedCurrentSlug) return;
-    setCart(Array.isArray(draft.cart) ? draft.cart : []);
-    if (draft.selectedLocationId != null) setSelectedLocationId(draft.selectedLocationId);
-    if (draft.selectedSavedLocationId) setSelectedSavedLocationId(draft.selectedSavedLocationId);
-    if (draft.orderMethod) setOrderMethod(draft.orderMethod);
-    if (draft.fnbScheduledFor) setFnbScheduledFor(draft.fnbScheduledFor);
-    if (draft.fnbScheduleMode) setFnbScheduleMode(draft.fnbScheduleMode);
-    if (draft.fnbSpecialInstructions) setFnbSpecialInstructions(draft.fnbSpecialInstructions);
-    if (draft.serviceAppointmentAt) setServiceAppointmentAt(draft.serviceAppointmentAt);
-    if (draft.servicePaymentTiming) setServicePaymentTiming(draft.servicePaymentTiming);
-    if (draft.customerAddress) setCustomerAddress(draft.customerAddress);
-    if (draft.serviceLocationLandmarkNote) setServiceLocationLandmarkNote(draft.serviceLocationLandmarkNote);
-    if (draft.resolvedDeliveryAddress) setResolvedDeliveryAddress(draft.resolvedDeliveryAddress);
-    if (draft.deliveryLocationAction) setDeliveryLocationAction(draft.deliveryLocationAction);
-    if (draft.customerPin) setCustomerPin(draft.customerPin);
-    if (draft.serviceIntakeResponses && typeof draft.serviceIntakeResponses === 'object') {
-      setServiceIntakeResponses(draft.serviceIntakeResponses);
-    }
-    const nextFnbStep = draft.checkoutTab === 'cart' ? 3 : null;
-    const nextSimpleStep = draft.checkoutTab === 'checkout' && !draft.selectedServiceItemId ? 1 : null;
-    const nextServiceStep = draft.selectedServiceItemId ? 1 : null;
-    if (Number.isInteger(nextFnbStep) && nextFnbStep > 0) setFnbOrderStep(nextFnbStep);
-    if (Number.isInteger(nextSimpleStep) && nextSimpleStep > 0) setSimpleOrderStep(nextSimpleStep);
-    if (Number.isInteger(nextServiceStep) && nextServiceStep > 0) setServiceBookingStep(nextServiceStep);
-    if (draft.checkoutTab) {
-      setCheckoutTab(draft.selectedServiceItemId ? 'checkout' : draft.checkoutTab);
-    }
-    if (draft.selectedServiceItemId && Array.isArray(catalog) && catalog.length > 0) {
-      const matchedService = catalog.find((item) => Number(item?.item_id) === Number(draft.selectedServiceItemId)) || null;
-      if (matchedService) setSelectedServiceDetail(matchedService);
-    }
-    setIsCheckoutOpen(true);
-    setHasAppliedCheckoutAuthResume(true);
-    clearCheckoutAuthResumeDraft();
-    toast.success('Signed in. Resuming your checkout.');
-  }, [
+  useCheckoutAuthResumeRestore({
     catalog,
+    clearCheckoutAuthResumeDraft,
     hasAppliedCheckoutAuthResume,
     isDgfyCustomerSignedIn,
+    readCheckoutAuthResumeDraft,
     routeSlug,
-    selectedStore?.slug
-  ]);
+    selectedStore,
+    setCart,
+    setCheckoutTab,
+    setCustomerAddress,
+    setCustomerPin,
+    setDeliveryLocationAction,
+    setFnbOrderStep,
+    setFnbScheduleMode,
+    setFnbScheduledFor,
+    setFnbSpecialInstructions,
+    setHasAppliedCheckoutAuthResume,
+    setIsCheckoutOpen,
+    setOrderMethod,
+    setResolvedDeliveryAddress,
+    setSelectedLocationId,
+    setSelectedSavedLocationId,
+    setSelectedServiceDetail,
+    setServiceAppointmentAt,
+    setServiceBookingStep,
+    setServiceIntakeResponses,
+    setServiceLocationLandmarkNote,
+    setServicePaymentTiming,
+    setSimpleOrderStep,
+    toSlug,
+    toast
+  });
   const {
     activeFnbOrderStepMeta,
     dgfyIceBlue,
