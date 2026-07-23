@@ -43,11 +43,10 @@ import { useStorefrontCatalog } from './shared/hooks/useStorefrontCatalog.js';
 import { useStoreCatalogLoader } from './shared/hooks/useStoreCatalogLoader.js';
 import { useStorefrontSession } from './shared/hooks/useStorefrontSession.js';
 import { useStorefrontNavigation } from './shared/hooks/useStorefrontNavigation.js';
+import { useGuestCustomerIdentity } from './shared/hooks/useGuestCustomerIdentity.js';
 import {
   buildCustomerFullName,
-  buildMaskedSavedCustomerPreview,
   clearCheckoutAuthResumeDraft,
-  clearSavedCustomerDetails,
   maskValue,
   normalizeSavedCustomerDetails,
   persistRecentStore,
@@ -187,7 +186,6 @@ import {
   TILING_SERVER,
   tileTransformRequest
 } from './app/runtime/storefrontMapRuntime.js';
-import { createCustomerIdentityRenderers } from './features/checkout/renderers/customerIdentityRenderers.jsx';
 import { DeliveryPinMap } from './features/locations/components/DeliveryPinMap.jsx';
 import { createAddressPinEditorRenderer } from './features/locations/renderers/addressPinEditorRenderer.jsx';
 import {
@@ -304,7 +302,6 @@ import {
 } from './tracking/accountActivity.js';
 import HospitalityBookingPanel from './modes/hospitality/booking/components/HospitalityBookingPanel.jsx';
 import {
-  createBlankGuestCustomerIdentity,
   shouldHydrateSavedGuestCustomerDetails
 } from './checkout/guestCustomerDetailsState.js';
 import {
@@ -666,14 +663,8 @@ export default function StorefrontApp() {
   const cart = useStorefrontStore((s) => s.cart.items);
   const setCart = useStorefrontStore((s) => s.cartSet);
   const [cartImageErrors, setCartImageErrors] = useState(() => new Set());
-  const [customerFirstName, setCustomerFirstName] = useState('');
-  const [customerLastName, setCustomerLastName] = useState('');
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [customerEmail, setCustomerEmail] = useState('');
   const [guestCheckoutUnlocked, setGuestCheckoutUnlocked] = useState(false);
   const [rememberCustomerDetails, setRememberCustomerDetails] = useState(() => Boolean(readStoreAuthToken()));
-  const [savedCustomerDetails, setSavedCustomerDetails] = useState(() => readSavedCustomerDetails());
   const [guestDetailsEditMode, setGuestDetailsEditMode] = useState(false);
   const [isUsingDifferentGuestDetails, setIsUsingDifferentGuestDetails] = useState(false);
   const [customerAddress, setCustomerAddress] = useState('');
@@ -909,14 +900,6 @@ export default function StorefrontApp() {
   const servicesPrimaryShadowStrong = 'rgba(15,118,110,0.32)';
   const servicesHighlight = '#f59e0b';
   const servicesHighlightSoft = '#fffbeb';
-  const maskedSavedCustomerPreview = useMemo(
-    () => buildMaskedSavedCustomerPreview(savedCustomerDetails),
-    [savedCustomerDetails]
-  );
-  const hasSavedCustomerDetails = Boolean(savedCustomerDetails && (savedCustomerDetails.name || savedCustomerDetails.phone || savedCustomerDetails.email));
-  const customerNameParts = useMemo(() => splitCustomerName(customerName), [customerName]);
-  const resolvedCustomerFirstName = String(customerFirstName || customerNameParts.firstName || '').trim();
-  const resolvedCustomerLastName = String(customerLastName || customerNameParts.lastName || '').trim();
   const {
     isGlobalAccountPage,
     isTenantAccountPage,
@@ -1041,96 +1024,72 @@ export default function StorefrontApp() {
   } = useCustomerDashboardIdentity({
     accountPanel,
     dgfySessionAccount,
-    savedCustomerDetails,
+    // `savedCustomerDetails` is now owned by `useGuestCustomerIdentity`, which is called
+    // below (after `accountIdentityRawName`/Phone/Email exist, since its identity-sync
+    // effect needs them as real reactive dependencies). Reading storage directly here
+    // avoids a TDZ reference to that hook's not-yet-declared state; every mutation path
+    // for saved customer details also writes through to this same storage, so the value
+    // is equivalent to the reactive state for this render.
+    savedCustomerDetails: readSavedCustomerDetails(),
     maskValue
   });
   const isGuestAccountDrawerState = !isStorefrontAccountAuthenticated;
   const trackingDrawerOrders = isDgfyCustomerSignedIn ? accountTrackedOrders : guestTrackedOrders;
 
-  const applySavedCustomerDetails = useCallback(() => {
-    if (!savedCustomerDetails) return;
-    const splitName = splitCustomerName(savedCustomerDetails.name || '');
-    setCustomerFirstName(savedCustomerDetails.firstName || splitName.firstName || '');
-    setCustomerLastName(savedCustomerDetails.lastName || splitName.lastName || '');
-    setCustomerName(savedCustomerDetails.name || '');
-    setCustomerPhone(savedCustomerDetails.phone || '');
-    setCustomerEmail(savedCustomerDetails.email || '');
-    toast.success('Saved details applied.');
-  }, [savedCustomerDetails]);
-
-  const handleGuestCustomerNameChange = useCallback((nextName) => {
-    const normalizedName = String(nextName || '').replace(/\s+/g, ' ').trimStart();
-    const splitName = splitCustomerName(normalizedName);
-    setCustomerName(normalizedName);
-    setCustomerFirstName(splitName.firstName || '');
-    setCustomerLastName(splitName.lastName || '');
-  }, []);
-
-  const handleOpenGuestDetailsEditor = useCallback(() => {
-    const blankGuestIdentity = createBlankGuestCustomerIdentity();
-    setCustomerFirstName(blankGuestIdentity.firstName);
-    setCustomerLastName(blankGuestIdentity.lastName);
-    setCustomerName(blankGuestIdentity.name);
-    setCustomerPhone(blankGuestIdentity.phone);
-    setCustomerEmail(blankGuestIdentity.email);
-    setIsUsingDifferentGuestDetails(true);
-    setGuestDetailsEditMode(true);
-  }, []);
-
-  const handleCancelGuestDetailsEditor = useCallback(() => {
-    if (hasSavedCustomerDetails) {
-      applySavedCustomerDetails();
-      setIsUsingDifferentGuestDetails(false);
-      setGuestDetailsEditMode(false);
-      return;
-    }
-    handleGuestCustomerNameChange(buildCustomerFullName(customerFirstName, customerLastName));
-  }, [applySavedCustomerDetails, customerFirstName, customerLastName, handleGuestCustomerNameChange, hasSavedCustomerDetails]);
-
-  const handleApplyGuestDetails = useCallback(() => {
-    handleGuestCustomerNameChange(buildCustomerFullName(customerFirstName, customerLastName) || customerName);
-    if (hasSavedCustomerDetails) {
-      setGuestDetailsEditMode(false);
-    }
-  }, [customerFirstName, customerLastName, customerName, handleGuestCustomerNameChange, hasSavedCustomerDetails]);
-
-  const clearSavedCustomerDetailsForDevice = useCallback(() => {
-    clearSavedCustomerDetails();
-    setSavedCustomerDetails(null);
-    toast.success('Saved details cleared.');
-  }, []);
-  useEffect(() => {
-    if (!isDgfyCustomerSignedIn) return;
-    if (accountIdentityRawName && !String(customerName || '').trim()) {
-      const splitName = splitCustomerName(accountIdentityRawName);
-      setCustomerFirstName((current) => current || splitName.firstName || '');
-      setCustomerLastName((current) => current || splitName.lastName || '');
-      setCustomerName(accountIdentityRawName);
-    }
-    if (accountIdentityRawPhone && !String(customerPhone || '').trim()) {
-      setCustomerPhone(accountIdentityRawPhone);
-    }
-    if (accountIdentityRawEmail && !String(customerEmail || '').trim()) {
-      setCustomerEmail(accountIdentityRawEmail);
-    }
-  }, [
-    accountIdentityRawEmail,
+  const {
+    customerFirstName,
+    setCustomerFirstName,
+    customerLastName,
+    setCustomerLastName,
+    customerName,
+    setCustomerName,
+    customerPhone,
+    setCustomerPhone,
+    customerEmail,
+    setCustomerEmail,
+    savedCustomerDetails,
+    setSavedCustomerDetails,
+    maskedSavedCustomerPreview,
+    hasSavedCustomerDetails,
+    applySavedCustomerDetails,
+    handleApplyGuestDetails,
+    clearSavedCustomerDetailsForDevice,
+    renderGuestIdentityFields,
+    renderGuestCheckoutEntry,
+    renderAccountOwnedIdentitySummary
+  } = useGuestCustomerIdentity({
     accountIdentityRawName,
     accountIdentityRawPhone,
-    customerFirstName,
-    customerEmail,
-    customerLastName,
-    customerName,
-    customerPhone,
-    isDgfyCustomerSignedIn
-  ]);
+    accountIdentityRawEmail,
+    isDgfyCustomerSignedIn,
+    rememberCustomerDetails,
+    guestDetailsEditMode,
+    setGuestDetailsEditMode,
+    setIsUsingDifferentGuestDetails,
+    isMobileViewport,
+    servicesBodyFont,
+    servicesDisplayFont,
+    customerAddress,
+    setCustomerAddress,
+    setRememberCustomerDetails,
+    setGuestCheckoutUnlocked,
+    // `openCheckoutAuthFlow`/`handleRequestGuestCheckoutOtp` are declared later in this
+    // component (they depend on state that in turn depends on this hook), so they can
+    // only be handed to the hook as lazy getters - the same forward-reference idiom
+    // already used for `getGoStoreTrackPage`/`getFetchTrackingPayload` above.
+    getOpenCheckoutAuthFlow: () => openCheckoutAuthFlow,
+    getHandleSendGuestCheckoutOtp: () => handleRequestGuestCheckoutOtp
+  });
+  const customerNameParts = useMemo(() => splitCustomerName(customerName), [customerName]);
+  const resolvedCustomerFirstName = String(customerFirstName || customerNameParts.firstName || '').trim();
+  const resolvedCustomerLastName = String(customerLastName || customerNameParts.lastName || '').trim();
   useEffect(() => {
     if (isDgfyCustomerSignedIn) return;
     const mergedGuestName = buildCustomerFullName(customerFirstName, customerLastName);
     if (mergedGuestName !== String(customerName || '').trim()) {
       setCustomerName(mergedGuestName);
     }
-  }, [customerFirstName, customerLastName, customerName, isDgfyCustomerSignedIn]);
+  }, [customerFirstName, customerLastName, customerName, isDgfyCustomerSignedIn, setCustomerName]);
   useEffect(() => {
     if (isDgfyCustomerSignedIn) {
       setGuestCheckoutUnlocked(false);
@@ -1182,7 +1141,12 @@ export default function StorefrontApp() {
     guestCheckoutUnlocked,
     isUsingDifferentGuestDetails,
     isDgfyCustomerSignedIn,
-    savedCustomerDetails
+    savedCustomerDetails,
+    setCustomerEmail,
+    setCustomerFirstName,
+    setCustomerLastName,
+    setCustomerName,
+    setCustomerPhone
   ]);
   useEffect(() => {
     if (!selectedStore?.slug) {
@@ -1285,7 +1249,7 @@ export default function StorefrontApp() {
     if (!profileFromAccount) return;
     setSavedCustomerDetails(profileFromAccount);
     writeSavedCustomerDetails(profileFromAccount);
-  }, [accountPanel.me]);
+  }, [accountPanel.me, setSavedCustomerDetails]);
 
   useEffect(() => () => {
     if (orderSuccessAnimationTimerRef.current) {
@@ -2399,73 +2363,6 @@ export default function StorefrontApp() {
     setGuestDetailsEditMode(false);
     handleRequestGuestCheckoutOtp();
   }, [handleApplyGuestDetails, handleRequestGuestCheckoutOtp]);
-  const {
-    renderGuestIdentityFields,
-    renderGuestCheckoutEntry,
-    renderAccountOwnedIdentitySummary
-  } = useMemo(() => createCustomerIdentityRenderers({
-    hasSavedCustomerDetails,
-    savedCustomerDetails,
-    rememberCustomerDetails,
-    maskedSavedCustomerPreview,
-    guestDetailsEditMode,
-    isMobileViewport,
-    servicesBodyFont,
-    servicesDisplayFont,
-    customerName,
-    customerFirstName,
-    customerLastName,
-    customerPhone,
-    customerEmail,
-    customerAddress,
-    accountIdentityRawName,
-    accountIdentityRawPhone,
-    accountIdentityRawEmail,
-    handleGuestCustomerNameChange,
-    setCustomerFirstName,
-    setCustomerLastName,
-    setCustomerPhone,
-    setCustomerEmail,
-    setCustomerAddress,
-    setRememberCustomerDetails,
-    handleOpenGuestDetailsEditor,
-    handleCancelGuestDetailsEditor,
-    handleApplyGuestDetails,
-    handleSendGuestCheckoutOtp: handleRequestGuestCheckoutOtp,
-    openCheckoutAuthFlow,
-    setGuestCheckoutUnlocked
-  }), [
-    hasSavedCustomerDetails,
-    savedCustomerDetails,
-    rememberCustomerDetails,
-    maskedSavedCustomerPreview,
-    guestDetailsEditMode,
-    isMobileViewport,
-    servicesBodyFont,
-    servicesDisplayFont,
-    customerName,
-    customerFirstName,
-    customerLastName,
-    customerPhone,
-    customerEmail,
-    customerAddress,
-    accountIdentityRawName,
-    accountIdentityRawPhone,
-    accountIdentityRawEmail,
-    handleGuestCustomerNameChange,
-    setCustomerFirstName,
-    setCustomerLastName,
-    setCustomerPhone,
-    setCustomerEmail,
-    setCustomerAddress,
-    setRememberCustomerDetails,
-    handleOpenGuestDetailsEditor,
-    handleCancelGuestDetailsEditor,
-    handleApplyGuestDetails,
-    handleRequestGuestCheckoutOtp,
-    openCheckoutAuthFlow,
-    setGuestCheckoutUnlocked
-  ]);
   const openBusinessRegistrationFlow = useCallback(async () => {
     if (typeof window === 'undefined') return;
     if (!isDgfyCustomerSignedIn) {
