@@ -2536,6 +2536,68 @@ service-state-sync `useEffect` cluster (deferred since Wave 8, still needs a QA-
 ZONE 4 catalog IIFE + catalog component prop bundles (~3130–3382 in the pre-wave shell), and the
 DiscoveryHomePage branch (out of scope — discovery guardrail).
 
+## 2026-07-23 — Overnight autonomous run: branch absorption + Wave 10
+
+Kicked off an unattended overnight run per user request: continue extracting safe,
+behavior-preserving JSX slices from `StorefrontApp.jsx`, each wave gated by lint/build/tests and
+committed independently, with browser QA accumulated for the user to walk in the morning. Prime
+directive for every wave: preserve current behavior exactly — verbatim moves only, no
+opportunistic changes.
+
+**Step 0 — absorbed `fix/rate-limit-hardening-followup` (PR #82).** Per user request, merged
+this branch's single commit (`94dd89c3`, a 429/rate-limit hardening follow-up touching
+`backend/src/middleware/rateLimiter.js`, `backend/src/routes/items.js`,
+`customer-dashboard/hooks/useCustomerDashboardTracking.js`,
+`modes/fnb/tracking/hooks/useFnbTrackingRuntime.js`, `tracking/storage.js`,
+`frontend/src/services/api.js`, plus tests) into this refactor branch, ahead of Wave 10. It does
+not touch `StorefrontApp.jsx` or anything the refactor moves, and all six source files were
+unchanged on this branch since the shared merge-base, so the merge was conflict-free. Verified
+green: frontend targeted tests (6/6), backend rate-limiter tests via the project's actual test
+script (`node --experimental-vm-modules .../jest.js --config jest.config.cjs --runInBand`, 20/20
+pass — note plain `npx jest` fails here due to ESM config, use the npm script), full store suite
+(237/237), eslint 0 errors, `build:store` passes. **Closed PR #82** afterward per explicit user
+authorization, with a comment pointing to this absorption.
+
+**Wave 10 — ZONE 4 catalog dispatcher extraction.** Moved the ~242-line catalog IIFE
+(`{catalogPermitted && selectedStore && (() => { … })()}`, the cross-mode dispatcher branching
+to `FnbProductDetailsRoute` / `StorefrontServicesCatalog` / `StorefrontClassicCatalog`) into
+**`app/pages/StorefrontCatalogRouteContainer.jsx`** + **`app/hooks/useStorefrontCatalogRouteProps.js`**
+(new `app/pages/`, `app/hooks/` dirs). Placement reasoning: the block imports across
+`modes/fnb`, `modes/services`, and `shared` — it can't live under `shared/` (guardrail) and
+isn't owned by any single mode, so it goes under `app/` alongside the existing `routing/` and
+`runtime/` app-layer code, the same cross-mode-composition role the shell itself plays. All 8
+IIFE-local derivations (`isMultiGroup`, `resolvedTab`, `activeGroup`, `rawItemsToRender`,
+`itemsToRender`, `catalogItemsToRender`, `fnbPageStart`, `ActiveServiceGroupIcon`) were confirmed
+used only within the moved span before the move — verbatim move was clean, no leakage. The props
+hook is a ~170-identifier plain pass-through bundle (no `useMemo`, same precedent as
+`useCheckoutTotalsAndGating`/Wave 9). Orphaned shell imports removed after grep-confirming no
+other consumer: `FnbProductDetailsRoute`, `StorefrontServicesCatalog`, `StorefrontClassicCatalog`,
+`SERVICE_CATEGORY_ICON_MAP`, `Sparkles` (lucide icon).
+
+StorefrontApp.jsx: **3,716 → 3,636** (-80 net; the ~242-line IIFE removal is partly offset by the
+~170-line hook-call params block added at the call site — same pattern as Wave 9's hook calls).
+
+Verification: eslint 0 errors (same 137 pre-existing warnings, no new ones), `build:store`
+passes, `vitest run apps/store --exclude '**/discoveryFlow.integration.test.jsx'` → 50/50 files,
+237/237 tests pass (no TDZ surprises this time — the hook call was placed directly in the
+existing Wave 9 hook-call cluster, immediately before the `isStandaloneAccountPage` early
+return). Discovery guardrail diff empty. Checked all three raw-source contract test files for
+literals that moved: none needed repointing — `fnbStorefront.contract.test.js`'s
+`toContain('FnbProductDetailsRoute')` assertion still passes because that string is a substring
+of the still-present `useFnbProductDetailsRoute`/`useFnbProductDetailsRouteProps` hook-call
+identifiers retained in the shell, not because the component import remained. One pre-existing
+piece of dead code (`const fnbSections = fnbCatalogPresentation.menuSections;`, unused before
+this move too) was carried over verbatim rather than cleaned up, per the no-opportunistic-changes
+rule.
+
+**QA still open (added to the running list):** F&B menu grid/sections/pagination/sort/view
+toggle/item-detail-route/add-to-cart fly animation; services catalog/group-tabs/filters/booking
+steps/review modal/pin-my-location; simple catalog + checkout route entry; classic catalog
+grid/promo-card apply/empty-state. This is in addition to all Wave 7–9 QA and the sign-in bug
+below, still open.
+
+Continuing to Wave 11 (hero/header/location band) next, same run.
+
 ## Known issues (deferred, pre-existing, unrelated to Waves 7–9)
 
 **Sign-in-mid-checkout still redirects to `/map-dgfy/account` instead of resuming checkout, on
