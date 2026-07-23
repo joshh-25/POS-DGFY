@@ -41,6 +41,7 @@ import {
 import { useStorefrontCartPersistence } from './shared/hooks/useStorefrontCartPersistence.js';
 import { useStorefrontCatalog } from './shared/hooks/useStorefrontCatalog.js';
 import { useStoreCatalogLoader } from './shared/hooks/useStoreCatalogLoader.js';
+import { useStorefrontNavigation } from './shared/hooks/useStorefrontNavigation.js';
 import {
   buildCustomerFullName,
   buildMaskedSavedCustomerPreview,
@@ -164,15 +165,12 @@ import {
   STORE_ORDER_SUBPAGE,
   STORE_SERVICE_SUBPAGE,
   STORE_TRACK_SUBPAGE,
-  storePath,
-  TENANT_STORE_BASE_PATH
+  storePath
 } from './app/routing/storefrontRouting.js';
 import {
-  buildBookingTarget,
   buildCatalogTarget,
   buildItemDetailTarget,
   buildOrderTarget,
-  buildServiceDetailTarget,
   buildStorefrontHistoryState,
   buildTrackTarget,
   isCurrentStorefrontTarget
@@ -599,28 +597,6 @@ export default function StorefrontApp() {
     workflowModeLabels: WORKFLOW_MODE_LABELS,
     workflowModeSelectValues: WORKFLOW_MODE_SELECT_VALUES
   });
-  const openServiceDetail = (service) => {
-    const normalized = toSlug(selectedStore?.slug || routeSlug);
-    const serviceItemId = String(service?.item_id || '').trim();
-    if (!normalized || !serviceItemId || typeof window === 'undefined') return;
-    const target = buildServiceDetailTarget(normalized, serviceItemId);
-    if (!isCurrentStorefrontTarget(target)) {
-      window.history.pushState(buildStorefrontHistoryState({
-        storeSlug: normalized,
-        storeSubpage: STORE_SERVICE_SUBPAGE,
-        serviceItemId
-      }), '', target);
-    }
-    setSelectedServiceDetail(service);
-    setRouteSlug(normalized);
-    setRouteSubpage(STORE_SERVICE_SUBPAGE);
-    setRouteServiceItemId(serviceItemId);
-  };
-  const closeServiceDetail = () => {
-    setSelectedServiceDetail(null);
-    setRouteServiceItemId(null);
-    goStoreCatalogPage();
-  };
   const [activeServiceTab, setActiveServiceTab] = useState(null);
   const [serviceSortOption, setServiceSortOption] = useState('recommended');
   const [isServiceFilterOpen, setIsServiceFilterOpen] = useState(false);
@@ -1363,18 +1339,6 @@ export default function StorefrontApp() {
   }, [catalog, isFnbMode, routeItemId]);
 
   useEffect(() => {
-    const onPopState = () => {
-      setRouteSlug(readRouteSlug());
-      setRouteSubpage(readStoreSubpage());
-      setRouteServiceItemId(readStoreServiceItemId());
-      setRouteItemId(readStoreItemId());
-      setRouteReviewToken(readStoreReviewToken());
-    };
-    window.addEventListener('popstate', onPopState);
-    return () => window.removeEventListener('popstate', onPopState);
-  }, []);
-
-  useEffect(() => {
     if (typeof document === 'undefined') return undefined;
     const lockBodyScroll = isFnbOrderSubpage || isCheckoutOpen || isGuestTrackingDrawerOpen || (isAccountDrawerOpen && !isStandaloneAccountPage);
     if (!lockBodyScroll) return undefined;
@@ -1494,22 +1458,6 @@ export default function StorefrontApp() {
     registerServiceWorker();
   }, []);
 
-  const goStore = (slug, locationId = null) => {
-    const normalized = toSlug(slug);
-    if (!normalized) return;
-    setPreferredStoreLocationSelection(locationId == null ? null : {
-      slug: normalized,
-      locationId: Number(locationId)
-    });
-    const target = buildCatalogTarget(normalized);
-    if (!isCurrentStorefrontTarget(target)) {
-      window.history.pushState(buildStorefrontHistoryState({ storeSlug: normalized }), '', target);
-    }
-    setRouteSlug(normalized);
-    setRouteSubpage(null);
-    setRouteServiceItemId(null);
-    setRouteItemId(null);
-  };
   const goStoreOrderForDiscovery = (slug, locationId = null, storeContext = null) => {
     const normalized = toSlug(slug);
     if (!normalized || typeof window === 'undefined') return;
@@ -1555,25 +1503,6 @@ export default function StorefrontApp() {
     setFnbOrderStep(checkoutResult ? 4 : 3);
     setSimpleOrderStep(checkoutResult ? 4 : 1);
     setCheckoutTab(resolvedInitialTab);
-    setIsCheckoutOpen(false);
-  };
-  const goStoreBookingPage = ({ preserveSelectedService = false } = {}) => {
-    const normalized = toSlug(selectedStore?.slug || routeSlug);
-    if (!normalized || typeof window === 'undefined') return;
-    const target = buildBookingTarget(normalized);
-    if (!isCurrentStorefrontTarget(target)) {
-      window.history.pushState(buildStorefrontHistoryState({
-        storeSlug: normalized,
-        storeSubpage: STORE_BOOKING_SUBPAGE
-      }), '', target);
-    }
-    setRouteSlug(normalized);
-    setRouteSubpage(STORE_BOOKING_SUBPAGE);
-    setRouteServiceItemId(null);
-    setRouteItemId(null);
-    if (!preserveSelectedService) {
-      setSelectedServiceDetail(null);
-    }
     setIsCheckoutOpen(false);
   };
   const goStoreOrderPage = ({ initialTab } = {}) => {
@@ -1631,43 +1560,6 @@ export default function StorefrontApp() {
     setCheckoutTab('track');
     setIsCheckoutOpen(false);
   };
-  const goStoreCatalogPage = () => {
-    const normalized = toSlug(selectedStore?.slug || routeSlug);
-    if (!normalized || typeof window === 'undefined') return;
-    const target = buildCatalogTarget(normalized);
-    if (!isCurrentStorefrontTarget(target)) {
-      window.history.pushState(buildStorefrontHistoryState({ storeSlug: normalized }), '', target);
-    }
-    setRouteSlug(normalized);
-    setRouteSubpage(null);
-    setRouteServiceItemId(null);
-    setRouteItemId(null);
-    setShowFnbMobileOrderSummary(false);
-    setIsCheckoutOpen(false);
-    setFnbOrderStep(3);
-    setSimpleOrderStep(1);
-  };
-
-  const goDiscovery = () => {
-    if (window.location.pathname !== TENANT_STORE_BASE_PATH) window.history.pushState({}, '', TENANT_STORE_BASE_PATH);
-    setRouteSlug(null);
-    setRouteSubpage(null);
-    setRouteServiceItemId(null);
-    setRouteItemId(null);
-    setSelectedServiceDetail(null);
-    setSelectedStore(null);
-    setStoreLocations([]);
-    setPrimaryLocationId(null);
-    setSelectedLocationId(null);
-    setHasSelectedBranchFromMenu(false);
-    setPreferredStoreLocationSelection(null);
-    setCatalog([]);
-    setCatalogError('');
-    setDiscoveryAppliedFilters(null);
-    setIsCheckoutOpen(false);
-    setActiveDiscoveryNavItem('Explore');
-  };
-
   const cartTotals = useMemo(() => buildCartTotals(cart), [cart]);
   const cartSubtotal = cartTotals.subtotal;
   const cartAddOnsTotal = cartTotals.addOnsTotal;
@@ -3475,6 +3367,37 @@ export default function StorefrontApp() {
     isFnbOrderSubpage,
     totalsForDisplay,
     viewportWidth,
+  });
+  const {
+    openServiceDetail,
+    closeServiceDetail,
+    goStore,
+    goStoreBookingPage,
+    goStoreCatalogPage,
+    goDiscovery
+  } = useStorefrontNavigation({
+    routeSlug,
+    selectedStore,
+    setRouteSlug,
+    setRouteSubpage,
+    setRouteServiceItemId,
+    setRouteItemId,
+    setRouteReviewToken,
+    setSelectedServiceDetail,
+    setPreferredStoreLocationSelection,
+    setIsCheckoutOpen,
+    setShowFnbMobileOrderSummary,
+    setFnbOrderStep,
+    setSimpleOrderStep,
+    setSelectedStore,
+    setStoreLocations,
+    setPrimaryLocationId,
+    setSelectedLocationId,
+    setHasSelectedBranchFromMenu,
+    setCatalog,
+    setCatalogError,
+    setDiscoveryAppliedFilters,
+    setActiveDiscoveryNavItem
   });
   const fnbCartDrawerRouteProps = useFnbCartDrawerRouteProps({
     cart,
