@@ -1,7 +1,17 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 
-export const buildListStorefrontDiscoveryUseCase = ({ storefrontDiscoveryRepository }) => {
+const withCanonicalOrigins = async (rows, storefrontDomainRepository) => {
+    if (!storefrontDomainRepository) return rows || [];
+    const tenantIds = [...new Set((rows || []).map((row) => String(row.tenant_id || '')).filter(Boolean))];
+    const origins = await storefrontDomainRepository.listActiveCanonicalOriginsByTenantIds(tenantIds);
+    return (rows || []).map((row) => ({
+        ...row,
+        storefront_url: origins.get(String(row.tenant_id)) || (row.slug ? `https://dgfy.ph/store/${row.slug}` : '')
+    }));
+};
+
+export const buildListStorefrontDiscoveryUseCase = ({ storefrontDiscoveryRepository, storefrontDomainRepository = null }) => {
     return async ({ query = {} } = {}) => {
         if (query && (typeof query !== 'object' || Array.isArray(query))) {
             return fail(new DomainError(
@@ -13,8 +23,9 @@ export const buildListStorefrontDiscoveryUseCase = ({ storefrontDiscoveryReposit
 
         try {
             const result = await storefrontDiscoveryRepository.listDiscovery(query || {});
+            const stores = await withCanonicalOrigins(result.rows || [], storefrontDomainRepository);
             return ok({
-                stores: result.rows || [],
+                stores,
                 pagination: result.pagination || {
                     page: 1,
                     limit: 20,
@@ -60,7 +71,7 @@ export const toMapPinSourceRow = (store = {}) => ({
     category: String(store.workflow_mode || '').trim(),
     address: String(store.address_line || '').trim(),
     slug: String(store.slug || '').trim(),
-    storefront_url: store.slug ? `https://dgfy.ph/store/${store.slug}` : '',
+    storefront_url: store.storefront_url || (store.slug ? `https://dgfy.ph/store/${store.slug}` : ''),
     tenant_id: store.tenant_id,
     location_id: store.location_id,
     storefront_open: store.storefront_open === true,
@@ -134,7 +145,7 @@ const toMapPinSourceRowWithItems = (store = {}, { includeItems = false, itemLimi
     };
 };
 
-export const buildListStorefrontMapPinsUseCase = ({ storefrontDiscoveryRepository }) => {
+export const buildListStorefrontMapPinsUseCase = ({ storefrontDiscoveryRepository, storefrontDomainRepository = null }) => {
     return async ({ query = {} } = {}) => {
         if (query && (typeof query !== 'object' || Array.isArray(query))) {
             return fail(new DomainError(
@@ -155,7 +166,8 @@ export const buildListStorefrontMapPinsUseCase = ({ storefrontDiscoveryRepositor
                 limit: discoveryQuery.limit || 100,
                 include_match_meta: false
             });
-            const rows = (result.rows || [])
+            const enrichedRows = await withCanonicalOrigins(result.rows || [], storefrontDomainRepository);
+            const rows = enrichedRows
                 .filter(hasMapCoordinates)
                 .map((store) => toMapPinSourceRowWithItems(store, {
                     includeItems: includeItems === true,
@@ -181,7 +193,7 @@ export const buildListStorefrontMapPinsUseCase = ({ storefrontDiscoveryRepositor
     };
 };
 
-export const buildGetStorefrontProfileUseCase = ({ storefrontDiscoveryRepository }) => {
+export const buildGetStorefrontProfileUseCase = ({ storefrontDiscoveryRepository, storefrontDomainRepository = null }) => {
     return async ({ slug }) => {
         const normalizedSlug = String(slug || '').trim().toLowerCase();
         if (!normalizedSlug) {
@@ -202,7 +214,8 @@ export const buildGetStorefrontProfileUseCase = ({ storefrontDiscoveryRepository
                 ));
             }
 
-            return ok(store);
+            const [enriched] = await withCanonicalOrigins([store], storefrontDomainRepository);
+            return ok(enriched);
         } catch (error) {
             return fail(new DomainError(
                 DomainErrorCode.INTERNAL_ERROR,

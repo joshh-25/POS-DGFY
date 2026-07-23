@@ -58,6 +58,22 @@ describe('listStorefrontMapPinsUseCase', () => {
     expect(result.data.pins[0]).not.toHaveProperty('available_item_count');
   });
 
+  it('prefers an active canonical custom-domain URL', async () => {
+    const listDiscovery = jest.fn(async () => ({
+      rows: [{ tenant_id: 'tenant-1', tenant_name: 'Grand Matador', slug: 'grand-matador', latitude: 10.7, longitude: 122.5 }],
+      pagination: { page: 1, limit: 100, total: 1, totalPages: 1 }
+    }));
+    const listActiveCanonicalOriginsByTenantIds = jest.fn(async () => new Map([
+      ['tenant-1', 'https://grandmatador.com']
+    ]));
+    const useCase = buildListStorefrontMapPinsUseCase({
+      storefrontDiscoveryRepository: { listDiscovery },
+      storefrontDomainRepository: { listActiveCanonicalOriginsByTenantIds }
+    });
+    const result = await useCase({ query: {} });
+    expect(result.data.pins[0].storefront_url).toBe('https://grandmatador.com');
+  });
+
   it('excludes no-location storefront rows from public map pins', async () => {
     const listDiscovery = jest.fn(async () => ({
       rows: [
