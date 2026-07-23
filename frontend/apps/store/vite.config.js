@@ -28,7 +28,9 @@ const normalizedBasePath = (() => {
 const proxyTargets = {
   '/api': {
     target: apiProxyTarget,
-    changeOrigin: true,
+    // Preserve the browser Host header so local custom storefront domains can
+    // be resolved by the backend tenant middleware.
+    changeOrigin: false,
     secure: false
   },
   '/uploads': {

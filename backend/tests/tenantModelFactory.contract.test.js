@@ -43,6 +43,9 @@ describe('tenantModelFactory contract', () => {
             expect(models.DgfyAccount).toBeUndefined();
             expect(models.DgfyAccountHandoff).toBeUndefined();
             expect(models.DgfyAccountTenantMembership).toBeUndefined();
+            expect(models.StorefrontCustomDomain).toBeUndefined();
+            expect(models.StorefrontCustomDomainAuditLog).toBeUndefined();
+            expect(models.StorefrontCustomDomainOperation).toBeUndefined();
             expect(models.PosTransaction.rawAttributes.fnb_check_id.references.model).toBe('fnb_checks');
             expect(models.PosTransaction.rawAttributes.fnb_table_id.references.model).toBe('fnb_dining_tables');
         } finally {
@@ -68,6 +71,9 @@ describe('tenantModelFactory contract', () => {
                 defaultDb.EngagementEvent.getTableName(),
                 defaultDb.AiUsageLog.getTableName(),
                 defaultDb.StorefrontDiscoveryIndex.getTableName(),
+                defaultDb.StorefrontCustomDomain.getTableName(),
+                defaultDb.StorefrontCustomDomainAuditLog.getTableName(),
+                defaultDb.StorefrontCustomDomainOperation.getTableName(),
                 defaultDb.TenantComplianceArtifact.getTableName(),
                 defaultDb.TenantCompliancePeripheral.getTableName(),
                 defaultDb.TenantComplianceAuditLog.getTableName(),

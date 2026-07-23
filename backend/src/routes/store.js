@@ -50,8 +50,10 @@ import {
 import {
     validateCreateFnbReservation
 } from '../validators/fnbValidator.js';
+import { getStorefrontDomainContext } from '../modules/storefrontDomains/controllers/storefrontDomainHandlers.js';
 
 const router = express.Router();
+router.get('/domain-context', setNoStoreCacheControl, getStorefrontDomainContext);
 router.use(requireTenantContext);
 const catalogReadCacheControl = setReadCacheControl({
     maxAgeSeconds: 45,

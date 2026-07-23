@@ -159,6 +159,7 @@ import {
   readStoreServiceItemId,
   readStoreSubpage,
   readTrackingPinFromQuery,
+  setCustomStorefrontRouteContext,
   STORE_BOOKING_SUBPAGE,
   STORE_ITEM_SUBPAGE,
   STORE_ORDER_SUBPAGE,
@@ -406,6 +407,43 @@ export default function StorefrontApp() {
   const [routeItemId, setRouteItemId] = useState(() => readStoreItemId());
   const [routeReviewToken, setRouteReviewToken] = useState(() => readStoreReviewToken());
   const previousRouteSlugRef = useRef(routeSlug);
+
+  useEffect(() => {
+    if (routeSlug || typeof window === 'undefined') return undefined;
+    let cancelled = false;
+
+    fetch('/api/v1/store/domain-context', { credentials: 'include', cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const payload = await response.json().catch(() => null);
+        return payload?.data || null;
+      })
+      .then((context) => {
+        if (cancelled || !context?.slug) return;
+
+        if (context.routing_mode === 'custom_domain_alias' && context.redirect_to) {
+          const target = new URL(context.redirect_to);
+          target.pathname = window.location.pathname;
+          target.search = window.location.search;
+          target.hash = window.location.hash;
+          window.location.replace(target.toString());
+          return;
+        }
+
+        if (context.routing_mode !== 'custom_domain') return;
+        setCustomStorefrontRouteContext(context);
+        setRouteSlug(toSlug(context.slug));
+        setRouteSubpage(readStoreSubpage());
+        setRouteServiceItemId(readStoreServiceItemId());
+        setRouteItemId(readStoreItemId());
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [routeSlug]);
+
   const viewportWidth = useStorefrontStore(selectViewportWidth);
   const setViewportWidth = useStorefrontStore((s) => s.uiSetViewportWidth);
   const isMobileViewport = viewportWidth < 840;
