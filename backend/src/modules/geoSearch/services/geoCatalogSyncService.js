@@ -9,28 +9,10 @@
  * Always called fire-and-forget by the caller — errors are logged, never thrown,
  * so a geo-sync failure can never fail a Discovery index reconciliation pass.
  */
-import { GeoItemAlias } from '../../../models/index.js';
 import { resolveItemId, upsertStoreItem } from '../../../workers/geoInventoryWorker.js';
+import { geoSearchRepository } from '../repositories/geoSearchRepository.js';
 import { matchCuisineCategoryHeads } from '../../shared/utils/publicSearchAliasPolicy.js';
 import logger from '../../../config/logger.js';
-
-const ensureApprovedAlias = async (itemId, aliasName) => {
-    const existing = await GeoItemAlias.findOne({
-        where: { item_id: itemId, alias_name: aliasName }
-    });
-    if (existing) {
-        if (existing.moderation_status !== 'approved') {
-            await existing.update({ moderation_status: 'approved' });
-        }
-        return;
-    }
-    await GeoItemAlias.create({
-        item_id: itemId,
-        alias_name: aliasName,
-        tenant_id: null, // global alias — this is a category label, not tenant-submitted
-        moderation_status: 'approved'
-    });
-};
 
 const syncSnapshotItem = async ({ tenantId, entry }) => {
     const itemName = String(entry?.item_name || '').trim();
@@ -53,7 +35,7 @@ const syncSnapshotItem = async ({ tenantId, entry }) => {
 
     const categoryHeads = matchCuisineCategoryHeads(`${itemName} ${entry?.category || ''}`);
     for (const head of categoryHeads) {
-        await ensureApprovedAlias(geoItemId, head);
+        await geoSearchRepository.ensureApprovedAlias(geoItemId, head);
     }
 };
 
