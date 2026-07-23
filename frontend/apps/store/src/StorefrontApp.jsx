@@ -81,12 +81,9 @@ import { StorefrontCheckoutSummaryContainer } from './shared/components/Storefro
 import { useStorefrontCheckoutSummaryProps } from './shared/hooks/useStorefrontCheckoutSummaryProps.js';
 import { StorefrontCatalogRouteContainer } from './app/pages/StorefrontCatalogRouteContainer.jsx';
 import { useStorefrontCatalogRouteProps } from './app/hooks/useStorefrontCatalogRouteProps.js';
+import { StorefrontHeroBandContainer } from './app/pages/StorefrontHeroBandContainer.jsx';
+import { useStorefrontHeroBandProps } from './app/hooks/useStorefrontHeroBandProps.js';
 import { StorefrontCartFlyAnimations } from './shared/components/StorefrontCartFlyAnimations.jsx';
-import { DefaultStorefrontHero } from './shared/components/DefaultStorefrontHero.jsx';
-import { StorefrontHeroShell } from './shared/components/StorefrontHeroShell.jsx';
-import {
-  buildVisibleStorefrontContactRows
-} from './shared/utils/storefrontContactPresentation.js';
 import { openStorefrontActionLink } from './shared/utils/externalLinks.js';
 import { money, toSlug } from './shared/utils/storefrontFormatters.js';
 import { createStorefrontIdempotencyKey } from './shared/utils/idempotency.js';
@@ -173,7 +170,6 @@ import {
   normalizeCoordinatePair,
   reverseGeocodeDeliveryPin
 } from './features/locations/utils/pinnedDeliveryAddress.js';
-import { StorefrontExpandableBusinessHours } from './features/shared-storefront/components/StorefrontExpandableBusinessHours.jsx';
 import { StorefrontDropdown } from './features/shared-storefront/components/StorefrontDropdown.jsx';
 import { StorefrontFollowFloatingAction } from './shared/components/storefront/StorefrontFollowFloatingAction.jsx';
 import { useStorefrontClosedNotice } from './shared/hooks/useStorefrontClosedNotice.js';
@@ -183,26 +179,15 @@ import { StorefrontCartFab } from './shared/components/storefront/StorefrontCart
 import { StorefrontPaymentUnavailableModal } from './shared/components/storefront/StorefrontPaymentUnavailableModal.jsx';
 import {
   formatFollowersLabel,
-  getDeliveryPlatformLinks,
   getStorefrontContactIcon,
   maskReviewerName
 } from './features/shared-storefront/utils/storefrontDisplayUtils.jsx';
 import { StorefrontExpandedMapModal } from './discovery/components/StorefrontExpandedMapModal.jsx';
 import { DiscoveryHomePage } from './discovery/pages/DiscoveryHomePage.jsx';
 import {
-  HERO_CANVAS_MAX_WIDTH,
-  MAX_STOREFRONT_WHY_CHOOSE_US,
-  MOBILE_DROPDOWN_MENU_STYLE,
-  MOBILE_DROPDOWN_OPTION_STYLE,
-  MOBILE_NATIVE_SELECT_STYLE,
-  STOREFRONT_CONTACT_INFO_COLUMNS,
-  STOREFRONT_INFO_ICON_COLUMN,
-  STOREFRONT_INFO_PANEL_MAX_WIDTH,
-  STOREFRONT_INFO_ROW_GAP,
   STYLES
 } from './shared/theme/storefrontStyleTokens.js';
 import { ServicesDiscoveryDetailModal } from './modes/services/storefront/components/ServicesDiscoveryDetailModal.jsx';
-import { ServicesHero } from './modes/services/storefront/components/ServicesHero.jsx';
 import {
   buildServiceBookingFieldPlan,
   buildServicePaymentOptions,
@@ -224,7 +209,6 @@ import { useServiceBookingFieldFocus } from './modes/services/booking/hooks/useS
 import { useServiceBookingReviewProps } from './modes/services/booking/hooks/useServiceBookingReviewProps.js';
 import { useServiceCartDrawerProps } from './modes/services/booking/hooks/useServiceCartDrawerProps.js';
 import { ServiceBookingReviewContainer } from './modes/services/booking/pages/ServiceBookingReviewContainer.jsx';
-import { SimpleHero } from './modes/simple/storefront/components/SimpleHero.jsx';
 import { SimpleCartFloatingButton } from './modes/simple/checkout/components/SimpleCartFloatingButton.jsx';
 import { SimpleCartDrawerSurface } from './modes/simple/checkout/components/SimpleCartDrawerSurface.jsx';
 import { useSimpleCartDrawerProps } from './modes/simple/checkout/hooks/useSimpleCartDrawerProps.js';
@@ -248,7 +232,6 @@ import { useDiscoverySearchActions } from './discovery/hooks/useDiscoverySearchA
 import { useDiscoveryState } from './discovery/hooks/useDiscoveryState.js';
 import { useDiscoveryStoreLoader } from './discovery/hooks/useDiscoveryStoreLoader.js';
 import { useDiscoveryViewport } from './discovery/hooks/useDiscoveryViewport.js';
-import { FnbHero } from './modes/fnb/storefront/components/FnbHero.jsx';
 import { useFnbCatalogRuntime } from './modes/fnb/storefront/hooks/useFnbCatalogRuntime.js';
 import { useFnbProductDetailsRoute } from './modes/fnb/storefront/hooks/useFnbProductDetailsRoute.js';
 import { useFnbProductDetailsRouteProps } from './modes/fnb/storefront/hooks/useFnbProductDetailsRouteProps.js';
@@ -278,7 +261,6 @@ import {
   mergeAccountPanelActivity,
   resolveStorefrontRouteSlug
 } from './tracking/accountActivity.js';
-import HospitalityBookingPanel from './modes/hospitality/booking/components/HospitalityBookingPanel.jsx';
 import {
   shouldHydrateSavedGuestCustomerDetails
 } from './checkout/guestCustomerDetailsState.js';
@@ -3124,6 +3106,64 @@ export default function StorefrontApp() {
     simpleCheckoutRouteProps,
     simpleStorefrontModel
   });
+  const storefrontHeroBandProps = useStorefrontHeroBandProps({
+    selectedStore,
+    withAssetOrigin,
+    routeSlug,
+    filteredCatalog,
+    hasCatalogSearchQuery,
+    isServicesMode,
+    isBookingSubpage,
+    isServiceDetailsSubpage,
+    serviceHeroModel,
+    isMobileViewport,
+    viewportWidth,
+    hasMultipleStoreBranches,
+    hasSelectedBranchFromMenu,
+    selectedLocationId,
+    handleBranchMenuSelection,
+    storeLocations,
+    catalogSearch,
+    setCatalogSearch,
+    goDiscovery,
+    hasServiceCart,
+    goStoreBookingPage,
+    cartCount,
+    modeAdapter,
+    isBrandingImageBlocked,
+    markBrandingImageError,
+    selectedLocation,
+    isAboutExpanded,
+    setIsAboutExpanded,
+    isServiceGalleryExpanded,
+    setIsServiceGalleryExpanded,
+    openStorefrontActionLink,
+    openTrackPanel,
+    openStorefrontHeaderAccount,
+    openBusinessRegistrationFlow,
+    isStorefrontAccountAuthenticated,
+    activeCustomerOrderCount,
+    accountIdentityName,
+    accountIdentityRawEmail,
+    accountIdentityContact,
+    accountIdentityInitials,
+    followUiEnabledForStore,
+    shareEnabledForStore,
+    followState,
+    handleFollowAction,
+    isFnbMode,
+    isSimpleMode,
+    isOrderSubpage,
+    isFnbDetailsSubpage,
+    heroSectionModel,
+    fnbViewModel,
+    setIsCheckoutOpen,
+    handleShareAction,
+    isResolvedOrderSubpage,
+    simpleStorefrontModel,
+    setSelectedLocationId,
+    isHospitalityMode
+  });
   if (isStandaloneAccountPage) return customerDashboardStandaloneRouteNode;
 
   return (
@@ -3258,211 +3298,8 @@ export default function StorefrontApp() {
 
         {isStorePage && (
           <>
-            {selectedStore && (
-              <div style={{ position: 'absolute', left: -99999, top: 'auto', width: 1, height: 1, overflow: 'hidden' }}>
-                {selectedStore.storefront_profile_image_url ? (
-                  <img alt={`${selectedStore.tenant_name} profile`} src={withAssetOrigin(selectedStore.storefront_profile_image_url)} />
-                ) : null}
-                {selectedStore.storefront_cover_image_url ? (
-                  <img alt={`${selectedStore.tenant_name} cover`} src={withAssetOrigin(selectedStore.storefront_cover_image_url)} />
-                ) : null}
-                <div>{`Tenant page: ${routeSlug}`}</div>
-                {Array.isArray(filteredCatalog) && filteredCatalog.length === 0 ? <div>Storefront items are not set up yet</div> : null}
-                {Array.isArray(filteredCatalog) && filteredCatalog.length === 0 ? <div>Customer checkout will be available once at least one storefront item is enabled.</div> : null}
-                {Array.isArray(filteredCatalog) && filteredCatalog.length === 0 && hasCatalogSearchQuery ? <div>No items are available to search yet</div> : null}
-              </div>
-            )}
-            {isServicesMode && !isBookingSubpage && !isServiceDetailsSubpage && selectedStore && serviceHeroModel && (
-              <ServicesHero
-                  serviceHeroModel={serviceHeroModel}
-                  selectedStore={selectedStore}
-                  isMobileViewport={isMobileViewport}
-                  viewportWidth={viewportWidth}
-                  hasMultipleStoreBranches={hasMultipleStoreBranches}
-                hasSelectedBranchFromMenu={hasSelectedBranchFromMenu}
-                selectedLocationId={selectedLocationId}
-                handleBranchMenuSelection={handleBranchMenuSelection}
-                storeLocations={storeLocations}
-                catalogSearch={catalogSearch}
-                setCatalogSearch={setCatalogSearch}
-                goDiscovery={goDiscovery}
-                hasServiceCart={hasServiceCart}
-                goStoreBookingPage={goStoreBookingPage}
-                cartCount={cartCount}
-                modeAdapter={modeAdapter}
-                isBrandingImageBlocked={isBrandingImageBlocked}
-                markBrandingImageError={markBrandingImageError}
-                selectedLocation={selectedLocation}
-                isAboutExpanded={isAboutExpanded}
-                setIsAboutExpanded={setIsAboutExpanded}
-                  isServiceGalleryExpanded={isServiceGalleryExpanded}
-                  setIsServiceGalleryExpanded={setIsServiceGalleryExpanded}
-                  openStorefrontActionLink={openStorefrontActionLink}
-                  openTrackPanel={openTrackPanel}
-                  openAccountPanel={openStorefrontHeaderAccount}
-                  onRegisterBusiness={openBusinessRegistrationFlow}
-                  isStorefrontAccountAuthenticated={isStorefrontAccountAuthenticated}
-                  activeCustomerOrderCount={activeCustomerOrderCount}
-                  accountIdentityName={accountIdentityName}
-                  accountIdentityRawEmail={accountIdentityRawEmail}
-                  accountIdentityContact={accountIdentityContact}
-                  accountIdentityInitials={accountIdentityInitials}
-                  followEnabled={followUiEnabledForStore}
-                  shareEnabled={shareEnabledForStore}
-                  followState={followState}
-                  handleFollowAction={handleFollowAction}
-                  ui={{
-                    Badge,
-                    GhostButton,
-                    PrimaryButton,
-                    StorefrontExpandableBusinessHours,
-                    StorefrontHeroShell
-                  }}
-                  heroStyles={{
-                    HERO_CANVAS_MAX_WIDTH,
-                    MAX_STOREFRONT_WHY_CHOOSE_US,
-                    MOBILE_DROPDOWN_MENU_STYLE,
-                    MOBILE_DROPDOWN_OPTION_STYLE,
-                    MOBILE_NATIVE_SELECT_STYLE,
-                    STOREFRONT_CONTACT_INFO_COLUMNS,
-                    STOREFRONT_INFO_ICON_COLUMN,
-                    STOREFRONT_INFO_PANEL_MAX_WIDTH,
-                    STOREFRONT_INFO_ROW_GAP,
-                    STYLES
-                  }}
-                  helperFns={{
-                    buildVisibleStorefrontContactRows,
-                    getDeliveryPlatformLinks
-                  }}
-                />
-            )}
-            {!isServicesMode && (
-              <>
-                {/* ZONE 1: Navigation & Header */}
-                {!isFnbMode && !isSimpleMode && (
-                  <section style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-                    <GhostButton onClick={goDiscovery} style={{ padding: '8px 16px', minHeight: 44, fontSize: 13 }}>
-                      Back to Discovery
-                    </GhostButton>
-                    <div style={{ color: STYLES.colors.muted, fontSize: 13, fontWeight: 700 }}>{routeSlug} {' / '} {selectedStore?.tenant_name}</div>
-                    <div style={{ position: 'absolute', left: -99999, top: 'auto', width: 1, height: 1, overflow: 'hidden' }}>
-                      Tenant page: {routeSlug}
-                    </div>
-                  </section>
-                )}
+            <StorefrontHeroBandContainer {...storefrontHeroBandProps} />
 
-                {/* ZONE 2: Hero Branding */}
-                {isFnbMode && !isOrderSubpage && !isFnbDetailsSubpage ? (
-                  <FnbHero
-                    modeAdapter={modeAdapter}
-                    heroSectionModel={heroSectionModel}
-                    fnbViewModel={fnbViewModel}
-                    selectedStore={selectedStore}
-                    isMobileViewport={isMobileViewport}
-                    cartCount={cartCount}
-                    setIsCheckoutOpen={setIsCheckoutOpen}
-                    goDiscovery={goDiscovery}
-                    hasMultipleStoreBranches={hasMultipleStoreBranches}
-                    hasSelectedBranchFromMenu={hasSelectedBranchFromMenu}
-                    selectedLocationId={selectedLocationId}
-                    handleBranchMenuSelection={handleBranchMenuSelection}
-                    storeLocations={storeLocations}
-                    catalogSearch={catalogSearch}
-                    setCatalogSearch={setCatalogSearch}
-                  isBrandingImageBlocked={isBrandingImageBlocked}
-                  markBrandingImageError={markBrandingImageError}
-                  selectedLocation={selectedLocation}
-                    openStorefrontActionLink={openStorefrontActionLink}
-                    openTrackPanel={openTrackPanel}
-                    openAccountPanel={openStorefrontHeaderAccount}
-                    onRegisterBusiness={openBusinessRegistrationFlow}
-                    isStorefrontAccountAuthenticated={isStorefrontAccountAuthenticated}
-                    activeCustomerOrderCount={activeCustomerOrderCount}
-                    accountIdentityName={accountIdentityName}
-                    accountIdentityRawEmail={accountIdentityRawEmail}
-                    accountIdentityContact={accountIdentityContact}
-                    accountIdentityInitials={accountIdentityInitials}
-                    followEnabled={followUiEnabledForStore}
-                    shareEnabled={shareEnabledForStore}
-                    followState={followState}
-                    handleFollowAction={handleFollowAction}
-                    handleShareAction={handleShareAction}
-                    ui={{ StorefrontExpandableBusinessHours }}
-                    heroStyles={{ HERO_CANVAS_MAX_WIDTH, MAX_STOREFRONT_WHY_CHOOSE_US, MOBILE_DROPDOWN_MENU_STYLE, MOBILE_DROPDOWN_OPTION_STYLE, MOBILE_NATIVE_SELECT_STYLE, STOREFRONT_CONTACT_INFO_COLUMNS, STOREFRONT_INFO_ICON_COLUMN, STOREFRONT_INFO_ROW_GAP, STYLES }}
-                    helperFns={{ getDeliveryPlatformLinks }}
-                  />
-                ) : isSimpleMode && !isResolvedOrderSubpage && simpleStorefrontModel ? (
-                  <SimpleHero
-                    simpleHeroModel={simpleStorefrontModel}
-                    selectedStore={selectedStore}
-                    isMobileViewport={isMobileViewport}
-                    hasMultipleStoreBranches={hasMultipleStoreBranches}
-                    hasSelectedBranchFromMenu={hasSelectedBranchFromMenu}
-                    selectedLocationId={selectedLocationId}
-                    handleBranchMenuSelection={handleBranchMenuSelection}
-                    storeLocations={storeLocations}
-                    catalogSearch={catalogSearch}
-                    setCatalogSearch={setCatalogSearch}
-                    goDiscovery={goDiscovery}
-                    cartCount={cartCount}
-                    setIsCheckoutOpen={setIsCheckoutOpen}
-                    modeAdapter={modeAdapter}
-                    isBrandingImageBlocked={isBrandingImageBlocked}
-                    markBrandingImageError={markBrandingImageError}
-                    selectedLocation={selectedLocation}
-                    openStorefrontActionLink={openStorefrontActionLink}
-                    openTrackPanel={openTrackPanel}
-                    openAccountPanel={openStorefrontHeaderAccount}
-                    onRegisterBusiness={openBusinessRegistrationFlow}
-                    isStorefrontAccountAuthenticated={isStorefrontAccountAuthenticated}
-                    activeCustomerOrderCount={activeCustomerOrderCount}
-                    accountIdentityName={accountIdentityName}
-                    accountIdentityRawEmail={accountIdentityRawEmail}
-                    accountIdentityContact={accountIdentityContact}
-                    accountIdentityInitials={accountIdentityInitials}
-                    followEnabled={followUiEnabledForStore}
-                    shareEnabled={shareEnabledForStore}
-                    followState={followState}
-                    handleFollowAction={handleFollowAction}
-                    handleShareAction={handleShareAction}
-                    ui={{ Badge, GhostButton, PrimaryButton, StorefrontExpandableBusinessHours, StorefrontHeroShell }}
-                    heroStyles={{ HERO_CANVAS_MAX_WIDTH, MAX_STOREFRONT_WHY_CHOOSE_US, MOBILE_DROPDOWN_MENU_STYLE, MOBILE_DROPDOWN_OPTION_STYLE, MOBILE_NATIVE_SELECT_STYLE, STOREFRONT_CONTACT_INFO_COLUMNS, STOREFRONT_INFO_ICON_COLUMN, STOREFRONT_INFO_PANEL_MAX_WIDTH, STOREFRONT_INFO_ROW_GAP, STYLES }}
-                    helperFns={{ buildVisibleStorefrontContactRows }}
-                  />
-                ) : (!isFnbMode && !isSimpleMode) ? (
-                  <DefaultStorefrontHero
-                    HERO_CANVAS_MAX_WIDTH={HERO_CANVAS_MAX_WIDTH}
-                    STYLES={STYLES}
-                    modeAdapter={modeAdapter}
-                    selectedStore={selectedStore}
-                    isMobileViewport={isMobileViewport}
-                    handleShareAction={handleShareAction}
-                    setIsCheckoutOpen={setIsCheckoutOpen}
-                  />
-                ) : null}
-              </>
-            )}
-
-            {/* ZONE 3: Location Map Snapshot */}
-            {!isServicesMode && !isFnbMode && !isSimpleMode && selectedStore && (
-              <section style={{ background: '#fff', borderRadius: STYLES.radius.card, border: `1px solid ${STYLES.colors.border}`, padding: 16, marginBottom: 24, boxShadow: STYLES.shadow.sm }}>
-                <StoresMap
-                  stores={storeLocations.length > 0 ? storeLocations.map(l => ({ ...l, tenant_name: selectedStore?.tenant_name })) : [selectedStore]}
-                  selectedKey={selectedLocationId != null ? `loc-${selectedLocationId}` : null}
-                  onSelectStore={(l) => l?.location_id && setSelectedLocationId(l.location_id)}
-                />
-              </section>
-            )}
-
-            {isHospitalityMode && selectedStore && (
-              <section style={{ marginBottom: 24 }}>
-                <HospitalityBookingPanel
-                  selectedStore={selectedStore}
-                  selectedLocationId={selectedLocationId}
-                  isMobileViewport={isMobileViewport}
-                />
-              </section>
-            )}
 
             {/* ZONE 4: Catalog Grid with Sidebar */}
             {catalogPermitted && selectedStore && (
