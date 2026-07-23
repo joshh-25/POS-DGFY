@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchNormalizedTrackingEntity } from '../../../../tracking/core.js';
 import {
   readLastTrackingPinForStore,
@@ -9,7 +9,26 @@ import {
   writeLastTrackingPinForStore,
   writeTrackedOrdersForStore
 } from '../../../../tracking/storage.js';
+import {
+  buildTrackingPinKey,
+  createCompletionTrackingScheduler,
+  formatTrackingCooldown,
+  getTrackingRetryAfterSeconds,
+  resolveSelectedTrackingPollMs,
+  resolveTrackingRetryDelayMs
+} from '../../../../tracking/customerTrackingRefresh.js';
 import { buildFnbTrackedOrderEntry, toFnbTrackingViewState } from '../model/fnbTrackingPayload.js';
+
+const BACKGROUND_PIN_POLL_MS = { visible: 60000, hidden: 120000 };
+
+// Stable per-entry signature (pin:status) so a re-fetch that changes nothing
+// doesn't produce a new array identity and doesn't retrigger effects/polling.
+const buildTrackedOrdersSignature = (entries = []) => (
+  entries
+    .map((entry) => `${String(entry?.tracking_pin || '').trim().toUpperCase()}:${String(entry?.status || '').trim().toLowerCase()}`)
+    .sort()
+    .join('|')
+);
 
 export function useFnbTrackingRuntime({ checkoutTab, isFnbOrderSubpage, normalizeErrorMessage, requestJson, routeSlug, selectedStore, toSlug, trackingAdapterRegistry, trackingMode }) {
   const [trackingPinInput, setTrackingPinInput] = useState('');
@@ -20,6 +39,15 @@ export function useFnbTrackingRuntime({ checkoutTab, isFnbOrderSubpage, normaliz
   const [selectedTrackingPin, setSelectedTrackingPin] = useState('');
   const [showCompletedTrackingCard, setShowCompletedTrackingCard] = useState(false);
   const completedTimerRef = useRef(null);
+
+  // Bails out (returns the previous array unchanged) when the new snapshot has
+  // the same pins+statuses, so re-fetches that changed nothing don't produce a
+  // new array identity that would retrigger effects keyed on guestTrackedOrders.
+  const setGuestTrackedOrdersIfChanged = useCallback((next) => {
+    setGuestTrackedOrders((previous) => (
+      buildTrackedOrdersSignature(previous) === buildTrackedOrdersSignature(next) ? previous : next
+    ));
+  }, []);
 
   const fetchTrackingPayload = useCallback(async (pin) => {
     const normalizedPin = String(pin || '').trim().toUpperCase();
@@ -41,9 +69,9 @@ export function useFnbTrackingRuntime({ checkoutTab, isFnbOrderSubpage, normaliz
     const nextEntry = buildTrackedOrderEntryFromTrackingPayload(payload, fallbackPin, normalizedEntity, selectedStore);
     if (!nextEntry?.tracking_pin) return;
     upsertTrackedOrderForStore(storeSlug, { ...nextEntry, store_slug: storeSlug });
-    setGuestTrackedOrders(readTrackedOrdersAcrossStores().filter((entry) => !TERMINAL_TRACKING_STATUSES.has(String(entry.status || '').trim().toLowerCase())));
+    setGuestTrackedOrdersIfChanged(readTrackedOrdersAcrossStores().filter((entry) => !TERMINAL_TRACKING_STATUSES.has(String(entry.status || '').trim().toLowerCase())));
     writeLastTrackingPinForStore(storeSlug, nextEntry.tracking_pin);
-  }, [buildTrackedOrderEntryFromTrackingPayload, routeSlug, selectedStore, toSlug]);
+  }, [buildTrackedOrderEntryFromTrackingPayload, routeSlug, selectedStore, setGuestTrackedOrdersIfChanged, toSlug]);
 
   const handleTrack = useCallback(async () => {
     setTrackingError('');
@@ -74,39 +102,107 @@ export function useFnbTrackingRuntime({ checkoutTab, isFnbOrderSubpage, normaliz
 
   useEffect(() => {
     const storeSlug = toSlug(selectedStore?.slug || routeSlug);
-    if (!storeSlug) { setGuestTrackedOrders([]); return; }
+    if (!storeSlug) { setGuestTrackedOrdersIfChanged([]); return; }
     const activeStoreEntries = readTrackedOrdersForStore(storeSlug).filter((entry) => !TERMINAL_TRACKING_STATUSES.has(String(entry.status || '').trim().toLowerCase()));
     writeTrackedOrdersForStore(storeSlug, activeStoreEntries);
     const activeEntries = readTrackedOrdersAcrossStores().filter((entry) => !TERMINAL_TRACKING_STATUSES.has(String(entry.status || '').trim().toLowerCase()));
-    setGuestTrackedOrders(activeEntries);
+    setGuestTrackedOrdersIfChanged(activeEntries);
     const nextPin = String(activeStoreEntries[0]?.tracking_pin || readLastTrackingPinForStore(storeSlug) || '').trim().toUpperCase();
     if (!trackingPinInput && nextPin) setTrackingPinInput(nextPin);
     if (!selectedTrackingPin && nextPin) setSelectedTrackingPin(nextPin);
-  }, [routeSlug, selectedStore?.slug, selectedTrackingPin, toSlug, trackingPinInput]);
+  }, [routeSlug, selectedStore?.slug, selectedTrackingPin, setGuestTrackedOrdersIfChanged, toSlug, trackingPinInput]);
+
+  const selectedPin = String(selectedTrackingPin || trackingPinInput || '').trim().toUpperCase();
+  const backgroundPinKey = useMemo(
+    () => buildTrackingPinKey(guestTrackedOrders, { excludePin: selectedPin }),
+    [guestTrackedOrders, selectedPin]
+  );
+
+  // Route unstable callbacks/closures (and the ever-changing tracking status)
+  // through refs so the polling effect below only needs to depend on stable
+  // primitives (selectedPin, backgroundPinKey) — otherwise every status
+  // transition or re-render of these callbacks would tear down and recreate
+  // the poll, defeating the scheduled delay entirely (this was the root cause
+  // of the original runaway-request bug).
+  const fetchTrackingPayloadRef = useRef(fetchTrackingPayload);
+  fetchTrackingPayloadRef.current = fetchTrackingPayload;
+  const syncTrackedOrderSnapshotRef = useRef(syncTrackedOrderSnapshot);
+  syncTrackedOrderSnapshotRef.current = syncTrackedOrderSnapshot;
+  const normalizeErrorMessageRef = useRef(normalizeErrorMessage);
+  normalizeErrorMessageRef.current = normalizeErrorMessage;
+  const trackingStatusRef = useRef('');
+  trackingStatusRef.current = String(trackingResult?.status || '').trim().toLowerCase();
 
   useEffect(() => {
     if (!(checkoutTab === 'track' && isFnbOrderSubpage) || !selectedStore?.slug) return undefined;
-    const selectedPin = String(selectedTrackingPin || trackingPinInput || '').trim().toUpperCase();
-    const backgroundPins = guestTrackedOrders.map((entry) => String(entry.tracking_pin || '').trim().toUpperCase()).filter((pin) => pin && pin !== selectedPin);
+    const backgroundPins = backgroundPinKey ? backgroundPinKey.split('|') : [];
     if (!selectedPin && backgroundPins.length === 0) return undefined;
-    let cancelled = false;
-    const refresh = async (pin, selected) => {
-      try {
-        if (selected) setIsTrackingRefreshing(true);
-        const payload = await fetchTrackingPayload(pin);
-        if (cancelled) return;
-        syncTrackedOrderSnapshot(payload.raw, pin, payload.normalized);
-        if (selected) { setTrackingResult(toFnbTrackingViewState(payload)); setTrackingError(''); }
-      } catch (error) {
-        if (!cancelled && selected) setTrackingError(normalizeErrorMessage(error, 'Tracking failed.'));
-      } finally { if (!cancelled && selected) setIsTrackingRefreshing(false); }
-    };
-    void refresh(selectedPin, true);
-    backgroundPins.forEach((pin) => { void refresh(pin, false); });
-    const selectedTimer = selectedPin ? window.setInterval(() => void refresh(selectedPin, true), document.hidden ? 8000 : 2000) : null;
-    const backgroundTimer = backgroundPins.length ? window.setInterval(() => backgroundPins.forEach((pin) => { void refresh(pin, false); }), document.hidden ? 30000 : 12000) : null;
-    return () => { cancelled = true; if (selectedTimer) window.clearInterval(selectedTimer); if (backgroundTimer) window.clearInterval(backgroundTimer); };
-  }, [checkoutTab, fetchTrackingPayload, guestTrackedOrders, isFnbOrderSubpage, normalizeErrorMessage, selectedStore?.slug, selectedTrackingPin, syncTrackedOrderSnapshot, trackingPinInput]);
 
-  return { buildTrackedOrderEntryFromTrackingPayload, fetchTrackingPayload, guestTrackedOrders, handleTrack, isTrackingRefreshing, selectedTrackingPin, setGuestTrackedOrders, setSelectedTrackingPin, setTrackingError, setTrackingPinInput, setTrackingResult, showCompletedTrackingCard, syncTrackedOrderSnapshot, trackingError, trackingPinInput, trackingResult };
+    let lastStatus = trackingStatusRef.current;
+
+    const refreshSelected = async () => {
+      setIsTrackingRefreshing(true);
+      try {
+        const payload = await fetchTrackingPayloadRef.current(selectedPin);
+        syncTrackedOrderSnapshotRef.current(payload.raw, selectedPin, payload.normalized);
+        const viewState = toFnbTrackingViewState(payload);
+        setTrackingResult(viewState);
+        setTrackingError('');
+        lastStatus = String(viewState?.status || '').trim().toLowerCase();
+        return { status: lastStatus };
+      } catch (error) {
+        const retryAfterSeconds = getTrackingRetryAfterSeconds(error);
+        setTrackingError(retryAfterSeconds
+          ? `Too many refreshes. Retrying in ${formatTrackingCooldown(retryAfterSeconds)}.`
+          : normalizeErrorMessageRef.current(error, 'Tracking failed.'));
+        return { status: lastStatus, error };
+      } finally {
+        setIsTrackingRefreshing(false);
+      }
+    };
+
+    const scheduler = createCompletionTrackingScheduler({
+      poll: refreshSelected,
+      resolveDelayMs: ({ result, error }) => {
+        const normalDelayMs = resolveSelectedTrackingPollMs({
+          visibilityState: typeof document !== 'undefined' ? document.visibilityState : 'visible',
+          status: result?.status
+        });
+        return resolveTrackingRetryDelayMs({ error: error || result?.error, normalDelayMs });
+      }
+    });
+    if (selectedPin) scheduler.start();
+
+    let backgroundTimerId = null;
+    const scheduleBackground = () => {
+      const delayMs = typeof document !== 'undefined' && document.visibilityState === 'hidden'
+        ? BACKGROUND_PIN_POLL_MS.hidden
+        : BACKGROUND_PIN_POLL_MS.visible;
+      backgroundTimerId = window.setTimeout(async () => {
+        await Promise.all(backgroundPins.map(async (pin) => {
+          try {
+            const payload = await fetchTrackingPayloadRef.current(pin);
+            syncTrackedOrderSnapshotRef.current(payload.raw, pin, payload.normalized);
+          } catch { /* background pins retry silently on the next tick */ }
+        }));
+        scheduleBackground();
+      }, delayMs);
+    };
+    if (backgroundPins.length) scheduleBackground();
+
+    const handleVisibilityChange = () => {
+      if (!selectedPin) return;
+      scheduler.stop();
+      scheduler.start();
+    };
+    if (typeof document !== 'undefined') document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      scheduler.stop();
+      if (backgroundTimerId) window.clearTimeout(backgroundTimerId);
+      if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, [backgroundPinKey, checkoutTab, isFnbOrderSubpage, selectedPin, selectedStore?.slug]);
+
+  return { buildTrackedOrderEntryFromTrackingPayload, fetchTrackingPayload, guestTrackedOrders, handleTrack, isTrackingRefreshing, selectedTrackingPin, setGuestTrackedOrders: setGuestTrackedOrdersIfChanged, setSelectedTrackingPin, setTrackingError, setTrackingPinInput, setTrackingResult, showCompletedTrackingCard, syncTrackedOrderSnapshot, trackingError, trackingPinInput, trackingResult };
 }
