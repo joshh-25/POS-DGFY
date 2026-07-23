@@ -2257,10 +2257,13 @@ the pre-wave baseline). `build:store` succeeds. `vitest run --exclude
 Full-file grep confirms every returned name's first use is at or after the new call site — no
 TDZ risk.
 
-**Not yet done — required before this is mergeable**: the browser QA pass from the re-map's
-checklist (add to cart product + service, stock-exceeded warning, cart-fly animation on both
-F&B and Services modes, update/remove quantity including the "quantity to 0 removes line"
-path) on dev.dgfy.ph. This environment is headless/no-WebGL; that QA cannot run here.
+**QA update (2026-07-23):** user manually tested cart and checkout against the
+`do-not-commit/local-test` Docker stack (rebuilt from this branch) and confirmed both work.
+This was a general pass, not a full walk of the re-map's itemized checklist (stock-exceeded
+warning path, cart-fly animation on both F&B and Services modes, and the "quantity to 0 removes
+line" path were not individually confirmed) — dev.dgfy.ph was not used since local-test served
+the same purpose. Treat the itemized checklist as still open for anyone doing a stricter pre-PR
+pass, but the primary add-to-cart/checkout flow is verified working.
 
 Next: `useServiceBookingViewModel` (`handleServicesCartCheckout`, `saveServiceBookingDraft`,
 `openServiceBookingPanel`/`openServiceCartEditor`), per the re-map's step 2.
