@@ -2385,3 +2385,74 @@ Remaining candidates for further reduction, not attempted in this pass: the rend
 caught by lint/vitest as logic moves are) and general dead-code cleanup (several
 already-unused variables flagged by ESLint predate this wave and were left alone as out of
 scope).
+
+## Wave 8 — derivations band extraction (2026-07-23)
+
+The band immediately after step 3's cart/booking/checkout hooks (shell lines ~1553–1985 at
+the start of this wave) was a ~230-line tangle of service-booking derivations, checkout
+totals/gating, storefront-hours/closed-notice logic, and a cluster of service-state-sync
+`useEffect`s. Re-mapped before extracting: confirmed it was 4 distinct concerns, not one, and
+that the interleaved `useEffect`s (Group D — booking intake sync, service-state resets, a
+handful of unrelated one-off effects) mutate booking/checkout state and are better left for a
+dedicated QA-gated effects wave. This pass extracted only the pure-derivation groups (A, B, C).
+
+Ordering was verified safe up front: `useCartMutations` (step 1) defines every cart derivation
+these three hooks consume, above the band; every hook from steps 2–3
+(`useServiceBookingViewModel`, `useCustomerAuthNavigation`, `useDeliveryPinResolution`,
+`useCheckoutSubmission`, `useCheckoutAuthResumeRestore`) is called below it. No lazy getters
+were needed — every new hook's outputs only ever flow downstream.
+
+- **`modes/services/booking/hooks/useServiceBookingDerivations.js`** (new) — the
+  service-booking derivations: intake fields, payment options, `bookingFieldPlan`, date/time
+  parts, all the `missing*` checks, `stepOneComplete`, and the `buildServiceBookingSummaryModel`
+  destructure. Placed in `modes/services/booking/hooks/` (alongside the existing
+  `useServiceCartDrawerProps.js`/`useServiceBookingFieldFocus.js`) rather than `shared/hooks/`,
+  because it imports `serviceBookingFields.js`/`serviceBookingSchedule.js`/
+  `serviceBookingSummary.js` from `modes/services/booking/model/*` — `shared/` must not import
+  from `modes/*`. `paymentStepComplete`/`reviewStepReady` are pre-existing dead code (defined,
+  never read anywhere in the shell, even before this move) — kept in the hook's return for
+  parity but not destructured in the shell, same as `openAccountPanel` in step 2's
+  `useCustomerAuthNavigation`. One React Compiler error surfaced only once this logic was
+  isolated into its own function (`buildServiceBookingSummaryModel`'s `useMemo` omits `money`
+  from its deps, verbatim from the original shell) — silenced with a targeted
+  `eslint-disable-next-line react-hooks/exhaustive-deps` rather than "fixing" a dependency array
+  that wasn't part of this move's scope (same precedent as `useStorefrontUiChrome.js`).
+- **`shared/hooks/useStorefrontClosedNotice.js`** (new) — the storefront-hours/closed-notice
+  derivations plus `followUiEnabledForStore`/`shareEnabledForStore`. The
+  `useStorefrontShareActions({...})` call itself stays in the shell (already its own hook);
+  `followState` is passed into the new hook rather than recomputed. Its `storefrontClosedByHours`
+  output feeds the next hook, so its call site had to move first / stay above.
+- **`modes/fnb/checkout/hooks/useCheckoutTotalsAndGating.js`** (new) — checkout totals
+  (`totalsForDisplay`, promo status/messaging) and checkout gating (`checkoutBlockReason`,
+  `checkoutAllowed`, `fnbCartStatusLabel`), merged into one hook call positioned after
+  `useStorefrontClosedNotice` (in the original shell these were two separate chunks straddling
+  the closed-notice code; nothing between them depended on the earlier chunk's outputs, so
+  merging into one hook at the later position was safe). Placed in `modes/fnb/checkout/hooks/`
+  (alongside the other fnb checkout hooks) rather than `shared/hooks/`, because it imports
+  `buildFnbCartStatusLabel` from `modes/fnb/checkout/model/fnbCartPresentation.js`.
+  `storefrontHoursStatus`/`activePromoFeedback` are destructured from their hooks' returns but
+  no longer have a consumer in the shell — dropped from the shell's destructure, kept in the
+  hooks' returns.
+
+StorefrontApp.jsx line count: **4,713** (down from 4,839 at the start of this wave; **-126**
+across 3 commits — the removed logic now lives in the three new hook files above). Discovery
+guardrail stayed empty after every commit.
+
+Verification per commit: `eslint apps/store/src --ext .js,.jsx` → 0 errors throughout.
+`build:store` succeeds after every commit. `vitest run apps/store --exclude
+'**/discoveryFlow.integration.test.jsx'` → 46/46 files, 222/222 tests pass after every commit
+(same pre-existing, unrelated discovery-integration failures as prior waves). No
+`fnbStorefront.contract.test.js` literals were pinned to anything in this band — nothing to
+repoint.
+
+**QA still open:** none of this wave's changes have been walked in a browser yet. Flows to
+check before merging: service booking (intake validation gating, date/time selection, booking
+summary totals), F&B checkout (subtotal/discount/service-fee/delivery-fee/total math, promo
+apply/error messaging, checkout gating when the store is closed / has a stock violation / has a
+mixed cart), and the closed-store notice (banner + toast when `is_open_now === false`). This is
+in addition to the sign-in/resume-checkout flow already flagged as open from step 3.
+
+Deferred to a later wave: the service-state-sync `useEffect` cluster (Group D, ~1778–1985 in
+the pre-wave shell) — these mutate booking/checkout state and need the same browser QA gate as
+the checkout-auth-resume knot did, rather than a blind one-shot move. Also still open: the
+render/JSX route-container band (unchanged from prior waves' assessment).
