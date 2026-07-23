@@ -2456,3 +2456,82 @@ Deferred to a later wave: the service-state-sync `useEffect` cluster (Group D, ~
 the pre-wave shell) — these mutate booking/checkout state and need the same browser QA gate as
 the checkout-auth-resume knot did, rather than a blind one-shot move. Also still open: the
 render/JSX route-container band (unchanged from prior waves' assessment).
+
+## Wave 9 — checkout-drawer JSX extraction (2026-07-23)
+
+The largest remaining mass in the shell was the JSX render band (~2792–4713 at the start of
+this wave), and within it the single most cohesive sub-region: the
+`<StorefrontCheckoutDrawerFrame>` subtree (~1,260 lines), whose *children* were three inline,
+not-yet-delegated blocks. This wave carved all three into feature-owned route containers +
+prop-bundle hooks, following the same idiom as the existing `FnbTrackingRouteContainer` +
+`useFnbTrackingRouteProps` / `FnbProductDetailsRoute` + `useFnbProductDetailsRouteProps` pairs:
+move the JSX verbatim into a container component, bundle every free identifier the JSX consumes
+into a `use*Props` hook, collapse the shell call site to `<X {...xProps} />`. Child components
+referenced by the moved JSX are imported directly by the new container (they don't vary
+per-render); only runtime values/handlers go through the props hook.
+
+- **`modes/fnb/checkout/pages/FnbCheckoutRouteContainer.jsx`** + **`modes/fnb/checkout/hooks/
+  useFnbCheckoutRouteProps.js`** (new, ~674 lines moved) — the inline F&B order/checkout journey
+  (fulfillment step, saved-address selector + delivery pin map, customer step, payment step,
+  mobile summary panel, confirmation), previously rendered between the shell's
+  `<FnbCheckoutRouteMount>`/`<FnbCheckoutRouteBody>` open/close tags. All 15 `FnbCheckout*`
+  sub-components plus `FnbCheckoutRouteMount` itself became orphaned shell imports and were
+  removed from the shell (they're now imported directly by the container); `SavedAddressCard`,
+  `PaymentMethodSelectorBlock`, `isEnabledStorefrontCheckoutPaymentType`,
+  `STOREFRONT_CHECKOUT_PAYMENT_OPTIONS` were also only used inside this block and were removed
+  from the shell the same way. `DeliveryPinMap`, `StorefrontDropdown`, the `MOBILE_*` style
+  tokens, and `formatStorefrontHoursLabel` stayed in the shell's imports (still used elsewhere).
+  The props hook is a ~110-identifier plain pass-through bundle (no `useMemo` wrapping the whole
+  object — every value already has a stable identity from its own upstream state/hook, matching
+  `useCheckoutTotalsAndGating`'s precedent of returning a plain object rather than memoizing the
+  bundle). **Ordering fix during implementation:** the hook call was first placed before
+  `simpleCartDrawerProps` (mirroring `useFnbCartDrawerRouteProps`'s call site), which broke at
+  runtime (`ReferenceError: Cannot access 'fnbCustomerStepComplete' before initialization`) —
+  `fnbCustomerStepComplete` is a shell-local `const` defined *after* that point, safe to
+  reference from JSX (rendered later) but not from a hook call hoisted above its declaration.
+  Fixed by moving the hook call to right after `const fnbCustomerStepComplete = ...`, the latest
+  dependency's definition point. Caught immediately by the integration test suite (see below),
+  not by lint or build.
+- **`modes/services/booking/pages/ServiceBookingReviewContainer.jsx`** + `modes/services/
+  booking/hooks/useServiceBookingReviewProps.js` (new, ~140 lines moved) — the "Review Your
+  Booking" summary card, previously rendered under the shell's `checkoutTab === 'review'` guard.
+  The shell keeps that guard (and `hasServiceCart`/`!isServicesMode`) and renders the container
+  for the body only. `Trash2` (lucide icon) became an orphaned shell import and was removed.
+- **`shared/components/StorefrontCheckoutSummaryContainer.jsx`** + `shared/hooks/
+  useStorefrontCheckoutSummaryProps.js` (new, ~330 lines moved) — the product/service checkout
+  tab body (customer/delivery details form, service intake fields, location pin, order summary
+  sidebar with quote/checkout buttons and totals), previously rendered under the shell's
+  `checkoutTab === 'checkout'` guard, which the shell keeps along with its mode-exclusion
+  conditions. Placed under `shared/` (not a mode folder) because the moved JSX only references
+  shared components/constants (`DeliveryPinMap`, `DGFY_ACRONYM`, `ORDER_METHOD_OPTIONS`) —
+  confirmed by grepping the block's JSX tags before writing the file, per the
+  `shared/`-must-not-import-`modes/*` guardrail. `ORDER_METHOD_OPTIONS`/`DGFY_ACRONYM` became
+  orphaned shell imports and were trimmed (kept `DGFY_BRAND_NAME` from the same import, still
+  used elsewhere).
+
+StorefrontApp.jsx line count: **3,714** (down from 4,713 at the start of this wave; **-999**
+across 3 commits). Discovery guardrail stayed empty after every commit.
+
+Verification per commit: `eslint apps/store/src --ext .js,.jsx` → 0 errors throughout (the
+ordering bug above was a runtime TDZ error, not an eslint-catchable one — worth remembering for
+future large hook-call insertions ahead of a component's `return`). `build:store` succeeds
+after every commit. `vitest run apps/store --exclude '**/discoveryFlow.integration.test.jsx'`
+→ 46/46 files, 222/222 tests pass after every commit (one incidental flaky timeout in
+`storefrontFollow.integration.test.jsx` under full-suite load, confirmed unrelated by rerunning
+it in isolation — passed). Four raw-source contract-test assertions had to be repointed because
+their literals moved out of `StorefrontApp.jsx` into the new container files:
+`storefrontClosedHoursMessaging.contract.test.js` (2 assertions, one per F&B/services container),
+`fnbStorefront.contract.test.js` (2 assertions), `guestCheckoutOtp.contract.test.js` (1
+assertion) — each now reads the corresponding container file instead of the shell.
+
+**QA still open:** none of this wave's changes have been walked in a browser yet. Flows to
+check before merging: F&B checkout (fulfillment step pickup/delivery + schedule, saved-address
+select + map-pin, customer step, closed-store notice, place order), service booking review
+(summary card renders, edit-service button), and the product/service checkout summary (totals,
+promo apply/error, quote + checkout buttons, gating). This is in addition to the sign-in/resume
+and Wave 8 QA already flagged as open.
+
+Remaining candidates for further reduction, not attempted in this pass: the Group D
+service-state-sync `useEffect` cluster (deferred since Wave 8, still needs a QA-gated pass), the
+ZONE 4 catalog IIFE + catalog component prop bundles (~3130–3382 in the pre-wave shell), and the
+DiscoveryHomePage branch (out of scope — discovery guardrail).
