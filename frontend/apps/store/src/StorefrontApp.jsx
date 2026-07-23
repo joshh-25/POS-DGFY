@@ -44,6 +44,7 @@ import { useStoreCatalogLoader } from './shared/hooks/useStoreCatalogLoader.js';
 import { useStorefrontSession } from './shared/hooks/useStorefrontSession.js';
 import { useStorefrontNavigation } from './shared/hooks/useStorefrontNavigation.js';
 import { useGuestCustomerIdentity } from './shared/hooks/useGuestCustomerIdentity.js';
+import { useStorefrontUiChrome } from './shared/hooks/useStorefrontUiChrome.js';
 import {
   buildCustomerFullName,
   clearCheckoutAuthResumeDraft,
@@ -622,9 +623,6 @@ export default function StorefrontApp() {
   }, []);
   const [checkoutPromoCode, setCheckoutPromoCode] = useState('');
 
-  const [isAboutExpanded, setIsAboutExpanded] = useState(false);
-  const [isServiceGalleryExpanded, setIsServiceGalleryExpanded] = useState(false);
-
   const [preferredStoreLocationSelection, setPreferredStoreLocationSelection] = useState(null);
   const {
     catalog,
@@ -1188,28 +1186,22 @@ export default function StorefrontApp() {
     setSelectedFnbLineModifiers([]);
   }, [catalog, isFnbMode, routeItemId]);
 
-  useEffect(() => {
-    if (typeof document === 'undefined') return undefined;
-    const lockBodyScroll = isFnbOrderSubpage || isCheckoutOpen || isGuestTrackingDrawerOpen || (isAccountDrawerOpen && !isStandaloneAccountPage);
-    if (!lockBodyScroll) return undefined;
-
-    const previousOverflow = document.body.style.overflow;
-    const previousHeight = document.body.style.height;
-    const previousOverscrollBehavior = document.body.style.overscrollBehavior;
-    const previousTouchAction = document.body.style.touchAction;
-
-    document.body.style.overflow = 'hidden';
-    document.body.style.height = '100vh';
-    document.body.style.overscrollBehavior = 'none';
-    document.body.style.touchAction = 'manipulation';
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      document.body.style.height = previousHeight;
-      document.body.style.overscrollBehavior = previousOverscrollBehavior;
-      document.body.style.touchAction = previousTouchAction;
-    };
-  }, [isAccountDrawerOpen, isCheckoutOpen, isFnbOrderSubpage, isGuestTrackingDrawerOpen, isStandaloneAccountPage]);
+  const {
+    isAboutExpanded,
+    setIsAboutExpanded,
+    isServiceGalleryExpanded,
+    setIsServiceGalleryExpanded
+  } = useStorefrontUiChrome({
+    appBasePath,
+    isAccountDrawerOpen,
+    isCheckoutOpen,
+    isFnbOrderSubpage,
+    isGuestTrackingDrawerOpen,
+    isStandaloneAccountPage,
+    orderSuccessAnimationTimerRef,
+    serviceWorkerUrl,
+    setViewportWidth
+  });
 
   useEffect(() => {
     if (!isFnbOrderSubpage) return;
@@ -1250,63 +1242,6 @@ export default function StorefrontApp() {
     setSavedCustomerDetails(profileFromAccount);
     writeSavedCustomerDetails(profileFromAccount);
   }, [accountPanel.me, setSavedCustomerDetails]);
-
-  useEffect(() => () => {
-    if (orderSuccessAnimationTimerRef.current) {
-      window.clearTimeout(orderSuccessAnimationTimerRef.current);
-      orderSuccessAnimationTimerRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    const handleResize = () => setViewportWidth(window.innerWidth);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
-    if (import.meta.env.DEV) {
-      navigator.serviceWorker.getRegistrations()
-        .then((regs) => Promise.all(regs.map((r) => r.unregister())))
-        .catch(() => { });
-      if ('caches' in window) {
-        caches.keys()
-          .then((keys) => Promise.all(
-            keys
-              .filter((k) => k.startsWith('sku-store-shell-') || k.startsWith('sku-store-runtime-'))
-              .map((k) => caches.delete(k))
-          ))
-          .catch(() => { });
-      }
-      return;
-    }
-
-    const registerServiceWorker = async () => {
-      try {
-        const probe = await fetch(serviceWorkerUrl, { method: 'GET', cache: 'no-store' });
-        const contentType = String(probe.headers.get('content-type') || '').toLowerCase();
-        const scriptLike = contentType.includes('javascript') || contentType.includes('ecmascript');
-        if (!probe.ok || !scriptLike) {
-          console.warn('[StorefrontPWA] Skipping service worker registration due to invalid script response', {
-            status: probe.status,
-            contentType
-          });
-          return;
-        }
-        await navigator.serviceWorker.register(serviceWorkerUrl, {
-          scope: appBasePath === '/' ? '/' : `${appBasePath}/`,
-          updateViaCache: 'none'
-        });
-      } catch (error) {
-        console.warn('[StorefrontPWA] Service worker registration failed', {
-          error: error?.message || 'unknown_error'
-        });
-      }
-    };
-
-    registerServiceWorker();
-  }, []);
 
   const goStoreOrderForDiscovery = (slug, locationId = null, storeContext = null) => {
     const normalized = toSlug(slug);
@@ -1466,6 +1401,7 @@ export default function StorefrontApp() {
   useEffect(() => {
     setIsAboutExpanded(false);
     setIsServiceGalleryExpanded(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedStore?.slug, selectedLocationId]);
   useEffect(() => {
     setHasSelectedBranchFromMenu(false);
