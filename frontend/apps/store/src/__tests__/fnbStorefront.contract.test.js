@@ -16,7 +16,9 @@ const productDetailsNutritionSource = () => readSource('modes/fnb/storefront/com
 const productDetailsReviewsSource = () => readSource('modes/fnb/storefront/components/FnbProductReviewsSection.jsx');
 const productDetailActionsSource = () => readSource('modes/fnb/storefront/hooks/useFnbProductDetailActions.js');
 const productCardSource = () => readSource('modes/fnb/storefront/components/FnbProductCard.jsx');
+const cartMutationsHookSource = () => readSource('shared/hooks/useCartMutations.js');
 const catalogRuntimeSource = () => readSource('modes/fnb/storefront/hooks/useFnbCatalogRuntime.js');
+const storefrontCatalogHookSource = () => readSource('shared/hooks/useStorefrontCatalog.js');
 const itemReviewRuntimeSource = () => readSource('modes/fnb/storefront/hooks/useFnbItemReviewRuntime.js');
 const checkoutPayloadSource = () => readSource('modes/fnb/checkout/model/buildFnbCheckoutPayload.js');
 const checkoutPaymentOptionsSource = () => readSource('modes/fnb/checkout/model/fnbCheckoutPaymentOptions.js');
@@ -67,17 +69,17 @@ describe('Food & Beverage storefront contract', () => {
     expect(mediaSource).toContain('aria-label="View larger image"');
     expect(mediaSource).toContain('aria-label="Previous slide"');
     expect(mediaSource).toContain('aria-label="Next slide"');
-    expect(source).toContain('filterCatalogItems');
+    expect(storefrontCatalogHookSource()).toContain('filterCatalogItems');
     expect(catalogRuntimeSource()).toContain('buildFnbCatalogPresentation');
   });
 
   it('opens the cart drawer from product details without changing menu-card fly behavior', () => {
-    const app = appSource();
     const detailActions = productDetailActionsSource();
     const productCard = productCardSource();
+    const cartMutations = cartMutationsHookSource();
 
     expect(detailActions).toContain('openCart: true');
-    expect(app).toContain('Boolean(options?.openCart) || !isFnbMode');
+    expect(cartMutations).toContain('Boolean(options?.openCart) || !isFnbMode');
     expect(productCard).toContain('sourceRect: getCartFlySourceRect(event)');
     expect(productCard).not.toContain('openCart: true');
   });

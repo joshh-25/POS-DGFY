@@ -1974,3 +1974,296 @@ review, payment/checkout submission via `handleCheckout`), catalog grid (search/
 Add to Cart), promo section, reviews section + "Write a review" modal, footer links. No behavior was
 intentionally changed — this is a verbatim move — but the prop surface is large (130 props) so this
 needs a real click-through before merge.
+
+## 2026-07-23 - Wave 5: SAFE logic extraction (view-models, catalog loader, navigation) + last classic-catalog JSX
+
+Continued on `claude/storefront-shell-continuation-n67w18` (stacked on the zustand-state-layer branch's
+tip, left as its own checkpoint PR). Replanned scope: earlier waves only ever moved JSX out or moved
+state *into* the zustand store — the interleaved **logic band** (component body start through the main
+`return`, ~3,900 lines of `useState`/`useMemo`/`useCallback`/`useEffect`/handlers) had never been
+touched, and alone was already ~4x the <1,000 target. Wave 5 is the SAFE, non-money-path half of that
+band, extracted into per-domain ViewModel hooks — the same `use*` pattern already established elsewhere
+in this app (`discovery/hooks/*`, `customer-dashboard/hooks/*`, `modes/fnb/checkout/hooks/*`), just not
+yet finished for the shell's own inline residue.
+
+Steps (each its own commit, green before the next):
+- **Dead-code sweep:** dropped 6 discovery vars destructured but never read (`discoveryViewport`,
+  `isDiscoveryDesktopViewport`, `selectedMapPin`, `discoveryMapPins`, `discoverySummary`,
+  `nearestDistanceKm`).
+- **`shared/hooks/useStorefrontCatalog.js`** (new) — the pure view-model `useMemo` chain: `pageModel` +
+  mode flags (`isServicesMode`/`isFnbMode`/`isSimpleMode`/`isHospitalityMode`/`modeAdapter`/etc.),
+  the filtered-catalog/F&B-menu chain, `promoSectionModel`, `selectedLocation`, `accessCapabilities`,
+  the four capability booleans, `serviceHeroModel`, `fnbCommunityModel`, `simpleStorefrontModel`,
+  `catalogState`. Verbatim move; shell destructures the same names back so the 100+ downstream call
+  sites for e.g. `isFnbMode`/`isServicesMode` are untouched.
+- **`shared/hooks/useStoreCatalogLoader.js`** (new) — the stateful catalog/location loader: owns
+  `storeLocations`/`primaryLocationId`/`selectedLocationId`/`hasSelectedBranchFromMenu`/`catalog`/
+  `loadingCatalog`/`catalogError`/`brandingImageErrors` + setters; `markBrandingImageError`,
+  `isBrandingImageBlocked`; `openStoreBySlug` (slug-fallback/canonicalization, request-sequencing
+  guards unchanged); `refreshStorePageForTenantSetup`; the route-change effect that triggers it; the
+  location-aware catalog refetch effect; `handleBranchMenuSelection`. `selectedStore`/`routeSlug` stay
+  shell-owned, passed in as external params. Along the way, removed two confirmed write-only dead
+  states the moved code touched: `catalogErrorGuidance` (set in 5 places, never read) and
+  `catalogImageErrors` (plus its reset effect, never read).
+- **`shared/hooks/useStorefrontNavigation.js`** (new) — the pure-navigation functions:
+  `openServiceDetail`, `closeServiceDetail`, `goStore`, `goStoreBookingPage`, `goStoreCatalogPage`,
+  `goDiscovery`, and the popstate effect. Owns no state; every setter it touches (shell-local or from
+  `useStoreCatalogLoader`) is an explicit parameter. `goStoreOrderForDiscovery`/`goStoreOrderPage`/
+  `goStoreTrackPage` stayed in the shell — they actively configure `checkoutTab` and read
+  `checkoutResult`, i.e. checkout-domain logic, not pure navigation. Independently verified every
+  pre-existing reference to the 6 moved functions that sits before their new (later) declaration point
+  is inside a deferred closure — never a synchronous call or a hook dependency array — since no test
+  in this repo renders `StorefrontApp`, a temporal-dead-zone bug here would not be caught by
+  lint/build/tests.
+- **`shared/components/storefront/StorefrontClassicCatalog.jsx`** (new, faithful view extraction,
+  same pattern as `StorefrontServicesCatalog.jsx`) — the non-services catalog-rendering branch: search/
+  filter/sort toolbar, the item grid (F&B/Simple/Service product cards), F&B pagination, the Simple
+  checkout route mount, promo/reviews/footer sections, the F&B community section, the Services
+  performance sidebar, the review modals. 64 flat props; `addToCart` stays a money-path handler owned
+  by the shell, passed straight through unchanged.
+
+StorefrontApp.jsx line count: **5,699** (down from 6,815 at the start of this wave; **-1,116** net,
+right on the ~1,000–1,100 estimate). Lint warnings steady at 73–75 across steps, 0 errors throughout.
+`build:store` passes and all 198 non-integration tests pass after every commit. `git diff --name-only
+origin/develop` under discovery map files / `features/discovery/` stayed empty the whole wave.
+
+QA (dev.dgfy.ph), light — no money-path submission changed in this wave: all modes render (catalog
+grid, heroes, discovery list); store loads by slug (including the slug-fallback/canonicalization path);
+account/session panel opens; branch/location switcher works; browser back/forward navigates correctly
+(popstate); "Explore other stores" / go-to-discovery works; modals open/close.
+
+Next: Wave 6 (session/guest-identity/UI-chrome/tracking-intent SAFE hooks), then the deferred
+money-path hooks (cart mutations, checkout submission, service booking) + route containers — QA-gated,
+where the shell finally crosses under 1,000 lines.
+
+## 2026-07-23 - Wave 6: SAFE logic extraction (session, guest identity, UI chrome, tracking intent)
+
+Continued on `claude/storefront-shell-continuation-n67w18`, same branch as Wave 5. Completed the
+second (and final planned) half of the SAFE, non-money-path logic band. Four hooks, each its own
+commit, each independently verified (diff read, TDZ check, lint/build/test re-run) before committing —
+not just trusting the extracting agent's self-report.
+
+- **`shared/hooks/useStorefrontSession.js`** (new) — the DGFY customer session bootstrap:
+  `dgfyAuthTokenState`/`dgfySessionAccount` + setters, `storefrontVisitorId`, the cookie-session
+  bootstrap effect (handoff-token exchange, explicit sign-out short-circuit, cookie/legacy-token
+  resolution), and the derived auth booleans (`isDgfyCustomerSignedIn` alone has 50+ call sites
+  elsewhere in the shell). `setIsAccountDrawerOpen` is the only external dependency. Verified zero
+  references to any of the 10 returned names exist anywhere in the file before the hook's call site
+  (only their own destructure) — no TDZ risk. Trimmed 2 destructured names (`dgfyAuthTokenState`,
+  `storeAuthToken`) that turned out unused in the shell after the move.
+- **`shared/hooks/useGuestCustomerIdentity.js`** (new) — the guest/DGFY-account customer identity
+  fields: `customerFirstName`/`LastName`/`Name`/`Phone`/`Email` + `savedCustomerDetails` state, the
+  masked preview, the apply/open/cancel/apply-details handlers, the "clear saved details" handler, the
+  DGFY-account identity-sync effect, and the `createCustomerIdentityRenderers` wiring. Resolved a
+  genuine circular dependency: `useCustomerDashboardIdentity` (called first) needs `savedCustomerDetails`,
+  while this hook's identity-sync effect needs `accountIdentityRawName/Phone/Email` (produced by
+  `useCustomerDashboardIdentity`) as reactive deps — fixed by handing `useCustomerDashboardIdentity` a
+  direct `readSavedCustomerDetails()` storage read instead of the reactive variable, verified safe
+  because every mutation path for saved customer details writes through to the same storage
+  synchronously with the state update, and the only consumer destructures primitive `.name`/`.phone`/
+  `.email` strings in its own deps, not the object reference. `openCheckoutAuthFlow`/
+  `handleRequestGuestCheckoutOtp` (money-path, declared later in the shell) are handed in as lazy
+  getters — the same forward-reference idiom already used in this codebase for
+  `getGoStoreTrackPage`/`getFetchTrackingPayload`.
+- **`shared/hooks/useStorefrontUiChrome.js`** (new) — 4 self-contained effects with no cross-domain
+  coupling: `isAboutExpanded`/`isServiceGalleryExpanded` state, the body-scroll-lock effect, the
+  order-success-animation-timer cleanup, the window-resize effect, and the service-worker
+  registration/dev-cleanup effect.
+- **`shared/hooks/useStorefrontTrackingIntent.js`** (new) — `trackingDrawerOrders`, `openTrackPanel`,
+  `openFullTrackingForPin`. Found and correctly handled a genuine **ordering cycle** (not a TDZ fixable
+  by a lazy getter): `trackingMode`/`trackingAdapterRegistry` feed the earlier, unmoved
+  `useFnbTrackingRuntime` call, which runs before `guestTrackedOrders` exists — and
+  `guestTrackedOrders` is itself one of `trackingDrawerOrders`' two inputs. Those two values stay in
+  the shell; an initial draft duplicated them uselessly inside the new hook too (dead code, nothing
+  consumed the returned copies) — trimmed before committing.
+
+Recurring, expected pattern across all four hooks: `react-hooks/exhaustive-deps` sometimes flags
+`useState` setters or refs as "missing dependencies" once they cross a custom-hook boundary, because
+ESLint can no longer statically prove they're referentially stable — even though React guarantees
+`useState` setters and refs never change identity. Suppressed with `// eslint-disable-next-line
+react-hooks/exhaustive-deps` (or added to the array where harmless) at the exact same rate this
+codebase already does elsewhere (`useFnbCatalogRuntime.js`, `useFnbProductDetailsRoute.js`,
+`HospitalityBookingPanel.jsx`) — no behavior change, only lint-boundary noise.
+
+StorefrontApp.jsx line count: **5,435** (down from 5,600 at the start of this wave; **-165** net —
+short of the ~500 estimate, mainly because the tracking-intent hook's ordering cycle capped that
+hook's win to near-zero). Lint warnings 73→72 across the wave, 0 errors throughout. `build:store`
+passes and all 198 non-integration tests pass after every commit. `git diff --name-only
+origin/develop` under discovery map files / `features/discovery/` stayed empty the whole wave.
+
+**Wave 5+6 combined: StorefrontApp.jsx 6,815 → 5,435 (-1,380).**
+
+QA (dev.dgfy.ph), light — no money-path submission changed in this wave: DGFY sign-in/sign-out and
+session bootstrap (including the `?handoff_token=` URL flow); guest checkout identity fields (apply
+saved details, edit/cancel, clear saved details for this device); About/service-gallery
+expand-collapse; page doesn't scroll behind open drawers/modals; browser resize updates layout; PWA
+service worker still registers in production builds; tracking-drawer entry points (`openTrackPanel`,
+"View full tracking" for a pin) still navigate correctly.
+
+Next (deferred, QA-gated — where the shell finally crosses under 1,000 lines): `useCartMutations`
+(`addToCart`/`updateQty`/`removeCartItem`/cart-fly animation), `useServiceBookingViewModel`
+(`saveServiceBookingDraft`/`handleServicesCartCheckout`), `useCheckoutSubmission`
+(`handleCheckout`/`handleQuote`/`handleDownloadCheckoutImage`/auto-quote effect), the
+`persistCheckoutAuthResume` cart↔checkout↔service↔session snapshot/restore knot, and finally route
+containers for the render band. See `STOREFRONT_REFACTOR_HANDOFF.md` for the full continuation brief.
+
+## 2026-07-23 — Wave 7 re-map (go/no-go pass, no extraction)
+
+Branch: `claude/storefront-shell-wave7-n67w18` (stacked on
+`claude/storefront-shell-continuation-n67w18`). Shell unchanged at **5,435 lines**. This is a
+re-map only, per the handoff's rule to replan before a wave that changes risk profile — no
+code was extracted this pass. Line numbers below are current against the live file (the
+handoff's numbers were from before Wave 5/6 shifted everything).
+
+### Money-path targets, re-verified against the live file
+
+| Proposed hook | Handlers/state, current lines | Verdict |
+|---|---|---|
+| `useCartMutations` | `addToCart` (2000–2103), `handleServicesCartCheckout` (2139), `removeCartItem` (2395), `updateQty` (2403+); derivations `cartTotals` (1376), `serviceCartLines`/`productCartLines` (1489–1490), `hasServiceCart`/`hasMixedServiceCart` (1493–1494) | MONEY-PATH |
+| `useServiceBookingViewModel` | `saveServiceBookingDraft` (2321), `openServiceBookingPanel`/`openServiceCartEditor` (2160–2178) | MONEY-PATH |
+| `useCheckoutSubmission` | `handleQuote` (2723), `handleCheckout` (2753), `handleDownloadCheckoutImage` (2970); F&B auto-quote effect `fnbAutoQuoteCartSignature` + effect (3172–3254, confirmed ~78 lines as the handoff estimated) | MONEY-PATH |
+| `persistCheckoutAuthResume` knot | write side `persistCheckoutAuthResume` (2194, `useCallback` with a 25-name dependency array); read/restore side is a **separate, previously-unlisted effect** at ~2994–3040+ (`readCheckoutAuthResumeDraft` → restores cart, location, order-method, fnb/simple/service step, delivery, intake, then clears the draft) | MONEY-PATH — confirmed as the tightest coupling in the file |
+
+**Correction to the handoff's map:** the auth-resume knot is two halves, not one — a write
+(`persistCheckoutAuthResume`) and a read (the restore effect right after
+`handleDownloadCheckoutImage`). The restore effect alone touches cart, location, order method,
+every mode's step counter (fnb/simple/service), delivery address, customer pin, service intake
+responses, `catalog` (discovery domain), and `isDgfyCustomerSignedIn` (session domain) — it is
+the single highest-coupling unit in the shell, wider than the write side. Extract both halves
+together, last, exactly as the handoff already recommends.
+
+### Cross-domain coupling notes
+
+- `persistCheckoutAuthResume`'s dependency array (25 names) is itself evidence of the coupling:
+  it spans cart, checkout, both fnb/simple/service step machines, delivery, and session-return-
+  URL builders. No lazy-getter shortcut applies here (gotcha #2) — this genuinely needs every
+  value live. Treat as one non-splittable unit.
+- The auto-quote effect (checkout domain) depends on `fnbFulfillmentStepComplete` and
+  `activePinnedDeliveryAddress` (fulfillment/delivery domain) and `fnbCustomerStepComplete`
+  (guest-OTP/session domain) — confirms handoff's note that checkout submission cannot be
+  cleanly isolated from fnb fulfillment state; `useCheckoutSubmission` will need those as
+  explicit named parameters, not derive them itself.
+- Cart derivations (`cartTotals`, `serviceCartLines`, `productCartLines`, `hasServiceCart`,
+  `hasMixedServiceCart`) are declared ~650 lines **before** the cart mutation handlers
+  (line 1376–1494 vs. 2000+) and are consumed directly in JSX at multiple render sites (3674,
+  3927, 3967, 4128+), not just inside handlers. Extracting them into `useCartMutations` is still
+  SAFE (they're pure `useMemo(cart)` derivations with no other inputs), but the new hook's call
+  site must be placed no later than their original declaration point, and a full grep for any
+  hook between old lines 1494–2000 that reads them synchronously in a dependency array (not just
+  a deferred closure) is required at extraction time — none found in this pass, but this pass
+  was not exhaustive (that grep is explicitly Step 6 of the per-commit checklist, owed at
+  extraction time, not here).
+- No ordering cycles (gotcha #2 type) were found among the four proposed hooks themselves in
+  this pass — the coupling here is breadth (many shared inputs), not circularity.
+
+### Zustand slice interaction
+
+`cartSlice` and `checkoutSlice` exist but only `cart`/`ui` are actually live (per the handoff);
+`checkoutSlice`/`serviceBookingSlice`/`sessionSlice` are still `{ domain: {} }` scaffolds. Per
+the handoff's own priority call, **do not** attempt to fill those scaffolds as part of Wave 7 —
+extract to `useState`-based hooks first (matching the Wave 5/6 precedent), same as the existing
+`shared/hooks/*`. Slice-filling stays a separate, lower-priority follow-up.
+
+### Suggested extraction order (unchanged from handoff, now line-grounded)
+
+1. `useCartMutations` (incl. the five derivations above) — narrowest blast radius, most reused
+   precedent (`useStorefrontCartPersistence.js` already exists as a related, adjacent hook).
+2. `useServiceBookingViewModel` — depends on cart derivations from (1) but not the reverse.
+3. `useCheckoutSubmission` — depends on (1) and F&B fulfillment/session state; do this after
+   cart/booking have simplified what it touches, per handoff.
+4. `persistCheckoutAuthResume` write + restore-effect knot, together, last — depends on
+   everything above being in its final shape.
+5. Route containers — after 1–4, the remaining render band collapses to a thin router.
+
+### Estimated line delta
+
+Rough estimate only (not a commitment): (1) ~150–180 lines, (2) ~90–110 lines, (3) ~250–300
+lines (includes the largest single handler, `handleCheckout` at ~215 lines, plus the ~78-line
+auto-quote effect), (4) ~90–120 lines combined (write callback + restore effect + dependency
+array), (5) remainder of the render band. Getting under 1,000 total still requires (5); (1)–(4)
+alone are estimated to land the shell in the ~4,700–4,900 range.
+
+### Browser QA checklist (dev.dgfy.ph) — required before merging any Wave 7 hook
+
+- Add to cart (product and service), including stock-exceeded warning path and the cart-fly-to-
+  FAB animation on both F&B and Services modes.
+- Update quantity / remove line, including the "quantity to 0 removes line" path.
+- Service booking: create a new booking draft, edit an existing cart line's booking, required-
+  intake-question validation, mixed-cart rejection ("book services separately").
+- Get Quote (`handleQuote`) success and each error path (stock violation, storefront-closed,
+  checkout-not-permitted).
+- Full checkout (`handleCheckout`) for both F&B and Services carts; download checkout/ticket
+  image after a successful checkout.
+- F&B auto-quote: change delivery address, promo code, or schedule and confirm the quote
+  silently re-syncs without a manual "Quote" click.
+- **Checkout auth-resume round trip** (highest priority given the coupling above): start
+  checkout as a guest, trigger sign-in mid-checkout (`openCheckoutAuthFlow`), complete DGFY
+  auth, and confirm cart contents, order step, delivery address, and service intake responses
+  all restore correctly on return — for F&B, Simple, and Services modes separately.
+- Confirm `git diff --name-only origin/develop -- frontend/apps/store/src/discovery
+  frontend/apps/store/src/features/discovery` stays empty (no map/discovery code touched).
+
+### Go/no-go
+
+Re-map complete. Awaiting user go/no-go on the extraction order above before starting
+`useCartMutations`. Per the handoff, do not start Wave 7 extraction unprompted.
+
+## 2026-07-23 — Wave 7, step 1: `useCartMutations` (go/no-go received)
+
+User approved proceeding with the extraction order from the re-map above. This commit does
+step 1 only: `useCartMutations`.
+
+- **`shared/hooks/useCartMutations.js`** (new) — `addToCart`, `updateQty`, `removeCartItem`,
+  the cart-fly-to-FAB animation (`animateCartCardToFab`, `serviceCartFlyAnimations` state,
+  `getCartFlySourceRect`), and the cart/service-cart derivations (`cartTotals` and its
+  `cartSubtotal`/`cartAddOnsTotal`/`cartTotal`/`cartCount` fields, `serviceCartLines`/
+  `productCartLines`/`serviceCartCount`/`serviceCartTotal`/`hasServiceCart`/
+  `hasMixedServiceCart`). `playCartAddedSound` moved in as a private, unreturned helper
+  (single call site inside `addToCart`, zero external deps).
+- **Deferred `handleServicesCartCheckout` out of this hook**, contrary to the re-map's initial
+  table: it and `saveServiceBookingDraft` both call `goStoreBookingPage`, which only becomes
+  available late (destructured from `useStorefrontNavigation()` near the bottom of the shell's
+  hook chain) — grouping both under `useServiceBookingViewModel` next means only one lazy-getter
+  wiring is needed instead of two. `addToCart` itself has no navigation dependency, so this
+  hook stayed navigation-free.
+- **Call-site ordering was the binding constraint, not proximity to the original handler
+  declarations.** `hasServiceCart`/`serviceCartLines`/`cartCount`/`cartTotal` etc. are read
+  synchronously (literal dependency-array entries) by ~15 other, still-shell-resident hooks
+  starting immediately after their old declaration point — this hook's call site had to go
+  where the *derivations* used to live (~old line 1376), not near where `addToCart` itself used
+  to be declared (~old line 2000). Verified via a full-file grep: the call site is now the
+  single first reference to every one of the 14 returned names, i.e. no consumer sits between
+  the old declaration and the new call site. No TDZ risk, no ordering cycle — this was a
+  pure "hoist the call site up" move, not a lazy-getter case.
+- Fixed one drafting mistake before verifying: an earlier draft of the hook slightly
+  paraphrased `playCartAddedSound` (wrong timeout value, reworded comments) instead of copying
+  it verbatim, and missed `getCartFlySourceRect` (a small helper adjacent to the animation code,
+  used only in JSX props two call sites down) entirely. Caught by diffing against the actual
+  source before removing the originals — moved-in code must be copied verbatim, not
+  reconstructed from memory.
+- Updated `__tests__/fnbStorefront.contract.test.js`: one raw-source-text assertion checked
+  `StorefrontApp.jsx` for `'Boolean(options?.openCart) || !isFnbMode'` (a literal from inside
+  `addToCart`). Per the handoff's standing rule (a verified-agent's self-report is not
+  verification, and dead-code workarounds for text-matching tests are wrong — update the test),
+  repointed that one assertion at the new `useCartMutations.js` source instead of leaving a
+  dead copy of the string in the shell.
+
+StorefrontApp.jsx line count: **5,226** (down from 5,435 at the start of this wave; **-209**).
+
+Verification: `eslint StorefrontApp.jsx useCartMutations.js` → 0 errors, 72 warnings (same as
+the pre-wave baseline). `build:store` succeeds. `vitest run --exclude
+'**/*.integration.test.*' apps/store/src` → 198/198 pass. `git diff --name-only origin/develop
+-- frontend/apps/store/src/discovery frontend/apps/store/src/features/discovery` stays empty.
+Full-file grep confirms every returned name's first use is at or after the new call site — no
+TDZ risk.
+
+**QA update (2026-07-23):** user manually tested cart and checkout against the
+`do-not-commit/local-test` Docker stack (rebuilt from this branch) and confirmed both work.
+This was a general pass, not a full walk of the re-map's itemized checklist (stock-exceeded
+warning path, cart-fly animation on both F&B and Services modes, and the "quantity to 0 removes
+line" path were not individually confirmed) — dev.dgfy.ph was not used since local-test served
+the same purpose. Treat the itemized checklist as still open for anyone doing a stricter pre-PR
+pass, but the primary add-to-cart/checkout flow is verified working.
+
+Next: `useServiceBookingViewModel` (`handleServicesCartCheckout`, `saveServiceBookingDraft`,
+`openServiceBookingPanel`/`openServiceCartEditor`), per the re-map's step 2.
