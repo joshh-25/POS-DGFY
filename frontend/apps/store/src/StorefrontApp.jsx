@@ -40,6 +40,7 @@ import {
 import { copyTextToClipboard as copyTextToClipboardUtil } from './shared/utils/clipboard.js';
 import { useCartMutations } from './shared/hooks/useCartMutations.js';
 import { useCheckoutSubmission } from './shared/hooks/useCheckoutSubmission.js';
+import { useCustomerAuthNavigation } from './shared/hooks/useCustomerAuthNavigation.js';
 import { useDeliveryPinResolution } from './shared/hooks/useDeliveryPinResolution.js';
 import { useServiceBookingViewModel } from './shared/hooks/useServiceBookingViewModel.js';
 import { useStorefrontCartPersistence } from './shared/hooks/useStorefrontCartPersistence.js';
@@ -2056,109 +2057,52 @@ export default function StorefrontApp() {
     toast,
     withAssetOrigin
   });
-  const buildCustomerDashboardReturnUrl = useCallback(() => (
-    resolveStorefrontAccountUrl()
-  ), []);
-  const openCustomerDashboard = useCallback(() => {
-    if (typeof window === 'undefined') return;
-    window.location.href = buildCustomerDashboardReturnUrl();
-  }, [buildCustomerDashboardReturnUrl]);
-  const openAccountPanel = useCallback(() => {
-    setIsCheckoutOpen(false);
-    setIsGuestTrackingDrawerOpen(false);
-    openCustomerDashboard();
-  }, [openCustomerDashboard]);
-  const buildContextualCustomerReturnUrl = useCallback(() => {
-    if (typeof window === 'undefined') return '';
-    const target = new URL(window.location.href);
-    target.searchParams.set('dgfy_account', '1');
-    return target.toString();
-  }, []);
-  const persistCheckoutAuthResume = useCallback((resumeTarget = {}) => {
-    writeCheckoutAuthResumeDraft({
-      routeSlug: selectedStore?.slug || routeSlug,
-      returnTo: buildContextualCustomerReturnUrl(),
-      checkoutTab: resumeTarget.checkoutTab || checkoutTab || 'checkout',
-      fnbOrderStep: resumeTarget.fnbOrderStep ?? fnbOrderStep,
-      simpleOrderStep: resumeTarget.simpleOrderStep ?? simpleOrderStep,
-      serviceBookingStep: resumeTarget.serviceBookingStep ?? serviceBookingStep,
-      selectedLocationId,
-      selectedSavedLocationId,
-      orderMethod,
-      fnbScheduledFor,
-      fnbScheduleMode,
-      fnbSpecialInstructions,
-      serviceAppointmentAt,
-      servicePaymentTiming,
-      customerAddress,
-      serviceLocationLandmarkNote,
-      resolvedDeliveryAddress,
-      deliveryLocationAction,
-      customerPin,
-      serviceIntakeResponses,
-      cart,
-      selectedServiceItemId: selectedServiceDetail?.item_id || activeServiceCartLine?.item_id || firstServiceLine?.item_id || null,
-      savedAt: Date.now()
-    });
-  }, [
-    buildContextualCustomerReturnUrl,
+  const {
+    buildCustomerDashboardReturnUrl,
+    openBusinessRegistrationFlow,
+    openCanonicalDgfyAuth,
+    openCheckoutAuthFlow,
+    openCustomerDashboard,
+    openStorefrontHeaderAccount
+  } = useCustomerAuthNavigation({
+    activeServiceCartLine,
+    buildBusinessRegistrationUrl,
+    buildDgfyAuthUrl,
     cart,
     checkoutTab,
     customerAddress,
     customerPin,
     deliveryLocationAction,
+    dgfyAuthToken,
+    firstServiceLine,
     fnbOrderStep,
     fnbScheduleMode,
     fnbScheduledFor,
     fnbSpecialInstructions,
-    activeServiceCartLine?.item_id,
-    firstServiceLine?.item_id,
+    hasDgfyExplicitSignOut,
+    isDgfyCustomerSignedIn,
+    normalizeStorefrontErrorMessage,
     orderMethod,
+    readDgfySignedOutEmail,
+    requestJson,
+    resolveStorefrontAccountUrl,
     resolvedDeliveryAddress,
     routeSlug,
     selectedLocationId,
     selectedSavedLocationId,
-    selectedServiceDetail?.item_id,
-    selectedStore?.slug,
+    selectedServiceDetail,
+    selectedStore,
     serviceAppointmentAt,
     serviceBookingStep,
     serviceIntakeResponses,
     serviceLocationLandmarkNote,
     servicePaymentTiming,
-    simpleOrderStep
-  ]);
-  const openCanonicalDgfyAuth = useCallback((intent = 'customer', mode = 'sign-in', { returnTarget = 'account', reason = '', email = '' } = {}) => {
-    if (typeof window === 'undefined') return;
-    const normalizedIntent = String(intent || '').trim() === 'register-business' ? 'register-business' : 'customer';
-    const normalizedMode = String(mode || '').trim() === 'create-account' ? 'create-account' : 'sign-in';
-    const signedOutEmail = readDgfySignedOutEmail();
-    const explicitSignedOutLogin = normalizedIntent === 'customer'
-      && normalizedMode === 'sign-in'
-      && hasDgfyExplicitSignOut();
-    window.location.href = buildDgfyAuthUrl({
-      intent: normalizedIntent,
-      mode: normalizedMode,
-      returnTo: normalizedIntent === 'customer'
-        ? (returnTarget === 'current' ? buildContextualCustomerReturnUrl() : buildCustomerDashboardReturnUrl())
-        : '/register-company#business-registration'
-        ,
-      reason: reason || (explicitSignedOutLogin ? 'signed-out' : ''),
-      email: email || (explicitSignedOutLogin ? signedOutEmail : '')
-    });
-  }, [buildContextualCustomerReturnUrl, buildCustomerDashboardReturnUrl]);
-  const openStorefrontHeaderAccount = useCallback(() => {
-    setIsCheckoutOpen(false);
-    setIsGuestTrackingDrawerOpen(false);
-    if (isDgfyCustomerSignedIn) {
-      openCustomerDashboard();
-      return;
-    }
-    openCanonicalDgfyAuth('customer');
-  }, [isDgfyCustomerSignedIn, openCanonicalDgfyAuth, openCustomerDashboard]);
-  const openCheckoutAuthFlow = useCallback((mode = 'create-account', resumeTarget = {}) => {
-    persistCheckoutAuthResume(resumeTarget);
-    openCanonicalDgfyAuth('customer', mode, { returnTarget: 'current' });
-  }, [openCanonicalDgfyAuth, persistCheckoutAuthResume]);
+    setIsCheckoutOpen,
+    setIsGuestTrackingDrawerOpen,
+    simpleOrderStep,
+    toast,
+    writeCheckoutAuthResumeDraft
+  });
   const {
     guestCheckoutIntentId,
     guestCheckoutOtpCode,
@@ -2184,23 +2128,6 @@ export default function StorefrontApp() {
     setGuestDetailsEditMode(false);
     handleRequestGuestCheckoutOtp();
   }, [handleApplyGuestDetails, handleRequestGuestCheckoutOtp]);
-  const openBusinessRegistrationFlow = useCallback(async () => {
-    if (typeof window === 'undefined') return;
-    if (!isDgfyCustomerSignedIn) {
-      openCanonicalDgfyAuth('register-business');
-      return;
-    }
-    try {
-      const payload = await requestJson('/api/v1/dgfy/auth/handoff', {
-        method: 'POST',
-        authToken: dgfyAuthToken,
-        cache: 'no-store'
-      });
-      window.location.href = buildBusinessRegistrationUrl(String(payload?.handoff_token || '').trim());
-    } catch (error) {
-      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to start business registration.'));
-    }
-  }, [dgfyAuthToken, isDgfyCustomerSignedIn, openCanonicalDgfyAuth]);
   const serviceCartDrawerProps = useServiceCartDrawerProps({
     cartButtonRef: serviceCartFabRef,
     cartImageErrors,
