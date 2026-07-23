@@ -176,6 +176,7 @@ import {
   readStoreServiceItemId,
   readStoreSubpage,
   readTrackingPinFromQuery,
+  setCustomStorefrontRouteContext,
   STORE_BOOKING_SUBPAGE,
   STORE_ITEM_SUBPAGE,
   STORE_ORDER_SUBPAGE,
@@ -3210,6 +3211,36 @@ export default function StorefrontApp() {
   const previousRouteSlugRef = useRef(routeSlug);
   const bookingPreferredDateInputRef = useRef(null);
 
+  useEffect(() => {
+    if (routeSlug || typeof window === 'undefined') return undefined;
+    let cancelled = false;
+    fetch('/api/v1/store/domain-context', { credentials: 'include', cache: 'no-store' })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const payload = await response.json().catch(() => null);
+        return payload?.data || null;
+      })
+      .then((context) => {
+        if (cancelled || !context?.slug) return;
+        if (context.routing_mode === 'custom_domain_alias' && context.redirect_to) {
+          const target = new URL(context.redirect_to);
+          target.pathname = window.location.pathname;
+          target.search = window.location.search;
+          target.hash = window.location.hash;
+          window.location.replace(target.toString());
+          return;
+        }
+        if (context.routing_mode !== 'custom_domain') return;
+        setCustomStorefrontRouteContext(context);
+        setRouteSlug(toSlug(context.slug));
+        setRouteSubpage(readStoreSubpage());
+        setRouteServiceItemId(readStoreServiceItemId());
+        setRouteItemId(readStoreItemId());
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [routeSlug]);
+
   const [stores, setStores] = useState([]);
   const [loadingStores, setLoadingStores] = useState(true);
   const [storesError, setStoresError] = useState('');
@@ -4566,9 +4597,19 @@ export default function StorefrontApp() {
     registerServiceWorker();
   }, []);
 
-  const goStore = (slug, locationId = null) => {
+  const goStore = (slug, locationId = null, storefrontUrl = '') => {
     const normalized = toSlug(slug);
     if (!normalized) return;
+    const canonicalUrl = String(storefrontUrl || '').trim();
+    if (canonicalUrl && typeof window !== 'undefined') {
+      try {
+        const targetUrl = new URL(canonicalUrl);
+        if (targetUrl.protocol === 'https:' && targetUrl.origin !== window.location.origin) {
+          window.location.assign(targetUrl.toString());
+          return;
+        }
+      } catch { /* Ignore malformed discovery URLs and use the DGFY route. */ }
+    }
     setPreferredStoreLocationSelection(locationId == null ? null : {
       slug: normalized,
       locationId: Number(locationId)
@@ -9260,7 +9301,7 @@ export default function StorefrontApp() {
                                     </div>
                                   )}
 
-                                <button onClick={() => goStore(store.slug, preferredLocationId)} style={{ marginTop: 'auto', width: '100%', padding: '12px 0', borderRadius: 12, border: '1.5px solid #1a4e8d', background: 'transparent', color: '#1a4e8d', fontSize: 13, fontWeight: 800, cursor: 'pointer', transition: 'all 0.2s ease', letterSpacing: '0.01em' }} onMouseOver={(e) => {e.target.style.background = '#1a4e8d'; e.target.style.color = '#fff';}} onMouseOut={(e) => {e.target.style.background = 'transparent'; e.target.style.color = '#1a4e8d';}}>
+                                <button onClick={() => goStore(store.slug, preferredLocationId, store.storefront_url)} style={{ marginTop: 'auto', width: '100%', padding: '12px 0', borderRadius: 12, border: '1.5px solid #1a4e8d', background: 'transparent', color: '#1a4e8d', fontSize: 13, fontWeight: 800, cursor: 'pointer', transition: 'all 0.2s ease', letterSpacing: '0.01em' }} onMouseOver={(e) => {e.target.style.background = '#1a4e8d'; e.target.style.color = '#fff';}} onMouseOut={(e) => {e.target.style.background = 'transparent'; e.target.style.color = '#1a4e8d';}}>
                                   View Store
                                 </button>
                               </div>
@@ -9717,7 +9758,7 @@ export default function StorefrontApp() {
                                     <span style={{ borderRadius: 999, padding: '2px 7px', fontSize: 10, fontWeight: 700, background: store.storefront_open ? '#ecfdf5' : '#fff7ed', color: store.storefront_open ? '#16a34a' : '#c2410c' }}>{store.storefront_open ? 'Open Now' : 'Closed'}</span>
                                   </div>
                                   <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-                                    <button type="button" onClick={() => goStore(store.slug, preferredLocationId)} style={{ flex: 1, borderRadius: 8, border: '1px solid #dbeafe', background: '#fff', color: '#1a4e8d', padding: '7px 0', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>View Store</button>
+                                    <button type="button" onClick={() => goStore(store.slug, preferredLocationId, store.storefront_url)} style={{ flex: 1, borderRadius: 8, border: '1px solid #dbeafe', background: '#fff', color: '#1a4e8d', padding: '7px 0', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>View Store</button>
                                     <button type="button" onClick={() => goStoreOrderForDiscovery(store.slug, preferredLocationId, store)} style={{ flex: 1, borderRadius: 8, border: 'none', background: '#ff8a1f', color: '#fff', padding: '7px 0', fontWeight: 700, cursor: 'pointer', fontSize: 12, boxShadow: '0 4px 10px rgba(249,115,22,.20)' }}>Order Now</button>
                                   </div>
                                 </div>
