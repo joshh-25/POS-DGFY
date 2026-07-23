@@ -30,29 +30,28 @@ describe('buildFnbCheckoutPayload', () => {
     expect(payload.promo_code).toBe('SAVE20');
   });
 
-  it('normalizes customer contact values before checkout submission', () => {
+  it('trims customer contact fields and retains readable address text for pickup orders', () => {
     const payload = buildFnbCheckoutPayload({
+      selectedLocationId: 'branch-1',
+      selectedStore: { slug: 'space-bar-2193ed', businessId: 'tenant-spacebar' },
+      orderMethod: 'pickup',
       customerName: '  Bob Harris  ',
       customerPhone: '  +639171234567  ',
       customerEmail: '  bob@example.com  ',
-      cart: []
+      isDeliveryOrder: false,
+      deliveryAddress: '  Main Branch, Iloilo City  ',
+      customerPin: { latitude: 10.7, longitude: 122.5 },
+      promoCode: '',
+      fnbScheduleMode: 'asap',
+      fnbScheduledFor: '',
+      fnbSpecialInstructions: '',
+      cart: [{ item_id: 1, quantity: 1 }]
     });
 
     expect(payload.customer_name).toBe('Bob Harris');
     expect(payload.customer_phone).toBe('+639171234567');
     expect(payload.customer_email).toBe('bob@example.com');
-  });
-
-  it('keeps a selected customer address on pickup orders', () => {
-    const payload = buildFnbCheckoutPayload({
-      orderMethod: 'pickup',
-      isDeliveryOrder: false,
-      deliveryAddress: '123 Test Street, Iloilo City',
-      customerPin: { latitude: 10.7, longitude: 122.5 },
-      cart: []
-    });
-
-    expect(payload.delivery_address).toBe('123 Test Street, Iloilo City');
+    expect(payload.delivery_address).toBe('Main Branch, Iloilo City');
     expect(payload.delivery_latitude).toBeNull();
     expect(payload.delivery_longitude).toBeNull();
   });

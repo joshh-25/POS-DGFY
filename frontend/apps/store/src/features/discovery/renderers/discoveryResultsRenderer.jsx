@@ -17,11 +17,13 @@ import {
   X
 } from 'lucide-react';
 import { DiscoveryMapCard } from '../../../Components/store/DiscoveryResponsiveLayout.jsx';
+import { getDiscoveryMobilePanelLayout } from '../../../discovery/model/discoveryResultsModel.js';
 
 export function createDiscoveryResultsRenderer(ctx) {
   const {
   activeDiscoveryFilterCount,
   activeDiscoveryFilterDropdown,
+  clearDiscoveryClusterResults,
   discoveryBusinessModeOptions,
   discoveryCategoryFilter,
   discoveryCoords,
@@ -43,10 +45,14 @@ export function createDiscoveryResultsRenderer(ctx) {
   getPreferredDiscoveryLocationId,
   goStore,
   goStoreOrderForDiscovery,
+  handleDiscoveryClusterSelect,
   hasActiveDiscoveryFilters,
   hasDiscoverySearch,
   highlightedDiscoveryMarkerKey,
+  highlightedDiscoveryMarkerKeys,
+  discoveryViewportSignal,
   highlightedStoreSlug,
+  isClusterResultsActive,
   isBrandingImageBlocked,
   isCategoryFilterActive,
   isDiscoveryMobileViewport,
@@ -60,6 +66,7 @@ export function createDiscoveryResultsRenderer(ctx) {
   normalizeStorefrontCategories,
   normalizeStorefrontReviewSummary,
   paginatedDiscoveryStores,
+  clusterResultStores,
   renderDiscoveryResetButton,
   resetDiscoveryResultsView,
   search,
@@ -89,8 +96,13 @@ export function createDiscoveryResultsRenderer(ctx) {
   return function DiscoveryResultsRenderer() {
 
 const cityLabel = discoveryCoords ? 'your selected area' : 'Iloilo City';
-const resultCountLabel = `${filteredDiscoveryStores.length} ${filteredDiscoveryStores.length === 1 ? 'Store' : 'Stores'} Found`;
-const resultsSubtitle = hasDiscoverySearch && String(search || '').trim()
+const panelStores = isClusterResultsActive ? clusterResultStores : paginatedDiscoveryStores;
+const panelTotalCount = isClusterResultsActive ? clusterResultStores.length : filteredDiscoveryStores.length;
+const resultCountLabel = `${panelTotalCount} ${panelTotalCount === 1 ? 'Store' : 'Stores'} Found`;
+const resultsTitle = isClusterResultsActive ? 'Stores At This Pin' : 'Best Shops Today';
+const resultsSubtitle = isClusterResultsActive
+  ? 'Showing the storefronts grouped inside the selected clustered pin.'
+  : hasDiscoverySearch && String(search || '').trim()
   ? `Showing businesses related to "${String(search || '').trim()}" near ${cityLabel}`
   : `Showing businesses within your selected area near ${cityLabel}`;
       const viewButtonStyle = (mode) => ({
@@ -511,15 +523,31 @@ const resultsSubtitle = hasDiscoverySearch && String(search || '').trim()
       )
         );
       };
-        const isResultsPanelVisible = isDiscoveryMobileViewport ? !isMobileResultsCollapsed : isStoreListVisible;
+        const isResultsPanelVisible = isClusterResultsActive
+          || (isDiscoveryMobileViewport ? !isMobileResultsCollapsed : isStoreListVisible);
+        const mobilePanelLayout = getDiscoveryMobilePanelLayout({
+          isMobile: isDiscoveryMobileViewport,
+          isVisible: isResultsPanelVisible,
+          storeCount: panelStores.length,
+          viewMode
+        });
           const desktopResultsPanelWidth = isDiscoveryMobileViewport
             ? '100%'
             : isDiscoveryTabletViewport
               ? '100%'
               : `${discoveryLayout.resultsPanelWidth}px`;
     const discoveryStageMapHeight = isDiscoveryMobileViewport
-      ? '312px'
+      ? (isResultsPanelVisible ? '250px' : '312px')
       : discoveryLayout.discoveryMapHeight;
+    const isDesktopSplitResultsLayout = !isDiscoveryMobileViewport && !isDiscoveryTabletViewport;
+    const discoveryStageHeight = isDiscoveryMobileViewport
+      ? 'auto'
+      : isDesktopSplitResultsLayout && isResultsPanelVisible
+      ? discoveryLayout.resultsPanelMaxHeight
+      : discoveryStageMapHeight;
+    const discoveryMapHeight = isDesktopSplitResultsLayout && isResultsPanelVisible
+      ? '100%'
+      : discoveryStageMapHeight;
       return (
   <DiscoveryMapCard viewportMode={discoveryViewportMode}>
     <div
@@ -528,19 +556,22 @@ const resultsSubtitle = hasDiscoverySearch && String(search || '').trim()
     >
       <div
         className={`discovery-results-stage ${isDiscoveryMobileViewport ? 'discovery-results-stage--mobile discovery-results-stage--mobile-fullbleed-map' : (isDiscoveryTabletViewport ? 'discovery-results-stage--tablet' : 'discovery-results-stage--desktop')}`}
-        style={{ display: 'flex', flexDirection: isDiscoveryMobileViewport || isDiscoveryTabletViewport ? 'column' : 'row', alignItems: 'stretch', position: 'relative', overflow: isDiscoveryMobileViewport ? 'visible' : 'hidden', transition: 'all 350ms cubic-bezier(0.4,0,0.2,1)' }}
+        style={{ display: 'flex', flexDirection: isDiscoveryMobileViewport || isDiscoveryTabletViewport ? 'column' : 'row', alignItems: 'stretch', position: 'relative', overflow: isDiscoveryMobileViewport ? 'visible' : 'hidden', height: discoveryStageHeight, transition: 'all 350ms cubic-bezier(0.4,0,0.2,1)' }}
       >
         <div
           className={`discovery-results-stage__map ${isDiscoveryMobileViewport ? `discovery-results-stage__map--mobile-fullbleed ${isResultsPanelVisible ? 'is-results-visible' : 'is-results-hidden'}` : ''}`}
-          style={{ position: 'relative', zIndex: 20, flex: '1 1 auto', minWidth: 0, height: discoveryStageMapHeight }}
+          style={{ position: 'relative', zIndex: 20, flex: '1 1 auto', minWidth: 0, height: discoveryMapHeight }}
         >
           {!loadingStores && !storesError && (searchedDiscoveryMapPins.length > 0 || (hasDiscoverySearch && filteredDiscoveryStores.length === 0)) ? (
             <StoresMap
               key={discoveryResultsMapKey}
               stores={searchedDiscoveryMapPins}
               selectedKey={highlightedDiscoveryMarkerKey || null}
+              highlightedKeys={highlightedDiscoveryMarkerKeys}
               userLocation={discoveryCoords}
               height="100%"
+              viewportPolicy="search-stable"
+              viewportSignal={discoveryViewportSignal}
                     onSelectStore={(pin) => {
                       setHasDiscoveryExplorationStarted(true);
                   setIsMobileResultsCollapsed(false);
@@ -553,8 +584,9 @@ const resultsSubtitle = hasDiscoverySearch && String(search || '').trim()
                 setSelectedMapPin(matched || pin || null);
                 goStore(pin.slug, pin.location_id ?? null);
               }}
-              autoOpenPopups={filteredDiscoveryStores.length > 0}
+              autoOpenPopups={!isClusterResultsActive && filteredDiscoveryStores.length > 0}
               openPopupOnHover={true}
+              onSelectCluster={handleDiscoveryClusterSelect}
             />
           ) : (
             <div style={{ height: '100%', background: '#f8fafc', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>
@@ -564,7 +596,10 @@ const resultsSubtitle = hasDiscoverySearch && String(search || '').trim()
           {isDiscoveryMobileViewport && (
             <button
               type="button"
-              onClick={() => setIsMobileResultsCollapsed((v) => !v)}
+              onClick={() => {
+                clearDiscoveryClusterResults();
+                setIsMobileResultsCollapsed(isResultsPanelVisible);
+              }}
               className="discovery-results-stage__mobile-toggle"
               style={{
                 position: 'absolute',
@@ -590,20 +625,23 @@ const resultsSubtitle = hasDiscoverySearch && String(search || '').trim()
               {isResultsPanelVisible ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
               {isResultsPanelVisible
                 ? 'Hide Results'
-                : `View Results${filteredDiscoveryStores.length >= 0 ? ` (${filteredDiscoveryStores.length})` : ''}`}
+                : `View Results (${panelTotalCount})`}
             </button>
           )}
           {!isDiscoveryMobileViewport && <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 11 }}>
             <button
               type="button"
-              onClick={() => setIsStoreListVisible((value) => !value)}
+              onClick={() => {
+                clearDiscoveryClusterResults();
+                setIsStoreListVisible(!isResultsPanelVisible);
+              }}
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
                 gap: 7,
                 borderRadius: 12,
                 border: 'none',
-                background: isStoreListVisible ? '#0f172a' : '#1a4e8d',
+                background: isResultsPanelVisible ? '#0f172a' : '#1a4e8d',
                 color: '#fff',
                 padding: '10px 16px',
                 fontWeight: 700,
@@ -613,8 +651,8 @@ const resultsSubtitle = hasDiscoverySearch && String(search || '').trim()
                 transition: 'background 200ms'
               }}
             >
-              {isStoreListVisible ? <X size={14} /> : <List size={14} />}
-              {isStoreListVisible ? 'Hide Results' : `View Results${filteredDiscoveryStores.length ? ` (${filteredDiscoveryStores.length})` : ''}`}
+              {isResultsPanelVisible ? <X size={14} /> : <List size={14} />}
+              {isResultsPanelVisible ? 'Hide Results' : `View Results${panelTotalCount ? ` (${panelTotalCount})` : ''}`}
             </button>
           </div>}
         </div>
@@ -629,9 +667,10 @@ const resultsSubtitle = hasDiscoverySearch && String(search || '').trim()
             overflow: 'hidden',
             position: 'static',
             zIndex: 10,
-                  width: isResultsPanelVisible ? desktopResultsPanelWidth : '0px',
+            width: isResultsPanelVisible ? desktopResultsPanelWidth : '0px',
             minWidth: 0,
-                  maxHeight: isDiscoveryMobileViewport ? (isResultsPanelVisible ? 'calc(100vh - 220px)' : '0px') : discoveryLayout.resultsPanelMaxHeight,
+                  height: isDiscoveryMobileViewport ? mobilePanelLayout.panelHeight : (isDesktopSplitResultsLayout ? '100%' : 'auto'),
+                  maxHeight: isDiscoveryMobileViewport ? mobilePanelLayout.panelMaxHeight : (isDesktopSplitResultsLayout ? '100%' : discoveryLayout.resultsPanelMaxHeight),
                   opacity: isResultsPanelVisible ? 1 : 0,
                   transition: 'width 350ms cubic-bezier(0.4,0,0.2,1), opacity 300ms ease, border-color 350ms, max-height 280ms ease, transform 280ms ease',
                   marginTop: isDiscoveryMobileViewport ? -20 : 0,
@@ -646,7 +685,7 @@ const resultsSubtitle = hasDiscoverySearch && String(search || '').trim()
                   <div style={{ display: 'flex', alignItems: isDiscoveryMobileViewport ? 'flex-start' : 'center', justifyContent: 'space-between', gap: 14, flexWrap: 'wrap' }}>
                     <div style={{ minWidth: 0 }}>
                       <div style={{ fontSize: 11, fontWeight: 800, color: '#1a4e8d', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Discover Nearby</div>
-                      <h2 style={{ margin: '6px 0 0', fontSize: isDiscoveryMobileViewport ? 24 : 29, lineHeight: 1.08, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.03em' }}>Best Shops Today</h2>
+                      <h2 style={{ margin: '6px 0 0', fontSize: isDiscoveryMobileViewport ? 24 : 29, lineHeight: 1.08, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.03em' }}>{resultsTitle}</h2>
                       <p
                         style={{
                           margin: '8px 0 0',
@@ -912,9 +951,9 @@ const resultsSubtitle = hasDiscoverySearch && String(search || '').trim()
                     </div>
           </div>
 
-                <div style={{ minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', padding: isDiscoveryMobileViewport ? '14px 14px 18px' : viewMode === 'grid' ? '18px 22px 24px' : '16px 18px 22px' }}>
+                <div style={{ minHeight: 0, overflowY: 'auto', WebkitOverflowScrolling: 'touch', overscrollBehavior: 'contain', maxHeight: isDiscoveryMobileViewport ? mobilePanelLayout.listMaxHeight : undefined, padding: isDiscoveryMobileViewport ? '14px 14px 18px' : viewMode === 'grid' ? '18px 22px 24px' : '16px 18px 22px', paddingBottom: isDiscoveryMobileViewport ? 28 : undefined }}>
             {loadingStores && <div style={{ padding: 24, color: '#94a3b8', fontSize: 14, textAlign: 'center' }}>Loading stores...</div>}
-            {!loadingStores && filteredDiscoveryStores.length === 0 && (
+            {!loadingStores && panelTotalCount === 0 && (
               <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#f8fbff', padding: 18, display: 'grid', gap: 8 }}>
                 <div style={{ fontSize: 24, color: '#0f172a', fontWeight: 800 }}>{getDiscoveryEmptyStateMessage(search)}</div>
                 <div style={{ color: '#64748b', fontSize: 14, lineHeight: 1.5 }}>Try changing your search keyword or category.</div>
@@ -926,11 +965,11 @@ const resultsSubtitle = hasDiscoverySearch && String(search || '').trim()
               </div>
             )}
                     <div style={{ display: 'grid', gap: viewMode === 'grid' ? (isDiscoveryMobileViewport ? 14 : isDiscoveryTabletViewport ? 18 : 20) : (isDiscoveryMobileViewport ? 14 : 18), gridTemplateColumns: viewMode === 'grid' ? (isDiscoveryMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))') : '1fr' }}>
-                    {paginatedDiscoveryStores.map(renderDiscoveryStoreCard)}
+                    {panelStores.map(renderDiscoveryStoreCard)}
                   </div>
-          </div>
+                </div>
 
-          {filteredDiscoveryStores.length > 0 && discoveryTotalPages > 1 && (
+                {!isClusterResultsActive && filteredDiscoveryStores.length > 0 && discoveryTotalPages > 1 && (
             <div style={{ padding: '0 18px 20px', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, flexWrap: 'wrap' }}>
               <button
                 type="button"

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   classifyStoreCatalogError,
   normalizeStorefrontErrorMessage
-} from '../storefrontErrorMessages.js';
+} from '../shared/model/storefrontErrorMessages.js';
 
 describe('storefront error message normalization', () => {
   it('normalizes network transport errors', () => {

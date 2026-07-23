@@ -3,7 +3,7 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PromoCodePanel } from '../checkout/components/PromoCodePanel.jsx';
+import { PromoCodePanel } from '../modes/fnb/checkout/components/PromoCodePanel.jsx';
 
 afterEach(() => {
   cleanup();
@@ -92,7 +92,7 @@ describe('PromoCodePanel', () => {
 
     expect(screen.getByText(/Promo Code:/i)).toBeTruthy();
     expect(screen.getByText('MOM10')).toBeTruthy();
-    expect(screen.getByText('10% OFF')).toBeTruthy();
+    expect(screen.getByText('10%')).toBeTruthy();
     expect(screen.getByText(/Eligible items:/i)).toBeTruthy();
     expect(screen.getByText(/Eligible categories:/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: /^use$/i })).toBeTruthy();

@@ -110,7 +110,7 @@ infrastructure/docker/dgfy-api/Dockerfile
 
 Then wire a `dgfy-api` service into Docker Compose with:
 
-- its own image name, for example `ghcr.io/sieitzz/dgfy-platform/dgfy-api:${IMAGE_TAG:-latest}`
+- its own image name, for example `ghcr.io/sieitzz/dgfy-platform/api:${IMAGE_TAG:-latest}`
 - internal port, for example `5100`
 - `DB_HOST=mysql`, `DB_PORT=3306`, `DB_DIALECT=mysql`
 - `REDIS_URL=redis://redis:6379` if sessions/rate limits need Redis

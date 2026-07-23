@@ -404,7 +404,7 @@ describe('storefront discovery integration flow', () => {
       const authParams = new URLSearchParams(window.location.search);
       expect(authParams.get('intent')).toBe('customer');
       expect(authParams.get('mode')).toBe('sign-in');
-      expect(authParams.get('return_to')).toContain('dgfy_account=1');
+      expect(authParams.get('return_to')).toContain('/map-dgfy/account');
       expect(screen.queryByRole('dialog', { name: 'DGFY Account' })).toBeNull();
     } finally {
       warnSpy.mockRestore();
@@ -435,7 +435,7 @@ describe('storefront discovery integration flow', () => {
       const authParams = new URLSearchParams(window.location.search);
       expect(authParams.get('intent')).toBe('customer');
       expect(authParams.get('mode')).toBe('sign-in');
-      expect(authParams.get('return_to')).toContain('dgfy_account=1');
+      expect(authParams.get('return_to')).toContain('/map-dgfy/account');
       expect(screen.queryByRole('dialog', { name: 'DGFY Account' })).toBeNull();
     } finally {
       restoreLocation();

@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeStorefrontPageModel } from '../normalizeStorefrontPageModel.js';
-import { buildStorefrontSlugFallbackQueries, findCanonicalStorefrontSlug } from '../StorefrontApp.jsx';
+import { normalizeStorefrontPageModel } from '../app/runtime/normalizeStorefrontPageModel.js';
+import {
+  buildStorefrontSlugFallbackQueries,
+  findCanonicalStorefrontSlug
+} from '../app/routing/defaultStorefrontRoute.js';
 
 describe('normalizeStorefrontPageModel', () => {
   it('derives service mode metadata and section visibility from storefront content', () => {
@@ -59,6 +62,34 @@ describe('normalizeStorefrontPageModel', () => {
       expect.objectContaining({ promo_code: 'SAVE20' })
     ]);
     expect(model.supporting.promo.items).toHaveLength(2);
+  });
+
+  it('uses the legacy storefront promo code when the commercial promo list is empty', () => {
+    const model = normalizeStorefrontPageModel({
+      selectedStore: {
+        storefront_promo: {
+          active: true,
+          promo_code: 'KUSINA20',
+          title: '20% OFF',
+          subtitle: 'All Dish',
+          badge: 'Todays Promo',
+          validity_text: 'Valid until July 31',
+          discount_percent: 20
+        },
+        storefront_promos: null
+      },
+      catalog: []
+    });
+
+    expect(model.supporting.promo.items).toEqual([
+      expect.objectContaining({
+        promo_code: 'KUSINA20',
+        promoCode: 'KUSINA20',
+        discount_percent: 20,
+        discountPercent: 20,
+        availability_status: 'available'
+      })
+    ]);
   });
 
   it('keeps scheduled promos visible but unavailable while hiding expired and inactive promos', () => {

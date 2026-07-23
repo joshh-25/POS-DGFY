@@ -55,3 +55,75 @@ The hardening contract for this rollout requires explicit proof for replay, fail
 Release validation must include DGFY account search tests, DGFY-only invitation tests, accept/reject tests, leave-company tests, ownership-transfer tests, platform-admin assisted provisioning and force-owner-assignment tests, POS-session tests, direct invite-link retirement tests, legacy-login grace and post-deadline blocking tests, company-list grouping tests, switch authorization tests, the IMS tenant-session membership bridge test, browser storage guards, and frontend IMS/Storefront/POS rendering tests.
 
 The control matrix for this surface is `docs/testing/dgfy-company-access-security-control-matrix.md`. The rendered UI gate is `npm run smoke:dgfy-access-ui` after local IMS, Storefront, and POS dev or preview servers are running. It captures desktop and mobile screenshots under `.tmp/rendered-qa/dgfy-access`, writes `.tmp/rendered-qa/dgfy-access/dgfy-access-ui-smoke.json`, verifies nonblank pages, checks accessible labels, checks for framework overlays, exercises one visible control per surface when available, and fails on relevant console errors. By default the smoke records backend/API response failures as diagnostics so a frontend-only local stack can prove render quality; set `DGFY_ACCESS_STRICT_NETWORK=true` in seeded staging or a full local stack to fail on 5xx network responses. If local backend HTTPS enforcement is enabled behind simulated TLS termination, set `DGFY_ACCESS_FORWARDED_PROTO=https` so only localhost API requests receive `x-forwarded-proto=https`. Seeded text assertions can be supplied with `DGFY_ACCESS_POS_EXPECT_TEXT`, `DGFY_ACCESS_AUTH_EXPECT_TEXT`, and `DGFY_ACCESS_ACCOUNT_EXPECT_TEXT`. Development tenant auto-login is opt-in through `VITE_DEV_AUTO_LOGIN_ENABLED=true` and must not run on DGFY auth or POS terminal-lock routes. Production readiness remains capped below 9/10 until seeded staging or production UAT proves founder ownership, transferred former-owner membership, invited membership, pending/rejected invitations, legacy unlinked and linked users, POS allowed terminal unlock, POS terminal-policy denial, telemetry, and rollback behavior end to end.
+
+## Amendment (v2.1 Phase 13.5 Staff Authentication Model Correction, 2026-07)
+
+The v2.1 Legacy Data Migration milestone corrects this ADR's staff-authentication
+model for DGFY tenant businesses. Staff authentication is tenant-local-first:
+a business may invite or create a staff user scoped to that business, and that
+staff user may authenticate to that single business without first owning or
+linking a global DGFY account. Tenant-local credentials live in the same tenant
+database in `staff_credentials`, a 1:1 table for `staff_accounts`; password and
+POS approval PIN hashes are never stored on `staff_accounts` itself. Linking a
+tenant-local staff profile to a global DGFY account through
+`account_staff_assignments` is optional. When present, that link enables unified
+DGFY identity and company switching; when missing or pending, it does not
+invalidate the tenant-local staff account or its tenant-local login.
+
+The following original ADR 0028 rules are superseded or reframed for staff
+access:
+
+1. "IMS user invitations are DGFY-account invitations" and "tenant-local
+   password setup for invited business users are retired by default" are
+   superseded. Staff invitations create tenant-local staff records with
+   tenant-local credential setup. DGFY account linking is a separate optional
+   step.
+2. "New invited users must be selected registered DGFY accounts" and the
+   `LEGACY_TENANT_LOGIN_GRACE_END=2027-06-17` post-deadline blocking frame are
+   superseded/reframed. Unlinked tenant-local staff are a permanent supported
+   state, not a dated grace cohort. `LEGACY_TENANT_LOGIN_GRACE_ENABLED` and
+   `LEGACY_TENANT_LOGIN_GRACE_END` keep their existing runtime names for
+   legacy rollout behavior, but their presence must not be read as a future
+   removal of tenant-local staff login.
+3. POS DGFY unlock and IMS switcher language that treats tenant-local login as
+   a dated fallback is reframed. DGFY unlock and switching remain features of
+   linked staff; tenant-local login is the baseline staff-authentication path,
+   not a fallback.
+4. The validation expectations named in this ADR for DGFY-only invitations and
+   direct invite-link retirement are superseded for staff access. They no
+   longer describe required behavior where tenant-local staff invitations and
+   credential setup are the intended path.
+5. `DGFY_LEGACY_TENANT_REGISTRATION_ENABLED` and
+   `DGFY_TENANT_USER_EMAIL_REPAIR_ENABLED` are not renamed. Direct tenant-user
+   registration and email-repair behavior remain controlled by their existing
+   rollout gates, but these flags do not make DGFY accounts mandatory for staff
+   authentication and do not authorize email/phone inference for DGFY linking.
+
+The following rules do not change:
+
+1. Explicit accepted-membership evidence remains the only basis for DGFY
+   account linking, company switching, tenant-session bridging, leave-company,
+   invitation acceptance, and ownership-transfer flows. Email or phone matches
+   alone must never create or authorize a DGFY membership, assignment, switch,
+   or tenant session.
+2. Public account-picker, invitation, switcher, and discovery payloads must not
+   expose `company_token`.
+3. Ownership transfer still requires current-owner authorization and
+   `dgfy_business_step_up`.
+4. The IMS tenant-session bridge for linked accounts still requires an accepted
+   membership row; it remains an authorization bridge, not an identity-inference
+   rule.
+
+Migration preserves tenant-local staff login intentionally. Legacy tenant
+`users.password_hash` values that are real bcrypt hashes are copied
+byte-for-byte into `staff_credentials`; they are never re-hashed and never
+logged. Legacy placeholder or pending values are not copied as credentials.
+Those users receive `credential_status='reset_required'` and a structured
+`staff_credential_reset_required` finding whose remediation is the
+tenant-local reinvite/reset path through `staff_invitations`. Legacy invitation
+tokens are legacy-URL-bound secrets and are never carried over. The mirrored
+field-level migration rules live in
+`docs/database/dgfy-data-migration-map.md`.
+
+`status: accepted` is preserved; this is an amendment, not a revision of the
+original decision history.

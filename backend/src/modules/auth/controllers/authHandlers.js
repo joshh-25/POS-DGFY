@@ -14,7 +14,9 @@ import { complianceRepository } from '../../compliance/index.js';
 import { requestEmailOtp, EMAIL_OTP_PURPOSES } from '../../../services/emailOtpService.js';
 import {
   clearTenantSessionCookies,
+  getSubmittedRefreshToken,
   getTenantRefreshToken,
+  isMobileClientRequest,
   issueCsrfToken,
   setTenantSessionCookies,
   stripBrowserRefreshToken
@@ -32,8 +34,11 @@ const defaultErrorPayload = (req, res, failure) => ({
   timestamp: timestamp()
 });
 
-const withTenantCompanyPayload = (session = {}, tenantToken = null) => {
-  const payload = stripBrowserRefreshToken(session);
+const withTenantCompanyPayload = (session = {}, tenantToken = null, req = null) => {
+  // Mobile clients can't use the httpOnly refresh cookie, so they need the
+  // refresh token in the body to persist it themselves; browser clients
+  // keep the existing httpOnly-cookie-only (more XSS-resistant) behavior.
+  const payload = isMobileClientRequest(req) ? { ...session } : stripBrowserRefreshToken(session);
   const token = String(tenantToken || payload?.company?.token || '').trim();
   if (!token || !payload || typeof payload !== 'object') return payload;
   return {
@@ -173,7 +178,8 @@ export const login = async (req, res, next) => {
         success: true,
         data: withTenantCompanyPayload(
           result.data,
-          req.headers?.['x-company-token'] || req.tenant?.company_token || null
+          req.headers?.['x-company-token'] || req.tenant?.company_token || null,
+          req
         ),
         message: 'Login successful',
         timestamp: timestamp()
@@ -187,7 +193,7 @@ export const login = async (req, res, next) => {
 
 export const refreshToken = async (req, res, next) => {
   try {
-    const refreshToken = getTenantRefreshToken(req);
+    const refreshToken = getSubmittedRefreshToken(req);
     const result = await refreshTokenUseCase({ refreshToken });
 
     if (result?.success) {
@@ -214,7 +220,8 @@ export const refreshToken = async (req, res, next) => {
         success: true,
         data: withTenantCompanyPayload(
           result.data,
-          req.headers?.['x-company-token'] || req.tenant?.company_token || null
+          req.headers?.['x-company-token'] || req.tenant?.company_token || null,
+          req
         ),
         message: 'Token refreshed successfully',
         timestamp: timestamp()
