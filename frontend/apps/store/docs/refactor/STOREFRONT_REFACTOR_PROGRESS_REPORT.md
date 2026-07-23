@@ -2596,7 +2596,107 @@ steps/review modal/pin-my-location; simple catalog + checkout route entry; class
 grid/promo-card apply/empty-state. This is in addition to all Wave 7–9 QA and the sign-in bug
 below, still open.
 
-Continuing to Wave 11 (hero/header/location band) next, same run.
+**Wave 11 — ZONE 1-3 hero/header/location band extraction.** Moved the ~200-line band (a11y
+hidden tenant-page block, ZONE 1 nav/header, ZONE 2 mode hero dispatch — `ServicesHero` /
+`FnbHero` / `SimpleHero` / `DefaultStorefrontHero` — ZONE 3 location map snapshot via
+`StoresMap`, and the hospitality booking panel) into **`app/pages/StorefrontHeroBandContainer.jsx`**
++ **`app/hooks/useStorefrontHeroBandProps.js`**, same placement reasoning as Wave 10: the band
+composes across services/fnb/simple/hospitality/shared/discovery components, so it belongs at
+the app layer alongside the ZONE 4 catalog container, not under `shared/` or a single mode.
+
+Orphaned shell imports removed after grep-confirming no other consumer: `ServicesHero`,
+`FnbHero`, `SimpleHero`, `DefaultStorefrontHero`, `HospitalityBookingPanel`,
+`StorefrontExpandableBusinessHours`, `StorefrontHeroShell`, `buildVisibleStorefrontContactRows`,
+`getDeliveryPlatformLinks`, and the 9 hero-only style tokens (`HERO_CANVAS_MAX_WIDTH` etc. from
+`storefrontStyleTokens.js`). Kept `Badge`/`GhostButton`/`PrimaryButton`/`STYLES`/`StoresMap`
+since each still has other consumers in the shell (confirmed by grep before deciding).
+
+StorefrontApp.jsx: **3,636 → 3,473** (-163).
+
+Verification: eslint 0 errors (same 137 pre-existing warnings), `build:store` passes, discovery
+guardrail diff empty. First test run surfaced a genuine literal-relocation case:
+`hospitalityStorefront.contract.test.js` had 3 assertions checking `StorefrontApp.jsx`'s raw
+source for `HospitalityBookingPanel` and `!isFnbMode && !isSimpleMode` — both moved into the new
+container. Repointed those 2 literals to read `app/pages/StorefrontHeroBandContainer.jsx`
+instead; left the `workflow_mode` assertion on the shell since that derivation didn't move.
+After the repoint: `vitest run apps/store --exclude '**/discoveryFlow.integration.test.jsx'` →
+50/50 files, 237/237 tests pass.
+
+**QA still open (added to the running list):** each mode's hero rendering (branch-menu
+selector, catalog search box, follow/share actions, expandable business hours, account/track
+panel entry points) for services/fnb/simple/default; `StoresMap` location-select interaction on
+non-mode storefronts; hospitality booking panel mount. Adds to all prior waves' open QA and the
+sign-in bug below.
+
+**Wave 12 — cart/checkout drawer shell extraction.** Re-scanned after Wave 11 and found one more
+cohesive candidate: the `{isStorePage && (checkoutPermitted || bookingPermitted ||
+productCartPermitted) && (<>...</>)}` fragment (~150 lines) — the follow floating action,
+per-mode cart FABs/drawers (`ServiceCartDrawer`, `SimpleCartFloatingButton`/
+`SimpleCartDrawerSurface`, `StorefrontCartFab`, `FnbCartDrawerSurface`), the shared
+`StorefrontCheckoutDrawerFrame` with its header/tab-bar render-prop content and the Wave 9
+checkout-body containers as children, the F&B tracking mount, and the order-success overlay.
+Moved into **`app/pages/StorefrontCartDrawerShellContainer.jsx`** + **`app/hooks/
+useStorefrontCartDrawerShellProps.js`**, same app-layer placement reasoning as Waves 10–11
+(composes across fnb/services/simple/shared, not owned by one mode or `shared/`).
+
+Orphaned shell imports removed after grep-confirming no other consumer:
+`StorefrontFollowFloatingAction`, `ServiceCartDrawer`, `StorefrontCartFlyAnimations`,
+`SimpleCartFloatingButton`, `SimpleCartDrawerSurface`, `StorefrontCartFab`,
+`FnbCartDrawerSurface`, `StorefrontCheckoutDrawerFrame`, `FnbCartDrawerHeader`,
+`FnbCheckoutRouteContainer`, `ServiceBookingReviewContainer`,
+`StorefrontCheckoutSummaryContainer`, `FnbTrackingRouteContainer`,
+`StorefrontOrderSuccessOverlay`. Kept `DGFY_BRAND_NAME`/`parseBooleanFlag` — both still have
+other consumers in the shell.
+
+StorefrontApp.jsx: **3,473 → 3,361** (-112).
+
+Verification: eslint 0 errors (138 warnings, confirmed via `git stash` baseline diff to be the
+pre-existing count, not a new one — Wave 11's own commit had already introduced the 138th
+warning, an off-by-one that was corrected in this wave's bookkeeping rather than the code).
+`build:store` passes, discovery guardrail diff empty. Test run surfaced 3 literal-relocation
+cases in `fnbStorefront.contract.test.js`: assertions checking `StorefrontApp.jsx`'s raw source
+for `FnbCheckoutRouteContainer` (x2) and `FnbTrackingRouteContainer` — all three moved into the
+new container. Repointed to a new `cartDrawerShellContainerSource()` reader; left
+`FnbCartDrawerRoute` (still a substring of the shell-resident `fnbCartDrawerRouteProps`
+identifier) and `useFnbTrackingRuntime`/`useFnbTrackingDrawerPresentation` (still shell-resident
+hook calls) untouched. After the repoint: `vitest run apps/store --exclude
+'**/discoveryFlow.integration.test.jsx'` → 50/50 files, 237/237 tests pass.
+
+**QA still open (added to the running list):** cart FAB across all modes, per-mode cart
+drawer/surface open-close, checkout-drawer tab switching (Booking Summary / Checkout / Track),
+F&B tracking mount inside the drawer, order-success overlay animation, follow floating action.
+Adds to all prior waves' open QA and the sign-in bug below.
+
+## 2026-07-23 — Run concludes: no further safe candidate ≥ ~80 lines
+
+After Wave 12, re-scanned the remaining `return (...)` JSX (now ~156 lines total, down from the
+original multi-thousand-line render band). What's left: the `<main>` wrapper and its
+`isStorePage`-driven padding calculation (small, tightly coupled to the wrapper itself), the
+`{!isStorePage && (<><DiscoveryHomePage/><ServicesDiscoveryDetailModal/></>)}` branch (~117
+lines) — which is the DiscoveryHomePage/discovery-mode branch, explicitly out of scope per the
+plan's hard-stop conditions regardless of its size — and the tail (`customerDashboardDrawerRouteNode`,
+`StorefrontPaymentUnavailableModal`, both a few lines). No further wave was started this run.
+
+Per the plan's hard-stop conditions, the Group D service-state-sync `useEffect` cluster and any
+discovery/map code remain explicitly out of scope for unattended work — both need a
+browser-QA-gated pass with the user present, not an overnight run.
+
+**Run summary (2026-07-23 overnight):** absorbed `fix/rate-limit-hardening-followup` (PR #82,
+closed after verifying green), then landed Wave 10 (ZONE 4 catalog dispatcher), Wave 11 (ZONE
+1-3 hero band), and Wave 12 (cart/checkout drawer shell) — three new app-layer containers
+(`app/pages/`, `app/hooks/`) following the Wave 9 verbatim-move + pass-through-props-hook idiom.
+StorefrontApp.jsx: **3,716 → 3,361 lines** (-355 across the three waves; the rate-limit
+absorption is unrelated to this file). All commits landed on
+`claude/storefront-shell-wave7-step2-n67w18` (PR #73); no pushing or PR edits beyond the
+authorized #82 close. Every commit passed eslint (0 errors) + `build:store` + the full headless
+store suite (50/50 files, 237/237 tests) before landing — nothing was committed red, and every
+raw-source contract-test literal that moved with its JSX was repointed to the correct new file
+in the same commit.
+
+All QA opened by Waves 10–12 (listed above, per wave) is added to the still-open list from
+Waves 7–9 for the user to walk on `localhost:5175` — this is the primary morning to-do, alongside
+the still-unresolved sign-in-mid-checkout redirect bug documented immediately below (deferred,
+untouched this run per prior explicit user decision).
 
 ## Known issues (deferred, pre-existing, unrelated to Waves 7–9)
 
