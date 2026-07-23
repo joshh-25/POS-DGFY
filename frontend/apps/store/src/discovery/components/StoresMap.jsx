@@ -11,15 +11,15 @@ import {
   ensureDiscoveryMapLayers,
   ensureMapImage,
   setGeoJsonSourceData
-} from '../../discoveryMapLayers.js';
+} from '../model/discoveryMapLayers.js';
 import {
   DEFAULT_CENTER,
   TILING_SERVER,
   tileTransformRequest
 } from '../../app/runtime/storefrontMapRuntime.js';
 import { withAssetOrigin } from '../../app/runtime/storefrontRuntime.js';
-import { getDiscoveryMarkerKey } from '../../discoveryMapDom.js';
-import { createStoreMarkerPreviewNode } from '../../storefrontMarkerPreview.js';
+import { getDiscoveryMarkerKey } from '../model/discoveryMapDom.js';
+import { createStoreMarkerPreviewNode } from '../model/storefrontMarkerPreview.js';
 
 const toSlug = (value) => String(value || '').trim().toLowerCase();
 

@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { describe, expect, it } from 'vitest';
-import { getDiscoveryMarkerKey, makeClusterElement } from '../discoveryMapDom.js';
+import { getDiscoveryMarkerKey, makeClusterElement } from '../discovery/model/discoveryMapDom.js';
 
 describe('discovery map DOM helpers', () => {
   it('keeps location identity before falling back to tenant-only marker identity', () => {

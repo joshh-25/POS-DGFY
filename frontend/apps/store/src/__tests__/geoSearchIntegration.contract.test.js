@@ -5,11 +5,11 @@ import { describe, expect, it } from 'vitest';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const appPath = path.resolve(__dirname, '../StorefrontApp.jsx');
+const loaderPath = path.resolve(__dirname, '../discovery/hooks/useDiscoveryStoreLoader.js');
 
 describe('storefront geo-search integration contract', () => {
   it('keeps visible discovery search on the authoritative discovery endpoint', () => {
-    const source = fs.readFileSync(appPath, 'utf8');
+    const source = fs.readFileSync(loaderPath, 'utf8');
 
     expect(source).toContain('/api/v1/storefront/discovery?');
     expect(source).toContain('discoveryAbortControllerRef.current?.abort?.()');

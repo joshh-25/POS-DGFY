@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getServiceCategoryMeta, getServicesStorefrontViewModel } from '../servicesStorefrontViewModel.js';
+import { getServiceCategoryMeta, getServicesStorefrontViewModel } from '../modes/services/storefront/model/servicesStorefrontViewModel.js';
 
 describe('servicesStorefrontViewModel', () => {
   it('groups service items into storefront families and trims variant names', () => {

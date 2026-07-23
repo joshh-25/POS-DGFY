@@ -18,7 +18,7 @@ import {
   getDiscoveryPinIconId,
   hasPlottableCoordinate,
   setGeoJsonSourceData
-} from '../discoveryMapLayers.js';
+} from '../discovery/model/discoveryMapLayers.js';
 
 describe('discovery map layer helpers', () => {
   it('excludes stores with missing or null-island coordinates from the map source', () => {

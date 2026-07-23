@@ -4,7 +4,7 @@ import {
   getBusinessModePinMeta,
   normalizeBusinessMode,
   renderBusinessModePinSvg
-} from '../businessModePins.js';
+} from '../discovery/model/businessModePins.js';
 
 describe('business mode storefront pins', () => {
   it('assigns distinct pin icons to service and food manufacturing modes', () => {

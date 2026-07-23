@@ -1,0 +1,81 @@
+import { useMemo } from 'react';
+
+/**
+ * Keeps F&B cart drawer route prop assembly out of the app shell while cart
+ * state itself remains shared at the current root level.
+ */
+export function useFnbCartDrawerRouteProps({
+  cart,
+  cartAddOnsTotal,
+  cartCount,
+  cartImageErrors,
+  cartSubtotal,
+  cartTotal,
+  checkoutTab,
+  fnbOrderBrand,
+  getLineTotal,
+  goStoreCatalogPage,
+  goStoreOrderPage,
+  isDesktopCheckout,
+  isFnbMode,
+  isFnbOrderSubpage,
+  isCheckoutOpen,
+  isMobileViewport,
+  money,
+  removeCartItem,
+  renderPromoCodePanel,
+  servicesBodyFont,
+  setCartImageErrors,
+  setIsCheckoutOpen,
+  updateQty,
+  withAssetOrigin
+}) {
+  return useMemo(() => ({
+    cart,
+    cartAddOnsTotal,
+    cartCount,
+    cartImageErrors,
+    cartSubtotal,
+    cartTotal,
+    fnbOrderBrand,
+    getLineTotal,
+    goStoreCatalogPage,
+    goStoreOrderPage,
+    isActive: Boolean(isCheckoutOpen && checkoutTab === 'cart' && isFnbMode && !isFnbOrderSubpage),
+    isDesktopCheckout,
+    isMobileViewport,
+    money,
+    removeCartItem,
+    renderPromoCodePanel,
+    servicesBodyFont,
+    setCartImageErrors,
+    setIsCheckoutOpen,
+    updateQty,
+    withAssetOrigin
+  }), [
+    cart,
+    cartAddOnsTotal,
+    cartCount,
+    cartImageErrors,
+    cartSubtotal,
+    cartTotal,
+    checkoutTab,
+    fnbOrderBrand,
+    getLineTotal,
+    goStoreCatalogPage,
+    goStoreOrderPage,
+    isDesktopCheckout,
+    isFnbMode,
+    isFnbOrderSubpage,
+    isCheckoutOpen,
+    isMobileViewport,
+    money,
+    removeCartItem,
+    renderPromoCodePanel,
+    servicesBodyFont,
+    setCartImageErrors,
+    setIsCheckoutOpen,
+    updateQty,
+    withAssetOrigin
+  ]);
+}
