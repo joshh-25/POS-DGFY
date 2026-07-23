@@ -17,6 +17,7 @@ const productDetailsReviewsSource = () => readSource('modes/fnb/storefront/compo
 const productDetailActionsSource = () => readSource('modes/fnb/storefront/hooks/useFnbProductDetailActions.js');
 const productCardSource = () => readSource('modes/fnb/storefront/components/FnbProductCard.jsx');
 const cartMutationsHookSource = () => readSource('shared/hooks/useCartMutations.js');
+const checkoutSubmissionHookSource = () => readSource('shared/hooks/useCheckoutSubmission.js');
 const catalogRuntimeSource = () => readSource('modes/fnb/storefront/hooks/useFnbCatalogRuntime.js');
 const storefrontCatalogHookSource = () => readSource('shared/hooks/useStorefrontCatalog.js');
 const itemReviewRuntimeSource = () => readSource('modes/fnb/storefront/hooks/useFnbItemReviewRuntime.js');
@@ -150,7 +151,7 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).not.toContain("value: 'maya'");
     expect(source).not.toContain("value: 'card'");
     expect(app).toContain('isEnabledStorefrontCheckoutPaymentType');
-    expect(app).toContain('payment_type: fnbPaymentType');
+    expect(checkoutSubmissionHookSource()).toContain('payment_type: fnbPaymentType');
   });
 
   it('mounts F&B checkout route and cart drawer through mode-owned modules', () => {
