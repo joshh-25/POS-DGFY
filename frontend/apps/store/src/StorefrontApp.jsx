@@ -45,6 +45,7 @@ import { useStorefrontSession } from './shared/hooks/useStorefrontSession.js';
 import { useStorefrontNavigation } from './shared/hooks/useStorefrontNavigation.js';
 import { useGuestCustomerIdentity } from './shared/hooks/useGuestCustomerIdentity.js';
 import { useStorefrontUiChrome } from './shared/hooks/useStorefrontUiChrome.js';
+import { useStorefrontTrackingIntent } from './shared/hooks/useStorefrontTrackingIntent.js';
 import {
   buildCustomerFullName,
   clearCheckoutAuthResumeDraft,
@@ -1032,7 +1033,34 @@ export default function StorefrontApp() {
     maskValue
   });
   const isGuestAccountDrawerState = !isStorefrontAccountAuthenticated;
-  const trackingDrawerOrders = isDgfyCustomerSignedIn ? accountTrackedOrders : guestTrackedOrders;
+  // `trackingMode`/`trackingAdapterRegistry` (above, feeding the unmoved
+  // `useFnbTrackingRuntime` call) stay here rather than moving into
+  // useStorefrontTrackingIntent: this hook can only be called after
+  // `accountTrackedOrders`/`guestTrackedOrders` exist (required for
+  // `trackingDrawerOrders`), which is after `useFnbTrackingRuntime` already needed
+  // them. Genuine ordering cycle, not a plain TDZ — see useStorefrontTrackingIntent.js.
+  const {
+    trackingDrawerOrders,
+    openTrackPanel,
+    openFullTrackingForPin
+  } = useStorefrontTrackingIntent({
+    accountTrackedOrders,
+    canOpenTrackingDrawer,
+    getGoStoreTrackPage: () => goStoreTrackPage,
+    guestTrackedOrders,
+    handleLoadAccountPanel,
+    isDgfyCustomerSignedIn,
+    isStorePage,
+    routeSlug,
+    selectedStore,
+    setCheckoutTab,
+    setIsCheckoutOpen,
+    setIsGuestTrackingDrawerOpen,
+    setSelectedTrackingPin,
+    setTrackingError,
+    setTrackingPinInput,
+    setTrackingResult
+  });
 
   const {
     customerFirstName,
@@ -2144,32 +2172,6 @@ export default function StorefrontApp() {
     if (isServicesMode) {
       goStoreBookingPage({ preserveSelectedService: true });
     }
-  };
-  const openTrackPanel = () => {
-    if (isStorePage || canOpenTrackingDrawer) {
-      if (isDgfyCustomerSignedIn) {
-        handleLoadAccountPanel();
-      }
-      setIsGuestTrackingDrawerOpen(true);
-      setIsCheckoutOpen(false);
-      return;
-    }
-    setCheckoutTab('track');
-    setIsCheckoutOpen(true);
-  };
-  const openFullTrackingForPin = (pin = '') => {
-    const normalizedPin = String(pin || '').trim().toUpperCase();
-    const matchedEntry = trackingDrawerOrders.find((entry) => String(entry?.tracking_pin || '').trim().toUpperCase() === normalizedPin);
-    const targetSlug = toSlug(matchedEntry?.store_slug || selectedStore?.slug || routeSlug);
-    if (normalizedPin) {
-      setSelectedTrackingPin(normalizedPin);
-      setTrackingPinInput(normalizedPin);
-      writeLastTrackingPinForStore(targetSlug, normalizedPin);
-      setTrackingResult(null);
-      setTrackingError('');
-    }
-    setIsGuestTrackingDrawerOpen(false);
-    goStoreTrackPage({ pin: normalizedPin, storeSlug: targetSlug });
   };
   const buildCustomerDashboardReturnUrl = useCallback(() => (
     resolveStorefrontAccountUrl()
