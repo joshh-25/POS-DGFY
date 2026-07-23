@@ -2035,3 +2035,74 @@ account/session panel opens; branch/location switcher works; browser back/forwar
 Next: Wave 6 (session/guest-identity/UI-chrome/tracking-intent SAFE hooks), then the deferred
 money-path hooks (cart mutations, checkout submission, service booking) + route containers — QA-gated,
 where the shell finally crosses under 1,000 lines.
+
+## 2026-07-23 - Wave 6: SAFE logic extraction (session, guest identity, UI chrome, tracking intent)
+
+Continued on `claude/storefront-shell-continuation-n67w18`, same branch as Wave 5. Completed the
+second (and final planned) half of the SAFE, non-money-path logic band. Four hooks, each its own
+commit, each independently verified (diff read, TDZ check, lint/build/test re-run) before committing —
+not just trusting the extracting agent's self-report.
+
+- **`shared/hooks/useStorefrontSession.js`** (new) — the DGFY customer session bootstrap:
+  `dgfyAuthTokenState`/`dgfySessionAccount` + setters, `storefrontVisitorId`, the cookie-session
+  bootstrap effect (handoff-token exchange, explicit sign-out short-circuit, cookie/legacy-token
+  resolution), and the derived auth booleans (`isDgfyCustomerSignedIn` alone has 50+ call sites
+  elsewhere in the shell). `setIsAccountDrawerOpen` is the only external dependency. Verified zero
+  references to any of the 10 returned names exist anywhere in the file before the hook's call site
+  (only their own destructure) — no TDZ risk. Trimmed 2 destructured names (`dgfyAuthTokenState`,
+  `storeAuthToken`) that turned out unused in the shell after the move.
+- **`shared/hooks/useGuestCustomerIdentity.js`** (new) — the guest/DGFY-account customer identity
+  fields: `customerFirstName`/`LastName`/`Name`/`Phone`/`Email` + `savedCustomerDetails` state, the
+  masked preview, the apply/open/cancel/apply-details handlers, the "clear saved details" handler, the
+  DGFY-account identity-sync effect, and the `createCustomerIdentityRenderers` wiring. Resolved a
+  genuine circular dependency: `useCustomerDashboardIdentity` (called first) needs `savedCustomerDetails`,
+  while this hook's identity-sync effect needs `accountIdentityRawName/Phone/Email` (produced by
+  `useCustomerDashboardIdentity`) as reactive deps — fixed by handing `useCustomerDashboardIdentity` a
+  direct `readSavedCustomerDetails()` storage read instead of the reactive variable, verified safe
+  because every mutation path for saved customer details writes through to the same storage
+  synchronously with the state update, and the only consumer destructures primitive `.name`/`.phone`/
+  `.email` strings in its own deps, not the object reference. `openCheckoutAuthFlow`/
+  `handleRequestGuestCheckoutOtp` (money-path, declared later in the shell) are handed in as lazy
+  getters — the same forward-reference idiom already used in this codebase for
+  `getGoStoreTrackPage`/`getFetchTrackingPayload`.
+- **`shared/hooks/useStorefrontUiChrome.js`** (new) — 4 self-contained effects with no cross-domain
+  coupling: `isAboutExpanded`/`isServiceGalleryExpanded` state, the body-scroll-lock effect, the
+  order-success-animation-timer cleanup, the window-resize effect, and the service-worker
+  registration/dev-cleanup effect.
+- **`shared/hooks/useStorefrontTrackingIntent.js`** (new) — `trackingDrawerOrders`, `openTrackPanel`,
+  `openFullTrackingForPin`. Found and correctly handled a genuine **ordering cycle** (not a TDZ fixable
+  by a lazy getter): `trackingMode`/`trackingAdapterRegistry` feed the earlier, unmoved
+  `useFnbTrackingRuntime` call, which runs before `guestTrackedOrders` exists — and
+  `guestTrackedOrders` is itself one of `trackingDrawerOrders`' two inputs. Those two values stay in
+  the shell; an initial draft duplicated them uselessly inside the new hook too (dead code, nothing
+  consumed the returned copies) — trimmed before committing.
+
+Recurring, expected pattern across all four hooks: `react-hooks/exhaustive-deps` sometimes flags
+`useState` setters or refs as "missing dependencies" once they cross a custom-hook boundary, because
+ESLint can no longer statically prove they're referentially stable — even though React guarantees
+`useState` setters and refs never change identity. Suppressed with `// eslint-disable-next-line
+react-hooks/exhaustive-deps` (or added to the array where harmless) at the exact same rate this
+codebase already does elsewhere (`useFnbCatalogRuntime.js`, `useFnbProductDetailsRoute.js`,
+`HospitalityBookingPanel.jsx`) — no behavior change, only lint-boundary noise.
+
+StorefrontApp.jsx line count: **5,435** (down from 5,600 at the start of this wave; **-165** net —
+short of the ~500 estimate, mainly because the tracking-intent hook's ordering cycle capped that
+hook's win to near-zero). Lint warnings 73→72 across the wave, 0 errors throughout. `build:store`
+passes and all 198 non-integration tests pass after every commit. `git diff --name-only
+origin/develop` under discovery map files / `features/discovery/` stayed empty the whole wave.
+
+**Wave 5+6 combined: StorefrontApp.jsx 6,815 → 5,435 (-1,380).**
+
+QA (dev.dgfy.ph), light — no money-path submission changed in this wave: DGFY sign-in/sign-out and
+session bootstrap (including the `?handoff_token=` URL flow); guest checkout identity fields (apply
+saved details, edit/cancel, clear saved details for this device); About/service-gallery
+expand-collapse; page doesn't scroll behind open drawers/modals; browser resize updates layout; PWA
+service worker still registers in production builds; tracking-drawer entry points (`openTrackPanel`,
+"View full tracking" for a pin) still navigate correctly.
+
+Next (deferred, QA-gated — where the shell finally crosses under 1,000 lines): `useCartMutations`
+(`addToCart`/`updateQty`/`removeCartItem`/cart-fly animation), `useServiceBookingViewModel`
+(`saveServiceBookingDraft`/`handleServicesCartCheckout`), `useCheckoutSubmission`
+(`handleCheckout`/`handleQuote`/`handleDownloadCheckoutImage`/auto-quote effect), the
+`persistCheckoutAuthResume` cart↔checkout↔service↔session snapshot/restore knot, and finally route
+containers for the render band. See `STOREFRONT_REFACTOR_HANDOFF.md` for the full continuation brief.
