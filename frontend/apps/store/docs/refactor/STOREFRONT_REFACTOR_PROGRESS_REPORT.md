@@ -1921,3 +1921,56 @@ QA gate 3a (browser, dev.dgfy.ph) — **money path, please verify:** add items t
 simple); update quantity; remove a line; cart count/subtotal/total update in the drawer + floating FAB;
 service vs product cart lines split correctly; cart survives navigation and reload (persistence);
 proceeding to checkout shows the right cart. No checkout submission changed in this increment.
+
+## 2026-07-22 - Wave 4 (cont.): cart FAB extraction + dead-code sweep
+
+Files changed:
+- `frontend/apps/store/src/shared/components/storefront/StorefrontCartFab.jsx` (new — pure view,
+  the floating view-cart/booking/checkout button; mode flags, cart data, and navigation callbacks
+  passed as props).
+- `frontend/apps/store/src/StorefrontApp.jsx` — dropped the dead `renderCheckoutAccountGate` render
+  helper, dead consts (`fnbCartActionLabel`, `fnbDrawerSupportLabel` and their `buildFnb*Label`
+  imports, unused account strings), and 29 unused lucide icons freed by earlier extractions.
+
+StorefrontApp.jsx line count: **7,730** (down from 7,949). Lint warnings 125→84; still 0 errors.
+
+Validation: 198 non-integration tests pass; 0 lint errors; `build:store` passes.
+
+## 2026-07-23 - Wave 4: extract services-mode branch (catalog + booking + detail pages)
+
+The single largest remaining view-only-shaped zone: the entire `if (isServicesMode) { ... }` render
+branch — service detail subpage, booking subpage (steps 1–3 + confirmation), and the services catalog
+grid + promo/reviews/review-modal/footer fallback — moved verbatim into one new owner-folder component.
+
+Files changed:
+- `frontend/apps/store/src/modes/services/storefront/components/StorefrontServicesCatalog.jsx` (new,
+  1,216 lines). Faithful extraction: JSX/logic unchanged, only de-indented. Imports its own icons,
+  shared UI (`STYLES`, `Badge`, `GhostButton`, `PrimaryButton`, `StorefrontDropdown`,
+  `ServicesFilterModal`, `ServicesPaginationBar`, the `ServiceBooking*` step/summary/confirmation
+  components, `SharedStorefront*Section`, `StorefrontReviewModal`) and helpers
+  (`filterCatalogItems`, `isItemAvailable`, `openStorefrontActionLink`, `money`, `withAssetOrigin`,
+  `formatLongDateLabel`, `formatTimeSlotLabel`, `combineDateAndTimeParts`,
+  `getPreferredBookingTimeForDate`, `formatBookingReviewValue`, `buildServicePaymentOptions`,
+  `shouldBookingFieldSpanFullWidth`, `BOOKING_FIELD_STYLE`, `SERVICE_CATEGORY_ICON_MAP`,
+  `STOREFRONT_CLOSED_TITLE`) directly. `DeliveryPinMap` is received as a plain prop and passed
+  straight through unchanged — the map runtime itself is untouched.
+- `frontend/apps/store/src/StorefrontApp.jsx` — the branch is now `<StorefrontServicesCatalog {...} />`
+  (130 props, money-path handlers like `addToCart`/`handleCheckout` passed through as `on*`/direct
+  props, not owned by the new component). Removed 15 imports that became fully unused in the shell
+  (4 lucide icons, 6 `ServiceBooking*` step/summary/confirmation components, `ServicesFilterModal`,
+  `ServicesPaginationBar`, `CheckoutStepProgressHeader`, and 3 booking-field helpers/constants).
+- Removed 5 dead consts carried over from the original block (`reviewCount`, `reviewGridColumns`,
+  `isDirectoryLayout`, `detailPageIntakeFields`, a shadowed `currentStep`).
+- `frontend/apps/store/src/__tests__/storefrontClosedHoursMessaging.contract.test.js` — updated to
+  assert the closed-hours notice prop wiring against the new file's source instead of
+  `StorefrontApp.jsx`'s, since that JSX moved (mirrors the test's existing callee-side pattern).
+
+StorefrontApp.jsx line count: **6,815** (down from 7,730; **-915** net this step). Lint warnings 84→79;
+still 0 errors. `build:store` passes. 198 non-integration tests pass (40 files, 0 failures).
+
+QA gate 4 (browser, dev.dgfy.ph) — **money path, please verify:** services storefront — service detail
+page (image, price, Add to Cart, Back to Services), the full booking flow (steps 1–3: details form,
+review, payment/checkout submission via `handleCheckout`), catalog grid (search/filter/sort/pagination,
+Add to Cart), promo section, reviews section + "Write a review" modal, footer links. No behavior was
+intentionally changed — this is a verbatim move — but the prop surface is large (130 props) so this
+needs a real click-through before merge.

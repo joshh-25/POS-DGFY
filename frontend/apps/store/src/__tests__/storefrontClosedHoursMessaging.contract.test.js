@@ -8,6 +8,7 @@ const storefrontClosedStateSource = fs.readFileSync(path.join(appRoot, 'shared/m
 const storefrontClosedNoticeSource = fs.readFileSync(path.join(appRoot, 'shared/components/StorefrontClosedNotice.jsx'), 'utf8');
 const simpleCheckoutRouteSource = fs.readFileSync(path.join(appRoot, 'modes/simple/checkout/pages/SimpleCheckoutRoutePage.jsx'), 'utf8');
 const serviceBookingStepsSource = fs.readFileSync(path.join(appRoot, 'modes/services/booking/components/ServiceBookingSteps.jsx'), 'utf8');
+const storefrontServicesCatalogSource = fs.readFileSync(path.join(appRoot, 'modes/services/storefront/components/StorefrontServicesCatalog.jsx'), 'utf8');
 
 describe('storefront closed-hours messaging contract', () => {
   it('keeps shared storefront closed-hours copy helpers in shared model ownership', () => {
@@ -26,9 +27,9 @@ describe('storefront closed-hours messaging contract', () => {
   });
 
   it('passes the closed-hours notice contract into the service booking payment step', () => {
-    expect(storefrontAppSource).toContain('storefrontClosedByHours={storefrontClosedByHours}');
-    expect(storefrontAppSource).toContain('storefrontClosedTitle={STOREFRONT_CLOSED_TITLE}');
-    expect(storefrontAppSource).toContain('storefrontClosedMessageBody={storefrontClosedMessageBody}');
+    expect(storefrontServicesCatalogSource).toContain('storefrontClosedByHours={storefrontClosedByHours}');
+    expect(storefrontServicesCatalogSource).toContain('storefrontClosedTitle={STOREFRONT_CLOSED_TITLE}');
+    expect(storefrontServicesCatalogSource).toContain('storefrontClosedMessageBody={storefrontClosedMessageBody}');
     expect(serviceBookingStepsSource).toContain('storefrontClosedByHours = false');
     expect(serviceBookingStepsSource).toContain("storefrontClosedTitle = 'This storefront is currently closed.'");
     expect(serviceBookingStepsSource).toContain("storefrontClosedMessageBody = ''");
