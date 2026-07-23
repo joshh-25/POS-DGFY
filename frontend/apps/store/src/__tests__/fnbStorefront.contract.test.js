@@ -17,6 +17,7 @@ const productDetailsReviewsSource = () => readSource('modes/fnb/storefront/compo
 const productDetailActionsSource = () => readSource('modes/fnb/storefront/hooks/useFnbProductDetailActions.js');
 const productCardSource = () => readSource('modes/fnb/storefront/components/FnbProductCard.jsx');
 const catalogRuntimeSource = () => readSource('modes/fnb/storefront/hooks/useFnbCatalogRuntime.js');
+const storefrontCatalogHookSource = () => readSource('shared/hooks/useStorefrontCatalog.js');
 const itemReviewRuntimeSource = () => readSource('modes/fnb/storefront/hooks/useFnbItemReviewRuntime.js');
 const checkoutPayloadSource = () => readSource('modes/fnb/checkout/model/buildFnbCheckoutPayload.js');
 const checkoutPaymentOptionsSource = () => readSource('modes/fnb/checkout/model/fnbCheckoutPaymentOptions.js');
@@ -67,7 +68,7 @@ describe('Food & Beverage storefront contract', () => {
     expect(mediaSource).toContain('aria-label="View larger image"');
     expect(mediaSource).toContain('aria-label="Previous slide"');
     expect(mediaSource).toContain('aria-label="Next slide"');
-    expect(source).toContain('filterCatalogItems');
+    expect(storefrontCatalogHookSource()).toContain('filterCatalogItems');
     expect(catalogRuntimeSource()).toContain('buildFnbCatalogPresentation');
   });
 
