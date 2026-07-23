@@ -1358,59 +1358,6 @@ export default function StorefrontApp() {
       setGuestCheckoutUnlocked(false);
     }
   }, [selectedStore?.slug]);
-  const renderCheckoutAccountGate = ({
-    title = 'Continue to your order',
-    description = 'Create an account or log in to continue your order.',
-    createLabel = 'Create DGFY Account',
-    loginLabel = 'Have an account? Log in to DGFY',
-    createMode = 'create-account',
-    resumeTarget = {}
-  } = {}) => (
-    <section style={{ border: '1px solid #d9e4e8', borderRadius: 18, padding: isMobileViewport ? 16 : 22, background: '#ffffff', boxShadow: '0 8px 24px rgba(15,23,42,.04)', display: 'grid', gap: 16 }}>
-      <div style={{ borderRadius: 16, border: '1px solid #dbeafe', background: 'linear-gradient(135deg,#eff6ff,#f8fbff)', padding: isMobileViewport ? 16 : 18, display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1.15fr 180px', gap: 16, alignItems: 'center' }}>
-        <div style={{ display: 'grid', gap: 8 }}>
-          <div style={{ fontSize: 12, fontWeight: 800, color: '#1a4e8d', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            Account Required
-          </div>
-          <div style={{ fontSize: isMobileViewport ? 24 : 28, fontWeight: 900, color: '#0f172a', lineHeight: 1.08 }}>
-            Sign in or create your DGFY Account
-          </div>
-          <div style={{ fontSize: 14, color: '#64748b', lineHeight: 1.6 }}>
-            Use your DGFY account to continue this order or booking and keep it under your own customer dashboard.
-          </div>
-        </div>
-        <div style={{ justifySelf: isMobileViewport ? 'stretch' : 'end', width: isMobileViewport ? '100%' : 160, minHeight: 116, borderRadius: 18, background: 'linear-gradient(135deg,#dbeafe,#eff6ff)', display: 'grid', placeItems: 'center', color: '#1a4e8d' }}>
-          <ShoppingBag size={isMobileViewport ? 34 : 40} />
-        </div>
-      </div>
-      <div style={{ borderRadius: 16, border: '1px solid #e2e8f0', background: '#fff', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 14 }}>
-        <div style={{ textAlign: 'center', display: 'grid', gap: 6 }}>
-          <div style={{ fontSize: isMobileViewport ? 20 : 22, fontWeight: 800, color: '#0f172a' }}>{title}</div>
-          <div style={{ fontSize: 13, color: '#64748b' }}>{description}</div>
-        </div>
-        <button
-          type="button"
-          onClick={() => openCheckoutAuthFlow(createMode, resumeTarget)}
-          style={{ minHeight: 48, borderRadius: 12, border: 'none', background: '#1a4e8d', color: '#fff', fontWeight: 700, cursor: 'pointer', boxShadow: '0 10px 24px rgba(26,78,141,.18)', fontFamily: servicesBodyFont }}
-        >
-          {createLabel}
-        </button>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
-          <span style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>or</span>
-          <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
-        </div>
-        <button
-          type="button"
-          onClick={() => openCheckoutAuthFlow('sign-in', resumeTarget)}
-          style={{ minHeight: 46, borderRadius: 12, border: '1px solid #1a4e8d', background: '#fff', color: '#1a4e8d', fontWeight: 800, cursor: 'pointer' }}
-        >
-          {loginLabel}
-        </button>
-      </div>
-    </section>
-  );
-
   const openStoreBySlug = useCallback(async (slug) => {
     const normalized = toSlug(slug);
     if (!normalized) return;
