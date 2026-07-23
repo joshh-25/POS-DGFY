@@ -37,8 +37,10 @@ import {
   getLineModifiersTotal,
   getLineTotal
 } from './shared/model/storefrontCartModel.js';
+import { copyTextToClipboard as copyTextToClipboardUtil } from './shared/utils/clipboard.js';
 import { useCartMutations } from './shared/hooks/useCartMutations.js';
 import { useCheckoutSubmission } from './shared/hooks/useCheckoutSubmission.js';
+import { useDeliveryPinResolution } from './shared/hooks/useDeliveryPinResolution.js';
 import { useServiceBookingViewModel } from './shared/hooks/useServiceBookingViewModel.js';
 import { useStorefrontCartPersistence } from './shared/hooks/useStorefrontCartPersistence.js';
 import { useStorefrontCatalog } from './shared/hooks/useStorefrontCatalog.js';
@@ -2305,41 +2307,6 @@ export default function StorefrontApp() {
     totalsForDisplay,
     writeSavedCustomerDetails,
   });
-  const handlePinMyLocation = () => {
-    if (!navigator?.geolocation) {
-      setPinLocationError('Geolocation is not supported on this device/browser.');
-      return;
-    }
-    setDeliveryLocationAction('current');
-    setSelectedSavedLocationId('');
-    setPinLocationError('');
-    setPinLocationLoading(true);
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        setCustomerPin({
-          latitude: Number(position.coords.latitude.toFixed(6)),
-          longitude: Number(position.coords.longitude.toFixed(6))
-        });
-        setPinLocationLoading(false);
-      },
-      (error) => {
-        const errorCode = Number(error?.code || 0);
-        if (errorCode === 1) {
-          setPinLocationError('Location permission is blocked. Pin your location on the map instead.');
-        } else if (errorCode === 3) {
-          setPinLocationError('Location request timed out. Pin your location on the map instead.');
-        } else {
-          setPinLocationError('Unable to get your current location.');
-        }
-        setPinLocationLoading(false);
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 10000
-      }
-    );
-  };
-
   const {
     activePinnedDeliveryAddress,
     applySavedDeliveryLocation,
@@ -2378,15 +2345,22 @@ export default function StorefrontApp() {
     normalizeErrorMessage: normalizeStorefrontErrorMessage
   });
 
-  const activeServiceLocationSummary = useMemo(() => (
-    trimAddressCountrySuffix(
-      deliveryLocationDisplayAddress
-      || resolvedDeliveryAddress
-      || customerAddress
-      || buildPinnedDeliveryAddress(customerPin)
-      || ''
-    )
-  ), [customerAddress, customerPin, deliveryLocationDisplayAddress, resolvedDeliveryAddress]);
+  const { activeServiceLocationSummary, handlePinMyLocation } = useDeliveryPinResolution({
+    customerAddress,
+    customerPin,
+    deliveryLocationDisplayAddress,
+    hasPinnedDeliveryLocation,
+    isDeliveryOrder,
+    resolvedDeliveryAddress,
+    setCustomerAddress,
+    setCustomerPin,
+    setDeliveryLocationAction,
+    setPinLocationError,
+    setPinLocationLoading,
+    setResolvedDeliveryAddress,
+    setResolvingPinnedDeliveryAddress,
+    setSelectedSavedLocationId
+  });
 
   const {
     renderCheckoutPromoStack,
@@ -2402,88 +2376,9 @@ export default function StorefrontApp() {
     setCheckoutPromoCode
   });
 
-  useEffect(() => {
-    if (!isDeliveryOrder || !hasPinnedDeliveryLocation) {
-      setResolvingPinnedDeliveryAddress(false);
-      if (!isDeliveryOrder) {
-        setResolvedDeliveryAddress('');
-      }
-      return;
-    }
-    const controller = new AbortController();
-    const latitude = Number(customerPin.latitude);
-    const longitude = Number(customerPin.longitude);
-    const fallbackAddress = buildPinnedDeliveryAddress(customerPin);
-    const resolveAddress = async () => {
-      setResolvingPinnedDeliveryAddress(true);
-      setPinLocationError('');
-      try {
-        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${encodeURIComponent(latitude)}&lon=${encodeURIComponent(longitude)}&format=jsonv2&addressdetails=1`, {
-          method: 'GET',
-          signal: controller.signal,
-          headers: {
-            Accept: 'application/json'
-          }
-        });
-        if (!response.ok) {
-          throw new Error(`Reverse geocoding failed: ${response.status}`);
-        }
-        const payload = await response.json();
-        const formattedAddress = formatReverseGeocodedAddress(payload) || fallbackAddress;
-        setResolvedDeliveryAddress(formattedAddress);
-        setCustomerAddress(formattedAddress);
-      } catch (error) {
-        if (error?.name === 'AbortError') return;
-        setResolvedDeliveryAddress('');
-        setCustomerAddress(fallbackAddress);
-      } finally {
-        setResolvingPinnedDeliveryAddress(false);
-      }
-    };
-    resolveAddress();
-    return () => controller.abort();
-  }, [customerPin, hasPinnedDeliveryLocation, isDeliveryOrder]);
-
-  const copyTextToClipboard = useCallback(async (value, successMessage = 'Copied.') => {
-    const text = String(value || '').trim();
-    if (!text) {
-      toast.error('Nothing to copy.');
-      return false;
-    }
-    try {
-      if (navigator?.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-        toast.success(successMessage);
-        return true;
-      }
-    } catch {
-      // Fall through to legacy copy path.
-    }
-
-    try {
-      if (typeof document !== 'undefined') {
-        const fallbackInput = document.createElement('textarea');
-        fallbackInput.value = text;
-        fallbackInput.setAttribute('readonly', '');
-        fallbackInput.style.position = 'fixed';
-        fallbackInput.style.opacity = '0';
-        fallbackInput.style.left = '-9999px';
-        document.body.appendChild(fallbackInput);
-        fallbackInput.select();
-        const copied = document.execCommand('copy');
-        document.body.removeChild(fallbackInput);
-        if (copied) {
-          toast.success(successMessage);
-          return true;
-        }
-      }
-    } catch {
-      // handled below
-    }
-
-    toast.error('Copy failed. Please copy manually.');
-    return false;
-  }, []);
+  const copyTextToClipboard = useCallback((value, successMessage = 'Copied.') => (
+    copyTextToClipboardUtil(toast, value, successMessage)
+  ), []);
 
   const {
     handleCheckout,
