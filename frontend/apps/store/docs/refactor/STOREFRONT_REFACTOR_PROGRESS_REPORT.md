@@ -2535,3 +2535,39 @@ Remaining candidates for further reduction, not attempted in this pass: the Grou
 service-state-sync `useEffect` cluster (deferred since Wave 8, still needs a QA-gated pass), the
 ZONE 4 catalog IIFE + catalog component prop bundles (~3130–3382 in the pre-wave shell), and the
 DiscoveryHomePage branch (out of scope — discovery guardrail).
+
+## Known issues (deferred, pre-existing, unrelated to Waves 7–9)
+
+**Sign-in-mid-checkout still redirects to `/map-dgfy/account` instead of resuming checkout, on
+custom-domain-routed local dev (e.g. `localhost:5175`).** Found during Wave 9 browser QA
+(2026-07-23). Confirmed pre-existing — the code path involved
+(`frontend/src/features/dgfyRouteHelpers.js`) is untouched by any Wave 7–9 commit and the bug
+reproduces identically on `origin/develop`.
+
+Root-cause analysis so far: `isValidStorefrontReturnPath` (a return-URL allowlist guarding
+against open-redirect) only recognized `/tenant-store/<slug>/...` and `/store-template/...`
+path shapes. In custom-domain routing mode (`setCustomStorefrontRouteContext`,
+`apps/store/src/app/routing/storefrontRouting.js`), a tenant's storefront mounts at the domain
+root with bare subpage paths (`/order`, `/book`, `/track`, `/service`, `/item`, `/`) — those
+failed the allowlist and silently fell back to `resolveStorefrontAccountUrl()`
+(`/map-dgfy/account`), which matches the observed symptom exactly.
+
+A fix was applied (commit `f2e7c44d`, `fix(dgfy-auth): allow custom-domain storefront paths in
+post-login return allowlist`) adding the five bare subpage tokens + root to the allowlist, with
+regression tests in `Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx`. **The symptom did
+not change after this fix** — re-tested on `localhost:5175`, still lands on
+`/map-dgfy/account`. This means either: (a) the actual runtime `return_to` value differs from
+what the code trace assumed (worth re-checking with real network/URL logging rather than static
+reading), (b) there's a caching/build-staleness issue in the local dev environment masking the
+fix, or (c) a different code path (possibly server-side, in whatever serves `/dgfy/auth`) is
+responsible and this frontend allowlist was never the actual blocker. The allowlist fix is kept
+in place regardless — it's a correct hardening either way — but does not fully resolve the
+reported symptom.
+
+**Next step when resumed:** instrument `openCanonicalDgfyAuth`/`buildDgfyAuthUrl` (or check the
+Network tab on the `/dgfy/auth` sign-in request) to confirm what `return_to` value is actually
+sent and what the auth flow does with it, rather than continuing to reason from static code
+reading alone.
+
+Deferred by user decision on 2026-07-23 to keep Wave 9 QA moving; not a blocker for this PR's
+other checklist items since it's pre-existing behavior, not a regression.
