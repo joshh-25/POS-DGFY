@@ -70,6 +70,11 @@ import {
     validateDgfyReviewInvite,
     verifyDgfyTrackingRecovery
 } from '../modules/dgfy/controllers/dgfyCustomerHandlers.js';
+import {
+    enrollSelfServeAffiliate,
+    getAffiliateEarnings,
+    listMyAffiliateEnrollments
+} from '../modules/dgfy/controllers/dgfyAffiliateHandlers.js';
 
 const router = express.Router();
 
@@ -137,5 +142,9 @@ router.get('/customer/reviews/moderation', authenticateAdmin, listDgfyCustomerRe
 router.post('/customer/reviews/:review_id/moderate', authenticateAdmin, moderateDgfyCustomerReview);
 router.post('/customer/tracking-recovery/request', authLimiter, requestDgfyTrackingRecovery);
 router.post('/customer/tracking-recovery/verify', authLimiter, verifyDgfyTrackingRecovery);
+
+router.get('/affiliate/enrollments', authenticateDgfyAccount, listMyAffiliateEnrollments);
+router.post('/affiliate/enroll', authenticateDgfyAccount, enrollSelfServeAffiliate);
+router.get('/affiliate/earnings', authenticateDgfyAccount, getAffiliateEarnings);
 
 export default router;

@@ -56,6 +56,17 @@ import {
     buildValidateDgfyReviewInviteUseCase,
     buildVerifyDgfyTrackingRecoveryUseCase
 } from './usecases/dgfyCustomerUseCases.js';
+import {
+    buildEnrollSelfServeAffiliateUseCase,
+    buildGetAffiliateEarningsUseCase,
+    buildGetAffiliateQrPayloadUseCase,
+    buildGetAffiliateSettingsUseCase,
+    buildListAffiliatesUseCase,
+    buildListMyAffiliateEnrollmentsUseCase,
+    buildProvisionAffiliateUseCase,
+    buildUpdateAffiliateEnrollmentUseCase,
+    buildUpdateAffiliateSettingsUseCase
+} from './usecases/dgfyAffiliateUseCases.js';
 import { requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
 import { createTenantSessionForDgfyAccount } from '../../services/dgfyTenantSessionService.js';
 import { validateDgfyPosTerminalPolicy } from '../../services/dgfyPosTerminalPolicyService.js';
@@ -255,5 +266,15 @@ export const moderateDgfyCustomerReviewUseCase = buildModerateDgfyCustomerReview
 export const dgfyHistoricalBackfillUseCase = buildDgfyHistoricalBackfillUseCase();
 export const requestDgfyTrackingRecoveryUseCase = buildRequestDgfyTrackingRecoveryUseCase();
 export const verifyDgfyTrackingRecoveryUseCase = buildVerifyDgfyTrackingRecoveryUseCase();
+
+export const getAffiliateSettingsUseCase = buildGetAffiliateSettingsUseCase();
+export const updateAffiliateSettingsUseCase = buildUpdateAffiliateSettingsUseCase();
+export const listAffiliatesUseCase = buildListAffiliatesUseCase();
+export const provisionAffiliateUseCase = buildProvisionAffiliateUseCase();
+export const updateAffiliateEnrollmentUseCase = buildUpdateAffiliateEnrollmentUseCase();
+export const getAffiliateQrPayloadUseCase = buildGetAffiliateQrPayloadUseCase();
+export const listMyAffiliateEnrollmentsUseCase = buildListMyAffiliateEnrollmentsUseCase();
+export const enrollSelfServeAffiliateUseCase = buildEnrollSelfServeAffiliateUseCase();
+export const getAffiliateEarningsUseCase = buildGetAffiliateEarningsUseCase();
 
 export { dgfyAccountRepository };
