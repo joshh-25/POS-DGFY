@@ -24,16 +24,13 @@ import {
 import { makePinElement } from './features/discovery/utils/discoveryMapMarkers.js';
 import {
   createStorePopupNode,
-  locationsMatchProfileSnapshot,
   normalizeDiscoveryCategoryKey,
-  normalizeProfileLocations,
   normalizeStorefrontCategories,
   normalizeStorefrontDeliveryPartners,
   normalizeStorefrontGallery,
   normalizeStorefrontReviewSummary
 } from './features/discovery/utils/storefrontDiscoveryNormalization.js';
 import {
-  classifyStoreCatalogError,
   normalizeStorefrontErrorMessage
 } from './shared/model/storefrontErrorMessages.js';
 import {
@@ -43,6 +40,7 @@ import {
 } from './shared/model/storefrontCartModel.js';
 import { useStorefrontCartPersistence } from './shared/hooks/useStorefrontCartPersistence.js';
 import { useStorefrontCatalog } from './shared/hooks/useStorefrontCatalog.js';
+import { useStoreCatalogLoader } from './shared/hooks/useStoreCatalogLoader.js';
 import {
   buildCustomerFullName,
   buildMaskedSavedCustomerPreview,
@@ -80,7 +78,6 @@ import {
 import { formatStorefrontHoursLabel } from './shared/model/storefrontHoursModel.js';
 import { parseBooleanFlag } from './shared/model/storefrontJsonModel.js';
 import {
-  buildAccessPolicyStorePatch,
   canUseCheckout,
   getInventoryDisplayLabel,
   getStorefrontAccessBlockMessage
@@ -111,9 +108,7 @@ import {
 } from './discovery/model/discoveryPresentation.js';
 import { createSharedCoordinatePreviewNode, getDiscoveryMarkerKey, makeClusterElement } from './discovery/model/discoveryMapDom.js';
 import {
-  buildKnownStoreRouteCandidates,
-  buildStorefrontSlugFallbackQueries,
-  findCanonicalStorefrontSlug
+  buildKnownStoreRouteCandidates
 } from './app/routing/defaultStorefrontRoute.js';
 import { createStoreMarkerPreviewNode } from './discovery/model/storefrontMarkerPreview.js';
 import { FnbProductDetailsRoute } from './modes/fnb/storefront/pages/FnbProductDetailsRoute.jsx';
@@ -174,7 +169,6 @@ import {
 } from './app/routing/storefrontRouting.js';
 import {
   buildBookingTarget,
-  buildCanonicalStorefrontTarget,
   buildCatalogTarget,
   buildItemDetailTarget,
   buildOrderTarget,
@@ -674,23 +668,45 @@ export default function StorefrontApp() {
 
   const [isAboutExpanded, setIsAboutExpanded] = useState(false);
   const [isServiceGalleryExpanded, setIsServiceGalleryExpanded] = useState(false);
-  const [storeLocations, setStoreLocations] = useState([]);
-  const [primaryLocationId, setPrimaryLocationId] = useState(null);
-  const [selectedLocationId, setSelectedLocationId] = useState(null);
-  const [hasSelectedBranchFromMenu, setHasSelectedBranchFromMenu] = useState(false);
 
   const [preferredStoreLocationSelection, setPreferredStoreLocationSelection] = useState(null);
-  const [catalog, setCatalog] = useState([]);
-  const [loadingCatalog, setLoadingCatalog] = useState(false);
-  const [catalogError, setCatalogError] = useState('');
-  const [catalogErrorGuidance, setCatalogErrorGuidance] = useState('');
+  const {
+    catalog,
+    setCatalog,
+    loadingCatalog,
+    setLoadingCatalog,
+    catalogError,
+    setCatalogError,
+    storeLocations,
+    setStoreLocations,
+    selectedLocationId,
+    setSelectedLocationId,
+    primaryLocationId,
+    setPrimaryLocationId,
+    hasSelectedBranchFromMenu,
+    setHasSelectedBranchFromMenu,
+    brandingImageErrors,
+    markBrandingImageError,
+    isBrandingImageBlocked,
+    openStoreBySlug,
+    refreshStorePageForTenantSetup,
+    handleBranchMenuSelection
+  } = useStoreCatalogLoader({
+    routeSlug,
+    routeSubpage,
+    routeServiceItemId,
+    routeItemId,
+    isStorePage,
+    selectedStore,
+    setSelectedStore,
+    setRouteSlug,
+    preferredStoreLocationSelection
+  });
 
   const [orderMethod, setOrderMethod] = useState('delivery');
   const cart = useStorefrontStore((s) => s.cart.items);
   const setCart = useStorefrontStore((s) => s.cartSet);
-  const [catalogImageErrors, setCatalogImageErrors] = useState(() => new Set());
   const [cartImageErrors, setCartImageErrors] = useState(() => new Set());
-  const [brandingImageErrors, setBrandingImageErrors] = useState(() => new Set());
   const [customerFirstName, setCustomerFirstName] = useState('');
   const [customerLastName, setCustomerLastName] = useState('');
   const [customerName, setCustomerName] = useState('');
@@ -860,19 +876,6 @@ export default function StorefrontApp() {
       cancelled = true;
     };
   }, []);
-  const storeLoadRequestSequenceRef = useRef(0);
-  const locationCatalogRequestSequenceRef = useRef(0);
-  const markBrandingImageError = useCallback((key) => {
-    const normalizedKey = String(key || '').trim();
-    if (!normalizedKey) return;
-    setBrandingImageErrors((previous) => {
-      if (previous.has(normalizedKey)) return previous;
-      const next = new Set(previous);
-      next.add(normalizedKey);
-      return next;
-    });
-  }, []);
-  const isBrandingImageBlocked = useCallback((key) => brandingImageErrors.has(String(key || '').trim()), [brandingImageErrors]);
 
   const {
     isServicesMode,
@@ -1324,140 +1327,6 @@ export default function StorefrontApp() {
       setGuestCheckoutUnlocked(false);
     }
   }, [selectedStore?.slug]);
-  const openStoreBySlug = useCallback(async (slug) => {
-    const normalized = toSlug(slug);
-    if (!normalized) return;
-    const requestSequence = ++storeLoadRequestSequenceRef.current;
-
-    setLoadingCatalog(true);
-    setCatalogError('');
-    setCatalogErrorGuidance('');
-    setStoreLocations([]);
-    setPrimaryLocationId(null);
-    setSelectedLocationId(null);
-    try {
-      let profile;
-      try {
-        profile = await requestJson(`/api/v1/storefront/discovery/${encodeURIComponent(normalized)}`, { cache: 'no-store' });
-      } catch (profileError) {
-        if (Number(profileError?.status) !== 404) throw profileError;
-
-        let canonicalSlug = '';
-        for (const fallbackQuery of buildStorefrontSlugFallbackQueries(normalized)) {
-          const discoveryFallback = await requestJson(`/api/v1/storefront/discovery?search=${encodeURIComponent(fallbackQuery)}&limit=20&result_mode=union&stock_filter=include_out_of_stock&pin_scope=tenant_primary&include_match_meta=true`, { cache: 'no-store' });
-          const fallbackStores = Array.isArray(discoveryFallback?.stores) ? discoveryFallback.stores : [];
-          canonicalSlug = findCanonicalStorefrontSlug(normalized, fallbackStores)
-            || findCanonicalStorefrontSlug(fallbackQuery, fallbackStores);
-          if (canonicalSlug) break;
-        }
-        if (!canonicalSlug) throw profileError;
-
-        profile = await requestJson(`/api/v1/storefront/discovery/${encodeURIComponent(canonicalSlug)}`, { cache: 'no-store' });
-      }
-      if (requestSequence !== storeLoadRequestSequenceRef.current) return;
-
-      if (profile?.slug && toSlug(profile.slug) !== normalized && typeof window !== 'undefined') {
-        const canonicalPath = buildCanonicalStorefrontTarget({
-          storeSlug: profile.slug,
-          routeSubpage,
-          routeServiceItemId,
-          routeItemId
-        });
-        if (!isCurrentStorefrontTarget(canonicalPath)) {
-          window.history.replaceState(buildStorefrontHistoryState({
-            storeSlug: profile.slug,
-            storeSubpage: routeSubpage
-          }), '', canonicalPath);
-        }
-        setRouteSlug(toSlug(profile.slug));
-      }
-      setSelectedStore(profile);
-      let resolvedCatalogLocationId = null;
-      const profileLocations = normalizeProfileLocations(profile);
-
-      try {
-        const locationsData = await requestJson('/api/v1/store/locations', { storeSlug: profile.slug, cache: 'no-store' });
-        if (requestSequence !== storeLoadRequestSequenceRef.current) return;
-        const apiLocations = Array.isArray(locationsData?.locations) ? locationsData.locations : [];
-        const useProfileSnapshot = !locationsMatchProfileSnapshot(apiLocations, profile);
-        const locations = useProfileSnapshot ? profileLocations : apiLocations;
-        const nextPrimaryLocationId = useProfileSnapshot
-          ? (profileLocations.find((location) => location.is_primary_storefront)?.location_id ?? profile.location_id ?? null)
-          : (locationsData?.primary_location_id ?? null);
-        setStoreLocations(locations);
-        setPrimaryLocationId(nextPrimaryLocationId);
-        if (locations.length > 0) {
-          const preferredLocationId = (
-            preferredStoreLocationSelection?.slug
-            && toSlug(preferredStoreLocationSelection.slug) === toSlug(profile.slug)
-          )
-            ? preferredStoreLocationSelection.locationId
-            : null;
-          const preferredLocation = preferredLocationId == null
-            ? null
-            : (locations.find((location) => Number(location.location_id) === Number(preferredLocationId)) || null);
-          const primaryLocation = nextPrimaryLocationId == null
-            ? null
-            : (locations.find((location) => Number(location.location_id) === Number(nextPrimaryLocationId)) || null);
-          const firstOpenLocation = locations.find((location) => location?.is_open !== false) || null;
-          const fallbackLocationId = (
-            preferredLocation?.location_id
-            ?? firstOpenLocation?.location_id
-            ?? primaryLocation?.location_id
-            ?? locations[0]?.location_id
-            ?? null
-          );
-          resolvedCatalogLocationId = fallbackLocationId;
-          setSelectedLocationId(fallbackLocationId);
-        } else {
-          resolvedCatalogLocationId = null;
-          setSelectedLocationId(null);
-        }
-      } catch {
-        const fallbackPrimaryLocationId = profileLocations.find((location) => location.is_primary_storefront)?.location_id ?? profile.location_id ?? null;
-        setStoreLocations(profileLocations);
-        setPrimaryLocationId(fallbackPrimaryLocationId);
-        resolvedCatalogLocationId = fallbackPrimaryLocationId;
-        setSelectedLocationId(fallbackPrimaryLocationId);
-      }
-
-      const catalogQuery = resolvedCatalogLocationId == null
-        ? '/api/v1/store/catalog?limit=120'
-        : `/api/v1/store/catalog?limit=120&location_id=${encodeURIComponent(resolvedCatalogLocationId)}`;
-      const catalogData = await requestJson(catalogQuery, { storeSlug: profile.slug, cache: 'no-store' });
-      if (requestSequence !== storeLoadRequestSequenceRef.current) return;
-      const accessPatch = buildAccessPolicyStorePatch(catalogData?.access_policy);
-      if (accessPatch) {
-        setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch } : prev));
-      }
-      setCatalog(Array.isArray(catalogData?.items) ? catalogData.items : []);
-    } catch (error) {
-      if (requestSequence !== storeLoadRequestSequenceRef.current) return;
-      const normalizedError = classifyStoreCatalogError(error, 'Failed to load tenant storefront page.');
-      setSelectedStore(null);
-      setStoreLocations([]);
-      setCatalog([]);
-      setCatalogError(normalizedError.message);
-      setCatalogErrorGuidance(normalizedError.guidance);
-    } finally {
-      if (requestSequence === storeLoadRequestSequenceRef.current) {
-        setLoadingCatalog(false);
-      }
-    }
-  }, [preferredStoreLocationSelection, routeServiceItemId, routeSubpage]);
-
-  const refreshStorePageForTenantSetup = useCallback(() => {
-    if (!routeSlug) return;
-    openStoreBySlug(routeSlug);
-  }, [openStoreBySlug, routeSlug]);
-
-
-
-  useEffect(() => {
-    if (!routeSlug) return;
-    openStoreBySlug(routeSlug);
-  }, [routeSlug, openStoreBySlug]);
-
   useEffect(() => {
     if (isStorePage) return;
     setCatalogSearch('');
@@ -1478,46 +1347,6 @@ export default function StorefrontApp() {
     }
     previousRouteSlugRef.current = currentRouteSlug;
   }, [routeSlug]);
-
-  useEffect(() => {
-    let cancelled = false;
-    const requestSequence = ++locationCatalogRequestSequenceRef.current;
-    const loadLocationAwareCatalog = async () => {
-      if (!isStorePage || !selectedStore?.slug) return;
-      setLoadingCatalog(true);
-      setCatalogError('');
-      setCatalogErrorGuidance('');
-      try {
-        const catalogQuery = selectedLocationId == null
-          ? '/api/v1/store/catalog?limit=120'
-          : `/api/v1/store/catalog?limit=120&location_id=${encodeURIComponent(selectedLocationId)}`;
-        const catalogData = await requestJson(catalogQuery, { storeSlug: selectedStore.slug, cache: 'no-store' });
-        if (cancelled || requestSequence !== locationCatalogRequestSequenceRef.current) return;
-        const accessPatch = buildAccessPolicyStorePatch(catalogData?.access_policy);
-        if (accessPatch) {
-          setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch } : prev));
-        }
-        setCatalog(Array.isArray(catalogData?.items) ? catalogData.items : []);
-      } catch (error) {
-        if (cancelled || requestSequence !== locationCatalogRequestSequenceRef.current) return;
-        const normalizedError = classifyStoreCatalogError(error, 'Failed to load tenant catalog for selected location.');
-        setCatalog([]);
-        setCatalogError(normalizedError.message);
-        setCatalogErrorGuidance(normalizedError.guidance);
-      } finally {
-        if (!cancelled && requestSequence === locationCatalogRequestSequenceRef.current) setLoadingCatalog(false);
-      }
-    };
-
-    loadLocationAwareCatalog();
-    return () => {
-      cancelled = true;
-    };
-  }, [isStorePage, selectedStore?.slug, selectedLocationId]);
-
-  useEffect(() => {
-    setCatalogImageErrors(new Set());
-  }, [catalog]);
 
   useEffect(() => {
     if (!isFnbMode) return;
@@ -1834,17 +1663,10 @@ export default function StorefrontApp() {
     setPreferredStoreLocationSelection(null);
     setCatalog([]);
     setCatalogError('');
-    setCatalogErrorGuidance('');
     setDiscoveryAppliedFilters(null);
     setIsCheckoutOpen(false);
     setActiveDiscoveryNavItem('Explore');
   };
-
-  const handleBranchMenuSelection = useCallback((nextValue) => {
-    const nextLocationId = nextValue ? Number(nextValue) : null;
-    setSelectedLocationId(nextLocationId);
-    setHasSelectedBranchFromMenu(true);
-  }, []);
 
   const cartTotals = useMemo(() => buildCartTotals(cart), [cart]);
   const cartSubtotal = cartTotals.subtotal;
