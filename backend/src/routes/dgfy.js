@@ -71,9 +71,17 @@ import {
     verifyDgfyTrackingRecovery
 } from '../modules/dgfy/controllers/dgfyCustomerHandlers.js';
 import {
+    cancelAffiliateCashout,
+    createAffiliatePayoutMethod,
+    deleteAffiliatePayoutMethod,
     enrollSelfServeAffiliate,
     getAffiliateEarnings,
-    listMyAffiliateEnrollments
+    listAffiliatePayoutMethods,
+    listMyAffiliateCashouts,
+    listMyAffiliateEnrollments,
+    requestAffiliateCashout,
+    setDefaultAffiliatePayoutMethod,
+    updateAffiliatePayoutMethod
 } from '../modules/dgfy/controllers/dgfyAffiliateHandlers.js';
 
 const router = express.Router();
@@ -146,5 +154,14 @@ router.post('/customer/tracking-recovery/verify', authLimiter, verifyDgfyTrackin
 router.get('/affiliate/enrollments', authenticateDgfyAccount, listMyAffiliateEnrollments);
 router.post('/affiliate/enroll', authenticateDgfyAccount, enrollSelfServeAffiliate);
 router.get('/affiliate/earnings', authenticateDgfyAccount, getAffiliateEarnings);
+router.get('/affiliate/payout-methods', authenticateDgfyAccount, listAffiliatePayoutMethods);
+router.post('/affiliate/payout-methods', authenticateDgfyAccount, createAffiliatePayoutMethod);
+router.patch('/affiliate/payout-methods/:payout_method_id/default', authenticateDgfyAccount, setDefaultAffiliatePayoutMethod);
+router.put('/affiliate/payout-methods/:payout_method_id', authenticateDgfyAccount, updateAffiliatePayoutMethod);
+router.patch('/affiliate/payout-methods/:payout_method_id', authenticateDgfyAccount, updateAffiliatePayoutMethod);
+router.delete('/affiliate/payout-methods/:payout_method_id', authenticateDgfyAccount, deleteAffiliatePayoutMethod);
+router.post('/affiliate/cashouts', authenticateDgfyAccount, requestAffiliateCashout);
+router.get('/affiliate/cashouts', authenticateDgfyAccount, listMyAffiliateCashouts);
+router.patch('/affiliate/cashouts/:cashout_id/cancel', authenticateDgfyAccount, cancelAffiliateCashout);
 
 export default router;

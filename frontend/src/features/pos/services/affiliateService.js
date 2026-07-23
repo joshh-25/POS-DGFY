@@ -30,11 +30,35 @@ export const fetchAffiliateQrPayload = async (enrollmentId) => {
     return response.data?.data || null;
 };
 
+export const fetchAffiliateCashouts = async (params = {}) => {
+    const response = await api.get('/affiliates/cashouts', { params });
+    return response.data?.data?.cashouts || [];
+};
+
+export const approveAffiliateCashout = async (cashoutId) => {
+    const response = await api.patch(`/affiliates/cashouts/${cashoutId}/approve`);
+    return response.data?.data?.cashout || null;
+};
+
+export const markAffiliateCashoutPaid = async (cashoutId, payload = {}) => {
+    const response = await api.patch(`/affiliates/cashouts/${cashoutId}/mark-paid`, payload);
+    return response.data?.data?.cashout || null;
+};
+
+export const rejectAffiliateCashout = async (cashoutId, payload = {}) => {
+    const response = await api.patch(`/affiliates/cashouts/${cashoutId}/reject`, payload);
+    return response.data?.data?.cashout || null;
+};
+
 export default {
     fetchAffiliateSettings,
     updateAffiliateSettings,
     fetchAffiliates,
     provisionAffiliate,
     updateAffiliateEnrollment,
-    fetchAffiliateQrPayload
+    fetchAffiliateQrPayload,
+    fetchAffiliateCashouts,
+    approveAffiliateCashout,
+    markAffiliateCashoutPaid,
+    rejectAffiliateCashout
 };

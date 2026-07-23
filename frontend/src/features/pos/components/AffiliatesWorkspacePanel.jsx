@@ -1,14 +1,29 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import QRCode from 'qrcode';
-import { Ban, CheckCircle2, Percent, QrCode as QrCodeIcon, RefreshCcw, Save, ShieldAlert, UserPlus, XCircle } from 'lucide-react';
+import {
+    Ban,
+    Banknote,
+    CheckCircle2,
+    Percent,
+    QrCode as QrCodeIcon,
+    RefreshCcw,
+    Save,
+    ShieldAlert,
+    UserPlus,
+    XCircle
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import {
+    approveAffiliateCashout,
+    fetchAffiliateCashouts,
     fetchAffiliateQrPayload,
     fetchAffiliateSettings,
     fetchAffiliates,
+    markAffiliateCashoutPaid,
     provisionAffiliate,
+    rejectAffiliateCashout,
     updateAffiliateEnrollment,
     updateAffiliateSettings
 } from '../services/affiliateService.js';
@@ -48,6 +63,18 @@ const affiliateDisplayName = (affiliate) => {
     return fullName || account.username || account.email || 'Affiliate';
 };
 
+const cashoutAffiliateDisplayName = (cashout) => affiliateDisplayName(cashout?.enrollment || {});
+
+const payoutSnapshotSummary = (snapshot) => {
+    if (!snapshot) return 'Payout method unavailable';
+    if (snapshot.method_type === 'bank') {
+        const last4 = String(snapshot.account_number || '').slice(-4);
+        return `${snapshot.bank_name || 'Bank'} •••• ${last4 || '----'} (${snapshot.account_name || 'account'})`;
+    }
+    const label = snapshot.method_type === 'gcash' ? 'GCash' : snapshot.method_type === 'maya' ? 'Maya' : (snapshot.method_type || 'Wallet');
+    return `${label} ${snapshot.mobile_number || ''}`.trim();
+};
+
 export default function AffiliatesWorkspacePanel({ terminalUser, locked = false, isOnline = true, sectionId }) {
     const isMasterAdmin = terminalUser?.is_master_admin === true;
     const normalizedRole = String(terminalUser?.role || '').trim().toLowerCase();
@@ -55,6 +82,9 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
     const canManage = isMasterAdmin || normalizedRole === 'admin' || permissionList.includes('affiliates:manage');
     const canManageSettings = isMasterAdmin || normalizedRole === 'admin' || permissionList.includes('affiliates:settings');
     const canView = canManage || canManageSettings || permissionList.includes('affiliates:view');
+    const canApproveCashouts = isMasterAdmin || normalizedRole === 'admin' || permissionList.includes('affiliates:cashout_approve');
+    const canPayCashouts = isMasterAdmin || normalizedRole === 'admin' || permissionList.includes('affiliates:cashout_pay');
+    const canSeeCashoutQueue = canApproveCashouts || canPayCashouts;
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -67,23 +97,29 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
     const [rateEdits, setRateEdits] = useState({});
     const [rowBusyId, setRowBusyId] = useState(null);
     const [qrByEnrollment, setQrByEnrollment] = useState({});
+    const [cashouts, setCashouts] = useState([]);
+    const [cashoutBusyId, setCashoutBusyId] = useState(null);
+    const [payoutRefDrafts, setPayoutRefDrafts] = useState({});
+    const [rejectReasonDrafts, setRejectReasonDrafts] = useState({});
 
     const loadData = useCallback(async () => {
         setLoading(true);
         setError('');
         try {
-            const [settingsResult, affiliatesResult] = await Promise.all([
+            const [settingsResult, affiliatesResult, cashoutsResult] = await Promise.all([
                 fetchAffiliateSettings(),
-                fetchAffiliates()
+                fetchAffiliates(),
+                canSeeCashoutQueue ? fetchAffiliateCashouts() : Promise.resolve([])
             ]);
             setSettingsDraft(settingsResult);
             setAffiliates(Array.isArray(affiliatesResult) ? affiliatesResult : []);
+            setCashouts(Array.isArray(cashoutsResult) ? cashoutsResult : []);
         } catch (err) {
             setError(err?.response?.data?.message || 'Failed to load affiliate program data');
         } finally {
             setLoading(false);
         }
-    }, []);
+    }, [canSeeCashoutQueue]);
 
     useEffect(() => {
         if (locked || !isOnline || !canView) return;
@@ -183,6 +219,61 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
             toast.error(err?.response?.data?.message || 'Failed to build the affiliate share link');
         } finally {
             setRowBusyId(null);
+        }
+    };
+
+    const handleApproveCashout = async (cashout) => {
+        setCashoutBusyId(cashout.cashout_id);
+        try {
+            await approveAffiliateCashout(cashout.cashout_id);
+            toast.success('Cashout request approved');
+            await loadData();
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Failed to approve cashout request');
+        } finally {
+            setCashoutBusyId(null);
+        }
+    };
+
+    const handleMarkCashoutPaid = async (cashout) => {
+        const externalPaymentRef = String(payoutRefDrafts[cashout.cashout_id] || '').trim();
+        if (!externalPaymentRef) {
+            toast.error('Enter a payment reference before marking this cashout as paid');
+            return;
+        }
+        setCashoutBusyId(cashout.cashout_id);
+        try {
+            await markAffiliateCashoutPaid(cashout.cashout_id, { external_payment_ref: externalPaymentRef });
+            toast.success('Cashout marked as paid');
+            setPayoutRefDrafts((prev) => {
+                const next = { ...prev };
+                delete next[cashout.cashout_id];
+                return next;
+            });
+            await loadData();
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Failed to mark cashout as paid');
+        } finally {
+            setCashoutBusyId(null);
+        }
+    };
+
+    const handleRejectCashout = async (cashout) => {
+        const rejectionReason = String(rejectReasonDrafts[cashout.cashout_id] || '').trim() || undefined;
+        setCashoutBusyId(cashout.cashout_id);
+        try {
+            await rejectAffiliateCashout(cashout.cashout_id, { rejection_reason: rejectionReason });
+            toast.success('Cashout request rejected');
+            setRejectReasonDrafts((prev) => {
+                const next = { ...prev };
+                delete next[cashout.cashout_id];
+                return next;
+            });
+            await loadData();
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Failed to reject cashout request');
+        } finally {
+            setCashoutBusyId(null);
         }
     };
 
@@ -405,6 +496,74 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
                                                         <p className="mt-1 truncate text-[11px] text-blue-600">{qr.url}</p>
                                                     )}
                                                 </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                );
+                            })}
+                        </div>
+                    )}
+                </section>
+            )}
+
+            {!loading && !error && canSeeCashoutQueue && (
+                <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
+                    <h3 className="mb-3 text-sm font-black text-[#0F172A]">Cashout Requests ({cashouts.length})</h3>
+                    {cashouts.length === 0 ? (
+                        <p className="text-xs text-slate-500">No cashout requests yet.</p>
+                    ) : (
+                        <div className="space-y-3">
+                            {cashouts.map((cashout) => {
+                                const busy = cashoutBusyId === cashout.cashout_id;
+                                return (
+                                    <div key={cashout.cashout_id} className="rounded-lg border border-slate-200 p-3">
+                                        <div className="flex flex-wrap items-center justify-between gap-2">
+                                            <div>
+                                                <p className="text-[13px] font-extrabold text-[#0F172A]">{cashoutAffiliateDisplayName(cashout)}</p>
+                                                <p className="text-[11px] text-slate-500">
+                                                    {payoutSnapshotSummary(cashout.payout_snapshot)} &middot; Status: {cashout.status}
+                                                </p>
+                                            </div>
+                                            <span className="text-[13px] font-extrabold text-[#0F172A]">{money(cashout.amount_centavos)}</span>
+                                        </div>
+
+                                        {cashout.status === 'requested' && canApproveCashouts && (
+                                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                <Button type="button" size="sm" disabled={busy} onClick={() => handleApproveCashout(cashout)}>
+                                                    <CheckCircle2 className="mr-1 h-3.5 w-3.5" /> Approve
+                                                </Button>
+                                                <Input
+                                                    className="h-8 w-48 text-xs"
+                                                    placeholder="Rejection reason (optional)"
+                                                    value={rejectReasonDrafts[cashout.cashout_id] || ''}
+                                                    onChange={(e) => setRejectReasonDrafts((prev) => ({ ...prev, [cashout.cashout_id]: e.target.value }))}
+                                                />
+                                                <Button type="button" size="sm" variant="outline" className="text-rose-600" disabled={busy} onClick={() => handleRejectCashout(cashout)}>
+                                                    <XCircle className="mr-1 h-3.5 w-3.5" /> Reject
+                                                </Button>
+                                            </div>
+                                        )}
+
+                                        {cashout.status === 'approved' && (
+                                            <div className="mt-2 flex flex-wrap items-center gap-2">
+                                                {canPayCashouts && (
+                                                    <>
+                                                        <Input
+                                                            className="h-8 w-48 text-xs"
+                                                            placeholder="External payment reference"
+                                                            value={payoutRefDrafts[cashout.cashout_id] || ''}
+                                                            onChange={(e) => setPayoutRefDrafts((prev) => ({ ...prev, [cashout.cashout_id]: e.target.value }))}
+                                                        />
+                                                        <Button type="button" size="sm" disabled={busy} onClick={() => handleMarkCashoutPaid(cashout)}>
+                                                            <Banknote className="mr-1 h-3.5 w-3.5" /> Mark Paid
+                                                        </Button>
+                                                    </>
+                                                )}
+                                                {canApproveCashouts && (
+                                                    <Button type="button" size="sm" variant="outline" className="text-rose-600" disabled={busy} onClick={() => handleRejectCashout(cashout)}>
+                                                        <XCircle className="mr-1 h-3.5 w-3.5" /> Reject
+                                                    </Button>
+                                                )}
                                             </div>
                                         )}
                                     </div>

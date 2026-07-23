@@ -6,6 +6,7 @@ const MAX_RATE_BPS = 10000; // 100.00%
 const MIN_ATTRIBUTION_WINDOW_DAYS = 1;
 const MAX_ATTRIBUTION_WINDOW_DAYS = 365;
 const ENROLLMENT_STATUS_VALUES = new Set(['active', 'suspended', 'revoked']);
+const PAYOUT_METHOD_TYPES = new Set(['bank', 'gcash', 'maya']);
 
 const mapError = (error, fallbackMessage) => {
     if (error instanceof DomainError) return error;
@@ -58,6 +59,40 @@ const parseOptionalPositiveInt = (value, { field, min = 0, max = Number.MAX_SAFE
 };
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+
+const parsePositiveInt = (value) => {
+    const parsed = Number.parseInt(value, 10);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+
+// requireAllFields=true (create) enforces the fields the chosen method_type needs; false (update)
+// only validates whatever fields were actually sent, since an update may not touch method_type.
+const validatePayoutMethodPayload = (body = {}, { requireAllFields = false } = {}) => {
+    const updates = {};
+    if (body.method_type !== undefined || requireAllFields) {
+        const methodType = String(body.method_type || '').trim().toLowerCase();
+        if (!PAYOUT_METHOD_TYPES.has(methodType)) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `method_type must be one of: ${[...PAYOUT_METHOD_TYPES].join(', ')}.`, { statusCode: 422 });
+        }
+        updates.method_type = methodType;
+    }
+    if (body.label !== undefined) updates.label = body.label ? String(body.label).trim().slice(0, 100) : null;
+    if (body.bank_name !== undefined) updates.bank_name = body.bank_name ? String(body.bank_name).trim() : null;
+    if (body.account_name !== undefined) updates.account_name = body.account_name ? String(body.account_name).trim() : null;
+    if (body.account_number !== undefined) updates.account_number = body.account_number ? String(body.account_number).trim() : null;
+    if (body.mobile_number !== undefined) updates.mobile_number = body.mobile_number ? String(body.mobile_number).trim() : null;
+    if (body.is_default !== undefined) updates.is_default = body.is_default === true;
+
+    if (requireAllFields) {
+        if (updates.method_type === 'bank' && (!updates.bank_name || !updates.account_name || !updates.account_number)) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'bank_name, account_name, and account_number are required for a bank payout method.', { statusCode: 422 });
+        }
+        if ((updates.method_type === 'gcash' || updates.method_type === 'maya') && !updates.mobile_number) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'mobile_number is required for a GCash/Maya payout method.', { statusCode: 422 });
+        }
+    }
+    return updates;
+};
 
 const buildAffiliateShareUrl = ({ slug, shortCode }) => {
     const origin = String(process.env.STOREFRONT_PUBLIC_ORIGIN || '').trim().replace(/\/+$/, '');
@@ -300,6 +335,200 @@ export const buildGetAffiliateEarningsUseCase = ({ repository = dgfyAffiliateRep
     }
 );
 
+// --- Payout methods (self-service, account-level - not tenant-scoped) ---
+
+export const buildManageAffiliatePayoutMethodsUseCases = ({ repository = dgfyAffiliateRepository } = {}) => ({
+    list: async ({ account }) => {
+        try {
+            const dgfyAccount = ensureAccount(account);
+            return ok({ payout_methods: await repository.listPayoutMethods(dgfyAccount.id) });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to list payout methods'));
+        }
+    },
+    create: async ({ account, body = {} }) => {
+        try {
+            const dgfyAccount = ensureAccount(account);
+            const updates = validatePayoutMethodPayload(body, { requireAllFields: true });
+            const payoutMethod = await repository.createPayoutMethod(dgfyAccount.id, updates);
+            return ok({ payout_method: payoutMethod });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to save payout method'));
+        }
+    },
+    update: async ({ account, payoutMethodId, body = {} }) => {
+        try {
+            const dgfyAccount = ensureAccount(account);
+            const updates = validatePayoutMethodPayload(body, { requireAllFields: false });
+            if (Object.keys(updates).length === 0) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'No updatable fields were provided.', { statusCode: 422 });
+            }
+            const payoutMethod = await repository.updatePayoutMethod(dgfyAccount.id, payoutMethodId, updates);
+            if (!payoutMethod) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payout method not found.', { statusCode: 404 });
+            return ok({ payout_method: payoutMethod });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to update payout method'));
+        }
+    },
+    setDefault: async ({ account, payoutMethodId }) => {
+        try {
+            const dgfyAccount = ensureAccount(account);
+            const payoutMethod = await repository.updatePayoutMethod(dgfyAccount.id, payoutMethodId, { is_default: true });
+            if (!payoutMethod) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payout method not found.', { statusCode: 404 });
+            return ok({ payout_method: payoutMethod });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to set default payout method'));
+        }
+    },
+    remove: async ({ account, payoutMethodId }) => {
+        try {
+            const dgfyAccount = ensureAccount(account);
+            const deleted = await repository.deletePayoutMethod(dgfyAccount.id, payoutMethodId);
+            if (!deleted) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payout method not found.', { statusCode: 404 });
+            return ok({ deleted: true, payout_method_id: parsePositiveInt(payoutMethodId) });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to delete payout method'));
+        }
+    }
+});
+
+// --- Cashouts: affiliate self-service (request/list/cancel) ---
+
+export const buildRequestAffiliateCashoutUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ account, body = {} }) => {
+        try {
+            const dgfyAccount = ensureAccount(account);
+            const tenant = ensureTenantId(body.tenant_id);
+
+            const enrollment = await repository.findEnrollmentByAccountAndTenant(dgfyAccount.id, tenant);
+            if (!enrollment) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'You are not enrolled as an affiliate for this store.', { statusCode: 404 });
+            }
+
+            const payoutMethods = await repository.listPayoutMethods(dgfyAccount.id);
+            const requestedMethodId = body.payout_method_id !== undefined ? parsePositiveInt(body.payout_method_id) : null;
+            const payoutMethod = requestedMethodId
+                ? payoutMethods.find((method) => method.payout_method_id === requestedMethodId)
+                : (payoutMethods.find((method) => method.is_default) || payoutMethods[0]);
+            if (!payoutMethod) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Add a payout method before requesting a cashout.', { statusCode: 422 });
+            }
+
+            const settings = await repository.getSettings(tenant);
+            const earnings = await repository.getEarningsSummary(dgfyAccount.id, tenant);
+            const minCashoutCentavos = settings.min_cashout_centavos ?? 20000;
+            if (earnings.available_centavos < minCashoutCentavos) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    `Your available balance must be at least ${minCashoutCentavos} centavos to request a cashout.`,
+                    { statusCode: 422 }
+                );
+            }
+
+            const cashout = await repository.requestCashout({
+                enrollmentId: enrollment.enrollment_id,
+                tenantId: tenant,
+                dgfyAccountId: dgfyAccount.id,
+                payoutMethodId: payoutMethod.payout_method_id,
+                payoutSnapshot: payoutMethod
+            });
+            if (!cashout) {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'No available balance to cash out right now.', { statusCode: 409 });
+            }
+            return ok({ cashout });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to request a cashout'));
+        }
+    }
+);
+
+export const buildListMyAffiliateCashoutsUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ account, query = {} }) => {
+        try {
+            const dgfyAccount = ensureAccount(account);
+            const tenantId = String(query.tenant_id || '').trim() || null;
+            return ok({ cashouts: await repository.listCashoutsForAccount(dgfyAccount.id, { tenantId }) });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to list your cashout requests'));
+        }
+    }
+);
+
+export const buildCancelAffiliateCashoutUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ account, cashoutId }) => {
+        try {
+            const dgfyAccount = ensureAccount(account);
+            const { cashout, reason } = await repository.cancelCashout(cashoutId, { dgfyAccountId: dgfyAccount.id });
+            if (!cashout) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Cashout request not found.', { statusCode: 404 });
+            if (reason === 'invalid_status') throw new DomainError(DomainErrorCode.CONFLICT, 'Only a pending cashout request can be cancelled.', { statusCode: 409 });
+            return ok({ cashout });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to cancel cashout request'));
+        }
+    }
+);
+
+// --- Cashouts: owner/admin (approve / mark-paid / reject queue) ---
+
+export const buildListAffiliateCashoutsUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId, query = {} }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+            const status = String(query.status || '').trim() || null;
+            return ok({ cashouts: await repository.listCashoutsForTenant(tenant, { status }) });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to list cashout requests'));
+        }
+    }
+);
+
+export const buildApproveAffiliateCashoutUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId, cashoutId, approvedByUserId = null }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+            const { cashout, reason } = await repository.approveCashout(cashoutId, { tenantId: tenant, approvedByUserId });
+            if (!cashout) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Cashout request not found.', { statusCode: 404 });
+            if (reason === 'invalid_status') throw new DomainError(DomainErrorCode.CONFLICT, 'Only a requested cashout can be approved.', { statusCode: 409 });
+            return ok({ cashout });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to approve cashout request'));
+        }
+    }
+);
+
+export const buildMarkAffiliateCashoutPaidUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId, cashoutId, body = {} }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+            const externalPaymentRef = String(body.external_payment_ref || '').trim();
+            if (!externalPaymentRef) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'external_payment_ref is required to mark a cashout as paid.', { statusCode: 422 });
+            }
+            const { cashout, reason } = await repository.markCashoutPaid(cashoutId, { tenantId: tenant, externalPaymentRef });
+            if (!cashout) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Cashout request not found.', { statusCode: 404 });
+            if (reason === 'invalid_status') throw new DomainError(DomainErrorCode.CONFLICT, 'Only an approved cashout can be marked as paid.', { statusCode: 409 });
+            return ok({ cashout });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to mark cashout as paid'));
+        }
+    }
+);
+
+export const buildRejectAffiliateCashoutUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId, cashoutId, body = {} }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+            const rejectionReason = body.rejection_reason ? String(body.rejection_reason).trim().slice(0, 500) : null;
+            const { cashout, reason } = await repository.rejectCashout(cashoutId, { tenantId: tenant, rejectionReason });
+            if (!cashout) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Cashout request not found.', { statusCode: 404 });
+            if (reason === 'invalid_status') throw new DomainError(DomainErrorCode.CONFLICT, 'Only a requested or approved cashout can be rejected.', { statusCode: 409 });
+            return ok({ cashout });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to reject cashout request'));
+        }
+    }
+);
+
 export default {
     buildGetAffiliateSettingsUseCase,
     buildUpdateAffiliateSettingsUseCase,
@@ -309,5 +538,13 @@ export default {
     buildGetAffiliateQrPayloadUseCase,
     buildListMyAffiliateEnrollmentsUseCase,
     buildEnrollSelfServeAffiliateUseCase,
-    buildGetAffiliateEarningsUseCase
+    buildGetAffiliateEarningsUseCase,
+    buildManageAffiliatePayoutMethodsUseCases,
+    buildRequestAffiliateCashoutUseCase,
+    buildListMyAffiliateCashoutsUseCase,
+    buildCancelAffiliateCashoutUseCase,
+    buildListAffiliateCashoutsUseCase,
+    buildApproveAffiliateCashoutUseCase,
+    buildMarkAffiliateCashoutPaidUseCase,
+    buildRejectAffiliateCashoutUseCase
 };

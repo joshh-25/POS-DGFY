@@ -57,13 +57,21 @@ import {
     buildVerifyDgfyTrackingRecoveryUseCase
 } from './usecases/dgfyCustomerUseCases.js';
 import {
+    buildApproveAffiliateCashoutUseCase,
+    buildCancelAffiliateCashoutUseCase,
     buildEnrollSelfServeAffiliateUseCase,
     buildGetAffiliateEarningsUseCase,
     buildGetAffiliateQrPayloadUseCase,
     buildGetAffiliateSettingsUseCase,
+    buildListAffiliateCashoutsUseCase,
     buildListAffiliatesUseCase,
+    buildListMyAffiliateCashoutsUseCase,
     buildListMyAffiliateEnrollmentsUseCase,
+    buildManageAffiliatePayoutMethodsUseCases,
+    buildMarkAffiliateCashoutPaidUseCase,
     buildProvisionAffiliateUseCase,
+    buildRejectAffiliateCashoutUseCase,
+    buildRequestAffiliateCashoutUseCase,
     buildUpdateAffiliateEnrollmentUseCase,
     buildUpdateAffiliateSettingsUseCase
 } from './usecases/dgfyAffiliateUseCases.js';
@@ -276,5 +284,20 @@ export const getAffiliateQrPayloadUseCase = buildGetAffiliateQrPayloadUseCase();
 export const listMyAffiliateEnrollmentsUseCase = buildListMyAffiliateEnrollmentsUseCase();
 export const enrollSelfServeAffiliateUseCase = buildEnrollSelfServeAffiliateUseCase();
 export const getAffiliateEarningsUseCase = buildGetAffiliateEarningsUseCase();
+
+const affiliatePayoutMethodUseCases = buildManageAffiliatePayoutMethodsUseCases();
+export const listAffiliatePayoutMethodsUseCase = affiliatePayoutMethodUseCases.list;
+export const createAffiliatePayoutMethodUseCase = affiliatePayoutMethodUseCases.create;
+export const updateAffiliatePayoutMethodUseCase = affiliatePayoutMethodUseCases.update;
+export const setDefaultAffiliatePayoutMethodUseCase = affiliatePayoutMethodUseCases.setDefault;
+export const deleteAffiliatePayoutMethodUseCase = affiliatePayoutMethodUseCases.remove;
+
+export const requestAffiliateCashoutUseCase = buildRequestAffiliateCashoutUseCase();
+export const listMyAffiliateCashoutsUseCase = buildListMyAffiliateCashoutsUseCase();
+export const cancelAffiliateCashoutUseCase = buildCancelAffiliateCashoutUseCase();
+export const listAffiliateCashoutsUseCase = buildListAffiliateCashoutsUseCase();
+export const approveAffiliateCashoutUseCase = buildApproveAffiliateCashoutUseCase();
+export const markAffiliateCashoutPaidUseCase = buildMarkAffiliateCashoutPaidUseCase();
+export const rejectAffiliateCashoutUseCase = buildRejectAffiliateCashoutUseCase();
 
 export { dgfyAccountRepository };

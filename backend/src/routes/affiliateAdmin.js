@@ -2,10 +2,14 @@ import express from 'express';
 import { authenticate, checkPermission } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import {
+    approveAffiliateCashout,
     getAffiliateQrPayload,
     getAffiliateSettings,
+    listAffiliateCashouts,
     listAffiliates,
+    markAffiliateCashoutPaid,
     provisionAffiliate,
+    rejectAffiliateCashout,
     updateAffiliateEnrollment,
     updateAffiliateSettings
 } from '../modules/dgfy/controllers/dgfyAffiliateHandlers.js';
@@ -47,6 +51,30 @@ router.get(
     authenticate,
     checkPermission(PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES),
     getAffiliateQrPayload
+);
+router.get(
+    '/cashouts',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES),
+    listAffiliateCashouts
+);
+router.patch(
+    '/cashouts/:cashout_id/approve',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.APPROVE_AFFILIATE_CASHOUTS),
+    approveAffiliateCashout
+);
+router.patch(
+    '/cashouts/:cashout_id/mark-paid',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.PAY_AFFILIATE_CASHOUTS),
+    markAffiliateCashoutPaid
+);
+router.patch(
+    '/cashouts/:cashout_id/reject',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.APPROVE_AFFILIATE_CASHOUTS),
+    rejectAffiliateCashout
 );
 
 export default router;

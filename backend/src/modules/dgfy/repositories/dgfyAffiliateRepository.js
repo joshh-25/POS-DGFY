@@ -4,6 +4,8 @@ import {
     DgfyAffiliateAttribution,
     DgfyAffiliateEnrollment,
     DgfyAffiliateCommission,
+    DgfyAffiliatePayoutMethod,
+    DgfyAffiliateCashout,
     StorefrontDiscoveryIndex,
     Tenant,
     TenantAffiliateSettings
@@ -269,6 +271,230 @@ export const dgfyAffiliateRepository = {
             paid_centavos: paidCentavos,
             reversed_centavos: reversedCentavos
         };
+    },
+
+    // --- Payout methods (account-level, not tenant-scoped - one set of methods per DGFY account,
+    // reused across every store they affiliate for) ---
+
+    async listPayoutMethods(dgfyAccountId) {
+        const rows = await DgfyAffiliatePayoutMethod.findAll({
+            where: { dgfy_account_id: dgfyAccountId },
+            order: [['is_default', 'DESC'], ['payout_method_id', 'ASC']]
+        });
+        return rows.map(toPlain);
+    },
+
+    async getPayoutMethod(dgfyAccountId, payoutMethodId) {
+        const row = await DgfyAffiliatePayoutMethod.findOne({
+            where: { dgfy_account_id: dgfyAccountId, payout_method_id: payoutMethodId }
+        });
+        return toPlain(row);
+    },
+
+    async createPayoutMethod(dgfyAccountId, payload = {}) {
+        if (payload.is_default === true) {
+            await DgfyAffiliatePayoutMethod.update({ is_default: false }, { where: { dgfy_account_id: dgfyAccountId } });
+        }
+        const existingCount = await DgfyAffiliatePayoutMethod.count({ where: { dgfy_account_id: dgfyAccountId } });
+        const row = await DgfyAffiliatePayoutMethod.create({
+            dgfy_account_id: dgfyAccountId,
+            method_type: payload.method_type,
+            label: payload.label ?? null,
+            bank_name: payload.bank_name ?? null,
+            account_name: payload.account_name ?? null,
+            account_number: payload.account_number ?? null,
+            mobile_number: payload.mobile_number ?? null,
+            is_default: payload.is_default === true || existingCount === 0
+        });
+        return toPlain(row);
+    },
+
+    async updatePayoutMethod(dgfyAccountId, payoutMethodId, payload = {}) {
+        const row = await DgfyAffiliatePayoutMethod.findOne({
+            where: { dgfy_account_id: dgfyAccountId, payout_method_id: payoutMethodId }
+        });
+        if (!row) return null;
+        if (payload.is_default === true) {
+            await DgfyAffiliatePayoutMethod.update({ is_default: false }, { where: { dgfy_account_id: dgfyAccountId } });
+        }
+        await row.update(payload);
+        return toPlain(await row.reload());
+    },
+
+    async deletePayoutMethod(dgfyAccountId, payoutMethodId) {
+        const row = await DgfyAffiliatePayoutMethod.findOne({
+            where: { dgfy_account_id: dgfyAccountId, payout_method_id: payoutMethodId }
+        });
+        if (!row) return false;
+        const wasDefault = row.is_default === true;
+        await row.destroy();
+        if (wasDefault) {
+            const next = await DgfyAffiliatePayoutMethod.findOne({
+                where: { dgfy_account_id: dgfyAccountId },
+                order: [['payout_method_id', 'ASC']]
+            });
+            if (next) await next.update({ is_default: true });
+        }
+        return true;
+    },
+
+    // --- Cashouts (full-balance requests that settle a batch of earned commission rows) ---
+
+    async getEnrollmentForCashout(tenantId, enrollmentId, dgfyAccountId) {
+        const row = await DgfyAffiliateEnrollment.findOne({
+            where: { tenant_id: tenantId, enrollment_id: enrollmentId, dgfy_account_id: dgfyAccountId }
+        });
+        return toPlain(row);
+    },
+
+    async listCashoutsForTenant(tenantId, { status = null } = {}) {
+        const where = { tenant_id: tenantId };
+        if (status) where.status = status;
+        const rows = await DgfyAffiliateCashout.findAll({
+            where,
+            include: [{ model: DgfyAffiliateEnrollment, as: 'enrollment', include: [ENROLLMENT_ACCOUNT_INCLUDE] }],
+            order: [['requested_at', 'DESC']]
+        });
+        return rows.map(toPlain);
+    },
+
+    async listCashoutsForAccount(dgfyAccountId, { tenantId = null } = {}) {
+        const where = { dgfy_account_id: dgfyAccountId };
+        if (tenantId) where.tenant_id = tenantId;
+        const rows = await DgfyAffiliateCashout.findAll({
+            where,
+            order: [['requested_at', 'DESC']]
+        });
+        return rows.map(toPlain);
+    },
+
+    async findCashoutById(cashoutId, { tenantId = null, dgfyAccountId = null } = {}) {
+        const where = { cashout_id: cashoutId };
+        if (tenantId) where.tenant_id = tenantId;
+        if (dgfyAccountId) where.dgfy_account_id = dgfyAccountId;
+        const row = await DgfyAffiliateCashout.findOne({ where });
+        return toPlain(row);
+    },
+
+    // Reserves every currently-available (earned, cashout_id IS NULL) commission row for this
+    // enrollment into a brand-new cashout, inside one transaction, so two concurrent requests can
+    // never consume the same commission row. Rejects (returns null) if there's nothing available.
+    async requestCashout({ enrollmentId, tenantId, dgfyAccountId, payoutMethodId, payoutSnapshot }) {
+        return DgfyAffiliateEnrollment.sequelize.transaction(async (transaction) => {
+            const eligibleRows = await DgfyAffiliateCommission.findAll({
+                where: {
+                    enrollment_id: enrollmentId,
+                    tenant_id: tenantId,
+                    dgfy_account_id: dgfyAccountId,
+                    status: 'earned',
+                    cashout_id: null
+                },
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+
+            const amountCentavos = eligibleRows.reduce((sum, row) => sum + Number(row.amount_centavos || 0), 0);
+            if (!eligibleRows.length || amountCentavos <= 0) return null;
+
+            const cashout = await DgfyAffiliateCashout.create({
+                enrollment_id: enrollmentId,
+                tenant_id: tenantId,
+                dgfy_account_id: dgfyAccountId,
+                payout_method_id: payoutMethodId,
+                payout_snapshot: payoutSnapshot,
+                amount_centavos: amountCentavos,
+                status: 'requested',
+                requested_at: new Date()
+            }, { transaction });
+
+            await DgfyAffiliateCommission.update(
+                { cashout_id: cashout.cashout_id },
+                {
+                    where: { commission_id: eligibleRows.map((row) => row.commission_id) },
+                    transaction
+                }
+            );
+
+            return toPlain(await cashout.reload({ transaction }));
+        });
+    },
+
+    // requested -> cancelled (affiliate withdraws their own request); releases reserved rows.
+    async cancelCashout(cashoutId, { dgfyAccountId }) {
+        return DgfyAffiliateEnrollment.sequelize.transaction(async (transaction) => {
+            const cashout = await DgfyAffiliateCashout.findOne({
+                where: { cashout_id: cashoutId, dgfy_account_id: dgfyAccountId },
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (!cashout) return { cashout: null, reason: 'not_found' };
+            if (cashout.status !== 'requested') return { cashout: toPlain(cashout), reason: 'invalid_status' };
+
+            await DgfyAffiliateCommission.update(
+                { cashout_id: null },
+                { where: { cashout_id: cashoutId }, transaction }
+            );
+            await cashout.update({ status: 'cancelled' }, { transaction });
+            return { cashout: toPlain(await cashout.reload({ transaction })), reason: null };
+        });
+    },
+
+    // requested/approved -> rejected (owner declines); releases reserved rows back to available.
+    async rejectCashout(cashoutId, { tenantId, rejectionReason = null }) {
+        return DgfyAffiliateEnrollment.sequelize.transaction(async (transaction) => {
+            const cashout = await DgfyAffiliateCashout.findOne({
+                where: { cashout_id: cashoutId, tenant_id: tenantId },
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (!cashout) return { cashout: null, reason: 'not_found' };
+            if (!['requested', 'approved'].includes(cashout.status)) return { cashout: toPlain(cashout), reason: 'invalid_status' };
+
+            await DgfyAffiliateCommission.update(
+                { cashout_id: null },
+                { where: { cashout_id: cashoutId }, transaction }
+            );
+            await cashout.update({
+                status: 'rejected',
+                rejected_at: new Date(),
+                rejection_reason: rejectionReason
+            }, { transaction });
+            return { cashout: toPlain(await cashout.reload({ transaction })), reason: null };
+        });
+    },
+
+    // requested -> approved (owner accepts the request, hasn't paid yet).
+    async approveCashout(cashoutId, { tenantId, approvedByUserId = null }) {
+        const cashout = await DgfyAffiliateCashout.findOne({ where: { cashout_id: cashoutId, tenant_id: tenantId } });
+        if (!cashout) return { cashout: null, reason: 'not_found' };
+        if (cashout.status !== 'requested') return { cashout: toPlain(cashout), reason: 'invalid_status' };
+
+        await cashout.update({ status: 'approved', approved_at: new Date(), approved_by_user_id: approvedByUserId });
+        return { cashout: toPlain(await cashout.reload()), reason: null };
+    },
+
+    // approved -> paid (owner has paid externally); bulk-flips the reserved rows earned -> paid.
+    async markCashoutPaid(cashoutId, { tenantId, externalPaymentRef }) {
+        return DgfyAffiliateEnrollment.sequelize.transaction(async (transaction) => {
+            const cashout = await DgfyAffiliateCashout.findOne({
+                where: { cashout_id: cashoutId, tenant_id: tenantId },
+                transaction,
+                lock: transaction.LOCK.UPDATE
+            });
+            if (!cashout) return { cashout: null, reason: 'not_found' };
+            if (cashout.status !== 'approved') return { cashout: toPlain(cashout), reason: 'invalid_status' };
+
+            await DgfyAffiliateCommission.update(
+                { status: 'paid', paid_at: new Date() },
+                { where: { cashout_id: cashoutId, status: 'earned' }, transaction }
+            );
+            await cashout.update({
+                status: 'paid',
+                paid_at: new Date(),
+                external_payment_ref: externalPaymentRef
+            }, { transaction });
+            return { cashout: toPlain(await cashout.reload({ transaction })), reason: null };
+        });
     }
 };
 

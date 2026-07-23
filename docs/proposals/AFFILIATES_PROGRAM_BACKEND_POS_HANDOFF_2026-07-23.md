@@ -118,16 +118,22 @@ Deferred to a later storefront phase (backend hooks exist and are dormant, but n
    override, suspend/revoke, QR/share-link via the `qrcode` package),
    `frontend/src/features/pos/services/affiliateService.js`, and an optional "Affiliate Code" field
    in `POSCheckoutTerminal.jsx`.
+5. **Payout methods + cashout backend/API + owner approval queue** — full CRUD for
+   `dgfy_affiliate_payout_methods` (self-service, mirrors the existing `DgfyCustomerAddress` CRUD 1:1:
+   multiple methods, one `is_default`) and the cashout state machine on `dgfy_affiliate_cashouts`
+   (`requested` → `approved` → `paid`, or `rejected`/`cancelled`). Row reservation happens in
+   `dgfyAffiliateRepository.requestCashout`: inside one transaction, every currently `earned` row with
+   `cashout_id IS NULL` for that enrollment is pulled, summed into `amount_centavos`, and stamped with
+   the new cashout's id — a cashout is always a full-balance request, never a partial amount (matches
+   the study's design, not a simplification). Reject/cancel clear `cashout_id` back to null; mark-paid
+   bulk-flips those same rows `earned → paid`. Self-service routes on `/api/v1/dgfy/affiliate/*`
+   (`payout-methods` CRUD + `default`, `cashouts` request/list/cancel); owner/admin queue routes on
+   `/api/v1/affiliates/cashouts` (list/approve/mark-paid/reject), gated by the existing
+   `affiliates:cashout_approve`/`affiliates:cashout_pay` permissions. `AffiliatesWorkspacePanel.jsx`
+   got a new "Cashout Requests" section for the approval queue.
 
 ## What's in progress / next
 
-5. **Payout methods + cashout backend/API** (current work as of this handoff) — full CRUD for
-   `dgfy_affiliate_payout_methods` (self-service, mirrors the existing `DgfyCustomerAddress` CRUD 1:1:
-   multiple methods, one `is_default`) and the cashout state machine on
-   `dgfy_affiliate_cashouts` (`requested` → `approved` → `paid`, or `rejected`/`cancelled`), including
-   row reservation (a cashout claims specific `earned` commission rows via `cashout_id` so they can't
-   be double-cashed-out or reversed out from under it) and an owner-side approval queue added to
-   `AffiliatesWorkspacePanel.jsx`.
 6. **Online attribution backend + lifecycle hooks + cookie util + capture endpoint** — dormant
    backend-only work (cookie util in `backend/src/utils/browserSessionCookies.js`, a
    `pending`→`earned`/`reversed` hook in the online order status use case, a pending-row hook in
