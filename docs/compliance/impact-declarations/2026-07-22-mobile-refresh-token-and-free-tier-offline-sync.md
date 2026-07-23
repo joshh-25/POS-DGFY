@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-07-22
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md
 declaration_id: 2026-07-22-mobile-refresh-token-and-free-tier-offline-sync
-classification: major
-surfaces: pos,terminal
+classification: regulatory
+surfaces: pos,terminal,settings,compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.07.22
 verification_evidence: cd backend && npm run check:architecture-guardrails,cd backend && npm run check:controller-boundaries,cd backend && npx eslint src,cd backend && node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/browserSessionCookies.test.js tests/dgfyTenantSession.transport.test.js tests/mobilePosHandlers.transport.test.js tests/requirePremium.middleware.test.js tests/authModuleExports.contract.test.js tests/rateLimiterStoreMode.test.js tests/rateLimiter.behavior.test.js,manual verification against a locally running instance (migrated MariaDB + Redis) of refresh-token issuance/rotation/reuse-rejection and the free-tier bootstrap/sync-cap behavior described below
