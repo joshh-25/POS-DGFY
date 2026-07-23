@@ -28,10 +28,20 @@ Key: `geo:search:{roundedLat}:{roundedLng}:r{radius}:{stockFilter}:{queryHash}`
 
 Coordinates are snapped to a 0.01° grid (~1.1 km cells). TTL defaults to 90 s (`GEO_SEARCH_REDIS_CACHE_TTL_SECONDS`).
 
+## Contributing to live Discovery search
+
+`storefrontDiscoveryRepository.js` calls `geoSearchRepository.searchNearbyStores(...)` directly
+in-process (not via HTTP) whenever a Discovery search has customer coordinates, and unions any
+matched tenant into the existing snapshot-based item matches — additive only, never a replacement.
+See `services/geoCatalogSyncService.js` for how `geo_items`/`geo_store_items`/`geo_item_aliases`
+get populated automatically from the same reconciliation job that rebuilds the Discovery index,
+and `docs/features/spatial-based-search/GEOSPATIAL_SEARCH.md` for the full contract.
+
 ## Related
 
 - Route: `backend/src/routes/geoSearch.js`
 - Validator: `backend/src/validators/geoSearchValidator.js`
 - Worker: `backend/src/workers/geoInventoryWorker.js`
+- Automatic catalog sync: `backend/src/modules/geoSearch/services/geoCatalogSyncService.js`
 - Models: `backend/src/models/Landlord/GeoItem.js`, `GeoStoreItem.js`, `GeoItemAlias.js`
 - Feature docs: `docs/features/spatial-based-search/GEOSPATIAL_SEARCH.md`

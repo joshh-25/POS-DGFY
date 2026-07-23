@@ -1,3 +1,5 @@
+import { getRelevanceWeightedDistanceRank, scoreStoresByRelevance } from './discoverySearchRanking.js';
+
 export function buildStoresWithNearestBranch({
   DEFAULT_CENTER,
   discoveryCoords,
@@ -92,6 +94,7 @@ export function sortDiscoveryResultStores({
   discoverySortBy,
   hasDiscoverySearch,
   normalizeStorefrontReviewSummary,
+  search,
   storesWithNearestBranch
 }) {
   const hasDiscoveryLocation = discoveryCoords?.latitude != null && discoveryCoords?.longitude != null;
@@ -107,6 +110,12 @@ export function sortDiscoveryResultStores({
         return true;
       })
     : storesWithNearestBranch;
+  // Relevance-weighted distance ranking so a strong text/category match on a slightly
+  // farther store can outrank a weak/unrelated match that happens to be nearer, while a
+  // much nearer store can still win over a distant strong match (see RELEVANCE_DISTANCE_PENALTY_KM).
+  const relevanceByStore = hasDiscoverySearch
+    ? scoreStoresByRelevance(radiusScoped, search)
+    : null;
   const sorted = [...radiusScoped];
   sorted.sort((a, b) => {
     if (discoverySortBy === 'open') {
@@ -123,6 +132,12 @@ export function sortDiscoveryResultStores({
       const leftCatalog = Number(a?.catalog_count || 0);
       const rightCatalog = Number(b?.catalog_count || 0);
       if (leftCatalog !== rightCatalog) return rightCatalog - leftCatalog;
+    }
+    if (relevanceByStore) {
+      const leftRank = getRelevanceWeightedDistanceRank(a, relevanceByStore);
+      const rightRank = getRelevanceWeightedDistanceRank(b, relevanceByStore);
+      if (leftRank !== rightRank) return leftRank - rightRank;
+      return String(a?.tenant_name || '').localeCompare(String(b?.tenant_name || ''));
     }
     const leftDistance = Number.isFinite(Number(a?.nearest_distance_km)) ? Number(a.nearest_distance_km) : Number.POSITIVE_INFINITY;
     const rightDistance = Number.isFinite(Number(b?.nearest_distance_km)) ? Number(b.nearest_distance_km) : Number.POSITIVE_INFINITY;
