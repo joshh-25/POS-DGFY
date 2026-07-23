@@ -1,6 +1,7 @@
 import crypto from 'crypto';
 import {
     DgfyAccount,
+    DgfyAffiliateAttribution,
     DgfyAffiliateEnrollment,
     DgfyAffiliateCommission,
     StorefrontDiscoveryIndex,
@@ -162,6 +163,86 @@ export const dgfyAffiliateRepository = {
         if (!row) return null;
         await row.update(updates);
         return toPlain(await row.reload({ include: [ENROLLMENT_ACCOUNT_INCLUDE] }));
+    },
+
+    async findActiveEnrollmentByShareCode(tenantId, code) {
+        const row = await DgfyAffiliateEnrollment.findOne({
+            where: {
+                tenant_id: tenantId,
+                share_code_hash: hashAffiliateShareCode(code),
+                status: 'active'
+            }
+        });
+        return toPlain(row);
+    },
+
+    async recordAttribution({
+        tenantId,
+        enrollmentId,
+        channel = 'in_store',
+        posTransactionId = null,
+        dgfyAccountId = null,
+        storeSlug = null,
+        visitorFingerprint = null
+    }) {
+        const row = await DgfyAffiliateAttribution.create({
+            tenant_id: tenantId,
+            enrollment_id: enrollmentId,
+            channel,
+            pos_transaction_id: posTransactionId,
+            dgfy_account_id: dgfyAccountId,
+            store_slug: storeSlug,
+            visitor_fingerprint: visitorFingerprint
+        });
+        return toPlain(row);
+    },
+
+    // Idempotent by construction via the unique (tenant_id, order_reference) index - a duplicate
+    // call (checkout retry, duplicate webhook, etc.) is a silent no-op, never a second commission.
+    async createEarnedCommissionIfMissing({
+        enrollmentId,
+        tenantId,
+        dgfyAccountId,
+        posTransactionId = null,
+        orderReference,
+        commissionableBaseCentavos,
+        rateBpsSnapshot,
+        amountCentavos,
+        reason = 'in_store_sale'
+    }) {
+        const [row, created] = await DgfyAffiliateCommission.findOrCreate({
+            where: { tenant_id: tenantId, order_reference: orderReference },
+            defaults: {
+                enrollment_id: enrollmentId,
+                tenant_id: tenantId,
+                dgfy_account_id: dgfyAccountId,
+                pos_transaction_id: posTransactionId,
+                order_reference: orderReference,
+                commissionable_base_centavos: commissionableBaseCentavos,
+                rate_bps_snapshot: rateBpsSnapshot,
+                amount_centavos: amountCentavos,
+                status: 'earned',
+                reason,
+                earned_at: new Date()
+            }
+        });
+        return { commission: toPlain(row), created };
+    },
+
+    // Reverses a commission by its order_reference (the tracking_pin/pos_transaction_id join key).
+    // Skips (and reports so the caller can flag it) rows already reserved by a cashout (cashout_id
+    // set) - those follow the compensating-row clawback policy (a later slice), not a hard reversal.
+    async reverseCommissionByOrderReference(tenantId, orderReference) {
+        const row = await DgfyAffiliateCommission.findOne({
+            where: { tenant_id: tenantId, order_reference: orderReference }
+        });
+        if (!row) return { reversed: false, reason: 'not_found' };
+        if (row.cashout_id) return { reversed: false, reason: 'already_in_cashout' };
+        if (row.status === 'reversed') return { reversed: true, reason: 'already_reversed', commission: toPlain(row) };
+        if (row.status === 'paid') return { reversed: false, reason: 'already_paid' };
+
+        await row.update({ status: 'reversed', reversed_at: new Date() });
+        return { reversed: true, commission: toPlain(await row.reload()) };
     },
 
     async getEarningsSummary(dgfyAccountId, tenantId = null) {

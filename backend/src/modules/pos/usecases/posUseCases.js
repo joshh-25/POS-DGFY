@@ -17,6 +17,11 @@ import {
     getDgfyConvenienceFeeLabel
 } from '../../shared/utils/dgfyConvenienceFee.js';
 import {
+    accrueEarnedForInStoreSale,
+    resolveActiveAffiliateEnrollment,
+    reverseAffiliateCommissionForOrder
+} from '../../dgfy/utils/affiliateCommissionAccrual.js';
+import {
     SAFE_IMAGE_MIME_TYPES,
     validateImageUploadFile
 } from '../../shared/utils/imageUploadValidation.js';
@@ -2212,6 +2217,22 @@ export const buildCheckoutPosUseCase = ({
         try {
             const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
             await assertPosOperatorIdentity({ tenantId, user, resolveIdentityStatus });
+
+            // Affiliate attribution: resolved (and validated) before any write so an invalid code
+            // rejects the checkout with clear feedback instead of silently losing the commission -
+            // the money-side accrual itself still happens post-commit, best-effort (see below).
+            const affiliateCodeInput = String(payload.affiliate_code || '').trim();
+            const affiliateEnrollment = affiliateCodeInput
+                ? await resolveActiveAffiliateEnrollment({ tenantId, affiliateCode: affiliateCodeInput })
+                : null;
+            if (affiliateCodeInput && !affiliateEnrollment) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Affiliate code is invalid or the affiliate program is not enabled for this store',
+                    { statusCode: 422, details: { reason_code: 'AFFILIATE_CODE_INVALID' } }
+                );
+            }
+
             const settings = await getPosSettings();
             const resolvedCheckoutLocation = await resolveLocationScope({
                 requestedLocationId,
@@ -2967,6 +2988,28 @@ export const buildCheckoutPosUseCase = ({
             );
 
             await transaction.commit();
+
+            // Best-effort, post-commit: the enrollment was already validated pre-commit above, so
+            // this only writes bookkeeping (attribution + earned commission) and must never fail
+            // the sale that already succeeded - mirrors recordDgfyOrderActivity's convention.
+            if (affiliateEnrollment) {
+                try {
+                    await accrueEarnedForInStoreSale({
+                        tenantId,
+                        enrollment: affiliateEnrollment,
+                        orderReference: String(posTransactionId),
+                        posTransactionId,
+                        commissionableBaseCentavos: Math.max(0, toCurrencyCents(subtotalAmount) - toCurrencyCents(discountAmount))
+                    });
+                } catch (accrualError) {
+                    logger.warn('[PosUseCases] Failed to accrue affiliate commission for in-store sale', {
+                        tenantId,
+                        posTransactionId,
+                        error: accrualError?.message
+                    });
+                }
+            }
+
             return ok({
                 idempotent_replay: false,
                 compliance_decision: complianceDecision,
@@ -3171,6 +3214,22 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
             }, { transaction });
 
             await transaction.commit();
+
+            // Best-effort, post-commit reversal of any in-store affiliate commission tied to this
+            // sale - must never fail the void that already succeeded.
+            try {
+                const voidTenantId = String(dbStore.getStore()?.tenantId || '').trim();
+                await reverseAffiliateCommissionForOrder({
+                    tenantId: voidTenantId,
+                    orderReference: String(normalizedTransactionId)
+                });
+            } catch (reversalError) {
+                logger.warn('[PosUseCases] Failed to reverse affiliate commission for voided transaction', {
+                    posTransactionId: normalizedTransactionId,
+                    error: reversalError?.message
+                });
+            }
+
             return ok({
                 transaction: toSerializable(updated),
                 stock_reversals: stockReversals
