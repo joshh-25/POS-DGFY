@@ -386,6 +386,7 @@ const devicePrintReceiptSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
     transaction_id: Joi.number().integer().positive().required(),
     copies: Joi.number().integer().min(1).max(5).default(1),
+    paper_width: Joi.string().valid('80mm', '57mm').default('80mm'),
     reason: Joi.string().trim().max(255).allow('', null).optional(),
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
 });

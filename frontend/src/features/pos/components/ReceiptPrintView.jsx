@@ -1,5 +1,6 @@
 import React from 'react';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
+import { renderPosReceiptHtml } from '@dgfy/pos-receipt';
 
 const money = (value) => Number(value || 0).toFixed(2);
 const DGFY_BRAND_NAME = 'DGFY';
@@ -91,7 +92,7 @@ const isStatutorySeniorPwdDiscount = (governedDiscount) => {
     return discountType === 'senior' || discountType === 'pwd';
 };
 
-export default function ReceiptPrintView({ transaction, businessSettings = {}, receiptContract = null, paperWidth = '80mm' }) {
+export function LegacyReceiptPrintView({ transaction, businessSettings = {}, receiptContract = null, paperWidth = '80mm' }) {
     if (!transaction) return null;
 
     const printedAt = transaction.created_at
@@ -325,4 +326,16 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
             </div>
         </div>
     );
+}
+
+/** The browser shell shares this escaped receipt document with the Expo DOM preview. */
+export default function ReceiptPrintView({ transaction, businessSettings = {}, receiptContract = null, paperWidth = '80mm' }) {
+    if (!transaction) return null;
+    const normalizedSettings = {
+        ...businessSettings,
+        storefront_profile_image_url: businessSettings.storefront_profile_image_url
+            ? resolveAssetUrl(businessSettings.storefront_profile_image_url)
+            : businessSettings.profile_image_url ? resolveAssetUrl(businessSettings.profile_image_url) : ''
+    };
+    return <div dangerouslySetInnerHTML={{ __html: renderPosReceiptHtml({ transaction, businessSettings: normalizedSettings, receiptContract, paperWidth }) }} />;
 }
