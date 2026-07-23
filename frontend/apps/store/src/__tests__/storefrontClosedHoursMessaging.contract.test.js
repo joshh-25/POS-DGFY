@@ -8,6 +8,7 @@ const storefrontClosedStateSource = fs.readFileSync(path.join(appRoot, 'shared/m
 const storefrontClosedNoticeSource = fs.readFileSync(path.join(appRoot, 'shared/components/StorefrontClosedNotice.jsx'), 'utf8');
 const simpleCheckoutRouteSource = fs.readFileSync(path.join(appRoot, 'modes/simple/checkout/pages/SimpleCheckoutRoutePage.jsx'), 'utf8');
 const fnbCheckoutRouteContainerSource = fs.readFileSync(path.join(appRoot, 'modes/fnb/checkout/pages/FnbCheckoutRouteContainer.jsx'), 'utf8');
+const storefrontCheckoutSummaryContainerSource = fs.readFileSync(path.join(appRoot, 'shared/components/StorefrontCheckoutSummaryContainer.jsx'), 'utf8');
 const serviceBookingStepsSource = fs.readFileSync(path.join(appRoot, 'modes/services/booking/components/ServiceBookingSteps.jsx'), 'utf8');
 const storefrontServicesCatalogSource = fs.readFileSync(path.join(appRoot, 'modes/services/storefront/components/StorefrontServicesCatalog.jsx'), 'utf8');
 
@@ -24,7 +25,7 @@ describe('storefront closed-hours messaging contract', () => {
     expect(storefrontClosedNoticeSource).toContain('return function renderStorefrontClosedNotice');
     expect(simpleCheckoutRouteSource).toContain("storefrontClosedByHours ? renderStorefrontClosedNotice({ accent: '#9a3412', background: '#fff7ed', border: '#fdba74' }) : null");
     expect(fnbCheckoutRouteContainerSource).toContain("closedNotice={storefrontClosedByHours ? renderStorefrontClosedNotice({ accent: fnbOrderBrand, background: '#fff7ed', border: '#fdba74' }) : null}");
-    expect(storefrontAppSource).toContain("storefrontClosedByHours && renderStorefrontClosedNotice({ accent: servicesPrimary, background: '#eff6ff', border: '#bfdbfe' })");
+    expect(storefrontCheckoutSummaryContainerSource).toContain("storefrontClosedByHours && renderStorefrontClosedNotice({ accent: servicesPrimary, background: '#eff6ff', border: '#bfdbfe' })");
   });
 
   it('passes the closed-hours notice contract into the service booking payment step', () => {
