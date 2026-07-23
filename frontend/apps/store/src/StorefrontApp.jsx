@@ -16,7 +16,6 @@ import {
   Info,
   Maximize,
 } from 'lucide-react';
-import { canCheckout, getCheckoutBlockReason } from './shared/model/checkoutRules.js';
 import {
   haversineDistanceKm,
   toNumberOrNull
@@ -74,8 +73,6 @@ import {
 import {
   DGFY_ACRONYM,
   DGFY_BRAND_NAME,
-  DGFY_CONVENIENCE_FEE_LABEL,
-  DGFY_CONVENIENCE_FEE_RATE,
   ORDER_METHOD_OPTIONS
 } from './shared/model/storefrontConstants.js';
 import { formatStorefrontHoursLabel } from './shared/model/storefrontHoursModel.js';
@@ -94,7 +91,7 @@ import {
   buildVisibleStorefrontContactRows
 } from './shared/utils/storefrontContactPresentation.js';
 import { openStorefrontActionLink } from './shared/utils/externalLinks.js';
-import { money, round4, toSlug } from './shared/utils/storefrontFormatters.js';
+import { money, toSlug } from './shared/utils/storefrontFormatters.js';
 import { createStorefrontIdempotencyKey } from './shared/utils/idempotency.js';
 import {
   buildTicketImage,
@@ -115,11 +112,11 @@ import { createStoreMarkerPreviewNode } from './discovery/model/storefrontMarker
 import { FnbProductDetailsRoute } from './modes/fnb/storefront/pages/FnbProductDetailsRoute.jsx';
 import { buildFnbMobileLayout } from './modes/fnb/storefront/model/fnbMobileLayout.js';
 import { FNB_RECOMMENDED_LOCATION } from './modes/fnb/checkout/model/fnbCheckoutAddressLocations.js';
-import { buildFnbCartStatusLabel } from './modes/fnb/checkout/model/fnbCartPresentation.js';
 import {
   isEnabledStorefrontCheckoutPaymentType,
   STOREFRONT_CHECKOUT_PAYMENT_OPTIONS
 } from './modes/fnb/checkout/model/fnbCheckoutPaymentOptions.js';
+import { useCheckoutTotalsAndGating } from './modes/fnb/checkout/hooks/useCheckoutTotalsAndGating.js';
 import { useSignedInCheckoutAddresses } from './modes/fnb/checkout/hooks/useSignedInCheckoutAddresses.js';
 import { useFnbTrackingDrawerPresentation } from './modes/fnb/tracking/hooks/useFnbTrackingDrawerPresentation.js';
 import { useFnbTrackingRuntime } from './modes/fnb/tracking/hooks/useFnbTrackingRuntime.js';
@@ -248,7 +245,6 @@ import { buildServiceBookingSummaryModel } from './modes/services/booking/model/
 import { useServiceBookingDerivations } from './modes/services/booking/hooks/useServiceBookingDerivations.js';
 import { useServiceBookingFieldFocus } from './modes/services/booking/hooks/useServiceBookingFieldFocus.js';
 import { useServiceCartDrawerProps } from './modes/services/booking/hooks/useServiceCartDrawerProps.js';
-import { buildServiceCartValidationIssues } from './modes/services/booking/model/serviceBookingValidation.js';
 import { StorefrontServicesCatalog } from './modes/services/storefront/components/StorefrontServicesCatalog.jsx';
 import { StorefrontClassicCatalog } from './shared/components/storefront/StorefrontClassicCatalog.jsx';
 import { SimpleHero } from './modes/simple/storefront/components/SimpleHero.jsx';
@@ -1599,47 +1595,7 @@ export default function StorefrontApp() {
     servicePaymentTiming,
     serviceUnitType
   });
-  const hasStockViolation = useMemo(() => (
-    cart.some((line) => Number(line.quantity) > Number(line.max_stock ?? Number.POSITIVE_INFINITY))
-  ), [cart]);
-  const totalsForDisplay = useMemo(() => {
-    const subtotal = quoteResult?.subtotal_amount != null ? Number(quoteResult.subtotal_amount) : cartTotal;
-    const discountAmount = quoteResult?.discount_amount != null ? Number(quoteResult.discount_amount) : 0;
-    const serviceFee = quoteResult?.service_fee_amount != null
-      ? Number(quoteResult.service_fee_amount)
-      : round4(Math.max(0, subtotal) * DGFY_CONVENIENCE_FEE_RATE);
-    const deliveryFee = quoteResult?.delivery_fee != null ? Number(quoteResult.delivery_fee) : 0;
-    const totalAmount = quoteResult?.total_amount != null ? Number(quoteResult.total_amount) : subtotal - discountAmount + deliveryFee + serviceFee;
-    return {
-      subtotal_amount: subtotal,
-      discount_amount: discountAmount,
-      discount_label: quoteResult?.discount_label || 'Promo Discount',
-      discount_rate: quoteResult?.discount_rate != null ? Number(quoteResult.discount_rate) : 0,
-      service_fee_amount: serviceFee,
-      service_fee_label: quoteResult?.service_fee_label || DGFY_CONVENIENCE_FEE_LABEL,
-      delivery_fee: deliveryFee,
-      vatable_sales: quoteResult?.vatable_sales != null ? Number(quoteResult.vatable_sales) : 0,
-      vat_amount: quoteResult?.vat_amount != null ? Number(quoteResult.vat_amount) : 0,
-      vat_exempt_sales: quoteResult?.vat_exempt_sales != null ? Number(quoteResult.vat_exempt_sales) : 0,
-      zero_rated_sales: quoteResult?.zero_rated_sales != null ? Number(quoteResult.zero_rated_sales) : 0,
-      total_amount: totalAmount
-    };
-  }, [quoteResult, cartTotal]);
-  const activePromoFeedback = checkoutResult?.promo_feedback || quoteResult?.promo_feedback || null;
-  const promoStatusMessage = checkoutError || quoteError || activePromoFeedback?.message || '';
-  const promoStatusTone = checkoutError || quoteError
-    ? 'error'
-    : (activePromoFeedback?.applied ? 'success' : 'idle');
-  const appliedPromoDiscountText = totalsForDisplay.discount_amount > 0
-    ? `${money(totalsForDisplay.discount_amount)} off`
-    : '';
-  const promoDiscountSummaryRow = totalsForDisplay.discount_amount > 0
-    ? { label: totalsForDisplay.discount_label || 'Promo Discount', value: `- ${money(totalsForDisplay.discount_amount)}` }
-    : null;
-  const activeOrderMethodLabel = ORDER_METHOD_OPTIONS.find((option) => option.value === orderMethod)?.label || 'Checkout';
-  const simpleOrderMethodOptions = ORDER_METHOD_OPTIONS.filter((option) => option.value === 'pickup' || option.value === 'delivery');
   const isDesktopCheckout = isDesktopViewport;
-  const requireQuoteForCheckout = !hasServiceCart && !isFnbMode && !isSimpleMode;
   const isStorefrontV2 = parseBooleanFlag(selectedStore?.storefront_ui_v2_enabled, false);
   const followEnabledForStore = parseBooleanFlag(selectedStore?.storefront_follow_enabled, false);
   const { followState, handleFollowAction, handleShareAction } = useStorefrontShareActions({
@@ -1656,44 +1612,43 @@ export default function StorefrontApp() {
     storefrontClosedByHours,
     storefrontClosedMessageBody,
     storefrontClosedToastMessage,
-    storefrontHoursLabel,
-    storefrontHoursStatus
+    storefrontHoursLabel
   } = useStorefrontClosedNotice({ followEnabledForStore, followState, selectedStore });
-  const checkoutBlockReason = getCheckoutBlockReason({
-    selectedStore,
-    cartCount,
-    checkoutLoading,
+  const {
+    activeOrderMethodLabel,
+    appliedPromoDiscountText,
+    checkoutAllowed,
+    checkoutBlockReason,
+    fnbCartStatusLabel,
     hasStockViolation,
-    hasServiceCart,
+    promoDiscountSummaryRow,
+    promoStatusMessage,
+    promoStatusTone,
+    requireQuoteForCheckout,
+    serviceCartValidationIssues,
+    simpleOrderMethodOptions,
+    totalsForDisplay
+  } = useCheckoutTotalsAndGating({
     accessCapabilities,
-    quoteResult,
-    quoteNeedsRefresh,
-    requireQuote: requireQuoteForCheckout
-  });
-  const serviceCartValidationIssues = useMemo(
-    () => buildServiceCartValidationIssues(serviceCartLines),
-    [serviceCartLines]
-  );
-  const checkoutAllowed = canCheckout({
-    selectedStore,
+    cart,
     cartCount,
+    cartTotal,
+    checkoutError,
     checkoutLoading,
-    hasStockViolation,
+    checkoutResult,
+    hasMixedServiceCart,
     hasServiceCart,
-    accessCapabilities,
-    quoteResult,
-    quoteNeedsRefresh,
-    requireQuote: requireQuoteForCheckout
-  }) && !hasMixedServiceCart && (!hasServiceCart || serviceCartValidationIssues.length === 0);
-  const fnbCartStatusLabel = useMemo(() => buildFnbCartStatusLabel({
-    cartCount,
-    storefrontClosedByHours,
-    hasStockViolation,
     isFnbMode,
-    quoteResult,
+    isSimpleMode,
+    money,
+    orderMethod,
+    quoteError,
     quoteNeedsRefresh,
-    checkoutAllowed
-  }), [cartCount, storefrontClosedByHours, hasStockViolation, isFnbMode, quoteResult, quoteNeedsRefresh, checkoutAllowed]);
+    quoteResult,
+    selectedStore,
+    serviceCartLines,
+    storefrontClosedByHours
+  });
   useEffect(() => {
     if (productCartPermitted && checkoutPermitted && bookingPermitted) return;
     if (cart.length === 0 && !quoteResult && !isCheckoutOpen) return;
