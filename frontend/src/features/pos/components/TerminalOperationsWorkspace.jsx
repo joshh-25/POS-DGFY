@@ -27,6 +27,7 @@ import {
   Pencil,
   MapPinned,
   Package,
+  Percent,
   Phone,
   Plus,
   Receipt,
@@ -100,6 +101,7 @@ import {
   fetchTerminalTodayDashboard
 } from '../services/posService.js';
 import PosReportsAnalyticsWorkspace from './PosReportsAnalyticsWorkspace.jsx';
+import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 
 const MapPinPicker = lazy(() => import('@/src/components/maps/MapPinPicker.jsx'));
@@ -150,6 +152,11 @@ const MODE_META = {
     icon: BarChart3,
     title: 'Reports & Analytics',
     subtitle: 'Daily totals, sales comparison, POS profit/loss, top items, and transaction performance.'
+  },
+  settings_affiliates: {
+    icon: Percent,
+    title: 'Affiliates',
+    subtitle: 'Enroll affiliates, set commission rates, generate share codes, and review earnings.'
   },
   items: {
     icon: ClipboardList,
@@ -7071,6 +7078,15 @@ export default function TerminalOperationsWorkspace({
           isOnline={isOnline}
           offlineSnapshotScope={offlineSnapshotScope}
           sectionId={sectionIds.reports}
+        />
+      );
+    case 'settings_affiliates':
+      return (
+        <AffiliatesWorkspacePanel
+          terminalUser={terminalUser}
+          locked={locked}
+          isOnline={isOnline}
+          sectionId={sectionIds.affiliates}
         />
       );
     case 'items':

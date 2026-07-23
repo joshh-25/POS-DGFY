@@ -744,6 +744,7 @@ export default function POSCheckoutTerminal({
     const [discountDraft, setDiscountDraft] = useState(EMPTY_DISCOUNT_DRAFT);
     const [appliedDiscount, setAppliedDiscount] = useState(null);
     const [discountApplying, setDiscountApplying] = useState(false);
+    const [affiliateCodeInput, setAffiliateCodeInput] = useState('');
     const [showDiscountPin, setShowDiscountPin] = useState(false);
     const [cart, setCart] = useState([]);
     const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -2471,6 +2472,7 @@ export default function POSCheckoutTerminal({
                 vat_exempt_amount: governedDiscountTotals.vatExemptAmount,
                 discount_amount: governedDiscountTotals.discountAmount
             } : undefined,
+            affiliate_code: affiliateCodeInput.trim() || undefined,
             shift_id: activeShiftId || undefined,
             fnb_check_id: normalizedFnbContext?.fnb_check_id || undefined,
             fnb_table_id: normalizedFnbContext?.fnb_table_id || undefined,
@@ -2564,6 +2566,7 @@ export default function POSCheckoutTerminal({
             setManualDiscountRateInput('');
             setManualDiscountAmountInput('');
             setAppliedDiscount(null);
+            setAffiliateCodeInput('');
             setCustomerPaymentAmountInput('');
             setCheckoutConfirmModalOpen(false);
             const refreshedQueue = await listTerminalOperationQueueEntries({
@@ -2597,6 +2600,7 @@ export default function POSCheckoutTerminal({
             setManualDiscountRateInput('');
             setManualDiscountAmountInput('');
             setAppliedDiscount(null);
+            setAffiliateCodeInput('');
             setCustomerPaymentAmountInput('');
             setCheckoutConfirmModalOpen(false);
             setReceiptPreviewSource('order_preview');
@@ -3643,6 +3647,20 @@ export default function POSCheckoutTerminal({
                             Remove Discount
                         </button>
                     )}
+                </div>
+                <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <label className="text-[12px] font-extrabold text-[#0F172A]" htmlFor="pos-affiliate-code-input">Affiliate Code (optional)</label>
+                    <div className="relative mt-1.5">
+                        <Percent className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                        <Input
+                            id="pos-affiliate-code-input"
+                            className="h-8 rounded-lg border-slate-200 bg-white pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500"
+                            placeholder="e.g. AF-K7QP2X"
+                            value={affiliateCodeInput}
+                            onChange={(e) => setAffiliateCodeInput(e.target.value)}
+                        />
+                    </div>
+                    <p className="mt-1 text-[10.5px] text-slate-500">Credits an affiliate's commission for this sale. Validated at checkout.</p>
                 </div>
 
                 <div className="mb-3 space-y-3 border-b border-slate-200 pb-4 text-[13px]">
