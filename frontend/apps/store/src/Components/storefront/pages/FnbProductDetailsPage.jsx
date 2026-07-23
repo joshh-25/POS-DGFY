@@ -66,6 +66,12 @@ function FractionalStars({ value = 0, size = 16, gap = 4 }) {
 
 const money = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
 
+const formatModifierPriceDelta = (value) => {
+  const amount = Number(value || 0) || 0;
+  const sign = amount < 0 ? '-' : amount > 0 ? '+' : '';
+  return `${sign}${money(Math.abs(amount)).replace('PHP ', '')}`;
+};
+
 const withAssetOrigin = (url) => {
   if (!url || typeof url !== 'string') return '';
   const trimmed = url.trim();
@@ -1312,7 +1318,7 @@ export function FnbProductDetailsPage({
                                       {option.option_name}
                                     </span>
                                     <span style={{ fontSize: 12, fontWeight: 700, color: selected ? '#ea580c' : '#64748b', whiteSpace: 'nowrap' }}>
-                                      +{money(option.price_delta || 0).replace('PHP ', '')}
+                                      {formatModifierPriceDelta(option.price_delta)}
                                     </span>
                                   </label>
                                 );

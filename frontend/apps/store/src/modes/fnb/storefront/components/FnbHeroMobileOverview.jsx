@@ -15,7 +15,7 @@ export const FnbHeroMobileOverview = ({
 }) => (
   <div style={{ background: '#fff' }}>
     <div style={{ padding: '14px 16px 10px' }}>
-      <div style={{ display: 'flex', marginLeft: 118, gap: 8, marginBottom: 12, marginRight: 2 }}>
+      <div style={{ display: 'flex', minHeight: 38, marginLeft: 118, gap: 8, marginBottom: 12, marginRight: 2 }}>
         {heroSectionModel.actions?.canMessage && (
           <GhostButton onClick={() => openStorefrontActionLink(heroSectionModel.actions.messageHref)} style={{ flex: 1, background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, fontFamily: heroTheme.bodyFont, fontWeight: 600, fontSize: 13 }}>
             <MessageSquare size={16} />
