@@ -41,13 +41,13 @@ import {
 import { useStorefrontCartPersistence } from './shared/hooks/useStorefrontCartPersistence.js';
 import { useStorefrontCatalog } from './shared/hooks/useStorefrontCatalog.js';
 import { useStoreCatalogLoader } from './shared/hooks/useStoreCatalogLoader.js';
+import { useStorefrontSession } from './shared/hooks/useStorefrontSession.js';
 import { useStorefrontNavigation } from './shared/hooks/useStorefrontNavigation.js';
 import {
   buildCustomerFullName,
   buildMaskedSavedCustomerPreview,
   clearCheckoutAuthResumeDraft,
   clearSavedCustomerDetails,
-  getOrCreateStorefrontVisitorId,
   maskValue,
   normalizeSavedCustomerDetails,
   persistRecentStore,
@@ -319,7 +319,6 @@ import {
 } from './shared/utils/businessRegistrationUrl.js';
 import { resolveStorefrontAccountUrl } from '../../../src/features/dgfyRouteHelpers.js';
 import {
-  markDgfySessionActive,
   startDgfyPosSession,
   startDgfyTenantSession
 } from '../../../src/services/dgfyAuthService.js';
@@ -333,7 +332,6 @@ import {
   readDgfySignedOutEmail,
   readStoreAuthToken,
   rememberDgfySignedOutEmail,
-  writeDgfyAuthToken,
   writeStoreAuthToken
 } from './auth/storefrontSessionStorage.js';
 import { requestJson } from './services/requestJson.js';
@@ -713,13 +711,20 @@ export default function StorefrontApp() {
   const orderSuccessAnimationTimerRef = useRef(null);
 
   const [isAccountDrawerOpen, setIsAccountDrawerOpen] = useState(false);
-  const [dgfyAuthTokenState, setDgfyAuthTokenState] = useState(() => readDgfyAuthToken());
-  const [dgfySessionAccount, setDgfySessionAccount] = useState(null);
+  const {
+    setDgfyAuthTokenState,
+    dgfySessionAccount,
+    setDgfySessionAccount,
+    storefrontVisitorId,
+    dgfyAuthToken,
+    isDgfyCustomerSignedIn,
+    isStorefrontAccountAuthenticated,
+    closeAccountDrawer
+  } = useStorefrontSession({ setIsAccountDrawerOpen });
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [checkoutTab, setCheckoutTab] = useState('checkout');
   const [pendingOrderInitialTab, setPendingOrderInitialTab] = useState('');
   const [hasAppliedCheckoutAuthResume, setHasAppliedCheckoutAuthResume] = useState(false);
-  const storefrontVisitorId = useMemo(() => getOrCreateStorefrontVisitorId(), []);
   const {
     handleDiscoveryExploreClick,
     handleDiscoveryMenuToggle,
@@ -740,103 +745,6 @@ export default function StorefrontApp() {
     setMobileCategoryGroupIndex,
     showDesktopCategoryOverflowCue
   } = useDiscoveryCategoryRail({ isDiscoveryMobileViewport });
-  useEffect(() => {
-    let cancelled = false;
-
-    const bootstrapDgfyCookieSession = async () => {
-      let consumedHandoff = false;
-      if (typeof window !== 'undefined') {
-        const currentUrl = new URL(window.location.href);
-        const handoffToken = String(currentUrl.searchParams.get('handoff_token') || '').trim();
-        if (handoffToken) {
-          currentUrl.searchParams.delete('handoff_token');
-          window.history.replaceState({}, '', currentUrl.toString());
-          try {
-            const handoffPayload = await requestJson('/api/v1/dgfy/auth/handoff/exchange', {
-              method: 'POST',
-              cache: 'no-store',
-              body: {
-                handoff_token: handoffToken,
-                soft_fail: true
-              }
-            });
-            consumedHandoff = handoffPayload?.status !== 'invalid';
-            if (consumedHandoff) {
-              const handoffTokenValue = String(handoffPayload?.token || '').trim();
-              const handoffAccount = handoffPayload?.account && typeof handoffPayload.account === 'object'
-                ? handoffPayload.account
-                : null;
-              if (handoffTokenValue) {
-                writeDgfyAuthToken(handoffTokenValue);
-                setDgfyAuthTokenState(handoffTokenValue);
-              } else {
-                clearDgfyAuthToken();
-                setDgfyAuthTokenState('');
-              }
-              if (handoffAccount) {
-                setDgfySessionAccount(handoffAccount);
-              }
-              markDgfySessionActive();
-            } else {
-              clearDgfyAuthToken();
-              setDgfyAuthTokenState('');
-            }
-          } catch {
-            clearDgfyAuthToken();
-            setDgfyAuthTokenState('');
-          }
-          if (cancelled) return;
-        }
-      }
-
-      if (!consumedHandoff && hasDgfyExplicitSignOut()) {
-        clearDgfyAuthToken();
-        clearStoreAuthToken();
-        setDgfyAuthTokenState('');
-        setDgfySessionAccount(null);
-        return;
-      }
-
-      const legacyToken = readDgfyAuthToken();
-      try {
-        const payload = await requestJson('/api/v1/dgfy/auth/me', { cache: 'no-store' });
-        if (cancelled) return;
-        const account = payload?.account || payload || null;
-        setDgfySessionAccount(account && typeof account === 'object' ? account : null);
-        if (account && typeof account === 'object') {
-          clearDgfyAuthToken();
-          setDgfyAuthTokenState('');
-          markDgfySessionActive();
-        }
-      } catch {
-        if (cancelled) return;
-        if (legacyToken && !consumedHandoff) {
-          try {
-            const payload = await requestJson('/api/v1/dgfy/auth/me', {
-              authToken: legacyToken,
-              cache: 'no-store'
-            });
-            if (cancelled) return;
-            const account = payload?.account || payload || null;
-            setDgfySessionAccount(account && typeof account === 'object' ? account : null);
-            if (account && typeof account === 'object') markDgfySessionActive();
-            return;
-          } catch {
-            if (cancelled) return;
-          }
-        }
-        clearDgfyAuthToken();
-        setDgfyAuthTokenState('');
-        if (cancelled) return;
-        setDgfySessionAccount(null);
-      }
-    };
-
-    bootstrapDgfyCookieSession();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
 
   const {
     isServicesMode,
@@ -945,11 +853,7 @@ export default function StorefrontApp() {
     storeSlug: selectedStore?.slug || routeSlug
   });
   const isStandaloneTrackingPage = isTrackSubpage || (isOrderSubpage && checkoutTab === 'track');
-  const storeAuthToken = readStoreAuthToken();
-  const dgfyAuthToken = String(dgfyAuthTokenState || '').trim();
-  const isDgfyCustomerSignedIn = Boolean(dgfyAuthToken || dgfySessionAccount?.id);
   const canUseGuestCheckoutFlow = !isDgfyCustomerSignedIn && guestCheckoutUnlocked;
-  const isStorefrontAccountAuthenticated = Boolean(storeAuthToken || dgfyAuthToken || dgfySessionAccount?.id);
   const isGuestStorefrontUser = !isStorefrontAccountAuthenticated;
   const {
     canOpen: canOpenTrackingDrawer,
@@ -1022,9 +926,6 @@ export default function StorefrontApp() {
     currentPathSubpage,
     routeSubpage
   });
-  const closeAccountDrawer = useCallback(() => {
-    setIsAccountDrawerOpen(false);
-  }, []);
   const knownStoreRouteCandidates = useMemo(
     () => buildKnownStoreRouteCandidates(selectedStore, stores),
     [selectedStore, stores]
