@@ -2267,3 +2267,52 @@ pass, but the primary add-to-cart/checkout flow is verified working.
 
 Next: `useServiceBookingViewModel` (`handleServicesCartCheckout`, `saveServiceBookingDraft`,
 `openServiceBookingPanel`/`openServiceCartEditor`), per the re-map's step 2.
+
+## 2026-07-23 — Wave 7, step 2: `useServiceBookingViewModel`
+
+New branch `claude/storefront-shell-wave7-step2-n67w18`, cut from
+`claude/storefront-shell-wave7-n67w18` (PR #72) after that PR was opened. Continues the
+established Wave 7 rhythm — this is the step already scoped and queued by step 1's write-up
+above, so it proceeded without a fresh re-map.
+
+- **`shared/hooks/useServiceBookingViewModel.js`** (new) — `handleServicesCartCheckout`,
+  `openServiceBookingPanel`, `openServiceCartEditor`, `saveServiceBookingDraft`, moved verbatim.
+- **Genuine ordering cycle confirmed, resolved with a lazy getter (not hoisting).**
+  `goStoreBookingPage` is returned by `useStorefrontNavigation()`, which is called much later
+  in the shell (current line ~2928) than these handlers' original position (~2010-2265). Unlike
+  step 1's cart derivations, this isn't fixable by moving the call site earlier — the shell
+  can't call `useStorefrontNavigation()` before its own dependencies exist. But all three call
+  sites of `goStoreBookingPage()` inside these handlers are deferred closures (fired on a user
+  action, never read synchronously at hook-call time), so the shell hands the hook
+  `getGoStoreBookingPage: () => goStoreBookingPage` and the hook resolves it lazily inside each
+  handler body — the same idiom already established for `getGoStoreTrackPage`/
+  `getFetchTrackingPayload` elsewhere in this file. This hook's own call site is otherwise
+  unconstrained (every other dependency is plain state/derivations/setters declared earlier),
+  so it now sits at the handlers' original position.
+- Every other dependency (`cart`, `hasMixedServiceCart`, `hasServiceCart`, `serviceCartLines`,
+  `bookingPermitted`, `accessCapabilities`, `storefrontClosedByHours` and its message/toast
+  pair, the `serviceAppointmentAt`/`serviceDraftQuantity`/`serviceDraftNotes`/
+  `serviceIntakeResponses`/`servicePaymentTiming` state and setters, `selectedServiceDetail`/
+  `selectedServiceCartLineId` and their setters, `missingRequiredSelectedServiceIntake`,
+  `selectedServiceIntakeFields`, `servicePaymentOptions`, `setCart`, `setCheckoutError`,
+  `setCheckoutTab`, `setIsCheckoutOpen`, `setQuoteError`/`setQuoteNeedsRefresh`/`setQuoteResult`,
+  `withAssetOrigin`, `createStorefrontIdempotencyKey`, `toast`) verified via grep to be declared
+  well before line 2010 in the shell — confirmed as plain external params, no other TDZ risk.
+
+StorefrontApp.jsx line count: **5,199** (down from 5,264 at the start of this step; **-65**).
+
+Verification: `eslint apps/store/src` → 0 errors, 121 warnings (same pre-existing warning set;
+none new in `StorefrontApp.jsx` or the new hook file). `build:store` succeeds. `vitest run
+apps/store` → 235/255 pass; the 20 failures are all in
+`discoveryFlow.integration.test.jsx`, confirmed pre-existing on `develop` (identical failure
+count/output with this change stashed out) and unrelated — introduced by the custom-domain-
+routing merge (PR #71), not by this extraction. `git diff --name-only origin/develop --
+frontend/apps/store/src/discovery frontend/apps/store/src/features/discovery` stays empty.
+
+**QA still open:** no browser/local-test walkthrough of the service-booking flow
+(add a service to cart → book → edit a booking line → checkout) has been done yet for this
+step — flag before merging.
+
+Next: `useCheckoutSubmission` (`handleQuote`, `handleCheckout`, `handleDownloadCheckoutImage`,
+the F&B auto-quote effect), per the re-map's step 3 — the largest and riskiest remaining
+handler in this wave.
