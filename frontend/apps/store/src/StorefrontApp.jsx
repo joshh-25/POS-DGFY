@@ -460,9 +460,7 @@ export default function StorefrontApp() {
   const fnbMobileMenuInnerWidth = fnbMobileLayout.menuInnerWidth;
   const {
     discoveryLayout,
-    discoveryViewport,
     discoveryViewportMode,
-    isDiscoveryDesktopViewport,
     isDiscoveryMobileViewport,
     isDiscoveryTabletViewport
   } = useDiscoveryViewport(viewportWidth);
@@ -502,7 +500,6 @@ export default function StorefrontApp() {
     openDiscoveryFaqIndex,
     renderDiscoveryResetButton,
     searchRef,
-    selectedMapPin,
     viewMode,
     setActiveDiscoveryFilterDropdown,
     setActiveDiscoveryNavItem,
@@ -1876,14 +1873,11 @@ export default function StorefrontApp() {
   });
   const {
     activeDiscoveryMapPins,
-    discoveryMapPins,
     discoveryPinsBySlug,
     discoveryResultStores,
     discoveryResultsMapKey,
-    discoverySummary,
     filteredDiscoveryStores,
     highlightedStore,
-    nearestDistanceKm,
     searchedDiscoveryMapPins,
     stableHeroDiscoveryMapPins,
     storesWithNearestBranch
