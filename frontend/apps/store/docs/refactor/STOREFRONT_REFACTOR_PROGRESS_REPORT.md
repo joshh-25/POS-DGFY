@@ -1974,3 +1974,64 @@ review, payment/checkout submission via `handleCheckout`), catalog grid (search/
 Add to Cart), promo section, reviews section + "Write a review" modal, footer links. No behavior was
 intentionally changed — this is a verbatim move — but the prop surface is large (130 props) so this
 needs a real click-through before merge.
+
+## 2026-07-23 - Wave 5: SAFE logic extraction (view-models, catalog loader, navigation) + last classic-catalog JSX
+
+Continued on `claude/storefront-shell-continuation-n67w18` (stacked on the zustand-state-layer branch's
+tip, left as its own checkpoint PR). Replanned scope: earlier waves only ever moved JSX out or moved
+state *into* the zustand store — the interleaved **logic band** (component body start through the main
+`return`, ~3,900 lines of `useState`/`useMemo`/`useCallback`/`useEffect`/handlers) had never been
+touched, and alone was already ~4x the <1,000 target. Wave 5 is the SAFE, non-money-path half of that
+band, extracted into per-domain ViewModel hooks — the same `use*` pattern already established elsewhere
+in this app (`discovery/hooks/*`, `customer-dashboard/hooks/*`, `modes/fnb/checkout/hooks/*`), just not
+yet finished for the shell's own inline residue.
+
+Steps (each its own commit, green before the next):
+- **Dead-code sweep:** dropped 6 discovery vars destructured but never read (`discoveryViewport`,
+  `isDiscoveryDesktopViewport`, `selectedMapPin`, `discoveryMapPins`, `discoverySummary`,
+  `nearestDistanceKm`).
+- **`shared/hooks/useStorefrontCatalog.js`** (new) — the pure view-model `useMemo` chain: `pageModel` +
+  mode flags (`isServicesMode`/`isFnbMode`/`isSimpleMode`/`isHospitalityMode`/`modeAdapter`/etc.),
+  the filtered-catalog/F&B-menu chain, `promoSectionModel`, `selectedLocation`, `accessCapabilities`,
+  the four capability booleans, `serviceHeroModel`, `fnbCommunityModel`, `simpleStorefrontModel`,
+  `catalogState`. Verbatim move; shell destructures the same names back so the 100+ downstream call
+  sites for e.g. `isFnbMode`/`isServicesMode` are untouched.
+- **`shared/hooks/useStoreCatalogLoader.js`** (new) — the stateful catalog/location loader: owns
+  `storeLocations`/`primaryLocationId`/`selectedLocationId`/`hasSelectedBranchFromMenu`/`catalog`/
+  `loadingCatalog`/`catalogError`/`brandingImageErrors` + setters; `markBrandingImageError`,
+  `isBrandingImageBlocked`; `openStoreBySlug` (slug-fallback/canonicalization, request-sequencing
+  guards unchanged); `refreshStorePageForTenantSetup`; the route-change effect that triggers it; the
+  location-aware catalog refetch effect; `handleBranchMenuSelection`. `selectedStore`/`routeSlug` stay
+  shell-owned, passed in as external params. Along the way, removed two confirmed write-only dead
+  states the moved code touched: `catalogErrorGuidance` (set in 5 places, never read) and
+  `catalogImageErrors` (plus its reset effect, never read).
+- **`shared/hooks/useStorefrontNavigation.js`** (new) — the pure-navigation functions:
+  `openServiceDetail`, `closeServiceDetail`, `goStore`, `goStoreBookingPage`, `goStoreCatalogPage`,
+  `goDiscovery`, and the popstate effect. Owns no state; every setter it touches (shell-local or from
+  `useStoreCatalogLoader`) is an explicit parameter. `goStoreOrderForDiscovery`/`goStoreOrderPage`/
+  `goStoreTrackPage` stayed in the shell — they actively configure `checkoutTab` and read
+  `checkoutResult`, i.e. checkout-domain logic, not pure navigation. Independently verified every
+  pre-existing reference to the 6 moved functions that sits before their new (later) declaration point
+  is inside a deferred closure — never a synchronous call or a hook dependency array — since no test
+  in this repo renders `StorefrontApp`, a temporal-dead-zone bug here would not be caught by
+  lint/build/tests.
+- **`shared/components/storefront/StorefrontClassicCatalog.jsx`** (new, faithful view extraction,
+  same pattern as `StorefrontServicesCatalog.jsx`) — the non-services catalog-rendering branch: search/
+  filter/sort toolbar, the item grid (F&B/Simple/Service product cards), F&B pagination, the Simple
+  checkout route mount, promo/reviews/footer sections, the F&B community section, the Services
+  performance sidebar, the review modals. 64 flat props; `addToCart` stays a money-path handler owned
+  by the shell, passed straight through unchanged.
+
+StorefrontApp.jsx line count: **5,699** (down from 6,815 at the start of this wave; **-1,116** net,
+right on the ~1,000–1,100 estimate). Lint warnings steady at 73–75 across steps, 0 errors throughout.
+`build:store` passes and all 198 non-integration tests pass after every commit. `git diff --name-only
+origin/develop` under discovery map files / `features/discovery/` stayed empty the whole wave.
+
+QA (dev.dgfy.ph), light — no money-path submission changed in this wave: all modes render (catalog
+grid, heroes, discovery list); store loads by slug (including the slug-fallback/canonicalization path);
+account/session panel opens; branch/location switcher works; browser back/forward navigates correctly
+(popstate); "Explore other stores" / go-to-discovery works; modals open/close.
+
+Next: Wave 6 (session/guest-identity/UI-chrome/tracking-intent SAFE hooks), then the deferred
+money-path hooks (cart mutations, checkout submission, service booking) + route containers — QA-gated,
+where the shell finally crosses under 1,000 lines.
