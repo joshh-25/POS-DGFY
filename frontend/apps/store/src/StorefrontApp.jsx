@@ -249,6 +249,7 @@ import {
   getTimePartFromAppointment
 } from './modes/services/booking/model/serviceBookingSchedule.js';
 import { buildServiceBookingSummaryModel } from './modes/services/booking/model/serviceBookingSummary.js';
+import { useServiceBookingDerivations } from './modes/services/booking/hooks/useServiceBookingDerivations.js';
 import { useServiceBookingFieldFocus } from './modes/services/booking/hooks/useServiceBookingFieldFocus.js';
 import { useServiceCartDrawerProps } from './modes/services/booking/hooks/useServiceCartDrawerProps.js';
 import { buildServiceCartValidationIssues } from './modes/services/booking/model/serviceBookingValidation.js';
@@ -1552,42 +1553,56 @@ export default function StorefrontApp() {
   });
   const hasCatalogSearchQuery = catalogSearch.trim().length > 0;
   const isDeliveryOrder = orderMethod === 'delivery';
-  const firstServiceLine = serviceCartLines[0] || null;
-  const activeServiceCartLine = useMemo(() => {
-    if (!hasServiceCart) return null;
-    const selectedLine = serviceCartLines.find((line) => String(line.cart_line_id || '') === String(selectedServiceCartLineId || ''));
-    return selectedLine || firstServiceLine;
-  }, [firstServiceLine, hasServiceCart, selectedServiceCartLineId, serviceCartLines]);
   const isServicesCartDrawerMode = isServicesMode && !isBookingSubpage;
   const isSimpleCartSurfaceMode = isSimpleMode && !isResolvedOrderSubpage;
-  const servicePaymentPolicy = activeServiceCartLine?.service_detail?.payment_policy || 'customer_choice';
-  const selectedServicePaymentPolicy = selectedServiceDetail?.service_detail?.payment_policy || 'customer_choice';
-  const serviceIntakeFields = useMemo(() => {
-    return normalizeServiceFormFields(activeServiceCartLine?.service_detail?.intake_form_schema);
-  }, [activeServiceCartLine]);
-  const selectedServiceIntakeFields = useMemo(() => (
-    normalizeServiceFormFields(selectedServiceDetail?.service_detail?.intake_form_schema)
-  ), [selectedServiceDetail]);
-  const missingRequiredIntake = useMemo(() => (
-    serviceIntakeFields.filter((field) => {
-      if (!field.required) return false;
-      const value = serviceIntakeResponses[field.id];
-      return field.type === 'checkbox' ? value !== true : !String(value || '').trim();
-    })
-  ), [serviceIntakeFields, serviceIntakeResponses]);
-  const missingRequiredSelectedServiceIntake = useMemo(() => (
-    selectedServiceIntakeFields.filter((field) => {
-      if (!field.required) return false;
-      const value = serviceIntakeResponses[field.id];
-      return field.type === 'checkbox' ? value !== true : !String(value || '').trim();
-    })
-  ), [selectedServiceIntakeFields, serviceIntakeResponses]);
-  const servicePaymentOptions = useMemo(() => {
-    return buildServicePaymentOptions(servicePaymentPolicy);
-  }, [servicePaymentPolicy]);
-  const selectedServicePaymentOptions = useMemo(() => (
-    buildServicePaymentOptions(selectedServicePaymentPolicy)
-  ), [selectedServicePaymentPolicy]);
+  const {
+    activeBookingService,
+    activeServiceCartLine,
+    bookingDateOptions,
+    bookingFieldPlan,
+    bookingPageIntakeFields,
+    bookingPageMissingRequiredIntake,
+    bookingPagePaymentOptions,
+    bookingStepOneAdditionalFields,
+    bookingSummaryAmount,
+    bookingSummaryQuantity,
+    bookingTimeSlotOptions,
+    firstServiceLine,
+    missingCustomerInformation,
+    missingRequiredSelectedServiceIntake,
+    missingScheduleAndServiceInfo,
+    missingStepOneAdditionalFields,
+    reviewServiceLines,
+    selectedServiceDatePart,
+    selectedServiceIntakeFields,
+    selectedServicePaymentOptions,
+    selectedServiceTimePart,
+    serviceBookingSummaryLineItems,
+    serviceBookingSummaryRows,
+    serviceBookingSummarySchedule,
+    serviceBookingSummaryTitle,
+    serviceIntakeFields,
+    servicePaymentOptions,
+    stepOneComplete
+  } = useServiceBookingDerivations({
+    customerAddress,
+    customerEmail,
+    customerName,
+    customerPhone,
+    customerPin,
+    hasServiceCart,
+    money,
+    resolvedDeliveryAddress,
+    selectedServiceCartLineId,
+    selectedServiceDetail,
+    serviceAppointmentAt,
+    serviceCartLines,
+    serviceCartTotal,
+    serviceDraftQuantity,
+    serviceIntakeResponses,
+    servicePaymentTiming,
+    serviceUnitType
+  });
   const hasStockViolation = useMemo(() => (
     cart.some((line) => Number(line.quantity) > Number(line.max_stock ?? Number.POSITIVE_INFINITY))
   ), [cart]);
@@ -1687,94 +1702,6 @@ export default function StorefrontApp() {
     quoteNeedsRefresh,
     checkoutAllowed
   }), [cartCount, storefrontClosedByHours, hasStockViolation, isFnbMode, quoteResult, quoteNeedsRefresh, checkoutAllowed]);
-  const activeBookingService = activeServiceCartLine || selectedServiceDetail || null;
-  const bookingPageIntakeFields = hasServiceCart ? serviceIntakeFields : selectedServiceIntakeFields;
-  const bookingPageMissingRequiredIntake = hasServiceCart ? missingRequiredIntake : missingRequiredSelectedServiceIntake;
-  const bookingPagePaymentOptions = hasServiceCart ? servicePaymentOptions : selectedServicePaymentOptions;
-  const bookingFieldPlan = useMemo(() => (
-    buildServiceBookingFieldPlan({
-      fields: bookingPageIntakeFields,
-      serviceItem: activeBookingService
-    })
-  ), [bookingPageIntakeFields, activeBookingService]);
-  const bookingStepOneAdditionalFields = useMemo(() => (
-    [bookingFieldPlan.instructionField, ...bookingFieldPlan.remainingFields].filter(Boolean)
-  ), [bookingFieldPlan.instructionField, bookingFieldPlan.remainingFields]);
-  const selectedServiceDatePart = getDatePartFromAppointment(serviceAppointmentAt);
-  const selectedServiceTimePart = getTimePartFromAppointment(serviceAppointmentAt);
-  const bookingDateOptions = useMemo(() => buildServiceDateOptions(activeBookingService), [activeBookingService]);
-  const bookingTimeSlotOptions = useMemo(() => buildServiceTimeSlotOptions(activeBookingService, selectedServiceDatePart), [activeBookingService, selectedServiceDatePart]);
-  const missingStepOneAdditionalFields = useMemo(() => (
-    bookingStepOneAdditionalFields.filter((field) => !isBookingFieldComplete(field, serviceIntakeResponses[field.id]))
-  ), [bookingStepOneAdditionalFields, serviceIntakeResponses]);
-  const isAddressRequired = bookingFieldPlan.addressField?.required === true || bookingFieldPlan.requiresAddress;
-  const serviceLocationSummaryDraft = useMemo(() => (
-    trimAddressCountrySuffix(
-      resolvedDeliveryAddress
-      || customerAddress
-      || buildPinnedDeliveryAddress(customerPin)
-      || ''
-    )
-  ), [customerAddress, customerPin, resolvedDeliveryAddress]);
-  const missingCustomerInformation = useMemo(() => {
-    const missing = [];
-    if (!String(customerName || '').trim()) missing.push('Customer Name');
-    if (!String(customerPhone || '').trim()) missing.push('Contact Number');
-    if (bookingFieldPlan.emailField?.required && !String(customerEmail || '').trim()) missing.push('Email');
-    if (isAddressRequired && !String(serviceLocationSummaryDraft || '').trim()) missing.push('Service Location');
-    return missing;
-  }, [bookingFieldPlan.emailField?.required, customerEmail, customerName, customerPhone, isAddressRequired, serviceLocationSummaryDraft]);
-  const missingScheduleAndServiceInfo = useMemo(() => {
-    const missing = [];
-    if (!selectedServiceDatePart) missing.push('Preferred Date');
-    if (!selectedServiceTimePart) missing.push('Preferred Time Slot');
-    if (bookingFieldPlan.unitTypeField && bookingFieldPlan.unitTypeField.required && !String(serviceUnitType || '').trim()) {
-      missing.push(bookingFieldPlan.unitTypeField.label);
-    }
-    if (bookingFieldPlan.unitCountField && bookingFieldPlan.unitCountField.required && !(Number(serviceDraftQuantity || 0) > 0)) {
-      missing.push(bookingFieldPlan.unitCountField.label);
-    }
-    return missing;
-  }, [bookingFieldPlan.unitCountField, bookingFieldPlan.unitTypeField, selectedServiceDatePart, selectedServiceTimePart, serviceDraftQuantity, serviceUnitType]);
-  const stepOneComplete = missingCustomerInformation.length === 0
-    && missingScheduleAndServiceInfo.length === 0
-    && missingStepOneAdditionalFields.length === 0;
-  const paymentStepComplete = Boolean(servicePaymentTiming);
-  const reviewStepReady = stepOneComplete;
-  const {
-    bookingSummaryAmount,
-    bookingSummaryQuantity,
-    reviewServiceLines,
-    serviceBookingSummaryLineItems,
-    serviceBookingSummaryRows,
-    serviceBookingSummarySchedule,
-    serviceBookingSummaryTitle
-  } = useMemo(() => buildServiceBookingSummaryModel({
-    activeBookingService,
-    bookingPagePaymentOptions,
-    firstServiceLine,
-    hasServiceCart,
-    money,
-    serviceAppointmentAt,
-    serviceCartLines,
-    serviceCartTotal,
-    serviceDraftQuantity,
-    serviceIntakeResponses,
-    serviceLocationSummaryDraft,
-    servicePaymentTiming
-  }), [
-    activeBookingService,
-    bookingPagePaymentOptions,
-    firstServiceLine,
-    hasServiceCart,
-    serviceAppointmentAt,
-    serviceCartLines,
-    serviceCartTotal,
-    serviceDraftQuantity,
-    serviceIntakeResponses,
-    serviceLocationSummaryDraft,
-    servicePaymentTiming
-  ]);
   useEffect(() => {
     if (productCartPermitted && checkoutPermitted && bookingPermitted) return;
     if (cart.length === 0 && !quoteResult && !isCheckoutOpen) return;
