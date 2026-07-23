@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-07-21
 related_adr: docs/architecture/adr/0007-dual-mode-pos-compliance-program.md
 declaration_id: 2026-07-21-pos-catalog-badge-removal-best-seller-category-tablet-layout
-classification: major
-surfaces: pos,terminal
+classification: regulatory
+surfaces: pos,terminal,settings,compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.07.21
 verification_evidence: npm --prefix frontend run build:pos,npm run lint:docs,npm run check:architecture,npm run check:compliance,git diff --check
