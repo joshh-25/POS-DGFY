@@ -135,6 +135,12 @@ import TenantAdminAuditLogFactory from './Landlord/TenantAdminAuditLog.js';
 import TenantPaymentAccountFactory from './Landlord/TenantPaymentAccount.js';
 import CommercePaymentSessionFactory from './Landlord/CommercePaymentSession.js';
 import CommercePaymentRefundFactory from './Landlord/CommercePaymentRefund.js';
+import DgfyAffiliateEnrollmentFactory from './Landlord/DgfyAffiliateEnrollment.js';
+import DgfyAffiliateAttributionFactory from './Landlord/DgfyAffiliateAttribution.js';
+import DgfyAffiliateCommissionFactory from './Landlord/DgfyAffiliateCommission.js';
+import DgfyAffiliatePayoutMethodFactory from './Landlord/DgfyAffiliatePayoutMethod.js';
+import DgfyAffiliateCashoutFactory from './Landlord/DgfyAffiliateCashout.js';
+import TenantAffiliateSettingsFactory from './Landlord/TenantAffiliateSettings.js';
 const Tenant = TenantFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const UserInvitation = UserInvitationFactory(sequelize);
@@ -168,6 +174,12 @@ const TenantAdminAuditLog = TenantAdminAuditLogFactory(sequelize);
 const TenantPaymentAccount = TenantPaymentAccountFactory(sequelize);
 const CommercePaymentSession = CommercePaymentSessionFactory(sequelize);
 const CommercePaymentRefund = CommercePaymentRefundFactory(sequelize);
+const DgfyAffiliateEnrollment = DgfyAffiliateEnrollmentFactory(sequelize);
+const DgfyAffiliateAttribution = DgfyAffiliateAttributionFactory(sequelize);
+const DgfyAffiliateCommission = DgfyAffiliateCommissionFactory(sequelize);
+const DgfyAffiliatePayoutMethod = DgfyAffiliatePayoutMethodFactory(sequelize);
+const DgfyAffiliateCashout = DgfyAffiliateCashoutFactory(sequelize);
+const TenantAffiliateSettings = TenantAffiliateSettingsFactory(sequelize);
 
 // Landlord Models
 import AiUsageLogFactory from './Landlord/AiUsageLog.js';
@@ -225,6 +237,27 @@ Tenant.hasMany(CommercePaymentRefund, { foreignKey: 'tenant_id', as: 'commercePa
 CommercePaymentRefund.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 CommercePaymentSession.hasMany(CommercePaymentRefund, { foreignKey: 'payment_session_id', as: 'refunds' });
 CommercePaymentRefund.belongsTo(CommercePaymentSession, { foreignKey: 'payment_session_id', as: 'paymentSession' });
+
+// Affiliates Program associations (landlord DB only - order linkage to tenant-DB
+// pos_transactions stays value-only via tenant_id + order_reference, no FK possible there).
+DgfyAccount.hasMany(DgfyAffiliateEnrollment, { foreignKey: 'dgfy_account_id', as: 'affiliateEnrollments' });
+DgfyAffiliateEnrollment.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
+Tenant.hasMany(DgfyAffiliateEnrollment, { foreignKey: 'tenant_id', as: 'affiliateEnrollments' });
+DgfyAffiliateEnrollment.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+DgfyAffiliateEnrollment.hasMany(DgfyAffiliateAttribution, { foreignKey: 'enrollment_id', as: 'attributions' });
+DgfyAffiliateAttribution.belongsTo(DgfyAffiliateEnrollment, { foreignKey: 'enrollment_id', as: 'enrollment' });
+DgfyAffiliateEnrollment.hasMany(DgfyAffiliateCommission, { foreignKey: 'enrollment_id', as: 'commissions' });
+DgfyAffiliateCommission.belongsTo(DgfyAffiliateEnrollment, { foreignKey: 'enrollment_id', as: 'enrollment' });
+DgfyAccount.hasMany(DgfyAffiliatePayoutMethod, { foreignKey: 'dgfy_account_id', as: 'affiliatePayoutMethods' });
+DgfyAffiliatePayoutMethod.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
+DgfyAffiliateEnrollment.hasMany(DgfyAffiliateCashout, { foreignKey: 'enrollment_id', as: 'cashouts' });
+DgfyAffiliateCashout.belongsTo(DgfyAffiliateEnrollment, { foreignKey: 'enrollment_id', as: 'enrollment' });
+DgfyAffiliatePayoutMethod.hasMany(DgfyAffiliateCashout, { foreignKey: 'payout_method_id', as: 'cashouts' });
+DgfyAffiliateCashout.belongsTo(DgfyAffiliatePayoutMethod, { foreignKey: 'payout_method_id', as: 'payoutMethod' });
+DgfyAffiliateCashout.hasMany(DgfyAffiliateCommission, { foreignKey: 'cashout_id', as: 'commissions' });
+DgfyAffiliateCommission.belongsTo(DgfyAffiliateCashout, { foreignKey: 'cashout_id', as: 'cashout' });
+Tenant.hasOne(TenantAffiliateSettings, { foreignKey: 'tenant_id', as: 'affiliateSettings' });
+TenantAffiliateSettings.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 
 // User associations
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
@@ -754,7 +787,13 @@ const db = {
   TenantAdminAuditLog,
   TenantPaymentAccount,
   CommercePaymentSession,
-  CommercePaymentRefund
+  CommercePaymentRefund,
+  DgfyAffiliateEnrollment,
+  DgfyAffiliateAttribution,
+  DgfyAffiliateCommission,
+  DgfyAffiliatePayoutMethod,
+  DgfyAffiliateCashout,
+  TenantAffiliateSettings
 };
 
 export default db;
@@ -894,6 +933,12 @@ export {
   TenantPaymentAccount,
   CommercePaymentSession,
   CommercePaymentRefund,
+  DgfyAffiliateEnrollment,
+  DgfyAffiliateAttribution,
+  DgfyAffiliateCommission,
+  DgfyAffiliatePayoutMethod,
+  DgfyAffiliateCashout,
+  TenantAffiliateSettings,
   GeoItem,
   GeoStoreItem,
   GeoItemAlias
