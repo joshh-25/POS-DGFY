@@ -39,7 +39,7 @@ export function normalizeFnbModifierGroups(item = {}) {
       if (!options.length) return null;
       return {
         modifier_group_id: group.modifier_group_id ?? group.group_id ?? group.id ?? `group-${groupIndex}`,
-        group_name: String(group.group_name || group.name || group.label || `Add-on Group ${groupIndex + 1}`).trim(),
+        group_name: String(group.display_name || group.group_name || group.name || group.label || `Add-on Group ${groupIndex + 1}`).trim(),
         min_select: Number(group.min_select ?? group.min ?? 0) || 0,
         max_select: Number(group.max_select ?? group.max ?? options.length) || options.length,
         options,
