@@ -133,11 +133,7 @@ import { createStoreMarkerPreviewNode } from './discovery/model/storefrontMarker
 import { FnbProductDetailsRoute } from './modes/fnb/storefront/pages/FnbProductDetailsRoute.jsx';
 import { buildFnbMobileLayout } from './modes/fnb/storefront/model/fnbMobileLayout.js';
 import { FNB_RECOMMENDED_LOCATION } from './modes/fnb/checkout/model/fnbCheckoutAddressLocations.js';
-import {
-  buildFnbCartActionLabel,
-  buildFnbCartStatusLabel,
-  buildFnbDrawerSupportLabel
-} from './modes/fnb/checkout/model/fnbCartPresentation.js';
+import { buildFnbCartStatusLabel } from './modes/fnb/checkout/model/fnbCartPresentation.js';
 import {
   isEnabledStorefrontCheckoutPaymentType,
   STOREFRONT_CHECKOUT_PAYMENT_OPTIONS
@@ -1218,11 +1214,6 @@ export default function StorefrontApp() {
     maskValue
   });
   const isGuestAccountDrawerState = !isStorefrontAccountAuthenticated;
-  const accountDrawerTitle = isGuestAccountDrawerState ? 'DGFY Account' : 'My Account';
-  const accountDrawerSubtitle = isGuestAccountDrawerState
-    ? 'Orders, tracking, profile, addresses, loyalty, and company invitations.'
-    : 'Manage your bookings, orders, tickets and more.';
-  const accountPrimaryDescription = 'View and manage your saved bookings, orders, tickets, receipts, and the latest linked transaction.';
   const trackingDrawerOrders = isDgfyCustomerSignedIn ? accountTrackedOrders : guestTrackedOrders;
 
   const applySavedCustomerDetails = useCallback(() => {
@@ -2471,24 +2462,6 @@ export default function StorefrontApp() {
     quoteNeedsRefresh,
     checkoutAllowed
   }), [cartCount, storefrontClosedByHours, hasStockViolation, isFnbMode, quoteResult, quoteNeedsRefresh, checkoutAllowed]);
-  const fnbCartActionLabel = useMemo(() => buildFnbCartActionLabel({
-    cartCount,
-    isCheckoutOpen,
-    hasStockViolation,
-    isFnbMode,
-    isMobileViewport,
-    quoteResult,
-    quoteNeedsRefresh
-  }), [cartCount, hasStockViolation, isCheckoutOpen, isFnbMode, isMobileViewport, quoteResult, quoteNeedsRefresh]);
-  const fnbDrawerSupportLabel = useMemo(() => buildFnbDrawerSupportLabel({
-    cartCount,
-    storefrontClosedByHours,
-    storefrontClosedMessageBody,
-    hasStockViolation,
-    isFnbMode,
-    quoteResult,
-    quoteNeedsRefresh
-  }), [cartCount, storefrontClosedByHours, storefrontClosedMessageBody, hasStockViolation, isFnbMode, quoteResult, quoteNeedsRefresh]);
   const activeBookingService = activeServiceCartLine || selectedServiceDetail || null;
   const bookingPageIntakeFields = hasServiceCart ? serviceIntakeFields : selectedServiceIntakeFields;
   const bookingPageMissingRequiredIntake = hasServiceCart ? missingRequiredIntake : missingRequiredSelectedServiceIntake;
