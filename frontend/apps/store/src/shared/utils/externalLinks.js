@@ -8,3 +8,13 @@ export const sanitizeExternalLink = (value) => {
     return '';
   }
 };
+
+export const openStorefrontActionLink = (href) => {
+  const target = String(href || '').trim();
+  if (!target || typeof window === 'undefined') return;
+  if (target.startsWith('tel:') || target.startsWith('mailto:')) {
+    window.location.href = target;
+    return;
+  }
+  window.open(target, '_blank', 'noopener,noreferrer');
+};

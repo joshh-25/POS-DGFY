@@ -1,5 +1,5 @@
 import React from 'react';
-import { DgfyCustomerAuthModal } from '../../Components/storefront/pages/DgfyCustomerAuthModal.jsx';
+import { DgfyCustomerAuthModal } from '../components/DgfyCustomerAuthModal.jsx';
 import { CustomerDashboardRouteMount } from './CustomerDashboardRouteMount.jsx';
 
 export function CustomerDashboardRouteHost({

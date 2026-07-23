@@ -1,4 +1,4 @@
-import { storePath } from '../routing/storefrontRouting.js';
+import { getCustomStorefrontRouteContext, storePath } from '../routing/storefrontRouting.js';
 
 const resolveConfiguredOrigin = (rawValue = '') => {
   const raw = String(rawValue || '').trim();
@@ -64,5 +64,9 @@ export const withAssetOrigin = (url) => {
 
 export const buildPublicStorefrontUrl = (slug) => {
   if (!String(slug || '').trim()) return '';
+  const customContext = getCustomStorefrontRouteContext();
+  if (customContext?.slug === String(slug).trim().toLowerCase() && customContext.canonicalOrigin) {
+    return `${customContext.canonicalOrigin}${storePath(slug)}`;
+  }
   return `${publicStorefrontOrigin}${storePath(slug)}`;
 };

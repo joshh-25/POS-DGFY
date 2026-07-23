@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getFoodBeverageStorefrontViewModel } from '../fnbStorefrontViewModel.js';
+import { getFoodBeverageStorefrontViewModel } from '../modes/fnb/storefront/model/fnbStorefrontViewModel.js';
 
 describe('fnbStorefrontViewModel', () => {
   it('groups menu items into food and beverage sections with storefront-ready metadata', () => {

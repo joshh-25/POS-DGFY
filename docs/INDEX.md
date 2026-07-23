@@ -23,6 +23,7 @@ Canonical planning entry:
 - `docs/generated`
 - `docs/guides`
 - `docs/images`
+- `docs/mapping`
 - `docs/ops`
 - `docs/setup`
 - `docs/reference`
@@ -92,6 +93,7 @@ Canonical planning entry:
 - Historical exploratory testing packets are archived under `docs/archive/testing/`.
 - Historical SKU expansion/storefront planning snapshots are archived under `docs/archive/reference/2026-03/`.
 - Architecture and planning authority remain under `docs/architecture` and `docs/START_HERE.md`.
+- MapLibre Marker-vs-data-layer rendering guidance and the 2026-07-20 pin-clipping fix (Storefront order-tracking map converted to a GeoJSON symbol layer; checkout delivery-pin picker's canvas sizing consolidated onto shared helpers) are tracked in `docs/mapping/MARKER_TO_DATALAYER_MIGRATION.md`.
 
 ## Current Repository Notes
 - Build artifacts are generated into `dist-apps/` and `frontend/dist/` and should be treated as disposable outputs.

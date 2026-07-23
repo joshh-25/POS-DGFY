@@ -136,3 +136,24 @@ export const stripBrowserRefreshToken = (session = {}) => {
   delete rest.refreshToken;
   return rest;
 };
+
+// React Native (and other non-browser API clients) have no cookie jar, so
+// the httpOnly-cookie-only refresh flow below leaves them unable to refresh
+// a session. Callers opt in explicitly with this header rather than being
+// auto-detected, so the browser's httpOnly-cookie protection (refresh token
+// never touches page JS) is unaffected by default.
+export const isMobileClientRequest = (req) =>
+  String(req?.headers?.['x-client-platform'] || '').trim().toLowerCase() === 'mobile';
+
+// Cookie takes priority when present (unchanged browser behavior). Mobile
+// clients have no cookie, so they submit the refresh token they were
+// issued in the JSON body instead - only honored when the mobile header is
+// set, so a stray body field can't be used to bypass the cookie flow.
+export const getSubmittedRefreshToken = (req) => {
+  const cookieToken = getTenantRefreshToken(req);
+  if (cookieToken) return cookieToken;
+  if (isMobileClientRequest(req)) {
+    return String(req?.body?.refreshToken || '').trim();
+  }
+  return '';
+};

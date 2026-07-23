@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import { MapPin } from 'lucide-react';
 import {
+  DISCOVERY_DENSITY_CLUSTER_LAYER_ID,
   DISCOVERY_PIN_LAYER_ID,
   DISCOVERY_PIN_SOURCE_ID,
   DISCOVERY_USER_SOURCE_ID,
@@ -10,15 +11,15 @@ import {
   ensureDiscoveryMapLayers,
   ensureMapImage,
   setGeoJsonSourceData
-} from '../../discoveryMapLayers.js';
+} from '../model/discoveryMapLayers.js';
 import {
   DEFAULT_CENTER,
   TILING_SERVER,
   tileTransformRequest
 } from '../../app/runtime/storefrontMapRuntime.js';
 import { withAssetOrigin } from '../../app/runtime/storefrontRuntime.js';
-import { getDiscoveryMarkerKey } from '../../discoveryMapDom.js';
-import { createStoreMarkerPreviewNode } from '../../storefrontMarkerPreview.js';
+import { getDiscoveryMarkerKey } from '../model/discoveryMapDom.js';
+import { createStoreMarkerPreviewNode } from '../model/storefrontMarkerPreview.js';
 
 const toSlug = (value) => String(value || '').trim().toLowerCase();
 
@@ -42,9 +43,7 @@ export function StoresMap({
 }) {
   const ref = useRef(null);
   const mapRef = useRef(null);
-  const markersRef = useRef([]);
   const popupsRef = useRef([]);
-  const userMarkerRef = useRef(null);
   const layerEventCleanupRef = useRef(null);
   const onSelectStoreRef = useRef(onSelectStore);
   const onSelectClusterRef = useRef(onSelectCluster);
@@ -122,21 +121,9 @@ export function StoresMap({
       }
     });
     popupsRef.current = [];
-    markersRef.current.forEach((marker) => {
-      try { marker?.remove?.(); } catch {
-        // Cleanup is best-effort when MapLibre has already detached the marker.
-      }
-    });
-    markersRef.current = [];
     if (typeof layerEventCleanupRef.current === 'function') {
       layerEventCleanupRef.current();
       layerEventCleanupRef.current = null;
-    }
-    if (userMarkerRef.current) {
-      try { userMarkerRef.current.remove?.(); } catch {
-        // Cleanup is best-effort when MapLibre has already detached the user marker.
-      }
-      userMarkerRef.current = null;
     }
   }, []);
 
@@ -193,14 +180,6 @@ export function StoresMap({
       }
     });
     popupsRef.current = retainedPopups;
-    markersRef.current.forEach((m) => m.remove());
-    markersRef.current = [];
-    if (userMarkerRef.current) {
-      try { userMarkerRef.current.remove?.(); } catch {
-        // Cleanup is best-effort when migrating user location to map layers.
-      }
-      userMarkerRef.current = null;
-    }
     if (typeof layerEventCleanupRef.current === 'function') {
       layerEventCleanupRef.current();
       layerEventCleanupRef.current = null;
@@ -360,12 +339,24 @@ export function StoresMap({
       return popupEntries.get(entry.coordinateKey);
     };
 
-    layerModel.groups.forEach((entry) => createPopupForEntry(entry));
+    const groupsByCoordinateKey = new globalThis.Map();
+    layerModel.groups.forEach((entry) => {
+      groupsByCoordinateKey.set(entry.coordinateKey, entry);
+      // Highlighted entries are built eagerly: autoOpenPopups needs them to exist
+      // before the user interacts. Everything else is built lazily on first
+      // hover/click below, so up to ~100 pins don't all fire preview-image
+      // fetches and build DOM subtrees on every stores/search change.
+      if (entry.highlighted) createPopupForEntry(entry);
+    });
 
     const getEventEntry = (event) => {
       const feature = Array.isArray(event?.features) ? event.features[0] : null;
       const coordinateKey = String(feature?.properties?.coordinateKey || '').trim();
-      return coordinateKey ? popupEntries.get(coordinateKey) : null;
+      if (!coordinateKey) return null;
+      const existing = popupEntries.get(coordinateKey);
+      if (existing) return existing;
+      const rawEntry = groupsByCoordinateKey.get(coordinateKey);
+      return rawEntry ? createPopupForEntry(rawEntry) : null;
     };
     const clickHandler = (event) => {
       event?.preventDefault?.();
@@ -412,11 +403,43 @@ export function StoresMap({
         map.getCanvas().style.cursor = '';
       }
     };
+    const densityClusterClickHandler = (event) => {
+      event?.preventDefault?.();
+      const feature = Array.isArray(event?.features) ? event.features[0] : null;
+      const clusterId = feature?.properties?.cluster_id;
+      const coordinates = feature?.geometry?.coordinates;
+      if (clusterId == null || !Array.isArray(coordinates)) return;
+      const source = typeof map.getSource === 'function' ? map.getSource(DISCOVERY_PIN_SOURCE_ID) : null;
+      if (!source || typeof source.getClusterExpansionZoom !== 'function') return;
+      // getClusterExpansionZoom is Promise-based in MapLibre GL JS v5 (not callback-based).
+      Promise.resolve(source.getClusterExpansionZoom(clusterId))
+        .then((zoom) => {
+          if (typeof zoom === 'number' && typeof map.easeTo === 'function') {
+            map.easeTo({ center: coordinates, zoom });
+          }
+        })
+        .catch(() => {
+          // Cluster expansion is a convenience interaction; ignore failures.
+        });
+    };
+    const densityClusterMouseEnterHandler = () => {
+      if (typeof map.getCanvas === 'function') {
+        map.getCanvas().style.cursor = 'pointer';
+      }
+    };
+    const densityClusterMouseLeaveHandler = () => {
+      if (typeof map.getCanvas === 'function') {
+        map.getCanvas().style.cursor = '';
+      }
+    };
     if (layerReady && typeof map.on === 'function') {
       map.on('click', DISCOVERY_PIN_LAYER_ID, clickHandler);
       map.on('mouseenter', DISCOVERY_PIN_LAYER_ID, mouseEnterHandler);
       map.on('mouseleave', DISCOVERY_PIN_LAYER_ID, mouseLeaveHandler);
       map.on('mousemove', mapMouseMoveHandler);
+      map.on('click', DISCOVERY_DENSITY_CLUSTER_LAYER_ID, densityClusterClickHandler);
+      map.on('mouseenter', DISCOVERY_DENSITY_CLUSTER_LAYER_ID, densityClusterMouseEnterHandler);
+      map.on('mouseleave', DISCOVERY_DENSITY_CLUSTER_LAYER_ID, densityClusterMouseLeaveHandler);
       layerEventCleanupRef.current = () => {
         if (typeof map.off !== 'function') return;
         try { map.off('click', DISCOVERY_PIN_LAYER_ID, clickHandler); } catch {
@@ -429,6 +452,15 @@ export function StoresMap({
           // Cleanup is best-effort across mocked and real maps.
         }
         try { map.off('mousemove', mapMouseMoveHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
+        }
+        try { map.off('click', DISCOVERY_DENSITY_CLUSTER_LAYER_ID, densityClusterClickHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
+        }
+        try { map.off('mouseenter', DISCOVERY_DENSITY_CLUSTER_LAYER_ID, densityClusterMouseEnterHandler); } catch {
+          // Cleanup is best-effort across mocked and real maps.
+        }
+        try { map.off('mouseleave', DISCOVERY_DENSITY_CLUSTER_LAYER_ID, densityClusterMouseLeaveHandler); } catch {
           // Cleanup is best-effort across mocked and real maps.
         }
       };

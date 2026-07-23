@@ -37,6 +37,7 @@ import {
     getStorefrontAccessModeMessage
 } from '../../src/utils/tenantCapabilityMessages.js';
 import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_SELECT_VALUES } from '../../src/features/settings/workflowMode.js';
+import StorefrontCustomDomainsModal from '../../src/features/admin/components/StorefrontCustomDomainsModal.jsx';
 
 const STATUS_CONFIG = {
     pending: { label: 'Pending', color: 'text-amber-600 bg-amber-50 border-amber-200', icon: Clock },
@@ -502,6 +503,8 @@ export default function TenantManager() {
         plan: ''
     });
     const [editLoading, setEditLoading] = useState(false);
+    const [showCustomDomainsModal, setShowCustomDomainsModal] = useState(false);
+    const [selectedCustomDomainsTenant, setSelectedCustomDomainsTenant] = useState(null);
 
     // Delete Tenant Modal State
     const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -528,6 +531,16 @@ export default function TenantManager() {
     const [complianceModeReason, setComplianceModeReason] = useState('');
     const [complianceModeChoice, setComplianceModeChoice] = useState('non_compliant');
     const [complianceModeActionLoading, setComplianceModeActionLoading] = useState(false);
+
+    const openCustomDomainsModal = (tenant) => {
+        setSelectedCustomDomainsTenant(tenant);
+        setShowCustomDomainsModal(true);
+    };
+
+    const closeCustomDomainsModal = () => {
+        setShowCustomDomainsModal(false);
+        setSelectedCustomDomainsTenant(null);
+    };
 
     useEffect(() => {
         loadTenants();
@@ -1917,6 +1930,17 @@ export default function TenantManager() {
                                                 })()}
                                                 <div className="flex flex-wrap items-center gap-2">
                                                     <Button
+                                                        onClick={() => openCustomDomainsModal(tenant)}
+                                                        variant="outline"
+                                                        size="sm"
+                                                        disabled={tenant.status !== 'active' || getTenantEffectivePlan(tenant) !== 'premium'}
+                                                        className="border-emerald-300 text-emerald-700 hover:bg-emerald-50"
+                                                        title="Manage verified Storefront domains"
+                                                    >
+                                                        <Store className="w-4 h-4 mr-1" />
+                                                        Domains
+                                                    </Button>
+                                                    <Button
                                                         onClick={() => openEditModal(tenant)}
                                                         variant="outline"
                                                         size="sm"
@@ -2728,6 +2752,12 @@ export default function TenantManager() {
                 </div>
             )}
 
+            <StorefrontCustomDomainsModal
+                open={showCustomDomainsModal}
+                tenant={selectedCustomDomainsTenant}
+                onClose={closeCustomDomainsModal}
+            />
+
             {/* Edit Tenant Modal */}
             {showEditModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50">
@@ -2758,7 +2788,7 @@ export default function TenantManager() {
                                     <option value="rejected">Rejected</option>
                                 </select>
                                 <p className="text-xs text-slate-500">
-                                    "Inactive" prevents users from logging in but keeps data.
+                                    &quot;Inactive&quot; prevents users from logging in but keeps data.
                                 </p>
                             </div>
 
@@ -2819,7 +2849,7 @@ export default function TenantManager() {
 
                             <div className="space-y-2">
                                 <label className="text-sm font-medium text-slate-700">
-                                    Type <span className="font-bold select-all">"{deleteForm.name}"</span> to confirm:
+                                    Type <span className="font-bold select-all">&quot;{deleteForm.name}&quot;</span> to confirm:
                                 </label>
                                 <input
                                     type="text"

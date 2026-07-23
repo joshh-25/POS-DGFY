@@ -220,7 +220,7 @@ describe('discovery header customer account actions', () => {
     const authParams = new URLSearchParams(window.location.search);
     expect(authParams.get('intent')).toBe('customer');
     expect(authParams.get('mode')).toBe('sign-in');
-    expect(authParams.get('return_to')).toContain('dgfy_account=1');
+    expect(new URL(authParams.get('return_to')).pathname).toBe('/map-dgfy/account');
     expect(screen.queryByRole('dialog', { name: 'DGFY Account' })).toBeNull();
   }, 10000);
 
@@ -238,7 +238,7 @@ describe('discovery header customer account actions', () => {
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
-    expect(screen.getByRole('button', { name: /kate/i })).toBeTruthy();
+    expect(screen.getByRole('button', { name: /^kc$/i })).toBeTruthy();
     expect(screen.queryByRole('button', { name: /log in \/ sign up/i })).toBeNull();
   }, 10000);
 
@@ -260,7 +260,7 @@ describe('discovery header customer account actions', () => {
       expect(screen.getByRole('button', { name: /sign out/i })).toBeTruthy();
       expect(screen.getByText(/overview/i)).toBeTruthy();
     });
-    expect(window.location.pathname).toBe('/map-dgfy');
+    expect(window.location.pathname).toBe('/map-dgfy/account');
     expect(window.location.search).not.toContain('dgfy_account');
   }, 10000);
 
@@ -276,7 +276,7 @@ describe('discovery header customer account actions', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /cookie/i })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /^cc$/i })).toBeTruthy();
     });
 
     const meCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/api/v1/dgfy/auth/me'));
@@ -315,7 +315,7 @@ describe('discovery header customer account actions', () => {
     expect(authParams.get('mode')).toBe('sign-in');
     expect(authParams.get('reason')).toBe('signed-out');
     expect(authParams.get('email')).toBe('old@example.com');
-    expect(authParams.get('return_to')).toContain('dgfy_account=1');
+    expect(new URL(authParams.get('return_to')).pathname).toBe('/map-dgfy/account');
     expect(screen.queryByRole('dialog', { name: 'DGFY Account' })).toBeNull();
   }, 10000);
 
@@ -333,7 +333,7 @@ describe('discovery header customer account actions', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /cookie/i })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /^cc$/i })).toBeTruthy();
     });
 
     const meCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/api/v1/dgfy/auth/me'));
@@ -370,7 +370,7 @@ describe('discovery header customer account actions', () => {
     expect(window.location.search).not.toContain('handoff_token');
   }, 10000);
 
-  it('rehydrates the signed-in discovery account surface from a query return without using handoff exchange', async () => {
+  it('opens the dedicated signed-in account route from the legacy query return without using handoff exchange', async () => {
     window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = 'dgfy-handoff-session';
     window.history.pushState({}, '', '/map-dgfy?dgfy_account=1');
     const user = userEvent.setup();
@@ -386,21 +386,17 @@ describe('discovery header customer account actions', () => {
     render(<App />);
 
     await waitFor(() => {
-      expect(screen.getByRole('button', { name: /handoff/i })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /back to discovery/i })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /sign out/i })).toBeTruthy();
     });
 
     expect(window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__).toBe('');
-    expect(window.location.pathname).toBe('/map-dgfy');
+    expect(window.location.pathname).toBe('/map-dgfy/account');
     expect(window.location.search).not.toContain('dgfy_account');
 
     const exchangeCall = fetchMock.mock.calls.find(([url]) => String(url).includes('/api/v1/dgfy/auth/handoff/exchange'));
     expect(exchangeCall).toBeUndefined();
 
-    await user.click(screen.getByRole('button', { name: /handoff/i }));
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /back to discovery/i })).toBeTruthy();
-      expect(screen.getByRole('button', { name: /sign out/i })).toBeTruthy();
-    });
     await user.click(screen.getByRole('button', { name: /sign out/i }));
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /log in \/ sign up/i })).toBeTruthy();
