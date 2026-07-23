@@ -76,14 +76,13 @@ import {
   getStorefrontAccessBlockMessage
 } from './shared/model/customerAccess.js';
 import { Badge, GhostButton, PrimaryButton } from './shared/components/StorefrontActionPrimitives.jsx';
-import { StorefrontCheckoutDrawerFrame } from './shared/components/StorefrontCheckoutDrawerFrame.jsx';
-import { StorefrontCheckoutSummaryContainer } from './shared/components/StorefrontCheckoutSummaryContainer.jsx';
 import { useStorefrontCheckoutSummaryProps } from './shared/hooks/useStorefrontCheckoutSummaryProps.js';
 import { StorefrontCatalogRouteContainer } from './app/pages/StorefrontCatalogRouteContainer.jsx';
 import { useStorefrontCatalogRouteProps } from './app/hooks/useStorefrontCatalogRouteProps.js';
 import { StorefrontHeroBandContainer } from './app/pages/StorefrontHeroBandContainer.jsx';
 import { useStorefrontHeroBandProps } from './app/hooks/useStorefrontHeroBandProps.js';
-import { StorefrontCartFlyAnimations } from './shared/components/StorefrontCartFlyAnimations.jsx';
+import { StorefrontCartDrawerShellContainer } from './app/pages/StorefrontCartDrawerShellContainer.jsx';
+import { useStorefrontCartDrawerShellProps } from './app/hooks/useStorefrontCartDrawerShellProps.js';
 import { openStorefrontActionLink } from './shared/utils/externalLinks.js';
 import { money, toSlug } from './shared/utils/storefrontFormatters.js';
 import { createStorefrontIdempotencyKey } from './shared/utils/idempotency.js';
@@ -117,9 +116,6 @@ import { useFnbCheckoutPromoRenderers } from './modes/fnb/checkout/hooks/useFnbC
 import { useFnbCartDrawerRouteProps } from './modes/fnb/checkout/hooks/useFnbCartDrawerRouteProps.js';
 import { useFnbCheckoutRouteProps } from './modes/fnb/checkout/hooks/useFnbCheckoutRouteProps.js';
 import { useFnbGuestCheckoutOtp } from './modes/fnb/checkout/hooks/useFnbGuestCheckoutOtp.js';
-import { FnbCartDrawerHeader } from './modes/fnb/checkout/components/FnbCartDrawerHeader.jsx';
-import { FnbCartDrawerSurface } from './modes/fnb/checkout/pages/FnbCartDrawerSurface.jsx';
-import { FnbCheckoutRouteContainer } from './modes/fnb/checkout/pages/FnbCheckoutRouteContainer.jsx';
 import { useCustomerDashboardIdentity } from './customer-dashboard/hooks/useCustomerDashboardIdentity.js';
 import { useCustomerDashboardRuntime } from './customer-dashboard/hooks/useCustomerDashboardRuntime.js';
 import { useCustomerDashboardStorefrontBridge } from './customer-dashboard/pages/useCustomerDashboardStorefrontBridge.js';
@@ -171,11 +167,8 @@ import {
   reverseGeocodeDeliveryPin
 } from './features/locations/utils/pinnedDeliveryAddress.js';
 import { StorefrontDropdown } from './features/shared-storefront/components/StorefrontDropdown.jsx';
-import { StorefrontFollowFloatingAction } from './shared/components/storefront/StorefrontFollowFloatingAction.jsx';
 import { useStorefrontClosedNotice } from './shared/hooks/useStorefrontClosedNotice.js';
 import { useStorefrontShareActions } from './shared/hooks/useStorefrontShareActions.js';
-import { StorefrontOrderSuccessOverlay } from './shared/components/storefront/StorefrontOrderSuccessOverlay.jsx';
-import { StorefrontCartFab } from './shared/components/storefront/StorefrontCartFab.jsx';
 import { StorefrontPaymentUnavailableModal } from './shared/components/storefront/StorefrontPaymentUnavailableModal.jsx';
 import {
   formatFollowersLabel,
@@ -208,9 +201,6 @@ import { useServiceBookingDerivations } from './modes/services/booking/hooks/use
 import { useServiceBookingFieldFocus } from './modes/services/booking/hooks/useServiceBookingFieldFocus.js';
 import { useServiceBookingReviewProps } from './modes/services/booking/hooks/useServiceBookingReviewProps.js';
 import { useServiceCartDrawerProps } from './modes/services/booking/hooks/useServiceCartDrawerProps.js';
-import { ServiceBookingReviewContainer } from './modes/services/booking/pages/ServiceBookingReviewContainer.jsx';
-import { SimpleCartFloatingButton } from './modes/simple/checkout/components/SimpleCartFloatingButton.jsx';
-import { SimpleCartDrawerSurface } from './modes/simple/checkout/components/SimpleCartDrawerSurface.jsx';
 import { useSimpleCartDrawerProps } from './modes/simple/checkout/hooks/useSimpleCartDrawerProps.js';
 import { useSimpleCheckoutRouteProps } from './modes/simple/checkout/hooks/useSimpleCheckoutRouteProps.js';
 import { StoresMap } from './discovery/components/StoresMap.jsx';
@@ -293,9 +283,7 @@ import {
 } from './auth/storefrontSessionStorage.js';
 import { requestJson } from './services/requestJson.js';
 import { hasCustomerName, hasPrimaryContact, isCustomerStepComplete } from './checkout/checkoutValidation.js';
-import { FnbTrackingRouteContainer } from './modes/fnb/tracking/pages/FnbTrackingRouteContainer.jsx';
 import { buildFnbTrackingRouteProps } from './modes/fnb/tracking/model/buildFnbTrackingRouteProps.js';
-import { ServiceCartDrawer } from './modes/services/booking/components/ServiceCartDrawer.jsx';
 import {
   formatServicesBookingFailureMessage,
   resolveServicesBookingSubmitContract
@@ -3164,6 +3152,54 @@ export default function StorefrontApp() {
     setSelectedLocationId,
     isHospitalityMode
   });
+  const storefrontCartDrawerShellProps = useStorefrontCartDrawerShellProps({
+    isStorefrontV2,
+    selectedStore,
+    isFnbMode,
+    isServicesMode,
+    followState,
+    isMobileViewport,
+    handleFollowAction,
+    isAccountDrawerOpen,
+    isServicesCartDrawerMode,
+    serviceCartDrawerProps,
+    serviceCartFlyAnimations,
+    isSimpleCartSurfaceMode,
+    simpleCartDrawerProps,
+    serviceCartFabRef,
+    isDesktopViewport,
+    hasServiceCart,
+    isFnbOrderSubpage,
+    isFnbDetailsSubpage,
+    isCheckoutOpen,
+    isSimpleMode,
+    isResolvedOrderSubpage,
+    goStoreBookingPage,
+    setIsCheckoutOpen,
+    setCheckoutTab,
+    servicesPrimary,
+    serviceBookingSummaryTitle,
+    cartCount,
+    serviceBookingSummarySchedule,
+    servicePaymentOptions,
+    servicePaymentTiming,
+    money,
+    cartTotal,
+    fnbCartDrawerRouteProps,
+    isDesktopCheckout,
+    isFnbCartDrawerSurfaceOpen,
+    servicesDisplayFont,
+    routeSlug,
+    activeOrderMethodLabel,
+    fnbCartStatusLabel,
+    goStoreCatalogPage,
+    checkoutTab,
+    fnbCheckoutRouteProps,
+    serviceBookingReviewProps,
+    storefrontCheckoutSummaryProps,
+    fnbTrackingRouteProps,
+    showOrderSuccessAnimation
+  });
   if (isStandaloneAccountPage) return customerDashboardStandaloneRouteNode;
 
   return (
@@ -3311,155 +3347,7 @@ export default function StorefrontApp() {
       </div>
 
   { isStorePage && (checkoutPermitted || bookingPermitted || productCartPermitted) && (
-    <>
-      <StorefrontFollowFloatingAction
-        enabled={isStorefrontV2 && selectedStore && !isFnbMode && !isServicesMode && parseBooleanFlag(selectedStore.storefront_follow_enabled, false)}
-        followState={followState}
-        isMobileViewport={isMobileViewport}
-        onFollow={handleFollowAction}
-      />
-      {!isAccountDrawerOpen && isServicesCartDrawerMode && (
-        <ServiceCartDrawer {...serviceCartDrawerProps} />
-      )}
-      {(isServicesMode || isFnbMode) && (
-        <StorefrontCartFlyAnimations animations={serviceCartFlyAnimations} isFnbMode={isFnbMode} />
-      )}
-      {!isAccountDrawerOpen && isSimpleCartSurfaceMode && (
-        <>
-          <SimpleCartFloatingButton {...simpleCartDrawerProps.floatingButtonProps} />
-
-          <SimpleCartDrawerSurface {...simpleCartDrawerProps.drawerSurfaceProps} />
-        </>
-      )}
-      <StorefrontCartFab
-        serviceCartFabRef={serviceCartFabRef}
-        isFnbMode={isFnbMode}
-        isServicesMode={isServicesMode}
-        isMobileViewport={isMobileViewport}
-        isDesktopViewport={isDesktopViewport}
-        hasServiceCart={hasServiceCart}
-        isAccountDrawerOpen={isAccountDrawerOpen}
-        isServicesCartDrawerMode={isServicesCartDrawerMode}
-        isFnbOrderSubpage={isFnbOrderSubpage}
-        isFnbDetailsSubpage={isFnbDetailsSubpage}
-        isCheckoutOpen={isCheckoutOpen}
-        isSimpleMode={isSimpleMode}
-        isResolvedOrderSubpage={isResolvedOrderSubpage}
-        isSimpleCartSurfaceMode={isSimpleCartSurfaceMode}
-        goStoreBookingPage={goStoreBookingPage}
-        setIsCheckoutOpen={setIsCheckoutOpen}
-        setCheckoutTab={setCheckoutTab}
-        servicesPrimary={servicesPrimary}
-        serviceBookingSummaryTitle={serviceBookingSummaryTitle}
-        cartCount={cartCount}
-        serviceBookingSummarySchedule={serviceBookingSummarySchedule}
-        servicePaymentOptions={servicePaymentOptions}
-        servicePaymentTiming={servicePaymentTiming}
-        money={money}
-        cartTotal={cartTotal}
-      />
-
-        <FnbCartDrawerSurface
-          cartCount={cartCount}
-          cartDrawerProps={fnbCartDrawerRouteProps}
-          isDesktop={isDesktopCheckout}
-          isMobileViewport={isMobileViewport}
-          isOpen={isFnbCartDrawerSurfaceOpen}
-          onClose={() => setIsCheckoutOpen(false)}
-        />
-
-        <StorefrontCheckoutDrawerFrame
-          compactMode={isFnbMode || isSimpleMode}
-          desktop={isDesktopCheckout}
-          disabled={isFnbCartDrawerSurfaceOpen || isServicesCartDrawerMode || isSimpleCartSurfaceMode || (isSimpleMode && isResolvedOrderSubpage)}
-          fullPage={isFnbOrderSubpage}
-          headerContent={(
-            <div>
-                {isFnbMode ? (
-                  <FnbCartDrawerHeader cartCount={cartCount} isMobileViewport={isMobileViewport} />
-                ) : isSimpleMode ? (
-                <div style={{ display: 'grid', gap: 4 }}>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Product Cart</div>
-                  <div style={{ fontSize: 24, fontWeight: 900, color: '#1e293b', fontFamily: servicesDisplayFont }}>Added products</div>
-                  <div style={{ fontSize: 13, color: '#64748b' }}>Review products, adjust quantities, then continue to checkout.</div>
-                </div>
-              ) : (
-                <>
-                  <div style={{ fontWeight: 800, fontSize: 20 }}>
-                    {isServicesMode && hasServiceCart ? 'Booking Journey' : `${DGFY_BRAND_NAME} Checkout`}
-                  </div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>{selectedStore?.tenant_name || routeSlug || 'Tenant'}</div>
-                </>
-              )}
-              {!(isFnbMode && !isFnbOrderSubpage) && (
-                <div style={{ marginTop: 4, display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <span style={{ fontSize: 11, fontWeight: 700, color: '#0f766e', background: '#e6fffb', border: '1px solid #99f6e4', borderRadius: 999, padding: '3px 8px' }}>
-                    {cartCount} {isServicesMode && hasServiceCart ? 'service' : 'item'}{cartCount === 1 ? '' : 's'}
-                  </span>
-                  {(!isServicesMode || !hasServiceCart) && (
-                    <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 8px' }}>
-                      {activeOrderMethodLabel}
-                    </span>
-                  )}
-                  {isFnbMode && (
-                    <span style={{ fontSize: 11, fontWeight: 700, color: '#7c2d12', background: '#ffedd5', border: '1px solid #fdba74', borderRadius: 999, padding: '3px 8px' }}>
-                      {fnbCartStatusLabel}
-                    </span>
-                  )}
-                  {isServicesMode && hasServiceCart && (
-                    <span style={{ fontSize: 11, fontWeight: 700, color: '#334155', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: 999, padding: '3px 8px' }}>
-                      {serviceBookingSummarySchedule}
-                    </span>
-                    )}
-                  </div>
-                )}
-              </div>
-          )}
-          hideBackdrop={isFnbOrderSubpage || (isSimpleMode && isResolvedOrderSubpage)}
-          hideHeader={isFnbMode && isFnbOrderSubpage}
-          isFnbMode={isFnbMode}
-          onBack={goStoreCatalogPage}
-          onClose={() => setIsCheckoutOpen(false)}
-          open={isCheckoutOpen || isFnbOrderSubpage}
-          tabBarContent={!isFnbMode ? (
-              <div style={{ display: 'flex', gap: 8, padding: isDesktopCheckout ? '14px 18px 8px 18px' : '12px 14px 6px 14px', background: 'rgba(255,255,255,.72)' }}>
-                {[
-                  ...(isServicesMode && hasServiceCart ? [{ id: 'review', label: 'Booking Summary' }] : []),
-                { id: 'checkout', label: isServicesMode && hasServiceCart ? 'Customer Details' : 'Checkout' },
-                ...(!isFnbMode ? [
-                  { id: 'track', label: 'Track' }
-                ] : [])
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => {
-                    setCheckoutTab(tab.id);
-                  }}
-                  style={{ borderRadius: 999, border: `1px solid ${checkoutTab === tab.id ? '#0f766e' : '#cbd5e1'}`, background: checkoutTab === tab.id ? '#e6fffb' : '#fff', color: checkoutTab === tab.id ? '#0f766e' : '#334155', padding: '8px 14px', fontWeight: 700, cursor: 'pointer' }}
-                >
-                  {tab.label}
-                  </button>
-                ))}
-              </div>
-            ) : null}
-        >
-            <FnbCheckoutRouteContainer {...fnbCheckoutRouteProps} />
-
-            {checkoutTab === 'review' && hasServiceCart && !isServicesMode && (
-              <ServiceBookingReviewContainer {...serviceBookingReviewProps} />
-            )}
-
-            {checkoutTab === 'checkout' && !isFnbOrderSubpage && !isFnbMode && !isServicesMode && !(isSimpleMode && isResolvedOrderSubpage) && (
-              <StorefrontCheckoutSummaryContainer {...storefrontCheckoutSummaryProps} />
-            )}
-
-            <FnbTrackingRouteContainer {...fnbTrackingRouteProps} renderDrawer={false} />
-
-      </StorefrontCheckoutDrawerFrame>
-      <FnbTrackingRouteContainer {...fnbTrackingRouteProps} visible={false} />
-      <StorefrontOrderSuccessOverlay visible={showOrderSuccessAnimation} />
-    </>
+    <StorefrontCartDrawerShellContainer {...storefrontCartDrawerShellProps} />
   )}
       {customerDashboardDrawerRouteNode}
 
