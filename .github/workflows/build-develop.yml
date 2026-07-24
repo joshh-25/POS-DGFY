@@ -17,6 +17,7 @@ jobs:
     uses: ./.github/workflows/publish-pos-receipt.yml
     with:
       before_sha: ${{ github.event.before }}
+      runner_labels_json: '["self-hosted"]'
     secrets: inherit
     permissions:
       contents: read
