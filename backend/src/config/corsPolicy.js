@@ -60,7 +60,8 @@ const isDevelopmentOriginAllowed = (origin) => {
     /^http:\/\/\d{1,3}(?:\.\d{1,3}){3}:417[0-9]$/,
     /^https?:\/\/(?:skupervisor|pos|store)\.localhost:517[0-9]$/,
     /^https?:\/\/(?:skupervisor|pos|store)\.localhost:417[0-9]$/,
-    /^https?:\/\/(?:skupervisor|pos|store)\.local(?:host)?(?::\d{2,5})?$/
+    /^https?:\/\/(?:skupervisor|pos|store)\.local(?:host)?(?::\d{2,5})?$/,
+    /^https?:\/\/[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.localhost(?::\d{2,5})?$/
   ];
 
   if (developmentOriginPatterns.some((pattern) => pattern.test(origin))) {
@@ -84,10 +85,26 @@ const isDevelopmentOriginAllowed = (origin) => {
   }
 };
 
+const isSameHostOrigin = (origin, req = {}, isProduction = false) => {
+  if (!origin) return true;
+  try {
+    const path = normalizePath(req.path || req.originalUrl || req.url);
+    if (!/^\/api\/v1\/store(?:\/|$)/i.test(path)) return false;
+    const parsed = new URL(origin);
+    const forwardedHost = String(req.headers?.['x-forwarded-host'] || '').split(',')[0].trim();
+    const requestHost = (forwardedHost || String(req.headers?.host || '')).toLowerCase();
+    if (!requestHost || parsed.host.toLowerCase() !== requestHost) return false;
+    return !isProduction || parsed.protocol === 'https:';
+  } catch {
+    return false;
+  }
+};
+
 export const buildCorsPolicy = ({
   corsOrigin = '',
   publicApiCorsOrigin = '',
-  isProduction = false
+  isProduction = false,
+  isVerifiedStorefrontHost = () => false
 } = {}) => {
   const configuredCorsOrigins = parseOriginList(corsOrigin);
   const publicApiCorsOrigins = parseOriginList(publicApiCorsOrigin);
@@ -106,6 +123,13 @@ export const buildCorsPolicy = ({
   };
 
   const resolveCorsAccess = (origin, req = {}) => {
+    if (isSameHostOrigin(origin, req, isProduction)) {
+      const hostname = new URL(origin).hostname.toLowerCase();
+      if (isProduction && !isVerifiedStorefrontHost(hostname, req)) {
+        return { allowed: false, publicApi: false };
+      }
+      return { allowed: true, publicApi: false };
+    }
     if (configuredCorsOrigins.length > 0 && isExplicitOriginAllowed(origin)) {
       return { allowed: true, publicApi: false };
     }
@@ -140,6 +164,7 @@ export const buildCorsPolicy = ({
 };
 
 export const corsPolicyInternals = {
+  isSameHostOrigin,
   matchesWildcardOrigin,
   normalizePath,
   parseOriginList

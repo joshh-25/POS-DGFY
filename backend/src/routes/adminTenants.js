@@ -58,6 +58,17 @@ import {
     validateTenantCapabilityPatch,
     validateTenantPosMetadataPatch
 } from '../validators/adminTenantValidator.js';
+import {
+    auditStorefrontDomainDnsDrift,
+    createStorefrontDomain,
+    listStorefrontDomains,
+    makeCanonicalStorefrontDomain,
+    reconcileStorefrontDomainEligibility,
+    removeStorefrontDomain,
+    retryStorefrontDomain,
+    suspendStorefrontDomain,
+    verifyStorefrontDomain
+} from '../modules/storefrontDomains/controllers/storefrontDomainHandlers.js';
 
 const router = express.Router();
 
@@ -122,6 +133,17 @@ router.post('/:id/owner', authenticateAdmin, assignTenantOwnerByAdmin);
 router.get('/:id/pos-metadata', authenticateAdmin, getTenantPosMetadata);
 router.get('/:id/pos-metadata/audit-logs', authenticateAdmin, validateTenantCapabilityAuditLogQuery, listTenantPosMetadataAuditLogs);
 router.patch('/:id/pos-metadata', authenticateAdmin, validateTenantPosMetadataPatch, updateTenantPosMetadata);
+
+// ADMIN: Premium storefront custom-domain lifecycle
+router.get('/:id/storefront-domains', authenticateAdmin, listStorefrontDomains);
+router.post('/:id/storefront-domains', authenticateAdmin, createStorefrontDomain);
+router.post('/:id/storefront-domains/:domainId/verify', authenticateAdmin, verifyStorefrontDomain);
+router.post('/:id/storefront-domains/:domainId/make-canonical', authenticateAdmin, makeCanonicalStorefrontDomain);
+router.post('/:id/storefront-domains/:domainId/retry', authenticateAdmin, retryStorefrontDomain);
+router.post('/:id/storefront-domains/:domainId/check-dns', authenticateAdmin, auditStorefrontDomainDnsDrift);
+router.post('/:id/storefront-domains/:domainId/suspend', authenticateAdmin, suspendStorefrontDomain);
+router.delete('/:id/storefront-domains/:domainId', authenticateAdmin, removeStorefrontDomain);
+router.post('/:id/storefront-domains/reconcile-eligibility', authenticateAdmin, reconcileStorefrontDomainEligibility);
 
 // ADMIN: Permanently delete tenant
 router.delete('/:id', authenticateAdmin, deleteTenant);

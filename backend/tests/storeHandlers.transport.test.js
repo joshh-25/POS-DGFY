@@ -12,6 +12,8 @@ const mockUpdateStoreCustomerAddressUseCase = jest.fn();
 const mockSetDefaultStoreCustomerAddressUseCase = jest.fn();
 const mockDeleteStoreCustomerAddressUseCase = jest.fn();
 const mockStoreCartQuoteUseCase = jest.fn();
+const mockRequestStoreGuestCheckoutOtpUseCase = jest.fn();
+const mockVerifyStoreGuestCheckoutOtpUseCase = jest.fn();
 const mockStoreCheckoutPaymentSessionUseCase = jest.fn();
 const mockGetStoreCheckoutPaymentSessionUseCase = jest.fn();
 const mockStoreCheckoutUseCase = jest.fn();
@@ -36,6 +38,8 @@ jest.unstable_mockModule('../src/modules/store/index.js', () => ({
     setDefaultStoreCustomerAddressUseCase: mockSetDefaultStoreCustomerAddressUseCase,
     deleteStoreCustomerAddressUseCase: mockDeleteStoreCustomerAddressUseCase,
     storeCartQuoteUseCase: mockStoreCartQuoteUseCase,
+    requestStoreGuestCheckoutOtpUseCase: mockRequestStoreGuestCheckoutOtpUseCase,
+    verifyStoreGuestCheckoutOtpUseCase: mockVerifyStoreGuestCheckoutOtpUseCase,
     storeCheckoutPaymentSessionUseCase: mockStoreCheckoutPaymentSessionUseCase,
     getStoreCheckoutPaymentSessionUseCase: mockGetStoreCheckoutPaymentSessionUseCase,
     storeCheckoutUseCase: mockStoreCheckoutUseCase,
@@ -52,6 +56,7 @@ let registerStoreCustomer;
 let listStoreCatalog;
 let listStoreLocations;
 let trackOrder;
+let createCheckoutPaymentSession;
 
 beforeAll(async () => {
     const mod = await import('../src/modules/store/controllers/storeHandlers.js');
@@ -59,6 +64,7 @@ beforeAll(async () => {
     listStoreCatalog = mod.listStoreCatalog;
     listStoreLocations = mod.listStoreLocations;
     trackOrder = mod.trackOrder;
+    createCheckoutPaymentSession = mod.createCheckoutPaymentSession;
 });
 
 const createRes = () => {
@@ -114,6 +120,21 @@ describe('storeHandlers transport contracts', () => {
             timestamp: expect.any(String)
         });
         expect(next).not.toHaveBeenCalled();
+    });
+
+    it('derives the payment return URL from trusted custom-domain context', async () => {
+        mockStoreCheckoutPaymentSessionUseCase.mockResolvedValue({ success: true, data: { payment_session: { session_id: 'pay-1' } } });
+        const req = {
+            headers: { 'x-store-slug': 'grand-matador' },
+            body: { idempotency_key: 'checkout-123' },
+            storefrontDomainContext: { domain: { hostname: 'grandmatador.com' } }
+        };
+        const res = createRes();
+        await createCheckoutPaymentSession(req, res, jest.fn());
+        expect(mockStoreCheckoutPaymentSessionUseCase).toHaveBeenCalledWith(expect.objectContaining({
+            trustedReturnUrl: 'https://grandmatador.com/order'
+        }));
+        expect(res.status).toHaveBeenCalledWith(201);
     });
 
     it('listStoreLocations returns stable success payload', async () => {

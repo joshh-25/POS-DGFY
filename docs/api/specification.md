@@ -22,6 +22,7 @@
 - [Reports Endpoints](#reports-endpoints)
 - [AI Assistant Endpoints](#ai-assistant-endpoints)
 - [Admin Tenant Management Endpoints](#admin-tenant-management-endpoints)
+- [Storefront Custom Domain Endpoints](#storefront-custom-domain-endpoints)
 
 ### Integration
 - [Frontend-Backend Integration Points](#frontend-backend-integration-points)
@@ -6210,3 +6211,36 @@ Track onboarding UX telemetry events without mutating onboarding checklist progr
   "message": "Onboarding event accepted"
 }
 ```
+
+## Storefront Custom Domain Endpoints
+
+Platform-admin endpoints under `/api/v1/admin/tenants/:tenant_id`:
+
+- `GET /storefront-domains`
+- `POST /storefront-domains` with `hostname`, `role` (`canonical` or `alias`),
+  optional `canonical_domain_id` for an alias, and required `reason`
+- `POST /storefront-domains/:domain_id/verify` with required `reason`
+- `POST /storefront-domains/:domain_id/retry` with required `reason`
+- `POST /storefront-domains/:domain_id/check-dns` with required `reason`
+- `POST /storefront-domains/:domain_id/make-canonical` with required `reason`
+- `POST /storefront-domains/:domain_id/suspend` with required `reason`
+- `DELETE /storefront-domains/:domain_id` with required `reason`
+- `POST /storefront-domains/reconcile-eligibility` with required `reason`
+
+Successful verification queues a durable provisioning operation. Platform-admin
+requests cannot directly activate a domain. A trusted external controller uses:
+
+- `POST /api/v1/internal/storefront-domain-operations/lease`
+- `POST /api/v1/internal/storefront-domain-operations/:operation_id/result`
+
+These private endpoints require a dedicated bearer token and controller identity;
+production also requires an allowlisted source IP. A successful controller report
+must include health proof and a provisioning reference before a mapping becomes
+active.
+
+`GET /api/v1/store/domain-context` is public and derives the hostname from the
+request boundary. A canonical request returns `tenant_id`, `slug`,
+`canonical_origin`, and `routing_mode=custom_domain`. An alias request returns
+`routing_mode=custom_domain_alias` plus `redirect_to`; the frontend replaces the
+location while preserving path, query, and fragment. Unknown, inactive,
+suspended, or removed hosts return `404`.

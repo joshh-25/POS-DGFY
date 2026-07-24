@@ -386,6 +386,7 @@ const devicePrintReceiptSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
     transaction_id: Joi.number().integer().positive().required(),
     copies: Joi.number().integer().min(1).max(5).default(1),
+    paper_width: Joi.string().valid('80mm', '57mm').default('80mm'),
     reason: Joi.string().trim().max(255).allow('', null).optional(),
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
 });
@@ -471,6 +472,24 @@ const mobilePosHardwareEventSyncSchema = Joi.object({
     entries: Joi.array().items(mobilePosHardwareEventSyncEntrySchema).required()
 });
 
+const mobilePosItemSyncEntrySchema = Joi.object({
+    local_transaction_id: Joi.string().trim().max(120).required(),
+    // op lives inside payload, not as a sibling field - mobile's
+    // LiveSyncTransport hardcodes the { local_transaction_id, payload }
+    // entry envelope for every entity (see checkout sync above), so the
+    // repository can only shape what's inside payload itself.
+    payload: Joi.object({
+        op: Joi.string().valid('create', 'update', 'delete').required()
+    }).required().unknown(true)
+});
+
+const mobilePosItemSyncSchema = Joi.object({
+    device_id: Joi.string().trim().max(120).required(),
+    client_sync_run_id: Joi.string().trim().max(120).allow('', null).optional(),
+    timezone: Joi.string().trim().max(80).allow('', null).optional(),
+    entries: Joi.array().items(mobilePosItemSyncEntrySchema).required()
+});
+
 const mobilePosCheckpointAckSchema = Joi.object({
     checkpoint_token: Joi.string().trim().min(8).max(512).required(),
     consumed_slot: Joi.boolean().optional(),
@@ -539,6 +558,7 @@ export const validateGenerateESalesReport = validateSchema(esalesGenerateSchema,
 export const validateUpdateESalesReportStatus = validateSchema(esalesStatusSchema, 'body', 'validatedData');
 export const validateFiscalTerminalRegistration = validateSchema(fiscalTerminalRegistrationSchema, 'body', 'validatedData');
 export const validateMobilePosCheckoutSync = validateSchema(mobilePosCheckoutSyncSchema, 'body', 'validatedData');
+export const validateMobilePosItemSync = validateSchema(mobilePosItemSyncSchema, 'body', 'validatedData');
 export const validateMobilePosShiftSync = validateSchema(mobilePosShiftSyncSchema, 'body', 'validatedData');
 export const validateMobilePosHardwareEventSync = validateSchema(mobilePosHardwareEventSyncSchema, 'body', 'validatedData');
 export const validateMobilePosCheckpointAck = validateSchema(mobilePosCheckpointAckSchema, 'body', 'validatedData');

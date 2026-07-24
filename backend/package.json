@@ -50,6 +50,9 @@
     "audit:location-stock-parity:allow-missing": "node scripts/audit-location-stock-parity.js --allow-missing-tables",
     "audit:location-stock-parity:repair": "node scripts/audit-location-stock-parity.js --repair-current-stock --allow-missing-tables",
     "audit:storefront-public-visibility": "node scripts/audit-storefront-public-visibility.js",
+    "audit:grandmatador-migration": "node scripts/audit-grandmatador-migration.js",
+    "import:grandmatador-catalog": "node scripts/import-grandmatador-catalog.js",
+    "preview:storefront-domain": "node scripts/register-local-storefront-domain.js",
     "audit:tenant-index-headroom": "node scripts/audit-tenant-index-headroom.js",
     "reconcile:storefront-discovery": "node scripts/reconcile-storefront-discovery-index.js",
     "remediate:tenant-redundant-indexes": "node scripts/remediate-tenant-redundant-indexes.js",
@@ -87,6 +90,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@sentry/node": "^10.63.0",
     "archiver": "^7.0.1",
     "axios": "^1.16.1",
     "bcryptjs": "^2.4.3",

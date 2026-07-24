@@ -5,6 +5,16 @@ export const DISCOVERY_SORT_LABEL_BY_VALUE = {
   open: 'Open Now'
 };
 
+export const DISCOVERY_DISTANCE_FILTER_OPTIONS = Object.freeze([
+  ['all', 'Any Distance'],
+  ['1', 'Within 1 km'],
+  ['3', 'Within 3 km'],
+  ['5', 'Within 5 km'],
+  ['10', 'Within 10 km']
+]);
+
+export const DISCOVERY_DISTANCE_LABEL_BY_VALUE = Object.fromEntries(DISCOVERY_DISTANCE_FILTER_OPTIONS);
+
 export const POPULAR_DISCOVERY_CATEGORIES = Object.freeze([
   { label: 'Food', query: 'Food' },
   { label: 'Grocery', query: 'Grocery' },

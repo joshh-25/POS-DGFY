@@ -150,6 +150,13 @@ export const resolveStorefrontHomeUrl = () => {
   }
 };
 
+// Mirrors STORE_BOOKING_SUBPAGE / STORE_ORDER_SUBPAGE / STORE_TRACK_SUBPAGE /
+// STORE_SERVICE_SUBPAGE / STORE_ITEM_SUBPAGE from
+// apps/store/src/app/routing/storefrontRouting.js - duplicated here rather
+// than imported since this file is shared across independent apps (auth,
+// terminal, storefront) and must not depend on a single app's route module.
+const CUSTOM_DOMAIN_STORE_SUBPAGES = ['book', 'order', 'track', 'service', 'item'];
+
 const isValidStorefrontReturnPath = (pathname = '') => {
   const normalizedPath = String(pathname || '').trim().replace(/\/+$/, '') || '/';
   if (normalizedPath === '/map-dgfy/account') return true;
@@ -158,6 +165,12 @@ const isValidStorefrontReturnPath = (pathname = '') => {
   if (/^\/store\/[^/]+(?:\/[^/]+)?$/i.test(normalizedPath)) return true;
   if (/^\/store-template(?:\/[^/]+)?$/i.test(normalizedPath)) return true;
   if (/^\/storefront-template(?:\/[^/]+)?$/i.test(normalizedPath)) return true;
+  // Custom-domain routing mode (see setCustomStorefrontRouteContext) mounts a
+  // tenant's storefront directly at the domain root, so subpages have no
+  // /tenant-store/<slug> or /store-template prefix - just a bare subpage
+  // segment (or root for the catalog/home page).
+  if (normalizedPath === '/') return true;
+  if (CUSTOM_DOMAIN_STORE_SUBPAGES.includes(normalizedPath.slice(1).toLowerCase())) return true;
   return false;
 };
 

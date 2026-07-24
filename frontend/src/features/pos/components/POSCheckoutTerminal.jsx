@@ -197,32 +197,21 @@ const formatQuantity = (value) => {
     if (!Number.isFinite(quantity)) return '0';
     return Number.isInteger(quantity) ? String(quantity) : String(round4(quantity));
 };
-// Mobile-only catalog name color. NOTE: intentionally separate from getCatalogStockColorClassName
-// (posCatalogAvailability.js) - that helper returns gray for always-available/service items
-// because on desktop it colors a numeric stock value that doesn't apply there. On mobile this
-// class colors the item NAME itself, where gray reads as "disabled"; always-available items
-// should still read as good-to-sell, so they stay green like healthy stock.
+// Catalog name color - shared unified logic across every viewport (mobile, tablet, desktop):
+// stock >= 100 green, 0 < stock < 100 yellow, stock <= 0 (or invalid) red; always-available/
+// service items are always green regardless of stock. NOTE: intentionally separate from
+// getCatalogStockColorClassName (posCatalogAvailability.js) - that helper returns gray for
+// always-available/service items because on desktop it colors a numeric stock value that
+// doesn't apply there. This one colors the item NAME itself, where gray reads as "disabled";
+// always-available items should still read as good-to-sell, so they stay green like healthy
+// stock. (Named "Mobile" for historical reasons - it was mobile-only before being unified.)
 const getMobileStockNameColorClassName = (stockValue, isAlwaysAvailable) => {
     if (isAlwaysAvailable) return 'text-green-600';
     const numericStock = Number(stockValue);
     if (stockValue === null || stockValue === undefined || !Number.isFinite(numericStock)) {
         return 'text-red-600';
     }
-    if (numericStock > 100) return 'text-green-600';
-    if (numericStock > 0) return 'text-yellow-600';
-    return 'text-red-600';
-};
-// Desktop-only catalog name color - mirrors getMobileStockNameColorClassName's structure/colors
-// (no new colors introduced) but with desktop's own stock thresholds: >1000 green, 1-999 yellow,
-// 0/invalid red. Applied only when NOT isTabletViewport, so tablet keeps its current static
-// name color untouched; mobile is unaffected since it uses the function above instead.
-const getDesktopStockNameColorClassName = (stockValue, isAlwaysAvailable) => {
-    if (isAlwaysAvailable) return 'text-green-600';
-    const numericStock = Number(stockValue);
-    if (stockValue === null || stockValue === undefined || !Number.isFinite(numericStock)) {
-        return 'text-red-600';
-    }
-    if (numericStock > 1000) return 'text-green-600';
+    if (numericStock >= 100) return 'text-green-600';
     if (numericStock > 0) return 'text-yellow-600';
     return 'text-red-600';
 };
@@ -533,7 +522,7 @@ const createCartLineKey = (itemId) => `line-${itemId}-${Date.now()}-${Math.rando
 // Always Available and Best Seller tags are intentionally NOT rendered here (removed across
 // all viewports - mobile/tablet/desktop - per explicit request). Their underlying signals are
 // still fully live: isAlwaysAvailable still drives the item name's green color coding
-// (getMobileStockNameColorClassName / getDesktopStockNameColorClassName) and still exempts the
+// (getMobileStockNameColorClassName, shared across all viewports) and still exempts the
 // item from the out-of-stock/purchase block (isOutOfStock, isSellAvailableCatalogItem) - only
 // the visual badge was removed, not the logic. Service still renders since it wasn't asked to
 // be removed.
@@ -3175,13 +3164,10 @@ export default function POSCheckoutTerminal({
                             const cartLineForItem = safeCart.find((line) => line.item_id === item.item_id);
                             const cartQuantityForItem = cartLineForItem ? Number(cartLineForItem.quantity) || 0 : 0;
                             const isEditingThisQuantity = editingQuantityItemId === item.item_id;
-                            // Mobile-only: computed on every render from current item data, so it's
-                            // correct on initial render and never stale/flickering on resize.
-                            const mobileStockNameColorClassName = getMobileStockNameColorClassName(item.current_stock, isAlwaysAvailable || isServiceItem);
-                            // Desktop-only: tablet (isTabletViewport) keeps the original static
-                            // name color, so this class is only ever used when neither mobile nor
-                            // tablet - i.e. true desktop/PC - per the applied className below.
-                            const desktopStockNameColorClassName = getDesktopStockNameColorClassName(item.current_stock, isAlwaysAvailable || isServiceItem);
+                            // Shared across every viewport: computed on every render from current
+                            // item data, so it's correct on initial render and never stale/
+                            // flickering on resize.
+                            const stockNameColorClassName = getMobileStockNameColorClassName(item.current_stock, isAlwaysAvailable || isServiceItem);
                             return (
                                 <div
                                     key={item.item_id}
@@ -3259,7 +3245,7 @@ export default function POSCheckoutTerminal({
                                             code (sku_code) removed. "Always available" renders only when true —
                                             no placeholder when it doesn't apply. */}
                                         <div className="flex flex-1 min-w-0 flex-col justify-between gap-1.5 p-2.5 sm:hidden">
-                                            <p className={`min-w-0 text-[13px] font-black leading-tight ${mobileStockNameColorClassName}`}>{item.name}</p>
+                                            <p className={`min-w-0 text-[13px] font-black leading-tight ${stockNameColorClassName}`}>{item.name}</p>
                                             <div className="flex items-center justify-between gap-x-2 gap-y-1.5">
                                                 <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
                                                     <CatalogItemBadges isServiceItem={isServiceItem} />
@@ -3344,12 +3330,11 @@ export default function POSCheckoutTerminal({
                                             </div>
                                         </div>
                                         <div className="flex min-w-0 flex-col gap-1.5 max-sm:hidden">
-                                            {/* Tablet reuses the exact same color logic/thresholds as mobile
-                                                (getMobileStockNameColorClassName, computed once above as
-                                                mobileStockNameColorClassName) - no new/duplicated logic, just
-                                                applied here too. Desktop keeps its own separate function and
-                                                thresholds, untouched. */}
-                                            <p className={`min-w-0 text-[13.5px] font-black leading-tight line-clamp-2 ${isTabletViewport ? mobileStockNameColorClassName : desktopStockNameColorClassName}`}>{item.name}</p>
+                                            {/* Tablet and desktop now share the exact same unified color logic
+                                                as mobile (getMobileStockNameColorClassName, computed once above
+                                                as stockNameColorClassName) - stock > 100 green, 0 < stock <= 100
+                                                yellow, stock <= 0 red, across every viewport. */}
+                                            <p className={`min-w-0 text-[13.5px] font-black leading-tight line-clamp-2 ${stockNameColorClassName}`}>{item.name}</p>
                                             <CatalogItemBadges isServiceItem={isServiceItem} />
                                         </div>
                                         {/* SKU intentionally omitted here: neither desktop nor tablet show it
@@ -3556,33 +3541,41 @@ export default function POSCheckoutTerminal({
                                             <p className="mt-1 flex h-8 items-center justify-center rounded-md border border-slate-200 bg-slate-50 px-1.5 text-center text-[13px] font-extrabold text-[#0F172A] sm:hidden">
                                                 {formatQuantity(line.quantity)}
                                             </p>
-                                            {/* Tablet/desktop: +/- controls restored here. */}
+                                            {/* Tablet/desktop: +/- controls restored here. Tablet's row uses the
+                                                same taller h-10 sizing as the "+" button below (for touch-target
+                                                consistency/alignment - not itself a functional change), desktop
+                                                keeps the original h-8. */}
                                             <div className="mt-1 hidden items-center gap-1 sm:flex">
                                                 <Button
                                                     type="button"
                                                     variant="outline"
                                                     size="sm"
-                                                    className="h-8 px-2 text-[13px]"
+                                                    className={isTabletViewport ? 'h-10 px-3 text-[13px]' : 'h-8 px-2 text-[13px]'}
                                                     onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) - 1)}
                                                     disabled={posActionsBlocked}
                                                 >
                                                     <Minus className="h-3.5 w-3.5" />
                                                 </Button>
-                                                <span className="flex h-8 min-w-0 flex-1 items-center justify-center rounded-md border border-slate-200 bg-slate-50 px-1.5 text-center text-[13px] font-extrabold text-[#0F172A]">
+                                                <span className={`flex min-w-0 flex-1 items-center justify-center rounded-md border border-slate-200 bg-slate-50 px-1.5 text-center text-[13px] font-extrabold text-[#0F172A] ${isTabletViewport ? 'h-10' : 'h-8'}`}>
                                                     {formatQuantity(line.quantity)}
                                                 </span>
-                                                {/* Desktop: long-press-then-drag-up shows the same bulk-add meter
-                                                    the mobile catalog "+" button uses (see
-                                                    handleCartQtyButtonPointerDown and friends) - a plain tap
-                                                    still adds exactly +1, handled inside the pointerUp handler
-                                                    itself, so no onClick here (would double-add on tap).
-                                                    Tablet keeps the original plain onClick, untouched. */}
-                                                {!isMobile && !isTabletViewport ? (
+                                                {/* Desktop and tablet: long-press-then-drag-up shows the same
+                                                    bulk-add meter the mobile catalog "+" button uses (see
+                                                    handleCartQtyButtonPointerDown and friends, and the shared
+                                                    qtyMeterState/.qty-meter portal render below) - same gesture
+                                                    timing, drag scaling, and 0-20 limit as desktop/mobile, no
+                                                    logic duplicated. A plain tap still adds exactly +1, handled
+                                                    inside the pointerUp handler itself, so no onClick here (would
+                                                    double-add on tap). Tablet gets a slightly larger touch target
+                                                    (h-10/px-3) than desktop's h-8/px-2 for easier touch input;
+                                                    mobile is unaffected - it never renders this stepper (its cart
+                                                    line qty is read-only, managed from the catalog card instead). */}
+                                                {!isMobile ? (
                                                     <Button
                                                         type="button"
                                                         variant="outline"
                                                         size="sm"
-                                                        className="h-8 px-2 text-[13px]"
+                                                        className={isTabletViewport ? 'h-10 px-3 text-[13px]' : 'h-8 px-2 text-[13px]'}
                                                         onPointerDown={(event) => handleCartQtyButtonPointerDown(event, line)}
                                                         onPointerMove={(event) => handleCartQtyButtonPointerMove(event, line)}
                                                         onPointerUp={(event) => handleCartQtyButtonPointerUp(event, line)}

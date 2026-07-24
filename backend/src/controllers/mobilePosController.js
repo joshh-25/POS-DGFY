@@ -3,6 +3,7 @@ export {
     getSettingsBootstrap,
     getDevicePolicy,
     syncCheckouts,
+    syncItems,
     syncShifts,
     syncHardwareEvents,
     acknowledgeCheckpoint
@@ -13,6 +14,7 @@ import {
     getSettingsBootstrap,
     getDevicePolicy,
     syncCheckouts,
+    syncItems,
     syncShifts,
     syncHardwareEvents,
     acknowledgeCheckpoint
@@ -23,6 +25,7 @@ export default {
     getSettingsBootstrap,
     getDevicePolicy,
     syncCheckouts,
+    syncItems,
     syncShifts,
     syncHardwareEvents,
     acknowledgeCheckpoint

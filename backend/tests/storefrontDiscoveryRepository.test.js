@@ -11,6 +11,7 @@ const loggerInfoMock = jest.fn();
 const loggerWarnMock = jest.fn();
 const getStorefrontDiscoveryCacheVersionMock = jest.fn(() => 1);
 const getStorefrontDiscoverySharedSignatureMock = jest.fn(async () => '1:1');
+const geoSearchNearbyStoresMock = jest.fn();
 let cacheVersion = 1;
 
 jest.unstable_mockModule('../src/models/index.js', () => ({
@@ -49,6 +50,12 @@ jest.unstable_mockModule('../src/config/logger.js', () => ({
   default: {
     info: loggerInfoMock,
     warn: loggerWarnMock
+  }
+}));
+
+jest.unstable_mockModule('../src/modules/geoSearch/repositories/geoSearchRepository.js', () => ({
+  geoSearchRepository: {
+    searchNearbyStores: geoSearchNearbyStoresMock
   }
 }));
 
@@ -617,6 +624,109 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
     expect(result.rows[0].tenant_id).toBe('tenant-ac');
     expect(result.rows[0].match_reasons).toEqual(expect.arrayContaining(['store', 'item']));
     expect(result.rows[0].matching_item_sample).toEqual(['Air Conditioning Cleaning']);
+  });
+
+  it('matches a store by its storefront_categories tag even with no literal name/address match', async () => {
+    const repository = await loadRepository();
+    findAllMock.mockResolvedValue([
+      makeEntry({
+        tenant_id: 'tenant-seafood',
+        tenant_name: 'Bay View Grill',
+        slug: 'bay-view-grill',
+        storefront_categories: ['Seafood']
+      })
+    ]);
+
+    const result = await repository.listDiscovery({ search: 'seafood' });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].tenant_id).toBe('tenant-seafood');
+    expect(result.rows[0].match_reasons).toEqual(expect.arrayContaining(['store']));
+  });
+
+  it('matches a storefront_categories tag via a cuisine synonym (e.g. "shrimp" finds a "Seafood"-tagged store)', async () => {
+    const repository = await loadRepository();
+    findAllMock.mockResolvedValue([
+      makeEntry({
+        tenant_id: 'tenant-seafood',
+        tenant_name: 'Bay View Grill',
+        slug: 'bay-view-grill',
+        storefront_categories: ['Seafood']
+      }),
+      makeEntry({
+        tenant_id: 'tenant-unrelated',
+        tenant_name: 'Unrelated Hardware',
+        slug: 'unrelated-hardware',
+        storefront_categories: ['Hardware']
+      })
+    ]);
+
+    const result = await repository.listDiscovery({ search: 'shrimp' });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].tenant_id).toBe('tenant-seafood');
+  });
+
+  it('blends in a geo-search match as a supplemental (additive-only) signal when coordinates are provided', async () => {
+    const repository = await loadRepository();
+    findAllMock.mockResolvedValue([
+      makeEntry({
+        tenant_id: 'tenant-geo-only',
+        tenant_name: 'Found Only Via Geo Search',
+        slug: 'found-only-via-geo-search',
+        storefront_categories: ['General'],
+        item_search_snapshot: []
+      })
+    ]);
+    geoSearchNearbyStoresMock.mockResolvedValueOnce({
+      stores: [{
+        tenant_id: 'tenant-geo-only',
+        matched_item_count: 1,
+        in_stock_match_count: 1,
+        matched_item_names: ['Grilled Shrimp']
+      }],
+      pagination: { page: 1, limit: 50, total: 1, totalPages: 1 }
+    });
+
+    const result = await repository.listDiscovery({
+      search: 'seafood',
+      latitude: 10.7202,
+      longitude: 122.5621
+    });
+
+    expect(geoSearchNearbyStoresMock).toHaveBeenCalledWith(expect.objectContaining({ query: 'seafood' }));
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].tenant_id).toBe('tenant-geo-only');
+    expect(result.rows[0].match_reasons).toEqual(expect.arrayContaining(['item']));
+    expect(result.rows[0].matching_item_sample).toEqual(['Grilled Shrimp']);
+  });
+
+  it('never lets a geo-search failure remove or replace existing snapshot-based matches', async () => {
+    const repository = await loadRepository();
+    findAllMock.mockResolvedValue([
+      makeEntry({
+        tenant_id: 'tenant-snapshot-match',
+        tenant_name: 'Snapshot Matched Store',
+        slug: 'snapshot-matched-store',
+        item_search_snapshot: [{
+          item_id: 1,
+          item_name: 'Grilled Salmon',
+          text: 'grilled salmon',
+          matching_location_ids: [11],
+          in_stock_location_ids: [11]
+        }]
+      })
+    ]);
+    geoSearchNearbyStoresMock.mockRejectedValueOnce(new Error('geo search unavailable'));
+
+    const result = await repository.listDiscovery({
+      search: 'salmon',
+      latitude: 10.7202,
+      longitude: 122.5621
+    });
+
+    expect(result.rows).toHaveLength(1);
+    expect(result.rows[0].tenant_id).toBe('tenant-snapshot-match');
   });
 
   it('supports result_mode=item_only and result_mode=store_only', async () => {

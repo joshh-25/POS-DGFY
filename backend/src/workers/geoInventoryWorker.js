@@ -36,7 +36,7 @@ const normaliseName = (name) =>
 
 // ── Alias resolution ──────────────────────────────────────────────────────────
 // Returns geo_item_id for the name, creating records as needed.
-const resolveItemId = async (rawName, tenantId) => {
+export const resolveItemId = async (rawName, tenantId) => {
     const normalized = normaliseName(rawName);
     if (!normalized) return null;
 
@@ -84,7 +84,7 @@ const resolveItemId = async (rawName, tenantId) => {
 };
 
 // ── Upsert into geo_store_items ───────────────────────────────────────────────
-const upsertStoreItem = async ({ tenantId, locationId, itemId, skuCode, price, quantity, inStock, storefrontVisible }) => {
+export const upsertStoreItem = async ({ tenantId, locationId, itemId, skuCode, price, quantity, inStock, storefrontVisible }) => {
     await sequelize.query(
         `INSERT INTO geo_store_items
            (tenant_id, location_id, item_id, sku_code, price, quantity, in_stock, storefront_visible, last_updated_at, created_at, updated_at)

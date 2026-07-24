@@ -45,6 +45,8 @@ const geoSearchWindowMs = parseInt(process.env.RATE_LIMIT_GEO_SEARCH_WINDOW_MS) 
 const geoSearchMaxRequests = parseInt(process.env.RATE_LIMIT_GEO_SEARCH_MAX_REQUESTS) || (isDevelopment ? 240 : 60);
 const inventoryPushWindowMs = parseInt(process.env.RATE_LIMIT_INVENTORY_PUSH_WINDOW_MS) || 60 * 1000; // 1 minute
 const inventoryPushMaxRequests = parseInt(process.env.RATE_LIMIT_INVENTORY_PUSH_MAX_REQUESTS) || (isDevelopment ? 120 : 20);
+const itemOperationsWindowMs = parseInt(process.env.RATE_LIMIT_ITEM_OPERATIONS_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
+const itemOperationsMaxRequests = parseInt(process.env.RATE_LIMIT_ITEM_OPERATIONS_MAX_REQUESTS) || (isDevelopment ? 3000 : 1500);
 const mobilePosFreeSyncWindowMs = parseInt(process.env.RATE_LIMIT_MOBILE_POS_FREE_SYNC_WINDOW_MS) || 24 * 60 * 60 * 1000; // 24 hours
 // Defaults to the same MOBILE_SYNC_LIMIT_PER_DAY already advertised to
 // clients in sync_policy/sync_limit_policy (mobilePosUseCases.js), so the
@@ -87,6 +89,7 @@ const rateLimitCounters = {
   geo_search: 0,
   inventory_push: 0,
   mobile_pos_free_sync: 0,
+  item_operations: 0,
   other: 0,
 };
 const rateLimitAlertThreshold = parseInt(process.env.RATE_LIMIT_ALERT_THRESHOLD) || 50;
@@ -1019,6 +1022,43 @@ export const posLimiter = rateLimit({
   },
 });
 
+// Item operations limiter: tenant/user scoped. All /api/v1/items routes require
+// authentication and are exempted from generalLimiter's shared IP bucket (see
+// isAuthenticatedItemOperation) so a busy store network doesn't block ordinary
+// inventory work — this is what stands in that bucket's place instead of
+// leaving the routes fully unprotected (e.g. GET /items/barcodes/resolve).
+export const itemOperationsLimiter = rateLimit({
+  windowMs: itemOperationsWindowMs,
+  max: itemOperationsMaxRequests,
+  message: createRateLimitError('Item request limit reached. Please wait before retrying.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('item_operations'),
+  keyGenerator: (req) => {
+    const tenantKey = req.tenant?.id || req.headers['x-company-token'] || 'unknown-tenant';
+    const userKey = req.user?.user_id || 'anonymous';
+    return `item_operations:${tenantKey}:${userKey}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Item request limit reached. Please wait before retrying.',
+      'item_operations',
+      'tenant_user'
+    );
+    logRateLimitEvent(req, 'item_operations', response.retryAfterSeconds, 'tenant_user');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
 // Geo-search limiter: public spatial item-search endpoint, IP + query keyed.
 export const geoSearchLimiter = rateLimit({
   windowMs: geoSearchWindowMs,
@@ -1146,4 +1186,5 @@ export default {
   geoSearch: geoSearchLimiter,
   inventoryPush: inventoryPushLimiter,
   mobilePosFreeSync: mobilePosFreeSyncLimiter,
+  itemOperations: itemOperationsLimiter,
 };

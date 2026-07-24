@@ -16,11 +16,16 @@ const productDetailsNutritionSource = () => readSource('modes/fnb/storefront/com
 const productDetailsReviewsSource = () => readSource('modes/fnb/storefront/components/FnbProductReviewsSection.jsx');
 const productDetailActionsSource = () => readSource('modes/fnb/storefront/hooks/useFnbProductDetailActions.js');
 const productCardSource = () => readSource('modes/fnb/storefront/components/FnbProductCard.jsx');
+const cartMutationsHookSource = () => readSource('shared/hooks/useCartMutations.js');
+const checkoutSubmissionHookSource = () => readSource('shared/hooks/useCheckoutSubmission.js');
 const catalogRuntimeSource = () => readSource('modes/fnb/storefront/hooks/useFnbCatalogRuntime.js');
+const storefrontCatalogHookSource = () => readSource('shared/hooks/useStorefrontCatalog.js');
 const itemReviewRuntimeSource = () => readSource('modes/fnb/storefront/hooks/useFnbItemReviewRuntime.js');
 const checkoutPayloadSource = () => readSource('modes/fnb/checkout/model/buildFnbCheckoutPayload.js');
 const checkoutPaymentOptionsSource = () => readSource('modes/fnb/checkout/model/fnbCheckoutPaymentOptions.js');
 const checkoutRouteMountSource = () => readSource('modes/fnb/checkout/pages/FnbCheckoutRouteMount.jsx');
+const checkoutRouteContainerSource = () => readSource('modes/fnb/checkout/pages/FnbCheckoutRouteContainer.jsx');
+const cartDrawerShellContainerSource = () => readSource('app/pages/StorefrontCartDrawerShellContainer.jsx');
 const checkoutSubmissionSource = () => readSource('modes/fnb/checkout/hooks/useFnbCheckoutSubmission.js');
 const signedInCheckoutAddressesSource = () => readSource('modes/fnb/checkout/hooks/useSignedInCheckoutAddresses.js');
 const fnbTrackingContainerSource = () => readSource('modes/fnb/tracking/pages/FnbTrackingRouteContainer.jsx');
@@ -67,17 +72,17 @@ describe('Food & Beverage storefront contract', () => {
     expect(mediaSource).toContain('aria-label="View larger image"');
     expect(mediaSource).toContain('aria-label="Previous slide"');
     expect(mediaSource).toContain('aria-label="Next slide"');
-    expect(source).toContain('filterCatalogItems');
+    expect(storefrontCatalogHookSource()).toContain('filterCatalogItems');
     expect(catalogRuntimeSource()).toContain('buildFnbCatalogPresentation');
   });
 
   it('opens the cart drawer from product details without changing menu-card fly behavior', () => {
-    const app = appSource();
     const detailActions = productDetailActionsSource();
     const productCard = productCardSource();
+    const cartMutations = cartMutationsHookSource();
 
     expect(detailActions).toContain('openCart: true');
-    expect(app).toContain('Boolean(options?.openCart) || !isFnbMode');
+    expect(cartMutations).toContain('Boolean(options?.openCart) || !isFnbMode');
     expect(productCard).toContain('sourceRect: getCartFlySourceRect(event)');
     expect(productCard).not.toContain('openCart: true');
   });
@@ -140,27 +145,30 @@ describe('Food & Beverage storefront contract', () => {
 
   it('offers only cash payment until online checkout is configured', () => {
     const source = checkoutPaymentOptionsSource();
-    const app = appSource();
+    const checkoutRouteContainer = checkoutRouteContainerSource();
 
     expect(source).toContain("{ value: 'cash', label: 'Cash on delivery/pickup' }");
     expect(source).toContain('isEnabledStorefrontCheckoutPaymentType');
     expect(source).not.toContain("value: 'gcash'");
     expect(source).not.toContain("value: 'maya'");
     expect(source).not.toContain("value: 'card'");
-    expect(app).toContain('isEnabledStorefrontCheckoutPaymentType');
-    expect(app).toContain('payment_type: fnbPaymentType');
+    expect(cartDrawerShellContainerSource()).toContain('FnbCheckoutRouteContainer');
+    expect(checkoutRouteContainer).toContain('isEnabledStorefrontCheckoutPaymentType');
+    expect(checkoutSubmissionHookSource()).toContain('payment_type: fnbPaymentType');
   });
 
   it('mounts F&B checkout route and cart drawer through mode-owned modules', () => {
     const source = appSource();
+    const checkoutRouteContainer = checkoutRouteContainerSource();
 
-    expect(source).toContain('FnbCheckoutRouteMount');
+    expect(cartDrawerShellContainerSource()).toContain('FnbCheckoutRouteContainer');
     expect(source).toContain('FnbCartDrawerRoute');
-    expect(source).toContain('FnbCheckoutRouteBody');
-    expect(source).toContain('FnbCheckoutCustomerStep');
-    expect(source).toContain('FnbCheckoutFulfillmentStep');
-    expect(source).toContain('FnbCheckoutPaymentStep');
-    expect(source).toContain('FnbCheckoutSummaryContent');
+    expect(checkoutRouteContainer).toContain('FnbCheckoutRouteMount');
+    expect(checkoutRouteContainer).toContain('FnbCheckoutRouteBody');
+    expect(checkoutRouteContainer).toContain('FnbCheckoutCustomerStep');
+    expect(checkoutRouteContainer).toContain('FnbCheckoutFulfillmentStep');
+    expect(checkoutRouteContainer).toContain('FnbCheckoutPaymentStep');
+    expect(checkoutRouteContainer).toContain('FnbCheckoutSummaryContent');
     expect(checkoutRouteMountSource()).toContain('FnbCheckoutRoutePage');
     expect(checkoutSubmissionSource()).toContain('/api/v1/store/checkout');
     expect(checkoutSubmissionSource()).toContain('goStoreTrackPage({ pin: trackingPin });');
@@ -170,7 +178,7 @@ describe('Food & Beverage storefront contract', () => {
     const source = appSource();
     const payload = fnbTrackingPayloadSource();
 
-    expect(source).toContain('FnbTrackingRouteContainer');
+    expect(cartDrawerShellContainerSource()).toContain('FnbTrackingRouteContainer');
     expect(source).toContain('useFnbTrackingRuntime');
     expect(source).toContain('useFnbTrackingDrawerPresentation');
     expect(fnbTrackingContainerSource()).toContain('TrackingDrawerMount');

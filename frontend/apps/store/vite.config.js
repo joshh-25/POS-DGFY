@@ -2,6 +2,7 @@
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'url';
 import path from 'path';
+import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../sentryViteConfig.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -9,6 +10,7 @@ const frontendRoot = path.resolve(__dirname, '../..');
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000';
 const configuredBasePath = process.env.VITE_STORE_BASE_PATH || '/';
 const allowedHosts = true;
+const appSurface = 'store';
 const frontendNodeModules = path.resolve(frontendRoot, 'node_modules');
 const reactAliases = [
   { find: /^react$/, replacement: path.resolve(frontendNodeModules, 'react') },
@@ -28,7 +30,9 @@ const normalizedBasePath = (() => {
 const proxyTargets = {
   '/api': {
     target: apiProxyTarget,
-    changeOrigin: true,
+    // Preserve the browser Host header so local custom storefront domains can
+    // be resolved by the backend tenant middleware.
+    changeOrigin: false,
     secure: false
   },
   '/uploads': {
@@ -48,9 +52,10 @@ export default defineConfig({
   root: __dirname,
   cacheDir: path.resolve(frontendRoot, 'node_modules/.vite-store'),
   base: normalizedBasePath,
-  plugins: [react()],
+  plugins: [react(), ...buildSentryVitePlugins(appSurface)],
   define: {
-    'import.meta.env.VITE_BUILD_STAMP': JSON.stringify(process.env.VITE_BUILD_STAMP || new Date().toISOString())
+    'import.meta.env.VITE_BUILD_STAMP': JSON.stringify(process.env.VITE_BUILD_STAMP || new Date().toISOString()),
+    'import.meta.env.VITE_APP_SURFACE': JSON.stringify('store')
   },
   resolve: {
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom'],
@@ -74,19 +79,26 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, '../../../dist-apps/store'),
     emptyOutDir: true,
+    sourcemap: sentrySourcemapBuildValue(appSurface),
     // MapLibre is lazy-loaded; keep chunk warnings focused on initial app/vendor regressions.
     chunkSizeWarningLimit: 1100,
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes('commonjsHelpers.js')) return 'vendor-react';
+          // Only split out self-contained leaf libraries. Forcing a
+          // vendor/vendor-react split previously caused a cross-chunk
+          // initialization cycle (vendor <-> vendor-react): the broad
+          // `id.includes('react')` match pinned @sentry/react into
+          // vendor-react while @sentry/browser/core fell into vendor,
+          // splitting the Sentry family and producing a runtime TDZ
+          // ("Cannot access 'B' before initialization"). Letting the
+          // React/router/sonner/sentry graph fall to the default chunk
+          // (as the POS app already does) keeps it acyclic by construction.
           if (!id.includes('node_modules')) return undefined;
-          if (id.includes('scheduler')) return 'vendor-react';
           if (id.includes('maplibre-gl')) return 'vendor-maplibre';
           if (id.includes('qrcode')) return 'vendor-qrcode';
           if (id.includes('lucide-react')) return 'vendor-icons';
-          if (id.includes('react') || id.includes('react-dom')) return 'vendor-react';
-          return 'vendor';
+          return undefined;
         }
       }
     }

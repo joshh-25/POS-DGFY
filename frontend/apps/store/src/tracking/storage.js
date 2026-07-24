@@ -94,6 +94,19 @@ export const normalizeTrackedOrderEntry = (entry, fallback = {}) => {
   };
 };
 
+// Stable per-entry signature (pin:status) for arrays of tracked-order entries.
+// mergeTrackedOrderEntries/readTrackedOrders* always return a new array
+// instance, even when the contents are unchanged, which breaks React's
+// Object.is bail-out for state/memo updates. Compare via this signature
+// before committing a new array so a re-fetch that changed nothing doesn't
+// retrigger effects/memos keyed on the list.
+export const buildTrackedOrdersSignature = (entries = []) => (
+  (Array.isArray(entries) ? entries : [])
+    .map((entry) => `${String(entry?.tracking_pin || '').trim().toUpperCase()}:${String(entry?.status || '').trim().toLowerCase()}`)
+    .sort()
+    .join('|')
+);
+
 export const mergeTrackedOrderEntries = (entries = []) => {
   const deduped = new globalThis.Map();
   (Array.isArray(entries) ? entries : []).forEach((entry) => {
