@@ -7161,6 +7161,7 @@ export default function TerminalOperationsWorkspace({
     offlineSnapshotScope,
     onQueueOfflineItemDraft,
     sectionIds.activeShift,
+    sectionIds.affiliates,
     sectionIds.cashDrawer,
     sectionIds.closeShift,
     sectionIds.incomingOrders,

@@ -3653,7 +3653,7 @@ export default function POSCheckoutTerminal({
                             onChange={(e) => setAffiliateCodeInput(e.target.value)}
                         />
                     </div>
-                    <p className="mt-1 text-[10.5px] text-slate-500">Credits an affiliate's commission for this sale. Validated at checkout.</p>
+                    <p className="mt-1 text-[10.5px] text-slate-500">Credits an affiliate&apos;s commission for this sale. Validated at checkout.</p>
                 </div>
 
                 <div className="mb-3 space-y-3 border-b border-slate-200 pb-4 text-[13px]">
