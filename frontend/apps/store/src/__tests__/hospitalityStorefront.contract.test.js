@@ -19,14 +19,14 @@ describe('Hospitality storefront contract', () => {
     expect(normalizer).toContain('isHospitalityMode');
     expect(templates).toContain("catalogCardVariant: 'hospitality_booking'");
     expect(templates).toContain("journeyVariant: 'stay'");
-    expect(app).toContain('HospitalityBookingPanel');
+    expect(readSource('app/pages/StorefrontHeroBandContainer.jsx')).toContain('HospitalityBookingPanel');
   });
 
   it('uses public PMS booking APIs for availability, quote, hold, confirmation, and lookup', () => {
-    const app = readSource('StorefrontApp.jsx');
+    const heroBandContainer = readSource('app/pages/StorefrontHeroBandContainer.jsx');
     const panel = readSource('modes/hospitality/booking/components/HospitalityBookingPanel.jsx');
 
-    expect(app).toContain('HospitalityBookingPanel');
+    expect(heroBandContainer).toContain('HospitalityBookingPanel');
     expect(panel).toContain("const API_BASE = '/api/v1/store/hospitality'");
     expect(panel).toContain('requestJson(`/availability?');
     expect(panel).toContain("requestJson('/quote'");
@@ -43,6 +43,7 @@ describe('Hospitality storefront contract', () => {
 
   it('exposes customer-facing stay controls, amenities, packages, and booking status without opening the cart drawer', () => {
     const app = readSource('StorefrontApp.jsx');
+    const heroBandContainer = readSource('app/pages/StorefrontHeroBandContainer.jsx');
     const panel = readSource('modes/hospitality/booking/components/HospitalityBookingPanel.jsx');
 
     expect(panel).toContain('Direct Booking');
@@ -57,9 +58,9 @@ describe('Hospitality storefront contract', () => {
     expect(panel).toContain('Load Stay History');
     expect(panel).toContain('Save to My Stays');
     expect(panel).toContain('online card capture is not enabled');
-    expect(app).toContain('HospitalityBookingPanel');
+    expect(heroBandContainer).toContain('HospitalityBookingPanel');
     expect(app).toContain('workflow_mode');
-    expect(app).toContain('!isFnbMode && !isSimpleMode');
+    expect(heroBandContainer).toContain('!isFnbMode && !isSimpleMode');
   });
 
   it('keeps the shared empty catalog state free of discovery-only viewport refs', () => {

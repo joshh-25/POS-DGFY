@@ -7,7 +7,11 @@ export function useCustomerDashboardTracking({ accountPanel, setAccountPanel, se
   const [customerTrackError, setCustomerTrackError] = useState('');
   const [overrides, setOverrides] = useState({});
   const mergeLiveAccountActivityRef = useRef(null);
-  const enrichmentAttemptsRef = useRef(new Set());
+  // Maps tracking_pin -> the status it was last enriched for, so a re-fetch is
+  // only attempted again on an actual status transition, not on every poll
+  // cycle (the account-panel live sync can bump updated_at every ~3s even
+  // when nothing meaningful changed).
+  const enrichmentAttemptsRef = useRef(new Map());
   const fetchGetterRef = useRef(getFetchTrackingPayload);
   const buildGetterRef = useRef(getBuildTrackedOrderEntryFromTrackingPayload);
   const navigateGetterRef = useRef(getGoStoreTrackPage);
@@ -81,14 +85,14 @@ export function useCustomerDashboardTracking({ accountPanel, setAccountPanel, se
     if (!selectedStore?.slug || accountTrackedOrders.length === 0) return undefined;
     const entries = accountTrackedOrders.filter((entry) => {
       if (!entry?.tracking_pin || (Array.isArray(entry.items) && entry.items.length > 0)) return false;
-      return !enrichmentAttemptsRef.current.has(`${entry.tracking_pin}:${entry.updated_at || entry.status || ''}`);
+      const lastAttemptedStatus = enrichmentAttemptsRef.current.get(entry.tracking_pin);
+      return lastAttemptedStatus === undefined || lastAttemptedStatus !== entry.status;
     });
     if (entries.length === 0) return undefined;
     let cancelled = false;
     void (async () => {
       for (const entry of entries) {
-        const key = `${entry.tracking_pin}:${entry.updated_at || entry.status || ''}`;
-        enrichmentAttemptsRef.current.add(key);
+        enrichmentAttemptsRef.current.set(entry.tracking_pin, entry.status);
         try {
           const trackingPayload = await fetchTrackingPayload(entry.tracking_pin);
           if (cancelled) return;
