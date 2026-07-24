@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the customer-auth/dashboard
@@ -67,6 +68,7 @@ export function useCustomerAuthNavigation({
   toast,
   writeCheckoutAuthResumeDraft
 }) {
+  const navigate = useNavigate();
   const buildCustomerDashboardReturnUrl = useCallback(() => (
     resolveStorefrontAccountUrl()
   ), [resolveStorefrontAccountUrl]);
@@ -147,7 +149,7 @@ export function useCustomerAuthNavigation({
     const explicitSignedOutLogin = normalizedIntent === 'customer'
       && normalizedMode === 'sign-in'
       && hasDgfyExplicitSignOut();
-    window.location.href = buildDgfyAuthUrl({
+    const authUrl = buildDgfyAuthUrl({
       intent: normalizedIntent,
       mode: normalizedMode,
       returnTo: normalizedIntent === 'customer'
@@ -157,7 +159,21 @@ export function useCustomerAuthNavigation({
       reason: reason || (explicitSignedOutLogin ? 'signed-out' : ''),
       email: email || (explicitSignedOutLogin ? signedOutEmail : '')
     });
-  }, [buildContextualCustomerReturnUrl, buildCustomerDashboardReturnUrl, buildDgfyAuthUrl, hasDgfyExplicitSignOut, readDgfySignedOutEmail]);
+    if (normalizedIntent === 'customer') {
+      // Customer sign-in/create-account now lives in-app (dgfy.ph/login,
+      // dgfy.ph/register) instead of redirecting out to skupervisor.
+      // buildDgfyAuthUrl is reused purely for its query-string shape
+      // (intent, mode, return_to, reason, email); we navigate to the
+      // equivalent in-store route carrying the same query.
+      const parsedAuthUrl = new URL(authUrl);
+      const path = normalizedMode === 'create-account' ? '/register' : '/login';
+      navigate(`${path}${parsedAuthUrl.search}`);
+      return;
+    }
+    // Business registration still redirects out to skupervisor until Phase 2
+    // (dgfy.ph/business/grow) ports RegisterCompany.jsx into the storefront.
+    window.location.href = authUrl;
+  }, [buildContextualCustomerReturnUrl, buildCustomerDashboardReturnUrl, buildDgfyAuthUrl, hasDgfyExplicitSignOut, navigate, readDgfySignedOutEmail]);
   const openStorefrontHeaderAccount = useCallback(() => {
     setIsCheckoutOpen(false);
     setIsGuestTrackingDrawerOpen(false);
