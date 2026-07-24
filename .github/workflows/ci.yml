@@ -11,10 +11,6 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-  packages: read
-
 jobs:
   lint-docs:
     runs-on: ubuntu-latest
@@ -132,8 +128,6 @@ jobs:
         run: npm --prefix backend ci
       - name: Install frontend dependencies
         run: npm --prefix frontend ci
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - name: Validate production env fixtures
         run: npm run check:production-env
       - name: Audit production dependency trees
@@ -175,8 +169,6 @@ jobs:
       
       - name: Install dependencies
         run: npm ci
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Enforce modular architecture guardrails
         run: npm run check:architecture-guardrails
@@ -376,8 +368,6 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
         working-directory: ./frontend
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium

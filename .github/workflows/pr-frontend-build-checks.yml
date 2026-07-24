@@ -9,10 +9,6 @@ on:
         type: string
         default: '["ubuntu-latest"]'
 
-permissions:
-  contents: read
-  packages: read
-
 jobs:
   build-check:
     runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
@@ -36,5 +32,3 @@ jobs:
           push: false
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,scope=frontend,mode=max
-          secrets: |
-            npm_token=${{ secrets.GITHUB_TOKEN }}

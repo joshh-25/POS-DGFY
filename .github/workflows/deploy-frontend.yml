@@ -85,8 +85,6 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha,scope=frontend
           cache-to: type=gha,scope=frontend,mode=max
-          secrets: |
-            npm_token=${{ secrets.GITHUB_TOKEN }}
           build-args: |
             VITE_API_URL=${{ vars.VITE_API_URL }}
             VITE_STORE_BASE_PATH=${{ vars.VITE_STORE_BASE_PATH }}
