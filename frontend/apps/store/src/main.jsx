@@ -8,8 +8,11 @@ import { appBasePath } from './app/runtime/storefrontRuntime.js';
 import StorefrontLoginPage from './auth/pages/StorefrontLoginPage.jsx';
 import StorefrontRegisterPage from './auth/pages/StorefrontRegisterPage.jsx';
 import StorefrontBusinessGrowPage from './business/pages/StorefrontBusinessGrowPage.jsx';
+import { initBrowserSentry } from '../../../src/observability/sentryClient.js';
 
 const rootElement = document.getElementById('root');
+
+initBrowserSentry({ surface: 'store' });
 
 // Kept exactly as-is: several integration tests render `<App/>` directly
 // (no router context), and StorefrontApp itself never touches react-router
