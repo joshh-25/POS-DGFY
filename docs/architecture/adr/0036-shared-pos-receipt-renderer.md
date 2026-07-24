@@ -14,7 +14,9 @@ The browser POS is the receipt UX reference, while the standalone native POS mus
 
 ## Decision
 
-Use the dependency-free `@dgfy/pos-receipt` package for the escaped receipt HTML and thermal-text projection. Browser POS renders it directly; native POS renders it inside an Expo DOM component. Native controls remain native and printers remain optional adapters.
+Use the dependency-free private GitHub Package `@sieitzz/pos-receipt` for the escaped receipt HTML and thermal-text projection. Browser POS renders it directly; native POS renders it inside an Expo DOM component. Native controls remain native and printers remain optional adapters.
+
+The package is published only from `develop`. Each receipt-package change explicitly bumps its semantic version; CI verifies the archive and a render/import smoke check, rejects an already-published version, then publishes that immutable version to GitHub Packages. Consumers use exact versions and update intentionally. Scoped `.npmrc` files select GitHub Packages without containing credentials; CI supplies `NODE_AUTH_TOKEN`, and Docker uses a BuildKit secret only while installing dependencies.
 
 `80mm` is the default paper width and `57mm` is an explicit alternative. The device-print API validates and forwards that width to paired bridges, while local hardware adapters receive the same typed job.
 
@@ -24,3 +26,4 @@ Use the dependency-free `@dgfy/pos-receipt` package for the escaped receipt HTML
 - Dynamic receipt data is HTML-escaped before DOM rendering.
 - A missing adapter or paired printer never blocks receipt preview or transaction completion.
 - PDF/system printing is not implied by this contract; POS-printer dispatch is explicit.
+- The distribution contract is cross-repository: consumers must not use `file:` paths, submodules, or direct source checkouts for this package.
