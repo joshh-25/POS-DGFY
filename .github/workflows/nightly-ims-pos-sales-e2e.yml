@@ -43,6 +43,8 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
         working-directory: ./frontend
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium

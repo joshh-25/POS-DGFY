@@ -9,6 +9,10 @@ on:
         type: string
         default: '["ubuntu-latest"]'
 
+permissions:
+  contents: read
+  packages: read
+
 jobs:
   code-quality:
     runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
@@ -39,6 +43,8 @@ jobs:
 
       - name: Install frontend dependencies
         run: npm --prefix frontend ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Lint backend
         run: npm --prefix backend run lint

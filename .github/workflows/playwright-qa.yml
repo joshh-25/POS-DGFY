@@ -22,6 +22,8 @@ jobs:
         run: |
           npm ci
           cd frontend && npm ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install Playwright Browsers
         run: |

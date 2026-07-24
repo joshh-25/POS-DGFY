@@ -1,0 +1,96 @@
+name: Publish POS Receipt Package
+
+on:
+  workflow_call:
+    inputs:
+      before_sha:
+        description: Commit before this push, used to detect receipt-package changes.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          registry-url: 'https://npm.pkg.github.com'
+          scope: '@sieitzz'
+
+      - name: Check whether the receipt package changed
+        id: changes
+        shell: bash
+        run: |
+          if git diff --quiet "${{ inputs.before_sha }}" "$GITHUB_SHA" -- packages/pos-receipt; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Verify publish branch
+        if: steps.changes.outputs.changed == 'true'
+        run: |
+          if [ "$GITHUB_REF" != 'refs/heads/develop' ]; then
+            echo '::error::@sieitzz/pos-receipt can only be published from develop.'
+            exit 1
+          fi
+
+      - name: Verify package archive
+        if: steps.changes.outputs.changed == 'true'
+        run: npm pack --dry-run
+        working-directory: packages/pos-receipt
+
+      - name: Smoke-test package import and rendering
+        if: steps.changes.outputs.changed == 'true'
+        working-directory: packages/pos-receipt
+        run: |
+          node --input-type=module <<'EOF'
+          import { renderPosReceiptHtml, renderThermalReceiptText } from './src/index.js';
+
+          const transaction = {
+            invoice_number: 'SMOKE-001',
+            created_at: '2026-01-01T00:00:00.000Z',
+            lines: [{ name: '<unsafe>', quantity: 1, unit_price: 12.5 }],
+            subtotal_amount: 12.5,
+            total_amount: 12.5,
+            payment_type: 'cash',
+            payment_status: 'paid'
+          };
+          const html = renderPosReceiptHtml({ transaction, businessSettings: { pos_business_name: '<unsafe>' } });
+          const thermal = renderThermalReceiptText({ transaction, paperWidth: '57mm' });
+          if (!html.includes('&lt;unsafe&gt;') || !thermal.includes('TOTAL AMOUNT DUE')) {
+            throw new Error('Receipt renderer smoke check failed.');
+          }
+          EOF
+
+      - name: Require an unreleased package version
+        if: steps.changes.outputs.changed == 'true'
+        id: version
+        working-directory: packages/pos-receipt
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          PACKAGE_NAME="$(node -p "require('./package.json').name")"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          if npm view "${PACKAGE_NAME}@${PACKAGE_VERSION}" version --registry=https://npm.pkg.github.com >/dev/null 2>&1; then
+            echo "::error::${PACKAGE_NAME}@${PACKAGE_VERSION} is already published. Bump the package version before changing receipt-package sources."
+            exit 1
+          fi
+          echo "name=${PACKAGE_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish package
+        if: steps.changes.outputs.changed == 'true'
+        working-directory: packages/pos-receipt
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: npm publish

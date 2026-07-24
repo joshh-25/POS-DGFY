@@ -48,6 +48,8 @@ jobs:
           npm ci
           npm --prefix backend ci
           npm --prefix frontend ci
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Resolve reviewed batch manifest
         id: manifest
