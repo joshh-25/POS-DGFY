@@ -10,6 +10,7 @@ import {
     Tenant,
     TenantAffiliateSettings
 } from '../../../models/index.js';
+import { resolveTenantByStoreSlug } from '../../../services/storefrontTenantResolver.js';
 
 const toPlain = (value) => (
     value && typeof value.toJSON === 'function'
@@ -84,6 +85,11 @@ export const dgfyAffiliateRepository = {
     async getStorefrontSlug(tenantId) {
         const row = await StorefrontDiscoveryIndex.findOne({ where: { tenant_id: tenantId } });
         return row?.slug || null;
+    },
+
+    async resolveTenantIdByStoreSlug(storeSlug) {
+        const tenant = await resolveTenantByStoreSlug(storeSlug);
+        return tenant?.id ? String(tenant.id) : null;
     },
 
     async findEnrollmentByAccountAndTenant(dgfyAccountId, tenantId) {

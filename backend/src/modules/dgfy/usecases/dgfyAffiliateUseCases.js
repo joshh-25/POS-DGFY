@@ -1,7 +1,6 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { dgfyAffiliateRepository } from '../repositories/dgfyAffiliateRepository.js';
-import { resolveTenantByStoreSlug } from '../../../services/storefrontTenantResolver.js';
 
 const MAX_RATE_BPS = 10000; // 100.00%
 const MIN_ATTRIBUTION_WINDOW_DAYS = 1;
@@ -545,8 +544,7 @@ export const buildCaptureAffiliateAttributionUseCase = ({ repository = dgfyAffil
 
             let resolvedTenantId = String(tenantId || '').trim() || null;
             if (!resolvedTenantId && storeSlug) {
-                const tenant = await resolveTenantByStoreSlug(storeSlug);
-                resolvedTenantId = tenant?.id ? String(tenant.id) : null;
+                resolvedTenantId = await repository.resolveTenantIdByStoreSlug(storeSlug);
             }
             if (!resolvedTenantId) {
                 return ok({ captured: false });
