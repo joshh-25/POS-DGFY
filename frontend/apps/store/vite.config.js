@@ -85,14 +85,20 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.includes('commonjsHelpers.js')) return 'vendor-react';
+          // Only split out self-contained leaf libraries. Forcing a
+          // vendor/vendor-react split previously caused a cross-chunk
+          // initialization cycle (vendor <-> vendor-react): the broad
+          // `id.includes('react')` match pinned @sentry/react into
+          // vendor-react while @sentry/browser/core fell into vendor,
+          // splitting the Sentry family and producing a runtime TDZ
+          // ("Cannot access 'B' before initialization"). Letting the
+          // React/router/sonner/sentry graph fall to the default chunk
+          // (as the POS app already does) keeps it acyclic by construction.
           if (!id.includes('node_modules')) return undefined;
-          if (id.includes('scheduler')) return 'vendor-react';
           if (id.includes('maplibre-gl')) return 'vendor-maplibre';
           if (id.includes('qrcode')) return 'vendor-qrcode';
           if (id.includes('lucide-react')) return 'vendor-icons';
-          if (id.includes('react') || id.includes('react-dom')) return 'vendor-react';
-          return 'vendor';
+          return undefined;
         }
       }
     }
