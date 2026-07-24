@@ -97,6 +97,23 @@ jobs:
             VITE_DGFY_RESET_URL=${{ vars.VITE_DGFY_RESET_URL }}
             VITE_SKUPERVISOR_BASE_URL=${{ vars.VITE_SKUPERVISOR_BASE_URL }}
             VITE_STOREFRONT_ACCOUNT_URL=${{ vars.VITE_STOREFRONT_ACCOUNT_URL }}
+            VITE_SENTRY_ENABLED=${{ vars.VITE_SENTRY_ENABLED }}
+            VITE_SENTRY_DSN_SKUPERVISOR=${{ vars.VITE_SENTRY_DSN_SKUPERVISOR }}
+            VITE_SENTRY_DSN_POS=${{ vars.VITE_SENTRY_DSN_POS }}
+            VITE_SENTRY_DSN_STORE=${{ vars.VITE_SENTRY_DSN_STORE }}
+            VITE_SENTRY_ENVIRONMENT=${{ vars.VITE_SENTRY_ENVIRONMENT }}
+            VITE_SENTRY_RELEASE=${{ github.sha }}
+            VITE_SENTRY_TRACES_SAMPLE_RATE=${{ vars.VITE_SENTRY_TRACES_SAMPLE_RATE }}
+            VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE=${{ vars.VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE }}
+            VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE=${{ vars.VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE }}
+            SENTRY_UPLOAD_SOURCEMAPS=${{ vars.SENTRY_UPLOAD_SOURCEMAPS }}
+            SENTRY_ORG=${{ vars.SENTRY_ORG }}
+            SENTRY_PROJECT_SKUPERVISOR=${{ vars.SENTRY_PROJECT_SKUPERVISOR }}
+            SENTRY_PROJECT_POS=${{ vars.SENTRY_PROJECT_POS }}
+            SENTRY_PROJECT_STORE=${{ vars.SENTRY_PROJECT_STORE }}
+            SENTRY_URL=${{ vars.SENTRY_URL }}
+          secrets: |
+            sentry_auth_token=${{ secrets.SENTRY_AUTH_TOKEN }}
 
       # PROD server pull/restart happens in the `publish` job of
       # deployment-orchestrator.yml -> publish-platform.yml, keyed off

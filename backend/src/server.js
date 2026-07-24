@@ -61,8 +61,11 @@ import {
   startStorefrontDomainMaintenanceScheduler,
   stopStorefrontDomainMaintenanceScheduler
 } from './modules/storefrontDomains/services/storefrontDomainMaintenanceService.js';
+import { initSentry, sentryErrorHandler, sentryRequestContext } from './config/sentry.js';
 
 const { formatValidationFailure, validateProductionEnv } = productionEnvValidation;
+
+initSentry({ logger });
 
 const app = express();
 
@@ -378,6 +381,7 @@ app.use(helmet({
 
 // Attach per-request context metadata (request ID, trace root values).
 app.use(requestContext);
+app.use(sentryRequestContext);
 app.use(requestOutcomeLogger);
 
 // Gzip compression — reduces JSON response sizes by 60-80%
@@ -791,6 +795,7 @@ app.use('/api/v1/onboarding', onboardingRoutes);
 
 // Error handling middleware (must be last)
 app.use(notFoundHandler);
+app.use(sentryErrorHandler);
 app.use(errorHandler);
 
 // Start server
