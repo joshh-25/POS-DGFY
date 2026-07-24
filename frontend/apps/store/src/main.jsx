@@ -7,6 +7,7 @@ import StorefrontApp from './StorefrontApp.jsx';
 import { appBasePath } from './app/runtime/storefrontRuntime.js';
 import StorefrontLoginPage from './auth/pages/StorefrontLoginPage.jsx';
 import StorefrontRegisterPage from './auth/pages/StorefrontRegisterPage.jsx';
+import StorefrontResetPasswordPage from './auth/pages/StorefrontResetPasswordPage.jsx';
 import StorefrontBusinessGrowPage from './business/pages/StorefrontBusinessGrowPage.jsx';
 import { initBrowserSentry } from '../../../src/observability/sentryClient.js';
 
@@ -27,9 +28,10 @@ export function App() {
 }
 
 // The actual mount: a thin react-router gate in front of the storefront.
-// `/login` and `/register` are now hosted in-app (formerly a redirect out to
-// skupervisor.dgfy.ph); everything else falls through to the untouched
-// `App` above, which still does its own window.location-based routing.
+// `/login`, `/register`, `/reset-password` and `/business/grow` are now hosted
+// in-app (formerly redirects out to skupervisor.dgfy.ph); everything else falls
+// through to the untouched `App` above, which still does its own
+// window.location-based routing.
 function StoreRoot() {
   return (
     <BrowserRouter basename={appBasePath === '/' ? undefined : appBasePath}>
@@ -48,6 +50,15 @@ function StoreRoot() {
           element={(
             <>
               <StorefrontRegisterPage />
+              <Toaster richColors position="top-right" closeButton duration={2200} />
+            </>
+          )}
+        />
+        <Route
+          path="/reset-password"
+          element={(
+            <>
+              <StorefrontResetPasswordPage />
               <Toaster richColors position="top-right" closeButton duration={2200} />
             </>
           )}

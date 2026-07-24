@@ -21,6 +21,6 @@ export const toInternalReturnPath = (target = '', fallback = '/') => {
 export const sanitizeStorefrontReturnPath = (path = '', fallback = '/') => {
   const raw = String(path || '').trim();
   if (!raw.startsWith('/') || raw.startsWith('//')) return fallback;
-  if (/^\/(login|register)(?:[/?#]|$)/i.test(raw)) return fallback;
+  if (/^\/(login|register|reset-password)(?:[/?#]|$)/i.test(raw)) return fallback;
   return raw;
 };

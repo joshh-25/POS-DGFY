@@ -12,6 +12,12 @@ const configuredBasePath = process.env.VITE_STORE_BASE_PATH || '/';
 const allowedHosts = true;
 const appSurface = 'store';
 const frontendNodeModules = path.resolve(frontendRoot, 'node_modules');
+// Mirrors the `@/components` entry in frontend/vite.config.js. The DGFY auth and
+// business pages ported into this app import the shared shadcn primitives
+// (`@/components/ui/input`, `button`, `label`) that live in frontend/Components.
+const sharedAliases = [
+  { find: '@/components', replacement: path.resolve(frontendRoot, 'Components') }
+];
 const reactAliases = [
   { find: /^react$/, replacement: path.resolve(frontendNodeModules, 'react') },
   { find: /^react\/jsx-runtime$/, replacement: path.resolve(frontendNodeModules, 'react/jsx-runtime.js') },
@@ -59,7 +65,8 @@ export default defineConfig({
   },
   resolve: {
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom'],
-    alias: reactAliases
+    // More specific aliases must come first.
+    alias: [...sharedAliases, ...reactAliases]
   },
   optimizeDeps: {
     include: ['react', 'react-dom', 'react-router', 'react-router-dom', 'sonner']
