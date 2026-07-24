@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getStorefrontModeAdapter, ModePresentationRegistry } from '../modePresentationRegistry.js';
+import { getStorefrontModeAdapter, ModePresentationRegistry } from '../app/runtime/modePresentationRegistry.js';
 
 describe('modePresentationRegistry', () => {
   it('returns services-first copy and pin metadata for services tenants', () => {

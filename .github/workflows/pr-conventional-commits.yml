@@ -29,15 +29,13 @@ jobs:
         env:
           BODY: ${{ github.event.pull_request.body }}
         run: |
+          # Required sections mirror .github/pull_request_template.md verbatim -
+          # keep these two in sync any time that template's headers change.
           if ! echo "$BODY" | grep -q "## Summary"; then
             echo "::warning::PR body must contain '## Summary' section"
             exit 1
           fi
-          if ! echo "$BODY" | grep -q "## Motivation"; then
-            echo "::warning::PR body must contain '## Motivation' section"
-            exit 1
-          fi
-          if ! echo "$BODY" | grep -q "## Testing"; then
-            echo "::warning::PR body must contain '## Testing' section"
+          if ! echo "$BODY" | grep -q "## Testing Evidence"; then
+            echo "::warning::PR body must contain '## Testing Evidence' section"
             exit 1
           fi

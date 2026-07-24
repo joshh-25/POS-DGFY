@@ -239,8 +239,17 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
 
 const quoteIdentifier = (value) => `\`${String(value).replace(/`/g, '``')}\``;
 
+const queryWithReplacements = (connection, sql, replacements = []) => {
+    const isSequelizeConnection = typeof connection?.getDialect === 'function'
+        && typeof connection?.getQueryInterface === 'function';
+    return isSequelizeConnection
+        ? connection.query(sql, { replacements })
+        : connection.query(sql, replacements);
+};
+
 async function removeLegacyItemFolderNameUniqueIndexes(connection, tenantDb) {
-    const [rows] = await connection.query(
+    const [rows] = await queryWithReplacements(
+        connection,
         `SELECT INDEX_NAME, NON_UNIQUE, COLUMN_NAME
            FROM INFORMATION_SCHEMA.STATISTICS
           WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'item_folders'`,
@@ -260,7 +269,8 @@ async function removeLegacyItemFolderNameUniqueIndexes(connection, tenantDb) {
 }
 
 export async function repairItemFolderCategoryLifecycleSchema(connection, tenantDb) {
-    const [columns] = await connection.query(
+    const [columns] = await queryWithReplacements(
+        connection,
         `SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'item_folders'`,
         [tenantDb]
     );
@@ -275,7 +285,8 @@ export async function repairItemFolderCategoryLifecycleSchema(connection, tenant
     if (!existingColumns.has('active_name_key')) {
         await connection.query(`ALTER TABLE ${quoteIdentifier(tenantDb)}.${quoteIdentifier('item_folders')} ADD COLUMN ${quoteIdentifier('active_name_key')} VARCHAR(100) GENERATED ALWAYS AS (CASE WHEN ${quoteIdentifier('is_active')} = 1 AND ${quoteIdentifier('deleted_at')} IS NULL THEN LOWER(TRIM(${quoteIdentifier('name')})) ELSE NULL END) STORED`);
     }
-    const [indexes] = await connection.query(
+    const [indexes] = await queryWithReplacements(
+        connection,
         `SELECT INDEX_NAME FROM INFORMATION_SCHEMA.STATISTICS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'item_folders'`,
         [tenantDb]
     );

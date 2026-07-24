@@ -1553,3 +1553,36 @@ INSERT INTO system_settings (setting_key, setting_value, data_type, description)
 - Monitor query performance
 - Add additional indexes if needed
 - Optimize slow queries
+
+## Storefront Custom Domain Addendum (2026-07-23)
+
+`storefront_custom_domains` is landlord-owned and maps one globally unique,
+normalized hostname to a tenant. `canonical_tenant_id` is nullable and unique for
+the tenant's canonical slot. `canonical_domain_id` links up to five alias rows to
+that canonical row. Removal clears the canonical slot without deleting evidence.
+
+Lifecycle status begins at `pending_dns` and may move through `verified`,
+`provisioning`, `active`, `eligibility_grace`, `suspended`, `failed`, `removing`,
+and `removed`. Active and unexpired eligibility-grace mappings participate in
+host resolution. Eligibility, DNS drift, and controller results drive lifecycle
+changes rather than arbitrary direct activation.
+
+The verification secret is stored only as a SHA-256 hash plus a short non-secret
+hint. DNS observations, safe errors, lifecycle timestamps, and the external
+provisioning reference support operational proof without storing TLS material.
+Additional evidence includes last DNS/health check times, TLS expiry, grace
+deadline, safe failure code/message, and optimistic version.
+
+`storefront_custom_domain_audit_logs` records tenant/domain IDs, action, actor,
+reason, request ID, before/after snapshots, metadata, and timestamps.
+
+`storefront_custom_domain_operations` is a landlord-owned durable controller work
+queue. It stores domain/tenant IDs, operation type, unique idempotency key, status,
+lease owner/expiry, bounded attempt counters, retry schedule, safe request/result
+JSON, safe error details, and completion timestamps. Certificate and private-key
+material are never stored.
+
+The base tables are created by
+`20260722000001-create-storefront-custom-domains.cjs`; canonical/alias lifecycle
+columns and the operation queue are added by
+`20260723000001-expand-storefront-custom-domain-lifecycle.cjs`.

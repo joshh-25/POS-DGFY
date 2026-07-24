@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Lock, MapPin } from 'lucide-react';
 import { AddressEditorModal } from './AddressEditorModal.jsx';
-import { SavedAddressCard, SavedAddressCardEmpty } from '../../checkout/components/SavedAddressCard.jsx';
+import { SavedAddressCard, SavedAddressCardEmpty } from '../../shared/components/checkout/SavedAddressCard.jsx';
 import {
   getCustomerAddressActionMeta,
   getCustomerAddressLine,

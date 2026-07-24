@@ -43,3 +43,14 @@ export function formatReverseGeocodedAddress(payload = {}) {
   const segments = displayName.split(',').map((segment) => segment.trim()).filter(Boolean);
   return segments.slice(0, 5).join(', ');
 }
+
+export async function reverseGeocodeDeliveryPin(pin, { signal } = {}) {
+  const normalized = normalizeCoordinatePair(pin);
+  if (!normalized) return '';
+  const response = await fetch(
+    `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${encodeURIComponent(normalized.latitude)}&lon=${encodeURIComponent(normalized.longitude)}`,
+    { signal, headers: { Accept: 'application/json' } }
+  );
+  if (!response.ok) return buildPinnedDeliveryAddress(normalized);
+  return formatReverseGeocodedAddress(await response.json()) || buildPinnedDeliveryAddress(normalized);
+}

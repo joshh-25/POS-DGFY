@@ -34,7 +34,7 @@ export function CustomerDashboardShell({ presentation, isMobileViewport, activeN
     ? { padding: isMobileViewport ? '20px 16px 24px' : '24px 28px 32px', maxWidth: 1360, margin: '0 auto', width: '100%', boxSizing: 'border-box', overflowY: 'auto', minHeight: 0 }
     : { padding: isMobileViewport ? '88px 16px 16px' : '104px 28px 32px', maxWidth: isMobileViewport ? 1200 : 1360, margin: '0 auto', width: '100%', boxSizing: 'border-box' };
   return (
-    <div style={rootStyle}><div style={shellStyle}>
+    <div data-testid="dgfy-customer-account-page" style={rootStyle}><div style={shellStyle}>
       <CustomerDashboardSidebar activeNav={activeNav} onSelectNav={selectNavigation} onHelp={onHelp} onSignOut={onSignOut} isMobileViewport={isMobileViewport} onCloseMobile={() => setIsMobileMenuOpen(false)} style={sidebarStyle} theme={theme} />
       <div style={contentStyle}>
         <CustomerDashboardHeader style={headerStyle} theme={theme} isMobileViewport={isMobileViewport} onOpenMenu={() => setIsMobileMenuOpen(true)} onClose={onClose} notifications={notifications} unreadCount={unreadNotificationCount} isOpen={isNotificationPanelOpen} setIsOpen={setIsNotificationPanelOpen} onMarkRead={onMarkNotificationRead} onMarkAllRead={onMarkAllNotificationsRead} onTrackReference={onTrackReference} initials={accountIdentityInitials} name={accountIdentityName} />

@@ -5,7 +5,7 @@ import {
   buildStoreMarkerPreviewModel,
   createStoreMarkerPreviewNode,
   formatMarkerDistance
-} from '../storefrontMarkerPreview.js';
+} from '../discovery/model/storefrontMarkerPreview.js';
 
 describe('storefront marker preview helpers', () => {
   const pin = {

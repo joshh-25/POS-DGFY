@@ -3,7 +3,7 @@ import React from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { StorefrontHeaderNav } from '../Components/storefront/hero/StorefrontHeaderNav.jsx';
+import { StorefrontHeaderNav } from '../shared/components/storefront/hero/StorefrontHeaderNav.jsx';
 
 describe('StorefrontHeaderNav', () => {
   afterEach(() => {

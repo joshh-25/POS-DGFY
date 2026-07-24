@@ -54,6 +54,14 @@ import * as aiController from './controllers/aiController.js';
 import { paymentsEnabled } from './config/paymentsFeature.js';
 import productionEnvValidation from './config/productionEnvValidation.cjs';
 import { resolveUploadCacheControl } from './modules/shared/utils/uploadCachePolicy.js';
+import {
+  readRequestHostname,
+  resolveActiveStorefrontDomain
+} from './modules/storefrontDomains/index.js';
+import {
+  startStorefrontDomainMaintenanceScheduler,
+  stopStorefrontDomainMaintenanceScheduler
+} from './modules/storefrontDomains/services/storefrontDomainMaintenanceService.js';
 
 const { formatValidationFailure, validateProductionEnv } = productionEnvValidation;
 
@@ -241,7 +249,8 @@ const isDevelopmentOriginAllowed = (origin) => {
     /^https?:\/\/(?:skupervisor|pos|store)\.localhost:517[0-9]$/,
     /^https?:\/\/(?:skupervisor|pos|store)\.localhost:518[0-9]$/,
     /^https?:\/\/(?:skupervisor|pos|store)\.localhost:417[0-9]$/,
-    /^https?:\/\/(?:skupervisor|pos|store)\.local(?:host)?(?::\d{2,5})?$/
+    /^https?:\/\/(?:skupervisor|pos|store)\.local(?:host)?(?::\d{2,5})?$/,
+    /^https?:\/\/[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.localhost(?::\d{2,5})?$/
   ];
 
   if (developmentOriginPatterns.some((pattern) => pattern.test(normalizedOrigin))) {
@@ -265,7 +274,7 @@ const isDevelopmentOriginAllowed = (origin) => {
   }
 };
 
-const resolveCorsAllowed = (origin) => {
+const resolveCorsAllowed = async (origin, req = {}) => {
   const normalizedOrigin = normalizeCorsOrigin(origin);
   if (configuredCorsOrigins.length > 0 && isExplicitOriginAllowed(normalizedOrigin)) {
     return true;
@@ -273,12 +282,30 @@ const resolveCorsAllowed = (origin) => {
   if (!isProduction) {
     return isDevelopmentOriginAllowed(normalizedOrigin);
   }
-  return configuredCorsOrigins.length === 0 && isDevelopmentOriginAllowed(normalizedOrigin);
+  if (configuredCorsOrigins.length === 0 && isDevelopmentOriginAllowed(normalizedOrigin)) {
+    return true;
+  }
+  if (!normalizedOrigin) return true;
+
+  const normalizedPath = String(req.path || req.originalUrl || req.url || '').toLowerCase();
+  if (!/^\/api\/v1\/store(?:\/|$)/.test(normalizedPath)) return false;
+  try {
+    const parsedOrigin = new URL(normalizedOrigin);
+    if (parsedOrigin.protocol !== 'https:') return false;
+    const requestHostname = readRequestHostname(req);
+    if (!requestHostname || parsedOrigin.hostname.toLowerCase() !== requestHostname) return false;
+    const context = await resolveActiveStorefrontDomain(requestHostname);
+    if (!context || String(context.tenant?.id || '') !== String(context.domain?.tenant_id || '')) return false;
+    req.storefrontDomainContext = context;
+    return true;
+  } catch {
+    return false;
+  }
 };
 
-const corsOptionsDelegate = (req, callback) => {
+const corsOptionsDelegate = async (req, callback) => {
   const origin = req.headers.origin || null;
-  const allowed = resolveCorsAllowed(origin);
+  const allowed = await resolveCorsAllowed(origin, req);
 
   if (!allowed) {
     const correlationId = req.headers['x-request-id'] || req.headers['x-correlation-id'] || `cors-${crypto.randomUUID()}`;
@@ -686,6 +713,8 @@ app.use('/uploads', express.static(join(__dirname, '..', 'uploads'), {
 // Tenant Resolution & Context Middleware (Must be before API routes)
 import dgfyRoutes from './routes/dgfy.js';
 import geoSearchRoutes from './routes/geoSearch.js';
+import internalStorefrontDomainOperationRoutes from './routes/internalStorefrontDomainOperations.js';
+app.use('/api/v1/internal/storefront-domain-operations', internalStorefrontDomainOperationRoutes);
 app.use(csrfProtection);
 app.use('/api/v1/dgfy', tenantHandler, dgfyRoutes);
 app.use('/api/v1/geo', geoSearchRoutes);
@@ -847,6 +876,7 @@ const startServer = async () => {
     scheduleSchemaIndexAudit();
     scheduleBillingFunnelAudit();
     startStorefrontDiscoveryIndexReconciliationScheduler();
+    startStorefrontDomainMaintenanceScheduler();
     startGeoInventoryWorker();
 
     // Initialize Redis (non-blocking - server will start even if Redis fails)
@@ -896,6 +926,7 @@ const startServer = async () => {
         billingFunnelAuditInterval = null;
       }
       stopStorefrontDiscoveryIndexReconciliationScheduler();
+      stopStorefrontDomainMaintenanceScheduler();
       stopGeoInventoryWorker();
       aiController.stopAiCleanupScheduler?.();
 

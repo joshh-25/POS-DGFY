@@ -1,13 +1,14 @@
 import React from 'react';
 import { Crown, HeadphonesIcon, HelpCircle, LogOut, X } from 'lucide-react';
-import dgfyCustomerLogo from '../../../../../public/dgfy-logo.png';
 import { CUSTOMER_DASHBOARD_NAV_ITEMS } from '../model/customerDashboardPresentation.jsx';
+
+const DGFY_CUSTOMER_LOGO_URL = '/dgfy-logo.png';
 
 export function CustomerDashboardSidebar({ activeNav, onSelectNav, onHelp, onSignOut, isMobileViewport, onCloseMobile, style, theme }) {
   return (
     <aside style={style}>
       <div style={{ height: 72, padding: '0 24px', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'flex-start', borderBottom: `1px solid ${theme.border}`, flexShrink: 0 }}>
-        <img src={dgfyCustomerLogo} alt="DGFY Logo" style={{ height: 28 }} />
+        <img src={DGFY_CUSTOMER_LOGO_URL} alt="DGFY Logo" style={{ height: 28 }} />
         <div style={{ fontSize: 10, fontWeight: 600, color: theme.primary, letterSpacing: '0.02em', marginTop: 2 }}>Discover Goods For You</div>
         {isMobileViewport ? <button type="button" aria-label="Close menu" onClick={onCloseMobile} style={{ position: 'absolute', top: 24, right: 24, background: 'none', border: 'none' }}><X size={24} color={theme.muted} /></button> : null}
       </div>

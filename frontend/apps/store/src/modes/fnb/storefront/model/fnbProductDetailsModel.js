@@ -39,7 +39,7 @@ export function normalizeFnbModifierGroups(item = {}) {
       if (!options.length) return null;
       return {
         modifier_group_id: group.modifier_group_id ?? group.group_id ?? group.id ?? `group-${groupIndex}`,
-        group_name: String(group.group_name || group.name || group.label || `Add-on Group ${groupIndex + 1}`).trim(),
+        group_name: String(group.display_name || group.group_name || group.name || group.label || `Add-on Group ${groupIndex + 1}`).trim(),
         min_select: Number(group.min_select ?? group.min ?? 0) || 0,
         max_select: Number(group.max_select ?? group.max ?? options.length) || options.length,
         options,
@@ -75,4 +75,43 @@ export function countSelectedModifiersByGroup(selectedModifiers = []) {
     counts[key] = Number(counts[key] || 0) + 1;
     return counts;
   }, {});
+}
+
+export function resolveFnbProductDetailItem({
+  selectedDetail,
+  routeItemId,
+  catalog
+}) {
+  if (selectedDetail) return selectedDetail;
+  if (!routeItemId) return null;
+  return (Array.isArray(catalog) ? catalog : []).find((item) => String(item?.item_id) === String(routeItemId)) || null;
+}
+
+export function buildFnbProductDetailMetadata({
+  detailItem,
+  selectedModifiers
+}) {
+  return {
+    modifierGroups: normalizeFnbModifierGroups(detailItem),
+    modifierCounts: countSelectedModifiersByGroup(selectedModifiers),
+    nutritionCards: buildFnbNutritionCards(detailItem),
+    allergens: buildFnbAllergens(detailItem)
+  };
+}
+
+export function buildFnbRelatedItems({
+  detailItem,
+  menuItems,
+  limit = 3
+}) {
+  if (!detailItem) return [];
+  const currentSection = String(detailItem.sectionKey || '').trim();
+  const currentItemId = Number(detailItem.item_id);
+  const baseItems = Array.isArray(menuItems) ? menuItems : [];
+  const sameSection = baseItems.filter((item) => (
+    Number(item?.item_id) !== currentItemId
+    && String(item?.sectionKey || '').trim() === currentSection
+  ));
+  const fallbackItems = baseItems.filter((item) => Number(item?.item_id) !== currentItemId);
+  return (sameSection.length > 0 ? sameSection : fallbackItems).slice(0, limit);
 }

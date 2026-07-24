@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeStorefrontPageModel } from '../normalizeStorefrontPageModel.js';
-import { buildStorefrontSlugFallbackQueries, findCanonicalStorefrontSlug } from '../StorefrontApp.jsx';
+import { normalizeStorefrontPageModel } from '../app/runtime/normalizeStorefrontPageModel.js';
+import {
+  buildStorefrontSlugFallbackQueries,
+  findCanonicalStorefrontSlug
+} from '../app/routing/defaultStorefrontRoute.js';
 
 describe('normalizeStorefrontPageModel', () => {
   it('derives service mode metadata and section visibility from storefront content', () => {
