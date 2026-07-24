@@ -6,7 +6,7 @@ WORKDIR /app
 COPY backend/package*.json ./
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm config set fetch-retries=5 fetch-retry-mintimeout=20000 fetch-retry-maxtimeout=120000 fetch-timeout=300000 \
-    && npm ci --omit=dev
+    && (npm ci --omit=dev || (sleep 10 && npm ci --omit=dev) || (sleep 20 && npm ci --omit=dev))
 
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
