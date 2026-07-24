@@ -180,24 +180,32 @@ function SmartEmailInput({
   errorId = '',
   describedBy = ''
 }) {
-  const [isOpen, setIsOpen] = useState(false);
+  const [manuallyClosed, setManuallyClosed] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
+  const [trackedValue, setTrackedValue] = useState(value);
   const containerRef = useRef(null);
   const inputRef = useRef(null);
   const suggestions = useMemo(() => getEmailSuggestions(value), [value]);
+
+  // Derives whether the dropdown should be open from the current value on every
+  // render (React's "adjusting state when a prop changes" pattern) instead of
+  // syncing it via an effect: whenever `value` changes, reset activeIndex and
+  // clear any manual close so the dropdown reopens if there are suggestions again.
+  if (value !== trackedValue) {
+    setTrackedValue(value);
+    setManuallyClosed(false);
+    setActiveIndex(0);
+  }
+
+  const shouldStayOpen = suggestions.length > 0 && !emailPattern.test(String(value || '').trim());
+  const isOpen = shouldStayOpen && !manuallyClosed;
   const listboxId = `${id}-suggestions`;
   const activeOptionId = isOpen && suggestions[activeIndex] ? `${id}-suggestion-${activeIndex}` : undefined;
 
   useEffect(() => {
-    const shouldStayOpen = suggestions.length > 0 && !emailPattern.test(String(value || '').trim());
-    setIsOpen(shouldStayOpen);
-    setActiveIndex(0);
-  }, [suggestions, value]);
-
-  useEffect(() => {
     const handlePointerDown = (event) => {
       if (!containerRef.current?.contains(event.target)) {
-        setIsOpen(false);
+        setManuallyClosed(true);
       }
     };
     document.addEventListener('mousedown', handlePointerDown);
@@ -206,7 +214,7 @@ function SmartEmailInput({
 
   const commitSuggestion = useCallback((suggestion) => {
     onChange(suggestion);
-    setIsOpen(false);
+    setManuallyClosed(true);
     requestAnimationFrame(() => inputRef.current?.focus());
   }, [onChange]);
 
@@ -225,7 +233,7 @@ function SmartEmailInput({
         onChange={(event) => onChange(event.target.value)}
         onKeyDown={(event) => {
           if (!isOpen || suggestions.length === 0) {
-            if (event.key === 'Escape') setIsOpen(false);
+            if (event.key === 'Escape') setManuallyClosed(true);
             return;
           }
           if (event.key === 'ArrowDown') {
@@ -239,7 +247,7 @@ function SmartEmailInput({
             commitSuggestion(suggestions[activeIndex]);
           } else if (event.key === 'Escape') {
             event.preventDefault();
-            setIsOpen(false);
+            setManuallyClosed(true);
           }
         }}
         required
@@ -958,7 +966,7 @@ export default function StorefrontAuthPage({ initialMode }) {
               </form>
 
               <p className="text-sm" style={{ color: '#64748B' }}>
-                Didn't receive a code?{' '}
+                Didn&apos;t receive a code?{' '}
                 <button
                   type="button"
                   onClick={handleResendCode}
@@ -1009,7 +1017,7 @@ export default function StorefrontAuthPage({ initialMode }) {
               <Divider />
 
               <p className="text-center text-sm" style={{ color: '#64748B' }}>
-                Don't have an account?{' '}
+                Don&apos;t have an account?{' '}
                 <button type="button" onClick={goToCreateAccount}
                   className="font-bold hover:underline"
                   style={{ color: '#1A4E8D', background: 'none', border: 'none', cursor: 'pointer', padding: 0 }}>
