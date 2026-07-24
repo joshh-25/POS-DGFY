@@ -33,7 +33,7 @@
     "security:all": "npm audit && npm run test:security"
   },
   "dependencies": {
-    "@dgfy/pos-receipt": "file:../packages/pos-receipt",
+    "@sieitzz/pos-receipt": "0.1.0",
     "@dnd-kit/core": "^6.3.1",
     "@dnd-kit/utilities": "^3.2.2",
     "@paypal/react-paypal-js": "^8.9.2",

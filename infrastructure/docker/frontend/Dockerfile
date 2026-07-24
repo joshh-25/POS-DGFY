@@ -3,8 +3,12 @@
 
 FROM node:22-alpine AS builder
 WORKDIR /app
-COPY frontend/package*.json ./
-RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci
+COPY frontend/package*.json frontend/.npmrc ./
+RUN --mount=type=cache,target=/root/.npm,sharing=locked --mount=type=secret,id=npm_token \
+    NPM_TOKEN="$(cat /run/secrets/npm_token)" && \
+    printf '%s\n' '@sieitzz:registry=https://npm.pkg.github.com' "//npm.pkg.github.com/:_authToken=${NPM_TOKEN}" > /tmp/.npmrc && \
+    npm ci --userconfig=/tmp/.npmrc && \
+    rm -f /tmp/.npmrc
 COPY frontend/ ./
 
 # Deliberately no VITE_API_BASE_URL / VITE_ASSET_BASE_URL build args here: this

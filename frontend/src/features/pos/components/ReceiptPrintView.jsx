@@ -1,6 +1,6 @@
 import React from 'react';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
-import { renderPosReceiptHtml } from '@dgfy/pos-receipt';
+import { renderPosReceiptHtml } from '@sieitzz/pos-receipt';
 
 const money = (value) => Number(value || 0).toFixed(2);
 const DGFY_BRAND_NAME = 'DGFY';
