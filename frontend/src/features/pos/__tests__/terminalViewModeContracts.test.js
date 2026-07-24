@@ -230,7 +230,7 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('keeps incoming queue and protected sidebar items permission-aware', () => {
-    expect(terminalWorkspaceSidebarContent).toContain("disabled={locked || !isOnline || onboardingRestricted || !canViewPos || !navigationShiftReady}");
+    expect(terminalWorkspaceSidebarContent).toContain("disabled={locked || !isOnline || onboardingRestricted || !canViewPos || !hasActiveShift}");
     expect(terminalWorkspaceSidebarContent).toContain('POS view permission required');
     expect(terminalWorkspaceSidebarContent).toContain('Available online only');
   });
@@ -275,7 +275,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsPanelsContent).toContain('shiftState = { shift: null }');
     expect(terminalOperationsWorkspaceContent).toContain('shiftState={shiftState}');
     expect(terminalOperationsWorkspaceContent).toContain('const canRenderAdminShiftOpen = canAdminBypassShiftPrompt || canTransactPos;');
-    expect(terminalOperationsWorkspaceContent).toContain('disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen}');
+    expect(terminalOperationsWorkspaceContent).toContain('disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !isOnline}');
     expect(terminalSidebarPanelContent).toContain('isValidOpeningCashAmount');
     expect(terminalSidebarPanelContent).toContain('disabled={shiftActionLoading.open || locked || !canTransactPos}');
     expect(terminalPageContent).toContain("const canCloseShift = hasPermission('pos:shift_close') || hasPermission('pos:close_day');");

@@ -18,10 +18,21 @@ import { resolveAppAssetUrl } from '../../../utils/assetUrl.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
 
-const NavButton = ({ active = false, label, onClick, icon: Icon, disabled = false, caption = '', testId = '' }) => (
+const NavButton = ({
+  active = false,
+  label,
+  onClick,
+  onPrefetch,
+  icon: Icon,
+  disabled = false,
+  caption = '',
+  testId = ''
+}) => (
   <button
     type="button"
     onClick={onClick}
+    onPointerEnter={onPrefetch}
+    onFocus={onPrefetch}
     disabled={disabled}
     data-testid={testId || undefined}
     className={`flex min-w-0 w-full items-start gap-2.5 rounded-lg border px-2.5 py-2.5 text-left transition ${
@@ -59,6 +70,7 @@ export default function TerminalWorkspaceSidebar({
   onboardingRestricted = false,
   settingsTargetViewMode = 'settings_profile',
   onSelectViewMode = () => {},
+  onPrefetchViewMode = () => {},
   onUnlock = () => {},
   onLock = () => {}
 }) {
@@ -117,6 +129,7 @@ export default function TerminalWorkspaceSidebar({
             icon={ShoppingCart}
             active={sellWorkspaceModes.has(currentViewMode)}
             onClick={() => onSelectViewMode('checkout')}
+            onPrefetch={() => onPrefetchViewMode('checkout')}
             disabled={locked || onboardingRestricted || !navigationShiftReady}
             caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (!navigationShiftReady ? 'Open shift first to continue' : (hasActiveShift ? 'Live selling and cart management' : 'Admin can browse, but checkout stays blocked until a shift is opened')))}
           />
@@ -125,6 +138,7 @@ export default function TerminalWorkspaceSidebar({
             icon={History}
             active={currentViewMode === 'history'}
             onClick={() => onSelectViewMode('history')}
+            onPrefetch={() => onPrefetchViewMode('history')}
             disabled={locked || onboardingRestricted || !canViewPos}
             caption={
               locked
@@ -139,6 +153,7 @@ export default function TerminalWorkspaceSidebar({
               icon={BarChart3}
               active={currentViewMode === 'reports'}
               onClick={() => onSelectViewMode('reports')}
+              onPrefetch={() => onPrefetchViewMode('reports')}
               disabled={locked || onboardingRestricted || !canViewPos}
               caption={
                 locked
@@ -153,6 +168,7 @@ export default function TerminalWorkspaceSidebar({
             icon={ClipboardList}
             active={currentViewMode === 'items'}
             onClick={() => onSelectViewMode('items')}
+            onPrefetch={() => onPrefetchViewMode('items')}
             disabled={locked || onboardingRestricted || !canViewPos}
             caption={
               locked
@@ -167,11 +183,12 @@ export default function TerminalWorkspaceSidebar({
               icon={Truck}
               active={currentViewMode === 'incoming_queue'}
               onClick={() => onSelectViewMode('incoming_queue')}
-               disabled={locked || !isOnline || onboardingRestricted || !canViewPos || !navigationShiftReady}
+              onPrefetch={() => onPrefetchViewMode('incoming_queue')}
+               disabled={locked || !isOnline || onboardingRestricted || !canViewPos || !hasActiveShift}
                caption={
                  locked
                    ? 'Unlock terminal to continue'
-                 : (!isOnline ? 'Available online only' : (onboardingRestricted ? onboardingCaption : (!navigationShiftReady ? 'Open shift first to continue' : (!canViewPos ? 'POS view permission required' : (hasActiveShift ? 'Accept, reject, and progress online orders' : 'Admin queue review available without an active shift')))))
+                 : (!isOnline ? 'Available online only' : (onboardingRestricted ? onboardingCaption : (!hasActiveShift ? 'Open shift first to view branch orders' : (!canViewPos ? 'POS view permission required' : 'Accept, reject, and progress branch orders'))))
                }
              />
            )}
@@ -180,6 +197,7 @@ export default function TerminalWorkspaceSidebar({
             icon={ListChecks}
             active={currentViewMode === 'shift_controls' || currentViewMode === 'close_shift' || currentViewMode === 'cash_drawer'}
             onClick={() => onSelectViewMode('shift_controls')}
+            onPrefetch={() => onPrefetchViewMode('shift_controls')}
             disabled={locked || onboardingRestricted}
             caption={locked ? 'Unlock terminal to continue' : (onboardingRestricted ? onboardingCaption : (!hasActiveShift ? (allowAdminNavigationWithoutShift ? 'Open or close shifts in admin navigation mode' : 'Open shift to unlock POS selling') : 'Open, monitor, and close the active shift'))}
           />
@@ -193,6 +211,7 @@ export default function TerminalWorkspaceSidebar({
             icon={Settings2}
             active={['location_scope', 'terminal_setup', 'settings_profile', 'settings_pos', 'settings_storefront'].includes(currentViewMode)}
             onClick={() => onSelectViewMode(settingsTargetViewMode)}
+            onPrefetch={() => onPrefetchViewMode(settingsTargetViewMode)}
             disabled={locked || !isOnline}
             caption={
               locked

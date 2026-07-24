@@ -5626,7 +5626,10 @@ export const buildGetTerminalTodayDashboardUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildListIncomingOnlineOrdersUseCase = ({ posRepository }) => {
+export const buildListIncomingOnlineOrdersUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosReadLocationScope
+}) => {
     return async ({ query, user }) => {
         if (query !== undefined && !isPlainObject(query)) {
             return fail(new DomainError(
@@ -5652,10 +5655,53 @@ export const buildListIncomingOnlineOrdersUseCase = ({ posRepository }) => {
                 { statusCode: 422 }
             ));
         }
+        const shiftId = parsePositiveInt(query?.shift_id);
+        if (!shiftId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'shift_id is required and must be a positive integer',
+                {
+                    statusCode: 422,
+                    details: { reason_code: 'POS_SHIFT_REQUIRED_FOR_INCOMING_QUEUE' }
+                }
+            ));
+        }
 
         try {
-            const locationScope = await resolvePosReadLocationScope({
-                requestedLocationId: query?.location_id,
+            const activeShift = await assertOpenShiftForPosMutation({
+                posRepository,
+                cashierId: normalizedUserId,
+                shiftId,
+                lock: false
+            });
+            const shiftLocationId = parsePositiveInt(activeShift?.location_id);
+            if (!shiftLocationId) {
+                throw buildLocationScopeDeniedError({
+                    message: 'Active shift is missing a valid location for incoming orders.',
+                    reasonCode: LOCATION_SCOPE_REASON_CODES.LOCATION_SCOPE_UNRESOLVED,
+                    statusCode: 422,
+                    details: { shift_id: shiftId }
+                });
+            }
+
+            const requestedLocationId = query?.location_id == null
+                ? null
+                : parsePositiveInt(query.location_id);
+            if (requestedLocationId && requestedLocationId !== shiftLocationId) {
+                throw buildLocationScopeDeniedError({
+                    message: 'Incoming order queue location must match the active shift location.',
+                    reasonCode: LOCATION_SCOPE_REASON_CODES.SHIFT_LOCATION_MISMATCH,
+                    statusCode: 403,
+                    details: {
+                        shift_id: shiftId,
+                        shift_location_id: shiftLocationId,
+                        requested_location_id: requestedLocationId
+                    }
+                });
+            }
+
+            const locationScope = await resolveLocationScope({
+                requestedLocationId: shiftLocationId,
                 userId: normalizedUserId,
                 operationLabel: 'POS incoming orders read'
             });
@@ -5894,6 +5940,13 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                     { statusCode: 409 }
                 );
             }
+            await assertOpenShiftForPosMutation({
+                posRepository,
+                cashierId: actingUserId,
+                locationId: existing.location_id || null,
+                transaction,
+                lock: true
+            });
             const currentStatus = normalizeOnlineFulfillmentStatus(existing.fulfillment_status);
             if (!currentStatus) {
                 throw new DomainError(

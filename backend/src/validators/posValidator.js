@@ -325,6 +325,7 @@ const posReportsExportQuerySchema = posReportsQuerySchema.keys({
 });
 
 const incomingOnlineOrdersQuerySchema = Joi.object({
+    shift_id: Joi.number().integer().positive().required(),
     location_id: Joi.number().integer().positive().optional(),
     limit: Joi.number().integer().min(1).max(500).default(200)
 });

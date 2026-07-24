@@ -623,6 +623,18 @@ const resolveMappedPosItemImage = (item = {}) => {
     return mapped?.src || '';
 };
 
+const resolvePosCatalogImageSources = (item = {}, settings = {}) => {
+    const configuredSrc = resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail');
+    const mappedSrc = resolveAssetVariantUrl(resolveAppAssetUrl(resolveMappedPosItemImage(item)), 'thumbnail');
+    const fallbackSrc = resolveCompanyIconFallbackUrl(settings);
+    return {
+        configuredSrc,
+        mappedSrc,
+        fallbackSrc,
+        src: configuredSrc || mappedSrc || fallbackSrc
+    };
+};
+
 const inferReceiptContract = (transaction, fallbackContract = null) => {
     if (fallbackContract?.document_type) {
         return fallbackContract;
@@ -669,6 +681,7 @@ export default function POSCheckoutTerminal({
     activeShiftId = null,
     terminalId = '',
     terminalMeta = null,
+    offlineSnapshotScope: providedOfflineSnapshotScope = {},
     onCheckoutCompleted = null,
     checkoutBlockedReason = '',
     onManualUniversalSync = async () => ({ allowed: false }),
@@ -710,6 +723,7 @@ export default function POSCheckoutTerminal({
     const [posFoldersLoading, setPosFoldersLoading] = useState(true);
     const [posFoldersError, setPosFoldersError] = useState('');
     const [catalogLoading, setCatalogLoading] = useState(true);
+    const [catalogRefreshing, setCatalogRefreshing] = useState(false);
     const [search, setSearch] = useState('');
     const [orderMethod, setOrderMethod] = useState('dine_in');
     const [paymentType, setPaymentType] = useState('cash');
@@ -761,6 +775,7 @@ export default function POSCheckoutTerminal({
     const [externalReceiptModalActive, setExternalReceiptModalActive] = useState(false);
     const catalogSnapshotRef = useRef([]);
     const receiptSettingsSnapshotRef = useRef({});
+    const catalogHasLoadedRef = useRef(false);
 
     useEffect(() => {
         catalogSnapshotRef.current = catalog;
@@ -769,6 +784,15 @@ export default function POSCheckoutTerminal({
     useEffect(() => {
         receiptSettingsSnapshotRef.current = receiptSettings;
     }, [receiptSettings]);
+
+    useEffect(() => {
+        if (!sessionLocked) return;
+        setCatalog([]);
+        setCatalogError('');
+        setCatalogLoading(false);
+        setCatalogRefreshing(false);
+        catalogHasLoadedRef.current = false;
+    }, [sessionLocked]);
 
     const closeReceiptPreviewModal = useCallback(() => {
         setReceiptPreviewModalOpen(false);
@@ -911,6 +935,16 @@ export default function POSCheckoutTerminal({
         const pageStart = (catalogPage - 1) * catalogPageSize;
         return catalogForDisplay.slice(pageStart, pageStart + catalogPageSize);
     }, [catalogForDisplay, catalogPage, catalogPageSize]);
+    const nextCatalogImageUrls = useMemo(() => {
+        if (catalogPage >= totalCatalogPages) return [];
+        const nextPageStart = catalogPage * catalogPageSize;
+        return Array.from(new Set(
+            catalogForDisplay
+                .slice(nextPageStart, nextPageStart + catalogPageSize)
+                .map((item) => resolvePosCatalogImageSources(item, receiptSettings).src)
+                .filter(Boolean)
+        ));
+    }, [catalogForDisplay, catalogPage, catalogPageSize, receiptSettings, totalCatalogPages]);
     const visibleCatalogRange = useMemo(() => {
         if (catalogForDisplay.length === 0) return { start: 0, end: 0 };
         const start = (catalogPage - 1) * catalogPageSize + 1;
@@ -925,6 +959,27 @@ export default function POSCheckoutTerminal({
             return Math.min(totalCatalogPages, previous + 1);
         });
     }, [totalCatalogPages]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || nextCatalogImageUrls.length === 0) return undefined;
+
+        const preloadNextPageImages = () => {
+            nextCatalogImageUrls.forEach((imageUrl) => {
+                const image = new window.Image();
+                image.decoding = 'async';
+                image.fetchPriority = 'low';
+                image.src = imageUrl;
+            });
+        };
+
+        if (typeof window.requestIdleCallback === 'function') {
+            const idleCallbackId = window.requestIdleCallback(preloadNextPageImages, { timeout: 1200 });
+            return () => window.cancelIdleCallback?.(idleCallbackId);
+        }
+
+        const timeoutId = window.setTimeout(preloadNextPageImages, 200);
+        return () => window.clearTimeout(timeoutId);
+    }, [nextCatalogImageUrls]);
 
     const handleCatalogSwipeStart = useCallback((clientX, pointerId = null) => {
         catalogSwipeStartXRef.current = clientX;
@@ -1056,9 +1111,30 @@ export default function POSCheckoutTerminal({
         }
     }, [isViewModeControlled, onViewModeChange]);
 
+    const offlineSnapshotScope = useMemo(() => ({
+        tenantId: providedOfflineSnapshotScope?.tenantId,
+        terminalId: providedOfflineSnapshotScope?.terminalId || normalizedTerminalId,
+        locationId: providedOfflineSnapshotScope?.locationId || selectedLocationId,
+        userId: providedOfflineSnapshotScope?.userId
+            || terminalUser?.user_id
+            || terminalUser?.id
+            || terminalUser?.email
+    }), [
+        normalizedTerminalId,
+        providedOfflineSnapshotScope?.locationId,
+        providedOfflineSnapshotScope?.tenantId,
+        providedOfflineSnapshotScope?.terminalId,
+        providedOfflineSnapshotScope?.userId,
+        selectedLocationId,
+        terminalUser?.email,
+        terminalUser?.id,
+        terminalUser?.user_id
+    ]);
+
     const syncQueuedCheckoutsState = useCallback(async () => {
         const rows = await listTerminalOperationQueueEntries({
             includeResolved: false,
+            scope: offlineSnapshotScope,
             statuses: [
                 TERMINAL_QUEUE_STATUS.QUEUED,
                 TERMINAL_QUEUE_STATUS.REPLAYING,
@@ -1067,7 +1143,7 @@ export default function POSCheckoutTerminal({
         });
         const checkoutRows = (Array.isArray(rows) ? rows : []).filter((entry) => isCheckoutQueueEntry(entry));
         setQueuedCheckouts(checkoutRows);
-    }, []);
+    }, [offlineSnapshotScope]);
 
     const enqueueCheckoutIntent = useCallback(async (payload, source = 'unknown') => {
         const idempotencyKey = String(payload?.idempotency_key || createIdempotencyKey()).trim();
@@ -1076,6 +1152,7 @@ export default function POSCheckoutTerminal({
         const entry = await enqueueTerminalOperationIntent({
             intent_id: idempotencyKey,
             operation: CHECKOUT_QUEUE_OPERATION,
+            queue_scope: offlineSnapshotScope,
             payload: {
                 ...payload,
                 idempotency_key: idempotencyKey
@@ -1086,13 +1163,7 @@ export default function POSCheckoutTerminal({
         }, source);
         await syncQueuedCheckoutsState();
         return entry;
-    }, [syncQueuedCheckoutsState]);
-
-    const offlineSnapshotScope = useMemo(() => ({
-        terminalId: normalizedTerminalId,
-        locationId: selectedLocationId,
-        userId: terminalUser?.user_id || terminalUser?.id || terminalUser?.email
-    }), [normalizedTerminalId, selectedLocationId, terminalUser?.email, terminalUser?.id, terminalUser?.user_id]);
+    }, [offlineSnapshotScope, syncQueuedCheckoutsState]);
 
     const saveCatalogSnapshot = useCallback((nextCatalog, nextReceiptSettings = receiptSettingsSnapshotRef.current) => {
         saveOfflinePosSnapshot(offlineSnapshotScope, {
@@ -1106,15 +1177,21 @@ export default function POSCheckoutTerminal({
             setCatalog([]);
             setCatalogError('');
             setCatalogLoading(false);
+            setCatalogRefreshing(false);
+            catalogHasLoadedRef.current = false;
             return;
         }
         if (!canViewHistory) {
             setCatalog([]);
             setCatalogError('You need POS view permission to load the POS catalog.');
             setCatalogLoading(false);
+            setCatalogRefreshing(false);
+            catalogHasLoadedRef.current = false;
             return;
         }
-        setCatalogLoading(true);
+        const isInitialLoad = !catalogHasLoadedRef.current;
+        setCatalogLoading(isInitialLoad);
+        setCatalogRefreshing(!isInitialLoad);
         setCatalogError('');
         try {
             const params = { search: search || '', limit: 200 };
@@ -1145,7 +1222,9 @@ export default function POSCheckoutTerminal({
             setCatalogError(message);
             toast.error(message);
         } finally {
+            catalogHasLoadedRef.current = true;
             setCatalogLoading(false);
+            setCatalogRefreshing(false);
         }
     }, [canViewHistory, offlineSnapshotScope, saveCatalogSnapshot, search, selectedLocationId, sessionLocked]);
 
@@ -1211,7 +1290,10 @@ export default function POSCheckoutTerminal({
             return;
         }
 
-        const candidates = (await getReplayCandidateEntries({ limit: CHECKOUT_REPLAY_BATCH_SIZE }))
+        const candidates = (await getReplayCandidateEntries({
+            scope: offlineSnapshotScope,
+            limit: CHECKOUT_REPLAY_BATCH_SIZE
+        }))
             .filter((entry) => isCheckoutQueueEntry(entry));
         if (!Array.isArray(candidates) || candidates.length === 0) {
             await syncQueuedCheckoutsState();
@@ -1304,6 +1386,7 @@ export default function POSCheckoutTerminal({
         historyPage,
         loadHistory,
         loadCatalog,
+        offlineSnapshotScope,
         onCheckoutCompleted,
         sessionLocked,
         syncQueuedCheckoutsState
@@ -2407,7 +2490,15 @@ export default function POSCheckoutTerminal({
                 toast.error('Governed discounts require an online checkout so eligibility and the selected approver can be verified securely.');
                 return;
             }
-            await enqueueCheckoutIntent(payload, source);
+            try {
+                await enqueueCheckoutIntent(payload, source);
+            } catch (error) {
+                toast.error(
+                    error?.message
+                    || 'Offline sale was not saved. Keep the cart open and retry after freeing device storage or reconnecting.'
+                );
+                return false;
+            }
             setLastReceipt(payload.offline_history_snapshot);
             setLastReceiptContract({ document_type: 'non_fiscal_slip', document_context: 'non_fiscal', label: 'PENDING SYNC' });
             setReceiptPreviewSource('order_preview');
@@ -2434,6 +2525,7 @@ export default function POSCheckoutTerminal({
             setCheckoutConfirmModalOpen(false);
             const refreshedQueue = await listTerminalOperationQueueEntries({
                 includeResolved: false,
+                scope: offlineSnapshotScope,
                 statuses: [
                     TERMINAL_QUEUE_STATUS.QUEUED,
                     TERMINAL_QUEUE_STATUS.REPLAYING,
@@ -2444,8 +2536,9 @@ export default function POSCheckoutTerminal({
                 .filter((entry) => isCheckoutQueueEntry(entry))
                 .length;
             toast.message(
-                `Offline transaction recorded locally. It is pending sync and will auto-replay when connection is restored (${nextQueueCount} queued).`
+                `Offline transaction saved locally. Press Sync after reconnecting (${nextQueueCount} queued).`
             );
+            return true;
         };
 
         if (offlineCheckout) {
@@ -3004,16 +3097,25 @@ export default function POSCheckoutTerminal({
                     <p className="text-sm text-slate-500">Loading catalog...</p>
                 ) : (
                     <>
-                    <div ref={catalogGridRef} className={catalogGridClassName}>
-                        {visibleCatalogItems.map((item) => {
+                    {catalogRefreshing && (
+                        <p role="status" className="mb-2 text-xs font-semibold text-blue-700">
+                            Refreshing catalog...
+                        </p>
+                    )}
+                    <div
+                        ref={catalogGridRef}
+                        className={`${catalogGridClassName} ${catalogRefreshing ? 'pointer-events-none opacity-70' : ''}`}
+                        aria-busy={catalogRefreshing}
+                    >
+                        {visibleCatalogItems.map((item, itemIndex) => {
                             const isServiceItem = isServiceCatalogItem(item);
                             const isAlwaysAvailable = item?.pos_always_available === true;
                             const isBestSeller = item?.is_best_seller === true;
                             const isOutOfStock = !isServiceItem && !isAlwaysAvailable && Number(item.current_stock || 0) <= 0;
-                            const configuredPosImageSrc = resolveAssetVariantUrl(item.storefront_image_url, 'thumbnail');
-                            const mappedPosImageSrc = resolveAppAssetUrl(resolveMappedPosItemImage(item));
-                            const fallbackPosImageSrc = resolveCompanyIconFallbackUrl(receiptSettings);
-                            const posImageSrc = configuredPosImageSrc || mappedPosImageSrc || fallbackPosImageSrc;
+                            const {
+                                fallbackSrc: fallbackPosImageSrc,
+                                src: posImageSrc
+                            } = resolvePosCatalogImageSources(item, receiptSettings);
                             const hasImage = Boolean(posImageSrc) && !catalogImageErrors.has(item.item_id);
                             const cartLineForItem = safeCart.find((line) => line.item_id === item.item_id);
                             const cartQuantityForItem = cartLineForItem ? Number(cartLineForItem.quantity) || 0 : 0;
@@ -3057,6 +3159,11 @@ export default function POSCheckoutTerminal({
                                             <img
                                                 src={posImageSrc}
                                                 alt={`${item.name} menu`}
+                                                loading={itemIndex < 4 ? 'eager' : 'lazy'}
+                                                decoding="async"
+                                                fetchPriority={itemIndex < 4 ? 'high' : 'auto'}
+                                                width={400}
+                                                height={400}
                                                 className="product-image h-full w-full object-cover object-center"
                                                 onError={(event) => {
                                                     const fallbackSrc = fallbackPosImageSrc;

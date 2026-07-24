@@ -11,8 +11,16 @@ import IminTerminalFeedback from './IminTerminalFeedback.jsx';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview.png');
 const MAX_NOTIFICATION_ITEMS = 5;
-const POSCheckoutTerminal = React.lazy(() => import('./POSCheckoutTerminal.jsx'));
-const TerminalOperationsWorkspace = React.lazy(() => import('./TerminalOperationsWorkspace.jsx'));
+const loadPOSCheckoutTerminal = () => import('./POSCheckoutTerminal.jsx');
+const loadTerminalOperationsWorkspace = () => import('./TerminalOperationsWorkspace.jsx');
+const POSCheckoutTerminal = React.lazy(loadPOSCheckoutTerminal);
+const TerminalOperationsWorkspace = React.lazy(loadTerminalOperationsWorkspace);
+const CHECKOUT_WORKSPACE_MODES = new Set(['checkout', 'history', 'receipt']);
+const preloadWorkspaceForViewMode = (viewMode) => (
+  CHECKOUT_WORKSPACE_MODES.has(String(viewMode || '').trim())
+    ? loadPOSCheckoutTerminal()
+    : loadTerminalOperationsWorkspace()
+);
 
 export default function TerminalPageLayout({
     locked,
@@ -261,11 +269,28 @@ export default function TerminalPageLayout({
     ? 'xl:flex xl:flex-col xl:overflow-hidden'
     : 'xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y';
   const workspaceContentClassName = isCheckoutWorkspaceMode
-    ? 'grid grid-cols-1 gap-2 p-2 xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]'
-    : 'grid grid-cols-1 gap-2 p-2';
+    ? 'grid min-w-0 max-w-full grid-cols-1 gap-2 p-2 xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]'
+    : 'grid min-w-0 max-w-full grid-cols-1 gap-2 p-2';
   const workspaceSectionClassName = isCheckoutWorkspaceMode
-    ? 'min-h-0 transition xl:h-full'
-    : 'min-h-0 transition';
+    ? 'min-h-0 min-w-0 max-w-full transition xl:h-full'
+    : 'min-h-0 min-w-0 max-w-full transition';
+
+  useEffect(() => {
+    if (locked || typeof window === 'undefined') return undefined;
+
+    const preloadWorkspaces = () => {
+      loadPOSCheckoutTerminal();
+      loadTerminalOperationsWorkspace();
+    };
+
+    if (typeof window.requestIdleCallback === 'function') {
+      const idleCallbackId = window.requestIdleCallback(preloadWorkspaces, { timeout: 2000 });
+      return () => window.cancelIdleCallback?.(idleCallbackId);
+    }
+
+    const timeoutId = window.setTimeout(preloadWorkspaces, 300);
+    return () => window.clearTimeout(timeoutId);
+  }, [locked]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -446,6 +471,7 @@ export default function TerminalPageLayout({
               queueSummary={queueSummary}
               settingsTargetViewMode={settingsEntryViewMode}
               onSelectViewMode={handleSelectViewMode}
+              onPrefetchViewMode={preloadWorkspaceForViewMode}
               onUnlock={() => setDrawerOpen(true)}
               onLock={handleLock}
             />
@@ -586,6 +612,7 @@ export default function TerminalPageLayout({
                 queueSummary={queueSummary}
                 settingsTargetViewMode={settingsEntryViewMode}
                 onSelectViewMode={handleSelectViewMode}
+                onPrefetchViewMode={preloadWorkspaceForViewMode}
                 onUnlock={() => {
                   setDrawerOpen(true);
                   setMobileNavOpen(false);
@@ -651,7 +678,7 @@ export default function TerminalPageLayout({
           )}
 
           {isOperationsWorkspaceMode && (
-            <div key="operations-workspace" className="catalog-slide-enter">
+            <div key="operations-workspace" className="min-w-0 max-w-full catalog-slide-enter">
             <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading operations workspace...</div>}>
               <TerminalOperationsWorkspace
                 viewMode={posViewMode}

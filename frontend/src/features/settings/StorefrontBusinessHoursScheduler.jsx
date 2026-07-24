@@ -62,9 +62,9 @@ function TimeField({
   onChange
 }) {
   return (
-    <label className="block">
+    <label className="block min-w-0 max-w-full">
       <span className="mb-2 block text-[13px] font-semibold text-slate-700">{label}</span>
-      <div className="relative">
+      <div className="relative min-w-0 max-w-full">
         <span
           aria-hidden="true"
           className="pointer-events-none absolute left-4 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-slate-500"
@@ -76,7 +76,7 @@ function TimeField({
         </span>
         <input
           type="time"
-          className="h-11 w-full rounded-2xl border border-slate-200 bg-white pl-14 pr-4 text-sm font-medium text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+          className="h-11 w-full min-w-0 max-w-full rounded-2xl border border-slate-200 bg-white pl-14 pr-4 text-sm font-medium text-slate-900 shadow-sm outline-none transition focus:border-blue-500 focus:ring-4 focus:ring-blue-100 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
           value={value}
           disabled={disabled}
           onChange={onChange}
@@ -272,10 +272,10 @@ export default function StorefrontBusinessHoursScheduler({
   };
 
   return (
-    <div className={`space-y-5 ${className}`}>
+    <div className={`min-w-0 max-w-full space-y-5 ${className}`}>
       <div className="bg-white">
         <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <h3 className="text-[24px] font-semibold tracking-tight text-slate-950">Business Hours</h3>
             <p className="mt-1.5 text-[15px] text-slate-500">Create reusable store hour schedules and preview how they apply across the week.</p>
             <p className="mt-2 text-[13px] font-medium text-slate-500">Preview: {formatStorefrontBusinessHoursDisplay(hours)}</p>
@@ -293,10 +293,10 @@ export default function StorefrontBusinessHoursScheduler({
           </label>
         </div>
 
-        <section className="mt-6 rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.06)] sm:p-6">
+        <section className="mt-6 min-w-0 max-w-full rounded-[24px] border border-slate-200 bg-white p-5 shadow-[0_12px_40px_rgba(15,23,42,0.06)] sm:p-6">
           <h4 className="text-[22px] font-semibold tracking-tight text-slate-950">Create Time Set</h4>
 
-          <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,220px)_minmax(0,220px)_1px_minmax(0,1fr)_auto] xl:items-end">
+          <div className="mt-5 grid min-w-0 max-w-full gap-5 [&>*]:min-w-0 xl:grid-cols-[minmax(0,220px)_minmax(0,220px)_1px_minmax(0,1fr)_auto] xl:items-end">
             <TimeField
               label="Open Time"
               value={openTime}

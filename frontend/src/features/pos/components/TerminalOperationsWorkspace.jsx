@@ -90,7 +90,7 @@ import { getStorefrontPromoScheduleValidationError } from '@/src/features/pos/ut
 import { resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
 import StorefrontBusinessHoursScheduler from '@/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import { normalizeStorefrontBusinessHours, serializeStorefrontBusinessHours } from '@/src/features/settings/storefrontBusinessHours.js';
-import resolveAssetUrl from '@/src/utils/assetUrl.js';
+import resolveAssetUrl, { resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
 import UserInvitationModal from '@/Components/users/UserInvitationModal.jsx';
 import { IncomingQueueWorkspace, WorkspaceShell } from './TerminalOperationsPanels.jsx';
 import {
@@ -683,6 +683,7 @@ function ShiftControlsWorkspace({
   cashEventForm,
   setCashEventForm,
   handleRecordCashEvent,
+  isOnline = true,
   sectionId,
   initialTab = 'shift_location'
 }) {
@@ -882,11 +883,12 @@ function ShiftControlsWorkspace({
               type="button"
               className="h-10 rounded-lg !bg-[#2563EB] px-5 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
               onClick={handleOpenShift}
-              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen}
+              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !isOnline}
             >
               {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
             </Button>
             {!canRenderAdminShiftOpen && <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>}
+            {!isOnline && <p className="text-[11px] text-amber-700">Reconnect before opening a shift.</p>}
           </div>
         </div>
       );
@@ -1058,11 +1060,12 @@ function ShiftControlsWorkspace({
               type="button"
               className="h-10 rounded-lg !bg-[#2563EB] px-5 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
               onClick={handleOpenShift}
-              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen}
+              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !isOnline}
             >
               {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
             </Button>
             {!canRenderAdminShiftOpen && <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>}
+            {!isOnline && <p className="text-[11px] text-amber-700">Reconnect before opening a shift.</p>}
           </div>
         </div>
       );
@@ -2318,7 +2321,7 @@ function ItemsWorkspace({
         <div className="space-y-4">
           {paginatedItems.map((item) => {
             const barcode = primaryBarcodes[String(item.item_id)]?.code || '';
-            const imageUrl = item?.storefront_image_url || '';
+            const imageUrl = resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail');
             const stockQuantity = Number(item?.current_stock || 0);
             const isAlwaysAvailable = item?.pos_always_available === true;
             const profit = Number(item?.default_sale_price || 0) - Number(item?.cost_per_unit || 0);
@@ -2348,7 +2351,15 @@ function ItemsWorkspace({
                   <div className="flex min-w-0 gap-2.5 xl:border-r xl:border-slate-100 xl:pr-3">
                     <div className="flex h-[4rem] w-[4rem] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-slate-100 bg-gradient-to-br from-slate-50 to-slate-100 shadow-inner sm:h-[4.5rem] sm:w-[4.5rem]">
                       {imageUrl ? (
-                        <img src={imageUrl} alt={item?.name || 'Item image'} className="h-full w-full object-cover" />
+                        <img
+                          src={imageUrl}
+                          alt={item?.name || 'Item image'}
+                          loading="lazy"
+                          decoding="async"
+                          width={288}
+                          height={288}
+                          className="h-full w-full object-cover"
+                        />
                       ) : (
                         <ImagePlus className="h-5 w-5 text-slate-300" />
                       )}
@@ -4017,9 +4028,11 @@ function SettingsWorkspace({
     }
   }, []);
 
-  const hydrateSettingsWorkspace = useCallback(async () => {
-    setLoading(true);
-    setLoadError('');
+  const hydrateSettingsWorkspace = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setLoadError('');
+    }
     try {
       const [settingsPayload, companyPayload] = await Promise.all([
         getAllSettings({ force: true }),
@@ -4145,9 +4158,13 @@ function SettingsWorkspace({
         profile: String(settingsPayload?.storefront_profile_image_url?.value || '')
       });
     } catch (error) {
-      setLoadError(error?.response?.data?.message || 'Failed to load shared settings.');
+      if (!silent) {
+        setLoadError(error?.response?.data?.message || 'Failed to load shared settings.');
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [terminalMeta?.pettyCashAmount, terminalMeta?.pettyCashSymbol, terminalUser?.is_master_admin]);
 
@@ -4708,7 +4725,7 @@ function SettingsWorkspace({
         storefront_follow_enabled: storefrontForm.storefrontFollowEnabled === true,
         storefront_share_enabled: storefrontForm.storefrontShareEnabled === true
       });
-      await hydrateSettingsWorkspace();
+      await hydrateSettingsWorkspace({ silent: true });
       await onStorefrontSetupSaved?.();
       toast.success('Storefront settings synced to shared settings.');
     } catch (error) {
@@ -5362,18 +5379,17 @@ function SettingsWorkspace({
               </div>
             </div>
             <div className="mt-5 grid gap-4 md:grid-cols-2">
-              {/* Row 1: Queue Location Scope beside Petty Cash Currency Symbol */}
+              {/* Row 1: Shift-bound queue location beside Petty Cash Currency Symbol */}
               <div className="grid gap-2">
-                <Label className="text-[12px] font-bold text-slate-700">Queue Location Scope</Label>
+                <Label className="text-[12px] font-bold text-slate-700">Queue Location (Active Shift)</Label>
                 <div className="relative flex items-center">
                   <MapPin className="absolute left-4 h-5 w-5 text-blue-600 pointer-events-none" />
                   <select
                     className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-12 pr-10 text-[14px] font-semibold text-[#0F172A] outline-none appearance-none focus:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/20"
                     value={queueLocationScopeId || ''}
-                    onChange={(event) => setQueueLocationScopeId(event.target.value ? Number(event.target.value) : null)}
-                    disabled={locked}
+                    disabled
                   >
-                    <option value="" disabled>Select queue location</option>
+                    <option value="" disabled>Open a shift to select the branch</option>
                     {locations.map((location) => (
                       <option key={`settings-location-${location.location_id}`} value={location.location_id}>
                         {location.name}
@@ -5382,6 +5398,7 @@ function SettingsWorkspace({
                   </select>
                   <ChevronDown className="absolute right-4 h-4 w-4 text-slate-400 pointer-events-none" />
                 </div>
+                <p className="text-[11px] text-slate-500">Orders from other branches are not visible in this terminal queue.</p>
               </div>
               <div className="grid gap-2">
                 <Label className="text-[12px] font-bold text-slate-700">Petty Cash Currency Symbol</Label>
@@ -6370,7 +6387,7 @@ function SettingsWorkspace({
           </div>
           <div className="space-y-3 rounded-lg border border-slate-200 p-4">
             <Label>Review Summary</Label>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid min-w-0 max-w-full gap-3 [&>*]:min-w-0 md:grid-cols-2">
               <Input value={storefrontForm.storefrontReviewSummaryScore} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontReviewSummaryScore: event.target.value }))} placeholder="Average score (e.g. 4.8)" />
               <Input value={storefrontForm.storefrontReviewSummaryTotalCount} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontReviewSummaryTotalCount: event.target.value }))} placeholder="Total reviews" />
             </div>
@@ -6507,7 +6524,7 @@ function SettingsWorkspace({
                 <Label className="text-[12px] font-semibold text-slate-600">From</Label>
                 <Input
                   type="datetime-local"
-                  className="relative pr-10 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-3 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                  className="relative min-w-0 max-w-full pr-10 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-3 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                   value={buildPromoDateTimeValue(storefrontForm.storefrontPromoValidFrom, storefrontForm.storefrontPromoValidTimeStart)}
                   onChange={(event) => {
                     const { date, time } = parsePromoDateTimeValue(event.target.value);
@@ -6520,7 +6537,7 @@ function SettingsWorkspace({
                 <Label className="text-[12px] font-semibold text-slate-600">To</Label>
                 <Input
                   type="datetime-local"
-                  className="relative pr-10 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-3 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                  className="relative min-w-0 max-w-full pr-10 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-3 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                   value={buildPromoDateTimeValue(storefrontForm.storefrontPromoValidUntil, storefrontForm.storefrontPromoValidTimeEnd)}
                   onChange={(event) => {
                     const { date, time } = parsePromoDateTimeValue(event.target.value);
@@ -6536,7 +6553,7 @@ function SettingsWorkspace({
                 </div>
                 <div className="flex flex-col gap-2 md:flex-row">
                   <select
-                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700"
+                    className="h-10 w-full min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700"
                     value={storefrontPromoCandidateItemId}
                     onChange={(event) => setStorefrontPromoCandidateItemId(event.target.value)}
                     disabled={storefrontPromoItemsLoading || availableStorefrontPromoItems.length === 0}
@@ -7026,6 +7043,7 @@ export default function TerminalOperationsWorkspace({
           cashEventForm={cashEventForm}
           setCashEventForm={setCashEventForm}
           handleRecordCashEvent={handleRecordCashEvent}
+          isOnline={isOnline}
           sectionId={sectionIds.activeShift}
           initialTab={viewMode === 'close_shift' ? 'close_shift' : 'shift_location'}
         />
@@ -7056,6 +7074,7 @@ export default function TerminalOperationsWorkspace({
           cashEventForm={cashEventForm}
           setCashEventForm={setCashEventForm}
           handleRecordCashEvent={handleRecordCashEvent}
+          isOnline={isOnline}
           sectionId={sectionIds.activeShift}
           initialTab="cash_drawer"
         />

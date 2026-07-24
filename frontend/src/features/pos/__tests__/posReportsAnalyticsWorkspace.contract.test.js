@@ -16,4 +16,11 @@ describe('POS report category filter contract', () => {
     expect(workspaceSource).toContain('{entry.name}');
     expect(workspaceSource).not.toContain('value={category}');
   });
+
+  it('keeps report cards viewport-safe and renders table rows as mobile cards', () => {
+    expect(workspaceSource).toContain('min-w-0 max-w-full overflow-hidden rounded-2xl');
+    expect(workspaceSource).toContain('grid min-w-0 gap-3 sm:hidden');
+    expect(workspaceSource).toContain('hidden min-w-0 max-w-full overflow-x-auto overscroll-x-contain');
+    expect(workspaceSource).toContain('min-w-[720px]');
+  });
 });

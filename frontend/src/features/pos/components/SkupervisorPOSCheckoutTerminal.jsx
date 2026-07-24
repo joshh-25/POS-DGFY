@@ -26,6 +26,7 @@ import {
     markTerminalOperationRetryScheduled
 } from '../services/terminalOperationQueueStore.js';
 import { consumeManualPosSyncAttempt, getManualPosSyncPolicy } from '../services/manualPosSyncPolicyStore.js';
+import { isOfflinePosScopeReady } from '../services/offlinePosScope.js';
 import { getFolders } from '@/services/itemService.js';
 import { getAllSettings } from '@/services/settingsService';
 import { usePermission } from '@/hooks/usePermission';
@@ -318,6 +319,7 @@ export default function POSCheckoutTerminal({
     isMsmeMode = false,
     canViewHistory = true,
     queueReplayManagedExternally = false,
+    offlineSnapshotScope = null,
     selectedLocationId = null,
     activeShiftId = null,
     terminalId = '',
@@ -342,7 +344,7 @@ export default function POSCheckoutTerminal({
     const { can } = usePermission();
     const canOverridePrice = can('pos:price_override');
     const [viewMode, setViewMode] = useState('checkout');
-    const [manualSyncPolicy, setManualSyncPolicy] = useState(() => getManualPosSyncPolicy({ terminalId }));
+    const [manualSyncPolicy, setManualSyncPolicy] = useState(() => getManualPosSyncPolicy(offlineSnapshotScope));
     const [catalog, setCatalog] = useState([]);
     const [catalogImageErrors, setCatalogImageErrors] = useState(() => new Set());
     const [catalogError, setCatalogError] = useState('');
@@ -413,6 +415,7 @@ export default function POSCheckoutTerminal({
     const isViewModeControlled = typeof controlledViewMode === 'string' && controlledViewMode.length > 0;
     const currentViewMode = isViewModeControlled ? controlledViewMode : viewMode;
     const normalizedTerminalId = String(terminalId || '').trim();
+    const hasOfflineSnapshotScope = isOfflinePosScopeReady(offlineSnapshotScope);
     const terminalIdentityLabel = normalizedTerminalId
         ? `Terminal ${normalizedTerminalId}`
         : 'No terminal selected';
@@ -511,8 +514,13 @@ export default function POSCheckoutTerminal({
     }, [cart.length, currentViewMode, hasSplitPaneScroll, syncCurrentSalePaneScrollState]);
 
     const syncQueuedCheckoutsState = useCallback(async () => {
+        if (!hasOfflineSnapshotScope) {
+            setQueuedCheckouts([]);
+            return;
+        }
         const rows = await listTerminalOperationQueueEntries({
             includeResolved: false,
+            scope: offlineSnapshotScope,
             statuses: [
                 TERMINAL_QUEUE_STATUS.QUEUED,
                 TERMINAL_QUEUE_STATUS.REPLAYING,
@@ -521,15 +529,19 @@ export default function POSCheckoutTerminal({
         });
         const checkoutRows = (Array.isArray(rows) ? rows : []).filter((entry) => isCheckoutQueueEntry(entry));
         setQueuedCheckouts(checkoutRows);
-    }, []);
+    }, [hasOfflineSnapshotScope, offlineSnapshotScope]);
 
     const enqueueCheckoutIntent = useCallback(async (payload, source = 'unknown') => {
+        if (!hasOfflineSnapshotScope) {
+            throw new Error('Offline checkout requires a tenant, terminal, location, and user scope.');
+        }
         const idempotencyKey = String(payload?.idempotency_key || createIdempotencyKey()).trim();
         if (!idempotencyKey) return null;
         const nowIso = new Date().toISOString();
         const entry = await enqueueTerminalOperationIntent({
             intent_id: idempotencyKey,
             operation: CHECKOUT_QUEUE_OPERATION,
+            queue_scope: offlineSnapshotScope,
             payload: {
                 ...payload,
                 idempotency_key: idempotencyKey
@@ -540,7 +552,7 @@ export default function POSCheckoutTerminal({
         }, source);
         await syncQueuedCheckoutsState();
         return entry;
-    }, [syncQueuedCheckoutsState]);
+    }, [hasOfflineSnapshotScope, offlineSnapshotScope, syncQueuedCheckoutsState]);
 
     const loadCatalog = useCallback(async () => {
         if (sessionLocked) {
@@ -580,8 +592,12 @@ export default function POSCheckoutTerminal({
         if (sessionLocked) return;
         if (checkoutBlockedReason) return;
         if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+        if (!hasOfflineSnapshotScope) return;
 
-        const candidates = (await getReplayCandidateEntries({ limit: CHECKOUT_REPLAY_BATCH_SIZE }))
+        const candidates = (await getReplayCandidateEntries({
+            limit: CHECKOUT_REPLAY_BATCH_SIZE,
+            scope: offlineSnapshotScope
+        }))
             .filter((entry) => isCheckoutQueueEntry(entry));
         if (!Array.isArray(candidates) || candidates.length === 0) {
             await syncQueuedCheckoutsState();
@@ -670,7 +686,9 @@ export default function POSCheckoutTerminal({
         }
     }, [
         checkoutBlockedReason,
+        hasOfflineSnapshotScope,
         loadCatalog,
+        offlineSnapshotScope,
         onCheckoutCompleted,
         sessionLocked,
         syncQueuedCheckoutsState
@@ -917,18 +935,18 @@ export default function POSCheckoutTerminal({
     }, [syncQueuedCheckoutsState]);
 
     useEffect(() => {
-        setManualSyncPolicy(getManualPosSyncPolicy({ terminalId }));
-    }, [terminalId]);
+        setManualSyncPolicy(getManualPosSyncPolicy(offlineSnapshotScope));
+    }, [offlineSnapshotScope]);
 
     const handleManualQueuedCheckoutSync = useCallback(async () => {
-        const nextPolicy = consumeManualPosSyncAttempt({ terminalId });
+        const nextPolicy = consumeManualPosSyncAttempt(offlineSnapshotScope);
         setManualSyncPolicy(nextPolicy);
         if (!nextPolicy.allowed) {
             toast.error('Daily sync limit reached. Sync is available again after local midnight.');
             return;
         }
         await replayQueuedCheckouts({ toastIfEmpty: true });
-    }, [replayQueuedCheckouts, terminalId]);
+    }, [offlineSnapshotScope, replayQueuedCheckouts]);
 
     useEffect(() => {
         if (sessionLocked) return undefined;
@@ -1354,12 +1372,18 @@ export default function POSCheckoutTerminal({
         };
 
         const queueCheckoutIntentLocally = async (source) => {
-            await enqueueCheckoutIntent(payload, source);
+            try {
+                await enqueueCheckoutIntent(payload, source);
+            } catch {
+                toast.error('Offline checkout is available only from a tenant-bound POS terminal. This cart was kept open.');
+                return false;
+            }
             setCart([]);
             setSelectedDiscountProfile('');
             setManualDiscountRateInput('');
             const refreshedQueue = await listTerminalOperationQueueEntries({
                 includeResolved: false,
+                scope: offlineSnapshotScope,
                 statuses: [
                     TERMINAL_QUEUE_STATUS.QUEUED,
                     TERMINAL_QUEUE_STATUS.REPLAYING,
@@ -1370,8 +1394,9 @@ export default function POSCheckoutTerminal({
                 .filter((entry) => isCheckoutQueueEntry(entry))
                 .length;
             toast.message(
-                `You are offline. Checkout queued locally and will auto-replay when connection is restored (${nextQueueCount} queued).`
+                `Offline checkout saved locally. Press Sync after reconnecting (${nextQueueCount} queued).`
             );
+            return true;
         };
 
         if (typeof navigator !== 'undefined' && navigator.onLine === false) {

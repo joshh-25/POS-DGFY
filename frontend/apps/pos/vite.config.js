@@ -2,6 +2,7 @@
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'url';
 import path from 'path';
+import { posOfflinePrecachePlugin } from './vitePosOfflinePrecachePlugin.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,7 +36,7 @@ export default defineConfig({
   root: __dirname,
   cacheDir: path.resolve(frontendRoot, 'node_modules/.vite-pos'),
   base: './',
-  plugins: [react()],
+  plugins: [react(), posOfflinePrecachePlugin()],
   define: {
     'import.meta.env.VITE_APP_SURFACE': JSON.stringify('pos')
   },
