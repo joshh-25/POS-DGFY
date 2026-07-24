@@ -72,6 +72,7 @@ import {
 } from '../modules/dgfy/controllers/dgfyCustomerHandlers.js';
 import {
     cancelAffiliateCashout,
+    captureAffiliateAttribution,
     createAffiliatePayoutMethod,
     deleteAffiliatePayoutMethod,
     enrollSelfServeAffiliate,
@@ -163,5 +164,9 @@ router.delete('/affiliate/payout-methods/:payout_method_id', authenticateDgfyAcc
 router.post('/affiliate/cashouts', authenticateDgfyAccount, requestAffiliateCashout);
 router.get('/affiliate/cashouts', authenticateDgfyAccount, listMyAffiliateCashouts);
 router.patch('/affiliate/cashouts/:cashout_id/cancel', authenticateDgfyAccount, cancelAffiliateCashout);
+// Public, unauthenticated: a storefront page calls this on load with the ?p= short code. Dormant
+// until frontend/apps/store is wired to it (out of scope for this phase) - readies the endpoint so
+// that later phase is frontend-only.
+router.post('/affiliate/attribution/capture', authLimiter, captureAffiliateAttribution);
 
 export default router;

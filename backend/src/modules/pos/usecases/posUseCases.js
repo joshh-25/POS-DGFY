@@ -19,7 +19,8 @@ import {
 import {
     accrueEarnedForInStoreSale,
     resolveActiveAffiliateEnrollment,
-    reverseAffiliateCommissionForOrder
+    reverseAffiliateCommissionForOrder,
+    settleAffiliateCommissionForOrder
 } from '../../dgfy/utils/affiliateCommissionAccrual.js';
 import {
     SAFE_IMAGE_MIME_TYPES,
@@ -6040,6 +6041,29 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                     error: activityError?.message || activityError
                 });
             });
+
+            // Best-effort, post-commit settlement of any pending online-order affiliate commission
+            // tied to this order - must never fail the status update that already succeeded. Dormant
+            // until online attribution capture is wired up on the storefront (no pending rows exist
+            // yet), but correct and ready.
+            const affiliateSettleOutcome = targetStatus === 'completed'
+                ? 'earned'
+                : (targetStatus === 'cancelled' || targetStatus === 'rejected' ? 'reversed' : null);
+            if (affiliateSettleOutcome) {
+                try {
+                    await settleAffiliateCommissionForOrder({
+                        tenantId: currentTenantId,
+                        orderReference: String(normalizedTransactionId),
+                        outcome: affiliateSettleOutcome
+                    });
+                } catch (settleError) {
+                    logger.warn('[PosUseCases] Failed to settle affiliate commission after online status update', {
+                        pos_transaction_id: normalizedTransactionId,
+                        target_status: targetStatus,
+                        error: settleError?.message
+                    });
+                }
+            }
             const replayPayload = {
                 order: toSerializable(updated),
                 status_transition: {

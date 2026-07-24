@@ -2,14 +2,14 @@
 status: reference
 authority_level: reference
 owner: backend
-last_reviewed: 2026-07-23
+last_reviewed: 2026-07-24
 applies_to: affiliates_program, backend, pos_frontend
 topic: affiliates_program_backend_pos_handoff
 ---
 
 # Affiliates Program — Backend + POS Handoff
 
-Date: July 23, 2026
+Date: July 23, 2026 (updated July 24, 2026)
 Branch: `claude/affiliates-program-study-592zhd` (base: `develop`)
 
 ## Purpose
@@ -131,18 +131,57 @@ Deferred to a later storefront phase (backend hooks exist and are dormant, but n
    `/api/v1/affiliates/cashouts` (list/approve/mark-paid/reject), gated by the existing
    `affiliates:cashout_approve`/`affiliates:cashout_pay` permissions. `AffiliatesWorkspacePanel.jsx`
    got a new "Cashout Requests" section for the approval queue.
+6. **Online attribution backend + lifecycle hooks + cookie util + capture endpoint** — dormant,
+   backend-only, does not touch `frontend/apps/store`.
+   - Cookie util: `SESSION_COOKIE_NAMES.affiliateAttribution = 'sku_aff_attr'` +
+     `setAffiliateAttributionCookie`/`getAffiliateAttributionCookie` in
+     `backend/src/utils/browserSessionCookies.js` — HttpOnly, `SameSite=Lax`, JSON map keyed by
+     `tenant_id` (per-store isolation, last-scan-wins).
+   - Repository: `createPendingCommissionIfMissing` (online twin of the existing
+     `createEarnedCommissionIfMissing`, writes `status: 'pending'`) and
+     `markCommissionEarnedByOrderReference` (`pending` to `earned`) added to
+     `dgfyAffiliateRepository.js`.
+   - Accrual util: `resolveActiveAffiliateEnrollmentById`, `accruePendingForOnlineOrder` (records a
+     `link`-channel attribution + pending commission; the self-referral guard is now live since
+     online checkout knows the buyer), and `settleAffiliateCommissionForOrder` (dispatches to
+     earned/reversed) added to `affiliateCommissionAccrual.js`.
+   - POS hook: `buildUpdateOnlineOrderStatusUseCase` in `posUseCases.js` now settles any pending
+     commission post-commit — `completed` becomes `earned`; `cancelled`/`rejected` becomes
+     `reversed`. Same non-blocking try/catch convention as the existing activity recorder.
+   - Store hook + cookie bridge: `buildStoreCheckoutUseCase` in `storeUseCases.js` writes a pending
+     commission post-commit when the checkout payload carries `attribution_enrollment_id`. The
+     bridge lives in `storeHandlers.js`'s `checkout` controller — it reads the attribution cookie
+     and injects the field into the payload (never overriding an explicit payload value). This is
+     the **only** touch point with the `store` module; `frontend/apps/store` itself was not
+     modified.
+   - Public capture endpoint: `POST /api/v1/dgfy/affiliate/attribution/capture`
+     (`backend/src/routes/dgfy.js`, no `authenticateDgfyAccount` — it's an anonymous-visitor
+     endpoint) resolves a tenant (by `tenant_id` or `store_slug`) and a `?p=` short code, records a
+     `link` attribution, and sets the cookie. Always soft-succeeds (`captured: false` on an
+     unresolved code/store) so it can't be used to enumerate either.
+7. **Governance ADR** — `docs/architecture/adr/0036-affiliates-program-commission-and-cashout.md`,
+   citing ADR 0012 (fee-basis), ADR 0027 (PayMongo split-settlement), and ADR 0029 (POS/storefront
+   ownership boundaries). Satisfies the `cross-boundary` ADR requirement in
+   `docs/architecture/ARCHITECTURE_GOVERNANCE.md`.
 
 ## What's in progress / next
 
-6. **Online attribution backend + lifecycle hooks + cookie util + capture endpoint** — dormant
-   backend-only work (cookie util in `backend/src/utils/browserSessionCookies.js`, a
-   `pending`→`earned`/`reversed` hook in the online order status use case, a pending-row hook in
-   store checkout, and a public capture endpoint) that readies the storefront phase without touching
-   `frontend/apps/store` itself.
-7. **Not started**: a dedicated ADR under `docs/architecture/adr/` (cite ADR 0012 fee-basis, ADR 0027
-   PayMongo split-settlement) — required before this can be considered fully governed per
-   `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, since this is a cross-boundary, money-touching
-   feature.
+All backend + POS slices for this phase are now complete. What remains is entirely the deferred
+storefront-only work called out above (QR-scan capture on page load calling the now-built capture
+endpoint, the affiliate self-service UI, email-invite redemption UI) — none of it should start until
+`frontend/apps/store` is confirmed stable post-refactor and the user explicitly opens that phase.
+
+## Develop merge (2026-07-24)
+
+`frontend/apps/store`'s refactor (previously in flight and the reason this phase was scoped away
+from it) landed on `origin/develop` via PRs #67 and #89. This branch merged 112 develop commits in
+cleanly (`git merge-tree` predicted, and the actual merge confirmed, zero conflicts). Only 3 files
+were touched by both sides — `backend/src/models/index.js`, `backend/src/server.js`,
+`frontend/src/features/pos/components/POSCheckoutTerminal.jsx` — and all 5 affiliate touchpoints in
+`POSCheckoutTerminal.jsx` (the affiliate-code input, its payload field, and the confirmation resets)
+were confirmed intact post-merge. The storefront app is settled again, but this phase deliberately
+stayed backend-only per the user's explicit choice (see "What's in progress / next" below) rather
+than reopening `frontend/apps/store` work in the same batch.
 
 ## Sandbox limitations that affected how prior work was verified
 

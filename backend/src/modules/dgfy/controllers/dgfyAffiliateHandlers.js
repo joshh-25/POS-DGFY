@@ -1,6 +1,7 @@
 import {
     approveAffiliateCashoutUseCase,
     cancelAffiliateCashoutUseCase,
+    captureAffiliateAttributionUseCase,
     createAffiliatePayoutMethodUseCase,
     deleteAffiliatePayoutMethodUseCase,
     enrollSelfServeAffiliateUseCase,
@@ -22,6 +23,7 @@ import {
     updateAffiliateSettingsUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
+import { setAffiliateAttributionCookie } from '../../../utils/browserSessionCookies.js';
 
 const timestamp = () => new Date().toISOString();
 
@@ -260,6 +262,27 @@ export const cancelAffiliateCashout = async (req, res, next) => {
             account: req.dgfyAccount,
             cashoutId: req.params.cashout_id
         }), { message: 'Cashout request cancelled' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Public, unauthenticated: no req.user / req.dgfyAccount available. Dormant until a storefront page
+// calls it on load (frontend/apps/store is out of scope for this phase). Always responds success
+// (captured: true/false) - never a 4xx for an unknown code/store, so the endpoint can't be used to
+// enumerate either.
+export const captureAffiliateAttribution = async (req, res, next) => {
+    try {
+        const result = await captureAffiliateAttributionUseCase({
+            tenantId: req.body?.tenant_id || null,
+            storeSlug: req.body?.store_slug || null,
+            shortCode: req.body?.p || req.body?.short_code,
+            visitorFingerprint: req.body?.visitor_fingerprint || null
+        });
+        if (result?.data?.captured) {
+            setAffiliateAttributionCookie(req, res, result.data.tenant_id, result.data.enrollment_id);
+        }
+        return send(res, result);
     } catch (error) {
         next(error);
     }

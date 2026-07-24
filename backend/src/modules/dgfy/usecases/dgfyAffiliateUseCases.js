@@ -1,6 +1,7 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { dgfyAffiliateRepository } from '../repositories/dgfyAffiliateRepository.js';
+import { resolveTenantByStoreSlug } from '../../../services/storefrontTenantResolver.js';
 
 const MAX_RATE_BPS = 10000; // 100.00%
 const MIN_ATTRIBUTION_WINDOW_DAYS = 1;
@@ -529,6 +530,57 @@ export const buildRejectAffiliateCashoutUseCase = ({ repository = dgfyAffiliateR
     }
 );
 
+// Public, unauthenticated capture: resolves a store (by tenant_id directly, or by store_slug via
+// the storefront discovery index) and an affiliate's public short code, records a `link` channel
+// attribution audit row, and reports back what to cookie. Soft-fails (captured: false) rather than
+// throwing on a bad/unknown code or store - this is an anonymous visitor endpoint with no
+// authentication boundary, so it must never leak which codes/stores exist via error responses.
+export const buildCaptureAffiliateAttributionUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId = null, storeSlug = null, shortCode, visitorFingerprint = null }) => {
+        try {
+            const code = String(shortCode || '').trim();
+            if (!code) {
+                return ok({ captured: false });
+            }
+
+            let resolvedTenantId = String(tenantId || '').trim() || null;
+            if (!resolvedTenantId && storeSlug) {
+                const tenant = await resolveTenantByStoreSlug(storeSlug);
+                resolvedTenantId = tenant?.id ? String(tenant.id) : null;
+            }
+            if (!resolvedTenantId) {
+                return ok({ captured: false });
+            }
+
+            const settings = await repository.getSettings(resolvedTenantId);
+            if (!settings?.program_enabled) {
+                return ok({ captured: false });
+            }
+
+            const enrollment = await repository.findActiveEnrollmentByShareCode(resolvedTenantId, code);
+            if (!enrollment) {
+                return ok({ captured: false });
+            }
+
+            await repository.recordAttribution({
+                tenantId: resolvedTenantId,
+                enrollmentId: enrollment.enrollment_id,
+                channel: 'link',
+                storeSlug: storeSlug ? String(storeSlug).trim().toLowerCase() : null,
+                visitorFingerprint
+            });
+
+            return ok({
+                captured: true,
+                tenant_id: resolvedTenantId,
+                enrollment_id: enrollment.enrollment_id
+            });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to capture affiliate attribution'));
+        }
+    }
+);
+
 export default {
     buildGetAffiliateSettingsUseCase,
     buildUpdateAffiliateSettingsUseCase,
@@ -546,5 +598,6 @@ export default {
     buildListAffiliateCashoutsUseCase,
     buildApproveAffiliateCashoutUseCase,
     buildMarkAffiliateCashoutPaidUseCase,
-    buildRejectAffiliateCashoutUseCase
+    buildRejectAffiliateCashoutUseCase,
+    buildCaptureAffiliateAttributionUseCase
 };

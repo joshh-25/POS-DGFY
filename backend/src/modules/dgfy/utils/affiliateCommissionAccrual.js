@@ -7,6 +7,15 @@ const roundBpsAmount = (baseCentavos, rateBps) => (
     Math.round((Number(baseCentavos) || 0) * (Number(rateBps) || 0) / 10000)
 );
 
+// Shared rate resolution: enrollment-level override, else the tenant's configured default, else the
+// hardcoded fallback. Used by both the in-store and online accrual paths so a rate change in either
+// place can never drift between channels.
+const resolveCommissionRateBps = (enrollment, settings) => (
+    Number.isInteger(enrollment?.commission_rate_bps)
+        ? enrollment.commission_rate_bps
+        : (Number.isInteger(settings?.default_rate_bps) ? settings.default_rate_bps : DEFAULT_RATE_BPS)
+);
+
 // Pre-commit lookup: validates a cashier/customer-entered affiliate code against the tenant's
 // program state before the sale is written, so an invalid code can be rejected with clear feedback
 // instead of silently losing the commission (unlike the post-commit, best-effort accrual below).
@@ -57,9 +66,7 @@ export const accrueEarnedForInStoreSale = async ({
     }
 
     const settings = await repository.getSettings(tenantId);
-    const rateBps = Number.isInteger(enrollment.commission_rate_bps)
-        ? enrollment.commission_rate_bps
-        : (Number.isInteger(settings?.default_rate_bps) ? settings.default_rate_bps : DEFAULT_RATE_BPS);
+    const rateBps = resolveCommissionRateBps(enrollment, settings);
     const baseCentavos = Math.max(0, Math.round(Number(commissionableBaseCentavos) || 0));
     const amountCentavos = roundBpsAmount(baseCentavos, rateBps);
 
@@ -98,8 +105,103 @@ export const reverseAffiliateCommissionForOrder = async ({
     return repository.reverseCommissionByOrderReference(tenantId, orderReference);
 };
 
+// By-id twin of resolveActiveAffiliateEnrollment, used where the caller already has an enrollment id
+// (from the attribution cookie) rather than a typed-in share code. Same null-means-no-attribution
+// contract: dormant/suspended enrollments and a disabled program both resolve to null, never throw.
+export const resolveActiveAffiliateEnrollmentById = async ({
+    tenantId,
+    enrollmentId,
+    repository = dgfyAffiliateRepository
+}) => {
+    if (!tenantId || !enrollmentId) return null;
+
+    const settings = await repository.getSettings(tenantId);
+    if (!settings?.program_enabled) return null;
+
+    const enrollment = await repository.findEnrollmentById(tenantId, enrollmentId);
+    return enrollment?.status === 'active' ? enrollment : null;
+};
+
+// Post-commit, best-effort accrual for an online (storefront) order. Unlike the in-store path,
+// online orders are born pending - the actual order lifecycle (completed vs cancelled/rejected)
+// isn't known yet at checkout, so this writes a `pending` commission that settleAffiliateCommission-
+// ForOrder later flips to earned or reversed. Same idempotency guarantee via the (tenant_id,
+// order_reference) index, and callers must wrap this in try/catch, mirroring
+// recordDgfyOrderActivity's non-blocking convention.
+export const accruePendingForOnlineOrder = async ({
+    tenantId,
+    enrollment,
+    orderReference,
+    commissionableBaseCentavos,
+    buyerDgfyAccountId = null,
+    storeSlug = null,
+    repository = dgfyAffiliateRepository
+}) => {
+    if (!tenantId || !enrollment || !orderReference) return null;
+
+    // Self-referral guard: live here (unlike the in-store path) since online checkout knows the
+    // buyer's DGFY account identity.
+    if (buyerDgfyAccountId && String(buyerDgfyAccountId) === String(enrollment.dgfy_account_id)) {
+        logger.warn('[AffiliateCommissionAccrual] Skipped self-referral commission', {
+            tenantId,
+            enrollmentId: enrollment.enrollment_id,
+            orderReference
+        });
+        return null;
+    }
+
+    const settings = await repository.getSettings(tenantId);
+    const rateBps = resolveCommissionRateBps(enrollment, settings);
+    const baseCentavos = Math.max(0, Math.round(Number(commissionableBaseCentavos) || 0));
+    const amountCentavos = roundBpsAmount(baseCentavos, rateBps);
+
+    await repository.recordAttribution({
+        tenantId,
+        enrollmentId: enrollment.enrollment_id,
+        channel: 'link',
+        dgfyAccountId: buyerDgfyAccountId,
+        storeSlug
+    });
+
+    const { commission } = await repository.createPendingCommissionIfMissing({
+        enrollmentId: enrollment.enrollment_id,
+        tenantId,
+        dgfyAccountId: enrollment.dgfy_account_id,
+        orderReference,
+        commissionableBaseCentavos: baseCentavos,
+        rateBpsSnapshot: rateBps,
+        amountCentavos,
+        reason: 'online_order'
+    });
+
+    return commission;
+};
+
+// Settles a pending online-order commission once the order's real outcome is known: 'earned' when
+// the order completes, 'reversed' when it's cancelled/rejected. Best-effort, non-blocking - same
+// convention as the rest of this module.
+export const settleAffiliateCommissionForOrder = async ({
+    tenantId,
+    orderReference,
+    outcome,
+    repository = dgfyAffiliateRepository
+}) => {
+    if (!tenantId || !orderReference) return { updated: false, reason: 'missing_reference' };
+    if (outcome === 'earned') {
+        return repository.markCommissionEarnedByOrderReference(tenantId, orderReference);
+    }
+    if (outcome === 'reversed') {
+        const result = await repository.reverseCommissionByOrderReference(tenantId, orderReference);
+        return { updated: result.reversed, reason: result.reason, commission: result.commission };
+    }
+    return { updated: false, reason: 'invalid_outcome' };
+};
+
 export default {
     resolveActiveAffiliateEnrollment,
+    resolveActiveAffiliateEnrollmentById,
     accrueEarnedForInStoreSale,
+    accruePendingForOnlineOrder,
+    settleAffiliateCommissionForOrder,
     reverseAffiliateCommissionForOrder
 };

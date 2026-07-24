@@ -231,6 +231,56 @@ export const dgfyAffiliateRepository = {
         return { commission: toPlain(row), created };
     },
 
+    // Online-order twin of createEarnedCommissionIfMissing: online orders are born pending (unlike
+    // in-store sales, which are completed at checkout) and settle to earned/reversed later via the
+    // order lifecycle hook. Same idempotency guarantee via the (tenant_id, order_reference) index.
+    async createPendingCommissionIfMissing({
+        enrollmentId,
+        tenantId,
+        dgfyAccountId,
+        posTransactionId = null,
+        orderReference,
+        commissionableBaseCentavos,
+        rateBpsSnapshot,
+        amountCentavos,
+        reason = 'online_order'
+    }) {
+        const [row, created] = await DgfyAffiliateCommission.findOrCreate({
+            where: { tenant_id: tenantId, order_reference: orderReference },
+            defaults: {
+                enrollment_id: enrollmentId,
+                tenant_id: tenantId,
+                dgfy_account_id: dgfyAccountId,
+                pos_transaction_id: posTransactionId,
+                order_reference: orderReference,
+                commissionable_base_centavos: commissionableBaseCentavos,
+                rate_bps_snapshot: rateBpsSnapshot,
+                amount_centavos: amountCentavos,
+                status: 'pending',
+                reason
+            }
+        });
+        return { commission: toPlain(row), created };
+    },
+
+    // Settles a pending online-order commission to earned once the order actually completes. Only
+    // a `pending` row can be settled this way - anything else (already earned/paid/reversed, or
+    // reserved by a cashout) is reported back so the caller can decide whether that's expected.
+    async markCommissionEarnedByOrderReference(tenantId, orderReference) {
+        const row = await DgfyAffiliateCommission.findOne({
+            where: { tenant_id: tenantId, order_reference: orderReference }
+        });
+        if (!row) return { updated: false, reason: 'not_found' };
+        if (row.cashout_id) return { updated: false, reason: 'already_in_cashout' };
+        if (row.status === 'earned') return { updated: true, reason: 'already_earned', commission: toPlain(row) };
+        if (row.status === 'paid') return { updated: false, reason: 'already_paid' };
+        if (row.status === 'reversed') return { updated: false, reason: 'already_reversed' };
+        if (row.status !== 'pending') return { updated: false, reason: 'invalid_status' };
+
+        await row.update({ status: 'earned', earned_at: new Date() });
+        return { updated: true, commission: toPlain(await row.reload()) };
+    },
+
     // Reverses a commission by its order_reference (the tracking_pin/pos_transaction_id join key).
     // Skips (and reports so the caller can flag it) rows already reserved by a cashout (cashout_id
     // set) - those follow the compensating-row clawback policy (a later slice), not a hard reversal.

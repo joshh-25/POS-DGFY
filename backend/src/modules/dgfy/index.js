@@ -59,6 +59,7 @@ import {
 import {
     buildApproveAffiliateCashoutUseCase,
     buildCancelAffiliateCashoutUseCase,
+    buildCaptureAffiliateAttributionUseCase,
     buildEnrollSelfServeAffiliateUseCase,
     buildGetAffiliateEarningsUseCase,
     buildGetAffiliateQrPayloadUseCase,
@@ -299,5 +300,7 @@ export const listAffiliateCashoutsUseCase = buildListAffiliateCashoutsUseCase();
 export const approveAffiliateCashoutUseCase = buildApproveAffiliateCashoutUseCase();
 export const markAffiliateCashoutPaidUseCase = buildMarkAffiliateCashoutPaidUseCase();
 export const rejectAffiliateCashoutUseCase = buildRejectAffiliateCashoutUseCase();
+
+export const captureAffiliateAttributionUseCase = buildCaptureAffiliateAttributionUseCase();
 
 export { dgfyAccountRepository };
