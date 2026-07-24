@@ -12,6 +12,13 @@ on:
         required: false
         type: string
         default: '["ubuntu-latest"]'
+  workflow_dispatch:
+    inputs:
+      force_publish:
+        description: Publish the current develop package even when this push did not change it.
+        required: true
+        default: true
+        type: boolean
 
 permissions:
   contents: read
@@ -36,7 +43,9 @@ jobs:
         id: changes
         shell: bash
         run: |
-          if git diff --quiet "${{ inputs.before_sha }}" "$GITHUB_SHA" -- packages/pos-receipt; then
+          if [ "${{ github.event_name }}" = 'workflow_dispatch' ] && [ "${{ inputs.force_publish }}" = 'true' ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "${{ inputs.before_sha }}" "$GITHUB_SHA" -- packages/pos-receipt; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"
