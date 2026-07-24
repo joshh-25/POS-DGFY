@@ -164,6 +164,7 @@ services:
       - "443:443"
     volumes:
       - ./nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./data/nginx/custom-storefronts:/etc/nginx/custom-storefronts:ro
       - ./data/certbot/conf:/etc/letsencrypt:ro
       - ./data/certbot/www:/var/www/certbot:ro
     depends_on:

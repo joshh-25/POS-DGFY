@@ -1,8 +1,10 @@
+import { jest } from '@jest/globals';
 import { compareTenantSyncFailures } from '../scripts/check-tenant-schema-sync-regressions.js';
 import {
   buildTenantSchemaRepairSql,
   createSyncFailureRecord,
-  normalizeErrorSignature
+  normalizeErrorSignature,
+  repairItemFolderCategoryLifecycleSchema
 } from '../scripts/sync-tenant-schemas.js';
 
 describe('tenant schema sync script contracts', () => {
@@ -110,5 +112,27 @@ describe('tenant schema sync script contracts', () => {
     expect(record.status).toBe('failed');
     expect(record.missing_columns).toEqual(error.missing_columns);
     expect(record.repair_sql[0].sql).toContain('pos_always_available');
+  });
+
+  it('uses Sequelize replacement options during tenant provisioning schema repair', async () => {
+    const connection = {
+      getDialect: jest.fn(() => 'mysql'),
+      getQueryInterface: jest.fn(() => ({})),
+      query: jest.fn()
+        .mockResolvedValueOnce([[
+          { COLUMN_NAME: 'deleted_at' },
+          { COLUMN_NAME: 'deleted_by' },
+          { COLUMN_NAME: 'active_name_key' }
+        ], {}])
+        .mockResolvedValueOnce([[], {}])
+        .mockResolvedValueOnce([[{ INDEX_NAME: 'uq_item_folders_active_name' }], {}])
+    };
+
+    await repairItemFolderCategoryLifecycleSchema(connection, 'sku_tenant_grandmatador_test');
+
+    expect(connection.query).toHaveBeenCalledTimes(3);
+    for (const [, options] of connection.query.mock.calls) {
+      expect(options).toEqual({ replacements: ['sku_tenant_grandmatador_test'] });
+    }
   });
 });

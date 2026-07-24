@@ -1,6 +1,6 @@
 import { Plus } from 'lucide-react';
 
-import SavedAddressCard from '../../../../checkout/components/SavedAddressCard.jsx';
+import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
 
 /**
  * F&B fulfillment saved-address selector. The parent owns address persistence,

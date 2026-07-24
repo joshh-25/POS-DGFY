@@ -366,7 +366,10 @@ export const createCheckoutPaymentSession = async (req, res, next) => {
         };
         const result = await storeCheckoutPaymentSessionUseCase({
             payload,
-            storeCustomer: resolveStoreCustomer(req)
+            storeCustomer: resolveStoreCustomer(req),
+            trustedReturnUrl: req.storefrontDomainContext?.domain?.hostname
+                ? `https://${req.storefrontDomainContext.domain.hostname}/order`
+                : null
         });
 
         return sendUseCaseResult(res, result, {

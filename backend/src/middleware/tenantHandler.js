@@ -6,6 +6,7 @@ import { findTenantById, findTenantByToken, resolveInvitationTenantTokenByToken 
 import logger from '../config/logger.js';
 import { getTenantModels } from '../utils/tenantModelFactory.js';
 import { resolveTenantByStoreSlug } from '../services/storefrontTenantResolver.js';
+import { readRequestHostname, resolveActiveStorefrontDomain } from '../modules/storefrontDomains/index.js';
 import { getTenantContextToken, getTenantRefreshToken } from '../utils/browserSessionCookies.js';
 
 // Short-lived in-memory cache for tenant lookups.
@@ -163,8 +164,31 @@ export const tenantHandler = async (req, res, next) => {
         }
 
         // 1. Identification Strategy:
-        // Header (x-company-token) -> Store slug (x-store-slug for public store routes) -> Subdomain (Future) -> Auth User (Future)
+        // Active custom host (public store routes) -> Header -> Store slug -> Auth context.
         let companyToken = req.headers['x-company-token'];
+        const storeSlug = String(req.headers['x-store-slug'] || '').trim().toLowerCase();
+        const allowStoreSlugResolution = STOREFRONT_ROUTE_PATTERN.test(path);
+        if (allowStoreSlugResolution) {
+            const requestHostname = readRequestHostname(req);
+            if (requestHostname) {
+                const domainContext = await resolveActiveStorefrontDomain(requestHostname);
+                if (domainContext) {
+                    const mappedSlug = String(domainContext.discovery?.slug || '').trim().toLowerCase();
+                    if (storeSlug && mappedSlug && storeSlug !== mappedSlug) {
+                        return sendTenantContextError(
+                            res,
+                            404,
+                            'Storefront does not exist on this domain.',
+                            'STOREFRONT_DOMAIN_SLUG_MISMATCH'
+                        );
+                    }
+                    req.storefrontDomainContext = domainContext;
+                    companyToken = domainContext.tenant.company_token;
+                    req.headers['x-company-token'] = companyToken;
+                    if (mappedSlug) req.headers['x-store-slug'] = mappedSlug;
+                }
+            }
+        }
         if (!companyToken && isStrictAuthRoute) {
             companyToken = getTenantContextToken(req);
             if (companyToken) {
@@ -186,8 +210,6 @@ export const tenantHandler = async (req, res, next) => {
                 req.headers['x-company-token'] = companyToken;
             }
         }
-        const storeSlug = String(req.headers['x-store-slug'] || '').trim().toLowerCase();
-        const allowStoreSlugResolution = STOREFRONT_ROUTE_PATTERN.test(path);
         if (!companyToken && isStrictAuthRoute && /\/(validate-invite|accept-invite|email-otp\/request)\b/i.test(path)) {
             const pathInviteMatch = path.match(/\/auth\/validate-invite\/([^/?#]+)/i);
             const inviteToken = String(req.params?.token || req.body?.token || req.body?.invitation_token || pathInviteMatch?.[1] || '').trim();

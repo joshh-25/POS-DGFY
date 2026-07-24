@@ -25,6 +25,7 @@ describe('Storefront guest checkout OTP contract', () => {
     const componentSource = readAppSource('modes/fnb/checkout/components/FnbGuestEmailVerification.jsx');
     const customerValidationSource = readAppSource('modes/fnb/checkout/model/fnbCheckoutCustomerValidation.js');
     const submissionSource = readAppSource('modes/fnb/checkout/hooks/useFnbCheckoutSubmission.js');
+    const checkoutRouteContainerSource = readAppSource('modes/fnb/checkout/pages/FnbCheckoutRouteContainer.jsx');
 
     expect(modelSource).toContain("/api/v1/store/checkout/guest-otp/request");
     expect(modelSource).toContain("/api/v1/store/checkout/guest-otp/verify");
@@ -39,6 +40,6 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(submissionSource).toContain('guest_checkout_proof');
     expect(submissionSource).toContain('guestCheckoutIntentId');
     expect(appSource).toContain('useFnbGuestCheckoutOtp');
-    expect(appSource).toContain('FnbGuestEmailVerification');
+    expect(checkoutRouteContainerSource).toContain('FnbGuestEmailVerification');
   });
 });

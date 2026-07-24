@@ -2317,7 +2317,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
     commercePaymongoSplitEnabled = false,
     requireCommerceQrphConfig = () => []
 }) => {
-    return async ({ payload, storeCustomer = null }) => {
+    return async ({ payload, storeCustomer = null, trustedReturnUrl = null }) => {
         try {
             if (!commercePaymentsEnabled || !commerceQrphEnabled) {
                 throw new DomainError(
@@ -2490,7 +2490,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                         provider_fee_shoulder: feePolicy.provider_fee_shoulder
                     },
                     splitPayment: splitPayload,
-                    returnUrl: process.env.STOREFRONT_PAYMENT_RETURN_URL || null
+                    returnUrl: trustedReturnUrl || process.env.STOREFRONT_PAYMENT_RETURN_URL || null
                 });
             } catch (error) {
                 const failed = await commercePaymentRepository.updateSessionById(session.session_id, {

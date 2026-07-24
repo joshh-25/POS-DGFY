@@ -1,5 +1,5 @@
 import { CalendarDays, Clock3, ShoppingBag, Zap } from 'lucide-react';
-import { SelectableOptionCard } from '../../../../checkout/components/SelectableOptionCard.jsx';
+import { SelectableOptionCard } from '../../../../shared/components/checkout/SelectableOptionCard.jsx';
 
 const deliveryIcon = 'data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyNCIgaGVpZ2h0PSIyNCIgdmlld0JveD0iMCAwIDI0IDI0IiBmaWxsPSJub25lIiBzdHJva2U9ImN1cnJlbnRDb2xvciIgc3Ryb2tlLXdpZHRoPSIyIiBzdHJva2UtbGluZWNhcD0icm91bmQiIHN0cm9rZS1saW5lam9pbj0icm91bmQiPjxwYXRoIGQ9Im0xOCAxNC0xLTMiLz48cGF0aCBkPSJtMyA5IDYgMmEyIDIgMCAwIDEgMi0yaDJhMiAyIDAgMCAxIDEuOTkgMS44MSIvPjxwYXRoIGQ9Ik04IDE3aDNhMSAxIDAgMCAwIDEtMSA2IDYgMCAwIDEgNi02IDEgMSAwIDAgMCAxLTF2LS43NUE1IDUgMCAwIDAgMTcgNSIvPjxjaXJjbGUgY3g9IjE5IiBjeT0iMTciIHI9IjMiLz48Y2lyY2xlIGN4PSI1IiBjeT0iMTciIHI9IjMiLz48L3N2Zz4=';
 

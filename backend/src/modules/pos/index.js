@@ -1,6 +1,12 @@
 import { posRepository } from './repositories/posRepository.js';
 import { posCatalogImageStorage } from './repositories/posCatalogImageStorage.js';
-import { inventoryStockCommandService } from '../inventory/index.js';
+import {
+    inventoryStockCommandService,
+    itemRepository,
+    createItemUseCase,
+    updateItemUseCase,
+    deleteItemUseCase
+} from '../inventory/index.js';
 import { posDeviceBridgeService } from '../../services/posDeviceBridgeService.js';
 import posTerminalPairingService from './services/posTerminalPairingService.js';
 import * as userService from '../../services/userService.js';
@@ -58,6 +64,7 @@ import {
     buildGetMobilePosSettingsBootstrapUseCase,
     buildGetMobilePosDevicePolicyUseCase,
     buildSyncMobilePosCheckoutsUseCase,
+    buildSyncMobilePosItemsUseCase,
     buildSyncMobilePosShiftsUseCase,
     buildSyncMobilePosHardwareEventsUseCase,
     buildAcknowledgeMobilePosCheckpointUseCase
@@ -135,6 +142,12 @@ export const getMobilePosCatalogBootstrapUseCase = buildGetMobilePosCatalogBoots
 export const getMobilePosSettingsBootstrapUseCase = buildGetMobilePosSettingsBootstrapUseCase();
 export const getMobilePosDevicePolicyUseCase = buildGetMobilePosDevicePolicyUseCase({ posRepository });
 export const syncMobilePosCheckoutsUseCase = buildSyncMobilePosCheckoutsUseCase({ checkoutPosUseCase });
+export const syncMobilePosItemsUseCase = buildSyncMobilePosItemsUseCase({
+    createItemUseCase,
+    updateItemUseCase,
+    deleteItemUseCase,
+    itemRepository
+});
 export const syncMobilePosShiftsUseCase = buildSyncMobilePosShiftsUseCase({
     openTerminalShiftUseCase,
     switchTerminalShiftLocationUseCase,

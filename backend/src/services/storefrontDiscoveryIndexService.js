@@ -24,6 +24,7 @@ import {
     resolveAccessPolicyFromSettings
 } from '../modules/shared/utils/customerAccessPolicy.js';
 import { parsePublicCommercialPromos } from '../modules/shared/utils/commercialPromoPolicy.js';
+import { syncTenantGeoCatalog } from '../modules/geoSearch/services/geoCatalogSyncService.js';
 
 const STOREFRONT_SETTING_KEYS = Object.freeze([
     'ops_workflow_mode',
@@ -911,6 +912,19 @@ export const reconcileStorefrontDiscoveryIndex = async ({
             if (!dryRun) {
                 await StorefrontDiscoveryIndex.destroy({ where: { tenant_id: tenant.id } });
                 await StorefrontDiscoveryIndex.create(snapshot);
+                // Fire-and-forget: keeps geo-search's radius+alias matching roughly in
+                // sync with the Discovery index without slowing down reconciliation
+                // (including the synchronous auto-repair path in storefrontDiscoveryRepository).
+                syncTenantGeoCatalog({
+                    tenantId: tenant.id,
+                    itemSearchSnapshot: snapshot.item_search_snapshot
+                }).catch((error) => {
+                    logger.warn('[StorefrontDiscoveryIndex] Geo catalog sync failed', {
+                        tenantId: tenant?.id || null,
+                        tenantName: tenant?.name || null,
+                        error: error?.message || 'unknown_error'
+                    });
+                });
             }
             upserted += 1;
         } catch (error) {

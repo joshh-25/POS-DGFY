@@ -35,6 +35,7 @@ import {
 import {
     clearSessionCookie,
     getCookie,
+    isMobileClientRequest,
     SESSION_COOKIE_NAMES,
     setTenantSessionCookies,
     setBearerSessionCookie
@@ -51,9 +52,16 @@ const buildRequestMetadata = (req) => ({
     user_agent: req.get?.('user-agent') || req.headers['user-agent'] || null
 });
 
-const stripTenantSessionRefreshPayload = (result, fallbackMessage = 'SKUpervisor session started.') => {
+// Browser clients keep the existing httpOnly-cookie-only (more
+// XSS-resistant) behavior. Mobile clients (React Native, no cookie jar)
+// opt in via the x-client-platform header and get the refresh token back
+// in the body so they can persist it themselves - see
+// isMobileClientRequest in utils/browserSessionCookies.js.
+const stripTenantSessionRefreshPayload = (result, fallbackMessage = 'SKUpervisor session started.', req = null) => {
     const session = { ...(result.data?.payload?.data || {}) };
-    delete session.refreshToken;
+    if (!isMobileClientRequest(req)) {
+        delete session.refreshToken;
+    }
     return {
         success: true,
         data: session,
@@ -352,7 +360,7 @@ export const switchDgfyCompany = async (req, res) => {
 
     return sendUseCaseResult(res, result, {
         fallbackErrorMessage: 'DGFY company switch failed',
-        successPayloadResolver: (resolvedResult) => stripTenantSessionRefreshPayload(resolvedResult, 'Company switched.')
+        successPayloadResolver: (resolvedResult) => stripTenantSessionRefreshPayload(resolvedResult, 'Company switched.', req)
     });
 };
 
@@ -396,7 +404,7 @@ export const startDgfyPosSession = async (req, res) => {
 
     return sendUseCaseResult(res, result, {
         fallbackErrorMessage: 'DGFY POS session failed',
-        successPayloadResolver: (resolvedResult) => stripTenantSessionRefreshPayload(resolvedResult, 'POS session started.')
+        successPayloadResolver: (resolvedResult) => stripTenantSessionRefreshPayload(resolvedResult, 'POS session started.', req)
     });
 };
 
@@ -416,7 +424,7 @@ export const startDgfyTenantSession = async (req, res) => {
     return sendUseCaseResult(res, result, {
         fallbackErrorMessage: 'DGFY tenant session handoff failed',
         successPayloadResolver: () => {
-            return stripTenantSessionRefreshPayload(result, 'SKUpervisor session started.');
+            return stripTenantSessionRefreshPayload(result, 'SKUpervisor session started.', req);
         }
     });
 };

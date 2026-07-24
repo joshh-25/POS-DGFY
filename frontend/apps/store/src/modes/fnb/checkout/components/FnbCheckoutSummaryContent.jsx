@@ -1,5 +1,5 @@
 import { ShieldCheck } from 'lucide-react';
-import { OrderSummaryCard } from '../../../../checkout/components/OrderSummaryCard.jsx';
+import { OrderSummaryCard } from '../../../../shared/components/checkout/OrderSummaryCard.jsx';
 
 function FnbCheckoutTrustCard({ accentColor, accentSoft, accentTint, displayFont, headingWeight }) {
   return (

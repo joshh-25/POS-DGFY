@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { canCheckout, getCheckoutBlockReason } from '../checkoutRules.js';
+import { canCheckout, getCheckoutBlockReason } from '../shared/model/checkoutRules.js';
 
 describe('store checkout rules', () => {
   const base = {

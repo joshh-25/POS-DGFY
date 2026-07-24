@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   List,
   MapPin,
+  MapPinned,
   Navigation,
   Star,
   X
@@ -27,6 +28,8 @@ export function createDiscoveryResultsRenderer(ctx) {
   discoveryBusinessModeOptions,
   discoveryCategoryFilter,
   discoveryCoords,
+  discoveryDistanceFilter,
+  discoveryDistanceFilterOptions,
   discoveryFilterToolbarRef,
   discoveryLayout,
   discoveryPaginationItems,
@@ -57,6 +60,7 @@ export function createDiscoveryResultsRenderer(ctx) {
   isCategoryFilterActive,
   isDiscoveryMobileViewport,
   isDiscoveryTabletViewport,
+  isDistanceFilterActive,
   isMobileResultsCollapsed,
   isOpenNowFilterActive,
   isSortFilterActive,
@@ -73,6 +77,7 @@ export function createDiscoveryResultsRenderer(ctx) {
   searchedDiscoveryMapPins,
   setActiveDiscoveryFilterDropdown,
   setDiscoveryCategoryFilter,
+  setDiscoveryDistanceFilter,
   setDiscoveryOpenFilter,
   setDiscoveryResultsPage,
   setDiscoverySortBy,
@@ -734,15 +739,15 @@ const resultsSubtitle = isClusterResultsActive
                       display: 'grid',
                           gridTemplateColumns: isDiscoveryMobileViewport
                             ? (renderDiscoveryResetButton
-                                      ? 'max-content 44px 44px max-content'
-                                      : 'max-content 44px 44px')
+                                      ? 'max-content 44px 44px 44px max-content'
+                                      : 'max-content 44px 44px 44px')
                           : isDiscoveryTabletViewport
                             ? (renderDiscoveryResetButton
-                              ? 'minmax(0, 1.15fr) minmax(0, 1.15fr) minmax(0, 0.7fr) minmax(0, 0.9fr)'
-                                : 'minmax(0, 1.3fr) minmax(0, 1.3fr) minmax(0, 0.84fr)')
+                              ? 'minmax(0, 0.95fr) minmax(0, 0.95fr) minmax(0, 0.65fr) minmax(0, 0.65fr) minmax(0, 0.85fr)'
+                                : 'minmax(0, 1.05fr) minmax(0, 1.05fr) minmax(0, 0.78fr) minmax(0, 0.78fr)')
                             : (renderDiscoveryResetButton
-                              ? 'minmax(0, 0.74fr) minmax(0, 1fr) minmax(0, 1.24fr) minmax(0, 0.86fr)'
-                              : 'minmax(0, 0.74fr) minmax(0, 1fr) minmax(0, 1.24fr)'),
+                              ? 'minmax(0, 0.82fr) minmax(0, 0.92fr) minmax(0, 0.98fr) minmax(0, 0.9fr) minmax(0, 0.8fr)'
+                              : 'minmax(0, 0.84fr) minmax(0, 0.95fr) minmax(0, 1fr) minmax(0, 0.92fr)'),
                         gap: 8,
                         alignItems: 'stretch',
                       justifyContent: isDiscoveryMobileViewport ? 'start' : 'stretch',
@@ -873,6 +878,52 @@ const resultsSubtitle = isClusterResultsActive
                           </div>
                           </div>
                         )}
+                    </div>
+                    <div style={{ position: 'relative', minWidth: 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => setActiveDiscoveryFilterDropdown((current) => (current === 'distance' ? null : 'distance'))}
+                            style={{ minHeight: 34, borderRadius: 10, border: `1px solid ${isDistanceFilterActive ? '#93c5fd' : '#e2e8f0'}`, padding: isDiscoveryMobileViewport ? '0' : '0 10px', fontSize: 12, fontWeight: 700, color: isDistanceFilterActive ? '#1a4e8d' : '#334155', background: isDistanceFilterActive ? '#eff6ff' : '#fff', cursor: 'pointer', minWidth: 0, width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: isDiscoveryMobileViewport ? 'center' : 'space-between', gap: 8, boxShadow: isDistanceFilterActive ? '0 8px 18px rgba(37,99,235,.16)' : 'none', transition: 'all 180ms ease' }}
+                            aria-label="Distance filter"
+                          >
+                                {isDiscoveryMobileViewport ? (
+                                  <MapPinned size={14} color={isDistanceFilterActive ? '#1a4e8d' : '#64748b'} />
+                                ) : (
+                            <>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>{discoveryDistanceFilterOptions.find(([value]) => value === discoveryDistanceFilter)?.[1] || 'Any Distance'}</span>
+                              <ChevronDown size={14} color="#64748b" />
+                              </>
+                            )}
+                          </button>
+                            {activeDiscoveryFilterDropdown === 'distance' && (
+                              <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: isDiscoveryMobileViewport ? 0 : 0, right: isDiscoveryMobileViewport ? 'auto' : 0, minWidth: isDiscoveryMobileViewport ? 168 : 180, borderRadius: 10, border: '1px solid #dbe5f2', background: '#fff', boxShadow: '0 14px 30px rgba(15,23,42,.10)', overflow: 'hidden', zIndex: 1200 }}>
+                          {discoveryDistanceFilterOptions.map(([value, label], index) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => {
+                                setDiscoveryDistanceFilter(value);
+                                setActiveDiscoveryFilterDropdown(null);
+                              }}
+                              style={{
+                                width: '100%',
+                                border: 'none',
+                                borderTop: index === 0 ? 'none' : '1px solid #eef2f7',
+                                background: discoveryDistanceFilter === value ? '#eff6ff' : '#fff',
+                                color: discoveryDistanceFilter === value ? '#1a4e8d' : '#334155',
+                                textAlign: 'left',
+                                padding: '8px 10px',
+                                fontSize: 12,
+                                fontWeight: discoveryDistanceFilter === value ? 800 : 700,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                       {renderDiscoveryResetButton && (
                       <button

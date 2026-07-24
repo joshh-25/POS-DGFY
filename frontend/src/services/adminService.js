@@ -355,6 +355,88 @@ export const updateTenantPosMetadata = async (tenantId, payload = {}) => {
     return response.data;
 };
 
+export const listStorefrontDomains = async (tenantId) => {
+    const response = await adminApi.get(
+        `/admin/tenants/${tenantId}/storefront-domains`,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const createStorefrontDomain = async (tenantId, payload = {}) => {
+    const response = await adminApi.post(
+        `/admin/tenants/${tenantId}/storefront-domains`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const verifyStorefrontDomain = async (tenantId, domainId, reason) => {
+    const response = await adminApi.post(
+        `/admin/tenants/${tenantId}/storefront-domains/${domainId}/verify`,
+        { reason },
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const retryStorefrontDomain = async (tenantId, domainId, reason) => {
+    const response = await adminApi.post(
+        `/admin/tenants/${tenantId}/storefront-domains/${domainId}/retry`,
+        { reason },
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const makeCanonicalStorefrontDomain = async (tenantId, domainId, reason) => {
+    const response = await adminApi.post(
+        `/admin/tenants/${tenantId}/storefront-domains/${domainId}/make-canonical`,
+        { reason },
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const checkStorefrontDomainDns = async (tenantId, domainId, reason) => {
+    const response = await adminApi.post(
+        `/admin/tenants/${tenantId}/storefront-domains/${domainId}/check-dns`,
+        { reason },
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const suspendStorefrontDomain = async (tenantId, domainId, reason) => {
+    const response = await adminApi.post(
+        `/admin/tenants/${tenantId}/storefront-domains/${domainId}/suspend`,
+        { reason },
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const removeStorefrontDomain = async (tenantId, domainId, reason) => {
+    const response = await adminApi.delete(
+        `/admin/tenants/${tenantId}/storefront-domains/${domainId}`,
+        {
+            ...requireAdminAuthConfig(),
+            data: { reason }
+        }
+    );
+    return response.data;
+};
+
+export const reconcileStorefrontDomainEligibility = async (tenantId, reason) => {
+    const response = await adminApi.post(
+        `/admin/tenants/${tenantId}/storefront-domains/reconcile-eligibility`,
+        { reason },
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
 export const listDgfyAccounts = async (params = {}) => {
     const response = await adminApi.get('/dgfy/admin/accounts', {
         ...requireAdminAuthConfig(),

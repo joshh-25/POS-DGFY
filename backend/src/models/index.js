@@ -124,6 +124,9 @@ import PaymentFactory from './Landlord/Payment.js';
 import WebhookLogFactory from './Landlord/WebhookLog.js';
 import EngagementEventFactory from './Landlord/EngagementEvent.js';
 import StorefrontDiscoveryIndexFactory from './Landlord/StorefrontDiscoveryIndex.js';
+import StorefrontCustomDomainFactory from './Landlord/StorefrontCustomDomain.js';
+import StorefrontCustomDomainAuditLogFactory from './Landlord/StorefrontCustomDomainAuditLog.js';
+import StorefrontCustomDomainOperationFactory from './Landlord/StorefrontCustomDomainOperation.js';
 import StorefrontHandleReservationFactory from './Landlord/StorefrontHandleReservation.js';
 import TenantComplianceArtifactFactory from './Landlord/TenantComplianceArtifact.js';
 import TenantCompliancePeripheralFactory from './Landlord/TenantCompliancePeripheral.js';
@@ -157,6 +160,9 @@ const Payment = PaymentFactory(sequelize);
 const WebhookLog = WebhookLogFactory(sequelize);
 const EngagementEvent = EngagementEventFactory(sequelize);
 const StorefrontDiscoveryIndex = StorefrontDiscoveryIndexFactory(sequelize);
+const StorefrontCustomDomain = StorefrontCustomDomainFactory(sequelize);
+const StorefrontCustomDomainAuditLog = StorefrontCustomDomainAuditLogFactory(sequelize);
+const StorefrontCustomDomainOperation = StorefrontCustomDomainOperationFactory(sequelize);
 const StorefrontHandleReservation = StorefrontHandleReservationFactory(sequelize);
 const TenantComplianceArtifact = TenantComplianceArtifactFactory(sequelize);
 const TenantCompliancePeripheral = TenantCompliancePeripheralFactory(sequelize);
@@ -188,6 +194,16 @@ Tenant.hasMany(EngagementEvent, { foreignKey: 'tenant_id', as: 'engagementEvents
 EngagementEvent.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasOne(StorefrontDiscoveryIndex, { foreignKey: 'tenant_id', as: 'storefrontDiscoveryIndex' });
 StorefrontDiscoveryIndex.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(StorefrontCustomDomain, { foreignKey: 'tenant_id', as: 'storefrontCustomDomains' });
+StorefrontCustomDomain.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+StorefrontCustomDomain.hasMany(StorefrontCustomDomainAuditLog, { foreignKey: 'domain_id', as: 'auditLogs' });
+StorefrontCustomDomainAuditLog.belongsTo(StorefrontCustomDomain, { foreignKey: 'domain_id', as: 'domain' });
+StorefrontCustomDomain.belongsTo(StorefrontCustomDomain, { foreignKey: 'canonical_domain_id', as: 'canonicalDomain' });
+StorefrontCustomDomain.hasMany(StorefrontCustomDomain, { foreignKey: 'canonical_domain_id', as: 'aliases' });
+StorefrontCustomDomain.hasMany(StorefrontCustomDomainOperation, { foreignKey: 'domain_id', as: 'operations' });
+StorefrontCustomDomainOperation.belongsTo(StorefrontCustomDomain, { foreignKey: 'domain_id', as: 'domain' });
+Tenant.hasMany(StorefrontCustomDomainOperation, { foreignKey: 'tenant_id', as: 'storefrontCustomDomainOperations' });
+StorefrontCustomDomainOperation.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasOne(StorefrontHandleReservation, { foreignKey: 'tenant_id', as: 'storefrontHandleReservation' });
 StorefrontHandleReservation.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 DgfyAccount.hasMany(DgfyAccountTenantMembership, { foreignKey: 'dgfy_account_id', as: 'tenantMemberships' });
@@ -745,6 +761,9 @@ const db = {
   EngagementEvent,
   AiUsageLog,
   StorefrontDiscoveryIndex,
+  StorefrontCustomDomain,
+  StorefrontCustomDomainAuditLog,
+  StorefrontCustomDomainOperation,
   TenantComplianceArtifact,
   TenantCompliancePeripheral,
   TenantComplianceAuditLog,
@@ -884,6 +903,9 @@ export {
   EngagementEvent,
   AiUsageLog,
   StorefrontDiscoveryIndex,
+  StorefrontCustomDomain,
+  StorefrontCustomDomainAuditLog,
+  StorefrontCustomDomainOperation,
   TenantComplianceArtifact,
   TenantCompliancePeripheral,
   TenantComplianceAuditLog,
