@@ -7,6 +7,7 @@ import StorefrontApp from './StorefrontApp.jsx';
 import { appBasePath } from './app/runtime/storefrontRuntime.js';
 import StorefrontLoginPage from './auth/pages/StorefrontLoginPage.jsx';
 import StorefrontRegisterPage from './auth/pages/StorefrontRegisterPage.jsx';
+import StorefrontBusinessGrowPage from './business/pages/StorefrontBusinessGrowPage.jsx';
 
 const rootElement = document.getElementById('root');
 
@@ -44,6 +45,15 @@ function StoreRoot() {
           element={(
             <>
               <StorefrontRegisterPage />
+              <Toaster richColors position="top-right" closeButton duration={2200} />
+            </>
+          )}
+        />
+        <Route
+          path="/business/grow"
+          element={(
+            <>
+              <StorefrontBusinessGrowPage />
               <Toaster richColors position="top-right" closeButton duration={2200} />
             </>
           )}

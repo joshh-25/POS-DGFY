@@ -187,23 +187,13 @@ export function useCustomerAuthNavigation({
     persistCheckoutAuthResume(resumeTarget);
     openCanonicalDgfyAuth('customer', mode, { returnTarget: 'current' });
   }, [openCanonicalDgfyAuth, persistCheckoutAuthResume]);
-  const openBusinessRegistrationFlow = useCallback(async () => {
-    if (typeof window === 'undefined') return;
-    if (!isDgfyCustomerSignedIn) {
-      openCanonicalDgfyAuth('register-business');
-      return;
-    }
-    try {
-      const payload = await requestJson('/api/v1/dgfy/auth/handoff', {
-        method: 'POST',
-        authToken: dgfyAuthToken,
-        cache: 'no-store'
-      });
-      window.location.href = buildBusinessRegistrationUrl(String(payload?.handoff_token || '').trim());
-    } catch (error) {
-      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to start business registration.'));
-    }
-  }, [buildBusinessRegistrationUrl, dgfyAuthToken, isDgfyCustomerSignedIn, normalizeStorefrontErrorMessage, openCanonicalDgfyAuth, requestJson, toast]);
+  const openBusinessRegistrationFlow = useCallback(() => {
+    // Business registration now lives in-app (dgfy.ph/business/grow)
+    // instead of redirecting out to skupervisor, so the signed-in/signed-out
+    // branching (and the handoff-token exchange that used to bridge the
+    // cross-origin session) is handled by that page itself.
+    navigate('/business/grow');
+  }, [navigate]);
 
   return {
     buildContextualCustomerReturnUrl,
