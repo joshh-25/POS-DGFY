@@ -6,6 +6,7 @@ import { PERMISSIONS } from '../config/permissions.js';
 import {
     validateMobilePosCatalogBootstrapQuery,
     validateMobilePosCheckoutSync,
+    validateMobilePosItemSync,
     validateMobilePosShiftSync,
     validateMobilePosHardwareEventSync,
     validateMobilePosCheckpointAck
@@ -31,6 +32,17 @@ router.get('/bootstrap/device-policy', checkPermission(PERMISSIONS.POS.actions.V
 // four routes share the same limiter instance, so the 2/day budget is one
 // shared quota per business across a whole sync round, not per-endpoint.
 router.post('/sync/checkouts', mobilePosFreeSyncLimiter, checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateMobilePosCheckoutSync, mobilePosController.syncCheckouts);
+
+// Item/catalog sync is NOT behind mobilePosFreeSyncLimiter - unlike the
+// transaction ledger above, item CRUD has never been plan-tier gated
+// anywhere in this app (web included), so folding it into the same 2/day
+// budget would make catalog management unusable for free-tier tenants. No
+// route-level checkPermission either: a batch can mix create/update/delete
+// entries (the op lives inside each entry's payload, not the entry itself -
+// see validateMobilePosItemSync), so permission (items:create/edit/delete)
+// is enforced per-entry inside buildSyncMobilePosItemsUseCase instead of
+// gating the whole route.
+router.post('/sync/items', validateMobilePosItemSync, mobilePosController.syncItems);
 router.post('/sync/shifts', mobilePosFreeSyncLimiter, checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateMobilePosShiftSync, mobilePosController.syncShifts);
 router.post('/sync/hardware-events', mobilePosFreeSyncLimiter, checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateMobilePosHardwareEventSync, mobilePosController.syncHardwareEvents);
 router.post('/sync/checkpoint', mobilePosFreeSyncLimiter, checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validateMobilePosCheckpointAck, mobilePosController.acknowledgeCheckpoint);

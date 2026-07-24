@@ -4,6 +4,7 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
 COPY frontend/package*.json ./
+COPY packages/pos-receipt /packages/pos-receipt
 RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci
 COPY frontend/ ./
 
