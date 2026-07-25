@@ -52,6 +52,11 @@ jobs:
       - name: Enforce tenant schema registry coverage for new migrations
         run: npm run check:tenant-schema-coverage
 
+      - name: Enforce pos-receipt package version bump on source changes
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+        run: npm run check:pos-receipt-version
+
       - name: Enforce compliance impact declarations + API contracts
         run: npm run check:compliance
 

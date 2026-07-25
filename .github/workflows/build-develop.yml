@@ -14,6 +14,10 @@ permissions:
 
 jobs:
   publish-pos-receipt:
+    # Non-blocking: a source change here without a matching version bump
+    # shouldn't stall the whole develop deploy pipeline. Failures still show
+    # up in the run so they can be caught and fixed in a follow-up push.
+    continue-on-error: true
     uses: ./.github/workflows/publish-pos-receipt.yml
     with:
       before_sha: ${{ github.event.before }}
