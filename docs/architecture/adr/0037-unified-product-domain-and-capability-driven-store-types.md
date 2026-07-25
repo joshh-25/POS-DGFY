@@ -56,11 +56,12 @@ The gaps that make this an architecture decision rather than a code change:
 - **Booking is siloed** in Services Mode and not wired to add consumed parts to
   the same sale at fulfillment time.
 
-This ADR governs the **legacy `backend/` + `frontend/`** production system. The
-greenfield `apps/dgfy-api` unified model (`products` / `availment_items` /
-`booking`) is a separate in-flight effort; this ADR notes eventual convergence
-but does not plan it. Detailed design and the phased roadmap live in
-`docs/features/UNIFIED_PRODUCT_DOMAIN.md`.
+This ADR governs the **`backend/` + `frontend/`** product system. `backend/` is
+being mechanically relocated (and rewritten) into `apps/*` on a separate branch;
+that relocation is not a competing product model, and this ADR governs the
+backend wherever it lands — it does not read or reference the in-progress
+relocation while it is mid-rewrite. Detailed design and the phased roadmap live
+in `docs/features/UNIFIED_PRODUCT_DOMAIN.md`.
 
 ## Decision
 

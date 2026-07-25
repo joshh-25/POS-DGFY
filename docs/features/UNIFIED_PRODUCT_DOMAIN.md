@@ -279,9 +279,11 @@ step, not just a Sequelize migration.
 ## Out of scope
 
 - Production code in this documentation pass.
-- The greenfield `apps/dgfy-api` unified model (`products`/`availment_items`/
-  `booking`) and its migration runner — a separate in-flight effort; this design
-  notes eventual convergence but does not plan it.
+- `apps/*` entirely — `backend/` is being mechanically relocated (and
+  rewritten) there on a separate branch. This is not a competing product model;
+  this design targets `backend/`+`frontend/` and follows the code to its new
+  location, and does not read or reference the in-progress relocation while it
+  is mid-rewrite.
 - Jewelry per-piece serialization (deferred follow-up per the flexible-item
   proposal).
 - Payment/fiscal/promo redesign — bounded by ADR 0027/0033 and unchanged here.
