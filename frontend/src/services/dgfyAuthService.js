@@ -159,6 +159,18 @@ export const preflightDgfyAccountRegistration = async (payload) => {
   return response.data.data;
 };
 
+// Affiliate invite claim: preview is public (used to lock the register email + show the business);
+// accept requires a logged-in DGFY account.
+export const fetchAffiliateInvitePreview = async (token) => {
+  const response = await api.get(`/dgfy/affiliate/invites/${encodeURIComponent(token)}`, dgfyRequestConfig(''));
+  return response.data.data;
+};
+
+export const acceptAffiliateInvite = async (token) => {
+  const response = await api.post('/dgfy/affiliate/invites/accept', { token }, dgfyRequestConfig());
+  return response.data.data;
+};
+
 export const requestDgfyRegistrationEmailVerification = async (email) => {
   const response = await api.post('/auth/email-otp/request', {
     purpose: 'dgfy_account_verification',

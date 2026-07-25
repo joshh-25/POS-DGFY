@@ -149,6 +149,138 @@ export const getInvitationTemplate = ({ inviterName, role, invitationToken, tena
 };
 
 /**
+ * Generate affiliate invitation email HTML template.
+ *
+ * The CTA link differs by whether the invitee already has a DGFY account:
+ *  - existing account -> a magic link to the storefront /affiliate/accept page (explicit accept)
+ *  - new user        -> a magic link to /register with the email prefilled + locked, after which
+ *                       they are auto-enrolled as an affiliate on account creation.
+ *
+ * @param {Object} params
+ * @param {string} params.businessName - Inviting store/business name
+ * @param {string} params.inviterName - Name of the person who sent the invite (optional)
+ * @param {string} params.invitationToken - Opaque invite token (goes in the link only)
+ * @param {string} params.inviteeEmail - The invited email (prefilled on the register link)
+ * @param {boolean} params.accountExists - Whether a DGFY account already exists for this email
+ * @param {string} params.appOrigin - Storefront public origin (e.g. https://dgfy.ph)
+ * @param {string} params.expiresIn - Human-readable expiry (e.g. "7 days")
+ * @returns {string} HTML email content
+ */
+export const getAffiliateInviteTemplate = ({
+  businessName,
+  inviterName,
+  invitationToken,
+  inviteeEmail,
+  accountExists,
+  appOrigin,
+  expiresIn
+}) => {
+  const origin = String(appOrigin || '').replace(/\/+$/, '');
+  const inviteUrlRaw = accountExists
+    ? `${origin}/affiliate/accept?token=${encodeURIComponent(invitationToken)}`
+    : `${origin}/register?email=${encodeURIComponent(inviteeEmail)}&aff_invite=${encodeURIComponent(invitationToken)}`;
+  const inviteUrl = appendUtm(inviteUrlRaw, 'affiliate_invitation');
+
+  const safeInviterName = escapeHtml(inviterName || businessName);
+  const safeBusinessName = escapeHtml(businessName);
+  const safeExpiresIn = escapeHtml(expiresIn);
+  const safeInviteUrl = escapeHtml(inviteUrl);
+  const ctaLabel = accountExists ? 'Accept &amp; Become an Affiliate' : 'Join &amp; Become an Affiliate';
+  const leadIn = accountExists
+    ? 'You already have a DGFY account with this email &mdash; just log in and accept to start earning commissions.'
+    : 'Create your DGFY account (your email is already filled in) and you\'ll be affiliated with this store automatically.';
+
+  return `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Become an affiliate of ${safeBusinessName}</title>
+</head>
+<body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f3f4f6; line-height: 1.6;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background-color: #f3f4f6;">
+    <tr>
+      <td align="center" style="padding: 40px 20px;">
+        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
+          <!-- Header -->
+          <tr>
+            <td style="background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); padding: 30px 40px; border-radius: 12px 12px 0 0; text-align: center;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 600;">
+                DGFY
+              </h1>
+            </td>
+          </tr>
+
+          <!-- Main Content -->
+          <tr>
+            <td style="background-color: #ffffff; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);">
+              <!-- Icon -->
+              <div style="text-align: center; margin-bottom: 24px;">
+                <div style="display: inline-block; background-color: #e0f7fa; border-radius: 50%; padding: 16px;">
+                  <span style="font-size: 32px;">&#128176;</span>
+                </div>
+              </div>
+
+              <!-- Heading -->
+              <h2 style="margin: 0 0 16px; color: #1f2937; font-size: 22px; text-align: center;">
+                You've been invited to be an affiliate!
+              </h2>
+
+              <!-- Message -->
+              <p style="margin: 0 0 24px; color: #4b5563; font-size: 16px; text-align: center;">
+                <strong style="color: #1f2937;">${safeInviterName}</strong> invited you to become an affiliate of
+                <strong style="color: #1f2937;">${safeBusinessName}</strong> and earn commissions when people you refer buy from their store.
+              </p>
+
+              <!-- Description -->
+              <p style="margin: 0 0 32px; color: #6b7280; font-size: 14px; text-align: center;">
+                ${leadIn}
+              </p>
+
+              <!-- CTA Button -->
+              <div style="text-align: center; margin-bottom: 32px;">
+                <a href="${safeInviteUrl}" style="display: inline-block; background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 14px rgba(13, 148, 136, 0.4);">
+                  ${ctaLabel}
+                </a>
+              </div>
+
+              <!-- Expiry Notice -->
+              <div style="background-color: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px 16px; margin-bottom: 24px; border-radius: 0 8px 8px 0;">
+                <p style="margin: 0; color: #92400e; font-size: 14px;">
+                  <strong>Note:</strong> This invitation expires in <strong>${safeExpiresIn}</strong> and is tied to this email address.
+                </p>
+              </div>
+
+              <!-- Alternative Link -->
+              <p style="margin: 0; color: #9ca3af; font-size: 12px; text-align: center; word-break: break-all;">
+                If the button doesn't work, copy and paste this link into your browser:<br>
+                <a href="${safeInviteUrl}" style="color: #0891b2;">${safeInviteUrl}</a>
+              </p>
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td style="padding: 24px; text-align: center;">
+              <p style="margin: 0 0 8px; color: #9ca3af; font-size: 12px;">
+                If you didn't expect this invitation, you can safely ignore this email.
+              </p>
+              <p style="margin: 0; color: #9ca3af; font-size: 12px;">
+                &copy; ${new Date().getFullYear()} DGFY. All rights reserved.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>
+  `.trim();
+};
+
+/**
  * Generate welcome email template (sent after invitation is accepted)
  * @param {Object} params - Template parameters
  * @param {string} params.username - New user's username

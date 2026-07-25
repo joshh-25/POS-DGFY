@@ -143,6 +143,7 @@ import DgfyAffiliateAttributionFactory from './Landlord/DgfyAffiliateAttribution
 import DgfyAffiliateCommissionFactory from './Landlord/DgfyAffiliateCommission.js';
 import DgfyAffiliatePayoutMethodFactory from './Landlord/DgfyAffiliatePayoutMethod.js';
 import DgfyAffiliateCashoutFactory from './Landlord/DgfyAffiliateCashout.js';
+import DgfyAffiliateInviteFactory from './Landlord/DgfyAffiliateInvite.js';
 import TenantAffiliateSettingsFactory from './Landlord/TenantAffiliateSettings.js';
 const Tenant = TenantFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
@@ -185,6 +186,7 @@ const DgfyAffiliateAttribution = DgfyAffiliateAttributionFactory(sequelize);
 const DgfyAffiliateCommission = DgfyAffiliateCommissionFactory(sequelize);
 const DgfyAffiliatePayoutMethod = DgfyAffiliatePayoutMethodFactory(sequelize);
 const DgfyAffiliateCashout = DgfyAffiliateCashoutFactory(sequelize);
+const DgfyAffiliateInvite = DgfyAffiliateInviteFactory(sequelize);
 const TenantAffiliateSettings = TenantAffiliateSettingsFactory(sequelize);
 
 // Landlord Models
@@ -274,6 +276,8 @@ DgfyAffiliateCashout.hasMany(DgfyAffiliateCommission, { foreignKey: 'cashout_id'
 DgfyAffiliateCommission.belongsTo(DgfyAffiliateCashout, { foreignKey: 'cashout_id', as: 'cashout' });
 Tenant.hasOne(TenantAffiliateSettings, { foreignKey: 'tenant_id', as: 'affiliateSettings' });
 TenantAffiliateSettings.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(DgfyAffiliateInvite, { foreignKey: 'tenant_id', as: 'affiliateInvites' });
+DgfyAffiliateInvite.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 
 // User associations
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
@@ -812,6 +816,7 @@ const db = {
   DgfyAffiliateCommission,
   DgfyAffiliatePayoutMethod,
   DgfyAffiliateCashout,
+  DgfyAffiliateInvite,
   TenantAffiliateSettings
 };
 
@@ -960,6 +965,7 @@ export {
   DgfyAffiliateCommission,
   DgfyAffiliatePayoutMethod,
   DgfyAffiliateCashout,
+  DgfyAffiliateInvite,
   TenantAffiliateSettings,
   GeoItem,
   GeoStoreItem,

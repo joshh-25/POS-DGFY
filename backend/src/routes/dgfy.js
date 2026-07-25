@@ -71,12 +71,14 @@ import {
     verifyDgfyTrackingRecovery
 } from '../modules/dgfy/controllers/dgfyCustomerHandlers.js';
 import {
+    acceptAffiliateInvite,
     cancelAffiliateCashout,
     captureAffiliateAttribution,
     createAffiliatePayoutMethod,
     deleteAffiliatePayoutMethod,
     enrollSelfServeAffiliate,
     getAffiliateEarnings,
+    getAffiliateInvitePreview,
     listAffiliatePayoutMethods,
     listMyAffiliateCashouts,
     listMyAffiliateEnrollments,
@@ -168,5 +170,10 @@ router.patch('/affiliate/cashouts/:cashout_id/cancel', authenticateDgfyAccount, 
 // until frontend/apps/store is wired to it (out of scope for this phase) - readies the endpoint so
 // that later phase is frontend-only.
 router.post('/affiliate/attribution/capture', authLimiter, captureAffiliateAttribution);
+
+// Affiliate invite claim flow. Preview is public (the storefront accept/register page reads it to
+// show the inviting business + lock the email); accept requires a logged-in DGFY account.
+router.get('/affiliate/invites/:token', authLimiter, getAffiliateInvitePreview);
+router.post('/affiliate/invites/accept', authenticateDgfyAccount, acceptAffiliateInvite);
 
 export default router;
