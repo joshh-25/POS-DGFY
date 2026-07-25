@@ -79,9 +79,14 @@ ENV VITE_API_URL=${VITE_API_URL} \
     SENTRY_PROJECT_STORE=${SENTRY_PROJECT_STORE} \
     SENTRY_URL=${SENTRY_URL}
 
+# build:all:parallel rather than build:all -- the three apps are independent
+# vite builds (measured at 9.6s + 10.7s + 6.5s sequentially in CI), so running
+# them concurrently roughly halves this layer. The `&`/`wait` form is safe here
+# because this always runs under Alpine's sh; `build:all` stays sequential for
+# local/Windows developers and for ci.yml's test-frontend job.
 RUN --mount=type=secret,id=sentry_auth_token,required=false \
     export SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token 2>/dev/null || true)" \
-    && npm run build:all
+    && npm run build:all:parallel
 
 FROM nginx:alpine AS runtime
 RUN apk add --no-cache curl
