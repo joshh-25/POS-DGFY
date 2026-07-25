@@ -38,6 +38,8 @@
     "ai:check": "npm run validate:ai && npm run generate:ai-docs",
     "audit:indexes": "node scripts/audit-indexes.js",
     "audit:indexes:local": "node scripts/cleanup-test-tenants.js && cross-env SCHEMA_INDEX_AUDIT_MODE=local SCHEMA_INDEX_AUDIT_EXCLUDE_TEST_TENANTS=true node scripts/audit-indexes.js",
+    "audit:open-pos-shifts": "node scripts/audit-open-pos-shift-conflicts.js",
+    "repair:pos-shift-operator-invariant": "node scripts/apply-pos-shift-operator-invariant.js",
     "audit:indexes:local:apply-cleanup": "node scripts/cleanup-test-tenants.js --apply --yes && cross-env SCHEMA_INDEX_AUDIT_MODE=local SCHEMA_INDEX_AUDIT_EXCLUDE_TEST_TENANTS=true node scripts/audit-indexes.js",
     "cleanup:test-tenants": "node scripts/cleanup-test-tenants.js",
     "cleanup:indexes": "node scripts/cleanup-duplicate-indexes.js",

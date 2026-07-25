@@ -41,5 +41,6 @@ Major. This work makes shift ownership explicit, adds master-admin stale-shift r
 
 - POS terminal readiness regression suite passes, including circular Sequelize metadata serialization coverage.
 - Shift authorization and recovery policy tests are included with the implementation batch.
+- The backend implementation batch includes the operator uniqueness migration, tenant schema registry wiring, idempotent recovery endpoint, audit persistence, and transport contract coverage.
 - Architecture guardrails and controller-boundary checks pass.
 - Changed-file `DO NOT COMMIT` scan and `git diff --check` pass.

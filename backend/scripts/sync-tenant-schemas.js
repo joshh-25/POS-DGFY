@@ -103,6 +103,9 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
     pos_terminal_shifts: Object.freeze({
         active_terminal_id: Object.freeze({
             sql: "ALTER TABLE `pos_terminal_shifts` ADD COLUMN `active_terminal_id` VARCHAR(100) GENERATED ALWAYS AS (CASE WHEN `status` = 'open' THEN UPPER(TRIM(`terminal_id`)) ELSE NULL END) STORED"
+        }),
+        active_operator_user_id: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_shifts` ADD COLUMN `active_operator_user_id` INTEGER GENERATED ALWAYS AS (CASE WHEN `status` = 'open' THEN `cashier_id` ELSE NULL END) STORED"
         })
     }),
     pos_transaction_discounts: Object.freeze({
@@ -228,6 +231,9 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
     pos_terminal_shifts: Object.freeze({
         uq_pos_terminal_shifts_active_terminal: Object.freeze({
             sql: "ALTER TABLE `pos_terminal_shifts` ADD UNIQUE INDEX `uq_pos_terminal_shifts_active_terminal` (`active_terminal_id`)"
+        }),
+        uq_pos_terminal_shifts_active_operator: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_shifts` ADD UNIQUE INDEX `uq_pos_terminal_shifts_active_operator` (`active_operator_user_id`)"
         })
     }),
     pos_transaction_discounts: Object.freeze({

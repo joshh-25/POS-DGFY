@@ -330,6 +330,11 @@ const incomingOnlineOrdersQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(500).default(200)
 });
 
+const adminLocationMonitorQuerySchema = Joi.object({
+    location_id: Joi.number().integer().positive().required(),
+    limit: Joi.number().integer().min(1).max(500).default(200)
+});
+
 const shiftIdParamSchema = Joi.object({
     id: Joi.number().integer().positive().required()
 });
@@ -370,7 +375,14 @@ const closeTerminalShiftSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
     terminal_id: Joi.string().trim().uppercase().max(100).allow('', null).optional(),
     closing_cash_amount: Joi.number().min(0).precision(4).required(),
-    closing_note: Joi.string().trim().max(255).allow(null, '').optional()
+    closing_note: Joi.string().trim().max(255).allow(null, '').optional(),
+    override_reason: Joi.string().trim().min(8).max(255).allow(null, '').optional()
+});
+
+const forceCloseStaleTerminalShiftSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).required(),
+    closing_cash_amount: Joi.number().min(0).precision(4).required(),
+    reason: Joi.string().trim().min(8).max(255).required()
 });
 
 const updateOnlineOrderStatusSchema = Joi.object({
@@ -544,11 +556,13 @@ export const validateTerminalCurrentShiftQuery = validateSchema(terminalCurrentS
 export const validateTerminalDashboardTodayQuery = validateSchema(terminalDashboardTodayQuerySchema, 'query', 'validatedQuery');
 export const validatePosReportsExportQuery = validateSchema(posReportsExportQuerySchema, 'query', 'validatedQuery');
 export const validateIncomingOnlineOrdersQuery = validateSchema(incomingOnlineOrdersQuerySchema, 'query', 'validatedQuery');
+export const validateAdminLocationMonitorQuery = validateSchema(adminLocationMonitorQuerySchema, 'query', 'validatedQuery');
 export const validateShiftIdParam = validateSchema(shiftIdParamSchema, 'params', 'validatedParams');
 export const validateOpenTerminalShift = validateSchema(openTerminalShiftSchema, 'body', 'validatedData');
 export const validateSwitchTerminalShiftLocation = validateSchema(switchTerminalShiftLocationSchema, 'body', 'validatedData');
 export const validateCashDrawerEvent = validateSchema(cashDrawerEventSchema, 'body', 'validatedData');
 export const validateCloseTerminalShift = validateSchema(closeTerminalShiftSchema, 'body', 'validatedData');
+export const validateForceCloseStaleTerminalShift = validateSchema(forceCloseStaleTerminalShiftSchema, 'body', 'validatedData');
 export const validateUpdateOnlineOrderStatus = validateSchema(updateOnlineOrderStatusSchema, 'body', 'validatedData');
 export const validateCollectCashPickupOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validatePosDeviceReceiptPrint = validateSchema(devicePrintReceiptSchema, 'body', 'validatedData');

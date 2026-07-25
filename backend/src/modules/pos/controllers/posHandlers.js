@@ -35,8 +35,10 @@ import {
     getCurrentTerminalShiftUseCase,
     recordCashDrawerEventUseCase,
     closeTerminalShiftUseCase,
+    forceCloseStaleTerminalShiftUseCase,
     getTerminalTodayDashboardUseCase,
     listIncomingOnlineOrdersUseCase,
+    getAdminLocationMonitorUseCase,
     collectCashPickupOrderUseCase,
     updateOnlineOrderStatusUseCase,
     getPosDeviceStatusUseCase,
@@ -703,6 +705,40 @@ export const closeTerminalShift = async (req, res, next) => {
     }
 };
 
+export const forceCloseStaleTerminalShift = async (req, res, next) => {
+    try {
+        const result = await forceCloseStaleTerminalShiftUseCase({
+            shiftId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: req.user
+        });
+        await trackProductUsageFromResult({
+            req,
+            user: req.user,
+            eventType: 'pos_terminal_stale_shift_force_closed',
+            surface: 'pos_terminal',
+            action: 'force_close_stale_shift',
+            result,
+            successMetadataResolver: (data) => ({
+                shift_id: data?.shift?.pos_terminal_shift_id || null,
+                original_cashier_id: data?.recovery_authorization?.shift_cashier_id || null
+            })
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Stale terminal shift recovered successfully',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const getTerminalTodayDashboard = async (req, res, next) => {
     try {
         const result = await getTerminalTodayDashboardUseCase({
@@ -726,6 +762,27 @@ export const getTerminalTodayDashboard = async (req, res, next) => {
 export const listIncomingOnlineOrders = async (req, res, next) => {
     try {
         const result = await listIncomingOnlineOrdersUseCase({
+            query: req.validatedQuery || req.query,
+            user: req.user
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getAdminLocationMonitor = async (req, res, next) => {
+    try {
+        const result = await getAdminLocationMonitorUseCase({
             query: req.validatedQuery || req.query,
             user: req.user
         });
@@ -1197,6 +1254,7 @@ export default {
     switchTerminalShiftLocation,
     recordCashDrawerEvent,
     closeTerminalShift,
+    forceCloseStaleTerminalShift,
     getTerminalTodayDashboard,
     listIncomingOnlineOrders,
     updateOnlineOrderStatus,
