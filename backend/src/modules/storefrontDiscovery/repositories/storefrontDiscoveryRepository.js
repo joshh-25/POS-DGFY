@@ -1125,7 +1125,12 @@ export const storefrontDiscoveryRepository = {
             findFn: StorefrontDiscoveryIndex.findOne.bind(StorefrontDiscoveryIndex),
             queryOptions: {
             where: {
-                slug: normalizedSlug,
+                // Accept either the canonical storefront slug or the compact affiliate
+                // slug (used by short QR/share links) — both resolve to the same store.
+                [Op.or]: [
+                    { slug: normalizedSlug },
+                    { affiliate_slug: normalizedSlug }
+                ],
                 is_visible: true
             }
             },

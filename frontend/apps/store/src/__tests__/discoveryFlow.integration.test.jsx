@@ -5,6 +5,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/re
 import userEvent from '@testing-library/user-event';
 import maplibregl from 'maplibre-gl';
 import { App } from '../main.jsx';
+import { BrowserRouter } from 'react-router-dom';
 
 vi.mock('maplibre-gl', () => {
   function PopupApi(options = {}) {
@@ -365,7 +366,7 @@ describe('storefront discovery integration flow', () => {
       return makeJsonResponse({});
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => expect(maplibregl.Map).toHaveBeenCalled());
     const mapOptions = maplibregl.Map.mock.calls.at(-1)?.[0] || {};
@@ -375,7 +376,7 @@ describe('storefront discovery integration flow', () => {
   });
 
   it('keeps account access visible when MapLibre cannot initialize WebGL', async () => {
-    const restoreLocation = installNavigationLocationMock();
+    const pushStateSpy = vi.spyOn(window.history, 'pushState');
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
     maplibregl.Map.mockImplementationOnce(function MapUnavailable() {
       throw new Error('webgl unavailable');
@@ -393,27 +394,31 @@ describe('storefront discovery integration flow', () => {
     });
 
     try {
-      render(<App />);
+      render(<BrowserRouter><App /></BrowserRouter>);
 
       expect(await screen.findByText('Store map unavailable')).toBeTruthy();
       expect(await screen.findByText('Log in / Sign up')).toBeTruthy();
 
       fireEvent.click(screen.getByText('Log in / Sign up'));
 
-      await waitFor(() => expect(window.location.pathname).toBe('/dgfy/auth'));
-      const authParams = new URLSearchParams(window.location.search);
-      expect(authParams.get('intent')).toBe('customer');
-      expect(authParams.get('mode')).toBe('sign-in');
-      expect(authParams.get('return_to')).toContain('/map-dgfy/account');
+      // Customer sign-in now navigates in-app (dgfy.ph/login) instead of
+      // doing a full-page redirect out to skupervisor, so we assert on the
+      // react-router navigation call rather than window.location.
+      await waitFor(() => expect(pushStateSpy).toHaveBeenCalled());
+      const [, , to] = pushStateSpy.mock.calls.at(-1);
+      const target = new URL(String(to), 'http://localhost/');
+      expect(target.pathname).toBe('/login');
+      expect(target.searchParams.get('intent')).toBe('customer');
+      expect(target.searchParams.get('mode')).toBe('sign-in');
+      expect(target.searchParams.get('return_to')).toContain('/map-dgfy/account');
       expect(screen.queryByRole('dialog', { name: 'DGFY Account' })).toBeNull();
     } finally {
       warnSpy.mockRestore();
-      restoreLocation();
     }
   });
 
   it('routes the signed-out storefront account action directly to canonical DGFY auth', async () => {
-    const restoreLocation = installNavigationLocationMock();
+    const pushStateSpy = vi.spyOn(window.history, 'pushState');
     const defaultFetch = fetchMock.getMockImplementation();
     fetchMock.mockImplementation(async (url, options = {}) => {
       const normalized = String(url);
@@ -426,20 +431,21 @@ describe('storefront discovery integration flow', () => {
       return defaultFetch(url, options);
     });
 
-    try {
-      render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
-      fireEvent.click(screen.getAllByRole('button', { name: /log in \/ sign up/i })[0]);
+    fireEvent.click(screen.getAllByRole('button', { name: /log in \/ sign up/i })[0]);
 
-      await waitFor(() => expect(window.location.pathname).toBe('/dgfy/auth'));
-      const authParams = new URLSearchParams(window.location.search);
-      expect(authParams.get('intent')).toBe('customer');
-      expect(authParams.get('mode')).toBe('sign-in');
-      expect(authParams.get('return_to')).toContain('/map-dgfy/account');
-      expect(screen.queryByRole('dialog', { name: 'DGFY Account' })).toBeNull();
-    } finally {
-      restoreLocation();
-    }
+    // Customer sign-in now navigates in-app (dgfy.ph/login) instead of
+    // doing a full-page redirect out to skupervisor, so we assert on the
+    // react-router navigation call rather than window.location.
+    await waitFor(() => expect(pushStateSpy).toHaveBeenCalled());
+    const [, , to] = pushStateSpy.mock.calls.at(-1);
+    const target = new URL(String(to), 'http://localhost/');
+    expect(target.pathname).toBe('/login');
+    expect(target.searchParams.get('intent')).toBe('customer');
+    expect(target.searchParams.get('mode')).toBe('sign-in');
+    expect(target.searchParams.get('return_to')).toContain('/map-dgfy/account');
+    expect(screen.queryByRole('dialog', { name: 'DGFY Account' })).toBeNull();
   });
 
   it('auto-loads signed-in DGFY customer context and exposes saved address checkout actions', async () => {
@@ -531,7 +537,7 @@ describe('storefront discovery integration flow', () => {
       return defaultFetch(url, options);
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
       expect(fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).includes('/api/v1/dgfy/customer/dashboard'))).toBe(true);
@@ -550,7 +556,7 @@ describe('storefront discovery integration flow', () => {
 
   it('searches only after the current search action is submitted', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
       expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1);
@@ -584,7 +590,7 @@ describe('storefront discovery integration flow', () => {
       value: { getCurrentPosition }
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     await waitFor(() => {
       expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1);
     });
@@ -617,7 +623,7 @@ describe('storefront discovery integration flow', () => {
     window.dispatchEvent(new Event('resize'));
     const user = userEvent.setup();
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     await waitFor(() => {
       expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1);
     });
@@ -648,7 +654,7 @@ describe('storefront discovery integration flow', () => {
       }
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
       const params = getLastDiscoveryParams(fetchMock);
@@ -674,7 +680,7 @@ describe('storefront discovery integration flow', () => {
       value: undefined
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
       const params = getLastDiscoveryParams(fetchMock);
@@ -685,7 +691,7 @@ describe('storefront discovery integration flow', () => {
   });
 
   it('sends the current discovery query contract by default', async () => {
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
 
     const params = getLastDiscoveryParams(fetchMock);
@@ -697,7 +703,7 @@ describe('storefront discovery integration flow', () => {
 
   it('shows actionable no-result recovery message for search queries', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
 
     await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'milk');
@@ -756,7 +762,7 @@ describe('storefront discovery integration flow', () => {
       return makeJsonResponse({});
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
     const viewportCallsBeforeSearch = getMapViewportCallCount();
 
@@ -813,7 +819,7 @@ describe('storefront discovery integration flow', () => {
       return makeJsonResponse({});
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => expect(screen.getAllByText('Search Only Kitchen').length).toBeGreaterThan(0));
     expect(screen.queryByLabelText(/Open large map/i)).toBeNull();
@@ -881,7 +887,7 @@ describe('storefront discovery integration flow', () => {
       return makeJsonResponse({});
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
 
     await user.click(screen.getByTitle('Use my current location'));
@@ -979,7 +985,7 @@ describe('storefront discovery integration flow', () => {
       return makeJsonResponse({});
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
 
     const searchInput = screen.getByPlaceholderText('Search products, services or stores nearby...');
@@ -1077,7 +1083,7 @@ describe('storefront discovery integration flow', () => {
     });
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     await waitFor(() => expect(screen.getAllByText('Alpha Foods').length).toBeGreaterThan(0));
     await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'alpha');
     await user.click(screen.getByRole('button', { name: /^Search$/i }));
@@ -1198,7 +1204,7 @@ describe('storefront discovery integration flow', () => {
     });
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     await waitFor(() => expect(screen.getAllByText('Space Bar').length).toBeGreaterThan(0));
     await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'space');
     await user.click(screen.getByRole('button', { name: /^Search$/i }));
@@ -1276,7 +1282,7 @@ describe('storefront discovery integration flow', () => {
     });
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     const [alphaFeature] = await waitForDiscoveryPinFeatures(1);
     expect(alphaFeature.properties?.markerKey).toContain('alpha');
     expect(alphaFeature.geometry.coordinates).toEqual([122.56, 10.72]);
@@ -1345,7 +1351,7 @@ describe('storefront discovery integration flow', () => {
       return makeJsonResponse({});
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     const [alphaFeature] = await waitForDiscoveryPinFeatures(1);
 
     emitDiscoveryPinClick(alphaFeature);
@@ -1409,7 +1415,7 @@ describe('storefront discovery integration flow', () => {
       return makeJsonResponse({});
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     const [alphaFeature] = await waitForDiscoveryPinFeatures(1);
 
     emitDiscoveryPinClick(alphaFeature);
@@ -1471,7 +1477,7 @@ describe('storefront discovery integration flow', () => {
       return makeJsonResponse({});
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     const [alphaFeature] = await waitForDiscoveryPinFeatures(1);
 
     emitDiscoveryPinMouseEnter(alphaFeature);
@@ -1538,7 +1544,7 @@ describe('storefront discovery integration flow', () => {
       return makeJsonResponse({});
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     const [clusterFeature] = await waitForDiscoveryPinFeatures(1);
     expect(clusterFeature.geometry.coordinates).toEqual([122.56, 10.72]);
     expect(clusterFeature.properties).toMatchObject({
@@ -1621,7 +1627,7 @@ describe('storefront discovery integration flow', () => {
       return makeJsonResponse({});
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     await waitFor(() => expect(screen.getByText(/Alpha Foods/i)).toBeTruthy());
     await waitFor(() => {
       const locationRequests = fetchMock.mock.calls
@@ -1678,7 +1684,7 @@ describe('storefront discovery integration flow', () => {
       return makeJsonResponse({});
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     await waitFor(() => expect(screen.getByText(/Coordinate Missing A/i)).toBeTruthy());
 
     await waitForDiscoveryPinFeatures(0);
@@ -1745,7 +1751,7 @@ describe('storefront discovery integration flow', () => {
       return makeJsonResponse({});
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     await waitFor(() => expect(screen.getByText(/Placeholder A/i)).toBeTruthy());
 
     await waitFor(() => {
@@ -1795,7 +1801,7 @@ describe('storefront discovery integration flow', () => {
       return makeJsonResponse({});
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     const [clusterFeature] = await waitForDiscoveryPinFeatures(1);
     expect(clusterFeature.properties).toMatchObject({
       count: 10,
@@ -1848,7 +1854,7 @@ describe('storefront discovery integration flow', () => {
     });
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => expect(screen.getByRole('button', { name: 'Show featured merchants page 5' })).toBeTruthy());
 
@@ -1915,7 +1921,7 @@ describe('storefront discovery integration flow', () => {
       return makeJsonResponse({});
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     await waitFor(() => {
       expect(screen.getAllByAltText(/Alpha Foods profile/i).length).toBeGreaterThan(0);
     });
@@ -1938,7 +1944,7 @@ describe('storefront discovery integration flow', () => {
       value: { getCurrentPosition }
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
     await user.click(screen.getByTitle('Use my current location'));
 
@@ -2010,7 +2016,7 @@ describe('storefront discovery integration flow', () => {
       return makeJsonResponse({});
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     await waitFor(() => expect(screen.getAllByText('Alpha Foods').length).toBeGreaterThan(0));
     await user.click(screen.getByRole('button', { name: 'Use current location on map' }));
 
@@ -2035,7 +2041,7 @@ describe('storefront discovery integration flow', () => {
       value: { getCurrentPosition }
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
     await waitFor(() => expect(getDiscoveryQueryUrls(fetchMock).length).toBe(1));
     await user.click(screen.getByTitle('Use my current location'));
 
@@ -2051,7 +2057,7 @@ describe('storefront discovery integration flow', () => {
     window.history.pushState({}, '', '/tenant-store/alpha');
 
     const user = userEvent.setup();
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
       expect(screen.getByText('Storefront items are not set up yet')).toBeTruthy();
@@ -2099,7 +2105,7 @@ describe('storefront discovery integration flow', () => {
     });
 
     window.history.pushState({}, '', '/alpha?location_id=22');
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
       const catalogCalls = fetchMock.mock.calls

@@ -7,6 +7,7 @@ import {
   LogIn,
   Lock,
   MapPinned,
+  Percent,
   Settings2,
   ShoppingCart,
   Truck,
@@ -203,6 +204,21 @@ export default function TerminalWorkspaceSidebar({
             }
             testId="pos-nav-settings"
           />
+          {!isCashierRole && (
+            <NavButton
+              label="Affiliates"
+              icon={Percent}
+              active={currentViewMode === 'settings_affiliates'}
+              onClick={() => onSelectViewMode('settings_affiliates')}
+              disabled={locked || !isOnline}
+              caption={
+                locked
+                  ? 'Unlock terminal to continue'
+                  : (!isOnline ? 'Available online only' : 'Enroll affiliates, set commission rates, and review earnings')
+              }
+              testId="pos-nav-affiliates"
+            />
+          )}
         </div>
 
         <div data-testid="pos-sidebar-session-action" className="mt-5 border-t border-slate-200 pt-5">

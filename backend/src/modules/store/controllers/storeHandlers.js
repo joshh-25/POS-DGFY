@@ -25,7 +25,11 @@ import {
     unfollowStorefrontUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
-import { SESSION_COOKIE_NAMES, setBearerSessionCookie } from '../../../utils/browserSessionCookies.js';
+import {
+    SESSION_COOKIE_NAMES,
+    setBearerSessionCookie,
+    getAffiliateAttributionCookie
+} from '../../../utils/browserSessionCookies.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
@@ -337,9 +341,19 @@ export const verifyGuestCheckoutOtp = async (req, res, next) => {
 
 export const checkout = async (req, res, next) => {
     try {
+        const tenantId = resolveTenantId(req);
+        const basePayload = req.validatedData || req.body;
+        // Bridge: the only place the affiliate attribution cookie (set by the dormant public
+        // capture endpoint) meets the checkout use case. Never overrides an explicit payload value,
+        // and is a no-op until a storefront page actually calls the capture endpoint.
+        const attributionEnrollmentId = basePayload?.attribution_enrollment_id
+            || getAffiliateAttributionCookie(req, tenantId);
+        const payload = attributionEnrollmentId
+            ? { ...basePayload, attribution_enrollment_id: attributionEnrollmentId }
+            : basePayload;
         const result = await storeCheckoutUseCase({
-            tenantId: resolveTenantId(req),
-            payload: req.validatedData || req.body,
+            tenantId,
+            payload,
             storeCustomer: resolveStoreCustomer(req)
         });
 
