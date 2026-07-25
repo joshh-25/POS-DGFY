@@ -13,6 +13,7 @@ export function buildCustomerDashboardRouteBindings({
   accountOrderActionReference,
   accountAddressActionId,
   accountPayoutActionId,
+  accountCashoutActionId,
   handleLoadAccountPanel,
   handleTrackCustomerReference,
   handleMarkNotificationRead,
@@ -33,6 +34,8 @@ export function buildCustomerDashboardRouteBindings({
   handleSavePayoutMethod,
   handleDeletePayoutMethod,
   handleSetDefaultPayoutMethod,
+  handleRequestCashout,
+  handleCancelCashout,
   openStorefrontFromAccountEntry,
   submitAccountReviewFromDashboard,
   handleOpenBusinessInventory,
@@ -55,7 +58,8 @@ export function buildCustomerDashboardRouteBindings({
       customerTrackError,
       accountOrderActionReference,
       accountAddressActionId,
-      accountPayoutActionId
+      accountPayoutActionId,
+      accountCashoutActionId
     },
     actions: {
       handleLoadAccountPanel,
@@ -78,6 +82,8 @@ export function buildCustomerDashboardRouteBindings({
       handleSavePayoutMethod,
       handleDeletePayoutMethod,
       handleSetDefaultPayoutMethod,
+      handleRequestCashout,
+      handleCancelCashout,
       openStorefrontFromAccountEntry,
       submitAccountReviewFromDashboard,
       handleOpenBusinessInventory,

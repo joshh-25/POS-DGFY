@@ -31,6 +31,8 @@ function buildCustomerDashboardViewProps({
     onSavePayoutMethod: actions.onSavePayoutMethod,
     onDeletePayoutMethod: actions.onDeletePayoutMethod,
     onSetDefaultPayoutMethod: actions.onSetDefaultPayoutMethod,
+    onRequestCashout: actions.onRequestCashout,
+    onCancelCashout: actions.onCancelCashout,
     accountIdentityInitials: state.accountIdentityInitials,
     accountIdentityName: state.accountIdentityName,
     accountIdentityContact: state.accountIdentityContact,
@@ -50,7 +52,8 @@ function buildCustomerDashboardViewProps({
     onOpenBusinessPos: actions.onOpenBusinessPos,
     accountOrderActionReference: state.accountOrderActionReference,
     accountAddressActionId: state.accountAddressActionId,
-    accountPayoutActionId: state.accountPayoutActionId
+    accountPayoutActionId: state.accountPayoutActionId,
+    accountCashoutActionId: state.accountCashoutActionId
   };
 }
 

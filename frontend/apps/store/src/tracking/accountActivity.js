@@ -20,7 +20,8 @@ export const EMPTY_ACCOUNT_PANEL = Object.freeze({
   affiliateEnrollments: [],
   affiliateEarnings: null,
   affiliateEarningsByStore: [],
-  affiliatePayoutMethods: []
+  affiliatePayoutMethods: [],
+  affiliateCashouts: []
 });
 
 const normalizeTrackingSlug = (value = '') => String(value || '').trim().toLowerCase();

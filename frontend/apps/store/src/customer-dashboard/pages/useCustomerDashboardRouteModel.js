@@ -21,9 +21,11 @@ export function useCustomerDashboardRouteModel({
     customerTrackError: state.customerTrackError,
     accountOrderActionReference: state.accountOrderActionReference,
     accountAddressActionId: state.accountAddressActionId,
-    accountPayoutActionId: state.accountPayoutActionId
+    accountPayoutActionId: state.accountPayoutActionId,
+    accountCashoutActionId: state.accountCashoutActionId
   }), [
     state.accountAddressActionId,
+    state.accountCashoutActionId,
     state.accountIdentityContact,
     state.accountIdentityInitials,
     state.accountIdentityName,
@@ -61,6 +63,8 @@ export function useCustomerDashboardRouteModel({
     onSavePayoutMethod: actions.handleSavePayoutMethod,
     onDeletePayoutMethod: actions.handleDeletePayoutMethod,
     onSetDefaultPayoutMethod: actions.handleSetDefaultPayoutMethod,
+    onRequestCashout: actions.handleRequestCashout,
+    onCancelCashout: actions.handleCancelCashout,
     onOpenStorefront: actions.openStorefrontFromAccountEntry,
     onSubmitCustomerReview: actions.submitAccountReviewFromDashboard,
     onOpenBusinessInventory: actions.handleOpenBusinessInventory,
@@ -68,6 +72,7 @@ export function useCustomerDashboardRouteModel({
   }), [
     actions.clearSavedCustomerDetailsForDevice,
     actions.handleAcceptDgfyCompanyInvitation,
+    actions.handleCancelCashout,
     actions.handleDeleteAccountAddress,
     actions.handleDeletePayoutMethod,
     actions.handleLeaveDgfyCompany,
@@ -77,6 +82,7 @@ export function useCustomerDashboardRouteModel({
     actions.handleOpenBusinessInventory,
     actions.handleOpenBusinessPos,
     actions.handleRejectDgfyCompanyInvitation,
+    actions.handleRequestCashout,
     actions.handleSaveAccountAddress,
     actions.handleSavePayoutMethod,
     actions.handleSetDefaultAccountAddress,

@@ -5,6 +5,7 @@ import QRCode from 'qrcode';
 import { copyTextToClipboard } from '../../shared/utils/clipboard.js';
 import { buildStorefrontQrExportImage, downloadDataUrl } from '../../features/qr/utils/storefrontQrExport.js';
 import { PayoutMethodsSection } from './PayoutMethodsSection.jsx';
+import { CashoutsSection } from './CashoutsSection.jsx';
 
 const centavosToPesos = (value) => Number(value || 0) / 100;
 
@@ -103,6 +104,10 @@ export function AffiliateSection({
   onDeletePayoutMethod,
   onSetDefaultPayoutMethod,
   accountPayoutActionId,
+  cashouts = [],
+  onRequestCashout,
+  onCancelCashout,
+  accountCashoutActionId,
   isMobileViewport,
   EmptyState,
   StatusBadge,
@@ -179,7 +184,20 @@ export function AffiliateSection({
       ) : null}
 
       {activeTab === 'cashouts' ? (
-        <EmptyState title="Cashouts" desc="Coming right up." />
+        <CashoutsSection
+          enrollments={enrollments}
+          earningsByStore={earningsByStore}
+          cashouts={cashouts}
+          onRequestCashout={onRequestCashout}
+          onCancelCashout={onCancelCashout}
+          accountCashoutActionId={accountCashoutActionId}
+          isMobileViewport={isMobileViewport}
+          EmptyState={EmptyState}
+          StatusBadge={StatusBadge}
+          money={money}
+          formatDate={formatDate}
+          theme={theme}
+        />
       ) : null}
     </div>
   );
