@@ -18,6 +18,12 @@ const getModifierIcon = (name) => {
   return null;
 };
 
+export const formatModifierPriceDelta = (value, formatMoney) => {
+  const amount = Number(value || 0) || 0;
+  const sign = amount < 0 ? '-' : amount > 0 ? '+' : '';
+  return `${sign}${formatMoney(Math.abs(amount)).replace('PHP ', '')}`;
+};
+
 export const FnbProductModifierGroups = ({
   expandedGroups,
   formatMoney,
@@ -64,7 +70,7 @@ export const FnbProductModifierGroups = ({
                         <input type={isSingleSelect ? 'radio' : 'checkbox'} checked={selected} onChange={() => onToggleModifier(group, option)} style={{ width: 18, height: 18, accentColor: '#f97316', cursor: 'pointer' }} />
                         {OptionIcon && <span style={{ width: 24, height: 24, borderRadius: '50%', background: selected ? '#fff' : '#f8fafc', border: '1px solid rgba(226, 232, 240, 0.8)', display: 'grid', placeItems: 'center', color: '#f97316' }}><OptionIcon size={12} /></span>}
                         <span style={{ fontSize: 14, fontWeight: 600, color: selected ? '#0f172a' : '#475569' }}>{option.option_name}</span>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: selected ? '#ea580c' : '#64748b', whiteSpace: 'nowrap' }}>+{formatMoney(option.price_delta || 0).replace('PHP ', '')}</span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: selected ? '#ea580c' : '#64748b', whiteSpace: 'nowrap' }}>{formatModifierPriceDelta(option.price_delta, formatMoney)}</span>
                       </label>
                     );
                   })}

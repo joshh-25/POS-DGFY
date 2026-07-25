@@ -53,8 +53,20 @@ import {
 import * as aiController from './controllers/aiController.js';
 import { paymentsEnabled } from './config/paymentsFeature.js';
 import productionEnvValidation from './config/productionEnvValidation.cjs';
+import { resolveUploadCacheControl } from './modules/shared/utils/uploadCachePolicy.js';
+import {
+  readRequestHostname,
+  resolveActiveStorefrontDomain
+} from './modules/storefrontDomains/index.js';
+import {
+  startStorefrontDomainMaintenanceScheduler,
+  stopStorefrontDomainMaintenanceScheduler
+} from './modules/storefrontDomains/services/storefrontDomainMaintenanceService.js';
+import { initSentry, sentryErrorHandler, sentryRequestContext } from './config/sentry.js';
 
 const { formatValidationFailure, validateProductionEnv } = productionEnvValidation;
+
+initSentry({ logger });
 
 const app = express();
 
@@ -240,7 +252,8 @@ const isDevelopmentOriginAllowed = (origin) => {
     /^https?:\/\/(?:skupervisor|pos|store)\.localhost:517[0-9]$/,
     /^https?:\/\/(?:skupervisor|pos|store)\.localhost:518[0-9]$/,
     /^https?:\/\/(?:skupervisor|pos|store)\.localhost:417[0-9]$/,
-    /^https?:\/\/(?:skupervisor|pos|store)\.local(?:host)?(?::\d{2,5})?$/
+    /^https?:\/\/(?:skupervisor|pos|store)\.local(?:host)?(?::\d{2,5})?$/,
+    /^https?:\/\/[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.localhost(?::\d{2,5})?$/
   ];
 
   if (developmentOriginPatterns.some((pattern) => pattern.test(normalizedOrigin))) {
@@ -264,7 +277,7 @@ const isDevelopmentOriginAllowed = (origin) => {
   }
 };
 
-const resolveCorsAllowed = (origin) => {
+const resolveCorsAllowed = async (origin, req = {}) => {
   const normalizedOrigin = normalizeCorsOrigin(origin);
   if (configuredCorsOrigins.length > 0 && isExplicitOriginAllowed(normalizedOrigin)) {
     return true;
@@ -272,12 +285,30 @@ const resolveCorsAllowed = (origin) => {
   if (!isProduction) {
     return isDevelopmentOriginAllowed(normalizedOrigin);
   }
-  return configuredCorsOrigins.length === 0 && isDevelopmentOriginAllowed(normalizedOrigin);
+  if (configuredCorsOrigins.length === 0 && isDevelopmentOriginAllowed(normalizedOrigin)) {
+    return true;
+  }
+  if (!normalizedOrigin) return true;
+
+  const normalizedPath = String(req.path || req.originalUrl || req.url || '').toLowerCase();
+  if (!/^\/api\/v1\/store(?:\/|$)/.test(normalizedPath)) return false;
+  try {
+    const parsedOrigin = new URL(normalizedOrigin);
+    if (parsedOrigin.protocol !== 'https:') return false;
+    const requestHostname = readRequestHostname(req);
+    if (!requestHostname || parsedOrigin.hostname.toLowerCase() !== requestHostname) return false;
+    const context = await resolveActiveStorefrontDomain(requestHostname);
+    if (!context || String(context.tenant?.id || '') !== String(context.domain?.tenant_id || '')) return false;
+    req.storefrontDomainContext = context;
+    return true;
+  } catch {
+    return false;
+  }
 };
 
-const corsOptionsDelegate = (req, callback) => {
+const corsOptionsDelegate = async (req, callback) => {
   const origin = req.headers.origin || null;
-  const allowed = resolveCorsAllowed(origin);
+  const allowed = await resolveCorsAllowed(origin, req);
 
   if (!allowed) {
     const correlationId = req.headers['x-request-id'] || req.headers['x-correlation-id'] || `cors-${crypto.randomUUID()}`;
@@ -351,6 +382,7 @@ app.use(helmet({
 
 // Attach per-request context metadata (request ID, trace root values).
 app.use(requestContext);
+app.use(sentryRequestContext);
 app.use(requestOutcomeLogger);
 
 // Gzip compression — reduces JSON response sizes by 60-80%
@@ -674,6 +706,7 @@ app.get('/metrics', (req, res) => {
 app.use('/uploads', express.static(join(__dirname, '..', 'uploads'), {
   setHeaders: (res, filePath) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', resolveUploadCacheControl(filePath));
     if (String(filePath || '').toLowerCase().endsWith('.svg')) {
       // Legacy SVG uploads are served as plain text to avoid inline script execution.
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -684,6 +717,8 @@ app.use('/uploads', express.static(join(__dirname, '..', 'uploads'), {
 // Tenant Resolution & Context Middleware (Must be before API routes)
 import dgfyRoutes from './routes/dgfy.js';
 import geoSearchRoutes from './routes/geoSearch.js';
+import internalStorefrontDomainOperationRoutes from './routes/internalStorefrontDomainOperations.js';
+app.use('/api/v1/internal/storefront-domain-operations', internalStorefrontDomainOperationRoutes);
 app.use(csrfProtection);
 app.use('/api/v1/dgfy', tenantHandler, dgfyRoutes);
 app.use('/api/v1/geo', geoSearchRoutes);
@@ -710,6 +745,7 @@ import feedbackRoutes from './routes/feedback.js';
 import aiRoutes from './routes/ai.js';
 import posRoutes from './routes/pos.js';
 import mobilePosRoutes from './routes/mobilePos.js';
+import affiliateAdminRoutes from './routes/affiliateAdmin.js';
 import servicesRoutes from './routes/services.js';
 import fnbRoutes from './routes/fnb.js';
 import hospitalityRoutes, { hospitalityStorefrontRoutes } from './routes/hospitality.js';
@@ -740,6 +776,7 @@ app.use('/api/v1/receive-tokens', receiveTokenRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/pos', posRoutes);
 app.use('/api/v1/mobile-pos', mobilePosRoutes);
+app.use('/api/v1/affiliates', affiliateAdminRoutes);
 app.use('/api/v1/services', servicesRoutes);
 app.use('/api/v1/fnb', fnbRoutes);
 app.use('/api/v1/hospitality', hospitalityRoutes);
@@ -762,6 +799,7 @@ app.use('/api/v1/onboarding', onboardingRoutes);
 
 // Error handling middleware (must be last)
 app.use(notFoundHandler);
+app.use(sentryErrorHandler);
 app.use(errorHandler);
 
 // Start server
@@ -845,6 +883,7 @@ const startServer = async () => {
     scheduleSchemaIndexAudit();
     scheduleBillingFunnelAudit();
     startStorefrontDiscoveryIndexReconciliationScheduler();
+    startStorefrontDomainMaintenanceScheduler();
     startGeoInventoryWorker();
 
     // Initialize Redis (non-blocking - server will start even if Redis fails)
@@ -894,6 +933,7 @@ const startServer = async () => {
         billingFunnelAuditInterval = null;
       }
       stopStorefrontDiscoveryIndexReconciliationScheduler();
+      stopStorefrontDomainMaintenanceScheduler();
       stopGeoInventoryWorker();
       aiController.stopAiCleanupScheduler?.();
 

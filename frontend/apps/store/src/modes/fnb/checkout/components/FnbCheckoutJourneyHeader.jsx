@@ -1,5 +1,5 @@
-import { CheckoutHeroHeader } from '../../../../checkout/components/CheckoutHeroHeader.jsx';
-import { CheckoutStepProgressHeader } from '../../../../checkout/components/CheckoutStepProgressHeader.jsx';
+import { CheckoutHeroHeader } from '../../../../shared/components/checkout/CheckoutHeroHeader.jsx';
+import { CheckoutStepProgressHeader } from '../../../../shared/components/checkout/CheckoutStepProgressHeader.jsx';
 
 /**
  * F&B checkout journey header. It owns the visual progress presentation while

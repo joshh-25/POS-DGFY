@@ -17,7 +17,8 @@ import {
   XCircle,
   Plus,
   Trash2,
-  Wand2
+  Wand2,
+  ImagePlus
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import ConfirmActionDialog from "@/components/ui/ConfirmActionDialog";
@@ -477,6 +478,7 @@ const createDefaultLocationForm = () => ({
   address_line: '',
   latitude: '10.7202',
   longitude: '122.5621',
+  pin_confirmed: false,
   location_version: '',
   delivery_radius_km: '5',
   current_wait_time_minutes: '15',
@@ -1517,17 +1519,24 @@ export default function Settings() {
       ...prev,
       latitude: latitude == null ? '' : String(latitude),
       longitude: longitude == null ? '' : String(longitude),
+      pin_confirmed: latitude != null && longitude != null,
       ...(nextAddress ? { address_line: nextAddress } : {})
     }));
   };
 
   const handleEditLocation = (location) => {
+    const latitude = Number(location?.latitude);
+    const longitude = Number(location?.longitude);
+    const pinConfirmed = Number.isFinite(latitude)
+      && Number.isFinite(longitude)
+      && !(latitude === 0 && longitude === 0);
     setEditingLocationId(location?.location_id || null);
     setLocationForm({
       name: String(location?.name || ''),
       address_line: String(location?.address_line || ''),
       latitude: location?.latitude == null ? '' : String(location.latitude),
       longitude: location?.longitude == null ? '' : String(location.longitude),
+      pin_confirmed: pinConfirmed,
       location_version: String(location?.updated_at || ''),
       delivery_radius_km: location?.delivery_radius_km == null ? '5' : String(location.delivery_radius_km),
       current_wait_time_minutes: location?.current_wait_time_minutes == null ? '15' : String(location.current_wait_time_minutes),
@@ -1566,7 +1575,15 @@ export default function Settings() {
       return;
     }
 
-    if (!Number.isFinite(payload.latitude) || !Number.isFinite(payload.longitude)) {
+    const hasUsablePhilippinesPin = locationForm.pin_confirmed === true
+      && Number.isFinite(payload.latitude)
+      && Number.isFinite(payload.longitude)
+      && !(payload.latitude === 0 && payload.longitude === 0)
+      && payload.latitude >= 4.5
+      && payload.latitude <= 21.5
+      && payload.longitude >= 116
+      && payload.longitude <= 127;
+    if (!hasUsablePhilippinesPin) {
       toast.error('Please pin the location on the map.');
       return;
     }
@@ -2109,6 +2126,22 @@ export default function Settings() {
       toast.success(`${assetType === 'cover' ? 'Cover photo' : 'Profile icon'} updated.`);
     } catch (error) {
       toast.error(error?.response?.data?.message || `Failed to upload ${assetType} image`);
+    } finally {
+      setAssetUploadingType('');
+    }
+  };
+
+  const handleUploadStorefrontGalleryAsset = async (index, file) => {
+    if (!file) return;
+    const uploadKey = `gallery-${index}`;
+    setAssetUploadingType(uploadKey);
+    try {
+      const result = await settingsService.uploadStorefrontAsset('gallery', file);
+      handleStorefrontGalleryChange(index, 'path', String(result?.path || ''));
+      handleStorefrontGalleryChange(index, 'url', '');
+      toast.success('Gallery image uploaded. Save Changes to publish it.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to upload gallery image');
     } finally {
       setAssetUploadingType('');
     }
@@ -3233,9 +3266,32 @@ export default function Settings() {
                   <Button type="button" variant="outline" size="sm" onClick={addStorefrontGalleryRow}><Plus className="w-4 h-4 mr-1" />Add</Button>
                 </div>
                 {(Array.isArray(settings.storefrontGalleryImages) ? settings.storefrontGalleryImages : []).map((row, index) => (
-                  <div key={`gallery-${index}`} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-[1fr_1fr_1fr_1fr_120px_auto]">
-                    <Input value={row.path || ''} onChange={(e) => handleStorefrontGalleryChange(index, 'path', e.target.value)} placeholder="storefront-assets/tenant/gallery-1.jpg" />
-                    <Input value={row.url || ''} onChange={(e) => handleStorefrontGalleryChange(index, 'url', e.target.value)} placeholder="https://cdn.example.com/gallery-1.jpg" />
+                  <div key={`gallery-${index}`} className="grid gap-2 rounded-lg border border-slate-200 p-3 md:grid-cols-[180px_1fr_1fr_120px_auto]">
+                    <div className="flex items-center gap-2">
+                      <input
+                        id={`settings-gallery-upload-${index}`}
+                        type="file"
+                        accept="image/*"
+                        aria-label={`Upload gallery image ${index + 1}`}
+                        className="sr-only"
+                        disabled={!canEditStorefrontBranding || assetUploadingType === `gallery-${index}`}
+                        onChange={(event) => {
+                          const file = event.target.files?.[0] || null;
+                          handleUploadStorefrontGalleryAsset(index, file);
+                          event.target.value = '';
+                        }}
+                      />
+                      <label
+                        htmlFor={`settings-gallery-upload-${index}`}
+                        className={cn(
+                          'flex h-10 flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50',
+                          (!canEditStorefrontBranding || assetUploadingType === `gallery-${index}`) && 'pointer-events-none opacity-50'
+                        )}
+                      >
+                        <ImagePlus className="h-4 w-4" />
+                        {assetUploadingType === `gallery-${index}` ? 'Uploading...' : 'Upload image'}
+                      </label>
+                    </div>
                     <Input value={row.caption || ''} onChange={(e) => handleStorefrontGalleryChange(index, 'caption', e.target.value)} placeholder="Caption" />
                     <Input value={row.alt || ''} onChange={(e) => handleStorefrontGalleryChange(index, 'alt', e.target.value)} placeholder="Alt text" />
                     <Input value={row.sort_order ?? ''} onChange={(e) => handleStorefrontGalleryChange(index, 'sort_order', e.target.value)} placeholder="Sort" />

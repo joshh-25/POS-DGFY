@@ -1,5 +1,6 @@
 import React from 'react';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
+import { renderPosReceiptHtml } from '@sieitzz/pos-receipt';
 
 const money = (value) => Number(value || 0).toFixed(2);
 const DGFY_BRAND_NAME = 'DGFY';
@@ -91,7 +92,7 @@ const isStatutorySeniorPwdDiscount = (governedDiscount) => {
     return discountType === 'senior' || discountType === 'pwd';
 };
 
-export default function ReceiptPrintView({ transaction, businessSettings = {}, receiptContract = null, paperWidth = '80mm' }) {
+export function LegacyReceiptPrintView({ transaction, businessSettings = {}, receiptContract = null, paperWidth = '80mm' }) {
     if (!transaction) return null;
 
     const printedAt = transaction.created_at
@@ -241,7 +242,7 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                     {governedDiscount.employee_name && <div className="flex justify-between gap-2 text-slate-600"><span>Employee</span><span className="text-right">{governedDiscount.employee_name}</span></div>}
                     {governedDiscount.employee_id && <div className="flex justify-between gap-2 text-slate-600"><span>Employee ID</span><span className="text-right">{governedDiscount.employee_id}</span></div>}
                     {governedDiscount.promo_code && <div className="flex justify-between gap-2 text-slate-600"><span>Promo Code</span><span className="text-right">{governedDiscount.promo_code}</span></div>}
-                    {governedDiscount.discount_type && <div className="flex justify-between gap-2 text-slate-600"><span>Discount Type</span><span className="text-right">{String(governedDiscount.discount_type).replaceAll('_', ' ').toUpperCase()}</span></div>}
+                    {governedDiscount.discount_type && <div className="flex justify-between gap-2 text-slate-600"><span>Discount Type</span><span className="text-right">{String(governedDiscount.discount_type).replace(/_/g, ' ').toUpperCase()}</span></div>}
                     {governedDiscount.reason && <div className="flex justify-between gap-2 text-slate-600"><span>Reason</span><span className="text-right">{governedDiscount.reason}</span></div>}
                 </>}
                 {isFiscal && <div className="flex items-start justify-between gap-2 text-slate-600">
@@ -300,8 +301,8 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
                 </div>
             </div>
             <div className="mt-2 border-t border-dashed border-slate-300 pt-2 text-[10px] leading-snug text-slate-700 print:mt-1.5 print:pt-1.5 print:text-[9px]">
-                <p className="flex justify-between gap-2"><span>Payment Method:</span><span>{String(transaction.payment_type || '').replaceAll('_', ' ').toUpperCase()}</span></p>
-                <p className="flex justify-between gap-2"><span>Payment Status:</span><span>{String(transaction.payment_status || '').replaceAll('_', ' ').toUpperCase()}</span></p>
+                <p className="flex justify-between gap-2"><span>Payment Method:</span><span>{String(transaction.payment_type || '').replace(/_/g, ' ').toUpperCase()}</span></p>
+                <p className="flex justify-between gap-2"><span>Payment Status:</span><span>{String(transaction.payment_status || '').replace(/_/g, ' ').toUpperCase()}</span></p>
                 {transaction.payment_reference && <p className="flex justify-between gap-2"><span>Payment Reference:</span><span className="text-right">{transaction.payment_reference}</span></p>}
                 {transaction.payment_type === 'cash' && <p className="flex justify-between gap-2"><span>Cash Received:</span><span>{money(transaction.cash_received)}</span></p>}
                 {transaction.payment_type === 'cash' && <p className="flex justify-between gap-2"><span>Change:</span><span>{money(transaction.change_amount)}</span></p>}
@@ -325,4 +326,16 @@ export default function ReceiptPrintView({ transaction, businessSettings = {}, r
             </div>
         </div>
     );
+}
+
+/** The browser shell shares this escaped receipt document with the Expo DOM preview. */
+export default function ReceiptPrintView({ transaction, businessSettings = {}, receiptContract = null, paperWidth = '80mm' }) {
+    if (!transaction) return null;
+    const normalizedSettings = {
+        ...businessSettings,
+        storefront_profile_image_url: businessSettings.storefront_profile_image_url
+            ? resolveAssetUrl(businessSettings.storefront_profile_image_url)
+            : businessSettings.profile_image_url ? resolveAssetUrl(businessSettings.profile_image_url) : ''
+    };
+    return <div dangerouslySetInnerHTML={{ __html: renderPosReceiptHtml({ transaction, businessSettings: normalizedSettings, receiptContract, paperWidth }) }} />;
 }

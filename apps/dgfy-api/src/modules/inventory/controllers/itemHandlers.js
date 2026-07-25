@@ -27,6 +27,7 @@ import {
   deactivateItemBarcodeUseCase,
   setPrimaryItemBarcodeUseCase,
   resolveItemBarcodeUseCase,
+  lookupExternalProductUseCase,
   resolveItemBarcodeConflictUseCase,
   renderItemBarcodeLabelUseCase,
   getFoldersUseCase,
@@ -581,6 +582,20 @@ export const resolveItemBarcode = async (req, res, next) => {
       query: req.validatedQuery || req.query || {},
       userId: req.user?.user_id || null
     });
+    return sendBarcodeResult(req, res, result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const lookupExternalProduct = async (req, res, next) => {
+  try {
+    const result = await runInventoryUseCase(
+      () => lookupExternalProductUseCase({
+        code: req.validatedQuery?.code || req.query.code
+      }),
+      'Failed to look up external product'
+    );
     return sendBarcodeResult(req, res, result);
   } catch (error) {
     next(error);

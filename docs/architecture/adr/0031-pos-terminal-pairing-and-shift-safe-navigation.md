@@ -93,3 +93,49 @@ profiles inside the selected tenant, not a separate credential authority.
 3. Optional image upload failure must be reported as recoverable post-create work, not as item creation failure. The UI must preserve the created item ID and retry unfinished post-create stages without creating a duplicate item.
 4. Runtime schema health and tenant schema report mode must verify the POS Always Available contract columns: `pos_catalog_overrides.pos_always_available`, `pos_transaction_lines.stock_effect_type`, and `pos_transaction_lines.stock_exempt_reason`.
 5. Tenant repair for these columns is additive and declared-column-only. Full tenant `sync({ alter: true })` is not the default repair path for this contract.
+
+## Addendum (2026-07-24): Durable Shift Ownership And Recovery
+
+1. A POS shift is owned by the authenticated tenant user stored in
+   `pos_terminal_shifts.cashier_id`. The value is the permanent `users.user_id`
+   for both cashier-role users and administrators. It is not a login-session,
+   browser, terminal, or per-shift identity.
+2. A tenant user may own at most one open shift at a time. The database enforces
+   this invariant in addition to application validation. Reopening the same
+   terminal while the same shift is still open resumes that shift and returns
+   its existing `pos_terminal_shift_id`; it does not create a replacement row.
+3. Each completed open/close cycle keeps its own immutable shift row and
+   `pos_terminal_shift_id`. Reusing `users.user_id` as the owner does not reuse
+   or overwrite historical shift IDs.
+4. Normal shift mutations, including close, cash-drawer events, and location
+   switching, require the authenticated actor to own the open shift. Merely
+   selecting an occupied terminal never grants drawer ownership.
+5. A company master administrator may perform an explicit recovery override
+   only through a guarded action that requires a reason and records the original
+   operator, override actor, terminal, location, timestamps, expected cash,
+   closing cash, and variance. Recovery closes history; it never deletes or
+   silently reassigns an open shift.
+6. Shift open, close, switch, cash-drawer, audit, and idempotency records must be
+   committed atomically. External effects run only after the database commit and
+   must be safe to retry.
+7. Storefront ordering availability is independent of POS shift state. Opening
+   or closing a POS shift must not directly open or close Storefront ordering.
+   Storefront availability continues to use its own location, manual-open,
+   schedule, fulfillment, and inventory policies.
+8. An elapsed-time threshold may mark an open shift as stale for recovery
+   visibility, but elapsed time alone must never auto-close financial history.
+9. Admin branch monitoring remains read-only unless the actor invokes an
+   explicit permitted shift mutation or recovery action. Cashier-role users may
+   access and resume only their own open shift.
+
+## Shift Ownership Validation
+
+1. Concurrent opens for one operator must produce one durable open shift and an
+   idempotent resume response, never two open rows.
+2. An operator can resume the same open shift after refresh, relogin, or device
+   change when company, location grant, and terminal policy remain valid.
+3. A different cashier cannot close, switch, or mutate another operator's cash
+   drawer even when they can see the terminal in an administrative read model.
+4. A master-admin recovery requires a reason and produces complete audit and
+   cash-reconciliation evidence.
+5. Closing the final POS shift does not change Storefront ordering availability.

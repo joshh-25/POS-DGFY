@@ -116,3 +116,7 @@ jest.unstable_mockModule('../src/config/redis.js', () => ({
 if (!process.env.NODE_ENV) {
     process.env.NODE_ENV = 'test';
 }
+
+// Local development may enable OTP in .env. Keep the shared Jest baseline
+// deterministic; OTP-focused tests opt in explicitly when exercising it.
+process.env.EMAIL_OTP_ENFORCEMENT_ENABLED = 'false';

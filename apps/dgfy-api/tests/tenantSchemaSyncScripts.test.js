@@ -1,8 +1,11 @@
+import { jest } from '@jest/globals';
 import { compareTenantSyncFailures } from '../scripts/check-tenant-schema-sync-regressions.js';
 import {
+  assertTenantSchemaMutationModeAllowed,
   buildTenantSchemaRepairSql,
   createSyncFailureRecord,
-  normalizeErrorSignature
+  normalizeErrorSignature,
+  repairItemFolderCategoryLifecycleSchema
 } from '../scripts/sync-tenant-schemas.js';
 
 describe('tenant schema sync script contracts', () => {
@@ -14,6 +17,23 @@ describe('tenant schema sync script contracts', () => {
       normalized_message: 'too many keys specified; max # keys allowed',
       fingerprint: '8516ffd691d70b58'
     });
+  });
+
+  it('requires explicit approval before a tenant schema mutation mode runs', () => {
+    expect(() => assertTenantSchemaMutationModeAllowed('repair-apply', {}))
+      .toThrow('TENANT_SCHEMA_MUTATION_APPROVED=true');
+    expect(() => assertTenantSchemaMutationModeAllowed('alter', {
+      TENANT_SCHEMA_MUTATION_APPROVED: 'true',
+      NODE_ENV: 'production'
+    })).toThrow('blocked in production');
+    expect(() => assertTenantSchemaMutationModeAllowed('repair-apply', {
+      TENANT_SCHEMA_MUTATION_APPROVED: 'true',
+      NODE_ENV: 'production'
+    })).not.toThrow();
+    expect(() => assertTenantSchemaMutationModeAllowed('alter', {
+      TENANT_SCHEMA_MUTATION_APPROVED: 'true',
+      NODE_ENV: 'development'
+    })).not.toThrow();
   });
 
   it('passes when current failures match baseline exactly', () => {
@@ -110,5 +130,27 @@ describe('tenant schema sync script contracts', () => {
     expect(record.status).toBe('failed');
     expect(record.missing_columns).toEqual(error.missing_columns);
     expect(record.repair_sql[0].sql).toContain('pos_always_available');
+  });
+
+  it('uses Sequelize replacement options during tenant provisioning schema repair', async () => {
+    const connection = {
+      getDialect: jest.fn(() => 'mysql'),
+      getQueryInterface: jest.fn(() => ({})),
+      query: jest.fn()
+        .mockResolvedValueOnce([[
+          { COLUMN_NAME: 'deleted_at' },
+          { COLUMN_NAME: 'deleted_by' },
+          { COLUMN_NAME: 'active_name_key' }
+        ], {}])
+        .mockResolvedValueOnce([[], {}])
+        .mockResolvedValueOnce([[{ INDEX_NAME: 'uq_item_folders_active_name' }], {}])
+    };
+
+    await repairItemFolderCategoryLifecycleSchema(connection, 'sku_tenant_grandmatador_test');
+
+    expect(connection.query).toHaveBeenCalledTimes(3);
+    for (const [, options] of connection.query.mock.calls) {
+      expect(options).toEqual({ replacements: ['sku_tenant_grandmatador_test'] });
+    }
   });
 });

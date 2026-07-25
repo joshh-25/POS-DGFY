@@ -339,7 +339,7 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
         receiptRows.push(`Promo Code: ${safeText(governedDiscount.promo_code)}`);
     }
     if (governedDiscount?.discount_type) {
-        receiptRows.push(`Discount Type: ${safeText(governedDiscount.discount_type).replaceAll('_', ' ').toUpperCase()}`);
+        receiptRows.push(`Discount Type: ${safeText(governedDiscount.discount_type).replace(/_/g, ' ').toUpperCase()}`);
     }
 
     const serviceFeeLabel = [
@@ -368,8 +368,8 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
     );
 
     receiptRows.push(
-        `Payment Method: ${safeText(transaction?.payment_type, '-').toUpperCase()}`,
-        `Payment Status: ${safeText(transaction?.payment_status, '-').replaceAll('_', ' ').toUpperCase()}`
+        `Payment Method: ${safeText(transaction?.payment_type, '-').replace(/_/g, ' ').toUpperCase()}`,
+        `Payment Status: ${safeText(transaction?.payment_status, '-').replace(/_/g, ' ').toUpperCase()}`
     );
     if (transaction?.payment_reference) {
         receiptRows.push(`Payment Reference: ${safeText(transaction.payment_reference)}`);

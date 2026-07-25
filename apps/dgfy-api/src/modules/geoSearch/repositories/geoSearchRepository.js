@@ -3,6 +3,7 @@ import sequelize from '../../../config/database.js';
 import { getRedisClient, isRedisConnected } from '../../../config/redis.js';
 import { createHash } from 'crypto';
 import logger from '../../../config/logger.js';
+import { GeoItemAlias } from '../../../models/index.js';
 
 // ── Cache config ─────────────────────────────────────────────────────────────
 // 90s satisfies the proposal's 60-120s range while staying within the 5-min
@@ -144,6 +145,24 @@ const runGeoQuery = async ({ itemIds, userLat, userLng, radiusKm, stockFilter, l
 
 // ── Public repository ─────────────────────────────────────────────────────────
 export const geoSearchRepository = {
+    async ensureApprovedAlias(itemId, aliasName) {
+        const existing = await GeoItemAlias.findOne({
+            where: { item_id: itemId, alias_name: aliasName }
+        });
+        if (existing) {
+            if (existing.moderation_status !== 'approved') {
+                await existing.update({ moderation_status: 'approved' });
+            }
+            return;
+        }
+        await GeoItemAlias.create({
+            item_id: itemId,
+            alias_name: aliasName,
+            tenant_id: null, // global alias — this is a category label, not tenant-submitted
+            moderation_status: 'approved'
+        });
+    },
+
     async searchNearbyStores({ query, latitude, longitude, radius, stockFilter, page, limit }) {
         const cacheKey = buildCacheKey(query, latitude, longitude, radius, stockFilter);
 

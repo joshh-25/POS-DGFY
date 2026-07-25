@@ -53,6 +53,10 @@ jest.unstable_mockModule('../src/services/storefrontDiscoveryFreshnessService.js
     invalidateStorefrontDiscoverySharedSignatureCache: mockInvalidateSharedSignature
 }));
 
+jest.unstable_mockModule('../src/modules/geoSearch/services/geoCatalogSyncService.js', () => ({
+    syncTenantGeoCatalog: jest.fn().mockResolvedValue(undefined)
+}));
+
 const {
     reconcileStorefrontDiscoveryIndex,
     syncStorefrontDiscoveryIndexForTenant

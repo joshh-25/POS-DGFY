@@ -1,6 +1,12 @@
 import { posRepository } from './repositories/posRepository.js';
 import { posCatalogImageStorage } from './repositories/posCatalogImageStorage.js';
-import { inventoryStockCommandService } from '../inventory/index.js';
+import {
+    inventoryStockCommandService,
+    itemRepository,
+    createItemUseCase,
+    updateItemUseCase,
+    deleteItemUseCase
+} from '../inventory/index.js';
 import { posDeviceBridgeService } from '../../services/posDeviceBridgeService.js';
 import posTerminalPairingService from './services/posTerminalPairingService.js';
 import * as userService from '../../services/userService.js';
@@ -41,8 +47,10 @@ import {
     buildGetCurrentTerminalShiftUseCase,
     buildRecordCashDrawerEventUseCase,
     buildCloseTerminalShiftUseCase,
+    buildForceCloseStaleTerminalShiftUseCase,
     buildGetTerminalTodayDashboardUseCase,
     buildListIncomingOnlineOrdersUseCase,
+    buildGetAdminLocationMonitorUseCase,
     buildCollectCashPickupOrderUseCase,
     buildUpdateOnlineOrderStatusUseCase,
     buildVerifyPosTerminalUseCase,
@@ -58,6 +66,7 @@ import {
     buildGetMobilePosSettingsBootstrapUseCase,
     buildGetMobilePosDevicePolicyUseCase,
     buildSyncMobilePosCheckoutsUseCase,
+    buildSyncMobilePosItemsUseCase,
     buildSyncMobilePosShiftsUseCase,
     buildSyncMobilePosHardwareEventsUseCase,
     buildAcknowledgeMobilePosCheckpointUseCase
@@ -107,8 +116,10 @@ export const switchTerminalShiftLocationUseCase = buildSwitchTerminalShiftLocati
 export const getCurrentTerminalShiftUseCase = buildGetCurrentTerminalShiftUseCase({ posRepository });
 export const recordCashDrawerEventUseCase = buildRecordCashDrawerEventUseCase({ posRepository });
 export const closeTerminalShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
+export const forceCloseStaleTerminalShiftUseCase = buildForceCloseStaleTerminalShiftUseCase({ posRepository });
 export const getTerminalTodayDashboardUseCase = buildGetTerminalTodayDashboardUseCase({ posRepository });
 export const listIncomingOnlineOrdersUseCase = buildListIncomingOnlineOrdersUseCase({ posRepository });
+export const getAdminLocationMonitorUseCase = buildGetAdminLocationMonitorUseCase({ posRepository });
 export const collectCashPickupOrderUseCase = buildCollectCashPickupOrderUseCase({ posRepository });
 export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
     posRepository,
@@ -135,6 +146,12 @@ export const getMobilePosCatalogBootstrapUseCase = buildGetMobilePosCatalogBoots
 export const getMobilePosSettingsBootstrapUseCase = buildGetMobilePosSettingsBootstrapUseCase();
 export const getMobilePosDevicePolicyUseCase = buildGetMobilePosDevicePolicyUseCase({ posRepository });
 export const syncMobilePosCheckoutsUseCase = buildSyncMobilePosCheckoutsUseCase({ checkoutPosUseCase });
+export const syncMobilePosItemsUseCase = buildSyncMobilePosItemsUseCase({
+    createItemUseCase,
+    updateItemUseCase,
+    deleteItemUseCase,
+    itemRepository
+});
 export const syncMobilePosShiftsUseCase = buildSyncMobilePosShiftsUseCase({
     openTerminalShiftUseCase,
     switchTerminalShiftLocationUseCase,

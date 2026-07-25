@@ -36,6 +36,11 @@
 
 resolver 127.0.0.11 valid=10s;
 
+# Root-owned provisioning tooling writes one validated server block per active
+# custom storefront. The web application has read-only registry access and never
+# receives filesystem, certificate, Docker, or reload privileges.
+include /etc/nginx/custom-storefronts/*.conf;
+
 # Reject requests with an unrecognized Host header (direct-IP hits, scans)
 # instead of silently falling through to whichever server block nginx
 # picks by default.

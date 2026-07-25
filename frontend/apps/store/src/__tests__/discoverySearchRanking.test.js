@@ -3,7 +3,7 @@ import {
   scoreStoresByRelevance,
   getRelevanceWeightedDistanceRank,
   RELEVANCE_DISTANCE_PENALTY_KM
-} from '../discoverySearchRanking.js';
+} from '../discovery/model/discoverySearchRanking.js';
 
 describe('discovery search relevance ranking', () => {
   const farButGoodMatch = {

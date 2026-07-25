@@ -34,6 +34,7 @@ services:
       args:
         VITE_API_URL: /api/v1
         VITE_STORE_BASE_PATH: /
+        VITE_SENTRY_ENABLED: "false"
 
   nginx:
     environment:

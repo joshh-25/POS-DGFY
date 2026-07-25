@@ -124,6 +124,9 @@ import PaymentFactory from './Landlord/Payment.js';
 import WebhookLogFactory from './Landlord/WebhookLog.js';
 import EngagementEventFactory from './Landlord/EngagementEvent.js';
 import StorefrontDiscoveryIndexFactory from './Landlord/StorefrontDiscoveryIndex.js';
+import StorefrontCustomDomainFactory from './Landlord/StorefrontCustomDomain.js';
+import StorefrontCustomDomainAuditLogFactory from './Landlord/StorefrontCustomDomainAuditLog.js';
+import StorefrontCustomDomainOperationFactory from './Landlord/StorefrontCustomDomainOperation.js';
 import StorefrontHandleReservationFactory from './Landlord/StorefrontHandleReservation.js';
 import TenantComplianceArtifactFactory from './Landlord/TenantComplianceArtifact.js';
 import TenantCompliancePeripheralFactory from './Landlord/TenantCompliancePeripheral.js';
@@ -135,6 +138,13 @@ import TenantAdminAuditLogFactory from './Landlord/TenantAdminAuditLog.js';
 import TenantPaymentAccountFactory from './Landlord/TenantPaymentAccount.js';
 import CommercePaymentSessionFactory from './Landlord/CommercePaymentSession.js';
 import CommercePaymentRefundFactory from './Landlord/CommercePaymentRefund.js';
+import DgfyAffiliateEnrollmentFactory from './Landlord/DgfyAffiliateEnrollment.js';
+import DgfyAffiliateAttributionFactory from './Landlord/DgfyAffiliateAttribution.js';
+import DgfyAffiliateCommissionFactory from './Landlord/DgfyAffiliateCommission.js';
+import DgfyAffiliatePayoutMethodFactory from './Landlord/DgfyAffiliatePayoutMethod.js';
+import DgfyAffiliateCashoutFactory from './Landlord/DgfyAffiliateCashout.js';
+import DgfyAffiliateInviteFactory from './Landlord/DgfyAffiliateInvite.js';
+import TenantAffiliateSettingsFactory from './Landlord/TenantAffiliateSettings.js';
 const Tenant = TenantFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const UserInvitation = UserInvitationFactory(sequelize);
@@ -157,6 +167,9 @@ const Payment = PaymentFactory(sequelize);
 const WebhookLog = WebhookLogFactory(sequelize);
 const EngagementEvent = EngagementEventFactory(sequelize);
 const StorefrontDiscoveryIndex = StorefrontDiscoveryIndexFactory(sequelize);
+const StorefrontCustomDomain = StorefrontCustomDomainFactory(sequelize);
+const StorefrontCustomDomainAuditLog = StorefrontCustomDomainAuditLogFactory(sequelize);
+const StorefrontCustomDomainOperation = StorefrontCustomDomainOperationFactory(sequelize);
 const StorefrontHandleReservation = StorefrontHandleReservationFactory(sequelize);
 const TenantComplianceArtifact = TenantComplianceArtifactFactory(sequelize);
 const TenantCompliancePeripheral = TenantCompliancePeripheralFactory(sequelize);
@@ -168,6 +181,13 @@ const TenantAdminAuditLog = TenantAdminAuditLogFactory(sequelize);
 const TenantPaymentAccount = TenantPaymentAccountFactory(sequelize);
 const CommercePaymentSession = CommercePaymentSessionFactory(sequelize);
 const CommercePaymentRefund = CommercePaymentRefundFactory(sequelize);
+const DgfyAffiliateEnrollment = DgfyAffiliateEnrollmentFactory(sequelize);
+const DgfyAffiliateAttribution = DgfyAffiliateAttributionFactory(sequelize);
+const DgfyAffiliateCommission = DgfyAffiliateCommissionFactory(sequelize);
+const DgfyAffiliatePayoutMethod = DgfyAffiliatePayoutMethodFactory(sequelize);
+const DgfyAffiliateCashout = DgfyAffiliateCashoutFactory(sequelize);
+const DgfyAffiliateInvite = DgfyAffiliateInviteFactory(sequelize);
+const TenantAffiliateSettings = TenantAffiliateSettingsFactory(sequelize);
 
 // Landlord Models
 import AiUsageLogFactory from './Landlord/AiUsageLog.js';
@@ -188,6 +208,16 @@ Tenant.hasMany(EngagementEvent, { foreignKey: 'tenant_id', as: 'engagementEvents
 EngagementEvent.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasOne(StorefrontDiscoveryIndex, { foreignKey: 'tenant_id', as: 'storefrontDiscoveryIndex' });
 StorefrontDiscoveryIndex.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(StorefrontCustomDomain, { foreignKey: 'tenant_id', as: 'storefrontCustomDomains' });
+StorefrontCustomDomain.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+StorefrontCustomDomain.hasMany(StorefrontCustomDomainAuditLog, { foreignKey: 'domain_id', as: 'auditLogs' });
+StorefrontCustomDomainAuditLog.belongsTo(StorefrontCustomDomain, { foreignKey: 'domain_id', as: 'domain' });
+StorefrontCustomDomain.belongsTo(StorefrontCustomDomain, { foreignKey: 'canonical_domain_id', as: 'canonicalDomain' });
+StorefrontCustomDomain.hasMany(StorefrontCustomDomain, { foreignKey: 'canonical_domain_id', as: 'aliases' });
+StorefrontCustomDomain.hasMany(StorefrontCustomDomainOperation, { foreignKey: 'domain_id', as: 'operations' });
+StorefrontCustomDomainOperation.belongsTo(StorefrontCustomDomain, { foreignKey: 'domain_id', as: 'domain' });
+Tenant.hasMany(StorefrontCustomDomainOperation, { foreignKey: 'tenant_id', as: 'storefrontCustomDomainOperations' });
+StorefrontCustomDomainOperation.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasOne(StorefrontHandleReservation, { foreignKey: 'tenant_id', as: 'storefrontHandleReservation' });
 StorefrontHandleReservation.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 DgfyAccount.hasMany(DgfyAccountTenantMembership, { foreignKey: 'dgfy_account_id', as: 'tenantMemberships' });
@@ -225,6 +255,29 @@ Tenant.hasMany(CommercePaymentRefund, { foreignKey: 'tenant_id', as: 'commercePa
 CommercePaymentRefund.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 CommercePaymentSession.hasMany(CommercePaymentRefund, { foreignKey: 'payment_session_id', as: 'refunds' });
 CommercePaymentRefund.belongsTo(CommercePaymentSession, { foreignKey: 'payment_session_id', as: 'paymentSession' });
+
+// Affiliates Program associations (landlord DB only - order linkage to tenant-DB
+// pos_transactions stays value-only via tenant_id + order_reference, no FK possible there).
+DgfyAccount.hasMany(DgfyAffiliateEnrollment, { foreignKey: 'dgfy_account_id', as: 'affiliateEnrollments' });
+DgfyAffiliateEnrollment.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
+Tenant.hasMany(DgfyAffiliateEnrollment, { foreignKey: 'tenant_id', as: 'affiliateEnrollments' });
+DgfyAffiliateEnrollment.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+DgfyAffiliateEnrollment.hasMany(DgfyAffiliateAttribution, { foreignKey: 'enrollment_id', as: 'attributions' });
+DgfyAffiliateAttribution.belongsTo(DgfyAffiliateEnrollment, { foreignKey: 'enrollment_id', as: 'enrollment' });
+DgfyAffiliateEnrollment.hasMany(DgfyAffiliateCommission, { foreignKey: 'enrollment_id', as: 'commissions' });
+DgfyAffiliateCommission.belongsTo(DgfyAffiliateEnrollment, { foreignKey: 'enrollment_id', as: 'enrollment' });
+DgfyAccount.hasMany(DgfyAffiliatePayoutMethod, { foreignKey: 'dgfy_account_id', as: 'affiliatePayoutMethods' });
+DgfyAffiliatePayoutMethod.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
+DgfyAffiliateEnrollment.hasMany(DgfyAffiliateCashout, { foreignKey: 'enrollment_id', as: 'cashouts' });
+DgfyAffiliateCashout.belongsTo(DgfyAffiliateEnrollment, { foreignKey: 'enrollment_id', as: 'enrollment' });
+DgfyAffiliatePayoutMethod.hasMany(DgfyAffiliateCashout, { foreignKey: 'payout_method_id', as: 'cashouts' });
+DgfyAffiliateCashout.belongsTo(DgfyAffiliatePayoutMethod, { foreignKey: 'payout_method_id', as: 'payoutMethod' });
+DgfyAffiliateCashout.hasMany(DgfyAffiliateCommission, { foreignKey: 'cashout_id', as: 'commissions' });
+DgfyAffiliateCommission.belongsTo(DgfyAffiliateCashout, { foreignKey: 'cashout_id', as: 'cashout' });
+Tenant.hasOne(TenantAffiliateSettings, { foreignKey: 'tenant_id', as: 'affiliateSettings' });
+TenantAffiliateSettings.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(DgfyAffiliateInvite, { foreignKey: 'tenant_id', as: 'affiliateInvites' });
+DgfyAffiliateInvite.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 
 // User associations
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
@@ -406,7 +459,12 @@ Item.hasOne(StorefrontCatalogOverride, { foreignKey: 'item_id', as: 'storefrontC
 StorefrontCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 Item.hasMany(StorefrontLocationItemOverride, { foreignKey: 'item_id', as: 'storefrontLocationItemOverrides' });
 StorefrontLocationItemOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
-PosTerminalShift.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
+// onUpdate/onDelete pinned to RESTRICT: cashier_id is the base column of the STORED generated
+// column active_operator_user_id, and MySQL forbids ON UPDATE CASCADE/SET NULL/SET DEFAULT on
+// a generated column's base column (see 20260724000001-enforce-one-open-shift-per-operator.cjs).
+// Sequelize's default onUpdate is CASCADE, which would recreate the broken FK on any tenant
+// provisioned via sequelize.sync() unless pinned here.
+PosTerminalShift.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
 PosTerminalShift.belongsTo(User, { foreignKey: 'closed_by', as: 'closedByUser' });
 PosTerminalShift.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 PosTerminalShift.hasMany(PosCashDrawerEvent, { foreignKey: 'pos_terminal_shift_id', as: 'cashEvents' });
@@ -745,6 +803,9 @@ const db = {
   EngagementEvent,
   AiUsageLog,
   StorefrontDiscoveryIndex,
+  StorefrontCustomDomain,
+  StorefrontCustomDomainAuditLog,
+  StorefrontCustomDomainOperation,
   TenantComplianceArtifact,
   TenantCompliancePeripheral,
   TenantComplianceAuditLog,
@@ -754,7 +815,14 @@ const db = {
   TenantAdminAuditLog,
   TenantPaymentAccount,
   CommercePaymentSession,
-  CommercePaymentRefund
+  CommercePaymentRefund,
+  DgfyAffiliateEnrollment,
+  DgfyAffiliateAttribution,
+  DgfyAffiliateCommission,
+  DgfyAffiliatePayoutMethod,
+  DgfyAffiliateCashout,
+  DgfyAffiliateInvite,
+  TenantAffiliateSettings
 };
 
 export default db;
@@ -884,6 +952,9 @@ export {
   EngagementEvent,
   AiUsageLog,
   StorefrontDiscoveryIndex,
+  StorefrontCustomDomain,
+  StorefrontCustomDomainAuditLog,
+  StorefrontCustomDomainOperation,
   TenantComplianceArtifact,
   TenantCompliancePeripheral,
   TenantComplianceAuditLog,
@@ -894,6 +965,13 @@ export {
   TenantPaymentAccount,
   CommercePaymentSession,
   CommercePaymentRefund,
+  DgfyAffiliateEnrollment,
+  DgfyAffiliateAttribution,
+  DgfyAffiliateCommission,
+  DgfyAffiliatePayoutMethod,
+  DgfyAffiliateCashout,
+  DgfyAffiliateInvite,
+  TenantAffiliateSettings,
   GeoItem,
   GeoStoreItem,
   GeoItemAlias

@@ -12,9 +12,11 @@ import { getAccessToken, refreshBrowserSession, setBrowserSession } from './serv
 import { login as loginTenantSession } from './services/authService.js'
 import { shouldRefreshBrowserSessionForPath } from './services/publicRoutePolicy.js'
 import ErrorBoundary from './components/common/ErrorBoundary.jsx' // Fix 10.3
+import NotFoundPage from './components/common/NotFoundPage.jsx'
 import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.jsx'
 import { Toaster } from '@/components/ui/sonner'
 import { getRuntimeConfig } from './utils/runtimeConfig.js'
+import { initBrowserSentry } from './observability/sentryClient.js'
 import './index.css'
 
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/'
@@ -22,6 +24,8 @@ const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`
 const runtimeConfig = getRuntimeConfig(import.meta.env, typeof window !== 'undefined' ? window.location : undefined)
 const RootRouter = runtimeConfig.isDesktopShell ? HashRouter : BrowserRouter
 const devAutoLoginEnabled = String(import.meta.env.VITE_DEV_AUTO_LOGIN_ENABLED || '').trim().toLowerCase() === 'true'
+
+initBrowserSentry({ surface: runtimeConfig.appSurface || 'skupervisor' })
 
 const shouldRunDevAutoLogin = () => {
   if (!import.meta.env.DEV) return false
@@ -274,9 +278,10 @@ function App() {
           <Route path="hosting" element={<HostingStatus />} />
         </Route>
 
-        {/* Legacy route - redirect to new admin portal */}
-        <Route path="/admin/feedback-old" element={<Navigate to="/admin/feedback" replace />} />
-      </Routes>
+         {/* Legacy route - redirect to new admin portal */}
+         <Route path="/admin/feedback-old" element={<Navigate to="/admin/feedback" replace />} />
+         <Route path="*" element={<NotFoundPage />} />
+       </Routes>
     </Suspense>
   )
 }

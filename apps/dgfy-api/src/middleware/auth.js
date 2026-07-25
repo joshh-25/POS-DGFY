@@ -1,6 +1,7 @@
 import { verifyToken, isTokenBlacklisted } from '../services/authService.js';
 import dbStore from '../utils/dbStore.js';
 import { getCookie, SESSION_COOKIE_NAMES } from '../utils/browserSessionCookies.js';
+import { isPremiumActiveTenant } from '../utils/tenantPlan.js';
 import { paymentsEnabled } from '../config/paymentsFeature.js';
 import { PERMISSIONS, DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 import { isPhoneCompletionEnforcedForTenant } from '../config/phoneCompletionRollout.js';
@@ -582,10 +583,15 @@ export const requireMasterAdmin = (req, res, next) => {
  * Require Premium Plan
  * Must be used after tenantHandler
  */
+// isPremiumActiveTenant now lives in utils/tenantPlan.js (dependency-light,
+// so middleware/rateLimiter.js can use it without pulling in
+// services/authService.js) and is re-exported here for existing importers.
+export { isPremiumActiveTenant };
+
 export const requirePremium = (req, res, next) => {
   // If no tenant context (e.g. during specific admin ops), fail safe
   if (!req.tenant) {
-    // If user is Master Admin, maybe allow? 
+    // If user is Master Admin, maybe allow?
     // For now, fail safe.
     return res.status(403).json({
       success: false,
@@ -602,26 +608,15 @@ export const requirePremium = (req, res, next) => {
     });
   }
 
-  // Billing-paused mode allows manual plan metadata overrides to unlock premium-gated features.
-  if (!paymentsEnabled) {
+  if (isPremiumActiveTenant(req)) {
     return next();
   }
 
-  // G7: Also verify the premium subscription is still live (active or in grace period).
-  const now = new Date();
-  const subStatus = String(req.tenant.subscription_status || '').toLowerCase();
-  const gracePeriodEnd = req.tenant.grace_period_end ? new Date(req.tenant.grace_period_end) : null;
-  const inGrace = subStatus === 'past_due' && gracePeriodEnd && gracePeriodEnd > now;
-
-  if (subStatus !== 'active' && !inGrace) {
-    return res.status(403).json({
-      success: false,
-      message: 'Your Premium subscription has expired.',
-      requiresRenewal: true
-    });
-  }
-
-  return next();
+  return res.status(403).json({
+    success: false,
+    message: 'Your Premium subscription has expired.',
+    requiresRenewal: true
+  });
 };
 
 const parseCapabilityBoolean = (value, fallback = true) => {

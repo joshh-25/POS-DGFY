@@ -27,6 +27,7 @@ import {
   Pencil,
   MapPinned,
   Package,
+  Percent,
   Phone,
   Plus,
   Receipt,
@@ -46,9 +47,11 @@ import {
   TrendingUp,
   Truck,
   Upload,
+  UtensilsCrossed,
   X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { isShiftOwnedByUserId, resolvePosUserId } from '../utils/shiftOwnership.js';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import {
   Dialog,
@@ -68,6 +71,7 @@ import {
   generateItemBarcode,
   getFolders,
   getItems,
+  lookupExternalProduct,
   updateFolder
 } from '@/services/itemService.js';
 import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
@@ -90,7 +94,7 @@ import { getStorefrontPromoScheduleValidationError } from '@/src/features/pos/ut
 import { resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
 import StorefrontBusinessHoursScheduler from '@/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import { normalizeStorefrontBusinessHours, serializeStorefrontBusinessHours } from '@/src/features/settings/storefrontBusinessHours.js';
-import resolveAssetUrl from '@/src/utils/assetUrl.js';
+import resolveAssetUrl, { resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
 import UserInvitationModal from '@/Components/users/UserInvitationModal.jsx';
 import { IncomingQueueWorkspace, WorkspaceShell } from './TerminalOperationsPanels.jsx';
 import {
@@ -100,6 +104,7 @@ import {
   fetchTerminalTodayDashboard
 } from '../services/posService.js';
 import PosReportsAnalyticsWorkspace from './PosReportsAnalyticsWorkspace.jsx';
+import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 
 const MapPinPicker = lazy(() => import('@/src/components/maps/MapPinPicker.jsx'));
@@ -150,6 +155,11 @@ const MODE_META = {
     icon: BarChart3,
     title: 'Reports & Analytics',
     subtitle: 'Daily totals, sales comparison, POS profit/loss, top items, and transaction performance.'
+  },
+  settings_affiliates: {
+    icon: Percent,
+    title: 'Affiliates',
+    subtitle: 'Enroll affiliates, set commission rates, generate share codes, and review earnings.'
   },
   items: {
     icon: ClipboardList,
@@ -662,6 +672,9 @@ const parseIsoDateTime = (value) => {
 function ShiftControlsWorkspace({
   shiftState,
   terminalMeta,
+  operatorUserId,
+  activeTerminalId,
+  terminalRegistry = [],
   locationsState,
   operatingLocationId,
   setOperatingLocationId,
@@ -683,11 +696,25 @@ function ShiftControlsWorkspace({
   cashEventForm,
   setCashEventForm,
   handleRecordCashEvent,
+  adminLocationMonitorState = { loading: false, orders: [], terminalShifts: [], errorMessage: '' },
+  adminTerminalSwitching = false,
+  onSelectAdminTerminal = async () => false,
+  refreshAdminLocationMonitor = async () => {},
+  canRecoverStaleShifts = false,
+  handleForceCloseStaleShift = async () => false,
+  isOnline = true,
   sectionId,
   initialTab = 'shift_location'
 }) {
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const [switchReason, setSwitchReason] = useState('');
+  const [requestedAdminTerminalId, setRequestedAdminTerminalId] = useState('');
+  const [pendingAdminTerminalId, setPendingAdminTerminalId] = useState('');
+  const [staleRecoveryShift, setStaleRecoveryShift] = useState(null);
+  const [staleRecoveryForm, setStaleRecoveryForm] = useState({
+    closingCashAmount: '',
+    reason: ''
+  });
   const [activeTab, setActiveTab] = useState(initialTab);
   const [renderedTab, setRenderedTab] = useState(initialTab);
   const [paneInlineStyle, setPaneInlineStyle] = useState({
@@ -705,6 +732,51 @@ function ShiftControlsWorkspace({
     || activeShift?.cashier?.email
     || (activeShift?.cashier_id ? `Cashier #${activeShift.cashier_id}` : 'Current cashier');
   const canRenderAdminShiftOpen = canAdminBypassShiftPrompt || canTransactPos;
+  const activeTerminals = useMemo(
+    () => (Array.isArray(terminalRegistry) ? terminalRegistry : [])
+      .filter((entry) => entry?.is_active !== false),
+    [terminalRegistry]
+  );
+  const locationTerminals = useMemo(
+    () => activeTerminals.filter(
+      (entry) => Number(entry?.location_id || 0) === Number(operatingLocationId || 0)
+    ),
+    [activeTerminals, operatingLocationId]
+  );
+  const openTerminalShiftById = useMemo(() => {
+    const shifts = Array.isArray(adminLocationMonitorState?.terminalShifts)
+      ? adminLocationMonitorState.terminalShifts
+      : [];
+    return new Map(shifts.map((shift) => [String(shift?.terminal_id || '').trim(), shift]));
+  }, [adminLocationMonitorState]);
+  const currentTerminalId = String(activeTerminalId || '').trim();
+  const currentTerminalMatches = locationTerminals.some(
+    (entry) => String(entry?.terminal_id || '').trim() === currentTerminalId
+  );
+  const requestedTerminalMatches = locationTerminals.some(
+    (entry) => String(entry?.terminal_id || '').trim() === requestedAdminTerminalId
+  );
+  const selectedAdminTerminalId = requestedTerminalMatches
+    ? requestedAdminTerminalId
+    : (currentTerminalMatches ? currentTerminalId : '');
+  const activeTerminalRegistryEntry = activeTerminals.find(
+    (entry) => String(entry?.terminal_id || '').trim() === String(activeTerminalId || '').trim()
+  );
+  const activeTerminalMatchesOperatingLocation = !canAdminBypassShiftPrompt || Boolean(
+    activeTerminalRegistryEntry
+    && Number(activeTerminalRegistryEntry?.location_id || 0) === Number(operatingLocationId || 0)
+  );
+  const selectedTerminalShift = openTerminalShiftById.get(String(selectedAdminTerminalId || '').trim()) || null;
+  const selectedTerminalShiftOwnedByCurrentUser = isShiftOwnedByUserId(
+    selectedTerminalShift,
+    operatorUserId
+  );
+  const branchMonitorOrders = Array.isArray(adminLocationMonitorState?.orders)
+    ? adminLocationMonitorState.orders
+    : [];
+  const branchTerminalShifts = Array.isArray(adminLocationMonitorState?.terminalShifts)
+    ? adminLocationMonitorState.terminalShifts
+    : [];
   const SHIFT_TABS = [
     { id: 'shift_location', label: 'Shift Location', icon: MapPinned },
     { id: 'close_shift', label: 'Close Shift', icon: ShieldCheck },
@@ -827,6 +899,271 @@ function ShiftControlsWorkspace({
     }
   ] : [];
 
+  const openStaleRecoveryDialog = (shift) => {
+    setStaleRecoveryShift(shift);
+    setStaleRecoveryForm({
+      closingCashAmount: '',
+      reason: ''
+    });
+  };
+
+  const closeStaleRecoveryDialog = () => {
+    if (shiftActionLoading?.staleRecovery) return;
+    setStaleRecoveryShift(null);
+    setStaleRecoveryForm({
+      closingCashAmount: '',
+      reason: ''
+    });
+  };
+
+  const submitStaleShiftRecovery = async (event) => {
+    event.preventDefault();
+    const completed = await handleForceCloseStaleShift?.({
+      shiftId: staleRecoveryShift?.pos_terminal_shift_id,
+      closingCashAmount: staleRecoveryForm.closingCashAmount,
+      reason: staleRecoveryForm.reason
+    });
+    if (completed) {
+      setStaleRecoveryShift(null);
+      setStaleRecoveryForm({
+        closingCashAmount: '',
+        reason: ''
+      });
+    }
+  };
+
+  const renderAdminBranchContext = () => {
+    if (!canAdminBypassShiftPrompt) return null;
+
+    return (
+      <>
+        <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+          <Label htmlFor="admin-operating-location" className="block text-[12px] font-black text-[#0F172A]">
+            Operating Location
+          </Label>
+          <select
+            id="admin-operating-location"
+            className="mt-2 h-11 w-full rounded-lg border border-blue-300 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+            value={operatingLocationId || ''}
+            onChange={(event) => {
+              const nextValue = event.target.value ? Number(event.target.value) : null;
+              setRequestedAdminTerminalId('');
+              setPendingAdminTerminalId('');
+              setOperatingLocationId(nextValue);
+            }}
+          >
+            {locations.map((location) => (
+              <option key={`admin-operating-location-${location.location_id}`} value={location.location_id}>
+                {location.name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-2 text-[11px] leading-4 text-[#475569]">
+            Admin navigation can use this location without a shift for read-only monitoring. Select an available terminal below before opening a shift or transacting.
+          </p>
+
+          <div className="mt-4 border-t border-blue-100 pt-3">
+            <Label htmlFor="admin-operating-terminal" className="block text-[12px] font-black text-[#0F172A]">
+              Branch Terminal
+            </Label>
+            <select
+              id="admin-operating-terminal"
+              className="mt-2 h-11 w-full rounded-lg border border-blue-300 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+              value={selectedAdminTerminalId}
+              onChange={(event) => setRequestedAdminTerminalId(event.target.value)}
+              disabled={adminTerminalSwitching || !isOnline || locationTerminals.length === 0}
+            >
+              <option value="">Select an available terminal</option>
+              {locationTerminals.map((entry) => {
+                const terminalId = String(entry?.terminal_id || '').trim();
+                const occupiedShift = openTerminalShiftById.get(terminalId);
+                const ownedByCurrentUser = isShiftOwnedByUserId(occupiedShift, operatorUserId);
+                const cashier = occupiedShift?.cashier?.username
+                  || occupiedShift?.cashier?.email
+                  || (occupiedShift?.cashier_id ? `Cashier #${occupiedShift.cashier_id}` : 'cashier');
+                const occupancyLabel = occupiedShift
+                  ? (
+                    ownedByCurrentUser
+                      ? `Your active shift since ${parseIsoDateTime(occupiedShift.opened_at)}`
+                      : `In use by ${cashier} since ${parseIsoDateTime(occupiedShift.opened_at)}`
+                  )
+                  : 'Available';
+                return (
+                  <option
+                    key={`admin-terminal-${terminalId}`}
+                    value={terminalId}
+                    disabled={Boolean(occupiedShift) && !ownedByCurrentUser}
+                  >
+                    {entry?.label ? `${entry.label} (${terminalId})` : terminalId} - {occupancyLabel}
+                  </option>
+                );
+              })}
+            </select>
+            {locationTerminals.length === 0 ? (
+              <p className="mt-2 text-[11px] text-amber-700">
+                No active terminal is assigned to this branch. Configure one in POS Setup.
+              </p>
+            ) : null}
+            {!activeTerminalMatchesOperatingLocation ? (
+              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-4 text-amber-800">
+                The current terminal belongs to another branch. Confirm a terminal for this branch before opening a shift.
+              </p>
+            ) : (
+              <p className="mt-2 text-[11px] text-emerald-700">
+                Current terminal: {String(activeTerminalId || '').trim() || 'Not selected'}
+              </p>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-3 h-10 rounded-lg border-blue-300 bg-white px-4 text-[13px] font-extrabold text-[#1A4E8D] hover:bg-blue-50"
+              disabled={
+                adminTerminalSwitching
+                || !isOnline
+                || !selectedAdminTerminalId
+                || (Boolean(selectedTerminalShift) && !selectedTerminalShiftOwnedByCurrentUser)
+                || (
+                  activeTerminalMatchesOperatingLocation
+                  && String(selectedAdminTerminalId) === String(activeTerminalId || '').trim()
+                )
+              }
+              onClick={() => setPendingAdminTerminalId(selectedAdminTerminalId)}
+            >
+              <Monitor className="mr-2 h-4 w-4" />
+              {adminTerminalSwitching ? 'Selecting Terminal...' : 'Use Selected Terminal'}
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-[12px] font-black text-[#0F172A]">Branch Shift Monitor</p>
+              <p className="mt-1 text-[11px] text-[#64748B]">
+                Active shift owner and opening time for each terminal in this branch.
+              </p>
+            </div>
+          </div>
+          {branchTerminalShifts.length === 0 ? (
+            <p className="mt-3 rounded-md border border-slate-200 bg-white px-3 py-3 text-[11px] text-slate-600">
+              No active terminal shifts for this branch.
+            </p>
+          ) : (
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {branchTerminalShifts.map((shift) => {
+                const shiftOwner = shift?.cashier?.username
+                  || shift?.cashier?.email
+                  || (shift?.cashier_id ? `Operator #${shift.cashier_id}` : 'Unknown operator');
+                const staleStatus = shift?.stale_recovery || {};
+                const ageMinutes = Number(staleStatus?.age_minutes || 0);
+                const ageHours = Number.isFinite(ageMinutes) ? Math.floor(ageMinutes / 60) : 0;
+                return (
+                  <div
+                    key={`admin-branch-shift-${shift.pos_terminal_shift_id}`}
+                    className={`rounded-lg border bg-white p-3 ${
+                      staleStatus?.is_stale ? 'border-amber-300' : 'border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-[12px] font-black text-[#0F172A]">
+                          {shift.terminal_id || `Shift #${shift.pos_terminal_shift_id}`}
+                        </p>
+                        <p className="mt-1 text-[11px] text-slate-600">Opened by {shiftOwner}</p>
+                      </div>
+                      <span className={`rounded-md border px-2 py-1 text-[10px] font-extrabold ${
+                        staleStatus?.is_stale
+                          ? 'border-amber-200 bg-amber-50 text-amber-800'
+                          : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      }`}>
+                        {staleStatus?.is_stale ? 'Stale' : 'Active'}
+                      </span>
+                    </div>
+                    <div className="mt-2 space-y-1 text-[11px] text-slate-600">
+                      <p>Opened: {parseIsoDateTime(shift.opened_at)}</p>
+                      <p>Shift ID: #{shift.pos_terminal_shift_id}</p>
+                      {staleStatus?.is_stale ? <p>Open for approximately {ageHours} hour(s)</p> : null}
+                    </div>
+                    {canRecoverStaleShifts && staleStatus?.is_stale ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="mt-3 h-9 w-full rounded-lg border-amber-300 bg-amber-50 px-3 text-[12px] font-extrabold text-amber-900 hover:bg-amber-100"
+                        onClick={() => openStaleRecoveryDialog(shift)}
+                        disabled={!isOnline || shiftActionLoading?.staleRecovery}
+                      >
+                        <AlertTriangle className="mr-2 h-3.5 w-3.5" />
+                        Recover Stale Shift
+                      </Button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-[12px] font-black text-[#0F172A]">Branch Order Monitor</p>
+              <p className="mt-1 text-[11px] text-[#64748B]">Read-only active online orders for the selected branch.</p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9 rounded-lg border-slate-300 bg-white px-3 text-[12px] font-extrabold text-[#0F172A] hover:bg-slate-100"
+              onClick={() => refreshAdminLocationMonitor?.()}
+              disabled={adminLocationMonitorState?.loading || !isOnline}
+            >
+              <RefreshCcw className="mr-2 h-3.5 w-3.5" />
+              {adminLocationMonitorState?.loading ? 'Refreshing...' : 'Refresh'}
+            </Button>
+          </div>
+          {adminLocationMonitorState?.errorMessage ? (
+            <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700">
+              {adminLocationMonitorState.errorMessage}
+            </p>
+          ) : adminLocationMonitorState?.loading && branchMonitorOrders.length === 0 ? (
+            <p className="mt-3 text-[11px] text-slate-500">Loading branch orders...</p>
+          ) : branchMonitorOrders.length === 0 ? (
+            <p className="mt-3 rounded-md border border-slate-200 bg-white px-3 py-3 text-[11px] text-slate-600">
+              No active online orders for this branch.
+            </p>
+          ) : (
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {branchMonitorOrders.map((order) => (
+                <div
+                  key={`admin-branch-order-${order.pos_transaction_id}`}
+                  className="rounded-lg border border-slate-200 bg-white p-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-[12px] font-black text-[#0F172A]">
+                        {order.customer_name || 'Guest Buyer'}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {order.tracking_pin || `Order #${order.pos_transaction_id}`}
+                      </p>
+                    </div>
+                    <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-extrabold text-[#1A4E8D]">
+                      {String(order.fulfillment_status || 'placed').replaceAll('_', ' ')}
+                    </span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-slate-600">
+                    <span>{String(order.order_method || '-').replaceAll('_', ' ')}</span>
+                    <span className="text-right">{String(order.payment_status || 'unpaid').replaceAll('_', ' ')}</span>
+                    <span className="col-span-2">{parseIsoDateTime(order.created_at)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </>
+    );
+  };
+
   const renderShiftLocationPane = () => {
     if (!activeShift) {
       return (
@@ -834,31 +1171,7 @@ function ShiftControlsWorkspace({
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
             Shift Closed. Please open your shift before using the POS.
           </p>
-          {canAdminBypassShiftPrompt && (
-            <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
-              <Label htmlFor="admin-operating-location" className="block text-[12px] font-black text-[#0F172A]">
-                Operating Location
-              </Label>
-              <select
-                id="admin-operating-location"
-                className="mt-2 h-11 w-full rounded-lg border border-blue-300 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-                value={operatingLocationId || ''}
-                onChange={(event) => {
-                  const nextValue = event.target.value ? Number(event.target.value) : null;
-                  setOperatingLocationId(nextValue);
-                }}
-              >
-                {locations.map((location) => (
-                  <option key={`admin-operating-location-${location.location_id}`} value={location.location_id}>
-                    {location.name}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-2 text-[11px] leading-4 text-[#475569]">
-                Admin navigation can use this location without a shift. Shift opening still uses the terminal&apos;s assigned location.
-              </p>
-            </div>
-          )}
+          {renderAdminBranchContext()}
           <div className="mt-4 space-y-3">
             <Label className="text-[12px] font-black text-[#0F172A]">Opening Float ({terminalMeta.pettyCashSymbol})</Label>
             <Input
@@ -882,11 +1195,15 @@ function ShiftControlsWorkspace({
               type="button"
               className="h-10 rounded-lg !bg-[#2563EB] px-5 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
               onClick={handleOpenShift}
-              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen}
+              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !isOnline || !activeTerminalMatchesOperatingLocation}
             >
               {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
             </Button>
             {!canRenderAdminShiftOpen && <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>}
+            {canAdminBypassShiftPrompt && !activeTerminalMatchesOperatingLocation && (
+              <p className="text-[11px] text-amber-700">Select and confirm a terminal assigned to this branch before opening a shift.</p>
+            )}
+            {!isOnline && <p className="text-[11px] text-amber-700">Reconnect before opening a shift.</p>}
           </div>
         </div>
       );
@@ -1058,11 +1375,15 @@ function ShiftControlsWorkspace({
               type="button"
               className="h-10 rounded-lg !bg-[#2563EB] px-5 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
               onClick={handleOpenShift}
-              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen}
+              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !isOnline || !activeTerminalMatchesOperatingLocation}
             >
               {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
             </Button>
             {!canRenderAdminShiftOpen && <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>}
+            {canAdminBypassShiftPrompt && !activeTerminalMatchesOperatingLocation && (
+              <p className="text-[11px] text-amber-700">Select and confirm a terminal assigned to this branch before opening a shift.</p>
+            )}
+            {!isOnline && <p className="text-[11px] text-amber-700">Reconnect before opening a shift.</p>}
           </div>
         </div>
       );
@@ -1180,6 +1501,7 @@ function ShiftControlsWorkspace({
   };
 
   return (
+    <>
     <div id={sectionId} className="space-y-4">
       <h2 className="sr-only">Shift Controls</h2>
       <div className="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm shadow-slate-200/70">
@@ -1238,6 +1560,117 @@ function ShiftControlsWorkspace({
         </div>
       )}
     </div>
+    <ConfirmActionDialog
+      open={Boolean(pendingAdminTerminalId)}
+      onOpenChange={(open) => {
+        if (!open) setPendingAdminTerminalId('');
+      }}
+      title={
+        selectedTerminalShiftOwnedByCurrentUser
+          ? `Resume your shift on ${pendingAdminTerminalId}?`
+          : (pendingAdminTerminalId ? `Use terminal ${pendingAdminTerminalId}?` : 'Use selected terminal?')
+      }
+      description={
+        selectedTerminalShiftOwnedByCurrentUser
+          ? 'This restores the existing shift you opened. It does not create a new shift or change the original opening record.'
+          : "This changes the Admin terminal context for the selected branch. It does not open a shift, take over another cashier's shift, or enable checkout until you open your own shift."
+      }
+      confirmLabel={selectedTerminalShiftOwnedByCurrentUser ? 'Resume Shift' : 'Use Terminal'}
+      onConfirm={() => onSelectAdminTerminal?.(pendingAdminTerminalId)}
+    />
+    <Dialog
+      open={Boolean(staleRecoveryShift)}
+      onOpenChange={(open) => {
+        if (!open) closeStaleRecoveryDialog();
+      }}
+    >
+      <DialogContent className="w-[calc(100vw-1.5rem)] max-w-lg rounded-2xl border border-amber-200 bg-white p-0 shadow-2xl shadow-slate-950/20">
+        <form onSubmit={submitStaleShiftRecovery}>
+          <DialogHeader className="border-b border-amber-100 bg-amber-50/70 px-5 py-4">
+            <DialogTitle className="flex items-center gap-2 text-lg font-black text-amber-950">
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+              Recover Stale Shift
+            </DialogTitle>
+            <DialogDescription className="mt-1 text-sm leading-6 text-amber-900">
+              Force-close this stale shift without changing its original owner. This action is audited and cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 px-5 py-4">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+              <p className="font-black text-slate-900">
+                {staleRecoveryShift?.terminal_id || `Shift #${staleRecoveryShift?.pos_terminal_shift_id || ''}`}
+              </p>
+              <p className="mt-1">
+                Opened by {staleRecoveryShift?.cashier?.username
+                  || staleRecoveryShift?.cashier?.email
+                  || (staleRecoveryShift?.cashier_id ? `Operator #${staleRecoveryShift.cashier_id}` : 'Unknown operator')}
+              </p>
+              <p className="mt-1">Opened: {parseIsoDateTime(staleRecoveryShift?.opened_at)}</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="stale-shift-closing-cash" className="text-sm font-black text-slate-900">
+                Closing Cash Amount
+              </Label>
+              <Input
+                id="stale-shift-closing-cash"
+                type="number"
+                min="0"
+                step="0.01"
+                required
+                value={staleRecoveryForm.closingCashAmount}
+                onChange={(event) => setStaleRecoveryForm((current) => ({
+                  ...current,
+                  closingCashAmount: event.target.value
+                }))}
+                placeholder="0.00"
+                disabled={shiftActionLoading?.staleRecovery}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="stale-shift-recovery-reason" className="text-sm font-black text-slate-900">
+                Recovery Reason
+              </Label>
+              <Input
+                id="stale-shift-recovery-reason"
+                required
+                minLength={8}
+                value={staleRecoveryForm.reason}
+                onChange={(event) => setStaleRecoveryForm((current) => ({
+                  ...current,
+                  reason: event.target.value
+                }))}
+                placeholder="Explain why this stale shift must be closed"
+                disabled={shiftActionLoading?.staleRecovery}
+              />
+              <p className="text-xs text-slate-500">At least 8 characters are required for the audit record.</p>
+            </div>
+          </div>
+          <DialogFooter className="border-t border-slate-200 px-5 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeStaleRecoveryDialog}
+              disabled={shiftActionLoading?.staleRecovery}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              className="bg-amber-600 text-white hover:bg-amber-700"
+              disabled={
+                shiftActionLoading?.staleRecovery
+                || !isOnline
+                || !isValidOpeningCashAmount(staleRecoveryForm.closingCashAmount)
+                || staleRecoveryForm.reason.trim().length < 8
+              }
+            >
+              {shiftActionLoading?.staleRecovery ? 'Recovering Shift...' : 'Force Close Stale Shift'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
@@ -1445,6 +1878,11 @@ function ItemsWorkspace({
   const [posFolders, setPosFolders] = useState([]);
   const [skuSeedItems, setSkuSeedItems] = useState([]);
   const [selectedImageFiles, setSelectedImageFiles] = useState([]);
+  const [externalBarcode, setExternalBarcode] = useState('');
+  const [externalLookupLoading, setExternalLookupLoading] = useState(false);
+  const [externalLookupError, setExternalLookupError] = useState('');
+  const [externalProductLookup, setExternalProductLookup] = useState(null);
+  const [acceptedExternalProduct, setAcceptedExternalProduct] = useState(null);
   const [pendingCreateRecovery, setPendingCreateRecovery] = useState(null);
   const [postCreateSaving, setPostCreateSaving] = useState(false);
   const posItemPreset = useMemo(() => resolveSellablePosItemPreset(workflowMode), [workflowMode]);
@@ -1710,6 +2148,11 @@ function ItemsWorkspace({
     setCreateForm(createEmptyPosItemForm());
     setCreateCategoryInput('');
     setSelectedImageFiles([]);
+    setExternalBarcode('');
+    setExternalLookupLoading(false);
+    setExternalLookupError('');
+    setExternalProductLookup(null);
+    setAcceptedExternalProduct(null);
     setPendingCreateRecovery(null);
     setShowCreateModal(true);
   };
@@ -1720,6 +2163,11 @@ function ItemsWorkspace({
     setCreateForm(createEmptyPosItemForm());
     setCreateCategoryInput('');
     setSelectedImageFiles([]);
+    setExternalBarcode('');
+    setExternalLookupLoading(false);
+    setExternalLookupError('');
+    setExternalProductLookup(null);
+    setAcceptedExternalProduct(null);
     if (force) setPendingCreateRecovery(null);
   };
 
@@ -1838,6 +2286,55 @@ function ItemsWorkspace({
 
   const removeSelectedCreateImageFile = (imageIndex) => {
     setSelectedImageFiles((current) => current.filter((_, index) => index !== imageIndex));
+  };
+
+  const handleExternalBarcodeChange = (value) => {
+    const normalized = String(value || '').replace(/\D/g, '').slice(0, 14);
+    setExternalBarcode(normalized);
+    if (normalized !== externalProductLookup?.code) {
+      setExternalLookupError('');
+      setExternalProductLookup(null);
+      setAcceptedExternalProduct(null);
+    }
+  };
+
+  const handleExternalProductLookup = async () => {
+    if (externalLookupLoading) return;
+    if (![8, 12, 13, 14].includes(externalBarcode.length)) {
+      setExternalLookupError('Enter a GTIN-8, UPC-A, EAN-13, or GTIN-14 barcode.');
+      return;
+    }
+
+    setExternalLookupLoading(true);
+    setExternalLookupError('');
+    setExternalProductLookup(null);
+    setAcceptedExternalProduct(null);
+    try {
+      const result = await lookupExternalProduct(externalBarcode);
+      setExternalProductLookup(result);
+      if (!result?.found) {
+        setExternalLookupError('No registry match was found. You can still create the item manually.');
+      }
+    } catch (lookupError) {
+      setExternalLookupError(
+        lookupError?.response?.data?.message
+        || 'The product registry is unavailable. Enter the item manually or try again.'
+      );
+    } finally {
+      setExternalLookupLoading(false);
+    }
+  };
+
+  const applyExternalProductDetails = () => {
+    if (!externalProductLookup?.found) return;
+    const product = externalProductLookup.product || {};
+    const descriptionParts = [product.brand, product.quantity].filter(Boolean);
+    setCreateForm((current) => ({
+      ...current,
+      name: product.name || current.name,
+      description: current.description || descriptionParts.join(' - ')
+    }));
+    setAcceptedExternalProduct(externalProductLookup);
   };
 
   const handleUploadStorefrontImage = async (item, files) => {
@@ -2044,6 +2541,9 @@ function ItemsWorkspace({
       fifo_enabled: category === 'product' ? posItemPreset.fifo_enabled !== false : true,
       vat_type: 'vatable',
       senior_pwd_discount_eligible: createForm.senior_pwd_discount_eligible === true,
+      ...(acceptedExternalProduct?.found ? {
+        manufacturer_barcode: { code: acceptedExternalProduct.code }
+      } : {}),
       status: 'active'
     };
 
@@ -2318,7 +2818,7 @@ function ItemsWorkspace({
         <div className="space-y-4">
           {paginatedItems.map((item) => {
             const barcode = primaryBarcodes[String(item.item_id)]?.code || '';
-            const imageUrl = item?.storefront_image_url || '';
+            const imageUrl = resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail');
             const stockQuantity = Number(item?.current_stock || 0);
             const isAlwaysAvailable = item?.pos_always_available === true;
             const profit = Number(item?.default_sale_price || 0) - Number(item?.cost_per_unit || 0);
@@ -2348,7 +2848,15 @@ function ItemsWorkspace({
                   <div className="flex min-w-0 gap-2.5 xl:border-r xl:border-slate-100 xl:pr-3">
                     <div className="flex h-[4rem] w-[4rem] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-slate-100 bg-gradient-to-br from-slate-50 to-slate-100 shadow-inner sm:h-[4.5rem] sm:w-[4.5rem]">
                       {imageUrl ? (
-                        <img src={imageUrl} alt={item?.name || 'Item image'} className="h-full w-full object-cover" />
+                        <img
+                          src={imageUrl}
+                          alt={item?.name || 'Item image'}
+                          loading="lazy"
+                          decoding="async"
+                          width={288}
+                          height={288}
+                          className="h-full w-full object-cover"
+                        />
                       ) : (
                         <ImagePlus className="h-5 w-5 text-slate-300" />
                       )}
@@ -2562,6 +3070,85 @@ function ItemsWorkspace({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6 bg-white">
+              <section className="mb-5 space-y-3 rounded-xl border border-blue-200 bg-blue-50/70 p-4" aria-labelledby="pos-external-barcode-heading">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-lg bg-white p-2 text-blue-700 shadow-sm">
+                    <Barcode className="h-5 w-5" aria-hidden="true" />
+                  </div>
+                  <div>
+                    <h3 id="pos-external-barcode-heading" className="text-sm font-semibold text-slate-900">Scan UPC / EAN</h3>
+                    <p className="text-xs text-slate-600">Look up packaged-product details before creating the item. Manual entry remains available.</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    value={externalBarcode}
+                    onChange={(event) => handleExternalBarcodeChange(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        handleExternalProductLookup();
+                      }
+                    }}
+                    inputMode="numeric"
+                    autoComplete="off"
+                    placeholder="Scan or enter GTIN / UPC / EAN"
+                    aria-label="Product barcode"
+                    disabled={externalLookupLoading || creatingItem || postCreateSaving}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="shrink-0 bg-white"
+                    onClick={handleExternalProductLookup}
+                    disabled={externalLookupLoading || creatingItem || postCreateSaving || !externalBarcode}
+                  >
+                    <Search className="mr-2 h-4 w-4" aria-hidden="true" />
+                    {externalLookupLoading ? 'Looking up...' : 'Look up'}
+                  </Button>
+                </div>
+
+                {externalLookupError ? (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" role="status">
+                    {externalLookupError}
+                  </p>
+                ) : null}
+
+                {externalProductLookup?.found ? (
+                  <div className="rounded-xl border border-blue-200 bg-white p-3">
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      {externalProductLookup.product?.image_url ? (
+                        <img
+                          src={externalProductLookup.product.image_url}
+                          alt="External product preview"
+                          className="h-20 w-20 shrink-0 rounded-lg border border-slate-200 object-contain"
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : null}
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <p className="font-semibold text-slate-900">{externalProductLookup.product?.name || 'Unnamed registry product'}</p>
+                        {externalProductLookup.product?.brand ? <p className="text-xs text-slate-600">Brand: {externalProductLookup.product.brand}</p> : null}
+                        {externalProductLookup.product?.quantity ? <p className="text-xs text-slate-600">Package: {externalProductLookup.product.quantity}</p> : null}
+                        {externalProductLookup.product?.category_suggestion ? <p className="text-xs text-slate-600">Category suggestion: {externalProductLookup.product.category_suggestion}</p> : null}
+                        <p className="text-xs text-amber-700">Review before saving. Category and image are not imported automatically.</p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={applyExternalProductDetails}
+                        disabled={acceptedExternalProduct?.code === externalProductLookup.code}
+                      >
+                        {acceptedExternalProduct?.code === externalProductLookup.code ? <Check className="mr-2 h-4 w-4" /> : null}
+                        {acceptedExternalProduct?.code === externalProductLookup.code ? 'Details selected' : 'Use product details'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+
               <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
                 <div className="space-y-4">
                   <div>
@@ -3192,21 +3779,58 @@ function ItemsWorkspace({
 
       {itemSaveInFlight && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/65 px-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/75 px-4 backdrop-blur-md transition-all duration-300"
           role="status"
           aria-live="assertive"
-          aria-label="Saving item"
+          aria-label="Saving menu item"
         >
-          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-7 text-center shadow-2xl shadow-slate-950/30">
-            <div className="mx-auto flex h-14 w-20 items-center justify-center gap-2 rounded-full bg-blue-50" aria-hidden="true">
-              <span className="h-4 w-4 animate-bounce rotate-[-45deg] bg-blue-500 [animation-delay:-0.2s] [border-radius:50%_50%_50%_0]" />
-              <span className="h-5 w-5 animate-bounce rotate-[-45deg] bg-blue-600 [animation-delay:-0.1s] [border-radius:50%_50%_50%_0]" />
-              <span className="h-4 w-4 animate-bounce rotate-[-45deg] bg-blue-500 [border-radius:50%_50%_50%_0]" />
+          <div className="relative w-full max-w-sm overflow-hidden rounded-3xl bg-white/95 p-8 text-center shadow-[0_25px_60px_-15px_rgba(245,158,11,0.25)] border border-amber-100/80 backdrop-blur-xl animate-float">
+
+            {/* Top Warm Accent Shimmer Bar */}
+            <div className="absolute top-0 left-0 right-0 h-1.5 bg-amber-50 overflow-hidden">
+              <div className="h-full w-1/2 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 rounded-full animate-shimmer" />
             </div>
-            <p className="mt-4 text-lg font-extrabold text-[#0F172A]">Saving item…</p>
-            <p className="mt-2 text-sm leading-6 text-[#64748B]">
-              Please wait while we finish saving your changes.
+
+            {/* F&B Status Pill */}
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-[11px] font-bold tracking-wide text-amber-700 border border-amber-200/60 mb-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping" />
+              F&B KITCHEN & MENU SYNC
+            </div>
+
+            {/* Icon Container with Animated Orbital Rings */}
+            <div className="relative mx-auto my-3 flex h-20 w-20 items-center justify-center">
+              {/* Outer Glowing Pulse Ring */}
+              <div className="absolute inset-0 rounded-full bg-amber-500/10 animate-pulse-ring" />
+
+              {/* Outer Rotating Gradient Ring */}
+              <div className="absolute inset-0 rounded-full border-2 border-dashed border-amber-400/50 animate-spin-slow" />
+
+              {/* Inner Counter-rotating Gradient Ring */}
+              <div className="absolute inset-1 rounded-full border-2 border-orange-500/30 border-t-orange-500 animate-spin-reverse" />
+
+              {/* Center F&B Emblem Container */}
+              <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 shadow-lg shadow-orange-500/35 text-white">
+                <UtensilsCrossed className="h-7 w-7 text-white drop-shadow" />
+              </div>
+            </div>
+
+            {/* Title */}
+            <h3 className="mt-3 text-xl font-extrabold tracking-tight text-slate-900">
+              Saving Menu Item…
+            </h3>
+
+            {/* Subtitle */}
+            <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500 px-1">
+              Updating food & beverage details and syncing menu changes across POS terminals & Kitchen Displays.
             </p>
+
+            {/* Animated Dots Indicator */}
+            <div className="mt-5 flex items-center justify-center gap-1.5 text-amber-600">
+              <span className="h-2 w-2 rounded-full bg-amber-500 dot-1" />
+              <span className="h-2 w-2 rounded-full bg-amber-500 dot-2" />
+              <span className="h-2 w-2 rounded-full bg-amber-500 dot-3" />
+            </div>
+
           </div>
         </div>
       ), document.body)}
@@ -4017,9 +4641,11 @@ function SettingsWorkspace({
     }
   }, []);
 
-  const hydrateSettingsWorkspace = useCallback(async () => {
-    setLoading(true);
-    setLoadError('');
+  const hydrateSettingsWorkspace = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+      setLoadError('');
+    }
     try {
       const [settingsPayload, companyPayload] = await Promise.all([
         getAllSettings({ force: true }),
@@ -4145,9 +4771,13 @@ function SettingsWorkspace({
         profile: String(settingsPayload?.storefront_profile_image_url?.value || '')
       });
     } catch (error) {
-      setLoadError(error?.response?.data?.message || 'Failed to load shared settings.');
+      if (!silent) {
+        setLoadError(error?.response?.data?.message || 'Failed to load shared settings.');
+      }
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [terminalMeta?.pettyCashAmount, terminalMeta?.pettyCashSymbol, terminalUser?.is_master_admin]);
 
@@ -4708,7 +5338,7 @@ function SettingsWorkspace({
         storefront_follow_enabled: storefrontForm.storefrontFollowEnabled === true,
         storefront_share_enabled: storefrontForm.storefrontShareEnabled === true
       });
-      await hydrateSettingsWorkspace();
+      await hydrateSettingsWorkspace({ silent: true });
       await onStorefrontSetupSaved?.();
       toast.success('Storefront settings synced to shared settings.');
     } catch (error) {
@@ -5362,18 +5992,17 @@ function SettingsWorkspace({
               </div>
             </div>
             <div className="mt-5 grid gap-4 md:grid-cols-2">
-              {/* Row 1: Queue Location Scope beside Petty Cash Currency Symbol */}
+              {/* Row 1: Shift-bound queue location beside Petty Cash Currency Symbol */}
               <div className="grid gap-2">
-                <Label className="text-[12px] font-bold text-slate-700">Queue Location Scope</Label>
+                <Label className="text-[12px] font-bold text-slate-700">Queue Location (Active Shift)</Label>
                 <div className="relative flex items-center">
                   <MapPin className="absolute left-4 h-5 w-5 text-blue-600 pointer-events-none" />
                   <select
                     className="h-12 w-full rounded-xl border border-slate-200 bg-white pl-12 pr-10 text-[14px] font-semibold text-[#0F172A] outline-none appearance-none focus:border-blue-500 focus-visible:ring-2 focus-visible:ring-blue-500/20"
                     value={queueLocationScopeId || ''}
-                    onChange={(event) => setQueueLocationScopeId(event.target.value ? Number(event.target.value) : null)}
-                    disabled={locked}
+                    disabled
                   >
-                    <option value="" disabled>Select queue location</option>
+                    <option value="" disabled>Open a shift to select the branch</option>
                     {locations.map((location) => (
                       <option key={`settings-location-${location.location_id}`} value={location.location_id}>
                         {location.name}
@@ -5382,6 +6011,7 @@ function SettingsWorkspace({
                   </select>
                   <ChevronDown className="absolute right-4 h-4 w-4 text-slate-400 pointer-events-none" />
                 </div>
+                <p className="text-[11px] text-slate-500">Orders from other branches are not visible in this terminal queue.</p>
               </div>
               <div className="grid gap-2">
                 <Label className="text-[12px] font-bold text-slate-700">Petty Cash Currency Symbol</Label>
@@ -6370,7 +7000,7 @@ function SettingsWorkspace({
           </div>
           <div className="space-y-3 rounded-lg border border-slate-200 p-4">
             <Label>Review Summary</Label>
-            <div className="grid gap-3 md:grid-cols-2">
+            <div className="grid min-w-0 max-w-full gap-3 [&>*]:min-w-0 md:grid-cols-2">
               <Input value={storefrontForm.storefrontReviewSummaryScore} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontReviewSummaryScore: event.target.value }))} placeholder="Average score (e.g. 4.8)" />
               <Input value={storefrontForm.storefrontReviewSummaryTotalCount} onChange={(event) => setStorefrontForm((current) => ({ ...current, storefrontReviewSummaryTotalCount: event.target.value }))} placeholder="Total reviews" />
             </div>
@@ -6507,7 +7137,7 @@ function SettingsWorkspace({
                 <Label className="text-[12px] font-semibold text-slate-600">From</Label>
                 <Input
                   type="datetime-local"
-                  className="relative pr-10 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-3 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                  className="relative min-w-0 max-w-full pr-10 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-3 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                   value={buildPromoDateTimeValue(storefrontForm.storefrontPromoValidFrom, storefrontForm.storefrontPromoValidTimeStart)}
                   onChange={(event) => {
                     const { date, time } = parsePromoDateTimeValue(event.target.value);
@@ -6520,7 +7150,7 @@ function SettingsWorkspace({
                 <Label className="text-[12px] font-semibold text-slate-600">To</Label>
                 <Input
                   type="datetime-local"
-                  className="relative pr-10 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-3 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
+                  className="relative min-w-0 max-w-full pr-10 [&::-webkit-calendar-picker-indicator]:absolute [&::-webkit-calendar-picker-indicator]:right-3 [&::-webkit-calendar-picker-indicator]:cursor-pointer"
                   value={buildPromoDateTimeValue(storefrontForm.storefrontPromoValidUntil, storefrontForm.storefrontPromoValidTimeEnd)}
                   onChange={(event) => {
                     const { date, time } = parsePromoDateTimeValue(event.target.value);
@@ -6536,7 +7166,7 @@ function SettingsWorkspace({
                 </div>
                 <div className="flex flex-col gap-2 md:flex-row">
                   <select
-                    className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700"
+                    className="h-10 w-full min-w-0 max-w-full rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-700"
                     value={storefrontPromoCandidateItemId}
                     onChange={(event) => setStorefrontPromoCandidateItemId(event.target.value)}
                     disabled={storefrontPromoItemsLoading || availableStorefrontPromoItems.length === 0}
@@ -6893,6 +7523,7 @@ export default function TerminalOperationsWorkspace({
   offlineSnapshotScope = {},
   onQueueOfflineItemDraft = async () => '',
   activeTerminalId = '',
+  terminalRegistry = [],
   canViewPos,
   canCreateItems = false,
   canEditItems = false,
@@ -6922,6 +7553,12 @@ export default function TerminalOperationsWorkspace({
   queueLocationScopeId = null,
   setQueueLocationScopeId = () => {},
   incomingOrdersState = { loading: false, orders: [] },
+  adminLocationMonitorState = { loading: false, orders: [], terminalShifts: [], errorMessage: '' },
+  adminTerminalSwitching = false,
+  onSelectAdminTerminal = async () => false,
+  refreshAdminLocationMonitor = async () => {},
+  canRecoverStaleShifts = false,
+  handleForceCloseStaleShift = async () => false,
   incomingOrderActionState = {},
   handleIncomingOrderStatusChange = () => {},
   handleOpenCashCollection = () => {},
@@ -7005,6 +7642,9 @@ export default function TerminalOperationsWorkspace({
         <ShiftControlsWorkspace
           shiftState={shiftState}
           terminalMeta={terminalMeta}
+          operatorUserId={resolvePosUserId(terminalUser)}
+          activeTerminalId={activeTerminalId}
+          terminalRegistry={terminalRegistry}
           locationsState={locationsState}
           operatingLocationId={operatingLocationId}
           setOperatingLocationId={setOperatingLocationId}
@@ -7026,6 +7666,13 @@ export default function TerminalOperationsWorkspace({
           cashEventForm={cashEventForm}
           setCashEventForm={setCashEventForm}
           handleRecordCashEvent={handleRecordCashEvent}
+          adminLocationMonitorState={adminLocationMonitorState}
+          adminTerminalSwitching={adminTerminalSwitching}
+          onSelectAdminTerminal={onSelectAdminTerminal}
+          refreshAdminLocationMonitor={refreshAdminLocationMonitor}
+          canRecoverStaleShifts={canRecoverStaleShifts}
+          handleForceCloseStaleShift={handleForceCloseStaleShift}
+          isOnline={isOnline}
           sectionId={sectionIds.activeShift}
           initialTab={viewMode === 'close_shift' ? 'close_shift' : 'shift_location'}
         />
@@ -7035,6 +7682,9 @@ export default function TerminalOperationsWorkspace({
         <ShiftControlsWorkspace
           shiftState={shiftState}
           terminalMeta={terminalMeta}
+          operatorUserId={resolvePosUserId(terminalUser)}
+          activeTerminalId={activeTerminalId}
+          terminalRegistry={terminalRegistry}
           locationsState={locationsState}
           operatingLocationId={operatingLocationId}
           setOperatingLocationId={setOperatingLocationId}
@@ -7056,6 +7706,13 @@ export default function TerminalOperationsWorkspace({
           cashEventForm={cashEventForm}
           setCashEventForm={setCashEventForm}
           handleRecordCashEvent={handleRecordCashEvent}
+          adminLocationMonitorState={adminLocationMonitorState}
+          adminTerminalSwitching={adminTerminalSwitching}
+          onSelectAdminTerminal={onSelectAdminTerminal}
+          refreshAdminLocationMonitor={refreshAdminLocationMonitor}
+          canRecoverStaleShifts={canRecoverStaleShifts}
+          handleForceCloseStaleShift={handleForceCloseStaleShift}
+          isOnline={isOnline}
           sectionId={sectionIds.activeShift}
           initialTab="cash_drawer"
         />
@@ -7071,6 +7728,15 @@ export default function TerminalOperationsWorkspace({
           isOnline={isOnline}
           offlineSnapshotScope={offlineSnapshotScope}
           sectionId={sectionIds.reports}
+        />
+      );
+    case 'settings_affiliates':
+      return (
+        <AffiliatesWorkspacePanel
+          terminalUser={terminalUser}
+          locked={locked}
+          isOnline={isOnline}
+          sectionId={sectionIds.affiliates}
         />
       );
     case 'items':
@@ -7103,6 +7769,9 @@ export default function TerminalOperationsWorkspace({
     canCreateItems,
     canDeleteItems,
     canEditItems,
+    canRecoverStaleShifts,
+    adminLocationMonitorState,
+    adminTerminalSwitching,
     itemsStockFilterPreset,
     workflowMode,
     canSwitchPosLocation,
@@ -7114,6 +7783,7 @@ export default function TerminalOperationsWorkspace({
     handleIncomingOrderStatusChange,
     handleOpenCashCollection,
     handleOpenIncomingOrderReceipt,
+    handleForceCloseStaleShift,
     incomingReceiptOpeningId,
     handleOpenShift,
     handleSwitchShiftLocation,
@@ -7132,6 +7802,7 @@ export default function TerminalOperationsWorkspace({
     handleResolveQueuedOperation,
     onItemsStockFilterPresetApplied,
     onPosSetupSaved,
+    onSelectAdminTerminal,
     onStorefrontSetupSaved,
     onlineOrderSoundEnabled,
     setQueueStatusFilter,
@@ -7139,12 +7810,14 @@ export default function TerminalOperationsWorkspace({
     openShiftForm,
     queueLocationScopeId,
     refreshIncomingOrders,
+    refreshAdminLocationMonitor,
     refreshOperationalContext,
     reportRefreshKey,
     isOnline,
     offlineSnapshotScope,
     onQueueOfflineItemDraft,
     sectionIds.activeShift,
+    sectionIds.affiliates,
     sectionIds.cashDrawer,
     sectionIds.closeShift,
     sectionIds.incomingOrders,
@@ -7165,6 +7838,7 @@ export default function TerminalOperationsWorkspace({
     shiftActionLoading,
     shiftState,
     terminalMeta,
+    terminalRegistry,
     terminalUser,
     todayDashboard,
     effectiveViewMode,

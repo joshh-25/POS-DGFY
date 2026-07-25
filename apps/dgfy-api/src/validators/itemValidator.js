@@ -1,4 +1,13 @@
 import Joi from 'joi';
+import { hasValidGtinCheckDigit } from '../modules/shared/utils/barcodePolicy.js';
+
+const manufacturerBarcodeSchema = Joi.object({
+  code: Joi.string().trim().pattern(/^\d{8}$|^\d{12,14}$/).custom((value, helpers) => (
+    hasValidGtinCheckDigit(value) ? value : helpers.error('barcode.checkDigit')
+  )).required().messages({
+    'barcode.checkDigit': 'Manufacturer barcode has an invalid GTIN check digit.'
+  })
+}).allow(null).optional();
 
 export const createItemSchema = Joi.object({
   sku_code: Joi.string().min(1).max(50).required().messages({
@@ -159,7 +168,8 @@ export const createItemSchema = Joi.object({
   current_stock: Joi.number().min(0).allow(null, ''),
   location_id: Joi.number().integer().positive().allow(null),
   wizard_metadata: Joi.object().allow(null),
-  status: Joi.string().valid('draft', 'active', 'inactive').default('active')
+  status: Joi.string().valid('draft', 'active', 'inactive').default('active'),
+  manufacturer_barcode: manufacturerBarcodeSchema
 });
 
 // Draft schema - only requires name, everything else optional
@@ -272,7 +282,8 @@ export const createItemDraftSchema = Joi.object({
   current_stock: Joi.number().min(0).allow(null, ''),
   location_id: Joi.number().integer().positive().allow(null, ''),
   wizard_metadata: Joi.object().allow(null),
-  status: Joi.string().valid('draft').default('draft')
+  status: Joi.string().valid('draft').default('draft'),
+  manufacturer_barcode: manufacturerBarcodeSchema
 });
 
 export const updateItemSchema = Joi.object({
@@ -558,6 +569,12 @@ const barcodeResolveQuerySchema = Joi.object({
   operation: Joi.string().valid('lookup', 'inventory_scan', 'stock_movement', 'receiving', 'transfer', 'count').default('lookup')
 });
 
+const externalProductLookupQuerySchema = Joi.object({
+  code: Joi.string().trim().pattern(/^\d{8}$|^\d{12,14}$/).required().messages({
+    'string.pattern.base': 'Barcode must be a GTIN-8, UPC-A, EAN-13, or GTIN-14 value.'
+  })
+});
+
 const barcodeAttachSchema = Joi.object({
   code: Joi.string().trim().max(512).required(),
   source: barcodeSourceSchema.default('manufacturer'),
@@ -635,6 +652,7 @@ export const validateUpdateFolder = validateSchema(updateFolderSchema, 'body', '
 export const validateDeleteFolder = validateSchema(deleteFolderSchema, 'body', 'validatedData');
 export const validateReplaceItemSuppliers = validateSchema(replaceItemSuppliersSchema, 'body', 'validatedData');
 export const validateBarcodeResolveQuery = validateSchema(barcodeResolveQuerySchema, 'query', 'validatedQuery');
+export const validateExternalProductLookupQuery = validateSchema(externalProductLookupQuerySchema, 'query', 'validatedQuery');
 export const validateAttachBarcode = validateSchema(barcodeAttachSchema, 'body', 'validatedData');
 export const validateGenerateBarcode = validateSchema(barcodeGenerateSchema, 'body', 'validatedData');
 export const validateBarcodeIdParam = validateSchema(barcodeIdParamSchema, 'params', 'validatedParams');

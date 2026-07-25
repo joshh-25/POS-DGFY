@@ -1,0 +1,847 @@
+import React from 'react';
+import {
+  ArrowLeft,
+  ChevronRight,
+  Info,
+  MapPin,
+  Maximize,
+  Navigation,
+  Plus,
+  X
+} from 'lucide-react';
+import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMap.jsx';
+import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
+import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
+import { PaymentMethodSelectorBlock } from '../../../../shared/components/checkout/PaymentMethodSelectorBlock.jsx';
+import {
+  MOBILE_DROPDOWN_MENU_STYLE,
+  MOBILE_DROPDOWN_OPTION_STYLE,
+  MOBILE_NATIVE_SELECT_STYLE
+} from '../../../../shared/theme/storefrontStyleTokens.js';
+import { formatStorefrontHoursLabel } from '../../../../shared/model/storefrontHoursModel.js';
+import { FnbCheckoutConfirmation } from '../components/FnbCheckoutConfirmation.jsx';
+import { FnbCheckoutCustomerStep } from '../components/FnbCheckoutCustomerStep.jsx';
+import { FnbCheckoutCustomerStepView } from '../components/FnbCheckoutCustomerStepView.jsx';
+import { FnbCheckoutDesktopSummary } from '../components/FnbCheckoutDesktopSummary.jsx';
+import { FnbCheckoutExpandedMapModal } from '../components/FnbCheckoutExpandedMapModal.jsx';
+import { FnbCheckoutFulfillmentChoices } from '../components/FnbCheckoutFulfillmentChoices.jsx';
+import { FnbCheckoutFulfillmentStep } from '../components/FnbCheckoutFulfillmentStep.jsx';
+import { FnbCheckoutFulfillmentStepView } from '../components/FnbCheckoutFulfillmentStepView.jsx';
+import { FnbCheckoutMobileSummaryPanel } from '../components/FnbCheckoutMobileSummaryPanel.jsx';
+import { FnbCheckoutPaymentStep } from '../components/FnbCheckoutPaymentStep.jsx';
+import { FnbCheckoutPaymentStepView } from '../components/FnbCheckoutPaymentStepView.jsx';
+import { FnbCheckoutRouteBody } from '../components/FnbCheckoutRouteBody.jsx';
+import { FnbCheckoutSavedAddressSelector } from '../components/FnbCheckoutSavedAddressSelector.jsx';
+import { FnbCheckoutSummaryContent } from '../components/FnbCheckoutSummaryContent.jsx';
+import { FnbGuestEmailVerification } from '../components/FnbGuestEmailVerification.jsx';
+import {
+  isEnabledStorefrontCheckoutPaymentType,
+  STOREFRONT_CHECKOUT_PAYMENT_OPTIONS
+} from '../model/fnbCheckoutPaymentOptions.js';
+import { FnbCheckoutRouteMount } from './FnbCheckoutRouteMount.jsx';
+
+/**
+ * Moved verbatim from `StorefrontApp.jsx`: the inline F&B order/checkout
+ * journey (fulfillment step, saved-address selector + delivery pin map,
+ * customer step, payment step, mobile summary panel, confirmation). This is
+ * the body previously rendered inline inside the shell's
+ * `<StorefrontCheckoutDrawerFrame>` between the `FnbCheckoutRouteMount`
+ * open/close tags. Placed in `modes/fnb/checkout/pages/` (alongside
+ * `FnbCheckoutRouteMount.jsx`) since it is entirely F&B-mode-owned.
+ *
+ * All props are runtime values/handlers bundled by
+ * `useFnbCheckoutRouteProps` in `../hooks/useFnbCheckoutRouteProps.js`; the
+ * components rendered here are imported directly since they don't vary
+ * per-render.
+ */
+export function FnbCheckoutRouteContainer({
+  activeFnbOrderStepMeta,
+  applySavedDeliveryLocation,
+  canAddPinnedLocation,
+  canUseGuestCheckoutFlow,
+  cart,
+  cartCount,
+  cartImageErrors,
+  checkoutAllowed,
+  checkoutError,
+  checkoutLoading,
+  checkoutResult,
+  checkoutTab,
+  customerPin,
+  deliveryLocationAction,
+  deliveryLocationDisplayAddress,
+  deliverySavedLocations,
+  dgfyIceBlue,
+  dgfyIceBlueBorder,
+  dgfyProgressComplete,
+  fnbCheckoutContentPadding,
+  fnbCustomerStepComplete,
+  fnbFulfillmentStepComplete,
+  fnbMobileSummaryItemCountLabel,
+  fnbOrderBrand,
+  fnbOrderBrandBorder,
+  fnbOrderBrandDark,
+  fnbOrderBrandShadow,
+  fnbOrderBrandShadowStrong,
+  fnbOrderBrandSoft,
+  fnbOrderBrandTint,
+  fnbOrderMobileOptionHeight,
+  fnbOrderMobileOptionIconBox,
+  fnbOrderMobileOptionTextSize,
+  fnbOrderMutedBlueText,
+  fnbOrderStep,
+  fnbOrderStepRenderKey,
+  fnbOrderTextOnBrand,
+  fnbPaymentType,
+  fnbScheduleMode,
+  fnbScheduledFor,
+  fnbScheduleSummaryLabel,
+  fnbSpecialInstructions,
+  fnbSummaryFeeAndTaxes,
+  goStoreCatalogPage,
+  goStoreTrackPage,
+  guestCheckoutOtpCode,
+  guestCheckoutOtpCooldownLabel,
+  guestCheckoutOtpError,
+  guestCheckoutOtpLoading,
+  guestCheckoutOtpVerified,
+  handleAddPinnedLocation,
+  handleApplyGuestDetailsAndRequestOtp,
+  handleCheckout,
+  handleDownloadCheckoutImage,
+  handleGuestCheckoutOtpCodeChange,
+  handlePaymentTypeChange,
+  handlePinMyLocation,
+  handleRemoveDeliveryAddress,
+  handleRequestGuestCheckoutOtp,
+  handleSetDefaultDeliveryAddress,
+  handleVerifyGuestCheckoutOtp,
+  isDeliveryOrder,
+  isDesktopCheckout,
+  isDgfyCustomerSignedIn,
+  isFnbMode,
+  isFnbOrderResponsiveFlow,
+  isFnbOrderSubpage,
+  isGuestCheckoutOtpCooldownActive,
+  isMobileViewport,
+  money,
+  orderMethod,
+  pinLocationError,
+  pinLocationLoading,
+  promoDiscountSummaryRow,
+  quoteError,
+  renderAccountOwnedIdentitySummary,
+  renderGuestCheckoutEntry,
+  renderGuestIdentityFields,
+  renderPromoCodePanel,
+  renderStorefrontClosedNotice,
+  resolvingPinnedDeliveryAddress,
+  selectedSavedLocationId,
+  selectedStore,
+  servicesBodyFont,
+  servicesDisplayFont,
+  setCartImageErrors,
+  setCheckoutResult,
+  setCheckoutTab,
+  setCustomerAddress,
+  setCustomerPin,
+  setDeliveryLocationAction,
+  setFnbOrderStep,
+  setFnbScheduleMode,
+  setFnbScheduledFor,
+  setFnbSpecialInstructions,
+  setIsCheckoutOpen,
+  setOrderMethod,
+  setPinLocationError,
+  setResolvedDeliveryAddress,
+  setSelectedSavedLocationId,
+  setSelectedTrackingPin,
+  setShowExpandedDeliveryMap,
+  setShowFnbMobileOrderSummary,
+  setShowMobileAddressModal,
+  setTrackingPinInput,
+  showExpandedDeliveryMap,
+  showFnbMobileOrderSummary,
+  showMobileAddressModal,
+  storefrontClosedByHours,
+  totalsForDisplay,
+  withAssetOrigin,
+}) {
+  return (
+  <FnbCheckoutRouteMount
+      isActive={isFnbOrderSubpage && isFnbMode && checkoutTab !== 'track'}
+      brandColor={fnbOrderBrand}
+      brandShadow={fnbOrderBrandShadowStrong}
+      contentPadding={fnbCheckoutContentPadding}
+      displayFont={servicesDisplayFont}
+      isDeliveryOrder={isDeliveryOrder}
+      isMobileViewport={isMobileViewport}
+      isResponsiveFlow={isFnbOrderResponsiveFlow}
+      onBack={goStoreCatalogPage}
+      selectedStore={selectedStore}
+      textOnBrand={fnbOrderTextOnBrand}
+      withAssetOrigin={withAssetOrigin}
+    >
+  
+      <FnbCheckoutRouteBody
+        journeyHeaderProps={{
+          activeStep: fnbOrderStep,
+          activeStepMeta: activeFnbOrderStepMeta,
+          accentBorder: dgfyIceBlueBorder,
+          accentColor: fnbOrderBrand,
+          accentSoft: dgfyIceBlue,
+          cartHasItems: cart.length > 0,
+          completeColor: dgfyProgressComplete,
+          completeTextColor: fnbOrderBrandDark,
+          displayFont: servicesDisplayFont,
+          isCustomerStepComplete: fnbCustomerStepComplete,
+          isFulfillmentStepComplete: fnbFulfillmentStepComplete,
+          isMobileViewport,
+          isResponsive: isFnbOrderResponsiveFlow,
+          onStepChange: setFnbOrderStep,
+          signedIn: isDgfyCustomerSignedIn
+        }}
+        stepRenderKey={fnbOrderStepRenderKey}
+      >
+      {fnbOrderStep === 2 && (
+        <FnbCheckoutFulfillmentStepView isDesktop={isDesktopCheckout}>
+          {isDgfyCustomerSignedIn || canUseGuestCheckoutFlow ? (
+          <FnbCheckoutFulfillmentStep
+            isMobileViewport={isMobileViewport}
+            isResponsive={isFnbOrderResponsiveFlow}
+          >
+            <FnbCheckoutFulfillmentChoices
+              fnbOrderBrand={fnbOrderBrand}
+              fnbOrderBrandBorder={fnbOrderBrandBorder}
+              fnbOrderBrandShadow={fnbOrderBrandShadow}
+              fnbOrderBrandShadowStrong={fnbOrderBrandShadowStrong}
+              fnbScheduleMode={fnbScheduleMode}
+              fnbScheduledFor={fnbScheduledFor}
+              isDeliveryOrder={isDeliveryOrder}
+              isMobileViewport={isMobileViewport}
+              isResponsive={isFnbOrderResponsiveFlow}
+              mobileOptionHeight={fnbOrderMobileOptionHeight}
+              mobileOptionIconBox={fnbOrderMobileOptionIconBox}
+              mobileOptionTextSize={fnbOrderMobileOptionTextSize}
+              onOrderMethodChange={setOrderMethod}
+              onScheduleModeChange={(nextMode) => {
+                setFnbScheduleMode(nextMode);
+                if (nextMode === 'asap') setFnbScheduledFor('');
+              }}
+              onScheduledForChange={(nextValue) => {
+                setFnbScheduleMode('schedule');
+                setFnbScheduledFor(nextValue);
+              }}
+              orderMethod={orderMethod}
+              scheduleHoursLabel={formatStorefrontHoursLabel(selectedStore?.storefront_hours, selectedStore?.storefront_hours_status?.display || '')}
+            />                      {isDeliveryOrder && (
+              <div style={{ display: 'grid', gap: 16 }}>
+                <div style={{ display: 'grid', gap: 4 }}>
+                  <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>3. Where should we deliver your order?</div>
+                  <div style={{ fontSize: isFnbOrderResponsiveFlow ? 13 : 12, fontWeight: isFnbOrderResponsiveFlow ? 400 : 600, color: '#64748b', textTransform: isFnbOrderResponsiveFlow ? 'none' : 'uppercase', letterSpacing: isFnbOrderResponsiveFlow ? 'normal' : '0.04em', lineHeight: 1.5, fontFamily: servicesBodyFont }}>
+                    {isFnbOrderResponsiveFlow ? 'Select or pin your location on the map.' : 'Saved locations'}
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: isFnbOrderResponsiveFlow ? '1fr' : '280px minmax(0, 1fr)', gap: 16, alignItems: 'start', width: '100%', maxWidth: '100%', minWidth: 0 }}>
+                  <FnbCheckoutSavedAddressSelector
+                    addresses={deliverySavedLocations}
+                    brandBorder={fnbOrderBrandBorder}
+                    brandColor={fnbOrderBrand}
+                    brandShadow={fnbOrderBrandShadow}
+                    brandTint={fnbOrderBrandTint}
+                    deliveryLocationAction={deliveryLocationAction}
+                    isResponsive={isFnbOrderResponsiveFlow}
+                    onOpenMobileAddressList={() => setShowMobileAddressModal(true)}
+                    onSelectAddress={(location) => {
+                      applySavedDeliveryLocation(location);
+                      if (typeof handleSetDefaultDeliveryAddress === 'function' && !location.isDefault) {
+                        handleSetDefaultDeliveryAddress(location);
+                      }
+                    }}
+                    onStartMapPin={() => {
+                      setDeliveryLocationAction('map');
+                      setSelectedSavedLocationId('');
+                      setPinLocationError('');
+                      setResolvedDeliveryAddress('');
+                      setCustomerAddress('');
+                      setCustomerPin(null);
+                    }}
+                    selectedAddressId={selectedSavedLocationId}
+                  />
+                  <div style={{ display: 'grid', gap: 12, width: '100%', maxWidth: '100%', minWidth: 0 }}>
+                    <div style={{ display: 'none' }} aria-hidden="true">Delivery orders need a pinned map location.</div>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 12, width: '100%', maxWidth: '100%', minWidth: 0 }}>
+                      <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45, fontFamily: servicesBodyFont, display: isFnbOrderResponsiveFlow ? 'none' : 'block' }}>
+                        {resolvingPinnedDeliveryAddress
+                          ? 'Resolving address from your pinned location...'
+                          : 'Tap anywhere on the map, drag the pin, or use your current location.'}
+                      </div>
+                      <div id="delivery-location-map-panel" style={{ position: 'relative', width: '100%', minWidth: 0 }}>
+                        <DeliveryPinMap
+                          pin={customerPin}
+                          onPinChange={(nextPin) => {
+                            setDeliveryLocationAction('map');
+                            setSelectedSavedLocationId('');
+                            setCustomerPin(nextPin);
+                          }}
+                          disabled={false}
+                          height={isMobileViewport ? 'clamp(230px, 34svh, 280px)' : 260}
+                          highlighted={deliveryLocationAction === 'map'}
+                          highlightColor={fnbOrderBrand}
+                          highlightGlow="rgba(26,78,141,0.16)"
+                          overlayControls={(
+                            <>
+                              <button
+                                type="button"
+                                onClick={handlePinMyLocation}
+                                disabled={pinLocationLoading}
+                                style={{
+                                  position: 'absolute',
+                                  top: 12,
+                                  left: 12,
+                                  maxWidth: isMobileViewport ? 'calc(100% - 68px)' : 'none',
+                                  minHeight: 38,
+                                  borderRadius: 999,
+                                  border: `1px solid ${deliveryLocationAction === 'current' ? fnbOrderBrand : '#dbe5ee'}`,
+                                  background: deliveryLocationAction === 'current' ? '#dbeafe' : '#ffffff',
+                                  color: deliveryLocationAction === 'current' ? fnbOrderBrandDark : '#1e293b',
+                                  padding: '0 12px',
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  cursor: pinLocationLoading ? 'wait' : 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 8,
+                                  boxShadow: '0 8px 20px rgba(15,23,42,0.12)',
+                                  zIndex: 11,
+                                  fontFamily: servicesBodyFont,
+                                  pointerEvents: 'auto',
+                                  whiteSpace: 'nowrap',
+                                  overflow: 'hidden',
+                                  textOverflow: 'ellipsis'
+                                }}
+                              >
+                                <Navigation size={15} />
+                                {pinLocationLoading ? 'Locating...' : 'Use Current Location'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setDeliveryLocationAction('map');
+                                  setSelectedSavedLocationId('');
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  right: 12,
+                                  bottom: 12,
+                                  minHeight: 34,
+                                  borderRadius: 999,
+                                  border: `1px solid ${deliveryLocationAction === 'map' ? fnbOrderBrandBorder : '#dbe5ee'}`,
+                                  background: deliveryLocationAction === 'map' ? '#dbeafe' : 'rgba(255,255,255,0.96)',
+                                  color: deliveryLocationAction === 'map' ? fnbOrderBrandDark : '#334155',
+                                  padding: '0 10px',
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  cursor: 'pointer',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: 6,
+                                  boxShadow: '0 8px 20px rgba(15,23,42,0.12)',
+                                  zIndex: 11,
+                                  fontFamily: servicesBodyFont,
+                                  pointerEvents: 'auto'
+                                }}
+                              >
+                                <MapPin size={14} />
+                                Drag to adjust pin
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setShowExpandedDeliveryMap(true)}
+                                aria-label="Open large map"
+                                title="Open large map"
+                                style={{
+                                  position: 'absolute',
+                                  top: 12,
+                                  right: 12,
+                                  width: 36,
+                                  height: 36,
+                                  borderRadius: 10,
+                                  background: '#fff',
+                                  border: '1px solid #cbd5e1',
+                                  boxShadow: '0 4px 12px rgba(15,23,42,0.1)',
+                                  display: 'grid',
+                                  placeItems: 'center',
+                                  cursor: 'pointer',
+                                  color: '#334155',
+                                  zIndex: 12,
+                                  pointerEvents: 'auto'
+                                }}
+                              >
+                                <Maximize size={18} />
+                              </button>
+                            </>
+                          )}
+                        />
+                      </div>
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'minmax(0, 1fr) auto',
+                          gap: 10,
+                          alignItems: 'center',
+                          width: '100%',
+                          maxWidth: '100%',
+                          minWidth: 0
+                        }}
+                      >
+                        <div style={{
+                          minHeight: 38,
+                          borderRadius: 12,
+                          border: `1px solid ${(deliveryLocationAction === 'saved' || deliveryLocationAction === 'current' || deliveryLocationAction === 'map') && deliveryLocationDisplayAddress ? fnbOrderBrandSoft : '#dbe5ee'}`,
+                          background: '#fff',
+                          padding: '0 12px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 10,
+                          color: deliveryLocationDisplayAddress ? '#334155' : '#94a3b8',
+                          fontSize: 13,
+                          lineHeight: 1.4,
+                          fontFamily: servicesBodyFont,
+                          minWidth: 0
+                        }}>
+                          {isFnbOrderResponsiveFlow ? (
+                            <span style={{ width: 24, height: 24, borderRadius: '50%', background: '#eff6ff', color: fnbOrderBrand, display: 'inline-grid', placeItems: 'center', flexShrink: 0 }}>
+                              <MapPin size={13} />
+                            </span>
+                          ) : null}
+                          <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%', fontWeight: 600 }}>
+                            {deliveryLocationDisplayAddress || 'Pinned delivery address will appear here.'}
+                          </span>
+                        </div>
+                        <button type="button" onClick={handleAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ minHeight: 38, borderRadius: 12, border: `1px solid ${fnbOrderBrand}`, background: canAddPinnedLocation ? fnbOrderBrand : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isFnbOrderResponsiveFlow ? 116 : 132, width: 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(26,78,141,0.15)' : 'none', fontFamily: servicesBodyFont }}>
+                          {isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'}
+                        </button>
+                      </div>
+                      {isFnbOrderResponsiveFlow ? (
+                        <div style={{ fontSize: 12, color: '#64748b', lineHeight: 1.45, fontFamily: servicesBodyFont, display: 'flex', alignItems: 'center', gap: 8 }}>
+                          <Info size={15} color="#64748b" />
+                          <span>This is the address where your order will be delivered.</span>
+                        </div>
+                      ) : null}
+                    </div>
+                    {pinLocationError && <div style={{ fontSize: 12, color: '#b91c1c' }}>{pinLocationError}</div>}
+                  </div>
+                </div>
+              </div>
+            )}
+            <FnbCheckoutExpandedMapModal
+              bodyFont={servicesBodyFont}
+              displayFont={servicesDisplayFont}
+              isMobileViewport={isMobileViewport}
+              isOpen={isDeliveryOrder && showExpandedDeliveryMap}
+              onClose={() => setShowExpandedDeliveryMap(false)}
+            >
+                  <DeliveryPinMap
+                    pin={customerPin}
+                    onPinChange={(nextPin) => {
+                      setDeliveryLocationAction('map');
+                      setSelectedSavedLocationId('');
+                      setCustomerPin(nextPin);
+                    }}
+                    disabled={false}
+                    height={isMobileViewport ? 'clamp(340px, min(70svh, calc(100svh - 220px)), 620px)' : 520}
+                    highlighted
+                    highlightColor={fnbOrderBrand}
+                    highlightGlow="rgba(26,78,141,0.16)"
+                    overlayControls={(
+                      <>
+                        <button
+                          type="button"
+                          onClick={handlePinMyLocation}
+                          disabled={pinLocationLoading}
+                          style={{
+                            position: 'absolute',
+                            top: 12,
+                            left: 12,
+                            minHeight: 38,
+                            borderRadius: 999,
+                            border: `1px solid ${deliveryLocationAction === 'current' ? fnbOrderBrand : '#dbe5ee'}`,
+                            background: deliveryLocationAction === 'current' ? '#eff6ff' : '#ffffff',
+                            color: deliveryLocationAction === 'current' ? fnbOrderBrandDark : '#1e293b',
+                            padding: '0 12px',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: pinLocationLoading ? 'wait' : 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 8,
+                            boxShadow: '0 8px 20px rgba(15,23,42,0.12)',
+                            zIndex: 11,
+                            fontFamily: servicesBodyFont,
+                            pointerEvents: 'auto',
+                            maxWidth: isMobileViewport ? 'calc(100% - 24px)' : 'none',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}
+                        >
+                          <Navigation size={15} />
+                          {pinLocationLoading ? 'Locating...' : 'Use Current Location'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setDeliveryLocationAction('map');
+                            setSelectedSavedLocationId('');
+                          }}
+                          style={{
+                            position: 'absolute',
+                            right: 12,
+                            bottom: 12,
+                            minHeight: 34,
+                            borderRadius: 999,
+                            border: `1px solid ${deliveryLocationAction === 'map' ? fnbOrderBrandBorder : '#dbe5ee'}`,
+                            background: deliveryLocationAction === 'map' ? '#ffffff' : 'rgba(255,255,255,0.96)',
+                            color: deliveryLocationAction === 'map' ? fnbOrderBrandDark : '#334155',
+                            padding: '0 10px',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            gap: 6,
+                            boxShadow: '0 8px 20px rgba(15,23,42,0.12)',
+                            zIndex: 11,
+                            fontFamily: servicesBodyFont,
+                            pointerEvents: 'auto'
+                          }}
+                        >
+                          <MapPin size={14} />
+                          Drag to Pin
+                        </button>
+                      </>
+                    )}
+                  />
+            </FnbCheckoutExpandedMapModal>
+            {!isFnbOrderResponsiveFlow && (
+              <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12, marginTop: 4 }}>
+                <button type="button" onClick={() => setFnbOrderStep(3)} style={{ minHeight: 50, borderRadius: 14, border: '1px solid #dbe5ee', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15, fontFamily: servicesBodyFont }}><ArrowLeft size={17} strokeWidth={2.5} />Back</button>
+                <button type="button" onClick={() => setFnbOrderStep(4)} disabled={!fnbFulfillmentStepComplete} style={{ minHeight: 50, borderRadius: 14, border: 'none', background: fnbFulfillmentStepComplete ? `linear-gradient(135deg, ${fnbOrderBrand} 0%, ${fnbOrderBrandDark} 100%)` : '#cbd5e1', color: '#fff', fontWeight: 700, boxShadow: fnbFulfillmentStepComplete ? `0 14px 28px ${fnbOrderBrandShadowStrong}` : 'none', cursor: fnbFulfillmentStepComplete ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15, fontFamily: servicesBodyFont }}>Continue <ChevronRight size={17} strokeWidth={2.5} /></button>
+              </div>
+            )}
+          </FnbCheckoutFulfillmentStep>
+          ) : renderGuestCheckoutEntry({
+            title: 'Continue to your order',
+            description: 'Create an account or continue as guest to continue this menu order.',
+            resumeTarget: {
+              checkoutTab: 'cart',
+              fnbOrderStep: 3
+            }
+          })}
+          <FnbCheckoutDesktopSummary isDesktop={isDesktopCheckout}>
+            <FnbCheckoutSummaryContent
+              accentColor={fnbOrderBrand}
+              accentSoft={fnbOrderBrandSoft}
+              accentTint={fnbOrderBrandTint}
+              bodyFont={servicesBodyFont}
+              cart={cart}
+              cartImageErrors={cartImageErrors}
+              cartCount={cartCount}
+              checkoutAllowed={checkoutAllowed}
+              displayFont={servicesDisplayFont}
+              isDeliveryOrder={isDeliveryOrder}
+              money={money}
+              onImageError={(itemId) => {
+                const normalizedLineItemId = Number(itemId);
+                if (!Number.isFinite(normalizedLineItemId)) return;
+                setCartImageErrors((previous) => new Set([...previous, normalizedLineItemId]));
+              }}
+              paymentStep={false}
+              promoDiscountSummaryRow={promoDiscountSummaryRow}
+              promoPanel={renderPromoCodePanel({ compact: true, accentColor: fnbOrderBrand, bodyFont: servicesBodyFont })}
+              scheduleLabel={fnbScheduleSummaryLabel}
+              totals={totalsForDisplay}
+              variant="compact"
+              withAssetOrigin={withAssetOrigin}
+            />
+          </FnbCheckoutDesktopSummary>
+        </FnbCheckoutFulfillmentStepView>
+      )}
+  
+      {fnbOrderStep === 3 && (
+        <FnbCheckoutCustomerStepView isDesktop={isDesktopCheckout}>
+          {isDgfyCustomerSignedIn || canUseGuestCheckoutFlow ? (
+          <FnbCheckoutCustomerStep
+            bodyFont={servicesBodyFont}
+            brandColor={fnbOrderBrand}
+            brandDark={fnbOrderBrandDark}
+            canContinue={fnbCustomerStepComplete}
+            customerNotice={isDgfyCustomerSignedIn ? 'Your account details are already linked. Only order-specific instructions remain editable here.' : 'Guest checkout uses the details you entered for this order only.'}
+            guestEmailVerificationContent={!isDgfyCustomerSignedIn ? (
+              <FnbGuestEmailVerification
+                bodyFont={servicesBodyFont}
+                code={guestCheckoutOtpCode}
+                cooldownActive={isGuestCheckoutOtpCooldownActive}
+                cooldownLabel={guestCheckoutOtpCooldownLabel}
+                error={guestCheckoutOtpError}
+                isMobileViewport={isMobileViewport}
+                loading={guestCheckoutOtpLoading}
+                onCodeChange={handleGuestCheckoutOtpCodeChange}
+                onRequestCode={handleRequestGuestCheckoutOtp}
+                onVerifyCode={handleVerifyGuestCheckoutOtp}
+                verified={guestCheckoutOtpVerified}
+              />
+            ) : null}
+            identityContent={isDgfyCustomerSignedIn ? renderAccountOwnedIdentitySummary({ title: 'Customer Account', subtitle: 'These account details will be used for this order.' }) : renderGuestIdentityFields({
+              title: 'Guest Details',
+              subtitle: 'These guest details will be used for this order.',
+              includeAddress: false,
+              requireEmail: true,
+              layoutVariant: 'fnbGuest',
+              savedDetailsApplyLabel: 'Send Code and Apply Details',
+              onSavedDetailsApply: handleApplyGuestDetailsAndRequestOtp
+            })}
+            isMobileViewport={isMobileViewport}
+            isResponsive={isFnbOrderResponsiveFlow}
+            mutedTextColor={fnbOrderMutedBlueText}
+            onBack={goStoreCatalogPage}
+            onContinue={() => setFnbOrderStep(2)}
+            onSpecialInstructionsChange={setFnbSpecialInstructions}
+            specialInstructions={fnbSpecialInstructions}
+          />
+          ) : renderGuestCheckoutEntry({
+            title: 'Continue to your order',
+            description: 'Create an account or continue as guest to continue this menu order.',
+            resumeTarget: {
+              checkoutTab: 'cart',
+              fnbOrderStep: 3
+            }
+          })}
+          <FnbCheckoutDesktopSummary isDesktop={isDesktopCheckout}>
+            <FnbCheckoutSummaryContent
+              accentColor={fnbOrderBrand}
+              accentSoft={fnbOrderBrandSoft}
+              accentTint={fnbOrderBrandTint}
+              bodyFont={servicesBodyFont}
+              cart={cart}
+              cartImageErrors={cartImageErrors}
+              cartCount={cartCount}
+              checkoutAllowed={checkoutAllowed}
+              displayFont={servicesDisplayFont}
+              isDeliveryOrder={isDeliveryOrder}
+              money={money}
+              onImageError={(itemId) => {
+                const normalizedLineItemId = Number(itemId);
+                if (!Number.isFinite(normalizedLineItemId)) return;
+                setCartImageErrors((previous) => new Set([...previous, normalizedLineItemId]));
+              }}
+              paymentStep={false}
+              promoDiscountSummaryRow={promoDiscountSummaryRow}
+              promoPanel={renderPromoCodePanel({ compact: true, accentColor: fnbOrderBrand, bodyFont: servicesBodyFont })}
+              scheduleLabel={fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'NOW'}
+              totals={totalsForDisplay}
+              variant="customer"
+              withAssetOrigin={withAssetOrigin}
+            />
+          </FnbCheckoutDesktopSummary>
+        </FnbCheckoutCustomerStepView>
+      )}
+  
+      {fnbOrderStep === 4 && !checkoutResult && (
+        <FnbCheckoutPaymentStepView
+          isDesktop={isDesktopCheckout}
+          stepKey={`fnb-order-payment-step-${isFnbOrderResponsiveFlow ? 'responsive' : 'desktop'}`}
+        >
+          <FnbCheckoutPaymentStep
+            brandColor={fnbOrderBrand}
+            canSubmit={checkoutAllowed}
+            checkoutError={checkoutError}
+            closedNotice={storefrontClosedByHours ? renderStorefrontClosedNotice({ accent: fnbOrderBrand, background: '#fff7ed', border: '#fdba74' }) : null}
+            isMobileViewport={isMobileViewport}
+            isResponsive={isFnbOrderResponsiveFlow}
+            onBack={() => setFnbOrderStep(2)}
+            onSubmit={handleCheckout}
+            paymentControl={(
+              <PaymentMethodSelectorBlock
+                label="Payment Type"
+                value={fnbPaymentType}
+                onChange={handlePaymentTypeChange}
+                options={STOREFRONT_CHECKOUT_PAYMENT_OPTIONS.filter((option) => isEnabledStorefrontCheckoutPaymentType(option.value))}
+                DropdownComponent={StorefrontDropdown}
+                triggerStyle={isFnbOrderResponsiveFlow ? { ...MOBILE_NATIVE_SELECT_STYLE, minHeight: 50, fontSize: 15, borderRadius: 16, padding: '0 44px 0 14px', boxSizing: 'border-box' } : { minHeight: 44, borderRadius: 12 }}
+                menuStyle={isFnbOrderResponsiveFlow ? MOBILE_DROPDOWN_MENU_STYLE : undefined}
+                optionStyle={isFnbOrderResponsiveFlow ? MOBILE_DROPDOWN_OPTION_STYLE : undefined}
+                selectedLabelStyle={isFnbOrderResponsiveFlow ? { fontSize: 15, fontWeight: 700 } : undefined}
+                showCashInfo={fnbPaymentType === 'cash'}
+                cashInfoAccent={fnbOrderBrand}
+                bodyFont={servicesBodyFont}
+              />
+            )}
+            processing={checkoutLoading}
+            quoteError={quoteError}
+          />
+          <FnbCheckoutDesktopSummary isDesktop={isDesktopCheckout}>
+            <FnbCheckoutSummaryContent
+              accentColor={fnbOrderBrand}
+              accentSoft={fnbOrderBrandSoft}
+              accentTint={fnbOrderBrandTint}
+              bodyFont={servicesBodyFont}
+              cart={cart}
+              cartImageErrors={cartImageErrors}
+              cartCount={cartCount}
+              checkoutAllowed={checkoutAllowed}
+              displayFont={servicesDisplayFont}
+              isDeliveryOrder={isDeliveryOrder}
+              money={money}
+              onImageError={(itemId) => {
+                const normalizedLineItemId = Number(itemId);
+                if (!Number.isFinite(normalizedLineItemId)) return;
+                setCartImageErrors((previous) => new Set([...previous, normalizedLineItemId]));
+              }}
+              paymentStep={true}
+              promoDiscountSummaryRow={promoDiscountSummaryRow}
+              promoPanel={null}
+              scheduleLabel={fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'NOW'}
+              totals={totalsForDisplay}
+              variant="payment"
+              withAssetOrigin={withAssetOrigin}
+            />
+          </FnbCheckoutDesktopSummary>
+        </FnbCheckoutPaymentStepView>
+      )}
+  
+      {isFnbOrderResponsiveFlow && !checkoutResult && (
+        <FnbCheckoutMobileSummaryPanel
+          brandColor={fnbOrderBrand}
+          brandColorDark={fnbOrderBrandDark}
+          brandShadowStrong={fnbOrderBrandShadowStrong}
+          cart={cart}
+          cartImageErrors={cartImageErrors}
+          checkoutAllowed={checkoutAllowed}
+          checkoutLoading={checkoutLoading}
+          fnbCustomerStepComplete={fnbCustomerStepComplete}
+          fnbFulfillmentStepComplete={fnbFulfillmentStepComplete}
+          itemCountLabel={fnbMobileSummaryItemCountLabel}
+          money={money}
+          onBackToCart={() => {
+            goStoreCatalogPage();
+            setCheckoutTab('cart');
+            setIsCheckoutOpen(true);
+          }}
+          onCheckout={handleCheckout}
+          onDecreaseStep={() => setFnbOrderStep(fnbOrderStep === 2 ? 3 : 2)}
+          onImageError={(itemId) => {
+            const normalizedLineItemId = Number(itemId);
+            if (!Number.isFinite(normalizedLineItemId)) return;
+            setCartImageErrors((previous) => new Set(previous).add(normalizedLineItemId));
+          }}
+          onIncreaseStep={() => setFnbOrderStep(fnbOrderStep === 3 ? 2 : 4)}
+          onToggleSummary={() => setShowFnbMobileOrderSummary((previous) => !previous)}
+          orderStep={fnbOrderStep}
+          promoDiscountSummaryRow={promoDiscountSummaryRow}
+          setSummaryOpen={setShowFnbMobileOrderSummary}
+          showSummary={showFnbMobileOrderSummary}
+          totalFeeAndTaxes={fnbSummaryFeeAndTaxes}
+          totals={totalsForDisplay}
+          withAssetOrigin={withAssetOrigin}
+        />
+      )}
+  
+      {showMobileAddressModal && isFnbOrderResponsiveFlow && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', flexDirection: 'column', justifyContent: 'flex-end', background: 'rgba(15, 23, 42, 0.4)', backdropFilter: 'blur(4px)' }}>
+          <div style={{ position: 'absolute', inset: 0 }} onClick={() => setShowMobileAddressModal(false)} />
+          <div style={{ position: 'relative', background: '#fff', borderTopLeftRadius: 24, borderTopRightRadius: 24, padding: '24px 16px max(24px, env(safe-area-inset-bottom))', display: 'grid', gap: 16, maxHeight: '85vh', overflowY: 'auto', boxShadow: '0 -10px 40px rgba(0,0,0,0.1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a', paddingTop: 6 }}>Saved Addresses</div>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 12 }}>
+                <button type="button" onClick={() => setShowMobileAddressModal(false)} style={{ background: '#f1f5f9', border: 'none', borderRadius: 999, width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: '#475569' }}>
+                  <X size={18} strokeWidth={2.5} />
+                </button>
+                <button
+                  type="button"
+                  aria-label="Add New Location"
+                  onClick={() => {
+                    setShowMobileAddressModal(false);
+                    setDeliveryLocationAction('map');
+                    setSelectedSavedLocationId('');
+                    setPinLocationError('');
+                    setResolvedDeliveryAddress('');
+                    setCustomerAddress('');
+                    setCustomerPin(null);
+                  }}
+                  style={{
+                    height: 32,
+                    borderRadius: 999,
+                    border: 'none',
+                    background: fnbOrderBrandTint,
+                    padding: '0 14px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    fontWeight: 800,
+                    color: fnbOrderBrand,
+                    cursor: 'pointer',
+                    fontSize: 13
+                  }}
+                >
+                  <Plus size={16} strokeWidth={2.5} />
+                  Add New Location
+                </button>
+              </div>
+            </div>
+            <div style={{ display: 'grid', gap: 10 }}>
+              {deliverySavedLocations.map((location) => {
+                const isSelected = String(selectedSavedLocationId) === String(location.id) && deliveryLocationAction !== 'map' && deliveryLocationAction !== 'current';
+                return (
+                  <SavedAddressCard
+                    key={`modal-delivery-location-${location.id}`}
+                    address={location}
+                    isSelected={isSelected}
+                    isBusy={false}
+                    onSelect={() => {
+                      applySavedDeliveryLocation(location);
+                      if (typeof handleSetDefaultDeliveryAddress === 'function' && !location.isDefault) {
+                        handleSetDefaultDeliveryAddress(location);
+                      }
+                      setShowMobileAddressModal(false);
+                    }}
+                    onSetDefault={location.source === 'account' ? () => handleSetDefaultDeliveryAddress(location) : undefined}
+                    onRemove={(location.source === 'account' || location.source === 'local') ? () => handleRemoveDeliveryAddress(location) : undefined}
+                    showActions={false}
+                  />
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+  
+      {fnbOrderStep === 4 && checkoutResult && (
+        <FnbCheckoutConfirmation
+          brandColor={fnbOrderBrand}
+          brandDark={fnbOrderBrandDark}
+          brandSoft={fnbOrderBrandSoft}
+          brandTint={fnbOrderBrandTint}
+          cartLines={Array.isArray(checkoutResult?.cart_lines) ? checkoutResult.cart_lines : []}
+          checkoutResult={checkoutResult}
+          isDeliveryOrder={isDeliveryOrder}
+          isMobileViewport={isMobileViewport}
+          money={money}
+          mutedTextColor={fnbOrderMutedBlueText}
+          onBackToMenu={() => { setCheckoutResult(null); setFnbOrderStep(2); goStoreCatalogPage(); }}
+          onDownload={handleDownloadCheckoutImage}
+          onOpenTracking={() => {
+            const trackingPin = checkoutResult?.tracking_pin || '';
+            setTrackingPinInput(trackingPin);
+            setSelectedTrackingPin(String(trackingPin || '').trim().toUpperCase());
+            goStoreTrackPage({ pin: trackingPin });
+          }}
+          paymentType={fnbPaymentType}
+          totalAmount={checkoutResult?.totals?.total_amount ?? totalsForDisplay.total_amount}
+        />
+      )}
+      </FnbCheckoutRouteBody>
+    </FnbCheckoutRouteMount>
+  );
+}

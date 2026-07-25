@@ -16,8 +16,8 @@ import {
   HelpCircle,
   Receipt
 } from 'lucide-react';
-import { ensureMapImage, setGeoJsonSourceData } from '../../../discoveryMapLayers.js';
-import { renderDeliveryPinSpriteSvg } from '../../../businessModePins.js';
+import { ensureMapImage, setGeoJsonSourceData } from '../../../discovery/model/discoveryMapLayers.js';
+import { renderDeliveryPinSpriteSvg } from '../../../discovery/model/businessModePins.js';
 import { applyMapLibreCanvasSizing, safeResizeMap } from '../../../../../../src/components/maps/mapLibreShared.js';
 
 const TRACKING_PIN_SOURCE_ID = 'dgfy-tracking-pins';

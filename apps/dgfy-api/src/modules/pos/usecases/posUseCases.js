@@ -17,6 +17,12 @@ import {
     getDgfyConvenienceFeeLabel
 } from '../../shared/utils/dgfyConvenienceFee.js';
 import {
+    accrueEarnedForInStoreSale,
+    resolveActiveAffiliateEnrollment,
+    reverseAffiliateCommissionForOrder,
+    settleAffiliateCommissionForOrder
+} from '../../dgfy/utils/affiliateCommissionAccrual.js';
+import {
     SAFE_IMAGE_MIME_TYPES,
     validateImageUploadFile
 } from '../../shared/utils/imageUploadValidation.js';
@@ -36,6 +42,12 @@ import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecord
 import { calculatePosDiscount } from '../domain/posDiscountCalculator.js';
 import { resolvePosGovernedDiscount } from '../domain/posDiscountPolicy.js';
 import { verifyPosDiscountApprover } from '../domain/posDiscountApprovalPolicy.js';
+import { authorizePosShiftMutation } from '../domain/posShiftAuthorizationPolicy.js';
+import {
+    authorizePosStaleShiftRecovery,
+    evaluatePosShiftStaleness,
+    resolvePosStaleShiftHours
+} from '../domain/posShiftRecoveryPolicy.js';
 import {
     STOREFRONT_PROMO_SETTING_KEY,
     STOREFRONT_PROMOS_SETTING_KEY,
@@ -97,6 +109,7 @@ const POS_OPERATION_KEYS = Object.freeze({
     SHIFT_SWITCH: 'terminal.shift_switch_location',
     CASH_EVENT: 'terminal.cash_event',
     SHIFT_CLOSE: 'terminal.shift_close',
+    SHIFT_FORCE_CLOSE: 'terminal.shift_force_close',
     ORDER_STATUS_UPDATE: 'terminal.order_status_update',
     PICKUP_CASH_COLLECTION: 'terminal.pickup_cash_collection'
 });
@@ -287,14 +300,15 @@ const findOperationReplayEntry = async ({
     posRepository,
     operationKey,
     idempotencyKey,
-    requestHash
+    requestHash,
+    transaction = null
 }) => {
     if (!idempotencyKey) return null;
 
     const existing = toSerializable(await posRepository.findOperationReplayByKey({
         operationKey,
         idempotencyKey
-    }));
+    }, transaction ? { transaction, lock: true } : {}));
     if (!existing) return null;
 
     if (String(existing.request_hash || '') !== String(requestHash || '')) {
@@ -345,6 +359,25 @@ const persistOperationReplay = async ({
         created_by: createdBy || null
     }, transaction ? { transaction } : {});
 };
+
+const createShiftAuditLog = async ({
+    posRepository,
+    actorUserId,
+    shiftId,
+    action = 'UPDATE',
+    event,
+    changes = {},
+    transaction
+}) => posRepository.createAuditLog({
+    user_id: parsePositiveInt(actorUserId) || null,
+    entity_type: 'pos_terminal_shift',
+    entity_id: parsePositiveInt(shiftId) || null,
+    action,
+    changes: {
+        event,
+        ...changes
+    }
+}, { transaction });
 
 const buildBusinessDateRange = (dateInput) => {
     const dateString = dateInput instanceof Date
@@ -991,12 +1024,6 @@ const buildShiftClosedError = () => new DomainError(
         }
     }
 );
-const POS_OPEN_STATUS_SETTING_KEY = 'pos_open_status';
-const syncStorefrontOrderingStatus = async ({ posRepository, isOpen }) => {
-    if (typeof posRepository?.updateSystemSettingValueByKey !== 'function') return;
-    await posRepository.updateSystemSettingValueByKey(POS_OPEN_STATUS_SETTING_KEY, isOpen);
-};
-
 const resolvePairingIdentityStatus = async ({ tenantId, user }) => {
     const status = await getDgfyLegacyLinkStatus({ tenantId, user });
     if (status.dgfy_link_status === 'linked') {
@@ -2212,6 +2239,22 @@ export const buildCheckoutPosUseCase = ({
         try {
             const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
             await assertPosOperatorIdentity({ tenantId, user, resolveIdentityStatus });
+
+            // Affiliate attribution: resolved (and validated) before any write so an invalid code
+            // rejects the checkout with clear feedback instead of silently losing the commission -
+            // the money-side accrual itself still happens post-commit, best-effort (see below).
+            const affiliateCodeInput = String(payload.affiliate_code || '').trim();
+            const affiliateEnrollment = affiliateCodeInput
+                ? await resolveActiveAffiliateEnrollment({ tenantId, affiliateCode: affiliateCodeInput })
+                : null;
+            if (affiliateCodeInput && !affiliateEnrollment) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Affiliate code is invalid or the affiliate program is not enabled for this store',
+                    { statusCode: 422, details: { reason_code: 'AFFILIATE_CODE_INVALID' } }
+                );
+            }
+
             const settings = await getPosSettings();
             const resolvedCheckoutLocation = await resolveLocationScope({
                 requestedLocationId,
@@ -2967,6 +3010,28 @@ export const buildCheckoutPosUseCase = ({
             );
 
             await transaction.commit();
+
+            // Best-effort, post-commit: the enrollment was already validated pre-commit above, so
+            // this only writes bookkeeping (attribution + earned commission) and must never fail
+            // the sale that already succeeded - mirrors recordDgfyOrderActivity's convention.
+            if (affiliateEnrollment) {
+                try {
+                    await accrueEarnedForInStoreSale({
+                        tenantId,
+                        enrollment: affiliateEnrollment,
+                        orderReference: String(posTransactionId),
+                        posTransactionId,
+                        commissionableBaseCentavos: Math.max(0, toCurrencyCents(subtotalAmount) - toCurrencyCents(discountAmount))
+                    });
+                } catch (accrualError) {
+                    logger.warn('[PosUseCases] Failed to accrue affiliate commission for in-store sale', {
+                        tenantId,
+                        posTransactionId,
+                        error: accrualError?.message
+                    });
+                }
+            }
+
             return ok({
                 idempotent_replay: false,
                 compliance_decision: complianceDecision,
@@ -3171,6 +3236,22 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
             }, { transaction });
 
             await transaction.commit();
+
+            // Best-effort, post-commit reversal of any in-store affiliate commission tied to this
+            // sale - must never fail the void that already succeeded.
+            try {
+                const voidTenantId = String(dbStore.getStore()?.tenantId || '').trim();
+                await reverseAffiliateCommissionForOrder({
+                    tenantId: voidTenantId,
+                    orderReference: String(normalizedTransactionId)
+                });
+            } catch (reversalError) {
+                logger.warn('[PosUseCases] Failed to reverse affiliate commission for voided transaction', {
+                    posTransactionId: normalizedTransactionId,
+                    error: reversalError?.message
+                });
+            }
+
             return ok({
                 transaction: toSerializable(updated),
                 stock_reversals: stockReversals
@@ -4812,6 +4893,8 @@ export const buildOpenTerminalShiftUseCase = ({
             ));
         }
 
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        let transaction = null;
         try {
             const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
             await assertPosOperatorIdentity({ tenantId, user, resolveIdentityStatus });
@@ -4869,9 +4952,22 @@ export const buildOpenTerminalShiftUseCase = ({
                 user
             });
 
+            transaction = await sequelize.transaction();
+            const transactionReplay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.SHIFT_OPEN,
+                idempotencyKey,
+                requestHash: replayRequestHash,
+                transaction
+            });
+            if (transactionReplay) {
+                await transaction.commit();
+                return ok(transactionReplay);
+            }
+
             const existing = await posRepository.findOpenTerminalShift({
                 cashierId: normalizedUserId
-            });
+            }, { transaction, lock: true });
             if (existing) {
                 const existingLocationId = parsePositiveInt(existing.location_id);
                 if (String(existing.terminal_id || '') !== String(terminalId || '')) {
@@ -4900,7 +4996,6 @@ export const buildOpenTerminalShiftUseCase = ({
                         }
                     });
                 }
-                await syncStorefrontOrderingStatus({ posRepository, isOpen: true });
                 const replayPayload = {
                     reused_existing: true,
                     compliance_decision: complianceDecision,
@@ -4914,8 +5009,10 @@ export const buildOpenTerminalShiftUseCase = ({
                     requestHash: replayRequestHash,
                     replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
                     responsePayload: replayPayload,
-                    createdBy: normalizedUserId
+                    createdBy: normalizedUserId,
+                    transaction
                 });
+                await transaction.commit();
                 return ok({
                     ...replayPayload,
                     idempotent_replay: false,
@@ -4925,7 +5022,7 @@ export const buildOpenTerminalShiftUseCase = ({
 
             const terminalShift = await posRepository.findOpenTerminalShift({
                 terminalId
-            });
+            }, { transaction, lock: true });
             if (terminalShift) {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
@@ -4953,7 +5050,7 @@ export const buildOpenTerminalShiftUseCase = ({
                     opening_note: openingNote,
                     opened_at: new Date(),
                     status: 'open'
-                });
+                }, { transaction });
             } catch (error) {
                 const duplicateOpenTerminal = error?.name === 'SequelizeUniqueConstraintError'
                     || error?.parent?.code === 'ER_DUP_ENTRY'
@@ -4971,9 +5068,9 @@ export const buildOpenTerminalShiftUseCase = ({
                     }
                 );
             }
-            await syncStorefrontOrderingStatus({ posRepository, isOpen: true });
             const hydratedCreated = await posRepository.getTerminalShiftById(
-                created.pos_terminal_shift_id
+                created.pos_terminal_shift_id,
+                { transaction }
             );
 
             const replayPayload = {
@@ -4982,6 +5079,20 @@ export const buildOpenTerminalShiftUseCase = ({
                 terminal_identity_policy: terminalPolicyContext,
                 shift: toSerializable(hydratedCreated || created)
             };
+            await createShiftAuditLog({
+                posRepository,
+                actorUserId: normalizedUserId,
+                shiftId: created.pos_terminal_shift_id,
+                action: 'CREATE',
+                event: 'shift_opened',
+                changes: {
+                    terminal_id: terminalId,
+                    location_id: enforcedShiftLocationId,
+                    business_date: businessDate,
+                    opening_float_amount: openingFloatAmount
+                },
+                transaction
+            });
             await persistOperationReplay({
                 posRepository,
                 operationKey: POS_OPERATION_KEYS.SHIFT_OPEN,
@@ -4989,14 +5100,19 @@ export const buildOpenTerminalShiftUseCase = ({
                 requestHash: replayRequestHash,
                 replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
                 responsePayload: replayPayload,
-                createdBy: normalizedUserId
+                createdBy: normalizedUserId,
+                transaction
             });
+            await transaction.commit();
             return ok({
                 ...replayPayload,
                 idempotent_replay: false,
                 replay_outcome: 'processed'
             });
         } catch (error) {
+            if (transaction && !transaction.finished) {
+                await transaction.rollback();
+            }
             if (error instanceof DomainError && idempotencyKey) {
                 const replayRequestHash = hashPayload({
                     terminal_id: requestedTerminalId || null,
@@ -5092,17 +5208,28 @@ export const buildSwitchTerminalShiftLocationUseCase = ({ posRepository }) => {
             }
 
             transaction = await sequelize.transaction();
+            const transactionReplay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.SHIFT_SWITCH,
+                idempotencyKey,
+                requestHash: replayRequestHash,
+                transaction
+            });
+            if (transactionReplay) {
+                await transaction.commit();
+                return ok(transactionReplay);
+            }
+
             const existingShift = await posRepository.getTerminalShiftById(normalizedShiftId, {
                 transaction,
                 lock: true
             });
-            if (!existingShift || existingShift.status !== 'open') {
-                throw new DomainError(
-                    DomainErrorCode.VALIDATION_FAILED,
-                    'Only open shifts can switch location.',
-                    { statusCode: 422 }
-                );
-            }
+            const shiftAuthorization = authorizePosShiftMutation({
+                shift: existingShift,
+                actorUser: user,
+                operation: 'switch_location',
+                overrideReason: reason
+            });
 
             const existingShiftPayload = toSerializable(existingShift);
             const sourceLocationId = parsePositiveInt(existingShiftPayload?.location_id);
@@ -5204,15 +5331,31 @@ export const buildSwitchTerminalShiftLocationUseCase = ({ posRepository }) => {
                 switched_at: new Date()
             }, { transaction });
 
-            await transaction.commit();
-
             const replayPayload = {
                 compliance_decision: complianceDecision,
+                shift_authorization: shiftAuthorization,
                 terminal_identity_policy: terminalPolicyContext,
                 transition: toSerializable(transition),
                 from_shift: toSerializable(closedShift),
                 to_shift: toSerializable(hydratedOpenedShift || openedShift)
             };
+            await createShiftAuditLog({
+                posRepository,
+                actorUserId: normalizedUserId,
+                shiftId: normalizedShiftId,
+                event: 'shift_location_switched',
+                changes: {
+                    authorization_mode: shiftAuthorization.mode,
+                    override_reason: shiftAuthorization.override_reason || null,
+                    from_location_id: sourceLocationId,
+                    to_location_id: enforcedTargetLocationId,
+                    from_terminal_id: existingShiftPayload?.terminal_id || null,
+                    to_terminal_id: normalizedTerminalId,
+                    replacement_shift_id: openedShift.pos_terminal_shift_id,
+                    reason
+                },
+                transaction
+            });
             await persistOperationReplay({
                 posRepository,
                 operationKey: POS_OPERATION_KEYS.SHIFT_SWITCH,
@@ -5220,8 +5363,10 @@ export const buildSwitchTerminalShiftLocationUseCase = ({ posRepository }) => {
                 requestHash: replayRequestHash,
                 replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
                 responsePayload: replayPayload,
-                createdBy: normalizedUserId
+                createdBy: normalizedUserId,
+                transaction
             });
+            await transaction.commit();
             logger.info('[POS][ShiftSwitch] Location switch completed', {
                 shift_id: normalizedShiftId,
                 actor_user_id: normalizedUserId,
@@ -5282,14 +5427,12 @@ export const buildGetCurrentTerminalShiftUseCase = ({ posRepository }) => {
             const requestedLocationId = query?.location_id == null
                 ? null
                 : parsePositiveInt(query.location_id);
-            // A master admin may take over an open terminal shift. Cashiers must
-            // remain scoped to their own shift even when they use the same terminal.
-            const activeShiftCashierId = user?.is_master_admin === true
-                ? null
-                : normalizedUserId;
             const shift = await posRepository.findOpenTerminalShift({
                 terminalId: String(query?.terminal_id || '').trim() || null,
-                cashierId: activeShiftCashierId,
+                // Terminal context never grants ownership of another cashier's
+                // drawer. Admin monitoring is exposed through a separate
+                // read-only endpoint below.
+                cashierId: normalizedUserId,
                 locationId: requestedLocationId
             });
 
@@ -5358,6 +5501,8 @@ export const buildRecordCashDrawerEventUseCase = ({ posRepository }) => {
             ));
         }
 
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        let transaction = null;
         try {
             const replay = await findOperationReplayEntry({
                 posRepository,
@@ -5369,14 +5514,29 @@ export const buildRecordCashDrawerEventUseCase = ({ posRepository }) => {
                 return ok(replay);
             }
 
-            const shift = await posRepository.getTerminalShiftById(normalizedShiftId);
-            if (!shift || shift.status !== 'open') {
-                throw new DomainError(
-                    DomainErrorCode.VALIDATION_FAILED,
-                    'Cash drawer events can only be recorded for open shifts',
-                    { statusCode: 422 }
-                );
+            transaction = await sequelize.transaction();
+            const transactionReplay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.CASH_EVENT,
+                idempotencyKey,
+                requestHash: replayRequestHash,
+                transaction
+            });
+            if (transactionReplay) {
+                await transaction.commit();
+                return ok(transactionReplay);
             }
+
+            const shift = await posRepository.getTerminalShiftById(normalizedShiftId, {
+                transaction,
+                lock: true
+            });
+            const shiftAuthorization = authorizePosShiftMutation({
+                shift,
+                actorUser: user,
+                operation: 'cash_drawer_event',
+                overrideReason: reason
+            });
 
             const complianceDecision = await assertPosComplianceAllowed({
                 operation: COMPLIANCE_OPERATION.POS_TERMINAL_OPERATION,
@@ -5393,12 +5553,28 @@ export const buildRecordCashDrawerEventUseCase = ({ posRepository }) => {
                 amount,
                 reason,
                 recorded_by: normalizedUserId
-            });
+            }, { transaction });
 
             const replayPayload = {
                 ...toSerializable(created),
-                compliance_decision: complianceDecision
+                compliance_decision: complianceDecision,
+                shift_authorization: shiftAuthorization
             };
+            await createShiftAuditLog({
+                posRepository,
+                actorUserId: normalizedUserId,
+                shiftId: normalizedShiftId,
+                event: 'cash_drawer_event_recorded',
+                changes: {
+                    authorization_mode: shiftAuthorization.mode,
+                    override_reason: shiftAuthorization.override_reason || null,
+                    cash_drawer_event_id: created.pos_cash_drawer_event_id || null,
+                    event_type: eventType,
+                    amount,
+                    reason
+                },
+                transaction
+            });
             await persistOperationReplay({
                 posRepository,
                 operationKey: POS_OPERATION_KEYS.CASH_EVENT,
@@ -5406,14 +5582,19 @@ export const buildRecordCashDrawerEventUseCase = ({ posRepository }) => {
                 requestHash: replayRequestHash,
                 replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
                 responsePayload: replayPayload,
-                createdBy: normalizedUserId
+                createdBy: normalizedUserId,
+                transaction
             });
+            await transaction.commit();
             return ok({
                 ...replayPayload,
                 idempotent_replay: false,
                 replay_outcome: 'processed'
             });
         } catch (error) {
+            if (transaction && !transaction.finished) {
+                await transaction.rollback();
+            }
             if (error instanceof DomainError && idempotencyKey) {
                 await persistOperationReplay({
                     posRepository,
@@ -5444,11 +5625,13 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
 
         const closingCashAmount = round4(Number(payload?.closing_cash_amount || 0));
         const closingNote = String(payload?.closing_note || '').trim() || null;
+        const overrideReason = String(payload?.override_reason || '').trim() || null;
         const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
         const replayRequestHash = hashPayload({
             shift_id: normalizedShiftId,
             closing_cash_amount: closingCashAmount,
-            closing_note: closingNote
+            closing_note: closingNote,
+            override_reason: overrideReason
         });
         if (!Number.isFinite(closingCashAmount) || closingCashAmount < 0) {
             return fail(new DomainError(
@@ -5458,6 +5641,8 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
             ));
         }
 
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        let transaction = null;
         try {
             const replay = await findOperationReplayEntry({
                 posRepository,
@@ -5469,28 +5654,29 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                 return ok(replay);
             }
 
-            const shift = await posRepository.getTerminalShiftById(normalizedShiftId);
-            if (!shift || shift.status !== 'open') {
-                throw new DomainError(
-                    DomainErrorCode.VALIDATION_FAILED,
-                    'Only open shifts can be closed',
-                    { statusCode: 422 }
-                );
+            transaction = await sequelize.transaction();
+            const transactionReplay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.SHIFT_CLOSE,
+                idempotencyKey,
+                requestHash: replayRequestHash,
+                transaction
+            });
+            if (transactionReplay) {
+                await transaction.commit();
+                return ok(transactionReplay);
             }
-            if (Number(shift.cashier_id) !== normalizedUserId && user?.is_master_admin !== true) {
-                throw new DomainError(
-                    DomainErrorCode.AUTHORIZATION_FAILED,
-                    'Only the shift cashier or company master admin can close this shift.',
-                    {
-                        statusCode: 403,
-                        details: {
-                            reason_code: 'POS_SHIFT_CLOSE_ACTOR_MISMATCH',
-                            shift_cashier_id: shift.cashier_id || null,
-                            actor_user_id: normalizedUserId
-                        }
-                    }
-                );
-            }
+
+            const shift = await posRepository.getTerminalShiftById(normalizedShiftId, {
+                transaction,
+                lock: true
+            });
+            const shiftAuthorization = authorizePosShiftMutation({
+                shift,
+                actorUser: user,
+                operation: 'close_shift',
+                overrideReason
+            });
 
             const complianceDecision = await assertPosComplianceAllowed({
                 operation: COMPLIANCE_OPERATION.POS_TERMINAL_OPERATION,
@@ -5502,8 +5688,14 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
             });
 
             const shiftPayload = toSerializable(shift);
-            const cashSales = await posRepository.getShiftCashSalesTotal(normalizedShiftId);
-            const cashEvents = await posRepository.listCashDrawerEventsByShiftId(normalizedShiftId);
+            const cashSales = await posRepository.getShiftCashSalesTotal(
+                normalizedShiftId,
+                { transaction }
+            );
+            const cashEvents = await posRepository.listCashDrawerEventsByShiftId(
+                normalizedShiftId,
+                { transaction }
+            );
             const tempShift = { ...shiftPayload, cashEvents };
             const summary = buildShiftCashSummary({ shift: tempShift, cashSalesAmount: cashSales });
             const expectedCashAmount = round4(summary.expected_cash_amount || 0);
@@ -5517,16 +5709,13 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                 closed_at: new Date(),
                 closed_by: normalizedUserId,
                 status: 'closed'
+            }, {
+                transaction,
+                lock: true
             });
-            if (typeof posRepository.countOpenTerminalShifts === 'function') {
-                const remainingOpenShiftCount = await posRepository.countOpenTerminalShifts();
-                if (remainingOpenShiftCount === 0) {
-                    await syncStorefrontOrderingStatus({ posRepository, isOpen: false });
-                }
-            }
-
             const replayPayload = {
                 compliance_decision: complianceDecision,
+                shift_authorization: shiftAuthorization,
                 shift: toSerializable(closed),
                 cash_summary: {
                     ...summary,
@@ -5535,6 +5724,22 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                     cash_variance_amount: variance
                 }
             };
+            await createShiftAuditLog({
+                posRepository,
+                actorUserId: normalizedUserId,
+                shiftId: normalizedShiftId,
+                event: 'shift_closed',
+                changes: {
+                    authorization_mode: shiftAuthorization.mode,
+                    override_reason: shiftAuthorization.override_reason || null,
+                    terminal_id: shiftPayload.terminal_id || null,
+                    location_id: shiftPayload.location_id || null,
+                    closing_cash_amount: closingCashAmount,
+                    expected_cash_amount: expectedCashAmount,
+                    cash_variance_amount: variance
+                },
+                transaction
+            });
             await persistOperationReplay({
                 posRepository,
                 operationKey: POS_OPERATION_KEYS.SHIFT_CLOSE,
@@ -5542,14 +5747,19 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                 requestHash: replayRequestHash,
                 replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
                 responsePayload: replayPayload,
-                createdBy: normalizedUserId
+                createdBy: normalizedUserId,
+                transaction
             });
+            await transaction.commit();
             return ok({
                 ...replayPayload,
                 idempotent_replay: false,
                 replay_outcome: 'processed'
             });
         } catch (error) {
+            if (transaction && !transaction.finished) {
+                await transaction.rollback();
+            }
             if (error instanceof DomainError && idempotencyKey) {
                 await persistOperationReplay({
                     posRepository,
@@ -5562,6 +5772,187 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                 });
             }
             return fail(mapPosUseCaseError(error, 'Failed to close terminal shift'));
+        }
+    };
+};
+
+export const buildForceCloseStaleTerminalShiftUseCase = ({
+    posRepository,
+    now = () => new Date(),
+    staleAfterHours = resolvePosStaleShiftHours()
+}) => {
+    return async ({ shiftId, payload = {}, user = {} } = {}) => {
+        const normalizedUserId = parsePositiveInt(user?.user_id);
+        const normalizedShiftId = parsePositiveInt(shiftId);
+        const closingCashAmount = round4(Number(payload?.closing_cash_amount));
+        const reason = String(payload?.reason || '').trim();
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        if (!normalizedUserId || !normalizedShiftId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Valid shiftId and authenticated user are required',
+                { statusCode: 400 }
+            ));
+        }
+        if (!idempotencyKey) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'idempotency_key is required for stale shift recovery',
+                { statusCode: 422 }
+            ));
+        }
+        if (!Number.isFinite(closingCashAmount) || closingCashAmount < 0) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'closing_cash_amount must be a non-negative number',
+                { statusCode: 422 }
+            ));
+        }
+
+        const requestHash = hashPayload({
+            shift_id: normalizedShiftId,
+            closing_cash_amount: closingCashAmount,
+            reason
+        });
+        const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+        let transaction = null;
+        try {
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.SHIFT_FORCE_CLOSE,
+                idempotencyKey,
+                requestHash
+            });
+            if (replay) {
+                return ok(replay);
+            }
+
+            transaction = await sequelize.transaction();
+            const transactionReplay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.SHIFT_FORCE_CLOSE,
+                idempotencyKey,
+                requestHash,
+                transaction
+            });
+            if (transactionReplay) {
+                await transaction.commit();
+                return ok(transactionReplay);
+            }
+
+            const shift = await posRepository.getTerminalShiftById(normalizedShiftId, {
+                transaction,
+                lock: true
+            });
+            const recoveredAt = now();
+            const recoveryAuthorization = authorizePosStaleShiftRecovery({
+                shift,
+                actorUser: user,
+                reason,
+                now: recoveredAt,
+                staleAfterHours
+            });
+            const complianceDecision = await assertPosComplianceAllowed({
+                operation: COMPLIANCE_OPERATION.POS_TERMINAL_OPERATION,
+                context: {
+                    terminal_id: shift.terminal_id || null,
+                    terminal_action: 'force_close_stale_shift'
+                },
+                user
+            });
+
+            const shiftPayload = toSerializable(shift);
+            const cashSales = await posRepository.getShiftCashSalesTotal(
+                normalizedShiftId,
+                { transaction }
+            );
+            const cashEvents = await posRepository.listCashDrawerEventsByShiftId(
+                normalizedShiftId,
+                { transaction }
+            );
+            const summary = buildShiftCashSummary({
+                shift: { ...shiftPayload, cashEvents },
+                cashSalesAmount: cashSales
+            });
+            const expectedCashAmount = round4(summary.expected_cash_amount || 0);
+            const variance = round4(closingCashAmount - expectedCashAmount);
+            const closed = await posRepository.closeTerminalShift(normalizedShiftId, {
+                closing_cash_amount: closingCashAmount,
+                expected_cash_amount: expectedCashAmount,
+                cash_variance_amount: variance,
+                closing_note: `Stale shift recovery: ${reason}`,
+                closed_at: recoveredAt,
+                closed_by: normalizedUserId,
+                status: 'closed'
+            }, {
+                transaction,
+                lock: true
+            });
+
+            const replayPayload = {
+                compliance_decision: complianceDecision,
+                recovery_authorization: recoveryAuthorization,
+                shift: toSerializable(closed),
+                cash_summary: {
+                    ...summary,
+                    closing_cash_amount: closingCashAmount,
+                    expected_cash_amount: expectedCashAmount,
+                    cash_variance_amount: variance
+                }
+            };
+            await createShiftAuditLog({
+                posRepository,
+                actorUserId: normalizedUserId,
+                shiftId: normalizedShiftId,
+                event: 'stale_shift_force_closed',
+                changes: {
+                    authorization_mode: recoveryAuthorization.authorization_mode,
+                    recovery_reason: recoveryAuthorization.reason,
+                    original_cashier_id: recoveryAuthorization.shift_cashier_id,
+                    terminal_id: shiftPayload.terminal_id || null,
+                    location_id: shiftPayload.location_id || null,
+                    opened_at: shiftPayload.opened_at || null,
+                    stale_at: recoveryAuthorization.stale_at,
+                    age_minutes: recoveryAuthorization.age_minutes,
+                    closing_cash_amount: closingCashAmount,
+                    expected_cash_amount: expectedCashAmount,
+                    cash_variance_amount: variance
+                },
+                transaction
+            });
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.SHIFT_FORCE_CLOSE,
+                idempotencyKey,
+                requestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+                responsePayload: replayPayload,
+                createdBy: normalizedUserId,
+                transaction
+            });
+            await transaction.commit();
+
+            return ok({
+                ...replayPayload,
+                idempotent_replay: false,
+                replay_outcome: 'processed'
+            });
+        } catch (error) {
+            if (transaction && !transaction.finished) {
+                await transaction.rollback();
+            }
+            if (error instanceof DomainError && idempotencyKey) {
+                await persistOperationReplay({
+                    posRepository,
+                    operationKey: POS_OPERATION_KEYS.SHIFT_FORCE_CLOSE,
+                    idempotencyKey,
+                    requestHash,
+                    replayStatus: OPERATION_REPLAY_STATUS.BLOCKED,
+                    responsePayload: serializeReplayFailure(error),
+                    createdBy: normalizedUserId
+                });
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to recover stale terminal shift'));
         }
     };
 };
@@ -5600,7 +5991,7 @@ export const buildGetTerminalTodayDashboardUseCase = ({ posRepository }) => {
             });
             const openShift = await posRepository.findOpenTerminalShift({
                 terminalId,
-                cashierId: user?.is_master_admin === true ? null : normalizedUserId,
+                cashierId: normalizedUserId,
                 locationId: locationScope.location_id
             });
             const shiftPayload = openShift ? toSerializable(openShift) : null;
@@ -5626,7 +6017,10 @@ export const buildGetTerminalTodayDashboardUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildListIncomingOnlineOrdersUseCase = ({ posRepository }) => {
+export const buildListIncomingOnlineOrdersUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosReadLocationScope
+}) => {
     return async ({ query, user }) => {
         if (query !== undefined && !isPlainObject(query)) {
             return fail(new DomainError(
@@ -5652,10 +6046,53 @@ export const buildListIncomingOnlineOrdersUseCase = ({ posRepository }) => {
                 { statusCode: 422 }
             ));
         }
+        const shiftId = parsePositiveInt(query?.shift_id);
+        if (!shiftId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'shift_id is required and must be a positive integer',
+                {
+                    statusCode: 422,
+                    details: { reason_code: 'POS_SHIFT_REQUIRED_FOR_INCOMING_QUEUE' }
+                }
+            ));
+        }
 
         try {
-            const locationScope = await resolvePosReadLocationScope({
-                requestedLocationId: query?.location_id,
+            const activeShift = await assertOpenShiftForPosMutation({
+                posRepository,
+                cashierId: normalizedUserId,
+                shiftId,
+                lock: false
+            });
+            const shiftLocationId = parsePositiveInt(activeShift?.location_id);
+            if (!shiftLocationId) {
+                throw buildLocationScopeDeniedError({
+                    message: 'Active shift is missing a valid location for incoming orders.',
+                    reasonCode: LOCATION_SCOPE_REASON_CODES.LOCATION_SCOPE_UNRESOLVED,
+                    statusCode: 422,
+                    details: { shift_id: shiftId }
+                });
+            }
+
+            const requestedLocationId = query?.location_id == null
+                ? null
+                : parsePositiveInt(query.location_id);
+            if (requestedLocationId && requestedLocationId !== shiftLocationId) {
+                throw buildLocationScopeDeniedError({
+                    message: 'Incoming order queue location must match the active shift location.',
+                    reasonCode: LOCATION_SCOPE_REASON_CODES.SHIFT_LOCATION_MISMATCH,
+                    statusCode: 403,
+                    details: {
+                        shift_id: shiftId,
+                        shift_location_id: shiftLocationId,
+                        requested_location_id: requestedLocationId
+                    }
+                });
+            }
+
+            const locationScope = await resolveLocationScope({
+                requestedLocationId: shiftLocationId,
                 userId: normalizedUserId,
                 operationLabel: 'POS incoming orders read'
             });
@@ -5666,6 +6103,86 @@ export const buildListIncomingOnlineOrdersUseCase = ({ posRepository }) => {
             return ok({ orders });
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to list incoming online orders'));
+        }
+    };
+};
+
+export const buildGetAdminLocationMonitorUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosReadLocationScope,
+    now = () => new Date(),
+    staleAfterHours = resolvePosStaleShiftHours()
+}) => {
+    return async ({ query, user }) => {
+        if (query !== undefined && !isPlainObject(query)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'query must be an object',
+                { statusCode: 400 }
+            ));
+        }
+
+        const normalizedUserId = parsePositiveInt(user?.user_id);
+        if (!normalizedUserId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated user is required to monitor a branch',
+                { statusCode: 401 }
+            ));
+        }
+        if (!isAdminLikeUser(user)) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHORIZATION_FAILED,
+                'Only POS administrators can monitor another branch without an active shift.',
+                { statusCode: 403 }
+            ));
+        }
+
+        const requestedLocationId = parsePositiveInt(query?.location_id);
+        if (!requestedLocationId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'location_id is required and must be a positive integer',
+                { statusCode: 422 }
+            ));
+        }
+
+        try {
+            const locationScope = await resolveLocationScope({
+                requestedLocationId,
+                userId: normalizedUserId,
+                operationLabel: 'POS administrator branch monitor'
+            });
+            const [orders, terminalShifts] = await Promise.all([
+                posRepository.listIncomingOnlineOrders({
+                    locationId: locationScope.location_id,
+                    limit: query?.limit || 200
+                }),
+                posRepository.listOpenTerminalShiftsForLocation({
+                    locationId: locationScope.location_id
+                })
+            ]);
+
+            const evaluatedAt = now();
+            const serializedTerminalShifts = terminalShifts.map((shiftRow) => {
+                const shift = toSerializable(shiftRow);
+                return {
+                    ...shift,
+                    stale_recovery: evaluatePosShiftStaleness({
+                        shift,
+                        now: evaluatedAt,
+                        staleAfterHours
+                    })
+                };
+            });
+
+            return ok({
+                location_id: locationScope.location_id,
+                orders: toSerializable(orders),
+                terminal_shifts: serializedTerminalShifts
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to monitor branch orders'));
         }
     };
 };
@@ -5894,6 +6411,13 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                     { statusCode: 409 }
                 );
             }
+            await assertOpenShiftForPosMutation({
+                posRepository,
+                cashierId: actingUserId,
+                locationId: existing.location_id || null,
+                transaction,
+                lock: true
+            });
             const currentStatus = normalizeOnlineFulfillmentStatus(existing.fulfillment_status);
             if (!currentStatus) {
                 throw new DomainError(
@@ -5981,6 +6505,29 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                     error: activityError?.message || activityError
                 });
             });
+
+            // Best-effort, post-commit settlement of any pending online-order affiliate commission
+            // tied to this order - must never fail the status update that already succeeded. Dormant
+            // until online attribution capture is wired up on the storefront (no pending rows exist
+            // yet), but correct and ready.
+            const affiliateSettleOutcome = targetStatus === 'completed'
+                ? 'earned'
+                : (targetStatus === 'cancelled' || targetStatus === 'rejected' ? 'reversed' : null);
+            if (affiliateSettleOutcome) {
+                try {
+                    await settleAffiliateCommissionForOrder({
+                        tenantId: currentTenantId,
+                        orderReference: String(normalizedTransactionId),
+                        outcome: affiliateSettleOutcome
+                    });
+                } catch (settleError) {
+                    logger.warn('[PosUseCases] Failed to settle affiliate commission after online status update', {
+                        pos_transaction_id: normalizedTransactionId,
+                        target_status: targetStatus,
+                        error: settleError?.message
+                    });
+                }
+            }
             const replayPayload = {
                 order: toSerializable(updated),
                 status_transition: {

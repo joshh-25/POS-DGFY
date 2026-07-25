@@ -56,10 +56,36 @@ import {
     buildValidateDgfyReviewInviteUseCase,
     buildVerifyDgfyTrackingRecoveryUseCase
 } from './usecases/dgfyCustomerUseCases.js';
+import {
+    buildAcceptAffiliateInviteUseCase,
+    buildApproveAffiliateCashoutUseCase,
+    buildCancelAffiliateCashoutUseCase,
+    buildCancelAffiliateInviteUseCase,
+    buildCaptureAffiliateAttributionUseCase,
+    buildEnrollSelfServeAffiliateUseCase,
+    buildGetAffiliateEarningsUseCase,
+    buildGetAffiliateInvitePreviewUseCase,
+    buildGetAffiliateQrPayloadUseCase,
+    buildGetAffiliateSettingsUseCase,
+    buildInviteAffiliateUseCase,
+    buildListAffiliateCashoutsUseCase,
+    buildListAffiliateInvitesUseCase,
+    buildListAffiliatesUseCase,
+    buildListMyAffiliateCashoutsUseCase,
+    buildListMyAffiliateEnrollmentsUseCase,
+    buildManageAffiliatePayoutMethodsUseCases,
+    buildMarkAffiliateCashoutPaidUseCase,
+    buildProvisionAffiliateUseCase,
+    buildRejectAffiliateCashoutUseCase,
+    buildRequestAffiliateCashoutUseCase,
+    buildUpdateAffiliateEnrollmentUseCase,
+    buildUpdateAffiliateSettingsUseCase
+} from './usecases/dgfyAffiliateUseCases.js';
 import { requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
 import { createTenantSessionForDgfyAccount } from '../../services/dgfyTenantSessionService.js';
 import { validateDgfyPosTerminalPolicy } from '../../services/dgfyPosTerminalPolicyService.js';
-import { sendEmail } from '../../services/emailService.js';
+import { sendEmail, sendAffiliateInviteEmail } from '../../services/emailService.js';
+import { hashInvitationToken } from '../../services/landlordService.js';
 import { buildLegacyDgfyLinkStatus } from '../../services/dgfyLegacyAccessPolicy.js';
 
 export const getDgfyLegacyLinkStatus = (input) => buildLegacyDgfyLinkStatus(input);
@@ -255,5 +281,44 @@ export const moderateDgfyCustomerReviewUseCase = buildModerateDgfyCustomerReview
 export const dgfyHistoricalBackfillUseCase = buildDgfyHistoricalBackfillUseCase();
 export const requestDgfyTrackingRecoveryUseCase = buildRequestDgfyTrackingRecoveryUseCase();
 export const verifyDgfyTrackingRecoveryUseCase = buildVerifyDgfyTrackingRecoveryUseCase();
+
+export const getAffiliateSettingsUseCase = buildGetAffiliateSettingsUseCase();
+export const updateAffiliateSettingsUseCase = buildUpdateAffiliateSettingsUseCase();
+export const listAffiliatesUseCase = buildListAffiliatesUseCase();
+export const provisionAffiliateUseCase = buildProvisionAffiliateUseCase();
+export const inviteAffiliateUseCase = buildInviteAffiliateUseCase({
+    hashInviteToken: hashInvitationToken,
+    sendAffiliateInviteEmail
+});
+export const listAffiliateInvitesUseCase = buildListAffiliateInvitesUseCase();
+export const cancelAffiliateInviteUseCase = buildCancelAffiliateInviteUseCase();
+export const getAffiliateInvitePreviewUseCase = buildGetAffiliateInvitePreviewUseCase({
+    hashInviteToken: hashInvitationToken
+});
+export const acceptAffiliateInviteUseCase = buildAcceptAffiliateInviteUseCase({
+    hashInviteToken: hashInvitationToken
+});
+export const updateAffiliateEnrollmentUseCase = buildUpdateAffiliateEnrollmentUseCase();
+export const getAffiliateQrPayloadUseCase = buildGetAffiliateQrPayloadUseCase();
+export const listMyAffiliateEnrollmentsUseCase = buildListMyAffiliateEnrollmentsUseCase();
+export const enrollSelfServeAffiliateUseCase = buildEnrollSelfServeAffiliateUseCase();
+export const getAffiliateEarningsUseCase = buildGetAffiliateEarningsUseCase();
+
+const affiliatePayoutMethodUseCases = buildManageAffiliatePayoutMethodsUseCases();
+export const listAffiliatePayoutMethodsUseCase = affiliatePayoutMethodUseCases.list;
+export const createAffiliatePayoutMethodUseCase = affiliatePayoutMethodUseCases.create;
+export const updateAffiliatePayoutMethodUseCase = affiliatePayoutMethodUseCases.update;
+export const setDefaultAffiliatePayoutMethodUseCase = affiliatePayoutMethodUseCases.setDefault;
+export const deleteAffiliatePayoutMethodUseCase = affiliatePayoutMethodUseCases.remove;
+
+export const requestAffiliateCashoutUseCase = buildRequestAffiliateCashoutUseCase();
+export const listMyAffiliateCashoutsUseCase = buildListMyAffiliateCashoutsUseCase();
+export const cancelAffiliateCashoutUseCase = buildCancelAffiliateCashoutUseCase();
+export const listAffiliateCashoutsUseCase = buildListAffiliateCashoutsUseCase();
+export const approveAffiliateCashoutUseCase = buildApproveAffiliateCashoutUseCase();
+export const markAffiliateCashoutPaidUseCase = buildMarkAffiliateCashoutPaidUseCase();
+export const rejectAffiliateCashoutUseCase = buildRejectAffiliateCashoutUseCase();
+
+export const captureAffiliateAttributionUseCase = buildCaptureAffiliateAttributionUseCase();
 
 export { dgfyAccountRepository };

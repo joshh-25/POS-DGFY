@@ -24,6 +24,7 @@ import {
     resolveAccessPolicyFromSettings
 } from '../modules/shared/utils/customerAccessPolicy.js';
 import { parsePublicCommercialPromos } from '../modules/shared/utils/commercialPromoPolicy.js';
+import { syncTenantGeoCatalog } from '../modules/geoSearch/services/geoCatalogSyncService.js';
 
 const STOREFRONT_SETTING_KEYS = Object.freeze([
     'ops_workflow_mode',
@@ -31,7 +32,6 @@ const STOREFRONT_SETTING_KEYS = Object.freeze([
     'store_is_visible',
     'store_has_no_location',
     'store_delivery_fee',
-    'pos_open_status',
     'pos_wait_time_minutes',
     'storefront_cover_image_url',
     'storefront_profile_image_url',
@@ -82,6 +82,22 @@ const deriveStoreSlug = (tenant, configuredSlug) => {
     if (explicit) return explicit.slice(0, 80);
 
     const fromName = slugify(tenant?.name || '');
+    const idSuffix = String(tenant?.id || '')
+        .replace(/[^a-z0-9]/gi, '')
+        .toLowerCase()
+        .slice(0, 6);
+
+    const base = fromName || 'store';
+    const composed = idSuffix ? `${base}-${idSuffix}` : base;
+    return composed.slice(0, 80);
+};
+
+// A short, consistently-sized slug for affiliate share links/QR codes: the store's
+// canonical slug can vary a lot in length (full business name), which makes the
+// encoded QR bulky and inconsistent. This truncates the name portion to 5 chars and
+// keeps the same tenant-id suffix, so the QR payload stays compact and predictable.
+const deriveAffiliateSlug = (tenant) => {
+    const fromName = slugify(tenant?.name || '').slice(0, 5).replace(/-+$/, '');
     const idSuffix = String(tenant?.id || '')
         .replace(/[^a-z0-9]/gi, '')
         .toLowerCase()
@@ -371,6 +387,11 @@ const buildTenantSnapshot = async (tenant) => {
     });
     const settings = toSettingsMap(settingsRows || []);
     const slug = deriveStoreSlug(tenant, settings.store_tenant_slug);
+    // Note: the affiliate slug is intentionally NOT passed through
+    // reserveStorefrontHandleForTenant — that table enforces one handle per tenant
+    // (unique on tenant_id) and already holds the canonical `slug` reservation.
+    // Persisting affiliate_slug on this row is itself the durable "on record" copy.
+    const affiliateSlug = deriveAffiliateSlug(tenant);
     await reserveStorefrontHandleForTenant({
         tenantId: tenant?.id,
         handle: slug,
@@ -723,6 +744,7 @@ const buildTenantSnapshot = async (tenant) => {
         tenant_name: tenant.name,
         tenant_company_token: tenant.company_token,
         slug,
+        affiliate_slug: affiliateSlug,
         storefront_open: storefrontOpen,
         workflow_mode: normalizeWorkflowMode(settings.ops_workflow_mode || DEFAULT_WORKFLOW_MODE),
         is_visible: true,
@@ -911,6 +933,19 @@ export const reconcileStorefrontDiscoveryIndex = async ({
             if (!dryRun) {
                 await StorefrontDiscoveryIndex.destroy({ where: { tenant_id: tenant.id } });
                 await StorefrontDiscoveryIndex.create(snapshot);
+                // Fire-and-forget: keeps geo-search's radius+alias matching roughly in
+                // sync with the Discovery index without slowing down reconciliation
+                // (including the synchronous auto-repair path in storefrontDiscoveryRepository).
+                syncTenantGeoCatalog({
+                    tenantId: tenant.id,
+                    itemSearchSnapshot: snapshot.item_search_snapshot
+                }).catch((error) => {
+                    logger.warn('[StorefrontDiscoveryIndex] Geo catalog sync failed', {
+                        tenantId: tenant?.id || null,
+                        tenantName: tenant?.name || null,
+                        error: error?.message || 'unknown_error'
+                    });
+                });
             }
             upserted += 1;
         } catch (error) {

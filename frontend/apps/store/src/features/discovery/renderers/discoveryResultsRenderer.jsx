@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   List,
   MapPin,
+  MapPinned,
   Navigation,
   Star,
   X
@@ -27,6 +28,8 @@ export function createDiscoveryResultsRenderer(ctx) {
   discoveryBusinessModeOptions,
   discoveryCategoryFilter,
   discoveryCoords,
+  discoveryDistanceFilter,
+  discoveryDistanceFilterOptions,
   discoveryFilterToolbarRef,
   discoveryLayout,
   discoveryPaginationItems,
@@ -57,6 +60,7 @@ export function createDiscoveryResultsRenderer(ctx) {
   isCategoryFilterActive,
   isDiscoveryMobileViewport,
   isDiscoveryTabletViewport,
+  isDistanceFilterActive,
   isMobileResultsCollapsed,
   isOpenNowFilterActive,
   isSortFilterActive,
@@ -73,6 +77,7 @@ export function createDiscoveryResultsRenderer(ctx) {
   searchedDiscoveryMapPins,
   setActiveDiscoveryFilterDropdown,
   setDiscoveryCategoryFilter,
+  setDiscoveryDistanceFilter,
   setDiscoveryOpenFilter,
   setDiscoveryResultsPage,
   setDiscoverySortBy,
@@ -136,6 +141,7 @@ const resultsSubtitle = isClusterResultsActive
         const ratingValue = Number.isFinite(Number(reviewSummary?.score)) ? Number(reviewSummary.score).toFixed(1) : '0.0';
         const ratingCount = Number(reviewSummary?.total_count || store?.matching_item_count || 0);
   const distanceLabel = Number.isFinite(Number(store?.nearest_distance_km)) ? `${Number(store.nearest_distance_km).toFixed(1)} km away` : 'Distance unavailable';
+  const isSearchableWithoutMapPin = store?.store_has_no_location === true || store?.map_publication_disabled === true;
   const waitBase = Number(store?.estimated_wait_minutes || 10);
   const etaLabel = `${waitBase}-${waitBase + 5} min`;
         const branchCount = Number(store?.active_location_count || 0);
@@ -251,6 +257,11 @@ const resultsSubtitle = isClusterResultsActive
                       <div style={{ fontSize: isMobileGridView ? 12 : 13, fontWeight: 600, color: '#64748B', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.35 }}>
                         {categoryLabel || 'Local storefront'}
                       </div>
+                      {isSearchableWithoutMapPin && (
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#1a4e8d' }}>
+                          Searchable storefront, no map pin
+                        </div>
+                      )}
                     </div>
                       <div style={{ display: 'grid', gap: isMobileGridView ? 7 : 8, fontSize: isMobileGridView ? 11 : 12, color: '#64748B', minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: isMobileGridView ? 8 : 10, flexWrap: 'wrap', lineHeight: 1.45 }}>
@@ -332,6 +343,11 @@ const resultsSubtitle = isClusterResultsActive
               <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {categoryLabel || 'Local storefront'}
               </div>
+              {isSearchableWithoutMapPin && (
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#1a4e8d' }}>
+                  Searchable storefront, no map pin
+                </div>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 11, color: '#64748b' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <MapPin size={12} color="#94a3b8" />
@@ -477,6 +493,11 @@ const resultsSubtitle = isClusterResultsActive
                     )}
                   </div>
                     <div style={{ fontSize: isGridView ? 12 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#64748b', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{categoryLabel || 'Local storefront'}</div>
+                    {isSearchableWithoutMapPin && (
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#1a4e8d' }}>
+                        Searchable storefront, no map pin
+                      </div>
+                    )}
                         <div style={{ display: 'flex', alignItems: 'center', gap: isGridView ? 8 : isMobileListView ? 8 : 10, flexWrap: 'wrap', fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, color: '#64748b' }}>
                   {isGridView && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#d97706', fontWeight: 800 }}>
@@ -734,15 +755,15 @@ const resultsSubtitle = isClusterResultsActive
                       display: 'grid',
                           gridTemplateColumns: isDiscoveryMobileViewport
                             ? (renderDiscoveryResetButton
-                                      ? 'max-content 44px 44px max-content'
-                                      : 'max-content 44px 44px')
+                                      ? 'max-content 44px 44px 44px max-content'
+                                      : 'max-content 44px 44px 44px')
                           : isDiscoveryTabletViewport
                             ? (renderDiscoveryResetButton
-                              ? 'minmax(0, 1.15fr) minmax(0, 1.15fr) minmax(0, 0.7fr) minmax(0, 0.9fr)'
-                                : 'minmax(0, 1.3fr) minmax(0, 1.3fr) minmax(0, 0.84fr)')
+                              ? 'minmax(0, 0.95fr) minmax(0, 0.95fr) minmax(0, 0.65fr) minmax(0, 0.65fr) minmax(0, 0.85fr)'
+                                : 'minmax(0, 1.05fr) minmax(0, 1.05fr) minmax(0, 0.78fr) minmax(0, 0.78fr)')
                             : (renderDiscoveryResetButton
-                              ? 'minmax(0, 0.74fr) minmax(0, 1fr) minmax(0, 1.24fr) minmax(0, 0.86fr)'
-                              : 'minmax(0, 0.74fr) minmax(0, 1fr) minmax(0, 1.24fr)'),
+                              ? 'minmax(0, 0.82fr) minmax(0, 0.92fr) minmax(0, 0.98fr) minmax(0, 0.9fr) minmax(0, 0.8fr)'
+                              : 'minmax(0, 0.84fr) minmax(0, 0.95fr) minmax(0, 1fr) minmax(0, 0.92fr)'),
                         gap: 8,
                         alignItems: 'stretch',
                       justifyContent: isDiscoveryMobileViewport ? 'start' : 'stretch',
@@ -873,6 +894,52 @@ const resultsSubtitle = isClusterResultsActive
                           </div>
                           </div>
                         )}
+                    </div>
+                    <div style={{ position: 'relative', minWidth: 0 }}>
+                      <button
+                        type="button"
+                        onClick={() => setActiveDiscoveryFilterDropdown((current) => (current === 'distance' ? null : 'distance'))}
+                            style={{ minHeight: 34, borderRadius: 10, border: `1px solid ${isDistanceFilterActive ? '#93c5fd' : '#e2e8f0'}`, padding: isDiscoveryMobileViewport ? '0' : '0 10px', fontSize: 12, fontWeight: 700, color: isDistanceFilterActive ? '#1a4e8d' : '#334155', background: isDistanceFilterActive ? '#eff6ff' : '#fff', cursor: 'pointer', minWidth: 0, width: '100%', display: 'inline-flex', alignItems: 'center', justifyContent: isDiscoveryMobileViewport ? 'center' : 'space-between', gap: 8, boxShadow: isDistanceFilterActive ? '0 8px 18px rgba(37,99,235,.16)' : 'none', transition: 'all 180ms ease' }}
+                            aria-label="Distance filter"
+                          >
+                                {isDiscoveryMobileViewport ? (
+                                  <MapPinned size={14} color={isDistanceFilterActive ? '#1a4e8d' : '#64748b'} />
+                                ) : (
+                            <>
+                              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>{discoveryDistanceFilterOptions.find(([value]) => value === discoveryDistanceFilter)?.[1] || 'Any Distance'}</span>
+                              <ChevronDown size={14} color="#64748b" />
+                              </>
+                            )}
+                          </button>
+                            {activeDiscoveryFilterDropdown === 'distance' && (
+                              <div style={{ position: 'absolute', top: 'calc(100% + 6px)', left: isDiscoveryMobileViewport ? 0 : 0, right: isDiscoveryMobileViewport ? 'auto' : 0, minWidth: isDiscoveryMobileViewport ? 168 : 180, borderRadius: 10, border: '1px solid #dbe5f2', background: '#fff', boxShadow: '0 14px 30px rgba(15,23,42,.10)', overflow: 'hidden', zIndex: 1200 }}>
+                          {discoveryDistanceFilterOptions.map(([value, label], index) => (
+                            <button
+                              key={value}
+                              type="button"
+                              onClick={() => {
+                                setDiscoveryDistanceFilter(value);
+                                setActiveDiscoveryFilterDropdown(null);
+                              }}
+                              style={{
+                                width: '100%',
+                                border: 'none',
+                                borderTop: index === 0 ? 'none' : '1px solid #eef2f7',
+                                background: discoveryDistanceFilter === value ? '#eff6ff' : '#fff',
+                                color: discoveryDistanceFilter === value ? '#1a4e8d' : '#334155',
+                                textAlign: 'left',
+                                padding: '8px 10px',
+                                fontSize: 12,
+                                fontWeight: discoveryDistanceFilter === value ? 800 : 700,
+                                cursor: 'pointer',
+                                whiteSpace: 'nowrap'
+                              }}
+                            >
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                       {renderDiscoveryResetButton && (
                       <button

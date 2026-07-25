@@ -100,6 +100,12 @@ services:
       DB_DIALECT: mysql
       REDIS_URL: redis://redis:6379
       PORT: 5100
+      SENTRY_ENABLED: ${SENTRY_ENABLED:-false}
+      SENTRY_BACKEND_DSN: ${SENTRY_BACKEND_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
+      SENTRY_RELEASE: ${SENTRY_RELEASE:-}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
+      SENTRY_SEND_DEFAULT_PII: ${SENTRY_SEND_DEFAULT_PII:-false}
     volumes:
       - ./data/dgfy-api/uploads:/app/uploads
       - ./data/dgfy-api/storage:/app/storage
@@ -154,6 +160,7 @@ services:
       - "443:443"
     volumes:
       - ./nginx/nginx.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./data/nginx/custom-storefronts:/etc/nginx/custom-storefronts:ro
       - ./data/certbot/conf:/etc/letsencrypt:ro
       - ./data/certbot/www:/var/www/certbot:ro
     depends_on:

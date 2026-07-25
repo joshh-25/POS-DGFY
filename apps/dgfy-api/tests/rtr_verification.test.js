@@ -11,12 +11,15 @@ describe('Refresh Token Rotation (RTR) Verification', () => {
     let testTenantContext;
     let companyToken;
     let previousLegacyTenantRegistrationFlag;
+    let previousRedisUrl;
     const REFRESH_COOKIE = 'sku_refresh_token';
     const CSRF_COOKIE = 'sku_csrf_token';
 
     beforeAll(async () => {
         previousLegacyTenantRegistrationFlag = process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED;
+        previousRedisUrl = process.env.REDIS_URL;
         process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED = 'true';
+        process.env.REDIS_URL = 'redis://jest-memory';
         await sequelize.authenticate();
         testTenantContext = await createTestTenant('rtrverify');
         companyToken = testTenantContext.token;
@@ -30,6 +33,11 @@ describe('Refresh Token Rotation (RTR) Verification', () => {
             delete process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED;
         } else {
             process.env.DGFY_LEGACY_TENANT_REGISTRATION_ENABLED = previousLegacyTenantRegistrationFlag;
+        }
+        if (typeof previousRedisUrl === 'undefined') {
+            delete process.env.REDIS_URL;
+        } else {
+            process.env.REDIS_URL = previousRedisUrl;
         }
         await sequelize.close();
     });

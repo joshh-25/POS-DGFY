@@ -1,4 +1,5 @@
 import React from 'react';
+import { captureRenderError } from '../../observability/sentryClient.js';
 
 /**
  * ErrorBoundary — Fix 10.3: Inconsistent API Error Handling
@@ -32,6 +33,7 @@ class ErrorBoundary extends React.Component {
         // Log to console in all environments. In production this could be
         // forwarded to a monitoring service (Sentry, etc.)
         console.error('[ErrorBoundary] Uncaught render error:', error, info.componentStack);
+        captureRenderError(error, info);
     }
 
     handleReload() {

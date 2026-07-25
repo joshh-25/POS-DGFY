@@ -406,6 +406,7 @@ export const buildRegisterDgfyAccountUseCase = ({
             }, { transaction });
 
             await repository.mirrorPendingInvitationsForAccount?.(createdAccount, { transaction });
+            await repository.mirrorPendingAffiliateInvitesForAccount?.(createdAccount, { transaction });
             await repository.mirrorLegacyFounderMembershipsForAccount?.(createdAccount, { transaction });
             await repository.recordLegalAcknowledgement({
                 ...legalAcknowledgement,

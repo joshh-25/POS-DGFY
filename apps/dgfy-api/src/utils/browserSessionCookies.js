@@ -7,12 +7,14 @@ export const SESSION_COOKIE_NAMES = Object.freeze({
   dgfy: 'sku_dgfy_session',
   storefront: 'sku_store_session',
   admin: 'sku_admin_session',
-  posTerminalPairing: 'sku_pos_terminal_pairing'
+  posTerminalPairing: 'sku_pos_terminal_pairing',
+  affiliateAttribution: 'sku_aff_attr'
 });
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_REFRESH_MAX_AGE_MS = 7 * ONE_DAY_MS;
 const DEFAULT_ACCESS_MAX_AGE_MS = ONE_DAY_MS;
+const AFFILIATE_ATTRIBUTION_MAX_AGE_MS = 30 * ONE_DAY_MS;
 
 const isProduction = () => process.env.NODE_ENV === 'production';
 
@@ -130,9 +132,63 @@ export const getTenantRefreshToken = (req) => getCookie(req, SESSION_COOKIE_NAME
 export const getTenantContextToken = (req) => getCookie(req, SESSION_COOKIE_NAMES.tenantContext);
 export const getCsrfCookie = (req) => getCookie(req, SESSION_COOKIE_NAMES.csrf);
 
+// Affiliate attribution: a store-scoped, HttpOnly cookie holding a JSON map of
+// tenant_id -> enrollment_id. A visitor can carry attribution for more than one
+// store at once (per-tenant isolation); scanning a second affiliate's code for
+// the same store overwrites that store's entry only (last-scan-wins).
+const readAffiliateAttributionMap = (req) => {
+  const raw = getCookie(req, SESSION_COOKIE_NAMES.affiliateAttribution);
+  if (!raw) return {};
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+export const setAffiliateAttributionCookie = (req, res, tenantId, enrollmentId) => {
+  const normalizedTenantId = String(tenantId || '').trim();
+  const normalizedEnrollmentId = String(enrollmentId || '').trim();
+  if (!normalizedTenantId || !normalizedEnrollmentId) return;
+  const map = readAffiliateAttributionMap(req);
+  map[normalizedTenantId] = normalizedEnrollmentId;
+  appendSetCookie(res, serializeCookie(SESSION_COOKIE_NAMES.affiliateAttribution, JSON.stringify(map), {
+    maxAgeMs: AFFILIATE_ATTRIBUTION_MAX_AGE_MS
+  }));
+};
+
+export const getAffiliateAttributionCookie = (req, tenantId) => {
+  const normalizedTenantId = String(tenantId || '').trim();
+  if (!normalizedTenantId) return null;
+  const map = readAffiliateAttributionMap(req);
+  return map[normalizedTenantId] || null;
+};
+
 export const stripBrowserRefreshToken = (session = {}) => {
   if (!session || typeof session !== 'object') return session;
   const rest = { ...session };
   delete rest.refreshToken;
   return rest;
+};
+
+// React Native (and other non-browser API clients) have no cookie jar, so
+// the httpOnly-cookie-only refresh flow below leaves them unable to refresh
+// a session. Callers opt in explicitly with this header rather than being
+// auto-detected, so the browser's httpOnly-cookie protection (refresh token
+// never touches page JS) is unaffected by default.
+export const isMobileClientRequest = (req) =>
+  String(req?.headers?.['x-client-platform'] || '').trim().toLowerCase() === 'mobile';
+
+// Cookie takes priority when present (unchanged browser behavior). Mobile
+// clients have no cookie, so they submit the refresh token they were
+// issued in the JSON body instead - only honored when the mobile header is
+// set, so a stray body field can't be used to bypass the cookie flow.
+export const getSubmittedRefreshToken = (req) => {
+  const cookieToken = getTenantRefreshToken(req);
+  if (cookieToken) return cookieToken;
+  if (isMobileClientRequest(req)) {
+    return String(req?.body?.refreshToken || '').trim();
+  }
+  return '';
 };

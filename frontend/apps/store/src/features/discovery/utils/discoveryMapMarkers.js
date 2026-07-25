@@ -1,4 +1,4 @@
-import { getBusinessModePinMeta, renderBusinessModePinSvg } from '../../../businessModePins.js';
+import { getBusinessModePinMeta, renderBusinessModePinSvg } from '../../../discovery/model/businessModePins.js';
 
 export const makePinElement = (mode, selected = false, ariaLabel = 'Store marker', glow = false) => {
   const el = document.createElement('div');

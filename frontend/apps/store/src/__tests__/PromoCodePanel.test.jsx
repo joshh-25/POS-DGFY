@@ -3,7 +3,7 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { PromoCodePanel } from '../checkout/components/PromoCodePanel.jsx';
+import { PromoCodePanel } from '../modes/fnb/checkout/components/PromoCodePanel.jsx';
 
 afterEach(() => {
   cleanup();

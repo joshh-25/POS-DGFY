@@ -362,7 +362,9 @@ export const provisionTenant = async (options) => {
             logger.info(`[Provisioning] Syncing schema for ${dbName}...`);
             const { getTenantModels } = await import('../utils/tenantModelFactory.js');
             getTenantModels(tenantSequelize);
-            await tenantSequelize.sync({ alter: true });
+            // This database was just created. Create the declared model graph
+            // without running Sequelize's destructive schema-diff algorithm.
+            await tenantSequelize.sync();
             const { repairItemFolderCategoryLifecycleSchema } = await import('../../scripts/sync-tenant-schemas.js');
             await repairItemFolderCategoryLifecycleSchema(tenantSequelize, dbName);
             logger.info(`[Provisioning] Schema synced successfully`);
