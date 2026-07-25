@@ -3,6 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
   closeTerminalShift,
+  forceCloseStaleTerminalShift,
+  fetchAdminLocationMonitor,
   fetchIncomingOnlineOrders,
   fetchPosCatalog,
   fetchPosTransactionById,
@@ -38,6 +40,7 @@ import { resolvePosTerminalUrl, resolveStorefrontAccountUrl } from '@/src/featur
 import { mergeCurrentCompanyWithMemberships } from '@/src/utils/companySwitcherRows.js';
 import { getAllSettings, getCompanyInfo, verifyPosSettingsAccessPin } from '@/services/settingsService.js';
 import { createItem } from '@/services/itemService.js';
+import { completeOnboarding } from '@/services/onboardingService.js';
 import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
 import { getAllUsers } from '@/services/userService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
@@ -85,6 +88,7 @@ import {
   resolvePreferredTerminalId,
   sanitizeTerminalId
 } from '../utils/terminalIdentity.js';
+import { isShiftOwnedByUser } from '../utils/shiftOwnership.js';
 import {
   buildTenantSetupSearch,
   clearTenantSetupSearch,
@@ -529,7 +533,8 @@ export default function TerminalPage() {
     open: false,
     switchLocation: false,
     cashEvent: false,
-    close: false
+    close: false,
+    staleRecovery: false
   });
   const [locationsState, setLocationsState] = useState({
     loading: false,
@@ -543,6 +548,13 @@ export default function TerminalPage() {
     accessState: 'idle',
     errorMessage: ''
   });
+  const [adminLocationMonitorState, setAdminLocationMonitorState] = useState({
+    loading: false,
+    orders: [],
+    terminalShifts: [],
+    errorMessage: ''
+  });
+  const [adminTerminalSwitching, setAdminTerminalSwitching] = useState(false);
   const [incomingOrderActionState, setIncomingOrderActionState] = useState({});
   const [cashCollectionOrder, setCashCollectionOrder] = useState(null);
   const [cashReceivedInput, setCashReceivedInput] = useState('');
@@ -576,6 +588,8 @@ export default function TerminalPage() {
   const [posViewMode, setPosViewMode] = useState(() => readRequestedPosView() || 'checkout');
   const hasInitializedPosViewRef = useRef(false);
   const previousSetupFlowActiveRef = useRef(null);
+  const tenantSetupCompletionInFlightRef = useRef(false);
+  const [tenantSetupFinishing, setTenantSetupFinishing] = useState(false);
   const [itemsStockFilterPreset, setItemsStockFilterPreset] = useState('');
   const [stockAlertSummary, setStockAlertSummary] = useState({
     open: false,
@@ -584,6 +598,8 @@ export default function TerminalPage() {
   });
   const [setupFlowState, setSetupFlowState] = useState({
     loading: true,
+    onboardingState: 'not_started',
+    onboardingCompleted: false,
     profileReady: false,
     posSetupReady: false,
     storefrontSetupReady: false,
@@ -756,8 +772,10 @@ export default function TerminalPage() {
   const tenantSetupIncomplete = !setupFlowState.loading
     && !locked
     && terminalUser?.is_master_admin === true
+    && !setupFlowState.onboardingCompleted
     && (!setupFlowState.profileReady || !setupFlowState.storefrontSetupReady || !setupFlowState.starterItemReady || !setupFlowState.posSetupReady);
-  const tenantSetupRequestedOrRequired = tenantSetupFlowRequested || tenantSetupIncomplete;
+  const tenantSetupRequestedOrRequired = !setupFlowState.onboardingCompleted
+    && (tenantSetupFlowRequested || tenantSetupIncomplete);
   const tenantSetupStep = useMemo(() => resolveTenantSetupStep({
     requested: tenantSetupRequestedOrRequired,
     locked,
@@ -777,7 +795,7 @@ export default function TerminalPage() {
     tenantSetupRequestedOrRequired,
     terminalUser?.is_master_admin
   ]);
-  const setupFlowActive = tenantSetupIncomplete
+  const setupFlowActive = tenantSetupRequestedOrRequired
     && tenantSetupStep !== POS_TERMINAL_SETUP_STEPS.COMPLETE;
   const terminalStartupLoading = !terminalStartupReady || (
     !locked
@@ -841,10 +859,15 @@ export default function TerminalPage() {
     setTenantSetupModalOpen(true);
   }, [openTenantSetupStep, tenantSetupStep]);
 
-  const hydrateTenantSetupState = useCallback(async ({ suppressGlobalErrors = false } = {}) => {
+  const hydrateTenantSetupState = useCallback(async ({
+    suppressGlobalErrors = false,
+    silent = false
+  } = {}) => {
     if (locked || terminalUser?.is_master_admin !== true) {
       setSetupFlowState({
         loading: false,
+        onboardingState: 'not_started',
+        onboardingCompleted: false,
         profileReady: false,
         posSetupReady: false,
         storefrontSetupReady: false,
@@ -878,7 +901,9 @@ export default function TerminalPage() {
       return;
     }
 
-    setSetupFlowState((prev) => ({ ...prev, loading: true }));
+    if (!silent) {
+      setSetupFlowState((prev) => ({ ...prev, loading: true }));
+    }
     try {
       const requestConfig = suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {};
       const [settingsPayload, companyPayload, usersPayload, locationsPayload, itemsPayload] = await Promise.all([
@@ -895,8 +920,13 @@ export default function TerminalPage() {
       const posRequirements = resolvePosSetupReadiness(settingsPayload, usersPayload);
       const storefrontRequirements = resolveStorefrontSetupReadiness(settingsPayload, locationsPayload);
       const starterItemRequirements = resolveStarterItemSetupReadiness(itemsPayload);
-      setSetupFlowState({
-        loading: false,
+      const onboardingState = String(
+        settingsPayload?.tenant_onboarding_state?.value || 'not_started'
+      ).trim().toLowerCase();
+      setSetupFlowState((prev) => ({
+        loading: silent ? prev.loading : false,
+        onboardingState,
+        onboardingCompleted: onboardingState === 'completed',
         profileReady: profileRequirements.ready,
         posSetupReady: posRequirements.ready,
         storefrontSetupReady: storefrontRequirements.ready,
@@ -906,9 +936,11 @@ export default function TerminalPage() {
         storefrontRequirements,
         starterItemRequirements,
         tenantUsers: Array.isArray(usersPayload) ? usersPayload : []
-      });
+      }));
     } catch {
-      setSetupFlowState((prev) => ({ ...prev, loading: false }));
+      if (!silent) {
+        setSetupFlowState((prev) => ({ ...prev, loading: false }));
+      }
     }
   }, [locked, terminalUser?.is_master_admin]);
 
@@ -1142,9 +1174,14 @@ export default function TerminalPage() {
     }
   }, [activeTerminalId, canViewPos, locked, operatingLocationId]);
 
-  const refreshTenantLocations = useCallback(async ({ suppressGlobalErrors = false } = {}) => {
+  const refreshTenantLocations = useCallback(async ({
+    suppressGlobalErrors = false,
+    silent = false
+  } = {}) => {
     if (locked) return;
-    setLocationsState((prev) => ({ ...prev, loading: true }));
+    if (!silent) {
+      setLocationsState((prev) => ({ ...prev, loading: true }));
+    }
     try {
       const rows = await listTenantLocations(
         { include_inactive: false },
@@ -1161,10 +1198,10 @@ export default function TerminalPage() {
           if (aOpen !== bOpen) return bOpen - aOpen;
           return String(a?.name || '').localeCompare(String(b?.name || ''));
         });
-      setLocationsState({
-        loading: false,
+      setLocationsState((prev) => ({
+        loading: silent ? prev.loading : false,
         locations: activeLocations
-      });
+      }));
 
       const fallbackLocationId = activeLocations.length > 0
         ? Number(activeLocations[0].location_id)
@@ -1176,7 +1213,9 @@ export default function TerminalPage() {
         setOperatingLocationId(fallbackLocationId);
       }
     } catch {
-      setLocationsState((prev) => ({ ...prev, loading: false }));
+      if (!silent) {
+        setLocationsState((prev) => ({ ...prev, loading: false }));
+      }
     }
   }, [locked, operatingLocationId]);
 
@@ -1276,6 +1315,53 @@ export default function TerminalPage() {
     shiftState?.shift?.location_id,
     shiftState?.shift?.pos_terminal_shift_id
   ]);
+
+  const refreshAdminLocationMonitor = useCallback(async ({ silent = false } = {}) => {
+    const locationId = Number(operatingLocationId || 0);
+    if (locked || !userIsAdminLike || !isOnline || !Number.isInteger(locationId) || locationId <= 0) {
+      setAdminLocationMonitorState({
+        loading: false,
+        orders: [],
+        terminalShifts: [],
+        errorMessage: ''
+      });
+      return;
+    }
+
+    if (!silent) {
+      setAdminLocationMonitorState((previous) => ({
+        ...previous,
+        loading: true,
+        errorMessage: ''
+      }));
+    }
+
+    try {
+      const payload = await fetchAdminLocationMonitor(
+        { location_id: locationId },
+        silent ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
+      );
+      setAdminLocationMonitorState({
+        loading: false,
+        orders: Array.isArray(payload?.orders) ? payload.orders : [],
+        terminalShifts: Array.isArray(payload?.terminal_shifts) ? payload.terminal_shifts : [],
+        errorMessage: ''
+      });
+    } catch (error) {
+      const message = error?.response?.data?.message || 'Failed to load the selected branch monitor.';
+      setAdminLocationMonitorState({
+        loading: false,
+        orders: [],
+        terminalShifts: [],
+        errorMessage: message
+      });
+      if (!silent) toast.error(message);
+    }
+  }, [isOnline, locked, operatingLocationId, userIsAdminLike]);
+
+  useEffect(() => {
+    refreshAdminLocationMonitor({ silent: true });
+  }, [refreshAdminLocationMonitor]);
 
   const replayQueuedTerminalOperations = useCallback(async ({
     toastIfEmpty = false,
@@ -1657,7 +1743,14 @@ export default function TerminalPage() {
     } finally {
       setLoadingUser(false);
     }
-  }, [activeTerminalId, cashierResumeContext?.shiftId, refreshOperationalContext, resetSettingsAccessPinState, tenantSetupFlowRequested]);
+  }, [
+    activeTerminalId,
+    cashierResumeContext?.shiftId,
+    refreshOperationalContext,
+    resetSettingsAccessPinState,
+    tenantSetupFlowRequested,
+    terminalRegistryLookup
+  ]);
 
   useEffect(() => {
     hydrateUser();
@@ -1682,7 +1775,16 @@ export default function TerminalPage() {
   }, [locked, refreshOperationalContext]);
 
   useLayoutEffect(() => {
-    if (setupFlowState.loading || !tenantSetupFlowRequested || locked || terminalUser?.is_master_admin !== true) return;
+    if (setupFlowState.loading || locked || terminalUser?.is_master_admin !== true) return;
+
+    if (setupFlowState.onboardingCompleted) {
+      if (tenantSetupFlowRequested) {
+        clearTenantSetupQueryState();
+      }
+      return;
+    }
+
+    if (!tenantSetupFlowRequested) return;
 
     if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.COMPLETE) {
       clearTenantSetupQueryState();
@@ -1695,6 +1797,7 @@ export default function TerminalPage() {
     clearTenantSetupQueryState,
     locked,
     openTenantSetupStep,
+    setupFlowState.onboardingCompleted,
     setupFlowState.loading,
     tenantSetupFlowRequested,
     tenantSetupStep,
@@ -2223,6 +2326,54 @@ export default function TerminalPage() {
     });
     setTerminalUnlockModalOpen(false);
     await notifyStockAlertsAfterUnlock();
+  };
+
+  const handleSelectAdminTerminal = async (selectedTerminalId) => {
+    if (!userIsAdminLike) {
+      toast.error('Only an administrator can change the branch terminal context.');
+      return false;
+    }
+    if (activeShiftId) {
+      toast.error('Close your active shift before selecting another terminal.');
+      return false;
+    }
+
+    const terminalId = sanitizeTerminalId(selectedTerminalId);
+    const registryEntry = terminalRegistryLookup.get(terminalId);
+    const selectedLocationId = Number(operatingLocationId || 0);
+    if (!terminalId || !registryEntry || Number(registryEntry.location_id || 0) !== selectedLocationId) {
+      toast.error('Select an active terminal assigned to the selected branch.');
+      return false;
+    }
+
+    const occupiedShift = adminLocationMonitorState.terminalShifts.find(
+      (shift) => sanitizeTerminalId(shift?.terminal_id) === terminalId
+    );
+    const resumesOwnShift = isShiftOwnedByUser(occupiedShift, terminalUser);
+    if (occupiedShift && !resumesOwnShift) {
+      const cashier = occupiedShift?.cashier?.username || occupiedShift?.cashier?.email || 'another cashier';
+      toast.error(`Terminal ${terminalId} is in use by ${cashier}.`);
+      return false;
+    }
+
+    setAdminTerminalSwitching(true);
+    try {
+      await completeTerminalUnlock(terminalId, {
+        operatingLocationIdOverride: selectedLocationId
+      });
+      await refreshAdminLocationMonitor({ silent: true });
+      toast.success(
+        resumesOwnShift
+          ? `${terminalId} resumed with your existing shift.`
+          : `${terminalId} selected. No shift was opened.`
+      );
+      return true;
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Unable to select this terminal.');
+      return false;
+    } finally {
+      setAdminTerminalSwitching(false);
+    }
   };
 
   const handleDgfyPosLogin = async (event) => {
@@ -3103,24 +3254,7 @@ export default function TerminalPage() {
       if (isRetryableTerminalOperationError(error)) {
         toast.error('The shift was not opened because the server could not confirm it. Reconnect and try again.');
       } else {
-        const status = Number(error?.response?.status || 0);
-        const conflictShiftId = Number(error?.response?.data?.details?.existing_shift_id || 0);
         const message = String(error?.response?.data?.message || 'Failed to open terminal shift.');
-        const terminalAlreadyOpen = status === 409 && (
-          conflictShiftId > 0
-          || message.toLowerCase().includes('terminal already has an active shift')
-        );
-
-        if (terminalAlreadyOpen && terminalUser?.is_master_admin === true) {
-          await refreshOperationalContext({
-            terminalIdOverride: terminalId,
-            operatingLocationIdOverride: scopedOperatingLocationId,
-            suppressGlobalErrors: true
-          });
-          setAdminShiftPromptSkipped(true);
-          setPosViewMode('shift_controls');
-        }
-
         toast.error(message);
       }
     } finally {
@@ -3419,6 +3553,52 @@ export default function TerminalPage() {
     }
   };
 
+  const handleForceCloseStaleShift = async ({ shiftId, closingCashAmount, reason } = {}) => {
+    const normalizedShiftId = Number.parseInt(shiftId, 10);
+    const normalizedClosingCash = Number(closingCashAmount);
+    const normalizedReason = String(reason || '').trim();
+    if (terminalUser?.is_master_admin !== true) {
+      toast.error('Only the company master administrator can recover a stale shift.');
+      return false;
+    }
+    if (!isOnline) {
+      toast.error('Reconnect before recovering a stale shift.');
+      return false;
+    }
+    if (!Number.isInteger(normalizedShiftId) || normalizedShiftId <= 0) {
+      toast.error('Select a valid stale shift.');
+      return false;
+    }
+    if (!Number.isFinite(normalizedClosingCash) || normalizedClosingCash < 0) {
+      toast.error('Closing cash must be a non-negative number.');
+      return false;
+    }
+    if (normalizedReason.length < 8) {
+      toast.error('Enter an audit reason with at least 8 characters.');
+      return false;
+    }
+
+    setShiftActionLoading((previous) => ({ ...previous, staleRecovery: true }));
+    try {
+      await forceCloseStaleTerminalShift(normalizedShiftId, {
+        closing_cash_amount: normalizedClosingCash,
+        reason: normalizedReason,
+        idempotency_key: createIdempotencyKey('pos-shift-stale-recovery')
+      });
+      toast.success('Stale shift recovered and closed with an audit record.');
+      await Promise.all([
+        refreshAdminLocationMonitor({ silent: true }),
+        refreshOperationalContext()
+      ]);
+      return true;
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to recover the stale shift.');
+      return false;
+    } finally {
+      setShiftActionLoading((previous) => ({ ...previous, staleRecovery: false }));
+    }
+  };
+
   const handleIncomingOrderStatusChange = async (posTransactionId, fulfillmentStatus) => {
     if (!isOnline) {
       toast.error('Reconnect to the internet before changing an online order.');
@@ -3693,21 +3873,73 @@ export default function TerminalPage() {
   }, []);
 
   const handlePosSetupSaved = useCallback(async () => {
-    await hydrateTenantSetupState({ suppressGlobalErrors: true });
+    await hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true });
   }, [hydrateTenantSetupState]);
 
   const handleStorefrontSetupSaved = useCallback(async () => {
-    await hydrateTenantSetupState({ suppressGlobalErrors: true });
+    await hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true });
   }, [hydrateTenantSetupState]);
 
-  const handleTenantSetupDataChanged = useCallback(async () => {
-    await Promise.all([
-      hydrateTenantSetupState({ suppressGlobalErrors: true }),
-      hydrateTerminalMeta({ suppressGlobalErrors: true }),
-      refreshTenantLocations({ suppressGlobalErrors: true }),
-      hydrateUser({ suppressGlobalErrors: true })
-    ]);
-  }, [hydrateTenantSetupState, hydrateTerminalMeta, hydrateUser, refreshTenantLocations]);
+  const handleTenantSetupDataChanged = useCallback(async ({ source = '' } = {}) => {
+    const refreshTasks = [
+      hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true })
+    ];
+
+    if (source === 'terminal') {
+      refreshTasks.push(hydrateTerminalMeta({ suppressGlobalErrors: true }));
+    }
+    if (source === 'location') {
+      refreshTasks.push(refreshTenantLocations({
+        suppressGlobalErrors: true,
+        silent: true
+      }));
+    }
+
+    await Promise.all(refreshTasks);
+  }, [hydrateTenantSetupState, hydrateTerminalMeta, refreshTenantLocations]);
+
+  const handleCompleteTenantSetup = useCallback(async () => {
+    if (tenantSetupCompletionInFlightRef.current) return;
+
+    tenantSetupCompletionInFlightRef.current = true;
+    setTenantSetupFinishing(true);
+    try {
+      const completion = await completeOnboarding();
+      if (String(completion?.tenant_onboarding_state || '').trim().toLowerCase() !== 'completed') {
+        throw new Error('Onboarding completion was not confirmed by the server.');
+      }
+
+      await Promise.all([
+        hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true }),
+        hydrateUser({ suppressGlobalErrors: true })
+      ]);
+      clearTenantSetupQueryState();
+      setTenantSetupDismissedThisSession(false);
+      setTenantSetupModalOpen(false);
+      toast.success('Tenant onboarding, POS Setup, and Storefront Setup are complete.');
+    } catch (error) {
+      const missingRequirements = error?.response?.data?.errors?.missing_requirements;
+      if (Array.isArray(missingRequirements) && missingRequirements.length > 0) {
+        const labels = missingRequirements.map((requirement) => (
+          String(requirement || '').replaceAll('_', ' ')
+        ));
+        toast.error(`Missing requirements: ${labels.join(', ')}`);
+      } else {
+        toast.error(
+          error?.response?.data?.message
+          || error?.message
+          || 'Unable to complete onboarding.'
+        );
+      }
+    } finally {
+      tenantSetupCompletionInFlightRef.current = false;
+      setTenantSetupFinishing(false);
+    }
+  }, [
+    clearTenantSetupQueryState,
+    hydrateTenantSetupState,
+    hydrateUser
+  ]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return undefined;
@@ -4283,6 +4515,7 @@ export default function TerminalPage() {
         )}
         <PosTenantSetupModal
           open={tenantSetupModalOpen}
+          finishing={tenantSetupFinishing}
           currentStep={tenantSetupStep}
           companyName={setupFlowState.profileRequirements.companyName}
           profileData={{
@@ -4297,7 +4530,6 @@ export default function TerminalPage() {
           terminalRegistry={terminalRegistry}
           terminalLocations={locationsState.locations}
           tenantUsers={setupFlowState.tenantUsers}
-          onOpenSettingsStep={openTenantSetupStep}
           onStepSelect={openTenantSetupStep}
           onBack={() => {
             const previousStep = getPreviousTenantSetupStep(tenantSetupStep);
@@ -4305,7 +4537,7 @@ export default function TerminalPage() {
               openTenantSetupStep(previousStep);
             }
           }}
-          onContinue={() => {
+          onContinue={async () => {
             const nextStep = getNextTenantSetupStep(tenantSetupStep);
             if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.PROFILE) {
               openTenantSetupStep(nextStep);
@@ -4334,8 +4566,7 @@ export default function TerminalPage() {
               openTenantSetupStep(POS_TERMINAL_SETUP_STEPS.POS_SETUP);
               return;
             }
-            replaceTenantSetupQuery(POS_TERMINAL_SETUP_STEPS.COMPLETE);
-            setTenantSetupModalOpen(false);
+            await handleCompleteTenantSetup();
           }}
           onSkip={() => {
             setTenantSetupModalOpen(false);
@@ -4542,6 +4773,12 @@ export default function TerminalPage() {
           isMsmeMode={isMsmeMode}
           shiftState={shiftState}
           incomingOrdersState={incomingOrdersState}
+          adminLocationMonitorState={adminLocationMonitorState}
+          adminTerminalSwitching={adminTerminalSwitching}
+          onSelectAdminTerminal={handleSelectAdminTerminal}
+          refreshAdminLocationMonitor={refreshAdminLocationMonitor}
+          canRecoverStaleShifts={terminalUser?.is_master_admin === true}
+          handleForceCloseStaleShift={handleForceCloseStaleShift}
           onlineOrderSoundEnabled={onlineOrderSoundEnabled}
           locationsState={locationsState}
           operatingLocationId={operatingLocationId}

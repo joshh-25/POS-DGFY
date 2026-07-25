@@ -472,3 +472,59 @@ body.pos-receipt-print-mode {
   opacity: 0;
   cursor: pointer;
 }
+
+/* F&B POS Saving Modal Keyframes */
+@keyframes shimmer-slide {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+@keyframes spin-slow {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+@keyframes spin-reverse {
+  0% { transform: rotate(360deg); }
+  100% { transform: rotate(0deg); }
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.92); opacity: 0.8; box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+  50% { transform: scale(1.05); opacity: 1; box-shadow: 0 0 25px 8px rgba(245, 158, 11, 0.25); }
+  100% { transform: scale(0.92); opacity: 0.8; box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4); }
+}
+
+@keyframes float-gentle {
+  0%, 100% { transform: translateY(0px); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes dots-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50% { opacity: 1; transform: scale(1.2); }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+.animate-spin-slow {
+  animation: spin-slow 6s linear infinite;
+}
+
+.animate-spin-reverse {
+  animation: spin-reverse 4s linear infinite;
+}
+
+.animate-shimmer {
+  animation: shimmer-slide 2s infinite ease-in-out;
+}
+
+.animate-float {
+  animation: float-gentle 4s ease-in-out infinite;
+}
+
+.dot-1 { animation: dots-pulse 1.4s infinite 0s; }
+.dot-2 { animation: dots-pulse 1.4s infinite 0.2s; }
+.dot-3 { animation: dots-pulse 1.4s infinite 0.4s; }

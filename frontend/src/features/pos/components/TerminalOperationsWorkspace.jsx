@@ -46,9 +46,11 @@ import {
   TrendingUp,
   Truck,
   Upload,
+  UtensilsCrossed,
   X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { isShiftOwnedByUserId, resolvePosUserId } from '../utils/shiftOwnership.js';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import {
   Dialog,
@@ -662,6 +664,9 @@ const parseIsoDateTime = (value) => {
 function ShiftControlsWorkspace({
   shiftState,
   terminalMeta,
+  operatorUserId,
+  activeTerminalId,
+  terminalRegistry = [],
   locationsState,
   operatingLocationId,
   setOperatingLocationId,
@@ -683,12 +688,25 @@ function ShiftControlsWorkspace({
   cashEventForm,
   setCashEventForm,
   handleRecordCashEvent,
+  adminLocationMonitorState = { loading: false, orders: [], terminalShifts: [], errorMessage: '' },
+  adminTerminalSwitching = false,
+  onSelectAdminTerminal = async () => false,
+  refreshAdminLocationMonitor = async () => {},
+  canRecoverStaleShifts = false,
+  handleForceCloseStaleShift = async () => false,
   isOnline = true,
   sectionId,
   initialTab = 'shift_location'
 }) {
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const [switchReason, setSwitchReason] = useState('');
+  const [requestedAdminTerminalId, setRequestedAdminTerminalId] = useState('');
+  const [pendingAdminTerminalId, setPendingAdminTerminalId] = useState('');
+  const [staleRecoveryShift, setStaleRecoveryShift] = useState(null);
+  const [staleRecoveryForm, setStaleRecoveryForm] = useState({
+    closingCashAmount: '',
+    reason: ''
+  });
   const [activeTab, setActiveTab] = useState(initialTab);
   const [renderedTab, setRenderedTab] = useState(initialTab);
   const [paneInlineStyle, setPaneInlineStyle] = useState({
@@ -706,6 +724,51 @@ function ShiftControlsWorkspace({
     || activeShift?.cashier?.email
     || (activeShift?.cashier_id ? `Cashier #${activeShift.cashier_id}` : 'Current cashier');
   const canRenderAdminShiftOpen = canAdminBypassShiftPrompt || canTransactPos;
+  const activeTerminals = useMemo(
+    () => (Array.isArray(terminalRegistry) ? terminalRegistry : [])
+      .filter((entry) => entry?.is_active !== false),
+    [terminalRegistry]
+  );
+  const locationTerminals = useMemo(
+    () => activeTerminals.filter(
+      (entry) => Number(entry?.location_id || 0) === Number(operatingLocationId || 0)
+    ),
+    [activeTerminals, operatingLocationId]
+  );
+  const openTerminalShiftById = useMemo(() => {
+    const shifts = Array.isArray(adminLocationMonitorState?.terminalShifts)
+      ? adminLocationMonitorState.terminalShifts
+      : [];
+    return new Map(shifts.map((shift) => [String(shift?.terminal_id || '').trim(), shift]));
+  }, [adminLocationMonitorState]);
+  const currentTerminalId = String(activeTerminalId || '').trim();
+  const currentTerminalMatches = locationTerminals.some(
+    (entry) => String(entry?.terminal_id || '').trim() === currentTerminalId
+  );
+  const requestedTerminalMatches = locationTerminals.some(
+    (entry) => String(entry?.terminal_id || '').trim() === requestedAdminTerminalId
+  );
+  const selectedAdminTerminalId = requestedTerminalMatches
+    ? requestedAdminTerminalId
+    : (currentTerminalMatches ? currentTerminalId : '');
+  const activeTerminalRegistryEntry = activeTerminals.find(
+    (entry) => String(entry?.terminal_id || '').trim() === String(activeTerminalId || '').trim()
+  );
+  const activeTerminalMatchesOperatingLocation = !canAdminBypassShiftPrompt || Boolean(
+    activeTerminalRegistryEntry
+    && Number(activeTerminalRegistryEntry?.location_id || 0) === Number(operatingLocationId || 0)
+  );
+  const selectedTerminalShift = openTerminalShiftById.get(String(selectedAdminTerminalId || '').trim()) || null;
+  const selectedTerminalShiftOwnedByCurrentUser = isShiftOwnedByUserId(
+    selectedTerminalShift,
+    operatorUserId
+  );
+  const branchMonitorOrders = Array.isArray(adminLocationMonitorState?.orders)
+    ? adminLocationMonitorState.orders
+    : [];
+  const branchTerminalShifts = Array.isArray(adminLocationMonitorState?.terminalShifts)
+    ? adminLocationMonitorState.terminalShifts
+    : [];
   const SHIFT_TABS = [
     { id: 'shift_location', label: 'Shift Location', icon: MapPinned },
     { id: 'close_shift', label: 'Close Shift', icon: ShieldCheck },
@@ -828,6 +891,271 @@ function ShiftControlsWorkspace({
     }
   ] : [];
 
+  const openStaleRecoveryDialog = (shift) => {
+    setStaleRecoveryShift(shift);
+    setStaleRecoveryForm({
+      closingCashAmount: '',
+      reason: ''
+    });
+  };
+
+  const closeStaleRecoveryDialog = () => {
+    if (shiftActionLoading?.staleRecovery) return;
+    setStaleRecoveryShift(null);
+    setStaleRecoveryForm({
+      closingCashAmount: '',
+      reason: ''
+    });
+  };
+
+  const submitStaleShiftRecovery = async (event) => {
+    event.preventDefault();
+    const completed = await handleForceCloseStaleShift?.({
+      shiftId: staleRecoveryShift?.pos_terminal_shift_id,
+      closingCashAmount: staleRecoveryForm.closingCashAmount,
+      reason: staleRecoveryForm.reason
+    });
+    if (completed) {
+      setStaleRecoveryShift(null);
+      setStaleRecoveryForm({
+        closingCashAmount: '',
+        reason: ''
+      });
+    }
+  };
+
+  const renderAdminBranchContext = () => {
+    if (!canAdminBypassShiftPrompt) return null;
+
+    return (
+      <>
+        <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
+          <Label htmlFor="admin-operating-location" className="block text-[12px] font-black text-[#0F172A]">
+            Operating Location
+          </Label>
+          <select
+            id="admin-operating-location"
+            className="mt-2 h-11 w-full rounded-lg border border-blue-300 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+            value={operatingLocationId || ''}
+            onChange={(event) => {
+              const nextValue = event.target.value ? Number(event.target.value) : null;
+              setRequestedAdminTerminalId('');
+              setPendingAdminTerminalId('');
+              setOperatingLocationId(nextValue);
+            }}
+          >
+            {locations.map((location) => (
+              <option key={`admin-operating-location-${location.location_id}`} value={location.location_id}>
+                {location.name}
+              </option>
+            ))}
+          </select>
+          <p className="mt-2 text-[11px] leading-4 text-[#475569]">
+            Admin navigation can use this location without a shift for read-only monitoring. Select an available terminal below before opening a shift or transacting.
+          </p>
+
+          <div className="mt-4 border-t border-blue-100 pt-3">
+            <Label htmlFor="admin-operating-terminal" className="block text-[12px] font-black text-[#0F172A]">
+              Branch Terminal
+            </Label>
+            <select
+              id="admin-operating-terminal"
+              className="mt-2 h-11 w-full rounded-lg border border-blue-300 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
+              value={selectedAdminTerminalId}
+              onChange={(event) => setRequestedAdminTerminalId(event.target.value)}
+              disabled={adminTerminalSwitching || !isOnline || locationTerminals.length === 0}
+            >
+              <option value="">Select an available terminal</option>
+              {locationTerminals.map((entry) => {
+                const terminalId = String(entry?.terminal_id || '').trim();
+                const occupiedShift = openTerminalShiftById.get(terminalId);
+                const ownedByCurrentUser = isShiftOwnedByUserId(occupiedShift, operatorUserId);
+                const cashier = occupiedShift?.cashier?.username
+                  || occupiedShift?.cashier?.email
+                  || (occupiedShift?.cashier_id ? `Cashier #${occupiedShift.cashier_id}` : 'cashier');
+                const occupancyLabel = occupiedShift
+                  ? (
+                    ownedByCurrentUser
+                      ? `Your active shift since ${parseIsoDateTime(occupiedShift.opened_at)}`
+                      : `In use by ${cashier} since ${parseIsoDateTime(occupiedShift.opened_at)}`
+                  )
+                  : 'Available';
+                return (
+                  <option
+                    key={`admin-terminal-${terminalId}`}
+                    value={terminalId}
+                    disabled={Boolean(occupiedShift) && !ownedByCurrentUser}
+                  >
+                    {entry?.label ? `${entry.label} (${terminalId})` : terminalId} - {occupancyLabel}
+                  </option>
+                );
+              })}
+            </select>
+            {locationTerminals.length === 0 ? (
+              <p className="mt-2 text-[11px] text-amber-700">
+                No active terminal is assigned to this branch. Configure one in POS Setup.
+              </p>
+            ) : null}
+            {!activeTerminalMatchesOperatingLocation ? (
+              <p className="mt-2 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] leading-4 text-amber-800">
+                The current terminal belongs to another branch. Confirm a terminal for this branch before opening a shift.
+              </p>
+            ) : (
+              <p className="mt-2 text-[11px] text-emerald-700">
+                Current terminal: {String(activeTerminalId || '').trim() || 'Not selected'}
+              </p>
+            )}
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-3 h-10 rounded-lg border-blue-300 bg-white px-4 text-[13px] font-extrabold text-[#1A4E8D] hover:bg-blue-50"
+              disabled={
+                adminTerminalSwitching
+                || !isOnline
+                || !selectedAdminTerminalId
+                || (Boolean(selectedTerminalShift) && !selectedTerminalShiftOwnedByCurrentUser)
+                || (
+                  activeTerminalMatchesOperatingLocation
+                  && String(selectedAdminTerminalId) === String(activeTerminalId || '').trim()
+                )
+              }
+              onClick={() => setPendingAdminTerminalId(selectedAdminTerminalId)}
+            >
+              <Monitor className="mr-2 h-4 w-4" />
+              {adminTerminalSwitching ? 'Selecting Terminal...' : 'Use Selected Terminal'}
+            </Button>
+          </div>
+        </div>
+
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-[12px] font-black text-[#0F172A]">Branch Shift Monitor</p>
+              <p className="mt-1 text-[11px] text-[#64748B]">
+                Active shift owner and opening time for each terminal in this branch.
+              </p>
+            </div>
+          </div>
+          {branchTerminalShifts.length === 0 ? (
+            <p className="mt-3 rounded-md border border-slate-200 bg-white px-3 py-3 text-[11px] text-slate-600">
+              No active terminal shifts for this branch.
+            </p>
+          ) : (
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {branchTerminalShifts.map((shift) => {
+                const shiftOwner = shift?.cashier?.username
+                  || shift?.cashier?.email
+                  || (shift?.cashier_id ? `Operator #${shift.cashier_id}` : 'Unknown operator');
+                const staleStatus = shift?.stale_recovery || {};
+                const ageMinutes = Number(staleStatus?.age_minutes || 0);
+                const ageHours = Number.isFinite(ageMinutes) ? Math.floor(ageMinutes / 60) : 0;
+                return (
+                  <div
+                    key={`admin-branch-shift-${shift.pos_terminal_shift_id}`}
+                    className={`rounded-lg border bg-white p-3 ${
+                      staleStatus?.is_stale ? 'border-amber-300' : 'border-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="truncate text-[12px] font-black text-[#0F172A]">
+                          {shift.terminal_id || `Shift #${shift.pos_terminal_shift_id}`}
+                        </p>
+                        <p className="mt-1 text-[11px] text-slate-600">Opened by {shiftOwner}</p>
+                      </div>
+                      <span className={`rounded-md border px-2 py-1 text-[10px] font-extrabold ${
+                        staleStatus?.is_stale
+                          ? 'border-amber-200 bg-amber-50 text-amber-800'
+                          : 'border-emerald-200 bg-emerald-50 text-emerald-700'
+                      }`}>
+                        {staleStatus?.is_stale ? 'Stale' : 'Active'}
+                      </span>
+                    </div>
+                    <div className="mt-2 space-y-1 text-[11px] text-slate-600">
+                      <p>Opened: {parseIsoDateTime(shift.opened_at)}</p>
+                      <p>Shift ID: #{shift.pos_terminal_shift_id}</p>
+                      {staleStatus?.is_stale ? <p>Open for approximately {ageHours} hour(s)</p> : null}
+                    </div>
+                    {canRecoverStaleShifts && staleStatus?.is_stale ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="mt-3 h-9 w-full rounded-lg border-amber-300 bg-amber-50 px-3 text-[12px] font-extrabold text-amber-900 hover:bg-amber-100"
+                        onClick={() => openStaleRecoveryDialog(shift)}
+                        disabled={!isOnline || shiftActionLoading?.staleRecovery}
+                      >
+                        <AlertTriangle className="mr-2 h-3.5 w-3.5" />
+                        Recover Stale Shift
+                      </Button>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <p className="text-[12px] font-black text-[#0F172A]">Branch Order Monitor</p>
+              <p className="mt-1 text-[11px] text-[#64748B]">Read-only active online orders for the selected branch.</p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              className="h-9 rounded-lg border-slate-300 bg-white px-3 text-[12px] font-extrabold text-[#0F172A] hover:bg-slate-100"
+              onClick={() => refreshAdminLocationMonitor?.()}
+              disabled={adminLocationMonitorState?.loading || !isOnline}
+            >
+              <RefreshCcw className="mr-2 h-3.5 w-3.5" />
+              {adminLocationMonitorState?.loading ? 'Refreshing...' : 'Refresh'}
+            </Button>
+          </div>
+          {adminLocationMonitorState?.errorMessage ? (
+            <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-[11px] text-rose-700">
+              {adminLocationMonitorState.errorMessage}
+            </p>
+          ) : adminLocationMonitorState?.loading && branchMonitorOrders.length === 0 ? (
+            <p className="mt-3 text-[11px] text-slate-500">Loading branch orders...</p>
+          ) : branchMonitorOrders.length === 0 ? (
+            <p className="mt-3 rounded-md border border-slate-200 bg-white px-3 py-3 text-[11px] text-slate-600">
+              No active online orders for this branch.
+            </p>
+          ) : (
+            <div className="mt-3 grid gap-2 md:grid-cols-2">
+              {branchMonitorOrders.map((order) => (
+                <div
+                  key={`admin-branch-order-${order.pos_transaction_id}`}
+                  className="rounded-lg border border-slate-200 bg-white p-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="truncate text-[12px] font-black text-[#0F172A]">
+                        {order.customer_name || 'Guest Buyer'}
+                      </p>
+                      <p className="mt-1 text-[11px] text-slate-500">
+                        {order.tracking_pin || `Order #${order.pos_transaction_id}`}
+                      </p>
+                    </div>
+                    <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-extrabold text-[#1A4E8D]">
+                      {String(order.fulfillment_status || 'placed').replaceAll('_', ' ')}
+                    </span>
+                  </div>
+                  <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-slate-600">
+                    <span>{String(order.order_method || '-').replaceAll('_', ' ')}</span>
+                    <span className="text-right">{String(order.payment_status || 'unpaid').replaceAll('_', ' ')}</span>
+                    <span className="col-span-2">{parseIsoDateTime(order.created_at)}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </>
+    );
+  };
+
   const renderShiftLocationPane = () => {
     if (!activeShift) {
       return (
@@ -835,31 +1163,7 @@ function ShiftControlsWorkspace({
           <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] text-amber-700">
             Shift Closed. Please open your shift before using the POS.
           </p>
-          {canAdminBypassShiftPrompt && (
-            <div className="mt-4 rounded-lg border border-blue-100 bg-blue-50/50 p-3">
-              <Label htmlFor="admin-operating-location" className="block text-[12px] font-black text-[#0F172A]">
-                Operating Location
-              </Label>
-              <select
-                id="admin-operating-location"
-                className="mt-2 h-11 w-full rounded-lg border border-blue-300 bg-white px-3 text-[13px] font-semibold text-[#0F172A] outline-none transition focus:border-[#2563EB] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
-                value={operatingLocationId || ''}
-                onChange={(event) => {
-                  const nextValue = event.target.value ? Number(event.target.value) : null;
-                  setOperatingLocationId(nextValue);
-                }}
-              >
-                {locations.map((location) => (
-                  <option key={`admin-operating-location-${location.location_id}`} value={location.location_id}>
-                    {location.name}
-                  </option>
-                ))}
-              </select>
-              <p className="mt-2 text-[11px] leading-4 text-[#475569]">
-                Admin navigation can use this location without a shift. Shift opening still uses the terminal&apos;s assigned location.
-              </p>
-            </div>
-          )}
+          {renderAdminBranchContext()}
           <div className="mt-4 space-y-3">
             <Label className="text-[12px] font-black text-[#0F172A]">Opening Float ({terminalMeta.pettyCashSymbol})</Label>
             <Input
@@ -883,11 +1187,14 @@ function ShiftControlsWorkspace({
               type="button"
               className="h-10 rounded-lg !bg-[#2563EB] px-5 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
               onClick={handleOpenShift}
-              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !isOnline}
+              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !isOnline || !activeTerminalMatchesOperatingLocation}
             >
               {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
             </Button>
             {!canRenderAdminShiftOpen && <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>}
+            {canAdminBypassShiftPrompt && !activeTerminalMatchesOperatingLocation && (
+              <p className="text-[11px] text-amber-700">Select and confirm a terminal assigned to this branch before opening a shift.</p>
+            )}
             {!isOnline && <p className="text-[11px] text-amber-700">Reconnect before opening a shift.</p>}
           </div>
         </div>
@@ -1060,11 +1367,14 @@ function ShiftControlsWorkspace({
               type="button"
               className="h-10 rounded-lg !bg-[#2563EB] px-5 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
               onClick={handleOpenShift}
-              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !isOnline}
+              disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !isOnline || !activeTerminalMatchesOperatingLocation}
             >
               {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
             </Button>
             {!canRenderAdminShiftOpen && <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>}
+            {canAdminBypassShiftPrompt && !activeTerminalMatchesOperatingLocation && (
+              <p className="text-[11px] text-amber-700">Select and confirm a terminal assigned to this branch before opening a shift.</p>
+            )}
             {!isOnline && <p className="text-[11px] text-amber-700">Reconnect before opening a shift.</p>}
           </div>
         </div>
@@ -1183,6 +1493,7 @@ function ShiftControlsWorkspace({
   };
 
   return (
+    <>
     <div id={sectionId} className="space-y-4">
       <h2 className="sr-only">Shift Controls</h2>
       <div className="rounded-2xl border border-slate-200 bg-white p-2 shadow-sm shadow-slate-200/70">
@@ -1241,6 +1552,117 @@ function ShiftControlsWorkspace({
         </div>
       )}
     </div>
+    <ConfirmActionDialog
+      open={Boolean(pendingAdminTerminalId)}
+      onOpenChange={(open) => {
+        if (!open) setPendingAdminTerminalId('');
+      }}
+      title={
+        selectedTerminalShiftOwnedByCurrentUser
+          ? `Resume your shift on ${pendingAdminTerminalId}?`
+          : (pendingAdminTerminalId ? `Use terminal ${pendingAdminTerminalId}?` : 'Use selected terminal?')
+      }
+      description={
+        selectedTerminalShiftOwnedByCurrentUser
+          ? 'This restores the existing shift you opened. It does not create a new shift or change the original opening record.'
+          : "This changes the Admin terminal context for the selected branch. It does not open a shift, take over another cashier's shift, or enable checkout until you open your own shift."
+      }
+      confirmLabel={selectedTerminalShiftOwnedByCurrentUser ? 'Resume Shift' : 'Use Terminal'}
+      onConfirm={() => onSelectAdminTerminal?.(pendingAdminTerminalId)}
+    />
+    <Dialog
+      open={Boolean(staleRecoveryShift)}
+      onOpenChange={(open) => {
+        if (!open) closeStaleRecoveryDialog();
+      }}
+    >
+      <DialogContent className="w-[calc(100vw-1.5rem)] max-w-lg rounded-2xl border border-amber-200 bg-white p-0 shadow-2xl shadow-slate-950/20">
+        <form onSubmit={submitStaleShiftRecovery}>
+          <DialogHeader className="border-b border-amber-100 bg-amber-50/70 px-5 py-4">
+            <DialogTitle className="flex items-center gap-2 text-lg font-black text-amber-950">
+              <AlertTriangle className="h-5 w-5 text-amber-600" />
+              Recover Stale Shift
+            </DialogTitle>
+            <DialogDescription className="mt-1 text-sm leading-6 text-amber-900">
+              Force-close this stale shift without changing its original owner. This action is audited and cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 px-5 py-4">
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+              <p className="font-black text-slate-900">
+                {staleRecoveryShift?.terminal_id || `Shift #${staleRecoveryShift?.pos_terminal_shift_id || ''}`}
+              </p>
+              <p className="mt-1">
+                Opened by {staleRecoveryShift?.cashier?.username
+                  || staleRecoveryShift?.cashier?.email
+                  || (staleRecoveryShift?.cashier_id ? `Operator #${staleRecoveryShift.cashier_id}` : 'Unknown operator')}
+              </p>
+              <p className="mt-1">Opened: {parseIsoDateTime(staleRecoveryShift?.opened_at)}</p>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="stale-shift-closing-cash" className="text-sm font-black text-slate-900">
+                Closing Cash Amount
+              </Label>
+              <Input
+                id="stale-shift-closing-cash"
+                type="number"
+                min="0"
+                step="0.01"
+                required
+                value={staleRecoveryForm.closingCashAmount}
+                onChange={(event) => setStaleRecoveryForm((current) => ({
+                  ...current,
+                  closingCashAmount: event.target.value
+                }))}
+                placeholder="0.00"
+                disabled={shiftActionLoading?.staleRecovery}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="stale-shift-recovery-reason" className="text-sm font-black text-slate-900">
+                Recovery Reason
+              </Label>
+              <Input
+                id="stale-shift-recovery-reason"
+                required
+                minLength={8}
+                value={staleRecoveryForm.reason}
+                onChange={(event) => setStaleRecoveryForm((current) => ({
+                  ...current,
+                  reason: event.target.value
+                }))}
+                placeholder="Explain why this stale shift must be closed"
+                disabled={shiftActionLoading?.staleRecovery}
+              />
+              <p className="text-xs text-slate-500">At least 8 characters are required for the audit record.</p>
+            </div>
+          </div>
+          <DialogFooter className="border-t border-slate-200 px-5 py-4">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeStaleRecoveryDialog}
+              disabled={shiftActionLoading?.staleRecovery}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              className="bg-amber-600 text-white hover:bg-amber-700"
+              disabled={
+                shiftActionLoading?.staleRecovery
+                || !isOnline
+                || !isValidOpeningCashAmount(staleRecoveryForm.closingCashAmount)
+                || staleRecoveryForm.reason.trim().length < 8
+              }
+            >
+              {shiftActionLoading?.staleRecovery ? 'Recovering Shift...' : 'Force Close Stale Shift'}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }
 
@@ -3203,21 +3625,58 @@ function ItemsWorkspace({
 
       {itemSaveInFlight && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/65 px-4 backdrop-blur-sm"
+          className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/75 px-4 backdrop-blur-md transition-all duration-300"
           role="status"
           aria-live="assertive"
-          aria-label="Saving item"
+          aria-label="Saving menu item"
         >
-          <div className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-7 text-center shadow-2xl shadow-slate-950/30">
-            <div className="mx-auto flex h-14 w-20 items-center justify-center gap-2 rounded-full bg-blue-50" aria-hidden="true">
-              <span className="h-4 w-4 animate-bounce rotate-[-45deg] bg-blue-500 [animation-delay:-0.2s] [border-radius:50%_50%_50%_0]" />
-              <span className="h-5 w-5 animate-bounce rotate-[-45deg] bg-blue-600 [animation-delay:-0.1s] [border-radius:50%_50%_50%_0]" />
-              <span className="h-4 w-4 animate-bounce rotate-[-45deg] bg-blue-500 [border-radius:50%_50%_50%_0]" />
+          <div className="relative w-full max-w-sm overflow-hidden rounded-3xl bg-white/95 p-8 text-center shadow-[0_25px_60px_-15px_rgba(245,158,11,0.25)] border border-amber-100/80 backdrop-blur-xl animate-float">
+
+            {/* Top Warm Accent Shimmer Bar */}
+            <div className="absolute top-0 left-0 right-0 h-1.5 bg-amber-50 overflow-hidden">
+              <div className="h-full w-1/2 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 rounded-full animate-shimmer" />
             </div>
-            <p className="mt-4 text-lg font-extrabold text-[#0F172A]">Saving item…</p>
-            <p className="mt-2 text-sm leading-6 text-[#64748B]">
-              Please wait while we finish saving your changes.
+
+            {/* F&B Status Pill */}
+            <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-[11px] font-bold tracking-wide text-amber-700 border border-amber-200/60 mb-2">
+              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping" />
+              F&B KITCHEN & MENU SYNC
+            </div>
+
+            {/* Icon Container with Animated Orbital Rings */}
+            <div className="relative mx-auto my-3 flex h-20 w-20 items-center justify-center">
+              {/* Outer Glowing Pulse Ring */}
+              <div className="absolute inset-0 rounded-full bg-amber-500/10 animate-pulse-ring" />
+
+              {/* Outer Rotating Gradient Ring */}
+              <div className="absolute inset-0 rounded-full border-2 border-dashed border-amber-400/50 animate-spin-slow" />
+
+              {/* Inner Counter-rotating Gradient Ring */}
+              <div className="absolute inset-1 rounded-full border-2 border-orange-500/30 border-t-orange-500 animate-spin-reverse" />
+
+              {/* Center F&B Emblem Container */}
+              <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 shadow-lg shadow-orange-500/35 text-white">
+                <UtensilsCrossed className="h-7 w-7 text-white drop-shadow" />
+              </div>
+            </div>
+
+            {/* Title */}
+            <h3 className="mt-3 text-xl font-extrabold tracking-tight text-slate-900">
+              Saving Menu Item…
+            </h3>
+
+            {/* Subtitle */}
+            <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500 px-1">
+              Updating food & beverage details and syncing menu changes across POS terminals & Kitchen Displays.
             </p>
+
+            {/* Animated Dots Indicator */}
+            <div className="mt-5 flex items-center justify-center gap-1.5 text-amber-600">
+              <span className="h-2 w-2 rounded-full bg-amber-500 dot-1" />
+              <span className="h-2 w-2 rounded-full bg-amber-500 dot-2" />
+              <span className="h-2 w-2 rounded-full bg-amber-500 dot-3" />
+            </div>
+
           </div>
         </div>
       ), document.body)}
@@ -6910,6 +7369,7 @@ export default function TerminalOperationsWorkspace({
   offlineSnapshotScope = {},
   onQueueOfflineItemDraft = async () => '',
   activeTerminalId = '',
+  terminalRegistry = [],
   canViewPos,
   canCreateItems = false,
   canEditItems = false,
@@ -6939,6 +7399,12 @@ export default function TerminalOperationsWorkspace({
   queueLocationScopeId = null,
   setQueueLocationScopeId = () => {},
   incomingOrdersState = { loading: false, orders: [] },
+  adminLocationMonitorState = { loading: false, orders: [], terminalShifts: [], errorMessage: '' },
+  adminTerminalSwitching = false,
+  onSelectAdminTerminal = async () => false,
+  refreshAdminLocationMonitor = async () => {},
+  canRecoverStaleShifts = false,
+  handleForceCloseStaleShift = async () => false,
   incomingOrderActionState = {},
   handleIncomingOrderStatusChange = () => {},
   handleOpenCashCollection = () => {},
@@ -7022,6 +7488,9 @@ export default function TerminalOperationsWorkspace({
         <ShiftControlsWorkspace
           shiftState={shiftState}
           terminalMeta={terminalMeta}
+          operatorUserId={resolvePosUserId(terminalUser)}
+          activeTerminalId={activeTerminalId}
+          terminalRegistry={terminalRegistry}
           locationsState={locationsState}
           operatingLocationId={operatingLocationId}
           setOperatingLocationId={setOperatingLocationId}
@@ -7043,6 +7512,12 @@ export default function TerminalOperationsWorkspace({
           cashEventForm={cashEventForm}
           setCashEventForm={setCashEventForm}
           handleRecordCashEvent={handleRecordCashEvent}
+          adminLocationMonitorState={adminLocationMonitorState}
+          adminTerminalSwitching={adminTerminalSwitching}
+          onSelectAdminTerminal={onSelectAdminTerminal}
+          refreshAdminLocationMonitor={refreshAdminLocationMonitor}
+          canRecoverStaleShifts={canRecoverStaleShifts}
+          handleForceCloseStaleShift={handleForceCloseStaleShift}
           isOnline={isOnline}
           sectionId={sectionIds.activeShift}
           initialTab={viewMode === 'close_shift' ? 'close_shift' : 'shift_location'}
@@ -7053,6 +7528,9 @@ export default function TerminalOperationsWorkspace({
         <ShiftControlsWorkspace
           shiftState={shiftState}
           terminalMeta={terminalMeta}
+          operatorUserId={resolvePosUserId(terminalUser)}
+          activeTerminalId={activeTerminalId}
+          terminalRegistry={terminalRegistry}
           locationsState={locationsState}
           operatingLocationId={operatingLocationId}
           setOperatingLocationId={setOperatingLocationId}
@@ -7074,6 +7552,12 @@ export default function TerminalOperationsWorkspace({
           cashEventForm={cashEventForm}
           setCashEventForm={setCashEventForm}
           handleRecordCashEvent={handleRecordCashEvent}
+          adminLocationMonitorState={adminLocationMonitorState}
+          adminTerminalSwitching={adminTerminalSwitching}
+          onSelectAdminTerminal={onSelectAdminTerminal}
+          refreshAdminLocationMonitor={refreshAdminLocationMonitor}
+          canRecoverStaleShifts={canRecoverStaleShifts}
+          handleForceCloseStaleShift={handleForceCloseStaleShift}
           isOnline={isOnline}
           sectionId={sectionIds.activeShift}
           initialTab="cash_drawer"
@@ -7122,6 +7606,9 @@ export default function TerminalOperationsWorkspace({
     canCreateItems,
     canDeleteItems,
     canEditItems,
+    canRecoverStaleShifts,
+    adminLocationMonitorState,
+    adminTerminalSwitching,
     itemsStockFilterPreset,
     workflowMode,
     canSwitchPosLocation,
@@ -7133,6 +7620,7 @@ export default function TerminalOperationsWorkspace({
     handleIncomingOrderStatusChange,
     handleOpenCashCollection,
     handleOpenIncomingOrderReceipt,
+    handleForceCloseStaleShift,
     incomingReceiptOpeningId,
     handleOpenShift,
     handleSwitchShiftLocation,
@@ -7151,6 +7639,7 @@ export default function TerminalOperationsWorkspace({
     handleResolveQueuedOperation,
     onItemsStockFilterPresetApplied,
     onPosSetupSaved,
+    onSelectAdminTerminal,
     onStorefrontSetupSaved,
     onlineOrderSoundEnabled,
     setQueueStatusFilter,
@@ -7158,6 +7647,7 @@ export default function TerminalOperationsWorkspace({
     openShiftForm,
     queueLocationScopeId,
     refreshIncomingOrders,
+    refreshAdminLocationMonitor,
     refreshOperationalContext,
     reportRefreshKey,
     isOnline,
@@ -7184,6 +7674,7 @@ export default function TerminalOperationsWorkspace({
     shiftActionLoading,
     shiftState,
     terminalMeta,
+    terminalRegistry,
     terminalUser,
     todayDashboard,
     effectiveViewMode,

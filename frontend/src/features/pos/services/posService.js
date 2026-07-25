@@ -195,6 +195,13 @@ export const closeTerminalShift = async (shiftId, payload = {}) => {
     return response.data?.data;
 };
 
+export const forceCloseStaleTerminalShift = async (shiftId, payload = {}) => {
+    const response = await api.post(`/pos/terminal/shifts/${shiftId}/force-close`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
 export const fetchTerminalTodayDashboard = async (params = {}, requestConfig = {}) => {
     const response = await api.get('/pos/terminal/dashboard/today', { params, ...requestConfig });
     return response.data?.data;
@@ -269,6 +276,14 @@ export const exportPosReportCsv = async (params = {}) => {
 
 export const fetchIncomingOnlineOrders = async (params = {}, requestConfig = {}) => {
     const response = await api.get('/pos/incoming-orders', {
+        params,
+        ...requestConfig
+    });
+    return response.data?.data;
+};
+
+export const fetchAdminLocationMonitor = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/admin/location-monitor', {
         params,
         ...requestConfig
     });
@@ -390,6 +405,7 @@ export default {
     switchTerminalShiftLocation,
     recordCashDrawerEvent,
     closeTerminalShift,
+    forceCloseStaleTerminalShift,
     fetchTerminalTodayDashboard,
     fetchPosReportsOverview,
     fetchPosReportsTopItems,

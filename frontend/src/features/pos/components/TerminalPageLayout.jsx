@@ -54,6 +54,12 @@ export default function TerminalPageLayout({
     isMsmeMode = false,
     shiftState,
     incomingOrdersState,
+    adminLocationMonitorState = { loading: false, orders: [], terminalShifts: [], errorMessage: '' },
+    adminTerminalSwitching = false,
+    onSelectAdminTerminal = async () => false,
+    refreshAdminLocationMonitor = async () => {},
+    canRecoverStaleShifts = false,
+    handleForceCloseStaleShift = async () => false,
     onlineOrderSoundEnabled = true,
     locationsState,
     operatingLocationId,
@@ -686,6 +692,7 @@ export default function TerminalPageLayout({
                 isMsmeMode={isMsmeMode}
                 terminalUser={terminalUser}
                 activeTerminalId={normalizedActiveTerminalId}
+                terminalRegistry={terminalRegistry}
                 locked={locked}
                 terminalMeta={terminalMeta}
                 shiftState={shiftState}
@@ -720,6 +727,12 @@ export default function TerminalPageLayout({
                 queueLocationScopeId={queueLocationScopeId}
                 setQueueLocationScopeId={setQueueLocationScopeId}
                 incomingOrdersState={incomingOrdersState}
+                adminLocationMonitorState={adminLocationMonitorState}
+                adminTerminalSwitching={adminTerminalSwitching}
+                onSelectAdminTerminal={onSelectAdminTerminal}
+                refreshAdminLocationMonitor={refreshAdminLocationMonitor}
+                canRecoverStaleShifts={canRecoverStaleShifts}
+                handleForceCloseStaleShift={handleForceCloseStaleShift}
                 onlineOrderSoundEnabled={onlineOrderSoundEnabled}
                 incomingOrderActionState={incomingOrderActionState}
                 handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
