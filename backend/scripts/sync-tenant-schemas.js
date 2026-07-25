@@ -301,6 +301,41 @@ export async function repairItemFolderCategoryLifecycleSchema(connection, tenant
     }
 }
 
+// MySQL refuses to add a STORED generated column whose base column carries an ON UPDATE
+// CASCADE/SET NULL/SET DEFAULT foreign key (adding a stored generated column forces an
+// ALGORITHM=COPY rebuild that re-validates the FK against this rule), surfacing only as a
+// generic "Cannot add foreign key constraint" (errno 1215). pos_terminal_shifts.cashier_id
+// carries exactly such an FK pointed at users.user_id, an AUTO_INCREMENT primary key that's
+// never updated in place, so CASCADE there is unused. Must run BEFORE the generic
+// REQUIRED_TENANT_SCHEMA_COLUMNS repair loop adds `active_operator_user_id`, on every tenant
+// (constraint name varies per database: ibfk_1, ibfk_2, ibfk_4, ibfk_8, ...).
+export async function relaxPosShiftCashierForeignKey(connection, tenantDb) {
+    const [rows] = await queryWithReplacements(
+        connection,
+        `SELECT rc.CONSTRAINT_NAME AS constraintName, rc.UPDATE_RULE AS updateRule
+           FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS rc
+           JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE k
+             ON k.CONSTRAINT_SCHEMA = rc.CONSTRAINT_SCHEMA
+            AND k.CONSTRAINT_NAME = rc.CONSTRAINT_NAME
+          WHERE rc.CONSTRAINT_SCHEMA = ?
+            AND rc.TABLE_NAME = 'pos_terminal_shifts'
+            AND k.COLUMN_NAME = 'cashier_id'`,
+        [tenantDb]
+    );
+    const foreignKey = rows[0];
+    if (!foreignKey || String(foreignKey.updateRule).toUpperCase() === 'RESTRICT') return;
+
+    const table = `${quoteIdentifier(tenantDb)}.${quoteIdentifier('pos_terminal_shifts')}`;
+    const constraintName = quoteIdentifier(foreignKey.constraintName);
+    await connection.query(`ALTER TABLE ${table} DROP FOREIGN KEY ${constraintName}`);
+    await connection.query(`
+        ALTER TABLE ${table}
+        ADD CONSTRAINT ${constraintName}
+        FOREIGN KEY (${quoteIdentifier('cashier_id')}) REFERENCES ${quoteIdentifier(tenantDb)}.${quoteIdentifier('users')} (${quoteIdentifier('user_id')})
+        ON UPDATE RESTRICT ON DELETE RESTRICT
+    `);
+}
+
 // Seed rows that ship with a REQUIRED_TENANT_SCHEMA_TABLES table. Gated on the table being empty
 // (rather than "was it just created by this run") so a prior partial failure — table created,
 // seed step never ran — self-heals on the next pass instead of silently staying unseeded forever.
@@ -648,6 +683,10 @@ export async function runTenantSchemaSync({ reportFile = '', failOnError = false
                     const missingColumns = await inspectRequiredTenantSchemaColumns(connection, tenant.db_name);
                     const columnRepairSql = buildTenantSchemaRepairSql(missingColumns);
                     if (normalizedMode === 'repair-apply') {
+                        // Must precede the loop below: it adds pos_terminal_shifts.active_operator_user_id
+                        // as a STORED generated column, which MySQL refuses while cashier_id's FK still
+                        // carries ON UPDATE CASCADE (see relaxPosShiftCashierForeignKey for why).
+                        await relaxPosShiftCashierForeignKey(connection, tenant.db_name);
                         for (const repair of columnRepairSql) {
                             await useTenantDb();
                             await connection.query(repair.sql);

@@ -459,7 +459,12 @@ Item.hasOne(StorefrontCatalogOverride, { foreignKey: 'item_id', as: 'storefrontC
 StorefrontCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 Item.hasMany(StorefrontLocationItemOverride, { foreignKey: 'item_id', as: 'storefrontLocationItemOverrides' });
 StorefrontLocationItemOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
-PosTerminalShift.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
+// onUpdate/onDelete pinned to RESTRICT: cashier_id is the base column of the STORED generated
+// column active_operator_user_id, and MySQL forbids ON UPDATE CASCADE/SET NULL/SET DEFAULT on
+// a generated column's base column (see 20260724000001-enforce-one-open-shift-per-operator.cjs).
+// Sequelize's default onUpdate is CASCADE, which would recreate the broken FK on any tenant
+// provisioned via sequelize.sync() unless pinned here.
+PosTerminalShift.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
 PosTerminalShift.belongsTo(User, { foreignKey: 'closed_by', as: 'closedByUser' });
 PosTerminalShift.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 PosTerminalShift.hasMany(PosCashDrawerEvent, { foreignKey: 'pos_terminal_shift_id', as: 'cashEvents' });
