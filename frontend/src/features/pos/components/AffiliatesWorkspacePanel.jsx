@@ -13,7 +13,6 @@ import {
     Send,
     ShieldAlert,
     Trash2,
-    UserPlus,
     XCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -29,7 +28,6 @@ import {
     inviteAffiliate,
     cancelAffiliateInvite,
     markAffiliateCashoutPaid,
-    provisionAffiliate,
     rejectAffiliateCashout,
     updateAffiliateEnrollment,
     updateAffiliateSettings
@@ -98,9 +96,6 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
     const [settingsDraft, setSettingsDraft] = useState(null);
     const [savingSettings, setSavingSettings] = useState(false);
     const [affiliates, setAffiliates] = useState([]);
-    const [provisionEmail, setProvisionEmail] = useState('');
-    const [provisionRate, setProvisionRate] = useState('');
-    const [provisioning, setProvisioning] = useState(false);
     const [invites, setInvites] = useState([]);
     const [inviteEmail, setInviteEmail] = useState('');
     const [inviteRate, setInviteRate] = useState('');
@@ -157,27 +152,6 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
             toast.error(err?.response?.data?.message || 'Failed to update affiliate settings');
         } finally {
             setSavingSettings(false);
-        }
-    };
-
-    const handleProvision = async () => {
-        const email = provisionEmail.trim();
-        if (!email) {
-            toast.error('Enter the affiliate\'s DGFY account email');
-            return;
-        }
-        setProvisioning(true);
-        try {
-            const rateBps = provisionRate.trim() ? percentStringToBps(provisionRate) : null;
-            await provisionAffiliate({ email, commission_rate_bps: rateBps });
-            toast.success('Affiliate provisioned');
-            setProvisionEmail('');
-            setProvisionRate('');
-            await loadData();
-        } catch (err) {
-            toast.error(err?.response?.data?.message || 'Failed to provision affiliate');
-        } finally {
-            setProvisioning(false);
         }
     };
 
@@ -429,43 +403,6 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
                             </Button>
                         </div>
                     )}
-                </section>
-            )}
-
-            {!loading && !error && canManage && (
-                <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
-                    <h3 className="mb-3 text-sm font-black text-[#0F172A]">Provision Affiliate</h3>
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
-                        <div className="flex-1 space-y-1">
-                            <label className="text-xs font-semibold text-[#0F172A]">DGFY account email</label>
-                            <Input
-                                type="email"
-                                className="h-8 text-xs"
-                                placeholder="affiliate@example.com"
-                                value={provisionEmail}
-                                onChange={(e) => setProvisionEmail(e.target.value)}
-                            />
-                        </div>
-                        <div className="w-full space-y-1 sm:w-40">
-                            <label className="text-xs font-semibold text-[#0F172A]">Rate override (%, optional)</label>
-                            <Input
-                                type="number"
-                                min="0"
-                                max="100"
-                                step="0.1"
-                                className="h-8 text-xs"
-                                placeholder="Default"
-                                value={provisionRate}
-                                onChange={(e) => setProvisionRate(e.target.value)}
-                            />
-                        </div>
-                        <Button type="button" size="sm" onClick={handleProvision} disabled={provisioning}>
-                            <UserPlus className="mr-1.5 h-3.5 w-3.5" /> {provisioning ? 'Adding...' : 'Add Affiliate'}
-                        </Button>
-                    </div>
-                    <p className="mt-2 text-[11px] text-slate-500">
-                        The affiliate must already have a DGFY account with this email.
-                    </p>
                 </section>
             )}
 

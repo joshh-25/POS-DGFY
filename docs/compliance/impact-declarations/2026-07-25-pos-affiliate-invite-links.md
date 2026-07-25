@@ -30,9 +30,13 @@ fiscal-document file is touched anywhere in this PR.
 ## Affected Surfaces
 
 - `frontend/src/features/pos/components/AffiliatesWorkspacePanel.jsx`: adds an admin-gated "Invite
-  Affiliate" form (email + optional rate override) and a pending-invites list with a cancel action,
-  rendered alongside the existing (unchanged) instant "Provision Affiliate" section. Gated by the same
-  `affiliates:manage` / `affiliates:view` checks already used by this panel.
+  Affiliate" form (email + optional rate override) and a pending-invites list with a cancel action.
+  Update: the separate instant "Provision Affiliate" section was removed and its behavior consolidated
+  into this single invite action (the invite flow already auto-detects whether the email has a DGFY
+  account and routes existing accounts through an explicit accept step) - so an existing account is no
+  longer instantly enrolled without acknowledgment. Gated by the same `affiliates:manage` /
+  `affiliates:view` checks already used by this panel; the backend provision endpoint is left intact but
+  is no longer surfaced in the POS.
 - `frontend/src/features/pos/services/affiliateService.js`: adds `inviteAffiliate`,
   `listAffiliateInvites`, and `cancelAffiliateInvite` API-client wrappers for the new admin invite
   endpoints; no existing wrapper is modified.

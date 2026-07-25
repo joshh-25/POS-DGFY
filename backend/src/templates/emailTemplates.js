@@ -181,8 +181,16 @@ export const getAffiliateInviteTemplate = ({
     : `${origin}/register?email=${encodeURIComponent(inviteeEmail)}&aff_invite=${encodeURIComponent(invitationToken)}`;
   const inviteUrl = appendUtm(inviteUrlRaw, 'affiliate_invitation');
 
-  const safeInviterName = escapeHtml(inviterName || businessName);
   const safeBusinessName = escapeHtml(businessName);
+  // Only name a distinct inviter; otherwise the sentence would echo the business name
+  // ("Acme invited you to become an affiliate of Acme"). Falls back to a business-centric intro.
+  const trimmedInviterName = String(inviterName || '').trim();
+  const hasDistinctInviter = trimmedInviterName && trimmedInviterName !== String(businessName || '').trim();
+  const introHtml = hasDistinctInviter
+    ? `<strong style="color: #1f2937;">${escapeHtml(trimmedInviterName)}</strong> invited you to become an affiliate of
+                <strong style="color: #1f2937;">${safeBusinessName}</strong> and earn commissions when people you refer buy from their store.`
+    : `You've been invited to become an affiliate of
+                <strong style="color: #1f2937;">${safeBusinessName}</strong> and earn commissions when people you refer buy from their store.`;
   const safeExpiresIn = escapeHtml(expiresIn);
   const safeInviteUrl = escapeHtml(inviteUrl);
   const ctaLabel = accountExists ? 'Accept &amp; Become an Affiliate' : 'Join &amp; Become an Affiliate';
@@ -229,8 +237,7 @@ export const getAffiliateInviteTemplate = ({
 
               <!-- Message -->
               <p style="margin: 0 0 24px; color: #4b5563; font-size: 16px; text-align: center;">
-                <strong style="color: #1f2937;">${safeInviterName}</strong> invited you to become an affiliate of
-                <strong style="color: #1f2937;">${safeBusinessName}</strong> and earn commissions when people you refer buy from their store.
+                ${introHtml}
               </p>
 
               <!-- Description -->
