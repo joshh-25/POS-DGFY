@@ -13,7 +13,10 @@ topic: offering_archetypes
 that backs Axis 1 (offering archetype) of
 `docs/architecture/adr/0037-unified-product-domain-and-capability-driven-store-types.md`
 and `docs/features/UNIFIED_PRODUCT_DOMAIN.md`. Read those first for the
-three-axis model this doc fills in.
+four-axis model this doc fills in. Each archetype below also carries a
+**default tracking mode (Axis 4)** — see
+`docs/features/INVENTORY_TRACKING_MODES.md` for the full tracking-mode catalog
+and the permissive-override rule referenced throughout this document.
 
 ## Why archetypes, not verticals
 
@@ -49,33 +52,51 @@ default `pos_transaction_lines.stock_effect_type`
 (`backend/src/models/PosTransactionLine.js`), the mechanism that already lets a
 mixed basket work.
 
-| Archetype | Meaning | Default `category` | Stock effect | Scheduling |
+| Archetype | Meaning | Default `category` | Default tracking mode (Axis 4) | Scheduling |
 |---|---|---|---|---|
-| `physical_product` | A tangible good sold as-is | `product` / `raw_material` / `supplies` | `inventory_issue` (stock-bearing) | none |
-| `time_service` | Labor/attention sold by the job or session | `service` | `stock_exempt` | optional — walk-in or advance-booked |
-| `ticketed_seat` | A specific seat/slot in a fixed-capacity event | `service` | `stock_exempt`, capacity-bound | fixed schedule + seat/slot capacity |
-| `capacity_slot` | A generic bookable time slot, not seat-specific | `service` | `stock_exempt`, capacity-bound | advance booking with capacity |
+| `physical_product` | A tangible good sold as-is | `product` / `raw_material` / `supplies` | `count_ledger` | none |
+| `time_service` | Labor/attention sold by the job or session | `service` | `capacity` — not inventory at all | optional — walk-in or advance-booked |
+| `ticketed_seat` | A specific seat/slot in a fixed-capacity event | `service` | `capacity` — not inventory at all | fixed schedule + seat/slot capacity |
+| `capacity_slot` | A generic bookable time slot, not seat-specific | `service` | `capacity` — not inventory at all | advance booking with capacity |
 | `rental` | A physical asset lent for a duration, then returned | `product` | **gap — see below** | duration-bound occupancy |
+
+**Permissive, always.** These are *defaults*, not constraints — a seller may
+switch any product to any valid Axis 4 tracking mode. A carinderia may keep a
+real, maintained count of "20 servings of menudo left" on a `physical_product`
++ `prepared_food` item even though the archetype default is `toggle`; a
+service can still carry `stock_effect_type` on the *parts* it consumes even
+though the service line itself is never inventoried. See
+`docs/features/INVENTORY_TRACKING_MODES.md` design rule 1.
 
 ### `physical_product`
 
 The default for anything sold as a tangible unit: chippy, a broom, a bracelet,
 raw meat, a bottle of water. Stock-bearing by default
-(`inventory_issue`), sold through `pos_transaction_lines` like any item today.
-UOM groups: `count`, `packaging`, plus `weight`/`volume` when a trait applies.
-POS + Storefront eligible by default. This is the archetype every long-tail
-non-service seller starts from — **zero new code** is needed to onboard one.
+(`inventory_issue`), sold through `pos_transaction_lines` like any item today,
+defaulting to Axis 4's `count_ledger` tracking mode (a real, ledger-backed
+count — no batches). UOM groups: `count`, `packaging`, plus `weight`/`volume`
+when a trait applies. POS + Storefront eligible by default. This is the
+archetype every long-tail non-service seller starts from — **zero new code**
+is needed to onboard one. The `prepared_food` and `made_to_order` traits shift
+the *tracking-mode* default to `toggle` (see Traits below and
+`docs/features/INVENTORY_TRACKING_MODES.md`) — the archetype and its stock
+effect are unchanged, only how availability is determined changes.
 
 ### `time_service`
 
 Labor sold by the job/session: computer repair, TV repair, phone repair, shoe
-cleaning, a masahista's massage, a haircut. Stock-exempt
-(`category='service'`); can be sold as a POS walk-in line exactly like today,
-or advance-booked through the existing Services Mode stack
-(`backend/src/modules/services/`, `service_item_details`, `service_bookings`).
-A repair combined with `physical_product` parts consumed during the job is the
-canonical mixed-basket case (`docs/features/UNIFIED_PRODUCT_DOMAIN.md`
-Capability A).
+cleaning, a masahista's massage, a haircut. `category='service'`, and tracked
+by Axis 4's `capacity` mode — **it is not inventoried at all**, because a
+service cannot be honestly held as a stock quantity; its constraint is time
+and (when scheduled) concurrent capacity, not units on a shelf. Can be sold as
+a POS walk-in line exactly like today, or advance-booked through the existing
+Services Mode stack (`backend/src/modules/services/`, `service_item_details`,
+`service_bookings`). The service line itself carries no stock effect, but a
+service can still *consume* countable inventory (massage oil, a repair part) —
+that consumption is expressed on the *parts* line via `stock_effect_type`, not
+on the service. A repair combined with `physical_product` parts consumed
+during the job is the canonical mixed-basket case
+(`docs/features/UNIFIED_PRODUCT_DOMAIN.md` Capability A).
 
 ### `ticketed_seat`
 
@@ -122,8 +143,8 @@ variation without a new archetype or a new vertical.
 | `pack_to_unit` | Received as a pack, sold by the piece ("mini tiangge") | `ItemBarcode.packaging_level` + `quantity_multiplier`, already used at POS-scan time (`backend/src/modules/pos/usecases/posUseCases.js`) | Sell-side works; receiving-side (PO receipt / adjustment / CSV import) conversion is a gap — see `docs/proposals/2026-07-06-flexible-item-types-mini-tiangge-jewelry.md` |
 | `serialized` | Per-piece identity (jewelry: one specific necklace) | none yet | Deferred — needs a new `ItemUnit`/`ItemSerial` table per the flexible-item-types proposal; explicitly the riskier of its two recommendations |
 | `refill` | Sold by dispensed volume from a station (water refill) | `volume` UOM group | No preset; operationally close to `weighed` (dispense-then-charge) |
-| `made_to_order` | Built only on order, no standing stock (a bracelet maker) | `stock_effect_type='stock_exempt'` with a `stock_exempt_reason` | Mechanically already possible on `physical_product`; no preset names it explicitly today |
-| `prepared_food` | Recipe/composition-based, immediate consumption | `ProductComposition` (BOM), `fifo_enabled:false`, modifier groups | Fully supported today under `fnb`/`food_manufacturing` |
+| `made_to_order` | Built only on order, no standing stock (a bracelet maker) | Axis 4 `toggle` tracking mode instead of a maintained count | Mechanically already possible (`stock_effect_type='stock_exempt'`); no preset names it explicitly today, and `toggle` as a first-class cross-surface mode doesn't exist yet — see `docs/features/INVENTORY_TRACKING_MODES.md` |
+| `prepared_food` | Recipe/composition-based, immediate consumption | `ProductComposition` (BOM) consumption engine (shipped, **frozen** — see below); Axis 4 `toggle` for browse-time availability | Ingredient *consumption* at checkout is fully built and shipped; browse-time availability is **not** ingredient-derived today (a live bug — see `docs/features/UNIFIED_PRODUCT_DOMAIN.md` Capability F) and is resolved via `toggle`, not by extending the recipe engine |
 
 ## Proof the axis is real: today's corrected presets are archetype projections
 
@@ -179,10 +200,19 @@ branch in five duplicated files.
 
 ## Non-goals of this document
 
-- Does not define the vertical presets (Axis 2) or the provider/source axis
-  (Axis 3) — see `docs/features/UNIFIED_PRODUCT_DOMAIN.md`.
+- Does not define the vertical presets (Axis 2), the provider/source axis
+  (Axis 3), or the full availability/tracking-mode catalog (Axis 4) — see
+  `docs/features/UNIFIED_PRODUCT_DOMAIN.md` and
+  `docs/features/INVENTORY_TRACKING_MODES.md`. This document states each
+  archetype's *default* tracking mode only; the mode catalog itself,
+  including exactly which modes already exist versus are new, lives in
+  `INVENTORY_TRACKING_MODES.md`.
 - Does not implement archetype-derived presets, the retail taxonomy correction,
   or any migration — this is a reference catalog for that later implementation
   work (Phase 2 of the roadmap in `docs/features/UNIFIED_PRODUCT_DOMAIN.md`).
-- Does not resolve the `rental` lifecycle gap or jewelry serialization — both
-  are named and deferred.
+- Does not resolve the `rental` archetype's occupancy-tracking gap or jewelry
+  serialization — both are named and deferred.
+- Does not extend the local recipe-consumption engine
+  (`fnbRecipeConsumption.js`) into a browse-time producibility projection —
+  that work is frozen per confirmed product direction; ingredient-derived
+  availability (`recipe_derived`) is reserved for the external IMS.

@@ -3,7 +3,7 @@ status: reference
 authority_level: reference
 owner: architecture
 last_reviewed: 2026-07-25
-applies_to: catalog,inventory,pos,services,storefront,onboarding
+applies_to: catalog,inventory,pos,services,storefront,onboarding,reports
 topic: unified_product_domain
 ---
 
@@ -11,12 +11,14 @@ topic: unified_product_domain
 
 **Status: design (not yet implemented).** This is the detailed design and
 phased roadmap for uniting the platform's products behind one product concept
-and one line-item model, and for letting any store — native vertical or
-long-tail seller — select and sell the right items through the POS. The
-ratifying decisions live in
+and one line-item model, for letting any store — native vertical or long-tail
+seller — select and sell the right items through the POS, and for treating
+inventory tracking as a spectrum instead of one heavyweight model every
+product inherits. The ratifying decisions live in
 `docs/architecture/adr/0037-unified-product-domain-and-capability-driven-store-types.md`.
-The archetype/trait catalog referenced throughout lives in
-`docs/features/OFFERING_ARCHETYPES.md`. Read `docs/START_HERE.md`,
+The archetype/trait catalog lives in `docs/features/OFFERING_ARCHETYPES.md`;
+the tracking-mode catalog lives in
+`docs/features/INVENTORY_TRACKING_MODES.md`. Read `docs/START_HERE.md`,
 `docs/architecture/ARCHITECTURE_BOUNDARIES.md`, and
 `docs/architecture/ARCHITECTURE_GOVERNANCE.md` first.
 
@@ -42,13 +44,29 @@ model — **without splitting into a separate table per product type**, and
 without needing a new engineering "mode" every time a new kind of seller shows
 up.
 
-**This document supersedes its own earlier framing.** An earlier pass described
-"three product domains" (food/services/retail) as the target model and proposed
-a closed `sell_food`/`sell_services`/`sell_retail` capability trio. That is a
-closed enumeration with the same shape as the platform's original food-centric
-mistake — it cannot express a farmer or a bracelet maker without adding a new
-value per category. This revision replaces the closed trio with the open
-three-axis model below.
+**A second, equally important problem: the platform is IMS-first.** DGFY was
+cloned from SKUpervisor, an Inventory Management System, before it grew a POS
+and a storefront. That history baked in an assumption — every sellable product
+carries an accurate, batch-tracked quantity — that is simply false for large
+classes of products. A restaurant menu item cannot be honestly tracked as "10
+servings"; cooking isn't that consistent, so its availability is either
+*declared* (an operator on/off switch) or *derived* (computed from ingredient
+stock), never a maintained count. A service cannot be inventoried at all — its
+constraint is time and capacity, not units on a shelf. SKUpervisor is now
+being built **separately** as a dedicated IMS, and DGFY will *optionally* tap
+into it for deep, accurate tracking. So DGFY's own inventory needs to become a
+**spectrum** — no tracking, a simple ledger-backed count, or delegation to the
+external IMS — with today's heavyweight FIFO-batch machinery demoted from "the
+baseline" to "one frozen, selectable tier."
+
+**This document supersedes its own earlier framing, twice.** First, an earlier
+pass described "three product domains" (food/services/retail) as the target
+model and proposed a closed `sell_food`/`sell_services`/`sell_retail`
+capability trio — a closed enumeration with the same shape as the platform's
+original food-centric mistake, unable to express a farmer or a bracelet maker
+without a new value per category. Second, that same pass implicitly assumed
+inventory is one model every product shares. This revision replaces the closed
+trio with the open model below, and adds tracking mode as its own axis.
 
 ## Core principle: one product, many domains (mostly already true)
 
@@ -95,6 +113,10 @@ initiative closes the gaps around this core, it does not rebuild it.
 | Pack-to-unit | `ItemBarcode.packaging_level` + `quantity_multiplier` (already used at sale scan) | `backend/src/models/ItemBarcode.js`; `posUseCases.js` |
 | External-origin seam (dormant) | `HospitalityReservation.{source:'ota', external_source, external_reference, channel_metadata}`; `DeliveryJob.{provider, provider_delivery_id, provider_payload}` | `backend/src/models/HospitalityModels.js`, `DeliveryJob.js` |
 | Cross-tenant activity feed | `DgfyCustomerActivity` (snapshot-rendered, per-type action matrix) | `backend/src/models/Landlord/DgfyCustomerActivity.js` |
+| "Simple count" tracking (already production) | `items.fifo_enabled: false` → scalar balance + ledger, no batches; location-less variant also runs | `backend/src/services/stockMovementService.js` |
+| "No tracking" prototype | `pos_catalog_overrides.pos_always_available` | `backend/src/models/PosCatalogOverride.js`; `posUseCases.js` |
+| Recipe consumption (shipped, frozen — see Axis 4) | `buildFnbRecipeConsumptionPlan` | `backend/src/modules/shared/utils/fnbRecipeConsumption.js` |
+| Inventory command port (swap point for delegation) | 10 intention-named commands, DI-injected, duck-typed with 409 fallback | `backend/src/modules/inventory/commands/stockCommandService.js`; `posUseCases.js` |
 | POS cart/checkout UI | `addToCart`, order-method `<select>` | `frontend/src/features/pos/components/POSCheckoutTerminal.jsx` |
 | Mode-adaptive POS panels | Services queue / `FnbDiningPanel` / `HospitalityPosPanel` | `frontend/src/features/pos/pages/PosPageShell.jsx` |
 
@@ -137,10 +159,10 @@ why the design below composes from small open axes instead of adding vertical
   RBAC/provisioning/taxonomy checklists and an accepted ADR) — appropriate for
   F&B/Retail/Services, impossible to run per long-tail seller.
 
-## The model: three orthogonal axes
+## The model: four orthogonal axes
 
-Stop treating "what kind of business" as one exclusive value. Split it into
-three independent axes.
+Stop treating "what kind of business" — and "how is it tracked" — as one
+exclusive value. Split it into four independent axes.
 
 ### Axis 1 — Offering archetype (open, composable, line-level)
 
@@ -180,7 +202,7 @@ capabilities**, not a new engineering mode, in three tiers:
 
 ### Axis 3 — Provider/source (native vs. external)
 
-*Who owns the authoritative record.* Orthogonal to axes 1 and 2, and
+*Who owns the authoritative record.* Orthogonal to the other axes, and
 deliberately shallow for now per product direction:
 
 - `dgfy_native` (default) — today's behavior: DGFY catalog, inventory,
@@ -205,7 +227,7 @@ Whether Cinema and Doctors end up as Tier 2 native or stay `external_listing`
 is **explicitly undecided per domain** — this design must not force that
 choice.
 
-Known schema blockers for `external_listing`, to resolve when Phase 6 is
+Known schema blockers for `external_listing`, to resolve when Phase 7 is
 implemented: `StorefrontDiscoveryIndex.{tenant_id, tenant_name,
 tenant_company_token, slug}` are all `NOT NULL` with no `entity_type`/`source`
 discriminator, and reconciliation
@@ -214,13 +236,74 @@ discriminator, and reconciliation
 `DgfyCustomerActivity.tenant_id` is similarly `NOT NULL`, blocking a later
 unified native+external "my bookings" surface.
 
+### Axis 4 — Availability & tracking mode (per product, permissive)
+
+*"How do we know we can sell this right now?"* has different answer sources
+depending on what's being sold, and conflating them is the IMS-first legacy
+described above. Seven modes, full catalog in
+`docs/features/INVENTORY_TRACKING_MODES.md`:
+
+| Source | Mode | Exists today? |
+|---|---|---|
+| Counted | `untracked` | Prototype — generalize `pos_always_available` |
+| Counted | `count_ledger` | **Yes** — `fifo_enabled: false`; already the F&B `menu_item` default |
+| Counted | `full_fifo` | **Yes — FROZEN legacy tier**, not the baseline |
+| Counted | `external_ims` | No — new seam, delegated to SKUpervisor |
+| Declared | `toggle` | No — new cross-surface column |
+| Capacity | `capacity` | **Yes** — `service_resources`, the availability engine; not inventory at all |
+| Derived | `recipe_derived` | **Reserved for `external_ims`** — the local engine is frozen, not extended |
+
+Design rules:
+
+1. **Archetype suggests, seller decides — always permissive.** The archetype
+   sets a sensible default (`physical_product` → `count_ledger`;
+   `made_to_order`/`prepared_food` → `toggle`; `time_service`/`ticketed_seat`/
+   `capacity_slot` → `capacity`), but the seller may switch to **any valid
+   mode**, including putting a real, maintained count on a food item — a
+   carinderia tracking "20 servings of menudo left," a bakery counting 30
+   loaves. This is deliberately the **opposite posture** to today's
+   restrictive `validateItemAgainstModeTaxonomy`, which throws
+   `MODE_ITEM_CATEGORY_UNSUPPORTED`/`MODE_ITEM_UOM_UNSUPPORTED` on an
+   unexpected combination — tracking mode must never throw on a valid pairing.
+2. **A service is not inventoried — it is scheduled.** `capacity` mode routes
+   to the booking/resource engine, never to stock math. A service can still
+   *consume* countable inventory (massage oil, a repair part); that lands on
+   the parts line via `stock_effect_type`, which is exactly why that field is
+   already per-line rather than per-product.
+3. **One resolver.** `backend/src/modules/shared/utils/stockBearingPolicy.js`
+   becomes the *only* interpreter of tracking mode, returning a descriptor —
+   `{tracks_quantity, uses_batches, blocks_on_shortfall, emits_movements,
+   carries_cost, valuation_participant, availability_source}` — instead of a
+   boolean. No call site reads `items.current_stock` without resolving this
+   first.
+4. **Reports must tolerate every mode.** `buildStockBearingItemWhere` already
+   excludes exempt items from `reportService`/`dashboardService`/
+   `costValuationService`; its predicate widens to the new descriptor. Five
+   services currently bypass it and must be brought in:
+   `alertService.getLowStockAlerts`, `forecastService`, `analyticsService`,
+   `itemGroupingService`, `aiContextService`.
+
+## Corrections to earlier claims in this document
+
+**`FnbModifierOption.sku_item_id` does not deplete inventory.** An earlier pass
+of this document (Capability B, below) described it as an existing reuse path
+for an inventory-depleting add-on. The column, its migration, and the
+`belongsTo(Item, {as:'skuItem'})` association exist, but **nothing consumes
+it**: the alias is never used in any query `include`, and neither
+`resolveFnbLineModifiers` nor `resolveStorefrontLineModifiers`
+(`backend/src/modules/pos/usecases/posUseCases.js`,
+`backend/src/modules/store/usecases/storeUseCases.js`) reads it. "Extra rice"
+up-charges the customer and prints on the kitchen ticket but **never
+decrements rice**. It remains the right target shape; wiring it up is new
+work, not reuse.
+
 ## How each vertical sells today, and where mixed fits
 
 | Vertical (Tier 1) | Sells | Line stock effect | Fulfillment | Notes |
 |---|---|---|---|---|
-| F&B | menu items + add-ons | inventory-issue (or exempt for made-to-order) | `dine_in`/`takeout`/`pickup`/`delivery` | modifiers = add-ons |
-| Services | labor (service items) + parts (products) | labor = `stock_exempt`; parts = `inventory_issue` | `appointment` (booked) or walk-in | advance booking via Services Mode |
-| Retail | packaged goods, weighed goods, refills, pack-to-unit | `inventory_issue` | `pickup`/`delivery`/counter | per-kg = fractional qty; pack-to-unit = base-unit ledger |
+| F&B | menu items + add-ons | `toggle` default (see Axis 4); parts/add-ons `inventory-issue` | `dine_in`/`takeout`/`pickup`/`delivery` | modifiers = add-ons |
+| Services | labor (service items) + parts (products) | labor = `capacity` (not stock); parts = `inventory_issue` | `appointment` (booked) or walk-in | advance booking via Services Mode |
+| Retail | packaged goods, weighed goods, refills, pack-to-unit | `count_ledger` | `pickup`/`delivery`/counter | per-kg = fractional qty; pack-to-unit = base-unit ledger |
 | Mixed / long-tail (any archetype combination) | any of the above in one basket | per line, independently | any enabled method | the repair-shop case; also the natural home for a farmer + retail stall, a masahista who also sells oils, etc. |
 
 The mixed row is the crux: it is **already representable** at the line level;
@@ -252,10 +335,10 @@ regardless of what the store actually does.
   chosen in `PosPageShell.jsx` derive from enabled capabilities; the default
   `order_method` is derived, not the literal `dine_in`. A services+retail store
   never shows `Dine In`.
-- **Labor** stays a `category='service'`, stock-exempt catalog item line
-  (archetype `time_service`; already works; preserves VAT/reporting). A one-off
-  ad-hoc labor line (no catalog item) is an **open decision**, deferred; if
-  adopted it still carries `stock_effect_type` and tax treatment.
+- **Labor** stays a `category='service'` catalog item line (archetype
+  `time_service`, mode `capacity`; already works; preserves VAT/reporting). A
+  one-off ad-hoc labor line (no catalog item) is an **open decision**,
+  deferred; if adopted it still carries `stock_effect_type` and tax treatment.
 
 **Reuse vs new.** No schema change for the mixed basket itself — this is
 configuration + taxonomy union + POS UI. New: the capability setting + its
@@ -273,18 +356,20 @@ attach a modifier group.
 - **De-gate** the existing modifier tables from `fnb`-only so any `items` row
   (any `category`) can attach a modifier group. Treat the per-line snapshot
   `fnb_modifiers_snapshot` as a generic `modifiers_snapshot`.
-- Reuse `FnbModifierOption.price_delta` for the up-charge and
-  `FnbModifierOption.sku_item_id` (modifier → real stock item) for an add-on
-  that **depletes inventory** — this already models "extra rice" as a real rice
-  item and equally models "add-on replacement part" for a service. The add-on's
-  stock effect flows through the same per-line `stock_effect_type` path.
+- Reuse `FnbModifierOption.price_delta` for the up-charge. **`sku_item_id`
+  (modifier → real stock item) is the correct target shape for an add-on that
+  depletes inventory, but per the correction above it does not do so today —
+  wiring its consumption at checkout is new work**, not a reuse item. Once
+  wired, its stock effect flows through the same per-line `stock_effect_type`
+  path as any other line.
 - A physical table rename to neutral names is **optional and deferred** behind a
   facade to avoid a destructive migration.
 
-**Reuse vs new.** Almost entirely reuse (`price_delta`, `sku_item_id`,
-group/option/min/max/required already exist). New: remove the mode gate; let
-non-F&B item forms attach modifier groups; generalize the snapshot field name in
-docs/read paths.
+**Reuse vs new.** Mostly reuse for the structure (`price_delta`,
+group/option/min/max/required already exist, de-gating is a mode-check
+removal). New: wiring `sku_item_id` consumption at checkout (not previously
+reuse), removing the mode gate, letting non-F&B item forms attach modifier
+groups, generalizing the snapshot field name in docs/read paths.
 
 ## Capability C — Retail as first-class (lifted out of the placeholder tier)
 
@@ -297,7 +382,7 @@ per-kilogram goods, refill stations, or pack-to-unit selling.
 
 **Design.** Add corrected presets under `retail` (and the shared `msme`) using
 the existing `preset()`/`taxonomy()` builders, each an Axis 1 archetype/trait
-projection:
+projection, defaulting to `count_ledger` (Axis 4):
 
 - `retail_good` — `physical_product`, stock-bearing packaged product (chippy,
   Nutri-Star).
@@ -339,7 +424,8 @@ new booking infrastructure:
   `service_bookings` (`start_at`/`end_at`, status machine), the capacity-aware
   availability engine, short-lived holds, resources/technicians
   (`service_provider_assignments`, `service_resources`), and the storefront
-  booking subpage (`frontend/apps/store/src/modes/services/`). Keep it.
+  booking subpage (`frontend/apps/store/src/modes/services/`). Keep it —
+  this *is* Axis 4's `capacity` mode, already built.
 - Generalize service-family presentation beyond `laundry`/`aircon_cleaning` (a
   generic category-presentation model) so repair services render cleanly; use
   `service_area_type='customer_location'` for on-site repair.
@@ -375,13 +461,109 @@ future phase can add them without changing the discovery/map contract.
 pattern. New: the discriminator column, a non-tenant reconciliation path, and
 the redirect affordance on listing cards.
 
+## Capability F — Availability & tracking modes (Axis 4)
+
+**Problem.** Inventory tracking is one heavyweight model that every stock-bearing
+product inherits, and no product-level choice exists between "count it," "don't
+count it," "declare it available/unavailable," or "let an external IMS own it."
+The consequence is a live, shipped contradiction: checkout already exempts a
+recipe-backed line from its own-stock check
+(`backend/src/modules/shared/utils/fnbRecipeConsumption.js`), but **every
+catalog read anywhere — POS or storefront — computes availability purely from
+`items.current_stock > 0`**, and no read path consults `product_composition`.
+A correctly-configured dish with a full fridge and `current_stock = 0` renders
+**Sold Out** and cannot be added to cart, even though the sale would have gone
+through.
+
+**Design.** Persist the tracking mode per product and route every stock read
+through the `stockBearingPolicy` resolver (Axis 4, design rule 3). Full mode
+catalog: `docs/features/INVENTORY_TRACKING_MODES.md`. Resolution for the
+motivating contradiction, per confirmed product direction: **freeze the local
+recipe engine** — it keeps working exactly as today at checkout, receives no
+further investment — and give recipe-backed menu items the `toggle` mode
+instead of wiring recipes into browse-time reads. Ingredient-driven browse-time
+availability (`recipe_derived`) becomes reachable only through `external_ims`,
+once the separately-built SKUpervisor integration exists.
+
+**Reuse vs new.** Reuse `fifo_enabled: false` as `count_ledger`, generalize
+`pos_always_available` into `untracked`, reuse the Services Mode availability
+engine as `capacity`. New: the persisted mode column, the resolver descriptor,
+the `toggle` column and its cross-surface (POS + storefront) enforcement, and —
+much later, Phase 8 — the `external_ims`/`recipe_derived` delegation seam.
+
+## Known issues (fold into design now, fix in the phases below)
+
+1. **Browse-vs-checkout availability contradiction** *(the headline symptom;
+   see Capability F)* — resolved via `toggle`, not by extending the recipe
+   engine.
+2. **`pos_always_available` silently disables recipe deduction today** — the
+   `stock_effect_type === 'stock_exempt'` `continue` in `posUseCases.js` runs
+   *before* the recipe-consumption branch, so "always sellable" also turns off
+   ingredient depletion. The Axis 4 resolver must define this interaction
+   explicitly instead of leaving it an accidental ordering bug.
+3. **`BASE_POS_ITEM_ATTRIBUTES` omits `mode_item_preset`** (`posRepository.js`)
+   — so the `mode_item_preset === 'service'` half of `isStockExemptServiceItem`
+   **can never fire on the POS catalog or checkout path**, only
+   `category === 'service'` does. Also omits `min_threshold` (silently always
+   `NaN`, falls back to a hardcoded 5) and `fifo_enabled`.
+4. **`cost_snapshot: null` for every stock-exempt line → ₱0 COGS.** Correct for
+   labor, wrong for an `untracked` *physical* good — POS profit/Z-reading
+   reports would understate cost. Needs a third branch in the checkout
+   snapshot logic.
+5. **`?? 0` conflates "no ledger row" with "zero on hand"** in both
+   `posRepository.applyLocationStockMap` and
+   `storeRepository.applyLocationStock` — an untracked item and a genuinely
+   sold-out item are indistinguishable until the mode is authoritative.
+6. **False `has_drift: true` for every non-FIFO item** in
+   `costValuationService` (batch quantity reads as 0 while ledger quantity
+   isn't, for any `count_ledger` item) — a reporting bug independent of this
+   design, worth fixing alongside the resolver work.
+7. **`hasFnbCheckoutContext` is a fragile gate** — the shipped POS terminal
+   always sends `course: 'main'`, so the gate is effectively always true in
+   *every* workflow mode (not just F&B); a bare API call or a replayed mobile
+   payload silently skips composition loading instead.
+8. **Dead/misleading code**, to clean up alongside this work rather than let
+   mislead future implementers: `frontend/Components/utils/fifoCalculations.js`
+   and `frontend/Components/ai/ProductionFeasibilityCard.jsx` (zero importers
+   each; the latter's props don't even match its data source),
+   `Item.is_leaf_node`/`composition_hash` (declared, never written),
+   `ProductComposition.is_subproduct` (a writer exists but the Sequelize model
+   field doesn't, so the value is silently dropped), and
+   `batchLineageService.createBatchLineage` (zero callers, yet
+   `docs/features/NESTED_PRODUCTS.md` documents it as working).
+
+## Governance prerequisites (named here; not performed in this pass)
+
+Required before Phase 8 (`external_ims`) can ship — amending an accepted ADR
+is its own governance action, out of scope for this documentation pass:
+
+- **ADR 0029 amendment** — its core rule ("Only Inventory records stock
+  effects") already permits an external recorder; state so explicitly and
+  define the Inventory-owned port boundary
+  (`backend/src/modules/inventory/commands/stockCommandService.js`).
+- **ADR 0009 amendment** — its 2026-05-06 "FIFO and location stock are paired"
+  addendum currently prohibits a stock-bearing item from opting out of FIFO;
+  the F&B `menu_item` preset (`STOCK_BEARING`, `fifo_enabled: false`) already
+  violates it in production. The amendment codifies that existing exception.
+- **A new reservations ADR** — ADR 0029's Compatibility Decision 4 explicitly
+  defers reservation state/expiry/commit/release; an external stock authority
+  plus ADR 0014's offline-capable POS makes this unavoidable.
+- **A registered compatibility seam** — `external-inventory-authority` as an
+  `api-boundary` entry in `docs/architecture/compatibility-seams.json` per
+  ADR 0035 (`api-boundary` exists as a seam type today and is unused).
+- **Closing capability-gate gaps** — `routes/purchaseOrders.js`,
+  `routes/suppliers.js`, and `routes/items.js` currently have **no**
+  `requireWorkflowCapability` guard; when inventory is external these must fail
+  closed with the existing `WORKFLOW_MODE_CAPABILITY_DENIED` contract.
+
 ## Re-sequenced roadmap
 
-Foundations first — per-vertical work is unsafe while mode constants are
-duplicated and unknown modes coerce to `food_manufacturing`.
+Foundations first — per-vertical and per-mode work is unsafe while mode
+constants are duplicated, unknown modes coerce to `food_manufacturing`, and
+`current_stock` is read without resolving a tracking mode.
 
-- **Phase 0 (this doc + ADR 0037 + `OFFERING_ARCHETYPES.md`):** ratify the open
-  model and decisions.
+- **Phase 0 (this doc + ADR 0037 + `OFFERING_ARCHETYPES.md` +
+  `INVENTORY_TRACKING_MODES.md`):** ratify the open model and decisions.
 - **Phase 1 — De-risk foundations** *(separable; no user-visible change)*
   - Move mode + taxonomy constants to a single source of truth (today
     duplicated between `backend/src/modules/shared/constants/workflowModes.js`
@@ -394,48 +576,82 @@ duplicated and unknown modes coerce to `food_manufacturing`.
     (`generic_admin`/`manager`/`cashier`/`staff`/`viewer`) in
     `backend/src/config/modeRolePresets.js` as the declared fallback, replacing
     the `food_manufacturing` role fallback in `getRoleCatalogMode`.
-  - Fix drift bugs from hand-copied lists: the 11-value enum in
-    `backend/src/config/aiTools.js`; `ItemsPage.jsx`'s `placeholderModes` Set
-    wrongly including `hospitality`; the three divergent copies of
-    `ONBOARDING_CUSTOMER_FACING_PRESETS`; the four copies of the mode label map.
+  - Build the **Axis 4 `stockBearingPolicy` descriptor resolver** (Capability F
+    design rule 3) — the foundation every later tracking-mode phase depends on.
+  - Fix bug 3 (POS attribute omissions) and the drift bugs: the 11-value enum
+    in `backend/src/config/aiTools.js`; `ItemsPage.jsx`'s `placeholderModes`
+    Set wrongly including `hospitality`; the three divergent copies of
+    `ONBOARDING_CUSTOMER_FACING_PRESETS`; the four copies of the mode label
+    map.
   - Representative: `workflowModes.js`, `frontend/src/features/settings/workflowMode.js`,
     `backend/src/config/modeRolePresets.js`, `backend/src/config/aiTools.js`,
-    `frontend/src/features/inventory/pages/ItemsPage.jsx`.
+    `frontend/src/features/inventory/pages/ItemsPage.jsx`,
+    `backend/src/modules/shared/utils/stockBearingPolicy.js`,
+    `backend/src/modules/pos/repositories/posRepository.js`.
 - **Phase 2 — Offering archetypes + catalog:** activate `offering_types` +
   traits as the composable axis (Capability details above); correct the
   **Retail** taxonomy (Capability C) and fix its placeholder-tier breakages;
-  de-gate modifiers (Capability B). **Long-tail sellers become supported here.**
+  de-gate modifiers (Capability B, noting `sku_item_id` consumption is new
+  work). **Long-tail sellers become supported here.**
   - Representative: `modeItemTaxonomy.js` (+ FE mirror), `backend/src/modules/fnb/`
     (de-gate), receiving paths (PO receipt / stock adjustment / CSV import) for
     pack-to-unit, `ItemBarcode.js`, `backend/src/utils/uomConverter.js`,
     `businessClassification.js` (activate).
-- **Phase 3 — Business type ≠ mode:** capture a real business-type/industry tag
+- **Phase 3 — Availability & tracking modes (Capability F):** persist the mode;
+  route every `current_stock` read through the resolver; ship `toggle` across
+  POS and Storefront, cross-surface consistent; generalize
+  `pos_always_available` into `untracked`; make `count_ledger` the archetype
+  default; widen `buildStockBearingItemWhere` and bring the five bypassing
+  report services in. Resolve bugs 1, 2, 4, 5, 6. Freeze the local recipe
+  engine.
+  - Representative: `stockBearingPolicy.js`, `Item.js` (new column),
+    `posUseCases.js`, `storeUseCases.js`/`storeRepository.js`,
+    `reportService.js`, `dashboardService.js`, `alertService.js`,
+    `forecastService.js`, `analyticsService.js`, `itemGroupingService.js`,
+    `aiContextService.js`, `costValuationService.js`.
+- **Phase 4 — Business type ≠ mode:** capture a real business-type/industry tag
   at onboarding, separate from the operating mode; fix
   `RegisterCompany.jsx`'s "Business Industry" mislabel; wire up or remove the
   now-activated `businessClassification.js` cleanly (no dead code left behind).
-- **Phase 4 — Composed store capabilities + capability-driven POS**
+- **Phase 5 — Composed store capabilities + capability-driven POS**
   (Capability A): composite capability configuration + master-admin gate,
   capability-driven `order_method` and panels, mixed-basket UX, POS weight
   entry. Depends on Phase 2 presets.
   - Representative: `backend/src/modules/settings/`, `POSCheckoutTerminal.jsx`,
     `PosPageShell.jsx`.
-- **Phase 5 — Booking generalization + mixed fulfillment** (Capability D):
+- **Phase 6 — Booking generalization + mixed fulfillment** (Capability D):
   generalized service presentation, booking→sale linkage, parts-on-booking.
-  Builds on Services Mode + Phase 4 mixed basket.
+  Builds on Services Mode + Phase 5 mixed basket.
   - Representative: `backend/src/modules/services/usecases/serviceUseCases.js`,
     `ServiceBooking.js`, `posUseCases.js`,
     `frontend/apps/store/src/modes/services/`.
-- **Phase 6 — External listings (shallow)** (Capability E): `entity_type`/
+- **Phase 7 — External listings (shallow)** (Capability E): `entity_type`/
   `source` discriminator, map display for cross-platform stores, redirect on
   book.
-- **Deferred:** storefront `isXMode` boolean de-fanning (~38 files / ~250
-  sites, `StorefrontApp.jsx` alone ~50) as capability/variant lookups; jewelry
-  serialization; `adapter_booked`/`proxied` external tiers.
+- **Phase 8 — External IMS delegation** (Capability F's `external_ims` /
+  `recipe_derived`): the stock port contract, converting the ~4 direct
+  `stockCommandService`-bypassing importers to DI, an `inventory_authority`
+  tenant setting, the registered compatibility seam, and closing the
+  capability-gate gaps named above. Requires the governance prerequisites to
+  have landed first.
+  - Representative: `stockCommandService.js`, `jobOrderService.js`,
+    `dispatchOrderService.js`, `stockMovementToolRegistry.js`,
+    `docs/architecture/compatibility-seams.json`,
+    `scripts/dgfy-seam-smoke.js`.
+- **Deferred:** the F&B prep workflow gap (ADR 0019,
+  `docs/features/FOOD_AND_BEVERAGE_MODE.md` — noted, not designed here;
+  `toggle` is the interim workaround); the `rental` archetype's
+  occupancy-tracking gap; storefront `isXMode` boolean de-fanning (~38 files /
+  ~250 sites, `StorefrontApp.jsx` alone ~50); jewelry serialization;
+  `adapter_booked`/`proxied` external tiers; dead-code cleanup (bug 8).
 
-**Every phase that adds a column must also update the tenant-schema registry
-(`backend/scripts/sync-tenant-schemas.js`) and pass
-`npm run check:tenant-schema-coverage`** — the multi-tenant per-database sync
-step, not just a Sequelize migration.
+**Every phase that adds a column must also update the tenant-schema registry**
+(`backend/scripts/sync-tenant-schemas.js`) **and**
+`backend/src/services/runtimeSchemaAuditService.js`, and pass
+`npm run check:tenant-schema-coverage` — the runtime audit **503s tenants**
+whose schema lacks a required column; see
+`docs/ops/BETA_TENANT_PROVISIONING_INCIDENT_2026-07-04.md` for the postmortem
+on skipping this step.
 
 ## Open decisions
 
@@ -456,6 +672,11 @@ step, not just a Sequelize migration.
 7. Where a resolved archetype-derived preset registry should live long-term
    (still inside `modeItemTaxonomy.js` as a projection, vs. a new
    archetype-first module) — a Phase 2 implementation-time call.
+8. Whether `toggle` needs a reason code / "back by" timestamp at launch, or
+   whether a bare boolean is sufficient for the first cut — a Phase 3
+   implementation-time call.
+9. The `rental` archetype's occupancy tracking model (out-vs-returned) is
+   unresolved and explicitly deferred — see `docs/features/OFFERING_ARCHETYPES.md`.
 
 ## Validation (for implementation phases)
 
@@ -466,8 +687,14 @@ step, not just a Sequelize migration.
   `retail` presets + non-regression of the five corrected modes; UOM/weight and
   pack-to-unit conversion tests.
 - Modifier de-gating tests: service and retail items attach modifier groups;
-  inventory-depleting add-on issues stock via `stock_effect_type`.
+  `sku_item_id` consumption issues stock via `stock_effect_type` once wired
+  (Capability B).
 - Generic RBAC preset family tests for Tier 3 (no-vertical) tenants.
+- Axis 4 resolver tests for all seven modes; report-tolerance tests proving the
+  five currently-bypassing services correctly exclude/mark non-counted
+  products; a cost-snapshot test proving an `untracked` physical good still
+  contributes COGS; a `toggle` cross-surface consistency test (POS and
+  storefront agree).
 - POS mixed-basket integration test (service labor + retail parts + food) with
   correct stock and VAT; capability-driven order-method/panel tests.
 - Services booking→sale linkage test (idempotent; parts added to the same
@@ -491,8 +718,12 @@ step, not just a Sequelize migration.
 - Deep external integration (`adapter_booked`, `proxied`), cross-entity
   settlement, outbound webhooks/outbox, and any courier/driver entity — reserved
   and documented only, per the confirmed shallow-external decision.
+- Editing accepted ADRs 0009 / 0010 / 0029 — the amendments needed are named
+  above, not written, in this pass.
+- The F&B prep workflow (ADR 0019, `FOOD_AND_BEVERAGE_MODE.md` — a known,
+  deferred gap; `toggle` is the practical workaround for now).
 - Jewelry per-piece serialization (deferred follow-up per the flexible-item
-  proposal); the `rental` archetype's reservation-lifecycle gap (see
+  proposal); the `rental` archetype's occupancy-tracking gap (see
   `OFFERING_ARCHETYPES.md`).
 - The storefront `isXMode` boolean de-fanning refactor (~38 files).
 - Payment/fiscal/promo redesign — bounded by ADR 0027/0033 and unchanged here.
