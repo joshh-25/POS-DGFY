@@ -263,7 +263,15 @@ export const buildListMyAffiliateEnrollmentsUseCase = ({ repository = dgfyAffili
     async ({ account }) => {
         try {
             const dgfyAccount = ensureAccount(account);
-            return ok({ enrollments: await repository.listEnrollmentsForAccount(dgfyAccount.id) });
+            const enrollments = await repository.listEnrollmentsForAccount(dgfyAccount.id);
+            // Enrich with the storefront share link so the customer dashboard can render a
+            // "share this to earn" QR/link without a second round trip per enrollment.
+            const enrichedEnrollments = await Promise.all(enrollments.map(async (enrollment) => {
+                const slug = await repository.getStorefrontSlug(enrollment.tenant_id);
+                const { path, url } = buildAffiliateShareUrl({ slug, shortCode: enrollment.short_code });
+                return { ...enrollment, store_slug: slug, share_path: path, share_url: url };
+            }));
+            return ok({ enrollments: enrichedEnrollments });
         } catch (error) {
             return fail(mapError(error, 'Failed to list your affiliate enrollments'));
         }
