@@ -493,6 +493,11 @@ const resultsSubtitle = isClusterResultsActive
                     )}
                   </div>
                     <div style={{ fontSize: isGridView ? 12 : isMobileListView ? 11 : 12, fontWeight: 600, color: '#64748b', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{categoryLabel || 'Local storefront'}</div>
+                    {isSearchableWithoutMapPin && (
+                      <div style={{ fontSize: 11, fontWeight: 700, color: '#1a4e8d' }}>
+                        Searchable storefront, no map pin
+                      </div>
+                    )}
                         <div style={{ display: 'flex', alignItems: 'center', gap: isGridView ? 8 : isMobileListView ? 8 : 10, flexWrap: 'wrap', fontSize: isGridView ? 11 : isMobileListView ? 11 : 12, color: '#64748b' }}>
                   {isGridView && (
                     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, color: '#d97706', fontWeight: 800 }}>

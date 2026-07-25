@@ -1,4 +1,5 @@
 import { useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the customer-auth/dashboard
@@ -67,6 +68,7 @@ export function useCustomerAuthNavigation({
   toast,
   writeCheckoutAuthResumeDraft
 }) {
+  const navigate = useNavigate();
   const buildCustomerDashboardReturnUrl = useCallback(() => (
     resolveStorefrontAccountUrl()
   ), [resolveStorefrontAccountUrl]);
@@ -153,7 +155,7 @@ export function useCustomerAuthNavigation({
     const explicitSignedOutLogin = normalizedIntent === 'customer'
       && normalizedMode === 'sign-in'
       && hasDgfyExplicitSignOut();
-    window.location.href = buildDgfyAuthUrl({
+    const authUrl = buildDgfyAuthUrl({
       intent: normalizedIntent,
       mode: normalizedMode,
       returnTo: normalizedIntent === 'customer'
@@ -163,7 +165,21 @@ export function useCustomerAuthNavigation({
       reason: reason || (explicitSignedOutLogin ? 'signed-out' : ''),
       email: email || (explicitSignedOutLogin ? signedOutEmail : '')
     });
-  }, [buildContextualCustomerReturnUrl, buildCustomerDashboardReturnUrl, buildDgfyAuthUrl, hasDgfyExplicitSignOut, readDgfySignedOutEmail]);
+    if (normalizedIntent === 'customer') {
+      // Customer sign-in/create-account now lives in-app (dgfy.ph/login,
+      // dgfy.ph/register) instead of redirecting out to skupervisor.
+      // buildDgfyAuthUrl is reused purely for its query-string shape
+      // (intent, mode, return_to, reason, email); we navigate to the
+      // equivalent in-store route carrying the same query.
+      const parsedAuthUrl = new URL(authUrl);
+      const path = normalizedMode === 'create-account' ? '/register' : '/login';
+      navigate(`${path}${parsedAuthUrl.search}`);
+      return;
+    }
+    // Business registration still redirects out to skupervisor until Phase 2
+    // (dgfy.ph/business/grow) ports RegisterCompany.jsx into the storefront.
+    window.location.href = authUrl;
+  }, [buildContextualCustomerReturnUrl, buildCustomerDashboardReturnUrl, buildDgfyAuthUrl, hasDgfyExplicitSignOut, navigate, readDgfySignedOutEmail]);
   const openStorefrontHeaderAccount = useCallback(() => {
     setIsCheckoutOpen(false);
     setIsGuestTrackingDrawerOpen(false);
@@ -177,23 +193,13 @@ export function useCustomerAuthNavigation({
     persistCheckoutAuthResume(resumeTarget);
     openCanonicalDgfyAuth('customer', mode, { returnTarget: 'current' });
   }, [openCanonicalDgfyAuth, persistCheckoutAuthResume]);
-  const openBusinessRegistrationFlow = useCallback(async () => {
-    if (typeof window === 'undefined') return;
-    if (!isDgfyCustomerSignedIn) {
-      openCanonicalDgfyAuth('register-business');
-      return;
-    }
-    try {
-      const payload = await requestJson('/api/v1/dgfy/auth/handoff', {
-        method: 'POST',
-        authToken: dgfyAuthToken,
-        cache: 'no-store'
-      });
-      window.location.href = buildBusinessRegistrationUrl(String(payload?.handoff_token || '').trim());
-    } catch (error) {
-      toast.error(normalizeStorefrontErrorMessage(error, 'Unable to start business registration.'));
-    }
-  }, [buildBusinessRegistrationUrl, dgfyAuthToken, isDgfyCustomerSignedIn, normalizeStorefrontErrorMessage, openCanonicalDgfyAuth, requestJson, toast]);
+  const openBusinessRegistrationFlow = useCallback(() => {
+    // Business registration now lives in-app (dgfy.ph/business/grow)
+    // instead of redirecting out to skupervisor, so the signed-in/signed-out
+    // branching (and the handoff-token exchange that used to bridge the
+    // cross-origin session) is handled by that page itself.
+    navigate('/business/grow');
+  }, [navigate]);
 
   return {
     buildContextualCustomerReturnUrl,

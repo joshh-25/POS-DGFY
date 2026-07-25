@@ -10,6 +10,10 @@ import {
     getDgfyConvenienceFeeLabel
 } from '../../shared/utils/dgfyConvenienceFee.js';
 import {
+    accruePendingForOnlineOrder,
+    resolveActiveAffiliateEnrollmentById
+} from '../../dgfy/utils/affiliateCommissionAccrual.js';
+import {
     generateStoreCancelProof,
     generateStoreClaimToken,
     generateStoreToken,
@@ -2222,6 +2226,40 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
                 error: error?.message,
                 tracking_pin: created?.tracking_pin
             }));
+
+            // Best-effort, post-commit: dormant until a storefront visit sets the attribution
+            // cookie (no caller sends attribution_enrollment_id yet). Writes a `pending` commission
+            // - unlike the in-store sale, which is earned immediately - because the online order's
+            // real outcome (completed vs cancelled/rejected) isn't known until the fulfillment
+            // lifecycle hook settles it later. Must never fail the checkout that already succeeded,
+            // mirroring recordDgfyOrderActivity's convention above.
+            if (payload?.attribution_enrollment_id) {
+                try {
+                    const affiliateEnrollment = await resolveActiveAffiliateEnrollmentById({
+                        tenantId: normalizedTenantId,
+                        enrollmentId: payload.attribution_enrollment_id
+                    });
+                    if (affiliateEnrollment) {
+                        await accruePendingForOnlineOrder({
+                            tenantId: normalizedTenantId,
+                            enrollment: affiliateEnrollment,
+                            orderReference: String(orderId),
+                            commissionableBaseCentavos: Math.max(
+                                0,
+                                toCentavos(resolved.prepared.subtotalAmount) - toCentavos(resolved.promoApplication.discountAmount)
+                            ),
+                            buyerDgfyAccountId: normalizedStoreCustomer?.dgfy_account_id || null,
+                            storeSlug: String(payload.store_slug || '').trim().toLowerCase() || null
+                        });
+                    }
+                } catch (accrualError) {
+                    logger.warn('[StorefrontCheckout] Failed to accrue pending affiliate commission', {
+                        tenant_id: normalizedTenantId,
+                        order_id: orderId,
+                        error: accrualError?.message
+                    });
+                }
+            }
 
             return ok({
                 idempotent_replay: false,

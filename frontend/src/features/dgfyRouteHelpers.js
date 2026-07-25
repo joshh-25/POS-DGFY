@@ -162,6 +162,10 @@ const isValidStorefrontReturnPath = (pathname = '') => {
   const normalizedPath = String(pathname || '').trim().replace(/\/+$/, '') || '/';
   if (normalizedPath === '/map-dgfy/account') return true;
   if (normalizedPath === '/tenant-store/account') return true;
+  // dgfy.ph/business/grow: in-store business registration (formerly
+  // skupervisor's /register-company), so post-login returns can land back
+  // there instead of bouncing to the generic account dashboard.
+  if (normalizedPath === '/business/grow') return true;
   if (/^\/tenant-store\/[^/]+(?:\/[^/]+)?$/i.test(normalizedPath)) return true;
   if (/^\/store\/[^/]+(?:\/[^/]+)?$/i.test(normalizedPath)) return true;
   if (/^\/store-template(?:\/[^/]+)?$/i.test(normalizedPath)) return true;

@@ -11,8 +11,17 @@ export default function DgfyLegalAcknowledgementBox({
   documents,
   snapshotText,
   versionLabel,
-  documentLinkState = null
+  documentLinkState = null,
+  // The legal documents are skupervisor routes. When this box is rendered from an
+  // app that doesn't host them (the storefront), a resolver turns the relative href
+  // into an absolute skupervisor URL and we open it in a new tab instead of routing.
+  resolveDocumentHref = null
 }) {
+  const documentHref = documents?.[0]?.href || '';
+  const externalDocumentHref = documentHref && typeof resolveDocumentHref === 'function'
+    ? resolveDocumentHref(documentHref)
+    : '';
+  const documentLinkClassName = 'self-start rounded-lg border border-[#1A4E8D] px-3 py-1.5 text-xs font-bold text-[#1A4E8D] hover:bg-[#e8f4ff] whitespace-nowrap';
 
   return (
     <div className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4 text-sm text-slate-700">
@@ -29,11 +38,20 @@ export default function DgfyLegalAcknowledgementBox({
           />
           <span>{label}</span>
         </label>
-        {documents?.[0]?.href ? (
+        {externalDocumentHref ? (
+          <a
+            href={externalDocumentHref}
+            target="_blank"
+            rel="noreferrer"
+            className={documentLinkClassName}
+          >
+            See Terms & Conditions
+          </a>
+        ) : documentHref ? (
           <Link
-            to={documents[0].href}
+            to={documentHref}
             state={documentLinkState}
-            className="self-start rounded-lg border border-[#1A4E8D] px-3 py-1.5 text-xs font-bold text-[#1A4E8D] hover:bg-[#e8f4ff] whitespace-nowrap"
+            className={documentLinkClassName}
           >
             See Terms & Conditions
           </Link>

@@ -62,8 +62,11 @@ import {
   startStorefrontDomainMaintenanceScheduler,
   stopStorefrontDomainMaintenanceScheduler
 } from './modules/storefrontDomains/services/storefrontDomainMaintenanceService.js';
+import { initSentry, sentryErrorHandler, sentryRequestContext } from './config/sentry.js';
 
 const { formatValidationFailure, validateProductionEnv } = productionEnvValidation;
+
+initSentry({ logger });
 
 const app = express();
 
@@ -379,6 +382,7 @@ app.use(helmet({
 
 // Attach per-request context metadata (request ID, trace root values).
 app.use(requestContext);
+app.use(sentryRequestContext);
 app.use(requestOutcomeLogger);
 
 // Gzip compression — reduces JSON response sizes by 60-80%
@@ -741,6 +745,7 @@ import feedbackRoutes from './routes/feedback.js';
 import aiRoutes from './routes/ai.js';
 import posRoutes from './routes/pos.js';
 import mobilePosRoutes from './routes/mobilePos.js';
+import affiliateAdminRoutes from './routes/affiliateAdmin.js';
 import servicesRoutes from './routes/services.js';
 import fnbRoutes from './routes/fnb.js';
 import hospitalityRoutes, { hospitalityStorefrontRoutes } from './routes/hospitality.js';
@@ -771,6 +776,7 @@ app.use('/api/v1/receive-tokens', receiveTokenRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/pos', posRoutes);
 app.use('/api/v1/mobile-pos', mobilePosRoutes);
+app.use('/api/v1/affiliates', affiliateAdminRoutes);
 app.use('/api/v1/services', servicesRoutes);
 app.use('/api/v1/fnb', fnbRoutes);
 app.use('/api/v1/hospitality', hospitalityRoutes);
@@ -793,6 +799,7 @@ app.use('/api/v1/onboarding', onboardingRoutes);
 
 // Error handling middleware (must be last)
 app.use(notFoundHandler);
+app.use(sentryErrorHandler);
 app.use(errorHandler);
 
 // Start server

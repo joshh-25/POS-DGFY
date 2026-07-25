@@ -163,6 +163,7 @@ const OPERATIONS_VIEW_MODES = [
   'settings_profile',
   'settings_pos',
   'settings_storefront',
+  'settings_affiliates',
   'shift_controls',
   'cash_drawer',
   'close_shift',
@@ -170,8 +171,8 @@ const OPERATIONS_VIEW_MODES = [
   'items',
   'terminal_setup'
 ];
-const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift', 'items', 'reports', 'settings_profile', 'settings_pos', 'settings_storefront'];
-const SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'terminal_setup']);
+const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift', 'items', 'reports', 'settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates'];
+const SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'terminal_setup']);
 const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'items', 'history']);
 const PIN_PROTECTED_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'items']);
 const CASHIER_ALLOWED_VIEW_MODES = new Set([
@@ -191,7 +192,8 @@ const TERMINAL_SECTION_IDS = {
   locationScope: 'pos-section-location-scope',
   incomingOrders: 'pos-section-incoming-orders',
   reports: 'pos-section-reports',
-  items: 'pos-section-items'
+  items: 'pos-section-items',
+  affiliates: 'pos-section-affiliates'
 };
 const RETRYABLE_TERMINAL_OPERATION_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
 

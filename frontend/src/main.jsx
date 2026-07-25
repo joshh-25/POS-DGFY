@@ -16,6 +16,7 @@ import NotFoundPage from './components/common/NotFoundPage.jsx'
 import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.jsx'
 import { Toaster } from '@/components/ui/sonner'
 import { getRuntimeConfig } from './utils/runtimeConfig.js'
+import { initBrowserSentry } from './observability/sentryClient.js'
 import './index.css'
 
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/'
@@ -23,6 +24,8 @@ const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`
 const runtimeConfig = getRuntimeConfig(import.meta.env, typeof window !== 'undefined' ? window.location : undefined)
 const RootRouter = runtimeConfig.isDesktopShell ? HashRouter : BrowserRouter
 const devAutoLoginEnabled = String(import.meta.env.VITE_DEV_AUTO_LOGIN_ENABLED || '').trim().toLowerCase() === 'true'
+
+initBrowserSentry({ surface: runtimeConfig.appSurface || 'skupervisor' })
 
 const shouldRunDevAutoLogin = () => {
   if (!import.meta.env.DEV) return false

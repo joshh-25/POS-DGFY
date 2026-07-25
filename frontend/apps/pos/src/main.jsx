@@ -9,6 +9,7 @@ import { WorkflowModeProvider } from '../../../src/features/settings/WorkflowMod
 import { Toaster } from '@/components/ui/sonner';
 import { buildSkupervisorPath } from '../../../src/features/pos/utils/skupervisorHandoff.js';
 import { login as loginTenantSession } from '../../../src/services/authService.js';
+import { initBrowserSentry } from '../../../src/observability/sentryClient.js';
 import '../../../src/index.css';
 
 function PosRouteNotFound() {
@@ -56,6 +57,8 @@ const enableDevAutoLogin = import.meta.env.DEV && import.meta.env.VITE_POS_DEV_A
 const devAutoLoginCompanyToken = String(import.meta.env.VITE_POS_DEV_COMPANY_TOKEN || 'token-original').trim();
 const devAutoLoginEmail = String(import.meta.env.VITE_POS_DEV_EMAIL || 'admin@test.com').trim();
 const devAutoLoginPassword = String(import.meta.env.VITE_POS_DEV_PASSWORD || 'Admin123!').trim();
+
+initBrowserSentry({ surface: 'pos' });
 
 const registerPosServiceWorker = async () => {
   if (typeof window === 'undefined') return;

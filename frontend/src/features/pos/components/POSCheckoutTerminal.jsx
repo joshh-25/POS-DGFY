@@ -736,6 +736,7 @@ export default function POSCheckoutTerminal({
     const [discountDraft, setDiscountDraft] = useState(EMPTY_DISCOUNT_DRAFT);
     const [appliedDiscount, setAppliedDiscount] = useState(null);
     const [discountApplying, setDiscountApplying] = useState(false);
+    const [affiliateCodeInput, setAffiliateCodeInput] = useState('');
     const [showDiscountPin, setShowDiscountPin] = useState(false);
     const [cart, setCart] = useState([]);
     const [checkoutLoading, setCheckoutLoading] = useState(false);
@@ -2420,6 +2421,7 @@ export default function POSCheckoutTerminal({
                 vat_exempt_amount: governedDiscountTotals.vatExemptAmount,
                 discount_amount: governedDiscountTotals.discountAmount
             } : undefined,
+            affiliate_code: affiliateCodeInput.trim() || undefined,
             shift_id: activeShiftId || undefined,
             fnb_check_id: normalizedFnbContext?.fnb_check_id || undefined,
             fnb_table_id: normalizedFnbContext?.fnb_table_id || undefined,
@@ -2521,6 +2523,7 @@ export default function POSCheckoutTerminal({
             setManualDiscountRateInput('');
             setManualDiscountAmountInput('');
             setAppliedDiscount(null);
+            setAffiliateCodeInput('');
             setCustomerPaymentAmountInput('');
             setCheckoutConfirmModalOpen(false);
             const refreshedQueue = await listTerminalOperationQueueEntries({
@@ -2556,6 +2559,7 @@ export default function POSCheckoutTerminal({
             setManualDiscountRateInput('');
             setManualDiscountAmountInput('');
             setAppliedDiscount(null);
+            setAffiliateCodeInput('');
             setCustomerPaymentAmountInput('');
             setCheckoutConfirmModalOpen(false);
             setReceiptPreviewSource('order_preview');
@@ -3307,7 +3311,7 @@ export default function POSCheckoutTerminal({
                                         </div>
                                         <div className="flex min-w-0 flex-col gap-1.5 max-sm:hidden">
                                             <div className="flex min-w-0 items-start gap-1.5">
-                                                <p className="min-w-0 flex-1 text-[13.5px] font-black leading-tight text-[#0F172A] line-clamp-2">{item.name}</p>
+                                                <p className={`min-w-0 flex-1 text-[13.5px] font-black leading-tight line-clamp-2 ${stockColorClassName}`}>{item.name}</p>
                                                 {isBestSeller && (
                                                     <span className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-amber-700">
                                                         Best seller
@@ -3522,31 +3526,61 @@ export default function POSCheckoutTerminal({
                                             <p className="mt-1 flex h-8 items-center justify-center rounded-md border border-slate-200 bg-slate-50 px-1.5 text-center text-[13px] font-extrabold text-[#0F172A] sm:hidden">
                                                 {formatQuantity(line.quantity)}
                                             </p>
-                                            {/* Tablet/desktop: +/- controls restored here. */}
+                                            {/* Tablet/desktop: +/- controls restored here. Tablet's row uses the
+                                                same taller h-10 sizing as the "+" button below (for touch-target
+                                                consistency/alignment - not itself a functional change), desktop
+                                                keeps the original h-8. */}
                                             <div className="mt-1 hidden items-center gap-1 sm:flex">
                                                 <Button
                                                     type="button"
                                                     variant="outline"
                                                     size="sm"
-                                                    className="h-8 px-2 text-[13px]"
+                                                    className={isTabletViewport ? 'h-10 px-3 text-[13px]' : 'h-8 px-2 text-[13px]'}
                                                     onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) - 1)}
                                                     disabled={posActionsBlocked}
                                                 >
                                                     <Minus className="h-3.5 w-3.5" />
                                                 </Button>
-                                                <span className="flex h-8 min-w-0 flex-1 items-center justify-center rounded-md border border-slate-200 bg-slate-50 px-1.5 text-center text-[13px] font-extrabold text-[#0F172A]">
+                                                <span className={`flex min-w-0 flex-1 items-center justify-center rounded-md border border-slate-200 bg-slate-50 px-1.5 text-center text-[13px] font-extrabold text-[#0F172A] ${isTabletViewport ? 'h-10' : 'h-8'}`}>
                                                     {formatQuantity(line.quantity)}
                                                 </span>
-                                                <Button
-                                                    type="button"
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="h-8 px-2 text-[13px]"
-                                                    onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) + 1)}
-                                                    disabled={posActionsBlocked}
-                                                >
-                                                    <Plus className="h-3.5 w-3.5" />
-                                                </Button>
+                                                {/* Desktop and tablet: long-press-then-drag-up shows the same
+                                                    bulk-add meter the mobile catalog "+" button uses (see
+                                                    handleCartQtyButtonPointerDown and friends, and the shared
+                                                    qtyMeterState/.qty-meter portal render below) - same gesture
+                                                    timing, drag scaling, and 0-20 limit as desktop/mobile, no
+                                                    logic duplicated. A plain tap still adds exactly +1, handled
+                                                    inside the pointerUp handler itself, so no onClick here (would
+                                                    double-add on tap). Tablet gets a slightly larger touch target
+                                                    (h-10/px-3) than desktop's h-8/px-2 for easier touch input;
+                                                    mobile is unaffected - it never renders this stepper (its cart
+                                                    line qty is read-only, managed from the catalog card instead). */}
+                                                {!isMobile ? (
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className={isTabletViewport ? 'h-10 px-3 text-[13px]' : 'h-8 px-2 text-[13px]'}
+                                                        onPointerDown={(event) => handleCartQtyButtonPointerDown(event, line)}
+                                                        onPointerMove={(event) => handleCartQtyButtonPointerMove(event, line)}
+                                                        onPointerUp={(event) => handleCartQtyButtonPointerUp(event, line)}
+                                                        onPointerCancel={handleCartQtyButtonPointerCancel}
+                                                        disabled={posActionsBlocked}
+                                                    >
+                                                        <Plus className="h-3.5 w-3.5" />
+                                                    </Button>
+                                                ) : (
+                                                    <Button
+                                                        type="button"
+                                                        variant="outline"
+                                                        size="sm"
+                                                        className="h-8 px-2 text-[13px]"
+                                                        onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) + 1)}
+                                                        disabled={posActionsBlocked}
+                                                    >
+                                                        <Plus className="h-3.5 w-3.5" />
+                                                        </Button>
+                                                    )}
                                             </div>
                                         </label>
                                         <div className="text-[11px] text-slate-500">
@@ -3591,6 +3625,20 @@ export default function POSCheckoutTerminal({
                             Remove Discount
                         </button>
                     )}
+                </div>
+                <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                    <label className="text-[12px] font-extrabold text-[#0F172A]" htmlFor="pos-affiliate-code-input">Affiliate Code (optional)</label>
+                    <div className="relative mt-1.5">
+                        <Percent className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                        <Input
+                            id="pos-affiliate-code-input"
+                            className="h-8 rounded-lg border-slate-200 bg-white pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500"
+                            placeholder="e.g. AF-K7QP2X"
+                            value={affiliateCodeInput}
+                            onChange={(e) => setAffiliateCodeInput(e.target.value)}
+                        />
+                    </div>
+                    <p className="mt-1 text-[10.5px] text-slate-500">Credits an affiliate&apos;s commission for this sale. Validated at checkout.</p>
                 </div>
 
                 <div className="mb-3 space-y-3 border-b border-slate-200 pb-4 text-[13px]">
