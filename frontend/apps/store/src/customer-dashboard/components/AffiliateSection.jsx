@@ -23,7 +23,6 @@ function AffiliateShareQrPreview({ shareUrl, theme }) {
 
   useEffect(() => {
     let cancelled = false;
-    setDataUrl('');
     if (!shareUrl) return undefined;
     QRCode.toDataURL(shareUrl, { errorCorrectionLevel: 'M', margin: 1, width: 160 })
       .then((value) => { if (!cancelled) setDataUrl(value); })
@@ -64,7 +63,7 @@ function AffiliateBusinessCard({ enrollment, storeEarnings, money, formatDate, S
 
   return (
     <div style={{ background: theme.surface, borderRadius: 16, border: `1px solid ${theme.border}`, padding: isMobileViewport ? 16 : 24, display: 'flex', flexDirection: isMobileViewport ? 'column' : 'row', gap: 20, alignItems: isMobileViewport ? 'stretch' : 'center' }}>
-      <AffiliateShareQrPreview shareUrl={shareUrl} theme={theme} />
+      <AffiliateShareQrPreview key={shareUrl} shareUrl={shareUrl} theme={theme} />
       <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 8 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div style={{ fontSize: 17, fontWeight: 700, color: theme.text }}>{businessName}</div>
