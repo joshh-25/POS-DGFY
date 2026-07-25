@@ -50,7 +50,8 @@ This addendum extends ADR 0009 rollout policy for terminal operations:
 4. POS read endpoints for catalog, incoming queue, terminal dashboard, and POS history are fail-closed by location grant resolution.
 5. Shift location changes are privileged and auditable through atomic close+open transition, persisted in `pos_shift_location_transitions`.
 6. Permission token `pos:switch_location` gates shift location switch behavior.
-7. Operating location scope and incoming-queue location scope are independent in POS UX to prevent cross-flow ambiguity.
+7. Incoming-order queue visibility is bound to the authenticated operator's active shift location. A terminal with no active shift receives no incoming orders, and neither an administrator nor a direct API caller may select another location for queue visibility.
+8. Operating-location selection remains available for permitted administrative navigation, but it does not grant incoming-order visibility or mutation authority outside the active shift location.
 
 ## Addendum (2026-04-21): POS Shift Location Backfill Remediation and Strict-Mode Readiness
 This addendum clarifies corrective rollout requirements for legacy shift records and strict binding activation:

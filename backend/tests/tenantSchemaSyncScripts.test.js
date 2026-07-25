@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import { compareTenantSyncFailures } from '../scripts/check-tenant-schema-sync-regressions.js';
 import {
+  assertTenantSchemaMutationModeAllowed,
   buildTenantSchemaRepairSql,
   createSyncFailureRecord,
   normalizeErrorSignature,
@@ -16,6 +17,23 @@ describe('tenant schema sync script contracts', () => {
       normalized_message: 'too many keys specified; max # keys allowed',
       fingerprint: '8516ffd691d70b58'
     });
+  });
+
+  it('requires explicit approval before a tenant schema mutation mode runs', () => {
+    expect(() => assertTenantSchemaMutationModeAllowed('repair-apply', {}))
+      .toThrow('TENANT_SCHEMA_MUTATION_APPROVED=true');
+    expect(() => assertTenantSchemaMutationModeAllowed('alter', {
+      TENANT_SCHEMA_MUTATION_APPROVED: 'true',
+      NODE_ENV: 'production'
+    })).toThrow('blocked in production');
+    expect(() => assertTenantSchemaMutationModeAllowed('repair-apply', {
+      TENANT_SCHEMA_MUTATION_APPROVED: 'true',
+      NODE_ENV: 'production'
+    })).not.toThrow();
+    expect(() => assertTenantSchemaMutationModeAllowed('alter', {
+      TENANT_SCHEMA_MUTATION_APPROVED: 'true',
+      NODE_ENV: 'development'
+    })).not.toThrow();
   });
 
   it('passes when current failures match baseline exactly', () => {

@@ -44,8 +44,8 @@ function WorkspaceShell({ title, children, locked, className = 'p-5' }) {
 
   if (isIncomingQueue) {
     return (
-      <section className="space-y-4">
-        <div className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/80">
+      <section className="min-w-0 max-w-full space-y-4">
+        <div className="min-w-0 max-w-full rounded-xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/80">
           {children}
           {locked && (
             <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
@@ -58,7 +58,7 @@ function WorkspaceShell({ title, children, locked, className = 'p-5' }) {
   }
 
   return (
-    <section className={`rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-200/70 ${className}`}>
+    <section className={`min-w-0 max-w-full rounded-xl border border-slate-200 bg-white shadow-sm shadow-slate-200/70 ${className}`}>
       {children}
     </section>
   );
@@ -85,6 +85,7 @@ function IncomingQueueWorkspace({
   locationsState,
   queueLocationScopeId,
   locked,
+  isOnline = true,
   sectionId
 }) {
   const [orderSort, setOrderSort] = React.useState('newest');
@@ -100,6 +101,7 @@ function IncomingQueueWorkspace({
   });
   const incomingOrdersAccessState = String(incomingOrdersState?.accessState || '').trim() || 'idle';
   const incomingOrdersErrorMessage = String(incomingOrdersState?.errorMessage || '').trim();
+  const hasActiveShift = Boolean(shiftState?.shift);
   const selectedLocationName = !queueLocationScopeId
     ? 'Not selected'
     : (locations.find((location) => Number(location.location_id) === Number(queueLocationScopeId))?.name || 'Selected Location');
@@ -132,7 +134,7 @@ function IncomingQueueWorkspace({
           <Button
             type="button"
             onClick={() => refreshIncomingOrders?.()}
-            disabled={incomingOrdersState?.loading || locked}
+            disabled={incomingOrdersState?.loading || locked || !isOnline || !hasActiveShift}
             className="h-10 rounded-lg !bg-[#2563EB] px-5 text-sm font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#1D4ED8]"
           >
             <RefreshCcw className="mr-2 h-4 w-4" />
@@ -141,6 +143,12 @@ function IncomingQueueWorkspace({
         </div>
       </div>
 
+      {!isOnline ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          Incoming orders are read-only while offline. Reconnect before refreshing, collecting payment, printing, or changing fulfillment status.
+        </p>
+      ) : null}
+
       {!canViewPos || incomingOrdersAccessState === 'forbidden' ? (
         <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
           {incomingOrdersErrorMessage || 'You need POS view permission to access incoming online orders.'}
@@ -148,6 +156,10 @@ function IncomingQueueWorkspace({
       ) : incomingOrdersAccessState === 'error' ? (
         <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
           {incomingOrdersErrorMessage || 'Failed to load incoming online orders. Try refreshing.'}
+        </p>
+      ) : incomingOrdersAccessState === 'shift_required' ? (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          {incomingOrdersErrorMessage || 'Open a shift to view orders for this branch.'}
         </p>
       ) : incomingOrdersState?.loading && incomingOrders.length === 0 ? (
         <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-600">Loading incoming orders...</p>
@@ -206,7 +218,7 @@ function IncomingQueueWorkspace({
                   key="collect_cash"
                   type="button"
                   size="sm"
-                  disabled={Boolean(actionLoading) || !canTransactPos || locked}
+                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift}
                   onClick={() => handleOpenCashCollection?.(order)}
                 >
                   <Wallet className="mr-2 h-4 w-4 shrink-0" />
@@ -239,7 +251,7 @@ function IncomingQueueWorkspace({
                   type="button"
                   size="sm"
                   variant={status === 'rejected' ? 'destructive' : 'outline'}
-                  disabled={Boolean(actionLoading) || !canTransactPos || locked}
+                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift}
                   onClick={() => handleIncomingOrderStatusChange?.(order.pos_transaction_id, status)}
                 >
                   {actionLoading === status ? null : getStatusIcon(status)}
@@ -254,7 +266,7 @@ function IncomingQueueWorkspace({
                   type="button"
                   size="sm"
                   variant="outline"
-                  disabled={locked || !canViewPos || incomingReceiptOpeningId !== null}
+                  disabled={locked || !canViewPos || !isOnline || incomingReceiptOpeningId !== null}
                   onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printMode: true })}
                 >
                   <Printer className="mr-2 h-4 w-4 shrink-0" />
@@ -269,7 +281,7 @@ function IncomingQueueWorkspace({
                   type="button"
                   size="sm"
                   variant="secondary"
-                  disabled={locked || !canViewPos || incomingReceiptOpeningId !== null}
+                  disabled={locked || !canViewPos || !isOnline || incomingReceiptOpeningId !== null}
                   onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printMode: false })}
                 >
                   <ExternalLink className="mr-2 h-4 w-4 shrink-0" />

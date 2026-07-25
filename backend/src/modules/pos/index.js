@@ -47,8 +47,10 @@ import {
     buildGetCurrentTerminalShiftUseCase,
     buildRecordCashDrawerEventUseCase,
     buildCloseTerminalShiftUseCase,
+    buildForceCloseStaleTerminalShiftUseCase,
     buildGetTerminalTodayDashboardUseCase,
     buildListIncomingOnlineOrdersUseCase,
+    buildGetAdminLocationMonitorUseCase,
     buildCollectCashPickupOrderUseCase,
     buildUpdateOnlineOrderStatusUseCase,
     buildVerifyPosTerminalUseCase,
@@ -114,8 +116,10 @@ export const switchTerminalShiftLocationUseCase = buildSwitchTerminalShiftLocati
 export const getCurrentTerminalShiftUseCase = buildGetCurrentTerminalShiftUseCase({ posRepository });
 export const recordCashDrawerEventUseCase = buildRecordCashDrawerEventUseCase({ posRepository });
 export const closeTerminalShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
+export const forceCloseStaleTerminalShiftUseCase = buildForceCloseStaleTerminalShiftUseCase({ posRepository });
 export const getTerminalTodayDashboardUseCase = buildGetTerminalTodayDashboardUseCase({ posRepository });
 export const listIncomingOnlineOrdersUseCase = buildListIncomingOnlineOrdersUseCase({ posRepository });
+export const getAdminLocationMonitorUseCase = buildGetAdminLocationMonitorUseCase({ posRepository });
 export const collectCashPickupOrderUseCase = buildCollectCashPickupOrderUseCase({ posRepository });
 export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
     posRepository,

@@ -3399,6 +3399,32 @@ export const posRepository = {
         });
     },
 
+    async listOpenTerminalShiftsForLocation({ locationId } = {}, options = {}) {
+        const PosTerminalShift = dbStore.get('PosTerminalShift');
+        return PosTerminalShift.findAll({
+            where: {
+                status: 'open',
+                location_id: locationId
+            },
+            include: [
+                {
+                    model: dbStore.get('User'),
+                    as: 'cashier',
+                    attributes: ['user_id', 'username', 'email'],
+                    required: false
+                },
+                {
+                    model: dbStore.get('TenantLocation'),
+                    as: 'location',
+                    required: false
+                }
+            ],
+            order: [['opened_at', 'DESC']],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+    },
+
     async countOpenTerminalShifts(options = {}) {
         const PosTerminalShift = dbStore.get('PosTerminalShift');
         return PosTerminalShift.count({

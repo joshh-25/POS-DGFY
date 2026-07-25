@@ -21,7 +21,6 @@ import {
     Percent,
     Printer,
     Search,
-    Star,
     Tag,
     UserRound,
     X,
@@ -68,6 +67,8 @@ import {
 import { loadOfflinePosSnapshot, saveOfflinePosSnapshot } from '../services/offlinePosSnapshotStore.js';
 import {
     DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD,
+    getCatalogStockColorClassName,
+    isSellAvailableCatalogItem,
     isServiceCatalogItem,
     normalizeLowStockDisplayThreshold
 } from '../utils/posCatalogAvailability.js';
@@ -196,24 +197,6 @@ const formatQuantity = (value) => {
     const quantity = Number(value || 0);
     if (!Number.isFinite(quantity)) return '0';
     return Number.isInteger(quantity) ? String(quantity) : String(round4(quantity));
-};
-// Catalog name color - shared unified logic across every viewport (mobile, tablet, desktop):
-// stock >= 100 green, 0 < stock < 100 yellow, stock <= 0 (or invalid) red; always-available/
-// service items are always green regardless of stock. NOTE: intentionally separate from
-// getCatalogStockColorClassName (posCatalogAvailability.js) - that helper returns gray for
-// always-available/service items because on desktop it colors a numeric stock value that
-// doesn't apply there. This one colors the item NAME itself, where gray reads as "disabled";
-// always-available items should still read as good-to-sell, so they stay green like healthy
-// stock. (Named "Mobile" for historical reasons - it was mobile-only before being unified.)
-const getMobileStockNameColorClassName = (stockValue, isAlwaysAvailable) => {
-    if (isAlwaysAvailable) return 'text-green-600';
-    const numericStock = Number(stockValue);
-    if (stockValue === null || stockValue === undefined || !Number.isFinite(numericStock)) {
-        return 'text-red-600';
-    }
-    if (numericStock >= 100) return 'text-green-600';
-    if (numericStock > 0) return 'text-yellow-600';
-    return 'text-red-600';
 };
 // Mobile-only "fly to checkout bar" animation. Fires after the cart update (never blocks or
 // delays it), animates a cloned .product-image from the tapped card to #checkout-bar, and
@@ -514,33 +497,39 @@ const buildStockExceededMessage = ({ itemName, requestedQty, availableStock, uni
     `${itemName}: requested ${money(requestedQty)}${unit ? ` ${unit}` : ''}, only ${money(availableStock)}${unit ? ` ${unit}` : ''} in stock.`
 );
 const getLineKey = (line = {}) => line.line_key || line.item_id;
-// Synthetic/virtual POS category (not a real folder_id) - selecting it filters the catalog to
-// item.is_best_seller items instead of a folder match. A string sentinel keeps it unambiguous
-// against real numeric folder_id values everywhere selectedFolderId is compared/used.
-const BEST_SELLER_CATEGORY_ID = 'best-seller';
 const createCartLineKey = (itemId) => `line-${itemId}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-// Always Available and Best Seller tags are intentionally NOT rendered here (removed across
-// all viewports - mobile/tablet/desktop - per explicit request). Their underlying signals are
-// still fully live: isAlwaysAvailable still drives the item name's green color coding
-// (getMobileStockNameColorClassName, shared across all viewports) and still exempts the
-// item from the out-of-stock/purchase block (isOutOfStock, isSellAvailableCatalogItem) - only
-// the visual badge was removed, not the logic. Service still renders since it wasn't asked to
-// be removed.
 const CatalogItemBadges = ({
     isServiceItem = false,
+    isAlwaysAvailable = false,
+    isBestSeller = false,
     overlay = false
 }) => {
-    if (!isServiceItem) return null;
+    if (!isServiceItem && !isAlwaysAvailable && !isBestSeller) return null;
 
     const sharedClassName = overlay
         ? 'border-white/30 bg-slate-950/55 text-white'
         : 'border-blue-200 bg-blue-50 text-[#1A4E8D]';
+    const bestSellerClassName = overlay
+        ? 'border-amber-200/70 bg-amber-500/85 text-white'
+        : 'border-amber-200 bg-amber-50 text-amber-700';
 
     return (
         <div data-pos-catalog-badges="true" className="flex min-w-0 flex-wrap items-center gap-1">
-            <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${sharedClassName}`}>
-                Service
-            </span>
+            {isServiceItem && (
+                <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${sharedClassName}`}>
+                    Service
+                </span>
+            )}
+            {isAlwaysAvailable && (
+                <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${sharedClassName}`}>
+                    Always available
+                </span>
+            )}
+            {isBestSeller && (
+                <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide ${bestSellerClassName}`}>
+                    Best seller
+                </span>
+            )}
         </div>
     );
 };
@@ -634,6 +623,18 @@ const resolveMappedPosItemImage = (item = {}) => {
     return mapped?.src || '';
 };
 
+const resolvePosCatalogImageSources = (item = {}, settings = {}) => {
+    const configuredSrc = resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail');
+    const mappedSrc = resolveAssetVariantUrl(resolveAppAssetUrl(resolveMappedPosItemImage(item)), 'thumbnail');
+    const fallbackSrc = resolveCompanyIconFallbackUrl(settings);
+    return {
+        configuredSrc,
+        mappedSrc,
+        fallbackSrc,
+        src: configuredSrc || mappedSrc || fallbackSrc
+    };
+};
+
 const inferReceiptContract = (transaction, fallbackContract = null) => {
     if (fallbackContract?.document_type) {
         return fallbackContract;
@@ -680,6 +681,7 @@ export default function POSCheckoutTerminal({
     activeShiftId = null,
     terminalId = '',
     terminalMeta = null,
+    offlineSnapshotScope: providedOfflineSnapshotScope = {},
     onCheckoutCompleted = null,
     checkoutBlockedReason = '',
     onManualUniversalSync = async () => ({ allowed: false }),
@@ -721,6 +723,7 @@ export default function POSCheckoutTerminal({
     const [posFoldersLoading, setPosFoldersLoading] = useState(true);
     const [posFoldersError, setPosFoldersError] = useState('');
     const [catalogLoading, setCatalogLoading] = useState(true);
+    const [catalogRefreshing, setCatalogRefreshing] = useState(false);
     const [search, setSearch] = useState('');
     const [orderMethod, setOrderMethod] = useState('dine_in');
     const [paymentType, setPaymentType] = useState('cash');
@@ -773,6 +776,7 @@ export default function POSCheckoutTerminal({
     const [externalReceiptModalActive, setExternalReceiptModalActive] = useState(false);
     const catalogSnapshotRef = useRef([]);
     const receiptSettingsSnapshotRef = useRef({});
+    const catalogHasLoadedRef = useRef(false);
 
     useEffect(() => {
         catalogSnapshotRef.current = catalog;
@@ -781,6 +785,15 @@ export default function POSCheckoutTerminal({
     useEffect(() => {
         receiptSettingsSnapshotRef.current = receiptSettings;
     }, [receiptSettings]);
+
+    useEffect(() => {
+        if (!sessionLocked) return;
+        setCatalog([]);
+        setCatalogError('');
+        setCatalogLoading(false);
+        setCatalogRefreshing(false);
+        catalogHasLoadedRef.current = false;
+    }, [sessionLocked]);
 
     const closeReceiptPreviewModal = useCallback(() => {
         setReceiptPreviewModalOpen(false);
@@ -816,7 +829,6 @@ export default function POSCheckoutTerminal({
     const [customerPaymentAmountInput, setCustomerPaymentAmountInput] = useState('');
     const [currentSaleHelpOpen, setCurrentSaleHelpOpen] = useState(false);
     const [isTabletViewport, setIsTabletViewport] = useState(false);
-    const [isMobile, setIsMobile] = useState(false);
     const [catalogPage, setCatalogPage] = useState(1);
     const catalogSectionRef = useRef(null);
     const catalogViewportRef = useRef(null);
@@ -830,18 +842,13 @@ export default function POSCheckoutTerminal({
     const checkoutGridClassName = 'grid min-h-0 grid-cols-1 gap-4 pb-24 md:grid-cols-[minmax(0,1fr)_325px] md:pb-0 xl:h-full xl:overflow-hidden 2xl:gap-6';
     const catalogGridClassName = useMemo(() => {
         if (isTabletViewport) {
-            // IS_DGFY_POS_SURFACE is hardcoded true for this app build (frontend/apps/pos sets
-            // VITE_APP_SURFACE=pos), so this branch - not the one below - is what actually
-            // renders here. 3 columns per row (reverted back from a brief 2-column experiment).
             return IS_DGFY_POS_SURFACE
-                ? 'mt-4 grid grid-cols-3 auto-rows-[10rem] gap-2'
-                : 'mt-4 grid grid-cols-3 auto-rows-[13rem] gap-1.5';
+                ? 'mt-4 grid grid-cols-2 auto-rows-[7rem] gap-2 sm:grid-cols-3'
+                : 'mt-4 grid grid-cols-3 auto-rows-[11rem] gap-1.5';
         }
-        // xl: is true desktop only - both tablet definitions (DGFY 640-1023px, standard
-        // 768-1279px) cap below 1280px, so this never touches tablet's own branch above.
         return sidebarCollapsed
-            ? 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[7.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-5 xl:auto-rows-[12rem]'
-            : 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[7.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-4 xl:auto-rows-[12rem]';
+            ? 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[7.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-5'
+            : 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[7.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-4';
     }, [isTabletViewport, sidebarCollapsed]);
     const catalogViewportClassName = 'flex min-h-0 flex-1 flex-col overflow-visible pr-0 pb-3 xl:overflow-hidden';
     const tabletAlignedPaneClassName = isTabletViewport ? 'md:max-xl:min-h-[78rem]' : '';
@@ -852,12 +859,11 @@ export default function POSCheckoutTerminal({
     const currentSalePaneHeightClassName = 'h-full max-h-full';
     const safeCatalog = toArray(catalog);
     const safePosFolders = toArray(posFolders);
-    // This is a POS-only presentation list. The API remains the stock authority and checkout
-    // revalidates inventory server-side. Out-of-stock items stay visible here (shown
-    // locked/grayed via the existing isOutOfStock handling on the card) across every viewport -
-    // mobile and desktop already worked this way; tablet now matches (see Task: Show
-    // Out-of-Stock Items - Sell Catalog, Tablet).
-    const availableCatalog = useMemo(() => safeCatalog, [safeCatalog]);
+    // This is a POS-only presentation filter. The API remains the stock authority and checkout
+    // revalidates inventory server-side; services and Always Available items are intentionally exempt.
+    const availableCatalog = useMemo(() => (
+        safeCatalog.filter(isSellAvailableCatalogItem)
+    ), [safeCatalog]);
     const availableCategories = useMemo(() => {
         return safePosFolders.filter((folder) => {
             const folderId = Number(folder?.folder_id);
@@ -865,12 +871,6 @@ export default function POSCheckoutTerminal({
             return availableCatalog.some((item) => Number(item?.folder_id) === folderId);
         });
     }, [availableCatalog, safePosFolders]);
-    // Drives the synthetic "Best Seller" category chip: only shown/selectable when at least one
-    // currently-visible item is a best seller. Items keep their real folder too - this is an
-    // additional cross-cutting filter, not a replacement for their normal category.
-    const hasBestSellerItems = useMemo(() => (
-        availableCatalog.some((item) => item?.is_best_seller === true)
-    ), [availableCatalog]);
     const safeDiscountProfiles = toArray(discountProfiles);
     const safeCommercialPromoConfig = toArray(commercialPromoConfig);
     const safeDiscountApprovers = toArray(discountApprovers);
@@ -885,8 +885,11 @@ export default function POSCheckoutTerminal({
     );
     const signedInUserIsAdminLike = terminalUser?.is_master_admin === true
         || String(terminalUser?.role || '').trim().toLowerCase() === 'admin';
-    const signedInUserCanApproveManualDiscount = terminalUser?.is_master_admin === true
-        || ['admin', 'manager'].includes(String(terminalUser?.role || '').trim().toLowerCase());
+    const currentUserIsConfiguredDiscountApprover = safeDiscountApprovers.some((approver) => (
+        Number(approver?.user_id) > 0
+        && Number(approver.user_id) === Number(terminalUser?.user_id)
+    ));
+    const signedInUserCanApproveManualDiscount = currentUserIsConfiguredDiscountApprover;
     const terminalPermissionList = useMemo(() => {
         if (Array.isArray(terminalUser?.permissions)) return terminalUser.permissions;
         if (typeof terminalUser?.permissions !== 'string') return [];
@@ -902,10 +905,10 @@ export default function POSCheckoutTerminal({
         ? { ...appliedDiscount, eligible_item_ids: toArray(appliedDiscount.eligible_item_ids), eligible_items: toArray(appliedDiscount.eligible_items) }
         : null;
     const catalogCardClassName = IS_DGFY_POS_SURFACE && isTabletViewport
-        ? 'group flex h-[10rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
+        ? 'group flex h-[7rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
         : isTabletViewport
-            ? 'group flex h-[13rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
-            : 'group flex h-[15rem] min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:h-[7.5rem] max-sm:w-full max-sm:flex-row max-sm:p-0 md:h-[11rem] md:p-1.5 xl:h-[12rem]';
+            ? 'group flex h-[11rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
+            : 'group flex h-[15rem] min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:h-[7.5rem] max-sm:w-full max-sm:flex-row max-sm:p-0 md:h-[11rem] md:p-1.5 xl:h-full';
     const catalogCardImageWrapClassName = IS_DGFY_POS_SURFACE && isTabletViewport
         ? 'flex h-16 w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
         : isTabletViewport
@@ -922,16 +925,8 @@ export default function POSCheckoutTerminal({
     const selectedFolder = useMemo(() => (
         safePosFolders.find((folder) => Number(folder.folder_id) === Number(selectedFolderId)) || null
     ), [safePosFolders, selectedFolderId]);
-    // Label for the Filter button: handles the synthetic Best Seller selection too, since
-    // selectedFolder (a real-folder lookup) is always null for that sentinel.
-    const selectedFolderLabel = selectedFolderId === BEST_SELLER_CATEGORY_ID
-        ? 'Best Seller'
-        : (selectedFolder ? selectedFolder.name : 'Filter');
     const catalogForDisplay = useMemo(() => {
         if (!selectedFolderId) return availableCatalog;
-        if (selectedFolderId === BEST_SELLER_CATEGORY_ID) {
-            return availableCatalog.filter((item) => item?.is_best_seller === true);
-        }
         return availableCatalog.filter((item) => Number(item?.folder_id) === Number(selectedFolderId));
     }, [availableCatalog, selectedFolderId]);
     const totalCatalogPages = useMemo(() => (
@@ -941,6 +936,16 @@ export default function POSCheckoutTerminal({
         const pageStart = (catalogPage - 1) * catalogPageSize;
         return catalogForDisplay.slice(pageStart, pageStart + catalogPageSize);
     }, [catalogForDisplay, catalogPage, catalogPageSize]);
+    const nextCatalogImageUrls = useMemo(() => {
+        if (catalogPage >= totalCatalogPages) return [];
+        const nextPageStart = catalogPage * catalogPageSize;
+        return Array.from(new Set(
+            catalogForDisplay
+                .slice(nextPageStart, nextPageStart + catalogPageSize)
+                .map((item) => resolvePosCatalogImageSources(item, receiptSettings).src)
+                .filter(Boolean)
+        ));
+    }, [catalogForDisplay, catalogPage, catalogPageSize, receiptSettings, totalCatalogPages]);
     const visibleCatalogRange = useMemo(() => {
         if (catalogForDisplay.length === 0) return { start: 0, end: 0 };
         const start = (catalogPage - 1) * catalogPageSize + 1;
@@ -955,6 +960,27 @@ export default function POSCheckoutTerminal({
             return Math.min(totalCatalogPages, previous + 1);
         });
     }, [totalCatalogPages]);
+
+    useEffect(() => {
+        if (typeof window === 'undefined' || nextCatalogImageUrls.length === 0) return undefined;
+
+        const preloadNextPageImages = () => {
+            nextCatalogImageUrls.forEach((imageUrl) => {
+                const image = new window.Image();
+                image.decoding = 'async';
+                image.fetchPriority = 'low';
+                image.src = imageUrl;
+            });
+        };
+
+        if (typeof window.requestIdleCallback === 'function') {
+            const idleCallbackId = window.requestIdleCallback(preloadNextPageImages, { timeout: 1200 });
+            return () => window.cancelIdleCallback?.(idleCallbackId);
+        }
+
+        const timeoutId = window.setTimeout(preloadNextPageImages, 200);
+        return () => window.clearTimeout(timeoutId);
+    }, [nextCatalogImageUrls]);
 
     const handleCatalogSwipeStart = useCallback((clientX, pointerId = null) => {
         catalogSwipeStartXRef.current = clientX;
@@ -1086,9 +1112,30 @@ export default function POSCheckoutTerminal({
         }
     }, [isViewModeControlled, onViewModeChange]);
 
+    const offlineSnapshotScope = useMemo(() => ({
+        tenantId: providedOfflineSnapshotScope?.tenantId,
+        terminalId: providedOfflineSnapshotScope?.terminalId || normalizedTerminalId,
+        locationId: providedOfflineSnapshotScope?.locationId || selectedLocationId,
+        userId: providedOfflineSnapshotScope?.userId
+            || terminalUser?.user_id
+            || terminalUser?.id
+            || terminalUser?.email
+    }), [
+        normalizedTerminalId,
+        providedOfflineSnapshotScope?.locationId,
+        providedOfflineSnapshotScope?.tenantId,
+        providedOfflineSnapshotScope?.terminalId,
+        providedOfflineSnapshotScope?.userId,
+        selectedLocationId,
+        terminalUser?.email,
+        terminalUser?.id,
+        terminalUser?.user_id
+    ]);
+
     const syncQueuedCheckoutsState = useCallback(async () => {
         const rows = await listTerminalOperationQueueEntries({
             includeResolved: false,
+            scope: offlineSnapshotScope,
             statuses: [
                 TERMINAL_QUEUE_STATUS.QUEUED,
                 TERMINAL_QUEUE_STATUS.REPLAYING,
@@ -1097,7 +1144,7 @@ export default function POSCheckoutTerminal({
         });
         const checkoutRows = (Array.isArray(rows) ? rows : []).filter((entry) => isCheckoutQueueEntry(entry));
         setQueuedCheckouts(checkoutRows);
-    }, []);
+    }, [offlineSnapshotScope]);
 
     const enqueueCheckoutIntent = useCallback(async (payload, source = 'unknown') => {
         const idempotencyKey = String(payload?.idempotency_key || createIdempotencyKey()).trim();
@@ -1106,6 +1153,7 @@ export default function POSCheckoutTerminal({
         const entry = await enqueueTerminalOperationIntent({
             intent_id: idempotencyKey,
             operation: CHECKOUT_QUEUE_OPERATION,
+            queue_scope: offlineSnapshotScope,
             payload: {
                 ...payload,
                 idempotency_key: idempotencyKey
@@ -1116,13 +1164,7 @@ export default function POSCheckoutTerminal({
         }, source);
         await syncQueuedCheckoutsState();
         return entry;
-    }, [syncQueuedCheckoutsState]);
-
-    const offlineSnapshotScope = useMemo(() => ({
-        terminalId: normalizedTerminalId,
-        locationId: selectedLocationId,
-        userId: terminalUser?.user_id || terminalUser?.id || terminalUser?.email
-    }), [normalizedTerminalId, selectedLocationId, terminalUser?.email, terminalUser?.id, terminalUser?.user_id]);
+    }, [offlineSnapshotScope, syncQueuedCheckoutsState]);
 
     const saveCatalogSnapshot = useCallback((nextCatalog, nextReceiptSettings = receiptSettingsSnapshotRef.current) => {
         saveOfflinePosSnapshot(offlineSnapshotScope, {
@@ -1136,15 +1178,21 @@ export default function POSCheckoutTerminal({
             setCatalog([]);
             setCatalogError('');
             setCatalogLoading(false);
+            setCatalogRefreshing(false);
+            catalogHasLoadedRef.current = false;
             return;
         }
         if (!canViewHistory) {
             setCatalog([]);
             setCatalogError('You need POS view permission to load the POS catalog.');
             setCatalogLoading(false);
+            setCatalogRefreshing(false);
+            catalogHasLoadedRef.current = false;
             return;
         }
-        setCatalogLoading(true);
+        const isInitialLoad = !catalogHasLoadedRef.current;
+        setCatalogLoading(isInitialLoad);
+        setCatalogRefreshing(!isInitialLoad);
         setCatalogError('');
         try {
             const params = { search: search || '', limit: 200 };
@@ -1175,7 +1223,9 @@ export default function POSCheckoutTerminal({
             setCatalogError(message);
             toast.error(message);
         } finally {
+            catalogHasLoadedRef.current = true;
             setCatalogLoading(false);
+            setCatalogRefreshing(false);
         }
     }, [canViewHistory, offlineSnapshotScope, saveCatalogSnapshot, search, selectedLocationId, sessionLocked]);
 
@@ -1241,7 +1291,10 @@ export default function POSCheckoutTerminal({
             return;
         }
 
-        const candidates = (await getReplayCandidateEntries({ limit: CHECKOUT_REPLAY_BATCH_SIZE }))
+        const candidates = (await getReplayCandidateEntries({
+            scope: offlineSnapshotScope,
+            limit: CHECKOUT_REPLAY_BATCH_SIZE
+        }))
             .filter((entry) => isCheckoutQueueEntry(entry));
         if (!Array.isArray(candidates) || candidates.length === 0) {
             await syncQueuedCheckoutsState();
@@ -1334,6 +1387,7 @@ export default function POSCheckoutTerminal({
         historyPage,
         loadHistory,
         loadCatalog,
+        offlineSnapshotScope,
         onCheckoutCompleted,
         sessionLocked,
         syncQueuedCheckoutsState
@@ -1644,19 +1698,6 @@ export default function POSCheckoutTerminal({
     }, []);
 
     useEffect(() => {
-        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return undefined;
-        const mobileMedia = window.matchMedia('(max-width: 639.98px)');
-        const syncIsMobile = (event) => setIsMobile(Boolean(event.matches));
-        syncIsMobile(mobileMedia);
-        if (typeof mobileMedia.addEventListener === 'function') {
-            mobileMedia.addEventListener('change', syncIsMobile);
-            return () => mobileMedia.removeEventListener('change', syncIsMobile);
-        }
-        mobileMedia.addListener(syncIsMobile);
-        return () => mobileMedia.removeListener(syncIsMobile);
-    }, []);
-
-    useEffect(() => {
         setCatalogPage(1);
     }, [search, selectedFolderId, selectedLocationId]);
 
@@ -1697,16 +1738,11 @@ export default function POSCheckoutTerminal({
 
     useEffect(() => {
         if (!selectedFolderId) return;
-        // Best Seller is a synthetic category (not in availableCategories, which only ever
-        // holds real folders) - check hasBestSellerItems instead, or this would immediately
-        // reset the selection right after picking it.
-        const stillExists = selectedFolderId === BEST_SELLER_CATEGORY_ID
-            ? hasBestSellerItems
-            : availableCategories.some((folder) => Number(folder.folder_id) === Number(selectedFolderId));
+        const stillExists = availableCategories.some((folder) => Number(folder.folder_id) === Number(selectedFolderId));
         if (!stillExists) {
             setSelectedFolderId(null);
         }
-    }, [availableCategories, hasBestSellerItems, selectedFolderId]);
+    }, [availableCategories, selectedFolderId]);
 
     useEffect(() => {
         if (!imagePreview) return undefined;
@@ -2140,14 +2176,6 @@ export default function POSCheckoutTerminal({
         setQtyMeterState(null);
     };
 
-    // Desktop-only: Current Sale cart line "+" button reuses the exact same bulk-add meter
-    // (qtyMeterState/qtyMeterGestureRef/qtyMeterTimerRef, the QTY_METER_* constants, and the
-    // single .qty-meter portal already rendered below) as the mobile catalog "+" button above -
-    // same long-press-then-drag-up gesture, same visual meter. Only the "commit" step differs:
-    // the catalog button ADDS a new/updates a cart line via adjustCartQuantity(item, delta),
-    // while a cart line already exists, so this SETS its quantity to current + delta via
-    // updateCartQuantity(lineKey, ...) instead. gesture.itemId doubles as a generic gesture key
-    // here (holds the cart lineKey rather than an item_id) purely for pointer-vs-line matching.
     const handleCartQtyButtonPointerDown = (event, line) => {
         if (event.pointerType === 'mouse' && event.button !== 0) return;
         const lineKey = getLineKey(line);
@@ -2309,8 +2337,16 @@ export default function POSCheckoutTerminal({
         const approvalUserId = manualDiscountUsesCurrentPosApprover
             ? Number(terminalUser?.user_id)
             : Number(discountDraft.approver_user_id);
+        if (discountRequiresApproval && (!Number.isInteger(approvalUserId) || approvalUserId <= 0)) {
+            toast.error('Select a configured POS discount approver, or ask the Master Admin to configure an approval PIN.');
+            return;
+        }
         if (!statutory && !discountDraft.customer_name.trim()) {
             toast.error('Customer name is required for this discount.');
+            return;
+        }
+        if (type === 'manual' && discountDraft.reason.trim().length < 3) {
+            toast.error('Enter a reason of at least 3 characters for this manual discount.');
             return;
         }
         if (statutory && (!discountDraft.customer_name.trim() || !discountDraft.id_number.trim())) {
@@ -2319,10 +2355,6 @@ export default function POSCheckoutTerminal({
         }
         if (statutory && safeEligibleDiscountItemIds.length === 0) {
             toast.error('Select at least one eligible item.');
-            return;
-        }
-        if (discountRequiresApproval && !approvalUserId) {
-            toast.error('Select the manager or admin approving this discount.');
             return;
         }
         if (type === 'promo' && (!discountDraft.promo_code || !discountDraft.promo_code.trim())) {
@@ -2532,7 +2564,15 @@ export default function POSCheckoutTerminal({
                 toast.error('Governed discounts require an online checkout so eligibility and the selected approver can be verified securely.');
                 return;
             }
-            await enqueueCheckoutIntent(payload, source);
+            try {
+                await enqueueCheckoutIntent(payload, source);
+            } catch (error) {
+                toast.error(
+                    error?.message
+                    || 'Offline sale was not saved. Keep the cart open and retry after freeing device storage or reconnecting.'
+                );
+                return false;
+            }
             setLastReceipt(payload.offline_history_snapshot);
             setLastReceiptContract({ document_type: 'non_fiscal_slip', document_context: 'non_fiscal', label: 'PENDING SYNC' });
             setReceiptPreviewSource('order_preview');
@@ -2560,6 +2600,7 @@ export default function POSCheckoutTerminal({
             setCheckoutConfirmModalOpen(false);
             const refreshedQueue = await listTerminalOperationQueueEntries({
                 includeResolved: false,
+                scope: offlineSnapshotScope,
                 statuses: [
                     TERMINAL_QUEUE_STATUS.QUEUED,
                     TERMINAL_QUEUE_STATUS.REPLAYING,
@@ -2570,8 +2611,9 @@ export default function POSCheckoutTerminal({
                 .filter((entry) => isCheckoutQueueEntry(entry))
                 .length;
             toast.message(
-                `Offline transaction recorded locally. It is pending sync and will auto-replay when connection is restored (${nextQueueCount} queued).`
+                `Offline transaction saved locally. Press Sync after reconnecting (${nextQueueCount} queued).`
             );
+            return true;
         };
 
         if (offlineCheckout) {
@@ -2964,7 +3006,7 @@ export default function POSCheckoutTerminal({
                                 <button
                                     type="button"
                                     className={`flex h-11 w-full shrink-0 items-center justify-center gap-3 rounded-lg border px-5 text-[13px] font-bold shadow-sm transition ${
-                                        catalogFiltersOpen || selectedFolderId
+                                        catalogFiltersOpen || selectedFolder
                                             ? 'border-[#1A4E8D] bg-blue-50 text-[#1A4E8D] hover:bg-blue-100'
                                             : 'border-slate-300 bg-white text-[#0F172A] hover:bg-slate-50'
                                     }`}
@@ -2974,7 +3016,7 @@ export default function POSCheckoutTerminal({
                                     title="Show or hide catalog filters"
                                 >
                                     <Filter size={18} />
-                                    {selectedFolderLabel}
+                                    {selectedFolder ? selectedFolder.name : 'Filter'}
                                     <ChevronDown className={`h-4 w-4 transition-transform ${catalogFiltersOpen ? 'rotate-180' : ''}`} />
                                 </button>
                             </div>
@@ -2983,7 +3025,7 @@ export default function POSCheckoutTerminal({
                                 <button
                                     type="button"
                                     className={`flex h-11 shrink-0 items-center justify-center gap-3 rounded-lg border px-5 text-[13px] font-bold shadow-sm transition max-sm:flex-1 max-sm:min-w-0 ${
-                                        catalogFiltersOpen || selectedFolderId
+                                        catalogFiltersOpen || selectedFolder
                                             ? 'border-[#1A4E8D] bg-blue-50 text-[#1A4E8D] hover:bg-blue-100'
                                             : 'border-slate-300 bg-white text-[#0F172A] hover:bg-slate-50'
                                     }`}
@@ -2993,7 +3035,7 @@ export default function POSCheckoutTerminal({
                                     title="Show or hide catalog filters"
                                 >
                                     <Filter size={18} />
-                                    {selectedFolderLabel}
+                                    {selectedFolder ? selectedFolder.name : 'Filter'}
                                     <ChevronDown className={`h-4 w-4 transition-transform ${catalogFiltersOpen ? 'rotate-180' : ''}`} />
                                 </button>
                             <Suspense fallback={(
@@ -3045,24 +3087,6 @@ export default function POSCheckoutTerminal({
                             <span>All Items</span>
                             {!selectedFolderId && <X className="h-3.5 w-3.5 opacity-70" />}
                         </button>
-                        {hasBestSellerItems && (() => {
-                            const active = selectedFolderId === BEST_SELLER_CATEGORY_ID;
-                            return (
-                                <button
-                                    type="button"
-                                    onClick={() => toggleFolderFilter(BEST_SELLER_CATEGORY_ID)}
-                                    className={`inline-flex h-9 min-w-[112px] items-center justify-center gap-2 rounded-lg border px-4 text-[12px] font-extrabold transition sm:min-w-[120px] ${
-                                        active
-                                            ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-lg shadow-blue-900/10'
-                                            : 'border-slate-200 bg-slate-50 text-[#0F172A] hover:border-blue-200 hover:bg-white'
-                                    }`}
-                                >
-                                    <Star className="h-3.5 w-3.5" />
-                                    <span>Best Seller</span>
-                                    {active && <X className="h-3.5 w-3.5 opacity-70" />}
-                                </button>
-                            );
-                        })()}
                         {availableCategories.map((folder) => {
                             const active = selectedFolderId === folder.folder_id;
                             return (
@@ -3149,25 +3173,30 @@ export default function POSCheckoutTerminal({
                     <p className="text-sm text-slate-500">Loading catalog...</p>
                 ) : (
                     <>
-                    <div ref={catalogGridRef} className={catalogGridClassName}>
-                        {visibleCatalogItems.map((item) => {
+                    {catalogRefreshing && (
+                        <p role="status" className="mb-2 text-xs font-semibold text-blue-700">
+                            Refreshing catalog...
+                        </p>
+                    )}
+                    <div
+                        ref={catalogGridRef}
+                        className={`${catalogGridClassName} ${catalogRefreshing ? 'pointer-events-none opacity-70' : ''}`}
+                        aria-busy={catalogRefreshing}
+                    >
+                        {visibleCatalogItems.map((item, itemIndex) => {
                             const isServiceItem = isServiceCatalogItem(item);
                             const isAlwaysAvailable = item?.pos_always_available === true;
-                            // isBestSeller/item.is_best_seller intentionally not used for display anymore -
-                            // the Best Seller tag was removed across all viewports; nothing else reads it.
+                            const isBestSeller = item?.is_best_seller === true;
                             const isOutOfStock = !isServiceItem && !isAlwaysAvailable && Number(item.current_stock || 0) <= 0;
-                            const configuredPosImageSrc = resolveAssetVariantUrl(item.storefront_image_url, 'thumbnail');
-                            const mappedPosImageSrc = resolveAppAssetUrl(resolveMappedPosItemImage(item));
-                            const fallbackPosImageSrc = resolveCompanyIconFallbackUrl(receiptSettings);
-                            const posImageSrc = configuredPosImageSrc || mappedPosImageSrc || fallbackPosImageSrc;
+                            const {
+                                fallbackSrc: fallbackPosImageSrc,
+                                src: posImageSrc
+                            } = resolvePosCatalogImageSources(item, receiptSettings);
                             const hasImage = Boolean(posImageSrc) && !catalogImageErrors.has(item.item_id);
                             const cartLineForItem = safeCart.find((line) => line.item_id === item.item_id);
                             const cartQuantityForItem = cartLineForItem ? Number(cartLineForItem.quantity) || 0 : 0;
                             const isEditingThisQuantity = editingQuantityItemId === item.item_id;
-                            // Shared across every viewport: computed on every render from current
-                            // item data, so it's correct on initial render and never stale/
-                            // flickering on resize.
-                            const stockNameColorClassName = getMobileStockNameColorClassName(item.current_stock, isAlwaysAvailable || isServiceItem);
+                            const stockColorClassName = getCatalogStockColorClassName(item, lowStockDisplayThreshold);
                             return (
                                 <div
                                     key={item.item_id}
@@ -3206,6 +3235,11 @@ export default function POSCheckoutTerminal({
                                             <img
                                                 src={posImageSrc}
                                                 alt={`${item.name} menu`}
+                                                loading={itemIndex < 4 ? 'eager' : 'lazy'}
+                                                decoding="async"
+                                                fetchPriority={itemIndex < 4 ? 'high' : 'auto'}
+                                                width={400}
+                                                height={400}
                                                 className="product-image h-full w-full object-cover object-center"
                                                 onError={(event) => {
                                                     const fallbackSrc = fallbackPosImageSrc;
@@ -3232,23 +3266,41 @@ export default function POSCheckoutTerminal({
                                                 Out of stock
                                             </span>
                                         )}
-                                        {/* No more badges/name/gradient overlay here (DGFY tablet used to show
-                                            them absolutely-positioned on top of the image) - name/tags/price
-                                            now render as normal stacked rows below the image instead, same as
-                                            every other tablet/desktop card (see block below). */}
+                                        {IS_DGFY_POS_SURFACE && isTabletViewport && (
+                                            <>
+                                                <div className="absolute left-1.5 top-1.5 z-10 max-w-[calc(100%-0.75rem)]">
+                                                    <CatalogItemBadges
+                                                        isServiceItem={isServiceItem}
+                                                        isAlwaysAvailable={isAlwaysAvailable}
+                                                        isBestSeller={isBestSeller}
+                                                        overlay
+                                                    />
+                                                </div>
+                                                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-950/45 to-transparent px-2 py-1.5">
+                                                    <p className="min-w-0 text-[11px] font-black leading-tight text-white line-clamp-2">
+                                                        {item.name}
+                                                    </p>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
-                                <>
+                                {!(IS_DGFY_POS_SURFACE && isTabletViewport) && (
+                                    <>
                                         {/* Mobile layout (<640px): name on top (full text, no clamp), with
                                             price/availability/quantity-control encased in one div below it. */}
                                         {/* Mobile-only simplification: VAT row, stock dot indicator, and product
                                             code (sku_code) removed. "Always available" renders only when true —
                                             no placeholder when it doesn't apply. */}
                                         <div className="flex flex-1 min-w-0 flex-col justify-between gap-1.5 p-2.5 sm:hidden">
-                                            <p className={`min-w-0 text-[13px] font-black leading-tight ${stockNameColorClassName}`}>{item.name}</p>
+                                            <p className={`min-w-0 text-[13px] font-black leading-tight ${stockColorClassName}`}>{item.name}</p>
                                             <div className="flex items-center justify-between gap-x-2 gap-y-1.5">
                                                 <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
-                                                    <CatalogItemBadges isServiceItem={isServiceItem} />
+                                                    <CatalogItemBadges
+                                                        isServiceItem={isServiceItem}
+                                                        isAlwaysAvailable={isAlwaysAvailable}
+                                                        isBestSeller={isBestSeller}
+                                                    />
                                                     <span className="font-black text-[#1A4E8D] whitespace-nowrap text-[10.5px]">
                                                         {Number(item.default_sale_price || 0) > 0 ? `PHP ${money(item.default_sale_price)}` : 'Not set'}
                                                     </span>
@@ -3330,50 +3382,55 @@ export default function POSCheckoutTerminal({
                                             </div>
                                         </div>
                                         <div className="flex min-w-0 flex-col gap-1.5 max-sm:hidden">
-                                            {/* Tablet and desktop now share the exact same unified color logic
-                                                as mobile (getMobileStockNameColorClassName, computed once above
-                                                as stockNameColorClassName) - stock > 100 green, 0 < stock <= 100
-                                                yellow, stock <= 0 red, across every viewport. */}
-                                            <p className={`min-w-0 text-[13.5px] font-black leading-tight line-clamp-2 ${stockNameColorClassName}`}>{item.name}</p>
-                                            <CatalogItemBadges isServiceItem={isServiceItem} />
+                                            <div className="flex min-w-0 items-start gap-1.5">
+                                                <p className={`min-w-0 flex-1 text-[13.5px] font-black leading-tight line-clamp-2 ${stockColorClassName}`}>{item.name}</p>
+                                                {isBestSeller && (
+                                                    <span className="shrink-0 rounded-md border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide text-amber-700">
+                                                        Best seller
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <CatalogItemBadges
+                                                isServiceItem={isServiceItem}
+                                                isAlwaysAvailable={isAlwaysAvailable}
+                                                isBestSeller={false}
+                                            />
                                         </div>
-                                        {/* SKU intentionally omitted here: neither desktop nor tablet show it
-                                            anymore (see Task: Increase Item Container Height - Sell Catalog,
-                                            Tablet, Step 2 - tablet cards now show only image/name/tags/price,
-                                            matching desktop's already-simplified structure). */}
-                                </>
-                                {isTabletViewport ? (
-                                    /* Tablet-only simplified card (both DGFY and standard tablet now share
-                                       this - see Task: Remove image gradient overlay, stack name/tags/price
-                                       below image): price only - no stock count, SKU, or VAT row, matching
-                                       desktop's hierarchy (image -> name -> tags -> price) and grouping.
-                                       mt-auto pins price to the bottom of the flex-col card regardless of tag
-                                       count, same stability mechanism as desktop, just with slightly more
-                                       compact spacing/type size for tablet. This is a separate branch from
-                                       desktop's own (below) so desktop's markup stays untouched. */
-                                    <div className="mt-auto pt-2 max-sm:hidden">
-                                        <span className="text-[12px] font-black text-[#1A4E8D] whitespace-nowrap">
-                                            {Number(item.default_sale_price || 0) > 0
-                                                ? `PHP ${money(item.default_sale_price)}`
-                                                : 'Not set'}
+                                        <p className="mt-0.5 truncate text-[10px] font-extrabold tracking-wide text-[#64748B] max-sm:hidden">{item.sku_code}</p>
+                                    </>
+                                )}
+                                {IS_DGFY_POS_SURFACE && isTabletViewport ? (
+                                    <div className="mt-1 flex items-center justify-center rounded-md px-1 py-0.5">
+                                        <span className={`text-[11px] font-black ${isOutOfStock ? 'text-rose-700' : 'text-[#1A4E8D]'}`}>
+                                            {isOutOfStock
+                                                ? 'Unavailable'
+                                                : `PHP ${money(item.default_sale_price)}`}
                                         </span>
                                     </div>
                                 ) : (
-                                    /* Desktop-only simplified card: price only - no stock count, SKU, or VAT
-                                       row (see Task: Simplify Desktop Sell Catalog Item Layout). mt-auto (not
-                                       a fixed mt-3) pins this to the bottom of the flex-col card regardless
-                                       of how many tags render above it, so price position stays consistent
-                                       across items instead of shifting with tag count (see Task: Fix Item
-                                       Card Height & Price Positioning). The card's existing opacity/blur
-                                       styling and the "Out of stock" image overlay still communicate
-                                       unavailability without this extra metadata line. */
-                                    <div className="mt-auto pt-3 max-sm:hidden">
-                                        <span className="text-[13px] font-black text-[#1A4E8D] whitespace-nowrap">
-                                            {Number(item.default_sale_price || 0) > 0
-                                                ? `PHP ${money(item.default_sale_price)}`
-                                                : 'Not set'}
-                                        </span>
-                                    </div>
+                                    <>
+                                        <div className={`${isTabletViewport ? 'mt-1.5' : 'mt-3'} grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[10.5px] text-[#64748B] max-sm:hidden`}>
+                                            <span className="font-semibold">Stock:</span>
+                                            <span className={`text-right font-bold whitespace-nowrap ${stockColorClassName}`}>
+                                                {isServiceItem ? 'Service' : isAlwaysAvailable ? 'Always available' : Number(item.current_stock || 0).toFixed(2)}
+                                            </span>
+                                            <span className="font-semibold">Price:</span>
+                                            <span className="text-right font-black text-[#1A4E8D] whitespace-nowrap">
+                                                {Number(item.default_sale_price || 0) > 0
+                                                    ? `PHP ${money(item.default_sale_price)}`
+                                                    : 'Not set'}
+                                            </span>
+                                            <span className="font-semibold">VAT:</span>
+                                            <span className="text-right font-extrabold text-[#334155] whitespace-nowrap">
+                                                {VAT_TYPE_LABEL[item.vat_type || 'vatable'] || 'VATable'}
+                                            </span>
+                                        </div>
+                                        {isOutOfStock && (
+                                            <p className="mt-auto pt-1 text-[10.5px] font-medium text-slate-500 max-sm:hidden">
+                                                Unavailable for checkout.
+                                            </p>
+                                        )}
+                                    </>
                                 )}
                                 </div>
                             );
@@ -3570,32 +3627,29 @@ export default function POSCheckoutTerminal({
                                                     (h-10/px-3) than desktop's h-8/px-2 for easier touch input;
                                                     mobile is unaffected - it never renders this stepper (its cart
                                                     line qty is read-only, managed from the catalog card instead). */}
-                                                {!isMobile ? (
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className={isTabletViewport ? 'h-10 px-3 text-[13px]' : 'h-8 px-2 text-[13px]'}
-                                                        onPointerDown={(event) => handleCartQtyButtonPointerDown(event, line)}
-                                                        onPointerMove={(event) => handleCartQtyButtonPointerMove(event, line)}
-                                                        onPointerUp={(event) => handleCartQtyButtonPointerUp(event, line)}
-                                                        onPointerCancel={handleCartQtyButtonPointerCancel}
-                                                        disabled={posActionsBlocked}
-                                                    >
-                                                        <Plus className="h-3.5 w-3.5" />
-                                                    </Button>
-                                                ) : (
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="h-8 px-2 text-[13px]"
-                                                        onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) + 1)}
-                                                        disabled={posActionsBlocked}
-                                                    >
-                                                        <Plus className="h-3.5 w-3.5" />
-                                                    </Button>
-                                                )}
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className={`${isTabletViewport ? 'h-10 px-3 text-[13px]' : 'h-8 px-2 text-[13px]'} hidden sm:inline-flex`}
+                                                    onPointerDown={(event) => handleCartQtyButtonPointerDown(event, line)}
+                                                    onPointerMove={(event) => handleCartQtyButtonPointerMove(event, line)}
+                                                    onPointerUp={(event) => handleCartQtyButtonPointerUp(event, line)}
+                                                    onPointerCancel={handleCartQtyButtonPointerCancel}
+                                                    disabled={posActionsBlocked}
+                                                >
+                                                    <Plus className="h-3.5 w-3.5" />
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8 px-2 text-[13px] sm:hidden"
+                                                    onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) + 1)}
+                                                    disabled={posActionsBlocked}
+                                                >
+                                                    <Plus className="h-3.5 w-3.5" />
+                                                </Button>
                                             </div>
                                         </label>
                                         <div className="text-[11px] text-slate-500">
@@ -4124,12 +4178,16 @@ export default function POSCheckoutTerminal({
                                 </div>
                             )}
 
-                            {discountDraft.type === 'employee' && (
+                            {['employee', 'manual'].includes(discountDraft.type) && (
                                 <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-[#0F172A]">Reason <span className="font-medium text-slate-400">(optional)</span></label>
+                                    <label className="text-xs font-semibold text-[#0F172A]">
+                                        Reason {discountDraft.type === 'manual'
+                                            ? <span className="text-rose-500">*</span>
+                                            : <span className="font-medium text-slate-400">(optional)</span>}
+                                    </label>
                                     <div className="relative">
                                         <MessageSquare className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                        <Input className="h-8 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter reason" value={discountDraft.reason} onChange={(e) => setDiscountDraft((p) => ({ ...p, reason: e.target.value }))} />
+                                        <Input className="h-8 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder={discountDraft.type === 'manual' ? 'Enter manual discount reason' : 'Enter reason'} value={discountDraft.reason} onChange={(e) => setDiscountDraft((p) => ({ ...p, reason: e.target.value }))} />
                                     </div>
                                 </div>
                             )}
@@ -4148,12 +4206,12 @@ export default function POSCheckoutTerminal({
                                             <div className="relative">
                                                 <BadgeCheck className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                                                 <select value={discountDraft.approver_user_id} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, approver_user_id: event.target.value }))} disabled={discountApproversLoading} className="h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-8 pr-7 text-xs font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2">
-                                                    <option value="">{discountApproversLoading ? 'Loading approvers...' : 'Select manager or admin'}</option>
+                                                    <option value="">{discountApproversLoading ? 'Loading approvers...' : 'Select configured manager or admin'}</option>
                                                     {safeDiscountApprovers.map((approver) => <option key={approver.user_id} value={approver.user_id}>{approver.username} ({approver.role})</option>)}
                                                 </select>
                                                 <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                                             </div>
-                                            {!discountApproversLoading && safeDiscountApprovers.length === 0 && <p className="text-[10px] font-medium text-amber-700 mt-0.5">No approver PIN configured.</p>}
+                                            {!discountApproversLoading && safeDiscountApprovers.length === 0 && <p className="text-[10px] font-medium text-amber-700 mt-0.5">No POS approval PIN is configured. Ask the Master Admin to configure one.</p>}
                                         </div>
                                     )}
                                     <div className="space-y-1 col-span-2">

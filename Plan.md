@@ -1,3 +1,15 @@
+# Plan — Food & Beverage (F&B) Saving Menu Item Modal Redesign
+
+## High-Level Strategy
+Redesign the "Saving item..." modal overlay portal in `TerminalOperationsWorkspace.jsx` specifically for Food & Beverage (F&B) restaurant POS operations. The new modal will feature warm amber/orange accent highlights, a glassmorphic floating card with a top warm linear shimmer progress bar, a dual orbital counter-rotating ring loader with a glowing F&B culinary emblem (utensils/menu badge), clear F&B micro-copy ("Saving Menu Item...", "Updating food & beverage details and syncing menu changes across POS terminals & Kitchen Displays"), and animated pulse indicators.
+
+## Goals
+- [x] 1. Define custom F&B warm accent keyframe animations for shimmer slide and dot pulse in `frontend/src/index.css`.
+- [x] 2. Update the `itemSaveInFlight` modal portal in `TerminalOperationsWorkspace.jsx` to use the F&B culinary emblem, warm amber/orange gradient theme, F&B status badge, and F&B menu sync copy.
+- [x] 3. Verify that ESLint passes and the frontend builds cleanly.
+
+---
+
 # Plan — Tablet Report Filters 2-Column Grid Layout
 
 ## High-Level Strategy

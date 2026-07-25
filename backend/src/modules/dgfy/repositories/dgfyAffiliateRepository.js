@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import { Op } from 'sequelize';
 import {
     DgfyAccount,
     DgfyAffiliateAttribution,
@@ -6,6 +7,7 @@ import {
     DgfyAffiliateCommission,
     DgfyAffiliatePayoutMethod,
     DgfyAffiliateCashout,
+    DgfyAffiliateInvite,
     StorefrontDiscoveryIndex,
     Tenant,
     TenantAffiliateSettings
@@ -178,6 +180,151 @@ export const dgfyAffiliateRepository = {
         if (!row) return null;
         await row.update(updates);
         return toPlain(await row.reload({ include: [ENROLLMENT_ACCOUNT_INCLUDE] }));
+    },
+
+    // --- Affiliate invites (email invitations that predate an enrollment / DGFY account) ---
+
+    async createInvite({ tenantId, email, tokenHash, commissionRateBps = null, invitedBy = null, expiresAt }) {
+        const row = await DgfyAffiliateInvite.create({
+            tenant_id: tenantId,
+            email: normalizeEmail(email),
+            token_hash: tokenHash,
+            commission_rate_bps: commissionRateBps,
+            invited_by: invitedBy,
+            status: 'pending',
+            expires_at: expiresAt,
+            last_sent_at: new Date()
+        });
+        return toPlain(row);
+    },
+
+    // Reuses an existing pending invite row (re-invite / resend) rather than piling up duplicates:
+    // rotates the token, refreshes the expiry, and re-arms it to `pending`.
+    async refreshInvite(inviteId, { tokenHash, commissionRateBps = null, expiresAt }) {
+        const row = await DgfyAffiliateInvite.findByPk(inviteId);
+        if (!row) return null;
+        await row.update({
+            token_hash: tokenHash,
+            commission_rate_bps: commissionRateBps,
+            status: 'pending',
+            expires_at: expiresAt,
+            last_sent_at: new Date(),
+            accepted_at: null,
+            dgfy_account_id: null
+        });
+        return toPlain(await row.reload());
+    },
+
+    async findPendingInviteByTenantAndEmail(tenantId, email) {
+        const row = await DgfyAffiliateInvite.findOne({
+            where: { tenant_id: tenantId, email: normalizeEmail(email), status: 'pending' }
+        });
+        return toPlain(row);
+    },
+
+    async findInviteByIdForTenant(tenantId, inviteId) {
+        const row = await DgfyAffiliateInvite.findOne({
+            where: { tenant_id: tenantId, invite_id: inviteId }
+        });
+        return toPlain(row);
+    },
+
+    async findInviteByTokenHash(tokenHash) {
+        const row = await DgfyAffiliateInvite.findOne({
+            where: { token_hash: tokenHash },
+            include: [{ model: Tenant, as: 'tenant', attributes: ['id', 'name'] }]
+        });
+        return toPlain(row);
+    },
+
+    async listInvitesByTenant(tenantId, { status = null } = {}) {
+        const where = { tenant_id: tenantId };
+        if (status) where.status = status;
+        const rows = await DgfyAffiliateInvite.findAll({
+            where,
+            order: [['created_at', 'DESC']]
+        });
+        return rows.map(toPlain);
+    },
+
+    async markInviteCancelled(inviteId) {
+        const row = await DgfyAffiliateInvite.findByPk(inviteId);
+        if (!row) return null;
+        if (row.status === 'pending') await row.update({ status: 'cancelled' });
+        return toPlain(await row.reload());
+    },
+
+    async markInviteExpired(inviteId) {
+        const row = await DgfyAffiliateInvite.findByPk(inviteId);
+        if (!row) return null;
+        if (row.status === 'pending') await row.update({ status: 'expired' });
+        return toPlain(await row.reload());
+    },
+
+    // Turns a pending invite into a real enrollment bound to `account`, then flips the invite to
+    // `accepted`. Idempotent: if the account is already enrolled for this tenant (unique
+    // (dgfy_account_id, tenant_id) index), it reuses that enrollment instead of creating a second.
+    // Accepts an optional transaction so the on-register auto-enroll hook can run atomically inside
+    // the account-creation transaction.
+    async materializeInviteEnrollment(invite, account, { transaction = null } = {}) {
+        const existing = await DgfyAffiliateEnrollment.findOne({
+            where: { dgfy_account_id: account.id, tenant_id: invite.tenant_id },
+            transaction
+        });
+
+        let enrollment = existing;
+        let created = false;
+        if (!existing) {
+            // generateUniqueShareCode reads without the transaction, but the unique short_code/
+            // share_code_hash indexes are the real guarantee against collisions.
+            const { shortCode, shareCodeHash } = await this.generateUniqueShareCode();
+            enrollment = await DgfyAffiliateEnrollment.create({
+                dgfy_account_id: account.id,
+                tenant_id: invite.tenant_id,
+                short_code: shortCode,
+                share_code_hash: shareCodeHash,
+                commission_rate_bps: invite.commission_rate_bps ?? null,
+                status: 'active',
+                source: 'invite',
+                invited_email: normalizeEmail(invite.email),
+                activated_at: new Date()
+            }, { transaction });
+            created = true;
+        }
+
+        const inviteRow = await DgfyAffiliateInvite.findByPk(invite.invite_id, { transaction });
+        if (inviteRow && inviteRow.status === 'pending') {
+            await inviteRow.update({
+                status: 'accepted',
+                accepted_at: new Date(),
+                dgfy_account_id: account.id
+            }, { transaction });
+        }
+
+        return { enrollment: toPlain(enrollment), created };
+    },
+
+    // Auto-enroll hook: called right after a brand-new DGFY account is created (register), matching
+    // any pending, unexpired invites addressed to that account's email and materializing each into
+    // an enrollment. This is the "once the account exists, they're automatically affiliated" path.
+    async mirrorPendingAffiliateInvitesForAccount(account, { transaction = null } = {}) {
+        if (!account?.id || !account?.email) return [];
+        const invites = await DgfyAffiliateInvite.findAll({
+            where: {
+                email: normalizeEmail(account.email),
+                status: 'pending',
+                expires_at: { [Op.gt]: new Date() }
+            },
+            transaction
+        });
+
+        const results = [];
+        for (const invite of invites) {
+            // eslint-disable-next-line no-await-in-loop
+            const result = await this.materializeInviteEnrollment(toPlain(invite), account, { transaction });
+            results.push(result);
+        }
+        return results;
     },
 
     async findActiveEnrollmentByShareCode(tenantId, code) {

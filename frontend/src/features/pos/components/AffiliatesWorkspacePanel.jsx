@@ -4,12 +4,15 @@ import {
     Ban,
     Banknote,
     CheckCircle2,
+    Clock,
+    Mail,
     Percent,
     QrCode as QrCodeIcon,
     RefreshCcw,
     Save,
+    Send,
     ShieldAlert,
-    UserPlus,
+    Trash2,
     XCircle
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -21,8 +24,10 @@ import {
     fetchAffiliateQrPayload,
     fetchAffiliateSettings,
     fetchAffiliates,
+    fetchAffiliateInvites,
+    inviteAffiliate,
+    cancelAffiliateInvite,
     markAffiliateCashoutPaid,
-    provisionAffiliate,
     rejectAffiliateCashout,
     updateAffiliateEnrollment,
     updateAffiliateSettings
@@ -91,9 +96,11 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
     const [settingsDraft, setSettingsDraft] = useState(null);
     const [savingSettings, setSavingSettings] = useState(false);
     const [affiliates, setAffiliates] = useState([]);
-    const [provisionEmail, setProvisionEmail] = useState('');
-    const [provisionRate, setProvisionRate] = useState('');
-    const [provisioning, setProvisioning] = useState(false);
+    const [invites, setInvites] = useState([]);
+    const [inviteEmail, setInviteEmail] = useState('');
+    const [inviteRate, setInviteRate] = useState('');
+    const [inviting, setInviting] = useState(false);
+    const [inviteBusyId, setInviteBusyId] = useState(null);
     const [rateEdits, setRateEdits] = useState({});
     const [rowBusyId, setRowBusyId] = useState(null);
     const [qrByEnrollment, setQrByEnrollment] = useState({});
@@ -106,20 +113,22 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
         setLoading(true);
         setError('');
         try {
-            const [settingsResult, affiliatesResult, cashoutsResult] = await Promise.all([
+            const [settingsResult, affiliatesResult, cashoutsResult, invitesResult] = await Promise.all([
                 fetchAffiliateSettings(),
                 fetchAffiliates(),
-                canSeeCashoutQueue ? fetchAffiliateCashouts() : Promise.resolve([])
+                canSeeCashoutQueue ? fetchAffiliateCashouts() : Promise.resolve([]),
+                canView ? fetchAffiliateInvites({ status: 'pending' }) : Promise.resolve([])
             ]);
             setSettingsDraft(settingsResult);
             setAffiliates(Array.isArray(affiliatesResult) ? affiliatesResult : []);
             setCashouts(Array.isArray(cashoutsResult) ? cashoutsResult : []);
+            setInvites(Array.isArray(invitesResult) ? invitesResult : []);
         } catch (err) {
             setError(err?.response?.data?.message || 'Failed to load affiliate program data');
         } finally {
             setLoading(false);
         }
-    }, [canSeeCashoutQueue]);
+    }, [canSeeCashoutQueue, canView]);
 
     useEffect(() => {
         if (locked || !isOnline || !canView) return;
@@ -146,24 +155,43 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
         }
     };
 
-    const handleProvision = async () => {
-        const email = provisionEmail.trim();
+    const handleInvite = async () => {
+        const email = inviteEmail.trim();
         if (!email) {
-            toast.error('Enter the affiliate\'s DGFY account email');
+            toast.error('Enter the email to invite');
             return;
         }
-        setProvisioning(true);
+        setInviting(true);
         try {
-            const rateBps = provisionRate.trim() ? percentStringToBps(provisionRate) : null;
-            await provisionAffiliate({ email, commission_rate_bps: rateBps });
-            toast.success('Affiliate provisioned');
-            setProvisionEmail('');
-            setProvisionRate('');
+            const rateBps = inviteRate.trim() ? percentStringToBps(inviteRate) : null;
+            const result = await inviteAffiliate({ email, commission_rate_bps: rateBps });
+            if (result?.email_delivery?.sent === false) {
+                toast.warning('Invite saved, but the email could not be sent. You can resend it.');
+            } else {
+                toast.success(result?.account_exists
+                    ? 'Invite sent — they’ll get a link to accept'
+                    : 'Invite sent — they’ll get a link to sign up');
+            }
+            setInviteEmail('');
+            setInviteRate('');
             await loadData();
         } catch (err) {
-            toast.error(err?.response?.data?.message || 'Failed to provision affiliate');
+            toast.error(err?.response?.data?.message || 'Failed to send invite');
         } finally {
-            setProvisioning(false);
+            setInviting(false);
+        }
+    };
+
+    const handleCancelInvite = async (invite) => {
+        setInviteBusyId(invite.invite_id);
+        try {
+            await cancelAffiliateInvite(invite.invite_id);
+            toast.success('Invite cancelled');
+            await loadData();
+        } catch (err) {
+            toast.error(err?.response?.data?.message || 'Failed to cancel invite');
+        } finally {
+            setInviteBusyId(null);
         }
     };
 
@@ -380,16 +408,20 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
 
             {!loading && !error && canManage && (
                 <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
-                    <h3 className="mb-3 text-sm font-black text-[#0F172A]">Provision Affiliate</h3>
+                    <h3 className="mb-1 text-sm font-black text-[#0F172A]">Invite Affiliate</h3>
+                    <p className="mb-3 text-[11px] text-slate-500">
+                        Invite anyone by email — even if they don’t have a DGFY account yet. They’ll get a link to
+                        join or accept, and are affiliated with your store once they’re in.
+                    </p>
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
                         <div className="flex-1 space-y-1">
-                            <label className="text-xs font-semibold text-[#0F172A]">DGFY account email</label>
+                            <label className="text-xs font-semibold text-[#0F172A]">Email to invite</label>
                             <Input
                                 type="email"
                                 className="h-8 text-xs"
-                                placeholder="affiliate@example.com"
-                                value={provisionEmail}
-                                onChange={(e) => setProvisionEmail(e.target.value)}
+                                placeholder="prospect@example.com"
+                                value={inviteEmail}
+                                onChange={(e) => setInviteEmail(e.target.value)}
                             />
                         </div>
                         <div className="w-full space-y-1 sm:w-40">
@@ -401,17 +433,43 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
                                 step="0.1"
                                 className="h-8 text-xs"
                                 placeholder="Default"
-                                value={provisionRate}
-                                onChange={(e) => setProvisionRate(e.target.value)}
+                                value={inviteRate}
+                                onChange={(e) => setInviteRate(e.target.value)}
                             />
                         </div>
-                        <Button type="button" size="sm" onClick={handleProvision} disabled={provisioning}>
-                            <UserPlus className="mr-1.5 h-3.5 w-3.5" /> {provisioning ? 'Adding...' : 'Add Affiliate'}
+                        <Button type="button" size="sm" onClick={handleInvite} disabled={inviting}>
+                            <Send className="mr-1.5 h-3.5 w-3.5" /> {inviting ? 'Sending...' : 'Send Invite'}
                         </Button>
                     </div>
-                    <p className="mt-2 text-[11px] text-slate-500">
-                        The affiliate must already have a DGFY account with this email.
-                    </p>
+
+                    {invites.length > 0 && (
+                        <div className="mt-4 space-y-2">
+                            <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+                                Pending invites ({invites.length})
+                            </p>
+                            {invites.map((invite) => (
+                                <div key={invite.invite_id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+                                    <div className="flex items-center gap-2">
+                                        <Mail className="h-3.5 w-3.5 text-slate-400" />
+                                        <span className="text-[12px] font-semibold text-[#0F172A]">{invite.email}</span>
+                                        <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+                                            <Clock className="h-3 w-3" /> {invite.status}
+                                        </span>
+                                    </div>
+                                    <Button
+                                        type="button"
+                                        size="sm"
+                                        variant="outline"
+                                        className="text-rose-600"
+                                        disabled={inviteBusyId === invite.invite_id}
+                                        onClick={() => handleCancelInvite(invite)}
+                                    >
+                                        <Trash2 className="mr-1 h-3.5 w-3.5" /> Cancel
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    )}
                 </section>
             )}
 

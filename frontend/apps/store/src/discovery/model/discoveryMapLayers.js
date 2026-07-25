@@ -42,6 +42,7 @@ export const hasPlottableCoordinate = (latitude, longitude) => {
   const lng = Number(longitude);
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return false;
   if (Math.abs(lat) < 0.000001 && Math.abs(lng) < 0.000001) return false;
+  if (isKnownProvisionedPlaceholderCoordinate(lat, lng)) return false;
   return true;
 };
 

@@ -37,8 +37,11 @@ import {
   buildSetPrimaryItemBarcodeUseCase,
   buildUpdateItemBarcodeUseCase
 } from './usecases/barcodeUseCases.js';
+import { buildLookupExternalProductUseCase } from './usecases/lookupExternalProductUseCase.js';
+import { buildOpenFoodFactsProductRegistry } from './integrations/openFoodFactsProductRegistry.js';
 import { storefrontCatalogImageStorage } from './repositories/storefrontCatalogImageStorage.js';
 import { resolveMovementLocation } from '../../services/locationInventoryService.js';
+import * as cacheService from '../../services/cacheService.js';
 import * as stockCommandService from './commands/stockCommandService.js';
 
 
@@ -95,6 +98,10 @@ export const setPrimaryItemBarcodeUseCase = buildSetPrimaryItemBarcodeUseCase({ 
 export const resolveItemBarcodeUseCase = buildResolveItemBarcodeUseCase({
   itemRepository,
   resolveLocationScope: resolveMovementLocation
+});
+export const lookupExternalProductUseCase = buildLookupExternalProductUseCase({
+  productRegistry: buildOpenFoodFactsProductRegistry(),
+  cache: cacheService
 });
 export const resolveItemBarcodeConflictUseCase = buildResolveItemBarcodeConflictUseCase({ itemRepository });
 export const renderItemBarcodeLabelUseCase = buildRenderItemBarcodeLabelUseCase({ itemRepository });

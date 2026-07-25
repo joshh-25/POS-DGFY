@@ -1,14 +1,19 @@
 import {
+    acceptAffiliateInviteUseCase,
     approveAffiliateCashoutUseCase,
     cancelAffiliateCashoutUseCase,
+    cancelAffiliateInviteUseCase,
     captureAffiliateAttributionUseCase,
     createAffiliatePayoutMethodUseCase,
     deleteAffiliatePayoutMethodUseCase,
     enrollSelfServeAffiliateUseCase,
     getAffiliateEarningsUseCase,
+    getAffiliateInvitePreviewUseCase,
     getAffiliateQrPayloadUseCase,
     getAffiliateSettingsUseCase,
+    inviteAffiliateUseCase,
     listAffiliateCashoutsUseCase,
+    listAffiliateInvitesUseCase,
     listAffiliatesUseCase,
     listAffiliatePayoutMethodsUseCase,
     listMyAffiliateCashoutsUseCase,
@@ -81,6 +86,43 @@ export const provisionAffiliate = async (req, res, next) => {
             status: 201,
             message: 'Affiliate provisioned successfully'
         });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const inviteAffiliate = async (req, res, next) => {
+    try {
+        return send(res, await inviteAffiliateUseCase({
+            tenantId: req.user?.tenant_id,
+            body: req.body,
+            invitedBy: req.user?.user_id ?? null
+        }), {
+            status: 201,
+            message: 'Affiliate invitation sent'
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const listAffiliateInvites = async (req, res, next) => {
+    try {
+        return send(res, await listAffiliateInvitesUseCase({
+            tenantId: req.user?.tenant_id,
+            status: req.query?.status || null
+        }));
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const cancelAffiliateInvite = async (req, res, next) => {
+    try {
+        return send(res, await cancelAffiliateInviteUseCase({
+            tenantId: req.user?.tenant_id,
+            inviteId: req.params.invite_id
+        }), { message: 'Affiliate invitation cancelled' });
     } catch (error) {
         next(error);
     }
@@ -283,6 +325,28 @@ export const captureAffiliateAttribution = async (req, res, next) => {
             setAffiliateAttributionCookie(req, res, result.data.tenant_id, result.data.enrollment_id);
         }
         return send(res, result);
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Public, unauthenticated: the storefront accept/register page reads this to show which business is
+// inviting and whether the invitee already has an account (so it can lock the register email field).
+export const getAffiliateInvitePreview = async (req, res, next) => {
+    try {
+        return send(res, await getAffiliateInvitePreviewUseCase({ token: req.params.token }));
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Authenticated (authenticateDgfyAccount): the logged-in account explicitly accepts an invite.
+export const acceptAffiliateInvite = async (req, res, next) => {
+    try {
+        return send(res, await acceptAffiliateInviteUseCase({
+            account: req.dgfyAccount,
+            token: req.body?.token
+        }), { message: 'You are now an affiliate' });
     } catch (error) {
         next(error);
     }

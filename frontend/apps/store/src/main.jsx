@@ -7,6 +7,7 @@ import StorefrontApp from './StorefrontApp.jsx';
 import { appBasePath } from './app/runtime/storefrontRuntime.js';
 import StorefrontLoginPage from './auth/pages/StorefrontLoginPage.jsx';
 import StorefrontRegisterPage from './auth/pages/StorefrontRegisterPage.jsx';
+import StorefrontAffiliateAcceptPage from './auth/pages/StorefrontAffiliateAcceptPage.jsx';
 import StorefrontResetPasswordPage from './auth/pages/StorefrontResetPasswordPage.jsx';
 import StorefrontBusinessGrowPage from './business/pages/StorefrontBusinessGrowPage.jsx';
 import { initBrowserSentry } from '../../../src/observability/sentryClient.js';
@@ -50,6 +51,15 @@ function StoreRoot() {
           element={(
             <>
               <StorefrontRegisterPage />
+              <Toaster richColors position="top-right" closeButton duration={2200} />
+            </>
+          )}
+        />
+        <Route
+          path="/affiliate/accept"
+          element={(
+            <>
+              <StorefrontAffiliateAcceptPage />
               <Toaster richColors position="top-right" closeButton duration={2200} />
             </>
           )}

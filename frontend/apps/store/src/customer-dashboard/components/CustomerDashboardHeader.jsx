@@ -15,6 +15,7 @@ export function CustomerDashboardHeader({ style, theme, isMobileViewport, onOpen
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         {isMobileViewport ? <button type="button" aria-label="Open menu" onClick={onOpenMenu} style={{ background: 'transparent', border: 'none', color: theme.text }}><Menu size={24} /></button> : null}
         <button type="button" onClick={onClose} style={{ background: 'transparent', border: 'none', color: theme.text, display: 'flex', alignItems: 'center', gap: 8, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}><ArrowLeft size={18} /> Back to Discovery</button>
+        <h1 style={{ margin: 0, fontSize: isMobileViewport ? 16 : 20, color: theme.text }}>My Account</h1>
       </div>
       <div style={{ display: 'flex', alignItems: 'center', gap: 16, position: 'relative' }}>
         <button type="button" aria-label="Notifications" onClick={() => setIsOpen((current) => !current)} style={{ position: 'relative', background: 'none', border: 'none', cursor: 'pointer', padding: 4 }}><Bell size={20} color={theme.text} />{unreadCount > 0 ? <span style={{ position: 'absolute', top: -4, right: -4, minWidth: 14, height: 14, padding: '0 3px', background: theme.orange, color: '#FFF', borderRadius: 999, fontSize: 9, fontWeight: 700, display: 'grid', placeItems: 'center', border: '2px solid #FFF', boxSizing: 'border-box' }}>{unreadCount > 9 ? '9+' : unreadCount}</span> : null}</button>
