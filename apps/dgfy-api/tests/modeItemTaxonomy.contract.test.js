@@ -11,12 +11,12 @@ import {
     getUomGroup as backendGetUomGroup,
     isValidUom as backendIsValidUom
 } from '../src/utils/uomConverter.js';
-import { MODE_ITEM_TAXONOMY as frontendTaxonomy } from '../../frontend/src/features/settings/modeItemTaxonomy.js';
+import { MODE_ITEM_TAXONOMY as frontendTaxonomy } from '../../../frontend/src/features/settings/modeItemTaxonomy.js';
 import {
     areCompatible as frontendAreCompatible,
     getUomGroup as frontendGetUomGroup,
     isValidUom as frontendIsValidUom
-} from '../../frontend/src/utils/uomConverter.js';
+} from '../../../frontend/src/utils/uomConverter.js';
 
 describe('mode-aware item taxonomy contract', () => {
     it('keeps corrected mode taxonomy aligned across backend and frontend', () => {

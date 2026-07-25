@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const migration = require('../migrations/20260724000001-enforce-one-open-shift-per-operator.cjs');
+const migration = require('../../dgfy-migration-runner/migrations/20260724000001-enforce-one-open-shift-per-operator.cjs');
 
 // Routes queryInterface.sequelize.query calls by SQL shape instead of call order, since the
 // migration now issues a variable number of queries (FK lookup, optional DROP/ADD FOREIGN KEY)

@@ -17,7 +17,7 @@ import {
     normalizeWorkflowMode as normalizeFrontendWorkflowMode,
     resolveWorkflowModeFamily as resolveFrontendWorkflowModeFamily,
     resolveWorkflowTemplateMode as resolveFrontendWorkflowTemplateMode
-} from '../../frontend/src/features/settings/workflowMode.js';
+} from '../../../frontend/src/features/settings/workflowMode.js';
 
 describe('workflow mode cross-layer contracts', () => {
     it('keeps backend and frontend workflow mode value set aligned', () => {
