@@ -153,6 +153,57 @@ export const ModePresentationRegistry = Object.freeze({
       surface: '#0f172a'
     })
   }),
+  retail: Object.freeze({
+    heroEyebrow: 'Retail storefront',
+    heroDescription: 'Browse shelf items, weighed goods, and refills, then check out or reserve for pickup.',
+    catalogHeading: 'Shop the Store',
+    catalogSubtitle: 'Browse general merchandise, per-kilo goods, and refill products currently in stock.',
+    catalogSearchPlaceholder: 'Search products, brands, or categories...',
+    primaryActionLabel: 'Add to Cart',
+    trackHeading: 'Track Order',
+    trackDescription: 'Enter a tracking PIN to check your latest order status.',
+    supportsServiceGrouping: false,
+    supportsProductGrouping: true,
+    templateContent: Object.freeze({
+      navigation: Object.freeze({
+        brandLabel: 'DGFY Retail',
+        searchPlaceholder: 'Search products, stores, or categories',
+        primaryLinks: Object.freeze(['Shop', 'Offers', 'Reviews']),
+        utilityLinks: Object.freeze(['Delivery', 'Support'])
+      }),
+      hero: Object.freeze({
+        eyebrow: 'Retail storefront template',
+        primaryActionLabel: 'Shop Now',
+        secondaryActionLabel: 'View Categories',
+        tertiaryActionLabel: 'Ask a Question',
+        supportBadge: 'Shared shell adapted for retail shelf browsing'
+      }),
+      promo: Object.freeze({
+        eyebrow: 'Promos and bundles',
+        title: 'Use shared promo cards for price-led retail campaigns.',
+        description: 'This section can surface bundle offers, discounts, or time-based store notices.',
+        emptyLabel: 'No active promos'
+      }),
+      reviews: Object.freeze({
+        eyebrow: 'Customer feedback',
+        title: 'Retail storefront reviews keep the same layout as other modes.',
+        description: 'Review content stays data-driven so each store can show different proof without changing the template.',
+        emptyLabel: 'No product reviews yet'
+      }),
+      footer: Object.freeze({
+        description: 'Use the shared footer shell for ordering, support, and policy links.',
+        legalLine: 'Reusable footer basis for retail storefronts.'
+      })
+    }),
+    heroTheme: Object.freeze({
+      displayFont: "'Avenir Next', 'Segoe UI', sans-serif",
+      bodyFont: "'Avenir Next', 'Segoe UI', sans-serif",
+      accent: '#ea580c',
+      accentDark: '#9a3412',
+      accentSoft: '#fff7ed',
+      surface: '#0f172a'
+    })
+  }),
   fnb: Object.freeze({
     heroEyebrow: 'Food and beverage storefront',
     heroDescription: 'Browse the live menu, compare food and drink sections, and build an order from product cards designed for ready-to-serve items.',
@@ -261,6 +312,7 @@ export const getStorefrontModeAdapter = (store = null) => {
     isServicesMode: mode === 'services',
     isFnbMode: mode === 'fnb',
     isSimpleMode: mode === 'msme',
-    isHospitalityMode: mode === 'hospitality'
+    isHospitalityMode: mode === 'hospitality',
+    isRetailMode: mode === 'retail'
   };
 };

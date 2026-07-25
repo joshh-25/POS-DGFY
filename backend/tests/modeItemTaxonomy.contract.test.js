@@ -26,6 +26,7 @@ describe('mode-aware item taxonomy contract', () => {
             'food_manufacturing',
             'hospitality',
             'msme',
+            'retail',
             'services'
         ]);
     });
@@ -36,13 +37,13 @@ describe('mode-aware item taxonomy contract', () => {
             'food_manufacturing',
             'hospitality',
             'msme',
+            'retail',
             'services'
         ]);
         expect([...PLACEHOLDER_ITEM_TAXONOMY_MODES].sort()).toEqual([
             'education_institutions',
             'healthcare',
             'logistics_distribution',
-            'retail',
             'ticketing_transport'
         ]);
         expect(CORRECTED_ITEM_TAXONOMY_MODES.filter((mode) => PLACEHOLDER_ITEM_TAXONOMY_MODES.includes(mode))).toEqual([]);
@@ -95,6 +96,12 @@ describe('mode-aware item taxonomy contract', () => {
             cost_required: ITEM_FINANCIAL_REQUIREMENT.ACTIVE,
             sale_price_required: ITEM_FINANCIAL_REQUIREMENT.ACTIVE
         }));
+        expect(presetByKey('retail', 'general_merchandise').financial_profile.sale_price_visibility)
+            .toBe(ITEM_FINANCIAL_VISIBILITY.VISIBLE);
+        expect(presetByKey('retail', 'weighed_goods').financial_profile.sale_price_visibility)
+            .toBe(ITEM_FINANCIAL_VISIBILITY.VISIBLE);
+        expect(presetByKey('retail', 'refill_product').financial_profile.sale_price_visibility)
+            .toBe(ITEM_FINANCIAL_VISIBILITY.VISIBLE);
     });
 
     it('accepts corrected mode item combinations and rejects mismatched new items', () => {
@@ -188,6 +195,47 @@ describe('mode-aware item taxonomy contract', () => {
             },
             operation: 'create'
         })).toThrow(/does not support unit_of_measure/i);
+
+        expect(validateItemAgainstModeTaxonomy({
+            workflowMode: 'retail',
+            itemData: {
+                category: 'product',
+                product_type: 'finished_goods',
+                mode_item_preset: 'weighed_goods',
+                unit_of_measure: 'kg'
+            },
+            operation: 'create'
+        }).preset.key).toBe('weighed_goods');
+
+        expect(validateItemAgainstModeTaxonomy({
+            workflowMode: 'retail',
+            itemData: {
+                category: 'product',
+                product_type: 'finished_goods',
+                unit_of_measure: 'pcs'
+            },
+            operation: 'create'
+        }).preset.key).toBe('general_merchandise');
+
+        expect(() => validateItemAgainstModeTaxonomy({
+            workflowMode: 'retail',
+            itemData: {
+                category: 'product',
+                product_type: 'finished_goods',
+                mode_item_preset: 'weighed_goods',
+                unit_of_measure: 'ticket'
+            },
+            operation: 'create'
+        })).toThrow(/does not support unit_of_measure/i);
+
+        expect(() => validateItemAgainstModeTaxonomy({
+            workflowMode: 'retail',
+            itemData: {
+                category: 'service',
+                unit_of_measure: 'service'
+            },
+            operation: 'create'
+        })).toThrow(/does not support category/i);
     });
 
     it('preserves legacy rows unless category or UOM is changed', () => {

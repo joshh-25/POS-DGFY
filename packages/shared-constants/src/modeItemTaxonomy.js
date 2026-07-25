@@ -6,11 +6,11 @@ export const CORRECTED_ITEM_TAXONOMY_MODES = Object.freeze([
     'msme',
     'services',
     'fnb',
-    'hospitality'
+    'hospitality',
+    'retail'
 ]);
 
 export const PLACEHOLDER_ITEM_TAXONOMY_MODES = Object.freeze([
-    'retail',
     'healthcare',
     'ticketing_transport',
     'logistics_distribution',
@@ -141,6 +141,17 @@ export const MODE_ITEM_TAXONOMY = Object.freeze({
             preset({ key: 'physical_add_on', label: 'Physical Add-on', category: 'product', product_type: 'finished_goods', default_unit: 'pcs', allowed_uom_groups: ['count', 'packaging'], allowed_uoms: ['pcs', 'pack', 'box', 'case'], max_capacity: 100, financial_profile: { cost_required: ITEM_FINANCIAL_REQUIREMENT.ACTIVE, sale_price_visibility: ITEM_FINANCIAL_VISIBILITY.VISIBLE } }),
             preset({ key: 'housekeeping_supply', label: 'Housekeeping Supply', category: 'supplies', default_unit: 'pcs', allowed_uom_groups: ['count', 'packaging'], allowed_uoms: ['pcs', 'pack', 'box', 'case'], max_capacity: 300, financial_profile: { cost_required: ITEM_FINANCIAL_REQUIREMENT.ACTIVE } }),
             preset({ key: 'linen_reusable_asset', label: 'Linen / Reusable Asset', category: 'supplies', default_unit: 'pcs', allowed_uom_groups: ['count'], allowed_uoms: ['pcs'], max_capacity: 300, financial_profile: { cost_required: ITEM_FINANCIAL_REQUIREMENT.ACTIVE } })
+        ]
+    }),
+    retail: taxonomy({
+        mode: 'retail',
+        label: 'Retail',
+        default_preset: 'general_merchandise',
+        presets: [
+            preset({ key: 'general_merchandise', label: 'General Merchandise', category: 'product', product_type: 'finished_goods', default_unit: 'pcs', allowed_uom_groups: ['count', 'packaging'], allowed_uoms: ['pcs', 'pack', 'case', 'box'], max_capacity: 500, financial_profile: { sale_price_visibility: ITEM_FINANCIAL_VISIBILITY.VISIBLE } }),
+            preset({ key: 'weighed_goods', label: 'Weighed Goods (per kg/g)', category: 'product', product_type: 'finished_goods', default_unit: 'kg', allowed_uom_groups: ['weight', 'count'], allowed_uoms: ['kg', 'g', 'pcs'], max_capacity: 300, financial_profile: { sale_price_visibility: ITEM_FINANCIAL_VISIBILITY.VISIBLE } }),
+            preset({ key: 'refill_product', label: 'Refill / Bulk Liquid', category: 'product', product_type: 'finished_goods', default_unit: 'L', allowed_uom_groups: ['volume', 'count'], allowed_uoms: ['L', 'mL', 'gal', 'pcs'], max_capacity: 300, financial_profile: { sale_price_visibility: ITEM_FINANCIAL_VISIBILITY.VISIBLE } }),
+            preset({ key: 'supplies', label: 'Supplies', category: 'supplies', default_unit: 'pcs', allowed_uom_groups: ['count', 'packaging'], allowed_uoms: ['pcs', 'pack', 'case', 'box'], max_capacity: 300 })
         ]
     })
 });

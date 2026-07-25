@@ -10,7 +10,8 @@ export const ONBOARDING_CUSTOMER_FACING_PRESETS = Object.freeze({
   food_manufacturing: ['finished_product'],
   msme: ['product'],
   services: ['service', 'physical_add_on'],
-  fnb: ['menu_item']
+  fnb: ['menu_item'],
+  retail: ['general_merchandise']
 });
 
 export const filterCustomerFacingPresets = (workflowMode, presets = []) => {

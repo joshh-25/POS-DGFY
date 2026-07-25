@@ -1623,6 +1623,18 @@ export const getTemplateDefinition = ({ workflowMode, templateType } = {}) => {
         };
     }
 
+    if (resolvedWorkflowMode === 'retail') {
+        return {
+            workflowMode: resolvedWorkflowMode,
+            filename: 'retail_items_import_template.csv',
+            headers: [...MSME_TEMPLATE_HEADERS],
+            sampleRows: appendTemplateMarkersToRows([
+                ['RTL-001', 'Assorted Chips Pack', 'product', 'finished_goods', 'general_merchandise', 'vatable', 'Snack pack for retail shelf', '300', '120', '40', '20', 'pcs', '12.00', '20.00', 'TRUE', '180', '', '', '', '', 'plastic', '', '1 pack', '', 'RTL-001-UNIT', 'tenant_generated', 'inventory', 'unit', '1', ''],
+                ['RTL-002', 'Fresh Pork Belly (per kg)', 'product', 'finished_goods', 'weighed_goods', 'vatable', 'Sold by weight at the meat counter', '100', '35', '10', '5', 'kg', '220.00', '320.00', 'TRUE', '3', '', '', '', '', '', '', '', '', 'RTL-002-SCALE', 'tenant_generated', 'inventory', 'unit', '1', '']
+            ], resolvedWorkflowMode)
+        };
+    }
+
     return {
         workflowMode: resolvedWorkflowMode,
         filename: 'food_manufacturing_items_import_template.csv',
