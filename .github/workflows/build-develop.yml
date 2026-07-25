@@ -14,10 +14,13 @@ permissions:
 
 jobs:
   publish-pos-receipt:
-    # Non-blocking: a source change here without a matching version bump
-    # shouldn't stall the whole develop deploy pipeline. Failures still show
-    # up in the run so they can be caught and fixed in a follow-up push.
-    continue-on-error: true
+    # Fully independent of build-and-push (no `needs:`) so a source change here
+    # without a matching version bump can never stall or fail the deploy
+    # pipeline - the two jobs simply run in parallel. `continue-on-error` is
+    # not a valid key on a job that calls a reusable workflow via `uses:`
+    # (GitHub rejects the whole workflow file if present, which is what
+    # broke this pipeline outright); independence via no shared `needs:` is
+    # what actually makes this job optional.
     uses: ./.github/workflows/publish-pos-receipt.yml
     with:
       before_sha: ${{ github.event.before }}
@@ -28,7 +31,6 @@ jobs:
       packages: write
 
   build-and-push:
-    needs: publish-pos-receipt
     uses: ./.github/workflows/deployment-orchestrator.yml
     with:
       environment: DEV
