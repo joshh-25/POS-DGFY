@@ -94,3 +94,5 @@ export const readStoreItemId = () => readQueryParam('item');
 export const readStoreReviewToken = () => readQueryParam('review_token', '');
 
 export const readTrackingPinFromQuery = () => String(readQueryParam('pin', '') || '').trim().toUpperCase();
+
+export const readAffiliateShortCode = () => readQueryParam('p', '');
