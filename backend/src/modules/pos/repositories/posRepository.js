@@ -133,8 +133,13 @@ const BASE_POS_ITEM_ATTRIBUTES = [
     'sku_code',
     'category',
     'product_type',
+    // mode_item_preset is required for isStockExemptServiceItem's
+    // mode_item_preset === 'service' branch to fire on this catalog path.
+    'mode_item_preset',
     'unit_of_measure',
     'current_stock',
+    'min_threshold',
+    'fifo_enabled',
     'cost_per_unit',
     'default_sale_price',
     // The POS item editor uses the catalog row to preselect its saved category.

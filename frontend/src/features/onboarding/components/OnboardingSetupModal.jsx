@@ -26,6 +26,7 @@ import {
 } from '../../settings/storefrontBusinessHours.js';
 import StorefrontBusinessHoursScheduler from '../../settings/StorefrontBusinessHoursScheduler.jsx';
 import {
+  filterCustomerFacingPresets,
   getDefaultItemPreset,
   resolveModeItemTaxonomy
 } from '../../settings/modeItemTaxonomy.js';
@@ -131,19 +132,9 @@ const resolvePresetOptions = (workflowMode) => {
   return [fallbackPreset];
 };
 
-const ONBOARDING_CUSTOMER_FACING_PRESETS = Object.freeze({
-  food_manufacturing: ['finished_product'],
-  msme: ['product'],
-  services: ['service', 'physical_add_on'],
-  fnb: ['menu_item']
-});
-
 const resolveOnboardingPresetOptions = (workflowMode) => {
   const options = resolvePresetOptions(workflowMode);
-  const normalizedMode = normalizeWorkflowMode(workflowMode);
-  const preferredKeys = ONBOARDING_CUSTOMER_FACING_PRESETS[normalizedMode] || [];
-  const preferredOptions = options.filter((preset) => preferredKeys.includes(preset.key));
-  return preferredOptions.length > 0 ? preferredOptions : options;
+  return filterCustomerFacingPresets(workflowMode, options);
 };
 
 const getDefaultOnboardingPreset = (workflowMode) => {

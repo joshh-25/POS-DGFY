@@ -9,6 +9,7 @@ import { getAllSettingsUseCase } from '../modules/settings/index.js';
 import { unwrapApplicationResultOrThrow } from '../modules/shared/contracts/applicationResultHelpers.js';
 import {
     DEFAULT_WORKFLOW_MODE,
+    WORKFLOW_MODE_LABELS,
     normalizeWorkflowMode,
     resolveWorkflowModeFamily,
     resolveWorkflowTemplateMode
@@ -1552,16 +1553,9 @@ export const resolveRequestedTemplateWorkflowMode = ({ workflowMode, templateTyp
     return 'food_manufacturing';
 };
 
-const getTemplateCompatibilityNote = (workflowMode) => {
-    const labels = {
-        food_manufacturing: 'Food Manufacturing',
-        msme: 'Simple (MSME)',
-        services: 'Services',
-        fnb: 'Food & Beverage',
-        hospitality: 'Hospitality'
-    };
-    return `This CSV template is for ${labels[workflowMode] || workflowMode} mode only. It will be rejected for incompatible tenant modes.`;
-};
+export const getTemplateCompatibilityNote = (workflowMode) => (
+    `This CSV template is for ${WORKFLOW_MODE_LABELS[workflowMode] || workflowMode} mode only. It will be rejected for incompatible tenant modes.`
+);
 
 const appendTemplateMarkersToRows = (rows, workflowMode) => {
     const note = getTemplateCompatibilityNote(workflowMode);

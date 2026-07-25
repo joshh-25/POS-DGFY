@@ -13,7 +13,33 @@ describe('mode-aware role preset catalog', () => {
     expect(getRoleCatalogMode('fnb')).toBe('fnb');
     expect(getRoleCatalogMode('hospitality')).toBe('hospitality');
     expect(getRoleCatalogMode('msme')).toBe('msme');
-    expect(getRoleCatalogMode('unknown-mode')).toBe('food_manufacturing');
+    // An unrecognized mode string (corrupted setting, decommissioned mode
+    // name, typo) now resolves through the neutral msme fallback rather than
+    // silently borrowing food_manufacturing's full production/inventory RBAC
+    // catalog. See UNKNOWN_WORKFLOW_MODE_FALLBACK in @sieitzz/shared-constants.
+    expect(getRoleCatalogMode('unknown-mode')).toBe('msme');
+  });
+
+  it('resolves Tier 2/3 modes with no bespoke RBAC contract to the generic preset family, not food_manufacturing', () => {
+    ['retail', 'healthcare', 'ticketing_transport', 'logistics_distribution', 'education_institutions'].forEach((mode) => {
+      expect(getRoleCatalogMode(mode)).toBe('generic');
+    });
+
+    const genericPresets = getRolePresetsForMode('retail').map((preset) => preset.key);
+    expect(genericPresets).toEqual(expect.arrayContaining([
+      'generic_admin',
+      'generic_manager',
+      'generic_cashier',
+      'generic_inventory_clerk',
+      'generic_viewer'
+    ]));
+
+    expect(buildPermissionGroupsForMode('healthcare').map((group) => group.key)).toEqual(
+      expect.arrayContaining(['INVENTORY', 'POS', 'STOCK', 'REPORTS'])
+    );
+    expect(buildPermissionGroupsForMode('healthcare').map((group) => group.key)).not.toContain('ORDERS');
+    expect(buildPermissionGroupsForMode('healthcare').map((group) => group.key)).not.toContain('DISPATCH');
+    expect(buildPermissionGroupsForMode('healthcare').map((group) => group.key)).not.toContain('FNB');
   });
 
   it('exposes the required Services, F&B, and Hospitality presets with mode-native permissions', () => {

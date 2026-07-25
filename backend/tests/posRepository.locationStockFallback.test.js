@@ -80,4 +80,17 @@ describe('posRepository location-stock schema fallback', () => {
             current_stock: 6
         }));
     });
+
+    it('requests mode_item_preset, min_threshold, and fifo_enabled so downstream service/threshold checks are not blind on this catalog path', async () => {
+        itemFindAllMock.mockResolvedValue([buildCatalogRow({ item_id: 503 })]);
+        itemLocationStockFindAllMock.mockResolvedValue([]);
+
+        await posRepository.findSellableItemsByIds([503], { locationId: 8 });
+
+        expect(itemFindAllMock.mock.calls[0][0].attributes).toEqual(expect.arrayContaining([
+            'mode_item_preset',
+            'min_threshold',
+            'fifo_enabled'
+        ]));
+    });
 });

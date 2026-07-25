@@ -1,9 +1,11 @@
 import {
+    AVAILABILITY_SOURCE,
     buildStockBearingItemWhere,
     isStockBearingItem,
     isStockExemptServiceItem,
     normalizeModeItemPreset,
-    normalizeItemCategory
+    normalizeItemCategory,
+    resolveStockBearingDescriptor
 } from '../src/modules/shared/utils/stockBearingPolicy.js';
 import { Op } from 'sequelize';
 
@@ -46,5 +48,56 @@ describe('stock bearing policy', () => {
                 ])
             })
         ]));
+    });
+
+    describe('resolveStockBearingDescriptor', () => {
+        it('describes a normal counted physical product', () => {
+            expect(resolveStockBearingDescriptor({ category: 'product', fifo_enabled: true })).toEqual({
+                tracks_quantity: true,
+                uses_batches: true,
+                blocks_on_shortfall: true,
+                emits_movements: true,
+                carries_cost: true,
+                valuation_participant: true,
+                availability_source: AVAILABILITY_SOURCE.COUNTED
+            });
+        });
+
+        it('describes a simple-count product (fifo disabled) as counted without batches', () => {
+            expect(resolveStockBearingDescriptor({ category: 'product', fifo_enabled: false })).toMatchObject({
+                tracks_quantity: true,
+                uses_batches: false,
+                availability_source: AVAILABILITY_SOURCE.COUNTED
+            });
+        });
+
+        it('describes a service as capacity-scheduled, not inventoried or costed', () => {
+            expect(resolveStockBearingDescriptor({ category: 'service' })).toEqual({
+                tracks_quantity: false,
+                uses_batches: false,
+                blocks_on_shortfall: false,
+                emits_movements: false,
+                carries_cost: false,
+                valuation_participant: false,
+                availability_source: AVAILABILITY_SOURCE.CAPACITY
+            });
+        });
+
+        it('describes an always-available physical product as movement-exempt but still costed and valuation-participant', () => {
+            // Mirrors the real split between checkout's stock-effect exemption
+            // (posUseCases.js, which treats pos_always_available as exempt)
+            // and today's valuation/report queries (buildStockBearingItemWhere,
+            // which only excludes services) -- this is a real, existing gap
+            // named by the resolver, not one it resolves.
+            expect(resolveStockBearingDescriptor({ category: 'product', pos_always_available: true })).toEqual({
+                tracks_quantity: false,
+                uses_batches: false,
+                blocks_on_shortfall: false,
+                emits_movements: false,
+                carries_cost: true,
+                valuation_participant: true,
+                availability_source: AVAILABILITY_SOURCE.DECLARED
+            });
+        });
     });
 });

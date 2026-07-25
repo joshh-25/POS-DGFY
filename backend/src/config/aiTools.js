@@ -5,6 +5,8 @@
  * the AI assistant can do within the SKU Inventory Manager.
  */
 
+import { WORKFLOW_MODE_VALUES } from '../modules/shared/constants/workflowModes.js';
+
 // Tool categories for organization
 export const TOOL_CATEGORIES = {
   READ: 'read',           // No confirmation needed
@@ -1497,7 +1499,7 @@ export const AI_TOOLS = [
             properties: {
               workflow_mode: {
                 type: "string",
-                enum: ["retail", "services", "manufacturing", "food_manufacturing", "fnb", "hospitality", "healthcare", "ticketing_transport", "logistics_distribution", "education_institutions", "msme"],
+                enum: [...WORKFLOW_MODE_VALUES],
                 description: "Optional workflow mode for item CSV template selection. manufacturing normalizes to food_manufacturing."
               },
               template_type: {
