@@ -12,6 +12,7 @@ import { getAccessToken, refreshBrowserSession, setBrowserSession } from './serv
 import { login as loginTenantSession } from './services/authService.js'
 import { shouldRefreshBrowserSessionForPath } from './services/publicRoutePolicy.js'
 import ErrorBoundary from './components/common/ErrorBoundary.jsx' // Fix 10.3
+import NotFoundPage from './components/common/NotFoundPage.jsx'
 import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.jsx'
 import { Toaster } from '@/components/ui/sonner'
 import { getRuntimeConfig } from './utils/runtimeConfig.js'
@@ -274,9 +275,10 @@ function App() {
           <Route path="hosting" element={<HostingStatus />} />
         </Route>
 
-        {/* Legacy route - redirect to new admin portal */}
-        <Route path="/admin/feedback-old" element={<Navigate to="/admin/feedback" replace />} />
-      </Routes>
+         {/* Legacy route - redirect to new admin portal */}
+         <Route path="/admin/feedback-old" element={<Navigate to="/admin/feedback" replace />} />
+         <Route path="*" element={<NotFoundPage />} />
+       </Routes>
     </Suspense>
   )
 }

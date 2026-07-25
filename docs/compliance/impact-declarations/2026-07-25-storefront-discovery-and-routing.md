@@ -39,4 +39,5 @@ Major. Storefront ordering readiness no longer inherits the POS terminal shift s
 
 - Store use-case tests cover open Storefront checkout while the POS shift is closed.
 - Discovery integration and route contract tests cover public navigation behavior.
+- The platform shell batch restricts industry navigation by tenant capability and renders an explicit not-found route instead of falling through to an unrelated page.
 - Changed-file `DO NOT COMMIT` scan and `git diff --check` pass.
