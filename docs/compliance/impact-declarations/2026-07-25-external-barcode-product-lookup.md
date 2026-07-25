@@ -30,3 +30,5 @@ This is classified as `major` because it adds an external product-data lookup to
 
 ## Verification Evidence
 Verified with architecture and controller-boundary checks, targeted backend barcode and external lookup tests, the frontend external-lookup contract test, and the POS production build.
+
+The POS terminal item modal keeps the external response as a review-only suggestion. The user must still select a category and choose a local item image before saving.

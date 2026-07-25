@@ -95,6 +95,13 @@ export const resolveItemBarcode = async (params = {}) => {
   return response.data.data;
 };
 
+export const lookupExternalProduct = async (code) => {
+  const response = await api.get('/items/barcodes/external-lookup', {
+    params: { code }
+  });
+  return response.data.data;
+};
+
 export const attachItemBarcode = async (itemId, payload) => {
   const response = await api.post(`/items/${itemId}/barcodes`, payload);
   return response.data.data;

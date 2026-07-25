@@ -71,6 +71,7 @@ import {
   generateItemBarcode,
   getFolders,
   getItems,
+  lookupExternalProduct,
   updateFolder
 } from '@/services/itemService.js';
 import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
@@ -1877,6 +1878,11 @@ function ItemsWorkspace({
   const [posFolders, setPosFolders] = useState([]);
   const [skuSeedItems, setSkuSeedItems] = useState([]);
   const [selectedImageFiles, setSelectedImageFiles] = useState([]);
+  const [externalBarcode, setExternalBarcode] = useState('');
+  const [externalLookupLoading, setExternalLookupLoading] = useState(false);
+  const [externalLookupError, setExternalLookupError] = useState('');
+  const [externalProductLookup, setExternalProductLookup] = useState(null);
+  const [acceptedExternalProduct, setAcceptedExternalProduct] = useState(null);
   const [pendingCreateRecovery, setPendingCreateRecovery] = useState(null);
   const [postCreateSaving, setPostCreateSaving] = useState(false);
   const posItemPreset = useMemo(() => resolveSellablePosItemPreset(workflowMode), [workflowMode]);
@@ -2142,6 +2148,11 @@ function ItemsWorkspace({
     setCreateForm(createEmptyPosItemForm());
     setCreateCategoryInput('');
     setSelectedImageFiles([]);
+    setExternalBarcode('');
+    setExternalLookupLoading(false);
+    setExternalLookupError('');
+    setExternalProductLookup(null);
+    setAcceptedExternalProduct(null);
     setPendingCreateRecovery(null);
     setShowCreateModal(true);
   };
@@ -2152,6 +2163,11 @@ function ItemsWorkspace({
     setCreateForm(createEmptyPosItemForm());
     setCreateCategoryInput('');
     setSelectedImageFiles([]);
+    setExternalBarcode('');
+    setExternalLookupLoading(false);
+    setExternalLookupError('');
+    setExternalProductLookup(null);
+    setAcceptedExternalProduct(null);
     if (force) setPendingCreateRecovery(null);
   };
 
@@ -2270,6 +2286,55 @@ function ItemsWorkspace({
 
   const removeSelectedCreateImageFile = (imageIndex) => {
     setSelectedImageFiles((current) => current.filter((_, index) => index !== imageIndex));
+  };
+
+  const handleExternalBarcodeChange = (value) => {
+    const normalized = String(value || '').replace(/\D/g, '').slice(0, 14);
+    setExternalBarcode(normalized);
+    if (normalized !== externalProductLookup?.code) {
+      setExternalLookupError('');
+      setExternalProductLookup(null);
+      setAcceptedExternalProduct(null);
+    }
+  };
+
+  const handleExternalProductLookup = async () => {
+    if (externalLookupLoading) return;
+    if (![8, 12, 13, 14].includes(externalBarcode.length)) {
+      setExternalLookupError('Enter a GTIN-8, UPC-A, EAN-13, or GTIN-14 barcode.');
+      return;
+    }
+
+    setExternalLookupLoading(true);
+    setExternalLookupError('');
+    setExternalProductLookup(null);
+    setAcceptedExternalProduct(null);
+    try {
+      const result = await lookupExternalProduct(externalBarcode);
+      setExternalProductLookup(result);
+      if (!result?.found) {
+        setExternalLookupError('No registry match was found. You can still create the item manually.');
+      }
+    } catch (lookupError) {
+      setExternalLookupError(
+        lookupError?.response?.data?.message
+        || 'The product registry is unavailable. Enter the item manually or try again.'
+      );
+    } finally {
+      setExternalLookupLoading(false);
+    }
+  };
+
+  const applyExternalProductDetails = () => {
+    if (!externalProductLookup?.found) return;
+    const product = externalProductLookup.product || {};
+    const descriptionParts = [product.brand, product.quantity].filter(Boolean);
+    setCreateForm((current) => ({
+      ...current,
+      name: product.name || current.name,
+      description: current.description || descriptionParts.join(' - ')
+    }));
+    setAcceptedExternalProduct(externalProductLookup);
   };
 
   const handleUploadStorefrontImage = async (item, files) => {
@@ -2476,6 +2541,9 @@ function ItemsWorkspace({
       fifo_enabled: category === 'product' ? posItemPreset.fifo_enabled !== false : true,
       vat_type: 'vatable',
       senior_pwd_discount_eligible: createForm.senior_pwd_discount_eligible === true,
+      ...(acceptedExternalProduct?.found ? {
+        manufacturer_barcode: { code: acceptedExternalProduct.code }
+      } : {}),
       status: 'active'
     };
 
@@ -3002,6 +3070,85 @@ function ItemsWorkspace({
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6 bg-white">
+              <section className="mb-5 space-y-3 rounded-xl border border-blue-200 bg-blue-50/70 p-4" aria-labelledby="pos-external-barcode-heading">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-lg bg-white p-2 text-blue-700 shadow-sm">
+                    <Barcode className="h-5 w-5" aria-hidden="true" />
+                  </div>
+                  <div>
+                    <h3 id="pos-external-barcode-heading" className="text-sm font-semibold text-slate-900">Scan UPC / EAN</h3>
+                    <p className="text-xs text-slate-600">Look up packaged-product details before creating the item. Manual entry remains available.</p>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    value={externalBarcode}
+                    onChange={(event) => handleExternalBarcodeChange(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        handleExternalProductLookup();
+                      }
+                    }}
+                    inputMode="numeric"
+                    autoComplete="off"
+                    placeholder="Scan or enter GTIN / UPC / EAN"
+                    aria-label="Product barcode"
+                    disabled={externalLookupLoading || creatingItem || postCreateSaving}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="shrink-0 bg-white"
+                    onClick={handleExternalProductLookup}
+                    disabled={externalLookupLoading || creatingItem || postCreateSaving || !externalBarcode}
+                  >
+                    <Search className="mr-2 h-4 w-4" aria-hidden="true" />
+                    {externalLookupLoading ? 'Looking up...' : 'Look up'}
+                  </Button>
+                </div>
+
+                {externalLookupError ? (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" role="status">
+                    {externalLookupError}
+                  </p>
+                ) : null}
+
+                {externalProductLookup?.found ? (
+                  <div className="rounded-xl border border-blue-200 bg-white p-3">
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      {externalProductLookup.product?.image_url ? (
+                        <img
+                          src={externalProductLookup.product.image_url}
+                          alt="External product preview"
+                          className="h-20 w-20 shrink-0 rounded-lg border border-slate-200 object-contain"
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : null}
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <p className="font-semibold text-slate-900">{externalProductLookup.product?.name || 'Unnamed registry product'}</p>
+                        {externalProductLookup.product?.brand ? <p className="text-xs text-slate-600">Brand: {externalProductLookup.product.brand}</p> : null}
+                        {externalProductLookup.product?.quantity ? <p className="text-xs text-slate-600">Package: {externalProductLookup.product.quantity}</p> : null}
+                        {externalProductLookup.product?.category_suggestion ? <p className="text-xs text-slate-600">Category suggestion: {externalProductLookup.product.category_suggestion}</p> : null}
+                        <p className="text-xs text-amber-700">Review before saving. Category and image are not imported automatically.</p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={applyExternalProductDetails}
+                        disabled={acceptedExternalProduct?.code === externalProductLookup.code}
+                      >
+                        {acceptedExternalProduct?.code === externalProductLookup.code ? <Check className="mr-2 h-4 w-4" /> : null}
+                        {acceptedExternalProduct?.code === externalProductLookup.code ? 'Details selected' : 'Use product details'}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
+              </section>
+
               <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
                 <div className="space-y-4">
                   <div>
