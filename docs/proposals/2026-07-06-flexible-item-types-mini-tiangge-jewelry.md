@@ -100,3 +100,20 @@ Mini Tiangge.
 - No code changes are included here. This is a design reference only.
 - Whether "Jewelry" and "Mini Tiangge" become dedicated `workflow_mode` values or stay presets within
   `msme`/`retail` is an open product decision, not resolved by this doc.
+
+## Related design (2026-07-25)
+
+The **Mini Tiangge** pack-to-unit direction is folded into Phase 1 of the
+unified product-domain design and its ratifying ADR:
+
+- `docs/features/UNIFIED_PRODUCT_DOMAIN.md` — Capability C (Retail as
+  first-class) adopts this doc's recommendation to reuse
+  `ItemBarcode.packaging_level` + `quantity_multiplier` as the single
+  conversion factor and extend the receiving side, keeping the stock ledger in
+  base units.
+- `docs/architecture/adr/0037-unified-product-domain-and-capability-driven-store-types.md`
+  — Decision 6 (retail taxonomy correction) and Decision 4 (open question on
+  the conversion-factor location) reference this proposal.
+
+**Jewelry** per-piece serialization remains a deferred follow-up and is
+explicitly out of scope of that design.
