@@ -10,6 +10,7 @@ import {
   validateItemIdParam,
   validateBarcodeIdParam,
   validateBarcodeResolveQuery,
+  validateExternalProductLookupQuery,
   validateAttachBarcode,
   validateGenerateBarcode,
   validateUpdateBarcode,
@@ -66,6 +67,7 @@ router.delete('/:item_id/storefront-images/:image_index', checkPermission(PERMIS
 router.delete('/:item_id/storefront-image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, itemController.deleteStorefrontCatalogImage);
 
 // Barcode identity and labels - must be before :item_id read routes
+router.get('/barcodes/external-lookup', checkPermission(PERMISSIONS.INVENTORY.actions.CREATE_ITEMS), validateExternalProductLookupQuery, itemController.lookupExternalProduct);
 router.get('/barcodes/resolve', validateBarcodeResolveQuery, itemController.resolveItemBarcode);
 router.post('/barcodes/conflicts/resolve', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateBarcodeConflictResolution, itemController.resolveItemBarcodeConflict);
 router.get('/:item_id/barcodes', validateItemIdParam, itemController.listItemBarcodes);
