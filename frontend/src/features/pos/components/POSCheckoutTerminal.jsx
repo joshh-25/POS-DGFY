@@ -2176,6 +2176,78 @@ export default function POSCheckoutTerminal({
         setQtyMeterState(null);
     };
 
+    const handleCartQtyButtonPointerDown = (event, line) => {
+        if (event.pointerType === 'mouse' && event.button !== 0) return;
+        const lineKey = getLineKey(line);
+        const buttonRect = event.currentTarget.getBoundingClientRect();
+        qtyMeterGestureRef.current = {
+            itemId: lineKey,
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            anchorX: buttonRect.left,
+            anchorY: buttonRect.top + (buttonRect.height / 2),
+            activated: false,
+            cancelled: false,
+            quantity: QTY_METER_MIN_QTY
+        };
+        clearQtyMeterTimer();
+        qtyMeterTimerRef.current = setTimeout(() => {
+            const gesture = qtyMeterGestureRef.current;
+            if (!gesture || gesture.itemId !== lineKey || gesture.cancelled) return;
+            gesture.activated = true;
+            setQtyMeterState({ quantity: gesture.quantity, x: gesture.anchorX, y: gesture.anchorY });
+        }, QTY_METER_LONG_PRESS_MS);
+    };
+
+    const handleCartQtyButtonPointerMove = (event, line) => {
+        const lineKey = getLineKey(line);
+        const gesture = qtyMeterGestureRef.current;
+        if (!gesture || gesture.itemId !== lineKey || gesture.cancelled) return;
+
+        const deltaX = event.clientX - gesture.startX;
+        const deltaY = event.clientY - gesture.startY;
+
+        if (!gesture.activated) {
+            if (Math.hypot(deltaX, deltaY) > QTY_METER_MOVE_CANCEL_PX) {
+                gesture.cancelled = true;
+                clearQtyMeterTimer();
+            }
+            return;
+        }
+
+        const upwardPx = Math.min(QTY_METER_MAX_DRAG_PX, Math.max(0, -deltaY));
+        const ratio = upwardPx / QTY_METER_MAX_DRAG_PX;
+        const quantity = QTY_METER_MIN_QTY + Math.round(ratio * (QTY_METER_MAX_QTY - QTY_METER_MIN_QTY));
+        gesture.quantity = quantity;
+        setQtyMeterState({ quantity, x: gesture.anchorX, y: gesture.anchorY });
+    };
+
+    const handleCartQtyButtonPointerUp = (event, line) => {
+        const lineKey = getLineKey(line);
+        const gesture = qtyMeterGestureRef.current;
+        clearQtyMeterTimer();
+
+        qtyMeterGestureRef.current = null;
+        setQtyMeterState(null);
+
+        if (!gesture || gesture.itemId !== lineKey || gesture.cancelled) return;
+
+        const currentQuantity = Number(line.quantity || 0);
+        if (gesture.activated) {
+            if (gesture.quantity <= 0) return;
+            updateCartQuantity(lineKey, currentQuantity + gesture.quantity);
+        } else {
+            updateCartQuantity(lineKey, currentQuantity + 1);
+        }
+    };
+
+    const handleCartQtyButtonPointerCancel = () => {
+        clearQtyMeterTimer();
+        qtyMeterGestureRef.current = null;
+        setQtyMeterState(null);
+    };
+
     const removeCartLine = (lineKey) => {
         if (posActionsBlocked) {
             notifyPosActionBlocked();
@@ -3555,32 +3627,29 @@ export default function POSCheckoutTerminal({
                                                     (h-10/px-3) than desktop's h-8/px-2 for easier touch input;
                                                     mobile is unaffected - it never renders this stepper (its cart
                                                     line qty is read-only, managed from the catalog card instead). */}
-                                                {!isMobile ? (
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className={isTabletViewport ? 'h-10 px-3 text-[13px]' : 'h-8 px-2 text-[13px]'}
-                                                        onPointerDown={(event) => handleCartQtyButtonPointerDown(event, line)}
-                                                        onPointerMove={(event) => handleCartQtyButtonPointerMove(event, line)}
-                                                        onPointerUp={(event) => handleCartQtyButtonPointerUp(event, line)}
-                                                        onPointerCancel={handleCartQtyButtonPointerCancel}
-                                                        disabled={posActionsBlocked}
-                                                    >
-                                                        <Plus className="h-3.5 w-3.5" />
-                                                    </Button>
-                                                ) : (
-                                                    <Button
-                                                        type="button"
-                                                        variant="outline"
-                                                        size="sm"
-                                                        className="h-8 px-2 text-[13px]"
-                                                        onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) + 1)}
-                                                        disabled={posActionsBlocked}
-                                                    >
-                                                        <Plus className="h-3.5 w-3.5" />
-                                                        </Button>
-                                                    )}
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className={`${isTabletViewport ? 'h-10 px-3 text-[13px]' : 'h-8 px-2 text-[13px]'} hidden sm:inline-flex`}
+                                                    onPointerDown={(event) => handleCartQtyButtonPointerDown(event, line)}
+                                                    onPointerMove={(event) => handleCartQtyButtonPointerMove(event, line)}
+                                                    onPointerUp={(event) => handleCartQtyButtonPointerUp(event, line)}
+                                                    onPointerCancel={handleCartQtyButtonPointerCancel}
+                                                    disabled={posActionsBlocked}
+                                                >
+                                                    <Plus className="h-3.5 w-3.5" />
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="h-8 px-2 text-[13px] sm:hidden"
+                                                    onClick={() => updateCartQuantity(lineKey, Number(line.quantity || 0) + 1)}
+                                                    disabled={posActionsBlocked}
+                                                >
+                                                    <Plus className="h-3.5 w-3.5" />
+                                                </Button>
                                             </div>
                                         </label>
                                         <div className="text-[11px] text-slate-500">

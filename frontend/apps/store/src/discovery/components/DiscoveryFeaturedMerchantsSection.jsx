@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Coffee, HeartHandshake, Scissors, ShoppingCart, Store, Wrench } from 'lucide-react';
 
 export function DiscoveryFeaturedMerchantsSection({
@@ -23,11 +23,8 @@ export function DiscoveryFeaturedMerchantsSection({
 }) {
   const featuredPageCount = Math.min(5, Math.max(1, Math.ceil(featuredVisibleStores.length / 2)));
   const [activeFeaturedPage, setActiveFeaturedPage] = useState(0);
+  const visibleFeaturedPage = Math.min(activeFeaturedPage, featuredPageCount - 1);
   const featuredPageOffset = 304;
-
-  useEffect(() => {
-    setActiveFeaturedPage((current) => Math.min(current, featuredPageCount - 1));
-  }, [featuredPageCount]);
 
   const showFeaturedPage = (pageIndex) => {
     const nextPage = Math.max(0, Math.min(pageIndex, featuredPageCount - 1));
@@ -36,7 +33,7 @@ export function DiscoveryFeaturedMerchantsSection({
   };
 
   const moveFeaturedPage = (direction) => {
-    showFeaturedPage(activeFeaturedPage + direction);
+    showFeaturedPage(visibleFeaturedPage + direction);
   };
 
   return (
@@ -278,20 +275,20 @@ export function DiscoveryFeaturedMerchantsSection({
 
       {/* Carousel Controls */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 20, marginTop: 16 }}>
-        <button type="button" aria-label="Show previous featured merchants" onClick={() => moveFeaturedPage(-1)} disabled={activeFeaturedPage === 0} style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: activeFeaturedPage === 0 ? '#cbd5e1' : '#1a4e8d', cursor: activeFeaturedPage === 0 ? 'default' : 'pointer', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }}><ChevronLeft size={20} /></button>
+        <button type="button" aria-label="Show previous featured merchants" onClick={() => moveFeaturedPage(-1)} disabled={visibleFeaturedPage === 0} style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: visibleFeaturedPage === 0 ? '#cbd5e1' : '#1a4e8d', cursor: visibleFeaturedPage === 0 ? 'default' : 'pointer', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }}><ChevronLeft size={20} /></button>
         <div style={{ display: 'flex', gap: 8 }}>
           {Array.from({ length: featuredPageCount }, (_, pageIndex) => (
             <button
               key={pageIndex}
               type="button"
               aria-label={`Show featured merchants page ${pageIndex + 1}`}
-              aria-current={activeFeaturedPage === pageIndex ? 'page' : undefined}
+              aria-current={visibleFeaturedPage === pageIndex ? 'page' : undefined}
               onClick={() => showFeaturedPage(pageIndex)}
-              style={{ width: 8, height: 8, padding: 0, border: 'none', borderRadius: '50%', background: activeFeaturedPage === pageIndex ? '#1a4e8d' : '#e2e8f0', cursor: 'pointer' }}
+              style={{ width: 8, height: 8, padding: 0, border: 'none', borderRadius: '50%', background: visibleFeaturedPage === pageIndex ? '#1a4e8d' : '#e2e8f0', cursor: 'pointer' }}
             />
           ))}
         </div>
-        <button type="button" aria-label="Show next featured merchants" onClick={() => moveFeaturedPage(1)} disabled={activeFeaturedPage >= featuredPageCount - 1} style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: activeFeaturedPage >= featuredPageCount - 1 ? '#cbd5e1' : '#1a4e8d', cursor: activeFeaturedPage >= featuredPageCount - 1 ? 'default' : 'pointer', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }}><ChevronRight size={20} /></button>
+        <button type="button" aria-label="Show next featured merchants" onClick={() => moveFeaturedPage(1)} disabled={visibleFeaturedPage >= featuredPageCount - 1} style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: visibleFeaturedPage >= featuredPageCount - 1 ? '#cbd5e1' : '#1a4e8d', cursor: visibleFeaturedPage >= featuredPageCount - 1 ? 'default' : 'pointer', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }}><ChevronRight size={20} /></button>
       </div>
     </section>
   );
