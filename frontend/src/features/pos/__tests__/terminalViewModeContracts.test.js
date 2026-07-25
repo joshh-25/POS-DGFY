@@ -22,6 +22,7 @@ const terminalPageLayoutPath = path.resolve(__dirname, '../components/TerminalPa
 const terminalLockDrawerPath = path.resolve(__dirname, '../components/TerminalLockDrawer.jsx');
 const onlineOrderDetailsModalPath = path.resolve(__dirname, '../components/OnlineOrderDetailsModal.jsx');
 const onlineOrderReceiptModalPath = path.resolve(__dirname, '../components/OnlineOrderReceiptModal.jsx');
+const posServicePath = path.resolve(__dirname, '../services/posService.js');
 
 describe('POS terminal view-mode contracts', () => {
   let terminalPageContent = '';
@@ -40,6 +41,7 @@ describe('POS terminal view-mode contracts', () => {
   let terminalLockDrawerContent = '';
   let onlineOrderDetailsModalContent = '';
   let onlineOrderReceiptModalContent = '';
+  let posServiceContent = '';
 
   beforeAll(() => {
     terminalPageContent = fs.readFileSync(terminalPagePath, 'utf8');
@@ -58,6 +60,7 @@ describe('POS terminal view-mode contracts', () => {
     terminalLockDrawerContent = fs.readFileSync(terminalLockDrawerPath, 'utf8');
     onlineOrderDetailsModalContent = fs.readFileSync(onlineOrderDetailsModalPath, 'utf8');
     onlineOrderReceiptModalContent = fs.readFileSync(onlineOrderReceiptModalPath, 'utf8');
+    posServiceContent = fs.readFileSync(posServicePath, 'utf8');
   });
 
   it('keeps explicit checkout and operations mode lists in TerminalPage', () => {
@@ -97,13 +100,32 @@ describe('POS terminal view-mode contracts', () => {
 
   it('keeps tenant onboarding restriction tied to live readiness state, not only the URL query', () => {
     expect(terminalPageContent).toContain('const tenantSetupIncomplete = !setupFlowState.loading');
-    expect(terminalPageContent).toContain('const tenantSetupRequestedOrRequired = tenantSetupFlowRequested || tenantSetupIncomplete;');
+    expect(terminalPageContent).toContain('&& !setupFlowState.onboardingCompleted');
+    expect(terminalPageContent).toContain('const tenantSetupRequestedOrRequired = !setupFlowState.onboardingCompleted');
+    expect(terminalPageContent).toContain("settingsPayload?.tenant_onboarding_state?.value || 'not_started'");
+    expect(terminalPageContent).toContain("onboardingCompleted: onboardingState === 'completed'");
+    expect(terminalPageContent).toContain('const setupFlowActive = tenantSetupRequestedOrRequired');
     expect(terminalPageContent).toContain("const PosTenantSetupModal = lazy(() => import('../components/PosTenantSetupModal.jsx'));");
     expect(terminalPageContent).toContain('if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.COMPLETE) {');
     expect(terminalPageContent).toContain('clearTenantSetupQueryState();');
     expect(terminalPageContent).not.toContain('shouldForceSelectedTenantOnboarding');
     expect(terminalPageContent).toContain('if (setupFlowActive) {');
     expect(terminalPageContent).toContain('resumeTenantSetupFlow();');
+  });
+
+  it('keeps intermediate setup saves silent and waits for Finish Setup before releasing the shift prompt', () => {
+    expect(terminalPageContent).toContain('suppressGlobalErrors = false,\n    silent = false');
+    expect(terminalPageContent).toContain('if (!silent) {\n      setSetupFlowState((prev) => ({ ...prev, loading: true }));');
+    expect(terminalPageContent).toContain('hydrateTenantSetupState({ suppressGlobalErrors: true, silent: true })');
+    expect(terminalPageContent).toContain('const completion = await completeOnboarding();');
+    expect(terminalPageContent).toContain('tenantSetupCompletionInFlightRef.current');
+    expect(terminalPageContent).toContain('await handleCompleteTenantSetup();');
+    expect(posTenantSetupModalContent).toContain("finishing ? 'Finishing...' : continueLabel");
+    expect(terminalPageContent).toContain("if (source === 'terminal') {");
+    expect(terminalPageContent).toContain("if (source === 'location') {");
+    expect(terminalPageContent).toContain(
+      "refreshTenantLocations({\n        suppressGlobalErrors: true,\n        silent: true"
+    );
   });
 
   it('waits for session and onboarding hydration before rendering the POS workspace', () => {
@@ -213,6 +235,16 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).not.toContain('if (!scopedOperatingLocationId) {');
   });
 
+  it('keeps stale shift recovery master-only, audited, and isolated from generic shift actions', () => {
+    expect(terminalPageContent).toContain('canRecoverStaleShifts={terminalUser?.is_master_admin === true}');
+    expect(terminalOperationsWorkspaceContent).toContain('Branch Shift Monitor');
+    expect(terminalOperationsWorkspaceContent).toContain('Recover Stale Shift');
+    expect(terminalOperationsWorkspaceContent).toContain('Force Close Stale Shift');
+    expect(terminalOperationsWorkspaceContent).toContain('Opened by');
+    expect(terminalOperationsWorkspaceContent).toContain('staleRecoveryForm.reason.trim().length < 8');
+    expect(posServiceContent).toContain('`/pos/terminal/shifts/${shiftId}/force-close`');
+  });
+
   it('enforces incoming queue access-state handling in TerminalPage', () => {
     expect(terminalPageContent).toContain("accessState: 'forbidden'");
     expect(terminalPageContent).toContain("accessState: 'allowed'");
@@ -230,7 +262,7 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('keeps incoming queue and protected sidebar items permission-aware', () => {
-    expect(terminalWorkspaceSidebarContent).toContain("disabled={locked || !isOnline || onboardingRestricted || !canViewPos || !navigationShiftReady}");
+    expect(terminalWorkspaceSidebarContent).toContain("disabled={locked || !isOnline || onboardingRestricted || !canViewPos || !hasActiveShift}");
     expect(terminalWorkspaceSidebarContent).toContain('POS view permission required');
     expect(terminalWorkspaceSidebarContent).toContain('Available online only');
   });
@@ -275,7 +307,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsPanelsContent).toContain('shiftState = { shift: null }');
     expect(terminalOperationsWorkspaceContent).toContain('shiftState={shiftState}');
     expect(terminalOperationsWorkspaceContent).toContain('const canRenderAdminShiftOpen = canAdminBypassShiftPrompt || canTransactPos;');
-    expect(terminalOperationsWorkspaceContent).toContain('disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen}');
+    expect(terminalOperationsWorkspaceContent).toContain('disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !isOnline || !activeTerminalMatchesOperatingLocation}');
     expect(terminalSidebarPanelContent).toContain('isValidOpeningCashAmount');
     expect(terminalSidebarPanelContent).toContain('disabled={shiftActionLoading.open || locked || !canTransactPos}');
     expect(terminalPageContent).toContain("const canCloseShift = hasPermission('pos:shift_close') || hasPermission('pos:close_day');");

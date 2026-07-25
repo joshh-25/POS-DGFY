@@ -38,12 +38,14 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260504000001-add-customer-access-fields-to-discovery-index.cjs',
     '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs',
     '20260629000001-add-pos-always-available-contract.cjs',
+    '20260703000002-enforce-one-open-shift-per-terminal.cjs',
     '20260705000001-add-admin-provisioned-membership-source.cjs',
     '20260710000001-create-delivery-jobs.cjs',
     '20260711000001-add-pickup-cash-collection-fields.cjs',
     '20260711000002-add-item-folder-active-contract.cjs',
     '20260711000003-repair-pickup-cash-collection-columns.cjs',
     '20260714000002-add-pos-best-seller-contract.cjs',
+    '20260724000001-enforce-one-open-shift-per-operator.cjs',
     '20260502000001-add-services-mode-booking-tables.cjs'
 ]);
 
@@ -137,7 +139,15 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'stock_effect_type',
         'stock_exempt_reason'
     ],
-    pos_terminal_shifts: ['pos_terminal_shift_id', 'business_date', 'terminal_id', 'cashier_id', 'status'],
+    pos_terminal_shifts: [
+        'pos_terminal_shift_id',
+        'business_date',
+        'terminal_id',
+        'cashier_id',
+        'status',
+        'active_terminal_id',
+        'active_operator_user_id'
+    ],
     pos_cash_drawer_events: ['pos_cash_drawer_event_id', 'pos_terminal_shift_id', 'event_type', 'amount', 'recorded_by'],
     pos_operation_replays: ['pos_operation_replay_id', 'operation_key', 'idempotency_key', 'request_hash', 'replay_status'],
     system_settings: ['setting_id', 'setting_key', 'setting_value', 'data_type'],

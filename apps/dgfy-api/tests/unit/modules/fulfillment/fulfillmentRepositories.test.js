@@ -104,7 +104,6 @@ const makeRegistryRepository = (overrides = {}) => ({
     })),
     ...overrides
 });
-
 describe('StageEventRepository — append-only surface', () => {
     it('exposes only create/bulkCreate/findAll/findOne (no update/delete/destroy)', () => {
         const models = { AvailmentStageEvent: makeStageEventModel() };
@@ -438,4 +437,3 @@ describe('AvailmentReadRepository — FUL-01 read path (D-08) + FUL-02 single-av
         });
     });
 });
-

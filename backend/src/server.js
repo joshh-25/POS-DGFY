@@ -53,6 +53,7 @@ import {
 import * as aiController from './controllers/aiController.js';
 import { paymentsEnabled } from './config/paymentsFeature.js';
 import productionEnvValidation from './config/productionEnvValidation.cjs';
+import { resolveUploadCacheControl } from './modules/shared/utils/uploadCachePolicy.js';
 import {
   readRequestHostname,
   resolveActiveStorefrontDomain
@@ -705,6 +706,7 @@ app.get('/metrics', (req, res) => {
 app.use('/uploads', express.static(join(__dirname, '..', 'uploads'), {
   setHeaders: (res, filePath) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', resolveUploadCacheControl(filePath));
     if (String(filePath || '').toLowerCase().endsWith('.svg')) {
       // Legacy SVG uploads are served as plain text to avoid inline script execution.
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');

@@ -1,5 +1,8 @@
-const STORAGE_KEY_PREFIX = 'dgfy.pos.manual-sync-policy.v1';
+import { buildOfflinePosScopeKey } from './offlinePosScope.js';
+
+const STORAGE_KEY_PREFIX = 'dgfy.pos.manual-sync-policy.v2';
 export const MAX_MANUAL_POS_SYNCS_PER_DAY = 2;
+const inMemoryPolicies = new Map();
 
 const getLocalDayKey = (date = new Date()) => {
     const year = date.getFullYear();
@@ -7,10 +10,6 @@ const getLocalDayKey = (date = new Date()) => {
     const day = String(date.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
 };
-
-const getScopeKey = ({ terminalId, userId } = {}) => (
-    `${String(terminalId || '').trim() || 'unassigned-terminal'}:${String(userId || '').trim() || 'unassigned-user'}`
-);
 
 const getStorage = () => {
     try {
@@ -30,41 +29,67 @@ export const getManualPosSyncPolicy = (scope) => {
     const storage = getStorage();
     const day = getLocalDayKey();
     const fallback = { day, attempts: 0 };
+    const scopeKey = buildOfflinePosScopeKey(scope);
+    if (!scopeKey) {
+        return { ...fallback, remaining: 0, resetAt: nextLocalMidnight(), scopeReady: false };
+    }
+    const memoryPolicy = inMemoryPolicies.get(scopeKey);
+    const memoryAttempts = memoryPolicy?.day === day
+        ? Math.max(0, Number(memoryPolicy?.attempts || 0))
+        : 0;
     if (!storage) {
-        return { ...fallback, remaining: MAX_MANUAL_POS_SYNCS_PER_DAY, resetAt: nextLocalMidnight() };
+        return {
+            day,
+            attempts: memoryAttempts,
+            remaining: Math.max(0, MAX_MANUAL_POS_SYNCS_PER_DAY - memoryAttempts),
+            resetAt: nextLocalMidnight(),
+            scopeReady: true
+        };
     }
 
     try {
-        const stored = JSON.parse(storage.getItem(`${STORAGE_KEY_PREFIX}:${getScopeKey(scope)}`) || 'null');
-        const attempts = stored?.day === day ? Math.max(0, Number(stored?.attempts || 0)) : 0;
+        const stored = JSON.parse(storage.getItem(`${STORAGE_KEY_PREFIX}:${scopeKey}`) || 'null');
+        const storedAttempts = stored?.day === day ? Math.max(0, Number(stored?.attempts || 0)) : 0;
+        const attempts = Math.max(storedAttempts, memoryAttempts);
         return {
             day,
             attempts,
             remaining: Math.max(0, MAX_MANUAL_POS_SYNCS_PER_DAY - attempts),
-            resetAt: nextLocalMidnight()
+            resetAt: nextLocalMidnight(),
+            scopeReady: true
         };
     } catch {
-        return { ...fallback, remaining: MAX_MANUAL_POS_SYNCS_PER_DAY, resetAt: nextLocalMidnight() };
+        return {
+            day,
+            attempts: memoryAttempts,
+            remaining: Math.max(0, MAX_MANUAL_POS_SYNCS_PER_DAY - memoryAttempts),
+            resetAt: nextLocalMidnight(),
+            scopeReady: true
+        };
     }
 };
 
 export const consumeManualPosSyncAttempt = (scope) => {
     const policy = getManualPosSyncPolicy(scope);
+    if (!policy.scopeReady) return { ...policy, allowed: false };
     if (policy.remaining <= 0) return { ...policy, allowed: false };
 
     const next = { day: policy.day, attempts: policy.attempts + 1 };
+    const scopeKey = buildOfflinePosScopeKey(scope);
+    inMemoryPolicies.set(scopeKey, next);
     const storage = getStorage();
     if (storage) {
         try {
-            storage.setItem(`${STORAGE_KEY_PREFIX}:${getScopeKey(scope)}`, JSON.stringify(next));
+            storage.setItem(`${STORAGE_KEY_PREFIX}:${scopeKey}`, JSON.stringify(next));
         } catch {
-            // The in-memory result still prevents duplicate clicks in the current terminal session.
+            // The in-memory policy still enforces the limit in the current terminal session.
         }
     }
     return {
         ...next,
         remaining: Math.max(0, MAX_MANUAL_POS_SYNCS_PER_DAY - next.attempts),
         resetAt: nextLocalMidnight(),
+        scopeReady: true,
         allowed: true
     };
 };

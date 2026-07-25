@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, Trash2, Package, Folder, X } from 'lucide-react';
+import { Barcode, Check, ExternalLink, Folder, Loader2, Package, Plus, Search, Trash2, X } from 'lucide-react';
 import { Switch } from "@/components/ui/switch";
 import { dummyItems } from '@/components/data/dummyData';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
@@ -35,6 +35,7 @@ import {
   resolveModeItemTaxonomy
 } from '@/src/features/settings/modeItemTaxonomy.js';
 import { resolveItemFinancialPolicy } from '@/src/features/inventory/itemFinancialPolicy.js';
+import { lookupExternalProduct } from '@/src/services/itemService.js';
 import { toast } from 'sonner';
 
 const MSME_ITEM_PRESET = Object.freeze({
@@ -361,6 +362,11 @@ export default function ItemFormModal({
   const savingActionRef = useRef(null);
   const [skuManuallyEdited, setSkuManuallyEdited] = useState(false);
   const [lastSuggestedSku, setLastSuggestedSku] = useState('');
+  const [externalBarcode, setExternalBarcode] = useState('');
+  const [externalProductLookup, setExternalProductLookup] = useState(null);
+  const [acceptedExternalProduct, setAcceptedExternalProduct] = useState(null);
+  const [externalLookupLoading, setExternalLookupLoading] = useState(false);
+  const [externalLookupError, setExternalLookupError] = useState('');
   const isEditingDraft = item?.status === 'draft';
   const isSaving = Boolean(savingAction);
   const folderSuggestionsListId = `item-folder-suggestions-${item?.item_id || item?.id || 'new'}`;
@@ -537,6 +543,11 @@ export default function ItemFormModal({
       setLastSuggestedSku('');
       setMarginPercent('');
       setSelectedStorefrontImageFiles([]);
+      setExternalBarcode('');
+      setExternalProductLookup(null);
+      setAcceptedExternalProduct(null);
+      setExternalLookupError('');
+      setExternalLookupLoading(false);
       setTrackServiceCost(initialCategory === 'service' && Number(item.cost_per_unit || 0) > 0);
       if (msmeMode) {
         setMsmeOriginalCategory(item.category || null);
@@ -610,6 +621,11 @@ export default function ItemFormModal({
       setLastSuggestedSku('');
       setMarginPercent('');
       setSelectedStorefrontImageFiles([]);
+      setExternalBarcode('');
+      setExternalProductLookup(null);
+      setAcceptedExternalProduct(null);
+      setExternalLookupError('');
+      setExternalLookupLoading(false);
       setTrackServiceCost(false);
       setMsmeOriginalCategory(null);
       setMsmeCategoryTouched(false);
@@ -719,6 +735,55 @@ export default function ItemFormModal({
 
       return updated;
     });
+  };
+
+  const handleExternalBarcodeChange = (value) => {
+    const normalized = String(value || '').replace(/\D/g, '').slice(0, 14);
+    setExternalBarcode(normalized);
+    if (normalized !== externalProductLookup?.code) {
+      setExternalProductLookup(null);
+      setAcceptedExternalProduct(null);
+      setExternalLookupError('');
+    }
+  };
+
+  const handleExternalProductLookup = async () => {
+    if (externalLookupLoading) return;
+    if (![8, 12, 13, 14].includes(externalBarcode.length)) {
+      setExternalLookupError('Enter a GTIN-8, UPC-A, EAN-13, or GTIN-14 barcode.');
+      return;
+    }
+
+    setExternalLookupLoading(true);
+    setExternalLookupError('');
+    setExternalProductLookup(null);
+    setAcceptedExternalProduct(null);
+    try {
+      const result = await lookupExternalProduct(externalBarcode);
+      setExternalProductLookup(result);
+      if (!result?.found) {
+        setExternalLookupError('No registry match was found. You can still enter the item manually.');
+      }
+    } catch (error) {
+      setExternalLookupError(
+        error?.response?.data?.message
+        || 'The product registry is unavailable. Enter the item manually or try again.'
+      );
+    } finally {
+      setExternalLookupLoading(false);
+    }
+  };
+
+  const applyExternalProductDetails = () => {
+    if (!externalProductLookup?.found) return;
+    const product = externalProductLookup.product || {};
+    const descriptionParts = [product.brand, product.quantity].filter(Boolean);
+    setFormData((previous) => ({
+      ...previous,
+      name: product.name || previous.name,
+      description: previous.description || descriptionParts.join(' - ')
+    }));
+    setAcceptedExternalProduct(externalProductLookup);
   };
 
   const handleSkuChange = (value) => {
@@ -882,7 +947,10 @@ export default function ItemFormModal({
   const handleSaveDraft = async () => {
     const draftData = {
       ...formData,
-      status: 'draft'
+      status: 'draft',
+      ...(!item && acceptedExternalProduct?.found ? {
+        manufacturer_barcode: { code: acceptedExternalProduct.code }
+      } : {})
     };
     if (onSaveDraft) {
       try {
@@ -977,6 +1045,9 @@ export default function ItemFormModal({
       shelf_life_days: cleanedData.fifo_enabled ? toNumberOrNull(cleanedData.shelf_life_days) : null,
       opened_shelf_life_days: cleanedData.fifo_enabled ? toNumberOrNull(cleanedData.opened_shelf_life_days) : null,
       status: isDraft ? 'draft' : 'active',
+      ...(!item && acceptedExternalProduct?.found ? {
+        manufacturer_barcode: { code: acceptedExternalProduct.code }
+      } : {}),
       ...(categoryForSave === 'packaging' ? {
         packaging_specs: cleanedData.packaging_specs ? (() => {
 
@@ -1141,6 +1212,94 @@ export default function ItemFormModal({
           </DialogHeader>
 
           <div className="wizard-step-content flex-1 space-y-4 overflow-y-auto px-5 py-4 sm:px-6">
+            {!item && (
+              <section className="space-y-3 rounded-xl border border-blue-200 bg-blue-50/70 p-4" aria-labelledby="external-barcode-heading">
+                <div className="flex items-start gap-3">
+                  <div className="rounded-lg bg-white p-2 text-blue-700 shadow-sm">
+                    <Barcode className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 id="external-barcode-heading" className="text-sm font-semibold text-slate-900">Scan UPC / EAN</h3>
+                    <p className="text-xs text-slate-600">Look up packaged-product details before creating the item. Manual entry remains available.</p>
+                  </div>
+                </div>
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Input
+                    value={externalBarcode}
+                    onChange={(event) => handleExternalBarcodeChange(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter') {
+                        event.preventDefault();
+                        handleExternalProductLookup();
+                      }
+                    }}
+                    inputMode="numeric"
+                    autoComplete="off"
+                    placeholder="Scan or enter GTIN / UPC / EAN"
+                    aria-label="Product barcode"
+                    disabled={externalLookupLoading || isSaving}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="shrink-0 bg-white"
+                    onClick={handleExternalProductLookup}
+                    disabled={externalLookupLoading || isSaving || !externalBarcode}
+                  >
+                    {externalLookupLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Search className="mr-2 h-4 w-4" />}
+                    {externalLookupLoading ? 'Looking up...' : 'Look up'}
+                  </Button>
+                </div>
+                {externalLookupError && (
+                  <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" role="status">
+                    {externalLookupError}
+                  </p>
+                )}
+                {externalProductLookup?.found && (
+                  <div className="rounded-xl border border-blue-200 bg-white p-3">
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      {externalProductLookup.product?.image_url && (
+                        <img
+                          src={externalProductLookup.product.image_url}
+                          alt="External product preview"
+                          className="h-20 w-20 shrink-0 rounded-lg border border-slate-200 object-contain"
+                          loading="lazy"
+                          referrerPolicy="no-referrer"
+                        />
+                      )}
+                      <div className="min-w-0 flex-1 space-y-1">
+                        <p className="font-semibold text-slate-900">{externalProductLookup.product?.name || 'Unnamed registry product'}</p>
+                        {externalProductLookup.product?.brand && <p className="text-xs text-slate-600">Brand: {externalProductLookup.product.brand}</p>}
+                        {externalProductLookup.product?.quantity && <p className="text-xs text-slate-600">Package: {externalProductLookup.product.quantity}</p>}
+                        {externalProductLookup.product?.category_suggestion && (
+                          <p className="text-xs text-slate-600">Category suggestion: {externalProductLookup.product.category_suggestion}</p>
+                        )}
+                        <p className="text-xs text-amber-700">Review before saving. Category and image are not imported automatically.</p>
+                      </div>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="shrink-0"
+                        onClick={applyExternalProductDetails}
+                        disabled={acceptedExternalProduct?.code === externalProductLookup.code}
+                      >
+                        {acceptedExternalProduct?.code === externalProductLookup.code ? <Check className="mr-2 h-4 w-4" /> : null}
+                        {acceptedExternalProduct?.code === externalProductLookup.code ? 'Details selected' : 'Use product details'}
+                      </Button>
+                    </div>
+                    <a
+                      href={externalProductLookup.product?.provider_product_url || externalProductLookup.attribution?.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 inline-flex items-center gap-1 text-xs font-medium text-blue-700 hover:underline"
+                    >
+                      {externalProductLookup.attribution?.label || 'View registry source'}
+                      <ExternalLink className="h-3 w-3" />
+                    </a>
+                  </div>
+                )}
+              </section>
+            )}
             {/* Basic Info */}
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">

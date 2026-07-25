@@ -1532,6 +1532,13 @@ INSERT INTO system_settings (setting_key, setting_value, data_type, description)
 
 ## Migration Strategy
 
+### Tenant Schema Safety
+
+- Tenant schema report mode is read-only and is the only mode allowed in normal deployment checks.
+- `repair-apply` changes every affected tenant database and requires `TENANT_SCHEMA_MUTATION_APPROVED=true` after backup and SQL review.
+- `alter` is development-only and also requires `TENANT_SCHEMA_MUTATION_APPROVED=true`; it is blocked when `NODE_ENV=production`.
+- New tenant databases use `sequelize.sync()` only while empty. Existing tenant upgrades must use reviewed additive migrations or an explicitly approved repair operation; do not rely on `sync({ alter: true })` in production.
+
 ### Phase 1: Schema Creation
 - Create all tables with relationships
 - Create indexes and constraints

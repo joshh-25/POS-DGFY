@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+import { fileURLToPath } from 'url';
 
 import { scanForDirectSequelizeConstruction } from './check-architecture.js';
 
@@ -17,7 +18,7 @@ function writeFile(root, relativePath, content) {
 }
 
 test('passes cleanly against the real current migration-runner tree', () => {
-    const packageRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+    const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
     const { fileCount, violations } = scanForDirectSequelizeConstruction({
         srcRoot: path.join(packageRoot, 'src')

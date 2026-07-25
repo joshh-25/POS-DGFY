@@ -816,7 +816,7 @@ describe('store use-cases application result contract', () => {
         expect(result.error.details.reason_code).toBe('MISSING_PRICE');
     });
 
-    it('storeCartQuote blocks checkout when storefront is closed by POS open status', async () => {
+    it('storeCartQuote ignores POS shift status when the storefront location is open', async () => {
         const useCase = buildStoreCartQuoteUseCase({
             storeRepository: {
                 findSellableItemsByIds: jest.fn().mockResolvedValue([
@@ -866,8 +866,9 @@ describe('store use-cases application result contract', () => {
             }
         });
 
-        expect(result.success).toBe(false);
-        expect(result.error.code).toBe(DomainErrorCode.CONFLICT);
+        expect(result.success).toBe(true);
+        expect(result.data.storefront_open).toBe(true);
+        expect(result.data.total_amount).toBe(121);
     });
 
     it('storeCartQuote blocks unsupported location order method capabilities', async () => {

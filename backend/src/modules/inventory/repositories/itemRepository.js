@@ -1195,6 +1195,7 @@ export const itemRepository = {
                 packaging_info,
                 quality_control,
                 regulatory_compliance,
+                manufacturer_barcode,
                 ...dbFields
             } = itemData;
 
@@ -1236,6 +1237,45 @@ export const itemRepository = {
             delete dataToCreate.location_id;
 
             const item = await Item.create(dataToCreate, { transaction });
+
+            if (manufacturer_barcode?.code) {
+                const ItemBarcode = dbStore.get('ItemBarcode');
+                const normalizedCode = normalizeBarcodeValue(manufacturer_barcode.code);
+                const existingBarcode = await ItemBarcode.findOne({
+                    where: { normalized_code: normalizedCode, is_active: true },
+                    include: barcodeIncludeItem(),
+                    transaction,
+                    lock: transaction.LOCK.UPDATE
+                });
+                if (existingBarcode) {
+                    throw barcodeConflictError(serializeBarcodeRow(existingBarcode));
+                }
+
+                const barcode = await ItemBarcode.create({
+                    item_id: item.item_id,
+                    code: String(manufacturer_barcode.code).trim(),
+                    normalized_code: normalizedCode,
+                    symbology: detectBarcodeSymbology(manufacturer_barcode.code),
+                    source: 'manufacturer',
+                    scope: 'inventory',
+                    packaging_level: 'unit',
+                    quantity_multiplier: 1,
+                    is_primary: true,
+                    is_active: true,
+                    metadata: { attached_via: 'external_registry_prefill' },
+                    created_by: userId || null,
+                    updated_by: userId || null
+                }, { transaction });
+
+                await auditBarcodeEvent({
+                    userId,
+                    barcode,
+                    action: 'CREATE',
+                    eventType: 'barcode.created',
+                    changes: { source: 'manufacturer', scope: 'inventory' },
+                    transaction
+                });
+            }
 
             if (isServiceItem) {
                 const ServiceItemDetail = dbStore.get('ServiceItemDetail');
@@ -1287,6 +1327,17 @@ export const itemRepository = {
         } catch (error) {
             if (!transaction.finished) {
                 await transaction.rollback();
+            }
+            if (isActiveBarcodeUniqueConstraintError(error)) {
+                const ItemBarcode = dbStore.get('ItemBarcode');
+                const normalizedCode = normalizeBarcodeValue(itemData?.manufacturer_barcode?.code);
+                const existing = normalizedCode
+                    ? await ItemBarcode.findOne({
+                        where: { normalized_code: normalizedCode, is_active: true },
+                        include: barcodeIncludeItem()
+                    })
+                    : null;
+                throw barcodeConflictError(serializeBarcodeRow(existing));
             }
             throw normalizeSkuConflictError(error);
         }

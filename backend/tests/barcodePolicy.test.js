@@ -1,7 +1,10 @@
+import { describe, expect, it } from '@jest/globals';
 import {
     detectBarcodeSymbology,
     generateInternalBarcodeValue,
+    hasValidGtinCheckDigit,
     normalizeBarcodeValue,
+    normalizeGtin,
     normalizeBarcodeMultiplier,
     parseBarcodeStructuredPayload
 } from '../src/modules/shared/utils/barcodePolicy.js';
@@ -44,5 +47,14 @@ describe('barcodePolicy', () => {
         expect(normalizeBarcodeMultiplier('24')).toBe(24);
         expect(normalizeBarcodeMultiplier('-1')).toBe(1);
         expect(normalizeBarcodeMultiplier('bad')).toBe(1);
+    });
+
+    it('validates UPC, EAN, and GTIN check digits before external lookup', () => {
+        expect(normalizeGtin(' 4006-3813-3393-1 ')).toBe('4006381333931');
+        expect(hasValidGtinCheckDigit('012345678905')).toBe(true);
+        expect(hasValidGtinCheckDigit('4006381333931')).toBe(true);
+        expect(hasValidGtinCheckDigit('3017620422003')).toBe(true);
+        expect(hasValidGtinCheckDigit('4006381333932')).toBe(false);
+        expect(hasValidGtinCheckDigit('NOT-A-GTIN')).toBe(false);
     });
 });
