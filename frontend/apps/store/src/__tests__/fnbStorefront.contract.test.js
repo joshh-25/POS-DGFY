@@ -213,8 +213,9 @@ describe('Food & Beverage storefront contract', () => {
     expect(panel).toContain('Send Request');
     expect(source).toContain('buildBusinessRegistrationUrl');
     expect(solutionsSource).toContain('buildBusinessRegistrationUrl');
-    expect(helperSource).toContain('VITE_SKUPERVISOR_REGISTRATION_URL');
-    expect(helperSource).toContain('register-company');
+    // Business registration is hosted in-app at dgfy.ph/business/grow now
+    // (formerly a redirect out to skupervisor.dgfy.ph/register-company).
+    expect(helperSource).toContain('/business/grow');
   });
 
   it('keeps storefront generated fallback copy out of F&B mode', () => {

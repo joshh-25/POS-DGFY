@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from '../main.jsx';
+import { BrowserRouter } from 'react-router-dom';
 
 vi.mock('maplibre-gl', () => {
   function PopupApi() {
@@ -184,7 +185,7 @@ describe('storefront profile launcher', () => {
     ]));
     window.localStorage.setItem('dgfy_store_last_store_slug', 'alpha');
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     expect(screen.queryByRole('button', { name: /^Profile$/i })).toBeNull();
@@ -193,7 +194,7 @@ describe('storefront profile launcher', () => {
   it('keeps the storefront profile action usable from a store page', async () => {
     window.history.pushState({}, '', '/tenant-store/alpha');
     const user = userEvent.setup();
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     const profileButton = screen.getAllByRole('button', { name: /^Profile$/i })
@@ -212,7 +213,7 @@ describe('storefront profile launcher', () => {
   it('keeps the signed-in storefront customer access visible when account activity exists', async () => {
     window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = 'dgfy-test-token';
     window.history.pushState({}, '', '/tenant-store/alpha');
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await waitFor(() => {
@@ -252,7 +253,7 @@ describe('storefront profile launcher', () => {
     });
 
     window.history.pushState({}, '', '/tenant-store/alpha');
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
       expect(screen.getAllByText('Loading Storefront...').length).toBeGreaterThan(0);
