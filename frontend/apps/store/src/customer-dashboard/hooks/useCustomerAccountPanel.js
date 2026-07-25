@@ -36,16 +36,18 @@ export function useCustomerAccountPanel({
     }
 
     const loadDgfyPanel = async (authToken = '') => {
-      const [meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData, addressesData] = await Promise.all([
+      const [meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData, addressesData, affiliateEnrollmentsData, affiliateEarningsData] = await Promise.all([
         requestJson('/api/v1/dgfy/auth/me', { authToken, cache: 'no-store' }),
         requestJson('/api/v1/dgfy/customer/dashboard', { authToken, cache: 'no-store' }),
         requestJson('/api/v1/dgfy/customer/activities?limit=100', { authToken, cache: 'no-store' }).catch(() => ({ activities: [] })),
         requestJson('/api/v1/dgfy/customer/loyalty', { authToken, cache: 'no-store' }).catch(() => null),
         requestJson('/api/v1/dgfy/account/companies', { authToken, cache: 'no-store' }).catch(() => ({ companies: [] })),
         requestJson('/api/v1/dgfy/customer/notifications?limit=50', { authToken, cache: 'no-store' }).catch(() => ({ notifications: [], unread_count: 0 })),
-        requestJson('/api/v1/dgfy/customer/addresses', { authToken, cache: 'no-store' }).catch(() => ({ addresses: [] }))
+        requestJson('/api/v1/dgfy/customer/addresses', { authToken, cache: 'no-store' }).catch(() => ({ addresses: [] })),
+        requestJson('/api/v1/dgfy/affiliate/enrollments', { authToken, cache: 'no-store' }).catch(() => ({ enrollments: [] })),
+        requestJson('/api/v1/dgfy/affiliate/earnings', { authToken, cache: 'no-store' }).catch(() => ({ earnings: null, by_store: [] }))
       ]);
-      return { meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData, addressesData };
+      return { meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData, addressesData, affiliateEnrollmentsData, affiliateEarningsData };
     };
 
     try {
@@ -61,7 +63,7 @@ export function useCustomerAccountPanel({
         }
         if (requestId !== loadRequestRef.current) return;
 
-        const { meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData, addressesData } = panelData;
+        const { meData, dashboardData, activitiesData, loyaltyData, companiesData, notificationsData, addressesData, affiliateEnrollmentsData, affiliateEarningsData } = panelData;
         const activityCollections = deriveAccountActivityCollections({ dashboardData, activitiesData });
         const addresses = Array.isArray(addressesData?.addresses) && addressesData.addresses.length > 0
           ? addressesData.addresses
@@ -81,7 +83,10 @@ export function useCustomerAccountPanel({
           addresses,
           loyalty: loyaltyData?.loyalty || dashboardData?.loyalty || null,
           businessCompanies: mapCustomerBusinessCompanies(companiesData?.companies, knownStoreRouteCandidates),
-          businessStepUp: companiesData?.business_step_up || { verified: false }
+          businessStepUp: companiesData?.business_step_up || { verified: false },
+          affiliateEnrollments: Array.isArray(affiliateEnrollmentsData?.enrollments) ? affiliateEnrollmentsData.enrollments : [],
+          affiliateEarnings: affiliateEarningsData?.earnings || null,
+          affiliateEarningsByStore: Array.isArray(affiliateEarningsData?.by_store) ? affiliateEarningsData.by_store : []
         });
         return;
       }

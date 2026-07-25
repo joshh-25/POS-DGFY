@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { AccountSettingsSection } from '../components/AccountSettingsSection.jsx';
 import { AddressesSection } from '../components/AddressesSection.jsx';
+import { AffiliateSection } from '../components/AffiliateSection.jsx';
 import { BookingsSection } from '../components/BookingsSection.jsx';
 import { BusinessSection } from '../components/BusinessSection.jsx';
 import { CustomerDashboardShell } from '../components/CustomerDashboardShell.jsx';
@@ -75,6 +76,9 @@ export function DgfyCustomerAccountPage({
   const overviewEmail = String(accountPanel?.me?.email || contactParts[1] || '').trim();
   const loyalty = accountPanel?.loyalty || { balance: 0, transactions: [] };
   const loyaltyTransactions = Array.isArray(loyalty?.transactions) ? loyalty.transactions.slice(0, 3) : [];
+  const affiliateEnrollments = Array.isArray(accountPanel?.affiliateEnrollments) ? accountPanel.affiliateEnrollments : [];
+  const affiliateEarnings = accountPanel?.affiliateEarnings || null;
+  const affiliateEarningsByStore = Array.isArray(accountPanel?.affiliateEarningsByStore) ? accountPanel.affiliateEarningsByStore : [];
   const businessMemberships = Array.isArray(accountPanel?.memberships) ? accountPanel.memberships.filter((membership) => membership?.company) : [];
   const businessCompanies = Array.isArray(accountPanel?.businessCompanies) ? accountPanel.businessCompanies : [];
   const businessStepUp = accountPanel?.businessStepUp || accountPanel?.business_step_up || {};
@@ -201,6 +205,7 @@ export function DgfyCustomerAccountPage({
     bookings: <BookingsSection bookings={allBookings} EmptyState={EmptyState} StatusBadge={StatusBadge} formatDate={formatCustomerDate} theme={theme} />,
     addresses: <AddressesSection addresses={allAddresses} isMobileViewport={isMobileViewport} onSaveAddress={onSaveAddress} onDeleteAddress={onDeleteAddress} onSetDefaultAddress={onSetDefaultAddress} onUseAddressForCheckout={onUseAddressForCheckout} renderAddressPinEditor={renderAddressPinEditor} accountAddressActionId={accountAddressActionId} theme={theme} />,
     loyalty: <LoyaltySection loyalty={loyalty} transactions={loyaltyTransactions} EmptyState={EmptyState} formatDate={formatCustomerDate} prettyStatus={prettyCustomerStatus} theme={theme} />,
+    affiliate: <AffiliateSection enrollments={affiliateEnrollments} earnings={affiliateEarnings} earningsByStore={affiliateEarningsByStore} isMobileViewport={isMobileViewport} EmptyState={EmptyState} StatusBadge={StatusBadge} money={formatCustomerMoney} formatDate={formatCustomerDate} theme={theme} />,
     account: <AccountSettingsSection isMobileViewport={isMobileViewport} theme={theme} accountIdentityInitials={accountIdentityInitials} accountIdentityName={accountIdentityName} accountPanel={accountPanel} overviewPhone={overviewPhone} overviewEmail={overviewEmail} />,
     business: <BusinessSection isMobileViewport={isMobileViewport} theme={theme} businessCompanies={businessCompanies} businessMemberships={businessMemberships} businessActionError={businessActionError} businessActionLoading={businessActionLoading} businessStepUpAction={businessStepUpAction} businessEmailOtpCode={businessEmailOtpCode} setBusinessEmailOtpCode={setBusinessEmailOtpCode} setBusinessStepUpAction={setBusinessStepUpAction} startBusinessAction={startBusinessAction} submitBusinessStepUpAction={submitBusinessStepUpAction} onRegisterBusiness={onRegisterBusiness} onOpenBusinessPos={onOpenBusinessPos} resolveBusinessAssetUrl={resolveBusinessAssetUrl} getBusinessCoverUrl={getCustomerBusinessCoverUrl} getBusinessProfileUrl={getCustomerBusinessProfileUrl} getBusinessRoleLabel={(company) => getCustomerBusinessRoleLabel(company, prettyCustomerStatus)} getBusinessStatusLabel={businessStatusLabel} />
   };

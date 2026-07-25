@@ -16,7 +16,10 @@ export const EMPTY_ACCOUNT_PANEL = Object.freeze({
   addresses: [],
   loyalty: null,
   businessCompanies: [],
-  businessStepUp: { verified: false }
+  businessStepUp: { verified: false },
+  affiliateEnrollments: [],
+  affiliateEarnings: null,
+  affiliateEarningsByStore: []
 });
 
 const normalizeTrackingSlug = (value = '') => String(value || '').trim().toLowerCase();
