@@ -97,7 +97,9 @@ const validatePayoutMethodPayload = (body = {}, { requireAllFields = false } = {
 const buildAffiliateShareUrl = ({ slug, shortCode }) => {
     const origin = String(process.env.STOREFRONT_PUBLIC_ORIGIN || '').trim().replace(/\/+$/, '');
     if (!slug) return { path: null, url: null };
-    const path = `/${encodeURIComponent(String(slug).trim().toLowerCase())}?p=${encodeURIComponent(shortCode)}`;
+    // "/s/" is the short storefront-alias route (see storefrontRouting.js on the store
+    // app) that resolves either the canonical or affiliate slug to a store.
+    const path = `/s/${encodeURIComponent(String(slug).trim().toLowerCase())}?p=${encodeURIComponent(shortCode)}`;
     return { path, url: origin ? `${origin}${path}` : null };
 };
 
@@ -242,7 +244,7 @@ export const buildGetAffiliateQrPayloadUseCase = ({ repository = dgfyAffiliateRe
             if (!enrollment) {
                 throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate enrollment not found.', { statusCode: 404 });
             }
-            const slug = await repository.getStorefrontSlug(tenant);
+            const slug = await repository.getStorefrontAffiliateSlug(tenant);
             const { path, url } = buildAffiliateShareUrl({ slug, shortCode: enrollment.short_code });
             return ok({
                 short_code: enrollment.short_code,
@@ -267,7 +269,7 @@ export const buildListMyAffiliateEnrollmentsUseCase = ({ repository = dgfyAffili
             // Enrich with the storefront share link so the customer dashboard can render a
             // "share this to earn" QR/link without a second round trip per enrollment.
             const enrichedEnrollments = await Promise.all(enrollments.map(async (enrollment) => {
-                const slug = await repository.getStorefrontSlug(enrollment.tenant_id);
+                const slug = await repository.getStorefrontAffiliateSlug(enrollment.tenant_id);
                 const { path, url } = buildAffiliateShareUrl({ slug, shortCode: enrollment.short_code });
                 return { ...enrollment, store_slug: slug, share_path: path, share_url: url };
             }));

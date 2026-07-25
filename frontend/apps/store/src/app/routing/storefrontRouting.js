@@ -1,21 +1,29 @@
+// "/s/" is a short inbound alias for affiliate share links/QR codes (kept compact so
+// the encoded QR payload stays small). It resolves the same way as /tenant-store/ and
+// /store/ — outbound links built by storePath() still use the canonical /tenant-store/
+// prefix; /s/ only needs to be *recognized* on the way in.
 const TENANT_STORE_PATH_PATTERNS = [
   /^\/tenant-store\/([^/]+)(?:\/[^/]+)?$/i,
-  /^\/store\/([^/]+)(?:\/[^/]+)?$/i
+  /^\/store\/([^/]+)(?:\/[^/]+)?$/i,
+  /^\/s\/([^/]+)(?:\/[^/]+)?$/i
 ];
 
 const TENANT_STORE_HASH_PATTERNS = [
   /^#\/tenant-store\/([^/]+)(?:\/[^/]+)?$/i,
-  /^#\/store\/([^/]+)(?:\/[^/]+)?$/i
+  /^#\/store\/([^/]+)(?:\/[^/]+)?$/i,
+  /^#\/s\/([^/]+)(?:\/[^/]+)?$/i
 ];
 
 const TENANT_STORE_SUBPAGE_PATTERNS = [
   /^\/tenant-store\/[^/]+\/([^/]+)$/i,
-  /^\/store\/[^/]+\/([^/]+)$/i
+  /^\/store\/[^/]+\/([^/]+)$/i,
+  /^\/s\/[^/]+\/([^/]+)$/i
 ];
 
 const TENANT_STORE_SUBPAGE_HASH_PATTERNS = [
   /^#\/tenant-store\/[^/]+\/([^/]+)$/i,
-  /^#\/store\/[^/]+\/([^/]+)$/i
+  /^#\/store\/[^/]+\/([^/]+)$/i,
+  /^#\/s\/[^/]+\/([^/]+)$/i
 ];
 
 const normalizeRouteSlug = (value) => String(value || '').trim().toLowerCase();
