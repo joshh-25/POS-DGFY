@@ -4,6 +4,7 @@ import { Copy, Download, Percent } from 'lucide-react';
 import QRCode from 'qrcode';
 import { copyTextToClipboard } from '../../shared/utils/clipboard.js';
 import { buildStorefrontQrExportImage, downloadDataUrl } from '../../features/qr/utils/storefrontQrExport.js';
+import { PayoutMethodsSection } from './PayoutMethodsSection.jsx';
 
 const centavosToPesos = (value) => Number(value || 0) / 100;
 
@@ -97,6 +98,11 @@ export function AffiliateSection({
   enrollments = [],
   earnings,
   earningsByStore = [],
+  payoutMethods = [],
+  onSavePayoutMethod,
+  onDeletePayoutMethod,
+  onSetDefaultPayoutMethod,
+  accountPayoutActionId,
   isMobileViewport,
   EmptyState,
   StatusBadge,
@@ -161,7 +167,15 @@ export function AffiliateSection({
       ) : null}
 
       {activeTab === 'payout_methods' ? (
-        <EmptyState title="Payout methods" desc="Coming right up." />
+        <PayoutMethodsSection
+          payoutMethods={payoutMethods}
+          onSavePayoutMethod={onSavePayoutMethod}
+          onDeletePayoutMethod={onDeletePayoutMethod}
+          onSetDefaultPayoutMethod={onSetDefaultPayoutMethod}
+          accountPayoutActionId={accountPayoutActionId}
+          isMobileViewport={isMobileViewport}
+          theme={theme}
+        />
       ) : null}
 
       {activeTab === 'cashouts' ? (

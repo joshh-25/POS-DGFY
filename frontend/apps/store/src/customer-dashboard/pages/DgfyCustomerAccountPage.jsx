@@ -51,6 +51,9 @@ export function DgfyCustomerAccountPage({
   onDeleteAddress,
   onSetDefaultAddress,
   renderAddressPinEditor,
+  onSavePayoutMethod,
+  onDeletePayoutMethod,
+  onSetDefaultPayoutMethod,
   accountIdentityInitials,
   accountIdentityName,
   accountIdentityContact,
@@ -62,7 +65,8 @@ export function DgfyCustomerAccountPage({
   resolveStorefrontMeta,
   resolveBusinessAssetUrl,
   onOpenBusinessPos,
-  accountAddressActionId = ''
+  accountAddressActionId = '',
+  accountPayoutActionId = ''
 }) {
   const theme = CUSTOMER_DASHBOARD_THEME;
   const allOrders = Array.isArray(accountPanel?.orders) ? accountPanel.orders : [];
@@ -79,6 +83,7 @@ export function DgfyCustomerAccountPage({
   const affiliateEnrollments = Array.isArray(accountPanel?.affiliateEnrollments) ? accountPanel.affiliateEnrollments : [];
   const affiliateEarnings = accountPanel?.affiliateEarnings || null;
   const affiliateEarningsByStore = Array.isArray(accountPanel?.affiliateEarningsByStore) ? accountPanel.affiliateEarningsByStore : [];
+  const affiliatePayoutMethods = Array.isArray(accountPanel?.affiliatePayoutMethods) ? accountPanel.affiliatePayoutMethods : [];
   const businessMemberships = Array.isArray(accountPanel?.memberships) ? accountPanel.memberships.filter((membership) => membership?.company) : [];
   const businessCompanies = Array.isArray(accountPanel?.businessCompanies) ? accountPanel.businessCompanies : [];
   const businessStepUp = accountPanel?.businessStepUp || accountPanel?.business_step_up || {};
@@ -205,7 +210,7 @@ export function DgfyCustomerAccountPage({
     bookings: <BookingsSection bookings={allBookings} EmptyState={EmptyState} StatusBadge={StatusBadge} formatDate={formatCustomerDate} theme={theme} />,
     addresses: <AddressesSection addresses={allAddresses} isMobileViewport={isMobileViewport} onSaveAddress={onSaveAddress} onDeleteAddress={onDeleteAddress} onSetDefaultAddress={onSetDefaultAddress} onUseAddressForCheckout={onUseAddressForCheckout} renderAddressPinEditor={renderAddressPinEditor} accountAddressActionId={accountAddressActionId} theme={theme} />,
     loyalty: <LoyaltySection loyalty={loyalty} transactions={loyaltyTransactions} EmptyState={EmptyState} formatDate={formatCustomerDate} prettyStatus={prettyCustomerStatus} theme={theme} />,
-    affiliate: <AffiliateSection enrollments={affiliateEnrollments} earnings={affiliateEarnings} earningsByStore={affiliateEarningsByStore} isMobileViewport={isMobileViewport} EmptyState={EmptyState} StatusBadge={StatusBadge} money={formatCustomerMoney} formatDate={formatCustomerDate} theme={theme} />,
+    affiliate: <AffiliateSection enrollments={affiliateEnrollments} earnings={affiliateEarnings} earningsByStore={affiliateEarningsByStore} payoutMethods={affiliatePayoutMethods} onSavePayoutMethod={onSavePayoutMethod} onDeletePayoutMethod={onDeletePayoutMethod} onSetDefaultPayoutMethod={onSetDefaultPayoutMethod} accountPayoutActionId={accountPayoutActionId} isMobileViewport={isMobileViewport} EmptyState={EmptyState} StatusBadge={StatusBadge} money={formatCustomerMoney} formatDate={formatCustomerDate} theme={theme} />,
     account: <AccountSettingsSection isMobileViewport={isMobileViewport} theme={theme} accountIdentityInitials={accountIdentityInitials} accountIdentityName={accountIdentityName} accountPanel={accountPanel} overviewPhone={overviewPhone} overviewEmail={overviewEmail} />,
     business: <BusinessSection isMobileViewport={isMobileViewport} theme={theme} businessCompanies={businessCompanies} businessMemberships={businessMemberships} businessActionError={businessActionError} businessActionLoading={businessActionLoading} businessStepUpAction={businessStepUpAction} businessEmailOtpCode={businessEmailOtpCode} setBusinessEmailOtpCode={setBusinessEmailOtpCode} setBusinessStepUpAction={setBusinessStepUpAction} startBusinessAction={startBusinessAction} submitBusinessStepUpAction={submitBusinessStepUpAction} onRegisterBusiness={onRegisterBusiness} onOpenBusinessPos={onOpenBusinessPos} resolveBusinessAssetUrl={resolveBusinessAssetUrl} getBusinessCoverUrl={getCustomerBusinessCoverUrl} getBusinessProfileUrl={getCustomerBusinessProfileUrl} getBusinessRoleLabel={(company) => getCustomerBusinessRoleLabel(company, prettyCustomerStatus)} getBusinessStatusLabel={businessStatusLabel} />
   };

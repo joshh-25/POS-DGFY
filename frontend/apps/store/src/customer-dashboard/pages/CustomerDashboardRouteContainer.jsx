@@ -28,6 +28,9 @@ function buildCustomerDashboardViewProps({
     onDeleteAddress: actions.onDeleteAddress,
     onSetDefaultAddress: actions.onSetDefaultAddress,
     renderAddressPinEditor: actions.renderAddressPinEditor,
+    onSavePayoutMethod: actions.onSavePayoutMethod,
+    onDeletePayoutMethod: actions.onDeletePayoutMethod,
+    onSetDefaultPayoutMethod: actions.onSetDefaultPayoutMethod,
     accountIdentityInitials: state.accountIdentityInitials,
     accountIdentityName: state.accountIdentityName,
     accountIdentityContact: state.accountIdentityContact,
@@ -46,7 +49,8 @@ function buildCustomerDashboardViewProps({
     resolveBusinessAssetUrl: resolvers.resolveBusinessAssetUrl,
     onOpenBusinessPos: actions.onOpenBusinessPos,
     accountOrderActionReference: state.accountOrderActionReference,
-    accountAddressActionId: state.accountAddressActionId
+    accountAddressActionId: state.accountAddressActionId,
+    accountPayoutActionId: state.accountPayoutActionId
   };
 }
 

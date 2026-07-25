@@ -19,7 +19,8 @@ export const EMPTY_ACCOUNT_PANEL = Object.freeze({
   businessStepUp: { verified: false },
   affiliateEnrollments: [],
   affiliateEarnings: null,
-  affiliateEarningsByStore: []
+  affiliateEarningsByStore: [],
+  affiliatePayoutMethods: []
 });
 
 const normalizeTrackingSlug = (value = '') => String(value || '').trim().toLowerCase();
