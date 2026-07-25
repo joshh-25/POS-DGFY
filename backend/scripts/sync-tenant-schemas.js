@@ -16,6 +16,29 @@ const DB_USER = process.env.DB_USER || 'root';
 const DB_PASSWORD = process.env.DB_PASSWORD || '';
 const MAIN_DB = process.env.DB_NAME || 'sku_inventory_manager';
 
+const isExplicitlyApproved = (value) => String(value || '').trim().toLowerCase() === 'true';
+
+// Report mode is safe in every environment. Any tenant DDL needs an operator to
+// opt in explicitly so a copied command or deploy configuration cannot mutate
+// every active tenant by accident.
+export function assertTenantSchemaMutationModeAllowed(mode, environment = process.env) {
+    if (!['repair-apply', 'alter'].includes(mode)) {
+        return;
+    }
+
+    if (!isExplicitlyApproved(environment.TENANT_SCHEMA_MUTATION_APPROVED)) {
+        throw new Error(
+            `Tenant schema mode "${mode}" changes active tenant databases. Set TENANT_SCHEMA_MUTATION_APPROVED=true after backup and review.`
+        );
+    }
+
+    if (mode === 'alter' && String(environment.NODE_ENV || '').trim().toLowerCase() === 'production') {
+        throw new Error(
+            'Tenant schema mode "alter" is blocked in production. Use reviewed additive migrations or repair-apply with explicit approval.'
+        );
+    }
+}
+
 export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
     pos_catalog_overrides: Object.freeze({
         pos_always_available: Object.freeze({
@@ -80,6 +103,9 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
     pos_terminal_shifts: Object.freeze({
         active_terminal_id: Object.freeze({
             sql: "ALTER TABLE `pos_terminal_shifts` ADD COLUMN `active_terminal_id` VARCHAR(100) GENERATED ALWAYS AS (CASE WHEN `status` = 'open' THEN UPPER(TRIM(`terminal_id`)) ELSE NULL END) STORED"
+        }),
+        active_operator_user_id: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_shifts` ADD COLUMN `active_operator_user_id` INTEGER GENERATED ALWAYS AS (CASE WHEN `status` = 'open' THEN `cashier_id` ELSE NULL END) STORED"
         })
     }),
     pos_transaction_discounts: Object.freeze({
@@ -205,6 +231,9 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
     pos_terminal_shifts: Object.freeze({
         uq_pos_terminal_shifts_active_terminal: Object.freeze({
             sql: "ALTER TABLE `pos_terminal_shifts` ADD UNIQUE INDEX `uq_pos_terminal_shifts_active_terminal` (`active_terminal_id`)"
+        }),
+        uq_pos_terminal_shifts_active_operator: Object.freeze({
+            sql: "ALTER TABLE `pos_terminal_shifts` ADD UNIQUE INDEX `uq_pos_terminal_shifts_active_operator` (`active_operator_user_id`)"
         })
     }),
     pos_transaction_discounts: Object.freeze({
@@ -557,6 +586,7 @@ export async function runTenantSchemaSync({ reportFile = '', failOnError = false
     if (!['report', 'repair-dry-run', 'repair-apply', 'alter'].includes(normalizedMode)) {
         throw new Error(`Invalid tenant schema sync mode: ${mode}`);
     }
+    assertTenantSchemaMutationModeAllowed(normalizedMode);
 
     console.log(`[TenantSchemaSync] starting mode=${normalizedMode}`);
     const report = {

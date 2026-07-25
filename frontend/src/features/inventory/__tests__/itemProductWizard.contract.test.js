@@ -174,13 +174,13 @@ describe('Item/Product wizard contracts', () => {
     expect(itemFormSource).toContain('await onSave(finalPayload);');
     expect(itemFormSource).toContain('await onSaveDraft(finalPayload);');
 
-    const finalizeBranchIndex = itemsPageSource.indexOf("editingItem.status === 'draft' && itemPayload.status === 'active'");
-    const updateBranchIndex = itemsPageSource.indexOf('savedItem = await updateItem(editingItem.item_id, itemPayload);');
+    const finalizeBranchIndex = itemsPageSource.indexOf("editingItem.status === 'draft' && resolvedItemPayload.status === 'active'");
+    const updateBranchIndex = itemsPageSource.indexOf('savedItem = await updateItem(editingItem.item_id, resolvedItemPayload);');
 
     expect(finalizeBranchIndex).toBeGreaterThan(-1);
     expect(updateBranchIndex).toBeGreaterThan(-1);
     expect(finalizeBranchIndex).toBeLessThan(updateBranchIndex);
-    expect(itemsPageSource).toContain('savedItem = await finalizeItem(editingItem.item_id, itemPayload);');
+    expect(itemsPageSource).toContain('savedItem = await finalizeItem(editingItem.item_id, resolvedItemPayload);');
     expect(itemsPageSource).toContain("toast.success('Item finalized successfully');");
   });
 
@@ -188,8 +188,8 @@ describe('Item/Product wizard contracts', () => {
     const itemsPageSource = readFrontendFile('src/features/inventory/pages/ItemsPage.jsx');
     const useItemsSource = readFrontendFile('src/hooks/useItems.js');
 
-    expect(itemsPageSource).toContain("editingProduct.status === 'draft' && productPayload.status === 'active'");
-    expect(itemsPageSource).toContain('savedProduct = await finalizeItem(editingProduct.item_id, productPayload);');
+    expect(itemsPageSource).toContain("editingProduct.status === 'draft' && resolvedProductPayload.status === 'active'");
+    expect(itemsPageSource).toContain('savedProduct = await finalizeItem(editingProduct.item_id, resolvedProductPayload);');
     expect(useItemsSource).toContain('const finalizeItem = useCallback(async (itemId, itemData = {}) =>');
     expect(useItemsSource).toContain('const item = await itemService.finalizeItem(itemId, itemData);');
   });
@@ -247,9 +247,9 @@ describe('Item/Product wizard contracts', () => {
 
     expect(itemsPageSource).toContain('const applyStorefrontLocationAvailabilityPatch = async (item, rows = []) =>');
     expect(itemsPageSource).toContain('storefront_location_availability: storefrontLocationAvailabilityPatch = []');
-    expect(itemsPageSource).toContain('savedProduct = await createItemDraft(productPayload);');
+    expect(itemsPageSource).toContain('savedProduct = await createItemDraft(resolvedProductPayload);');
     expect(itemsPageSource).toContain('await applyStorefrontLocationAvailabilityPatch(savedProduct || editingProduct, storefrontLocationAvailabilityPatch);');
-    expect(itemsPageSource).toContain('const savedDraft = await createItemDraft(draftPayload);');
+    expect(itemsPageSource).toContain('const savedDraft = await createItemDraft(resolvedDraftPayload);');
     expect(itemsPageSource).toContain('await applyStorefrontLocationAvailabilityPatch(savedDraft, storefrontLocationAvailabilityPatch);');
     expect(itemsPageSource).not.toContain('delete draftPayload.storefront_location_availability;');
   });
@@ -331,8 +331,10 @@ describe('Item/Product wizard contracts', () => {
     expect(itemsPageSource).toContain('parseStorefrontImageGallery');
     expect(itemsPageSource).toContain('updateStorefrontCatalogGallery(itemId, nextGallery)');
     expect(itemsPageSource).toContain('Failed to upload item image');
-    expect(itemsPageSource).toContain('STOREFRONT_ITEM_IMAGE_MAX_BYTES = 5 * 1024 * 1024');
-    expect(itemsPageSource).toContain("image size must be 5 MB or smaller");
+    expect(itemsPageSource).toContain('STOREFRONT_ITEM_IMAGE_SINGLE_SOURCE_MAX_BYTES = 100 * 1024 * 1024');
+    expect(itemsPageSource).toContain('STOREFRONT_ITEM_IMAGE_GALLERY_MAX_BYTES = 10 * 1024 * 1024');
+    expect(itemsPageSource).toContain('single images may be up to 100 MB before optimization');
+    expect(itemsPageSource).toContain('gallery images must be 10 MB or smaller');
     expect(itemsPageSource).toContain('<StorefrontImageCarousel');
     expect(itemsPageSource).toContain('variant="table"');
     expect(storefrontImageCarouselSource).toContain('Set first');

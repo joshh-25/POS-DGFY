@@ -1,12 +1,11 @@
-const STORAGE_KEY_PREFIX = 'dgfy.pos.offline-snapshot.v1';
+import { buildOfflinePosScopeKey } from './offlinePosScope.js';
 
-const getScopeKey = ({ terminalId, locationId, userId } = {}) => [
-    String(terminalId || '').trim() || 'unassigned-terminal',
-    String(locationId || '').trim() || 'unassigned-location',
-    String(userId || '').trim() || 'unassigned-user'
-].join(':');
+const STORAGE_KEY_PREFIX = 'dgfy.pos.offline-snapshot.v2';
 
-const getStorageKey = (scope) => `${STORAGE_KEY_PREFIX}:${getScopeKey(scope)}`;
+const getStorageKey = (scope) => {
+    const scopeKey = buildOfflinePosScopeKey(scope);
+    return scopeKey ? `${STORAGE_KEY_PREFIX}:${scopeKey}` : '';
+};
 
 const getStorage = () => {
     try {
@@ -19,10 +18,11 @@ const getStorage = () => {
 // Auth and settings never enter browser snapshots. Reports use a separate read-only cached payload.
 export const saveOfflinePosSnapshot = (scope, snapshot) => {
     const storage = getStorage();
-    if (!storage) return false;
+    const storageKey = getStorageKey(scope);
+    if (!storage || !storageKey) return false;
 
     try {
-        storage.setItem(getStorageKey(scope), JSON.stringify({
+        storage.setItem(storageKey, JSON.stringify({
             saved_at: new Date().toISOString(),
             catalog: Array.isArray(snapshot?.catalog) ? snapshot.catalog : [],
             receipt_settings: snapshot?.receiptSettings && typeof snapshot.receiptSettings === 'object'
@@ -37,10 +37,11 @@ export const saveOfflinePosSnapshot = (scope, snapshot) => {
 
 export const loadOfflinePosSnapshot = (scope) => {
     const storage = getStorage();
-    if (!storage) return null;
+    const storageKey = getStorageKey(scope);
+    if (!storage || !storageKey) return null;
 
     try {
-        const parsed = JSON.parse(storage.getItem(getStorageKey(scope)) || 'null');
+        const parsed = JSON.parse(storage.getItem(storageKey) || 'null');
         if (!parsed || !Array.isArray(parsed.catalog)) return null;
         return parsed;
     } catch {
@@ -48,13 +49,17 @@ export const loadOfflinePosSnapshot = (scope) => {
     }
 };
 
-const getReportStorageKey = (scope, reportKey) => `${STORAGE_KEY_PREFIX}:report:${getScopeKey(scope)}:${reportKey}`;
+const getReportStorageKey = (scope, reportKey) => {
+    const scopeKey = buildOfflinePosScopeKey(scope);
+    return scopeKey ? `${STORAGE_KEY_PREFIX}:report:${scopeKey}:${reportKey}` : '';
+};
 
 export const saveOfflinePosReportSnapshot = (scope, reportKey, payload) => {
     const storage = getStorage();
-    if (!storage || !payload || typeof payload !== 'object') return false;
+    const storageKey = getReportStorageKey(scope, reportKey);
+    if (!storage || !storageKey || !payload || typeof payload !== 'object') return false;
     try {
-        storage.setItem(getReportStorageKey(scope, reportKey), JSON.stringify({
+        storage.setItem(storageKey, JSON.stringify({
             saved_at: new Date().toISOString(),
             payload
         }));
@@ -66,9 +71,10 @@ export const saveOfflinePosReportSnapshot = (scope, reportKey, payload) => {
 
 export const loadOfflinePosReportSnapshot = (scope, reportKey) => {
     const storage = getStorage();
-    if (!storage) return null;
+    const storageKey = getReportStorageKey(scope, reportKey);
+    if (!storage || !storageKey) return null;
     try {
-        const parsed = JSON.parse(storage.getItem(getReportStorageKey(scope, reportKey)) || 'null');
+        const parsed = JSON.parse(storage.getItem(storageKey) || 'null');
         return parsed?.payload && typeof parsed.payload === 'object' ? parsed : null;
     } catch {
         return null;

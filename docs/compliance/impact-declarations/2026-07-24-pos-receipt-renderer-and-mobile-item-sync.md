@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-07-24
 related_adr: docs/architecture/adr/0036-shared-pos-receipt-renderer.md
 declaration_id: 2026-07-24-pos-receipt-renderer-and-mobile-item-sync
-classification: major
-surfaces: pos,terminal
+classification: regulatory
+surfaces: pos,terminal,settings,compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.07.24
 verification_evidence: npm run lint -- --quiet,cd backend && npm run check:architecture-guardrails,cd backend && npm run check:controller-boundaries,node --check backend/src/modules/pos/usecases/posDeviceUseCases.js,node --check backend/src/validators/posValidator.js,cd backend && node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand tests/mobilePosHandlers.transport.test.js tests/mobilePosItemSync.usecases.test.js,shared @sieitzz/pos-receipt renderer smoke test for escaped HTML and thermal text
@@ -20,7 +20,8 @@ preflight_request_ref: https://github.com/Sieitzz/dgfy-platform/pull/78
 
 ## Compliance Impact Classification
 
-Major. This change touches two paths under the `pos`/`terminal` surfaces: (1)
+Regulatory. This change touches the `pos`, `terminal`, `settings`, and
+`compliance` surfaces: (1)
 a new mobile batch sync endpoint for catalog item create/update/delete, and
 (2) receipt rendering/printing now carrying an explicit paper width and
 sharing its HTML template with the standalone native POS via the
@@ -28,8 +29,9 @@ sharing its HTML template with the standalone native POS via the
 PII data shape changes are introduced; no new capability is exposed to any
 tenant that could not already reach the equivalent operation through the
 existing interactive `/api/v1/pos/*` and item-management APIs. Classified
-`major` per the `pos`/`terminal` surface floor since the changed files are
-under `backend/src/modules/pos/` and `frontend/src/features/pos/`.
+`regulatory` because the merged receipt contract includes fiscal and
+statutory-discount presentation behavior and the merged change set also
+updates governed settings and compliance declarations.
 
 ## Affected Surfaces
 

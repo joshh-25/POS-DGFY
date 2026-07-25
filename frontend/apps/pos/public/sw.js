@@ -1,5 +1,6 @@
 const CACHE_PREFIX = 'sku-pos';
-const CACHE_VERSION = 'v3';
+// Replaced during each POS production build so browsers install the current app shell.
+const CACHE_VERSION = '__DGFY_POS_BUILD_REVISION__';
 const SHELL_CACHE_NAME = `${CACHE_PREFIX}-shell-${CACHE_VERSION}`;
 const RUNTIME_CACHE_NAME = `${CACHE_PREFIX}-runtime-${CACHE_VERSION}`;
 const MAX_RUNTIME_CACHE_ENTRIES = 120;
@@ -13,7 +14,15 @@ const resolveBasePath = () => {
 };
 
 const BASE_PATH = resolveBasePath();
-const SHELL_ASSETS = [BASE_PATH, `${BASE_PATH}manifest.webmanifest`];
+const PRECACHE_MANIFEST_URL = `${BASE_PATH}precache-manifest.json`;
+const REQUIRED_SHELL_ASSETS = [
+  BASE_PATH,
+  `${BASE_PATH}dgfy-horizontal_logo-removebg-preview.png`,
+  `${BASE_PATH}dgfy-logo.png`,
+  `${BASE_PATH}dgfy-wordmark_logo.ico`,
+  `${BASE_PATH}favicon.ico`,
+  `${BASE_PATH}favicon.svg`
+];
 
 const isBypassPath = (pathname = '/') => (
   BYPASS_PATH_PREFIXES.some((prefix) => (
@@ -44,6 +53,13 @@ const shouldHandleRuntimeRequest = (request, url) => {
 };
 
 const staleWhileRevalidateRuntime = async (request) => {
+  const shellCache = await caches.open(SHELL_CACHE_NAME);
+  // Build servers and CDNs commonly emit `Vary: Origin`. Precache requests are made by
+  // the worker without the page's Origin header, so exact Vary matching would miss the
+  // same URL during an offline module/style request.
+  const precached = await shellCache.match(request, { ignoreVary: true });
+  if (precached) return precached;
+
   const cache = await caches.open(RUNTIME_CACHE_NAME);
   const cached = await cache.match(request);
 
@@ -79,7 +95,20 @@ const networkFirstNavigation = async (request) => {
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(SHELL_CACHE_NAME).then((cache) => cache.addAll(SHELL_ASSETS)).catch(() => {})
+    (async () => {
+      const manifestResponse = await fetch(PRECACHE_MANIFEST_URL, { cache: 'no-store' });
+      if (!manifestResponse.ok) {
+        throw new Error(`Unable to load POS precache manifest (${manifestResponse.status}).`);
+      }
+      const manifest = await manifestResponse.json();
+      const buildAssets = Array.isArray(manifest?.assets) ? manifest.assets : [];
+      if (buildAssets.length === 0) {
+        throw new Error('POS precache manifest does not contain any critical build assets.');
+      }
+      const assetUrls = buildAssets.map((asset) => new URL(asset, self.registration.scope).href);
+      const shellCache = await caches.open(SHELL_CACHE_NAME);
+      await shellCache.addAll([...REQUIRED_SHELL_ASSETS, PRECACHE_MANIFEST_URL, ...assetUrls]);
+    })()
   );
   self.skipWaiting();
 });

@@ -147,6 +147,7 @@ export function SavedAddressCard({
       {/* Card body — clickable to select */}
       <button
         type="button"
+        aria-label={typeof onSelect === 'function' ? 'Use for Checkout' : undefined}
         disabled={isBusy}
         onClick={handleSelect}
         style={{

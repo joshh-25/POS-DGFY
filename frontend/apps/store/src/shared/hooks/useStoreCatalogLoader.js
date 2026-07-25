@@ -112,16 +112,21 @@ export function useStoreCatalogLoader({
       setSelectedStore(profile);
       let resolvedCatalogLocationId = null;
       const profileLocations = normalizeProfileLocations(profile);
+      const profileHasNoLocation = profile?.store_has_no_location === true
+        || profile?.map_publication_disabled === true;
 
       try {
         const locationsData = await requestJson('/api/v1/store/locations', { storeSlug: profile.slug, cache: 'no-store' });
         if (requestSequence !== storeLoadRequestSequenceRef.current) return;
+        const storeHasNoLocation = profileHasNoLocation
+          || locationsData?.store_has_no_location === true
+          || locationsData?.map_publication_disabled === true;
         const apiLocations = Array.isArray(locationsData?.locations) ? locationsData.locations : [];
-        const useProfileSnapshot = !locationsMatchProfileSnapshot(apiLocations, profile);
-        const locations = useProfileSnapshot ? profileLocations : apiLocations;
+        const useProfileSnapshot = !storeHasNoLocation && !locationsMatchProfileSnapshot(apiLocations, profile);
+        const locations = storeHasNoLocation ? [] : (useProfileSnapshot ? profileLocations : apiLocations);
         const nextPrimaryLocationId = useProfileSnapshot
           ? (profileLocations.find((location) => location.is_primary_storefront)?.location_id ?? profile.location_id ?? null)
-          : (locationsData?.primary_location_id ?? null);
+          : (storeHasNoLocation ? null : (locationsData?.primary_location_id ?? null));
         setStoreLocations(locations);
         setPrimaryLocationId(nextPrimaryLocationId);
         if (locations.length > 0) {
@@ -152,11 +157,18 @@ export function useStoreCatalogLoader({
           setSelectedLocationId(null);
         }
       } catch {
+        if (profileHasNoLocation) {
+          setStoreLocations([]);
+          setPrimaryLocationId(null);
+          resolvedCatalogLocationId = null;
+          setSelectedLocationId(null);
+        } else {
         const fallbackPrimaryLocationId = profileLocations.find((location) => location.is_primary_storefront)?.location_id ?? profile.location_id ?? null;
         setStoreLocations(profileLocations);
         setPrimaryLocationId(fallbackPrimaryLocationId);
         resolvedCatalogLocationId = fallbackPrimaryLocationId;
         setSelectedLocationId(fallbackPrimaryLocationId);
+        }
       }
 
       const catalogQuery = resolvedCatalogLocationId == null

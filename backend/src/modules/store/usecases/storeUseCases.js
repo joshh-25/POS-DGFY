@@ -277,7 +277,6 @@ const mapSettings = (rows = []) => {
 };
 const CHECKOUT_SETTING_KEYS = Object.freeze([
     'store_delivery_fee',
-    'pos_open_status',
     'pos_wait_time_minutes',
     'storefront_promo',
     'storefront_promos',
@@ -473,7 +472,7 @@ const resolveEstimatedWaitMinutes = ({ settings = {}, location = null }) => {
     return null;
 };
 
-const assertCheckoutLocationOperationalReadiness = ({ location, settings = {}, orderMethod }) => {
+const assertCheckoutLocationOperationalReadiness = ({ location, orderMethod }) => {
     if (!location) {
         throw new DomainError(
             DomainErrorCode.CONFLICT,
@@ -495,14 +494,6 @@ const assertCheckoutLocationOperationalReadiness = ({ location, settings = {}, o
             DomainErrorCode.CONFLICT,
             'Selected location is currently closed and cannot accept orders',
             { statusCode: 409 }
-        );
-    }
-
-    if (!parseBooleanSetting(settings?.pos_open_status?.value, true)) {
-        throw new DomainError(
-            DomainErrorCode.CONFLICT,
-            'Storefront ordering is currently closed by the POS',
-            { statusCode: 409, details: { reason_code: 'POS_ORDERING_CLOSED' } }
         );
     }
 
@@ -1121,7 +1112,6 @@ const resolveCheckoutContext = async ({
     });
     assertCheckoutLocationOperationalReadiness({
         location,
-        settings,
         orderMethod
     });
     assertCheckoutTimeWithinStorefrontHours({

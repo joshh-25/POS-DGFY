@@ -3,7 +3,7 @@ import React from 'react';
 import { afterEach, describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import ReceiptPrintView from '../components/ReceiptPrintView.jsx';
-import { formatIminReceiptText } from '../utils/iminHardwareBridge.js';
+import { formatIminReceiptText, printReceiptWithIminBridge } from '../utils/iminHardwareBridge.js';
 
 const buildTransaction = (overrides = {}) => ({
   pos_transaction_id: 1001,
@@ -46,6 +46,7 @@ const renderReceipt = (props) => render(
 
 afterEach(() => {
   cleanup();
+  delete window.iMinBridge;
 });
 
 describe('RCPT-01 receipt contract conformance fixtures', () => {
@@ -323,5 +324,59 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     expect(hardwareText).toContain('Payment Status: PAID');
     expect(hardwareText).toContain('Payment Reference: pay_authoritative_123');
     expect(hardwareText).not.toContain('Cash Received');
+  });
+
+  it('renders and formats receipts when Android WebView does not provide replaceAll', () => {
+    const originalReplaceAll = String.prototype.replaceAll;
+    Object.defineProperty(String.prototype, 'replaceAll', {
+      configurable: true,
+      value: undefined
+    });
+
+    try {
+      const transaction = buildTransaction({
+        payment_type: 'cash_sale',
+        payment_status: 'awaiting_payment',
+        discount: { discount_type: 'senior_pwd' }
+      });
+      const { container } = renderReceipt({
+        transaction,
+        businessSettings: { pos_business_name: 'Compatibility Test Store' }
+      });
+
+      expect(container.textContent).toContain('CASH SALE');
+      expect(container.textContent).toContain('AWAITING PAYMENT');
+      expect(container.textContent).toContain('SENIOR PWD');
+
+      const hardwareText = formatIminReceiptText({
+        transaction,
+        businessSettings: { pos_business_name: 'Compatibility Test Store' }
+      });
+      const printCalls = [];
+      window.iMinBridge = {
+        isIminWrapper: () => true,
+        printReceipt: (...args) => {
+          printCalls.push(args);
+          return { success: true, message: 'Receipt printed.' };
+        }
+      };
+      const printResult = printReceiptWithIminBridge({
+        transaction,
+        businessSettings: { pos_business_name: 'Compatibility Test Store' },
+        openDrawerAfterPrint: true
+      });
+
+      expect(hardwareText).toContain('Payment Status: AWAITING PAYMENT');
+      expect(hardwareText).toContain('Discount Type: SENIOR PWD');
+      expect(printResult.handled).toBe(true);
+      expect(printCalls).toHaveLength(1);
+      expect(printCalls[0][0]).toContain('Payment Status: AWAITING PAYMENT');
+      expect(printCalls[0][1]).toBe(true);
+    } finally {
+      Object.defineProperty(String.prototype, 'replaceAll', {
+        configurable: true,
+        value: originalReplaceAll
+      });
+    }
   });
 });

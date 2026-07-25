@@ -74,7 +74,13 @@ export function useCustomerAuthNavigation({
   ), [resolveStorefrontAccountUrl]);
   const openCustomerDashboard = useCallback(() => {
     if (typeof window === 'undefined') return;
-    window.location.href = buildCustomerDashboardReturnUrl();
+    const target = new URL(buildCustomerDashboardReturnUrl(), window.location.href);
+    if (target.origin === window.location.origin) {
+      window.history.pushState({}, '', `${target.pathname}${target.search}${target.hash}`);
+      window.dispatchEvent(new PopStateEvent('popstate'));
+      return;
+    }
+    window.location.href = target.toString();
   }, [buildCustomerDashboardReturnUrl]);
   const openAccountPanel = useCallback(() => {
     setIsCheckoutOpen(false);

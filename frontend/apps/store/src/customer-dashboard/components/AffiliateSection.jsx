@@ -19,18 +19,21 @@ const formatCommissionRate = (enrollment) => {
 // per enrollment (same QRCode.toDataURL call the POS back-office panel
 // uses), separate from the heavier branded flyer image used for download.
 function AffiliateShareQrPreview({ shareUrl, theme }) {
-  const [dataUrl, setDataUrl] = useState('');
+  const [qrPreview, setQrPreview] = useState({ shareUrl: '', dataUrl: '' });
 
   useEffect(() => {
     let cancelled = false;
     if (!shareUrl) return undefined;
     QRCode.toDataURL(shareUrl, { errorCorrectionLevel: 'M', margin: 1, width: 160 })
-      .then((value) => { if (!cancelled) setDataUrl(value); })
+      .then((value) => {
+        if (!cancelled) setQrPreview({ shareUrl, dataUrl: value });
+      })
       .catch(() => {});
     return () => { cancelled = true; };
   }, [shareUrl]);
 
   if (!shareUrl) return null;
+  const dataUrl = qrPreview.shareUrl === shareUrl ? qrPreview.dataUrl : '';
   return (
     <div style={{ width: 96, height: 96, borderRadius: 12, border: `1px solid ${theme.border}`, background: '#FFFFFF', display: 'grid', placeItems: 'center', flexShrink: 0, overflow: 'hidden' }}>
       {dataUrl ? <img src={dataUrl} alt="Affiliate QR code" style={{ width: '100%', height: '100%' }} /> : <div style={{ fontSize: 11, color: theme.muted }}>Loading...</div>}

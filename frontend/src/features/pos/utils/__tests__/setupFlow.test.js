@@ -196,7 +196,9 @@ describe('setupFlow', () => {
   it('centralizes onboarding query creation and cleanup', () => {
     expect(buildTenantSetupSearch('', POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP)).toBe('?setup_flow=tenant_onboarding&setup_step=storefront_setup');
     expect(buildTenantSetupSearch('?foo=bar', POS_TERMINAL_SETUP_STEPS.POS_SETUP)).toBe('?foo=bar&setup_flow=tenant_onboarding&setup_step=pos_setup');
+    expect(buildTenantSetupSearch('', POS_TERMINAL_SETUP_STEPS.COMPLETE)).toBe('?setup_flow=tenant_onboarding&setup_step=complete');
     expect(clearTenantSetupSearch('?foo=bar&setup_flow=tenant_onboarding&setup_step=pos_setup')).toBe('?foo=bar');
+    expect(resolveTenantSetupStepValue(POS_TERMINAL_SETUP_STEPS.COMPLETE)).toBe(POS_TERMINAL_SETUP_STEPS.COMPLETE);
     expect(resolveTenantSetupStepValue('unknown')).toBe(POS_TERMINAL_SETUP_STEPS.PROFILE);
   });
 });
