@@ -10,6 +10,7 @@ import {
     UserTenantMapping,
     UserInvitation
 } from '../../../models/index.js';
+import { dgfyAffiliateRepository } from './dgfyAffiliateRepository.js';
 import dbStore from '../../../utils/dbStore.js';
 import tenantConnector from '../../../utils/TenantConnector.js';
 import { getTenantModels } from '../../../utils/tenantModelFactory.js';
@@ -487,6 +488,13 @@ export const dgfyAccountRepository = {
             mirrored.push(membership);
         }
         return mirrored;
+    },
+
+    // Affiliate twin of mirrorPendingInvitationsForAccount: when a brand-new account is created,
+    // auto-enroll it into any store that had a pending affiliate invite for this email. Delegates to
+    // the affiliate repository (same dgfy module) so all invite/enrollment DB logic lives in one place.
+    async mirrorPendingAffiliateInvitesForAccount(account, options = {}) {
+        return dgfyAffiliateRepository.mirrorPendingAffiliateInvitesForAccount(account, options);
     },
 
     async mirrorLegacyFounderMembershipsForAccount(account, options = {}) {

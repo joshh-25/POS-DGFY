@@ -11,6 +11,7 @@ import nodemailer from 'nodemailer';
 import logger from '../config/logger.js';
 import {
   getInvitationTemplate,
+  getAffiliateInviteTemplate,
   getWelcomeTemplate,
   getCashierCredentialTemplate,
   getCompanyApprovedTemplate,
@@ -259,6 +260,37 @@ export const sendInvitationEmail = async ({ email, inviterName, role, invitation
     to: email,
     subject: `You've been invited to join ${tenantName} on SKUpervisor`,
     html
+  });
+};
+
+/**
+ * Send an affiliate invitation email. The link target depends on whether the invitee already has a
+ * DGFY account (explicit accept) or not (register-with-prefilled-email, then auto-enroll).
+ * @param {Object} params
+ * @param {string} params.email - Invitee email address
+ * @param {string} params.businessName - Inviting store/business name
+ * @param {string} [params.inviterName] - Name of the person sending the invite
+ * @param {string} params.invitationToken - Opaque invite token (link only)
+ * @param {boolean} params.accountExists - Whether a DGFY account already exists for this email
+ * @returns {Promise<Object>} Nodemailer/Brevo send result
+ */
+export const sendAffiliateInviteEmail = async ({ email, businessName, inviterName, invitationToken, accountExists }) => {
+  const appOrigin = String(process.env.STOREFRONT_PUBLIC_ORIGIN || 'https://dgfy.ph').trim();
+  const html = getAffiliateInviteTemplate({
+    businessName,
+    inviterName,
+    invitationToken,
+    inviteeEmail: email,
+    accountExists: accountExists === true,
+    appOrigin,
+    expiresIn: '7 days'
+  });
+
+  return sendEmail({
+    to: email,
+    subject: `You're invited to be an affiliate of ${businessName} on DGFY`,
+    html,
+    fromName: 'DGFY'
   });
 };
 
@@ -582,6 +614,7 @@ export const sendResubmissionConfirmationEmail = async ({ email, companyName }) 
 export default {
   sendEmail,
   sendInvitationEmail,
+  sendAffiliateInviteEmail,
   sendWelcomeEmail,
   sendCashierCredentialEmail,
   sendCompanyApprovedEmail,

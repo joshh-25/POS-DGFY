@@ -57,14 +57,19 @@ import {
     buildVerifyDgfyTrackingRecoveryUseCase
 } from './usecases/dgfyCustomerUseCases.js';
 import {
+    buildAcceptAffiliateInviteUseCase,
     buildApproveAffiliateCashoutUseCase,
     buildCancelAffiliateCashoutUseCase,
+    buildCancelAffiliateInviteUseCase,
     buildCaptureAffiliateAttributionUseCase,
     buildEnrollSelfServeAffiliateUseCase,
     buildGetAffiliateEarningsUseCase,
+    buildGetAffiliateInvitePreviewUseCase,
     buildGetAffiliateQrPayloadUseCase,
     buildGetAffiliateSettingsUseCase,
+    buildInviteAffiliateUseCase,
     buildListAffiliateCashoutsUseCase,
+    buildListAffiliateInvitesUseCase,
     buildListAffiliatesUseCase,
     buildListMyAffiliateCashoutsUseCase,
     buildListMyAffiliateEnrollmentsUseCase,
@@ -79,7 +84,8 @@ import {
 import { requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
 import { createTenantSessionForDgfyAccount } from '../../services/dgfyTenantSessionService.js';
 import { validateDgfyPosTerminalPolicy } from '../../services/dgfyPosTerminalPolicyService.js';
-import { sendEmail } from '../../services/emailService.js';
+import { sendEmail, sendAffiliateInviteEmail } from '../../services/emailService.js';
+import { hashInvitationToken } from '../../services/landlordService.js';
 import { buildLegacyDgfyLinkStatus } from '../../services/dgfyLegacyAccessPolicy.js';
 
 export const getDgfyLegacyLinkStatus = (input) => buildLegacyDgfyLinkStatus(input);
@@ -280,6 +286,18 @@ export const getAffiliateSettingsUseCase = buildGetAffiliateSettingsUseCase();
 export const updateAffiliateSettingsUseCase = buildUpdateAffiliateSettingsUseCase();
 export const listAffiliatesUseCase = buildListAffiliatesUseCase();
 export const provisionAffiliateUseCase = buildProvisionAffiliateUseCase();
+export const inviteAffiliateUseCase = buildInviteAffiliateUseCase({
+    hashInviteToken: hashInvitationToken,
+    sendAffiliateInviteEmail
+});
+export const listAffiliateInvitesUseCase = buildListAffiliateInvitesUseCase();
+export const cancelAffiliateInviteUseCase = buildCancelAffiliateInviteUseCase();
+export const getAffiliateInvitePreviewUseCase = buildGetAffiliateInvitePreviewUseCase({
+    hashInviteToken: hashInvitationToken
+});
+export const acceptAffiliateInviteUseCase = buildAcceptAffiliateInviteUseCase({
+    hashInviteToken: hashInvitationToken
+});
 export const updateAffiliateEnrollmentUseCase = buildUpdateAffiliateEnrollmentUseCase();
 export const getAffiliateQrPayloadUseCase = buildGetAffiliateQrPayloadUseCase();
 export const listMyAffiliateEnrollmentsUseCase = buildListMyAffiliateEnrollmentsUseCase();

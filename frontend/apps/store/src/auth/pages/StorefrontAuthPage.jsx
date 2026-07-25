@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import * as dgfyAuthService from '../../../../../src/services/dgfyAuthService.js';
 import {
   clearDgfySession,
+  fetchAffiliateInvitePreview,
   fetchDgfyLegalTerms,
   fetchDgfyMe,
   getStoredDgfyToken,
@@ -498,6 +499,12 @@ export default function StorefrontAuthPage({ initialMode }) {
   const [emailError, setEmailError] = useState('');
   const [phoneError, setPhoneError] = useState('');
 
+  // Affiliate invite context: when /register is opened from an invite email it carries an
+  // `aff_invite` token. We preview it (public endpoint) to show which business is inviting and to
+  // lock the email field so the created account's email matches the invite (and thus auto-enrolls).
+  const affiliateInviteToken = String(searchParams.get('aff_invite') || '').trim();
+  const [affiliateInvite, setAffiliateInvite] = useState(null);
+
   // `/login` and `/register` are distinct routes here, so the hosting route
   // decides the view; `?mode=` is only a fallback for links that carry it.
   useEffect(() => { setMode(initialMode || normalizeDgfyMode(routeParams.mode)); }, [initialMode, routeParams.mode]);
@@ -520,6 +527,25 @@ export default function StorefrontAuthPage({ initialMode }) {
       password: ''
     }));
   }, [routeParams.email]);
+
+  // Load the affiliate invite preview (if any) and lock the email to the invited address.
+  useEffect(() => {
+    if (!affiliateInviteToken) return;
+    let cancelled = false;
+    fetchAffiliateInvitePreview(affiliateInviteToken)
+      .then((preview) => {
+        if (cancelled || !preview) return;
+        setAffiliateInvite(preview);
+        const invitedEmail = String(preview.email || '').trim();
+        if (preview.valid && invitedEmail) {
+          setAuthForm((current) => ({ ...current, email: invitedEmail }));
+        }
+      })
+      .catch(() => { if (!cancelled) setAffiliateInvite(null); });
+    return () => { cancelled = true; };
+  }, [affiliateInviteToken]);
+
+  const affiliateInviteLocked = Boolean(affiliateInvite?.valid && affiliateInvite?.email);
 
   useEffect(() => {
     const stateNotice = String(location.state?.notice || '').trim();
@@ -1038,6 +1064,20 @@ export default function StorefrontAuthPage({ initialMode }) {
                 <h1 className="text-3xl font-bold tracking-tight" style={{ color: '#0F172A' }}>Create your DGFY Account</h1>
               </div>
 
+              {affiliateInvite?.valid && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                  You&apos;re joining as an affiliate of{' '}
+                  <strong>{affiliateInvite.business_name || 'a DGFY store'}</strong>. Finish creating your
+                  account and you&apos;ll be affiliated automatically.
+                </div>
+              )}
+              {affiliateInvite && !affiliateInvite.valid && affiliateInviteToken && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  This affiliate invitation is no longer valid{affiliateInvite.expired ? ' (it has expired)' : ''}.
+                  You can still create your account below.
+                </div>
+              )}
+
               <form onSubmit={handleRegister} className="flex flex-col gap-4">
                 {/* Personal Information */}
                 <div className="mb-2 border-b pb-2">
@@ -1068,15 +1108,21 @@ export default function StorefrontAuthPage({ initialMode }) {
                       id="dgfyEmail"
                       value={authForm.email}
                       onChange={(nextEmail) => {
+                        if (affiliateInviteLocked) return;
                         setAuthForm((current) => ({ ...current, email: nextEmail }));
                         if (emailError) {
                           setEmailError(emailPattern.test(String(nextEmail || '').trim()) ? '' : emailError);
                         }
                       }}
-                      disabled={isLoading}
+                      disabled={isLoading || affiliateInviteLocked}
                       invalid={Boolean(emailError)}
                       errorId="dgfyEmail-error"
                     />
+                    {affiliateInviteLocked ? (
+                      <p className="mt-2 text-xs text-slate-500">
+                        This email is locked to your affiliate invitation.
+                      </p>
+                    ) : null}
                     {emailError ? (
                       <p id="dgfyEmail-error" className="mt-2 text-xs text-red-600" role="alert">
                         {emailError}
