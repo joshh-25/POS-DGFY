@@ -2,14 +2,14 @@
 status: reference
 authority_level: reference
 owner: backend
-last_reviewed: 2026-07-24
-applies_to: affiliates_program, backend, pos_frontend
+last_reviewed: 2026-07-25
+applies_to: affiliates_program, backend, pos_frontend, storefront_frontend
 topic: affiliates_program_backend_pos_handoff
 ---
 
-# Affiliates Program — Backend + POS Handoff
+# Affiliates Program — Backend + POS + Storefront Handoff
 
-Date: July 23, 2026 (updated July 24, 2026)
+Date: July 23, 2026 (updated July 24, 2026; updated again July 25, 2026 for Phase 7)
 Branch: `claude/affiliates-program-study-592zhd` (base: `develop`)
 
 ## Purpose
@@ -23,23 +23,36 @@ Read in this order:
    exists, the original user story, all the open policy questions and their chosen defaults).
 2. This file — what has actually been built, slice by slice, against that study.
 
-## Scope boundary (still in force)
+## Scope boundary (updated — the storefront freeze has lifted)
 
-**Do not touch `frontend/apps/store`.** The storefront app is mid-refactor on a separate branch/effort.
-This entire phase is scoped to `backend/` (the live, deployed Express+Sequelize backend — **not**
-`apps/dgfy-api`, which is a parallel rewrite not yet cut over, see
-`docs/architecture/COMPATIBILITY_INVENTORY.md`) plus the POS frontend
-(`frontend/src/features/pos/`).
+**Original rule (slices 1–6, no longer in force): do not touch `frontend/apps/store`.** The storefront
+app was mid-refactor on a separate branch/effort, so the first phase (backend + POS, see "What's built
+so far" below) was deliberately scoped away from it. That refactor landed on `origin/develop` (PRs
+#67, #89) and this branch merged it cleanly (see "Develop merge" below) — the freeze is lifted, and
+**Phase 7 (below) does touch `frontend/apps/store`**, specifically the customer-dashboard area under
+`frontend/apps/store/src/customer-dashboard/` plus a small page-load hook in `StorefrontApp.jsx`.
+
+The backend (`backend/` — **not** `apps/dgfy-api`, which is a parallel rewrite not yet cut over, see
+`docs/architecture/COMPATIBILITY_INVENTORY.md`) and the POS frontend (`frontend/src/features/pos/`)
+remain the same target as before.
 
 Owner-facing UI lives in the **POS mini-back-office** (the terminal's Settings workspace,
 `TerminalOperationsWorkspace.jsx`'s view-mode switch) — explicitly **not** skupervisor (that's the IMS)
 and **not** a new admin app. This was an explicit user decision; do not relitigate it.
 
-Deferred to a later storefront phase (backend hooks exist and are dormant, but no UI):
-- Online/storefront QR-scan attribution capture on page load.
-- The affiliate's own self-service UI (payout methods, cashout requests, earnings dashboard) — the
-  API for this exists (`/api/v1/dgfy/affiliate/*`) but has no frontend caller yet.
-- Email-invite redemption UI.
+Still deferred (Phase 7 did not build these; no backend support exists for them yet either):
+- **Self-serve enrollment UI.** The backend `POST /api/v1/dgfy/affiliate/enroll` endpoint exists and
+  works (only succeeds where the tenant has `program_enabled && auto_approve_enrollment`), but no
+  frontend calls it — enrollment stays **owner-only** (provisioned from the POS back-office panel) per
+  an explicit scope decision when Phase 7 was planned. Do not add a "Become an affiliate" storefront
+  flow without a fresh user decision.
+- **Email-invite redemption UI.** No invite-email send/redeem flow exists anywhere in this program
+  (owner provisioning is direct, not tokenized-invite-based) — this was called out as deferred from
+  the very first slice and nothing since has changed that.
+- **Choosing a specific payout method at cashout-request time.** The storefront's "Request Cashout"
+  button omits `payout_method_id`, so the backend falls back to the account's default payout method
+  (already-supported backend behavior) — a picker could be added later if a user has multiple methods
+  and wants to route a specific cashout to a non-default one.
 
 ## Core design decisions (already settled, don't re-derive)
 
@@ -164,13 +177,6 @@ Deferred to a later storefront phase (backend hooks exist and are dormant, but n
    ownership boundaries). Satisfies the `cross-boundary` ADR requirement in
    `docs/architecture/ARCHITECTURE_GOVERNANCE.md`.
 
-## What's in progress / next
-
-All backend + POS slices for this phase are now complete. What remains is entirely the deferred
-storefront-only work called out above (QR-scan capture on page load calling the now-built capture
-endpoint, the affiliate self-service UI, email-invite redemption UI) — none of it should start until
-`frontend/apps/store` is confirmed stable post-refactor and the user explicitly opens that phase.
-
 ## Develop merge (2026-07-24)
 
 `frontend/apps/store`'s refactor (previously in flight and the reason this phase was scoped away
@@ -179,18 +185,85 @@ cleanly (`git merge-tree` predicted, and the actual merge confirmed, zero confli
 were touched by both sides — `backend/src/models/index.js`, `backend/src/server.js`,
 `frontend/src/features/pos/components/POSCheckoutTerminal.jsx` — and all 5 affiliate touchpoints in
 `POSCheckoutTerminal.jsx` (the affiliate-code input, its payload field, and the confirmation resets)
-were confirmed intact post-merge. The storefront app is settled again, but this phase deliberately
-stayed backend-only per the user's explicit choice (see "What's in progress / next" below) rather
-than reopening `frontend/apps/store` work in the same batch.
+were confirmed intact post-merge. A second develop merge landed the next day (PR #90, storefront
+in-app auth, 7 commits, again 0 conflicts and 0 file overlap with the affiliate work).
+
+## Phase 7: Storefront affiliate self-service + online attribution wiring (2026-07-25)
+
+With the storefront freeze lifted, this phase built the customer-facing half that Phase 1–6 left
+dormant: an affiliate can now see their businesses, share their QR/link, manage payout methods, and
+request/track cashouts entirely from the storefront customer dashboard, and the online
+"scan QR → buy online → affiliate earns" path is now live end to end. **No backend changes were
+needed for the self-service UI** — every endpoint it calls already existed from Phase 2/5. One small
+backend enrichment (7B) was added to support it.
+
+7A. **Online attribution capture on page load** (`a71026c`) —
+`readAffiliateShortCode()` added to `frontend/apps/store/src/app/routing/storefrontRouting.js`
+(mirrors the existing `readStoreItemId`/`readTrackingPinFromQuery` `?`-param readers). New
+`frontend/apps/store/src/shared/hooks/useAffiliateAttributionCapture.js`: a once-per-load,
+ref-guarded effect that fires a single best-effort `POST
+/api/v1/dgfy/affiliate/attribution/capture` (`{ p, store_slug }`) once `routeSlug` resolves, wired
+into `StorefrontApp.jsx` next to the route-state initializers. This closes the loop the backend
+attribution lifecycle (`buildStoreCheckoutUseCase`'s pending-row hook, built in Phase 6) had been
+waiting on — checkout's same-origin `requestJson` call already sends `credentials:'include'`, so
+the resulting `sku_aff_attr` cookie rides along automatically; no checkout code changes were needed.
+7B. **Backend enrichment: share link on self-service enrollments** (`6471c32`) —
+`GET /affiliate/enrollments` returned `short_code` + `tenant:{id,name}` but no usable link/QR
+target. `listMyAffiliateEnrollmentsUseCase` (`dgfyAffiliateUseCases.js`) now adds
+`store_slug`/`share_path`/`share_url` per enrollment, reusing the existing `getStorefrontSlug` repo
+method + `buildAffiliateShareUrl` helper (already used by the owner-side QR payload use case). This
+is the only backend change in Phase 7.
+7C. **Customer-dashboard Affiliate section — businesses/earnings/QR** (`ca2ec69`) — new "Affiliate"
+nav item + views entry in the customer dashboard (`DgfyCustomerAccountPage.jsx`'s views-map
+composition), loading `GET /affiliate/enrollments` + `GET /affiliate/earnings` alongside the existing
+`Promise.all` in `useCustomerAccountPanel.js`. New `components/AffiliateSection.jsx`: an overall
+available/pending/paid balance header, and a Businesses tab listing each enrollment with status,
+commission rate, share link (copy button), a lazily-generated scannable QR preview
+(`QRCode.toDataURL`, same call the POS back-office panel uses), a branded QR download (reusing
+`storefrontQrExport.js`'s `buildStorefrontQrExportImage`/`downloadDataUrl` — no new QR-rendering code),
+and a per-store earnings breakdown.
+7D. **Payout methods CRUD** (`7d68ad6`) — a full bank/GCash/Maya payout-method CRUD in the Payout
+Methods tab, cloning (not reusing directly — payout methods have no "select for checkout" concept and
+need a bank/wallet icon, not a location pin) the existing address-management three-layer stack:
+`model/payoutMethodPresentation.js`, `components/PayoutMethodCard.jsx`/`PayoutMethodEditorModal.jsx`/
+`PayoutMethodsSection.jsx` (same visual structure as the address equivalents), and
+`hooks/useCustomerDashboardPayouts.jsx` (save/set-default/delete against
+`POST|PUT /affiliate/payout-methods(/:id)`, `PATCH .../default`, `DELETE .../:id` — same busy-token,
+optimistic-set-default-with-rollback, toast + `handleLoadAccountPanel()` refresh pattern as the
+address hook). The new handlers were threaded through the full runtime → route-bindings →
+storefront-bridge → route-model → route-container → page prop chain (6 hops), matching every existing
+address handler's path name-for-name.
+7E. **Cashout request + history** (`68e65d1`) — a Cashouts tab: per-active-business "Request Cashout"
+row (disabled with a hint once available balance is below the documented platform default of ₱200 —
+a soft client-side hint only; the backend still enforces the store's real configured minimum on every
+request) and a history list with status badges, amount, requested date, a payout-snapshot summary
+(reusing `getPayoutMethodTitle` — the snapshot is the same shape as a payout method), and a Cancel
+action on `requested` rows. `hooks/useCustomerDashboardCashouts.jsx` mirrors the same hook shape,
+against `POST /affiliate/cashouts` / `PATCH /affiliate/cashouts/:id/cancel`.
+
+## What's in progress / next
+
+All backend + POS + storefront-self-service slices for this program are now complete. What remains is
+the narrower list under "Still deferred" above (self-serve enrollment UI, email-invite redemption UI,
+per-request payout-method selection) — none of it should start without a fresh user decision to open
+that scope.
 
 ## Sandbox limitations that affected how prior work was verified
 
 The environment this was built in had **no live MySQL database** and **no `node_modules` installed**
-for either `backend/` or the frontend workspace. As a result:
+for either `backend/` or the frontend workspace (this held for Phase 7's `apps/store` work too — same
+sandbox, same limitation). As a result:
 - Backend migrations/models/use-cases were verified with `node --check <file>` (syntax only) — never
-  actually run against a database.
-- Frontend changes were verified by manual diff review plus a crude brace/paren/bracket balance
-  script — never a real bundler/lint/test run.
+  actually run against a database. Where possible, the real project scripts were run directly instead
+  of just `node --check` (they're pure Node with no `node_modules` dependency): `node
+  scripts/check-architecture-guardrails.js`, `node scripts/check-controller-boundaries.js`, and `node
+  scripts/check-compliance-impact.js` (via `COMPLIANCE_CHANGED_FILES=<diff> node
+  scripts/check-compliance-impact.js` to simulate the CI diff) were all run against the real,
+  accumulated diff at each step and passed genuinely, not just via `node --check`.
+- Frontend changes (POS and, in Phase 7, storefront) were verified by manual diff review plus a crude
+  brace/paren/bracket balance script — never a real bundler/lint/test run. For Phase 7's multi-hop
+  prop wiring specifically, every new prop name was additionally traced end-to-end with `grep` across
+  all 6+ files in each chain to catch naming mismatches a balance script can't detect.
 
 **Before this branch merges, someone with a real dev environment must**: run the migration against a
 real MySQL DB (`npx sequelize-cli db:migrate`, confirm all 6 tables + indexes, confirm clean
@@ -198,7 +271,7 @@ real MySQL DB (`npx sequelize-cli db:migrate`, confirm all 6 tables + indexes, c
 the Vitest suite on the frontend workspace. This has been flagged in every relevant commit message but
 is still outstanding.
 
-## Verification checklist (from the plan, unchanged)
+## Verification checklist (updated for Phase 7)
 
 - Unit: bps rounding + base excludes delivery/DGFY-fee; commission `findOrCreate` idempotency;
   in-store earn-at-commit; void→reversed; online pending→earned→reversed; cookie map per-tenant
@@ -208,8 +281,17 @@ is still outstanding.
   row; void → `reversed`; cashout request reserves rows, approve→mark-paid flips `earned→paid`; admin
   settings/rate override reflected in next accrual; capture endpoint sets a store-scoped cookie and
   rejects a code from another tenant.
-- Manual (POS only): in the POS terminal, open Settings → Affiliates, enable program + provision an
+- Manual (POS): in the POS terminal, open Settings → Affiliates, enable program + provision an
   affiliate (get `AF-XXXXXX`/QR); ring up an in-store sale entering that code; confirm the affiliate's
   balance rises in the panel; approve+mark-paid a cashout; confirm balance moves to paid.
-- Guardrails/CI: `npm run check:architecture` (controller/boundary guardrails) + backend & POS
-  frontend test suites before each PR. Do not modify `frontend/apps/store` in any PR of this phase.
+- Manual (storefront, Phase 7 — not yet run in a real environment): visit a store URL with `?p=AF-XXXXXX`
+  → confirm `sku_aff_attr` cookie is set; buy something online while the cookie is set → confirm a
+  `pending` commission is created; have the owner complete the order → confirm it flips to `earned`.
+  In the customer dashboard (signed in as the affiliate's DGFY account), open the Affiliate section →
+  confirm the business/QR/share-link/earnings show up; add a bank account and a GCash payout method,
+  set one default, edit and delete one; request a cashout for a store above the minimum balance,
+  confirm it appears in history, then cancel it.
+- Guardrails/CI: `npm run check:architecture` (controller/boundary guardrails) + `npm run
+  check:compliance` + backend & POS/storefront frontend test suites before merge. `frontend/apps/store`
+  **was** modified in this phase (Phase 7) — the earlier "do not modify" restriction applied only to
+  Phases 1–6 and has been lifted; see "Scope boundary" above.
