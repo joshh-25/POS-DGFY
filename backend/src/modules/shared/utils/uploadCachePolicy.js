@@ -29,4 +29,3 @@ export const resolveUploadCacheControl = (filePath) => {
   }
   return 'no-cache';
 };
-
