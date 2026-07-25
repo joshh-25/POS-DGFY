@@ -48,6 +48,7 @@ import { useStorefrontNavigation } from './shared/hooks/useStorefrontNavigation.
 import { useGuestCustomerIdentity } from './shared/hooks/useGuestCustomerIdentity.js';
 import { useStorefrontUiChrome } from './shared/hooks/useStorefrontUiChrome.js';
 import { useStorefrontTrackingIntent } from './shared/hooks/useStorefrontTrackingIntent.js';
+import { useAffiliateAttributionCapture } from './shared/hooks/useAffiliateAttributionCapture.js';
 import {
   buildCustomerFullName,
   clearCheckoutAuthResumeDraft,
@@ -352,6 +353,8 @@ export default function StorefrontApp() {
   const [routeItemId, setRouteItemId] = useState(() => readStoreItemId());
   const [routeReviewToken, setRouteReviewToken] = useState(() => readStoreReviewToken());
   const previousRouteSlugRef = useRef(routeSlug);
+
+  useAffiliateAttributionCapture({ routeSlug });
 
   useEffect(() => {
     if (routeSlug || typeof window === 'undefined') return undefined;

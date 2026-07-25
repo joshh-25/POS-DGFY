@@ -26,6 +26,10 @@ export default (sequelize) => {
             type: DataTypes.STRING(120),
             allowNull: false
         },
+        affiliate_slug: {
+            type: DataTypes.STRING(120),
+            allowNull: true
+        },
         storefront_open: {
             type: DataTypes.BOOLEAN,
             allowNull: false,

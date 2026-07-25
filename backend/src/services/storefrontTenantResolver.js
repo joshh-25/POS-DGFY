@@ -33,7 +33,7 @@ const warmMap = async () => {
 
   let rows = await StorefrontDiscoveryIndex.findAll({
     where: { is_visible: true },
-    attributes: ['tenant_id', 'tenant_name', 'tenant_company_token', 'slug']
+    attributes: ['tenant_id', 'tenant_name', 'tenant_company_token', 'slug', 'affiliate_slug']
   });
 
   if ((!rows || rows.length === 0) && shouldAutoRepairEmptyIndex() && !emptyAutoRepairInFlight) {
@@ -42,7 +42,7 @@ const warmMap = async () => {
       await reconcileStorefrontDiscoveryIndex();
       rows = await StorefrontDiscoveryIndex.findAll({
         where: { is_visible: true },
-        attributes: ['tenant_id', 'tenant_name', 'tenant_company_token', 'slug']
+        attributes: ['tenant_id', 'tenant_name', 'tenant_company_token', 'slug', 'affiliate_slug']
       });
     } catch (error) {
       logger.warn('[StorefrontTenantResolver] Auto repair reconcile failed', {
@@ -55,13 +55,15 @@ const warmMap = async () => {
 
   const bySlug = new Map();
   (rows || []).forEach((row) => {
-    const slug = normalizeSlug(row.slug);
-    if (!slug) return;
-    bySlug.set(slug, {
+    const tenantEntry = {
       id: row.tenant_id,
       name: row.tenant_name,
       company_token: row.tenant_company_token
-    });
+    };
+    const slug = normalizeSlug(row.slug);
+    if (slug) bySlug.set(slug, tenantEntry);
+    const affiliateSlug = normalizeSlug(row.affiliate_slug);
+    if (affiliateSlug) bySlug.set(affiliateSlug, tenantEntry);
   });
 
   cache = {
