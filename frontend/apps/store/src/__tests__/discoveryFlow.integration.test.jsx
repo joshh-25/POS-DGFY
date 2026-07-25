@@ -540,12 +540,13 @@ describe('storefront discovery integration flow', () => {
 
     expect(await screen.findByText('My Account')).toBeTruthy();
     expect(await screen.findByText('Ada Lovelace')).toBeTruthy();
-    expect(screen.getByText('Home - Default')).toBeTruthy();
-    expect(screen.getByText('Iloilo Home Address')).toBeTruthy();
+    expect(screen.getAllByRole('button', { name: 'Track Order' }).length).toBeGreaterThan(0);
+    expect(screen.getByRole('button', { name: 'Reorder Items' })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Addresses' }));
+    expect(await screen.findByText('Default')).toBeTruthy();
+    expect((await screen.findAllByText('Iloilo Home Address')).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Use for Checkout' })).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: 'Track' }).length).toBeGreaterThan(0);
-    expect(screen.getByRole('button', { name: 'Cancel' })).toBeTruthy();
-    expect(screen.getByRole('button', { name: 'Reorder' })).toBeTruthy();
   });
 
   it('searches only after the current search action is submitted', async () => {
@@ -771,7 +772,7 @@ describe('storefront discovery integration flow', () => {
   });
 
   it('renders no-location storefront profiles without public map or directions', async () => {
-    window.history.pushState({}, '', '/search-only-kitchen');
+    window.history.pushState({}, '', '/tenant-store/search-only-kitchen');
     fetchMock.mockImplementation(async (url) => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/storefront/discovery/search-only-kitchen')) {
@@ -2098,7 +2099,7 @@ describe('storefront discovery integration flow', () => {
       return makeJsonResponse({});
     });
 
-    window.history.pushState({}, '', '/alpha?location_id=22');
+    window.history.pushState({}, '', '/tenant-store/alpha?location_id=22');
     render(<App />);
 
     await waitFor(() => {
@@ -2107,7 +2108,7 @@ describe('storefront discovery integration flow', () => {
         .filter((requestUrl) => requestUrl.includes('/api/v1/store/catalog?'));
       expect(catalogCalls.some((requestUrl) => requestUrl.includes('location_id=22'))).toBe(true);
     });
-    expect(window.location.pathname).toBe('/alpha');
+    expect(window.location.pathname).toBe('/tenant-store/alpha');
     expect(window.location.search).toBe('?location_id=22');
   });
 });

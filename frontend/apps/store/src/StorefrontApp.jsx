@@ -344,6 +344,7 @@ const dgfySymbolLogo = '/dgfy-symbologo.png';
 const dgfyBusinessOwnerPhoto = '/man.png';
 const DGFY_HEADER_LOGO_URL = dgfyHeaderLogo;
 const DGFY_LOGO_ICON_URL = dgfySymbolLogo;
+const DISCOVERY_LOCATION_PERMISSION_KEY = 'dgfy_storefront_discovery_location_permission_v1';
 
 export default function StorefrontApp() {
   const [routeSlug, setRouteSlug] = useState(() => readRouteSlug());
@@ -496,6 +497,45 @@ export default function StorefrontApp() {
     stores,
     toSlug
   });
+  const hasRestoredDiscoveryLocationRef = useRef(false);
+  useEffect(() => {
+    if (routeSlug || hasRestoredDiscoveryLocationRef.current) return;
+    hasRestoredDiscoveryLocationRef.current = true;
+
+    const geolocation = window.navigator?.geolocation;
+    if (!geolocation?.getCurrentPosition) return;
+
+    let cancelled = false;
+    const restoreLocation = () => {
+      geolocation.getCurrentPosition(
+        (position) => {
+          if (cancelled) return;
+          window.localStorage?.setItem(DISCOVERY_LOCATION_PERMISSION_KEY, 'granted');
+          loadStores({
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+          }, { pinScope: 'tenant_primary' });
+        },
+        () => {},
+        { enableHighAccuracy: true, timeout: 8000 }
+      );
+    };
+
+    const permissions = window.navigator?.permissions;
+    if (permissions?.query) {
+      permissions.query({ name: 'geolocation' })
+        .then((status) => {
+          if (!cancelled && status?.state === 'granted') restoreLocation();
+        })
+        .catch(() => {});
+    } else if (window.localStorage?.getItem(DISCOVERY_LOCATION_PERMISSION_KEY) === 'granted') {
+      restoreLocation();
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [loadStores, routeSlug]);
   const {
     handleDiscoverySearch,
     handleNearMe,
@@ -606,7 +646,13 @@ export default function StorefrontApp() {
   }, []);
   const [checkoutPromoCode, setCheckoutPromoCode] = useState('');
 
-  const [preferredStoreLocationSelection, setPreferredStoreLocationSelection] = useState(null);
+  const [preferredStoreLocationSelection, setPreferredStoreLocationSelection] = useState(() => {
+    if (!routeSlug || typeof window === 'undefined') return null;
+    const locationId = Number(new URLSearchParams(window.location.search).get('location_id'));
+    return Number.isInteger(locationId) && locationId > 0
+      ? { slug: routeSlug, locationId }
+      : null;
+  });
   const {
     catalog,
     setCatalog,

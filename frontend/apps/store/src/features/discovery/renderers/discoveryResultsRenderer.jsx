@@ -141,6 +141,7 @@ const resultsSubtitle = isClusterResultsActive
         const ratingValue = Number.isFinite(Number(reviewSummary?.score)) ? Number(reviewSummary.score).toFixed(1) : '0.0';
         const ratingCount = Number(reviewSummary?.total_count || store?.matching_item_count || 0);
   const distanceLabel = Number.isFinite(Number(store?.nearest_distance_km)) ? `${Number(store.nearest_distance_km).toFixed(1)} km away` : 'Distance unavailable';
+  const isSearchableWithoutMapPin = store?.store_has_no_location === true || store?.map_publication_disabled === true;
   const waitBase = Number(store?.estimated_wait_minutes || 10);
   const etaLabel = `${waitBase}-${waitBase + 5} min`;
         const branchCount = Number(store?.active_location_count || 0);
@@ -256,6 +257,11 @@ const resultsSubtitle = isClusterResultsActive
                       <div style={{ fontSize: isMobileGridView ? 12 : 13, fontWeight: 600, color: '#64748B', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', lineHeight: 1.35 }}>
                         {categoryLabel || 'Local storefront'}
                       </div>
+                      {isSearchableWithoutMapPin && (
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#1a4e8d' }}>
+                          Searchable storefront, no map pin
+                        </div>
+                      )}
                     </div>
                       <div style={{ display: 'grid', gap: isMobileGridView ? 7 : 8, fontSize: isMobileGridView ? 11 : 12, color: '#64748B', minWidth: 0 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: isMobileGridView ? 8 : 10, flexWrap: 'wrap', lineHeight: 1.45 }}>
@@ -337,6 +343,11 @@ const resultsSubtitle = isClusterResultsActive
               <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', textTransform: 'capitalize', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                 {categoryLabel || 'Local storefront'}
               </div>
+              {isSearchableWithoutMapPin && (
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#1a4e8d' }}>
+                  Searchable storefront, no map pin
+                </div>
+              )}
               <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', fontSize: 11, color: '#64748b' }}>
                 <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
                   <MapPin size={12} color="#94a3b8" />

@@ -156,6 +156,7 @@ export const resolveStorefrontHomeUrl = () => {
 // than imported since this file is shared across independent apps (auth,
 // terminal, storefront) and must not depend on a single app's route module.
 const CUSTOM_DOMAIN_STORE_SUBPAGES = ['book', 'order', 'track', 'service', 'item'];
+const DGFY_ACCOUNT_PATHS = new Set(['/map-dgfy/account', '/tenant-store/account']);
 
 const isValidStorefrontReturnPath = (pathname = '') => {
   const normalizedPath = String(pathname || '').trim().replace(/\/+$/, '') || '/';
@@ -174,26 +175,53 @@ const isValidStorefrontReturnPath = (pathname = '') => {
   return false;
 };
 
+const resolveApprovedDgfyAccountOrigins = () => {
+  const origins = new Set(['https://dgfy.ph']);
+  const candidates = [
+    resolveStorefrontAccountUrl(),
+    typeof import.meta !== 'undefined' ? import.meta.env?.VITE_STOREFRONT_ACCOUNT_URL : ''
+  ];
+
+  candidates.forEach((candidate) => {
+    try {
+      if (candidate) origins.add(new URL(candidate).origin);
+    } catch {
+      // Invalid optional configuration must not expand the redirect allowlist.
+    }
+  });
+
+  return origins;
+};
+
+const isApprovedAbsoluteStorefrontTarget = (url) => {
+  if (!isValidStorefrontReturnPath(url.pathname)) return false;
+  const normalizedPath = String(url.pathname || '').replace(/\/+$/, '') || '/';
+  if (!DGFY_ACCOUNT_PATHS.has(normalizedPath)) return true;
+  return resolveApprovedDgfyAccountOrigins().has(url.origin);
+};
+
 export const normalizeDgfyReturnTarget = (target = '') => {
   const normalizedTarget = String(target || '').trim();
   if (!normalizedTarget) return '';
 
+  // A protocol-relative URL can leave the current origin and must never be
+  // treated as an internal route.
+  if (normalizedTarget.startsWith('//')) return resolveStorefrontAccountUrl();
+
+  // Single-slash paths stay on the current origin. The router remains
+  // responsible for deciding whether the local route exists.
+  if (normalizedTarget.startsWith('/')) return normalizedTarget;
+
   if (hasAbsoluteNavigationTarget(normalizedTarget)) {
     try {
       const url = new URL(normalizedTarget);
-      if (!isValidStorefrontReturnPath(url.pathname)) {
+      if (!isApprovedAbsoluteStorefrontTarget(url)) {
         return resolveStorefrontAccountUrl();
       }
       return url.toString();
     } catch {
       return resolveStorefrontAccountUrl();
     }
-  }
-
-  if (normalizedTarget.startsWith('/')) {
-    return isValidStorefrontReturnPath(normalizedTarget)
-      ? normalizedTarget
-      : resolveStorefrontAccountUrl();
   }
 
   return resolveStorefrontAccountUrl();
@@ -210,11 +238,22 @@ export const resolveDgfyPostAuthTarget = ({ intent = 'customer', returnTo = '' }
 export const hasAbsoluteNavigationTarget = (target = '') => /^https?:\/\//i.test(String(target || '').trim());
 
 export const appendDgfyHandoffToken = (target = '', handoffToken = '') => {
-  const normalizedTarget = String(target || '').trim();
+  const requestedTarget = String(target || '').trim();
+  const normalizedTarget = normalizeDgfyReturnTarget(requestedTarget);
   const normalizedToken = String(handoffToken || '').trim();
   if (!normalizedTarget || !normalizedToken || !hasAbsoluteNavigationTarget(normalizedTarget)) {
     return normalizedTarget;
   }
+
+  if (requestedTarget.startsWith('//')) return normalizedTarget;
+  if (hasAbsoluteNavigationTarget(requestedTarget)) {
+    try {
+      if (!isApprovedAbsoluteStorefrontTarget(new URL(requestedTarget))) return normalizedTarget;
+    } catch {
+      return normalizedTarget;
+    }
+  }
+
   try {
     const url = new URL(normalizedTarget);
     url.searchParams.set('handoff_token', normalizedToken);

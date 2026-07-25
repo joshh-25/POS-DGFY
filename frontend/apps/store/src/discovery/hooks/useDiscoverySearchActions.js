@@ -2,6 +2,8 @@ import { useCallback } from 'react';
 
 import { resolveDiscoveryCategoryFilterValue } from '../../features/discovery/utils/storefrontDiscoveryNormalization.js';
 
+const DISCOVERY_LOCATION_PERMISSION_KEY = 'dgfy_storefront_discovery_location_permission_v1';
+
 export function useDiscoverySearchActions({
   loadStores,
   search,
@@ -29,6 +31,7 @@ export function useDiscoverySearchActions({
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        window.localStorage?.setItem(DISCOVERY_LOCATION_PERMISSION_KEY, 'granted');
         setDebouncedDiscoverySearch(currentSearch);
         loadStores({
           latitude: position.coords.latitude,
@@ -61,32 +64,14 @@ export function useDiscoverySearchActions({
     setIsMobileResultsCollapsed(false);
     setSelectedMapPin(null);
     setDebouncedDiscoverySearch(currentSearch);
-
-    if (!navigator?.geolocation) {
-      loadStores(undefined, { useImmediateSearch: true });
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        loadStores({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude
-        }, { useImmediateSearch: true });
-      },
-      () => {
-        loadStores(undefined, { useImmediateSearch: true });
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 8000
-      }
-    );
+    setDiscoveryPinScope('tenant_primary');
+    loadStores(null, { useImmediateSearch: true, pinScope: 'tenant_primary' });
   }, [
     loadStores,
     search,
     searchRef,
     setDebouncedDiscoverySearch,
+    setDiscoveryPinScope,
     setHasDiscoveryExplorationStarted,
     setIsMobileResultsCollapsed,
     setIsStoreListVisible,

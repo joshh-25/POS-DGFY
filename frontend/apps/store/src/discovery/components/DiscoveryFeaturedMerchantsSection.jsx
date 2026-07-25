@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { ChevronLeft, ChevronRight, Coffee, HeartHandshake, Scissors, ShoppingCart, Store, Wrench } from 'lucide-react';
 
 export function DiscoveryFeaturedMerchantsSection({
@@ -21,6 +21,24 @@ export function DiscoveryFeaturedMerchantsSection({
   toSlug,
   withAssetOrigin
 }) {
+  const featuredPageCount = Math.min(5, Math.max(1, Math.ceil(featuredVisibleStores.length / 2)));
+  const [activeFeaturedPage, setActiveFeaturedPage] = useState(0);
+  const featuredPageOffset = 304;
+
+  useEffect(() => {
+    setActiveFeaturedPage((current) => Math.min(current, featuredPageCount - 1));
+  }, [featuredPageCount]);
+
+  const showFeaturedPage = (pageIndex) => {
+    const nextPage = Math.max(0, Math.min(pageIndex, featuredPageCount - 1));
+    setActiveFeaturedPage(nextPage);
+    featuredCarouselRef.current?.scrollTo({ left: nextPage * featuredPageOffset, behavior: 'smooth' });
+  };
+
+  const moveFeaturedPage = (direction) => {
+    showFeaturedPage(activeFeaturedPage + direction);
+  };
+
   return (
     <section ref={featuredSectionRef} style={{ padding: isMobileViewport ? '40px 16px 80px' : '40px 0 100px', maxWidth: 1200, margin: '0 auto', textAlign: 'center', overflow: 'hidden' }}>
       <h2 style={{ fontSize: isMobileViewport ? 28 : 36, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.02em', marginBottom: 12 }}>
@@ -109,7 +127,14 @@ export function DiscoveryFeaturedMerchantsSection({
       </div>
 
       {/* Cards Grid/Carousel */}
-      <div ref={featuredCarouselRef} style={{ display: 'flex', gap: 24, overflowX: isMobileViewport ? 'auto' : 'hidden', paddingBottom: 24, paddingLeft: isMobileViewport ? 16 : 4, paddingRight: isMobileViewport ? 16 : 4, scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', margin: isMobileViewport ? '0 -16px' : '0', scrollbarWidth: 'none', msOverflowStyle: 'none' }}>
+      <div
+        ref={featuredCarouselRef}
+        onScroll={(event) => {
+          const nextPage = Math.round(Number(event.currentTarget.scrollLeft || 0) / featuredPageOffset);
+          setActiveFeaturedPage(Math.max(0, Math.min(nextPage, featuredPageCount - 1)));
+        }}
+        style={{ display: 'flex', gap: 24, overflowX: isMobileViewport ? 'auto' : 'hidden', paddingBottom: 24, paddingLeft: isMobileViewport ? 16 : 4, paddingRight: isMobileViewport ? 16 : 4, scrollSnapType: 'x mandatory', WebkitOverflowScrolling: 'touch', margin: isMobileViewport ? '0 -16px' : '0', scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+      >
         {featuredVisibleStores.map((store, i) => {
           const storeSlug = toSlug(store?.slug);
           const storePins = Array.isArray(discoveryPinsBySlug[storeSlug]) ? discoveryPinsBySlug[storeSlug] : [];
@@ -253,15 +278,20 @@ export function DiscoveryFeaturedMerchantsSection({
 
       {/* Carousel Controls */}
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 20, marginTop: 16 }}>
-        <div onClick={() => featuredCarouselRef.current?.scrollBy({ left: -304, behavior: 'smooth' })} style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: '#94a3b8', cursor: 'pointer', transition: 'all 0.2s', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }} onMouseOver={(e)=>e.currentTarget.style.color='#1a4e8d'} onMouseOut={(e)=>e.currentTarget.style.color='#94a3b8'}><ChevronLeft size={20} /></div>
+        <button type="button" aria-label="Show previous featured merchants" onClick={() => moveFeaturedPage(-1)} disabled={activeFeaturedPage === 0} style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: activeFeaturedPage === 0 ? '#cbd5e1' : '#1a4e8d', cursor: activeFeaturedPage === 0 ? 'default' : 'pointer', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }}><ChevronLeft size={20} /></button>
         <div style={{ display: 'flex', gap: 8 }}>
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#1a4e8d' }} />
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 304, behavior: 'smooth' })} />
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 608, behavior: 'smooth' })} />
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 912, behavior: 'smooth' })} />
-          <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#e2e8f0', cursor: 'pointer' }} onClick={() => featuredCarouselRef.current?.scrollTo({ left: 1216, behavior: 'smooth' })} />
+          {Array.from({ length: featuredPageCount }, (_, pageIndex) => (
+            <button
+              key={pageIndex}
+              type="button"
+              aria-label={`Show featured merchants page ${pageIndex + 1}`}
+              aria-current={activeFeaturedPage === pageIndex ? 'page' : undefined}
+              onClick={() => showFeaturedPage(pageIndex)}
+              style={{ width: 8, height: 8, padding: 0, border: 'none', borderRadius: '50%', background: activeFeaturedPage === pageIndex ? '#1a4e8d' : '#e2e8f0', cursor: 'pointer' }}
+            />
+          ))}
         </div>
-        <div onClick={() => featuredCarouselRef.current?.scrollBy({ left: 304, behavior: 'smooth' })} style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: '#1a4e8d', cursor: 'pointer', transition: 'all 0.2s', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }} onMouseOver={(e)=>{e.currentTarget.style.background='#f8fafc'}} onMouseOut={(e)=>{e.currentTarget.style.background='#fff'}}><ChevronRight size={20} /></div>
+        <button type="button" aria-label="Show next featured merchants" onClick={() => moveFeaturedPage(1)} disabled={activeFeaturedPage >= featuredPageCount - 1} style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #e2e8f0', display: 'grid', placeItems: 'center', color: activeFeaturedPage >= featuredPageCount - 1 ? '#cbd5e1' : '#1a4e8d', cursor: activeFeaturedPage >= featuredPageCount - 1 ? 'default' : 'pointer', background: '#fff', boxShadow: '0 4px 12px rgba(15,23,42,0.03)' }}><ChevronRight size={20} /></button>
       </div>
     </section>
   );

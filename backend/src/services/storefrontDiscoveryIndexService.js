@@ -32,7 +32,6 @@ const STOREFRONT_SETTING_KEYS = Object.freeze([
     'store_is_visible',
     'store_has_no_location',
     'store_delivery_fee',
-    'pos_open_status',
     'pos_wait_time_minutes',
     'storefront_cover_image_url',
     'storefront_profile_image_url',
