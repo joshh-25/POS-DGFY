@@ -222,6 +222,33 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `pos_transaction_discount_lines_ibfk_1` FOREIGN KEY (`transaction_discount_id`) REFERENCES `pos_transaction_discounts` (`id`) ON DELETE CASCADE,\n"
             + "  CONSTRAINT `pos_transaction_discount_lines_ibfk_2` FOREIGN KEY (`transaction_line_id`) REFERENCES `pos_transaction_lines` (`line_id`) ON DELETE CASCADE\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    service_booking_lines: Object.freeze({
+        sql: "CREATE TABLE `service_booking_lines` (\n"
+            + "  `booking_line_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `booking_id` int NOT NULL,\n"
+            + "  `line_type` enum('service','part') NOT NULL DEFAULT 'service',\n"
+            + "  `item_id` int NOT NULL,\n"
+            + "  `name_snapshot` varchar(255) NOT NULL,\n"
+            + "  `quantity` decimal(24,12) NOT NULL DEFAULT '1.000000000000',\n"
+            + "  `unit_price` decimal(14,4) NOT NULL DEFAULT '0.0000',\n"
+            + "  `line_amount` decimal(14,4) NOT NULL DEFAULT '0.0000',\n"
+            + "  `vat_type_snapshot` enum('vatable','vat_exempt','zero_rated') NOT NULL DEFAULT 'vatable',\n"
+            + "  `stock_effect_type` enum('inventory_issue','stock_exempt') NOT NULL DEFAULT 'stock_exempt',\n"
+            + "  `stock_exempt_reason` varchar(80) DEFAULT NULL,\n"
+            + "  `stock_movement_id` int DEFAULT NULL,\n"
+            + "  `pos_transaction_line_id` int DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`booking_line_id`),\n"
+            + "  KEY `idx_service_booking_lines_booking` (`booking_id`),\n"
+            + "  KEY `idx_service_booking_lines_item` (`item_id`),\n"
+            + "  KEY `idx_service_booking_lines_type` (`line_type`),\n"
+            + "  KEY `idx_service_booking_lines_pos_line` (`pos_transaction_line_id`),\n"
+            + "  CONSTRAINT `service_booking_lines_ibfk_1` FOREIGN KEY (`booking_id`) REFERENCES `service_bookings` (`booking_id`) ON DELETE CASCADE,\n"
+            + "  CONSTRAINT `service_booking_lines_ibfk_2` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`) ON DELETE RESTRICT,\n"
+            + "  CONSTRAINT `service_booking_lines_ibfk_3` FOREIGN KEY (`pos_transaction_line_id`) REFERENCES `pos_transaction_lines` (`line_id`) ON DELETE SET NULL\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     })
 });
 

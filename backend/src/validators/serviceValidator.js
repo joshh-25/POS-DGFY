@@ -7,6 +7,7 @@ const SERVICE_AREA_TYPES = ['in_store', 'customer_location', 'online', 'hybrid']
 const RESOURCE_TYPES = ['provider', 'room', 'equipment', 'vehicle', 'station'];
 const WAITLIST_STATUSES = ['waiting', 'notified', 'booked', 'expired', 'cancelled'];
 const REMINDER_STATUSES = ['pending', 'sent', 'failed', 'skipped'];
+const POS_PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph'];
 
 const serviceCatalogQuerySchema = Joi.object({
     search: Joi.string().trim().allow('', null).optional(),
@@ -205,6 +206,20 @@ const bookingStatusSchema = Joi.object({
     pos_transaction_id: Joi.number().integer().positive().allow(null).optional()
 });
 
+const settleBookingPartSchema = Joi.object({
+    item_id: Joi.number().integer().positive().required(),
+    quantity: Joi.number().positive().precision(4).required()
+});
+
+const settleBookingSchema = Joi.object({
+    parts: Joi.array().items(settleBookingPartSchema).max(50).optional(),
+    payment_type: Joi.string().valid(...POS_PAYMENT_TYPES).default('cash'),
+    cash_received: Joi.number().min(0).precision(4).allow(null).optional(),
+    change_amount: Joi.number().min(0).precision(4).allow(null).optional(),
+    terminal_id: Joi.string().trim().max(100).allow('', null).optional(),
+    location_id: Joi.number().integer().positive().allow(null).optional()
+});
+
 const waitlistQuerySchema = Joi.object({
     status: Joi.string().valid(...WAITLIST_STATUSES).optional(),
     limit: Joi.number().integer().min(1).max(300).default(100)
@@ -284,6 +299,7 @@ export const validateCreateServiceBookingBatch = validateSchema(serviceBookingBa
 export const validateServiceBookingIdParam = validateSchema(bookingIdParamSchema, 'params', 'validatedParams');
 export const validateServiceBookingReferenceParam = validateSchema(bookingReferenceParamSchema, 'params', 'validatedParams');
 export const validateUpdateServiceBookingStatus = validateSchema(bookingStatusSchema, 'body', 'validatedData');
+export const validateSettleServiceBooking = validateSchema(settleBookingSchema, 'body', 'validatedData');
 export const validateClaimServiceBooking = validateSchema(claimBookingSchema, 'body', 'validatedData');
 export const validateServiceWaitlistQuery = validateSchema(waitlistQuerySchema, 'query', 'validatedQuery');
 export const validateCreateServiceWaitlistEntry = validateSchema(serviceWaitlistSchema, 'body', 'validatedData');

@@ -93,7 +93,7 @@ export const WORKFLOW_MODE_PIN_META = Object.freeze({
 // switch to turn add-ons off.
 export const WORKFLOW_MODE_CAPABILITIES = Object.freeze({
     retail: ['catalog', 'inventory', 'menuModifiers', 'pos', 'storefront'],
-    services: ['services', 'serviceBookings', 'serviceTickets', 'catalog', 'menuModifiers', 'pos', 'storefront'],
+    services: ['services', 'catalog', 'menuModifiers', 'pos', 'storefront'],
     manufacturing: ['foodManufacturing', 'productionWorkflows', 'inventory', 'menuModifiers', 'pos', 'storefront'],
     food_manufacturing: ['foodManufacturing', 'productionWorkflows', 'inventory', 'menuModifiers', 'pos', 'storefront'],
     fnb: [

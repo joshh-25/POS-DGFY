@@ -167,6 +167,40 @@ describe('Services Mode use cases', () => {
         expect(result.data.booking.intake_responses).toEqual({ concern: 'Synthetic QA' });
     });
 
+    it('reads total_amount from the booking_lines price snapshot, not the item current live price', async () => {
+        const useCase = buildGetServiceBookingByReferenceUseCase({
+            serviceRepository: {
+                getBookingByReference: jest.fn(async () => ({
+                    booking_id: 1,
+                    public_reference: 'SV-SNAP2',
+                    service_item_id: 10,
+                    // The item's live price has since changed to 999, but the booking's own
+                    // price snapshot (taken at booking time) must be what total_amount reports.
+                    serviceItem: { item_id: 10, name: 'Consultation', default_sale_price: 999, vat_type: 'vatable' },
+                    quantity: 1,
+                    lines: [{
+                        booking_line_id: 501,
+                        line_type: 'service',
+                        item_id: 10,
+                        quantity: 1,
+                        unit_price: 750,
+                        line_amount: 750
+                    }],
+                    start_at: new Date('2026-06-01T09:00:00Z'),
+                    end_at: new Date('2026-06-01T10:00:00Z'),
+                    status: 'requested',
+                    payment_timing: 'postpaid',
+                    payment_status: 'unpaid'
+                }))
+            }
+        });
+
+        const result = await useCase({ publicReference: 'SV-SNAP2' });
+
+        expect(result.success).toBe(true);
+        expect(result.data.booking.total_amount).toBe(750);
+    });
+
     it('never exposes the linked POS transaction on the public booking lookup (IDOR regression)', async () => {
         // Regression test: pos_transaction_id / pos_transaction (invoice_number, tracking_pin,
         // total_amount, ...) must stay internal-only. An unauthenticated caller who guesses or
@@ -493,6 +527,61 @@ describe('Services Mode use cases', () => {
         expect(result.data.booking.total_amount).toBe(1500);
         expect(createBooking).toHaveBeenCalledWith(expect.objectContaining({ quantity: 2 }), expect.any(Object));
         expect(tx.commit).toHaveBeenCalled();
+    });
+
+    it('takes a price snapshot on booking_lines at creation time (quantity * current sale price)', async () => {
+        const tx = transaction();
+        const createBookingLines = jest.fn(async (rows) => rows.map((row, index) => ({ ...row, booking_line_id: 700 + index })));
+        const useCase = buildCreateServiceBookingUseCase({
+            serviceRepository: {
+                beginTransaction: jest.fn(async () => tx),
+                getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
+                findServiceItemById: jest.fn(async () => serviceItem),
+                listActiveAssignmentsForService: jest.fn(async () => []),
+                findConflictingBookings: jest.fn(async () => []),
+                findStoreCustomerByEmail: jest.fn(async () => null),
+                isBookingReferenceTaken: jest.fn(async () => false),
+                createBooking: jest.fn(async (payload) => ({ booking_id: 12, ...payload })),
+                createBookingLines,
+                getBookingById: jest.fn(async (bookingId) => ({
+                    booking_id: bookingId,
+                    public_reference: 'SV-SNAP1',
+                    service_item_id: 10,
+                    serviceItem,
+                    quantity: 2,
+                    start_at: new Date('2026-06-01T09:00:00Z'),
+                    end_at: new Date('2026-06-01T10:00:00Z'),
+                    status: 'requested',
+                    payment_timing: 'postpaid',
+                    payment_status: 'unpaid'
+                }))
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                service_item_id: 10,
+                quantity: 2,
+                start_at: '2026-06-01T09:00:00Z',
+                customer_name: 'Guest',
+                customer_email: 'guest@example.com',
+                idempotency_key: 'svc-snapshot-1'
+            },
+            source: 'storefront'
+        });
+
+        expect(result.success).toBe(true);
+        expect(createBookingLines).toHaveBeenCalledWith([
+            expect.objectContaining({
+                booking_id: 12,
+                line_type: 'service',
+                item_id: 10,
+                quantity: 2,
+                unit_price: 750,
+                line_amount: 1500,
+                stock_effect_type: 'stock_exempt'
+            })
+        ], expect.any(Object));
     });
 
     it('marks guest service bookings with a new email as eligible for DGFY account signup', async () => {

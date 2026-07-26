@@ -3,7 +3,8 @@ import {
     validateCreateAdminServiceBooking,
     validateServiceAvailabilityQuery,
     validateCreateServiceBookingHold,
-    validateCreateServiceBookingBatch
+    validateCreateServiceBookingBatch,
+    validateSettleServiceBooking
 } from '../src/validators/serviceValidator.js';
 import { jest } from '@jest/globals';
 
@@ -203,6 +204,48 @@ describe('serviceValidator booking schemas', () => {
                 }
             };
             const { res, next } = runMiddleware(validateCreateServiceBookingBatch, req);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.statusCode).toBe(422);
+        });
+    });
+
+    describe('validateSettleServiceBooking (POST /services/bookings/:booking_id/settle)', () => {
+        it('accepts an empty payload and defaults payment_type to cash', () => {
+            const req = { body: {} };
+            const { res, next } = runMiddleware(validateSettleServiceBooking, req);
+
+            expect(next).toHaveBeenCalledTimes(1);
+            expect(res.statusCode).toBe(200);
+            expect(req.validatedData.payment_type).toBe('cash');
+        });
+
+        it('accepts a parts array for a labor + part settlement', () => {
+            const req = {
+                body: {
+                    parts: [{ item_id: 55, quantity: 2 }],
+                    payment_type: 'gcash'
+                }
+            };
+            const { res, next } = runMiddleware(validateSettleServiceBooking, req);
+
+            expect(next).toHaveBeenCalledTimes(1);
+            expect(res.statusCode).toBe(200);
+            expect(req.validatedData.parts).toHaveLength(1);
+            expect(req.validatedData.parts[0]).toEqual({ item_id: 55, quantity: 2 });
+        });
+
+        it('rejects a part missing a positive item_id', () => {
+            const req = { body: { parts: [{ quantity: 2 }] } };
+            const { res, next } = runMiddleware(validateSettleServiceBooking, req);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.statusCode).toBe(422);
+        });
+
+        it('rejects an unsupported payment_type', () => {
+            const req = { body: { payment_type: 'crypto' } };
+            const { res, next } = runMiddleware(validateSettleServiceBooking, req);
 
             expect(next).not.toHaveBeenCalled();
             expect(res.statusCode).toBe(422);
