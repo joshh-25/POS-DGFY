@@ -201,7 +201,8 @@ const BatchCard = ({ batch, item, isNextToUse, onWriteOff }) => {
 export default function FIFOBatchViewer({ item, onRefresh }) {
   const [writeOffTarget, setWriteOffTarget] = useState(null);
   const [locationFilter, setLocationFilter] = useState({ itemId: null, key: 'all' });
-  const isServiceOnlyItem = String(item?.category || '').trim().toLowerCase() === 'service';
+  const isServiceOnlyItem = String(item?.category || '').trim().toLowerCase() === 'service'
+    || String(item?.mode_item_preset || '').trim().toLowerCase() === 'service';
   const itemId = item?.item_id ?? null;
 
   const activeBatches = useMemo(() => (

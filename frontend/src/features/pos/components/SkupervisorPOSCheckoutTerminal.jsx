@@ -177,7 +177,10 @@ const buildCompliancePolicyBlockerMessage = (error) => {
 const buildStockExceededMessage = ({ itemName, requestedQty, availableStock, unit }) => (
     `${itemName}: requested ${money(requestedQty)}${unit ? ` ${unit}` : ''}, only ${money(availableStock)}${unit ? ` ${unit}` : ''} in stock.`
 );
-const isServiceCatalogItem = (item = {}) => String(item?.category || '').trim().toLowerCase() === 'service';
+const isServiceCatalogItem = (item = {}) => (
+    String(item?.category || '').trim().toLowerCase() === 'service'
+    || String(item?.mode_item_preset || '').trim().toLowerCase() === 'service'
+);
 const getLineKey = (line = {}) => line.line_key || line.item_id;
 const createCartLineKey = (itemId) => `line-${itemId}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const getFnbModifierGroups = (item = {}) => (

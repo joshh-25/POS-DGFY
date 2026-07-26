@@ -1236,6 +1236,27 @@ export const itemRepository = {
             }
             delete dataToCreate.location_id;
 
+            // Archetype-based default (see docs/features/INVENTORY_TRACKING_MODES.md):
+            // the seller may always override via an explicit tracking_mode on the
+            // request; this only fills in the default when they don't. Existing
+            // items are never touched here - this is create-time only. Uses the
+            // same service definition as isStockExemptServiceItem (category OR
+            // mode_item_preset), independent of the narrower isServiceItem above
+            // which only governs the pre-existing current_stock zeroing behavior.
+            if (!dataToCreate.tracking_mode) {
+                const isCapacityItem = isServiceItem
+                    || String(dbFields.mode_item_preset || '').trim().toLowerCase() === 'service';
+                if (isCapacityItem) {
+                    dataToCreate.tracking_mode = 'capacity';
+                } else if (dataToCreate.fifo_enabled === true) {
+                    dataToCreate.tracking_mode = 'full_fifo';
+                } else if (String(dataToCreate.mode_item_preset || '').trim().toLowerCase() === 'menu_item') {
+                    dataToCreate.tracking_mode = 'toggle';
+                } else {
+                    dataToCreate.tracking_mode = 'count_ledger';
+                }
+            }
+
             const item = await Item.create(dataToCreate, { transaction });
 
             if (manufacturer_barcode?.code) {

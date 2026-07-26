@@ -64,6 +64,12 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
     items: Object.freeze({
         senior_pwd_discount_eligible: Object.freeze({
             sql: "ALTER TABLE `items` ADD COLUMN `senior_pwd_discount_eligible` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Admin-controlled eligibility for statutory Senior Citizen/PWD discounts'"
+        }),
+        tracking_mode: Object.freeze({
+            sql: "ALTER TABLE `items` ADD COLUMN `tracking_mode` VARCHAR(20) NULL COMMENT 'Axis 4 availability/tracking mode (untracked|count_ledger|full_fifo|toggle|capacity|external_ims|recipe_derived); NULL falls back to legacy derivation'"
+        }),
+        tracking_toggle_available: Object.freeze({
+            sql: "ALTER TABLE `items` ADD COLUMN `tracking_toggle_available` TINYINT(1) NULL DEFAULT 1 COMMENT 'Operator-declared availability, only meaningful when tracking_mode=toggle'"
         })
     }),
     item_folders: Object.freeze({

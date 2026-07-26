@@ -2,19 +2,31 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-07-25
+last_reviewed: 2026-07-26
 applies_to: catalog,inventory,pos,storefront,reports
 topic: inventory_tracking_modes
 ---
 
 # Inventory Tracking Modes
 
-**Status: design (not yet implemented).** This is the tracking/availability
-mode catalog that backs Axis 4 of
+**Status: partially implemented (Phase 5.2 shipped).** This is the
+tracking/availability mode catalog that backs Axis 4 of
 `docs/architecture/adr/0037-unified-product-domain-and-capability-driven-store-types.md`
 and `docs/features/UNIFIED_PRODUCT_DOMAIN.md`. Read those first for why this
 axis exists and how it composes with offering archetypes
 (`docs/features/OFFERING_ARCHETYPES.md`).
+
+`items.tracking_mode` and `items.tracking_toggle_available` are now real,
+persisted columns (nullable — unset items resolve through the same legacy
+derivation this doc originally described as the fallback). `untracked` and
+`toggle` are honoured cross-surface (POS and Storefront checkout, and browse
+availability); `pos_always_available` now also writes `tracking_mode`
+so the existing POS toggle carries onto the Storefront. **Still not done:**
+no operator-facing UI to pick a tracking mode (API-only for now); the ~40
+pure `isStockExemptServiceItem`/`isStockBearingItem` call sites that only
+ever meant "is this a service" were deliberately left alone rather than
+migrated onto the descriptor (see design rule 2's note below); `external_ims`
+and `recipe_derived` remain unreachable/reserved.
 
 ## Why this exists
 
@@ -239,31 +251,40 @@ Full detail and file-level citations live in
 `docs/features/UNIFIED_PRODUCT_DOMAIN.md`'s Known Issues section; the ones most
 load-bearing for this axis:
 
-- **Browse-vs-checkout contradiction.** Checkout already exempts a
-  recipe-backed line from its own-stock check, but every catalog read (POS and
-  storefront alike) computes availability purely from
-  `items.current_stock > 0`. A correctly-configured dish with full ingredient
-  stock but `current_stock = 0` renders **Sold Out** and cannot be added to
-  cart — the exact contradiction this axis exists to resolve, via `toggle`
-  rather than wiring recipes into browse-time reads.
-- **`pos_always_available` (the `untracked` prototype) silently disables
-  ingredient deduction** at checkout today, because the stock-exempt skip runs
-  before the recipe-consumption branch. The mode/descriptor model must define
-  this interaction explicitly rather than leaving it as an accidental
-  ordering bug.
-- **`cost_snapshot` is forced to `null` for every exempt line today**, which
-  is correct for labor but wrong for an untracked *physical* good — an
-  `untracked` product must still carry cost into profit reporting.
+- **Browse-vs-checkout contradiction — mechanism shipped, not yet applied to
+  existing data.** Both POS and Storefront browse reads now resolve
+  availability through the descriptor, so a `toggle` or `untracked` item no
+  longer collapses to Sold Out from a missing/zero `current_stock`. What's
+  still open: no operator UI exists yet to switch an *existing* recipe-backed
+  menu item onto `toggle` mode (API-only), so the contradiction persists for
+  any tenant's current F&B catalog until that item's `tracking_mode` is set.
+- **`pos_always_available` silently disabling ingredient deduction — fixed.**
+  Both the in-person POS movement loop and `buildOnlineOrderStockMovements`
+  now check for a recipe *before* the stock-exempt skip, so an untracked or
+  toggle-mode dish still consumes its real ingredients on sale.
+- **`cost_snapshot` forced to `null` for every exempt line — fixed (extended).**
+  Phase 3 already fixed this for `pos_always_available` on POS; the descriptor's
+  `carries_cost` now makes the same rule apply consistently across `toggle` and
+  the Storefront checkout path too — only a true service line gets a null
+  `cost_snapshot`.
 
 ## Governance and sequencing
 
 This is a design document, not an implementation plan. The work is sequenced in
 `docs/features/UNIFIED_PRODUCT_DOMAIN.md`'s roadmap: the resolver landed in
-Phase 1 (built, but not yet consumed by any production call site); persisting
-the mode, wiring `toggle`, and generalizing `pos_always_available` into
-`untracked` are Phase 5; the `external_ims` seam and `recipe_derived` are
-Phase 9. The `external_ims` mode additionally requires the
-governance prerequisites recorded there: an ADR 0029 amendment (the recorder
-may be external), an ADR 0009 amendment (codifying the FIFO-opt-out exception
-`menu_item` already exercises), a new reservations ADR, and an
-`api-boundary` compatibility seam per ADR 0035.
+Phase 1 (built, but not consumed by any production call site until Phase 5.2);
+Phase 5.2 persisted `items.tracking_mode`/`tracking_toggle_available`, wired
+`toggle` and generalized `pos_always_available` into `untracked` cross-surface
+(POS and Storefront checkout, plus browse availability), and widened
+`buildStockBearingItemWhere` to exclude `untracked`/`toggle`/`capacity` items
+from stock-level reports. Not yet done: an operator-facing tracking-mode
+picker UI (the write path accepts `tracking_mode`/`tracking_toggle_available`
+today, API-only); migrating the ~40 pure service-check call sites onto the
+descriptor (deliberately left alone — they mean "is this a service", a
+narrower question than the descriptor's "is this stock-tracked", and
+conflating the two would be a regression, not a migration). The `external_ims`
+seam and `recipe_derived` remain Phase 9. The `external_ims` mode additionally
+requires the governance prerequisites recorded there: an ADR 0029 amendment
+(the recorder may be external), an ADR 0009 amendment (codifying the
+FIFO-opt-out exception `menu_item` already exercises), a new reservations ADR,
+and an `api-boundary` compatibility seam per ADR 0035.

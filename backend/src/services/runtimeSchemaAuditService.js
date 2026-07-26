@@ -46,7 +46,8 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260711000003-repair-pickup-cash-collection-columns.cjs',
     '20260714000002-add-pos-best-seller-contract.cjs',
     '20260724000001-enforce-one-open-shift-per-operator.cjs',
-    '20260502000001-add-services-mode-booking-tables.cjs'
+    '20260502000001-add-services-mode-booking-tables.cjs',
+    '20260726000001-add-tracking-mode-to-items.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -68,7 +69,7 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'compliance_revert_last_cycle_version'
     ],
     users: ['user_id', 'role', 'is_master_admin', 'deleted_at'],
-    items: ['item_id', 'vat_type'],
+    items: ['item_id', 'vat_type', 'tracking_mode', 'tracking_toggle_available'],
     item_folders: ['folder_id', 'name', 'show_in_pos_filter', 'is_active'],
     pos_catalog_overrides: ['pos_catalog_override_id', 'item_id', 'pos_visible', 'pos_image_url', 'pos_always_available', 'pos_best_seller_mode'],
     pos_transactions: [

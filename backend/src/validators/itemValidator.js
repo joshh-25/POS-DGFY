@@ -1,5 +1,20 @@
 import Joi from 'joi';
 import { hasValidGtinCheckDigit } from '../modules/shared/utils/barcodePolicy.js';
+import { TRACKING_MODE } from '../modules/shared/utils/stockBearingPolicy.js';
+
+// external_ims and recipe_derived are reserved (Phase 9 / frozen recipe
+// engine) and deliberately not settable via the item write path yet.
+const SETTABLE_TRACKING_MODES = [
+  TRACKING_MODE.UNTRACKED,
+  TRACKING_MODE.COUNT_LEDGER,
+  TRACKING_MODE.FULL_FIFO,
+  TRACKING_MODE.TOGGLE,
+  TRACKING_MODE.CAPACITY
+];
+const trackingModeSchema = Joi.string().valid(...SETTABLE_TRACKING_MODES).allow(null, '').messages({
+  'any.only': `tracking_mode must be one of: ${SETTABLE_TRACKING_MODES.join(', ')}`
+});
+const trackingToggleAvailableSchema = Joi.boolean().allow(null);
 
 const manufacturerBarcodeSchema = Joi.object({
   code: Joi.string().trim().pattern(/^\d{8}$|^\d{12,14}$/).custom((value, helpers) => (
@@ -38,6 +53,8 @@ export const createItemSchema = Joi.object({
   mode_item_preset: Joi.string().max(64).allow(null, '').messages({
     'string.max': 'Mode item preset must not exceed 64 characters'
   }),
+  tracking_mode: trackingModeSchema,
+  tracking_toggle_available: trackingToggleAvailableSchema,
   product_folder: Joi.string().max(100).allow(null, '').messages({
     'string.max': 'Product folder must not exceed 100 characters'
   }),
@@ -192,6 +209,8 @@ export const createItemDraftSchema = Joi.object({
     otherwise: Joi.valid(null, '')
   }),
   mode_item_preset: Joi.string().max(64).allow(null, ''),
+  tracking_mode: trackingModeSchema,
+  tracking_toggle_available: trackingToggleAvailableSchema,
   product_folder: Joi.string().max(100).allow(null, ''),
   folder_id: Joi.number().integer().positive().allow(null),
   description: Joi.string().allow(null, ''),
@@ -304,6 +323,8 @@ export const updateItemSchema = Joi.object({
     otherwise: Joi.valid(null, '')
   }),
   mode_item_preset: Joi.string().max(64).allow(null, ''),
+  tracking_mode: trackingModeSchema,
+  tracking_toggle_available: trackingToggleAvailableSchema,
   product_folder: Joi.string().max(100).allow(null, ''),
   folder_id: Joi.number().integer().positive().allow(null),
   create_category_name: Joi.string().trim().replace(/\s+/g, ' ').min(1).max(100).allow(null, ''),

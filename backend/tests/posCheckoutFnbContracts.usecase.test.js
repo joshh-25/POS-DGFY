@@ -986,6 +986,140 @@ describe('POS checkout F&B contracts', () => {
         expect(stockMovementService.createStockMovement).not.toHaveBeenCalled();
     });
 
+    it('still deducts recipe ingredients for an untracked/always-available finished item (bug 2)', async () => {
+        // The finished item's own stock effect is exempt (untracked), but the
+        // real-world ingredients it's built from still get physically consumed -
+        // the stock_exempt skip must not also suppress recipe movements.
+        let createdTransaction = null;
+        const posRepository = {
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
+            findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 1,
+                name: 'Special of the Day',
+                category: 'product',
+                unit_of_measure: 'pc',
+                current_stock: 0,
+                cost_per_unit: 50,
+                default_sale_price: 100,
+                vat_type: 'vatable',
+                pos_always_available: true,
+                fnbModifierGroups: []
+            }]),
+            listProductCompositionsForItems: jest.fn().mockResolvedValue([{
+                product_id: 1,
+                ingredient_id: 5,
+                quantity_required: 200,
+                unit_of_measure: 'g',
+                ingredient: {
+                    item_id: 5,
+                    name: 'Ground beef',
+                    current_stock: 10,
+                    unit_of_measure: 'kg',
+                    category: 'raw_material'
+                }
+            }]),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
+            getTerminalShiftById: jest.fn(),
+            nextInvoiceNumber: jest.fn().mockResolvedValue('NFS-000005'),
+            getFnbTableById: jest.fn(),
+            createTransactionWithLines: jest.fn(async ({ header, lines }) => {
+                createdTransaction = { pos_transaction_id: 81, ...header, lines };
+                return 81;
+            }),
+            createFnbServiceChargeSnapshot: jest.fn().mockResolvedValue({}),
+            createFnbKitchenOrderForTransaction: jest.fn().mockResolvedValue({ kitchen_ticket: { kitchen_ticket_id: 92 } }),
+            settleFnbCheck: jest.fn(),
+            incrementPersistentCounter: jest.fn().mockResolvedValue(1),
+            getTransactionById: jest.fn(async () => createdTransaction)
+        };
+        const stockMovementService = {
+            createStockMovement: jest.fn().mockResolvedValue({ movement_id: 2 })
+        };
+        const useCase = buildCheckoutContractUseCase({ posRepository, stockMovementService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'untracked-recipe-checkout-contract',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'dine_in',
+                lines: [{ item_id: 1, quantity: 2, course: 'main' }]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(createdTransaction.lines[0]).toEqual(expect.objectContaining({
+            item_id: 1,
+            stock_effect_type: 'stock_exempt',
+            stock_exempt_reason: 'pos_always_available'
+        }));
+        // The finished item itself gets no movement, but the ingredient does.
+        expect(stockMovementService.createStockMovement).toHaveBeenCalledTimes(1);
+        expect(stockMovementService.createStockMovement).toHaveBeenCalledWith(expect.objectContaining({
+            item_id: 5,
+            quantity: 0.4,
+            movement_type: 'goods_issue',
+            location_id: 3
+        }), 12, expect.any(Object));
+    });
+
+    it('rejects a toggle-mode line when the operator has marked it unavailable', async () => {
+        const posRepository = {
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
+            findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 30,
+                name: 'Chef Special',
+                category: 'product',
+                unit_of_measure: 'serving',
+                current_stock: 0,
+                cost_per_unit: 30,
+                default_sale_price: 150,
+                vat_type: 'vatable',
+                tracking_mode: 'toggle',
+                tracking_toggle_available: false,
+                fnbModifierGroups: []
+            }]),
+            listProductCompositionsForItems: jest.fn().mockResolvedValue([]),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
+            getTerminalShiftById: jest.fn(),
+            nextInvoiceNumber: jest.fn(),
+            getFnbTableById: jest.fn(),
+            createTransactionWithLines: jest.fn(),
+            createFnbServiceChargeSnapshot: jest.fn(),
+            settleFnbCheck: jest.fn(),
+            incrementPersistentCounter: jest.fn(),
+            getTransactionById: jest.fn()
+        };
+        const stockMovementService = { createStockMovement: jest.fn() };
+        const useCase = buildCheckoutContractUseCase({ posRepository, stockMovementService });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'toggle-unavailable-checkout-contract',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'dine_in',
+                lines: [{ item_id: 30, quantity: 1, course: 'main' }]
+            }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+        expect(result.error.message).toContain('unavailable');
+        expect(posRepository.createTransactionWithLines).not.toHaveBeenCalled();
+        expect(stockMovementService.createStockMovement).not.toHaveBeenCalled();
+    });
+
     it('does not validate or deduct accidental recipe compositions for pure service F&B lines', async () => {
         let createdTransaction = null;
         const posRepository = {

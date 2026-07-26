@@ -44,6 +44,17 @@ const Item = sequelize.define('Item', {
     allowNull: true,
     comment: 'Corrected workflow-mode item preset key used to preserve mode-native item subtype semantics'
   },
+  tracking_mode: {
+    type: DataTypes.STRING(20),
+    allowNull: true,
+    comment: 'Axis 4 availability/tracking mode (untracked|count_ledger|full_fifo|toggle|capacity|external_ims|recipe_derived). NULL falls back to legacy derivation - see resolveStockBearingDescriptor.'
+  },
+  tracking_toggle_available: {
+    type: DataTypes.BOOLEAN,
+    allowNull: true,
+    defaultValue: true,
+    comment: 'Operator-declared availability, only meaningful when tracking_mode=toggle'
+  },
   product_folder: {
     type: DataTypes.STRING(100),
     allowNull: true
