@@ -25,6 +25,6 @@ describe('mode financial tracking source contracts', () => {
 
     expect(valuationSource).toContain("import { buildStockBearingItemWhere } from '../../shared/utils/stockBearingPolicy.js';");
     expect(valuationSource).toContain("where: buildStockBearingItemWhere({ status: 'active', deleted_at: null })");
-    expect(valuationSource).toContain("attributes: ['item_id', 'current_stock', 'cost_per_unit', 'category', 'mode_item_preset']");
+    expect(valuationSource).toContain("attributes: ['item_id', 'current_stock', 'cost_per_unit', 'category', 'mode_item_preset', 'fifo_enabled']");
   });
 });
