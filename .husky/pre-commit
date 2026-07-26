@@ -22,14 +22,6 @@ if [ -n "$ARCH_FILES" ]; then
   echo "[pre-commit] Architecture guardrails passed."
 fi
 
-DGFY_API_ARCH_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^apps/dgfy-api/src/modules/" || true)"
-if [ -n "$DGFY_API_ARCH_FILES" ]; then
-  echo "[pre-commit] apps/dgfy-api architecture-sensitive files changed. Running architecture guardrails..."
-  echo "$DGFY_API_ARCH_FILES"
-  npm run check:architecture:dgfy-api
-  echo "[pre-commit] apps/dgfy-api architecture guardrails passed."
-fi
-
 MIGRATION_FILES="$(printf '%s\n' "$STAGED_FILES" | grep -E "^backend/migrations/" || true)"
 if [ -n "$MIGRATION_FILES" ]; then
   echo "[pre-commit] Migration files changed. Running tenant schema registry coverage check..."

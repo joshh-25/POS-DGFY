@@ -31,8 +31,6 @@ on:
         value: ${{ jobs.backend.outputs.sha_tag }}
       frontend_sha_tag:
         value: ${{ jobs.frontend.outputs.sha_tag }}
-      dgfy_api_sha_tag:
-        value: ${{ jobs.dgfy-api.outputs.sha_tag }}
 
 permissions:
   contents: read
@@ -55,18 +53,6 @@ jobs:
     # + storefront, all 3 SPAs, one nginx serving them on 3 internal ports)
     # -- see infrastructure/docker/frontend/Dockerfile.
     uses: ./.github/workflows/deploy-frontend.yml
-    with:
-      environment: ${{ inputs.environment }}
-      image_tags: ${{ inputs.image_tags }}
-      runner_labels_json: ${{ inputs.runner_labels_json }}
-    secrets: inherit
-    permissions:
-      contents: read
-      packages: write
-
-  dgfy-api:
-    if: false  # TEMP: disabled, only backend/frontend builds enabled
-    uses: ./.github/workflows/deploy-api.yml
     with:
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}

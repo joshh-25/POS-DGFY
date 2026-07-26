@@ -96,6 +96,8 @@ import StorefrontBusinessHoursScheduler from '@/src/features/settings/Storefront
 import { normalizeStorefrontBusinessHours, serializeStorefrontBusinessHours } from '@/src/features/settings/storefrontBusinessHours.js';
 import resolveAssetUrl, { resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
 import UserInvitationModal from '@/Components/users/UserInvitationModal.jsx';
+import PdfMenuImportModal from '@/Components/items/PdfMenuImportModal.jsx';
+import { isPdfMenuImportEnabled } from '@/hooks/usePdfMenuImport.js';
 import { IncomingQueueWorkspace, WorkspaceShell } from './TerminalOperationsPanels.jsx';
 import {
   fetchPosSetupCashiers,
@@ -1847,6 +1849,8 @@ function ItemsWorkspace({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const { createItem, loading: creatingItem } = useCreateItem();
+  const [showPdfMenuImport, setShowPdfMenuImport] = useState(false);
+  const pdfMenuImportEnabled = isPdfMenuImportEnabled();
   const { updateItem, loading: savingItem } = useUpdateItem();
   const { deleteItem, loading: deletingItem } = useDeleteItem();
   const [editingItemId, setEditingItemId] = useState(null);
@@ -2715,6 +2719,18 @@ function ItemsWorkspace({
                 Add Item
               </Button>
             ) : null}
+            {canCreateItems && pdfMenuImportEnabled ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowPdfMenuImport(true)}
+                disabled={locked}
+                className="h-11 rounded-xl border-[#1A4E8D]/30 px-5 text-[#1A4E8D] shadow-sm hover:bg-[#1A4E8D]/5 xl:self-end"
+              >
+                <Upload className="mr-2 h-4 w-4" />
+                Import from PDF
+              </Button>
+            ) : null}
         </div>
 
         <div className="sm:hidden">
@@ -2784,8 +2800,28 @@ function ItemsWorkspace({
               Add Item
             </Button>
           ) : null}
+          {canCreateItems && pdfMenuImportEnabled ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowPdfMenuImport(true)}
+              disabled={locked}
+              className="mt-2 h-11 w-full rounded-xl border-[#1A4E8D]/30 text-[#1A4E8D] hover:bg-[#1A4E8D]/5"
+            >
+              <Upload className="mr-2 h-4 w-4" />
+              Import from PDF
+            </Button>
+          ) : null}
         </div>
       </div>
+
+      {canCreateItems && pdfMenuImportEnabled ? (
+        <PdfMenuImportModal
+          open={showPdfMenuImport}
+          onClose={() => setShowPdfMenuImport(false)}
+          onSuccess={() => { loadItems(); }}
+        />
+      ) : null}
 
       {error ? (
         <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">

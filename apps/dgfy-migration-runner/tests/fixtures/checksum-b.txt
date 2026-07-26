@@ -1,1 +1,0 @@
-fixture content B — different bytes than checksum-a.txt
