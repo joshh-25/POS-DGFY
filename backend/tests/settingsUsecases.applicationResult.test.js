@@ -275,6 +275,56 @@ describe('settings use-cases application result contract', () => {
     }));
   });
 
+  it('updateSettings rejects a non-master-admin actor setting inventory_authority', async () => {
+    const updateSettings = jest.fn();
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: { updateSettings }
+    });
+
+    const result = await useCase({
+      settingsData: { inventory_authority: 'external_ims' },
+      actorUser: { username: 'tenant_admin' }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.AUTHORIZATION_FAILED);
+    expect(result.error.statusCode).toBe(403);
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('updateSettings rejects an unknown inventory_authority value even for a master admin', async () => {
+    const updateSettings = jest.fn();
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: { updateSettings }
+    });
+
+    const result = await useCase({
+      settingsData: { inventory_authority: 'not-a-real-authority' },
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('updateSettings lets a master admin delegate inventory_authority to an external system', async () => {
+    const updateSettings = jest.fn().mockResolvedValue({ inventory_authority: 'external_ims' });
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: { updateSettings }
+    });
+
+    const result = await useCase({
+      settingsData: { inventory_authority: ' External_IMS ' },
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(true);
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      inventory_authority: 'external_ims'
+    }));
+  });
+
   it('updateSettings rejects reserved public storefront handles', async () => {
     const updateSettings = jest.fn();
     const useCase = buildUpdateSettingsUseCase({
@@ -473,6 +523,60 @@ describe('settings use-cases application result contract', () => {
 
     expect(result.success).toBe(true);
     expect(updateSettingByKey).toHaveBeenCalledWith('ops_enabled_capabilities', ['services', 'fnbDining']);
+  });
+
+  it('updateSettingByKey rejects a non-master-admin actor setting inventory_authority', async () => {
+    const updateSettingByKey = jest.fn();
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: { updateSettingByKey }
+    });
+
+    const result = await useCase({
+      key: 'inventory_authority',
+      value: 'external_ims',
+      actorUser: { username: 'tenant_admin' }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.AUTHORIZATION_FAILED);
+    expect(result.error.statusCode).toBe(403);
+    expect(updateSettingByKey).not.toHaveBeenCalled();
+  });
+
+  it('updateSettingByKey rejects an unknown inventory_authority value even for a master admin', async () => {
+    const updateSettingByKey = jest.fn();
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: { updateSettingByKey }
+    });
+
+    const result = await useCase({
+      key: 'inventory_authority',
+      value: 'not-a-real-authority',
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(updateSettingByKey).not.toHaveBeenCalled();
+  });
+
+  it('updateSettingByKey lets a master admin delegate inventory_authority to an external system', async () => {
+    const updateSettingByKey = jest.fn().mockResolvedValue({
+      setting_key: 'inventory_authority',
+      setting_value: 'external_ims'
+    });
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: { updateSettingByKey }
+    });
+
+    const result = await useCase({
+      key: 'inventory_authority',
+      value: ' External_IMS ',
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(true);
+    expect(updateSettingByKey).toHaveBeenCalledWith('inventory_authority', 'external_ims');
   });
 
   it('updateSettingByKey does not create a POS metadata pending review when the receipt value is unchanged', async () => {
