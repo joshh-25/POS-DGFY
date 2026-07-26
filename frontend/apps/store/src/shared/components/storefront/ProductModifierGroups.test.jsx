@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatModifierPriceDelta } from './FnbProductModifierGroups.jsx';
+import { formatModifierPriceDelta } from './ProductModifierGroups.jsx';
 
 const money = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
 

@@ -588,52 +588,86 @@ constants are duplicated, unknown modes coerce to `food_manufacturing`, and
     `frontend/src/features/inventory/pages/ItemsPage.jsx`,
     `backend/src/modules/shared/utils/stockBearingPolicy.js`,
     `backend/src/modules/pos/repositories/posRepository.js`.
-- **Phase 2 — Offering archetypes + catalog:** activate `offering_types` +
-  traits as the composable axis (Capability details above); correct the
-  **Retail** taxonomy (Capability C) and fix its placeholder-tier breakages;
-  de-gate modifiers (Capability B, noting `sku_item_id` consumption is new
-  work). **Long-tail sellers become supported here.**
-  - Representative: `modeItemTaxonomy.js` (+ FE mirror), `backend/src/modules/fnb/`
-    (de-gate), receiving paths (PO receipt / stock adjustment / CSV import) for
-    pack-to-unit, `ItemBarcode.js`, `backend/src/utils/uomConverter.js`,
-    `businessClassification.js` (activate).
-- **Phase 3 — Availability & tracking modes (Capability F):** persist the mode;
-  route every `current_stock` read through the resolver; ship `toggle` across
-  POS and Storefront, cross-surface consistent; generalize
-  `pos_always_available` into `untracked`; make `count_ledger` the archetype
-  default; widen `buildStockBearingItemWhere` and bring the five bypassing
-  report services in. Resolve bugs 1, 2, 4, 5, 6. Freeze the local recipe
-  engine.
-  - Representative: `stockBearingPolicy.js`, `Item.js` (new column),
-    `posUseCases.js`, `storeUseCases.js`/`storeRepository.js`,
-    `reportService.js`, `dashboardService.js`, `alertService.js`,
-    `forecastService.js`, `analyticsService.js`, `itemGroupingService.js`,
-    `aiContextService.js`, `costValuationService.js`.
-- **Phase 4 — Business type ≠ mode:** capture a real business-type/industry tag
-  at onboarding, separate from the operating mode; fix
-  `RegisterCompany.jsx`'s "Business Industry" mislabel; wire up or remove the
-  now-activated `businessClassification.js` cleanly (no dead code left behind).
-- **Phase 5 — Composed store capabilities + capability-driven POS**
-  (Capability A): composite capability configuration + master-admin gate,
-  capability-driven `order_method` and panels, mixed-basket UX, POS weight
-  entry. Depends on Phase 2 presets.
+- **Phase 2 — Retail taxonomy correction (shipped).** Promoted `retail` out of
+  `PLACEHOLDER_ITEM_TAXONOMY_MODES` into `CORRECTED_ITEM_TAXONOMY_MODES` with
+  four real presets (`general_merchandise`, `weighed_goods`, `refill_product`,
+  `supplies`), so `validateItemAgainstModeTaxonomy` runs real validation for
+  retail instead of returning `{ ok: true, skipped: 'placeholder_mode' }`.
+  Fixed the CSV import template, `catalogSetupPolicy.js`, the onboarding preset
+  map, and gave retail a real storefront template/theme.
+  - **Not** included, contrary to an earlier draft of this roadmap:
+    `offering_types`/traits activation (still unscheduled —
+    `businessClassification.js` remains at zero importers), and modifier
+    de-gating (moved to Phase 5).
+  - **Operational note:** this switched retail item validation on for the first
+    time with no migration or grace period. Retail items that do not fit the
+    four presets throw `422` on their next create, taxonomy-touching edit, or
+    draft-finalize.
+- **Phase 3 — Report tolerance + non-schema bug fixes (shipped).** Widened
+  `buildStockBearingItemWhere` into the five bypassing services
+  (`alertService`, `forecastService`, `analyticsService`, `itemGroupingService`,
+  `aiContextService`); fixed bug 4 (`cost_snapshot` wrongly nulled for
+  untracked physical goods) and bug 6 (false `has_drift` on every non-FIFO
+  item).
+  - **Not** included, contrary to an earlier draft: the persisted tracking-mode
+    column, the `toggle` column, the `untracked` generalization, and bugs 1, 2
+    and 5 — all of which need the schema change and moved to Phase 5.
+- **Phase 4 — Business type ≠ mode (shipped).** Relabelled
+  `RegisterCompany.jsx`'s operating-mode select (it called the 11 engineering
+  modes "Business Industry") and added a separate, optional, purely descriptive
+  `industry_tag` persisted in `Tenant.settings`. `businessClassification.js`
+  was deliberately left in place, neither wired up nor deleted — its fate is
+  still an open product decision.
+- **Phase 5 — Finish the foundations.** The work Phases 2 and 3 deferred, plus
+  the capability-gating that Phase 6 depends on. Ships as two PRs because a
+  tenant schema migration should not share a diff with routing/UI changes.
+  - *Nav and route capability-gating.* `Layout.jsx` declared
+    `requiredCapability` on three nav entries but the nav filter never read it;
+    visibility came from hardcoded per-family lists covering only 4 of the 10
+    mode families. Job Orders and Dispatch Orders therefore rendered — then
+    hard-403'd — in five modes (`retail`, `healthcare`, `ticketing_transport`,
+    `logistics_distribution`, `education_institutions`). Both nav and routes
+    now derive from the same capability their backend routes enforce.
+  - *Modifier de-gating (Capability B).* `routes/fnb.js` blanket-gated all 24
+    of its endpoints behind `fnbDining`, including the 4 modifier-management
+    routes. Those now sit behind `menuModifiers`, which every mode holds.
+    Checkout, the catalog includes and the cart layer were already
+    mode-agnostic, and the join table's `item_id` already targets generic
+    `items`, so no data work was needed. `sku_item_id` consumption remains
+    unwired — see the correction above.
+  - *Persisted tracking-mode column (Capability F, second PR).* Persist the
+    mode; migrate the boolean call sites onto `resolveStockBearingDescriptor`;
+    add `toggle`; generalize `pos_always_available` into `untracked`; make
+    `count_ledger` the archetype default; resolve bugs 1, 2 and 5.
+  - Representative: `Layout.jsx`, `frontend/src/main.jsx`,
+    `frontend/src/features/settings/workflowMode.js`, `routes/fnb.js`,
+    `packages/shared-constants/src/workflowModes.js`,
+    `stockBearingPolicy.js`, `Item.js` (new column), `posUseCases.js`,
+    `storeUseCases.js`/`storeRepository.js`.
+- **Phase 6 — Composed store capabilities + capability-driven POS**
+  (Capability A): an additive `enabled_capabilities` overlay + master-admin
+  gate, capability-driven `order_method` and panels, mixed-basket UX, POS
+  weight entry, and the storefront/POS surfaces for selecting add-ons on
+  non-F&B items. Depends on Phase 2 presets and Phase 5 gating.
   - Representative: `backend/src/modules/settings/`, `POSCheckoutTerminal.jsx`,
-    `PosPageShell.jsx`.
-- **Phase 6 — Booking generalization + mixed fulfillment** (Capability D):
-  generalized service presentation, booking→sale linkage, parts-on-booking.
-  Builds on Services Mode + Phase 5 mixed basket.
+    `PosPageShell.jsx`, `frontend/apps/pos/`.
+- **Phase 7 — Booking generalization + mixed fulfillment** (Capability D):
+  generalized service presentation, booking→sale settlement, parts-on-booking.
+  Builds on Services Mode + Phase 6 mixed basket.
   - Representative: `backend/src/modules/services/usecases/serviceUseCases.js`,
     `ServiceBooking.js`, `posUseCases.js`,
     `frontend/apps/store/src/modes/services/`.
-- **Phase 7 — External listings (shallow)** (Capability E): `entity_type`/
+- **Phase 8 — External listings (shallow)** (Capability E): `entity_type`/
   `source` discriminator, map display for cross-platform stores, redirect on
-  book.
-- **Phase 8 — External IMS delegation** (Capability F's `external_ims` /
+  book. A **separate axis** (Axis 3) — discovery and display of stores that
+  transact elsewhere; it does not extend the product-classification work.
+- **Phase 9 — External IMS delegation** (Capability F's `external_ims` /
   `recipe_derived`): the stock port contract, converting the ~4 direct
   `stockCommandService`-bypassing importers to DI, an `inventory_authority`
   tenant setting, the registered compatibility seam, and closing the
-  capability-gate gaps named above. Requires the governance prerequisites to
-  have landed first.
+  capability-gate gaps named above. Also a **separate axis** (Axis 4) — it
+  changes who owns the ledger, not how products are classified. Requires the
+  governance prerequisites to have landed first.
   - Representative: `stockCommandService.js`, `jobOrderService.js`,
     `dispatchOrderService.js`, `stockMovementToolRegistry.js`,
     `docs/architecture/compatibility-seams.json`,
@@ -641,8 +675,10 @@ constants are duplicated, unknown modes coerce to `food_manufacturing`, and
 - **Deferred:** the F&B prep workflow gap (ADR 0019,
   `docs/features/FOOD_AND_BEVERAGE_MODE.md` — noted, not designed here;
   `toggle` is the interim workaround); the `rental` archetype's
-  occupancy-tracking gap; storefront `isXMode` boolean de-fanning (~38 files /
-  ~250 sites, `StorefrontApp.jsx` alone ~50); jewelry serialization;
+  occupancy-tracking gap; storefront `isXMode` boolean de-fanning (measured
+  2026-07-26: 39 files / 375 occurrences, of which 35 files / 358 occurrences
+  are production and roughly 173 are true conditional branches;
+  `StorefrontApp.jsx` alone 50); jewelry serialization;
   `adapter_booked`/`proxied` external tiers; dead-code cleanup (bug 8).
 
 **Every phase that adds a column must also update the tenant-schema registry**
@@ -725,5 +761,6 @@ on skipping this step.
 - Jewelry per-piece serialization (deferred follow-up per the flexible-item
   proposal); the `rental` archetype's occupancy-tracking gap (see
   `OFFERING_ARCHETYPES.md`).
-- The storefront `isXMode` boolean de-fanning refactor (~38 files).
+- The storefront `isXMode` boolean de-fanning refactor (39 files / 375
+  occurrences as measured 2026-07-26).
 - Payment/fiscal/promo redesign — bounded by ADR 0027/0033 and unchanged here.

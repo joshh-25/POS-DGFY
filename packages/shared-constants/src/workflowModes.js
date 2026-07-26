@@ -82,11 +82,20 @@ export const WORKFLOW_MODE_PIN_META = Object.freeze({
     msme: { icon: 'Store', label: 'Simple (MSME)' }
 });
 
+// `menuModifiers` is deliberately held by every mode. Despite the name (kept
+// for continuity with the existing `fnb_modifier_*` tables), an add-on group is
+// a generic catalog concept, not a restaurant one: "extra rice" on a dish, gift
+// wrap on a retail SKU, an extended warranty on a repair job. The join table's
+// `item_id` already points at the generic `items` table and both checkout
+// resolvers are mode-agnostic, so only the management routes were ever
+// restaurant-locked. It stays a real capability rather than being deleted
+// because the composed-capability overlay in the next phase needs a per-tenant
+// switch to turn add-ons off.
 export const WORKFLOW_MODE_CAPABILITIES = Object.freeze({
-    retail: ['catalog', 'inventory', 'pos', 'storefront'],
-    services: ['services', 'serviceBookings', 'serviceTickets', 'catalog', 'pos', 'storefront'],
-    manufacturing: ['foodManufacturing', 'productionWorkflows', 'inventory', 'pos', 'storefront'],
-    food_manufacturing: ['foodManufacturing', 'productionWorkflows', 'inventory', 'pos', 'storefront'],
+    retail: ['catalog', 'inventory', 'menuModifiers', 'pos', 'storefront'],
+    services: ['services', 'serviceBookings', 'serviceTickets', 'catalog', 'menuModifiers', 'pos', 'storefront'],
+    manufacturing: ['foodManufacturing', 'productionWorkflows', 'inventory', 'menuModifiers', 'pos', 'storefront'],
+    food_manufacturing: ['foodManufacturing', 'productionWorkflows', 'inventory', 'menuModifiers', 'pos', 'storefront'],
     fnb: [
         'fnbDining',
         'menuModifiers',
@@ -108,14 +117,15 @@ export const WORKFLOW_MODE_CAPABILITIES = Object.freeze({
         'hospitalityAmenities',
         'catalog',
         'inventory',
+        'menuModifiers',
         'pos',
         'storefront'
     ],
-    healthcare: ['catalog', 'inventory', 'pos', 'storefront'],
-    ticketing_transport: ['catalog', 'inventory', 'pos', 'storefront'],
-    logistics_distribution: ['catalog', 'inventory', 'pos', 'storefront'],
-    education_institutions: ['catalog', 'inventory', 'pos', 'storefront'],
-    msme: ['catalog', 'pos', 'storefront']
+    healthcare: ['catalog', 'inventory', 'menuModifiers', 'pos', 'storefront'],
+    ticketing_transport: ['catalog', 'inventory', 'menuModifiers', 'pos', 'storefront'],
+    logistics_distribution: ['catalog', 'inventory', 'menuModifiers', 'pos', 'storefront'],
+    education_institutions: ['catalog', 'inventory', 'menuModifiers', 'pos', 'storefront'],
+    msme: ['catalog', 'menuModifiers', 'pos', 'storefront']
 });
 
 export const normalizeWorkflowMode = (value) => {

@@ -24,7 +24,23 @@ export const formatModifierPriceDelta = (value, formatMoney) => {
   return `${sign}${formatMoney(Math.abs(amount)).replace('PHP ', '')}`;
 };
 
-export const FnbProductModifierGroups = ({
+/**
+ * ProductModifierGroups — the customer-facing add-on picker.
+ *
+ * Lives in `shared/` rather than `modes/fnb/` because nothing about it is
+ * restaurant-specific: it takes modifier groups as data and renders them. The
+ * backing tables are generic too (`fnb_item_modifier_groups.item_id` is an FK
+ * onto `items`), and both checkout resolvers read those rows without any
+ * workflow-mode check. Its previous location under `modes/fnb/` was the last
+ * structural reason add-ons looked F&B-only.
+ *
+ * Reaching it from a retail or services product page still needs those modes
+ * to have a product-detail route and a card that navigates to it — neither
+ * exists today (retail renders `ServiceProductCard`, which has no
+ * `onViewDetails`). That wiring is storefront UX work and belongs with the
+ * mixed-basket phase, not with this de-gating pass.
+ */
+export const ProductModifierGroups = ({
   expandedGroups,
   formatMoney,
   modifierCounts,

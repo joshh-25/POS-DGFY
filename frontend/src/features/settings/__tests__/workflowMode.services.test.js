@@ -60,6 +60,20 @@ describe('Services and Food Manufacturing workflow modes', () => {
     expect(isWorkflowPathBlocked('/job-orders', 'fnb')).toBe(true);
   });
 
+  it('keeps AI Chat hidden in MSME as a product preference rather than a capability', () => {
+    // backend/src/routes/ai.js gates on premium subscription, not workflow
+    // mode, so there is deliberately no `aiChat` capability to gate on. This
+    // is the only nav page left on the non-capability path.
+    expect(modeHasCapability('msme', 'aiChat')).toBe(false);
+    expect(modeHasCapability('retail', 'aiChat')).toBe(false);
+    expect(isWorkflowPageVisible('AiChat', 'msme')).toBe(false);
+    expect(isWorkflowPathBlocked('/ai-chat', 'msme')).toBe(true);
+    expect(isWorkflowPageVisible('AiChat', 'retail')).toBe(true);
+    expect(isWorkflowPageVisible('AiChat', 'food_manufacturing')).toBe(true);
+    expect(isWorkflowPathBlocked('/ai-chat', 'retail')).toBe(false);
+    expect(isWorkflowPageModeSensitive('AiChat')).toBe(true);
+  });
+
   it('marks mode-dependent navigation as sensitive until workflow mode resolves', () => {
     expect(isWorkflowPageModeSensitive('JobOrders')).toBe(true);
     expect(isWorkflowPageModeSensitive('DispatchOrders')).toBe(true);
