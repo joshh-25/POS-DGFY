@@ -67,7 +67,9 @@ jobs:
           buildkitd-config-inline: |
             [worker.oci]
               gc = true
-              gckeepstorage = "20GB"
+              # Lowered from 20GB to 8GB — see pr-frontend-build-checks.yml for why
+              # (these runners' ~39GB root disks started filling up, 2026-07-26).
+              gckeepstorage = "8GB"
 
       - name: Build and push backend image
         uses: docker/build-push-action@v6

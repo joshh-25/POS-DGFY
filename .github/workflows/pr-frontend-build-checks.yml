@@ -23,7 +23,10 @@ jobs:
       # pull back ~306MB (the node_modules layer alone moved at 0.87MB/s) for a
       # build whose every layer was already CACHED. Keeping the builder means
       # the layer cache, the npm cache mount and both base images just stay on
-      # the runner's disk. gckeepstorage caps that at 20GB so it can't run away.
+      # the runner's disk. gckeepstorage caps that so it can't run away — lowered
+      # from 20GB to 8GB after these runners' ~39GB root disks started filling
+      # up (self-hosted-runner disk-space CI failures, 2026-07-26); 20GB left too
+      # little headroom for the OS, other tagged images, and build scratch space.
       - uses: docker/setup-buildx-action@v3
         with:
           name: dgfy-builder
@@ -32,7 +35,7 @@ jobs:
           buildkitd-config-inline: |
             [worker.oci]
               gc = true
-              gckeepstorage = "20GB"
+              gckeepstorage = "8GB"
 
       # Same build as deploy-frontend.yml, minus the push -- just proves the
       # image builds cleanly off this PR's code. Deliberately omits the
