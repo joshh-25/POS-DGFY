@@ -1,0 +1,91 @@
+name: PR Changed Paths
+
+# Tells pr-checks.yml which image builds this PR actually needs, so a
+# frontend-only PR doesn't spend a runner slot rebuilding dgfy-api or the
+# migration-runner (and vice versa). That matters here beyond the wasted
+# minutes: there are only two self-hosted runners, and PR Checks runs have
+# queued for hours waiting on one.
+#
+# Deliberately does this with plain git rather than a third-party
+# paths-filter action -- the same `git merge-base HEAD origin/$GITHUB_BASE_REF`
+# approach scripts/check-compliance-impact.js already uses, which is also why
+# the checkout below needs full history.
+
+on:
+  workflow_call:
+    inputs:
+      runner_labels_json:
+        description: JSON array passed to runs-on for this job
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
+    outputs:
+      frontend:
+        description: '"true" when this PR touches anything the frontend image is built from'
+        value: ${{ jobs.detect.outputs.frontend }}
+      dgfy_api:
+        description: '"true" when this PR touches anything the dgfy-api image is built from'
+        value: ${{ jobs.detect.outputs.dgfy_api }}
+      migration_runner:
+        description: '"true" when this PR touches anything the migration-runner image is built from'
+        value: ${{ jobs.detect.outputs.migration_runner }}
+
+jobs:
+  detect:
+    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
+    timeout-minutes: 5
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      dgfy_api: ${{ steps.filter.outputs.dgfy_api }}
+      migration_runner: ${{ steps.filter.outputs.migration_runner }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed paths
+        id: filter
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          set -euo pipefail
+
+          MERGE_BASE="$(git merge-base HEAD "origin/${BASE_REF}")"
+          FILES="$(git diff --name-only "${MERGE_BASE}" HEAD)"
+
+          matches() { printf '%s\n' "${FILES}" | grep -qE "$1"; }
+
+          # .github/workflows/ is in ALL THREE filters on purpose: a change to
+          # the build workflows or to this filter itself must still exercise
+          # every image build, or the change that breaks them merges unverified.
+          FRONTEND=false
+          DGFY_API=false
+          MIGRATION_RUNNER=false
+          matches '^(frontend/|packages/pos-receipt/|infrastructure/docker/frontend/|\.github/workflows/)' && FRONTEND=true || true
+          matches '^(apps/dgfy-api/|infrastructure/docker/dgfy-api/|\.github/workflows/)' && DGFY_API=true || true
+          matches '^(apps/dgfy-migration-runner/|infrastructure/docker/dgfy-migration-runner/|\.github/workflows/)' && MIGRATION_RUNNER=true || true
+
+          {
+            echo "frontend=${FRONTEND}"
+            echo "dgfy_api=${DGFY_API}"
+            echo "migration_runner=${MIGRATION_RUNNER}"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Changed-path filter"
+            echo ""
+            echo "| Image build | Needed |"
+            echo "|-------------|--------|"
+            echo "| Frontend | ${FRONTEND} |"
+            echo "| DGFY API | ${DGFY_API} |"
+            echo "| Migration Runner | ${MIGRATION_RUNNER} |"
+            echo ""
+            echo "<details><summary>Changed files</summary>"
+            echo ""
+            echo '```'
+            printf '%s\n' "${FILES}"
+            echo '```'
+            echo ""
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"

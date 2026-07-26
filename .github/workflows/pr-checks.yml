@@ -22,6 +22,11 @@ env:
   RUNNER_LABELS_JSON: &runner_labels_json '["self-hosted"]'
 
 jobs:
+  changes:
+    uses: ./.github/workflows/pr-changed-paths.yml
+    with:
+      runner_labels_json: *runner_labels_json
+
   conventional-commits:
     uses: ./.github/workflows/pr-conventional-commits.yml
     with:
@@ -32,20 +37,27 @@ jobs:
     with:
       runner_labels_json: *runner_labels_json
 
+  # The build checks deliberately do NOT wait on code-quality. That job takes
+  # ~1m45s and is `continue-on-error: true`, so it can never block a merge --
+  # gating on it only delayed the builds by its full runtime. conventional-
+  # commits (~10s) stays as a cheap fail-fast.
   dgfy-api-build-check:
-    needs: [conventional-commits, code-quality]
+    needs: [changes, conventional-commits]
+    if: needs.changes.outputs.dgfy_api == 'true'
     uses: ./.github/workflows/pr-dgfy-api-build-checks.yml
     with:
       runner_labels_json: *runner_labels_json
 
   dgfy-migration-runner-build-check:
-    needs: [conventional-commits, code-quality]
+    needs: [changes, conventional-commits]
+    if: needs.changes.outputs.migration_runner == 'true'
     uses: ./.github/workflows/pr-migration-runner-build-checks.yml
     with:
       runner_labels_json: *runner_labels_json
 
   frontend-build-check:
-    needs: [conventional-commits, code-quality]
+    needs: [changes, conventional-commits]
+    if: needs.changes.outputs.frontend == 'true'
     uses: ./.github/workflows/pr-frontend-build-checks.yml
     with:
       runner_labels_json: *runner_labels_json

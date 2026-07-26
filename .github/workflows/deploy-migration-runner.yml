@@ -61,7 +61,18 @@ jobs:
       # dev machines (lima-dgfy-dev), so it is published multi-arch. QEMU
       # provides the arm64 emulation layer for the cross-build.
       - uses: docker/setup-qemu-action@v3
+
+      # See pr-frontend-build-checks.yml for why this builder is named and
+      # retained rather than created-and-destroyed per run.
       - uses: docker/setup-buildx-action@v3
+        with:
+          name: dgfy-builder
+          keep-state: true
+          cleanup: false
+          buildkitd-config-inline: |
+            [worker.oci]
+              gc = true
+              gckeepstorage = "20GB"
 
       - name: Build and push migration-runner image
         uses: docker/build-push-action@v6
@@ -71,8 +82,6 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha,scope=migration-runner
-          cache-to: type=gha,scope=migration-runner,mode=max
 
       # The migration-runner is a one-shot CLI, not a compose service, so there
       # is no server pull/restart in publish-platform.yml -- publishing to GHCR

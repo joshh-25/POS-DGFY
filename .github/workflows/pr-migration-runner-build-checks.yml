@@ -17,11 +17,22 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: docker/setup-qemu-action@v3
+
+      # See pr-frontend-build-checks.yml for why this builder is named and
+      # retained rather than created-and-destroyed per run.
       - uses: docker/setup-buildx-action@v3
+        with:
+          name: dgfy-builder
+          keep-state: true
+          cleanup: false
+          buildkitd-config-inline: |
+            [worker.oci]
+              gc = true
+              gckeepstorage = "20GB"
 
       # Same build as deploy-migration-runner.yml, minus the push -- proves the
-      # image builds cleanly for both arches off this PR's code. Shares the gha
-      # cache scope with the real deploy build so both stay fast.
+      # image builds cleanly for both arches off this PR's code. No
+      # cache-from/cache-to: the retained builder above IS the cache.
       - name: Build migration-runner image (no push)
         uses: docker/build-push-action@v6
         with:
@@ -29,5 +40,3 @@ jobs:
           file: infrastructure/docker/dgfy-migration-runner/Dockerfile
           platforms: linux/amd64,linux/arm64
           push: false
-          cache-from: type=gha,scope=migration-runner
-          cache-to: type=gha,scope=migration-runner,mode=max
