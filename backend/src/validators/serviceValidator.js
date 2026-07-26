@@ -107,7 +107,14 @@ const bookingQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(300).default(100)
 });
 
-const serviceBookingSchema = Joi.object({
+// Fields common to every booking-creation caller (public storefront and admin/POS).
+// NOTE: pos_transaction_id is deliberately NOT part of this core schema. It links a
+// booking to a settled POS transaction and must only ever be settable by trusted
+// internal callers (see adminServiceBookingSchema below) -- accepting it from the
+// public storefront route would let an unauthenticated caller attach an arbitrary
+// transaction id to a booking it controls, then read that transaction's
+// invoice_number/tracking_pin/total_amount back via GET .../bookings/:public_reference.
+const serviceBookingCoreSchema = {
     service_item_id: Joi.number().integer().positive().required(),
     start_at: Joi.date().iso().required(),
     end_at: Joi.date().iso().greater(Joi.ref('start_at')).allow(null).optional(),
@@ -121,6 +128,17 @@ const serviceBookingSchema = Joi.object({
     payment_timing: Joi.string().valid(...PAYMENT_TIMINGS).default('postpaid'),
     notes: Joi.string().trim().max(4000).allow('', null).optional(),
     intake_responses: Joi.object().allow(null).optional(),
+    quantity: Joi.number().integer().min(1).max(10000).optional(),
+    idempotency_key: Joi.string().trim().min(1).max(200).optional(),
+    hold_token: Joi.string().trim().min(1).max(200).optional()
+};
+
+// Public storefront booking creation: no pos_transaction_id (see note above).
+const serviceBookingSchema = Joi.object(serviceBookingCoreSchema);
+
+// Admin/POS booking creation: may link the booking to an existing POS transaction.
+const adminServiceBookingSchema = Joi.object({
+    ...serviceBookingCoreSchema,
     pos_transaction_id: Joi.number().integer().positive().allow(null).optional()
 });
 
@@ -202,6 +220,7 @@ export const validateUpdateServiceAssignment = validateSchema(serviceAssignmentU
 export const validateServiceAssignmentIdParam = validateSchema(assignmentIdParamSchema, 'params', 'validatedParams');
 export const validateServiceBookingQuery = validateSchema(bookingQuerySchema, 'query', 'validatedQuery');
 export const validateCreateServiceBooking = validateSchema(serviceBookingSchema, 'body', 'validatedData');
+export const validateCreateAdminServiceBooking = validateSchema(adminServiceBookingSchema, 'body', 'validatedData');
 export const validateServiceBookingIdParam = validateSchema(bookingIdParamSchema, 'params', 'validatedParams');
 export const validateServiceBookingReferenceParam = validateSchema(bookingReferenceParamSchema, 'params', 'validatedParams');
 export const validateUpdateServiceBookingStatus = validateSchema(bookingStatusSchema, 'body', 'validatedData');

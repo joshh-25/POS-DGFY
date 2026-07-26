@@ -303,12 +303,6 @@ fnb_modifier_groups
 Allergens:
 getDefaultFnbLineModifiers
 line_modifiers
-/api/v1/store/services/bookings/batch
-bookings: heldServiceCartLines.map
-quantity: Math.max(1, Number(line.quantity || 1))
-idempotency_key: createStorefrontIdempotencyKey('service-batch')
-serviceBatchFailureMessage(error, serviceCartLines)
-/api/v1/store/services/availability?
 Ready for pickup
 Out for delivery
 Order confirmed
@@ -316,24 +310,14 @@ Confirmed by store
 Preparing
 Delivered
 Picked up
-buildServiceAvailabilitySlotOptions
-serviceAvailabilityMessage
-Live capacity checked
-No available slots for this date and quantity
-This quantity needs a service resource with more capacity.
-/api/v1/store/services/holds
-replace_hold_token
-hasFreshServiceHold
-ensureServiceBookingHold(line)
-service_hold_token
-Reserving...
-openServiceCartEditor(line)
-serviceCartValidationIssues
-line?.intake_responses || {}
-Booking references
-checkoutResult.payments.filter
-cart_line_id
 */
+// NOTE: the anchors that used to sit here for service-booking batch/availability/hold
+// endpoints (/api/v1/store/services/bookings/batch, /availability, /holds, etc.) were
+// removed with the vacuous serviceBookingMultiplicity.contract.test.js that only ever
+// asserted against this comment, not real code (see Phase 7 of the Unified Product
+// Domain initiative). Those endpoints are being mounted and wired into the storefront
+// in a later phase; real behavior tests belong there, once the frontend actually calls
+// them.
 
 export const __storefrontTrackingTestUtils = {
   normalizeTrackedOrderEntry,

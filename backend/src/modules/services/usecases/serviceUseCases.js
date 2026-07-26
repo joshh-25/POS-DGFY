@@ -299,7 +299,6 @@ const serializeBooking = (booking = {}, { publicSafe = false } = {}) => {
         payment_status: row.payment_status,
         payment_reference: row.payment_reference || null,
         payment_checkout_url: row.payment_checkout_url || null,
-        pos_transaction_id: row.pos_transaction_id || null,
         total_amount: bookingAmount(row),
         source: row.source,
         notes: row.notes || null,
@@ -320,13 +319,18 @@ const serializeBooking = (booking = {}, { publicSafe = false } = {}) => {
             default_sale_price: item.default_sale_price,
             vat_type: item.vat_type || 'vatable',
             duration_minutes: detail?.duration_minutes || null
-        } : null,
-        pos_transaction: row.posTransaction || null
+        } : null
     };
+    // pos_transaction / pos_transaction_id link a booking to its settled POS transaction
+    // (invoice_number, tracking_pin, total_amount, ...). These are internal fields, not
+    // customer-facing -- an unauthenticated caller must never be able to read another
+    // transaction's details back through a guessed or replayed booking reference.
     if (!publicSafe) {
         payload.customer_name = row.customer_name;
         payload.customer_email = row.customer_email || null;
         payload.customer_phone = row.customer_phone || null;
+        payload.pos_transaction_id = row.pos_transaction_id || null;
+        payload.pos_transaction = row.posTransaction || null;
     }
     return payload;
 };

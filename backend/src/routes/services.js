@@ -36,7 +36,7 @@ import {
     validateUpdateServiceAssignment,
     validateServiceAssignmentIdParam,
     validateServiceBookingQuery,
-    validateCreateServiceBooking,
+    validateCreateAdminServiceBooking,
     validateServiceBookingIdParam,
     validateUpdateServiceBookingStatus,
     validateServiceWaitlistQuery,
@@ -69,7 +69,7 @@ router.post('/assignments', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_R
 router.patch('/assignments/:assignment_id', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_RESOURCES, PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateServiceAssignmentIdParam, validateUpdateServiceAssignment, updateAssignment);
 
 router.get('/bookings', modePermission(PERMISSIONS.SERVICES.actions.VIEW_BOOKINGS, PERMISSIONS.POS.actions.VIEW_POS), validateServiceBookingQuery, listBookings);
-router.post('/bookings', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_BOOKINGS, PERMISSIONS.POS.actions.TRANSACT_POS), validateCreateServiceBooking, createBooking);
+router.post('/bookings', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_BOOKINGS, PERMISSIONS.POS.actions.TRANSACT_POS), validateCreateAdminServiceBooking, createBooking);
 router.patch('/bookings/:booking_id/status', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_BOOKINGS, PERMISSIONS.POS.actions.TRANSACT_POS), validateServiceBookingIdParam, validateUpdateServiceBookingStatus, updateBookingStatus);
 
 router.get('/waitlist', modePermission(PERMISSIONS.SERVICES.actions.VIEW_WAITLIST, PERMISSIONS.POS.actions.VIEW_POS), validateServiceWaitlistQuery, listWaitlist);
