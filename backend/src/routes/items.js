@@ -2,6 +2,8 @@ import express from 'express';
 import * as itemController from '../controllers/itemController.js';
 import * as csvImportController from '../controllers/csvImportController.js';
 import * as csvExportController from '../controllers/csvExportController.js';
+import * as menuImportController from '../controllers/menuImportController.js';
+import { requireMenuImportConfig, menuImportDisabledMessage } from '../config/menuImportFeature.js';
 import {
   validateCreateItem,
   validateUpdateItem,
@@ -29,7 +31,9 @@ import { itemOperationsLimiter } from '../middleware/rateLimiter.js';
 import {
   storefrontCatalogBulkImageUpload,
   storefrontCatalogGalleryImageUpload,
-  storefrontCatalogImageUpload
+  storefrontCatalogImageUpload,
+  upload,
+  menuImportFileUpload
 } from '../config/uploadConfig.js';
 
 const router = express.Router();
@@ -45,6 +49,35 @@ router.use(itemOperationsLimiter);
 router.get('/import/template', checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS), csvImportController.getTemplate);
 router.post('/import/preview', checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS), csvImportController.previewImport);
 router.post('/import/confirm', checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS), csvImportController.confirmImport);
+
+// Menu Import routes (PDF or PNG/JPG photo) - quick/temporary feature, env-gated
+// (MENU_IMPORT_ENABLED, default OFF). 404s when disabled/unconfigured rather than
+// exposing a dead endpoint. Must be before :item_id routes to avoid conflicts.
+const requireMenuImportEnabled = (req, res, next) => {
+  const { configured, missing } = requireMenuImportConfig();
+  if (!configured) {
+    const notEnabled = missing.includes('MENU_IMPORT_ENABLED');
+    return res.status(notEnabled ? 404 : 503).json({
+      success: false,
+      message: notEnabled ? menuImportDisabledMessage : 'PDF menu import is enabled but not fully configured.',
+      missing: notEnabled ? undefined : missing
+    });
+  }
+  return next();
+};
+router.post(
+  '/import/pdf/preview',
+  requireMenuImportEnabled,
+  checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS),
+  menuImportFileUpload.single('file'),
+  menuImportController.previewPdfImport
+);
+router.post(
+  '/import/pdf/confirm',
+  requireMenuImportEnabled,
+  checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS),
+  menuImportController.confirmPdfImport
+);
 
 // CSV Export routes
 router.get('/export', checkPermission(PERMISSIONS.INVENTORY.actions.EXPORT_ITEMS), csvExportController.exportItems);
