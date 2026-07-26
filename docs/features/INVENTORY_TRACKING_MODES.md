@@ -176,14 +176,21 @@ recipe-backed dish uses `toggle`.
    unexpected combination. Tracking mode must never throw on a valid
    archetype/mode pairing — it only defaults.
 2. **One resolver, not a scattered boolean.**
-   `backend/src/modules/shared/utils/stockBearingPolicy.js` (today 49 lines, a
-   plain `category`/`mode_item_preset` string test, ~30 backend call sites)
-   becomes the **only** place that interprets tracking mode, returning a
-   descriptor rather than a boolean:
+   `backend/src/modules/shared/utils/stockBearingPolicy.js` becomes the
+   **only** place that interprets tracking mode, returning a descriptor rather
+   than a boolean:
    ```
    { tracks_quantity, uses_batches, blocks_on_shortfall, emits_movements,
      carries_cost, valuation_participant, availability_source }
    ```
+   `resolveStockBearingDescriptor` now exists (the file is 95 lines as of
+   2026-07-26) but has **zero production call sites** — it is consumed only by
+   its own test. The migration target is **43** boolean call sites, not the
+   ~30 previously estimated: `isStockExemptServiceItem` ×15,
+   `isStockBearingItem` ×2, and `buildStockBearingItemWhere` ×26. Note also
+   that `tracks_quantity`, `blocks_on_shortfall` and `emits_movements` are
+   currently the same expression and only diverge once the mode is persisted,
+   and that `availability_source: 'derived'` is unreachable until then.
    No call site should read `items.current_stock` directly without resolving
    this descriptor first — that discipline is what prevents the "0 means sold
    out" collision between "genuinely zero" and "not counted" that recurs
@@ -250,10 +257,12 @@ load-bearing for this axis:
 
 ## Governance and sequencing
 
-This is a design document, not an implementation plan. Persisting the mode,
-building the resolver, wiring `toggle`, and building the `external_ims` seam
-are sequenced in `docs/features/UNIFIED_PRODUCT_DOMAIN.md`'s roadmap (Phases
-1, 3, and 8 respectively). The `external_ims` mode additionally requires the
+This is a design document, not an implementation plan. The work is sequenced in
+`docs/features/UNIFIED_PRODUCT_DOMAIN.md`'s roadmap: the resolver landed in
+Phase 1 (built, but not yet consumed by any production call site); persisting
+the mode, wiring `toggle`, and generalizing `pos_always_available` into
+`untracked` are Phase 5; the `external_ims` seam and `recipe_derived` are
+Phase 9. The `external_ims` mode additionally requires the
 governance prerequisites recorded there: an ADR 0029 amendment (the recorder
 may be external), an ADR 0009 amendment (codifying the FIFO-opt-out exception
 `menu_item` already exercises), a new reservations ADR, and an

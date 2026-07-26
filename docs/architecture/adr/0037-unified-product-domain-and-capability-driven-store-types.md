@@ -490,27 +490,37 @@ catalog, and the phased roadmap live in
   add the generic RBAC preset family, build the Axis 4
   `stockBearingPolicy` descriptor resolver, fix known drift bugs in
   hand-copied mode lists and the POS catalog attribute omissions.
-- **Phase 2 — Offering archetypes + catalog:** activate `offering_types` +
-  traits as the composable axis; derive item presets from archetypes; correct
-  the `retail` taxonomy (Decision 6) and fix its placeholder-tier breakages;
-  de-gate modifiers (Decision 5, noting `sku_item_id` consumption is new work).
-  Long-tail sellers become supported here.
-- **Phase 3 — Availability & tracking modes (Decision 11, Axis 4):** persist
-  the mode; route every `current_stock` read through the resolver; ship
-  `toggle` across POS and Storefront; generalize `pos_always_available` into
-  `untracked`; make `count_ledger` the archetype default; widen report
-  tolerance. Freeze the local recipe engine (Decision 11) — it keeps working,
-  receives no further investment.
-- **Phase 4 — Business type ≠ mode:** capture a real business-type/industry tag
-  at onboarding separate from the operating mode; fix the `RegisterCompany.jsx`
-  "Business Industry" mislabel; wire up or remove the dead
-  `businessClassification.js`.
-- **Phase 5 — Composed store capabilities + capability-driven POS:** Decisions
-  2–3, mixed-basket and weight-entry UX.
-- **Phase 6 — Booking generalization + mixed fulfillment:** Decision 7.
-- **Phase 7 — External listings (shallow):** Decision 8's `external_listing`
-  tier only.
-- **Phase 8 — External IMS delegation (Decision 11's `external_ims` mode):**
+- **Phase 2 — Retail taxonomy correction (shipped):** corrected the `retail`
+  taxonomy (Decision 6) with four real presets and fixed its placeholder-tier
+  breakages. `offering_types`/traits activation did **not** ship and remains
+  unscheduled; modifier de-gating moved to Phase 5. Long-tail sellers are
+  served by the retail presets rather than by the archetype layer.
+- **Phase 3 — Report tolerance + non-schema bug fixes (shipped):** widened
+  report tolerance into the five bypassing services and fixed the
+  `cost_snapshot` and false-`has_drift` bugs. Persisting the mode, `toggle`,
+  and the `untracked` generalization did **not** ship — they need the schema
+  change and moved to Phase 5. The local recipe engine is frozen (Decision 11)
+  — it keeps working, receives no further investment.
+- **Phase 4 — Business type ≠ mode (shipped):** captured a descriptive
+  `industry_tag` separate from the operating mode and fixed the
+  `RegisterCompany.jsx` "Business Industry" mislabel.
+  `businessClassification.js` was left in place pending a product decision.
+- **Phase 5 — Finish the foundations:** make capability gating real for nav and
+  routes (the declared `requiredCapability` was never read, so production
+  modules rendered then 403'd in five modes); de-gate modifiers (Decision 5) by
+  moving the 4 modifier routes off the `/fnb` router's blanket `fnbDining` gate
+  onto `menuModifiers`, noting `sku_item_id` consumption is still new work; and
+  persist the Axis 4 tracking mode (Decision 11) — route `current_stock` reads
+  through the resolver, ship `toggle` across POS and Storefront, generalize
+  `pos_always_available` into `untracked`, make `count_ledger` the archetype
+  default.
+- **Phase 6 — Composed store capabilities + capability-driven POS:** Decisions
+  2–3, mixed-basket and weight-entry UX, and add-on selection surfaces for
+  non-F&B items.
+- **Phase 7 — Booking generalization + mixed fulfillment:** Decision 7.
+- **Phase 8 — External listings (shallow):** Decision 8's `external_listing`
+  tier only. A separate axis — discovery and display, not classification.
+- **Phase 9 — External IMS delegation (Decision 11's `external_ims` mode):**
   the stock port contract, converting the ~4 direct
   `stockCommandService`-bypassing importers to injection, the
   `inventory_authority` tenant setting, the registered compatibility seam, and
@@ -522,8 +532,8 @@ catalog, and the phased roadmap live in
 - **Deferred:** the F&B prep workflow gap (ADR 0019, `FOOD_AND_BEVERAGE_MODE.md`
   — noted, not designed here; `toggle` is the interim workaround); the `rental`
   archetype's occupancy-tracking gap; storefront `isXMode` boolean de-fanning
-  (~38 files); jewelry serialization; `adapter_booked`/`proxied` external
-  tiers.
+  (39 files / 375 occurrences as measured 2026-07-26); jewelry serialization;
+  `adapter_booked`/`proxied` external tiers.
 
 ## Validation
 
