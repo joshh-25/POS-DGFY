@@ -1,6 +1,10 @@
 import { Op, QueryTypes } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
-import { issueStockForDispatch } from '../modules/inventory/commands/stockCommandService.js';
+// Phase 9 scoping note: see the matching comment in jobOrderService.js -
+// same rationale (legacy non-factory service injected wholesale as
+// dispatchOrders' port; depend on inventory's public index.js boundary
+// rather than its internal commands/ file, instead of a full DI refactor).
+import { issueStockForDispatch } from '../modules/inventory/index.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 import { resolveMovementLocation } from './locationInventoryService.js';
 import { requireExplicitSalePrice } from '../modules/shared/utils/itemFinancialPolicy.js';

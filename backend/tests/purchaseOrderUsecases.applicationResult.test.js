@@ -88,6 +88,28 @@ describe('purchaseOrder use-cases application result contract', () => {
     expect(result.error.statusCode).toBe(400);
   });
 
+  it('receivePurchaseOrder fails closed (409, no DB transaction) when inventoryCommandService is not wired, instead of silently writing locally', async () => {
+    const getPurchaseOrderById = jest.fn();
+    const useCase = buildReceivePurchaseOrderUseCase({
+      purchaseOrderRepository: { getPurchaseOrderById }
+      // inventoryCommandService intentionally omitted - this used to
+      // default to a direct import of receivePurchasedStock from
+      // inventory/commands/stockCommandService.js, silently bypassing DI.
+    });
+
+    const result = await dbStore.run({}, () => useCase({
+      poId: 22,
+      userId: 5,
+      receiptData: { location_id: 3, line_items: [{ line_item_id: 5, quantity_received: 1 }] }
+    }));
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.CONFLICT);
+    expect(result.error.statusCode).toBe(409);
+    expect(result.error.details).toMatchObject({ reason_code: 'INVENTORY_COMMAND_PORT_UNWIRED' });
+    expect(getPurchaseOrderById).not.toHaveBeenCalled();
+  });
+
   it('receivePurchaseOrder records purchase receipt through Inventory command boundary', async () => {
     const transaction = {
       finished: false,
