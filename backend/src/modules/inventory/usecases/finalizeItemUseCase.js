@@ -1,11 +1,15 @@
 import { validateItemAgainstModeTaxonomy } from '../../shared/constants/modeItemTaxonomy.js';
 
-export const buildFinalizeItemUseCase = ({ itemRepository, resolveWorkflowMode }) => {
+export const buildFinalizeItemUseCase = ({ itemRepository, resolveWorkflowMode, resolveEnabledCapabilities = async () => [] }) => {
     return async ({ itemId, itemData, userId }) => {
-        const workflowMode = await resolveWorkflowMode();
-        const existingItem = await itemRepository.getItemById(itemId);
+        const [workflowMode, enabledCapabilities, existingItem] = await Promise.all([
+            resolveWorkflowMode(),
+            resolveEnabledCapabilities(),
+            itemRepository.getItemById(itemId)
+        ]);
         const validation = validateItemAgainstModeTaxonomy({
             workflowMode,
+            enabledCapabilities,
             itemData,
             existingItem,
             operation: 'finalize'

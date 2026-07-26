@@ -1181,7 +1181,12 @@ export default function POSCheckoutTerminal({
             line_modifiers: defaultModifiers
         };
         const linePrice = round4(defaultPrice + resolveModifierDelta(modifierLineSeed, defaultModifiers));
-        if (isServiceCatalogItem(item)) {
+        // Only default order_method to 'appointment' when this service is the
+        // very first line in an empty basket. Previously this fired on every
+        // service add regardless of what else was already in the cart, so
+        // ringing up a service alongside unrelated retail lines silently
+        // reclassified the whole mixed-basket transaction as an appointment.
+        if (isServiceCatalogItem(item) && cart.length === 0) {
             setOrderMethod('appointment');
         }
         let stockWarning = '';

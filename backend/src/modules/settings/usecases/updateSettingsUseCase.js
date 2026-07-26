@@ -5,7 +5,10 @@ import dbStore from '../../../utils/dbStore.js';
 import {
     isWorkflowMode,
     normalizeWorkflowMode,
-    WORKFLOW_MODE_VALUES
+    WORKFLOW_MODE_VALUES,
+    ALL_WORKFLOW_CAPABILITIES,
+    ENABLED_CAPABILITIES_SETTING_KEY,
+    normalizeEnabledCapabilities
 } from '../../shared/constants/workflowModes.js';
 import {
     assertComplianceOperationAllowed,
@@ -82,6 +85,31 @@ const assertWorkflowModeAuthorization = ({ settingsData, actorUser }) => {
     }
 
     settingsData[WORKFLOW_MODE_SETTING_KEY] = normalizeWorkflowMode(requestedMode);
+};
+
+const assertEnabledCapabilitiesAuthorization = ({ settingsData, actorUser }) => {
+    if (!Object.prototype.hasOwnProperty.call(settingsData, ENABLED_CAPABILITIES_SETTING_KEY)) {
+        return;
+    }
+
+    const requested = settingsData[ENABLED_CAPABILITIES_SETTING_KEY];
+    if (!Array.isArray(requested) || requested.some((entry) => !ALL_WORKFLOW_CAPABILITIES.includes(String(entry || '').trim()))) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            `ops_enabled_capabilities must be an array containing only: ${ALL_WORKFLOW_CAPABILITIES.join(', ')}`,
+            { statusCode: 422 }
+        );
+    }
+
+    if (actorUser?.is_master_admin !== true) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'Only master admin can update ops_enabled_capabilities',
+            { statusCode: 403 }
+        );
+    }
+
+    settingsData[ENABLED_CAPABILITIES_SETTING_KEY] = normalizeEnabledCapabilities(requested);
 };
 
 const getTenantComplianceSnapshot = () => {
@@ -175,6 +203,7 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository, storefrontAsset
 
             assertTenantSettingsDoNotMutatePlatformAccessCeiling({ settingsData });
             assertWorkflowModeAuthorization({ settingsData, actorUser });
+            assertEnabledCapabilitiesAuthorization({ settingsData, actorUser });
             assertPosSettingsAccessPinAuthorization({ settingsData, actorUser });
             await assertPublicStorefrontHandlePatch({ settingsData, settingsRepository });
             if (

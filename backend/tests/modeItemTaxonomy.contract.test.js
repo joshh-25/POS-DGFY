@@ -272,4 +272,89 @@ describe('mode-aware item taxonomy contract', () => {
             operation: 'update'
         })).toThrow(/does not support category/i);
     });
+
+    describe('Phase 6 composed enabled_capabilities overlay', () => {
+        it('still rejects a service item on a retail-mode tenant with no overlay (byte-identical to pre-Phase-6)', () => {
+            expect(() => validateItemAgainstModeTaxonomy({
+                workflowMode: 'retail',
+                itemData: { category: 'service', unit_of_measure: 'service' },
+                operation: 'create'
+            })).toThrow(/does not support category/i);
+        });
+
+        it('unlocks the services taxonomy on a retail-mode tenant that has enabled the services capability', () => {
+            const result = validateItemAgainstModeTaxonomy({
+                workflowMode: 'retail',
+                enabledCapabilities: ['services'],
+                itemData: { category: 'service', unit_of_measure: 'service' },
+                operation: 'create'
+            });
+            expect(result.ok).toBe(true);
+            expect(result.preset.key).toBe('service');
+            expect(result.taxonomy).toBe('retail');
+        });
+
+        it('still accepts the retail-mode tenant own presets once services is overlaid (union, not replacement)', () => {
+            expect(validateItemAgainstModeTaxonomy({
+                workflowMode: 'retail',
+                enabledCapabilities: ['services'],
+                itemData: {
+                    category: 'product',
+                    product_type: 'finished_goods',
+                    mode_item_preset: 'weighed_goods',
+                    unit_of_measure: 'kg'
+                },
+                operation: 'create'
+            }).preset.key).toBe('weighed_goods');
+        });
+
+        it('ignores an overlay capability that has no mapped taxonomy mode', () => {
+            // Neither `inventory` nor `menuModifiers` is in CAPABILITY_TAXONOMY_OVERLAY_MODES,
+            // so this must still throw exactly like the no-overlay case.
+            expect(() => validateItemAgainstModeTaxonomy({
+                workflowMode: 'retail',
+                enabledCapabilities: ['inventory', 'menuModifiers'],
+                itemData: { category: 'service', unit_of_measure: 'service' },
+                operation: 'create'
+            })).toThrow(/does not support category/i);
+        });
+
+        it('unlocks fnb presets via fnbDining and hospitality presets via hospitalityReservations', () => {
+            expect(validateItemAgainstModeTaxonomy({
+                workflowMode: 'retail',
+                enabledCapabilities: ['fnbDining'],
+                itemData: {
+                    category: 'product',
+                    product_type: 'finished_goods',
+                    mode_item_preset: 'menu_item',
+                    unit_of_measure: 'serving'
+                },
+                operation: 'create'
+            }).preset.key).toBe('menu_item');
+
+            expect(validateItemAgainstModeTaxonomy({
+                workflowMode: 'retail',
+                enabledCapabilities: ['hospitalityReservations'],
+                itemData: {
+                    category: 'service',
+                    mode_item_preset: 'room_night',
+                    unit_of_measure: 'room_night'
+                },
+                operation: 'create'
+            }).preset.key).toBe('room_night');
+        });
+
+        it('lets the base mode preset win when the overlay mode defines a colliding preset key', () => {
+            // 'supplies' exists as a preset key in both retail and services taxonomies.
+            // The base (retail) definition must be the one actually applied.
+            const result = validateItemAgainstModeTaxonomy({
+                workflowMode: 'retail',
+                enabledCapabilities: ['services'],
+                itemData: { category: 'supplies', unit_of_measure: 'pcs' },
+                operation: 'create'
+            });
+            expect(result.preset.key).toBe('supplies');
+            expect(result.taxonomy).toBe('retail');
+        });
+    });
 });

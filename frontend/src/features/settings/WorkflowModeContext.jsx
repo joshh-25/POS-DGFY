@@ -2,8 +2,11 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { getAllSettings } from '@/services/settingsService.js';
 import {
   DEFAULT_WORKFLOW_MODE,
+  ENABLED_CAPABILITIES_SETTING_KEY,
   WORKFLOW_MODE_CHANGED_EVENT,
   WORKFLOW_MODE_SETTING_KEY,
+  modeHasCapability,
+  normalizeEnabledCapabilities,
   normalizeWorkflowMode
 } from './workflowMode.js';
 import { getAccessToken, refreshBrowserSession } from '@/services/browserSession.js';
@@ -13,6 +16,10 @@ const WorkflowModeContext = createContext(null);
 
 const extractWorkflowModeFromSettings = (settings) => (
   normalizeWorkflowMode(settings?.[WORKFLOW_MODE_SETTING_KEY]?.value)
+);
+
+const extractEnabledCapabilitiesFromSettings = (settings) => (
+  normalizeEnabledCapabilities(settings?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value)
 );
 
 export const broadcastWorkflowModeChange = ({ mode, source = 'settings' } = {}) => {
@@ -28,6 +35,7 @@ export const broadcastWorkflowModeChange = ({ mode, source = 'settings' } = {}) 
 
 export function WorkflowModeProvider({ children }) {
   const [workflowMode, setWorkflowMode] = useState(DEFAULT_WORKFLOW_MODE);
+  const [enabledCapabilities, setEnabledCapabilities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [resolved, setResolved] = useState(false);
   const [error, setError] = useState(null);
@@ -37,6 +45,7 @@ export function WorkflowModeProvider({ children }) {
   const refreshWorkflowMode = useCallback(async ({ force = false } = {}) => {
     if (!shouldRefreshBrowserSessionForPath(window.location.pathname)) {
       setWorkflowMode(DEFAULT_WORKFLOW_MODE);
+      setEnabledCapabilities([]);
       setResolved(true);
       setError(null);
       setLoading(false);
@@ -46,6 +55,7 @@ export function WorkflowModeProvider({ children }) {
     const token = getAccessToken() || await refreshBrowserSession().catch(() => '');
     if (!token) {
       setWorkflowMode(DEFAULT_WORKFLOW_MODE);
+      setEnabledCapabilities([]);
       setResolved(true);
       setError(null);
       setLoading(false);
@@ -60,10 +70,12 @@ export function WorkflowModeProvider({ children }) {
       const settings = await getAllSettings({ force });
       const nextMode = extractWorkflowModeFromSettings(settings);
       setWorkflowMode(nextMode);
+      setEnabledCapabilities(extractEnabledCapabilitiesFromSettings(settings));
       setResolved(true);
       return nextMode;
     } catch (refreshError) {
       setWorkflowMode(DEFAULT_WORKFLOW_MODE);
+      setEnabledCapabilities([]);
       setResolved(false);
       setError(refreshError);
       return DEFAULT_WORKFLOW_MODE;
@@ -90,6 +102,7 @@ export function WorkflowModeProvider({ children }) {
     };
     const handleAuthLogout = () => {
       setWorkflowMode(DEFAULT_WORKFLOW_MODE);
+      setEnabledCapabilities([]);
       setResolved(false);
       setError(null);
       setModeChangeNotice(null);
@@ -121,15 +134,21 @@ export function WorkflowModeProvider({ children }) {
     };
   }, [refreshWorkflowMode]);
 
+  const hasCapability = useCallback((capability) => (
+    modeHasCapability(workflowMode, capability, enabledCapabilities)
+  ), [enabledCapabilities, workflowMode]);
+
   const value = useMemo(() => ({
     workflowMode,
+    enabledCapabilities,
+    hasCapability,
     loading,
     resolved,
     error,
     modeChangeNotice,
     refreshWorkflowMode,
     dismissModeChangeNotice
-  }), [dismissModeChangeNotice, error, loading, modeChangeNotice, refreshWorkflowMode, resolved, workflowMode]);
+  }), [dismissModeChangeNotice, enabledCapabilities, error, hasCapability, loading, modeChangeNotice, refreshWorkflowMode, resolved, workflowMode]);
 
   return (
     <WorkflowModeContext.Provider value={value}>

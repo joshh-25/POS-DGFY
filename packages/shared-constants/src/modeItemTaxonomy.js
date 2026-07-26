@@ -1,5 +1,5 @@
 import { normalizeUom, getUomGroup } from './uomConverter.js';
-import { normalizeWorkflowMode } from './workflowModes.js';
+import { normalizeWorkflowMode, normalizeEnabledCapabilities } from './workflowModes.js';
 
 export const CORRECTED_ITEM_TAXONOMY_MODES = Object.freeze([
     'food_manufacturing',
@@ -161,6 +161,58 @@ export const resolveModeItemTaxonomy = (workflowMode) => (
 );
 
 export const isCorrectedItemTaxonomyMode = (workflowMode) => Boolean(resolveModeItemTaxonomy(workflowMode));
+
+// Capabilities that, when granted via the Phase 6 enabled_capabilities overlay
+// on a tenant whose base mode is something else, additionally unlock that
+// taxonomy mode's item presets - e.g. a retail-mode repair shop that enables
+// the `services` capability can now also create `category: 'service'` items,
+// without switching its base ops_workflow_mode away from `retail`. Only modes
+// with a distinctive, already-enforced (or at least meaningfully named)
+// capability are mapped; `retail`/`msme` have no such capability (their
+// presets are reachable via the base `catalog`/`inventory` grants every mode
+// already has) and are deliberately absent here.
+export const CAPABILITY_TAXONOMY_OVERLAY_MODES = Object.freeze({
+    services: 'services',
+    fnbDining: 'fnb',
+    hospitalityReservations: 'hospitality',
+    foodManufacturing: 'food_manufacturing'
+});
+
+// The effective item taxonomy for a tenant: its base mode's presets, unioned
+// with the presets of any other taxonomy mode unlocked by the tenant's
+// enabled_capabilities overlay (see CAPABILITY_TAXONOMY_OVERLAY_MODES). A
+// preset key already present in the base config is never duplicated from an
+// overlay mode, so the base mode's own preset always wins on key collision.
+// With no overlay capabilities, this is byte-identical to
+// resolveModeItemTaxonomy - existing single-mode tenants are unaffected.
+export const resolveEffectiveItemTaxonomy = (workflowMode, enabledCapabilities = []) => {
+    const baseConfig = resolveModeItemTaxonomy(workflowMode);
+    if (!baseConfig) return null;
+
+    const overlayTaxonomyModes = new Set();
+    normalizeEnabledCapabilities(enabledCapabilities).forEach((capability) => {
+        const taxonomyMode = CAPABILITY_TAXONOMY_OVERLAY_MODES[capability];
+        if (taxonomyMode && taxonomyMode !== baseConfig.mode) {
+            overlayTaxonomyModes.add(taxonomyMode);
+        }
+    });
+    if (overlayTaxonomyModes.size === 0) return baseConfig;
+
+    const basePresetKeys = new Set(baseConfig.presets.map((entry) => entry.key));
+    const overlayPresets = [...overlayTaxonomyModes].flatMap((modeKey) => {
+        const overlayConfig = MODE_ITEM_TAXONOMY[modeKey];
+        if (!overlayConfig) return [];
+        return overlayConfig.presets.filter((entry) => !basePresetKeys.has(entry.key));
+    });
+    if (overlayPresets.length === 0) return baseConfig;
+
+    const mergedPresets = Object.freeze([...baseConfig.presets, ...overlayPresets]);
+    return Object.freeze({
+        ...baseConfig,
+        presets: mergedPresets,
+        allowed_categories: Object.freeze([...new Set(mergedPresets.map((entry) => entry.category))])
+    });
+};
 
 export const getDefaultItemPreset = (workflowMode) => {
     const taxonomyConfig = resolveModeItemTaxonomy(workflowMode);

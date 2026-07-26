@@ -1,5 +1,5 @@
 import Joi from 'joi';
-import { WORKFLOW_MODE_VALUES } from '../modules/shared/constants/workflowModes.js';
+import { WORKFLOW_MODE_VALUES, ALL_WORKFLOW_CAPABILITIES } from '../modules/shared/constants/workflowModes.js';
 import {
   CUSTOMER_ACCESS_MODES,
   INVENTORY_DISPLAY_MODES
@@ -389,6 +389,15 @@ const posBestSellerSettingsSchema = Joi.object({
   daily_top_enabled: Joi.boolean().default(false)
 }).default({ enabled: true, lookback_days: 30, top_limit: 3, daily_top_enabled: false });
 
+// Phase 6 composed-capability overlay: capabilities the master admin has
+// additionally granted on top of the tenant's base ops_workflow_mode.
+const enabledCapabilitiesSchema = Joi.array()
+  .items(Joi.string().trim().valid(...ALL_WORKFLOW_CAPABILITIES))
+  .max(ALL_WORKFLOW_CAPABILITIES.length)
+  .messages({
+    'any.only': `Enabled capabilities must be one of: ${ALL_WORKFLOW_CAPABILITIES.join(', ')}`
+  });
+
 // Schema for updating system settings
 export const updateSettingsSchema = Joi.object({
   low_stock_threshold: Joi.number().min(0).optional(),
@@ -481,7 +490,8 @@ export const updateSettingsSchema = Joi.object({
   pos_wait_time_minutes: Joi.number().integer().min(0).max(720).optional(),
   ops_workflow_mode: Joi.string().trim().lowercase().valid(...WORKFLOW_MODE_VALUES).optional().messages({
     'any.only': `Workflow mode must be one of: ${WORKFLOW_MODE_VALUES.join(', ')}`
-  })
+  }),
+  ops_enabled_capabilities: enabledCapabilitiesSchema.optional()
 }).min(1).messages({
   'object.min': 'At least one setting must be provided'
 });
@@ -638,7 +648,8 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     pos_wait_time_minutes: Joi.number().integer().min(0).max(720),
     ops_workflow_mode: Joi.string().trim().lowercase().valid(...WORKFLOW_MODE_VALUES).messages({
       'any.only': `Workflow mode must be one of: ${WORKFLOW_MODE_VALUES.join(', ')}`
-    })
+    }),
+    ops_enabled_capabilities: enabledCapabilitiesSchema
   };
 
   if (settingKey === 'pos_order_method_fees' && value?.value && typeof value.value === 'object' && !Array.isArray(value.value)) {

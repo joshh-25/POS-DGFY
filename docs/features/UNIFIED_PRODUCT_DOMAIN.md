@@ -645,12 +645,45 @@ constants are duplicated, unknown modes coerce to `food_manufacturing`, and
     `stockBearingPolicy.js`, `Item.js` (new column), `posUseCases.js`,
     `storeUseCases.js`/`storeRepository.js`.
 - **Phase 6 — Composed store capabilities + capability-driven POS**
-  (Capability A): an additive `enabled_capabilities` overlay + master-admin
-  gate, capability-driven `order_method` and panels, mixed-basket UX, POS
-  weight entry, and the storefront/POS surfaces for selecting add-ons on
-  non-F&B items. Depends on Phase 2 presets and Phase 5 gating.
-  - Representative: `backend/src/modules/settings/`, `POSCheckoutTerminal.jsx`,
-    `PosPageShell.jsx`, `frontend/apps/pos/`.
+  (Capability A). Ships as two PRs; POS weight entry (6c) turned out to be a
+  genuine UI build rather than a tweak, so it stays separate.
+  - **6a+6b — Composed capability model + capability-driven POS (shipped).**
+    Added `ops_enabled_capabilities`, a per-tenant setting mirroring
+    `ops_workflow_mode`'s own storage/authorization shape (master-admin gated,
+    validated against a closed capability vocabulary) that lets a tenant
+    additively opt into capabilities beyond its base mode — a `retail`-mode
+    repair shop can enable `services` and sell parts and labor on one receipt.
+    `modeHasCapability`, `resolveEffectiveCapabilities`, and item-taxonomy
+    validation all gained an optional overlay parameter that every pre-Phase-6
+    call site continues to omit, so single-mode tenants are byte-identical to
+    before. `requireWorkflowCapability` now reads through a new short-TTL
+    (15s), tenant-scoped cache instead of an uncached `SystemSetting.findOne`
+    per request. `PosPageShell.jsx`'s three vertical panels (Services queue,
+    Hospitality front desk, F&B dining) now render on the tenant's *effective*
+    capability set rather than a single mutually-exclusive `isXWorkflowMode`
+    check, so a composed tenant sees every panel it's entitled to. Also fixed
+    the mixed-basket `order_method` bug: adding a service line used to
+    unconditionally force `order_method` to `'appointment'` on every add,
+    silently reclassifying an in-progress mixed basket; it now only defaults
+    when the service is the first line in an otherwise-empty cart.
+    **Deliberately not done this sub-phase:** enforcing or deleting the 15 of
+    21 declared capabilities that are still dead (no guard reads them) — that
+    is a per-capability product decision, not a mechanical follow-on to the
+    overlay mechanism; unifying the two POS shells (the admin `/pos` route's
+    `PosPageShell` vs. the standalone `frontend/apps/pos` terminal, which has
+    no vertical panel at all) — flagged as its own decision, not attempted
+    unsupervised; and surfacing `stock_effect_type`/UOM on POS cart lines,
+    which remains entirely absent from the frontend.
+  - **6c — POS weight entry (not started).** Manual decimal quantity entry for
+    the `weighed_goods` preset. The backend is already decimal-capable
+    (`quantity` is `DECIMAL(24,12)`); every manual POS entry path is
+    integer-only today (regex strips the decimal point, `Math.floor` on
+    commit).
+  - Representative: `backend/src/modules/settings/`,
+    `backend/src/middleware/workflowModeCapability.js`,
+    `packages/shared-constants/src/workflowModes.js`,
+    `packages/shared-constants/src/modeItemTaxonomy.js`,
+    `POSCheckoutTerminal.jsx`, `PosPageShell.jsx`, `frontend/apps/pos/`.
 - **Phase 7 — Booking generalization + mixed fulfillment** (Capability D):
   generalized service presentation, booking→sale settlement, parts-on-booking.
   Builds on Services Mode + Phase 6 mixed basket.

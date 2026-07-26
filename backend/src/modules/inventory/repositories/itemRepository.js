@@ -12,7 +12,9 @@ import { assertItemRepositoryContract } from '../contracts/itemRepository.contra
 import {
     DEFAULT_WORKFLOW_MODE,
     normalizeWorkflowMode,
-    resolveWorkflowModeFamily
+    resolveWorkflowModeFamily,
+    ENABLED_CAPABILITIES_SETTING_KEY,
+    normalizeEnabledCapabilities
 } from '../../shared/constants/workflowModes.js';
 import { resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
 import {
@@ -221,6 +223,18 @@ export const resolveCachedWorkflowMode = async () => {
     const settings = await getCachedSettingsForTenant();
     const configuredMode = settings?.[WORKFLOW_MODE_SETTING_KEY]?.value;
     return normalizeWorkflowMode(configuredMode ?? DEFAULT_WORKFLOW_MODE);
+};
+
+/**
+ * Resolve the tenant's enabled_capabilities overlay using the same
+ * tenant-scoped settings cache as resolveCachedWorkflowMode (5-minute TTL,
+ * no extra query - it's the same cached settings object). Exported for use
+ * by the inventory module composition root so item-taxonomy validation can
+ * honor capabilities composed onto the base workflow mode.
+ */
+export const resolveCachedEnabledCapabilities = async () => {
+    const settings = await getCachedSettingsForTenant();
+    return normalizeEnabledCapabilities(settings?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value);
 };
 
 const calculateThresholds = async (maxCapacity) => {
