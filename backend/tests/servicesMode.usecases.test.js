@@ -157,6 +157,46 @@ describe('Services Mode use cases', () => {
         expect(result.data.booking.intake_responses).toEqual({ concern: 'Synthetic QA' });
     });
 
+    it('never exposes the linked POS transaction on the public booking lookup (IDOR regression)', async () => {
+        // Regression test: pos_transaction_id / pos_transaction (invoice_number, tracking_pin,
+        // total_amount, ...) must stay internal-only. An unauthenticated caller who guesses or
+        // replays a public_reference must not be able to read another transaction's details back.
+        const useCase = buildGetServiceBookingByReferenceUseCase({
+            serviceRepository: {
+                getBookingByReference: jest.fn(async () => ({
+                    booking_id: 1,
+                    public_reference: 'SV-ABC123',
+                    service_item_id: 10,
+                    serviceItem: serviceItem,
+                    customer_name: 'Private Customer',
+                    customer_email: 'private@example.com',
+                    customer_phone: '09999999999',
+                    start_at: new Date('2026-06-01T09:00:00Z'),
+                    end_at: new Date('2026-06-01T10:00:00Z'),
+                    status: 'requested',
+                    payment_timing: 'postpaid',
+                    payment_status: 'unpaid',
+                    pos_transaction_id: 4242,
+                    posTransaction: {
+                        pos_transaction_id: 4242,
+                        invoice_number: 'INV-2026-004242',
+                        tracking_pin: 'TRACK-SECRET',
+                        payment_type: 'cash',
+                        total_amount: 5000,
+                        document_type: 'invoice',
+                        document_context: {}
+                    }
+                }))
+            }
+        });
+
+        const result = await useCase({ publicReference: 'SV-ABC123' });
+
+        expect(result.success).toBe(true);
+        expect(result.data.booking.pos_transaction_id).toBeUndefined();
+        expect(result.data.booking.pos_transaction).toBeUndefined();
+    });
+
     it('returns dashboard metrics with the same keys consumed by IMS', async () => {
         const useCase = buildServiceDashboardUseCase({
             serviceRepository: {
