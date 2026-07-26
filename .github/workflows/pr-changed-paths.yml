@@ -54,7 +54,15 @@ jobs:
           MERGE_BASE="$(git merge-base HEAD "origin/${BASE_REF}")"
           FILES="$(git diff --name-only "${MERGE_BASE}" HEAD)"
 
-          matches() { printf '%s\n' "${FILES}" | grep -qE "$1"; }
+          # Here-string, not `printf ... | grep -q`: grep -q exits the instant it
+          # finds a match, and under `pipefail` a piped writer that gets SIGPIPE'd
+          # by that early exit turns a genuine match into a false negative. Every
+          # filter below includes .github/workflows/, which sorts near the top of
+          # `git diff --name-only`'s output, so this fired on nearly every PR that
+          # touched a workflow file -- silently skipping build checks that should
+          # have run. A here-string has bash write FILES into an fd before grep
+          # ever starts, so there's no writer left to race an early-closing reader.
+          matches() { grep -qE "$1" <<< "${FILES}"; }
 
           # .github/workflows/ is in ALL THREE filters on purpose: a change to
           # the build workflows or to this filter itself must still exercise
