@@ -26,7 +26,9 @@ jobs:
           buildkitd-config-inline: |
             [worker.oci]
               gc = true
-              gckeepstorage = "20GB"
+              # Lowered from 20GB to 8GB — see pr-frontend-build-checks.yml for why
+              # (these runners' ~39GB root disks started filling up, 2026-07-26).
+              gckeepstorage = "8GB"
 
       # Same build as deploy-backend.yml, minus the push -- just proves the
       # image builds cleanly off this PR's code. No cache-from/cache-to: the
