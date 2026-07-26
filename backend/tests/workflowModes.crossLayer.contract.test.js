@@ -55,6 +55,18 @@ describe('workflow mode cross-layer contracts', () => {
         });
     });
 
+    it('resolves an empty/missing mode to the platform default but an unrecognized mode string to the neutral fallback', () => {
+        ['', null, undefined].forEach((input) => {
+            expect(normalizeBackendWorkflowMode(input)).toBe(backendDefaultMode);
+            expect(normalizeFrontendWorkflowMode(input)).toBe(frontendDefaultMode);
+        });
+
+        ['UNKNOWN', 'decommissioned-mode', 'typo_mnaufacturing'].forEach((input) => {
+            expect(normalizeBackendWorkflowMode(input)).toBe('msme');
+            expect(normalizeFrontendWorkflowMode(input)).toBe('msme');
+        });
+    });
+
     it('normalizes legacy manufacturing to food manufacturing and isolates services capabilities', () => {
         expect(normalizeBackendWorkflowMode('manufacturing')).toBe('food_manufacturing');
         expect(normalizeFrontendWorkflowMode('manufacturing')).toBe('food_manufacturing');

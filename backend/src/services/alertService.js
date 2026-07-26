@@ -1,6 +1,7 @@
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
+import { buildStockBearingItemWhere } from '../modules/shared/utils/stockBearingPolicy.js';
 
 /**
  * Helper to get a setting value with a default fallback
@@ -34,7 +35,7 @@ export const getLowStockAlerts = async () => {
   const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
   const lowStockItems = await Item.findAll({
-    where: buildVisibleWhere({
+    where: buildStockBearingItemWhere(buildVisibleWhere({
       status: 'active',
       min_threshold: { [Op.ne]: null },
       [Op.and]: [
@@ -44,7 +45,7 @@ export const getLowStockAlerts = async () => {
           sequelize.col('min_threshold')
         )
       ]
-    })
+    }))
   });
 
   return lowStockItems.map(item => ({

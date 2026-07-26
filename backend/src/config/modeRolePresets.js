@@ -125,6 +125,64 @@ const MODE_ROLE_PRESETS = Object.freeze({
       ]
     })
   ],
+  // Tier 2/3 modes with no bespoke RBAC contract yet (retail, healthcare,
+  // ticketing_transport, logistics_distribution, education_institutions)
+  // resolve here instead of silently borrowing food_manufacturing's
+  // production-flavored role catalog. Deliberately mirrors msme's shape
+  // (the platform's other vertical-agnostic tier) but kept as its own
+  // catalog identity so a mode's role_preset_mode reads "generic", not
+  // "msme", and so msme's own evolution doesn't drag these modes along.
+  generic: [
+    adminPreset('generic_admin', 'Owner / Admin', 'generic'),
+    preset({
+      key: 'generic_manager',
+      label: 'Manager',
+      mode: 'generic',
+      role: 'manager',
+      rank: 6,
+      locationScope: 'tenant',
+      permissions: [
+        ...shared.inventoryManage,
+        ...shared.posCashier,
+        PERMISSIONS.POS.actions.PRICE_OVERRIDE_POS,
+        PERMISSIONS.REPORTS.actions.VIEW_REPORTS,
+        PERMISSIONS.REPORTS.actions.EXPORT_REPORTS,
+        ...shared.systemView
+      ]
+    }),
+    preset({
+      key: 'generic_cashier',
+      label: 'Cashier',
+      mode: 'generic',
+      role: 'cashier',
+      rank: 4,
+      permissions: DEFAULT_ROLE_PERMISSIONS.cashier
+    }),
+    preset({
+      key: 'generic_inventory_clerk',
+      label: 'Inventory Clerk',
+      mode: 'generic',
+      role: 'staff',
+      rank: 3,
+      permissions: [
+        ...shared.inventoryView,
+        PERMISSIONS.INVENTORY.actions.CREATE_ITEMS,
+        PERMISSIONS.INVENTORY.actions.EDIT_ITEMS,
+        PERMISSIONS.STOCK.actions.CREATE_ADJUSTMENT
+      ]
+    }),
+    preset({
+      key: 'generic_viewer',
+      label: 'Viewer',
+      mode: 'generic',
+      role: 'staff',
+      rank: 3,
+      permissions: [
+        ...shared.inventoryView,
+        ...shared.reportsView
+      ]
+    })
+  ],
   food_manufacturing: [
     adminPreset('food_manufacturing_admin', 'Food Manufacturing Admin', 'food_manufacturing'),
     preset({
@@ -569,6 +627,7 @@ const MODE_ROLE_PRESETS = Object.freeze({
 
 const PERMISSION_GROUP_VISIBILITY = Object.freeze({
   msme: ['INVENTORY', 'SUPPLIERS', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM'],
+  generic: ['INVENTORY', 'SUPPLIERS', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM'],
   food_manufacturing: ['INVENTORY', 'SUPPLIERS', 'ORDERS', 'DISPATCH', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM'],
   services: ['INVENTORY', 'SUPPLIERS', 'SERVICES', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM'],
   fnb: ['INVENTORY', 'SUPPLIERS', 'FNB', 'POS', 'STOCK', 'REPORTS', 'AI', 'SYSTEM'],
@@ -580,7 +639,7 @@ export const ROLE_CATALOG_VERSION = '2026-05-19.mode-aware-rbac-v2';
 export const getRoleCatalogMode = (mode) => {
   const normalized = normalizeWorkflowMode(mode || DEFAULT_WORKFLOW_MODE);
   const family = resolveWorkflowModeFamily(normalized);
-  return MODE_ROLE_PRESETS[family] ? family : 'food_manufacturing';
+  return MODE_ROLE_PRESETS[family] ? family : 'generic';
 };
 
 export const getRolePresetsForMode = (mode) => MODE_ROLE_PRESETS[getRoleCatalogMode(mode)].map((entry) => ({
@@ -607,7 +666,7 @@ export const getModeRolePreset = (rolePresetKey, mode = null, { allowAnyMode = f
 
 export const buildPermissionGroupsForMode = (mode) => {
   const modeKey = getRoleCatalogMode(mode);
-  const groupKeys = PERMISSION_GROUP_VISIBILITY[modeKey] || PERMISSION_GROUP_VISIBILITY.food_manufacturing;
+  const groupKeys = PERMISSION_GROUP_VISIBILITY[modeKey] || PERMISSION_GROUP_VISIBILITY.generic;
   return groupKeys.map((groupKey) => ({
     key: groupKey,
     label: PERMISSIONS[groupKey].label,

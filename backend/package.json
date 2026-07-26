@@ -93,6 +93,7 @@
   "license": "ISC",
   "dependencies": {
     "@sentry/node": "^10.63.0",
+    "@sieitzz/shared-constants": "file:../packages/shared-constants",
     "archiver": "^7.0.1",
     "axios": "^1.16.1",
     "bcryptjs": "^2.4.3",

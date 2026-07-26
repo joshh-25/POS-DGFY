@@ -9,6 +9,7 @@ import { getAllSettingsUseCase } from '../modules/settings/index.js';
 import { unwrapApplicationResultOrThrow } from '../modules/shared/contracts/applicationResultHelpers.js';
 import {
     DEFAULT_WORKFLOW_MODE,
+    WORKFLOW_MODE_LABELS,
     normalizeWorkflowMode,
     resolveWorkflowModeFamily,
     resolveWorkflowTemplateMode
@@ -1552,16 +1553,9 @@ export const resolveRequestedTemplateWorkflowMode = ({ workflowMode, templateTyp
     return 'food_manufacturing';
 };
 
-const getTemplateCompatibilityNote = (workflowMode) => {
-    const labels = {
-        food_manufacturing: 'Food Manufacturing',
-        msme: 'Simple (MSME)',
-        services: 'Services',
-        fnb: 'Food & Beverage',
-        hospitality: 'Hospitality'
-    };
-    return `This CSV template is for ${labels[workflowMode] || workflowMode} mode only. It will be rejected for incompatible tenant modes.`;
-};
+export const getTemplateCompatibilityNote = (workflowMode) => (
+    `This CSV template is for ${WORKFLOW_MODE_LABELS[workflowMode] || workflowMode} mode only. It will be rejected for incompatible tenant modes.`
+);
 
 const appendTemplateMarkersToRows = (rows, workflowMode) => {
     const note = getTemplateCompatibilityNote(workflowMode);
@@ -1625,6 +1619,18 @@ export const getTemplateDefinition = ({ workflowMode, templateType } = {}) => {
             sampleRows: appendTemplateMarkersToRows([
                 ['HOSP-ROOM-001', 'Deluxe Queen Room Night', 'service', '', 'room_night', 'vatable', 'Capacity-backed room night for direct booking', 'Rooms', '1', '0', '0', '0', 'room_night', '0.00', '4200.00', 'FALSE', '', '', '', '', '', 'Includes accommodation only', '', '', '', '', '', '', '', 'HOSP-ROOM-001-QR', 'tenant_generated', 'storefront_qr', 'unit', '1', ''],
                 ['HOSP-MINI-001', 'Minibar Bottled Water', 'product', 'finished_goods', 'minibar_retail_product', 'vatable', 'Stock-bearing minibar retail item', 'Minibar', '180', '24', '24', '12', 'bottle', '18.00', '55.00', 'TRUE', '365', '', '', '', '', 'Store at room temperature', '', '', '', '', '', '', '', 'HOSP-MINI-001-CASE', 'supplier', 'package', 'case', '24', '']
+            ], resolvedWorkflowMode)
+        };
+    }
+
+    if (resolvedWorkflowMode === 'retail') {
+        return {
+            workflowMode: resolvedWorkflowMode,
+            filename: 'retail_items_import_template.csv',
+            headers: [...MSME_TEMPLATE_HEADERS],
+            sampleRows: appendTemplateMarkersToRows([
+                ['RTL-001', 'Assorted Chips Pack', 'product', 'finished_goods', 'general_merchandise', 'vatable', 'Snack pack for retail shelf', '300', '120', '40', '20', 'pcs', '12.00', '20.00', 'TRUE', '180', '', '', '', '', 'plastic', '', '1 pack', '', 'RTL-001-UNIT', 'tenant_generated', 'inventory', 'unit', '1', ''],
+                ['RTL-002', 'Fresh Pork Belly (per kg)', 'product', 'finished_goods', 'weighed_goods', 'vatable', 'Sold by weight at the meat counter', '100', '35', '10', '5', 'kg', '220.00', '320.00', 'TRUE', '3', '', '', '', '', '', '', '', '', 'RTL-002-SCALE', 'tenant_generated', 'inventory', 'unit', '1', '']
             ], resolvedWorkflowMode)
         };
     }

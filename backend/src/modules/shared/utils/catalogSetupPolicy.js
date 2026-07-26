@@ -204,6 +204,9 @@ const resolveSellableCandidate = ({ item = {}, workflowMode = DEFAULT_WORKFLOW_M
     if (mode === 'fnb') {
         return ['menu_item', 'packaged_beverage'].includes(preset) || isFinishedGoodsProduct(item);
     }
+    if (mode === 'retail') {
+        return ['general_merchandise', 'weighed_goods', 'refill_product', 'supplies'].includes(preset) || isFinishedGoodsProduct(item);
+    }
     return isFinishedGoodsProduct(item);
 };
 

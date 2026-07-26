@@ -22,8 +22,7 @@ import resolveAssetUrl from '@/src/utils/assetUrl.js';
 import UserInvitationModal from '@/Components/users/UserInvitationModal.jsx';
 import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '../utils/terminalIdentity.js';
 import { POS_TERMINAL_SETUP_ORDER, POS_TERMINAL_SETUP_STEPS } from '../utils/setupFlow.js';
-import { resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
-import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
+import { filterCustomerFacingPresets, resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
 
 const MapPinPicker = React.lazy(() => import('@/src/components/maps/MapPinPicker.jsx'));
 
@@ -108,13 +107,6 @@ const resolvePrimaryLocation = (locations = []) => {
   return activeLocations.find((location) => location?.is_primary_storefront === true) || activeLocations[0] || null;
 };
 
-const ONBOARDING_CUSTOMER_FACING_PRESETS = Object.freeze({
-  food_manufacturing: ['finished_product'],
-  msme: ['product'],
-  services: ['service', 'physical_add_on'],
-  fnb: ['menu_item']
-});
-
 const fallbackStarterPreset = Object.freeze({
   key: 'product',
   label: 'Product Item'
@@ -125,9 +117,7 @@ const resolveStarterPresetOptions = (workflowMode = '') => {
   const presets = Array.isArray(taxonomy?.presets) && taxonomy.presets.length > 0
     ? taxonomy.presets
     : [fallbackStarterPreset];
-  const preferredKeys = ONBOARDING_CUSTOMER_FACING_PRESETS[normalizeWorkflowMode(workflowMode)] || [];
-  const preferredPresets = presets.filter((preset) => preferredKeys.includes(preset.key));
-  return preferredPresets.length > 0 ? preferredPresets : presets;
+  return filterCustomerFacingPresets(workflowMode, presets);
 };
 
 export default function PosTenantSetupModal({

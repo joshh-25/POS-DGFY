@@ -1,6 +1,7 @@
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
+import { buildStockBearingItemWhere } from '../modules/shared/utils/stockBearingPolicy.js';
 
 /**
  * Analytics Service
@@ -143,7 +144,9 @@ export const getReorderRecommendations = async (category = null) => {
     if (category) where.category = category;
 
     const items = await Item.findAll({
-        where,
+        // Services carry no stock to reorder, so they're excluded up front rather
+        // than relying on calculateReorderPoint's per-item burn-rate math to no-op.
+        where: buildStockBearingItemWhere(where),
         attributes: ['item_id']
     });
 
@@ -183,9 +186,10 @@ export const detectAnomalies = async (options = {}) => {
     if (category) where.category = category;
     if (itemId) where.item_id = itemId;
 
-    // 1. Fetch relevant items
+    // 1. Fetch relevant items (stock-bearing only — a service has no current_stock
+    // to compute a loss-percentage-of-stock anomaly against)
     const items = await Item.findAll({
-        where,
+        where: buildStockBearingItemWhere(where),
         attributes: ['item_id', 'sku_code', 'name', 'current_stock', 'cost_per_unit']
     });
 
