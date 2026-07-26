@@ -12,7 +12,7 @@
  */
 import fs from 'fs/promises';
 import { previewItemsImportUseCase, confirmItemsImportUseCase } from '../modules/csv/index.js';
-import { extractMenuCsvFromPdf, MenuExtractionError } from '../services/menuExtractionService.js';
+import { extractMenuCsvFromFile, MenuExtractionError } from '../services/menuExtractionService.js';
 import { sendUseCaseResult } from '../modules/shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../services/productUsageTelemetryService.js';
 import logger from '../config/logger.js';
@@ -44,17 +44,17 @@ export const previewPdfImport = async (req, res) => {
         if (!req.file) {
             return res.status(400).json({
                 success: false,
-                message: 'No PDF file provided. Upload a file under the "file" field.'
+                message: 'No file provided. Upload a PDF, PNG, or JPG under the "file" field.'
             });
         }
 
-        const pdfBuffer = req.file.path
+        const fileBuffer = req.file.path
             ? await fs.readFile(req.file.path)
             : req.file.buffer;
 
         let extraction;
         try {
-            extraction = await extractMenuCsvFromPdf(pdfBuffer, req.user);
+            extraction = await extractMenuCsvFromFile(fileBuffer, req.file.mimetype, req.user);
         } catch (error) {
             if (error instanceof MenuExtractionError) {
                 return res.status(422).json({

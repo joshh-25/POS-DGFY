@@ -32,7 +32,8 @@ import {
   storefrontCatalogBulkImageUpload,
   storefrontCatalogGalleryImageUpload,
   storefrontCatalogImageUpload,
-  upload
+  upload,
+  menuImportFileUpload
 } from '../config/uploadConfig.js';
 
 const router = express.Router();
@@ -49,9 +50,9 @@ router.get('/import/template', checkPermission(PERMISSIONS.INVENTORY.actions.IMP
 router.post('/import/preview', checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS), csvImportController.previewImport);
 router.post('/import/confirm', checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS), csvImportController.confirmImport);
 
-// PDF Menu Import routes - quick/temporary feature, env-gated (MENU_IMPORT_ENABLED,
-// default OFF). 404s when disabled/unconfigured rather than exposing a dead endpoint.
-// Must be before :item_id routes to avoid conflicts.
+// Menu Import routes (PDF or PNG/JPG photo) - quick/temporary feature, env-gated
+// (MENU_IMPORT_ENABLED, default OFF). 404s when disabled/unconfigured rather than
+// exposing a dead endpoint. Must be before :item_id routes to avoid conflicts.
 const requireMenuImportEnabled = (req, res, next) => {
   const { configured, missing } = requireMenuImportConfig();
   if (!configured) {
@@ -68,7 +69,7 @@ router.post(
   '/import/pdf/preview',
   requireMenuImportEnabled,
   checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS),
-  upload.single('file'),
+  menuImportFileUpload.single('file'),
   menuImportController.previewPdfImport
 );
 router.post(

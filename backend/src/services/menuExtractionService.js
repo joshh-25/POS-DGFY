@@ -128,6 +128,57 @@ Rules:
  * @param {Object} user - { user_id, tenant_id } for usage logging (best-effort)
  * @returns {Promise<Array<{name: string, price: number, section: string|null, description: string|null}>>}
  */
+/**
+ * Logs OpenAI token usage/cost for a completion response (best-effort, never
+ * throws) and maps its parsed {"items":[...]} content into the extraction
+ * result shape, applying the same validation/truncation rules regardless of
+ * whether the source document was PDF text or an image.
+ * @param {Object} response - OpenAI chat.completions.create() response
+ * @param {Object} user - { user_id, tenant_id } for usage logging (best-effort)
+ * @returns {Promise<Array<{name: string, price: number, section: string|null, description: string|null}>>}
+ */
+const mapExtractionResponseToItems = async (response, user) => {
+    if (response.usage) {
+        try {
+            const rate = MODEL === 'gpt-4o-mini' ? { input: 0.150 / 1000000, output: 0.600 / 1000000 } : { input: 5.00 / 1000000, output: 15.00 / 1000000 };
+            const cost = (response.usage.prompt_tokens || 0) * rate.input + (response.usage.completion_tokens || 0) * rate.output;
+            await AiUsageLog.create({
+                tenant_id: user?.tenant_id,
+                user_id: user?.user_id,
+                model: response.model,
+                input_tokens: response.usage.prompt_tokens || 0,
+                output_tokens: response.usage.completion_tokens || 0,
+                cost_usd: cost.toFixed(6)
+            });
+        } catch (usageError) {
+            logger.warn('Menu extraction: failed to log AI usage', usageError.message);
+        }
+    }
+
+    let parsed;
+    try {
+        parsed = JSON.parse(response.choices?.[0]?.message?.content || '{}');
+    } catch (parseError) {
+        logger.error('Menu extraction: could not parse OpenAI response as JSON', parseError);
+        throw new MenuExtractionError('The extraction model returned an unreadable response. Please try again.', 'EXTRACTION_RESPONSE_INVALID');
+    }
+
+    const items = Array.isArray(parsed?.items) ? parsed.items : [];
+    return items
+        // Require a strictly positive price — besides being a sane sanity check on
+        // extracted data, csvImportService.js's transformRow parses
+        // default_sale_price via `parseFloat(...) || null`, which silently drops
+        // an exact 0 to null. Filtering price <= 0 here avoids feeding that edge case.
+        .filter((item) => item && typeof item.name === 'string' && item.name.trim() && Number.isFinite(Number(item.price)) && Number(item.price) > 0)
+        .slice(0, MAX_MENU_ITEMS_PER_IMPORT)
+        .map((item) => ({
+            name: item.name.trim().slice(0, 255),
+            price: Math.round(Number(item.price) * 100) / 100,
+            section: typeof item.section === 'string' ? item.section.trim().slice(0, 100) || null : null,
+            description: typeof item.description === 'string' ? item.description.trim().slice(0, 1000) || null : null
+        }));
+};
+
 const extractMenuItemsFromText = async (menuText, user) => {
     const encapsulated = encapsulateFileContent('menu.pdf', 'PDF', menuText.slice(0, MAX_PDF_TEXT_CHARS));
 
@@ -148,45 +199,46 @@ const extractMenuItemsFromText = async (menuText, user) => {
         throw new MenuExtractionError('Failed to extract menu items from this PDF.', 'EXTRACTION_REQUEST_FAILED');
     }
 
-    if (response.usage) {
-        try {
-            const rate = MODEL === 'gpt-4o-mini' ? { input: 0.150 / 1000000, output: 0.600 / 1000000 } : { input: 5.00 / 1000000, output: 15.00 / 1000000 };
-            const cost = (response.usage.prompt_tokens || 0) * rate.input + (response.usage.completion_tokens || 0) * rate.output;
-            await AiUsageLog.create({
-                tenant_id: user?.tenant_id,
-                user_id: user?.user_id,
-                model: response.model,
-                input_tokens: response.usage.prompt_tokens || 0,
-                output_tokens: response.usage.completion_tokens || 0,
-                cost_usd: cost.toFixed(6)
-            });
-        } catch (usageError) {
-            logger.warn('Menu PDF extraction: failed to log AI usage', usageError.message);
-        }
-    }
+    return mapExtractionResponseToItems(response, user);
+};
 
-    let parsed;
+/**
+ * Calls OpenAI's vision-capable chat completions to extract structured menu
+ * items directly from a photo/scan of a menu. Mirrors the multimodal
+ * content-array pattern modules/ai/usecases/prepareChatPayloadUseCase.js
+ * already uses for image chat attachments (base64 data-URL image_url part).
+ * @param {Buffer} imageBuffer
+ * @param {string} mimeType - 'image/jpeg' or 'image/png'
+ * @param {Object} user - { user_id, tenant_id } for usage logging (best-effort)
+ * @returns {Promise<Array<{name: string, price: number, section: string|null, description: string|null}>>}
+ */
+const extractMenuItemsFromImage = async (imageBuffer, mimeType, user) => {
+    const dataUrl = `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
+
+    let response;
     try {
-        parsed = JSON.parse(response.choices?.[0]?.message?.content || '{}');
-    } catch (parseError) {
-        logger.error('Menu PDF extraction: could not parse OpenAI response as JSON', parseError);
-        throw new MenuExtractionError('The extraction model returned an unreadable response. Please try again.', 'EXTRACTION_RESPONSE_INVALID');
+        response = await getOpenAI().chat.completions.create({
+            model: MODEL,
+            messages: [
+                { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
+                {
+                    role: 'user',
+                    content: [
+                        { type: 'text', text: 'Extract the menu items from the following menu image.' },
+                        { type: 'image_url', image_url: { url: dataUrl } }
+                    ]
+                }
+            ],
+            response_format: { type: 'json_object' },
+            temperature: 0.2,
+            max_tokens: 4096
+        });
+    } catch (error) {
+        logger.error('Menu image extraction: OpenAI request failed', error);
+        throw new MenuExtractionError('Failed to extract menu items from this image.', 'EXTRACTION_REQUEST_FAILED');
     }
 
-    const items = Array.isArray(parsed?.items) ? parsed.items : [];
-    return items
-        // Require a strictly positive price — besides being a sane sanity check on
-        // extracted data, csvImportService.js's transformRow parses
-        // default_sale_price via `parseFloat(...) || null`, which silently drops
-        // an exact 0 to null. Filtering price <= 0 here avoids feeding that edge case.
-        .filter((item) => item && typeof item.name === 'string' && item.name.trim() && Number.isFinite(Number(item.price)) && Number(item.price) > 0)
-        .slice(0, MAX_MENU_ITEMS_PER_IMPORT)
-        .map((item) => ({
-            name: item.name.trim().slice(0, 255),
-            price: Math.round(Number(item.price) * 100) / 100,
-            section: typeof item.section === 'string' ? item.section.trim().slice(0, 100) || null : null,
-            description: typeof item.description === 'string' ? item.description.trim().slice(0, 1000) || null : null
-        }));
+    return mapExtractionResponseToItems(response, user);
 };
 
 const CSV_HEADERS = [
@@ -254,43 +306,54 @@ const buildSignedCsv = (extractedItems) => {
 // Exported for focused unit testing (mirrors csvImportService.js's convention
 // of exporting internal helpers like buildTemplateSignature/parseCSV) — not
 // intended as a general-purpose public API of this module.
-export { extractMenuItemsFromText, buildSignedCsv };
+export { extractMenuItemsFromText, extractMenuItemsFromImage, buildSignedCsv };
+
+const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png'];
 
 /**
- * Extracts menu items from an uploaded PDF and returns a signed CSV string
- * ready to hand to csvImportService.previewImport / confirmImport.
+ * Extracts menu items from an uploaded PDF or PNG/JPG menu photo and returns
+ * a signed CSV string ready to hand to csvImportService.previewImport /
+ * confirmImport.
  *
- * PDF menu import only makes sense for Food & Beverage-mode tenants — the
+ * Menu import only makes sense for Food & Beverage-mode tenants — the
  * 'menu_item' preset it relies on is fnb-only (modeItemTaxonomy.js). Other
  * workflow modes are rejected up front with a clear message instead of
  * failing later with a generic workflow-mode-template-mismatch error.
  *
- * @param {Buffer} pdfBuffer
+ * @param {Buffer} fileBuffer
+ * @param {string} mimeType - 'application/pdf', 'image/jpeg', or 'image/png'
  * @param {Object} [user] - requesting user, for AI usage logging
  * @returns {Promise<{csvContent: string, itemCount: number}>}
  */
-export const extractMenuCsvFromPdf = async (pdfBuffer, user) => {
+export const extractMenuCsvFromFile = async (fileBuffer, mimeType, user) => {
     const tenantWorkflowMode = await resolveTenantWorkflowMode();
     if (!isFnbWorkflowMode(tenantWorkflowMode)) {
         throw new MenuExtractionError(
-            'PDF menu import is only available for Food & Beverage workflow mode businesses.',
+            'Menu import is only available for Food & Beverage workflow mode businesses.',
             'WORKFLOW_MODE_NOT_FNB',
             { tenant_workflow_mode: tenantWorkflowMode }
         );
     }
 
-    const menuText = await extractPdfText(pdfBuffer);
-    if (!menuText) {
-        throw new MenuExtractionError(
-            "Couldn't read any text from this PDF. Scanned or image-only menus aren't supported yet — try a text-based PDF export of your menu.",
-            'PDF_TEXT_EMPTY'
-        );
+    let items;
+    if (mimeType === 'application/pdf') {
+        const menuText = await extractPdfText(fileBuffer);
+        if (!menuText) {
+            throw new MenuExtractionError(
+                "Couldn't read any text from this PDF. Try a text-based PDF export, or upload a PNG/JPG photo of your menu instead.",
+                'PDF_TEXT_EMPTY'
+            );
+        }
+        items = await extractMenuItemsFromText(menuText, user);
+    } else if (IMAGE_MIME_TYPES.includes(mimeType)) {
+        items = await extractMenuItemsFromImage(fileBuffer, mimeType, user);
+    } else {
+        throw new MenuExtractionError('Unsupported file type for menu import.', 'UNSUPPORTED_FILE_TYPE');
     }
 
-    const items = await extractMenuItemsFromText(menuText, user);
     if (items.length === 0) {
         throw new MenuExtractionError(
-            "Couldn't find any menu items with a name and price in this PDF.",
+            "Couldn't find any menu items with a name and price in this file.",
             'NO_ITEMS_EXTRACTED'
         );
     }
@@ -298,4 +361,4 @@ export const extractMenuCsvFromPdf = async (pdfBuffer, user) => {
     return { csvContent: buildSignedCsv(items), itemCount: items.length };
 };
 
-export default { extractMenuCsvFromPdf, extractMenuItemsFromText, buildSignedCsv, MenuExtractionError };
+export default { extractMenuCsvFromFile, extractMenuItemsFromText, extractMenuItemsFromImage, buildSignedCsv, MenuExtractionError };

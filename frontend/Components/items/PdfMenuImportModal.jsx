@@ -26,10 +26,12 @@ import WizardStepNavigator from '@/src/components/common/WizardStepNavigator.jsx
 import { toast } from 'sonner';
 
 const PDF_IMPORT_STEPS = Object.freeze([
-    { id: 'upload', number: 1, name: 'Upload', description: 'Upload a PDF of your menu.' },
+    { id: 'upload', number: 1, name: 'Upload', description: 'Upload a PDF or photo of your menu.' },
     { id: 'preview', number: 2, name: 'Review', description: 'Review and edit the extracted items before import.' },
     { id: 'result', number: 3, name: 'Result', description: 'Review created and failed rows.' }
 ]);
+
+const ACCEPTED_FILE_PATTERN = /\.(pdf|png|jpe?g)$/i;
 
 // Deep-copies the preview rows into an editable working set, and normalizes an
 // `included` flag per row (valid rows default to included; invalid rows
@@ -58,7 +60,7 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
 
     const navigatorSteps = PDF_IMPORT_STEPS.map((entry) => {
         if (entry.number === 2) {
-            return { ...entry, disabled: !previewData, disabledReason: 'Upload a PDF menu before reviewing items.' };
+            return { ...entry, disabled: !previewData, disabledReason: 'Upload a menu PDF or image before reviewing items.' };
         }
         if (entry.number === 3) {
             return { ...entry, disabled: !importResult, disabledReason: 'Confirm the import before opening results.' };
@@ -79,8 +81,8 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
     const handleFileSelect = useCallback((event) => {
         const selectedFile = event.target.files?.[0];
         if (!selectedFile) return;
-        if (!selectedFile.name.toLowerCase().endsWith('.pdf')) {
-            toast.error('Please select a PDF file');
+        if (!ACCEPTED_FILE_PATTERN.test(selectedFile.name)) {
+            toast.error('Please select a PDF, PNG, or JPG file');
             return;
         }
         setFileName(selectedFile.name);
@@ -91,8 +93,8 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
         event.preventDefault();
         const droppedFile = event.dataTransfer.files?.[0];
         if (!droppedFile) return;
-        if (!droppedFile.name.toLowerCase().endsWith('.pdf')) {
-            toast.error('Please select a PDF file');
+        if (!ACCEPTED_FILE_PATTERN.test(droppedFile.name)) {
+            toast.error('Please select a PDF, PNG, or JPG file');
             return;
         }
         setFileName(droppedFile.name);
@@ -105,7 +107,7 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
 
     const handlePreview = async () => {
         if (!file) {
-            toast.error('Please select a PDF file first');
+            toast.error('Please select a PDF, PNG, or JPG file first');
             return;
         }
 
@@ -174,12 +176,12 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
             >
                 <Upload className="w-12 h-12 mx-auto text-slate-400 mb-4" />
                 <p className="text-slate-600 mb-2">
-                    Drag and drop your menu PDF here, or
+                    Drag and drop your menu PDF or image here, or
                 </p>
                 <label className="inline-block">
                     <input
                         type="file"
-                        accept=".pdf,application/pdf"
+                        accept=".pdf,application/pdf,.png,image/png,.jpg,.jpeg,image/jpeg"
                         onChange={handleFileSelect}
                         className="hidden"
                     />
@@ -200,9 +202,9 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
             <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm">
                 <p className="font-medium text-amber-800 mb-1">📋 Before you import</p>
                 <p className="text-amber-700">
-                    An AI model reads your PDF and extracts item names and prices — always
-                    review the results on the next step before confirming. Scanned/image-only
-                    menus aren&apos;t supported yet; use a text-based PDF export of your menu.
+                    An AI model reads your PDF or photo and extracts item names and prices —
+                    always review the results on the next step before confirming. Works best
+                    with a clear, well-lit photo or a text-based PDF export of your menu.
                 </p>
             </div>
         </div>
@@ -346,7 +348,7 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
                 <DialogHeader>
                     <DialogTitle className="flex items-center gap-2">
                         <Upload className="w-5 h-5 text-teal-600" />
-                        Import Menu from PDF
+                        Import Menu from PDF or Image
                     </DialogTitle>
                 </DialogHeader>
 
@@ -355,7 +357,7 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
                     currentStep={step}
                     completedStep={step - 1}
                     onStepChange={setStep}
-                    ariaLabel="PDF menu import steps"
+                    ariaLabel="Menu import steps"
                 />
 
                 <div className="py-4">

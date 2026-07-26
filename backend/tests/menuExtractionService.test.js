@@ -38,8 +38,9 @@ jest.unstable_mockModule('openai', () => ({
 
 describe('menuExtractionService', () => {
     let extractMenuItemsFromText;
+    let extractMenuItemsFromImage;
     let buildSignedCsv;
-    let extractMenuCsvFromPdf;
+    let extractMenuCsvFromFile;
     let MenuExtractionError;
     let previewImport;
 
@@ -47,8 +48,9 @@ describe('menuExtractionService', () => {
         process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'test-key';
         const mod = await import('../src/services/menuExtractionService.js');
         extractMenuItemsFromText = mod.extractMenuItemsFromText;
+        extractMenuItemsFromImage = mod.extractMenuItemsFromImage;
         buildSignedCsv = mod.buildSignedCsv;
-        extractMenuCsvFromPdf = mod.extractMenuCsvFromPdf;
+        extractMenuCsvFromFile = mod.extractMenuCsvFromFile;
         MenuExtractionError = mod.MenuExtractionError;
 
         const csvMod = await import('../src/services/csvImportService.js');
@@ -186,17 +188,54 @@ describe('menuExtractionService', () => {
         });
     });
 
-    describe('extractMenuCsvFromPdf', () => {
-        it('rejects up front for non-F&B tenants without attempting PDF parsing', async () => {
+    describe('extractMenuItemsFromImage', () => {
+        it('sends the image as a multimodal content part and maps the response the same as the text path', async () => {
+            mockOpenAiJson({ items: [{ name: 'Iced Latte', price: 120 }] });
+
+            const items = await extractMenuItemsFromImage(Buffer.from('fake-png-bytes'), 'image/png', { user_id: 1, tenant_id: 1 });
+
+            expect(items).toEqual([{ name: 'Iced Latte', price: 120, section: null, description: null }]);
+            const call = mockCreateCompletion.mock.calls[0][0];
+            const userMessage = call.messages.find((m) => m.role === 'user');
+            expect(Array.isArray(userMessage.content)).toBe(true);
+            const imagePart = userMessage.content.find((part) => part.type === 'image_url');
+            expect(imagePart.image_url.url).toMatch(/^data:image\/png;base64,/);
+        });
+    });
+
+    describe('extractMenuCsvFromFile', () => {
+        it('rejects up front for non-F&B tenants without attempting extraction', async () => {
             mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('msme'));
 
-            await expect(extractMenuCsvFromPdf(Buffer.from('%PDF-1.4 fake'), { user_id: 1 }))
+            await expect(extractMenuCsvFromFile(Buffer.from('%PDF-1.4 fake'), 'application/pdf', { user_id: 1 }))
                 .rejects.toMatchObject({
                     name: 'MenuExtractionError',
                     code: 'WORKFLOW_MODE_NOT_FNB'
                 });
 
             expect(MenuExtractionError).toBeDefined();
+        });
+
+        it('produces a signed CSV from a PNG image for F&B tenants', async () => {
+            mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('fnb'));
+            mockOpenAiJson({ items: [{ name: 'Iced Latte', price: 120 }] });
+
+            const result = await extractMenuCsvFromFile(Buffer.from('fake-png-bytes'), 'image/png', { user_id: 1 });
+
+            expect(result.itemCount).toBe(1);
+            const preview = await previewImport(result.csvContent);
+            expect(preview.success).toBe(true);
+            expect(preview.validRows).toBe(1);
+        });
+
+        it('rejects unsupported mimetypes', async () => {
+            mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('fnb'));
+
+            await expect(extractMenuCsvFromFile(Buffer.from('gif bytes'), 'image/gif', { user_id: 1 }))
+                .rejects.toMatchObject({
+                    name: 'MenuExtractionError',
+                    code: 'UNSUPPORTED_FILE_TYPE'
+                });
         });
     });
 });
