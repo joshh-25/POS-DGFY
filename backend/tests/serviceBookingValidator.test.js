@@ -1,6 +1,9 @@
 import {
     validateCreateServiceBooking,
-    validateCreateAdminServiceBooking
+    validateCreateAdminServiceBooking,
+    validateServiceAvailabilityQuery,
+    validateCreateServiceBookingHold,
+    validateCreateServiceBookingBatch
 } from '../src/validators/serviceValidator.js';
 import { jest } from '@jest/globals';
 
@@ -114,6 +117,95 @@ describe('serviceValidator booking schemas', () => {
             expect(req.validatedData.idempotency_key).toBe('store-service-abc123-xyz');
             expect(req.validatedData.quantity).toBe(2);
             expect(req.validatedData.hold_token).toBe('hold-token-xyz');
+        });
+    });
+
+    describe('validateServiceAvailabilityQuery (GET /services/availability)', () => {
+        it('accepts a minimal availability query', () => {
+            const req = { query: { service_item_id: '10', date: '2026-08-01' } };
+            const { res, next } = runMiddleware(validateServiceAvailabilityQuery, req);
+
+            expect(next).toHaveBeenCalledTimes(1);
+            expect(res.statusCode).toBe(200);
+            expect(req.validatedQuery.service_item_id).toBe(10);
+            expect(req.validatedQuery.date).toBe('2026-08-01');
+        });
+
+        it('rejects a malformed date', () => {
+            const req = { query: { service_item_id: '10', date: '08/01/2026' } };
+            const { res, next } = runMiddleware(validateServiceAvailabilityQuery, req);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.statusCode).toBe(422);
+        });
+    });
+
+    describe('validateCreateServiceBookingHold (POST /services/holds)', () => {
+        it('accepts a hold request with no customer fields', () => {
+            const req = {
+                body: {
+                    service_item_id: 10,
+                    start_at: '2026-08-01T09:00:00.000Z',
+                    quantity: 2,
+                    idempotency_key: 'store-hold-abc123'
+                }
+            };
+            const { res, next } = runMiddleware(validateCreateServiceBookingHold, req);
+
+            expect(next).toHaveBeenCalledTimes(1);
+            expect(res.statusCode).toBe(200);
+            expect(req.validatedData.quantity).toBe(2);
+        });
+
+        it('strips pos_transaction_id from a public hold request', () => {
+            const req = {
+                body: {
+                    service_item_id: 10,
+                    start_at: '2026-08-01T09:00:00.000Z',
+                    pos_transaction_id: 999
+                }
+            };
+            const { res, next } = runMiddleware(validateCreateServiceBookingHold, req);
+
+            expect(next).toHaveBeenCalledTimes(1);
+            expect(res.statusCode).toBe(200);
+            expect(req.validatedData.pos_transaction_id).toBeUndefined();
+        });
+    });
+
+    describe('validateCreateServiceBookingBatch (POST /services/bookings/batch)', () => {
+        it('accepts multiple booking drafts under one shared customer identity (ADR 0016 multiplicity)', () => {
+            const req = {
+                body: {
+                    customer_name: 'Jane Doe',
+                    customer_email: 'jane@example.com',
+                    idempotency_key: 'store-service-batch-abc123',
+                    bookings: [
+                        { service_item_id: 10, start_at: '2026-08-01T09:00:00.000Z', quantity: 1 },
+                        { service_item_id: 11, start_at: '2026-08-02T10:00:00.000Z', quantity: 3 }
+                    ]
+                }
+            };
+            const { res, next } = runMiddleware(validateCreateServiceBookingBatch, req);
+
+            expect(next).toHaveBeenCalledTimes(1);
+            expect(res.statusCode).toBe(200);
+            expect(req.validatedData.bookings).toHaveLength(2);
+            expect(req.validatedData.bookings[1].quantity).toBe(3);
+        });
+
+        it('rejects an empty bookings array', () => {
+            const req = {
+                body: {
+                    customer_name: 'Jane Doe',
+                    customer_email: 'jane@example.com',
+                    bookings: []
+                }
+            };
+            const { res, next } = runMiddleware(validateCreateServiceBookingBatch, req);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.statusCode).toBe(422);
         });
     });
 });

@@ -2,8 +2,11 @@ import express from 'express';
 import * as storeController from '../controllers/storeController.js';
 import {
     listPublicCatalog as listPublicServiceCatalog,
+    getPublicAvailability as getPublicServiceAvailability,
+    createPublicBookingHold as createPublicServiceBookingHold,
     listPublicBookings as listPublicServiceBookings,
     createPublicBooking as createPublicServiceBooking,
+    createPublicBookingBatch as createPublicServiceBookingBatch,
     getPublicBooking as getPublicServiceBooking,
     claimPublicBooking as claimPublicServiceBooking,
     createPublicWaitlistEntry as createPublicServiceWaitlistEntry
@@ -41,8 +44,11 @@ import {
 } from '../validators/storeValidator.js';
 import {
     validateServiceCatalogQuery,
+    validateServiceAvailabilityQuery,
     validateServiceBookingQuery,
     validateCreateServiceBooking,
+    validateCreateServiceBookingHold,
+    validateCreateServiceBookingBatch,
     validateServiceBookingReferenceParam,
     validateClaimServiceBooking,
     validateCreateServiceWaitlistEntry
@@ -100,8 +106,11 @@ router.post('/checkout/guest-otp/verify', setNoStoreCacheControl, storeGuestChec
 router.post('/checkout/payment-sessions', setNoStoreCacheControl, optionalStoreCustomer, validateStoreCheckoutPaymentSession, storeController.createCheckoutPaymentSession);
 router.get('/checkout/payment-sessions/:payment_session_id', setNoStoreCacheControl, optionalStoreCustomer, validateStorePaymentSessionParam, storeController.getCheckoutPaymentSession);
 router.post('/checkout', setNoStoreCacheControl, optionalStoreCustomer, validateStoreCheckout, storeController.checkout);
+router.get('/services/availability', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, validateServiceAvailabilityQuery, getPublicServiceAvailability);
 router.get('/services/bookings', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, authenticateStoreCustomer, validateServiceBookingQuery, listPublicServiceBookings);
 router.post('/services/bookings', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, optionalStoreCustomer, validateCreateServiceBooking, createPublicServiceBooking);
+router.post('/services/bookings/batch', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, optionalStoreCustomer, validateCreateServiceBookingBatch, createPublicServiceBookingBatch);
+router.post('/services/holds', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, optionalStoreCustomer, validateCreateServiceBookingHold, createPublicServiceBookingHold);
 router.get('/services/bookings/:public_reference', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, storeTrackingLimiter, validateServiceBookingReferenceParam, getPublicServiceBooking);
 router.post('/services/bookings/:public_reference/claim', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, authenticateStoreCustomer, validateServiceBookingReferenceParam, validateClaimServiceBooking, claimPublicServiceBooking);
 router.post('/services/waitlist', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, optionalStoreCustomer, validateCreateServiceWaitlistEntry, createPublicServiceWaitlistEntry);

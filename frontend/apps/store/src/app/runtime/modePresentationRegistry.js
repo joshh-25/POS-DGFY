@@ -1,5 +1,6 @@
 import { getBusinessModePinMeta, normalizeBusinessMode } from '../../discovery/model/businessModePins.js';
 import { getStorefrontTemplateConfig } from './storefrontTemplateRegistry.js';
+import { hasServicesCapability as hasComposedServicesCapability } from '../../shared/model/workflowCapabilities.js';
 
 export const ModePresentationRegistry = Object.freeze({
   default: Object.freeze({
@@ -57,7 +58,7 @@ export const ModePresentationRegistry = Object.freeze({
     heroDescription: 'Book service families, answer intake questions, and keep one ticket for the full appointment journey.',
     catalogHeading: 'Book Services',
     catalogSubtitle: 'Choose a service family, pick a service type, then complete the booking details in the cart.',
-    catalogSearchPlaceholder: 'Search laundry or aircon services...',
+    catalogSearchPlaceholder: 'Search services...',
     primaryActionLabel: 'Book a Service',
     trackHeading: 'Track Booking or Order',
     trackDescription: 'Enter a booking reference or order tracking PIN to check the latest status without leaving the sheet.',
@@ -298,6 +299,13 @@ export const getStorefrontModeAdapter = (store = null) => {
   const modeConfig = ModePresentationRegistry[mode] || ModePresentationRegistry.default;
   const storefrontTemplate = getStorefrontTemplateConfig(mode);
   const pin = getBusinessModePinMeta(mode);
+  // A tenant whose scalar mode is NOT 'services' can still have the `services`
+  // capability composed in via the ops_enabled_capabilities overlay (Phase 6a).
+  // That must not flip isServicesMode (which several consumers treat as "this
+  // storefront is a booking-only shell with no product catalog") -- it only
+  // needs to unlock service grouping/booking affordances alongside the
+  // tenant's own primary mode. See workflowCapabilities.js.
+  const hasServicesCapability = mode === 'services' || hasComposedServicesCapability(store);
 
   return {
     mode,
@@ -313,6 +321,8 @@ export const getStorefrontModeAdapter = (store = null) => {
     isFnbMode: mode === 'fnb',
     isSimpleMode: mode === 'msme',
     isHospitalityMode: mode === 'hospitality',
-    isRetailMode: mode === 'retail'
+    isRetailMode: mode === 'retail',
+    hasServicesCapability,
+    supportsServiceGrouping: modeConfig.supportsServiceGrouping === true || hasServicesCapability
   };
 };

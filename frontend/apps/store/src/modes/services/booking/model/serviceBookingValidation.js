@@ -1,4 +1,3 @@
-import { collectServicesRuntimeCompatibilityIssues } from '../../../../services/servicesBookingContract.js';
 import { normalizeServiceFormFields } from './serviceBookingFields.js';
 
 export function buildServiceCartValidationIssues(serviceCartLines = []) {
@@ -31,7 +30,6 @@ export function buildServiceCartValidationIssues(serviceCartLines = []) {
         }
       });
       return lineIssues;
-    }),
-    ...collectServicesRuntimeCompatibilityIssues(serviceCartLines)
+    })
   ];
 }

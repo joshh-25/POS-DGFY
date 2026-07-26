@@ -64,4 +64,24 @@ describe('modePresentationRegistry', () => {
     expect(adapter.journeyVariant).toBe('order');
     expect(adapter.sharedSections.navigation).toBe(true);
   });
+
+  it('keeps retail theme/copy but unlocks service grouping when the services capability is composed in', () => {
+    const adapter = getStorefrontModeAdapter({
+      workflow_mode: 'retail',
+      enabled_capabilities: ['services']
+    });
+
+    expect(adapter.isRetailMode).toBe(true);
+    expect(adapter.isServicesMode).toBe(false);
+    expect(adapter.catalogHeading).toBe('Shop the Store');
+    expect(adapter.hasServicesCapability).toBe(true);
+    expect(adapter.supportsServiceGrouping).toBe(true);
+  });
+
+  it('does not report the services capability for a retail tenant without the overlay', () => {
+    const adapter = getStorefrontModeAdapter({ workflow_mode: 'retail', enabled_capabilities: ['fnbDining'] });
+
+    expect(adapter.hasServicesCapability).toBe(false);
+    expect(adapter.supportsServiceGrouping).toBe(false);
+  });
 });
