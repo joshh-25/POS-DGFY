@@ -979,7 +979,9 @@ describe('POS checkout F&B contracts', () => {
             item_id: 12,
             stock_effect_type: 'stock_exempt',
             stock_exempt_reason: 'pos_always_available',
-            cost_snapshot: null
+            // Movement-exempt, but a real physical good's cost is still captured
+            // for COGS — only a true service line gets a null cost_snapshot.
+            cost_snapshot: 20
         }));
         expect(stockMovementService.createStockMovement).not.toHaveBeenCalled();
     });

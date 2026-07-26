@@ -2553,7 +2553,10 @@ export const buildCheckoutPosUseCase = ({
                     item_name: item.name,
                     quantity: round4(quantity),
                     unit_of_measure: item.unit_of_measure,
-                    cost_snapshot: isStockExemptLine ? null : (item.cost_per_unit != null ? round4(item.cost_per_unit) : null),
+                    // Only a true service has no cost to report; an always-available
+                    // physical item is movement-exempt but still carries a real cost
+                    // (resolveStockBearingDescriptor's carries_cost: !isService).
+                    cost_snapshot: isServiceItem ? null : (item.cost_per_unit != null ? round4(item.cost_per_unit) : null),
                     stock_effect_type: isStockExemptLine ? 'stock_exempt' : 'inventory_issue',
                     stock_exempt_reason: isAlwaysAvailable
                         ? 'pos_always_available'

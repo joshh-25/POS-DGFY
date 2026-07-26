@@ -44,7 +44,7 @@ describe('costValuationService', () => {
     });
 
     const result = await getItemsCostMetrics({
-      items: [{ item_id: 11, current_stock: 15, cost_per_unit: 10 }]
+      items: [{ item_id: 11, current_stock: 15, cost_per_unit: 10, fifo_enabled: true }]
     });
 
     expect(result.get(11)).toEqual({
@@ -101,8 +101,10 @@ describe('costValuationService', () => {
       return {};
     });
 
+    // fifo_enabled: false — a count_ledger item never has batch rows by
+    // design, so batch_qty: 0 here is normal, not drift (see bug 6 fix).
     const result = await getItemsCostMetrics({
-      items: [{ item_id: 22, current_stock: 9, cost_per_unit: 4 }],
+      items: [{ item_id: 22, current_stock: 9, cost_per_unit: 4, fifo_enabled: false }],
       locationId: 3
     });
 
@@ -116,7 +118,7 @@ describe('costValuationService', () => {
           ledger_qty: 9,
           batch_qty: 0,
           drift_qty: 9,
-          has_drift: true,
+          has_drift: false,
           tolerance: 0.0001
         }
       },
@@ -130,10 +132,39 @@ describe('costValuationService', () => {
           ledger_qty: 5,
           batch_qty: 0,
           drift_qty: 5,
-          has_drift: true,
+          has_drift: false,
           tolerance: 0.0001
         }
       }
+    });
+  });
+
+  it('flags real drift for a FIFO-enabled item whose open batches are fully depleted', async () => {
+    const FIFOBatch = {
+      findAll: jest.fn().mockResolvedValue([])
+    };
+    const ItemLocationStock = {
+      findAll: jest.fn().mockResolvedValue([])
+    };
+
+    getSpy.mockImplementation((name) => {
+      if (name === 'FIFOBatch') return FIFOBatch;
+      if (name === 'ItemLocationStock') return ItemLocationStock;
+      return {};
+    });
+
+    // A FIFO-tracked item with ledger stock but zero open batches is a real
+    // integrity problem — unlike a count_ledger item, it should have batches.
+    const result = await getItemsCostMetrics({
+      items: [{ item_id: 23, current_stock: 6, cost_per_unit: 4, fifo_enabled: true }]
+    });
+
+    expect(result.get(23).global.diagnostics).toEqual({
+      ledger_qty: 6,
+      batch_qty: 0,
+      drift_qty: 6,
+      has_drift: true,
+      tolerance: 0.0001
     });
   });
 
