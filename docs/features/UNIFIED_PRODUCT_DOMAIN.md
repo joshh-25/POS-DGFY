@@ -674,16 +674,29 @@ constants are duplicated, unknown modes coerce to `food_manufacturing`, and
     no vertical panel at all) — flagged as its own decision, not attempted
     unsupervised; and surfacing `stock_effect_type`/UOM on POS cart lines,
     which remains entirely absent from the frontend.
-  - **6c — POS weight entry (not started).** Manual decimal quantity entry for
-    the `weighed_goods` preset. The backend is already decimal-capable
-    (`quantity` is `DECIMAL(24,12)`); every manual POS entry path is
-    integer-only today (regex strips the decimal point, `Math.floor` on
-    commit).
+  - **6c — POS weight entry (shipped).** Manual decimal quantity entry, gated
+    on a new shared `allowsDecimalQuantity(unit_of_measure)` predicate
+    (`['weight', 'volume'].includes(getUomGroup(uom))`) rather than the
+    `weighed_goods` preset key directly — that preset also allows a `pcs`
+    unit, which must stay integer-only. The DGFY terminal's typed
+    manual-quantity input (its only manual-entry surface; the +/-1 steppers
+    and long-press meter stay integer-only, per "manual entry first, scale
+    hardware later") now accepts a decimal point and a `round4` commit for
+    weight/volume items instead of the previous `.replace(/[^0-9]/g, '')` +
+    `Math.floor`. Re-verification found the Skupervisor terminal had the
+    *opposite* defect — its cart-line quantity field accepted an
+    unconditional decimal on every item, including plain per-piece lines —
+    and tightened it to the same UOM gate. **Deliberately not done:** scale
+    hardware integration (Open Decision #5 stands: manual entry first);
+    rendering `unit_of_measure` next to the quantity field, which stays
+    carried-but-unrendered in cart state as before.
   - Representative: `backend/src/modules/settings/`,
     `backend/src/middleware/workflowModeCapability.js`,
     `packages/shared-constants/src/workflowModes.js`,
     `packages/shared-constants/src/modeItemTaxonomy.js`,
-    `POSCheckoutTerminal.jsx`, `PosPageShell.jsx`, `frontend/apps/pos/`.
+    `packages/shared-constants/src/uomConverter.js`,
+    `POSCheckoutTerminal.jsx`, `SkupervisorPOSCheckoutTerminal.jsx`,
+    `PosPageShell.jsx`, `frontend/apps/pos/`.
 - **Phase 7 — Booking generalization + mixed fulfillment** (Capability D):
   generalized service presentation, booking→sale settlement, parts-on-booking.
   Builds on Services Mode + Phase 6 mixed basket.

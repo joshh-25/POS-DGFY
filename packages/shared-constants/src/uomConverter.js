@@ -279,6 +279,18 @@ export const getUomGroup = (uom) => {
     return null;
 };
 
+// The two UOM groups where a fractional quantity is meaningful on a sale
+// line - a shopper buys 0.35 kg or 1.5 L, never 0.35 or 1.5 pcs/servings.
+// This is the single predicate manual quantity-entry UI should use to decide
+// whether to accept a decimal point, so a `weighed_goods`/`refill_product`
+// item entered by weight or volume behaves differently from the same preset
+// sold by the piece (both presets' taxonomy also allows a `count` unit).
+const DECIMAL_QUANTITY_UOM_GROUPS = Object.freeze(['weight', 'volume']);
+
+export const allowsDecimalQuantity = (uom) => (
+    DECIMAL_QUANTITY_UOM_GROUPS.includes(getUomGroup(uom))
+);
+
 /**
  * Check if two UOMs are compatible (can be converted between each other)
  * @param {string} uom1 - First UOM

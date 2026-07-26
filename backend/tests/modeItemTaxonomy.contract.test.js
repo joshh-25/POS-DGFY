@@ -7,12 +7,14 @@ import {
     validateItemAgainstModeTaxonomy
 } from '../src/modules/shared/constants/modeItemTaxonomy.js';
 import {
+    allowsDecimalQuantity as backendAllowsDecimalQuantity,
     areCompatible as backendAreCompatible,
     getUomGroup as backendGetUomGroup,
     isValidUom as backendIsValidUom
 } from '../src/utils/uomConverter.js';
 import { MODE_ITEM_TAXONOMY as frontendTaxonomy } from '../../frontend/src/features/settings/modeItemTaxonomy.js';
 import {
+    allowsDecimalQuantity as frontendAllowsDecimalQuantity,
     areCompatible as frontendAreCompatible,
     getUomGroup as frontendGetUomGroup,
     isValidUom as frontendIsValidUom
@@ -62,6 +64,23 @@ describe('mode-aware item taxonomy contract', () => {
         expect(frontendAreCompatible('serving', 'portion')).toBe(false);
         expect(backendAreCompatible('bottle', 'case')).toBe(false);
         expect(frontendAreCompatible('bottle', 'case')).toBe(false);
+    });
+
+    it('Phase 6c: allows decimal quantity only for weight/volume UOMs, identically across layers', () => {
+        // A weighed_goods/refill_product item sold by weight or volume should
+        // accept a fractional POS quantity (0.35 kg); the same presets sold by
+        // the piece (both allow a `count` unit too) must not.
+        ['kg', 'g', 'mL', 'L', 'gal'].forEach((uom) => {
+            expect(backendAllowsDecimalQuantity(uom)).toBe(true);
+            expect(frontendAllowsDecimalQuantity(uom)).toBe(true);
+        });
+        ['pcs', 'serving', 'booking', 'bottle', 'pack', 'dozen'].forEach((uom) => {
+            expect(backendAllowsDecimalQuantity(uom)).toBe(false);
+            expect(frontendAllowsDecimalQuantity(uom)).toBe(false);
+        });
+        expect(backendAllowsDecimalQuantity('')).toBe(false);
+        expect(backendAllowsDecimalQuantity(null)).toBe(false);
+        expect(backendAllowsDecimalQuantity('not-a-real-uom')).toBe(false);
     });
 
     it('defines mode-specific financial visibility and readiness policy', () => {

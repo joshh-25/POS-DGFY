@@ -30,6 +30,7 @@ import { isOfflinePosScopeReady } from '../services/offlinePosScope.js';
 import { getFolders } from '@/services/itemService.js';
 import { getAllSettings } from '@/services/settingsService';
 import { usePermission } from '@/hooks/usePermission';
+import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
 import { resolveAppAssetUrl, resolveAssetUrl, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
 import { handlePaneScrollKeyDown } from '../utils/scrollKeyControls.js';
 import {
@@ -2081,10 +2082,15 @@ export default function POSCheckoutTerminal({
                                         </Button>
                                         <Input
                                             type="number"
-                                            min="0.0001"
-                                            step="0.0001"
+                                            min={allowsDecimalQuantity(line.unit_of_measure) ? '0.0001' : '1'}
+                                            step={allowsDecimalQuantity(line.unit_of_measure) ? '0.0001' : '1'}
                                             value={line.quantity}
-                                            onChange={(event) => updateCartQuantity(lineKey, event.target.value || 0)}
+                                            onChange={(event) => updateCartQuantity(
+                                                lineKey,
+                                                allowsDecimalQuantity(line.unit_of_measure)
+                                                    ? (event.target.value || 0)
+                                                    : Math.floor(Number(event.target.value) || 0)
+                                            )}
                                             className="h-11 text-base"
                                             disabled={posActionsBlocked}
                                         />
