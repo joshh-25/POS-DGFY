@@ -57,8 +57,8 @@ jobs:
           # image builds, or the change that breaks them merges unverified.
           FRONTEND=false
           BACKEND=false
-          matches '^(frontend/|packages/pos-receipt/|infrastructure/docker/frontend/|\.github/workflows/)' && FRONTEND=true || true
-          matches '^(backend/|infrastructure/docker/backend/|\.github/workflows/)' && BACKEND=true || true
+          matches '^(frontend/|packages/pos-receipt/|packages/shared-constants/|infrastructure/docker/frontend/|\.github/workflows/)' && FRONTEND=true || true
+          matches '^(backend/|packages/shared-constants/|infrastructure/docker/backend/|\.github/workflows/)' && BACKEND=true || true
 
           {
             echo "frontend=${FRONTEND}"

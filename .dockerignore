@@ -24,6 +24,7 @@
 /release-controller
 /packages/*
 !/packages/pos-receipt
+!/packages/shared-constants
 /artifacts
 /nginx
 /skills

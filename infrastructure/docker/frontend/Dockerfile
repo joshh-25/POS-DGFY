@@ -5,6 +5,7 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 COPY frontend/package*.json ./
 COPY packages/pos-receipt /packages/pos-receipt
+COPY packages/shared-constants /packages/shared-constants
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm config set fetch-retries=5 fetch-retry-mintimeout=20000 fetch-retry-maxtimeout=120000 fetch-timeout=300000 \
     && (npm ci || (sleep 10 && npm ci) || (sleep 20 && npm ci))
