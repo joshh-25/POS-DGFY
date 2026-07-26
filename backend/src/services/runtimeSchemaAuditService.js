@@ -48,7 +48,8 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260724000001-enforce-one-open-shift-per-operator.cjs',
     '20260502000001-add-services-mode-booking-tables.cjs',
     '20260726000001-add-tracking-mode-to-items.cjs',
-    '20260726000002-add-service-booking-lines.cjs'
+    '20260726000002-add-service-booking-lines.cjs',
+    '20260726000003-add-entity-type-to-discovery-index.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -170,6 +171,10 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
     storefront_discovery_index: [
         'storefront_discovery_index_id',
         'tenant_id',
+        'entity_type',
+        'external_provider',
+        'external_reference_id',
+        'external_storefront_url',
         'slug',
         'is_visible',
         'storefront_cover_image_url',
@@ -225,6 +230,11 @@ const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
             allowNull: false,
             enumValues: ['founder', 'invite', 'admin_handover', 'admin_provisioned']
         }
+    },
+    storefront_discovery_index: {
+        tenant_id: { allowNull: true },
+        tenant_company_token: { allowNull: true },
+        entity_type: { allowNull: false }
     }
 });
 
