@@ -41,6 +41,7 @@ import {
     resolveStockBearingDescriptor,
     resolveStockExemptReason
 } from '../../shared/utils/stockBearingPolicy.js';
+import { resolveWorkflowCapabilitySettings as resolveWorkflowCapabilitySettingsDefault } from '../../shared/utils/workflowCapabilitySettingsCache.js';
 import {
     hasExplicitSalePrice,
     requireExplicitSalePrice
@@ -1289,7 +1290,10 @@ export const buildRegisterStoreCustomerUseCase = ({ storeRepository }) => {
     };
 };
 
-export const buildListStoreCatalogUseCase = ({ storeRepository }) => {
+export const buildListStoreCatalogUseCase = ({
+    storeRepository,
+    resolveWorkflowCapabilitySettings = resolveWorkflowCapabilitySettingsDefault
+}) => {
     return async ({ query = {} } = {}) => {
         if (!isPlainObject(query)) {
             return fail(new DomainError(
@@ -1312,6 +1316,12 @@ export const buildListStoreCatalogUseCase = ({ storeRepository }) => {
             }
 
             const accessPolicy = await resolveStorefrontAccessPolicy({ storeRepository });
+            // Live (15s-cached) workflow mode + composed-capability overlay, so a
+            // retail/fnb tenant with `services` enabled via ops_enabled_capabilities
+            // can be recognized by the storefront even though its scalar
+            // workflow_mode alone would say otherwise (see
+            // app/runtime/modePresentationRegistry.js on the frontend).
+            const { mode: workflowMode, enabledCapabilities } = await resolveWorkflowCapabilitySettings();
             if (isCustomerAccessEnabledForCurrentTenant() && accessPolicy.access_capabilities.catalog !== true) {
                 return ok({
                     items: [],
@@ -1321,7 +1331,9 @@ export const buildListStoreCatalogUseCase = ({ storeRepository }) => {
                             : 60,
                         count: 0
                     },
-                    access_policy: accessPolicy
+                    access_policy: accessPolicy,
+                    workflow_mode: workflowMode,
+                    enabled_capabilities: enabledCapabilities
                 });
             }
 
@@ -1344,7 +1356,9 @@ export const buildListStoreCatalogUseCase = ({ storeRepository }) => {
                         : 60,
                     count: serializedItems.length
                 },
-                access_policy: accessPolicy
+                access_policy: accessPolicy,
+                workflow_mode: workflowMode,
+                enabled_capabilities: enabledCapabilities
             });
         } catch (error) {
             if (error instanceof DomainError) {

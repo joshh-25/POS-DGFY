@@ -52,6 +52,16 @@ const nextDateForWeekday = (targetWeekday) => {
     return `${date.getFullYear()}-${month}-${day}`;
 };
 
+// Pins the tenant's business-hours timezone to UTC so these tests' bare
+// `new Date('YYYY-MM-DDTHH:mm:ss')` fixtures (interpreted in the test
+// runner's local zone, itself UTC) line up with the zoned day-start
+// availability now computes -- without this, the platform's Asia/Manila
+// default would shift the generated slot windows by 8 hours relative to
+// these fixtures (see getZonedDayStart in storefrontBusinessHours.js).
+const utcStorefrontHoursSettings = () => [
+    { setting_key: 'storefront_hours', setting_value: JSON.stringify({ timezone: 'UTC' }) }
+];
+
 const registeredTransactionSettings = () => [
     { setting_key: 'customer_access_mode', setting_value: 'transaction' },
     {
@@ -627,6 +637,7 @@ describe('Services Mode use cases', () => {
         const monday = nextDateForWeekday(1);
         const useCase = buildGetServiceAvailabilityUseCase({
             serviceRepository: {
+                getSettingsByKeys: jest.fn(async () => utcStorefrontHoursSettings()),
                 findServiceItemById: jest.fn(async () => serviceItem),
                 listActiveAssignmentsForService: jest.fn(async () => [{ item_id: 10, resource_id: 7, location_id: 1, is_active: true }]),
                 findResourceById: jest.fn(async () => ({
@@ -672,6 +683,73 @@ describe('Services Mode use cases', () => {
         expect(result.data.diagnostics.max_candidate_capacity).toBe(3);
     });
 
+    it('generates fallback business-hours slots in the tenant business-hours timezone by default (Asia/Manila), not the server local zone', async () => {
+        const monday = nextDateForWeekday(1);
+        const useCase = buildGetServiceAvailabilityUseCase({
+            serviceRepository: {
+                findServiceItemById: jest.fn(async () => serviceItem),
+                listActiveAssignmentsForService: jest.fn(async () => []),
+                findConflictingBookings: jest.fn(async () => [])
+            }
+        });
+
+        const result = await useCase({
+            query: {
+                service_item_id: 10,
+                date: monday,
+                location_id: 1,
+                quantity: 1,
+                slot_interval_minutes: 60
+            },
+            storefrontOnly: true
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.available).toBe(true);
+        const firstSlotStartAt = new Date(result.data.slots[0].start_at);
+        const manilaHour = Number(new Intl.DateTimeFormat('en-US', {
+            timeZone: 'Asia/Manila',
+            hour: '2-digit',
+            hour12: false
+        }).format(firstSlotStartAt));
+        expect(manilaHour % 24).toBe(9);
+    });
+
+    it('honors an explicitly configured business-hours timezone that differs from the Asia/Manila default', async () => {
+        const monday = nextDateForWeekday(1);
+        const useCase = buildGetServiceAvailabilityUseCase({
+            serviceRepository: {
+                getSettingsByKeys: jest.fn(async () => [
+                    { setting_key: 'storefront_hours', setting_value: JSON.stringify({ timezone: 'America/New_York' }) }
+                ]),
+                findServiceItemById: jest.fn(async () => serviceItem),
+                listActiveAssignmentsForService: jest.fn(async () => []),
+                findConflictingBookings: jest.fn(async () => [])
+            }
+        });
+
+        const result = await useCase({
+            query: {
+                service_item_id: 10,
+                date: monday,
+                location_id: 1,
+                quantity: 1,
+                slot_interval_minutes: 60
+            },
+            storefrontOnly: true
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.available).toBe(true);
+        const firstSlotStartAt = new Date(result.data.slots[0].start_at);
+        const nyHour = Number(new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/New_York',
+            hour: '2-digit',
+            hour12: false
+        }).format(firstSlotStartAt));
+        expect(nyHour % 24).toBe(9);
+    });
+
     it('returns no public service availability when quantity exceeds location-only capacity', async () => {
         const monday = nextDateForWeekday(1);
         const useCase = buildGetServiceAvailabilityUseCase({
@@ -705,6 +783,7 @@ describe('Services Mode use cases', () => {
         const monday = nextDateForWeekday(1);
         const useCase = buildGetServiceAvailabilityUseCase({
             serviceRepository: {
+                getSettingsByKeys: jest.fn(async () => utcStorefrontHoursSettings()),
                 findServiceItemById: jest.fn(async () => serviceItem),
                 listActiveAssignmentsForService: jest.fn(async () => [{ item_id: 10, resource_id: 7, location_id: 1, is_active: true }]),
                 findResourceById: jest.fn(async () => ({
@@ -741,6 +820,7 @@ describe('Services Mode use cases', () => {
         const monday = nextDateForWeekday(1);
         const useCase = buildGetServiceAvailabilityUseCase({
             serviceRepository: {
+                getSettingsByKeys: jest.fn(async () => utcStorefrontHoursSettings()),
                 findServiceItemById: jest.fn(async () => serviceItem),
                 listActiveAssignmentsForService: jest.fn(async () => [{ item_id: 10, resource_id: 7, location_id: 1, is_active: true }]),
                 findResourceById: jest.fn(async () => ({

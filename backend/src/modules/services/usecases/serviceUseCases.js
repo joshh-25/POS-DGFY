@@ -10,7 +10,11 @@ import {
     isCustomerAccessModesEnabled,
     resolveAccessPolicyFromSettings
 } from '../../shared/utils/customerAccessPolicy.js';
-import { isDateWithinStorefrontBusinessHours } from '../../shared/utils/storefrontBusinessHours.js';
+import {
+    getZonedDayStart,
+    isDateWithinStorefrontBusinessHours,
+    normalizeStorefrontBusinessHours
+} from '../../shared/utils/storefrontBusinessHours.js';
 
 const BOOKING_STATUSES = Object.freeze(['requested', 'confirmed', 'checked_in', 'in_service', 'completed', 'cancelled', 'no_show']);
 const PAYMENT_POLICIES = Object.freeze(['customer_choice', 'prepaid_required', 'postpaid_only', 'deposit_allowed']);
@@ -936,20 +940,21 @@ const formatLocalDateKey = (date) => `${date.getFullYear()}-${String(date.getMon
 
 const addMinutes = (date, minutes) => new Date(date.getTime() + (minutes * 60 * 1000));
 
-const startOfDay = (date) => {
-    const clone = new Date(date);
-    clone.setHours(0, 0, 0, 0);
-    return clone;
-};
-
+// NOTE: dayAvailabilityKeys()/isWithinWeeklyAvailability() still key off
+// Date.prototype.getDay()/getHours() (server-local time), used at actual
+// booking-creation validation time (createServiceBookingRecord and friends).
+// That is a separate, larger fix -- it touches the booking-creation path
+// itself, not just this browse-time preview -- and is intentionally left for
+// a follow-up rather than folded into this one.
 const buildAvailabilityStartCandidates = ({
     date,
     durationMinutes,
     intervalMinutes,
     leadTimeMinutes,
-    weeklyAvailability = null
+    weeklyAvailability = null,
+    timezone = null
 }) => {
-    const dayStart = startOfDay(date);
+    const dayStart = getZonedDayStart(date, timezone);
     const dayEnd = addMinutes(dayStart, 24 * 60);
     const earliest = new Date(Date.now() + (toNonNegativeInt(leadTimeMinutes, 0) * 60 * 1000));
     const hasAvailabilityRules = isPlainObject(weeklyAvailability) && Object.keys(weeklyAvailability).length > 0;
@@ -969,11 +974,6 @@ const buildAvailabilityStartCandidates = ({
             candidates.push(new Date(cursor));
         }
     });
-    if (candidates.length === 0 && !hasAvailabilityRules) {
-        for (let cursor = addMinutes(dayStart, 9 * 60); cursor.getTime() + (durationMinutes * 60 * 1000) <= addMinutes(dayStart, 17 * 60).getTime(); cursor = addMinutes(cursor, intervalMinutes)) {
-            if (cursor.getTime() >= earliest.getTime() && cursor.getTime() < dayEnd.getTime()) candidates.push(new Date(cursor));
-        }
-    }
     return candidates;
 };
 
@@ -1164,6 +1164,8 @@ export const buildGetServiceAvailabilityUseCase = ({ serviceRepository }) => asy
         const requestedProviderUserId = toPositiveInt(query.provider_user_id);
         const requestedLocationId = toPositiveInt(query.location_id);
         const intervalMinutes = Math.max(5, Math.min(240, toPositiveInt(query.slot_interval_minutes, 30)));
+        const storefrontSettings = await loadServiceStorefrontSettings(serviceRepository);
+        const timezone = normalizeStorefrontBusinessHours(storefrontSettings?.storefront_hours?.value)?.timezone || null;
 
         const service = await serviceRepository.findServiceItemById(serviceItemId, {
             storefrontLocationId: storefrontOnly ? requestedLocationId : null
@@ -1217,8 +1219,9 @@ export const buildGetServiceAvailabilityUseCase = ({ serviceRepository }) => asy
         let checkedSlots = 0;
         const bufferBeforeMinutes = toNonNegativeInt(detail.buffer_before_minutes, 0);
         const bufferAfterMinutes = toNonNegativeInt(detail.buffer_after_minutes, 0);
-        const dayWindowStart = addMinutes(startOfDay(date), -bufferBeforeMinutes);
-        const dayWindowEnd = addMinutes(startOfDay(date), (24 * 60) + durationMinutes + bufferAfterMinutes);
+        const zonedDayStart = getZonedDayStart(date, timezone);
+        const dayWindowStart = addMinutes(zonedDayStart, -bufferBeforeMinutes);
+        const dayWindowEnd = addMinutes(zonedDayStart, (24 * 60) + durationMinutes + bufferAfterMinutes);
         const availabilityConflicts = typeof serviceRepository.findAvailabilityConflicts === 'function'
             ? await serviceRepository.findAvailabilityConflicts({
                 serviceItemId: service.item_id,
@@ -1244,7 +1247,8 @@ export const buildGetServiceAvailabilityUseCase = ({ serviceRepository }) => asy
                 durationMinutes,
                 intervalMinutes,
                 leadTimeMinutes: detail.lead_time_minutes,
-                weeklyAvailability: candidate.weeklyAvailability
+                weeklyAvailability: candidate.weeklyAvailability,
+                timezone
             });
             if (startCandidates.length === 0) {
                 incrementReason(reasonCounts, 'outside_weekly_availability_or_lead_time');

@@ -1,11 +1,5 @@
 import { normalizeStorefrontErrorMessage } from '../shared/model/storefrontErrorMessages.js';
 
-export const SERVICES_MULTI_LINE_RUNTIME_MESSAGE =
-  'Multiple services in one submitted booking are not available yet. Please complete one service booking at a time.';
-
-export const SERVICES_MULTI_UNIT_RUNTIME_MESSAGE =
-  'Multiple units in one submitted booking are not available yet. Set the quantity to 1 and submit separate bookings.';
-
 const getLineQuantity = (line) => Math.max(1, Number(line?.quantity || 1));
 
 const buildServiceNotes = ({ line, bookingFieldPlan, customerAddress }) => (
@@ -16,31 +10,6 @@ const buildServiceNotes = ({ line, bookingFieldPlan, customerAddress }) => (
     String(line?.service_notes || '').trim()
   ].filter(Boolean).join('\n')
 );
-
-export const collectServicesRuntimeCompatibilityIssues = (serviceCartLines = []) => {
-  if (!Array.isArray(serviceCartLines) || serviceCartLines.length === 0) return [];
-
-  const issues = [];
-  if (serviceCartLines.length > 1) {
-    issues.push({
-      field: 'Services selected',
-      message: SERVICES_MULTI_LINE_RUNTIME_MESSAGE
-    });
-  }
-
-  serviceCartLines.forEach((line) => {
-    if (getLineQuantity(line) <= 1) return;
-    const lineName = line?.variantName || line?.name || 'Service';
-    issues.push({
-      cart_line_id: line?.cart_line_id || '',
-      item_id: line?.item_id,
-      field: 'Number of Units',
-      message: `${lineName}: ${SERVICES_MULTI_UNIT_RUNTIME_MESSAGE}`
-    });
-  });
-
-  return issues;
-};
 
 export const buildSingleServiceBookingPayload = ({
   line,
@@ -63,6 +32,7 @@ export const buildSingleServiceBookingPayload = ({
   customer_phone: customerPhone,
   location_id: selectedLocationId ?? storeLocationId,
   payment_timing: paymentTiming,
+  quantity: getLineQuantity(line),
   intake_responses: bookingPageIntakeFields.length > 0 ? serviceIntakeResponses : null,
   idempotency_key: createIdempotencyKey('store-service'),
   notes: buildServiceNotes({
@@ -70,6 +40,39 @@ export const buildSingleServiceBookingPayload = ({
     bookingFieldPlan,
     customerAddress
   })
+});
+
+// One draft per cart line for the batch route. Unlike the single-booking-page
+// payload above, each service cart line already carries its own schedule,
+// notes, payment timing, and intake responses (captured at add-to-cart time in
+// useServiceBookingViewModel.js), so drafts read directly off the line rather
+// than shared booking-page form state.
+const buildServiceBookingDraft = ({ line, bookingFieldPlan, customerAddress }) => ({
+  service_item_id: Number(line.item_id),
+  start_at: new Date(line.service_schedule_at).toISOString(),
+  quantity: getLineQuantity(line),
+  payment_timing: line.payment_timing,
+  intake_responses: line?.intake_responses && typeof line.intake_responses === 'object' ? line.intake_responses : null,
+  notes: buildServiceNotes({ line, bookingFieldPlan, customerAddress })
+});
+
+export const buildServiceBookingBatchPayload = ({
+  serviceCartLines,
+  customerName,
+  customerEmail,
+  customerPhone,
+  selectedLocationId,
+  storeLocationId,
+  customerAddress,
+  bookingFieldPlan,
+  createIdempotencyKey,
+}) => ({
+  customer_name: customerName,
+  customer_email: customerEmail,
+  customer_phone: customerPhone,
+  location_id: selectedLocationId ?? storeLocationId,
+  idempotency_key: createIdempotencyKey('store-service-batch'),
+  bookings: serviceCartLines.map((line) => buildServiceBookingDraft({ line, bookingFieldPlan, customerAddress }))
 });
 
 export const resolveServicesBookingSubmitContract = ({
@@ -88,17 +91,8 @@ export const resolveServicesBookingSubmitContract = ({
   bookingFieldPlan,
   createIdempotencyKey,
 }) => {
-  const runtimeIssues = collectServicesRuntimeCompatibilityIssues(serviceCartLines);
-  if (runtimeIssues.length > 0) {
-    return {
-      compatible: false,
-      message: runtimeIssues[0].message,
-      issues: runtimeIssues
-    };
-  }
-
-  const line = hasServiceCart ? serviceCartLines[0] : serviceBookingLine;
-  if (!line) {
+  const lines = hasServiceCart ? serviceCartLines : (serviceBookingLine ? [serviceBookingLine] : []);
+  if (lines.length === 0) {
     return {
       compatible: false,
       message: 'Select a service booking before continuing.',
@@ -106,14 +100,26 @@ export const resolveServicesBookingSubmitContract = ({
     };
   }
 
-  if (getLineQuantity(line) > 1) {
+  if (lines.length > 1) {
     return {
-      compatible: false,
-      message: SERVICES_MULTI_UNIT_RUNTIME_MESSAGE,
-      issues: []
+      compatible: true,
+      route: '/api/v1/store/services/bookings/batch',
+      body: buildServiceBookingBatchPayload({
+        serviceCartLines: lines,
+        customerName,
+        customerEmail,
+        customerPhone,
+        selectedLocationId,
+        storeLocationId,
+        customerAddress,
+        bookingFieldPlan,
+        createIdempotencyKey,
+      }),
+      line: lines[0]
     };
   }
 
+  const line = lines[0];
   return {
     compatible: true,
     route: '/api/v1/store/services/bookings',
