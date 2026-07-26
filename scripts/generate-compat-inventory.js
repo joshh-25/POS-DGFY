@@ -24,9 +24,7 @@ const OUTPUT_PATH = path.join(REPO_ROOT, 'docs', 'architecture', 'COMPATIBILITY_
 
 const TABLE_COLUMNS = ['id', 'type', 'status', 'rationale', 'tests', 'rollback', 'removal_criteria'];
 
-/** Shared low-level mkdir-recursive + writeFile helper (mirrors
- * apps/dgfy-migration-runner/src/reports/reportWriter.js's
- * writeReportFile, sync variant since this generator is CJS/sync). */
+/** Shared low-level mkdir-recursive + writeFile helper. */
 const writeReportFile = (filePath, contents) => {
   fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, contents, 'utf8');

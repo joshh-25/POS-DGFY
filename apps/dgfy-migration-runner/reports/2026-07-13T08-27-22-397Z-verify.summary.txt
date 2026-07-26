@@ -1,1 +1,0 @@
-[verify] status=success generated_at=2026-07-13T08:27:22.397Z metadata_schema_ok=false target_db_reachable=false target_db_name=dgfy_business_aa1fb840807e198b6448 core_schema_ok=false business_schemas_ok=true migration_metadata_ok=false tenant_coverage_ok=true idempotency_ok=false legacy_non_mutation_ok=false data_migration_ok=true
