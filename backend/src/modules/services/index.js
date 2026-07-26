@@ -1,5 +1,6 @@
 import { serviceRepository } from './repositories/serviceRepository.js';
 import * as emailService from '../../services/emailService.js';
+import { inventoryStockCommandService } from '../inventory/index.js';
 import {
     buildListServiceCatalogUseCase,
     buildCreateServiceCatalogItemUseCase,
@@ -16,6 +17,7 @@ import {
     buildListServiceBookingsUseCase,
     buildUpdateServiceBookingStatusUseCase,
     buildGetServiceBookingByReferenceUseCase,
+    buildSettleServiceBookingUseCase,
     buildClaimServiceBookingUseCase,
     buildServiceDashboardUseCase,
     buildListServiceWaitlistUseCase,
@@ -42,6 +44,10 @@ export const getServiceAvailabilityUseCase = buildGetServiceAvailabilityUseCase(
 export const listServiceBookingsUseCase = buildListServiceBookingsUseCase({ serviceRepository });
 export const updateServiceBookingStatusUseCase = buildUpdateServiceBookingStatusUseCase({ serviceRepository });
 export const getServiceBookingByReferenceUseCase = buildGetServiceBookingByReferenceUseCase({ serviceRepository });
+export const settleServiceBookingUseCase = buildSettleServiceBookingUseCase({
+    serviceRepository,
+    inventoryCommandService: inventoryStockCommandService
+});
 export const claimServiceBookingUseCase = buildClaimServiceBookingUseCase({ serviceRepository });
 export const serviceDashboardUseCase = buildServiceDashboardUseCase({ serviceRepository });
 export const listServiceWaitlistUseCase = buildListServiceWaitlistUseCase({ serviceRepository });

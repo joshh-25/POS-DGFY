@@ -47,7 +47,8 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260714000002-add-pos-best-seller-contract.cjs',
     '20260724000001-enforce-one-open-shift-per-operator.cjs',
     '20260502000001-add-services-mode-booking-tables.cjs',
-    '20260726000001-add-tracking-mode-to-items.cjs'
+    '20260726000001-add-tracking-mode-to-items.cjs',
+    '20260726000002-add-service-booking-lines.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -111,6 +112,15 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'location_id',
         'provider',
         'status'
+    ],
+    service_booking_lines: [
+        'booking_line_id',
+        'booking_id',
+        'line_type',
+        'item_id',
+        'unit_price',
+        'line_amount',
+        'stock_effect_type'
     ],
     stock_movements: ['movement_id', 'item_id', 'movement_type', 'quantity', 'location_id', 'source_location_id', 'destination_location_id'],
     fifo_batches: ['batch_id', 'item_id', 'location_id', 'quantity', 'quantity_consumed'],

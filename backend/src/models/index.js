@@ -63,6 +63,7 @@ import ServiceResource from './ServiceResource.js';
 import ServiceProviderAssignment from './ServiceProviderAssignment.js';
 import ServiceBooking from './ServiceBooking.js';
 import ServiceBookingHold from './ServiceBookingHold.js';
+import ServiceBookingLine from './ServiceBookingLine.js';
 import ServiceWaitlistEntry from './ServiceWaitlistEntry.js';
 import ServiceReminderOutbox from './ServiceReminderOutbox.js';
 import FnbModifierGroup from './FnbModifierGroup.js';
@@ -541,6 +542,10 @@ ServiceBookingHold.belongsTo(ServiceResource, { foreignKey: 'resource_id', as: '
 ServiceBookingHold.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 Item.hasMany(ServiceBooking, { foreignKey: 'service_item_id', as: 'serviceBookings' });
 StoreCustomer.hasMany(ServiceBooking, { foreignKey: 'store_customer_id', as: 'serviceBookings' });
+ServiceBooking.hasMany(ServiceBookingLine, { foreignKey: 'booking_id', as: 'lines' });
+ServiceBookingLine.belongsTo(ServiceBooking, { foreignKey: 'booking_id', as: 'booking' });
+ServiceBookingLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+ServiceBookingLine.belongsTo(PosTransactionLine, { foreignKey: 'pos_transaction_line_id', as: 'posTransactionLine' });
 ServiceWaitlistEntry.belongsTo(Item, { foreignKey: 'service_item_id', as: 'serviceItem' });
 ServiceWaitlistEntry.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
 
@@ -743,6 +748,7 @@ const db = {
   ServiceProviderAssignment,
   ServiceBooking,
   ServiceBookingHold,
+  ServiceBookingLine,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
   FnbModifierGroup,
@@ -892,6 +898,7 @@ export {
   ServiceProviderAssignment,
   ServiceBooking,
   ServiceBookingHold,
+  ServiceBookingLine,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
   FnbModifierGroup,

@@ -183,7 +183,7 @@ branch in five duplicated files.
 | Jewelry (one-of-a-kind piece) | `physical_product` + `serialized` | Partial | Sells as an ordinary stock-bearing item; no per-piece identity |
 | Bracelet maker | `physical_product` (+ `made_to_order` optionally) | Yes (msme) | — |
 | Broom seller | `physical_product` | Yes (msme) | — |
-| Shoe cleaner, freelance masahista | `time_service` | **No** | `msme` capabilities omit `services`/`serviceBookings`; forces adoption of the full heavyweight `services` mode for a solo operator |
+| Shoe cleaner, freelance masahista | `time_service` | **No** | `msme` capabilities omit `services`; forces adoption of the full heavyweight `services` mode for a solo operator |
 | Cinema seat | `ticketed_seat` | No | `ticketing_transport` is a placeholder mode with no seat/showtime model; likely better as an external listing (see provider axis) |
 | Doctor consultation slot | `capacity_slot` | No | `healthcare` is a placeholder mode with no scheduling taxonomy |
 | Taxi ride | out of this catalog | No | A distinct trip/dispatch domain, not a catalog item; tracked only as a future external-listing candidate |
