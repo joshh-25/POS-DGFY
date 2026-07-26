@@ -170,6 +170,26 @@ describe('stock bearing policy', () => {
         });
     });
 
+    describe('resolveStockBearingDescriptor - external_ims (Phase 9 Axis 4 delegation)', () => {
+        it('keeps tracking_mode:external_ims stock-bearing, movement-emitting, and remote-sourced', () => {
+            expect(resolveStockBearingDescriptor({ category: 'product', tracking_mode: 'external_ims' })).toEqual({
+                tracks_quantity: true,
+                uses_batches: false,
+                blocks_on_shortfall: true,
+                emits_movements: true,
+                carries_cost: true,
+                valuation_participant: true,
+                availability_source: AVAILABILITY_SOURCE.REMOTE,
+                is_toggle_available: null
+            });
+        });
+
+        it('lets a real service category win over an external_ims tracking_mode, like every other mode', () => {
+            expect(resolveStockBearingDescriptor({ category: 'service', tracking_mode: 'external_ims' }))
+                .toMatchObject({ availability_source: AVAILABILITY_SOURCE.CAPACITY, tracks_quantity: false });
+        });
+    });
+
     describe('resolveStockExemptReason', () => {
         it('returns null for a tracked item', () => {
             expect(resolveStockExemptReason({ category: 'product', tracking_mode: 'count_ledger' })).toBeNull();
@@ -190,6 +210,10 @@ describe('stock bearing policy', () => {
 
         it('labels a non-service capacity item as capacity_item', () => {
             expect(resolveStockExemptReason({ category: 'product', tracking_mode: 'capacity' })).toBe('capacity_item');
+        });
+
+        it('never exempts an external_ims item (tracks_quantity stays true)', () => {
+            expect(resolveStockExemptReason({ category: 'product', tracking_mode: 'external_ims' })).toBeNull();
         });
     });
 });
