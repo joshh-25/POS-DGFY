@@ -231,6 +231,7 @@ export default function RegisterCompany() {
     const [companyForm, setCompanyForm] = useState({
         companyName: '',
         workflowMode: 'food_manufacturing',
+        industryTag: '',
         acceptedCompanyTerms: false
     });
     const [success, setSuccess] = useState(null);
@@ -564,6 +565,7 @@ export default function RegisterCompany() {
             const response = await api.post('/admin/tenants/register', {
                 name: companyForm.companyName,
                 workflowMode: companyForm.workflowMode,
+                industryTag: companyForm.industryTag,
                 accepted_company_terms: true,
                 company_terms_version: companyLegalSnapshot.company_terms_version,
                 marketplace_terms_version: companyLegalSnapshot.marketplace_terms_version
@@ -653,7 +655,10 @@ export default function RegisterCompany() {
                         )}
                         <div className="mt-6 rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">
                             <p className="text-sm font-semibold text-[#132033]">{success.data?.name}</p>
-                            <p className="mt-1 text-sm text-slate-600">Business industry: {WORKFLOW_MODE_LABELS[success.data?.workflow_mode] || success.data?.workflow_mode}</p>
+                            <p className="mt-1 text-sm text-slate-600">Operating mode: {WORKFLOW_MODE_LABELS[success.data?.workflow_mode] || success.data?.workflow_mode}</p>
+                            {success.data?.industry_tag && (
+                                <p className="mt-1 text-sm text-slate-600">Industry: {success.data.industry_tag}</p>
+                            )}
                             <p className="mt-1 text-sm text-slate-600">Compliance starts as non-compliant. You can upgrade later in Settings &gt; Compliance.</p>
                         </div>
                         <Button
@@ -741,7 +746,7 @@ export default function RegisterCompany() {
 
                     <form onSubmit={handleSubmitCompany} className="space-y-5">
                         <div>
-                            <Label htmlFor="workflowMode">Business Industry</Label>
+                            <Label htmlFor="workflowMode">Operating Mode</Label>
                             <select
                                 id="workflowMode"
                                 value={companyForm.workflowMode}
@@ -753,6 +758,7 @@ export default function RegisterCompany() {
                                     <option key={mode.value} value={mode.value}>{mode.label}</option>
                                 ))}
                             </select>
+                            <p className="mt-1 text-xs text-slate-500">Configures which DGFY tools and workflows are set up for your account. You can pick the closest match — this isn't your industry.</p>
                         </div>
 
                         <div>
@@ -768,6 +774,20 @@ export default function RegisterCompany() {
                                 disabled={isLoading}
                                 className="mt-1"
                             />
+                        </div>
+
+                        <div>
+                            <Label htmlFor="industryTag">Industry (optional)</Label>
+                            <Input
+                                id="industryTag"
+                                placeholder="e.g. coffee shop, hardware store, freelance repair"
+                                value={companyForm.industryTag}
+                                onChange={(e) => setCompanyForm({ ...companyForm, industryTag: e.target.value })}
+                                maxLength={120}
+                                disabled={isLoading}
+                                className="mt-1"
+                            />
+                            <p className="mt-1 text-xs text-slate-500">How you'd describe your business, for your profile only — it doesn't change how DGFY works for you.</p>
                         </div>
 
                         <div className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">
