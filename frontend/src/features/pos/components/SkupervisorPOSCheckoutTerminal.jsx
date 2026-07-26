@@ -30,6 +30,7 @@ import { isOfflinePosScopeReady } from '../services/offlinePosScope.js';
 import { getFolders } from '@/services/itemService.js';
 import { getAllSettings } from '@/services/settingsService';
 import { usePermission } from '@/hooks/usePermission';
+import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
 import { resolveAppAssetUrl, resolveAssetUrl, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
 import { handlePaneScrollKeyDown } from '../utils/scrollKeyControls.js';
 import {
@@ -177,7 +178,10 @@ const buildCompliancePolicyBlockerMessage = (error) => {
 const buildStockExceededMessage = ({ itemName, requestedQty, availableStock, unit }) => (
     `${itemName}: requested ${money(requestedQty)}${unit ? ` ${unit}` : ''}, only ${money(availableStock)}${unit ? ` ${unit}` : ''} in stock.`
 );
-const isServiceCatalogItem = (item = {}) => String(item?.category || '').trim().toLowerCase() === 'service';
+const isServiceCatalogItem = (item = {}) => (
+    String(item?.category || '').trim().toLowerCase() === 'service'
+    || String(item?.mode_item_preset || '').trim().toLowerCase() === 'service'
+);
 const getLineKey = (line = {}) => line.line_key || line.item_id;
 const createCartLineKey = (itemId) => `line-${itemId}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const getFnbModifierGroups = (item = {}) => (
@@ -1178,7 +1182,12 @@ export default function POSCheckoutTerminal({
             line_modifiers: defaultModifiers
         };
         const linePrice = round4(defaultPrice + resolveModifierDelta(modifierLineSeed, defaultModifiers));
-        if (isServiceCatalogItem(item)) {
+        // Only default order_method to 'appointment' when this service is the
+        // very first line in an empty basket. Previously this fired on every
+        // service add regardless of what else was already in the cart, so
+        // ringing up a service alongside unrelated retail lines silently
+        // reclassified the whole mixed-basket transaction as an appointment.
+        if (isServiceCatalogItem(item) && cart.length === 0) {
             setOrderMethod('appointment');
         }
         let stockWarning = '';
@@ -2073,10 +2082,15 @@ export default function POSCheckoutTerminal({
                                         </Button>
                                         <Input
                                             type="number"
-                                            min="0.0001"
-                                            step="0.0001"
+                                            min={allowsDecimalQuantity(line.unit_of_measure) ? '0.0001' : '1'}
+                                            step={allowsDecimalQuantity(line.unit_of_measure) ? '0.0001' : '1'}
                                             value={line.quantity}
-                                            onChange={(event) => updateCartQuantity(lineKey, event.target.value || 0)}
+                                            onChange={(event) => updateCartQuantity(
+                                                lineKey,
+                                                allowsDecimalQuantity(line.unit_of_measure)
+                                                    ? (event.target.value || 0)
+                                                    : Math.floor(Number(event.target.value) || 0)
+                                            )}
                                             className="h-11 text-base"
                                             disabled={posActionsBlocked}
                                         />

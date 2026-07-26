@@ -12,7 +12,9 @@ import { assertItemRepositoryContract } from '../contracts/itemRepository.contra
 import {
     DEFAULT_WORKFLOW_MODE,
     normalizeWorkflowMode,
-    resolveWorkflowModeFamily
+    resolveWorkflowModeFamily,
+    ENABLED_CAPABILITIES_SETTING_KEY,
+    normalizeEnabledCapabilities
 } from '../../shared/constants/workflowModes.js';
 import { resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
 import {
@@ -221,6 +223,18 @@ export const resolveCachedWorkflowMode = async () => {
     const settings = await getCachedSettingsForTenant();
     const configuredMode = settings?.[WORKFLOW_MODE_SETTING_KEY]?.value;
     return normalizeWorkflowMode(configuredMode ?? DEFAULT_WORKFLOW_MODE);
+};
+
+/**
+ * Resolve the tenant's enabled_capabilities overlay using the same
+ * tenant-scoped settings cache as resolveCachedWorkflowMode (5-minute TTL,
+ * no extra query - it's the same cached settings object). Exported for use
+ * by the inventory module composition root so item-taxonomy validation can
+ * honor capabilities composed onto the base workflow mode.
+ */
+export const resolveCachedEnabledCapabilities = async () => {
+    const settings = await getCachedSettingsForTenant();
+    return normalizeEnabledCapabilities(settings?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value);
 };
 
 const calculateThresholds = async (maxCapacity) => {
@@ -1235,6 +1249,27 @@ export const itemRepository = {
                 dataToCreate.current_stock = 0;
             }
             delete dataToCreate.location_id;
+
+            // Archetype-based default (see docs/features/INVENTORY_TRACKING_MODES.md):
+            // the seller may always override via an explicit tracking_mode on the
+            // request; this only fills in the default when they don't. Existing
+            // items are never touched here - this is create-time only. Uses the
+            // same service definition as isStockExemptServiceItem (category OR
+            // mode_item_preset), independent of the narrower isServiceItem above
+            // which only governs the pre-existing current_stock zeroing behavior.
+            if (!dataToCreate.tracking_mode) {
+                const isCapacityItem = isServiceItem
+                    || String(dbFields.mode_item_preset || '').trim().toLowerCase() === 'service';
+                if (isCapacityItem) {
+                    dataToCreate.tracking_mode = 'capacity';
+                } else if (dataToCreate.fifo_enabled === true) {
+                    dataToCreate.tracking_mode = 'full_fifo';
+                } else if (String(dataToCreate.mode_item_preset || '').trim().toLowerCase() === 'menu_item') {
+                    dataToCreate.tracking_mode = 'toggle';
+                } else {
+                    dataToCreate.tracking_mode = 'count_ledger';
+                }
+            }
 
             const item = await Item.create(dataToCreate, { transaction });
 

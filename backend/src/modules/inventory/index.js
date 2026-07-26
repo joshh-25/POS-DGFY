@@ -1,4 +1,4 @@
-import { itemRepository, resolveCachedWorkflowMode } from './repositories/itemRepository.js';
+import { itemRepository, resolveCachedWorkflowMode, resolveCachedEnabledCapabilities } from './repositories/itemRepository.js';
 import { buildGetItemsUseCase } from './usecases/getItemsUseCase.js';
 import { buildGetItemByIdUseCase } from './usecases/getItemByIdUseCase.js';
 import { buildCreateItemUseCase } from './usecases/createItemUseCase.js';
@@ -47,9 +47,9 @@ import * as stockCommandService from './commands/stockCommandService.js';
 
 export const getItemsUseCase = buildGetItemsUseCase({ itemRepository });
 export const getItemByIdUseCase = buildGetItemByIdUseCase({ itemRepository });
-export const createItemUseCase = buildCreateItemUseCase({ itemRepository, resolveWorkflowMode: resolveCachedWorkflowMode });
-export const updateItemUseCase = buildUpdateItemUseCase({ itemRepository, resolveWorkflowMode: resolveCachedWorkflowMode });
-export const finalizeItemUseCase = buildFinalizeItemUseCase({ itemRepository, resolveWorkflowMode: resolveCachedWorkflowMode });
+export const createItemUseCase = buildCreateItemUseCase({ itemRepository, resolveWorkflowMode: resolveCachedWorkflowMode, resolveEnabledCapabilities: resolveCachedEnabledCapabilities });
+export const updateItemUseCase = buildUpdateItemUseCase({ itemRepository, resolveWorkflowMode: resolveCachedWorkflowMode, resolveEnabledCapabilities: resolveCachedEnabledCapabilities });
+export const finalizeItemUseCase = buildFinalizeItemUseCase({ itemRepository, resolveWorkflowMode: resolveCachedWorkflowMode, resolveEnabledCapabilities: resolveCachedEnabledCapabilities });
 
 export const deleteItemUseCase = buildDeleteItemUseCase({ itemRepository });
 export const getItemStockHistoryUseCase = buildGetItemStockHistoryUseCase({ itemRepository });

@@ -128,6 +128,38 @@ export const WORKFLOW_MODE_CAPABILITIES = Object.freeze({
     msme: ['catalog', 'menuModifiers', 'pos', 'storefront']
 });
 
+// Master-admin gated per-tenant setting key for the Phase 6 composed-capability
+// overlay. Centralized here (unlike WORKFLOW_MODE_SETTING_KEY, which predates
+// this convention and is still duplicated across ~16 backend call sites) so
+// this one has a single source of truth from day one.
+export const ENABLED_CAPABILITIES_SETTING_KEY = 'ops_enabled_capabilities';
+
+// Union of every capability referenced by any mode's WORKFLOW_MODE_CAPABILITIES
+// entry. This is the allowlist for the enabled_capabilities overlay - a value
+// outside this set is either a typo or a decommissioned capability, and is
+// silently dropped by normalizeEnabledCapabilities rather than granted.
+export const ALL_WORKFLOW_CAPABILITIES = Object.freeze(
+    [...new Set(Object.values(WORKFLOW_MODE_CAPABILITIES).flat())].sort()
+);
+
+export const normalizeEnabledCapabilities = (value) => {
+    const list = Array.isArray(value) ? value : [];
+    const deduped = [...new Set(list.map((entry) => String(entry || '').trim()).filter(Boolean))];
+    return Object.freeze(deduped.filter((capability) => ALL_WORKFLOW_CAPABILITIES.includes(capability)));
+};
+
+// The tenant's effective capability set: the base workflow mode's fixed list,
+// composed (unioned) with whatever the master admin has additionally opted
+// into via the enabled_capabilities overlay. Existing tenants with no overlay
+// set resolve to exactly the base mode's list - byte-identical to pre-Phase-6
+// behavior.
+export const resolveEffectiveCapabilities = (value, enabledCapabilities = []) => {
+    const mode = normalizeWorkflowMode(value);
+    const baseCapabilities = WORKFLOW_MODE_CAPABILITIES[mode] || [];
+    const overlay = normalizeEnabledCapabilities(enabledCapabilities);
+    return Object.freeze([...new Set([...baseCapabilities, ...overlay])]);
+};
+
 export const normalizeWorkflowMode = (value) => {
     const normalized = String(value || '').trim().toLowerCase();
     if (!normalized) return DEFAULT_WORKFLOW_MODE;
@@ -162,10 +194,14 @@ export const getWorkflowModePinMeta = (value) => {
     return WORKFLOW_MODE_PIN_META[mode] || WORKFLOW_MODE_PIN_META[DEFAULT_WORKFLOW_MODE];
 };
 
-export const modeHasCapability = (value, capability) => {
-    const mode = normalizeWorkflowMode(value);
-    const capabilities = WORKFLOW_MODE_CAPABILITIES[mode] || [];
-    return capabilities.includes(String(capability || '').trim());
+// enabledCapabilities is optional and additive: every pre-Phase-6 call site
+// that passes only (value, capability) keeps checking the base mode's fixed
+// list exactly as before. Passing the tenant's enabled_capabilities overlay
+// as a third argument makes the check capability-driven (composed).
+export const modeHasCapability = (value, capability, enabledCapabilities = []) => {
+    const normalizedCapability = String(capability || '').trim();
+    const effectiveCapabilities = resolveEffectiveCapabilities(value, enabledCapabilities);
+    return effectiveCapabilities.includes(normalizedCapability);
 };
 
 export const isMsmeWorkflowMode = (value) => resolveWorkflowModeFamily(value) === 'msme';

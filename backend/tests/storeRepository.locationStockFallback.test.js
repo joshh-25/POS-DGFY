@@ -76,6 +76,9 @@ const buildCatalogRow = (overrides = {}) => ({
     default_sale_price: 25,
     cost_per_unit: 12,
     vat_type: 'vatable',
+    mode_item_preset: overrides.mode_item_preset ?? null,
+    tracking_mode: overrides.tracking_mode ?? null,
+    tracking_toggle_available: overrides.tracking_toggle_available ?? true,
     posCatalogOverride: overrides.posCatalogOverride ?? {
         pos_visible: true,
         pos_image_url: '/uploads/item-10.png'
@@ -293,6 +296,46 @@ describe('storeRepository location-stock schema fallback', () => {
                 { url: '/uploads/storefront/second.png', is_primary: false, sort_order: 1 },
                 { url: '/uploads/storefront/third.png', is_primary: false, sort_order: 2 }
             ]
+        }));
+    });
+
+    it('findSellableItemsByIds keeps an untracked item available even with no per-location stock row (bug 5)', async () => {
+        // Before this fix, a missing item_location_stocks row collapsed to
+        // current_stock=0 for every item alike, wrongly reading as "out of
+        // stock" even for an item whose whole point is that it isn't counted.
+        itemFindAllMock.mockResolvedValue([buildCatalogRow({
+            item_id: 800,
+            current_stock: 0,
+            tracking_mode: 'untracked'
+        })]);
+        itemLocationStockFindAllMock.mockResolvedValue([]);
+
+        const result = await storeRepository.findSellableItemsByIds([800], { locationId: 1 });
+
+        expect(result).toHaveLength(1);
+        expect(result[0]).toEqual(expect.objectContaining({
+            item_id: 800,
+            is_available: true,
+            availability_status: 'in_stock'
+        }));
+    });
+
+    it('findSellableItemsByIds marks a toggle-off item unavailable regardless of stock rows', async () => {
+        itemFindAllMock.mockResolvedValue([buildCatalogRow({
+            item_id: 801,
+            current_stock: 10,
+            tracking_mode: 'toggle',
+            tracking_toggle_available: false
+        })]);
+        itemLocationStockFindAllMock.mockResolvedValue([]);
+
+        const result = await storeRepository.findSellableItemsByIds([801], { locationId: 1 });
+
+        expect(result).toHaveLength(1);
+        expect(result[0]).toEqual(expect.objectContaining({
+            item_id: 801,
+            is_available: false,
+            availability_status: 'out_of_stock'
         }));
     });
 

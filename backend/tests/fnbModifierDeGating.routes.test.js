@@ -6,17 +6,22 @@ let currentModels = {};
 
 jest.unstable_mockModule('../src/utils/dbStore.js', () => ({
     default: {
-        get: (modelName) => currentModels[modelName]
+        get: (modelName) => currentModels[modelName],
+        getStore: () => ({})
     }
 }));
 
 const { requireWorkflowCapability } = await import('../src/middleware/workflowModeCapability.js');
 const { modeHasCapability } = await import('../src/modules/shared/constants/workflowModes.js');
+const { clearWorkflowCapabilitySettingsCache } = await import('../src/modules/shared/utils/workflowCapabilitySettingsCache.js');
 
 const withWorkflowMode = (mode) => {
+    clearWorkflowCapabilitySettingsCache();
     currentModels = {
         SystemSetting: {
-            findOne: jest.fn().mockResolvedValue(mode === undefined ? null : { setting_value: mode })
+            findAll: jest.fn().mockResolvedValue(
+                mode === undefined ? [] : [{ setting_key: 'ops_workflow_mode', setting_value: mode, data_type: 'string' }]
+            )
         }
     };
 };

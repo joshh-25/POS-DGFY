@@ -1,5 +1,5 @@
 import { normalizeUom, getUomGroup } from '@sieitzz/shared-constants/uomConverter';
-import { resolveModeItemTaxonomy } from '@sieitzz/shared-constants/modeItemTaxonomy';
+import { resolveEffectiveItemTaxonomy } from '@sieitzz/shared-constants/modeItemTaxonomy';
 
 export * from '@sieitzz/shared-constants/modeItemTaxonomy';
 
@@ -14,11 +14,12 @@ const isDraftStatus = (status) => String(status || '').trim().toLowerCase() === 
 
 export const validateItemAgainstModeTaxonomy = ({
     workflowMode,
+    enabledCapabilities = [],
     itemData = {},
     existingItem = null,
     operation = 'create'
 } = {}) => {
-    const taxonomyConfig = resolveModeItemTaxonomy(workflowMode);
+    const taxonomyConfig = resolveEffectiveItemTaxonomy(workflowMode, enabledCapabilities);
     if (!taxonomyConfig) return { ok: true, skipped: 'placeholder_mode' };
 
     const nextStatus = itemData.status ?? existingItem?.status ?? 'active';

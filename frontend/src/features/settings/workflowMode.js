@@ -76,22 +76,25 @@ export const isWorkflowPageModeSensitive = (pageName) => (
   MODE_SENSITIVE_NAV_PAGES.includes(String(pageName || '').trim())
 );
 
-export const isWorkflowPageVisible = (pageName, workflowMode) => {
+// enabledCapabilities is optional (Phase 6 composed-capability overlay). Every
+// pre-Phase-6 caller that omits it keeps checking only the base mode's fixed
+// capability list - identical to before.
+export const isWorkflowPageVisible = (pageName, workflowMode, enabledCapabilities = []) => {
   const normalizedPage = String(pageName || '').trim();
   const capability = WORKFLOW_PAGE_CAPABILITIES[normalizedPage];
-  if (capability) return modeHasCapability(workflowMode, capability);
+  if (capability) return modeHasCapability(workflowMode, capability, enabledCapabilities);
   const hiddenPages = MODE_HIDDEN_NAV_PAGES[resolveWorkflowModeFamily(workflowMode)];
   return !hiddenPages?.includes(normalizedPage);
 };
 
-export const isWorkflowPathBlocked = (pathname, workflowMode) => {
+export const isWorkflowPathBlocked = (pathname, workflowMode, enabledCapabilities = []) => {
   const normalizedPath = String(pathname || '/').trim().toLowerCase();
   const matchesPrefix = (prefix) => (
     normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`)
   );
   const capabilityEntry = Object.entries(WORKFLOW_ROUTE_CAPABILITIES)
     .find(([prefix]) => matchesPrefix(prefix));
-  if (capabilityEntry) return !modeHasCapability(workflowMode, capabilityEntry[1]);
+  if (capabilityEntry) return !modeHasCapability(workflowMode, capabilityEntry[1], enabledCapabilities);
   const hiddenPrefixes = MODE_HIDDEN_ROUTE_PREFIXES[resolveWorkflowModeFamily(workflowMode)] || [];
   return hiddenPrefixes.some(matchesPrefix);
 };
