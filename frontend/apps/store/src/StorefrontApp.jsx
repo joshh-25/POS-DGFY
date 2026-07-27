@@ -3155,6 +3155,7 @@ export default function StorefrontApp() {
     catalogSearch,
     setCatalogSearch,
     goDiscovery,
+    goStore,
     hasServiceCart,
     goStoreBookingPage,
     cartCount,
