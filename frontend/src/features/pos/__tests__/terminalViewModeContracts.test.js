@@ -210,6 +210,9 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('const [terminalLayoutEpoch, setTerminalLayoutEpoch] = useState(0);');
     expect(terminalPageContent).toContain('const terminalLayoutLockedRef = useRef(locked);');
     expect(terminalPageContent).toContain('window.requestAnimationFrame(() => {');
+    expect(terminalPageContent).toContain('restoreTerminalViewportAfterUnlock({');
+    expect(terminalPageContent).toContain('workspaceElement: workspacePaneRef.current');
+    expect(terminalPageContent).toContain('stopViewportRecovery();');
     expect(terminalPageContent).toContain('setTerminalLayoutEpoch((current) => current + 1);');
     expect(terminalPageContent).toContain("key={locked ? 'terminal-layout-locked' : `terminal-layout-unlocked-${terminalLayoutEpoch}`}");
   });
@@ -540,7 +543,8 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('uses adaptive responsive layout primitives and avoids hard-coded viewport math', () => {
-    expect(terminalPageLayoutContent).toContain('min-h-[100dvh]');
+    expect(terminalPageLayoutContent).toContain('dgfy-pos-shell overflow-hidden');
+    expect(terminalPageLayoutContent).not.toContain('min-h-screen');
     expect(posCheckoutTerminalContent).toContain('checkoutGridClassName');
     expect(posCheckoutTerminalContent).toContain('checkoutPaneClassName');
     expect(posCheckoutTerminalContent).not.toContain('calc(100vh-13.5rem)');

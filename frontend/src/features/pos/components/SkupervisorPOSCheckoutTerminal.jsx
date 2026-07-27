@@ -31,7 +31,12 @@ import { getFolders } from '@/services/itemService.js';
 import { getAllSettings } from '@/services/settingsService';
 import { usePermission } from '@/hooks/usePermission';
 import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
-import { resolveAppAssetUrl, resolveAssetUrl, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
+import {
+    advanceAssetImageFallback,
+    resolveAppAssetUrl,
+    resolveAssetUrl,
+    resolveAssetVariantUrl
+} from '@/src/utils/assetUrl.js';
 import { handlePaneScrollKeyDown } from '../utils/scrollKeyControls.js';
 import {
     notifyIminWebPosReady,
@@ -1840,6 +1845,7 @@ export default function POSCheckoutTerminal({
                             const isAlwaysAvailable = item.pos_always_available === true;
                             const isOutOfStock = !isServiceItem && !isAlwaysAvailable && Number(item.current_stock || 0) <= 0;
                             const configuredPosImageSrc = resolveAssetVariantUrl(item.storefront_image_url, 'thumbnail');
+                            const largePosImageSrc = resolveAssetVariantUrl(item.storefront_image_url, 'large');
                             const mappedPosImageSrc = resolveMappedPosItemImage(item);
                             const fallbackPosImageSrc = resolveCompanyIconFallbackUrl(receiptSettings);
                             const posImageSrc = configuredPosImageSrc || mappedPosImageSrc || fallbackPosImageSrc;
@@ -1890,13 +1896,7 @@ export default function POSCheckoutTerminal({
                                                 alt={`${item.name} menu`}
                                                 className="h-full w-full object-cover object-center"
                                                 onError={(event) => {
-                                                    const fallbackSrc = fallbackPosImageSrc;
-                                                    const currentSrc = String(event.currentTarget.src || '');
-                                                    const alreadyFallback = fallbackSrc && currentSrc.endsWith(fallbackSrc);
-                                                    if (fallbackSrc && !alreadyFallback) {
-                                                        event.currentTarget.src = fallbackSrc;
-                                                        return;
-                                                    }
+                                                    if (advanceAssetImageFallback(event, [largePosImageSrc, fallbackPosImageSrc])) return;
                                                     setCatalogImageErrors((previous) => {
                                                         const next = new Set(previous);
                                                         next.add(item.item_id);

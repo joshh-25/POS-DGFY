@@ -453,7 +453,7 @@ export default function TerminalPageLayout({
   );
 
   return (
-    <div className={`dgfy-pos-shell h-[100dvh] min-h-screen min-h-[100dvh] overflow-hidden ${shellLayoutClassName}`}>
+    <div className={`dgfy-pos-shell overflow-hidden ${shellLayoutClassName}`}>
       {notificationPanel}
       {!effectiveSidebarCollapsed && (
         <div className={`${persistentSidebarClassName} ${lockedSurfaceClassName}`}>

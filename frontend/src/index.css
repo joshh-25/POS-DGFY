@@ -199,9 +199,17 @@ body {
   --pos-shell-sidebar-muted: #64748b;
   --pos-shell-sidebar-card: #f8fafc;
   --pos-shell-shadow: 0 24px 48px rgba(15, 23, 42, 0.12);
+  height: 100vh;
+  min-height: 0;
   background: var(--pos-shell-bg);
   color: var(--pos-shell-text);
   font-family: 'Segoe UI Variable Display', 'Bahnschrift', 'Poppins', 'Segoe UI', sans-serif;
+}
+
+@supports (height: 100dvh) {
+  .dgfy-pos-shell {
+    height: 100dvh;
+  }
 }
 
 .dgfy-pos-panel {
@@ -266,6 +274,15 @@ body {
   }
 
   .dgfy-pos-shell :is(input, textarea, select) {
+    font-size: 16px !important;
+  }
+}
+
+/* Items and scanner dialogs render through portals outside .dgfy-pos-shell.
+   Keep their focused controls at iOS's non-zooming size without disabling
+   user-controlled pinch zoom for the rest of the application. */
+@supports (-webkit-touch-callout: none) {
+  .pos-mobile-no-focus-zoom :is(input, textarea, select) {
     font-size: 16px !important;
   }
 }

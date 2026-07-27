@@ -25,7 +25,8 @@ describe('POS terminal responsive scroll contracts', () => {
   });
 
   it('keeps the terminal shell viewport-safe without restoring hard xl screen locks', () => {
-    expect(terminalLayoutContent).toContain('min-h-[100dvh]');
+    expect(terminalLayoutContent).toContain('dgfy-pos-shell overflow-hidden');
+    expect(terminalLayoutContent).not.toContain('min-h-screen');
     expect(terminalLayoutContent).not.toContain('xl:h-screen');
     expect(terminalLayoutContent).toContain('sticky top-0 z-40 shrink-0 border-b border-pos');
     expect(terminalLayoutContent).toContain("const shellLayoutClassName = IS_DGFY_POS_SURFACE");

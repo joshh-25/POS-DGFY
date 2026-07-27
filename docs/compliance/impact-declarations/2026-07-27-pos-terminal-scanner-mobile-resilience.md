@@ -42,3 +42,5 @@ Required validation includes targeted scanner and terminal tests, POS build, arc
 ## Change Batches
 
 The barcode registry adapter and the product-import route are delivered before the terminal scanner presentation changes. Both batches retain the same server-side validation and tenant-bound inventory contracts.
+
+The terminal batch covers explicit camera permission feedback, scanner fallback behavior, initial mobile layout recovery, and focus-zoom safeguards. It does not grant camera access automatically or change any checkout action.
