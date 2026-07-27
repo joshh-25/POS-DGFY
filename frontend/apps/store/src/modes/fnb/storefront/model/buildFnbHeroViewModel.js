@@ -47,7 +47,9 @@ export function buildFnbHeroViewModel({
       latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
       longitude: selectedLocation?.longitude ?? selectedStore?.longitude,
       addressLine: addressText
-    })
+    }),
+    destinationLatitude: selectedLocation?.latitude ?? selectedStore?.latitude,
+    destinationLongitude: selectedLocation?.longitude ?? selectedStore?.longitude
   });
   const hasWhyChooseUs = visibleWhyChooseUs.length > 0;
 

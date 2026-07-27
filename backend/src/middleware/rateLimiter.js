@@ -43,6 +43,8 @@ const tenantRegistrationWindowMs = parseInt(process.env.RATE_LIMIT_TENANT_REGIST
 const tenantRegistrationMaxRequests = parseInt(process.env.RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS) || (isDevelopment ? 50 : 5);
 const geoSearchWindowMs = parseInt(process.env.RATE_LIMIT_GEO_SEARCH_WINDOW_MS) || 60 * 1000; // 1 minute
 const geoSearchMaxRequests = parseInt(process.env.RATE_LIMIT_GEO_SEARCH_MAX_REQUESTS) || (isDevelopment ? 240 : 60);
+const routeCalculatorWindowMs = parseInt(process.env.RATE_LIMIT_ROUTE_CALCULATOR_WINDOW_MS) || 60 * 1000; // 1 minute
+const routeCalculatorMaxRequests = parseInt(process.env.RATE_LIMIT_ROUTE_CALCULATOR_MAX_REQUESTS) || (isDevelopment ? 240 : 60);
 const inventoryPushWindowMs = parseInt(process.env.RATE_LIMIT_INVENTORY_PUSH_WINDOW_MS) || 60 * 1000; // 1 minute
 const inventoryPushMaxRequests = parseInt(process.env.RATE_LIMIT_INVENTORY_PUSH_MAX_REQUESTS) || (isDevelopment ? 120 : 20);
 const itemOperationsWindowMs = parseInt(process.env.RATE_LIMIT_ITEM_OPERATIONS_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
@@ -1092,6 +1094,38 @@ export const geoSearchLimiter = rateLimit({
   },
 });
 
+// Route calculator limiter: public GraphHopper-proxy endpoint, IP + coordinate-pair keyed.
+export const routeCalculatorLimiter = rateLimit({
+  windowMs: routeCalculatorWindowMs,
+  max: routeCalculatorMaxRequests,
+  message: createRateLimitError('Too many route requests. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('route_calculator'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    return `route_calculator:${ip}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many route requests. Please wait before trying again.',
+      'route_calculator',
+      'ip'
+    );
+    logRateLimitEvent(req, 'route_calculator', response.retryAfterSeconds, 'ip');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
 // Inventory push limiter: tenant-scoped to prevent queue flooding.
 export const inventoryPushLimiter = rateLimit({
   windowMs: inventoryPushWindowMs,
@@ -1184,6 +1218,7 @@ export default {
   registration: tenantRegistrationLimiter,
   pos: posLimiter,
   geoSearch: geoSearchLimiter,
+  routeCalculator: routeCalculatorLimiter,
   inventoryPush: inventoryPushLimiter,
   mobilePosFreeSync: mobilePosFreeSyncLimiter,
   itemOperations: itemOperationsLimiter,
