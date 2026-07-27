@@ -199,6 +199,21 @@ describe('DGFY auth and business registration routes', () => {
     expect(appendDgfyHandoffToken('https://dgfy.ph/map-dgfy/account', 'handoff-token-1')).toBe('https://dgfy.ph/map-dgfy/account?handoff_token=handoff-token-1');
   });
 
+  it('allows custom-domain storefront return targets with bare subpage paths', () => {
+    expect(normalizeDgfyReturnTarget('https://tenant.example/order?dgfy_account=1')).toBe('https://tenant.example/order?dgfy_account=1');
+    expect(normalizeDgfyReturnTarget('https://tenant.example/book')).toBe('https://tenant.example/book');
+    expect(normalizeDgfyReturnTarget('https://tenant.example/track')).toBe('https://tenant.example/track');
+    expect(normalizeDgfyReturnTarget('https://tenant.example/service')).toBe('https://tenant.example/service');
+    expect(normalizeDgfyReturnTarget('https://tenant.example/item')).toBe('https://tenant.example/item');
+    expect(normalizeDgfyReturnTarget('https://tenant.example/')).toBe('https://tenant.example/');
+  });
+
+  it('still rejects arbitrary bare paths that are not recognized storefront subpages', () => {
+    const safeFallback = normalizeDgfyReturnTarget('not-a-route');
+    expect(normalizeDgfyReturnTarget('https://tenant.example/orders')).toBe(safeFallback);
+    expect(normalizeDgfyReturnTarget('https://tenant.example/admin')).toBe(safeFallback);
+  });
+
   it('renders the canonical DGFY sign-in route and returns to the supplied intent target', async () => {
     dgfyAuthMock.loginDgfyAccount.mockResolvedValue({ token: 'dgfy-token', account: dgfyAccount });
     dgfyAuthMock.fetchDgfyMe
@@ -427,7 +442,7 @@ describe('DGFY auth and business registration routes', () => {
     expect(await screen.findByText(/DGFY account connected/i)).toBeTruthy();
     expect(screen.queryByLabelText('Last Name')).toBeNull();
     expect(screen.getByLabelText('Company Name')).toBeTruthy();
-    expect(screen.getByLabelText('Business Industry')).toBeTruthy();
+    expect(screen.getByLabelText('Operating Mode')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Auto Foods' } });
     fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
@@ -436,6 +451,7 @@ describe('DGFY auth and business registration routes', () => {
     await waitFor(() => expect(apiMock.post).toHaveBeenCalledWith('/admin/tenants/register', {
       name: 'Auto Foods',
       workflowMode: 'food_manufacturing',
+      industryTag: '',
       accepted_company_terms: true,
       company_terms_version: 'dgfy-company-terms-2026-06-08',
       marketplace_terms_version: 'dgfy-marketplace-provider-2026-06-08'

@@ -12,10 +12,7 @@ import {
   listTenantLocations,
   updateTenantLocation
 } from '../../../services/tenantLocationService.js';
-import {
-  uploadStorefrontCatalogImage,
-  uploadStorefrontCatalogImages
-} from '../../../services/storefrontCatalogService.js';
+import { uploadStorefrontCatalogImages } from '../../../services/storefrontCatalogService.js';
 import {
   DEFAULT_WORKFLOW_MODE,
   getWorkflowModeLabel,
@@ -29,6 +26,7 @@ import {
 } from '../../settings/storefrontBusinessHours.js';
 import StorefrontBusinessHoursScheduler from '../../settings/StorefrontBusinessHoursScheduler.jsx';
 import {
+  filterCustomerFacingPresets,
   getDefaultItemPreset,
   resolveModeItemTaxonomy
 } from '../../settings/modeItemTaxonomy.js';
@@ -134,19 +132,9 @@ const resolvePresetOptions = (workflowMode) => {
   return [fallbackPreset];
 };
 
-const ONBOARDING_CUSTOMER_FACING_PRESETS = Object.freeze({
-  food_manufacturing: ['finished_product'],
-  msme: ['product'],
-  services: ['service', 'physical_add_on'],
-  fnb: ['menu_item']
-});
-
 const resolveOnboardingPresetOptions = (workflowMode) => {
   const options = resolvePresetOptions(workflowMode);
-  const normalizedMode = normalizeWorkflowMode(workflowMode);
-  const preferredKeys = ONBOARDING_CUSTOMER_FACING_PRESETS[normalizedMode] || [];
-  const preferredOptions = options.filter((preset) => preferredKeys.includes(preset.key));
-  return preferredOptions.length > 0 ? preferredOptions : options;
+  return filterCustomerFacingPresets(workflowMode, options);
 };
 
 const getDefaultOnboardingPreset = (workflowMode) => {
@@ -230,10 +218,6 @@ const getItemImageFiles = (row) => {
 
 const uploadItemImages = async (itemId, imageFiles) => {
   if (!itemId || imageFiles.length === 0) return;
-  if (imageFiles.length === 1) {
-    await uploadStorefrontCatalogImage(itemId, imageFiles[0]);
-    return;
-  }
   await uploadStorefrontCatalogImages(itemId, imageFiles);
 };
 
@@ -270,7 +254,9 @@ export default function OnboardingSetupModal({
   workflowMode = DEFAULT_WORKFLOW_MODE,
   onRefreshUser
 }) {
-  const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
+  const propWorkflowMode = normalizeWorkflowMode(workflowMode);
+  const [resolvedWorkflowMode, setResolvedWorkflowMode] = useState(propWorkflowMode);
+  const normalizedWorkflowMode = resolvedWorkflowMode;
   const isHospitalityMode = isHospitalityWorkflowMode(normalizedWorkflowMode);
   const wizardSteps = isHospitalityMode ? HOSPITALITY_WIZARD_STEPS : WIZARD_STEPS;
   const presetOptions = useMemo(() => resolveOnboardingPresetOptions(normalizedWorkflowMode), [normalizedWorkflowMode]);
@@ -320,11 +306,12 @@ export default function OnboardingSetupModal({
 
     if (!initializedForOpenRef.current) {
       initializedForOpenRef.current = true;
+      setResolvedWorkflowMode(propWorkflowMode);
       setCurrentStepIndex(0);
       setMaxReachableStepIndex(resolveInitialReachableStepIndex(onboarding, wizardSteps));
       setLogoFile(null);
       setCoverFile(null);
-      setItemRows([buildEmptyItemRow(normalizedWorkflowMode)]);
+      setItemRows([buildEmptyItemRow(propWorkflowMode)]);
       setHospitalityRoomTypeForm({
         code: 'STD',
         name: 'Standard Room',
@@ -352,6 +339,14 @@ export default function OnboardingSetupModal({
         getAllSettings({ force: true }).catch(() => null)
       ])
         .then(([locations, settings]) => {
+          const settingsWorkflowMode = normalizeWorkflowMode(
+            settings?.ops_workflow_mode?.value || propWorkflowMode
+          );
+          setResolvedWorkflowMode(settingsWorkflowMode);
+          setMaxReachableStepIndex(resolveInitialReachableStepIndex(
+            onboarding,
+            isHospitalityWorkflowMode(settingsWorkflowMode) ? HOSPITALITY_WIZARD_STEPS : WIZARD_STEPS
+          ));
           if (settings?.store_is_visible) {
             setPublicStorefrontVisible(settings.store_is_visible.value === true);
           }
@@ -378,7 +373,7 @@ export default function OnboardingSetupModal({
         })
         .finally(() => setLocationsLoading(false));
     }
-  }, [currentUser, normalizedWorkflowMode, onboarding, open]);
+  }, [currentUser, onboarding, open, propWorkflowMode]);
 
   useEffect(() => {
     if (!open || isHospitalityMode) return;

@@ -1,3 +1,36 @@
+# Implementation — Food & Beverage (F&B) Saving Menu Item Modal Redesign
+
+## Proposed Changes
+
+### Styles & Keyframe Utilities
+
+#### [MODIFY] [index.css](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/index.css)
+- Add utility animations `@keyframes shimmer-slide` and `@keyframes dots-pulse` with warm F&B amber/orange color accents for the progress shimmer bar and pulsing indicator dots.
+
+### POS Terminal Components
+
+#### [MODIFY] [TerminalOperationsWorkspace.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx)
+- Import `UtensilsCrossed` or `CookingPot` / `Utensils` icon from `lucide-react`.
+- Update lines 3204–3223 (`itemSaveInFlight` modal portal block):
+  - Card wrapper: `relative w-full max-w-sm overflow-hidden rounded-3xl bg-white/95 p-8 text-center shadow-[0_25px_60px_-15px_rgba(245,158,11,0.25)] border border-amber-100/80 backdrop-blur-xl animate-float`.
+  - F&B Status Badge: Add an inline status pill: `[ F&B KITCHEN & MENU SYNC ]`.
+  - Top Progress Bar: Add an absolute top horizontal bar with sliding warm amber-to-orange gradient animation (`from-amber-500 via-orange-500 to-amber-600`).
+  - Orbital Rings Loader: Create nested counter-rotating ring containers around a glowing warm amber/orange emblem badge containing the F&B culinary icon.
+  - Micro-copy: Update text to "Saving Menu Item..." and "Updating food & beverage details and syncing menu changes across POS terminals & Kitchen Displays.".
+  - Micro-animation dots: Add 3 animated pulsing amber dots below the subtitle text.
+
+## Verification Plan
+
+### Automated Tests
+- Run ESLint to verify clean syntax:
+  `npm run lint` in `frontend` folder.
+
+### Manual Verification
+- Trigger a menu item save in POS (Add/Edit F&B item).
+- Verify the modal renders smoothly with orbital spinning rings, glowing amber culinary badge, top amber shimmer bar, F&B menu sync copy, and pulse dots.
+
+---
+
 # Implementation — Tablet Report Filters 2-Column Grid Layout
 
 ## Proposed Changes
@@ -712,6 +745,32 @@ No database migrations. No API changes. No UI layout changes.
 # Approved Code Edit Log
 
 Use this section to record each approved code edit with its date, problem, confirmed cause, implemented solution, affected files, and verification results.
+
+## 2026-07-24 — Redesign Food & Beverage (F&B) POS Saving Menu Item Loading Modal
+
+### Error or problem
+
+The item saving overlay portal in POS (`itemSaveInFlight`) used generic bouncing teardrops and static blue colors that did not match modern Food & Beverage (F&B) restaurant POS standards.
+
+### Confirmed cause
+
+The modal was styled with basic CSS animation utilities (`animate-bounce rotate-[-45deg] bg-blue-500`) and standard text without restaurant kitchen sync branding or smooth multi-layer keyframe animations.
+
+### Implemented solution
+
+- Added custom keyframe animation utilities (`shimmer-slide`, `spin-slow`, `spin-reverse`, `pulse-ring`, `float-gentle`, `dots-pulse`) in `frontend/src/index.css` with warm F&B amber/orange color accents.
+- Imported `UtensilsCrossed` icon from `lucide-react` in `TerminalOperationsWorkspace.jsx`.
+- Redesigned `itemSaveInFlight` portal with a glassmorphic card, warm amber top shimmer bar, live `[ 🍳 F&B KITCHEN & MENU SYNC ]` status pill, dual counter-rotating orbital rings, glowing amber culinary emblem badge, F&B menu sync copy, and animated pulse dots.
+
+### Files changed
+
+- `frontend/src/index.css`
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+
+### Verification
+
+- Syntax and structure check passed.
+- Plan.md and Implementation.md updated and synchronized.
 
 ## 2026-07-07 — Redesign Cashier Closeout Defaults Layout
 

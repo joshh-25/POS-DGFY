@@ -12,7 +12,9 @@ import { assertItemRepositoryContract } from '../contracts/itemRepository.contra
 import {
     DEFAULT_WORKFLOW_MODE,
     normalizeWorkflowMode,
-    resolveWorkflowModeFamily
+    resolveWorkflowModeFamily,
+    ENABLED_CAPABILITIES_SETTING_KEY,
+    normalizeEnabledCapabilities
 } from '../../shared/constants/workflowModes.js';
 import { resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
 import {
@@ -143,6 +145,20 @@ const normalizeStorefrontImageGallery = (value) => {
                 }),
             original_path: String(entry?.original_path || '').trim() || null,
             classification: String(entry?.classification || '').trim() || null,
+            source: entry?.source && typeof entry.source === 'object'
+                ? {
+                    type: String(entry.source.type || '').trim() || null,
+                    provider: String(entry.source.provider || '').trim() || null,
+                    barcode: String(entry.source.barcode || '').trim() || null,
+                    product_url: String(entry.source.product_url || '').trim() || null,
+                    source_image_url: String(entry.source.source_image_url || '').trim() || null,
+                    attribution_label: String(entry.source.attribution_label || '').trim() || null,
+                    attribution_url: String(entry.source.attribution_url || '').trim() || null,
+                    database_license: String(entry.source.database_license || '').trim() || null,
+                    image_license: String(entry.source.image_license || '').trim() || null,
+                    imported_at: String(entry.source.imported_at || '').trim() || null
+                }
+                : null,
             is_primary: entry?.is_primary === true,
             sort_order: Number.isFinite(Number(entry?.sort_order)) ? Number(entry.sort_order) : index
         }))
@@ -178,6 +194,7 @@ const buildStorefrontImageGallery = ({ primaryPath = null, primaryUrl = null, ga
             }),
             original_path: entry.original_path || null,
             classification: entry.classification || null,
+            source: entry.source || null,
             is_primary: false,
             sort_order: index + 1
         }));
@@ -189,7 +206,8 @@ const buildStorefrontImageGallery = ({ primaryPath = null, primaryUrl = null, ga
                 storedUrl: primary.url || null
             }),
             original_path: normalized[0]?.original_path || null,
-            classification: normalized[0]?.classification || null
+            classification: normalized[0]?.classification || null,
+            source: normalized[0]?.source || null
         }
         : null;
     return enrichedPrimary ? [enrichedPrimary, ...rest] : rest;
@@ -221,6 +239,18 @@ export const resolveCachedWorkflowMode = async () => {
     const settings = await getCachedSettingsForTenant();
     const configuredMode = settings?.[WORKFLOW_MODE_SETTING_KEY]?.value;
     return normalizeWorkflowMode(configuredMode ?? DEFAULT_WORKFLOW_MODE);
+};
+
+/**
+ * Resolve the tenant's enabled_capabilities overlay using the same
+ * tenant-scoped settings cache as resolveCachedWorkflowMode (5-minute TTL,
+ * no extra query - it's the same cached settings object). Exported for use
+ * by the inventory module composition root so item-taxonomy validation can
+ * honor capabilities composed onto the base workflow mode.
+ */
+export const resolveCachedEnabledCapabilities = async () => {
+    const settings = await getCachedSettingsForTenant();
+    return normalizeEnabledCapabilities(settings?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value);
 };
 
 const calculateThresholds = async (maxCapacity) => {
@@ -715,7 +745,7 @@ export const itemRepository = {
 
             const rows = await Item.findAll({
                 where,
-                attributes: ['item_id', 'sku_code', 'name', 'unit_of_measure', 'category', 'product_type', 'mode_item_preset', 'status', 'current_stock', 'cost_per_unit', 'default_sale_price'],
+                attributes: ['item_id', 'sku_code', 'name', 'unit_of_measure', 'category', 'product_type', 'mode_item_preset', 'status', 'current_stock', 'cost_per_unit', 'default_sale_price', 'fifo_enabled'],
                 order: [['name', 'ASC']],
                 limit: parseInt(limit, 10)
             });
@@ -1195,6 +1225,7 @@ export const itemRepository = {
                 packaging_info,
                 quality_control,
                 regulatory_compliance,
+                manufacturer_barcode,
                 ...dbFields
             } = itemData;
 
@@ -1235,7 +1266,67 @@ export const itemRepository = {
             }
             delete dataToCreate.location_id;
 
+            // Archetype-based default (see docs/features/INVENTORY_TRACKING_MODES.md):
+            // the seller may always override via an explicit tracking_mode on the
+            // request; this only fills in the default when they don't. Existing
+            // items are never touched here - this is create-time only. Uses the
+            // same service definition as isStockExemptServiceItem (category OR
+            // mode_item_preset), independent of the narrower isServiceItem above
+            // which only governs the pre-existing current_stock zeroing behavior.
+            if (!dataToCreate.tracking_mode) {
+                const isCapacityItem = isServiceItem
+                    || String(dbFields.mode_item_preset || '').trim().toLowerCase() === 'service';
+                if (isCapacityItem) {
+                    dataToCreate.tracking_mode = 'capacity';
+                } else if (dataToCreate.fifo_enabled === true) {
+                    dataToCreate.tracking_mode = 'full_fifo';
+                } else if (String(dataToCreate.mode_item_preset || '').trim().toLowerCase() === 'menu_item') {
+                    dataToCreate.tracking_mode = 'toggle';
+                } else {
+                    dataToCreate.tracking_mode = 'count_ledger';
+                }
+            }
+
             const item = await Item.create(dataToCreate, { transaction });
+
+            if (manufacturer_barcode?.code) {
+                const ItemBarcode = dbStore.get('ItemBarcode');
+                const normalizedCode = normalizeBarcodeValue(manufacturer_barcode.code);
+                const existingBarcode = await ItemBarcode.findOne({
+                    where: { normalized_code: normalizedCode, is_active: true },
+                    include: barcodeIncludeItem(),
+                    transaction,
+                    lock: transaction.LOCK.UPDATE
+                });
+                if (existingBarcode) {
+                    throw barcodeConflictError(serializeBarcodeRow(existingBarcode));
+                }
+
+                const barcode = await ItemBarcode.create({
+                    item_id: item.item_id,
+                    code: String(manufacturer_barcode.code).trim(),
+                    normalized_code: normalizedCode,
+                    symbology: detectBarcodeSymbology(manufacturer_barcode.code),
+                    source: 'manufacturer',
+                    scope: 'inventory',
+                    packaging_level: 'unit',
+                    quantity_multiplier: 1,
+                    is_primary: true,
+                    is_active: true,
+                    metadata: { attached_via: 'external_registry_prefill' },
+                    created_by: userId || null,
+                    updated_by: userId || null
+                }, { transaction });
+
+                await auditBarcodeEvent({
+                    userId,
+                    barcode,
+                    action: 'CREATE',
+                    eventType: 'barcode.created',
+                    changes: { source: 'manufacturer', scope: 'inventory' },
+                    transaction
+                });
+            }
 
             if (isServiceItem) {
                 const ServiceItemDetail = dbStore.get('ServiceItemDetail');
@@ -1287,6 +1378,17 @@ export const itemRepository = {
         } catch (error) {
             if (!transaction.finished) {
                 await transaction.rollback();
+            }
+            if (isActiveBarcodeUniqueConstraintError(error)) {
+                const ItemBarcode = dbStore.get('ItemBarcode');
+                const normalizedCode = normalizeBarcodeValue(itemData?.manufacturer_barcode?.code);
+                const existing = normalizedCode
+                    ? await ItemBarcode.findOne({
+                        where: { normalized_code: normalizedCode, is_active: true },
+                        include: barcodeIncludeItem()
+                    })
+                    : null;
+                throw barcodeConflictError(serializeBarcodeRow(existing));
             }
             throw normalizeSkuConflictError(error);
         }

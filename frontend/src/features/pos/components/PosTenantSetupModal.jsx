@@ -22,8 +22,7 @@ import resolveAssetUrl from '@/src/utils/assetUrl.js';
 import UserInvitationModal from '@/Components/users/UserInvitationModal.jsx';
 import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '../utils/terminalIdentity.js';
 import { POS_TERMINAL_SETUP_ORDER, POS_TERMINAL_SETUP_STEPS } from '../utils/setupFlow.js';
-import { resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
-import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
+import { filterCustomerFacingPresets, resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
 
 const MapPinPicker = React.lazy(() => import('@/src/components/maps/MapPinPicker.jsx'));
 
@@ -32,29 +31,25 @@ const STEP_CONFIG = {
     title: 'Profile Setting',
     icon: UserRound,
     summary: 'Confirm the registered business identity now used by this POS tenant.',
-    description: 'The registered company details are reused from the business account created during registration.',
-    actionLabel: 'Open Profile Setting'
+    description: 'The registered company details are reused from the business account created during registration.'
   },
   [POS_TERMINAL_SETUP_STEPS.POS_SETUP]: {
     title: 'POS Setup',
     icon: Settings2,
     summary: 'Finish the POS setup required before this terminal can operate normally.',
-    description: 'Assign cashier Gmail access, store locations, and register every counter against a canonical business location.',
-    actionLabel: 'Open POS Setup'
+    description: 'Assign cashier Gmail access, store locations, and register every counter against a canonical business location.'
   },
   [POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP]: {
     title: 'Storefront',
     icon: Store,
     summary: 'Complete the storefront branding required for this tenant.',
-    description: 'Upload the company icon and cover image from the existing storefront fields in POS Settings.',
-    actionLabel: 'Open Storefront'
+    description: 'Upload the company icon and cover image from the existing storefront fields in POS Settings.'
   },
   [POS_TERMINAL_SETUP_STEPS.STARTER_ITEM]: {
     title: 'Starter Item',
     icon: Store,
     summary: 'Create one sellable starter item through the governed onboarding item contract.',
-    description: 'This uses the existing onboarding bulk item API, shared mode taxonomy, row validation, and completion readiness.',
-    actionLabel: 'Open Items'
+    description: 'This uses the existing onboarding bulk item API, shared mode taxonomy, row validation, and completion readiness.'
   }
 };
 
@@ -112,13 +107,6 @@ const resolvePrimaryLocation = (locations = []) => {
   return activeLocations.find((location) => location?.is_primary_storefront === true) || activeLocations[0] || null;
 };
 
-const ONBOARDING_CUSTOMER_FACING_PRESETS = Object.freeze({
-  food_manufacturing: ['finished_product'],
-  msme: ['product'],
-  services: ['service', 'physical_add_on'],
-  fnb: ['menu_item']
-});
-
 const fallbackStarterPreset = Object.freeze({
   key: 'product',
   label: 'Product Item'
@@ -129,13 +117,12 @@ const resolveStarterPresetOptions = (workflowMode = '') => {
   const presets = Array.isArray(taxonomy?.presets) && taxonomy.presets.length > 0
     ? taxonomy.presets
     : [fallbackStarterPreset];
-  const preferredKeys = ONBOARDING_CUSTOMER_FACING_PRESETS[normalizeWorkflowMode(workflowMode)] || [];
-  const preferredPresets = presets.filter((preset) => preferredKeys.includes(preset.key));
-  return preferredPresets.length > 0 ? preferredPresets : presets;
+  return filterCustomerFacingPresets(workflowMode, presets);
 };
 
 export default function PosTenantSetupModal({
   open = false,
+  finishing = false,
   currentStep = POS_TERMINAL_SETUP_STEPS.PROFILE,
   companyName = '',
   profileData = {},
@@ -146,7 +133,6 @@ export default function PosTenantSetupModal({
   terminalRegistry = [],
   terminalLocations = [],
   tenantUsers = [],
-  onOpenSettingsStep = () => {},
   onStepSelect = () => {},
   onBack = () => {},
   onContinue = () => {},
@@ -494,7 +480,7 @@ export default function PosTenantSetupModal({
       await updateSettings({
         pos_terminal_registry: payload
       });
-      await onSetupDataChanged();
+      await onSetupDataChanged({ source: 'terminal' });
       setTerminalFieldErrors({});
       const undeliveredCount = cashierEmailResults.filter((entry) => entry.sent !== true).length;
       const emailDeliveryMessage = cashierAssignments.size > 0
@@ -613,7 +599,7 @@ export default function PosTenantSetupModal({
         ? await updateTenantLocation(locationDraft.location_id, payload)
         : await createTenantLocation(payload);
       setLocationDraft(createLocationDraft(savedLocation, companyName));
-      await onSetupDataChanged();
+      await onSetupDataChanged({ source: 'location' });
       toast.success('Business location saved.');
     } catch (error) {
       toast.error(error?.response?.data?.message || error?.message || 'Failed to save store location.');
@@ -693,7 +679,7 @@ export default function PosTenantSetupModal({
         }
       }
 
-      await onSetupDataChanged();
+      await onSetupDataChanged({ source: 'starter_item' });
       setCreatedStarterItem({
         ...createdItem,
         item_id: createdItemId,
@@ -743,6 +729,7 @@ export default function PosTenantSetupModal({
   };
 
   const handleContinue = () => {
+    if (finishing) return;
     if (currentStep === POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP) {
       setStorefrontContinueAttempted(true);
     }
@@ -755,18 +742,18 @@ export default function PosTenantSetupModal({
     <>
     <Dialog open={open} onOpenChange={() => {}}>
       <DialogContent
-        className="border border-slate-200 bg-white shadow-2xl sm:max-w-[980px]"
+        className="flex h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[980px] flex-col overflow-hidden border border-slate-200 bg-white px-0 shadow-2xl sm:w-[calc(100vw-2rem)] sm:max-w-[980px]"
         onEscapeKeyDown={(event) => event.preventDefault()}
         onInteractOutside={(event) => event.preventDefault()}
       >
-        <DialogHeader className="border-b border-slate-100 pb-4">
+        <DialogHeader className="shrink-0 border-b border-slate-100 pb-4">
           <DialogTitle className="text-[20px] font-black text-[#0F172A]">Tenant Onboarding Setup</DialogTitle>
           <DialogDescription className="text-sm text-slate-600">
             Finish the required POS onboarding before the rest of the terminal becomes available.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-2">
+        <div className="shrink-0 px-5 py-2 sm:px-6">
           <div>
             <p className="text-sm font-semibold text-slate-600">
               Step {activeStepIndex + 1} of {POS_TERMINAL_SETUP_ORDER.length}
@@ -804,7 +791,9 @@ export default function PosTenantSetupModal({
               })}
             </div>
           </div>
+        </div>
 
+        <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden px-5 py-4 sm:px-6">
           <div className="rounded-2xl border border-slate-200 bg-slate-50/80 p-5">
             <div className="flex items-start gap-4">
               <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-white text-[#1A4E8D] shadow-sm">
@@ -1340,7 +1329,7 @@ export default function PosTenantSetupModal({
           </div>
         </div>
 
-        <DialogFooter className="border-t border-slate-100 pt-4 sm:justify-between">
+        <DialogFooter className="shrink-0 border-t border-slate-100 bg-white px-5 py-4 sm:justify-between sm:px-6">
           <div className="text-sm font-semibold text-slate-500">
             Finish all required steps, then click <span className="text-[#1A4E8D]">Finish Setup</span> to close onboarding.
           </div>
@@ -1348,15 +1337,13 @@ export default function PosTenantSetupModal({
             <Button type="button" variant="outline" onClick={onBack} disabled={!hasPreviousStep}>
               Back
             </Button>
-            <Button type="button" variant="outline" onClick={() => onOpenSettingsStep(currentStep)}>
-              {stepConfig.actionLabel}
-            </Button>
             <Button
               type="button"
               className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
               onClick={handleContinue}
+              disabled={finishing}
             >
-              {continueLabel}
+              {finishing ? 'Finishing...' : continueLabel}
             </Button>
           </div>
         </DialogFooter>

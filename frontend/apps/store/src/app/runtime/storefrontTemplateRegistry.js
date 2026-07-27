@@ -50,6 +50,17 @@ const MODE_TEMPLATE_OVERRIDES = Object.freeze({
       footerAccent: '#134e4a'
     })
   }),
+  retail: Object.freeze({
+    catalogCardVariant: 'product_simple',
+    journeyVariant: 'order',
+    tokens: Object.freeze({
+      navigationAccent: '#0f172a',
+      heroAccent: '#ea580c',
+      promoAccent: '#ea580c',
+      reviewAccent: '#0f766e',
+      footerAccent: '#9a3412'
+    })
+  }),
   services: Object.freeze({
     catalogCardVariant: 'service_booking',
     journeyVariant: 'booking',

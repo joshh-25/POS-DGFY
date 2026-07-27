@@ -1,3 +1,5 @@
+import { getRelevanceWeightedDistanceRank, scoreStoresByRelevance } from './discoverySearchRanking.js';
+
 export function buildStoresWithNearestBranch({
   DEFAULT_CENTER,
   discoveryCoords,
@@ -39,8 +41,11 @@ export function buildStoresWithNearestBranch({
       const fallbackLocation = nearestMatchingLocation || primaryLocation || pins[0] || null;
       const fallbackLat = toNumberOrNull(store?.latitude);
       const fallbackLng = toNumberOrNull(store?.longitude);
-      const anchorLatitude = fallbackLocation?.latitude ?? fallbackLat ?? DEFAULT_CENTER.latitude;
-      const anchorLongitude = fallbackLocation?.longitude ?? fallbackLng ?? DEFAULT_CENTER.longitude;
+      // DEFAULT_CENTER is a map viewport fallback, not storefront location data.
+      // Keeping missing coordinates null prevents no-location stores from becoming
+      // fake pins at the center of the map.
+      const anchorLatitude = fallbackLocation?.latitude ?? fallbackLat ?? null;
+      const anchorLongitude = fallbackLocation?.longitude ?? fallbackLng ?? null;
       const nearestPinWithDistance = hasDiscoveryLocation
         ? pins
           .map((location) => ({
@@ -92,6 +97,7 @@ export function sortDiscoveryResultStores({
   discoverySortBy,
   hasDiscoverySearch,
   normalizeStorefrontReviewSummary,
+  search,
   storesWithNearestBranch
 }) {
   const hasDiscoveryLocation = discoveryCoords?.latitude != null && discoveryCoords?.longitude != null;
@@ -107,6 +113,12 @@ export function sortDiscoveryResultStores({
         return true;
       })
     : storesWithNearestBranch;
+  // Relevance-weighted distance ranking so a strong text/category match on a slightly
+  // farther store can outrank a weak/unrelated match that happens to be nearer, while a
+  // much nearer store can still win over a distant strong match (see RELEVANCE_DISTANCE_PENALTY_KM).
+  const relevanceByStore = hasDiscoverySearch
+    ? scoreStoresByRelevance(radiusScoped, search)
+    : null;
   const sorted = [...radiusScoped];
   sorted.sort((a, b) => {
     if (discoverySortBy === 'open') {
@@ -123,6 +135,12 @@ export function sortDiscoveryResultStores({
       const leftCatalog = Number(a?.catalog_count || 0);
       const rightCatalog = Number(b?.catalog_count || 0);
       if (leftCatalog !== rightCatalog) return rightCatalog - leftCatalog;
+    }
+    if (relevanceByStore) {
+      const leftRank = getRelevanceWeightedDistanceRank(a, relevanceByStore);
+      const rightRank = getRelevanceWeightedDistanceRank(b, relevanceByStore);
+      if (leftRank !== rightRank) return leftRank - rightRank;
+      return String(a?.tenant_name || '').localeCompare(String(b?.tenant_name || ''));
     }
     const leftDistance = Number.isFinite(Number(a?.nearest_distance_km)) ? Number(a.nearest_distance_km) : Number.POSITIVE_INFINITY;
     const rightDistance = Number.isFinite(Number(b?.nearest_distance_km)) ? Number(b.nearest_distance_km) : Number.POSITIVE_INFINITY;

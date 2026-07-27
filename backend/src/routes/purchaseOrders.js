@@ -7,6 +7,7 @@ import {
 } from '../validators/purchaseOrderValidator.js';
 import { authenticate, checkPermission } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
+import { requireLocalInventoryLedgerOwnership } from '../middleware/inventoryAuthorityGate.js';
 
 const router = express.Router();
 router.use(authenticate);
@@ -24,7 +25,19 @@ router.post('/', checkPermission(PERMISSIONS.ORDERS.actions.CREATE_PO), (req, re
     validateCreatePurchaseOrder(req, res, next);
   }
 }, purchaseOrderController.createPurchaseOrder);
-router.post('/:po_id/receive', checkPermission(PERMISSIONS.ORDERS.actions.RECEIVE_PO), validateReceivePurchaseOrder, purchaseOrderController.receivePurchaseOrder);
+// Phase 9: receiving stock is squarely "this platform's inventory module
+// records the stock effect" (ADR 0029) - once a tenant has delegated
+// inventory_authority to an external system, that receiving should happen
+// there (with DGFY's local mirror updated by reconciliation), not be
+// duplicated here. See inventoryAuthorityGate.js for why this is a sibling
+// to requireWorkflowCapability rather than reusing it.
+router.post(
+  '/:po_id/receive',
+  checkPermission(PERMISSIONS.ORDERS.actions.RECEIVE_PO),
+  requireLocalInventoryLedgerOwnership('Purchase order receiving'),
+  validateReceivePurchaseOrder,
+  purchaseOrderController.receivePurchaseOrder
+);
 
 // Finalize draft - managers and admins only
 router.patch('/:po_id/finalize', checkPermission(PERMISSIONS.ORDERS.actions.APPROVE_PO), purchaseOrderController.finalizePurchaseOrder);

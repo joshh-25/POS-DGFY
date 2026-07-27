@@ -13,10 +13,10 @@ describe('F&B catalog image fallback contract', () => {
   it('uses the existing category placeholder after a catalog image fails to load', () => {
     const source = appSource();
 
-    expect(source).toContain('const [hasImageError, setHasImageError] = useState(false);');
-    expect(source).toContain('const canRenderImage = Boolean(imageUrl) && !hasImageError;');
-    expect(source.match(/onError=\{\(\) => setHasImageError\(true\)\}/g)).toHaveLength(2);
+    expect(source).toContain("const [failedImageUrl, setFailedImageUrl] = useState('');");
+    expect(source).toContain('const canRenderImage = Boolean(imageUrl) && failedImageUrl !== imageUrl;');
+    expect(source.match(/onError=\{\(\) => setFailedImageUrl\(imageUrl\)\}/g)).toHaveLength(2);
     expect(source.match(/<CategoryIcon size=\{/g).length).toBeGreaterThanOrEqual(2);
-    expect(source).toContain('setHasImageError(false);');
+    expect(source).not.toContain('useEffect(() =>');
   });
 });

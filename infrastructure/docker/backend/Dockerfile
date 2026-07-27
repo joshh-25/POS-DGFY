@@ -4,7 +4,10 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY backend/package*.json ./
-RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --omit=dev
+COPY packages/shared-constants /packages/shared-constants
+RUN --mount=type=cache,target=/root/.npm,sharing=locked \
+    npm config set fetch-retries=5 fetch-retry-mintimeout=20000 fetch-retry-maxtimeout=120000 fetch-timeout=300000 \
+    && (npm ci --omit=dev || (sleep 10 && npm ci --omit=dev) || (sleep 20 && npm ci --omit=dev))
 
 FROM node:22-alpine AS runtime
 ENV NODE_ENV=production
@@ -18,6 +21,7 @@ RUN apk add --no-cache curl tini su-exec \
  && addgroup -S app && adduser -S app -G app
 
 COPY --from=deps /app/node_modules ./node_modules
+COPY packages/shared-constants /packages/shared-constants
 COPY backend/package*.json ./
 COPY backend/src ./src
 COPY backend/migrations ./migrations

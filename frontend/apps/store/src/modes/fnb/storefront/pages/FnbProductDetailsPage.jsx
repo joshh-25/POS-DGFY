@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import { FnbProductReviewsSection } from '../components/FnbProductReviewsSection.jsx';
 import { FnbRecommendedPairings } from '../components/FnbRecommendedPairings.jsx';
-import { FnbProductModifierGroups } from '../components/FnbProductModifierGroups.jsx';
+import { ProductModifierGroups } from '../../../../shared/components/storefront/ProductModifierGroups.jsx';
 import { FnbProductDesktopPurchasePanel } from '../components/FnbProductDesktopPurchasePanel.jsx';
 import { FnbProductMobilePurchaseSummary } from '../components/FnbProductMobilePurchaseSummary.jsx';
 import { FnbProductMediaGallery } from '../components/FnbProductMediaGallery.jsx';
@@ -290,7 +290,7 @@ export function FnbProductDetailsPage({
               ) : null}
 
 
-              <FnbProductModifierGroups
+              <ProductModifierGroups
                 expandedGroups={expandedGroups}
                 formatMoney={money}
                 modifierCounts={modifierCounts}

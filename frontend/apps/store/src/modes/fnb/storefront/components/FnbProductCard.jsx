@@ -26,16 +26,11 @@ const FnbProductCard = ({
   const [isHovered, setIsHovered] = useState(false);
   const [isDetailsHovered, setIsDetailsHovered] = useState(false);
   const [isCartHovered, setIsCartHovered] = useState(false);
-  const [hasImageError, setHasImageError] = useState(false);
-  const [prevImageUrl, setPrevImageUrl] = useState(imageUrl);
-  if (imageUrl !== prevImageUrl) {
-    setPrevImageUrl(imageUrl);
-    setHasImageError(false);
-  }
+  const [failedImageUrl, setFailedImageUrl] = useState('');
   const detailsCopy = item.descriptionPreview || 'Menu item available in this storefront.';
   const cardUiFont = heroTheme.bodyFont || "'Trebuchet MS', 'Segoe UI', sans-serif";
   const cardTitleFont = heroTheme.displayFont || cardUiFont;
-  const canRenderImage = Boolean(imageUrl) && !hasImageError;
+  const canRenderImage = Boolean(imageUrl) && failedImageUrl !== imageUrl;
   const availabilityTone = item.availabilityMeta?.tone || (available ? 'ready' : 'sold_out');
   const availabilityColor = availabilityTone === 'sold_out' ? '#be123c' : availabilityTone === 'limited' ? '#b45309' : '#047857';
 
@@ -67,7 +62,7 @@ const FnbProductCard = ({
           onClick={() => onViewDetails?.(item)}
         >
           {canRenderImage ? (
-            <img src={imageUrl} alt={item.name} onError={() => setHasImageError(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+            <img src={imageUrl} alt={item.name} onError={() => setFailedImageUrl(imageUrl)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
           ) : (
             <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1' }}>
               <CategoryIcon size={32} />
@@ -194,7 +189,7 @@ const FnbProductCard = ({
         onClick={() => onViewDetails?.(item)}
       >
         {canRenderImage ? (
-          <img src={imageUrl} alt={item.name} onError={() => setHasImageError(true)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          <img src={imageUrl} alt={item.name} onError={() => setFailedImageUrl(imageUrl)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
         ) : (
           <div style={{
             width: '100%',

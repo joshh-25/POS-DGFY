@@ -24,7 +24,8 @@ describe('POS item list pagination', () => {
     expect(workspace).toContain('setItemSaveInFlight(true);');
     expect(workspace).toContain('setItemSaveInFlight(false);');
     expect(workspace).toContain('{itemSaveInFlight && typeof document !== \'undefined\' && createPortal((');
-    expect(workspace).toContain('Saving item…');
-    expect(workspace).toContain('[border-radius:50%_50%_50%_0]');
+    expect(workspace).toContain('Saving Menu Item…');
+    expect(workspace).toContain('animate-spin-slow');
+    expect(workspace).toContain('<UtensilsCrossed className="h-7 w-7 text-white drop-shadow" />');
   });
 });

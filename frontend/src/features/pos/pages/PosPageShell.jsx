@@ -4,7 +4,6 @@ import { usePermission } from '@/hooks/usePermission';
 import { CalendarCheck, CheckCircle2, Clock, UserCheck, XCircle } from 'lucide-react';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import { useWorkflowMode } from '../../settings/WorkflowModeContext.jsx';
-import { isFnbWorkflowMode, isHospitalityWorkflowMode, isServicesWorkflowMode } from '../../settings/workflowMode.js';
 import { listServiceBookings, updateServiceBookingStatus } from '../../services/api/servicesApi.js';
 
 const FnbDiningPanel = lazy(() => import('../../fnb/components/FnbDiningPanel.jsx'));
@@ -117,7 +116,7 @@ function ServicesPosQueue() {
 
 export default function PosPageShell({ CheckoutTerminal }) {
     const { loading, can } = usePermission();
-    const { workflowMode } = useWorkflowMode();
+    const { hasCapability } = useWorkflowMode();
     const canViewPos = can('pos:view');
     const canTransactPos = can('pos:transact');
     const [fnbCheckoutContext, setFnbCheckoutContext] = useState(null);
@@ -136,13 +135,23 @@ export default function PosPageShell({ CheckoutTerminal }) {
                 <h1 className="text-2xl font-semibold text-slate-900">POS Terminal</h1>
                 <p className="text-sm text-slate-500">Checkout POS-visible items, collect service payments, issue digital receipts, and generate daily Z-reading.</p>
             </div>
-            {isServicesWorkflowMode(workflowMode) && <ServicesPosQueue />}
-            {isHospitalityWorkflowMode(workflowMode) && (
+            {/*
+              Phase 6: panel visibility is capability-driven (base mode's own
+              capabilities, composed with the tenant's enabled_capabilities
+              overlay) rather than mutually-exclusive workflow-mode checks, so
+              a composed tenant (e.g. retail + services enabled) sees every
+              panel its enabled capabilities warrant, not just one. With no
+              overlay configured this is byte-identical to the prior
+              single-mode behavior - each capability below is declared by
+              exactly one base workflow mode.
+            */}
+            {hasCapability('services') && <ServicesPosQueue />}
+            {hasCapability('hospitalityReservations') && (
                 <Suspense fallback={<section className="rounded-lg border border-sky-100 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading Hospitality front desk POS...</section>}>
                     <HospitalityPosPanel />
                 </Suspense>
             )}
-            {isFnbWorkflowMode(workflowMode) && (
+            {hasCapability('fnbDining') && (
                 <Suspense fallback={<section className="rounded-lg border border-red-100 bg-white p-4 text-sm text-slate-500 shadow-sm">Loading Food & Beverage service controls...</section>}>
                     <FnbDiningPanel onSelectCheckoutContext={setFnbCheckoutContext} />
                 </Suspense>

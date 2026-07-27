@@ -531,12 +531,9 @@ export default function TerminalSidebarPanel({
               <select
                 className="w-full rounded-md border border-slate-200 px-2 py-2 text-sm"
                 value={queueLocationScopeId || ''}
-                onChange={(event) => {
-                  const nextValue = event.target.value ? Number(event.target.value) : null;
-                  setQueueLocationScopeId(nextValue);
-                }}
+                disabled
               >
-                <option value="" disabled>Select queue location</option>
+                <option value="" disabled>Open a shift to select the branch</option>
                 {locations.map((location) => (
                   <option key={`location-${location.location_id}`} value={location.location_id}>
                     {location.name}
@@ -544,9 +541,9 @@ export default function TerminalSidebarPanel({
                 ))}
               </select>
               <p className="text-[11px] text-slate-500">
-                Incoming online queue and status actions are filtered by selected location.
+                Incoming orders are locked to the active shift location.
               </p>
-              <Button type="button" variant="outline" onClick={() => refreshIncomingOrders?.()} disabled={incomingOrdersState?.loading || locked}>
+              <Button type="button" variant="outline" onClick={() => refreshIncomingOrders?.()} disabled={incomingOrdersState?.loading || locked || !activeShift}>
                 {incomingOrdersState?.loading ? 'Refreshing Queue...' : 'Refresh Incoming Queue'}
               </Button>
             </>
@@ -564,6 +561,10 @@ export default function TerminalSidebarPanel({
           ) : incomingOrdersAccessState === 'error' ? (
             <p className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-md px-2 py-1.5">
               {incomingOrdersErrorMessage || 'Failed to load incoming online orders. Try refreshing.'}
+            </p>
+          ) : incomingOrdersAccessState === 'shift_required' ? (
+            <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1.5">
+              {incomingOrdersErrorMessage || 'Open a shift to view orders for this branch.'}
             </p>
           ) : incomingOrdersState?.loading && incomingOrders.length === 0 ? (
             <p className="text-xs text-slate-500">Loading incoming orders...</p>

@@ -147,7 +147,10 @@ export const resolveTenantSetupViewMode = (step = '') => (
 
 export const resolveTenantSetupStepValue = (step = '') => {
   const normalizedStep = String(step || '').trim().toLowerCase();
-  return POS_TERMINAL_SETUP_ORDER.includes(normalizedStep)
+  return (
+    POS_TERMINAL_SETUP_ORDER.includes(normalizedStep)
+    || normalizedStep === POS_TERMINAL_SETUP_STEPS.COMPLETE
+  )
     ? normalizedStep
     : POS_TERMINAL_SETUP_STEPS.PROFILE;
 };

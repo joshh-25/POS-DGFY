@@ -229,6 +229,56 @@ const getZonedParts = (date, timezone) => {
     }
 };
 
+const getZonedUtcOffsetMinutes = (utcInstant, timezone) => {
+    try {
+        const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone || DEFAULT_TIMEZONE,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        }).formatToParts(utcInstant).map((part) => [part.type, part.value]));
+        const wallClockAsUtcMs = Date.UTC(
+            Number(parts.year),
+            Number(parts.month) - 1,
+            Number(parts.day),
+            Number(parts.hour) % 24,
+            Number(parts.minute),
+            Number(parts.second)
+        );
+        return Math.round((wallClockAsUtcMs - utcInstant.getTime()) / 60000);
+    } catch {
+        return 0;
+    }
+};
+
+// Returns the UTC instant for local midnight, in `timezone`, of the calendar
+// day `date` falls on when viewed in that timezone -- NOT the Node process's
+// local timezone (which is whatever the deployment host happens to run in).
+// Used by service-booking availability generation so "today" and slot times
+// reflect the tenant's configured business-hours timezone.
+export const getZonedDayStart = (date, timezone) => {
+    const zone = timezone || DEFAULT_TIMEZONE;
+    try {
+        const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+            timeZone: zone,
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).formatToParts(date).map((part) => [part.type, part.value]));
+        const guessUtcMs = Date.UTC(Number(parts.year), Number(parts.month) - 1, Number(parts.day));
+        const offsetMinutes = getZonedUtcOffsetMinutes(new Date(guessUtcMs), zone);
+        return new Date(guessUtcMs - (offsetMinutes * 60000));
+    } catch {
+        const fallback = new Date(date);
+        fallback.setHours(0, 0, 0, 0);
+        return fallback;
+    }
+};
+
 const isWithinWindow = ({ minutes, startMinutes, endMinutes }) => {
     if (startMinutes === endMinutes) return true;
     if (endMinutes > startMinutes) return minutes >= startMinutes && minutes <= endMinutes;

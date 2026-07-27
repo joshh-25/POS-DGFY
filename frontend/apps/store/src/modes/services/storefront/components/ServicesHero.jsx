@@ -21,6 +21,8 @@ import { getServicesResponsiveLayout } from '../../../../shared/utils/storefront
 import { ServicesHeroDesktopContactLocation } from './ServicesHeroDesktopContactLocation.jsx';
 import { ServicesHeroDesktopWhyChooseUs } from './ServicesHeroDesktopWhyChooseUs.jsx';
 import { ServicesHeroMobileInfoCards } from './ServicesHeroMobileInfoCards.jsx';
+import { StorefrontAccountBranchSwitcher } from '../../../../shared/components/storefront/hero/StorefrontAccountBranchSwitcher.jsx';
+import { useStorefrontAccountBranches } from '../../../../shared/hooks/useStorefrontAccountBranches.js';
 import {
   deriveServicesHeroContent,
   deriveServicesHeroTheme
@@ -39,6 +41,7 @@ const ServicesHero = ({
   catalogSearch,
   setCatalogSearch,
   goDiscovery,
+  goStore,
   hasServiceCart,
   goStoreBookingPage,
   cartCount,
@@ -79,6 +82,10 @@ const ServicesHero = ({
     buildVisibleStorefrontContactRows,
     getDeliveryPlatformLinks
   } = helperFns;
+  const { accountBranches, hasMultipleAccountBranches } = useStorefrontAccountBranches({
+    isStorefrontAccountAuthenticated,
+    selectedStore
+  });
   const {
     HERO_CANVAS_MAX_WIDTH,
     MAX_STOREFRONT_WHY_CHOOSE_US,
@@ -207,6 +214,14 @@ const ServicesHero = ({
               />
             </label>
           )
+        ) : null}
+        accountStoreSwitcher={hasMultipleAccountBranches ? (
+          <StorefrontAccountBranchSwitcher
+            branches={accountBranches}
+            currentSlug={selectedStore?.slug}
+            onSelectStore={goStore}
+            compactLabel={isMobileViewport}
+          />
         ) : null}
       />
 

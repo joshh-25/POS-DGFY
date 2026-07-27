@@ -103,3 +103,31 @@ Future placeholder modes must not be promoted by only adding mode-specific table
 - run tenant model factory tests for missing references;
 - run a disposable tenant schema sync against the complete graph;
 - verify approval/auto-approval cleanup keeps the registration retryable after schema, seed, email, or storefront-bootstrap failure.
+
+## Hosted POS Image Delivery And Navigation Addendum (2026-07-23)
+
+Hosted POS performance uses browser and HTTP caching as the primary image-delivery contract instead of placing unbounded uploaded media into Service Worker Cache Storage.
+
+- Generated item image variants live under unique, content-versioned upload folders. Optimized `thumb`, `medium`, and `large` files under those folders are immutable and receive `Cache-Control: public, max-age=31536000, immutable`.
+- Legacy raster uploads without a versioned folder remain revalidatable with a five-minute freshness window and one-day `stale-while-revalidate`. Other upload paths remain `no-cache`.
+- POS and Storefront Service Workers continue to bypass `/uploads/`. The browser or CDN honors the backend HTTP cache contract, while Service Worker runtime caches stay bounded and reserved for application-shell assets.
+- POS catalog cards request the thumbnail variant. Above-the-fold cards are eager/high-priority; remaining cards are lazy/async. Only the next catalog page is prefetched at low priority during idle time.
+- Catalog refreshes preserve the last rendered catalog and expose an in-place refreshing state. A network refresh must not blank the product grid or reset the current route.
+- Lazy checkout and operations workspaces are preloaded after terminal unlock during idle time and on navigation intent (pointer hover or keyboard focus). This is a performance hint only; authorization and route guards still run when the destination is selected.
+- Checkout, payment, order, authentication, inventory mutation, and other authoritative API responses remain outside this image cache policy and retain their existing `no-store` or revalidation requirements.
+
+Rollback is non-destructive: the upload cache policy can be removed without changing stored URLs, and image/chunk prefetch hints can be disabled without changing POS data or navigation semantics.
+
+## Tenant-Scoped Offline Persistence And Deterministic App Shell Addendum (2026-07-23)
+
+This addendum strengthens and supersedes any earlier language in this ADR that permits automatic or background replay of POS mutations.
+
+- Every catalog/report snapshot, manual-sync allowance, and queued terminal operation is scoped by tenant/company, terminal, location, and signed-in user. A missing scope blocks new offline persistence. Legacy records without the complete scope are quarantined and must never be guessed, displayed in another tenant, or replayed automatically.
+- IndexedDB writes are successful only after their read-write transaction completes. If IndexedDB is unavailable or aborts, the queue falls back to localStorage. A sale must remain in the cart unless one of those durable writes succeeds.
+- Queue history limits apply only to completed/replayed history. Pending, replaying, and manual-resolution records must not be evicted to satisfy a display or storage-history limit.
+- Opening a shift requires a live server confirmation. Offline selling is available only when the current scoped terminal already has a server-confirmed open shift. Incoming online-order refresh, payment collection, receipt hydration, and fulfillment mutations are online-only and disabled while offline.
+- Service Worker installation reads the build-generated `precache-manifest.json` and atomically caches the POS HTML shell, web manifest, JavaScript, CSS, and font build assets. Installation fails if the required manifest or any critical asset cannot be cached, preventing a partially installed worker from claiming offline readiness.
+- Service Worker caches remain read-only delivery caches. They do not cache `/api/` or `/uploads/`, do not submit queued records, and do not change authorization, stock, payment, or receipt-finalization authority.
+- Manual sync allowance is consumed only when the active scope has at least one replay candidate. Reconnect, reload, Service Worker events, and empty Sync presses do not replay records or consume the daily allowance.
+
+Rollback is non-destructive: the versioned snapshot and sync-policy keys can be abandoned without reading another tenant's data; the versioned Service Worker caches can be deleted on activation; and quarantined legacy queue records remain untouched for explicit support-led recovery.

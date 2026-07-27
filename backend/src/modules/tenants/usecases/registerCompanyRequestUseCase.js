@@ -63,7 +63,8 @@ export const buildRegisterCompanyRequestUseCase = ({
         const {
             name,
             subscriptionId,
-            workflowMode
+            workflowMode,
+            industryTag
         } = body || {};
         const adminEmail = String(dgfyAccount?.email || '').trim().toLowerCase();
         const adminPhone = String(dgfyAccount?.phone || '').trim();
@@ -76,6 +77,10 @@ export const buildRegisterCompanyRequestUseCase = ({
         const normalizedPlan = resolveRegisteredTenantPlan();
         const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
         const workflowModeMissing = workflowMode === undefined || workflowMode === null || String(workflowMode).trim() === '';
+        // Purely descriptive — how the merchant would describe their business — kept
+        // separate from workflowMode (the engineering operating mode) so the two are
+        // never conflated. Optional; not used to drive any platform behavior.
+        const normalizedIndustryTag = String(industryTag || '').trim().slice(0, 120) || null;
         const adminEmailDomain = typeof adminEmail === 'string' && adminEmail.includes('@')
             ? adminEmail.split('@')[1].toLowerCase()
             : null;
@@ -345,7 +350,8 @@ export const buildRegisterCompanyRequestUseCase = ({
                         compliance_profile: {},
                         owner_dgfy_account_id: dgfyAccount.id,
                         settings: {
-                            workflow_mode: normalizedWorkflowMode
+                            workflow_mode: normalizedWorkflowMode,
+                            industry_tag: normalizedIndustryTag
                         }
                     }, { transaction });
 
@@ -469,6 +475,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                             plan: normalizedPlan,
                             compliance_mode_state: complianceModeState,
                             workflow_mode: normalizedWorkflowMode,
+                            industry_tag: normalizedIndustryTag,
                             company_token: tenant.company_token,
                             email_sent: emailSent,
                             paymongo_child_account_status: paymongoChildAccountStatus
@@ -498,6 +505,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                         plan: normalizedPlan,
                         compliance_mode_state: complianceModeState,
                         workflow_mode: normalizedWorkflowMode,
+                        industry_tag: normalizedIndustryTag,
                         company_token: tenant.company_token
                     }
                 }

@@ -22,12 +22,14 @@ import {
     validateTerminalCurrentShiftQuery,
     validateTerminalDashboardTodayQuery,
     validateIncomingOnlineOrdersQuery,
+    validateAdminLocationMonitorQuery,
     validateCollectCashPickupOrder,
     validateShiftIdParam,
     validateOpenTerminalShift,
     validateSwitchTerminalShiftLocation,
     validateCashDrawerEvent,
     validateCloseTerminalShift,
+    validateForceCloseStaleTerminalShift,
     validateUpdateOnlineOrderStatus,
     validatePosDeviceReceiptPrint,
     validatePosDeviceDrawerOpen,
@@ -88,6 +90,7 @@ router.post('/terminal/shifts/:id/cash-events', checkPermission(PERMISSIONS.POS.
 // paired terminal here blocks valid cashier close-shift flows after cookie-based
 // pairing was retired.
 router.post('/terminal/shifts/:id/close', checkPermission(PERMISSIONS.POS.actions.CLOSE_SHIFT_POS), validateShiftIdParam, validateCloseTerminalShift, posController.closeTerminalShift);
+router.post('/terminal/shifts/:id/force-close', checkPermission(PERMISSIONS.POS.actions.CLOSE_SHIFT_POS), validateShiftIdParam, validateForceCloseStaleTerminalShift, posController.forceCloseStaleTerminalShift);
 router.get('/terminal/dashboard/today', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateTerminalDashboardTodayQuery, posController.getTerminalTodayDashboard);
 router.get('/reports/overview', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosReportsQuery, posController.getReportsOverview);
 router.get('/reports/export', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosReportsExportQuery, posController.exportReports);
@@ -103,6 +106,7 @@ router.post('/esales-reports/generate', checkPermission(PERMISSIONS.POS.actions.
 router.patch('/esales-reports/:id/status', checkPermission(PERMISSIONS.POS.actions.MANAGE_ESALES_REPORTS), validatePosTransactionIdParam, validateUpdateESalesReportStatus, posController.updateESalesReportStatus);
 router.get('/fiscal-ledger/integrity', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.verifyFiscalEventLedger);
 router.get('/incoming-orders', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateIncomingOnlineOrdersQuery, posController.listIncomingOnlineOrders);
+router.get('/admin/location-monitor', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateAdminLocationMonitorQuery, posController.getAdminLocationMonitor);
 router.post('/orders/:id/collect-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashPickupOrder, posController.collectCashPickupOrder);
 // ADR 0031: online order lifecycle uses logical terminal/open-shift checks; physical pairing must not block.
 router.patch('/orders/:id/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateOnlineOrderStatus, posController.updateOnlineOrderStatus);

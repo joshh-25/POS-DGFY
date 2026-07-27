@@ -85,14 +85,18 @@ const buildReplayRepository = () => {
         shiftCreates: 0,
         cashEventsCreated: 0,
         shiftCloses: 0,
+        auditLogsCreated: 0,
         orderUpdates: 0
     };
+    let failAuditWrites = false;
     let shiftSequence = 1;
     let terminalPolicy = {
         mode: 'warn',
         active_registry: [
             { terminal_id: 'WEB-POS-01', label: 'Web POS 1', location_id: 1 },
-            { terminal_id: 'WEB-POS-02', label: 'Web POS 2', location_id: 1 }
+            { terminal_id: 'WEB-POS-02', label: 'Web POS 2', location_id: 1 },
+            { terminal_id: 'COUNTER-01', label: 'Counter 1', location_id: 1 },
+            { terminal_id: 'COUNTER-02', label: 'Counter 2', location_id: 1 }
         ]
     };
 
@@ -105,6 +109,9 @@ const buildReplayRepository = () => {
                 mode: nextPolicy?.mode || 'warn',
                 active_registry: Array.isArray(nextPolicy?.active_registry) ? nextPolicy.active_registry : []
             };
+        },
+        setFailAuditWrites(value) {
+            failAuditWrites = value === true;
         },
         async getTerminalIdentityPolicySettings() {
             return clone(terminalPolicy);
@@ -170,6 +177,16 @@ const buildReplayRepository = () => {
             cashEvents.push(created);
             return clone(created);
         },
+        async createAuditLog(payload = {}) {
+            if (failAuditWrites) {
+                throw new Error('Audit write failed');
+            }
+            counters.auditLogsCreated += 1;
+            return {
+                log_id: counters.auditLogsCreated,
+                ...clone(payload)
+            };
+        },
         async listCashDrawerEventsByShiftId(shiftId) {
             return cashEvents
                 .filter((entry) => Number(entry.pos_terminal_shift_id) === Number(shiftId))
@@ -213,7 +230,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
 
     it('prevents two cashiers from opening shifts on the same terminal', async () => {
         const posRepository = buildReplayRepository();
-        const openShiftUseCase = buildOpenTerminalShiftUseCase({ posRepository });
+        const openShiftUseCase = buildOpenShiftUseCase(posRepository);
         const sequelize = {
             transaction: jest.fn(async () => createTransaction())
         };
@@ -253,7 +270,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
 
     it('allows different cashiers to open shifts on different terminals in one branch', async () => {
         const posRepository = buildReplayRepository();
-        const openShiftUseCase = buildOpenTerminalShiftUseCase({ posRepository });
+        const openShiftUseCase = buildOpenShiftUseCase(posRepository);
         const sequelize = {
             transaction: jest.fn(async () => createTransaction())
         };
@@ -282,6 +299,40 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
         });
     });
 
+    it('reuses the same open shift when the same user returns to the same terminal', async () => {
+        const posRepository = buildReplayRepository();
+        const openShiftUseCase = buildOpenShiftUseCase(posRepository);
+        const sequelize = {
+            transaction: jest.fn(async () => createTransaction())
+        };
+
+        await runInTenantContext({ sequelize }, async () => {
+            const first = await openShiftUseCase({
+                payload: {
+                    terminal_id: 'COUNTER-01',
+                    opening_float_amount: 500,
+                    idempotency_key: 'SHIFT-OWNER-FIRST'
+                },
+                user: { user_id: 21 }
+            });
+            const resumed = await openShiftUseCase({
+                payload: {
+                    terminal_id: 'COUNTER-01',
+                    opening_float_amount: 500,
+                    idempotency_key: 'SHIFT-OWNER-RESUME'
+                },
+                user: { user_id: 21 }
+            });
+
+            expect(first.success).toBe(true);
+            expect(resumed.success).toBe(true);
+            expect(resumed.data.reused_existing).toBe(true);
+            expect(resumed.data.shift.pos_terminal_shift_id)
+                .toBe(first.data.shift.pos_terminal_shift_id);
+            expect(posRepository.counters.shiftCreates).toBe(1);
+        });
+    });
+
     it('keeps deterministic idempotent replay behavior across shift open/cash event/shift close/order-status update', async () => {
         const posRepository = buildReplayRepository();
         posRepository.seedOrder({
@@ -305,7 +356,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
         const closeShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
         const updateOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
             posRepository,
-            stockMovementService: {
+            inventoryCommandService: {
                 createStockMovement: jest.fn()
             }
         });
@@ -421,8 +472,9 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
         expect(posRepository.counters.shiftCreates).toBe(2);
         expect(posRepository.counters.cashEventsCreated).toBe(1);
         expect(posRepository.counters.shiftCloses).toBe(1);
+        expect(posRepository.counters.auditLogsCreated).toBe(3);
         expect(posRepository.counters.orderUpdates).toBe(1);
-        expect(sequelize.transaction).toHaveBeenCalledTimes(1);
+        expect(sequelize.transaction).toHaveBeenCalledTimes(4);
     });
 
     it('returns deterministic conflict responses when idempotency key is reused with a different payload', async () => {
@@ -448,7 +500,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
         const closeShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
         const updateOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
             posRepository,
-            stockMovementService: {
+            inventoryCommandService: {
                 createStockMovement: jest.fn()
             }
         });
@@ -605,6 +657,32 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
         });
 
         expect(posRepository.counters.cashEventsCreated).toBe(0);
+    });
+
+    it('rolls back an open shift when its required audit write fails', async () => {
+        const posRepository = buildReplayRepository();
+        posRepository.setFailAuditWrites(true);
+        const openShiftUseCase = buildOpenShiftUseCase(posRepository);
+        const transaction = createTransaction();
+        const sequelize = {
+            transaction: jest.fn(async () => transaction)
+        };
+
+        await runInTenantContext({ sequelize }, async () => {
+            const result = await openShiftUseCase({
+                payload: {
+                    terminal_id: 'COUNTER-01',
+                    opening_float_amount: 100,
+                    idempotency_key: 'SHIFT-AUDIT-ROLLBACK-01'
+                },
+                user: { user_id: 21 }
+            });
+
+            expect(result.success).toBe(false);
+        });
+
+        expect(transaction.commit).not.toHaveBeenCalled();
+        expect(transaction.rollback).toHaveBeenCalledTimes(1);
     });
 
     it('enforces and warns terminal identity policy by mode', async () => {

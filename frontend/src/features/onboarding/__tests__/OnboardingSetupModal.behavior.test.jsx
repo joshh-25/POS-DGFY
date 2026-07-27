@@ -189,7 +189,8 @@ describe('OnboardingSetupModal behavior', () => {
     await user.type(screen.getByLabelText(/Address/i), '123 Main Street');
     await user.type(screen.getByLabelText(/Latitude/i), '14.5995');
     await user.type(screen.getByLabelText(/Longitude/i), '120.9842');
-    fireEvent.change(screen.getAllByDisplayValue('18:00')[1], { target: { value: '20:00' } });
+    fireEvent.change(screen.getByLabelText(/Close Time/i), { target: { value: '20:00' } });
+    await user.click(screen.getByRole('button', { name: /Add Time Set/i }));
     await user.click(screen.getByRole('button', { name: /Save and Continue/i }));
 
     await waitFor(() => {

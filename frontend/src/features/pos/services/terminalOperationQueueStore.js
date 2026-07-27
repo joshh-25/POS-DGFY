@@ -1,5 +1,10 @@
+import {
+  buildOfflinePosScopeKey,
+  toOfflinePosScopeFields
+} from './offlinePosScope.js';
+
 const DB_NAME = 'sku_pos_terminal_sync_queue';
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 const STORE_NAME = 'terminal_operation_queue';
 const LEGACY_STORAGE_KEY = 'pos_terminal_operation_queue_v1';
 const FALLBACK_STORAGE_KEY = 'pos_terminal_operation_queue_v2_fallback';
@@ -15,6 +20,12 @@ export const TERMINAL_QUEUE_STATUS = Object.freeze({
 
 const QUEUE_STATUS_SET = new Set(Object.values(TERMINAL_QUEUE_STATUS));
 const MAX_FALLBACK_HISTORY = 300;
+
+const isPinnedQueueStatus = (status) => (
+  status === TERMINAL_QUEUE_STATUS.QUEUED
+  || status === TERMINAL_QUEUE_STATUS.REPLAYING
+  || status === TERMINAL_QUEUE_STATUS.FAILED_MANUAL_RESOLUTION_REQUIRED
+);
 
 const toIso = (value = Date.now()) => {
   const date = value instanceof Date ? value : new Date(value);
@@ -49,6 +60,7 @@ const sanitizeError = (error) => {
 const normalizeQueueEntry = (entry = {}) => {
   const intentId = String(entry.intent_id || '').trim();
   if (!intentId) return null;
+  const scopeFields = toOfflinePosScopeFields(entry.queue_scope || entry);
 
   return {
     intent_id: intentId,
@@ -67,7 +79,8 @@ const normalizeQueueEntry = (entry = {}) => {
     replayed_at: entry.replayed_at ? toIso(entry.replayed_at) : null,
     resolved_at: entry.resolved_at ? toIso(entry.resolved_at) : null,
     resolution_note: String(entry.resolution_note || '').trim() || null,
-    resolution_source: String(entry.resolution_source || '').trim() || null
+    resolution_source: String(entry.resolution_source || '').trim() || null,
+    ...scopeFields
   };
 };
 
@@ -79,6 +92,12 @@ const sortByQueueTime = (entries = []) => (
     return String(left.intent_id).localeCompare(String(right.intent_id));
   })
 );
+
+const filterEntriesByScope = (entries = [], scope = {}) => {
+  const scopeKey = buildOfflinePosScopeKey(scope);
+  if (!scopeKey) return [];
+  return entries.filter((entry) => entry.scope_key === scopeKey);
+};
 
 const hasIndexedDb = () => (
   typeof window !== 'undefined' && typeof window.indexedDB !== 'undefined'
@@ -94,11 +113,17 @@ const openDatabase = async () => {
     const request = window.indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
+      let store;
       if (!db.objectStoreNames.contains(STORE_NAME)) {
-        const store = db.createObjectStore(STORE_NAME, { keyPath: 'intent_id' });
+        store = db.createObjectStore(STORE_NAME, { keyPath: 'intent_id' });
         store.createIndex('status', 'status', { unique: false });
         store.createIndex('updated_at', 'updated_at', { unique: false });
         store.createIndex('next_retry_at', 'next_retry_at', { unique: false });
+      } else {
+        store = request.transaction.objectStore(STORE_NAME);
+      }
+      if (!store.indexNames.contains('scope_key')) {
+        store.createIndex('scope_key', 'scope_key', { unique: false });
       }
     };
     request.onsuccess = () => resolve(request.result);
@@ -172,27 +197,49 @@ const readFallbackEntries = () => {
 
 const writeFallbackEntries = (entries = []) => {
   if (typeof window === 'undefined') return [];
-  const normalized = sortByQueueTime(
+  const allRows = sortByQueueTime(
     entries
       .map((entry) => normalizeQueueEntry(entry))
       .filter(Boolean)
-  ).slice(-MAX_FALLBACK_HISTORY);
+  );
+  const pinned = allRows.filter((entry) => isPinnedQueueStatus(entry.status));
+  const replayed = allRows
+    .filter((entry) => !isPinnedQueueStatus(entry.status))
+    .sort((left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime());
+  const historySlots = Math.max(0, MAX_FALLBACK_HISTORY - pinned.length);
+  const normalized = sortByQueueTime([...pinned, ...replayed.slice(0, historySlots)]);
   window.localStorage.setItem(FALLBACK_STORAGE_KEY, JSON.stringify(normalized));
   return normalized;
 };
 
+const removeFallbackEntry = (intentId) => {
+  const normalizedIntentId = String(intentId || '').trim();
+  if (!normalizedIntentId || typeof window === 'undefined') return;
+  const remaining = readFallbackEntries().filter((entry) => entry.intent_id !== normalizedIntentId);
+  writeFallbackEntries(remaining);
+};
+
 const readAllEntries = async () => {
+  const fallbackRows = readFallbackEntries();
   const idbRows = await withReadonlyStore((store, resolve, reject) => {
     const request = store.getAll();
     request.onsuccess = () => resolve(request.result || []);
     request.onerror = () => reject(request.error);
-  });
+  }).catch(() => null);
   if (!idbRows) {
-    return sortByQueueTime(readFallbackEntries());
+    return sortByQueueTime(fallbackRows);
   }
-  return sortByQueueTime(
-    idbRows.map((entry) => normalizeQueueEntry(entry)).filter(Boolean)
-  );
+  const rowsByIntent = new Map();
+  [...fallbackRows, ...idbRows]
+    .map((entry) => normalizeQueueEntry(entry))
+    .filter(Boolean)
+    .forEach((entry) => {
+      const current = rowsByIntent.get(entry.intent_id);
+      if (!current || new Date(entry.updated_at).getTime() >= new Date(current.updated_at).getTime()) {
+        rowsByIntent.set(entry.intent_id, entry);
+      }
+    });
+  return sortByQueueTime(Array.from(rowsByIntent.values()));
 };
 
 const upsertEntry = async (entry) => {
@@ -201,12 +248,16 @@ const upsertEntry = async (entry) => {
 
   const idbResult = await withReadwriteStore((store, tx, resolve, reject) => {
     const request = store.put(normalized);
-    request.onsuccess = () => resolve(normalized);
     request.onerror = () => reject(request.error);
     tx.oncomplete = () => resolve(normalized);
-  });
+  }).catch(() => null);
 
   if (idbResult) {
+    try {
+      removeFallbackEntry(normalized.intent_id);
+    } catch {
+      // IndexedDB is already durable; stale fallback cleanup can wait for a later write.
+    }
     return normalized;
   }
 
@@ -229,7 +280,7 @@ const putMany = async (entries = []) => {
     });
     tx.oncomplete = () => resolve(normalizedEntries);
     tx.onerror = () => reject(tx.error);
-  });
+  }).catch(() => null);
 
   if (idbResult) {
     return normalizedEntries;
@@ -340,15 +391,19 @@ export const enqueueTerminalOperationIntent = async (entry, source = 'manual') =
     resolution_source: null,
     attempt_count: existing?.status === TERMINAL_QUEUE_STATUS.REPLAYED ? 0 : (existing?.attempt_count || 0)
   });
+  if (!nextEntry?.scope_key) {
+    throw new Error('Offline POS records require a company, terminal, location, and user scope before they can be queued.');
+  }
   return upsertEntry(nextEntry);
 };
 
 export const listTerminalOperationQueueEntries = async ({
   statuses = null,
   includeResolved = true,
-  limit = null
+  limit = null,
+  scope = null
 } = {}) => {
-  const rows = await readAllEntries();
+  const rows = filterEntriesByScope(await readAllEntries(), scope);
   const statusSet = Array.isArray(statuses) && statuses.length > 0
     ? new Set(statuses.map((status) => normalizeStatus(status)))
     : null;
@@ -362,9 +417,9 @@ export const listTerminalOperationQueueEntries = async ({
   return filtered.slice(0, limit);
 };
 
-export const getReplayCandidateEntries = async ({ limit = 20 } = {}) => {
+export const getReplayCandidateEntries = async ({ limit = 20, scope = null } = {}) => {
   const now = Date.now();
-  const rows = await readAllEntries();
+  const rows = filterEntriesByScope(await readAllEntries(), scope);
   const candidates = [];
   for (const row of rows) {
     if (row.status === TERMINAL_QUEUE_STATUS.QUEUED && isRetryWindowOpen(row, now)) {
@@ -381,8 +436,8 @@ export const getReplayCandidateEntries = async ({ limit = 20 } = {}) => {
   return sorted.slice(0, limit);
 };
 
-export const getTerminalOperationQueueSummary = async () => {
-  const rows = await readAllEntries();
+export const getTerminalOperationQueueSummary = async ({ scope = null } = {}) => {
+  const rows = filterEntriesByScope(await readAllEntries(), scope);
   const summary = {
     total: rows.length,
     [TERMINAL_QUEUE_STATUS.QUEUED]: 0,
@@ -486,11 +541,7 @@ export const pruneTerminalOperationHistory = async ({ keep = MAX_FALLBACK_HISTOR
   const rows = await readAllEntries();
   if (rows.length <= keep) return rows;
 
-  const pinned = rows.filter((row) => (
-    row.status === TERMINAL_QUEUE_STATUS.QUEUED
-    || row.status === TERMINAL_QUEUE_STATUS.REPLAYING
-    || row.status === TERMINAL_QUEUE_STATUS.FAILED_MANUAL_RESOLUTION_REQUIRED
-  ));
+  const pinned = rows.filter((row) => isPinnedQueueStatus(row.status));
   const replayed = rows
     .filter((row) => row.status === TERMINAL_QUEUE_STATUS.REPLAYED)
     .sort((left, right) => new Date(right.updated_at).getTime() - new Date(left.updated_at).getTime());
@@ -505,10 +556,9 @@ export const pruneTerminalOperationHistory = async ({ keep = MAX_FALLBACK_HISTOR
       tx.oncomplete = () => resolve(nextRows);
       tx.onerror = () => reject(tx.error);
     };
-  });
+  }).catch(() => null);
   if (idbResult) return nextRows;
 
   writeFallbackEntries(nextRows);
   return nextRows;
 };
-

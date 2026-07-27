@@ -133,8 +133,17 @@ const BASE_POS_ITEM_ATTRIBUTES = [
     'sku_code',
     'category',
     'product_type',
+    // mode_item_preset is required for isStockExemptServiceItem's
+    // mode_item_preset === 'service' branch to fire on this catalog path.
+    'mode_item_preset',
     'unit_of_measure',
     'current_stock',
+    'min_threshold',
+    'fifo_enabled',
+    // Axis 4 tracking mode - required for resolveStockBearingDescriptor to see
+    // the persisted mode instead of only the legacy fifo_enabled/category signals.
+    'tracking_mode',
+    'tracking_toggle_available',
     'cost_per_unit',
     'default_sale_price',
     // The POS item editor uses the catalog row to preselect its saved category.
@@ -3296,6 +3305,30 @@ export const posRepository = {
             pos_image_url: payload.pos_image_url ?? (existing?.pos_image_url ?? null)
         };
 
+        // Keep items.tracking_mode in sync so the untracked exemption this flag
+        // grants is honoured on the Storefront too, not just POS (see
+        // docs/features/INVENTORY_TRACKING_MODES.md's 'untracked' section).
+        // Turning it on always wins (explicit operator intent). Turning it off
+        // only clears tracking_mode when it's still exactly 'untracked' - if a
+        // future direct tracking_mode API call set something else in between,
+        // this toggle doesn't clobber that separate choice.
+        if (Object.prototype.hasOwnProperty.call(payload, 'pos_always_available')) {
+            const Item = dbStore.get('Item');
+            if (Item) {
+                if (nextPayload.pos_always_available) {
+                    await Item.update(
+                        { tracking_mode: 'untracked' },
+                        { where: { item_id: itemId }, transaction }
+                    );
+                } else {
+                    await Item.update(
+                        { tracking_mode: null },
+                        { where: { item_id: itemId, tracking_mode: 'untracked' }, transaction }
+                    );
+                }
+            }
+        }
+
         if (existing) {
             await existing.update(nextPayload, { transaction });
             return existing;
@@ -3385,6 +3418,32 @@ export const posRepository = {
                 {
                     model: dbStore.get('PosCashDrawerEvent'),
                     as: 'cashEvents',
+                    required: false
+                },
+                {
+                    model: dbStore.get('TenantLocation'),
+                    as: 'location',
+                    required: false
+                }
+            ],
+            order: [['opened_at', 'DESC']],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+    },
+
+    async listOpenTerminalShiftsForLocation({ locationId } = {}, options = {}) {
+        const PosTerminalShift = dbStore.get('PosTerminalShift');
+        return PosTerminalShift.findAll({
+            where: {
+                status: 'open',
+                location_id: locationId
+            },
+            include: [
+                {
+                    model: dbStore.get('User'),
+                    as: 'cashier',
+                    attributes: ['user_id', 'username', 'email'],
                     required: false
                 },
                 {

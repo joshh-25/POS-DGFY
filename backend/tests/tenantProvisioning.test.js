@@ -94,6 +94,7 @@ describe('Provisioning — atomic cleanup on failure (2.3)', () => {
         // 1. The error from sync must propagate to the caller
         expect(thrownError).toBeDefined();
         expect(thrownError.message).toBe('Simulated sync failure');
+        expect(syncSpy).toHaveBeenCalledWith();
 
         // 2. Approval-flow failure must remain retryable from the admin portal
         expect(tenantUpdateMock).toHaveBeenCalledWith(

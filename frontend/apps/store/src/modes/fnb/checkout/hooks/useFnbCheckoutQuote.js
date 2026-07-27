@@ -55,7 +55,7 @@ export function useFnbCheckoutQuote({
   buildStockExceededMessage,
   extractStockViolation,
 }) {
-  const buildPayload = useCallback((promoCode = checkoutPromoCode) => buildFnbCheckoutPayload({
+  const buildPayload = useCallback((promoCode = checkoutPromoCode, cartOverride = cart) => buildFnbCheckoutPayload({
     selectedLocationId,
     selectedStore,
     orderMethod,
@@ -69,7 +69,7 @@ export function useFnbCheckoutQuote({
     fnbScheduleMode,
     fnbScheduledFor,
     fnbSpecialInstructions,
-    cart,
+    cart: cartOverride,
   }), [
     cart,
     checkoutPromoCode,

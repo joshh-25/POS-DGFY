@@ -25,7 +25,8 @@ describe('POS terminal responsive scroll contracts', () => {
   });
 
   it('keeps the terminal shell viewport-safe without restoring hard xl screen locks', () => {
-    expect(terminalLayoutContent).toContain('min-h-[100dvh]');
+    expect(terminalLayoutContent).toContain('dgfy-pos-shell overflow-hidden');
+    expect(terminalLayoutContent).not.toContain('min-h-screen');
     expect(terminalLayoutContent).not.toContain('xl:h-screen');
     expect(terminalLayoutContent).toContain('sticky top-0 z-40 shrink-0 border-b border-pos');
     expect(terminalLayoutContent).toContain("const shellLayoutClassName = IS_DGFY_POS_SURFACE");
@@ -42,7 +43,9 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(terminalLayoutContent).toContain('dgfy-pos-scrollbar-hidden flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y');
     expect(terminalLayoutContent).toContain("? 'xl:flex xl:flex-col xl:overflow-hidden'");
     expect(terminalLayoutContent).toContain(": 'xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y'");
-    expect(terminalLayoutContent).toContain('grid grid-cols-1 gap-2 p-2 xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]');
+    expect(terminalLayoutContent).toContain('grid min-w-0 max-w-full grid-cols-1 gap-2 p-2 xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]');
+    expect(terminalLayoutContent).toContain('min-h-0 min-w-0 max-w-full transition');
+    expect(terminalLayoutContent).toContain('className="min-w-0 max-w-full catalog-slide-enter"');
     expect(terminalLayoutContent).toContain('<div key="checkout-workspace" className="min-h-0 catalog-slide-enter xl:h-full">');
   });
 

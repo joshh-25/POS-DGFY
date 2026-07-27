@@ -1,6 +1,8 @@
 ﻿import { useEffect, useRef } from 'react';
 import { useCustomerAccountPanel } from './useCustomerAccountPanel.js';
 import { useCustomerDashboardAddresses } from './useCustomerDashboardAddresses.jsx';
+import { useCustomerDashboardPayouts } from './useCustomerDashboardPayouts.jsx';
+import { useCustomerDashboardCashouts } from './useCustomerDashboardCashouts.jsx';
 import { useCustomerDashboardBusinessAccess } from './useCustomerDashboardBusinessAccess.js';
 import { useCustomerDashboardLiveSync } from './useCustomerDashboardLiveSync.js';
 import { useCustomerDashboardNotifications } from './useCustomerDashboardNotifications.js';
@@ -64,6 +66,14 @@ export function useCustomerDashboardRuntime({
     DeliveryPinMap, reverseGeocodeDeliveryPin, buildPinnedDeliveryAddress,
     isMobileViewport, servicesBodyFont, servicesDisplayFont
   });
+  const payouts = useCustomerDashboardPayouts({
+    accountPanel, setAccountPanel, handleLoadAccountPanel, dgfySessionAccount,
+    requestJson, readDgfyAuthToken, normalizeStorefrontErrorMessage
+  });
+  const cashouts = useCustomerDashboardCashouts({
+    handleLoadAccountPanel, dgfySessionAccount, requestJson, readDgfyAuthToken,
+    normalizeStorefrontErrorMessage
+  });
   const business = useCustomerDashboardBusinessAccess({
     handleLoadAccountPanel, requestJson, readDgfyAuthToken, buildSkupervisorPath,
     buildPosAppUrl, startDgfyTenantSession, startDgfyPosSession, dgfySessionAccount,
@@ -122,6 +132,13 @@ export function useCustomerDashboardRuntime({
     handleSetDefaultAccountAddress: addresses.handleSetDefaultAccountAddress,
     handleDeleteAccountAddress: addresses.handleDeleteAccountAddress,
     refreshAccountAddresses: addresses.refreshAccountAddresses,
+    accountPayoutActionId: payouts.accountPayoutActionId,
+    handleSavePayoutMethod: payouts.handleSavePayoutMethod,
+    handleSetDefaultPayoutMethod: payouts.handleSetDefaultPayoutMethod,
+    handleDeletePayoutMethod: payouts.handleDeletePayoutMethod,
+    accountCashoutActionId: cashouts.accountCashoutActionId,
+    handleRequestCashout: cashouts.handleRequestCashout,
+    handleCancelCashout: cashouts.handleCancelCashout,
     handleStorefrontSignOut: session.handleStorefrontSignOut
   };
 }

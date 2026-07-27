@@ -74,6 +74,18 @@ export const PERMISSIONS = {
         }
     },
 
+    // --- AFFILIATES PROGRAM ---
+    AFFILIATES: {
+        label: "Affiliates Program",
+        actions: {
+            VIEW_AFFILIATES: "affiliates:view",                       // View affiliate list, balances, settings
+            MANAGE_AFFILIATES: "affiliates:manage",                   // Provision affiliates, override rates, suspend/revoke
+            MANAGE_AFFILIATE_SETTINGS: "affiliates:settings",         // Enable program, change default rate/window/min cashout
+            APPROVE_AFFILIATE_CASHOUTS: "affiliates:cashout_approve", // Approve or reject affiliate cashout requests
+            PAY_AFFILIATE_CASHOUTS: "affiliates:cashout_pay",         // Mark an approved cashout as paid
+        }
+    },
+
     // --- SERVICES MODE ---
     SERVICES: {
         label: "Services",
@@ -212,7 +224,8 @@ export const DEFAULT_ROLE_PERMISSIONS = {
         PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS,
         PERMISSIONS.SYSTEM.actions.VIEW_USERS,
         PERMISSIONS.SYSTEM.actions.DELETE_USERS,
-        PERMISSIONS.SYSTEM.actions.VIEW_AUDIT
+        PERMISSIONS.SYSTEM.actions.VIEW_AUDIT,
+        PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES
     ],
     staff: [
         PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,

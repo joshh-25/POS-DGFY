@@ -16,9 +16,10 @@ import {
   HelpCircle,
   Receipt
 } from 'lucide-react';
-import { ensureMapImage, setGeoJsonSourceData } from '../../../discovery/model/discoveryMapLayers.js';
+import { ensureMapImage, ensureRouteLineLayer, setGeoJsonSourceData, setRouteLineData } from '../../../discovery/model/discoveryMapLayers.js';
 import { renderDeliveryPinSpriteSvg } from '../../../discovery/model/businessModePins.js';
 import { applyMapLibreCanvasSizing, safeResizeMap } from '../../../../../../src/components/maps/mapLibreShared.js';
+import { useStoreRoute } from '../../../shared/hooks/useStoreRoute.js';
 
 const TRACKING_PIN_SOURCE_ID = 'dgfy-tracking-pins';
 const TRACKING_PIN_LAYER_ID = 'dgfy-tracking-pin-symbols';
@@ -41,11 +42,21 @@ export const DeliveryTrackingView = ({ result, mapProps, formatting, onBackToMen
   const containerRef = useRef(null);
   const resizeObserverRef = useRef(null);
   const [copiedField, setCopiedField] = useState('');
+  const [mapReady, setMapReady] = useState(false);
 
   const isMobileViewport = typeof window !== 'undefined' ? window.innerWidth <= 768 : false;
   const currentStatus = result?.order?.status || result?.order?.fulfillment_status || 'placed';
   const currentIndex = getTimelineIndex(currentStatus);
   const trackingPin = String(result?.tracking_pin || '').trim();
+
+  const { startPin, endPin } = mapProps || {};
+  // The straight line drawn on map load is an immediate placeholder; once this
+  // resolves, the effect below swaps it for the real road-following geometry.
+  const { geometry: routeGeometry } = useStoreRoute({
+    origin: startPin,
+    destination: endPin,
+    enabled: Boolean(startPin && endPin)
+  });
 
   const steps = [
     { label: 'Order placed', time: formatting.scheduleLabel !== 'ASAP' ? formatting.scheduleLabel : 'Just now' },
@@ -69,7 +80,7 @@ export const DeliveryTrackingView = ({ result, mapProps, formatting, onBackToMen
 
   useEffect(() => {
     if (!containerRef.current || mapRef.current) return;
-    const { TILING_SERVER, tileTransformRequest, startPin, endPin } = mapProps;
+    const { TILING_SERVER, tileTransformRequest } = mapProps;
     if (!startPin || !endPin) return;
 
     const map = new maplibregl.Map({
@@ -86,26 +97,13 @@ export const DeliveryTrackingView = ({ result, mapProps, formatting, onBackToMen
     mapRef.current = map;
 
     map.on('load', () => {
-      map.addSource('route', {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          properties: {},
-          geometry: {
-            type: 'LineString',
-            coordinates: [
-              [startPin.longitude, startPin.latitude],
-              [endPin.longitude, endPin.latitude]
-            ]
-          }
-        }
-      });
-      map.addLayer({
-        id: 'route-line',
-        type: 'line',
-        source: 'route',
-        layout: { 'line-join': 'round', 'line-cap': 'round' },
-        paint: { 'line-color': '#1a4e8d', 'line-width': 4, 'line-dasharray': [2, 2] }
+      ensureRouteLineLayer(map, { dashArray: [2, 2] });
+      setRouteLineData(map, {
+        type: 'LineString',
+        coordinates: [
+          [startPin.longitude, startPin.latitude],
+          [endPin.longitude, endPin.latitude]
+        ]
       });
 
       map.addSource(TRACKING_PIN_SOURCE_ID, {
@@ -146,6 +144,8 @@ export const DeliveryTrackingView = ({ result, mapProps, formatting, onBackToMen
           ]
         });
       });
+
+      setMapReady(true);
     });
 
     if (typeof ResizeObserver !== 'undefined') {
@@ -158,8 +158,15 @@ export const DeliveryTrackingView = ({ result, mapProps, formatting, onBackToMen
       resizeObserverRef.current = null;
       map.remove();
       mapRef.current = null;
+      setMapReady(false);
     };
   }, [mapProps]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !routeGeometry) return;
+    setRouteLineData(map, routeGeometry);
+  }, [routeGeometry, mapReady]);
 
   return (
     <div style={{ maxWidth: 1200, margin: '0 auto', padding: isMobileViewport ? 0 : '20px 0' }}>

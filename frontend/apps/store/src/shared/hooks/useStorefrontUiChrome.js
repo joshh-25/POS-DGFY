@@ -56,9 +56,10 @@ export function useStorefrontUiChrome({
 
   useEffect(() => {
     const handleResize = () => setViewportWidth(window.innerWidth);
+    handleResize();
     window.addEventListener('resize', handleResize);
     return () => window.removeEventListener('resize', handleResize);
-  }, []);
+  }, [setViewportWidth]);
 
   useEffect(() => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchNormalizedTrackingEntity } from '../../../../tracking/core.js';
 import {
+  buildTrackedOrdersSignature,
   readLastTrackingPinForStore,
   readTrackedOrdersAcrossStores,
   readTrackedOrdersForStore,
@@ -20,15 +21,6 @@ import {
 import { buildFnbTrackedOrderEntry, toFnbTrackingViewState } from '../model/fnbTrackingPayload.js';
 
 const BACKGROUND_PIN_POLL_MS = { visible: 60000, hidden: 120000 };
-
-// Stable per-entry signature (pin:status) so a re-fetch that changes nothing
-// doesn't produce a new array identity and doesn't retrigger effects/polling.
-const buildTrackedOrdersSignature = (entries = []) => (
-  entries
-    .map((entry) => `${String(entry?.tracking_pin || '').trim().toUpperCase()}:${String(entry?.status || '').trim().toLowerCase()}`)
-    .sort()
-    .join('|')
-);
 
 export function useFnbTrackingRuntime({ checkoutTab, isFnbOrderSubpage, normalizeErrorMessage, requestJson, routeSlug, selectedStore, toSlug, trackingAdapterRegistry, trackingMode }) {
   const [trackingPinInput, setTrackingPinInput] = useState('');

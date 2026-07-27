@@ -48,7 +48,7 @@ Overall status: in_progress
 9. Incoming queue polling now suppresses duplicate global error toasts during silent refresh while keeping explicit on-screen error state.
 10. Incoming order status actions are disabled when `pos:transact` is missing.
 11. Locked terminal disables navigation mode switching until terminal unlock.
-    - The mobile POS layout remounts across terminal unlock with an opaque sticky header so Safari/PWA clients repaint navigation without requiring a page refresh; while locked, the header remains non-interactive.
+    - The mobile POS layout blurs the active login control, restores document/workspace scroll while the iOS visual viewport settles, and remounts across terminal unlock. Safari, Chrome on iOS, and PWA clients therefore retain the opaque sticky navigation header without requiring a refresh; while locked, the header remains non-interactive.
 12. POS history supports direct handoff to Sales (`Open in Sales Report`) with preserved query context.
 13. Sales export now provides explicit export completion feedback tied to active filters.
 14. POS/store checkout validation errors (`422`) now surface structured field-level messages instead of generic failure copy.
