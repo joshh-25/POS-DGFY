@@ -148,6 +148,32 @@ export const normalizeEnabledCapabilities = (value) => {
     return Object.freeze(deduped.filter((capability) => ALL_WORKFLOW_CAPABILITIES.includes(capability)));
 };
 
+// Phase 9 Axis 4 delegation switch: does this platform's own inventory
+// module own the tenant's stock ledger (the 'platform' default), or has the
+// tenant delegated ledger authority to an external inventory-management
+// system? Mirrors ENABLED_CAPABILITIES_SETTING_KEY's governance shape
+// (single-source key here, master-admin gated write, short-TTL cache)
+// rather than the ungoverned, unvalidated multi_location_inventory_enabled
+// flag - see docs/features/INVENTORY_TRACKING_MODES.md and ADR 0037/0038.
+export const INVENTORY_AUTHORITY_SETTING_KEY = 'inventory_authority';
+
+export const DEFAULT_INVENTORY_AUTHORITY = 'platform';
+
+// 'external_ims' deliberately reuses the exact string already defined as
+// TRACKING_MODE.EXTERNAL_IMS in stockBearingPolicy.js - the tenant-level
+// delegation switch and the item-level tracking mode share one vocabulary on
+// purpose, so the item validator's gate is a plain equality check
+// (item tracking_mode === tenant inventory_authority) rather than a mapping
+// table between two parallel enums.
+export const INVENTORY_AUTHORITY_VALUES = Object.freeze(['platform', 'external_ims']);
+
+export const normalizeInventoryAuthority = (value) => {
+    const normalized = String(value || '').trim().toLowerCase();
+    return INVENTORY_AUTHORITY_VALUES.includes(normalized) ? normalized : DEFAULT_INVENTORY_AUTHORITY;
+};
+
+export const isDelegatedInventoryAuthority = (value) => normalizeInventoryAuthority(value) === 'external_ims';
+
 // The tenant's effective capability set: the base workflow mode's fixed list,
 // composed (unioned) with whatever the master admin has additionally opted
 // into via the enabled_capabilities overlay. Existing tenants with no overlay

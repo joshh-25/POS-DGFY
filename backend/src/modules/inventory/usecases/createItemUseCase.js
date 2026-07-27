@@ -1,11 +1,20 @@
 import { validateItemAgainstModeTaxonomy } from '../../shared/constants/modeItemTaxonomy.js';
+import { assertTrackingModeAuthorizedForInventoryAuthority } from './inventoryAuthorityTrackingModeGate.js';
+import { DEFAULT_INVENTORY_AUTHORITY } from '@sieitzz/shared-constants/workflowModes';
 
-export const buildCreateItemUseCase = ({ itemRepository, resolveWorkflowMode, resolveEnabledCapabilities = async () => [] }) => {
+export const buildCreateItemUseCase = ({
+    itemRepository,
+    resolveWorkflowMode,
+    resolveEnabledCapabilities = async () => [],
+    resolveInventoryAuthority = async () => DEFAULT_INVENTORY_AUTHORITY
+}) => {
     return async ({ itemData, userId, canManageCategories = false }) => {
-        const [workflowMode, enabledCapabilities] = await Promise.all([
+        const [workflowMode, enabledCapabilities, inventoryAuthority] = await Promise.all([
             resolveWorkflowMode(),
-            resolveEnabledCapabilities()
+            resolveEnabledCapabilities(),
+            resolveInventoryAuthority()
         ]);
+        assertTrackingModeAuthorizedForInventoryAuthority({ itemData, inventoryAuthority });
         const validation = validateItemAgainstModeTaxonomy({
             workflowMode,
             enabledCapabilities,

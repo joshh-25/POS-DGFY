@@ -2104,11 +2104,17 @@ const buildFiscalDocumentSnapshot = ({
 export const buildCheckoutPosUseCase = ({
     posRepository,
     inventoryCommandService,
-    stockMovementService,
     resolveIdentityStatus = resolvePosOperatorIdentityStatus,
     resolveLocationScope = resolvePosOperationalLocationScope
 }) => {
-    const stockCommands = inventoryCommandService || stockMovementService;
+    // Phase 9: no `|| stockMovementService` fallback here anymore - a
+    // mis-wired container (inventoryCommandService missing) must fail loudly
+    // via executeInventoryStockCommand's own check below, not silently pick
+    // up a differently-named legacy dependency that happens to also expose
+    // createStockMovement. Falling back would risk bypassing whatever a
+    // properly-wired port does for a tenant that has delegated inventory
+    // authority to an external system.
+    const stockCommands = inventoryCommandService;
     return async ({ payload, userId, user }) => {
         const normalizedUserId = parsePositiveInt(userId);
         if (!normalizedUserId) {
@@ -3164,8 +3170,10 @@ export const buildRecordFiscalPrintEventUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommandService, stockMovementService }) => {
-    const stockCommands = inventoryCommandService || stockMovementService;
+export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommandService }) => {
+    // Phase 9: see buildCheckoutPosUseCase's comment above - no
+    // `|| stockMovementService` silent fallback.
+    const stockCommands = inventoryCommandService;
     return async ({ posTransactionId, payload = {}, user = {} } = {}) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         const actorUserId = parsePositiveInt(user?.user_id);
@@ -6370,10 +6378,11 @@ export const buildCollectCashPickupOrderUseCase = ({ posRepository }) => {
 export const buildUpdateOnlineOrderStatusUseCase = ({
     posRepository,
     inventoryCommandService,
-    stockMovementService,
     activityRecorder = recordDgfyOrderActivity
 }) => {
-    const stockCommands = inventoryCommandService || stockMovementService;
+    // Phase 9: see buildCheckoutPosUseCase's comment above - no
+    // `|| stockMovementService` silent fallback.
+    const stockCommands = inventoryCommandService;
     return async ({ posTransactionId, payload, user }) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         if (!normalizedTransactionId) {

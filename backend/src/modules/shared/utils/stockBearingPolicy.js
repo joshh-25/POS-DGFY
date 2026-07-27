@@ -17,19 +17,31 @@ export const isStockBearingItem = (item = {}) => (
     !isStockExemptServiceItem(item)
 );
 
-// The four answer-sources a tracking mode can draw availability from (see
-// docs/features/INVENTORY_TRACKING_MODES.md).
+// The five answer-sources a tracking mode can draw availability from (see
+// docs/features/INVENTORY_TRACKING_MODES.md). REMOTE is Phase 9's addition
+// for 'external_ims': availability is ultimately answered by a remote
+// system, not a locally-owned count/declaration/schedule/derivation - even
+// though today's local mirror still backs browse-time display (see the
+// TRACKING_MODE.EXTERNAL_IMS branch below and storeRepository.js's
+// applyLocationStock, which only reaches the DECLARED/CAPACITY-style
+// resolveDescriptorAvailability() path when tracks_quantity is false; this
+// mode keeps tracks_quantity true, so it takes the ordinary counted-item
+// branch instead of ever needing a REMOTE case there today).
 export const AVAILABILITY_SOURCE = Object.freeze({
     COUNTED: 'counted',
     DECLARED: 'declared',
     CAPACITY: 'capacity',
-    DERIVED: 'derived'
+    DERIVED: 'derived',
+    REMOTE: 'remote'
 });
 
 // The seven Axis 4 tracking modes persisted on items.tracking_mode.
-// 'external_ims' and 'recipe_derived' are reserved - not yet settable via the
-// item write path (Phase 9 work) - but are named here so the resolver has a
-// defined (inert) shape ready for them.
+// 'external_ims' is settable as of Phase 9, gated behind the tenant's
+// inventory_authority setting (see itemValidator.js's SETTABLE_TRACKING_MODES
+// and the inventoryAuthorityTrackingModeGate use-case check). 'recipe_derived'
+// stays reserved/frozen - the local FIFO-recipe engine is deliberately not
+// being extended into a producibility projection - but is named here so the
+// resolver has a defined (inert) shape ready for it.
 export const TRACKING_MODE = Object.freeze({
     UNTRACKED: 'untracked',
     COUNT_LEDGER: 'count_ledger',
@@ -61,6 +73,43 @@ const normalizeTrackingMode = (item = {}) => {
 export const resolveStockBearingDescriptor = (item = {}) => {
     const isService = isStockExemptServiceItem(item);
     const trackingMode = isService ? null : normalizeTrackingMode(item);
+
+    if (trackingMode === TRACKING_MODE.EXTERNAL_IMS) {
+        // Axis 4 delegation (Phase 9): the tenant has handed inventory-ledger
+        // *authority* to an external IMS, but ADR 0014 still requires a local
+        // ledger row in the same transaction as every sale/receipt/void, so
+        // tracks_quantity and emits_movements are mandatory here, not
+        // defaulted - flipping either to false would make POS/Storefront
+        // checkout snapshot the line stock-exempt and skip the local write
+        // entirely (resolveStockExemptReason below short-circuits to null
+        // specifically because tracks_quantity stays true; if a future edit
+        // ever makes this mode movement-exempt, resolveStockExemptReason
+        // must also grow an explicit branch or it will mislabel the reason).
+        return Object.freeze({
+            tracks_quantity: true,
+            uses_batches: false,
+            // Tradeoff (flag for review): blocks checkout on the local
+            // mirror, which can be stale relative to the external system's
+            // authoritative count. The alternative - trusting the remote
+            // count in real time, or not blocking at all - is only safe once
+            // reservations exist to prevent overselling against a lagging
+            // mirror; that's out of scope for this phase, so the safer
+            // (more conservative) default is chosen: block on a possibly-
+            // stale local number rather than risk silently overselling.
+            blocks_on_shortfall: true,
+            emits_movements: true,
+            // A real physical good with a real cost, just externally
+            // counted - keep it in COGS/valuation exactly like count_ledger/
+            // full_fifo (see the carries_cost/valuation_participant call
+            // sites: POS/Storefront checkout's cost_snapshot, and
+            // buildStockBearingItemWhere below, which does not exclude this
+            // mode from valuation/report queries).
+            carries_cost: true,
+            valuation_participant: true,
+            availability_source: AVAILABILITY_SOURCE.REMOTE,
+            is_toggle_available: null
+        });
+    }
 
     if (trackingMode) {
         const isToggle = trackingMode === TRACKING_MODE.TOGGLE;
@@ -108,6 +157,12 @@ export const resolveStockBearingDescriptor = (item = {}) => {
 // the untracked-mode reason string for continuity with existing recorded
 // data, not because the mechanism is POS-only anymore.
 export const resolveStockExemptReason = (item = {}, descriptor = resolveStockBearingDescriptor(item)) => {
+    // external_ims is intentionally never exempt (tracks_quantity stays true
+    // - see the descriptor branch above), so this early return is what keeps
+    // it out of every branch below. It is called out explicitly here because
+    // getting that mandate wrong (making the mode movement-exempt) would
+    // otherwise fall through to the DECLARED/CAPACITY string labels below and
+    // record a misleading exempt reason for a mode that is not exempt.
     if (descriptor.tracks_quantity) return null;
     if (isStockExemptServiceItem(item)) return 'service_item';
     if (descriptor.availability_source === AVAILABILITY_SOURCE.CAPACITY) return 'capacity_item';

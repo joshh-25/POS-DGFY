@@ -26,6 +26,7 @@ import {
   validateReplaceItemSuppliers
 } from '../validators/itemValidator.js';
 import { authenticate, checkPermission, requireTenantAdmin } from '../middleware/auth.js';
+import { requireLocalInventoryLedgerOwnership, bodyDeclaresCurrentStock } from '../middleware/inventoryAuthorityGate.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import { itemOperationsLimiter } from '../middleware/rateLimiter.js';
 import {
@@ -129,16 +130,34 @@ router.put('/:item_id/suppliers', checkPermission(PERMISSIONS.INVENTORY.actions.
 router.post('/validate-composition', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), itemController.validateComposition);
 
 // Create/Update operations - managers and admins only
-router.post('/', checkPermission(PERMISSIONS.INVENTORY.actions.CREATE_ITEMS), (req, res, next) => {
-  // Use draft validator if save_as_draft query param is true
-  const isDraft = req.query.save_as_draft === 'true' || req.body.status === 'draft';
-  if (isDraft) {
-    validateCreateItemDraft(req, res, next);
-  } else {
-    validateCreateItem(req, res, next);
-  }
-}, itemController.createItem);
-router.put('/:item_id', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateUpdateItem, itemController.updateItem);
+// Phase 9: do NOT gate item create/update wholesale on inventory_authority -
+// most of what this endpoint edits (name, price, category, barcodes) is
+// catalog metadata a delegated tenant still needs to manage locally. Only
+// block the one thing that actually overwrites the local stock ledger
+// outside the normal movement flow: a request body that declares
+// current_stock directly (see bodyDeclaresCurrentStock).
+router.post(
+  '/',
+  checkPermission(PERMISSIONS.INVENTORY.actions.CREATE_ITEMS),
+  requireLocalInventoryLedgerOwnership('Setting an item opening stock balance', { shouldBlock: bodyDeclaresCurrentStock }),
+  (req, res, next) => {
+    // Use draft validator if save_as_draft query param is true
+    const isDraft = req.query.save_as_draft === 'true' || req.body.status === 'draft';
+    if (isDraft) {
+      validateCreateItemDraft(req, res, next);
+    } else {
+      validateCreateItem(req, res, next);
+    }
+  },
+  itemController.createItem
+);
+router.put(
+  '/:item_id',
+  checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS),
+  requireLocalInventoryLedgerOwnership('Directly editing an item stock balance', { shouldBlock: bodyDeclaresCurrentStock }),
+  validateUpdateItem,
+  itemController.updateItem
+);
 
 // Finalize draft - managers and admins only
 router.patch('/:item_id/finalize', checkPermission(PERMISSIONS.INVENTORY.actions.CREATE_ITEMS), itemController.finalizeItem);

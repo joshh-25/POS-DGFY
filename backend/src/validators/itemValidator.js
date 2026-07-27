@@ -2,14 +2,26 @@ import Joi from 'joi';
 import { hasValidGtinCheckDigit } from '../modules/shared/utils/barcodePolicy.js';
 import { TRACKING_MODE } from '../modules/shared/utils/stockBearingPolicy.js';
 
-// external_ims and recipe_derived are reserved (Phase 9 / frozen recipe
-// engine) and deliberately not settable via the item write path yet.
+// recipe_derived is reserved (frozen recipe engine - no producibility
+// projection is being built) and deliberately not settable via the item
+// write path. external_ims became settable in Phase 9, but only structurally
+// here: Joi has no tenant context, so it cannot enforce the real gate (a
+// tenant may only set external_ims once its inventory_authority setting has
+// delegated the ledger to an external system). That tenant-conditional check
+// happens one layer up, at the use-case level - see
+// assertTrackingModeAuthorizedForInventoryAuthority in
+// inventory/usecases/inventoryAuthorityTrackingModeGate.js, wired into
+// createItemUseCase/updateItemUseCase/finalizeItemUseCase - mirroring how
+// validateItemAgainstModeTaxonomy already does tenant-conditional item
+// validation outside of Joi (resolveWorkflowMode/resolveEnabledCapabilities
+// are not available at this pure-schema layer either).
 const SETTABLE_TRACKING_MODES = [
   TRACKING_MODE.UNTRACKED,
   TRACKING_MODE.COUNT_LEDGER,
   TRACKING_MODE.FULL_FIFO,
   TRACKING_MODE.TOGGLE,
-  TRACKING_MODE.CAPACITY
+  TRACKING_MODE.CAPACITY,
+  TRACKING_MODE.EXTERNAL_IMS
 ];
 const trackingModeSchema = Joi.string().valid(...SETTABLE_TRACKING_MODES).allow(null, '').messages({
   'any.only': `tracking_mode must be one of: ${SETTABLE_TRACKING_MODES.join(', ')}`

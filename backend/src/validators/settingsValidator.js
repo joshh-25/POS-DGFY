@@ -1,5 +1,5 @@
 import Joi from 'joi';
-import { WORKFLOW_MODE_VALUES, ALL_WORKFLOW_CAPABILITIES } from '../modules/shared/constants/workflowModes.js';
+import { WORKFLOW_MODE_VALUES, ALL_WORKFLOW_CAPABILITIES, INVENTORY_AUTHORITY_VALUES } from '../modules/shared/constants/workflowModes.js';
 import {
   CUSTOMER_ACCESS_MODES,
   INVENTORY_DISPLAY_MODES
@@ -398,6 +398,13 @@ const enabledCapabilitiesSchema = Joi.array()
     'any.only': `Enabled capabilities must be one of: ${ALL_WORKFLOW_CAPABILITIES.join(', ')}`
   });
 
+// Phase 9 Axis 4 delegation switch - mirrors enabledCapabilitiesSchema's
+// governance shape (see updateSettingsUseCase.js/updateSettingByKeyUseCase.js
+// for the matching master-admin write gate).
+const inventoryAuthoritySchema = Joi.string().trim().lowercase().valid(...INVENTORY_AUTHORITY_VALUES).messages({
+  'any.only': `inventory_authority must be one of: ${INVENTORY_AUTHORITY_VALUES.join(', ')}`
+});
+
 // Schema for updating system settings
 export const updateSettingsSchema = Joi.object({
   low_stock_threshold: Joi.number().min(0).optional(),
@@ -491,7 +498,8 @@ export const updateSettingsSchema = Joi.object({
   ops_workflow_mode: Joi.string().trim().lowercase().valid(...WORKFLOW_MODE_VALUES).optional().messages({
     'any.only': `Workflow mode must be one of: ${WORKFLOW_MODE_VALUES.join(', ')}`
   }),
-  ops_enabled_capabilities: enabledCapabilitiesSchema.optional()
+  ops_enabled_capabilities: enabledCapabilitiesSchema.optional(),
+  inventory_authority: inventoryAuthoritySchema.optional()
 }).min(1).messages({
   'object.min': 'At least one setting must be provided'
 });
@@ -649,7 +657,8 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     ops_workflow_mode: Joi.string().trim().lowercase().valid(...WORKFLOW_MODE_VALUES).messages({
       'any.only': `Workflow mode must be one of: ${WORKFLOW_MODE_VALUES.join(', ')}`
     }),
-    ops_enabled_capabilities: enabledCapabilitiesSchema
+    ops_enabled_capabilities: enabledCapabilitiesSchema,
+    inventory_authority: inventoryAuthoritySchema
   };
 
   if (settingKey === 'pos_order_method_fees' && value?.value && typeof value.value === 'object' && !Array.isArray(value.value)) {

@@ -8,7 +8,10 @@ import {
     WORKFLOW_MODE_VALUES,
     ALL_WORKFLOW_CAPABILITIES,
     ENABLED_CAPABILITIES_SETTING_KEY,
-    normalizeEnabledCapabilities
+    normalizeEnabledCapabilities,
+    INVENTORY_AUTHORITY_SETTING_KEY,
+    INVENTORY_AUTHORITY_VALUES,
+    normalizeInventoryAuthority
 } from '../../shared/constants/workflowModes.js';
 import {
     assertComplianceOperationAllowed,
@@ -162,6 +165,23 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
                     ));
                 }
                 normalizedValue = normalizeEnabledCapabilities(value);
+            }
+            if (key === INVENTORY_AUTHORITY_SETTING_KEY) {
+                if (!INVENTORY_AUTHORITY_VALUES.includes(String(value || '').trim().toLowerCase())) {
+                    return fail(new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        `inventory_authority must be one of: ${INVENTORY_AUTHORITY_VALUES.join(', ')}`,
+                        { statusCode: 422 }
+                    ));
+                }
+                if (actorUser?.is_master_admin !== true) {
+                    return fail(new DomainError(
+                        DomainErrorCode.AUTHORIZATION_FAILED,
+                        'Only master admin can update inventory_authority',
+                        { statusCode: 403 }
+                    ));
+                }
+                normalizedValue = normalizeInventoryAuthority(value);
             }
             if (key === 'store_tenant_slug') {
                 await assertPublicStorefrontHandleAvailable({
