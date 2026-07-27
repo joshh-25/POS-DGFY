@@ -33,7 +33,9 @@ import {
 } from '../../shared/utils/barcodePolicy.js';
 import {
     isStockBearingItem,
-    isStockExemptServiceItem
+    isStockExemptServiceItem,
+    resolveStockBearingDescriptor,
+    resolveStockExemptReason
 } from '../../shared/utils/stockBearingPolicy.js';
 import { requireExplicitSalePrice } from '../../shared/utils/itemFinancialPolicy.js';
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
@@ -1400,20 +1402,25 @@ const buildOnlineOrderStockMovements = async ({ order = {}, posRepository, optio
     });
 
     return lines.flatMap((line, index) => {
-        if (!isStockBearingItem(buildLineStockPolicySubject(line))) return [];
         const itemId = parsePositiveInt(line?.item_id);
-        const quantity = Number(line?.quantity);
-        if (!itemId || !Number.isFinite(quantity) || quantity <= 0) {
-            throw new DomainError(
-                DomainErrorCode.CONFLICT,
-                `Online order line ${index + 1} has invalid inventory movement data`,
-                { statusCode: 409 }
-            );
-        }
-
         const lineReference = parsePositiveInt(line?.line_id) || `${itemId}-${index + 1}`;
         const recipeMovements = recipePlan.movementsByLineIndex[index] || [];
+
+        // Recipe consumption always fires when the line has one, regardless of
+        // the finished item's own stock effect - see the matching fix in the
+        // in-person POS checkout movement loop above. The finished item's own
+        // (movement-exempt) effect is skipped below via stock_effect_type,
+        // trusted directly on the persisted line rather than recomputed from
+        // category, since the checkout path that created this line now sets it
+        // correctly for every mode (untracked/toggle/service alike).
         if (recipeMovements.length > 0) {
+            if (!itemId) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    `Online order line ${index + 1} has invalid inventory movement data`,
+                    { statusCode: 409 }
+                );
+            }
             return recipeMovements.map((movement) => ({
                 item_id: movement.ingredient_item_id,
                 quantity: movement.quantity,
@@ -1423,6 +1430,20 @@ const buildOnlineOrderStockMovements = async ({ order = {}, posRepository, optio
                 reference_id: `ONLINE:${orderId}:${lineReference}:ING:${movement.ingredient_item_id}`,
                 notes: `Online F&B recipe consumption for ${movement.product_name || `item ${itemId}`} on ${order.invoice_number || `#${orderId}`}${order.tracking_pin ? ` (${order.tracking_pin})` : ''}`
             }));
+        }
+
+        const isStockExemptLine = line?.stock_effect_type
+            ? line.stock_effect_type === 'stock_exempt'
+            : !isStockBearingItem(buildLineStockPolicySubject(line));
+        if (isStockExemptLine) return [];
+
+        const quantity = Number(line?.quantity);
+        if (!itemId || !Number.isFinite(quantity) || quantity <= 0) {
+            throw new DomainError(
+                DomainErrorCode.CONFLICT,
+                `Online order line ${index + 1} has invalid inventory movement data`,
+                { statusCode: 409 }
+            );
         }
 
         return [{
@@ -2083,11 +2104,17 @@ const buildFiscalDocumentSnapshot = ({
 export const buildCheckoutPosUseCase = ({
     posRepository,
     inventoryCommandService,
-    stockMovementService,
     resolveIdentityStatus = resolvePosOperatorIdentityStatus,
     resolveLocationScope = resolvePosOperationalLocationScope
 }) => {
-    const stockCommands = inventoryCommandService || stockMovementService;
+    // Phase 9: no `|| stockMovementService` fallback here anymore - a
+    // mis-wired container (inventoryCommandService missing) must fail loudly
+    // via executeInventoryStockCommand's own check below, not silently pick
+    // up a differently-named legacy dependency that happens to also expose
+    // createStockMovement. Falling back would risk bypassing whatever a
+    // properly-wired port does for a tenant that has delegated inventory
+    // authority to an external system.
+    const stockCommands = inventoryCommandService;
     return async ({ payload, userId, user }) => {
         const normalizedUserId = parsePositiveInt(userId);
         if (!normalizedUserId) {
@@ -2497,12 +2524,18 @@ export const buildCheckoutPosUseCase = ({
                     );
                 }
 
-                const isServiceItem = isStockExemptServiceItem(item);
-                const isAlwaysAvailable = item.pos_always_available === true;
-                const isStockExemptLine = isServiceItem || isAlwaysAvailable;
+                const descriptor = resolveStockBearingDescriptor(item);
+                const isStockExemptLine = !descriptor.tracks_quantity;
+                if (descriptor.is_toggle_available === false) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        `"${item.name}" is currently marked unavailable`,
+                        { statusCode: 400 }
+                    );
+                }
                 const currentStock = Number(item.current_stock) || 0;
                 const lineRecipeMovements = recipePlan.movementsByLineIndex[preparedLines.length] || [];
-                if (!isStockExemptLine && lineRecipeMovements.length === 0 && currentStock + 0.000001 < quantity) {
+                if (descriptor.blocks_on_shortfall && lineRecipeMovements.length === 0 && currentStock + 0.000001 < quantity) {
                     throw new DomainError(
                         DomainErrorCode.VALIDATION_FAILED,
                         `Insufficient stock for "${item.name}". Available: ${currentStock}, requested: ${quantity}`,
@@ -2553,11 +2586,12 @@ export const buildCheckoutPosUseCase = ({
                     item_name: item.name,
                     quantity: round4(quantity),
                     unit_of_measure: item.unit_of_measure,
-                    cost_snapshot: isStockExemptLine ? null : (item.cost_per_unit != null ? round4(item.cost_per_unit) : null),
+                    // Only a true service has no cost to report; an untracked/toggle
+                    // physical item is movement-exempt but still carries a real cost
+                    // (resolveStockBearingDescriptor's carries_cost).
+                    cost_snapshot: descriptor.carries_cost ? (item.cost_per_unit != null ? round4(item.cost_per_unit) : null) : null,
                     stock_effect_type: isStockExemptLine ? 'stock_exempt' : 'inventory_issue',
-                    stock_exempt_reason: isAlwaysAvailable
-                        ? 'pos_always_available'
-                        : (isServiceItem ? 'service_item' : null),
+                    stock_exempt_reason: resolveStockExemptReason(item, descriptor),
                     sale_price: round4(resolvedPrice),
                     sale_price_overridden: salePriceOverridden,
                     price_override_reason: salePriceOverridden ? priceOverrideReason : null,
@@ -2954,9 +2988,10 @@ export const buildCheckoutPosUseCase = ({
 
             for (let lineIndex = 0; lineIndex < preparedLines.length; lineIndex += 1) {
                 const line = preparedLines[lineIndex];
-                if (line.stock_effect_type === 'stock_exempt') {
-                    continue;
-                }
+                // Recipe consumption always fires when the line has one, regardless
+                // of the finished item's own stock_effect_type: an untracked/toggle/
+                // service dish still physically consumes real ingredients. Only the
+                // finished item's own (movement-exempt) stock effect is skipped below.
                 const recipeMovements = recipeMovementPlanByPreparedLine[lineIndex] || [];
                 if (recipeMovements.length > 0) {
                     for (const movement of recipeMovements) {
@@ -2976,6 +3011,9 @@ export const buildCheckoutPosUseCase = ({
                             transaction
                         });
                     }
+                    continue;
+                }
+                if (line.stock_effect_type === 'stock_exempt') {
                     continue;
                 }
                 await executeInventoryStockCommand({
@@ -3132,8 +3170,10 @@ export const buildRecordFiscalPrintEventUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommandService, stockMovementService }) => {
-    const stockCommands = inventoryCommandService || stockMovementService;
+export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommandService }) => {
+    // Phase 9: see buildCheckoutPosUseCase's comment above - no
+    // `|| stockMovementService` silent fallback.
+    const stockCommands = inventoryCommandService;
     return async ({ posTransactionId, payload = {}, user = {} } = {}) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         const actorUserId = parsePositiveInt(user?.user_id);
@@ -3736,7 +3776,7 @@ const resolvePosScanBlockedReason = ({ scanResult, complianceError = null } = {}
     const hasMissing = (code) => missing.some((entry) => entry?.code === code);
     const status = String(item.status || '').trim().toLowerCase();
     const isServiceItem = isStockExemptServiceItem(item);
-    const isAlwaysAvailable = item.pos_always_available === true;
+    const descriptor = resolveStockBearingDescriptor(item);
     const stock = Number(item.current_stock || 0);
 
     if (status !== 'active') {
@@ -3748,7 +3788,10 @@ const resolvePosScanBlockedReason = ({ scanResult, complianceError = null } = {}
     if (hasMissing('SALE_PRICE_MISSING') || Number(item.default_sale_price || 0) <= 0) {
         return { reason_code: 'MISSING_PRICE', message: 'Item is missing a sale price' };
     }
-    if (!isServiceItem && !isAlwaysAvailable && stock <= 0) {
+    if (descriptor.is_toggle_available === false) {
+        return { reason_code: 'OUT_OF_STOCK', message: 'Item is currently marked unavailable' };
+    }
+    if (descriptor.tracks_quantity && stock <= 0) {
         return { reason_code: 'OUT_OF_STOCK', message: 'Item is out of stock at this location' };
     }
     if (isServiceItem && item.serviceDetail?.visible_in_pos === false) {
@@ -6335,10 +6378,11 @@ export const buildCollectCashPickupOrderUseCase = ({ posRepository }) => {
 export const buildUpdateOnlineOrderStatusUseCase = ({
     posRepository,
     inventoryCommandService,
-    stockMovementService,
     activityRecorder = recordDgfyOrderActivity
 }) => {
-    const stockCommands = inventoryCommandService || stockMovementService;
+    // Phase 9: see buildCheckoutPosUseCase's comment above - no
+    // `|| stockMovementService` silent fallback.
+    const stockCommands = inventoryCommandService;
     return async ({ posTransactionId, payload, user }) => {
         const normalizedTransactionId = parsePositiveInt(posTransactionId);
         if (!normalizedTransactionId) {

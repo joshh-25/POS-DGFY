@@ -63,6 +63,7 @@ import ServiceResource from './ServiceResource.js';
 import ServiceProviderAssignment from './ServiceProviderAssignment.js';
 import ServiceBooking from './ServiceBooking.js';
 import ServiceBookingHold from './ServiceBookingHold.js';
+import ServiceBookingLine from './ServiceBookingLine.js';
 import ServiceWaitlistEntry from './ServiceWaitlistEntry.js';
 import ServiceReminderOutbox from './ServiceReminderOutbox.js';
 import FnbModifierGroup from './FnbModifierGroup.js';
@@ -143,6 +144,7 @@ import DgfyAffiliateAttributionFactory from './Landlord/DgfyAffiliateAttribution
 import DgfyAffiliateCommissionFactory from './Landlord/DgfyAffiliateCommission.js';
 import DgfyAffiliatePayoutMethodFactory from './Landlord/DgfyAffiliatePayoutMethod.js';
 import DgfyAffiliateCashoutFactory from './Landlord/DgfyAffiliateCashout.js';
+import DgfyAffiliateInviteFactory from './Landlord/DgfyAffiliateInvite.js';
 import TenantAffiliateSettingsFactory from './Landlord/TenantAffiliateSettings.js';
 const Tenant = TenantFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
@@ -185,6 +187,7 @@ const DgfyAffiliateAttribution = DgfyAffiliateAttributionFactory(sequelize);
 const DgfyAffiliateCommission = DgfyAffiliateCommissionFactory(sequelize);
 const DgfyAffiliatePayoutMethod = DgfyAffiliatePayoutMethodFactory(sequelize);
 const DgfyAffiliateCashout = DgfyAffiliateCashoutFactory(sequelize);
+const DgfyAffiliateInvite = DgfyAffiliateInviteFactory(sequelize);
 const TenantAffiliateSettings = TenantAffiliateSettingsFactory(sequelize);
 
 // Landlord Models
@@ -274,6 +277,8 @@ DgfyAffiliateCashout.hasMany(DgfyAffiliateCommission, { foreignKey: 'cashout_id'
 DgfyAffiliateCommission.belongsTo(DgfyAffiliateCashout, { foreignKey: 'cashout_id', as: 'cashout' });
 Tenant.hasOne(TenantAffiliateSettings, { foreignKey: 'tenant_id', as: 'affiliateSettings' });
 TenantAffiliateSettings.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(DgfyAffiliateInvite, { foreignKey: 'tenant_id', as: 'affiliateInvites' });
+DgfyAffiliateInvite.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 
 // User associations
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
@@ -455,7 +460,12 @@ Item.hasOne(StorefrontCatalogOverride, { foreignKey: 'item_id', as: 'storefrontC
 StorefrontCatalogOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 Item.hasMany(StorefrontLocationItemOverride, { foreignKey: 'item_id', as: 'storefrontLocationItemOverrides' });
 StorefrontLocationItemOverride.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
-PosTerminalShift.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier' });
+// onUpdate/onDelete pinned to RESTRICT: cashier_id is the base column of the STORED generated
+// column active_operator_user_id, and MySQL forbids ON UPDATE CASCADE/SET NULL/SET DEFAULT on
+// a generated column's base column (see 20260724000001-enforce-one-open-shift-per-operator.cjs).
+// Sequelize's default onUpdate is CASCADE, which would recreate the broken FK on any tenant
+// provisioned via sequelize.sync() unless pinned here.
+PosTerminalShift.belongsTo(User, { foreignKey: 'cashier_id', as: 'cashier', onUpdate: 'RESTRICT', onDelete: 'RESTRICT' });
 PosTerminalShift.belongsTo(User, { foreignKey: 'closed_by', as: 'closedByUser' });
 PosTerminalShift.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 PosTerminalShift.hasMany(PosCashDrawerEvent, { foreignKey: 'pos_terminal_shift_id', as: 'cashEvents' });
@@ -532,6 +542,10 @@ ServiceBookingHold.belongsTo(ServiceResource, { foreignKey: 'resource_id', as: '
 ServiceBookingHold.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 Item.hasMany(ServiceBooking, { foreignKey: 'service_item_id', as: 'serviceBookings' });
 StoreCustomer.hasMany(ServiceBooking, { foreignKey: 'store_customer_id', as: 'serviceBookings' });
+ServiceBooking.hasMany(ServiceBookingLine, { foreignKey: 'booking_id', as: 'lines' });
+ServiceBookingLine.belongsTo(ServiceBooking, { foreignKey: 'booking_id', as: 'booking' });
+ServiceBookingLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
+ServiceBookingLine.belongsTo(PosTransactionLine, { foreignKey: 'pos_transaction_line_id', as: 'posTransactionLine' });
 ServiceWaitlistEntry.belongsTo(Item, { foreignKey: 'service_item_id', as: 'serviceItem' });
 ServiceWaitlistEntry.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
 
@@ -734,6 +748,7 @@ const db = {
   ServiceProviderAssignment,
   ServiceBooking,
   ServiceBookingHold,
+  ServiceBookingLine,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
   FnbModifierGroup,
@@ -812,6 +827,7 @@ const db = {
   DgfyAffiliateCommission,
   DgfyAffiliatePayoutMethod,
   DgfyAffiliateCashout,
+  DgfyAffiliateInvite,
   TenantAffiliateSettings
 };
 
@@ -882,6 +898,7 @@ export {
   ServiceProviderAssignment,
   ServiceBooking,
   ServiceBookingHold,
+  ServiceBookingLine,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
   FnbModifierGroup,
@@ -960,6 +977,7 @@ export {
   DgfyAffiliateCommission,
   DgfyAffiliatePayoutMethod,
   DgfyAffiliateCashout,
+  DgfyAffiliateInvite,
   TenantAffiliateSettings,
   GeoItem,
   GeoStoreItem,

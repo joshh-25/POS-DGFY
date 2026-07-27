@@ -3,9 +3,12 @@ import { authenticate, checkPermission } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import {
     approveAffiliateCashout,
+    cancelAffiliateInvite,
     getAffiliateQrPayload,
     getAffiliateSettings,
+    inviteAffiliate,
     listAffiliateCashouts,
+    listAffiliateInvites,
     listAffiliates,
     markAffiliateCashoutPaid,
     provisionAffiliate,
@@ -39,6 +42,24 @@ router.post(
     authenticate,
     checkPermission(PERMISSIONS.AFFILIATES.actions.MANAGE_AFFILIATES),
     provisionAffiliate
+);
+router.get(
+    '/invites',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES),
+    listAffiliateInvites
+);
+router.post(
+    '/invites',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.MANAGE_AFFILIATES),
+    inviteAffiliate
+);
+router.delete(
+    '/invites/:invite_id',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.MANAGE_AFFILIATES),
+    cancelAffiliateInvite
 );
 router.patch(
     '/affiliates/:enrollment_id',

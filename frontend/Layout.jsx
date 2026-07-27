@@ -33,7 +33,7 @@ import GracePeriodBanner from './Components/common/GracePeriodBanner';
 import TenantCapabilityNotice from './src/components/common/TenantCapabilityNotice.jsx';
 import useStore from './src/store/useStore.js';
 import { useWorkflowMode } from './src/features/settings/WorkflowModeContext.jsx';
-import { getWorkflowModeLabel, isWorkflowPageModeSensitive, isWorkflowPageVisible } from './src/features/settings/workflowMode.js';
+import { getWorkflowModeLabel, isWorkflowPageModeSensitive, isWorkflowPageVisible, modeHasCapability } from './src/features/settings/workflowMode.js';
 import OnboardingSetupModal, { OnboardingReminderBanner } from './src/features/onboarding/components/OnboardingSetupModal.jsx';
 import { trackOnboardingEvent } from './src/services/onboardingService.js';
 import { getAllSettings } from './src/services/settingsService.js';
@@ -50,14 +50,14 @@ const ALL_NAV_ITEMS = [
   { name: 'Items', icon: Package, page: 'Items', permission: 'items:view' },
   { name: 'Suppliers', icon: Truck, page: 'Suppliers', permission: 'suppliers:view' },
   { name: 'Purchase Orders', icon: ClipboardList, page: 'PurchaseOrders', permission: 'po:view' },
-  { name: 'Job Orders', icon: Factory, page: 'JobOrders', permission: 'jo:view' },
-  { name: 'Dispatch Orders', icon: PackageCheck, page: 'DispatchOrders', permission: 'do:view' },
+  { name: 'Job Orders', icon: Factory, page: 'JobOrders', requiredCapability: 'productionWorkflows', permission: 'jo:view' },
+  { name: 'Dispatch Orders', icon: PackageCheck, page: 'DispatchOrders', requiredCapability: 'productionWorkflows', permission: 'do:view' },
   { name: 'Services', icon: CalendarCheck, page: 'Services', requiredCapability: 'services', permissionAny: ['items:view', 'pos:view', 'reports:view'] },
   { name: 'Food & Beverage', icon: Utensils, page: 'Fnb', requiredCapability: 'fnbDining', permissionAny: ['items:view', 'pos:view', 'reports:view'] },
   { name: 'Hospitality', icon: BedDouble, page: 'Hospitality', requiredCapability: 'hospitalityReservations', permissionAny: ['items:view', 'pos:view', 'reports:view'] },
   { name: 'POS Terminal', icon: ShoppingCart, page: 'POS', permission: 'pos:view' },
   { name: 'Sales', icon: FileText, page: 'Sales', permissionAny: ['reports:view', 'do:view', 'pos:view', 'pos:transact'] },
-  { name: 'Stock Movements', icon: ArrowLeftRight, page: 'StockMovements', permission: 'stock:view' },
+  { name: 'Stock Movements', icon: ArrowLeftRight, page: 'StockMovements', requiredCapability: 'inventory', permission: 'stock:view' },
   { name: 'Reports', icon: FileText, page: 'Reports', permission: 'reports:view' },
   { name: 'AI Chat', icon: Bot, page: 'AiChat', permission: 'ai:chat' },
   { name: 'Settings', icon: Settings, page: 'Settings', permission: 'settings:view' },
@@ -263,6 +263,7 @@ export default function Layout({ children, currentPageName }) {
   const { setCurrentUser: setGlobalCurrentUser } = useStore();
   const {
     workflowMode,
+    enabledCapabilities,
     loading: workflowModeLoading,
     resolved: workflowModeResolved = true,
     modeChangeNotice,
@@ -375,8 +376,11 @@ export default function Layout({ children, currentPageName }) {
   // During loading, show all items to prevent flash of limited menu
   const workflowModeReady = workflowModeLoading === false && workflowModeResolved === true;
   const navItems = ALL_NAV_ITEMS.filter(item => {
-    if (!workflowModeReady && isWorkflowPageModeSensitive(item.page)) return false;
-    if (workflowModeReady && !isWorkflowPageVisible(item.page, workflowMode)) return false;
+    // A capability-gated entry is inherently mode-sensitive, so it stays hidden
+    // until the mode resolves rather than flashing and then disappearing.
+    if (!workflowModeReady && (item.requiredCapability || isWorkflowPageModeSensitive(item.page))) return false;
+    if (workflowModeReady && item.requiredCapability && !modeHasCapability(workflowMode, item.requiredCapability, enabledCapabilities)) return false;
+    if (workflowModeReady && !isWorkflowPageVisible(item.page, workflowMode, enabledCapabilities)) return false;
     if (loading) return true; // Show all during loading to prevent flash
     if (item.permissionAny?.length) {
       return item.permissionAny.some((permission) => can(permission));

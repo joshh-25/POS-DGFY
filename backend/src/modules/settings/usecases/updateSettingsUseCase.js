@@ -5,7 +5,13 @@ import dbStore from '../../../utils/dbStore.js';
 import {
     isWorkflowMode,
     normalizeWorkflowMode,
-    WORKFLOW_MODE_VALUES
+    WORKFLOW_MODE_VALUES,
+    ALL_WORKFLOW_CAPABILITIES,
+    ENABLED_CAPABILITIES_SETTING_KEY,
+    normalizeEnabledCapabilities,
+    INVENTORY_AUTHORITY_SETTING_KEY,
+    INVENTORY_AUTHORITY_VALUES,
+    normalizeInventoryAuthority
 } from '../../shared/constants/workflowModes.js';
 import {
     assertComplianceOperationAllowed,
@@ -82,6 +88,60 @@ const assertWorkflowModeAuthorization = ({ settingsData, actorUser }) => {
     }
 
     settingsData[WORKFLOW_MODE_SETTING_KEY] = normalizeWorkflowMode(requestedMode);
+};
+
+const assertEnabledCapabilitiesAuthorization = ({ settingsData, actorUser }) => {
+    if (!Object.prototype.hasOwnProperty.call(settingsData, ENABLED_CAPABILITIES_SETTING_KEY)) {
+        return;
+    }
+
+    const requested = settingsData[ENABLED_CAPABILITIES_SETTING_KEY];
+    if (!Array.isArray(requested) || requested.some((entry) => !ALL_WORKFLOW_CAPABILITIES.includes(String(entry || '').trim()))) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            `ops_enabled_capabilities must be an array containing only: ${ALL_WORKFLOW_CAPABILITIES.join(', ')}`,
+            { statusCode: 422 }
+        );
+    }
+
+    if (actorUser?.is_master_admin !== true) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'Only master admin can update ops_enabled_capabilities',
+            { statusCode: 403 }
+        );
+    }
+
+    settingsData[ENABLED_CAPABILITIES_SETTING_KEY] = normalizeEnabledCapabilities(requested);
+};
+
+// Phase 9 Axis 4 delegation switch - mirrors
+// assertEnabledCapabilitiesAuthorization's shape exactly (master-admin
+// gated, validated against a fixed value set) rather than the ungoverned
+// multi_location_inventory_enabled flag.
+const assertInventoryAuthorityAuthorization = ({ settingsData, actorUser }) => {
+    if (!Object.prototype.hasOwnProperty.call(settingsData, INVENTORY_AUTHORITY_SETTING_KEY)) {
+        return;
+    }
+
+    const requested = settingsData[INVENTORY_AUTHORITY_SETTING_KEY];
+    if (!INVENTORY_AUTHORITY_VALUES.includes(String(requested || '').trim().toLowerCase())) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            `inventory_authority must be one of: ${INVENTORY_AUTHORITY_VALUES.join(', ')}`,
+            { statusCode: 422 }
+        );
+    }
+
+    if (actorUser?.is_master_admin !== true) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'Only master admin can update inventory_authority',
+            { statusCode: 403 }
+        );
+    }
+
+    settingsData[INVENTORY_AUTHORITY_SETTING_KEY] = normalizeInventoryAuthority(requested);
 };
 
 const getTenantComplianceSnapshot = () => {
@@ -175,6 +235,8 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository, storefrontAsset
 
             assertTenantSettingsDoNotMutatePlatformAccessCeiling({ settingsData });
             assertWorkflowModeAuthorization({ settingsData, actorUser });
+            assertEnabledCapabilitiesAuthorization({ settingsData, actorUser });
+            assertInventoryAuthorityAuthorization({ settingsData, actorUser });
             assertPosSettingsAccessPinAuthorization({ settingsData, actorUser });
             await assertPublicStorefrontHandlePatch({ settingsData, settingsRepository });
             if (

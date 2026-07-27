@@ -9,6 +9,7 @@ import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import logger from '../config/logger.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
+import { buildStockBearingItemWhere } from '../modules/shared/utils/stockBearingPolicy.js';
 
 /**
  * Build complete context for AI conversation
@@ -88,35 +89,36 @@ export const getInventoryStats = async () => {
     const DispatchOrder = dbStore.get('DispatchOrder');
     const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
 
-    // Get item counts
+    // Get item counts. Stock-level buckets (low/healthy/overstock) are scoped to
+    // stock-bearing items only — services have no current_stock to bucket by.
     const [totalItems, lowStockItems, healthyItems, overstockItems] = await Promise.all([
       Item.count({
         where: buildVisibleWhere({ status: 'active' })
       }),
       Item.count({
-        where: buildVisibleWhere({
+        where: buildStockBearingItemWhere(buildVisibleWhere({
           status: 'active',
           current_stock: {
             [Op.lte]: sequelize.col('min_threshold')
           }
-        })
+        }))
       }),
       Item.count({
-        where: buildVisibleWhere({
+        where: buildStockBearingItemWhere(buildVisibleWhere({
           status: 'active',
           current_stock: {
             [Op.gt]: sequelize.col('min_threshold'),
             [Op.lte]: sequelize.col('max_capacity')
           }
-        })
+        }))
       }),
       Item.count({
-        where: buildVisibleWhere({
+        where: buildStockBearingItemWhere(buildVisibleWhere({
           status: 'active',
           current_stock: {
             [Op.gt]: sequelize.col('max_capacity')
           }
-        })
+        }))
       })
     ]);
 
@@ -142,9 +144,11 @@ export const getInventoryStats = async () => {
       })
     ]);
 
-    // Calculate total inventory value using DB aggregation (single source of truth)
+    // Calculate total inventory value using DB aggregation (single source of truth).
+    // Stock-bearing items only — a service's current_stock/cost_per_unit are not
+    // inventory value.
     const inventoryValueResult = await Item.findAll({
-      where: buildVisibleWhere({ status: 'active' }),
+      where: buildStockBearingItemWhere(buildVisibleWhere({ status: 'active' })),
       attributes: [
         [sequelize.fn('SUM', sequelize.literal('current_stock * cost_per_unit')), 'total_value']
       ],

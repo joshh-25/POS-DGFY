@@ -52,6 +52,16 @@ const nextDateForWeekday = (targetWeekday) => {
     return `${date.getFullYear()}-${month}-${day}`;
 };
 
+// Pins the tenant's business-hours timezone to UTC so these tests' bare
+// `new Date('YYYY-MM-DDTHH:mm:ss')` fixtures (interpreted in the test
+// runner's local zone, itself UTC) line up with the zoned day-start
+// availability now computes -- without this, the platform's Asia/Manila
+// default would shift the generated slot windows by 8 hours relative to
+// these fixtures (see getZonedDayStart in storefrontBusinessHours.js).
+const utcStorefrontHoursSettings = () => [
+    { setting_key: 'storefront_hours', setting_value: JSON.stringify({ timezone: 'UTC' }) }
+];
+
 const registeredTransactionSettings = () => [
     { setting_key: 'customer_access_mode', setting_value: 'transaction' },
     {
@@ -155,6 +165,80 @@ describe('Services Mode use cases', () => {
         expect(result.data.booking.customer_phone).toBeUndefined();
         expect(result.data.booking.total_amount).toBe(750);
         expect(result.data.booking.intake_responses).toEqual({ concern: 'Synthetic QA' });
+    });
+
+    it('reads total_amount from the booking_lines price snapshot, not the item current live price', async () => {
+        const useCase = buildGetServiceBookingByReferenceUseCase({
+            serviceRepository: {
+                getBookingByReference: jest.fn(async () => ({
+                    booking_id: 1,
+                    public_reference: 'SV-SNAP2',
+                    service_item_id: 10,
+                    // The item's live price has since changed to 999, but the booking's own
+                    // price snapshot (taken at booking time) must be what total_amount reports.
+                    serviceItem: { item_id: 10, name: 'Consultation', default_sale_price: 999, vat_type: 'vatable' },
+                    quantity: 1,
+                    lines: [{
+                        booking_line_id: 501,
+                        line_type: 'service',
+                        item_id: 10,
+                        quantity: 1,
+                        unit_price: 750,
+                        line_amount: 750
+                    }],
+                    start_at: new Date('2026-06-01T09:00:00Z'),
+                    end_at: new Date('2026-06-01T10:00:00Z'),
+                    status: 'requested',
+                    payment_timing: 'postpaid',
+                    payment_status: 'unpaid'
+                }))
+            }
+        });
+
+        const result = await useCase({ publicReference: 'SV-SNAP2' });
+
+        expect(result.success).toBe(true);
+        expect(result.data.booking.total_amount).toBe(750);
+    });
+
+    it('never exposes the linked POS transaction on the public booking lookup (IDOR regression)', async () => {
+        // Regression test: pos_transaction_id / pos_transaction (invoice_number, tracking_pin,
+        // total_amount, ...) must stay internal-only. An unauthenticated caller who guesses or
+        // replays a public_reference must not be able to read another transaction's details back.
+        const useCase = buildGetServiceBookingByReferenceUseCase({
+            serviceRepository: {
+                getBookingByReference: jest.fn(async () => ({
+                    booking_id: 1,
+                    public_reference: 'SV-ABC123',
+                    service_item_id: 10,
+                    serviceItem: serviceItem,
+                    customer_name: 'Private Customer',
+                    customer_email: 'private@example.com',
+                    customer_phone: '09999999999',
+                    start_at: new Date('2026-06-01T09:00:00Z'),
+                    end_at: new Date('2026-06-01T10:00:00Z'),
+                    status: 'requested',
+                    payment_timing: 'postpaid',
+                    payment_status: 'unpaid',
+                    pos_transaction_id: 4242,
+                    posTransaction: {
+                        pos_transaction_id: 4242,
+                        invoice_number: 'INV-2026-004242',
+                        tracking_pin: 'TRACK-SECRET',
+                        payment_type: 'cash',
+                        total_amount: 5000,
+                        document_type: 'invoice',
+                        document_context: {}
+                    }
+                }))
+            }
+        });
+
+        const result = await useCase({ publicReference: 'SV-ABC123' });
+
+        expect(result.success).toBe(true);
+        expect(result.data.booking.pos_transaction_id).toBeUndefined();
+        expect(result.data.booking.pos_transaction).toBeUndefined();
     });
 
     it('returns dashboard metrics with the same keys consumed by IMS', async () => {
@@ -445,6 +529,61 @@ describe('Services Mode use cases', () => {
         expect(tx.commit).toHaveBeenCalled();
     });
 
+    it('takes a price snapshot on booking_lines at creation time (quantity * current sale price)', async () => {
+        const tx = transaction();
+        const createBookingLines = jest.fn(async (rows) => rows.map((row, index) => ({ ...row, booking_line_id: 700 + index })));
+        const useCase = buildCreateServiceBookingUseCase({
+            serviceRepository: {
+                beginTransaction: jest.fn(async () => tx),
+                getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
+                findServiceItemById: jest.fn(async () => serviceItem),
+                listActiveAssignmentsForService: jest.fn(async () => []),
+                findConflictingBookings: jest.fn(async () => []),
+                findStoreCustomerByEmail: jest.fn(async () => null),
+                isBookingReferenceTaken: jest.fn(async () => false),
+                createBooking: jest.fn(async (payload) => ({ booking_id: 12, ...payload })),
+                createBookingLines,
+                getBookingById: jest.fn(async (bookingId) => ({
+                    booking_id: bookingId,
+                    public_reference: 'SV-SNAP1',
+                    service_item_id: 10,
+                    serviceItem,
+                    quantity: 2,
+                    start_at: new Date('2026-06-01T09:00:00Z'),
+                    end_at: new Date('2026-06-01T10:00:00Z'),
+                    status: 'requested',
+                    payment_timing: 'postpaid',
+                    payment_status: 'unpaid'
+                }))
+            }
+        });
+
+        const result = await useCase({
+            payload: {
+                service_item_id: 10,
+                quantity: 2,
+                start_at: '2026-06-01T09:00:00Z',
+                customer_name: 'Guest',
+                customer_email: 'guest@example.com',
+                idempotency_key: 'svc-snapshot-1'
+            },
+            source: 'storefront'
+        });
+
+        expect(result.success).toBe(true);
+        expect(createBookingLines).toHaveBeenCalledWith([
+            expect.objectContaining({
+                booking_id: 12,
+                line_type: 'service',
+                item_id: 10,
+                quantity: 2,
+                unit_price: 750,
+                line_amount: 1500,
+                stock_effect_type: 'stock_exempt'
+            })
+        ], expect.any(Object));
+    });
+
     it('marks guest service bookings with a new email as eligible for DGFY account signup', async () => {
         const tx = transaction();
         const createBooking = jest.fn(async (payload) => ({ booking_id: 13, ...payload }));
@@ -587,6 +726,7 @@ describe('Services Mode use cases', () => {
         const monday = nextDateForWeekday(1);
         const useCase = buildGetServiceAvailabilityUseCase({
             serviceRepository: {
+                getSettingsByKeys: jest.fn(async () => utcStorefrontHoursSettings()),
                 findServiceItemById: jest.fn(async () => serviceItem),
                 listActiveAssignmentsForService: jest.fn(async () => [{ item_id: 10, resource_id: 7, location_id: 1, is_active: true }]),
                 findResourceById: jest.fn(async () => ({
@@ -632,6 +772,73 @@ describe('Services Mode use cases', () => {
         expect(result.data.diagnostics.max_candidate_capacity).toBe(3);
     });
 
+    it('generates fallback business-hours slots in the tenant business-hours timezone by default (Asia/Manila), not the server local zone', async () => {
+        const monday = nextDateForWeekday(1);
+        const useCase = buildGetServiceAvailabilityUseCase({
+            serviceRepository: {
+                findServiceItemById: jest.fn(async () => serviceItem),
+                listActiveAssignmentsForService: jest.fn(async () => []),
+                findConflictingBookings: jest.fn(async () => [])
+            }
+        });
+
+        const result = await useCase({
+            query: {
+                service_item_id: 10,
+                date: monday,
+                location_id: 1,
+                quantity: 1,
+                slot_interval_minutes: 60
+            },
+            storefrontOnly: true
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.available).toBe(true);
+        const firstSlotStartAt = new Date(result.data.slots[0].start_at);
+        const manilaHour = Number(new Intl.DateTimeFormat('en-US', {
+            timeZone: 'Asia/Manila',
+            hour: '2-digit',
+            hour12: false
+        }).format(firstSlotStartAt));
+        expect(manilaHour % 24).toBe(9);
+    });
+
+    it('honors an explicitly configured business-hours timezone that differs from the Asia/Manila default', async () => {
+        const monday = nextDateForWeekday(1);
+        const useCase = buildGetServiceAvailabilityUseCase({
+            serviceRepository: {
+                getSettingsByKeys: jest.fn(async () => [
+                    { setting_key: 'storefront_hours', setting_value: JSON.stringify({ timezone: 'America/New_York' }) }
+                ]),
+                findServiceItemById: jest.fn(async () => serviceItem),
+                listActiveAssignmentsForService: jest.fn(async () => []),
+                findConflictingBookings: jest.fn(async () => [])
+            }
+        });
+
+        const result = await useCase({
+            query: {
+                service_item_id: 10,
+                date: monday,
+                location_id: 1,
+                quantity: 1,
+                slot_interval_minutes: 60
+            },
+            storefrontOnly: true
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.available).toBe(true);
+        const firstSlotStartAt = new Date(result.data.slots[0].start_at);
+        const nyHour = Number(new Intl.DateTimeFormat('en-US', {
+            timeZone: 'America/New_York',
+            hour: '2-digit',
+            hour12: false
+        }).format(firstSlotStartAt));
+        expect(nyHour % 24).toBe(9);
+    });
+
     it('returns no public service availability when quantity exceeds location-only capacity', async () => {
         const monday = nextDateForWeekday(1);
         const useCase = buildGetServiceAvailabilityUseCase({
@@ -665,6 +872,7 @@ describe('Services Mode use cases', () => {
         const monday = nextDateForWeekday(1);
         const useCase = buildGetServiceAvailabilityUseCase({
             serviceRepository: {
+                getSettingsByKeys: jest.fn(async () => utcStorefrontHoursSettings()),
                 findServiceItemById: jest.fn(async () => serviceItem),
                 listActiveAssignmentsForService: jest.fn(async () => [{ item_id: 10, resource_id: 7, location_id: 1, is_active: true }]),
                 findResourceById: jest.fn(async () => ({
@@ -701,6 +909,7 @@ describe('Services Mode use cases', () => {
         const monday = nextDateForWeekday(1);
         const useCase = buildGetServiceAvailabilityUseCase({
             serviceRepository: {
+                getSettingsByKeys: jest.fn(async () => utcStorefrontHoursSettings()),
                 findServiceItemById: jest.fn(async () => serviceItem),
                 listActiveAssignmentsForService: jest.fn(async () => [{ item_id: 10, resource_id: 7, location_id: 1, is_active: true }]),
                 findResourceById: jest.fn(async () => ({

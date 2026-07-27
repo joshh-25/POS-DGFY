@@ -84,7 +84,7 @@ import { StorefrontHeroBandContainer } from './app/pages/StorefrontHeroBandConta
 import { useStorefrontHeroBandProps } from './app/hooks/useStorefrontHeroBandProps.js';
 import { StorefrontCartDrawerShellContainer } from './app/pages/StorefrontCartDrawerShellContainer.jsx';
 import { useStorefrontCartDrawerShellProps } from './app/hooks/useStorefrontCartDrawerShellProps.js';
-import { openStorefrontActionLink } from './shared/utils/externalLinks.js';
+import { openStorefrontActionLink, sanitizeExternalLink } from './shared/utils/externalLinks.js';
 import { money, toSlug } from './shared/utils/storefrontFormatters.js';
 import { createStorefrontIdempotencyKey } from './shared/utils/idempotency.js';
 import {
@@ -303,12 +303,6 @@ fnb_modifier_groups
 Allergens:
 getDefaultFnbLineModifiers
 line_modifiers
-/api/v1/store/services/bookings/batch
-bookings: heldServiceCartLines.map
-quantity: Math.max(1, Number(line.quantity || 1))
-idempotency_key: createStorefrontIdempotencyKey('service-batch')
-serviceBatchFailureMessage(error, serviceCartLines)
-/api/v1/store/services/availability?
 Ready for pickup
 Out for delivery
 Order confirmed
@@ -316,24 +310,14 @@ Confirmed by store
 Preparing
 Delivered
 Picked up
-buildServiceAvailabilitySlotOptions
-serviceAvailabilityMessage
-Live capacity checked
-No available slots for this date and quantity
-This quantity needs a service resource with more capacity.
-/api/v1/store/services/holds
-replace_hold_token
-hasFreshServiceHold
-ensureServiceBookingHold(line)
-service_hold_token
-Reserving...
-openServiceCartEditor(line)
-serviceCartValidationIssues
-line?.intake_responses || {}
-Booking references
-checkoutResult.payments.filter
-cart_line_id
 */
+// NOTE: the anchors that used to sit here for service-booking batch/availability/hold
+// endpoints (/api/v1/store/services/bookings/batch, /availability, /holds, etc.) were
+// removed with the vacuous serviceBookingMultiplicity.contract.test.js that only ever
+// asserted against this comment, not real code (see Phase 7 of the Unified Product
+// Domain initiative). Those endpoints are being mounted and wired into the storefront
+// in a later phase; real behavior tests belong there, once the frontend actually calls
+// them.
 
 export const __storefrontTrackingTestUtils = {
   normalizeTrackedOrderEntry,
@@ -1305,6 +1289,14 @@ export default function StorefrontApp() {
   const goStoreOrderForDiscovery = (slug, locationId = null, storeContext = null) => {
     const normalized = toSlug(slug);
     if (!normalized || typeof window === 'undefined') return;
+    // An external listing (entity_type: 'external_listing') transacts on a different
+    // platform — it has no DGFY storefront/checkout to open. Redirect off-platform via
+    // the sanitized opener instead of routing into this app's storefront shell, which
+    // would otherwise present the off-platform store as if it were a DGFY tenant.
+    if (storeContext?.entity_type === 'external_listing') {
+      openStorefrontActionLink(sanitizeExternalLink(storeContext.storefront_url || storeContext.external_storefront_url));
+      return;
+    }
     const contextWorkflowMode = String(storeContext?.workflow_mode || storeContext?.business_mode || '').trim().toLowerCase();
     const hasStoreContext = storeContext && typeof storeContext === 'object';
     const shouldUseCanonicalStorefront = hasStoreContext && (contextWorkflowMode === 'fnb' || !canUseCheckout(storeContext));
@@ -2228,7 +2220,6 @@ export default function StorefrontApp() {
     goStoreTrackPage,
     handleFnbCheckout,
     handleLoadAccountPanel,
-    hasMixedServiceCart,
     hasServiceCart,
     isDgfyCustomerSignedIn,
     isFnbMode,
@@ -2237,6 +2228,7 @@ export default function StorefrontApp() {
     normalizeStorefrontErrorMessage,
     orderMethod,
     orderSuccessAnimationTimerRef,
+    productCartLines,
     readDgfyAuthToken,
     readStoreAuthToken,
     rememberCustomerDetails,

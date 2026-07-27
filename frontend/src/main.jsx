@@ -167,7 +167,7 @@ function App() {
         } />
         <Route path="/job-orders" element={
           <ProtectedRoute>
-            <WorkflowModeRouteGate blockInMsme blockInServices blockInFnb blockInHospitality moduleLabel="Job Orders">
+            <WorkflowModeRouteGate requiredCapability="productionWorkflows" moduleLabel="Job Orders">
               <Layout currentPageName={currentPageName}>
                 <JobOrders />
               </Layout>
@@ -176,7 +176,7 @@ function App() {
         } />
         <Route path="/stock-movements" element={
           <ProtectedRoute>
-            <WorkflowModeRouteGate blockInMsme blockInServices moduleLabel="Stock Movements">
+            <WorkflowModeRouteGate requiredCapability="inventory" moduleLabel="Stock Movements">
               <Layout currentPageName={currentPageName}>
                 <StockMovements />
               </Layout>
@@ -185,7 +185,7 @@ function App() {
         } />
         <Route path="/dispatch-orders" element={
           <ProtectedRoute>
-            <WorkflowModeRouteGate blockInMsme blockInServices blockInFnb blockInHospitality moduleLabel="Dispatch Orders">
+            <WorkflowModeRouteGate requiredCapability="productionWorkflows" moduleLabel="Dispatch Orders">
               <Layout currentPageName={currentPageName}>
                 <DispatchOrders />
               </Layout>

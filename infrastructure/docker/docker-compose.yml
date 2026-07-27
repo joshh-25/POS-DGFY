@@ -102,33 +102,6 @@ services:
       retries: 5
       start_period: 30s
 
-  dgfy-api:
-    image: ghcr.io/sieitzz/dgfy-platform/api:${IMAGE_TAG:-latest}
-    restart: unless-stopped
-    env_file: .env
-    environment:
-      DB_HOST: mysql
-      DB_PORT: 3306
-      DB_DIALECT: mysql
-      DB_NAME: dgfy_core
-      REDIS_URL: redis://redis:6379
-      DGFY_BACKEND_BASE_URL: http://backend:5000
-      PORT: 5100
-    volumes:
-      - ./data/dgfy-api/logs:/app/logs
-    depends_on:
-      mysql:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks: [dgfy_internal]
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:5100/v1/health"]
-      interval: 15s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
-
   frontend:
     image: ghcr.io/sieitzz/dgfy-platform/frontend:${IMAGE_TAG:-latest}
     restart: unless-stopped
@@ -157,7 +130,6 @@ services:
       POS_DOMAIN: ${POS_DOMAIN}
       STOREFRONT_DOMAIN: ${STOREFRONT_DOMAIN}
       STOREFRONT_ALT_DOMAIN: ${STOREFRONT_ALT_DOMAIN:-}
-      DGFY_API_DOMAIN: ${DGFY_API_DOMAIN:-_}
       CERT_DOMAIN: ${CERT_DOMAIN}
     ports:
       - "80:80"
@@ -169,8 +141,6 @@ services:
       - ./data/certbot/www:/var/www/certbot:ro
     depends_on:
       backend:
-        condition: service_healthy
-      dgfy-api:
         condition: service_healthy
       frontend:
         condition: service_healthy

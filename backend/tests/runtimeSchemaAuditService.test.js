@@ -46,7 +46,10 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260711000003-repair-pickup-cash-collection-columns.cjs' },
         { name: '20260714000002-add-pos-best-seller-contract.cjs' },
         { name: '20260724000001-enforce-one-open-shift-per-operator.cjs' },
-        { name: '20260502000001-add-services-mode-booking-tables.cjs' }
+        { name: '20260502000001-add-services-mode-booking-tables.cjs' },
+        { name: '20260726000001-add-tracking-mode-to-items.cjs' },
+        { name: '20260726000002-add-service-booking-lines.cjs' },
+        { name: '20260726000003-add-entity-type-to-discovery-index.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -82,7 +85,9 @@ const buildHealthySequelizeMock = () => ({
                 items: {
                     item_id: {},
                     vat_type: {},
-                    category: { type: "ENUM('raw_material','packaging','product','supplies','service')" }
+                    category: { type: "ENUM('raw_material','packaging','product','supplies','service')" },
+                    tracking_mode: {},
+                    tracking_toggle_available: {}
                 },
                 item_folders: {
                     folder_id: {},
@@ -137,6 +142,15 @@ const buildHealthySequelizeMock = () => ({
                     location_id: {},
                     provider: {},
                     status: {}
+                },
+                service_booking_lines: {
+                    booking_line_id: {},
+                    booking_id: {},
+                    line_type: {},
+                    item_id: {},
+                    unit_price: {},
+                    line_amount: {},
+                    stock_effect_type: {}
                 },
                 stock_movements: {
                     movement_id: {},
@@ -262,7 +276,12 @@ const buildHealthySequelizeMock = () => ({
                 },
                 storefront_discovery_index: {
                     storefront_discovery_index_id: {},
-                    tenant_id: {},
+                    tenant_id: { allowNull: true },
+                    tenant_company_token: { allowNull: true },
+                    entity_type: { allowNull: false },
+                    external_provider: {},
+                    external_reference_id: {},
+                    external_storefront_url: {},
                     slug: {},
                     is_visible: {},
                     storefront_cover_image_url: {},

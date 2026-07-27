@@ -1,0 +1,30 @@
+{
+  "name": "@sieitzz/shared-constants",
+  "version": "1.0.0",
+  "description": "Single source of truth for workflow-mode, item-taxonomy, and UOM constants consumed identically by backend and frontend.",
+  "type": "module",
+  "private": true,
+  "exports": {
+    "./workflowModes": {
+      "import": "./src/workflowModes.js",
+      "default": "./src/workflowModes.js"
+    },
+    "./modeItemTaxonomy": {
+      "import": "./src/modeItemTaxonomy.js",
+      "default": "./src/modeItemTaxonomy.js"
+    },
+    "./uomConverter": {
+      "import": "./src/uomConverter.js",
+      "default": "./src/uomConverter.js"
+    }
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sieitzz/dgfy-platform.git",
+    "directory": "packages/shared-constants"
+  }
+}

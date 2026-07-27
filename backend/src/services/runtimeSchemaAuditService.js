@@ -46,7 +46,10 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260711000003-repair-pickup-cash-collection-columns.cjs',
     '20260714000002-add-pos-best-seller-contract.cjs',
     '20260724000001-enforce-one-open-shift-per-operator.cjs',
-    '20260502000001-add-services-mode-booking-tables.cjs'
+    '20260502000001-add-services-mode-booking-tables.cjs',
+    '20260726000001-add-tracking-mode-to-items.cjs',
+    '20260726000002-add-service-booking-lines.cjs',
+    '20260726000003-add-entity-type-to-discovery-index.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -68,7 +71,7 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'compliance_revert_last_cycle_version'
     ],
     users: ['user_id', 'role', 'is_master_admin', 'deleted_at'],
-    items: ['item_id', 'vat_type'],
+    items: ['item_id', 'vat_type', 'tracking_mode', 'tracking_toggle_available'],
     item_folders: ['folder_id', 'name', 'show_in_pos_filter', 'is_active'],
     pos_catalog_overrides: ['pos_catalog_override_id', 'item_id', 'pos_visible', 'pos_image_url', 'pos_always_available', 'pos_best_seller_mode'],
     pos_transactions: [
@@ -110,6 +113,15 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'location_id',
         'provider',
         'status'
+    ],
+    service_booking_lines: [
+        'booking_line_id',
+        'booking_id',
+        'line_type',
+        'item_id',
+        'unit_price',
+        'line_amount',
+        'stock_effect_type'
     ],
     stock_movements: ['movement_id', 'item_id', 'movement_type', 'quantity', 'location_id', 'source_location_id', 'destination_location_id'],
     fifo_batches: ['batch_id', 'item_id', 'location_id', 'quantity', 'quantity_consumed'],
@@ -159,6 +171,10 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
     storefront_discovery_index: [
         'storefront_discovery_index_id',
         'tenant_id',
+        'entity_type',
+        'external_provider',
+        'external_reference_id',
+        'external_storefront_url',
         'slug',
         'is_visible',
         'storefront_cover_image_url',
@@ -214,6 +230,11 @@ const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
             allowNull: false,
             enumValues: ['founder', 'invite', 'admin_handover', 'admin_provisioned']
         }
+    },
+    storefront_discovery_index: {
+        tenant_id: { allowNull: true },
+        tenant_company_token: { allowNull: true },
+        entity_type: { allowNull: false }
     }
 });
 

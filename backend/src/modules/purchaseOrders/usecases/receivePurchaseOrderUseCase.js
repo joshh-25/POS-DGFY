@@ -2,7 +2,6 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { mapPurchaseOrderUseCaseError } from './purchaseOrderUseCaseError.js';
 import dbStore from '../../../utils/dbStore.js';
-import { receivePurchasedStock } from '../../inventory/commands/stockCommandService.js';
 
 const parsePositiveInt = (value) => {
   const normalized = Number.parseInt(value, 10);
@@ -12,9 +11,19 @@ const parsePositiveInt = (value) => {
 
 const isPlainObject = (value) => Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 
+// No default value here on purpose (Phase 9): this used to default to
+// `{ receivePurchasedStock }` imported directly from
+// inventory/commands/stockCommandService.js, which is exactly the
+// "usecases/ file reaches past the module boundary, and silently falls back
+// to it if DI is mis-wired" pattern removed elsewhere in this phase (see the
+// `inventoryCommandService || stockMovementService` fallback that used to
+// live in posUseCases.js). purchaseOrders/index.js already injects the real
+// port (inventoryStockCommandService from inventory/index.js); a caller that
+// forgets to pass inventoryCommandService now gets a loud TypeError at the
+// call site below instead of a silent, unaccountable write path.
 export const buildReceivePurchaseOrderUseCase = ({
   purchaseOrderRepository,
-  inventoryCommandService = { receivePurchasedStock }
+  inventoryCommandService
 }) => {
   return async ({ poId, receiptData, userId }) => {
     const normalizedPoId = parsePositiveInt(poId);
@@ -41,6 +50,14 @@ export const buildReceivePurchaseOrderUseCase = ({
         DomainErrorCode.VALIDATION_FAILED,
         'receiptData must be an object',
         { statusCode: 400 }
+      ));
+    }
+
+    if (typeof inventoryCommandService?.receivePurchasedStock !== 'function') {
+      return fail(new DomainError(
+        DomainErrorCode.CONFLICT,
+        'Purchase order receiving is unavailable: the inventory stock command port is not wired.',
+        { statusCode: 409, details: { reason_code: 'INVENTORY_COMMAND_PORT_UNWIRED' } }
       ));
     }
 

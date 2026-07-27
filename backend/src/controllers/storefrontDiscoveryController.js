@@ -1,17 +1,26 @@
 export {
     listStorefrontDiscovery,
     listStorefrontMapPins,
-    getStorefrontProfile
+    getStorefrontProfile,
+    upsertExternalListing,
+    deleteExternalListing,
+    listExternalListings
 } from '../modules/storefrontDiscovery/controllers/storefrontDiscoveryHandlers.js';
 
 import {
     listStorefrontDiscovery,
     listStorefrontMapPins,
-    getStorefrontProfile
+    getStorefrontProfile,
+    upsertExternalListing,
+    deleteExternalListing,
+    listExternalListings
 } from '../modules/storefrontDiscovery/controllers/storefrontDiscoveryHandlers.js';
 
 export default {
     listStorefrontDiscovery,
     listStorefrontMapPins,
-    getStorefrontProfile
+    getStorefrontProfile,
+    upsertExternalListing,
+    deleteExternalListing,
+    listExternalListings
 };

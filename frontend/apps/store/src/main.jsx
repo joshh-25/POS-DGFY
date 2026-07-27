@@ -1,19 +1,44 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import './index.css';
 import StorefrontApp from './StorefrontApp.jsx';
 import { appBasePath } from './app/runtime/storefrontRuntime.js';
 import StorefrontLoginPage from './auth/pages/StorefrontLoginPage.jsx';
 import StorefrontRegisterPage from './auth/pages/StorefrontRegisterPage.jsx';
+import StorefrontAffiliateAcceptPage from './auth/pages/StorefrontAffiliateAcceptPage.jsx';
 import StorefrontResetPasswordPage from './auth/pages/StorefrontResetPasswordPage.jsx';
 import StorefrontBusinessGrowPage from './business/pages/StorefrontBusinessGrowPage.jsx';
 import { initBrowserSentry } from '../../../src/observability/sentryClient.js';
+import {
+  capturePageview,
+  getStoredAnalyticsConsent,
+  initBrowserAnalytics
+} from '../../../src/observability/analyticsClient.js';
+import { ConsentBanner } from './Components/ConsentBanner.jsx';
 
 const rootElement = document.getElementById('root');
 
 initBrowserSentry({ surface: 'store' });
+initBrowserAnalytics({ surface: 'store', consent: getStoredAnalyticsConsent() === true });
+
+// Only the public storefront prompts for tracking consent today — SKUpervisor
+// and POS are used by our own staff under an employment relationship, a
+// different consent basis than an anonymous public visitor.
+const handleConsentChange = (granted) => {
+  initBrowserAnalytics({ surface: 'store', consent: granted });
+};
+
+function AnalyticsRouteTracker() {
+  const location = useLocation();
+
+  useEffect(() => {
+    capturePageview({ path: location.pathname });
+  }, [location.pathname]);
+
+  return null;
+}
 
 // Kept exactly as-is: several integration tests render `<App/>` directly
 // (no router context), and StorefrontApp itself never touches react-router
@@ -35,6 +60,8 @@ export function App() {
 function StoreRoot() {
   return (
     <BrowserRouter basename={appBasePath === '/' ? undefined : appBasePath}>
+      <AnalyticsRouteTracker />
+      <ConsentBanner onConsentChange={handleConsentChange} />
       <Routes>
         <Route
           path="/login"
@@ -50,6 +77,15 @@ function StoreRoot() {
           element={(
             <>
               <StorefrontRegisterPage />
+              <Toaster richColors position="top-right" closeButton duration={2200} />
+            </>
+          )}
+        />
+        <Route
+          path="/affiliate/accept"
+          element={(
+            <>
+              <StorefrontAffiliateAcceptPage />
               <Toaster richColors position="top-right" closeButton duration={2200} />
             </>
           )}

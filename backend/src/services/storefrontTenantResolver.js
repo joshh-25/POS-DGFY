@@ -31,8 +31,12 @@ const warmMap = async () => {
     return cache.bySlug;
   }
 
+  // entity_type: 'dgfy_native' — this resolver maps a slug to a real DGFY Tenant
+  // to open in this platform's own storefront shell. External listings have no
+  // tenant to resolve to; including them here would hand a visitor a "tenant"
+  // object with a null id and route them into a broken storefront.
   let rows = await StorefrontDiscoveryIndex.findAll({
-    where: { is_visible: true },
+    where: { is_visible: true, entity_type: 'dgfy_native' },
     attributes: ['tenant_id', 'tenant_name', 'tenant_company_token', 'slug', 'affiliate_slug']
   });
 
@@ -41,7 +45,7 @@ const warmMap = async () => {
     try {
       await reconcileStorefrontDiscoveryIndex();
       rows = await StorefrontDiscoveryIndex.findAll({
-        where: { is_visible: true },
+        where: { is_visible: true, entity_type: 'dgfy_native' },
         attributes: ['tenant_id', 'tenant_name', 'tenant_company_token', 'slug', 'affiliate_slug']
       });
     } catch (error) {

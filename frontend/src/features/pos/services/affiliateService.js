@@ -25,6 +25,21 @@ export const updateAffiliateEnrollment = async (enrollmentId, payload = {}) => {
     return response.data?.data?.enrollment || null;
 };
 
+export const fetchAffiliateInvites = async (params = {}) => {
+    const response = await api.get('/affiliates/invites', { params });
+    return response.data?.data?.invites || [];
+};
+
+export const inviteAffiliate = async (payload = {}) => {
+    const response = await api.post('/affiliates/invites', payload);
+    return response.data?.data || null;
+};
+
+export const cancelAffiliateInvite = async (inviteId) => {
+    const response = await api.delete(`/affiliates/invites/${inviteId}`);
+    return response.data?.data?.invite || null;
+};
+
 export const fetchAffiliateQrPayload = async (enrollmentId) => {
     const response = await api.get(`/affiliates/affiliates/${enrollmentId}/qr`);
     return response.data?.data || null;
@@ -56,6 +71,9 @@ export default {
     fetchAffiliates,
     provisionAffiliate,
     updateAffiliateEnrollment,
+    fetchAffiliateInvites,
+    inviteAffiliate,
+    cancelAffiliateInvite,
     fetchAffiliateQrPayload,
     fetchAffiliateCashouts,
     approveAffiliateCashout,

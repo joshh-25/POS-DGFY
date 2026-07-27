@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { DiscoveryMapCard } from '../../../Components/store/DiscoveryResponsiveLayout.jsx';
 import { getDiscoveryMobilePanelLayout } from '../../../discovery/model/discoveryResultsModel.js';
+import { openStorefrontActionLink, sanitizeExternalLink } from '../../../shared/utils/externalLinks.js';
 
 export function createDiscoveryResultsRenderer(ctx) {
   const {
@@ -603,6 +604,12 @@ const resultsSubtitle = isClusterResultsActive
                   || storesWithNearestBranch.find((s) => s.slug === pin.slug)
                   || null;
                 setSelectedMapPin(matched || pin || null);
+                // External listings have no DGFY storefront to open — routing them
+                // into goStore would land the visitor on a broken/empty catalog shell.
+                if (pin.entity_type === 'external_listing') {
+                  openStorefrontActionLink(sanitizeExternalLink(pin.storefront_url));
+                  return;
+                }
                 goStore(pin.slug, pin.location_id ?? null);
               }}
               autoOpenPopups={!isClusterResultsActive && filteredDiscoveryStores.length > 0}

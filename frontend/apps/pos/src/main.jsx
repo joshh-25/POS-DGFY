@@ -1,6 +1,6 @@
 import React, { Suspense, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import { HashRouter, Link, Route, Routes } from 'react-router-dom';
+import { HashRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
 import TerminalPage from '../../../src/features/pos/pages/TerminalPage.jsx';
 import ErrorBoundary from '../../../src/components/common/ErrorBoundary.jsx';
 import GlobalApiErrorListener from '../../../src/components/common/GlobalApiErrorListener.jsx';
@@ -10,6 +10,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { buildSkupervisorPath } from '../../../src/features/pos/utils/skupervisorHandoff.js';
 import { login as loginTenantSession } from '../../../src/services/authService.js';
 import { initBrowserSentry } from '../../../src/observability/sentryClient.js';
+import { capturePageview, initBrowserAnalytics } from '../../../src/observability/analyticsClient.js';
 import '../../../src/index.css';
 
 function PosRouteNotFound() {
@@ -59,6 +60,17 @@ const devAutoLoginEmail = String(import.meta.env.VITE_POS_DEV_EMAIL || 'admin@te
 const devAutoLoginPassword = String(import.meta.env.VITE_POS_DEV_PASSWORD || 'Admin123!').trim();
 
 initBrowserSentry({ surface: 'pos' });
+initBrowserAnalytics({ surface: 'pos' });
+
+function AnalyticsRouteTracker() {
+  const location = useLocation();
+
+  useEffect(() => {
+    capturePageview({ path: location.pathname });
+  }, [location.pathname]);
+
+  return null;
+}
 
 const registerPosServiceWorker = async () => {
   if (typeof window === 'undefined') return;
@@ -86,6 +98,7 @@ const mountApp = () => {
     <React.StrictMode>
       <ErrorBoundary>
         <HashRouter>
+          <AnalyticsRouteTracker />
           <PermissionProvider>
             <WorkflowModeProvider>
               <GlobalApiErrorListener />

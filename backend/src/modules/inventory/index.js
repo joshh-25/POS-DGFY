@@ -1,4 +1,4 @@
-import { itemRepository, resolveCachedWorkflowMode } from './repositories/itemRepository.js';
+import { itemRepository, resolveCachedWorkflowMode, resolveCachedEnabledCapabilities } from './repositories/itemRepository.js';
 import { buildGetItemsUseCase } from './usecases/getItemsUseCase.js';
 import { buildGetItemByIdUseCase } from './usecases/getItemByIdUseCase.js';
 import { buildCreateItemUseCase } from './usecases/createItemUseCase.js';
@@ -43,13 +43,31 @@ import { storefrontCatalogImageStorage } from './repositories/storefrontCatalogI
 import { resolveMovementLocation } from '../../services/locationInventoryService.js';
 import * as cacheService from '../../services/cacheService.js';
 import * as stockCommandService from './commands/stockCommandService.js';
+import { resolveInventoryAuthority } from '../shared/utils/inventoryAuthoritySettingsCache.js';
+import { buildLookupDelegatedInventoryLevelUseCase } from './usecases/lookupDelegatedInventoryLevelUseCase.js';
+import { manualDelegatedInventoryProvider } from './integrations/manualDelegatedInventoryProvider.js';
 
 
 export const getItemsUseCase = buildGetItemsUseCase({ itemRepository });
 export const getItemByIdUseCase = buildGetItemByIdUseCase({ itemRepository });
-export const createItemUseCase = buildCreateItemUseCase({ itemRepository, resolveWorkflowMode: resolveCachedWorkflowMode });
-export const updateItemUseCase = buildUpdateItemUseCase({ itemRepository, resolveWorkflowMode: resolveCachedWorkflowMode });
-export const finalizeItemUseCase = buildFinalizeItemUseCase({ itemRepository, resolveWorkflowMode: resolveCachedWorkflowMode });
+export const createItemUseCase = buildCreateItemUseCase({
+  itemRepository,
+  resolveWorkflowMode: resolveCachedWorkflowMode,
+  resolveEnabledCapabilities: resolveCachedEnabledCapabilities,
+  resolveInventoryAuthority
+});
+export const updateItemUseCase = buildUpdateItemUseCase({
+  itemRepository,
+  resolveWorkflowMode: resolveCachedWorkflowMode,
+  resolveEnabledCapabilities: resolveCachedEnabledCapabilities,
+  resolveInventoryAuthority
+});
+export const finalizeItemUseCase = buildFinalizeItemUseCase({
+  itemRepository,
+  resolveWorkflowMode: resolveCachedWorkflowMode,
+  resolveEnabledCapabilities: resolveCachedEnabledCapabilities,
+  resolveInventoryAuthority
+});
 
 export const deleteItemUseCase = buildDeleteItemUseCase({ itemRepository });
 export const getItemStockHistoryUseCase = buildGetItemStockHistoryUseCase({ itemRepository });
@@ -106,7 +124,18 @@ export const lookupExternalProductUseCase = buildLookupExternalProductUseCase({
 export const resolveItemBarcodeConflictUseCase = buildResolveItemBarcodeConflictUseCase({ itemRepository });
 export const renderItemBarcodeLabelUseCase = buildRenderItemBarcodeLabelUseCase({ itemRepository });
 export const inventoryStockCommandService = stockCommandService;
-export { resolveMovementLocation };
+// Phase 9: read-side port for a tenant's delegated external IMS - see
+// docs/features/INVENTORY_TRACKING_MODES.md's external_ims section and
+// lookupDelegatedInventoryLevelUseCase.js for the resilience shape (mirrors
+// lookupExternalProductUseCase's cache-aside + typed DomainError mapping).
+// manualDelegatedInventoryProvider is a documented no-op default - there is
+// no live external IMS integrated yet; a real adapter is future work once
+// the Governance PR's ADR 0035 seam is ratified.
+export const lookupDelegatedInventoryLevelUseCase = buildLookupDelegatedInventoryLevelUseCase({
+  delegatedInventoryProvider: manualDelegatedInventoryProvider,
+  cache: cacheService
+});
+export { resolveMovementLocation, resolveInventoryAuthority };
 
 export * from './commands/stockCommandService.js';
 export * from './contracts/itemRepository.contract.js';

@@ -5,6 +5,7 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 COPY frontend/package*.json ./
 COPY packages/pos-receipt /packages/pos-receipt
+COPY packages/shared-constants /packages/shared-constants
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm config set fetch-retries=5 fetch-retry-mintimeout=20000 fetch-retry-maxtimeout=120000 fetch-timeout=300000 \
     && (npm ci || (sleep 10 && npm ci) || (sleep 20 && npm ci))
@@ -19,6 +20,9 @@ ARG VITE_STORE_BASE_PATH=/
 ARG VITE_TENANT_STORE_BASE_PATH=/tenant-store
 ARG VITE_ROOT_TENANT_SLUGS=false
 ARG VITE_PAYMENTS_ENABLED=false
+# PDF menu import (quick/temporary feature, default off — see
+# docs/compliance/impact-declarations/2026-07-25-pos-pdf-menu-import.md).
+ARG VITE_MENU_PDF_IMPORT_ENABLED=false
 # Consumed by frontend/apps/store/vite.config.js as a cache-busting/build
 # marker; falls back to the build timestamp if unset, so a stable value
 # (e.g. the git SHA) is preferable for reproducible CI builds.
@@ -45,6 +49,13 @@ ARG VITE_SENTRY_RELEASE=""
 ARG VITE_SENTRY_TRACES_SAMPLE_RATE=0
 ARG VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE=0
 ARG VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE=0
+# Single shared PostHog project across all 3 surfaces (store/pos/skupervisor),
+# distinguished by the `surface` event property set in analyticsClient.js --
+# unlike Sentry's per-surface DSNs, there's no per-project quota reason to
+# split, and one project keeps cross-surface funnels queryable.
+ARG VITE_POSTHOG_ENABLED=false
+ARG VITE_POSTHOG_HOST=""
+ARG VITE_POSTHOG_KEY=""
 ARG SENTRY_UPLOAD_SOURCEMAPS=false
 ARG SENTRY_ORG=""
 ARG SENTRY_PROJECT_SKUPERVISOR=""
@@ -56,6 +67,7 @@ ENV VITE_API_URL=${VITE_API_URL} \
     VITE_TENANT_STORE_BASE_PATH=${VITE_TENANT_STORE_BASE_PATH} \
     VITE_ROOT_TENANT_SLUGS=${VITE_ROOT_TENANT_SLUGS} \
     VITE_PAYMENTS_ENABLED=${VITE_PAYMENTS_ENABLED} \
+    VITE_MENU_PDF_IMPORT_ENABLED=${VITE_MENU_PDF_IMPORT_ENABLED} \
     VITE_BUILD_STAMP=${VITE_BUILD_STAMP} \
     VITE_DGFY_AUTH_URL=${VITE_DGFY_AUTH_URL} \
     VITE_SKUPERVISOR_REGISTRATION_URL=${VITE_SKUPERVISOR_REGISTRATION_URL} \
@@ -72,6 +84,9 @@ ENV VITE_API_URL=${VITE_API_URL} \
     VITE_SENTRY_TRACES_SAMPLE_RATE=${VITE_SENTRY_TRACES_SAMPLE_RATE} \
     VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE=${VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE} \
     VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE=${VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE} \
+    VITE_POSTHOG_ENABLED=${VITE_POSTHOG_ENABLED} \
+    VITE_POSTHOG_HOST=${VITE_POSTHOG_HOST} \
+    VITE_POSTHOG_KEY=${VITE_POSTHOG_KEY} \
     SENTRY_UPLOAD_SOURCEMAPS=${SENTRY_UPLOAD_SOURCEMAPS} \
     SENTRY_ORG=${SENTRY_ORG} \
     SENTRY_PROJECT_SKUPERVISOR=${SENTRY_PROJECT_SKUPERVISOR} \
@@ -79,9 +94,14 @@ ENV VITE_API_URL=${VITE_API_URL} \
     SENTRY_PROJECT_STORE=${SENTRY_PROJECT_STORE} \
     SENTRY_URL=${SENTRY_URL}
 
+# build:all:parallel rather than build:all -- the three apps are independent
+# vite builds (measured at 9.6s + 10.7s + 6.5s sequentially in CI), so running
+# them concurrently roughly halves this layer. The `&`/`wait` form is safe here
+# because this always runs under Alpine's sh; `build:all` stays sequential for
+# local/Windows developers and for ci.yml's test-frontend job.
 RUN --mount=type=secret,id=sentry_auth_token,required=false \
     export SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token 2>/dev/null || true)" \
-    && npm run build:all
+    && npm run build:all:parallel
 
 FROM nginx:alpine AS runtime
 RUN apk add --no-cache curl

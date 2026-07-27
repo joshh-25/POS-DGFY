@@ -3,6 +3,8 @@ import mysql from 'mysql2/promise';
 import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 
+import { relaxPosShiftCashierForeignKey } from './sync-tenant-schemas.js';
+
 const __filename = fileURLToPath(import.meta.url);
 dotenv.config({ path: join(dirname(__filename), '..', '.env') });
 
@@ -108,6 +110,10 @@ try {
         const missingIndex = indexRows.length === 0;
 
         if (shouldApply && missingColumn) {
+            // cashier_id's FK must be ON UPDATE RESTRICT before adding this STORED generated
+            // column, or MySQL rejects it as "Cannot add foreign key constraint" (errno 1215) --
+            // see relaxPosShiftCashierForeignKey in sync-tenant-schemas.js for the full reasoning.
+            await relaxPosShiftCashierForeignKey(connection, tenant.db_name);
             await connection.query(`
                 ALTER TABLE ${quoteIdentifier(tenant.db_name)}.${quoteIdentifier(TABLE_NAME)}
                 ADD COLUMN ${quoteIdentifier(COLUMN_NAME)} INTEGER

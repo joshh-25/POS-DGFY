@@ -1,4 +1,5 @@
 import { createStockMovement } from '../../../services/stockMovementService.js';
+import { assertStockCommandServiceContract, StockCommandServiceNamedCommands } from '../contracts/stockCommandService.contract.js';
 
 const withMovementDefaults = (movementData = {}, defaults = {}) => ({
   ...movementData,
@@ -119,7 +120,7 @@ export const recordLoss = (movementData, userId, transaction = null) => (
 
 export { createStockMovement };
 
-export default {
+const stockCommandService = {
   issueStockForPosSale,
   issueStockForOnlineFulfillment,
   issueStockForDispatch,
@@ -132,3 +133,11 @@ export default {
   recordLoss,
   createStockMovement
 };
+
+// Phase 9: self-check against the formalized port contract (mirrors
+// itemRepository.js's assertItemRepositoryContract self-check at module
+// load) - this is the canonical implementation, so it should satisfy every
+// named command, not just the ones a given caller happens to use.
+assertStockCommandServiceContract(stockCommandService, { requiredCommands: StockCommandServiceNamedCommands });
+
+export default stockCommandService;

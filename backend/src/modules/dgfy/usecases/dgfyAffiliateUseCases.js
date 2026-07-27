@@ -1,3 +1,4 @@
+import crypto from 'crypto';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { dgfyAffiliateRepository } from '../repositories/dgfyAffiliateRepository.js';
@@ -59,6 +60,26 @@ const parseOptionalPositiveInt = (value, { field, min = 0, max = Number.MAX_SAFE
 };
 
 const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+const AFFILIATE_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+// The raw token only ever travels in the emailed magic link; never return token_hash to any caller.
+const sanitizeInvite = (invite) => {
+    if (!invite) return null;
+    return {
+        invite_id: invite.invite_id,
+        tenant_id: invite.tenant_id,
+        email: invite.email,
+        status: invite.status,
+        commission_rate_bps: invite.commission_rate_bps ?? null,
+        expires_at: invite.expires_at,
+        last_sent_at: invite.last_sent_at,
+        accepted_at: invite.accepted_at,
+        created_at: invite.created_at
+    };
+};
 
 const parsePositiveInt = (value) => {
     const parsed = Number.parseInt(value, 10);
@@ -202,6 +223,169 @@ export const buildProvisionAffiliateUseCase = ({ repository = dgfyAffiliateRepos
             return ok({ enrollment });
         } catch (error) {
             return fail(mapError(error, 'Failed to provision affiliate'));
+        }
+    }
+);
+
+// Invite an affiliate by email - works whether or not they already have a DGFY account. Existing
+// accounts get a magic link to explicitly accept; brand-new invitees get a register link and are
+// auto-enrolled on account creation (see mirrorPendingAffiliateInvitesForAccount). Email dispatch is
+// best-effort: a mailer failure is reported in email_delivery but does not roll back the invite row,
+// so the merchant can resend or share the link manually.
+export const buildInviteAffiliateUseCase = ({
+    repository = dgfyAffiliateRepository,
+    hashInviteToken,
+    sendAffiliateInviteEmail
+} = {}) => (
+    async ({ tenantId, body = {}, invitedBy = null }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+            const email = normalizeEmail(body.email);
+            if (!email || !EMAIL_RE.test(email)) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'A valid email address is required.', { statusCode: 422 });
+            }
+            const rateBps = parseOptionalRateBps(body.commission_rate_bps, { field: 'commission_rate_bps' });
+
+            // If the email already maps to an account that is actively enrolled here, there's nothing
+            // to invite. (A revoked enrollment can be re-invited.)
+            const account = await repository.findAccountByEmail(email);
+            if (account) {
+                const existing = await repository.findEnrollmentByAccountAndTenant(account.id, tenant);
+                if (existing && existing.status !== 'revoked') {
+                    throw new DomainError(DomainErrorCode.CONFLICT, 'This email is already an affiliate for this store.', { statusCode: 409 });
+                }
+            }
+
+            const rawToken = crypto.randomBytes(32).toString('hex');
+            const tokenHash = hashInviteToken(rawToken);
+            const expiresAt = new Date(Date.now() + AFFILIATE_INVITE_TTL_MS);
+
+            const existingInvite = await repository.findPendingInviteByTenantAndEmail(tenant, email);
+            const invite = existingInvite
+                ? await repository.refreshInvite(existingInvite.invite_id, { tokenHash, commissionRateBps: rateBps ?? null, expiresAt })
+                : await repository.createInvite({ tenantId: tenant, email, tokenHash, commissionRateBps: rateBps ?? null, invitedBy, expiresAt });
+
+            // Reload through the token-hash finder to pick up the tenant name for the email/link.
+            const stored = await repository.findInviteByTokenHash(tokenHash);
+            const businessName = stored?.tenant?.name || 'the store';
+            const accountExists = Boolean(account);
+
+            let emailDelivery = { sent: false };
+            try {
+                await sendAffiliateInviteEmail({ email, businessName, invitationToken: rawToken, accountExists });
+                emailDelivery = { sent: true };
+            } catch (deliveryError) {
+                emailDelivery = { sent: false, error: deliveryError?.message || 'email_delivery_failed' };
+            }
+
+            return ok({
+                invite: sanitizeInvite(invite),
+                account_exists: accountExists,
+                email_delivery: emailDelivery
+            });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to send affiliate invite'));
+        }
+    }
+);
+
+export const buildListAffiliateInvitesUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId, status = null }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+            const invites = await repository.listInvitesByTenant(tenant, { status: status || null });
+            return ok({ invites: invites.map(sanitizeInvite) });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to list affiliate invites'));
+        }
+    }
+);
+
+export const buildCancelAffiliateInviteUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId, inviteId }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+            const invite = await repository.findInviteByIdForTenant(tenant, inviteId);
+            if (!invite) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate invite not found.', { statusCode: 404 });
+            }
+            if (invite.status !== 'pending') {
+                throw new DomainError(DomainErrorCode.CONFLICT, `This invite is already ${invite.status} and cannot be cancelled.`, { statusCode: 409 });
+            }
+            const cancelled = await repository.markInviteCancelled(invite.invite_id);
+            return ok({ invite: sanitizeInvite(cancelled) });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to cancel affiliate invite'));
+        }
+    }
+);
+
+// Public preview for the storefront accept/register page (no side effects, no auth): tells the page
+// the inviting business, the locked email, and whether the invitee already has an account.
+export const buildGetAffiliateInvitePreviewUseCase = ({ repository = dgfyAffiliateRepository, hashInviteToken } = {}) => (
+    async ({ token }) => {
+        try {
+            const rawToken = String(token || '').trim();
+            if (!rawToken) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'token is required.', { statusCode: 422 });
+            }
+            const invite = await repository.findInviteByTokenHash(hashInviteToken(rawToken));
+            if (!invite) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'This invitation is invalid or has been removed.', { statusCode: 404 });
+            }
+            const expired = new Date(invite.expires_at).getTime() < Date.now();
+            const account = await repository.findAccountByEmail(invite.email);
+            return ok({
+                business_name: invite?.tenant?.name || null,
+                email: invite.email,
+                status: invite.status,
+                account_exists: Boolean(account),
+                expired,
+                valid: invite.status === 'pending' && !expired
+            });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to load invitation'));
+        }
+    }
+);
+
+// Explicit accept path for invitees who already have a DGFY account (authenticateDgfyAccount).
+export const buildAcceptAffiliateInviteUseCase = ({ repository = dgfyAffiliateRepository, hashInviteToken } = {}) => (
+    async ({ account, token }) => {
+        try {
+            const dgfyAccount = ensureAccount(account);
+            const rawToken = String(token || '').trim();
+            if (!rawToken) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'token is required.', { statusCode: 422 });
+            }
+            const invite = await repository.findInviteByTokenHash(hashInviteToken(rawToken));
+            if (!invite) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'This invitation is invalid or has been removed.', { statusCode: 404 });
+            }
+
+            // Security: the accepting account's email must match the invited email exactly. This is
+            // what stops a logged-in account from claiming an invite addressed to someone else.
+            if (normalizeEmail(invite.email) !== normalizeEmail(dgfyAccount.email)) {
+                throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'This invitation was sent to a different email address.', { statusCode: 403 });
+            }
+
+            if (invite.status === 'accepted') {
+                // Idempotent: re-materialize (a no-op if the enrollment already exists) and return ok.
+                const { enrollment } = await repository.materializeInviteEnrollment(invite, dgfyAccount);
+                return ok({ enrollment, created: false });
+            }
+            if (invite.status !== 'pending') {
+                throw new DomainError(DomainErrorCode.CONFLICT, `This invitation is ${invite.status} and can no longer be accepted.`, { statusCode: 409 });
+            }
+            if (new Date(invite.expires_at).getTime() < Date.now()) {
+                await repository.markInviteExpired(invite.invite_id);
+                throw new DomainError(DomainErrorCode.CONFLICT, 'This invitation has expired.', { statusCode: 410 });
+            }
+
+            const { enrollment, created } = await repository.materializeInviteEnrollment(invite, dgfyAccount);
+            return ok({ enrollment, created });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to accept affiliate invite'));
         }
     }
 );
