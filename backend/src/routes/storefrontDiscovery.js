@@ -3,10 +3,12 @@ import * as storefrontDiscoveryController from '../controllers/storefrontDiscove
 import {
     validateStorefrontDiscoveryQuery,
     validateStorefrontMapPinsQuery,
-    validateStorefrontSlugParam
+    validateStorefrontSlugParam,
+    validateUpsertExternalListing
 } from '../validators/storefrontDiscoveryValidator.js';
 import { storefrontDiscoveryLimiter } from '../middleware/rateLimiter.js';
 import { setReadCacheControl } from '../middleware/cachePolicy.js';
+import { authenticate, requireMasterAdmin } from '../middleware/auth.js';
 
 const router = express.Router();
 const discoveryListCacheControl = setReadCacheControl({
@@ -26,6 +28,14 @@ const discoveryProfileCacheControl = setReadCacheControl({
 
 router.get('/discovery', storefrontDiscoveryLimiter, discoveryListCacheControl, validateStorefrontDiscoveryQuery, storefrontDiscoveryController.listStorefrontDiscovery);
 router.get('/discovery/map-pins', storefrontDiscoveryLimiter, discoveryListCacheControl, validateStorefrontMapPinsQuery, storefrontDiscoveryController.listStorefrontMapPins);
+
+// Master-admin-only write surface for entity_type: 'external_listing' rows — stores
+// that transact on a different platform. Registered before the /discovery/:slug
+// catch-all below so the literal '/external' segment doesn't get captured as a slug.
+router.get('/discovery/external', authenticate, requireMasterAdmin, storefrontDiscoveryController.listExternalListings);
+router.put('/discovery/external/:slug', authenticate, requireMasterAdmin, validateStorefrontSlugParam, validateUpsertExternalListing, storefrontDiscoveryController.upsertExternalListing);
+router.delete('/discovery/external/:slug', authenticate, requireMasterAdmin, validateStorefrontSlugParam, storefrontDiscoveryController.deleteExternalListing);
+
 router.get('/discovery/:slug', storefrontDiscoveryLimiter, discoveryProfileCacheControl, validateStorefrontSlugParam, storefrontDiscoveryController.getStorefrontProfile);
 
 export default router;

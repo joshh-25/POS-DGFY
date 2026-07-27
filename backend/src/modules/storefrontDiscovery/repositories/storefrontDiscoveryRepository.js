@@ -1,6 +1,11 @@
 import { StorefrontDiscoveryIndex } from '../../../models/index.js';
 import { geoSearchRepository } from '../../geoSearch/repositories/geoSearchRepository.js';
-import { reconcileStorefrontDiscoveryIndex } from '../../../services/storefrontDiscoveryIndexService.js';
+import {
+    reconcileStorefrontDiscoveryIndex,
+    upsertExternalStorefrontListing,
+    removeExternalStorefrontListing,
+    listExternalStorefrontListings
+} from '../../../services/storefrontDiscoveryIndexService.js';
 import { getStorefrontDiscoveryCacheVersion } from '../../../services/storefrontDiscoveryCacheState.js';
 import { getStorefrontDiscoverySharedSignature } from '../../../services/storefrontDiscoveryFreshnessService.js';
 import logger from '../../../config/logger.js';
@@ -604,6 +609,10 @@ const toPlainEntry = (row) => {
     return {
     tenant_id: plain.tenant_id,
     tenant_name: plain.tenant_name,
+    entity_type: plain.entity_type || 'dgfy_native',
+    external_provider: plain.external_provider || null,
+    external_reference_id: plain.external_reference_id || null,
+    external_storefront_url: plain.external_storefront_url || null,
     slug: plain.slug,
     storefront_open: plain.storefront_open === true,
     workflow_mode: normalizeWorkflowMode(plain.workflow_mode || DEFAULT_WORKFLOW_MODE),
@@ -1173,6 +1182,19 @@ export const storefrontDiscoveryRepository = {
         };
         await writeRedisCacheEntry(cacheKey, enriched, DISCOVERY_PROFILE_REDIS_CACHE_TTL_SECONDS);
         return enriched;
+    },
+
+    async upsertExternalListing({ slug, payload } = {}) {
+        return upsertExternalStorefrontListing({ slug, payload });
+    },
+
+    async deleteExternalListingBySlug(slug) {
+        return removeExternalStorefrontListing({ slug });
+    },
+
+    async listExternalListings() {
+        const rows = await listExternalStorefrontListings();
+        return (rows || []).map(toPlainEntry);
     }
 };
 

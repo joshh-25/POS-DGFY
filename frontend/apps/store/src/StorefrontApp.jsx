@@ -84,7 +84,7 @@ import { StorefrontHeroBandContainer } from './app/pages/StorefrontHeroBandConta
 import { useStorefrontHeroBandProps } from './app/hooks/useStorefrontHeroBandProps.js';
 import { StorefrontCartDrawerShellContainer } from './app/pages/StorefrontCartDrawerShellContainer.jsx';
 import { useStorefrontCartDrawerShellProps } from './app/hooks/useStorefrontCartDrawerShellProps.js';
-import { openStorefrontActionLink } from './shared/utils/externalLinks.js';
+import { openStorefrontActionLink, sanitizeExternalLink } from './shared/utils/externalLinks.js';
 import { money, toSlug } from './shared/utils/storefrontFormatters.js';
 import { createStorefrontIdempotencyKey } from './shared/utils/idempotency.js';
 import {
@@ -1289,6 +1289,14 @@ export default function StorefrontApp() {
   const goStoreOrderForDiscovery = (slug, locationId = null, storeContext = null) => {
     const normalized = toSlug(slug);
     if (!normalized || typeof window === 'undefined') return;
+    // An external listing (entity_type: 'external_listing') transacts on a different
+    // platform — it has no DGFY storefront/checkout to open. Redirect off-platform via
+    // the sanitized opener instead of routing into this app's storefront shell, which
+    // would otherwise present the off-platform store as if it were a DGFY tenant.
+    if (storeContext?.entity_type === 'external_listing') {
+      openStorefrontActionLink(sanitizeExternalLink(storeContext.storefront_url || storeContext.external_storefront_url));
+      return;
+    }
     const contextWorkflowMode = String(storeContext?.workflow_mode || storeContext?.business_mode || '').trim().toLowerCase();
     const hasStoreContext = storeContext && typeof storeContext === 'object';
     const shouldUseCanonicalStorefront = hasStoreContext && (contextWorkflowMode === 'fnb' || !canUseCheckout(storeContext));

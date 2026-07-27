@@ -2,6 +2,7 @@ import React from 'react';
 import { Info, MapPin, Navigation } from 'lucide-react';
 
 import { DiscoveryMapCard } from '../../Components/store/DiscoveryResponsiveLayout.jsx';
+import { openStorefrontActionLink, sanitizeExternalLink } from '../../shared/utils/externalLinks.js';
 import { StoresMap } from './StoresMap.jsx';
 
 export function DiscoveryHeroMapStage({
@@ -42,6 +43,12 @@ export function DiscoveryHeroMapStage({
             setHasDiscoveryExplorationStarted(true);
             setHighlightedStoreSlug(pin.slug);
             setHighlightedDiscoveryMarkerKey(getDiscoveryMarkerKey(pin) || '');
+            // External listings have no DGFY storefront to open — routing them into
+            // goStore would land the visitor on a broken/empty catalog shell.
+            if (pin.entity_type === 'external_listing') {
+              openStorefrontActionLink(sanitizeExternalLink(pin.storefront_url));
+              return;
+            }
             goStore(pin.slug, pin.location_id ?? null);
           }}
         />

@@ -108,7 +108,8 @@ export const buildStoreMarkerPreviewModel = (store = {}, {
     catalogLabel: Number.isFinite(catalogCount) && catalogCount > 0 ? `${catalogCount} storefront item(s)` : '',
     matchingLabel: Number.isFinite(matchingItemCount) && matchingItemCount > 0 ? `${matchingItemCount} matching item(s)` : '',
     matchBadges,
-    actionLabel: 'Open storefront'
+    isExternalListing: store?.entity_type === 'external_listing',
+    actionLabel: store?.entity_type === 'external_listing' ? 'Visit store' : 'Open storefront'
   };
 };
 
@@ -185,9 +186,15 @@ export const createStoreMarkerPreviewNode = (store = {}, {
     appendText(body, 'div', joinContextLabels(context)).className = 'store-marker-preview-context';
   }
 
-  if (model.matchBadges.length > 0) {
+  if (model.matchBadges.length > 0 || model.isExternalListing) {
     const badges = document.createElement('div');
     badges.className = 'store-marker-preview-badges';
+    if (model.isExternalListing) {
+      const chip = document.createElement('span');
+      chip.textContent = 'Partner store';
+      chip.className = 'store-marker-preview-badge';
+      badges.appendChild(chip);
+    }
     model.matchBadges.slice(0, 2).forEach((badge) => {
       const chip = document.createElement('span');
       chip.textContent = badge.label;
