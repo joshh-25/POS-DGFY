@@ -1,14 +1,13 @@
 /* @vitest-environment jsdom */
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { useStoreRoute } from '../shared/hooks/useStoreRoute.js';
 
 const mockGetStoreRoute = vi.fn();
 
 vi.mock('../services/routeCalculatorService.js', () => ({
   getStoreRoute: (...args) => mockGetStoreRoute(...args)
 }));
-
-const { useStoreRoute } = await import('../shared/hooks/useStoreRoute.js');
 
 const ORIGIN = { latitude: 10.698, longitude: 122.5645 };
 const DESTINATION = { latitude: 10.7202, longitude: 122.5621 };

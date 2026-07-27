@@ -1,6 +1,7 @@
 /* @vitest-environment jsdom */
 import { cleanup, render } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import TrackingRouteMap, { extractTrackingMapCoordinates } from '../tracking/TrackingRouteMap.jsx';
 
 afterEach(cleanup);
 
@@ -32,8 +33,6 @@ vi.mock('maplibre-gl', () => {
 vi.mock('../services/routeCalculatorService.js', () => ({
   getStoreRoute: vi.fn().mockResolvedValue({ distance_meters: 1000, duration_seconds: 120, geometry: null })
 }));
-
-const { default: TrackingRouteMap, extractTrackingMapCoordinates } = await import('../tracking/TrackingRouteMap.jsx');
 
 describe('TrackingRouteMap (rebuilt real map)', () => {
   it('renders a real map container for a delivery order (store + customer pins)', () => {

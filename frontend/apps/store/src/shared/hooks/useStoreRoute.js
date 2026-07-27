@@ -35,6 +35,7 @@ export function useStoreRoute({ origin, destination, enabled = true } = {}) {
   useEffect(() => {
     if (!enabled || !signature) {
       lastSignatureRef.current = '';
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- Resetting to initial state when inputs become invalid/disabled, not a synchronization loop.
       setState(INITIAL_STATE);
       return;
     }
