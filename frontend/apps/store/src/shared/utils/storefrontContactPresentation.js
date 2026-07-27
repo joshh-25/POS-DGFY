@@ -17,7 +17,9 @@ export const buildVisibleStorefrontContactRows = ({
   hours = '',
   rawHoursData = null,
   addressText = '',
-  directionsUrl = ''
+  directionsUrl = '',
+  destinationLatitude = null,
+  destinationLongitude = null
 } = {}) => {
   const normalizedRows = Array.isArray(contactRows)
     ? contactRows
@@ -37,6 +39,9 @@ export const buildVisibleStorefrontContactRows = ({
   const normalizedHours = String(hours || '').trim();
   const normalizedAddressText = String(addressText || '').trim();
   const normalizedDirectionsUrl = String(directionsUrl || '').trim();
+  const normalizedDestLat = Number(destinationLatitude);
+  const normalizedDestLng = Number(destinationLongitude);
+  const hasDestinationCoordinates = Number.isFinite(normalizedDestLat) && Number.isFinite(normalizedDestLng);
 
   return [
     phoneRow,
@@ -47,7 +52,9 @@ export const buildVisibleStorefrontContactRows = ({
           label: 'Address',
           value: normalizedAddressText,
           actionLabel: normalizedDirectionsUrl ? 'Get directions' : '',
-          actionHref: normalizedDirectionsUrl
+          actionHref: normalizedDirectionsUrl,
+          destinationLatitude: hasDestinationCoordinates ? normalizedDestLat : null,
+          destinationLongitude: hasDestinationCoordinates ? normalizedDestLng : null
         }
       : null,
     emailRow
