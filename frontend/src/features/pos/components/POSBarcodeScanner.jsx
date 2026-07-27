@@ -82,6 +82,10 @@ export default function POSBarcodeScanner({
 
     const closeScannerModal = () => {
         if (scannerLoading) return;
+        const activeElement = document.activeElement;
+        if (activeElement?.matches?.('input, textarea, select, [contenteditable="true"]')) {
+            activeElement.blur();
+        }
         scannerBufferRef.current = '';
         setScannerModalOpen(false);
         setScannerCode('');
@@ -159,7 +163,7 @@ export default function POSBarcodeScanner({
                 {scannerLoading ? 'Resolving...' : 'Scan'}
             </Button>
             {scannerModalOpen && (
-                <div className="fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 px-4 py-6">
+                <div className="pos-mobile-no-focus-zoom fixed inset-0 z-[80] flex items-center justify-center bg-slate-950/45 px-4 py-6">
                     <form onSubmit={handleSubmit} className="w-full max-w-md rounded-xl border border-slate-200 bg-white p-4 shadow-xl shadow-slate-950/20">
                         <div className="flex items-start justify-between gap-3">
                             <div>

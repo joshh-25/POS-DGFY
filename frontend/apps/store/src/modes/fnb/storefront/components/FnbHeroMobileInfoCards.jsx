@@ -12,6 +12,7 @@ import {
 import { StoresMap } from '../../../../discovery/components/StoresMap.jsx';
 import { getStorefrontContactIcon } from '../../../../features/shared-storefront/utils/storefrontDisplayUtils.jsx';
 import { FnbHeroGalleryLightbox } from './FnbHeroGalleryLightbox.jsx';
+import { StorefrontDirectionsEta } from '../../../../shared/components/storefront/hero/StorefrontDirectionsEta.jsx';
 
 const FnbHeroMobileInfoCards = ({
   aboutText,
@@ -67,6 +68,7 @@ const FnbHeroMobileInfoCards = ({
       return (previousIndex + 1) % total;
     });
   };
+  const addressRow = visibleContactRows.find((row) => row.label === 'Address');
 
   return (
     <>
@@ -219,9 +221,12 @@ const FnbHeroMobileInfoCards = ({
                   {addressText ? <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, fontFamily: heroTheme.bodyFont }}>{addressText}</div> : null}
                   {storefrontCityLabel ? <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, fontFamily: heroTheme.bodyFont }}>{storefrontCityLabel}</div> : null}
                 </div>
-                <button type="button" onClick={() => setIsExpandedMapOpen(true)} style={{ padding: 0, border: 'none', background: 'transparent', color: '#f97316', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: heroTheme.bodyFont }}>
-                  Get directions
-                </button>
+                <div style={{ display: 'grid', gap: 2, justifyItems: 'end' }}>
+                  <button type="button" onClick={() => setIsExpandedMapOpen(true)} style={{ padding: 0, border: 'none', background: 'transparent', color: '#f97316', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: heroTheme.bodyFont }}>
+                    Get directions
+                  </button>
+                  <StorefrontDirectionsEta latitude={addressRow?.destinationLatitude} longitude={addressRow?.destinationLongitude} bodyFont={heroTheme.bodyFont} />
+                </div>
               </div>
               <div style={{ position: 'relative', width: '100%', height: 110, borderRadius: 12, overflow: 'hidden', border: '1px solid #edf2f7', background: '#f8fafc' }}>
                 <StoresMap stores={mapStores} selectedKey={mapSelectedKey} onSelectStore={() => { }} height={110} />

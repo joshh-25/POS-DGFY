@@ -33,6 +33,7 @@ import {
   Receipt,
   RefreshCcw,
   Save,
+  ScanLine,
   Search,
   Settings2,
   ShieldCheck,
@@ -75,9 +76,12 @@ import {
   updateFolder
 } from '@/services/itemService.js';
 import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
+import { getGtinValidationMessage } from '@/src/utils/barcodePolicy.js';
+import ProductQrScannerModal from '@/src/features/inventory/components/ProductQrScannerModal.jsx';
 import { notifyPosCatalogUpdated } from '../utils/posCatalogRefresh.js';
 import {
   updateStorefrontCatalogOverride,
+  importExternalStorefrontCatalogImage,
   uploadStorefrontCatalogImage,
   uploadStorefrontCatalogImages,
   updateStorefrontCatalogGallery,
@@ -94,7 +98,7 @@ import { getStorefrontPromoScheduleValidationError } from '@/src/features/pos/ut
 import { resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
 import StorefrontBusinessHoursScheduler from '@/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import { normalizeStorefrontBusinessHours, serializeStorefrontBusinessHours } from '@/src/features/settings/storefrontBusinessHours.js';
-import resolveAssetUrl, { resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
+import resolveAssetUrl, { advanceAssetImageFallback, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
 import UserInvitationModal from '@/Components/users/UserInvitationModal.jsx';
 import PdfMenuImportModal from '@/Components/items/PdfMenuImportModal.jsx';
 import { isPdfMenuImportEnabled } from '@/hooks/usePdfMenuImport.js';
@@ -1809,6 +1813,24 @@ const createEmptyPosItemForm = () => ({
   pos_category: ''
 });
 
+const normalizeMoneyInput = (value) => {
+  const sanitized = String(value ?? '').replace(/,/g, '').replace(/[^\d.]/g, '');
+  const [whole = '', ...fractionParts] = sanitized.split('.');
+  if (fractionParts.length === 0) return whole;
+  return `${whole}.${fractionParts.join('').slice(0, 2)}`;
+};
+
+const formatMoneyInput = (value) => {
+  const normalized = String(value ?? '').trim();
+  if (!normalized) return '';
+  const numericValue = Number(normalized);
+  if (!Number.isFinite(numericValue)) return normalized;
+  return numericValue.toLocaleString('en-PH', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  });
+};
+
 const resolveSellablePosItemPreset = (workflowMode = '') => {
   const taxonomy = resolveModeItemTaxonomy(workflowMode);
   const productPresets = Array.isArray(taxonomy?.presets)
@@ -1866,6 +1888,7 @@ function ItemsWorkspace({
     description: '',
     pos_category: ''
   });
+  const [focusedEditMoneyField, setFocusedEditMoneyField] = useState('');
   const [savedMessage, setSavedMessage] = useState({ name: '', barcode: '', action: 'updated' });
   const [itemSaveInFlight, setItemSaveInFlight] = useState(false);
   const [deletedItemName, setDeletedItemName] = useState('');
@@ -1887,6 +1910,7 @@ function ItemsWorkspace({
   const [externalLookupError, setExternalLookupError] = useState('');
   const [externalProductLookup, setExternalProductLookup] = useState(null);
   const [acceptedExternalProduct, setAcceptedExternalProduct] = useState(null);
+  const [externalQrScannerOpen, setExternalQrScannerOpen] = useState(false);
   const [pendingCreateRecovery, setPendingCreateRecovery] = useState(null);
   const [postCreateSaving, setPostCreateSaving] = useState(false);
   const posItemPreset = useMemo(() => resolveSellablePosItemPreset(workflowMode), [workflowMode]);
@@ -2111,6 +2135,7 @@ function ItemsWorkspace({
       ? foodCategoryOptions.find((option) => Number(option?.folder_id) === savedFolderId)
       : foodCategoryOptions.find((option) => normalizeFolderNameKey(option?.name) === normalizeFolderNameKey(savedFolderName));
     setEditingItemId(item?.item_id || null);
+    setFocusedEditMoneyField('');
     setEditForm({
       name: String(item?.name || ''),
       current_stock: String(item?.current_stock ?? '0'),
@@ -2133,6 +2158,7 @@ function ItemsWorkspace({
   const closeEdit = ({ force = false } = {}) => {
     if (!force && (savingItem || persistingEditAssets)) return;
     setEditingItemId(null);
+    setFocusedEditMoneyField('');
     setPersistingEditAssets(false);
     setEditCategoryInput('');
     setEditForm({
@@ -2157,6 +2183,7 @@ function ItemsWorkspace({
     setExternalLookupError('');
     setExternalProductLookup(null);
     setAcceptedExternalProduct(null);
+    setExternalQrScannerOpen(false);
     setPendingCreateRecovery(null);
     setShowCreateModal(true);
   };
@@ -2172,6 +2199,7 @@ function ItemsWorkspace({
     setExternalLookupError('');
     setExternalProductLookup(null);
     setAcceptedExternalProduct(null);
+    setExternalQrScannerOpen(false);
     if (force) setPendingCreateRecovery(null);
   };
 
@@ -2302,10 +2330,12 @@ function ItemsWorkspace({
     }
   };
 
-  const handleExternalProductLookup = async () => {
+  const handleExternalProductLookup = async (codeOverride) => {
     if (externalLookupLoading) return;
-    if (![8, 12, 13, 14].includes(externalBarcode.length)) {
-      setExternalLookupError('Enter a GTIN-8, UPC-A, EAN-13, or GTIN-14 barcode.');
+    const lookupCode = typeof codeOverride === 'string' ? codeOverride : externalBarcode;
+    const validationMessage = getGtinValidationMessage(lookupCode);
+    if (validationMessage) {
+      setExternalLookupError(validationMessage);
       return;
     }
 
@@ -2314,7 +2344,7 @@ function ItemsWorkspace({
     setExternalProductLookup(null);
     setAcceptedExternalProduct(null);
     try {
-      const result = await lookupExternalProduct(externalBarcode);
+      const result = await lookupExternalProduct(lookupCode);
       setExternalProductLookup(result);
       if (!result?.found) {
         setExternalLookupError('No registry match was found. You can still create the item manually.');
@@ -2329,16 +2359,41 @@ function ItemsWorkspace({
     }
   };
 
+  const handleExternalQrDetected = (code) => {
+    setExternalQrScannerOpen(false);
+    handleExternalBarcodeChange(code);
+    void handleExternalProductLookup(code);
+  };
+
   const applyExternalProductDetails = () => {
     if (!externalProductLookup?.found) return;
     const product = externalProductLookup.product || {};
     const descriptionParts = [product.brand, product.quantity].filter(Boolean);
+    const categorySuggestion = String(product.category_suggestion || '').trim().replace(/\s+/g, ' ').slice(0, 100);
+    const matchedCategory = categorySuggestion
+      ? foodCategoryOptions.find((option) => normalizeFolderNameKey(option.name) === normalizeFolderNameKey(categorySuggestion))
+      : null;
     setCreateForm((current) => ({
       ...current,
       name: product.name || current.name,
-      description: current.description || descriptionParts.join(' - ')
+      description: current.description || descriptionParts.join(' - '),
+      pos_category: matchedCategory?.value || current.pos_category
     }));
+    if (matchedCategory) {
+      setCreateCategoryInput(matchedCategory.name);
+    } else if (categorySuggestion && canManageCategories) {
+      setCreateCategoryInput(categorySuggestion);
+      setCreateForm((current) => ({ ...current, pos_category: '' }));
+    } else if (categorySuggestion && !canManageCategories) {
+      setExternalLookupError('Product details selected. Choose an existing category; only an administrator can create the suggested category.');
+    }
     setAcceptedExternalProduct(externalProductLookup);
+  };
+
+  const applyExternalSuggestedPrice = () => {
+    const amount = Number(externalProductLookup?.suggested_price?.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    setCreateForm((current) => ({ ...current, default_sale_price: String(amount.toFixed(2)) }));
   };
 
   const handleUploadStorefrontImage = async (item, files) => {
@@ -2410,7 +2465,14 @@ function ItemsWorkspace({
     }
   };
 
-  const runPostCreateStages = async ({ itemId, itemName, imageFiles, posAlwaysAvailable, posBestSellerMode = 'auto' }) => {
+  const runPostCreateStages = async ({
+    itemId,
+    itemName,
+    imageFiles,
+    externalProductCode = '',
+    posAlwaysAvailable,
+    posBestSellerMode = 'auto'
+  }) => {
 
     const failedStages = [];
     let barcodeCode = '';
@@ -2436,6 +2498,12 @@ function ItemsWorkspace({
         () => (imageFiles.length === 1
           ? uploadStorefrontCatalogImage(itemId, imageFiles[0])
           : uploadStorefrontCatalogImages(itemId, imageFiles))
+      );
+    } else if (externalProductCode) {
+      await runStage(
+        'external_product_image',
+        'Registry image import',
+        () => importExternalStorefrontCatalogImage(itemId, externalProductCode)
       );
     }
 
@@ -2463,6 +2531,7 @@ function ItemsWorkspace({
         itemId,
         name: itemName,
         imageFiles,
+        externalProductCode,
         posAlwaysAvailable,
         posBestSellerMode,
         failedStages
@@ -2587,6 +2656,7 @@ function ItemsWorkspace({
           itemId: pendingCreateRecovery.itemId,
           itemName: recoveryName,
           imageFiles: pendingCreateRecovery.imageFiles || selectedImageFiles,
+          externalProductCode: pendingCreateRecovery.externalProductCode || '',
           posAlwaysAvailable: pendingCreateRecovery.posAlwaysAvailable,
           posBestSellerMode: pendingCreateRecovery.posBestSellerMode,
         });
@@ -2616,6 +2686,9 @@ function ItemsWorkspace({
         itemId,
         itemName: name,
         imageFiles: selectedImageFiles,
+        externalProductCode: selectedImageFiles.length === 0 && acceptedExternalProduct?.product?.image_url
+          ? acceptedExternalProduct.code
+          : '',
         posAlwaysAvailable: createForm.pos_always_available === true,
         posBestSellerMode: createForm.pos_best_seller_mode,
       });
@@ -2855,6 +2928,7 @@ function ItemsWorkspace({
           {paginatedItems.map((item) => {
             const barcode = primaryBarcodes[String(item.item_id)]?.code || '';
             const imageUrl = resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail');
+            const largeImageUrl = resolveAssetVariantUrl(item?.storefront_image_url, 'large');
             const stockQuantity = Number(item?.current_stock || 0);
             const isAlwaysAvailable = item?.pos_always_available === true;
             const profit = Number(item?.default_sale_price || 0) - Number(item?.cost_per_unit || 0);
@@ -2882,7 +2956,8 @@ function ItemsWorkspace({
               >
                 <div className="grid gap-2.5 xl:grid-cols-[minmax(0,1.18fr)_minmax(18.5rem,0.96fr)] xl:items-center">
                   <div className="flex min-w-0 gap-2.5 xl:border-r xl:border-slate-100 xl:pr-3">
-                    <div className="flex h-[4rem] w-[4rem] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-slate-100 bg-gradient-to-br from-slate-50 to-slate-100 shadow-inner sm:h-[4.5rem] sm:w-[4.5rem]">
+                    <div className="relative flex h-[4rem] w-[4rem] shrink-0 items-center justify-center overflow-hidden rounded-[14px] border border-slate-100 bg-gradient-to-br from-slate-50 to-slate-100 shadow-inner sm:h-[4.5rem] sm:w-[4.5rem]">
+                      <ImagePlus className="h-5 w-5 text-slate-300" />
                       {imageUrl ? (
                         <img
                           src={imageUrl}
@@ -2891,11 +2966,13 @@ function ItemsWorkspace({
                           decoding="async"
                           width={288}
                           height={288}
-                          className="h-full w-full object-cover"
+                          className="absolute h-full w-full object-cover"
+                          onError={(event) => {
+                            if (advanceAssetImageFallback(event, [largeImageUrl])) return;
+                            event.currentTarget.hidden = true;
+                          }}
                         />
-                      ) : (
-                        <ImagePlus className="h-5 w-5 text-slate-300" />
-                      )}
+                      ) : null}
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex min-h-full flex-col">
@@ -3071,7 +3148,7 @@ function ItemsWorkspace({
 
       {showCreateModal && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 backdrop-blur-sm px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          className="pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 backdrop-blur-sm px-3 py-3 sm:items-center sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-create-modal-title"
@@ -3137,6 +3214,16 @@ function ItemsWorkspace({
                     type="button"
                     variant="outline"
                     className="shrink-0 bg-white"
+                    onClick={() => setExternalQrScannerOpen(true)}
+                    disabled={externalLookupLoading || creatingItem || postCreateSaving}
+                  >
+                    <ScanLine className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Scan QR
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="shrink-0 bg-white"
                     onClick={handleExternalProductLookup}
                     disabled={externalLookupLoading || creatingItem || postCreateSaving || !externalBarcode}
                   >
@@ -3168,18 +3255,43 @@ function ItemsWorkspace({
                         {externalProductLookup.product?.brand ? <p className="text-xs text-slate-600">Brand: {externalProductLookup.product.brand}</p> : null}
                         {externalProductLookup.product?.quantity ? <p className="text-xs text-slate-600">Package: {externalProductLookup.product.quantity}</p> : null}
                         {externalProductLookup.product?.category_suggestion ? <p className="text-xs text-slate-600">Category suggestion: {externalProductLookup.product.category_suggestion}</p> : null}
-                        <p className="text-xs text-amber-700">Review before saving. Category and image are not imported automatically.</p>
+                        {externalProductLookup.suggested_price ? (
+                          <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                            <p className="font-semibold">
+                              Suggested selling price: PHP {Number(externalProductLookup.suggested_price.amount).toFixed(2)}
+                            </p>
+                            <p>
+                              {externalProductLookup.suggested_price.label} from Open Prices
+                              {externalProductLookup.suggested_price.location ? ` at ${externalProductLookup.suggested_price.location}` : ''}
+                              {externalProductLookup.suggested_price.observed_at ? ` on ${externalProductLookup.suggested_price.observed_at}` : ''}.
+                            </p>
+                            <p className="mt-1 text-emerald-800">{externalProductLookup.suggested_price.disclaimer}</p>
+                          </div>
+                        ) : null}
+                        <p className="text-xs text-amber-700">Review before saving. Details are applied only after you select Use product details.</p>
                       </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="shrink-0"
-                        onClick={applyExternalProductDetails}
-                        disabled={acceptedExternalProduct?.code === externalProductLookup.code}
-                      >
-                        {acceptedExternalProduct?.code === externalProductLookup.code ? <Check className="mr-2 h-4 w-4" /> : null}
-                        {acceptedExternalProduct?.code === externalProductLookup.code ? 'Details selected' : 'Use product details'}
-                      </Button>
+                      <div className="flex shrink-0 flex-col gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={applyExternalProductDetails}
+                          disabled={acceptedExternalProduct?.code === externalProductLookup.code}
+                        >
+                          {acceptedExternalProduct?.code === externalProductLookup.code ? <Check className="mr-2 h-4 w-4" /> : null}
+                          {acceptedExternalProduct?.code === externalProductLookup.code ? 'Details selected' : 'Use product details'}
+                        </Button>
+                        {externalProductLookup.suggested_price ? (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={applyExternalSuggestedPrice}
+                            disabled={Number(createForm.default_sale_price) === Number(externalProductLookup.suggested_price.amount)}
+                          >
+                            {Number(createForm.default_sale_price) === Number(externalProductLookup.suggested_price.amount) ? 'Price selected' : 'Use suggested price'}
+                          </Button>
+                        ) : null}
+                      </div>
                     </div>
                   </div>
                 ) : null}
@@ -3237,6 +3349,11 @@ function ItemsWorkspace({
                       </button>
                     </div>
                   )}
+                  {selectedImageFiles.length === 0 && acceptedExternalProduct?.product?.image_url ? (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                      The accepted registry image will be optimized and saved to DGFY storage when this item is created.
+                    </div>
+                  ) : null}
                 </div>
 
                 {/* Right Column - Form Fields */}
@@ -3490,9 +3607,15 @@ function ItemsWorkspace({
         </div>
       ), document.body)}
 
+      <ProductQrScannerModal
+        open={externalQrScannerOpen}
+        onOpenChange={setExternalQrScannerOpen}
+        onDetected={handleExternalQrDetected}
+      />
+
       {activeEditItem && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 backdrop-blur-sm px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          className="pos-mobile-no-focus-zoom fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 backdrop-blur-sm px-3 py-3 sm:items-center sm:px-4 sm:py-6"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-edit-modal-title"
@@ -3720,11 +3843,17 @@ function ItemsWorkspace({
                       <div className="relative">
                         <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs sm:text-sm font-medium text-slate-400">₱</span>
                         <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={editForm.default_sale_price}
-                          onChange={(event) => setEditForm((current) => ({ ...current, default_sale_price: event.target.value }))}
+                          type="text"
+                          inputMode="decimal"
+                          value={focusedEditMoneyField === 'default_sale_price'
+                            ? editForm.default_sale_price
+                            : formatMoneyInput(editForm.default_sale_price)}
+                          onFocus={() => setFocusedEditMoneyField('default_sale_price')}
+                          onBlur={() => setFocusedEditMoneyField('')}
+                          onChange={(event) => setEditForm((current) => ({
+                            ...current,
+                            default_sale_price: normalizeMoneyInput(event.target.value)
+                          }))}
                           className="h-11 rounded-xl border-slate-200 pl-8 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
                           disabled={savingItem || persistingEditAssets}
                         />
@@ -3738,11 +3867,17 @@ function ItemsWorkspace({
                       <div className="relative">
                         <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs sm:text-sm font-medium text-slate-400">₱</span>
                         <Input
-                          type="number"
-                          min="0"
-                          step="0.01"
-                          value={editForm.cost_per_unit}
-                          onChange={(event) => setEditForm((current) => ({ ...current, cost_per_unit: event.target.value }))}
+                          type="text"
+                          inputMode="decimal"
+                          value={focusedEditMoneyField === 'cost_per_unit'
+                            ? editForm.cost_per_unit
+                            : formatMoneyInput(editForm.cost_per_unit)}
+                          onFocus={() => setFocusedEditMoneyField('cost_per_unit')}
+                          onBlur={() => setFocusedEditMoneyField('')}
+                          onChange={(event) => setEditForm((current) => ({
+                            ...current,
+                            cost_per_unit: normalizeMoneyInput(event.target.value)
+                          }))}
                           className="h-11 rounded-xl border-slate-200 pl-8 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
                           disabled={savingItem || persistingEditAssets}
                         />

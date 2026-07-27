@@ -608,6 +608,12 @@ const externalProductLookupQuerySchema = Joi.object({
   })
 });
 
+const externalProductImageImportSchema = Joi.object({
+  code: Joi.string().trim().pattern(/^\d{8}$|^\d{12,14}$/).required().messages({
+    'string.pattern.base': 'Barcode must be a GTIN-8, UPC-A, EAN-13, or GTIN-14 value.'
+  })
+});
+
 const barcodeAttachSchema = Joi.object({
   code: Joi.string().trim().max(512).required(),
   source: barcodeSourceSchema.default('manufacturer'),
@@ -686,6 +692,7 @@ export const validateDeleteFolder = validateSchema(deleteFolderSchema, 'body', '
 export const validateReplaceItemSuppliers = validateSchema(replaceItemSuppliersSchema, 'body', 'validatedData');
 export const validateBarcodeResolveQuery = validateSchema(barcodeResolveQuerySchema, 'query', 'validatedQuery');
 export const validateExternalProductLookupQuery = validateSchema(externalProductLookupQuerySchema, 'query', 'validatedQuery');
+export const validateExternalProductImageImport = validateSchema(externalProductImageImportSchema, 'body', 'validatedData');
 export const validateAttachBarcode = validateSchema(barcodeAttachSchema, 'body', 'validatedData');
 export const validateGenerateBarcode = validateSchema(barcodeGenerateSchema, 'body', 'validatedData');
 export const validateBarcodeIdParam = validateSchema(barcodeIdParamSchema, 'params', 'validatedParams');

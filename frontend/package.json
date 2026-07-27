@@ -42,6 +42,7 @@
     "@sentry/react": "^10.63.0",
     "@sieitzz/pos-receipt": "file:../packages/pos-receipt",
     "@sieitzz/shared-constants": "file:../packages/shared-constants",
+    "@zxing/browser": "^0.2.1",
     "axios": "^1.18.1",
     "clsx": "^2.1.1",
     "date-fns": "^2.30.0",

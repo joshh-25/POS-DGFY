@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import { MapPin } from 'lucide-react';
 import {
@@ -10,7 +10,10 @@ import {
   buildUserLocationSourceData,
   ensureDiscoveryMapLayers,
   ensureMapImage,
-  setGeoJsonSourceData
+  ensureRouteLineLayer,
+  hasPlottableCoordinate,
+  setGeoJsonSourceData,
+  setRouteLineData
 } from '../model/discoveryMapLayers.js';
 import {
   DEFAULT_CENTER,
@@ -20,6 +23,7 @@ import {
 import { withAssetOrigin } from '../../app/runtime/storefrontRuntime.js';
 import { getDiscoveryMarkerKey } from '../model/discoveryMapDom.js';
 import { createStoreMarkerPreviewNode } from '../model/storefrontMarkerPreview.js';
+import { useStoreRoute } from '../../shared/hooks/useStoreRoute.js';
 
 const toSlug = (value) => String(value || '').trim().toLowerCase();
 
@@ -97,6 +101,26 @@ export function StoresMap({
       ...timers.map((timerId) => () => window.clearTimeout(timerId))
     ];
   }, []);
+
+  const selectedStore = useMemo(() => {
+    if (!selectedKey) return null;
+    const rows = Array.isArray(stores) ? stores : [];
+    return rows.find((store) => getDiscoveryMarkerKey(store) === selectedKey) || null;
+  }, [stores, selectedKey]);
+
+  const routeEnabled = Boolean(
+    userLocation
+    && selectedStore
+    && hasPlottableCoordinate(selectedStore.latitude, selectedStore.longitude)
+  );
+  const routeDestination = routeEnabled
+    ? { latitude: selectedStore.latitude, longitude: selectedStore.longitude }
+    : null;
+  const { geometry: routeGeometry, distanceKm: routeDistanceKm, durationMinutes: routeDurationMinutes, loading: routeLoading } = useStoreRoute({
+    origin: userLocation,
+    destination: routeDestination,
+    enabled: routeEnabled
+  });
 
   useEffect(() => {
     onSelectStoreRef.current = onSelectStore;
@@ -584,6 +608,13 @@ export function StoresMap({
     };
   }, [stores, selectedKey, highlightedKeys, userLocation, autoOpenPopups, openPopupOnHover, viewportPolicy, viewportSignal, mapStyleReady, containerResizeTick]);
 
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapStyleReady) return;
+    ensureRouteLineLayer(map, { width: 4 });
+    setRouteLineData(map, routeGeometry || null);
+  }, [routeGeometry, mapStyleReady]);
+
   if (mapUnavailable) {
     return (
       <div style={{ minHeight: height, border: '1px solid #d6e2e8', borderRadius: 24, overflow: 'hidden', background: '#f8fafc', padding: 20 }}>
@@ -610,5 +641,18 @@ export function StoresMap({
     );
   }
 
-  return <div ref={ref} style={{ height, border: '1px solid #d6e2e8', borderRadius: 24, overflow: 'hidden' }} />;
+  const showRouteChip = routeEnabled && (routeLoading || Number.isFinite(routeDistanceKm));
+
+  return (
+    <div style={{ position: 'relative', height, border: '1px solid #d6e2e8', borderRadius: 24, overflow: 'hidden' }}>
+      <div ref={ref} style={{ height: '100%' }} />
+      {showRouteChip && (
+        <div style={{ position: 'absolute', left: 12, bottom: 12, display: 'flex', alignItems: 'center', gap: 6, background: '#fff', borderRadius: 999, padding: '6px 14px', boxShadow: '0 2px 10px rgba(15,23,42,0.16)', fontSize: 12, fontWeight: 800, color: '#0f172a' }}>
+          {routeLoading
+            ? 'Calculating route…'
+            : `${routeDistanceKm.toFixed(1)} km · ${routeDurationMinutes} min drive`}
+        </div>
+      )}
+    </div>
+  );
 }

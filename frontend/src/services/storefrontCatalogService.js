@@ -25,6 +25,11 @@ export const uploadStorefrontCatalogImage = async (itemId, file) => {
   return response.data.data;
 };
 
+export const importExternalStorefrontCatalogImage = async (itemId, code) => {
+  const response = await api.post(`/items/${itemId}/storefront-image/external`, { code });
+  return response.data.data;
+};
+
 export const uploadStorefrontCatalogImages = async (itemId, files = []) => {
   const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : [];
   const formData = new FormData();

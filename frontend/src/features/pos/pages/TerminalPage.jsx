@@ -108,6 +108,10 @@ import {
   resolveTenantSetupViewMode
 } from '../utils/setupFlow.js';
 import { openDrawerWithIminBridge, printOrderWithIminBridge } from '../utils/iminHardwareBridge.js';
+import {
+  blurActiveTerminalEditor,
+  restoreTerminalViewportAfterUnlock
+} from '../utils/terminalViewportRecovery.js';
 
 import PosHardwareMessageModal from '../components/PosHardwareMessageModal.jsx';
 import OnlineOrderDetailsModal from '../components/OnlineOrderDetailsModal.jsx';
@@ -2287,6 +2291,7 @@ export default function TerminalPage() {
   }, []);
 
   const completeTerminalUnlock = async (selectedTerminalId, { operatingLocationIdOverride = null } = {}) => {
+    blurActiveTerminalEditor();
     if (typeof window !== 'undefined') {
       if (selectedTerminalId) {
         window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, selectedTerminalId);
@@ -2501,6 +2506,7 @@ export default function TerminalPage() {
       const selectedTenantActiveRegistry = selectedTenantRegistry.filter((entry) => entry?.is_active !== false);
       setTerminalRegistry(selectedTenantRegistry);
       setTerminalRegistryMode(selectedTenantRegistryMode);
+      blurActiveTerminalEditor();
       setLocked(false);
       setDrawerOpen(false);
       if (
@@ -2802,6 +2808,7 @@ export default function TerminalPage() {
       setStoredAdminLockContext(null);
       setTerminalUser(adminUser);
       setDgfyAdminBypassActive(true);
+      blurActiveTerminalEditor();
       setLocked(false);
       setDrawerOpen(false);
       setTerminalUnlockRequired(false);
@@ -3973,6 +3980,9 @@ export default function TerminalPage() {
     terminalLayoutLockedRef.current = locked;
     if (!wasLocked || locked || typeof window === 'undefined') return undefined;
 
+    const stopViewportRecovery = restoreTerminalViewportAfterUnlock({
+      workspaceElement: workspacePaneRef.current
+    });
     let secondFrameId = null;
     const firstFrameId = window.requestAnimationFrame(() => {
       secondFrameId = window.requestAnimationFrame(() => {
@@ -3981,6 +3991,7 @@ export default function TerminalPage() {
     });
 
     return () => {
+      stopViewportRecovery();
       window.cancelAnimationFrame(firstFrameId);
       if (secondFrameId !== null) window.cancelAnimationFrame(secondFrameId);
     };

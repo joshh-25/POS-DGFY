@@ -2,6 +2,7 @@ import React from 'react';
 import { Bike, Maximize } from 'lucide-react';
 import { StoresMap } from '../../../../discovery/components/StoresMap.jsx';
 import { getStorefrontContactIcon } from '../../../../features/shared-storefront/utils/storefrontDisplayUtils.jsx';
+import { StorefrontDirectionsEta } from '../../../../shared/components/storefront/hero/StorefrontDirectionsEta.jsx';
 
 const FnbHeroDesktopContactLocation = ({
   STYLES,
@@ -41,6 +42,9 @@ const FnbHeroDesktopContactLocation = ({
                     <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openStorefrontActionLink(row.actionHref); }} style={{ padding: 0, border: 'none', background: 'transparent', color: '#f97316', fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start', fontFamily: heroTheme.bodyFont }}>
                       {row.actionLabel || 'Get directions'}
                     </button>
+                  ) : null}
+                  {row.label === 'Address' ? (
+                    <StorefrontDirectionsEta latitude={row.destinationLatitude} longitude={row.destinationLongitude} bodyFont={heroTheme.bodyFont} />
                   ) : null}
                 </div>
               </div>

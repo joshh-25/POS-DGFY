@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { StoresMap } from '../../../../discovery/components/StoresMap.jsx';
 import { getStorefrontContactIcon } from '../../../../features/shared-storefront/utils/storefrontDisplayUtils.jsx';
+import { StorefrontDirectionsEta } from '../../../../shared/components/storefront/hero/StorefrontDirectionsEta.jsx';
 
 const ServicesHeroMobileInfoCards = ({
   aboutText,
@@ -42,6 +43,7 @@ const ServicesHeroMobileInfoCards = ({
   visibleWhyChooseUs
 }) => {
   const [expandedMobileCard, setExpandedMobileCard] = useState(null);
+  const addressRow = visibleContactRows.find((row) => row.label === 'Address');
 
   return (
     <div style={{ display: 'grid', gap: 0, paddingBottom: 24, marginTop: 24 }}>
@@ -150,9 +152,12 @@ const ServicesHeroMobileInfoCards = ({
                     {addressText ? <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, fontFamily: servicesBodyFont }}>{addressText}</div> : null}
                     {storefrontCityLabel ? <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, fontFamily: servicesBodyFont }}>{storefrontCityLabel}</div> : null}
                   </div>
-                  <button type="button" onClick={() => setIsExpandedMapOpen(true)} style={{ padding: 0, border: 'none', background: 'transparent', color: servicesPrimary, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: servicesBodyFont }}>
-                    Get directions
-                  </button>
+                  <div style={{ display: 'grid', gap: 2, justifyItems: 'end' }}>
+                    <button type="button" onClick={() => setIsExpandedMapOpen(true)} style={{ padding: 0, border: 'none', background: 'transparent', color: servicesPrimary, fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: servicesBodyFont }}>
+                      Get directions
+                    </button>
+                    <StorefrontDirectionsEta latitude={addressRow?.destinationLatitude} longitude={addressRow?.destinationLongitude} bodyFont={servicesBodyFont} />
+                  </div>
                 </div>
                 <div style={{ position: 'relative', width: '100%', height: 110, borderRadius: 12, overflow: 'hidden', border: '1px solid #edf2f7', background: '#f8fafc' }}>
                   <StoresMap stores={serviceHeroModel.mapStores} selectedKey={serviceHeroModel.mapSelectedKey} onSelectStore={() => { }} height={110} />

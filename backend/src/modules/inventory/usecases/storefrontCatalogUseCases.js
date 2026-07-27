@@ -9,7 +9,7 @@ import { resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVi
 import logger from '../../../config/logger.js';
 
 const PERMISSION_EDIT_ITEMS = 'items:edit';
-const STOREFRONT_CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES = 100 * 1024 * 1024;
+export const STOREFRONT_CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES = 100 * 1024 * 1024;
 const STOREFRONT_CATALOG_GALLERY_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
 const STOREFRONT_CATALOG_GALLERY_MAX_IMAGES = 5;
 const BULK_CATALOG_MAX_ITEM_IDS = 500;
@@ -79,6 +79,20 @@ const normalizeStoredGalleryEntries = (entries = []) => parseGalleryEntries(entr
     variants: entry?.variants && typeof entry.variants === 'object' ? entry.variants : null,
     original_path: entry?.original_path || null,
     classification: entry?.classification || null,
+    source: entry?.source && typeof entry.source === 'object'
+      ? {
+          type: String(entry.source.type || '').trim() || null,
+          provider: String(entry.source.provider || '').trim() || null,
+          barcode: String(entry.source.barcode || '').trim() || null,
+          product_url: String(entry.source.product_url || '').trim() || null,
+          source_image_url: String(entry.source.source_image_url || '').trim() || null,
+          attribution_label: String(entry.source.attribution_label || '').trim() || null,
+          attribution_url: String(entry.source.attribution_url || '').trim() || null,
+          database_license: String(entry.source.database_license || '').trim() || null,
+          image_license: String(entry.source.image_license || '').trim() || null,
+          imported_at: String(entry.source.imported_at || '').trim() || null
+        }
+      : null,
     is_primary: index === 0,
     sort_order: index
   }))
@@ -300,7 +314,7 @@ export const buildUpdateBulkStorefrontCatalogOverridesUseCase = ({ itemRepositor
 };
 
 export const buildUploadStorefrontCatalogImageUseCase = ({ itemRepository, imageStorage }) => {
-  return async ({ itemId, file, user }) => {
+  return async ({ itemId, file, user, provenance = null }) => {
     const normalizedItemId = parsePositiveInt(itemId);
     let stored = null;
     let storedCommitted = false;
@@ -357,7 +371,17 @@ export const buildUploadStorefrontCatalogImageUseCase = ({ itemRepository, image
 
       const data = await itemRepository.updateStorefrontCatalogImage(normalizedItemId, {
         path: stored.path,
-        url: stored.url
+        url: stored.url,
+        gallery: [{
+          path: stored.path,
+          url: stored.url,
+          variants: stored.image_variants || null,
+          original_path: stored.original?.path || null,
+          classification: stored.classification || null,
+          source: provenance && typeof provenance === 'object'
+            ? provenance
+            : { type: 'manual_upload' }
+        }]
       }, {
         keepVisible: effective?.storefront_visible !== false
       });
