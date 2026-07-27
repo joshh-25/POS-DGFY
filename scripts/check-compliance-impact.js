@@ -158,6 +158,25 @@ const COMPLIANCE_SENSITIVE_RULES = [
   }
 ];
 
+// Known aggregate branch-promotion merges (develop -> staging, staging -> main).
+// Their diff bundles every compliance-sensitive file across many already-declared
+// feature PRs, so validating each declaration against the *combined* surface/
+// classification of the whole bundle produces false positives -- every declaration
+// already passed this exact check on its own originating PR into `develop`. Scoped
+// narrowly to these (base, head) pairs so a hotfix PR opened directly against
+// staging/main (e.g. PR #83) still gets full per-declaration scrutiny.
+const PROMOTION_HEAD_BY_BASE = Object.freeze({
+  staging: new Set(['develop', 'to-staging']),
+  main: new Set(['staging'])
+});
+
+const isAggregatePromotionPr = () => {
+  const baseRef = String(process.env.GITHUB_BASE_REF || '').trim();
+  const headRef = String(process.env.GITHUB_HEAD_REF || '').trim();
+  const allowedHeads = PROMOTION_HEAD_BY_BASE[baseRef];
+  return Boolean(allowedHeads && allowedHeads.has(headRef));
+};
+
 const DECLARATION_FILE_PATTERN = /^docs\/compliance\/impact-declarations\/.+\.md$/;
 const REQUIRED_DECLARATION_SECTIONS = [
   '## Compliance Impact Classification',
@@ -421,18 +440,26 @@ const validateDeclarationFile = (filePath) => {
     failures.push(`Invalid classification "${frontMatter.classification}" in ${filePath}`);
   }
 
-  const minimumClassification = inferMinimumClassificationFromSensitiveFiles(sensitiveFiles);
-  if (classification && !classificationAtLeast(classification, minimumClassification)) {
-    failures.push(
-      `Classification "${classification}" in ${filePath} is below computed minimum "${minimumClassification}" for changed compliance-sensitive files`
+  if (isAggregatePromotionPr()) {
+    console.log(
+      `[check:compliance] Skipping bundled classification/surface re-check for ${filePath} `
+      + `(aggregate promotion ${process.env.GITHUB_HEAD_REF} -> ${process.env.GITHUB_BASE_REF}; `
+      + 'already validated against its own originating PR).'
     );
-  }
+  } else {
+    const minimumClassification = inferMinimumClassificationFromSensitiveFiles(sensitiveFiles);
+    if (classification && !classificationAtLeast(classification, minimumClassification)) {
+      failures.push(
+        `Classification "${classification}" in ${filePath} is below computed minimum "${minimumClassification}" for changed compliance-sensitive files`
+      );
+    }
 
-  const declaredSurfaces = parseCsvField(frontMatter.surfaces);
-  const impactedSurfaces = inferSurfacesFromSensitiveFiles(sensitiveFiles);
-  const missingSurfaces = impactedSurfaces.filter((surface) => !declaredSurfaces.includes(surface));
-  if (missingSurfaces.length > 0) {
-    failures.push(`Front matter surfaces in ${filePath} do not cover changed surfaces: ${missingSurfaces.join(', ')}`);
+    const declaredSurfaces = parseCsvField(frontMatter.surfaces);
+    const impactedSurfaces = inferSurfacesFromSensitiveFiles(sensitiveFiles);
+    const missingSurfaces = impactedSurfaces.filter((surface) => !declaredSurfaces.includes(surface));
+    if (missingSurfaces.length > 0) {
+      failures.push(`Front matter surfaces in ${filePath} do not cover changed surfaces: ${missingSurfaces.join(', ')}`);
+    }
   }
 
   const reasonCodes = parseCsvField(frontMatter.reason_codes_impacted);
