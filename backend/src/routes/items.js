@@ -13,6 +13,7 @@ import {
   validateBarcodeIdParam,
   validateBarcodeResolveQuery,
   validateExternalProductLookupQuery,
+  validateExternalProductImageImport,
   validateAttachBarcode,
   validateGenerateBarcode,
   validateUpdateBarcode,
@@ -33,7 +34,6 @@ import {
   storefrontCatalogBulkImageUpload,
   storefrontCatalogGalleryImageUpload,
   storefrontCatalogImageUpload,
-  upload,
   menuImportFileUpload
 } from '../config/uploadConfig.js';
 
@@ -94,6 +94,7 @@ router.get('/storefront-overrides', checkPermission(PERMISSIONS.INVENTORY.action
 router.patch('/storefront-overrides/bulk', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), itemController.updateBulkStorefrontCatalogOverrides);
 router.post('/storefront-images/bulk', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), storefrontCatalogBulkImageUpload.array('images', 50), itemController.uploadBulkStorefrontCatalogImages);
 router.patch('/:item_id/storefront-override', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, validateUpdateStorefrontCatalogOverride, itemController.updateStorefrontCatalogOverride);
+router.post('/:item_id/storefront-image/external', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, validateExternalProductImageImport, itemController.importExternalStorefrontCatalogImage);
 router.post('/:item_id/storefront-image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, storefrontCatalogImageUpload.single('image'), itemController.uploadStorefrontCatalogImage);
 router.post('/:item_id/storefront-images', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, storefrontCatalogGalleryImageUpload.array('images', 5), itemController.uploadStorefrontCatalogGalleryImages);
 router.patch('/:item_id/storefront-images/gallery', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, itemController.updateStorefrontCatalogGallery);

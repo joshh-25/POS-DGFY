@@ -76,7 +76,12 @@ import { subscribeToPosCatalogUpdates } from '../utils/posCatalogRefresh.js';
 import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
 import { getFolders } from '@/services/itemService.js';
 import { getAllSettings } from '@/services/settingsService';
-import { resolveAppAssetUrl, resolveAssetUrl, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
+import {
+    advanceAssetImageFallback,
+    resolveAppAssetUrl,
+    resolveAssetUrl,
+    resolveAssetVariantUrl
+} from '@/src/utils/assetUrl.js';
 import { openSkupervisorPath } from '../utils/skupervisorHandoff.js';
 import {
     notifyIminWebPosReady,
@@ -636,10 +641,12 @@ const resolveMappedPosItemImage = (item = {}) => {
 
 const resolvePosCatalogImageSources = (item = {}, settings = {}) => {
     const configuredSrc = resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail');
+    const configuredLargeSrc = resolveAssetVariantUrl(item?.storefront_image_url, 'large');
     const mappedSrc = resolveAssetVariantUrl(resolveAppAssetUrl(resolveMappedPosItemImage(item)), 'thumbnail');
     const fallbackSrc = resolveCompanyIconFallbackUrl(settings);
     return {
         configuredSrc,
+        configuredLargeSrc,
         mappedSrc,
         fallbackSrc,
         src: configuredSrc || mappedSrc || fallbackSrc
@@ -3209,6 +3216,7 @@ export default function POSCheckoutTerminal({
                             const isBestSeller = item?.is_best_seller === true;
                             const isOutOfStock = !isServiceItem && !isAlwaysAvailable && Number(item.current_stock || 0) <= 0;
                             const {
+                                configuredLargeSrc: largePosImageSrc,
                                 fallbackSrc: fallbackPosImageSrc,
                                 src: posImageSrc
                             } = resolvePosCatalogImageSources(item, receiptSettings);
@@ -3262,13 +3270,7 @@ export default function POSCheckoutTerminal({
                                                 height={400}
                                                 className="product-image h-full w-full object-cover object-center"
                                                 onError={(event) => {
-                                                    const fallbackSrc = fallbackPosImageSrc;
-                                                    const currentSrc = String(event.currentTarget.src || '');
-                                                    const alreadyFallback = currentSrc.endsWith(fallbackSrc);
-                                                    if (!alreadyFallback) {
-                                                        event.currentTarget.src = fallbackSrc;
-                                                        return;
-                                                    }
+                                                    if (advanceAssetImageFallback(event, [largePosImageSrc, fallbackPosImageSrc])) return;
                                                     setCatalogImageErrors((previous) => {
                                                         const next = new Set(previous);
                                                         next.add(item.item_id);

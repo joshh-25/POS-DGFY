@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Barcode, Check, ExternalLink, Folder, Loader2, Package, Plus, Search, Trash2, X } from 'lucide-react';
+import { Barcode, Check, ExternalLink, Folder, Loader2, Package, Plus, ScanLine, Search, Trash2, X } from 'lucide-react';
 import { Switch } from "@/components/ui/switch";
 import { dummyItems } from '@/components/data/dummyData';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
@@ -36,6 +36,8 @@ import {
 } from '@/src/features/settings/modeItemTaxonomy.js';
 import { resolveItemFinancialPolicy } from '@/src/features/inventory/itemFinancialPolicy.js';
 import { lookupExternalProduct } from '@/src/services/itemService.js';
+import { getGtinValidationMessage } from '@/src/utils/barcodePolicy.js';
+import ProductQrScannerModal from '@/src/features/inventory/components/ProductQrScannerModal.jsx';
 import { toast } from 'sonner';
 
 const MSME_ITEM_PRESET = Object.freeze({
@@ -367,6 +369,7 @@ export default function ItemFormModal({
   const [acceptedExternalProduct, setAcceptedExternalProduct] = useState(null);
   const [externalLookupLoading, setExternalLookupLoading] = useState(false);
   const [externalLookupError, setExternalLookupError] = useState('');
+  const [externalQrScannerOpen, setExternalQrScannerOpen] = useState(false);
   const isEditingDraft = item?.status === 'draft';
   const isSaving = Boolean(savingAction);
   const folderSuggestionsListId = `item-folder-suggestions-${item?.item_id || item?.id || 'new'}`;
@@ -548,6 +551,7 @@ export default function ItemFormModal({
       setAcceptedExternalProduct(null);
       setExternalLookupError('');
       setExternalLookupLoading(false);
+      setExternalQrScannerOpen(false);
       setTrackServiceCost(initialCategory === 'service' && Number(item.cost_per_unit || 0) > 0);
       if (msmeMode) {
         setMsmeOriginalCategory(item.category || null);
@@ -626,6 +630,7 @@ export default function ItemFormModal({
       setAcceptedExternalProduct(null);
       setExternalLookupError('');
       setExternalLookupLoading(false);
+      setExternalQrScannerOpen(false);
       setTrackServiceCost(false);
       setMsmeOriginalCategory(null);
       setMsmeCategoryTouched(false);
@@ -747,10 +752,12 @@ export default function ItemFormModal({
     }
   };
 
-  const handleExternalProductLookup = async () => {
+  const handleExternalProductLookup = async (codeOverride) => {
     if (externalLookupLoading) return;
-    if (![8, 12, 13, 14].includes(externalBarcode.length)) {
-      setExternalLookupError('Enter a GTIN-8, UPC-A, EAN-13, or GTIN-14 barcode.');
+    const lookupCode = typeof codeOverride === 'string' ? codeOverride : externalBarcode;
+    const validationMessage = getGtinValidationMessage(lookupCode);
+    if (validationMessage) {
+      setExternalLookupError(validationMessage);
       return;
     }
 
@@ -759,7 +766,7 @@ export default function ItemFormModal({
     setExternalProductLookup(null);
     setAcceptedExternalProduct(null);
     try {
-      const result = await lookupExternalProduct(externalBarcode);
+      const result = await lookupExternalProduct(lookupCode);
       setExternalProductLookup(result);
       if (!result?.found) {
         setExternalLookupError('No registry match was found. You can still enter the item manually.');
@@ -774,16 +781,35 @@ export default function ItemFormModal({
     }
   };
 
+  const handleExternalQrDetected = (code) => {
+    setExternalQrScannerOpen(false);
+    handleExternalBarcodeChange(code);
+    void handleExternalProductLookup(code);
+  };
+
   const applyExternalProductDetails = () => {
     if (!externalProductLookup?.found) return;
     const product = externalProductLookup.product || {};
     const descriptionParts = [product.brand, product.quantity].filter(Boolean);
+    const categorySuggestion = String(product.category_suggestion || '').trim().replace(/\s+/g, ' ').slice(0, 100);
+    const matchedCategory = categorySuggestion
+      ? (Array.isArray(folders) ? folders : []).find((folderName) => (
+          String(folderName || '').trim().toLowerCase() === categorySuggestion.toLowerCase()
+        ))
+      : null;
     setFormData((previous) => ({
       ...previous,
       name: product.name || previous.name,
-      description: previous.description || descriptionParts.join(' - ')
+      description: previous.description || descriptionParts.join(' - '),
+      product_folder: matchedCategory || categorySuggestion || previous.product_folder
     }));
     setAcceptedExternalProduct(externalProductLookup);
+  };
+
+  const applyExternalSuggestedPrice = () => {
+    const amount = Number(externalProductLookup?.suggested_price?.amount);
+    if (!Number.isFinite(amount) || amount <= 0) return;
+    handleChange('default_sale_price', amount);
   };
 
   const handleSkuChange = (value) => {
@@ -1180,7 +1206,7 @@ export default function ItemFormModal({
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography pb-0">
+        <DialogContent className="pos-mobile-no-focus-zoom wizard-modal-shell wizard-modal-compact wizard-core-typography pb-0">
           <DialogHeader className="flex-shrink-0">
             <div className="flex items-start justify-between gap-4">
               <DialogTitle className="wizard-title flex items-center gap-2">
@@ -1243,6 +1269,16 @@ export default function ItemFormModal({
                     type="button"
                     variant="outline"
                     className="shrink-0 bg-white"
+                    onClick={() => setExternalQrScannerOpen(true)}
+                    disabled={externalLookupLoading || isSaving}
+                  >
+                    <ScanLine className="mr-2 h-4 w-4" aria-hidden="true" />
+                    Scan QR
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="shrink-0 bg-white"
                     onClick={handleExternalProductLookup}
                     disabled={externalLookupLoading || isSaving || !externalBarcode}
                   >
@@ -1274,18 +1310,43 @@ export default function ItemFormModal({
                         {externalProductLookup.product?.category_suggestion && (
                           <p className="text-xs text-slate-600">Category suggestion: {externalProductLookup.product.category_suggestion}</p>
                         )}
-                        <p className="text-xs text-amber-700">Review before saving. Category and image are not imported automatically.</p>
+                        {externalProductLookup.suggested_price && (
+                          <div className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
+                            <p className="font-semibold">
+                              Suggested selling price: PHP {Number(externalProductLookup.suggested_price.amount).toFixed(2)}
+                            </p>
+                            <p>
+                              {externalProductLookup.suggested_price.label} from Open Prices
+                              {externalProductLookup.suggested_price.location ? ` at ${externalProductLookup.suggested_price.location}` : ''}
+                              {externalProductLookup.suggested_price.observed_at ? ` on ${externalProductLookup.suggested_price.observed_at}` : ''}.
+                            </p>
+                            <p className="mt-1 text-emerald-800">{externalProductLookup.suggested_price.disclaimer}</p>
+                          </div>
+                        )}
+                        <p className="text-xs text-amber-700">Review before saving. The category suggestion is editable; POS image import uses the governed Add POS Item flow.</p>
                       </div>
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="shrink-0"
-                        onClick={applyExternalProductDetails}
-                        disabled={acceptedExternalProduct?.code === externalProductLookup.code}
-                      >
-                        {acceptedExternalProduct?.code === externalProductLookup.code ? <Check className="mr-2 h-4 w-4" /> : null}
-                        {acceptedExternalProduct?.code === externalProductLookup.code ? 'Details selected' : 'Use product details'}
-                      </Button>
+                      <div className="flex shrink-0 flex-col gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          onClick={applyExternalProductDetails}
+                          disabled={acceptedExternalProduct?.code === externalProductLookup.code}
+                        >
+                          {acceptedExternalProduct?.code === externalProductLookup.code ? <Check className="mr-2 h-4 w-4" /> : null}
+                          {acceptedExternalProduct?.code === externalProductLookup.code ? 'Details selected' : 'Use product details'}
+                        </Button>
+                        {externalProductLookup.suggested_price && (
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="outline"
+                            onClick={applyExternalSuggestedPrice}
+                            disabled={Number(formData.default_sale_price) === Number(externalProductLookup.suggested_price.amount)}
+                          >
+                            {Number(formData.default_sale_price) === Number(externalProductLookup.suggested_price.amount) ? 'Price selected' : 'Use suggested price'}
+                          </Button>
+                        )}
+                      </div>
                     </div>
                     <a
                       href={externalProductLookup.product?.provider_product_url || externalProductLookup.attribution?.url}
@@ -2086,6 +2147,12 @@ export default function ItemFormModal({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <ProductQrScannerModal
+        open={externalQrScannerOpen}
+        onOpenChange={setExternalQrScannerOpen}
+        onDetected={handleExternalQrDetected}
+      />
 
       <Dialog open={showCreateSupplierDialog} onOpenChange={setShowCreateSupplierDialog}>
         <DialogContent className="max-w-md">
