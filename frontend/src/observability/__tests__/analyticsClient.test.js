@@ -40,13 +40,37 @@ describe('browser PostHog config', () => {
     expect(config.active).toBe(false);
   });
 
-  it('is inactive when enabled but missing a host', () => {
+  it('is inactive when enabled but missing an API key, even with no host set', () => {
     const config = resolvePostHogBrowserConfig({
-      VITE_POSTHOG_ENABLED: 'true',
-      VITE_POSTHOG_KEY: 'phc_example'
+      VITE_POSTHOG_ENABLED: 'true'
     }, 'skupervisor');
 
     expect(config.active).toBe(false);
+  });
+
+  // With no VITE_POSTHOG_HOST, api_host defaults to the same-origin /ingest
+  // proxy (infrastructure/docker/nginx/nginx.conf.template) rather than going
+  // inactive. Before this, an unset host silently no-op'd analytics; see
+  // docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md.
+  it('defaults to the same-origin /ingest proxy and a fixed ui_host when no host is configured', () => {
+    const config = resolvePostHogBrowserConfig({
+      VITE_POSTHOG_ENABLED: 'true',
+      VITE_POSTHOG_KEY: 'phc_example'
+    }, 'store');
+
+    expect(config.active).toBe(true);
+    expect(config.apiHost).toBe('/ingest');
+    expect(config.uiHost).toBe('https://eu.posthog.com');
+  });
+
+  it('still honors an explicit VITE_POSTHOG_HOST override (e.g. local dev with no proxy)', () => {
+    const config = resolvePostHogBrowserConfig({
+      VITE_POSTHOG_ENABLED: 'true',
+      VITE_POSTHOG_KEY: 'phc_example',
+      VITE_POSTHOG_HOST: 'https://eu.i.posthog.com'
+    }, 'store');
+
+    expect(config.apiHost).toBe('https://eu.i.posthog.com');
   });
 
   it('falls back to the skupervisor surface when none is provided', () => {

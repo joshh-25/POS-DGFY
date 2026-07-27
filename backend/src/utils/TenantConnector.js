@@ -1,9 +1,13 @@
 
 import { Sequelize } from 'sequelize';
 import logger from '../config/logger.js';
+import { getTenantMaxCachedConnections, getTenantPoolMax } from '../config/connectionBudget.js';
 
 // Configuration
-const MAX_CACHED_CONNECTIONS = 20;
+// How many tenant Sequelize instances stay alive at once. Each one holds its own
+// pool of up to getTenantPoolMax() MySQL connections, so this number multiplies —
+// see src/config/connectionBudget.js for the full budget and the startup check.
+const MAX_CACHED_CONNECTIONS = getTenantMaxCachedConnections();
 const IDLE_TIMEOUT_MS = 1000 * 60 * 10; // 10 minutes
 const CLEANUP_INTERVAL_MS = 60000; // Check for idle connections every 60s
 const CONNECTION_WAIT_TIMEOUT_MS = 5000; // Max wait for a pending connection
@@ -76,9 +80,10 @@ class TenantConnector {
                     logging: (msg) => logger.debug(`[Tenant: ${tenant.name}] ${msg}`),
                     pool: {
                         // 5 users per tenant + 2 buffer for concurrent requests from same user.
-                        // 10 tenants × 7 = 70 tenant connections + 30 landlord = 100 total,
-                        // safely under MySQL's default max_connections of 151.
-                        max: 7,
+                        // Worst case across all cached tenants is MAX_CACHED_CONNECTIONS × this
+                        // value, plus the landlord pool — src/config/connectionBudget.js owns
+                        // that arithmetic and warns at boot when it exceeds max_connections.
+                        max: getTenantPoolMax(),
                         min: 0,
                         // Fail fast (10s) instead of making users wait 30s for a connection slot
                         acquire: 10000,

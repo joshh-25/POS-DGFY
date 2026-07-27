@@ -21,6 +21,7 @@ import express from 'express'; // Added missing express import if it was implici
 // Let's just fix the order.
 
 import { testConnection } from './config/database.js';
+import { assertConnectionBudget } from './config/connectionBudget.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { requestContext } from './middleware/requestContext.js';
@@ -842,6 +843,10 @@ const startServer = async () => {
       logger.error('Failed to connect to database. Exiting...');
       process.exit(1);
     }
+
+    // Surface an over-provisioned connection budget at boot rather than as a
+    // wave of "Too many connections" under load. See connectionBudget.js.
+    assertConnectionBudget(logger);
 
     // Runtime schema preflight: fail fast when required migrations/columns are missing.
     if (runtimeSchemaAuditEnabled) {
