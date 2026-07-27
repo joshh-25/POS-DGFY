@@ -155,7 +155,7 @@ const ServicesHeroMobileInfoCards = ({
                   </button>
                 </div>
                 <div style={{ position: 'relative', width: '100%', height: 110, borderRadius: 12, overflow: 'hidden', border: '1px solid #edf2f7', background: '#f8fafc' }}>
-                  <StoresMap stores={serviceHeroModel.mapStores} selectedKey={serviceHeroModel.mapSelectedKey} onSelectStore={() => { }} />
+                  <StoresMap stores={serviceHeroModel.mapStores} selectedKey={serviceHeroModel.mapSelectedKey} onSelectStore={() => { }} height={110} />
                   <button
                     type="button"
                     onClick={() => setIsExpandedMapOpen(true)}

@@ -87,8 +87,17 @@ export function useStorefrontCatalog({
   const bookingPermitted = canUseBooking(selectedStore);
   const serviceHeroModel = useMemo(() => {
     if (!selectedStore || !isServicesMode) return null;
+    // Location records don't carry the tenant's business type, so the
+    // Discovery-shared marker icon lookup (workflow_mode/business_mode) would
+    // otherwise always fall back to the default icon. Carry it over from
+    // selectedStore so this map's pin matches the Discovery Map pin.
     const mapStores = storeLocations.length > 0
-      ? storeLocations.map((location) => ({ ...location, tenant_name: selectedStore?.tenant_name }))
+      ? storeLocations.map((location) => ({
+        ...location,
+        tenant_name: selectedStore?.tenant_name,
+        workflow_mode: selectedStore?.workflow_mode,
+        business_mode: selectedStore?.business_mode
+      }))
       : [selectedStore];
     const locationName = String(selectedLocation?.name || overviewSectionModel?.location?.label || selectedStore?.location_name || '').trim();
     const addressLine = formatStorefrontAddress(selectedLocation || overviewSectionModel?.location || selectedStore || {});
@@ -266,8 +275,17 @@ export function useStorefrontCatalog({
       || selectedStore?.tenant_created_at
       || selectedStore?.created_at
     );
+    // Location records don't carry the tenant's business type, so the
+    // Discovery-shared marker icon lookup (workflow_mode/business_mode) would
+    // otherwise always fall back to the default icon. Carry it over from
+    // selectedStore so this map's pin matches the Discovery Map pin.
     const mapStores = storeLocations.length > 0
-      ? storeLocations.map((location) => ({ ...location, tenant_name: selectedStore?.tenant_name }))
+      ? storeLocations.map((location) => ({
+        ...location,
+        tenant_name: selectedStore?.tenant_name,
+        workflow_mode: selectedStore?.workflow_mode,
+        business_mode: selectedStore?.business_mode
+      }))
       : [selectedStore];
     const whyChooseUs = Array.isArray(overviewSectionModel?.whyChooseUs) && overviewSectionModel.whyChooseUs.length > 0
       ? overviewSectionModel.whyChooseUs.slice(0, 4)

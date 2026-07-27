@@ -60,7 +60,7 @@ const ServicesHeroDesktopContactLocation = ({
       {hasMapData && (
         <div style={{ display: 'grid', gap: 10, alignContent: 'start', marginTop: -30 }}>
           <div style={{ position: 'relative', width: '100%', height: 156, borderRadius: 14, overflow: 'hidden', border: '1px solid #edf2f7', background: '#f8fafc' }}>
-            <StoresMap stores={serviceHeroModel.mapStores} selectedKey={serviceHeroModel.mapSelectedKey} onSelectStore={() => { }} />
+            <StoresMap stores={serviceHeroModel.mapStores} selectedKey={serviceHeroModel.mapSelectedKey} onSelectStore={() => { }} height={156} />
             <button
               type="button"
               onClick={() => setIsExpandedMapOpen(true)}
