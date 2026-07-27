@@ -145,6 +145,20 @@ const normalizeStorefrontImageGallery = (value) => {
                 }),
             original_path: String(entry?.original_path || '').trim() || null,
             classification: String(entry?.classification || '').trim() || null,
+            source: entry?.source && typeof entry.source === 'object'
+                ? {
+                    type: String(entry.source.type || '').trim() || null,
+                    provider: String(entry.source.provider || '').trim() || null,
+                    barcode: String(entry.source.barcode || '').trim() || null,
+                    product_url: String(entry.source.product_url || '').trim() || null,
+                    source_image_url: String(entry.source.source_image_url || '').trim() || null,
+                    attribution_label: String(entry.source.attribution_label || '').trim() || null,
+                    attribution_url: String(entry.source.attribution_url || '').trim() || null,
+                    database_license: String(entry.source.database_license || '').trim() || null,
+                    image_license: String(entry.source.image_license || '').trim() || null,
+                    imported_at: String(entry.source.imported_at || '').trim() || null
+                }
+                : null,
             is_primary: entry?.is_primary === true,
             sort_order: Number.isFinite(Number(entry?.sort_order)) ? Number(entry.sort_order) : index
         }))
@@ -180,6 +194,7 @@ const buildStorefrontImageGallery = ({ primaryPath = null, primaryUrl = null, ga
             }),
             original_path: entry.original_path || null,
             classification: entry.classification || null,
+            source: entry.source || null,
             is_primary: false,
             sort_order: index + 1
         }));
@@ -191,7 +206,8 @@ const buildStorefrontImageGallery = ({ primaryPath = null, primaryUrl = null, ga
                 storedUrl: primary.url || null
             }),
             original_path: normalized[0]?.original_path || null,
-            classification: normalized[0]?.classification || null
+            classification: normalized[0]?.classification || null,
+            source: normalized[0]?.source || null
         }
         : null;
     return enrichedPrimary ? [enrichedPrimary, ...rest] : rest;

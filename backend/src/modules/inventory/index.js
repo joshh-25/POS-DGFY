@@ -38,7 +38,9 @@ import {
   buildUpdateItemBarcodeUseCase
 } from './usecases/barcodeUseCases.js';
 import { buildLookupExternalProductUseCase } from './usecases/lookupExternalProductUseCase.js';
+import { buildImportExternalProductImageUseCase } from './usecases/importExternalProductImageUseCase.js';
 import { buildOpenFoodFactsProductRegistry } from './integrations/openFoodFactsProductRegistry.js';
+import { buildOpenPricesProductPriceRegistry } from './integrations/openPricesProductPriceRegistry.js';
 import { storefrontCatalogImageStorage } from './repositories/storefrontCatalogImageStorage.js';
 import { resolveMovementLocation } from '../../services/locationInventoryService.js';
 import * as cacheService from '../../services/cacheService.js';
@@ -117,9 +119,16 @@ export const resolveItemBarcodeUseCase = buildResolveItemBarcodeUseCase({
   itemRepository,
   resolveLocationScope: resolveMovementLocation
 });
+const openFoodFactsProductRegistry = buildOpenFoodFactsProductRegistry();
+const openPricesProductPriceRegistry = buildOpenPricesProductPriceRegistry();
 export const lookupExternalProductUseCase = buildLookupExternalProductUseCase({
-  productRegistry: buildOpenFoodFactsProductRegistry(),
+  productRegistry: openFoodFactsProductRegistry,
+  priceRegistry: openPricesProductPriceRegistry,
   cache: cacheService
+});
+export const importExternalProductImageUseCase = buildImportExternalProductImageUseCase({
+  lookupExternalProduct: lookupExternalProductUseCase,
+  uploadStorefrontCatalogImage: uploadStorefrontCatalogImageUseCase
 });
 export const resolveItemBarcodeConflictUseCase = buildResolveItemBarcodeConflictUseCase({ itemRepository });
 export const renderItemBarcodeLabelUseCase = buildRenderItemBarcodeLabelUseCase({ itemRepository });

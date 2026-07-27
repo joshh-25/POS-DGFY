@@ -1,5 +1,6 @@
 import { describe, expect, it, jest } from '@jest/globals';
 import { buildOpenFoodFactsProductRegistry } from '../src/modules/inventory/integrations/openFoodFactsProductRegistry.js';
+import { buildOpenPricesProductPriceRegistry } from '../src/modules/inventory/integrations/openPricesProductPriceRegistry.js';
 import { buildLookupExternalProductUseCase } from '../src/modules/inventory/usecases/lookupExternalProductUseCase.js';
 
 describe('external product lookup', () => {
@@ -26,7 +27,7 @@ describe('external product lookup', () => {
         }));
         expect(productRegistry.lookupByGtin).toHaveBeenCalledWith('4006381333931');
         expect(cache.set).toHaveBeenCalledWith(
-            'external-product:test_registry:4006381333931',
+            'external-product:v2:test_registry:4006381333931',
             expect.any(String),
             86400
         );
@@ -40,7 +41,8 @@ describe('external product lookup', () => {
         const lookup = buildLookupExternalProductUseCase({ productRegistry });
 
         await expect(lookup({ code: '4006381333932' })).rejects.toMatchObject({
-            statusCode: 422
+            statusCode: 422,
+            message: 'Invalid GTIN check digit. Scan a real package barcode or enter item details manually.'
         });
         expect(productRegistry.lookupByGtin).not.toHaveBeenCalled();
     });
@@ -100,5 +102,81 @@ describe('external product lookup', () => {
                 headers: expect.objectContaining({ 'User-Agent': 'DGFY-Test/1.0' })
             })
         );
+    });
+
+    it('maps the newest recent Philippine observed price as an advisory suggestion', async () => {
+        const fetchImpl = jest.fn().mockResolvedValue({
+            ok: true,
+            status: 200,
+            json: async () => ({
+                items: [
+                    {
+                        price: 80,
+                        currency: 'PHP',
+                        date: '2026-07-20',
+                        location: { osm_address_country_code: 'US', osm_name: 'Wrong country' }
+                    },
+                    {
+                        price: 75,
+                        price_is_discounted: true,
+                        price_without_discount: 90,
+                        currency: 'PHP',
+                        date: '2026-07-19',
+                        location: {
+                            osm_address_country_code: 'PH',
+                            osm_display_name: 'Example Market, Iloilo City, Philippines'
+                        }
+                    }
+                ]
+            })
+        });
+        const registry = buildOpenPricesProductPriceRegistry({
+            fetchImpl,
+            baseUrl: 'https://prices.openfoodfacts.org',
+            userAgent: 'DGFY-Test/1.0',
+            timeoutMs: 100,
+            maxAgeDays: 365,
+            now: () => new Date('2026-07-27T00:00:00.000Z')
+        });
+
+        const result = await registry.lookupSuggestedPriceByGtin('4806506315008');
+
+        expect(result).toEqual(expect.objectContaining({
+            amount: 90,
+            observed_amount: 75,
+            currency: 'PHP',
+            observed_at: '2026-07-19',
+            discounted: true,
+            provider: 'open_prices'
+        }));
+        expect(fetchImpl).toHaveBeenCalledWith(
+            expect.stringContaining('product_code=4806506315008'),
+            expect.any(Object)
+        );
+        expect(fetchImpl.mock.calls[0][0]).toContain('currency=PHP');
+        expect(fetchImpl.mock.calls[0][0]).toContain('date__gte=2025-07-27');
+    });
+
+    it('keeps product lookup successful when optional price enrichment fails', async () => {
+        const lookup = buildLookupExternalProductUseCase({
+            productRegistry: {
+                name: 'test_registry',
+                lookupByGtin: jest.fn().mockResolvedValue({
+                    found: true,
+                    provider: 'test_registry',
+                    product: { name: 'Test Product' }
+                })
+            },
+            priceRegistry: {
+                name: 'test_prices',
+                lookupSuggestedPriceByGtin: jest.fn().mockRejectedValue(new Error('price provider unavailable'))
+            }
+        });
+
+        await expect(lookup({ code: '4006381333931' })).resolves.toEqual(expect.objectContaining({
+            found: true,
+            code: '4006381333931',
+            product: { name: 'Test Product' }
+        }));
     });
 });

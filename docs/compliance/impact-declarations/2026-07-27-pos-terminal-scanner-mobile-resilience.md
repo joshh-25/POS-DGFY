@@ -38,3 +38,7 @@ Regulatory. This declaration covers POS scanner and terminal presentation change
 ## Verification Evidence
 
 Required validation includes targeted scanner and terminal tests, POS build, architecture and compliance checks, and `git diff --check`.
+
+## Change Batches
+
+The barcode registry adapter and the product-import route are delivered before the terminal scanner presentation changes. Both batches retain the same server-side validation and tenant-bound inventory contracts.

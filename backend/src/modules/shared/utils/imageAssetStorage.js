@@ -223,11 +223,6 @@ export const storeOptimizedImageAsset = async ({
 
         const generatedVariants = {};
         for (const [variantKey, width] of Object.entries(IMAGE_VARIANT_WIDTHS)) {
-            if (variantKey !== 'large' && Number.isFinite(sourceWidth) && sourceWidth < width) {
-                generatedVariants[variantKey] = null;
-                continue;
-            }
-
             const variantFilename = `${IMAGE_VARIANT_FILE_NAMES[variantKey]}${publicExt}`;
             const variantRelativePath = path.posix.join(
                 normalizedSurface,

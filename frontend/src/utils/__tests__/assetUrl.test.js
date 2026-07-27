@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { resolveAppAssetUrl, resolveAssetOrigin, resolveAssetUrl, resolveAssetVariantUrl, resolveAssetVariantUrls } from '../assetUrl.js';
+import {
+  advanceAssetImageFallback,
+  resolveAppAssetUrl,
+  resolveAssetOrigin,
+  resolveAssetUrl,
+  resolveAssetVariantUrl,
+  resolveAssetVariantUrls
+} from '../assetUrl.js';
 
 describe('assetUrl utilities', () => {
   it('prefers VITE_ASSET_BASE_URL over API origins', () => {
@@ -57,5 +64,34 @@ describe('assetUrl utilities', () => {
       medium_url: 'https://api.surebizcorp.com/uploads/storefront-catalog/t1/item-1-abcd1234/medium.webp',
       large_url: 'https://api.surebizcorp.com/uploads/storefront-catalog/t1/item-1-abcd1234/large.webp'
     });
+  });
+
+  it('advances through image fallbacks without retrying the current source', () => {
+    const image = {
+      currentSrc: 'https://pos.example.test/uploads/item/thumb.webp',
+      src: 'https://pos.example.test/uploads/item/thumb.webp',
+      dataset: {},
+      ownerDocument: { baseURI: 'https://pos.example.test/' }
+    };
+    const event = { currentTarget: image };
+
+    expect(advanceAssetImageFallback(event, [
+      '/uploads/item/large.webp',
+      '/uploads/company-icon.png'
+    ])).toBe(true);
+    expect(image.src).toBe('/uploads/item/large.webp');
+
+    image.currentSrc = 'https://pos.example.test/uploads/item/large.webp';
+    expect(advanceAssetImageFallback(event, [
+      '/uploads/item/large.webp',
+      '/uploads/company-icon.png'
+    ])).toBe(true);
+    expect(image.src).toBe('/uploads/company-icon.png');
+
+    image.currentSrc = 'https://pos.example.test/uploads/company-icon.png';
+    expect(advanceAssetImageFallback(event, [
+      '/uploads/item/large.webp',
+      '/uploads/company-icon.png'
+    ])).toBe(false);
   });
 });
