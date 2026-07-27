@@ -12,7 +12,7 @@ export default (sequelize) => {
         },
         tenant_id: {
             type: DataTypes.UUID,
-            allowNull: false
+            allowNull: true
         },
         tenant_name: {
             type: DataTypes.STRING(255),
@@ -20,7 +20,24 @@ export default (sequelize) => {
         },
         tenant_company_token: {
             type: DataTypes.STRING(255),
-            allowNull: false
+            allowNull: true
+        },
+        entity_type: {
+            type: DataTypes.STRING(32),
+            allowNull: false,
+            defaultValue: 'dgfy_native'
+        },
+        external_provider: {
+            type: DataTypes.STRING(60),
+            allowNull: true
+        },
+        external_reference_id: {
+            type: DataTypes.STRING(120),
+            allowNull: true
+        },
+        external_storefront_url: {
+            type: DataTypes.STRING(500),
+            allowNull: true
         },
         slug: {
             type: DataTypes.STRING(120),

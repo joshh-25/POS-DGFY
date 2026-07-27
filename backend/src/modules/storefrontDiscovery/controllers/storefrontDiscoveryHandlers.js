@@ -1,7 +1,10 @@
 import {
     listStorefrontDiscoveryUseCase,
     listStorefrontMapPinsUseCase,
-    getStorefrontProfileUseCase
+    getStorefrontProfileUseCase,
+    upsertExternalStorefrontListingUseCase,
+    deleteExternalStorefrontListingUseCase,
+    listExternalStorefrontListingsUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 
@@ -78,8 +81,70 @@ export const getStorefrontProfile = async (req, res, next) => {
     }
 };
 
+export const upsertExternalListing = async (req, res, next) => {
+    try {
+        const result = await upsertExternalStorefrontListingUseCase({
+            slug: req.validatedParams?.slug || req.params.slug,
+            payload: req.validatedData || req.body
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => (result.data?.status === 'created' ? 201 : 200),
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const deleteExternalListing = async (req, res, next) => {
+    try {
+        const result = await deleteExternalStorefrontListingUseCase({
+            slug: req.validatedParams?.slug || req.params.slug
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const listExternalListings = async (req, res, next) => {
+    try {
+        const result = await listExternalStorefrontListingsUseCase();
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export default {
     listStorefrontDiscovery,
     listStorefrontMapPins,
-    getStorefrontProfile
+    getStorefrontProfile,
+    upsertExternalListing,
+    deleteExternalListing,
+    listExternalListings
 };

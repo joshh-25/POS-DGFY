@@ -7,6 +7,9 @@ const getTenantConnectionMock = jest.fn();
 const getTenantModelsMock = jest.fn();
 const systemSettingFindAllMock = jest.fn();
 const reconcileMock = jest.fn();
+const upsertExternalListingMock = jest.fn();
+const removeExternalListingMock = jest.fn();
+const listExternalListingsMock = jest.fn(async () => []);
 const loggerInfoMock = jest.fn();
 const loggerWarnMock = jest.fn();
 const getStorefrontDiscoveryCacheVersionMock = jest.fn(() => 1);
@@ -25,7 +28,10 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
 }));
 
 jest.unstable_mockModule('../src/services/storefrontDiscoveryIndexService.js', () => ({
-  reconcileStorefrontDiscoveryIndex: reconcileMock
+  reconcileStorefrontDiscoveryIndex: reconcileMock,
+  upsertExternalStorefrontListing: upsertExternalListingMock,
+  removeExternalStorefrontListing: removeExternalListingMock,
+  listExternalStorefrontListings: listExternalListingsMock
 }));
 
 jest.unstable_mockModule('../src/services/storefrontDiscoveryCacheState.js', () => ({

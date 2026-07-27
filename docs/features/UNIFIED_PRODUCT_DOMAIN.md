@@ -227,13 +227,16 @@ Whether Cinema and Doctors end up as Tier 2 native or stay `external_listing`
 is **explicitly undecided per domain** — this design must not force that
 choice.
 
-Known schema blockers for `external_listing`, to resolve when Phase 7 is
-implemented: `StorefrontDiscoveryIndex.{tenant_id, tenant_name,
-tenant_company_token, slug}` are all `NOT NULL` with no `entity_type`/`source`
-discriminator, and reconciliation
-(`backend/src/services/storefrontDiscoveryIndexService.js`) hard-gates on
-`Tenant.findOne({ status: 'active' })`, so a non-tenant row cannot exist today.
-`DgfyCustomerActivity.tenant_id` is similarly `NOT NULL`, blocking a later
+Known schema blockers for `external_listing`, resolved in Phase 8:
+`StorefrontDiscoveryIndex.{tenant_id, tenant_name, tenant_company_token, slug}`
+were all `NOT NULL` with no `entity_type`/`source` discriminator, and
+reconciliation (`backend/src/services/storefrontDiscoveryIndexService.js`)
+hard-gated on `Tenant.findOne({ status: 'active' })`, so a non-tenant row could
+not exist. Phase 8 added `entity_type` (`dgfy_native` | `external_listing`),
+made `tenant_id`/`tenant_company_token` nullable, and scoped reconciliation's
+prune sweep to `entity_type: 'dgfy_native'` so external-listing rows are never
+touched by it.
+`DgfyCustomerActivity.tenant_id` is still `NOT NULL`, blocking a later
 unified native+external "my bookings" surface.
 
 ### Axis 4 — Availability & tracking mode (per product, permissive)
@@ -534,7 +537,7 @@ much later, Phase 8 — the `external_ims`/`recipe_derived` delegation seam.
 
 ## Governance prerequisites (named here; not performed in this pass)
 
-Required before Phase 8 (`external_ims`) can ship — amending an accepted ADR
+Required before Phase 9 (`external_ims`) can ship — amending an accepted ADR
 is its own governance action, out of scope for this documentation pass:
 
 - **ADR 0029 amendment** — its core rule ("Only Inventory records stock

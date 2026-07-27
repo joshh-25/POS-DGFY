@@ -48,7 +48,8 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260724000001-enforce-one-open-shift-per-operator.cjs' },
         { name: '20260502000001-add-services-mode-booking-tables.cjs' },
         { name: '20260726000001-add-tracking-mode-to-items.cjs' },
-        { name: '20260726000002-add-service-booking-lines.cjs' }
+        { name: '20260726000002-add-service-booking-lines.cjs' },
+        { name: '20260726000003-add-entity-type-to-discovery-index.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -275,7 +276,12 @@ const buildHealthySequelizeMock = () => ({
                 },
                 storefront_discovery_index: {
                     storefront_discovery_index_id: {},
-                    tenant_id: {},
+                    tenant_id: { allowNull: true },
+                    tenant_company_token: { allowNull: true },
+                    entity_type: { allowNull: false },
+                    external_provider: {},
+                    external_reference_id: {},
+                    external_storefront_url: {},
                     slug: {},
                     is_visible: {},
                     storefront_cover_image_url: {},
