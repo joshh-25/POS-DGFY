@@ -39,8 +39,10 @@ jest.unstable_mockModule('openai', () => ({
 describe('menuExtractionService', () => {
     let extractMenuItemsFromText;
     let extractMenuItemsFromImage;
+    let extractMenuItemsFromFile;
     let buildSignedCsv;
     let extractMenuCsvFromFile;
+    let resolveTenantWorkflowMode;
     let MenuExtractionError;
     let previewImport;
 
@@ -49,8 +51,10 @@ describe('menuExtractionService', () => {
         const mod = await import('../src/services/menuExtractionService.js');
         extractMenuItemsFromText = mod.extractMenuItemsFromText;
         extractMenuItemsFromImage = mod.extractMenuItemsFromImage;
+        extractMenuItemsFromFile = mod.extractMenuItemsFromFile;
         buildSignedCsv = mod.buildSignedCsv;
         extractMenuCsvFromFile = mod.extractMenuCsvFromFile;
+        resolveTenantWorkflowMode = mod.resolveTenantWorkflowMode;
         MenuExtractionError = mod.MenuExtractionError;
 
         const csvMod = await import('../src/services/csvImportService.js');
@@ -186,6 +190,55 @@ describe('menuExtractionService', () => {
             expect(result.success).toBe(false);
             expect(result.details).toMatchObject({ code: 'WORKFLOW_MODE_TEMPLATE_MISMATCH' });
         });
+
+        // Regression coverage for the batch-import SKU fix: the stamp used to be
+        // computed inside the row .map(), so a batch whose rows straddled a
+        // second boundary could emit mixed SKU stamps — and since a SKU
+        // collision resolves to a silent UPDATE in previewImport rather than an
+        // error, two imports landing in the same second could silently
+        // overwrite each other's items. Hoisting the stamp out of the map fixes
+        // that for both the single-file path (default options, tested above)
+        // and the batch path (skuPrefix/batchToken, tested here).
+        it('stamps every row in a call with the same timestamp regardless of row count', () => {
+            const items = Array.from({ length: 50 }, (_, i) => ({ name: `Item ${i}`, price: 10 + i }));
+            const csvContent = buildSignedCsv(items);
+            const rows = csvContent.split('\n').slice(1);
+            const stamps = rows.map((row) => row.split(',')[0].split('-')[1]);
+            expect(new Set(stamps).size).toBe(1);
+        });
+
+        it('applies a custom skuPrefix and batchToken, keeping SKUs distinguishable across a multi-file batch', async () => {
+            mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('fnb'));
+
+            const csvContent = buildSignedCsv(
+                [{ name: 'Batch Item A', price: 10 }, { name: 'Batch Item B', price: 20 }],
+                { skuPrefix: 'MENUBATCH', batchToken: 'ab12cd' }
+            );
+
+            const result = await previewImport(csvContent);
+            expect(result.success).toBe(true);
+            expect(result.invalidRows).toBe(0);
+            for (const row of result.rows) {
+                expect(row.sku_code).toMatch(/^MENUBATCH-\d{14}-ab12cd-\d{3}$/);
+            }
+        });
+
+        it('keeps two separately-built batches from colliding on sku_code when combined into one import', async () => {
+            mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('fnb'));
+
+            const batchOneCsv = buildSignedCsv([{ name: 'From File 1', price: 10 }], { batchToken: 'file1x' });
+            const batchTwoCsv = buildSignedCsv([{ name: 'From File 2', price: 20 }], { batchToken: 'file2x' });
+
+            // Simulate the merge use case combining two files' rows into one CSV
+            // (drop the second file's header line).
+            const combinedCsv = `${batchOneCsv}\n${batchTwoCsv.split('\n').slice(1).join('\n')}`;
+            const result = await previewImport(combinedCsv);
+
+            expect(result.success).toBe(true);
+            expect(result.invalidRows).toBe(0);
+            const skus = result.rows.map((row) => row.sku_code);
+            expect(new Set(skus).size).toBe(2);
+        });
     });
 
     describe('extractMenuItemsFromImage', () => {
@@ -236,6 +289,44 @@ describe('menuExtractionService', () => {
                     name: 'MenuExtractionError',
                     code: 'UNSUPPORTED_FILE_TYPE'
                 });
+        });
+    });
+
+    // extractMenuItemsFromFile is the function workers/menuImportWorker.js calls
+    // directly for batch import — deliberately WITHOUT a workflow-mode check,
+    // since the worker has no tenant DB access. That check happens once, in
+    // request context, in modules/menuImport/usecases/createMenuImportJobUseCase.js
+    // before a job is ever enqueued (see resolveTenantWorkflowMode below).
+    describe('extractMenuItemsFromFile', () => {
+        // The PDF branch (extractPdfText -> real pdf-parse/pdfjs-dist) is
+        // deliberately not exercised with an actual PDF buffer here, matching
+        // this suite's existing convention — the extractMenuCsvFromFile tests
+        // above never reach real PDF parsing either (their fnb-check always
+        // short-circuits first). pdfjs-dist needs a native canvas binding this
+        // sandbox doesn't have, which isn't something to paper over with a
+        // deeper mock of a third-party parser; the image branch below already
+        // covers everything specific to this function (no workflow-mode
+        // check) without depending on that binding.
+        it('extracts items from an image without checking tenant workflow mode', async () => {
+            mockOpenAiJson({ items: [{ name: 'From Image', price: 45 }] });
+
+            const result = await extractMenuItemsFromFile(Buffer.from('fake-png-bytes'), 'image/png', { user_id: 1 });
+
+            expect(mockGetAllSettingsUseCase).not.toHaveBeenCalled();
+            expect(result.kind).toBe('image');
+            expect(result.items).toEqual([{ name: 'From Image', price: 45, section: null, description: null }]);
+        });
+
+        it('throws UNSUPPORTED_FILE_TYPE for anything other than pdf/jpeg/png', async () => {
+            await expect(extractMenuItemsFromFile(Buffer.from('x'), 'image/gif', { user_id: 1 }))
+                .rejects.toMatchObject({ name: 'MenuExtractionError', code: 'UNSUPPORTED_FILE_TYPE' });
+        });
+    });
+
+    describe('resolveTenantWorkflowMode', () => {
+        it('is exported for reuse by createMenuImportJobUseCase and normalizes the tenant setting', async () => {
+            mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('fnb'));
+            await expect(resolveTenantWorkflowMode()).resolves.toBe('fnb');
         });
     });
 });

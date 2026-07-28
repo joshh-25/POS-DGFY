@@ -255,9 +255,15 @@ const escapeCsvCell = (value) => {
     return str;
 };
 
-const slugForSku = (name, index) => {
-    const stamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14); // YYYYMMDDHHmmss
-    return `PDFMENU-${stamp}-${String(index + 1).padStart(3, '0')}`.slice(0, 50);
+// skuPrefix/batchToken let a multi-file batch import (modules/menuImport/) stamp
+// every row in the batch with the same prefix/token while numbering
+// contiguously across files — see buildSignedCsv below for why `stamp` is
+// computed once per call rather than once per row.
+const slugForSku = (index, { stamp, skuPrefix = 'PDFMENU', batchToken = '' } = {}) => {
+    const parts = [skuPrefix, stamp];
+    if (batchToken) parts.push(batchToken);
+    parts.push(String(index + 1).padStart(3, '0'));
+    return parts.join('-').slice(0, 50);
 };
 
 /**
@@ -268,17 +274,30 @@ const slugForSku = (name, index) => {
  * require. Producing a signed CSV — rather than new item-creation code — means
  * PDF-imported rows flow through the exact same validation/persistence path as
  * CSV-imported rows.
+ *
+ * `stamp` is computed once for the whole call, not per row — computing it
+ * inside the row .map() (as this used to do) let a batch whose rows straddle
+ * a second boundary emit mixed SKU stamps, and since a SKU collision resolves
+ * to a silent UPDATE in the CSV import pipeline rather than an error, two
+ * imports landing in the same second could silently overwrite each other's
+ * items. `batchToken` lets a multi-file batch (modules/menuImport/) keep SKUs
+ * unique across the whole batch using one shared, contiguous index instead of
+ * a per-file one.
  * @param {Array<{name, price, section, description}>} extractedItems
+ * @param {Object} [options]
+ * @param {string} [options.skuPrefix='PDFMENU']
+ * @param {string} [options.batchToken=''] - short token distinguishing this batch, e.g. derived from a job id.
  * @returns {string} CSV content
  */
-const buildSignedCsv = (extractedItems) => {
+const buildSignedCsv = (extractedItems, { skuPrefix = 'PDFMENU', batchToken = '' } = {}) => {
     const preset = resolveItemPreset('fnb', 'menu_item');
     const issuedAt = new Date().toISOString();
     const schemaVersion = TEMPLATE_SCHEMA_VERSION;
     const signature = buildTemplateSignature({ workflowMode: 'fnb', schemaVersion, issuedAt });
+    const stamp = issuedAt.replace(/[^0-9]/g, '').slice(0, 14); // YYYYMMDDHHmmss
 
     const rows = extractedItems.map((item, index) => ([
-        slugForSku(item.name, index),
+        slugForSku(index, { stamp, skuPrefix, batchToken }),
         item.name,
         preset.category,
         preset.product_type,
@@ -305,10 +324,51 @@ const buildSignedCsv = (extractedItems) => {
 
 // Exported for focused unit testing (mirrors csvImportService.js's convention
 // of exporting internal helpers like buildTemplateSignature/parseCSV) — not
-// intended as a general-purpose public API of this module.
-export { extractMenuItemsFromText, extractMenuItemsFromImage, buildSignedCsv };
+// intended as a general-purpose public API of this module. resolveTenantWorkflowMode
+// is also a real dependency of modules/menuImport/usecases/createMenuImportJobUseCase.js,
+// which needs the same tenant-workflow-mode check the single-file path below
+// does, run in request context before a batch job is ever enqueued (the
+// worker that drains the batch queue has no tenant DB access — see
+// modules/menuImport/README.md).
+export { extractMenuItemsFromText, extractMenuItemsFromImage, buildSignedCsv, resolveTenantWorkflowMode };
 
 const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png'];
+
+/**
+ * Extracts menu items from a single file buffer — PDF text, or PNG/JPG vision
+ * — WITHOUT the tenant workflow-mode check or CSV serialization. This is the
+ * function the batch import worker (workers/menuImportWorker.js) calls
+ * directly: that worker deliberately has no tenant DB access, so it cannot
+ * itself check workflow mode — modules/menuImport/usecases/createMenuImportJobUseCase.js
+ * does that check once, in request context, before a job is ever enqueued.
+ * extractMenuCsvFromFile (below) is the single-file path and still does its
+ * own workflow-mode check, since it has no separate "create job" step to do
+ * it in.
+ * @param {Buffer} fileBuffer
+ * @param {string} mimeType - 'application/pdf', 'image/jpeg', or 'image/png'
+ * @param {Object} [user] - requesting user, for AI usage logging
+ * @returns {Promise<{items: Array<{name,price,section,description}>, kind: 'pdf_text'|'image', pages: number}>}
+ */
+export const extractMenuItemsFromFile = async (fileBuffer, mimeType, user) => {
+    if (mimeType === 'application/pdf') {
+        const menuText = await extractPdfText(fileBuffer);
+        if (!menuText) {
+            throw new MenuExtractionError(
+                "Couldn't read any text from this PDF. Try a text-based PDF export, or upload a PNG/JPG photo of your menu instead.",
+                'PDF_TEXT_EMPTY'
+            );
+        }
+        const items = await extractMenuItemsFromText(menuText, user);
+        return { items, kind: 'pdf_text', pages: 1 };
+    }
+
+    if (IMAGE_MIME_TYPES.includes(mimeType)) {
+        const items = await extractMenuItemsFromImage(fileBuffer, mimeType, user);
+        return { items, kind: 'image', pages: 1 };
+    }
+
+    throw new MenuExtractionError('Unsupported file type for menu import.', 'UNSUPPORTED_FILE_TYPE');
+};
 
 /**
  * Extracts menu items from an uploaded PDF or PNG/JPG menu photo and returns
@@ -335,21 +395,7 @@ export const extractMenuCsvFromFile = async (fileBuffer, mimeType, user) => {
         );
     }
 
-    let items;
-    if (mimeType === 'application/pdf') {
-        const menuText = await extractPdfText(fileBuffer);
-        if (!menuText) {
-            throw new MenuExtractionError(
-                "Couldn't read any text from this PDF. Try a text-based PDF export, or upload a PNG/JPG photo of your menu instead.",
-                'PDF_TEXT_EMPTY'
-            );
-        }
-        items = await extractMenuItemsFromText(menuText, user);
-    } else if (IMAGE_MIME_TYPES.includes(mimeType)) {
-        items = await extractMenuItemsFromImage(fileBuffer, mimeType, user);
-    } else {
-        throw new MenuExtractionError('Unsupported file type for menu import.', 'UNSUPPORTED_FILE_TYPE');
-    }
+    const { items } = await extractMenuItemsFromFile(fileBuffer, mimeType, user);
 
     if (items.length === 0) {
         throw new MenuExtractionError(
@@ -361,4 +407,12 @@ export const extractMenuCsvFromFile = async (fileBuffer, mimeType, user) => {
     return { csvContent: buildSignedCsv(items), itemCount: items.length };
 };
 
-export default { extractMenuCsvFromFile, extractMenuItemsFromText, extractMenuItemsFromImage, buildSignedCsv, MenuExtractionError };
+export default {
+    extractMenuCsvFromFile,
+    extractMenuItemsFromFile,
+    extractMenuItemsFromText,
+    extractMenuItemsFromImage,
+    buildSignedCsv,
+    resolveTenantWorkflowMode,
+    MenuExtractionError
+};
