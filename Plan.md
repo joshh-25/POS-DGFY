@@ -1,3 +1,15 @@
+# Plan — Remove Redundant Storefront Location Header Banner
+
+## High-Level Strategy
+Perform a UI-only deletion of the redundant location header card banner (displaying the store icon, "New Location", and "Active" status badge) situated right above the 2x2 settings grid in `TerminalOperationsWorkspace.jsx` (lines 7643–7729). No backend logic, routing, APIs, form bindings, or other UI components will be modified.
+
+## Goals
+- [ ] 1. **UI Removal**: Delete the top banner card element (`Selected Location Action Header Card`) sitting above the 2x2 form section grid in the Storefront Locations tab.
+- [ ] 2. **Preserve Existing Behavior**: Keep all location sidebar cards, 2x2 form input cards (Basic Details, Coordinates, Map & Coverage, Operational Settings), Action Bar buttons (`Clear`, `Add Location`/`Update Location`), and map functionality 100% intact.
+- [ ] 3. **Contract Test & Build Verification**: Ensure ESLint, Vitest contract tests, and frontend build compile cleanly without regression.
+
+---
+
 # Plan — POS Storefront Locations UI & Layout Redesign
 
 ## High-Level Strategy

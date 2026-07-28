@@ -1,3 +1,27 @@
+# Implementation — Remove Redundant Storefront Location Header Banner
+
+## Proposed Changes
+
+### POS Terminal Components
+
+#### [MODIFY] [TerminalOperationsWorkspace.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx)
+- Delete the `Selected Location Action Header Card` block (lines ~7643–7729) rendering the banner with store icon, "New Location", and "Active" badge above the 2x2 section grid.
+
+## Verification Plan
+
+### Automated Tests
+- Run Vitest POS contract tests:
+  `cmd /c npx vitest run src/features/pos/__tests__/storefrontItemQr.contract.test.js`
+  `cmd /c npx vitest run src/features/pos/__tests__/posAlwaysAvailable.contract.test.js`
+- Run linter:
+  `cmd /c npm run lint` in `frontend` directory.
+
+### Manual Verification
+- Open POS Terminal Operations workspace → Storefront tab → Locations section.
+- Confirm the "New Location Active" header card banner above the 2x2 grid is removed.
+
+---
+
 # Implementation — POS Storefront Locations UI & Layout Redesign
 
 ## Proposed Changes
@@ -3093,3 +3117,12 @@ Reduce the layout size of the "Apply Discount" modal dialog further to make it e
 - Added distinct loading, retryable catalog-error, item-details, and confirmed not-found states.
 - Kept loaded out-of-stock items on their detail page so the existing sold-out behavior remains authoritative.
 - Reused the existing catalog refresh action for retries without adding a second item request or changing Storefront APIs.
+
+# 2026-07-28 - Stable POS startup hydration
+
+- Prevented Settings or another protected POS page from rendering before authentication and tenant setup hydration complete.
+- Reset the startup gate before every terminal unlock so startup follows a single loading-to-workspace transition.
+- Stopped locked-state setup hydration from incorrectly reporting that tenant setup loading had finished.
+- Preserved onboarding completion in the tenant setup snapshot loaded during company selection.
+- Reused the same restoration screen for startup and lazy POS module loading.
+- Verified the focused POS contracts, targeted lint, and the POS production build.
