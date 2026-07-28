@@ -931,6 +931,26 @@ export const getStorefrontDiscoveryIndexSnapshotForTenant = async ({ tenantId } 
     };
 };
 
+/**
+ * Replace a tenant's discovery-index row atomically.
+ *
+ * There is no upsert here because a tenant's row is keyed by tenant_id but its
+ * contents (slug, location, catalog snapshot) are rebuilt wholesale, so the
+ * write has always been delete-then-insert. Unwrapped, that leaves a window
+ * where a failure between the two -- exactly what MySQL connection exhaustion
+ * produces -- drops a live store out of the index permanently, with nothing to
+ * put it back until the next reconcile happens to succeed. The transaction
+ * makes the pair all-or-nothing, so a mid-flight failure leaves the previous
+ * row standing. See
+ * docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md.
+ */
+const replaceDiscoveryIndexRow = async (tenantId, snapshot) => {
+    await StorefrontDiscoveryIndex.sequelize.transaction(async (transaction) => {
+        await StorefrontDiscoveryIndex.destroy({ where: { tenant_id: tenantId }, transaction });
+        await StorefrontDiscoveryIndex.create(snapshot, { transaction });
+    });
+};
+
 export const syncStorefrontDiscoveryIndexForTenant = async ({ tenantId } = {}) => {
     const normalizedTenantId = String(tenantId || '').trim();
     if (!normalizedTenantId) {
@@ -964,8 +984,7 @@ export const syncStorefrontDiscoveryIndexForTenant = async ({ tenantId } = {}) =
     const usedFallbackPrimary = snapshot.__used_fallback_primary === true;
     delete snapshot.__used_fallback_primary;
 
-    await StorefrontDiscoveryIndex.destroy({ where: { tenant_id: normalizedTenantId } });
-    await StorefrontDiscoveryIndex.create(snapshot);
+    await replaceDiscoveryIndexRow(normalizedTenantId, snapshot);
     bumpStorefrontDiscoveryCacheVersion();
     invalidateStorefrontDiscoverySharedSignatureCache();
     return {
@@ -1040,8 +1059,7 @@ export const reconcileStorefrontDiscoveryIndex = async ({
             delete snapshot.__used_fallback_primary;
 
             if (!dryRun) {
-                await StorefrontDiscoveryIndex.destroy({ where: { tenant_id: tenant.id } });
-                await StorefrontDiscoveryIndex.create(snapshot);
+                await replaceDiscoveryIndexRow(tenant.id, snapshot);
                 // Fire-and-forget: keeps geo-search's radius+alias matching roughly in
                 // sync with the Discovery index without slowing down reconciliation
                 // (including the synchronous auto-repair path in storefrontDiscoveryRepository).

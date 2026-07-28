@@ -3,6 +3,20 @@ const FALSE_VALUES = new Set(['0', 'false', 'no', 'off']);
 
 const CONSENT_STORAGE_KEY = 'dgfy_analytics_consent_v1';
 
+// Same-origin path proxied to PostHog EU cloud by infrastructure/docker/nginx/
+// nginx.conf.template's /ingest/ location blocks. Sending event/config/asset
+// requests through this path (rather than straight to eu.i.posthog.com /
+// eu-assets.i.posthog.com) means they satisfy `script-src 'self'` without
+// loosening the storefront's CSP at all -- see
+// docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md for why
+// that mattered: PostHog's core chunk is bundled and already same-origin, but
+// session replay, surveys, web vitals, and dead-click autocapture are fetched
+// at runtime from eu-assets.i.posthog.com and were silently blocked by CSP.
+// VITE_POSTHOG_HOST still overrides this for local dev (pointing straight at
+// PostHog with no proxy in front) or a differently-pathed proxy.
+const DEFAULT_POSTHOG_PROXY_PATH = '/ingest';
+const POSTHOG_UI_HOST = 'https://eu.posthog.com';
+
 let initialized = false;
 let posthogModule = null;
 let initPromise = null;
@@ -18,12 +32,13 @@ export const resolvePostHogBrowserConfig = (env = import.meta.env, surfaceOverri
   const surface = String(surfaceOverride || env.VITE_APP_SURFACE || 'skupervisor').trim().toLowerCase();
   const enabled = parseBooleanFlag(env.VITE_POSTHOG_ENABLED, false);
   const apiKey = String(env.VITE_POSTHOG_KEY || '').trim();
-  const apiHost = String(env.VITE_POSTHOG_HOST || '').trim();
+  const apiHost = String(env.VITE_POSTHOG_HOST || '').trim() || DEFAULT_POSTHOG_PROXY_PATH;
 
   return {
     enabled,
     apiKey,
     apiHost,
+    uiHost: POSTHOG_UI_HOST,
     active: enabled && Boolean(apiKey) && Boolean(apiHost),
     surface,
     environment: String(env.VITE_POSTHOG_ENVIRONMENT || env.MODE || 'development').trim()
@@ -75,6 +90,7 @@ export const initBrowserAnalytics = ({ env = import.meta.env, surface, consent =
     .then(({ default: posthog }) => {
       posthog.init(config.apiKey, {
         api_host: config.apiHost,
+        ui_host: config.uiHost,
         capture_pageview: false,
         person_profiles: 'identified_only'
       });

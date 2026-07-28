@@ -104,6 +104,54 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
+    # Same-origin PostHog (EU cloud) proxy -- see
+    # frontend/src/observability/analyticsClient.js and
+    # docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md.
+    # posthog-js's core chunk is bundled and same-origin, but it lazily
+    # fetches session-replay/surveys/web-vitals/dead-clicks from
+    # eu-assets.i.posthog.com and remote config from /array/ at runtime --
+    # both blocked by the storefront's strict `script-src 'self' blob:` CSP.
+    # Proxying them under /ingest/ makes them 'self' too, so the CSP needs no
+    # loosening. Three locations, matching PostHog's own nginx recipe: static
+    # assets and remote config share the *-assets host, everything else
+    # (event capture, feature flags, session recording ingest) goes to the
+    # regional API host.
+    location /ingest/static/ {
+        set $posthog_assets_upstream eu-assets.i.posthog.com;
+        rewrite ^/ingest/static/(.*)$ /static/$1 break;
+        proxy_pass https://$posthog_assets_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $posthog_assets_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /ingest/array/ {
+        set $posthog_assets_upstream eu-assets.i.posthog.com;
+        rewrite ^/ingest/array/(.*)$ /array/$1 break;
+        proxy_pass https://$posthog_assets_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $posthog_assets_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /ingest/ {
+        set $posthog_upstream eu.i.posthog.com;
+        rewrite ^/ingest/(.*)$ /$1 break;
+        proxy_pass https://$posthog_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $posthog_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
     # Same-origin OpenFreeMap tile proxy -- see
     # frontend/src/components/maps/mapLibreShared.js. In the old PM2/
     # vite-preview production topology this was handled by Vite's own
@@ -161,6 +209,46 @@ server {
         proxy_pass http://$backend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Same-origin PostHog (EU cloud) proxy -- see
+    # frontend/src/observability/analyticsClient.js and
+    # docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md.
+    # Same three locations as the skupervisor/storefront server blocks above.
+    location /ingest/static/ {
+        set $posthog_assets_upstream eu-assets.i.posthog.com;
+        rewrite ^/ingest/static/(.*)$ /static/$1 break;
+        proxy_pass https://$posthog_assets_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $posthog_assets_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /ingest/array/ {
+        set $posthog_assets_upstream eu-assets.i.posthog.com;
+        rewrite ^/ingest/array/(.*)$ /array/$1 break;
+        proxy_pass https://$posthog_assets_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $posthog_assets_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /ingest/ {
+        set $posthog_upstream eu.i.posthog.com;
+        rewrite ^/ingest/(.*)$ /$1 break;
+        proxy_pass https://$posthog_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $posthog_upstream;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
