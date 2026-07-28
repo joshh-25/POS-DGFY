@@ -101,6 +101,7 @@ services:
       SENTRY_RELEASE: ${SENTRY_RELEASE:-}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
       SENTRY_SEND_DEFAULT_PII: ${SENTRY_SEND_DEFAULT_PII:-false}
+      SENTRY_DEBUG: ${SENTRY_DEBUG:-false}
     volumes:
       - ./data/backend/uploads:/app/uploads
       - ./data/backend/storage:/app/storage

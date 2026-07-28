@@ -1,6 +1,7 @@
 import api from './api.js';
 import { setBrowserSession } from './browserSession.js';
 import { clearClientSession } from './sessionCleanup.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../observability/analyticsEvents.js';
 
 let dgfyToken = '';
 let dgfyAccount = null;
@@ -151,6 +152,7 @@ export const registerDgfyAccount = async (payload) => {
   const response = await api.post('/dgfy/auth/register', payload, dgfyRequestConfig(''));
   const data = response.data.data;
   storeDgfySession(data);
+  trackFunnelEvent(ANALYTICS_EVENTS.ACCOUNT_REGISTERED, { account_id: data?.account?.id });
   return data;
 };
 
@@ -190,6 +192,7 @@ export const loginDgfyAccount = async (payload) => {
   const response = await api.post('/dgfy/auth/login', payload, dgfyRequestConfig(''));
   const data = response.data.data;
   storeDgfySession(data);
+  trackFunnelEvent(ANALYTICS_EVENTS.ACCOUNT_SIGNED_IN, { account_id: data?.account?.id });
   return data;
 };
 
