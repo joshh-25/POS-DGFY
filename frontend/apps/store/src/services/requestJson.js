@@ -1,4 +1,5 @@
 import { getCsrfToken } from '../../../../src/services/browserSession.js';
+import { tagRequestFailureContext } from '../../../../src/observability/sentryClient.js';
 
 const buildRequestError = (message, meta = {}) => {
   const error = new Error(String(message || 'Request failed'));
@@ -65,6 +66,11 @@ export const requestJson = async (url, {
       payload?.retryAfterSeconds
       ?? response.headers?.get?.('Retry-After')
     );
+    tagRequestFailureContext({
+      requestId: payload?.request_id || null,
+      url: response.url,
+      status: response.status
+    });
     throw buildRequestError(payload?.message || `Request failed (${response.status})`, {
       status: response.status,
       errorCode: payload?.error_code || null,

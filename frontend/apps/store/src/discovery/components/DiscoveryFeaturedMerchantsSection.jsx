@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Coffee, HeartHandshake, Scissors, ShoppingCart, Store, Wrench } from 'lucide-react';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../src/observability/analyticsEvents.js';
 
 export function DiscoveryFeaturedMerchantsSection({
   discoveryPinsBySlug,
@@ -259,7 +260,14 @@ export function DiscoveryFeaturedMerchantsSection({
                     </div>
                   )}
 
-                <button onClick={() => goStore(store.slug, preferredLocationId)} style={{ marginTop: 'auto', width: '100%', padding: '12px 0', borderRadius: 12, border: '1.5px solid #1a4e8d', background: 'transparent', color: '#1a4e8d', fontSize: 13, fontWeight: 800, cursor: 'pointer', transition: 'all 0.2s ease', letterSpacing: '0.01em' }} onMouseOver={(e) => {e.target.style.background = '#1a4e8d'; e.target.style.color = '#fff';}} onMouseOut={(e) => {e.target.style.background = 'transparent'; e.target.style.color = '#1a4e8d';}}>
+                <button onClick={() => {
+                  trackFunnelEvent(ANALYTICS_EVENTS.DISCOVERY_STORE_CARD_CLICKED, {
+                    store_slug: store.slug,
+                    store_name: n,
+                    category: c
+                  });
+                  goStore(store.slug, preferredLocationId);
+                }} style={{ marginTop: 'auto', width: '100%', padding: '12px 0', borderRadius: 12, border: '1.5px solid #1a4e8d', background: 'transparent', color: '#1a4e8d', fontSize: 13, fontWeight: 800, cursor: 'pointer', transition: 'all 0.2s ease', letterSpacing: '0.01em' }} onMouseOver={(e) => {e.target.style.background = '#1a4e8d'; e.target.style.color = '#fff';}} onMouseOut={(e) => {e.target.style.background = 'transparent'; e.target.style.color = '#1a4e8d';}}>
                   View Store
                 </button>
               </div>

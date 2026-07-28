@@ -93,6 +93,18 @@ export const initSentry = ({ env = process.env, logger = console } = {}) => {
     tracesSampleRate: config.tracesSampleRate,
     sendDefaultPii: config.sendDefaultPii,
     debug: config.debug,
+    // express/mysql2 integrations patch those modules' exports at import
+    // time (spans for routes/queries) -- they only work if Sentry.init()
+    // runs before express/mysql2 are first imported anywhere in the
+    // process. This is why initSentry() must be called from
+    // src/instrument.js via `node --import`, not from server.js after its
+    // ~65 application imports have already loaded both. httpIntegration
+    // (request isolation, see sentryRequestContext below) is a default and
+    // unaffected by this ordering.
+    integrations: [
+      Sentry.expressIntegration(),
+      Sentry.mysql2Integration()
+    ],
     beforeSend: sanitizeSentryEvent,
     initialScope: {
       tags: {
@@ -109,19 +121,31 @@ export const initSentry = ({ env = process.env, logger = console } = {}) => {
 export const sentryRequestContext = (req, _res, next) => {
   if (!initialized) return next();
 
-  Sentry.setTag('service', 'backend');
-  Sentry.setTag('request_id', req.requestId || null);
-  Sentry.setTag('trace_id', req.traceId || req.requestId || null);
-  Sentry.setTag('surface', req.headers?.['x-dgfy-surface'] || req.headers?.['x-app-surface'] || null);
-  Sentry.setUser(req.user?.user_id || req.user?.id ? { id: String(req.user.user_id || req.user.id) } : null);
+  // Node >=22.12 + Sentry.init() running before app.listen() (both true
+  // here) already gives every incoming request its own isolation scope
+  // automatically via AsyncLocalStorage -- see
+  // https://docs.sentry.io/platforms/javascript/guides/express/install/lightweight.
+  // withIsolationScope() here is Sentry's documented explicit pattern on
+  // top of that: it doesn't depend on the Node-version threshold holding in
+  // every environment this runs in (local dev, a future Node change), and
+  // it's what makes the fork explicit rather than implicit. `next()` runs
+  // synchronously inside the callback, which is what keeps every
+  // downstream middleware/route handler within the forked scope.
+  return Sentry.withIsolationScope(() => {
+    Sentry.setTag('service', 'backend');
+    Sentry.setTag('request_id', req.requestId || null);
+    Sentry.setTag('trace_id', req.traceId || req.requestId || null);
+    Sentry.setTag('surface', req.headers?.['x-dgfy-surface'] || req.headers?.['x-app-surface'] || null);
+    Sentry.setUser(req.user?.user_id || req.user?.id ? { id: String(req.user.user_id || req.user.id) } : null);
 
-  if (req.tenant?.id || req.tenantId) {
-    Sentry.setContext('tenant', {
-      id: String(req.tenant?.id || req.tenantId)
-    });
-  }
+    if (req.tenant?.id || req.tenantId) {
+      Sentry.setContext('tenant', {
+        id: String(req.tenant?.id || req.tenantId)
+      });
+    }
 
-  return next();
+    return next();
+  });
 };
 
 export const sentryErrorHandler = (err, req, res, next) => {
