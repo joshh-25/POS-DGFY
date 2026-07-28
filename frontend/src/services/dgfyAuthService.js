@@ -309,7 +309,20 @@ export const listDgfyAccountCompanies = async (token = getStoredDgfyToken()) => 
 };
 
 export const listDgfyAccountCompaniesForTenantSession = async () => {
-  const response = await api.get('/dgfy/account/companies', dgfyTenantBridgeRequestConfig());
+  // skipAuthRefresh: a DGFY-only storefront visitor (no tenant/IMS session) will
+  // legitimately 401 here -- authenticateDgfyAccountOrTenantMembership forces the
+  // tenant-membership path via x-dgfy-auth-mode and that path requires a tenant
+  // Bearer token the visitor never has. Without this flag, api.js's response
+  // interceptor treats that 401 as an expired *tenant* session, attempts
+  // /auth/refresh-token, fails, and hard-redirects the whole page to
+  // /login?reason=session_expired -- destroying a perfectly valid DGFY session
+  // just because the "other stores" switcher lookup wasn't authorized. Letting
+  // the 401 propagate here instead lands it in fetchStorefrontAccountBranches's
+  // existing catch { return []; }, which just hides the switcher as intended.
+  const response = await api.get('/dgfy/account/companies', {
+    ...dgfyTenantBridgeRequestConfig(),
+    skipAuthRefresh: true
+  });
   return response.data.data;
 };
 
