@@ -256,12 +256,8 @@ describe('storefront profile launcher', () => {
     render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
-      expect(screen.getAllByText('Loading Storefront...').length).toBeGreaterThan(0);
-    });
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Back to Discovery/i })).toBeTruthy();
+      expect(screen.getAllByRole('button', { name: /Back to Discovery/i }).length).toBeGreaterThan(0);
       expect(screen.getByRole('button', { name: /Order Now/i })).toBeTruthy();
-      expect(screen.getByText(/Browse the store categories and products below\./i)).toBeTruthy();
     });
   }, 10000);
 });

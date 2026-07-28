@@ -328,7 +328,10 @@ describe('dgfyAuthService cookie session rehydration', () => {
     const result = await service.listDgfyAccountCompaniesForTenantSession();
 
     expect(apiGet).toHaveBeenCalledTimes(1);
-    expect(apiGet).toHaveBeenCalledWith('/dgfy/account/companies', dgfyTenantBridgeOnlyConfig);
+    expect(apiGet).toHaveBeenCalledWith('/dgfy/account/companies', {
+      ...dgfyTenantBridgeOnlyConfig,
+      skipAuthRefresh: true
+    });
     expect(result.companies[0].company_name).toBe('Current User Company');
   });
 
