@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: frontend
-last_reviewed: 2026-04-30
+last_reviewed: 2026-07-28
 applies_to: pwa_installability_and_service_workers
 topic: pwa_surface_contract
 ---
@@ -51,6 +51,9 @@ POS and Storefront retain their existing service-worker entrypoints.
 1. POS offline operation behavior is governed by ADR 0014 and the durable terminal operation queue contract.
 2. Storefront discovery/catalog HTTP caching remains API-controlled; checkout, order, and mutation routes must remain `no-store`.
 3. Public storefront PWA behavior must not cache checkout/order mutations.
+4. Local standalone POS development runs on port `5174` through `npm run dev:pos` (or as part of `npm run dev:local-pos-stack`). The POS entrypoint does not register a production worker in development.
+5. Before mounting in development, the standalone POS unregisters stale root-scoped workers and clears only `sku-admin-*` / `sku-pos-*` caches. If a prior admin/POS build controlled port `5174`, this one-time reset prevents an old cached HTML shell from requesting missing hashed assets and rendering a white terminal.
+6. A public registration that is still awaiting Platform Admin approval must never navigate to POS. The Storefront registration surface opens the applicant status page instead; POS handoff is available only after approved provisioning creates an accepted active membership.
 
 ## Validation Checklist
 
@@ -75,6 +78,8 @@ Run before rating PWA readiness as user-ready:
    - reload while online
    - reload after transient offline state
    - API/upload routes are not served stale from service-worker cache
+   - local `http://localhost:5174/terminal` renders nonblank with `/@vite/client` and `/src/main.jsx` returning `200`
+   - development has no stale service-worker controller after the automatic reset
 
 ## Current Readiness Rating
 
