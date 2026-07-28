@@ -35,7 +35,11 @@ jobs:
   code-quality:
     uses: ./.github/workflows/pr-code-checks.yml
     with:
-      runner_labels_json: *runner_labels_json
+      # Dependency installation briefly needs substantially more free space
+      # than the retained BuildKit runners can guarantee. Keep this job on an
+      # ephemeral runner so lint and governance checks cannot be skipped by a
+      # full self-hosted disk.
+      runner_labels_json: '["ubuntu-latest"]'
 
   # The build checks deliberately do NOT wait on code-quality. That job takes
   # ~1m45s and is `continue-on-error: true`, so it can never block a merge --
