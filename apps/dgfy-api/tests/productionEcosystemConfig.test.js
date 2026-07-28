@@ -2,7 +2,7 @@ import { describe, it, expect } from '@jest/globals';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const ecosystem = require('../../ecosystem.config.cjs');
+const ecosystem = require('../../../ecosystem.config.cjs');
 
 const findApp = (name) => ecosystem.apps.find((app) => app.name === name);
 

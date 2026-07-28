@@ -16,7 +16,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const settingsPagePath = path.resolve(__dirname, '../../../../Pages/Settings.jsx');
 const compliancePanelPath = path.resolve(__dirname, '../../compliance/components/ComplianceProgramPanel.jsx');
-const compliancePolicyEnginePath = path.resolve(__dirname, '../../../../../backend/src/modules/compliance/policy/compliancePolicyEngine.js');
+const compliancePolicyEnginePath = path.resolve(__dirname, '../../../../../apps/dgfy-api/src/modules/compliance/policy/compliancePolicyEngine.js');
 const posCheckoutTerminalPath = path.resolve(__dirname, '../../pos/components/POSCheckoutTerminal.jsx');
 const terminalPageLayoutPath = path.resolve(__dirname, '../../pos/components/TerminalPageLayout.jsx');
 const SETTINGS_TARGET_PATTERN = /\/settings\?tab=[a-z]+[^\s'"`)]*/g;

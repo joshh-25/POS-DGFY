@@ -27,7 +27,6 @@ export default defineConfig({
       { find: '@/hooks', replacement: path.resolve(__dirname, './src/hooks') },
       { find: '@/components', replacement: path.resolve(__dirname, './Components') },
       { find: '@/Pages', replacement: path.resolve(__dirname, './Pages') },
-      { find: '@/Entities', replacement: path.resolve(__dirname, './Entities') },
       { find: '@/lib', replacement: path.resolve(__dirname, './src/lib') },
       { find: '@/services', replacement: path.resolve(__dirname, './src/services') },
       // General alias to src folder

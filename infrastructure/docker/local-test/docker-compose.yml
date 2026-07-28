@@ -62,7 +62,7 @@ services:
   backend:
     build:
       context: ../../..
-      dockerfile: infrastructure/docker/backend/Dockerfile
+      dockerfile: infrastructure/docker/dgfy-api/Dockerfile
     image: dgfy-local-test-backend:latest
     restart: unless-stopped
     # .env.compose is .env with literal `$` doubled to `$$` — compose
@@ -82,7 +82,7 @@ services:
       # local-test/.env carries production-oriented security flags that
       # assume TLS termination — this stack is plain HTTP on 5173-5175.
       # ENFORCE_HTTPS can be safely disabled. SESSION_COOKIE_SECURE CANNOT:
-      # backend/src/config/productionEnvValidation.cjs hard-fails startup
+      # apps/dgfy-api/src/config/productionEnvValidation.cjs hard-fails startup
       # unless it's "true" whenever NODE_ENV=production. Leaving it true
       # works anyway — modern browsers treat http://localhost as a secure
       # context, so Secure cookies are still set/sent there.

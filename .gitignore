@@ -13,6 +13,10 @@ node_modules/
 /frontend/playwright/.auth/
 /frontend/.env.e2e
 
+# Vite writes one of these next to a vite.config.js whenever the config file
+# itself uses top-level await / ESM features Node can't load directly.
+**/vite.config.js.timestamp-*.mjs
+
 # Production
 /build
 /dist

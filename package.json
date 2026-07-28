@@ -26,7 +26,7 @@
     "start:device-bridge": "cd apps/dgfy-api && npm run start:device-bridge",
     "test": "npm run test:frontend && npm run test:backend",
     "test:frontend": "cd frontend && npm test",
-    "test:frontend:contracts": "cd frontend && npm test -- --run src/services/__tests__/adminService.interceptor.test.js apps/store/src/__tests__/hospitalityStorefront.contract.test.js apps/store/src/__tests__/storefrontMarkerPreview.test.js src/features/fnb/__tests__/fnbMode.contract.test.js apps/store/src/__tests__/fnbStorefront.contract.test.js apps/store/src/__tests__/geoSearchIntegration.contract.test.js apps/store/src/__tests__/storefrontFollow.integration.test.jsx apps/store/src/__tests__/profileLauncher.integration.test.jsx apps/store/src/__tests__/discoveryHeaderAccount.integration.test.jsx apps/store/src/__tests__/discoveryMapClustering.test.js apps/store/src/__tests__/discoveryMapDom.test.js apps/store/src/__tests__/storefrontMarkerCss.contract.test.js Components/po/__tests__/POReceiptModal.valuation.integration.test.jsx",
+    "test:frontend:contracts": "cd frontend && npx vitest run contract.test integration.test",
     "test:backend": "cd apps/dgfy-api && npm test",
     "test:backend:matrix": "node scripts/run-backend-test-matrix.js",
     "audit:dependencies": "npm audit --json && npm --prefix apps/dgfy-api audit --json && npm --prefix frontend audit --json",

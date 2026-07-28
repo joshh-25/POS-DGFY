@@ -10,8 +10,8 @@ const readRepoSource = (relativePath) => fs.readFileSync(path.join(repoRoot, rel
 
 describe('Storefront guest checkout OTP contract', () => {
   it('keeps the backend guest OTP endpoints and checkout proof field available', () => {
-    const routesSource = readRepoSource('backend/src/routes/store.js');
-    const validatorSource = readRepoSource('backend/src/validators/storeValidator.js');
+    const routesSource = readRepoSource('apps/dgfy-api/src/routes/store.js');
+    const validatorSource = readRepoSource('apps/dgfy-api/src/validators/storeValidator.js');
 
     expect(routesSource).toContain("/checkout/guest-otp/request");
     expect(routesSource).toContain("/checkout/guest-otp/verify");

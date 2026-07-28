@@ -61,7 +61,6 @@ export default defineConfig({
       { find: '@/hooks', replacement: path.resolve(frontendRoot, 'src/hooks') },
       { find: '@/components', replacement: path.resolve(frontendRoot, 'Components') },
       { find: '@/Pages', replacement: path.resolve(frontendRoot, 'Pages') },
-      { find: '@/Entities', replacement: path.resolve(frontendRoot, 'Entities') },
       { find: '@/lib', replacement: path.resolve(frontendRoot, 'src/lib') },
       { find: '@/services', replacement: path.resolve(frontendRoot, 'src/services') },
       { find: '@', replacement: frontendRoot }

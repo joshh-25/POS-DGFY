@@ -3,7 +3,7 @@ module.exports = {
         {
             name: 'sku-backend',
             script: './src/server.js',
-            cwd: './backend',
+            cwd: './apps/dgfy-api',
             exec_mode: 'fork',
             instances: 1,
             // Restart if memory exceeds 512MB (prevents OOM crash from leaks)
@@ -71,7 +71,7 @@ module.exports = {
         {
             name: 'sku-staging-backend',
             script: './src/server.js',
-            cwd: './backend',
+            cwd: './apps/dgfy-api',
             exec_mode: 'fork',
             instances: 1,
             max_memory_restart: '512M',
