@@ -132,6 +132,8 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('const [loadingUser, setLoadingUser] = useState(true);');
     expect(terminalPageContent).toContain('const [terminalStartupReady, setTerminalStartupReady] = useState(false);');
     expect(terminalPageContent).toContain('const terminalStartupLoading = !terminalStartupReady');
+    expect(terminalPageContent).toContain('setTerminalStartupReady(false);\n      setLocked(false);');
+    expect(terminalPageContent).not.toContain("if (locked || terminalUser?.is_master_admin !== true) {\n      setSetupFlowState({");
     expect(terminalPageContent).toContain('useLayoutEffect(() => {');
     expect(terminalPageContent).toContain('Restoring POS workspace...');
     expect(terminalPageContent).toContain('<Suspense fallback={<PosRestorationLoadingScreen />}>');

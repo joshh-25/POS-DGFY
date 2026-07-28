@@ -394,9 +394,14 @@ const buildTenantSetupStateSnapshot = ({
   const posRequirements = resolvePosSetupReadiness(settingsPayload, usersPayload);
   const storefrontRequirements = resolveStorefrontSetupReadiness(settingsPayload, locationsPayload);
   const starterItemRequirements = resolveStarterItemSetupReadiness(itemsPayload);
+  const onboardingState = String(
+    settingsPayload?.tenant_onboarding_state?.value || 'not_started'
+  ).trim().toLowerCase();
 
   return {
     loading: false,
+    onboardingState,
+    onboardingCompleted: onboardingState === 'completed',
     profileReady: profileRequirements.ready,
     posSetupReady: posRequirements.ready,
     storefrontSetupReady: storefrontRequirements.ready,
@@ -870,40 +875,6 @@ export default function TerminalPage() {
     silent = false
   } = {}) => {
     if (locked || terminalUser?.is_master_admin !== true) {
-      setSetupFlowState({
-        loading: false,
-        onboardingState: 'not_started',
-        onboardingCompleted: false,
-        profileReady: false,
-        posSetupReady: false,
-        storefrontSetupReady: false,
-        starterItemReady: false,
-        profileRequirements: {
-          ready: false,
-          companyNameReady: false,
-          companyName: ''
-        },
-        posRequirements: {
-          ready: false,
-          terminalRegistryReady: false,
-          cashierReady: false
-        },
-        storefrontRequirements: {
-          ready: false,
-          coverImageReady: false,
-          profileImageReady: false,
-          locationReady: false,
-          primaryLocationId: null,
-          coverImageUrl: '',
-          profileImageUrl: ''
-        },
-        starterItemRequirements: {
-          ready: false,
-          starterItemReady: false,
-          starterItemId: null
-        },
-        tenantUsers: []
-      });
       return;
     }
 
@@ -1698,6 +1669,7 @@ export default function TerminalPage() {
         return;
       }
 
+      setTerminalStartupReady(false);
       setLocked(false);
       setDrawerOpen(false);
       if (tenantSetupFlowRequested) {
@@ -2513,6 +2485,7 @@ export default function TerminalPage() {
       setTerminalRegistry(selectedTenantRegistry);
       setTerminalRegistryMode(selectedTenantRegistryMode);
       blurActiveTerminalEditor();
+      setTerminalStartupReady(false);
       setLocked(false);
       setDrawerOpen(false);
       if (
@@ -2815,6 +2788,7 @@ export default function TerminalPage() {
       setTerminalUser(adminUser);
       setDgfyAdminBypassActive(true);
       blurActiveTerminalEditor();
+      setTerminalStartupReady(false);
       setLocked(false);
       setDrawerOpen(false);
       setTerminalUnlockRequired(false);
@@ -3507,6 +3481,7 @@ export default function TerminalPage() {
       setTerminalUnlockMode('shift_start');
       setStoredTerminalLock(false);
       setStoredTerminalLockReason('');
+      setTerminalStartupReady(false);
       setLocked(false);
       setTerminalUnlockForm((prev) => ({
         ...prev,
