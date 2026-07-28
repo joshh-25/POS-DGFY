@@ -7,6 +7,7 @@ import {
   fetchAdminLocationMonitor,
   fetchIncomingOnlineOrders,
   fetchPosCatalog,
+  fetchPosSettingsBootstrap,
   fetchPosTransactionById,
   fetchCurrentTerminalShift,
   fetchTerminalTodayDashboard,
@@ -444,12 +445,14 @@ export default function TerminalPage() {
     pettyCashAmount: 0,
     activeDiscountCount: 0,
     enabledFeeMethods: [],
+    storefrontSlug: '',
     locationBindingReadiness: null,
     settingsAccessPinEnabled: false
   });
   const [formData, setFormData] = useState({
     email: '',
     password: '',
+    rememberDevice: false,
     dgfyTenantId: '',
     terminalId: readInitialTerminalId()
   });
@@ -722,13 +725,10 @@ export default function TerminalPage() {
   const hasPermission = useCallback((permission) => {
     if (!terminalUser) return false;
     if (terminalUser.is_master_admin) return true;
-    if (String(terminalUser.role || '').trim().toLowerCase() === 'admin') return true;
     return permissions.includes(permission);
   }, [permissions, terminalUser]);
   const normalizedTerminalRole = String(terminalUser?.role || '').trim().toLowerCase();
   const isCashierRole = normalizedTerminalRole === 'cashier';
-  const userIsAdminLike = terminalUser?.is_master_admin === true
-    || normalizedTerminalRole === 'admin';
 
   const canViewPos = hasPermission('pos:view');
   const canTransactPos = hasPermission('pos:transact');
@@ -737,13 +737,13 @@ export default function TerminalPage() {
   const canCloseShift = hasPermission('pos:shift_close') || hasPermission('pos:close_day');
   const canCloseDay = hasPermission('pos:close_day');
   const canCreateItems = hasPermission('items:create');
-  const canAccessSettingsDirectly = userIsAdminLike || dgfyAdminBypassActive;
-  const canAdminBypassShiftPrompt = userIsAdminLike || dgfyAdminBypassActive;
+  const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
+  const canAdminBypassShiftPrompt = hasPermission('settings:view') || dgfyAdminBypassActive;
   const canEditItems = hasPermission('items:edit');
   const canDeleteItems = hasPermission('items:delete');
 
   useEffect(() => {
-    if (locked || !isOnline || !userIsAdminLike) return undefined;
+    if (locked || !isOnline) return undefined;
 
     let cancelled = false;
     setDgfyPosState((previous) => ({ ...previous, loadingCompanies: true }));
@@ -766,7 +766,7 @@ export default function TerminalPage() {
     return () => {
       cancelled = true;
     };
-  }, [isOnline, locked, terminalUser?.user_id, userIsAdminLike]);
+  }, [isOnline, locked, terminalUser?.user_id]);
   const setupFlowSearchParams = useMemo(() => new URLSearchParams(location.search), [location.search]);
   const tenantSetupFlowRequested = useMemo(
     () => isTenantSetupFlowRequested(setupFlowSearchParams),
@@ -1008,9 +1008,9 @@ export default function TerminalPage() {
   const hydrateTerminalMeta = useCallback(async ({ suppressGlobalErrors = false } = {}) => {
     setTerminalMeta((prev) => ({ ...prev, loading: true }));
     try {
-      const allSettings = await getAllSettings({
-        requestConfig: suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
-      });
+      const allSettings = await fetchPosSettingsBootstrap(
+        suppressGlobalErrors ? SUPPRESS_GLOBAL_ERROR_TOAST : {}
+      );
       const pettyCashSymbol = String(allSettings?.pos_petty_cash_symbol?.value || DEFAULT_CURRENCY).trim() || DEFAULT_CURRENCY;
       const pettyCashAmount = Number(allSettings?.pos_petty_cash_amount?.value ?? 0);
       const normalizedRegistry = normalizeTerminalRegistry(allSettings?.pos_terminal_registry?.value || []);
@@ -1073,6 +1073,7 @@ export default function TerminalPage() {
         pettyCashAmount: Number.isFinite(pettyCashAmount) ? pettyCashAmount : 0,
         activeDiscountCount,
         enabledFeeMethods,
+        storefrontSlug: String(allSettings?.store_tenant_slug?.value || '').trim().toLowerCase(),
         locationBindingReadiness: null,
         settingsAccessPinEnabled: allSettings?.pos_settings_access_pin_enabled?.value === true
       });
@@ -1324,7 +1325,7 @@ export default function TerminalPage() {
 
   const refreshAdminLocationMonitor = useCallback(async ({ silent = false } = {}) => {
     const locationId = Number(operatingLocationId || 0);
-    if (locked || !userIsAdminLike || !isOnline || !Number.isInteger(locationId) || locationId <= 0) {
+    if (locked || !canSwitchPosLocation || !isOnline || !Number.isInteger(locationId) || locationId <= 0) {
       setAdminLocationMonitorState({
         loading: false,
         orders: [],
@@ -1363,7 +1364,7 @@ export default function TerminalPage() {
       });
       if (!silent) toast.error(message);
     }
-  }, [isOnline, locked, operatingLocationId, userIsAdminLike]);
+  }, [canSwitchPosLocation, isOnline, locked, operatingLocationId]);
 
   useEffect(() => {
     refreshAdminLocationMonitor({ silent: true });
@@ -1649,10 +1650,11 @@ export default function TerminalPage() {
       const storedTerminalId = sanitizeTerminalId(readStoredTerminalId() || activeTerminalId);
       const storedReason = readStoredTerminalLockReason();
       const storedLockActive = readStoredTerminalLock();
-      const userIsAdmin = user?.is_master_admin === true;
+      const userCanAccessSettings = user?.is_master_admin === true
+        || parseUserPermissions(user).includes('settings:view');
 
       setTerminalUser(user);
-      setDgfyAdminBypassActive(userIsAdmin && !storedLockActive);
+      setDgfyAdminBypassActive(userCanAccessSettings && !storedLockActive);
 
       if (storedLockActive) {
         resetSettingsAccessPinState();
@@ -1704,7 +1706,7 @@ export default function TerminalPage() {
       }
       if (
         IS_DGFY_POS_SURFACE
-        && !userIsAdmin
+        && !userCanAccessSettings
         && storedTerminalId
         && !storedLockActive
         && storedReason !== 'full_auth'
@@ -2152,10 +2154,6 @@ export default function TerminalPage() {
     const normalizedTenantId = String(nextTenantId || '').trim();
     const currentTenantId = String(terminalUser?.company?.id || '').trim();
     if (!normalizedTenantId || normalizedTenantId === currentTenantId) return;
-    if (!userIsAdminLike) {
-      toast.error('Only an administrator can switch companies from POS.');
-      return;
-    }
     if (companySwitchBlockedReason) {
       toast.error(companySwitchBlockedReason);
       return;
@@ -2176,7 +2174,7 @@ export default function TerminalPage() {
     } finally {
       setCompanySwitching(false);
     }
-  }, [companySwitchBlockedReason, terminalUser?.company?.id, userIsAdminLike]);
+  }, [companySwitchBlockedReason, terminalUser?.company?.id]);
 
   const handleRequestLegacyLinkOtp = async () => {
     setLegacyLinkState((prev) => ({ ...prev, loading: true }));
@@ -2336,8 +2334,8 @@ export default function TerminalPage() {
   };
 
   const handleSelectAdminTerminal = async (selectedTerminalId) => {
-    if (!userIsAdminLike) {
-      toast.error('Only an administrator can change the branch terminal context.');
+    if (!canSwitchPosLocation) {
+      toast.error('You do not have permission to change the branch terminal context.');
       return false;
     }
     if (activeShiftId) {
@@ -2397,7 +2395,11 @@ export default function TerminalPage() {
         toast.error('DGFY email and password are required.');
         return;
       }
-      const loginResult = await loginDgfyAccount({ email, password });
+      const loginResult = await loginDgfyAccount({
+        email,
+        password,
+        remember_device: formData.rememberDevice === true
+      });
       const token = loginResult?.token || '';
       const resolvedAccount = loginResult?.account || null;
       if (!token) {
@@ -2456,24 +2458,28 @@ export default function TerminalPage() {
         throw new Error('The selected company session could not be verified. Sign in again.');
       }
 
+      const effectiveSelectedTenantUser = selectedTenantUser;
+      const selectedPermissionList = parseUserPermissions(effectiveSelectedTenantUser);
+      const selectedCanAccessSettings = effectiveSelectedTenantUser?.is_master_admin === true
+        || selectedPermissionList.includes('settings:view');
+      const selectedCanViewUsers = effectiveSelectedTenantUser?.is_master_admin === true
+        || selectedPermissionList.includes('users:view');
       const [selectedTenantSettings, selectedTenantLocations, selectedTenantItems] = await Promise.all([
-        getAllSettings({
-          force: true,
-          requestConfig: SUPPRESS_GLOBAL_ERROR_TOAST
-        }).catch(() => ({})),
+        selectedCanAccessSettings
+          ? getAllSettings({
+            force: true,
+            requestConfig: SUPPRESS_GLOBAL_ERROR_TOAST
+          }).catch(() => ({}))
+          : fetchPosSettingsBootstrap(SUPPRESS_GLOBAL_ERROR_TOAST).catch(() => ({})),
         listTenantLocations({ include_inactive: false }).catch(() => []),
         fetchPosCatalog({ limit: 200 }).catch(() => [])
       ]);
-      const effectiveSelectedTenantUser = selectedTenantUser;
-      const selectedUserIsAdmin = effectiveSelectedTenantUser?.is_master_admin === true
-        || String(effectiveSelectedTenantUser?.role || '').trim().toLowerCase() === 'admin';
-      const selectedTenantAdminPayloads = selectedUserIsAdmin
-        ? await Promise.all([
-          getCompanyInfo().catch(() => null),
-          getAllUsers({ include_invitations: true }).catch(() => [])
-        ])
-        : [null, effectiveSelectedTenantUser ? [effectiveSelectedTenantUser] : []];
-      const [selectedTenantCompany, selectedTenantUsers] = selectedTenantAdminPayloads;
+      const [selectedTenantCompany, selectedTenantUsers] = await Promise.all([
+        selectedCanAccessSettings ? getCompanyInfo().catch(() => null) : Promise.resolve(null),
+        selectedCanViewUsers
+          ? getAllUsers({ include_invitations: true }).catch(() => [])
+          : Promise.resolve(effectiveSelectedTenantUser ? [effectiveSelectedTenantUser] : [])
+      ]);
       const selectedTenantSetupState = buildTenantSetupStateSnapshot({
         settingsPayload: selectedTenantSettings || {},
         companyPayload: selectedTenantCompany || {},
@@ -2493,7 +2499,7 @@ export default function TerminalPage() {
       });
 
       setTerminalUser(effectiveSelectedTenantUser);
-      setDgfyAdminBypassActive(selectedUserIsAdmin);
+      setDgfyAdminBypassActive(selectedCanAccessSettings);
       setAdminShiftPromptSkipped(false);
       setSetupFlowState(selectedTenantSetupState);
       const selectedTenantRegistry = normalizeTerminalRegistry(selectedTenantSettings?.pos_terminal_registry?.value || []);
@@ -2540,7 +2546,7 @@ export default function TerminalPage() {
         }, { replace: true });
         return;
       }
-      if (selectedUserIsAdmin) {
+      if (selectedCanAccessSettings) {
         setStoredTerminalLock(false);
         setStoredTerminalLockReason('');
         setTerminalUnlockRequired(false);
@@ -2791,16 +2797,16 @@ export default function TerminalPage() {
         SUPPRESS_GLOBAL_ERROR_TOAST
       );
       const adminUser = await fetchCurrentUser(SUPPRESS_GLOBAL_ERROR_TOAST);
-      const userIsAdmin = adminUser?.is_master_admin === true
-        || String(adminUser?.role || '').trim().toLowerCase() === 'admin';
-      if (!userIsAdmin) {
+      const userCanAccessSettings = adminUser?.is_master_admin === true
+        || parseUserPermissions(adminUser).includes('settings:view');
+      if (!userCanAccessSettings) {
         clearClientSession({
           reason: 'logout',
           broadcast: true,
           emitAuthEvents: true,
           redirectTo: null
         });
-        throw createTerminalLoginError('Only a company admin can unlock this admin-locked POS.');
+        throw createTerminalLoginError('This account cannot unlock an administrator-locked POS.');
       }
 
       setStoredTerminalLock(false);
@@ -3082,6 +3088,7 @@ export default function TerminalPage() {
       setFormData({
         email: '',
         password: '',
+        rememberDevice: false,
         dgfyTenantId: '',
         terminalId: selectedTerminalId
       });
@@ -4086,18 +4093,116 @@ export default function TerminalPage() {
   const cashierResumeUnlock = terminalUnlockMode === 'cashier_resume';
   const adminReauthUnlock = terminalUnlockMode === 'admin_reunlock';
 
-  if (terminalStartupLoading) {
+function PosRestorationLoadingScreen() {
+  const [progress, setProgress] = useState(15);
+  const [statusText, setStatusText] = useState('Preparing your workspace...');
+
+  useEffect(() => {
+    const timer1 = setTimeout(() => {
+      setProgress(45);
+      setStatusText('Loading inventory catalog...');
+    }, 280);
+
+    const timer2 = setTimeout(() => {
+      setProgress(78);
+      setStatusText('Syncing terminal settings...');
+    }, 600);
+
+    const timer3 = setTimeout(() => {
+      setProgress(98);
+      setStatusText('Finalizing workspace...');
+    }, 900);
+
+    return () => {
+      clearTimeout(timer1);
+      clearTimeout(timer2);
+      clearTimeout(timer3);
+    };
+  }, []);
+
     return (
-      <main className="flex min-h-screen items-center justify-center bg-slate-100 px-6" aria-busy="true" aria-live="polite">
-        <div className="rounded-2xl border border-slate-200 bg-white px-6 py-5 text-sm font-semibold text-slate-700 shadow-sm">
-          Restoring POS workspace...
+      <main
+      className="fixed inset-0 z-[10000] flex min-h-screen items-center justify-center bg-[#F3F5F8] px-6 opacity-100"
+      aria-busy="true"
+      aria-live="polite"
+    >
+      <div className="relative w-full max-w-[380px] sm:max-w-[410px] overflow-hidden rounded-[28px] bg-white p-8 sm:p-10 text-center shadow-[0_20px_50px_rgba(0,0,0,0.06)] border border-slate-100">
+        {/* POS Vector Graphic Illustration in soft blue circular container */}
+        <div className="mx-auto flex h-32 w-32 items-center justify-center rounded-full bg-[#EFF6FF] p-3 animate-pos-illustration-float">
+          <svg className="h-full w-full" viewBox="0 0 140 140" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+            {/* Soft background aura */}
+            <circle cx="70" cy="70" r="50" fill="#E0F2FE" opacity="0.6" />
+
+            {/* Ground accent line */}
+            <path d="M30 115H110" stroke="#BFDBFE" strokeWidth="3" strokeLinecap="round" />
+
+            {/* Main Cash Drawer Base */}
+            <rect x="36" y="94" width="68" height="18" rx="4" fill="#1D4ED8" />
+            <rect x="40" y="98" width="60" height="10" rx="2" fill="#2563EB" />
+            <circle cx="70" cy="103" r="2.5" fill="#93C5FD" />
+
+            {/* Monitor Stand Base */}
+            <path d="M64 84H76V94H64V84Z" fill="#1E40AF" />
+
+            {/* Monitor Outer Shell */}
+            <rect x="42" y="38" width="56" height="46" rx="6" fill="#1D4ED8" />
+            {/* Monitor Display Screen */}
+            <rect x="45" y="41" width="50" height="38" rx="4" fill="#FFFFFF" />
+            {/* Display UI Panels */}
+            <rect x="49" y="45" width="22" height="14" rx="2" fill="#EFF6FF" />
+            <rect x="74" y="45" width="17" height="14" rx="2" fill="#EFF6FF" />
+            <rect x="49" y="62" width="42" height="13" rx="2" fill="#EFF6FF" />
+            <rect x="79" y="66" width="10" height="5" rx="1.5" fill="#2563EB" />
+
+            {/* Left Keypad / POS Terminal Calculator */}
+            <rect x="44" y="60" width="18" height="30" rx="3" fill="#3B82F6" stroke="#FFFFFF" strokeWidth="1.5" />
+            <rect x="47" y="63" width="12" height="7" rx="1" fill="#FFFFFF" />
+            {/* Keypad Buttons Grid */}
+            <rect x="47" y="73" width="3" height="3" rx="0.5" fill="#EFF6FF" />
+            <rect x="51.5" y="73" width="3" height="3" rx="0.5" fill="#EFF6FF" />
+            <rect x="56" y="73" width="3" height="3" rx="0.5" fill="#EFF6FF" />
+            <rect x="47" y="78" width="3" height="3" rx="0.5" fill="#EFF6FF" />
+            <rect x="51.5" y="78" width="3" height="3" rx="0.5" fill="#EFF6FF" />
+            <rect x="56" y="78" width="3" height="3" rx="0.5" fill="#EFF6FF" />
+            <rect x="47" y="83" width="3" height="3" rx="0.5" fill="#EFF6FF" />
+            <rect x="51.5" y="83" width="3" height="3" rx="0.5" fill="#EFF6FF" />
+            <rect x="56" y="83" width="3" height="3" rx="0.5" fill="#EFF6FF" />
+          </svg>
         </div>
-      </main>
-    );
+
+        {/* Title */}
+        <h2 className="mt-6 text-lg sm:text-xl font-bold text-[#0F172A] tracking-tight">
+          Restoring POS workspace...
+        </h2>
+
+        {/* Status subtext */}
+        <p className="mt-1.5 text-xs sm:text-sm font-medium text-[#64748B] min-h-[20px] transition-opacity duration-200">
+          {statusText}
+        </p>
+
+        {/* Horizontal Progress Track & Indicator */}
+        <div className="mt-6 h-1.5 w-full rounded-full bg-[#E2E8F0] overflow-hidden">
+          <div
+            className="h-full rounded-full bg-[#2563EB] transition-all duration-300 ease-out"
+            style={{ width: `${progress}%` }}
+          />
+        </div>
+
+        {/* Circular Blue Spinner */}
+        <div className="mt-6 flex justify-center items-center">
+          <div className="h-6 w-6 rounded-full border-2 border-[#2563EB] border-t-transparent animate-spin" />
+        </div>
+      </div>
+    </main>
+  );
+}
+
+  if (terminalStartupLoading) {
+    return <PosRestorationLoadingScreen />;
   }
 
   return (
-    <Suspense fallback={<div className="min-h-screen bg-slate-100 p-6 text-sm text-slate-500">Loading terminal workspace...</div>}>
+    <Suspense fallback={<PosRestorationLoadingScreen />}>
       <>
         <Dialog open={Boolean(cashCollectionOrder)} onOpenChange={(open) => { if (!open && !cashCollectionSaving) setCashCollectionOrder(null); }}>
           <DialogContent className="border border-slate-200 bg-white shadow-2xl sm:max-w-md">

@@ -1,5 +1,5 @@
 import api from './api.js';
-import { setBrowserSession } from './browserSession.js';
+import { getAccessToken, setBrowserSession } from './browserSession.js';
 import { clearClientSession } from './sessionCleanup.js';
 
 let dgfyToken = '';
@@ -30,6 +30,19 @@ const dgfyBusinessRequestConfig = (token = getStoredDgfyToken()) => {
   return {
     withCredentials: true,
     skipGlobalErrorToast: true
+  };
+};
+
+const withPreviousTenantAccessToken = (config = {}) => {
+  const previousTenantAccessToken = String(getAccessToken() || '').trim();
+  if (!previousTenantAccessToken) return config;
+
+  return {
+    ...config,
+    headers: {
+      ...(config.headers || {}),
+      'x-previous-tenant-access-token': previousTenantAccessToken
+    }
   };
 };
 
@@ -374,7 +387,7 @@ export const switchDgfyCompany = async ({
   const response = await callDgfyBusinessEndpoint(
     (config) => api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/switch`, {
       email_otp_code: emailOtpCode
-    }, config),
+    }, withPreviousTenantAccessToken(config)),
     token
   );
   const data = response.data.data;
@@ -454,7 +467,7 @@ export const switchDgfyCompanyForTenantSession = async ({
 } = {}) => {
   const response = await api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/switch`, {
     email_otp_code: emailOtpCode
-  }, dgfyTenantBridgeRequestConfig());
+  }, withPreviousTenantAccessToken(dgfyTenantBridgeRequestConfig()));
   const data = response.data.data;
   clearClientSession({
     reason: 'company_switch',

@@ -33,10 +33,11 @@ describe('POS category management contract', () => {
     expect(source).not.toContain('pos-items-edit-category-options');
   });
 
-  it('keeps category lifecycle controls inside the admin-only settings tab', () => {
+  it('keeps category lifecycle controls behind the company-local category permission', () => {
     const source = fs.readFileSync(workspacePath, 'utf8');
 
-    expect(source).toContain("String(terminalUser?.role || '').trim().toLowerCase() === 'admin'");
+    expect(source).toContain("resolveUserPermissionList(terminalUser).includes('categories:manage')");
+    expect(source).not.toContain("String(terminalUser?.role || '').trim().toLowerCase() === 'admin'");
     expect(source).toContain("{ id: 'categories', label: 'Categories', icon: Tags }");
     expect(source).toContain('Move assigned items to');
     expect(source).toContain('replacementFolderId');
