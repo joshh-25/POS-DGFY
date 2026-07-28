@@ -51,7 +51,7 @@ jobs:
     with:
       environment: BETA
       image_tags: "beta"
-      runner_labels_json: '["self-hosted"]'
+      runner_labels_json: '["ubuntu-latest"]'
     secrets: inherit
     permissions:
       contents: read
@@ -63,7 +63,7 @@ jobs:
     with:
       environment: BETA
       image_tags: "beta"
-      runner_labels_json: '["self-hosted"]'
+      runner_labels_json: '["ubuntu-latest"]'
     secrets: inherit
     permissions:
       contents: read
@@ -75,7 +75,7 @@ jobs:
     with:
       environment: PROD
       image_tags: "latest"
-      runner_labels_json: '["self-hosted"]'
+      runner_labels_json: '["ubuntu-latest"]'
     secrets: inherit
     permissions:
       contents: read
@@ -92,7 +92,7 @@ jobs:
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: PROD
-      runner_labels_json: '["self-hosted"]'
+      runner_labels_json: '["ubuntu-latest"]'
     secrets: inherit
     permissions:
       contents: read

@@ -37,9 +37,16 @@ jobs:
           # TEMP: DGFY API Build row removed while dgfy-api-build-check is disabled in pr-checks.yml
 
       - name: Fail if any check failed
+        # 'skipped' must keep passing -- that's the whole point of the changed-
+        # paths gate on the build checks. 'cancelled' must NOT pass: only the
+        # two build results can be cancelled (conventional-commits/code-quality
+        # are continue-on-error and never report failure or cancelled here),
+        # and an unnoticed cancellation would merge with an unverified image.
         if: >-
           contains(inputs.conventional_commits_result, 'failure') ||
           contains(inputs.code_quality_result, 'failure') ||
           contains(inputs.backend_build_result, 'failure') ||
-          contains(inputs.frontend_build_result, 'failure')
+          contains(inputs.frontend_build_result, 'failure') ||
+          contains(inputs.backend_build_result, 'cancelled') ||
+          contains(inputs.frontend_build_result, 'cancelled')
         run: exit 1

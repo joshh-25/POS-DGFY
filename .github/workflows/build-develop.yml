@@ -24,20 +24,30 @@ jobs:
     uses: ./.github/workflows/publish-pos-receipt.yml
     with:
       before_sha: ${{ github.event.before }}
-      runner_labels_json: '["self-hosted"]'
+      runner_labels_json: '["ubuntu-slim"]'
     secrets: inherit
     permissions:
       contents: read
       packages: write
 
+  changes:
+    uses: ./.github/workflows/changed-paths.yml
+    with:
+      base_sha: ${{ github.event.before }}
+      runner_labels_json: '["ubuntu-slim"]'
+
   build-and-push:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true'
     uses: ./.github/workflows/deployment-orchestrator.yml
     with:
       environment: DEV
       image_tags: "develop"
       publish: true
       vpn_required: true
-      runner_labels_json: '["self-hosted"]'
+      build_backend: ${{ needs.changes.outputs.backend == 'true' }}
+      build_frontend: ${{ needs.changes.outputs.frontend == 'true' }}
+      runner_labels_json: '["ubuntu-latest"]'
     secrets: inherit
     permissions:
       contents: read

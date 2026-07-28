@@ -1,0 +1,119 @@
+name: Changed Paths
+
+# Tells callers which image builds a given range of commits actually needs, so
+# a backend-only change doesn't spend a runner rebuilding the frontend image
+# (and vice versa). Used both by pr-checks.yml (PR mode) and build-develop.yml
+# (push mode), so every push to develop is gated the same way a PR already is
+# instead of unconditionally rebuilding both images every time.
+#
+# Deliberately does this with plain git rather than a third-party
+# paths-filter action -- the same `git merge-base`/`git diff --name-only`
+# approach scripts/check-compliance-impact.js already uses, which is also why
+# the checkout below needs full history.
+
+on:
+  workflow_call:
+    inputs:
+      base_sha:
+        description: >-
+          Commit to diff against. Empty (default) selects PR mode, diffing
+          HEAD against the merge-base with origin/$GITHUB_BASE_REF. Set this
+          (e.g. to github.event.before) to diff a push range instead.
+        required: false
+        type: string
+        default: ''
+      runner_labels_json:
+        description: JSON array passed to runs-on for this job
+        required: false
+        type: string
+        default: '["ubuntu-slim"]'
+    outputs:
+      frontend:
+        description: '"true" when this range touches anything the frontend image is built from'
+        value: ${{ jobs.detect.outputs.frontend }}
+      backend:
+        description: '"true" when this range touches anything the backend image is built from'
+        value: ${{ jobs.detect.outputs.backend }}
+
+jobs:
+  detect:
+    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
+    timeout-minutes: 5
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+      backend: ${{ steps.filter.outputs.backend }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect changed paths
+        id: filter
+        shell: bash
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          BASE_SHA: ${{ inputs.base_sha }}
+        run: |
+          set -euo pipefail
+
+          NULL_SHA="0000000000000000000000000000000000000000"
+          REASON=""
+
+          if [ -n "${BASE_SHA}" ]; then
+            # Push mode. A brand-new branch reports its before-SHA as all
+            # zeros, and a force-push/rewritten-history before-SHA may no
+            # longer exist on the remote at all -- both mean "no diff is
+            # computable", so fall back to building everything rather than
+            # silently skipping a build.
+            if [ "${BASE_SHA}" = "${NULL_SHA}" ]; then
+              REASON="base_sha is the null SHA (new branch) -- building both"
+            elif ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
+              REASON="base_sha ${BASE_SHA} is unreachable (force-push/rewritten history) -- building both"
+            fi
+          else
+            BASE_SHA="$(git merge-base HEAD "origin/${BASE_REF}")"
+          fi
+
+          if [ -n "${REASON}" ]; then
+            FILES="(unavailable: ${REASON})"
+            FRONTEND=true
+            BACKEND=true
+          else
+            FILES="$(git diff --name-only "${BASE_SHA}" HEAD)"
+
+            matches() { printf '%s\n' "${FILES}" | grep -qE "$1"; }
+
+            # .github/workflows/ only lists the workflows that actually affect
+            # each image build, not the whole directory -- editing e.g. the PR
+            # conventional-commits check shouldn't force both Docker builds.
+            FRONTEND=false
+            BACKEND=false
+            matches '^(frontend/|packages/pos-receipt/|packages/shared-constants/|infrastructure/docker/frontend/|\.github/workflows/(changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|build-develop|build-staging|build-main)\.yml)' && FRONTEND=true || true
+            matches '^(backend/|packages/shared-constants/|infrastructure/docker/backend/|\.github/workflows/(changed-paths|deploy-backend|deployment-orchestrator|pr-backend-build-checks|build-develop|build-staging|build-main)\.yml)' && BACKEND=true || true
+          fi
+
+          {
+            echo "frontend=${FRONTEND}"
+            echo "backend=${BACKEND}"
+          } >> "$GITHUB_OUTPUT"
+
+          {
+            echo "### Changed-path filter"
+            echo ""
+            if [ -n "${REASON}" ]; then
+              echo "_${REASON}_"
+              echo ""
+            fi
+            echo "| Image build | Needed |"
+            echo "|-------------|--------|"
+            echo "| Frontend | ${FRONTEND} |"
+            echo "| Backend | ${BACKEND} |"
+            echo ""
+            echo "<details><summary>Changed files</summary>"
+            echo ""
+            echo '```'
+            printf '%s\n' "${FILES}"
+            echo '```'
+            echo ""
+            echo "</details>"
+          } >> "$GITHUB_STEP_SUMMARY"

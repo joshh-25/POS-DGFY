@@ -12,14 +12,6 @@ on:
           - STAGING
           - BETA
           - PROD
-      runner_target:
-        description: Runner target for build and publish jobs
-        required: true
-        type: choice
-        default: github-hosted
-        options:
-          - github-hosted
-          - self-hosted
       publish:
         description: SSH-deploy to the selected environment after images are pushed
         required: true
@@ -42,7 +34,7 @@ jobs:
       image_tags: ${{ inputs.environment == 'DEV' && 'develop' || inputs.environment == 'STAGING' && 'staging' || inputs.environment == 'BETA' && 'beta' || 'latest' }}
       publish: ${{ inputs.publish }}
       vpn_required: ${{ inputs.environment == 'DEV' || inputs.environment == 'STAGING' }}
-      runner_labels_json: ${{ inputs.runner_target == 'self-hosted' && '["self-hosted"]' || '["ubuntu-latest"]' }}
+      runner_labels_json: '["ubuntu-latest"]'
     secrets: inherit
     permissions:
       contents: read

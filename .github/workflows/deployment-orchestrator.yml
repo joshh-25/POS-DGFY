@@ -21,6 +21,16 @@ on:
         required: false
         type: boolean
         default: false
+      build_backend:
+        description: Whether to build/push the backend image. Defaults true so staging/main/manual callers are unaffected; only build-develop.yml gates this on changed paths.
+        required: false
+        type: boolean
+        default: true
+      build_frontend:
+        description: Whether to build/push the frontend image. Defaults true so staging/main/manual callers are unaffected; only build-develop.yml gates this on changed paths.
+        required: false
+        type: boolean
+        default: true
       runner_labels_json:
         description: JSON array passed to runs-on for build/publish jobs
         required: false
@@ -38,6 +48,7 @@ permissions:
 
 jobs:
   backend:
+    if: inputs.build_backend
     uses: ./.github/workflows/deploy-backend.yml
     with:
       environment: ${{ inputs.environment }}
@@ -52,6 +63,7 @@ jobs:
     # Builds/pushes the single combined `frontend` image (skupervisor + pos
     # + storefront, all 3 SPAs, one nginx serving them on 3 internal ports)
     # -- see infrastructure/docker/frontend/Dockerfile.
+    if: inputs.build_frontend
     uses: ./.github/workflows/deploy-frontend.yml
     with:
       environment: ${{ inputs.environment }}
@@ -64,7 +76,17 @@ jobs:
 
   publish:
     needs: [ backend, frontend ]
-    if: inputs.publish && needs.backend.result == 'success' && needs.frontend.result == 'success'
+    # backend/frontend are conditionally skipped (build_backend/build_frontend
+    # above), and `needs.<job>.result` on a skipped job is 'skipped', not
+    # 'success' -- so this can't require both to be 'success' like it used to.
+    # `!cancelled()` is required too: without a status-check function here,
+    # a skipped need would skip this job as well. Publish goes ahead as long
+    # as neither built job actually failed and at least one of them ran.
+    if: >-
+      inputs.publish && !cancelled() &&
+      needs.backend.result != 'failure' &&
+      needs.frontend.result != 'failure' &&
+      (needs.backend.result == 'success' || needs.frontend.result == 'success')
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: ${{ inputs.environment }}
