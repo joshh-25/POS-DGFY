@@ -9,6 +9,16 @@ topic: production_readiness_posthog_and_nginx_drift
 
 # Production Readiness: PostHog `/ingest` Proxy & Connection Budget
 
+## Update (2026-07-28, later same day): nginx reconciliation done, `/ingest` live on prod/beta
+
+PROD's `VITE_POSTHOG_*` variables were set (07:10 UTC) before the nginx reconciliation below had happened, which surfaced as Sentry issue `DGFY-STORE-1` on `dgfy.ph` (`SyntaxError: Unexpected token '<'` — `/ingest/array/.../config.js` falling through to the SPA's `index.html`).
+
+Fixed: `infrastructure/docker/nginx/nginx.conf.template` now carries the dual-domain (`_PROD`) structure from the live server (reconciled, so the repo is the source of truth again) plus `/ingest/static/`, `/ingest/array/`, `/ingest/` on all 6 domain server blocks (beta + prod × skupervisor/POS/storefront). Deployed to `dgfy-gha:/opt/dgfy-platform/nginx/nginx.conf.template` and applied via `docker compose restart nginx` (a plain `reload` does not re-run the `envsubst`-on-templates entrypoint step for this containerized topology — a restart is required to pick up template changes). Verified live: `/ingest/static/surveys.js` and `/ingest/array/<key>/config.js` both return `application/javascript` on `dgfy.ph` and `pos.dgfy.ph`; `/api`, storefront root, `skupervisor.dgfy.ph`, `pos.dgfy.ph`, and `beta.dgfy.ph` all unaffected. The hand-added `bar.space.com.ph` special-case redirect in the storefront block was carried over verbatim (that domain currently resolves to unrelated infrastructure, not this server, so it wasn't exercisable in this verification either way).
+
+The rest of this document (GitHub Actions variables, connection budget) describes the state as found earlier that day and is otherwise still accurate.
+
+---
+
 ## Purpose
 
 `docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md` fixed MySQL connection exhaustion and the PostHog CSP block on `stage.dgfy.ph`. Both are documented there as production-readiness risks, not staging-only quirks. This doc is the checklist for what's actually needed before either fix is real in **PROD** and **BETA** — gathered by directly inspecting those environments' live GitHub Actions configuration and servers (read-only; nothing in PROD/BETA was changed while gathering this).
