@@ -14,10 +14,6 @@ jobs:
     runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
     timeout-minutes: 15
     continue-on-error: true
-    env:
-      # Keep npm's download cache job-scoped so it can be reclaimed without
-      # touching shared runner or deployment caches.
-      NPM_CONFIG_CACHE: ${{ runner.temp }}/dgfy-pr-code-npm-cache
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,6 +25,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+
+      - name: Configure job-scoped npm cache
+        shell: bash
+        run: echo "NPM_CONFIG_CACHE=$RUNNER_TEMP/dgfy-pr-code-npm-cache" >> "$GITHUB_ENV"
 
       - name: Install root dependencies
         run: npm ci --no-audit --no-fund
