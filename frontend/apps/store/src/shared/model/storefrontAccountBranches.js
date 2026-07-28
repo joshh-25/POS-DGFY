@@ -36,7 +36,14 @@ export async function fetchStorefrontAccountBranches({
   try {
     const payload = await listDgfyAccountCompaniesForTenantSession();
     ownedCompanies = Array.isArray(payload?.owned_companies) ? payload.owned_companies : [];
-  } catch {
+  } catch (error) {
+    // Swallowed by design (the switcher just doesn't render), but this call is
+    // auth/cookie-dependent (tenant-membership bridge via withCredentials) and can
+    // fail differently across environments — e.g. cross-subdomain cookie scoping or
+    // CORS policy differences between local dev and a hosted deployment. Logging
+    // keeps that failure diagnosable from the browser console/network tab instead
+    // of looking identical to "no other stores exist".
+    console.warn('[storefrontAccountBranches] Failed to list DGFY account companies', error);
     return [];
   }
 
@@ -54,7 +61,8 @@ export async function fetchStorefrontAccountBranches({
       { cache: 'no-store' }
     );
     discoveryRows = Array.isArray(response?.stores) ? response.stores : [];
-  } catch {
+  } catch (error) {
+    console.warn('[storefrontAccountBranches] Failed to load storefront discovery index', error);
     return [];
   }
 
