@@ -32,7 +32,6 @@ export function StorefrontCheckoutSummaryContainer({
   handleDownloadCheckoutImage,
   handlePinMyLocation,
   handleQuote,
-  hasMixedServiceCart,
   hasServiceCart,
   hasStockViolation,
   isDeliveryOrder,
@@ -391,11 +390,6 @@ export function StorefrontCheckoutSummaryContainer({
           {!hasServiceCart && quoteResult && quoteNeedsRefresh && (
             <p style={{ marginTop: 10, fontSize: 13, color: '#b45309', fontWeight: 700 }}>
               Cart changed after quote. Click Quote again to proceed.
-            </p>
-          )}
-          {hasMixedServiceCart && (
-            <p style={{ marginTop: 10, fontSize: 13, color: '#b45309', fontWeight: 700 }}>
-              Services must be booked separately from regular product orders.
             </p>
           )}
           {hasServiceCart && !serviceAppointmentAt && (

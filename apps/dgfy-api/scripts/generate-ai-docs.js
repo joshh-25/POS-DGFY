@@ -197,7 +197,7 @@ Check git history for changes.
 `;
 
   // Write the file
-  const outputDir = path.join(__dirname, '../../docs/generated');
+  const outputDir = path.join(__dirname, '../../../docs/generated');
   const outputPath = path.join(outputDir, 'AI_CAPABILITIES.md');
 
   // Create directory if it doesn't exist

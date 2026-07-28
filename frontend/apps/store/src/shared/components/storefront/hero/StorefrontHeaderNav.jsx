@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ChevronRight, MapPin, Menu, Package, ShoppingBag, User, X } from 'lucide-react';
+import { ArrowLeft, ChevronRight, MapPin, Menu, Package, ShoppingBag, Store, User, X } from 'lucide-react';
 
 const HERO_CANVAS_MAX_WIDTH = 1320;
 const DGFY_HEADER_LOGO_URL = '/dgfy-logo.png';
@@ -17,6 +17,7 @@ export function StorefrontHeaderNav({
   onAccount = null,
   onRegisterBusiness = null,
   branchSelector = null,
+  accountStoreSwitcher = null,
   activeOrderCount = 0,
   isAuthenticated = false,
   accountName = '',
@@ -386,6 +387,24 @@ export function StorefrontHeaderNav({
                           </div>
                         </div>
                       ) : null}
+                      {accountStoreSwitcher ? (
+                        <div style={{ borderTop: '1px solid #e2e8f0', padding: '14px 0 10px', display: 'grid', gap: 8 }}>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, color: '#64748b', fontSize: 12, fontWeight: 800, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                            <Store size={14} />
+                            <span>Other Stores</span>
+                          </div>
+                          <div
+                            style={{
+                              minWidth: 0,
+                              minHeight: 52,
+                              display: 'flex',
+                              alignItems: 'center'
+                            }}
+                          >
+                            {accountStoreSwitcher}
+                          </div>
+                        </div>
+                      ) : null}
                       {drawerRows.map(({ key, label, icon: Icon, onClick }) => (
                         <button
                           key={key}
@@ -427,6 +446,10 @@ export function StorefrontHeaderNav({
           >
             {branchSelector}
             {branchSelector && (
+              <span style={{ width: 1, height: 26, background: '#d9e2ef', flexShrink: 0 }} />
+            )}
+            {accountStoreSwitcher}
+            {accountStoreSwitcher && (
               <span style={{ width: 1, height: 26, background: '#d9e2ef', flexShrink: 0 }} />
             )}
             <button

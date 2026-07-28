@@ -131,7 +131,8 @@ const buildScopeMetrics = ({
   ledgerQty = 0,
   batchQty = 0,
   batchValue = 0,
-  fallbackCost = 0
+  fallbackCost = 0,
+  fifoEnabled = false
 }) => {
   const normalizedLedgerQty = roundTo(ledgerQty, 4);
   const normalizedBatchQty = roundTo(batchQty, 4);
@@ -156,7 +157,12 @@ const buildScopeMetrics = ({
       ledger_qty: normalizedLedgerQty,
       batch_qty: normalizedBatchQty,
       drift_qty: driftQty,
-      has_drift: Math.abs(driftQty) > DRIFT_TOLERANCE,
+      // Drift (ledger vs. batch quantity) is only a meaningful signal for
+      // FIFO/batch-tracked items. A count_ledger item (fifo_enabled: false)
+      // never has batch rows, so batch_qty is always 0 by design — comparing
+      // it to the ledger balance isn't "drift," it's just restating the
+      // ledger, and would otherwise flag every non-FIFO item with stock.
+      has_drift: fifoEnabled && Math.abs(driftQty) > DRIFT_TOLERANCE,
       tolerance: DRIFT_TOLERANCE
     }
   };
@@ -244,12 +250,14 @@ const getLocationStockByItem = async ({ itemIds = [], locationId, transaction = 
 
 const buildDefaultCostMetrics = (item = {}, locationId = null) => {
   const fallbackCost = toNumber(item?.cost_per_unit);
+  const fifoEnabled = item?.fifo_enabled === true;
   const globalLedgerQty = toNumber(item?.current_stock);
   const global = buildScopeMetrics({
     ledgerQty: globalLedgerQty,
     batchQty: 0,
     batchValue: 0,
-    fallbackCost
+    fallbackCost,
+    fifoEnabled
   });
 
   const scopedLocationId = parsePositiveInt(locationId);
@@ -262,7 +270,8 @@ const buildDefaultCostMetrics = (item = {}, locationId = null) => {
           ledgerQty: 0,
           batchQty: 0,
           batchValue: 0,
-          fallbackCost
+          fallbackCost,
+          fifoEnabled
         })
       }
     } : {})
@@ -313,13 +322,15 @@ export const getItemsCostMetrics = async ({
     if (!Number.isInteger(itemId) || itemId <= 0) return;
 
     const fallbackCost = toNumber(item?.cost_per_unit);
+    const fifoEnabled = item?.fifo_enabled === true;
     const globalLedgerQty = toNumber(item?.current_stock);
     const globalBatch = globalBatchByItem.get(itemId) || { batch_qty: 0, batch_value: 0 };
     const global = buildScopeMetrics({
       ledgerQty: globalLedgerQty,
       batchQty: globalBatch.batch_qty,
       batchValue: globalBatch.batch_value,
-      fallbackCost
+      fallbackCost,
+      fifoEnabled
     });
 
     const itemMetrics = { global };
@@ -333,7 +344,8 @@ export const getItemsCostMetrics = async ({
           ledgerQty: scopedLedgerQty,
           batchQty: scopedBatch.batch_qty,
           batchValue: scopedBatch.batch_value,
-          fallbackCost
+          fallbackCost,
+          fifoEnabled
         })
       };
     }
@@ -399,6 +411,7 @@ export const getItemCostMetricsByLocation = async ({
   const FIFOBatch = dbStore.get('FIFOBatch');
   const itemId = Number(item.item_id);
   const fallbackCost = toNumber(item.cost_per_unit);
+  const fifoEnabled = item.fifo_enabled === true;
 
   const [locationStocks, batchRows] = await Promise.all([
     ItemLocationStock?.findAll
@@ -473,7 +486,8 @@ export const getItemCostMetricsByLocation = async ({
         ledgerQty: row.ledger_qty,
         batchQty: row.batch_qty,
         batchValue: row.batch_value,
-        fallbackCost
+        fallbackCost,
+        fifoEnabled
       })
     }))
     .sort((a, b) => String(a.location_name || '').localeCompare(String(b.location_name || '')));
@@ -483,7 +497,7 @@ export const getWeightedInventoryValueOverview = async ({ transaction = null } =
   const Item = dbStore.get('Item');
   const activeItems = await Item.findAll({
     where: buildStockBearingItemWhere({ status: 'active', deleted_at: null }),
-    attributes: ['item_id', 'current_stock', 'cost_per_unit', 'category', 'mode_item_preset'],
+    attributes: ['item_id', 'current_stock', 'cost_per_unit', 'category', 'mode_item_preset', 'fifo_enabled'],
     raw: true,
     ...(transaction ? { transaction } : {})
   });

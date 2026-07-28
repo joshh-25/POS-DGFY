@@ -49,6 +49,8 @@ import { useGuestCustomerIdentity } from './shared/hooks/useGuestCustomerIdentit
 import { useStorefrontUiChrome } from './shared/hooks/useStorefrontUiChrome.js';
 import { useStorefrontTrackingIntent } from './shared/hooks/useStorefrontTrackingIntent.js';
 import { useAffiliateAttributionCapture } from './shared/hooks/useAffiliateAttributionCapture.js';
+import { setAnalyticsContext } from '../../../src/observability/analyticsClient.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../src/observability/analyticsEvents.js';
 import {
   buildCustomerFullName,
   clearCheckoutAuthResumeDraft,
@@ -84,7 +86,7 @@ import { StorefrontHeroBandContainer } from './app/pages/StorefrontHeroBandConta
 import { useStorefrontHeroBandProps } from './app/hooks/useStorefrontHeroBandProps.js';
 import { StorefrontCartDrawerShellContainer } from './app/pages/StorefrontCartDrawerShellContainer.jsx';
 import { useStorefrontCartDrawerShellProps } from './app/hooks/useStorefrontCartDrawerShellProps.js';
-import { openStorefrontActionLink } from './shared/utils/externalLinks.js';
+import { openStorefrontActionLink, sanitizeExternalLink } from './shared/utils/externalLinks.js';
 import { money, toSlug } from './shared/utils/storefrontFormatters.js';
 import { createStorefrontIdempotencyKey } from './shared/utils/idempotency.js';
 import {
@@ -303,12 +305,6 @@ fnb_modifier_groups
 Allergens:
 getDefaultFnbLineModifiers
 line_modifiers
-/api/v1/store/services/bookings/batch
-bookings: heldServiceCartLines.map
-quantity: Math.max(1, Number(line.quantity || 1))
-idempotency_key: createStorefrontIdempotencyKey('service-batch')
-serviceBatchFailureMessage(error, serviceCartLines)
-/api/v1/store/services/availability?
 Ready for pickup
 Out for delivery
 Order confirmed
@@ -316,24 +312,14 @@ Confirmed by store
 Preparing
 Delivered
 Picked up
-buildServiceAvailabilitySlotOptions
-serviceAvailabilityMessage
-Live capacity checked
-No available slots for this date and quantity
-This quantity needs a service resource with more capacity.
-/api/v1/store/services/holds
-replace_hold_token
-hasFreshServiceHold
-ensureServiceBookingHold(line)
-service_hold_token
-Reserving...
-openServiceCartEditor(line)
-serviceCartValidationIssues
-line?.intake_responses || {}
-Booking references
-checkoutResult.payments.filter
-cart_line_id
 */
+// NOTE: the anchors that used to sit here for service-booking batch/availability/hold
+// endpoints (/api/v1/store/services/bookings/batch, /availability, /holds, etc.) were
+// removed with the vacuous serviceBookingMultiplicity.contract.test.js that only ever
+// asserted against this comment, not real code (see Phase 7 of the Unified Product
+// Domain initiative). Those endpoints are being mounted and wired into the storefront
+// in a later phase; real behavior tests belong there, once the frontend actually calls
+// them.
 
 export const __storefrontTrackingTestUtils = {
   normalizeTrackedOrderEntry,
@@ -569,6 +555,17 @@ export default function StorefrontApp() {
   } = useDiscoveryFeaturedMerchants({ normalizeStorefrontCategories });
   const [selectedStore, setSelectedStore] = useState(null);
   const isStorePage = Boolean(routeSlug);
+  // AnalyticsRouteTracker (apps/store/src/main.jsx) already fires a
+  // $pageview for every route, including the discovery home -- this named
+  // event exists separately so "landed on discovery" reads as a funnel
+  // entry step in the PostHog UI rather than requiring a $pageview filter.
+  useEffect(() => {
+    if (isStorePage) return;
+    trackFunnelEvent(ANALYTICS_EVENTS.DISCOVERY_VIEWED, {
+      path: typeof window === 'undefined' ? '/' : (window.location.pathname || '/')
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStorePage]);
   const currentPathSubpage = readStoreSubpage();
   const currentPathname = typeof window === 'undefined' ? '/' : (window.location.pathname || '/');
   const isBookingSubpage = routeSubpage === STORE_BOOKING_SUBPAGE;
@@ -743,6 +740,16 @@ export default function StorefrontApp() {
     closeAccountDrawer
   } = useStorefrontSession({ setIsAccountDrawerOpen });
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  // isCheckoutOpen has many true-setting call sites (cart-add auto-open, hero
+  // CTAs, tracking-intent resume, guest-checkout-auth resume) with no single
+  // "start checkout" function to instrument -- watching its state origin
+  // here is the one chokepoint that covers all of them without duplicating
+  // the event at every call site.
+  useEffect(() => {
+    if (!isCheckoutOpen) return;
+    trackFunnelEvent(ANALYTICS_EVENTS.CHECKOUT_STARTED, { store_slug: selectedStore?.slug });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCheckoutOpen]);
   const [checkoutTab, setCheckoutTab] = useState('checkout');
   const [pendingOrderInitialTab, setPendingOrderInitialTab] = useState('');
   const [hasAppliedCheckoutAuthResume, setHasAppliedCheckoutAuthResume] = useState(false);
@@ -1305,6 +1312,14 @@ export default function StorefrontApp() {
   const goStoreOrderForDiscovery = (slug, locationId = null, storeContext = null) => {
     const normalized = toSlug(slug);
     if (!normalized || typeof window === 'undefined') return;
+    // An external listing (entity_type: 'external_listing') transacts on a different
+    // platform — it has no DGFY storefront/checkout to open. Redirect off-platform via
+    // the sanitized opener instead of routing into this app's storefront shell, which
+    // would otherwise present the off-platform store as if it were a DGFY tenant.
+    if (storeContext?.entity_type === 'external_listing') {
+      openStorefrontActionLink(sanitizeExternalLink(storeContext.storefront_url || storeContext.external_storefront_url));
+      return;
+    }
     const contextWorkflowMode = String(storeContext?.workflow_mode || storeContext?.business_mode || '').trim().toLowerCase();
     const hasStoreContext = storeContext && typeof storeContext === 'object';
     const shouldUseCanonicalStorefront = hasStoreContext && (contextWorkflowMode === 'fnb' || !canUseCheckout(storeContext));
@@ -1489,6 +1504,43 @@ export default function StorefrontApp() {
   useEffect(() => {
     setHasSelectedBranchFromMenu(false);
   }, [selectedStore?.slug]);
+  // Registers store/tenant/business-mode as PostHog super properties + groups
+  // once a store resolves, so every event fired afterwards (funnel events,
+  // autocapture, pageviews) can be sliced by "which store" / "which tenant"
+  // without a join -- this is what answers "which stores do visitors most
+  // often come from" in the PostHog UI.
+  useEffect(() => {
+    if (!selectedStore?.slug) return;
+    setAnalyticsContext({
+      storeSlug: selectedStore.slug,
+      storeName: selectedStore.tenant_name,
+      tenantId: selectedStore.tenant_id,
+      businessMode: selectedStore.workflow_mode || selectedStore.ops_workflow_mode || selectedStore.business_mode,
+      locationId: selectedLocationId
+    });
+    trackFunnelEvent(ANALYTICS_EVENTS.STORE_VIEWED, {
+      store_slug: selectedStore.slug,
+      business_mode: selectedStore.workflow_mode || selectedStore.ops_workflow_mode || selectedStore.business_mode,
+      location_id: selectedLocationId
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStore?.slug, selectedStore?.tenant_id, selectedStore?.workflow_mode, selectedLocationId]);
+
+  // Catalog search is purely client-side filtering (no network call, no
+  // existing debounce), so this is debounced here specifically to avoid
+  // firing an event per keystroke.
+  const catalogFilterEventTimerRef = useRef(null);
+  useEffect(() => {
+    if (!catalogSearch.trim()) return undefined;
+    clearTimeout(catalogFilterEventTimerRef.current);
+    catalogFilterEventTimerRef.current = setTimeout(() => {
+      trackFunnelEvent(ANALYTICS_EVENTS.STORE_CATALOG_FILTERED, {
+        query: catalogSearch.trim(),
+        store_slug: selectedStore?.slug
+      });
+    }, 600);
+    return () => clearTimeout(catalogFilterEventTimerRef.current);
+  }, [catalogSearch, selectedStore?.slug]);
   const {
     submitFnbItemReview,
     openFnbItemReviewFromInvite,
@@ -2228,7 +2280,6 @@ export default function StorefrontApp() {
     goStoreTrackPage,
     handleFnbCheckout,
     handleLoadAccountPanel,
-    hasMixedServiceCart,
     hasServiceCart,
     isDgfyCustomerSignedIn,
     isFnbMode,
@@ -2237,6 +2288,7 @@ export default function StorefrontApp() {
     normalizeStorefrontErrorMessage,
     orderMethod,
     orderSuccessAnimationTimerRef,
+    productCartLines,
     readDgfyAuthToken,
     readStoreAuthToken,
     rememberCustomerDetails,
@@ -3163,6 +3215,7 @@ export default function StorefrontApp() {
     catalogSearch,
     setCatalogSearch,
     goDiscovery,
+    goStore,
     hasServiceCart,
     goStoreBookingPage,
     cartCount,

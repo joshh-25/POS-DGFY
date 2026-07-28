@@ -36,6 +36,7 @@ import {
   deleteInventoryFolder
 } from '@/src/features/inventory';
 import { getCurrentUser } from '@/services/userService.js';
+import { PLACEHOLDER_ITEM_TAXONOMY_MODES } from '@/src/features/settings/modeItemTaxonomy.js';
 import { toast } from 'sonner';
 import { cn } from "@/lib/utils.js";
 import { formatNumber } from '@/lib/numberUtils.js';
@@ -1151,15 +1152,7 @@ export default function Items() {
     const category = String(item?.category || '').toLowerCase();
     const productType = String(item?.product_type || '').toLowerCase();
     const finishedGoods = category === 'product' && productType === 'finished_goods';
-    const placeholderModes = new Set([
-      'retail',
-      'hospitality',
-      'healthcare',
-      'ticketing_transport',
-      'logistics_distribution',
-      'education_institutions'
-    ]);
-    if (placeholderModes.has(workflowMode)) {
+    if (PLACEHOLDER_ITEM_TAXONOMY_MODES.includes(workflowMode)) {
       return {
         code: 'placeholder_conservative_default',
         label: 'Placeholder mode: conservative default'

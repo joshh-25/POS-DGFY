@@ -59,6 +59,9 @@ Use this checklist for every production release under ADR 0030.
 - [ ] Separate trusted finalization recollects current exact-SHA production proof.
 - [ ] Only passing per-slice proof transitions the controller ledger to terminal `completed` and creates immutable accuracy-finalization records.
 - [ ] Missing or failed proof leaves `deployed_pending_accuracy` with residual risk. Failed entries remain preserved and nonces are never reused.
+- [ ] Backend boot log for the target environment logs `[ConnectionBudget]` as within `max_connections`, not `OVER BUDGET` — see `docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md`. An over-budget process is not a deploy blocker by itself, but it must be a reviewed, intentional state, not a silent drift.
+- [ ] Loading a storefront page in the target environment shows zero CSP `script-src`/`script-src-elem` violations in the browser console, and PostHog's session-replay/surveys/web-vitals/dead-clicks scripts load from the same-origin `/ingest/` proxy (not directly from `eu-assets.i.posthog.com`).
+- [ ] Before the first production/beta deploy that touches `infrastructure/docker/nginx/nginx.conf.template` or enables PostHog there: `docs/ops/PRODUCTION_READINESS_POSTHOG_AND_NGINX_DRIFT.md` gates are satisfied — critically, the live prod/beta nginx template has drifted from the repo (production-specific dual-domain blocks exist only on the server) and must be reconciled before any repo-side nginx change is synced, or production routing breaks.
 
 ## Post-Deploy Retained Branch Review
 

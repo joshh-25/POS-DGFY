@@ -356,7 +356,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
         const closeShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
         const updateOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
             posRepository,
-            stockMovementService: {
+            inventoryCommandService: {
                 createStockMovement: jest.fn()
             }
         });
@@ -500,7 +500,7 @@ describe('NVP-01 operation replay parity across terminal flows', () => {
         const closeShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
         const updateOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
             posRepository,
-            stockMovementService: {
+            inventoryCommandService: {
                 createStockMovement: jest.fn()
             }
         });

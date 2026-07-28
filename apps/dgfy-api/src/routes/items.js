@@ -13,6 +13,7 @@ import {
   validateBarcodeIdParam,
   validateBarcodeResolveQuery,
   validateExternalProductLookupQuery,
+  validateExternalProductImageImport,
   validateAttachBarcode,
   validateGenerateBarcode,
   validateUpdateBarcode,
@@ -26,13 +27,13 @@ import {
   validateReplaceItemSuppliers
 } from '../validators/itemValidator.js';
 import { authenticate, checkPermission, requireTenantAdmin } from '../middleware/auth.js';
+import { requireLocalInventoryLedgerOwnership, bodyDeclaresCurrentStock } from '../middleware/inventoryAuthorityGate.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import { itemOperationsLimiter } from '../middleware/rateLimiter.js';
 import {
   storefrontCatalogBulkImageUpload,
   storefrontCatalogGalleryImageUpload,
   storefrontCatalogImageUpload,
-  upload,
   menuImportFileUpload
 } from '../config/uploadConfig.js';
 
@@ -93,6 +94,7 @@ router.get('/storefront-overrides', checkPermission(PERMISSIONS.INVENTORY.action
 router.patch('/storefront-overrides/bulk', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), itemController.updateBulkStorefrontCatalogOverrides);
 router.post('/storefront-images/bulk', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), storefrontCatalogBulkImageUpload.array('images', 50), itemController.uploadBulkStorefrontCatalogImages);
 router.patch('/:item_id/storefront-override', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, validateUpdateStorefrontCatalogOverride, itemController.updateStorefrontCatalogOverride);
+router.post('/:item_id/storefront-image/external', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, validateExternalProductImageImport, itemController.importExternalStorefrontCatalogImage);
 router.post('/:item_id/storefront-image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, storefrontCatalogImageUpload.single('image'), itemController.uploadStorefrontCatalogImage);
 router.post('/:item_id/storefront-images', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, storefrontCatalogGalleryImageUpload.array('images', 5), itemController.uploadStorefrontCatalogGalleryImages);
 router.patch('/:item_id/storefront-images/gallery', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, itemController.updateStorefrontCatalogGallery);
@@ -129,16 +131,34 @@ router.put('/:item_id/suppliers', checkPermission(PERMISSIONS.INVENTORY.actions.
 router.post('/validate-composition', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), itemController.validateComposition);
 
 // Create/Update operations - managers and admins only
-router.post('/', checkPermission(PERMISSIONS.INVENTORY.actions.CREATE_ITEMS), (req, res, next) => {
-  // Use draft validator if save_as_draft query param is true
-  const isDraft = req.query.save_as_draft === 'true' || req.body.status === 'draft';
-  if (isDraft) {
-    validateCreateItemDraft(req, res, next);
-  } else {
-    validateCreateItem(req, res, next);
-  }
-}, itemController.createItem);
-router.put('/:item_id', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateUpdateItem, itemController.updateItem);
+// Phase 9: do NOT gate item create/update wholesale on inventory_authority -
+// most of what this endpoint edits (name, price, category, barcodes) is
+// catalog metadata a delegated tenant still needs to manage locally. Only
+// block the one thing that actually overwrites the local stock ledger
+// outside the normal movement flow: a request body that declares
+// current_stock directly (see bodyDeclaresCurrentStock).
+router.post(
+  '/',
+  checkPermission(PERMISSIONS.INVENTORY.actions.CREATE_ITEMS),
+  requireLocalInventoryLedgerOwnership('Setting an item opening stock balance', { shouldBlock: bodyDeclaresCurrentStock }),
+  (req, res, next) => {
+    // Use draft validator if save_as_draft query param is true
+    const isDraft = req.query.save_as_draft === 'true' || req.body.status === 'draft';
+    if (isDraft) {
+      validateCreateItemDraft(req, res, next);
+    } else {
+      validateCreateItem(req, res, next);
+    }
+  },
+  itemController.createItem
+);
+router.put(
+  '/:item_id',
+  checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS),
+  requireLocalInventoryLedgerOwnership('Directly editing an item stock balance', { shouldBlock: bodyDeclaresCurrentStock }),
+  validateUpdateItem,
+  itemController.updateItem
+);
 
 // Finalize draft - managers and admins only
 router.patch('/:item_id/finalize', checkPermission(PERMISSIONS.INVENTORY.actions.CREATE_ITEMS), itemController.finalizeItem);

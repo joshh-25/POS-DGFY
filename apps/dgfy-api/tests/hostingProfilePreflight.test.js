@@ -2,7 +2,7 @@ import { describe, it, expect } from '@jest/globals';
 import { createRequire } from 'module';
 
 const require = createRequire(import.meta.url);
-const { validateHostingProfile } = require('../../scripts/check-hosting-profile.js');
+const { validateHostingProfile } = require('../../../scripts/check-hosting-profile.js');
 
 const strongSecret = (label) => `${label}_${'a'.repeat(48)}`;
 

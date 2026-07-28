@@ -1,18 +1,20 @@
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { hasValidGtinCheckDigit, normalizeGtin } from '../../shared/utils/barcodePolicy.js';
 
-export const buildLookupExternalProductUseCase = ({ productRegistry, cache = null }) => {
-  return async ({ code }) => {
+export const buildLookupExternalProductUseCase = ({ productRegistry, priceRegistry = null, cache = null }) => {
+  return async ({ code, includeSuggestedPrice = true }) => {
     const gtin = normalizeGtin(code);
     if (!hasValidGtinCheckDigit(gtin)) {
       throw new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
-        'Enter a valid UPC, EAN, or GTIN barcode with a correct check digit.',
+        'Invalid GTIN check digit. Scan a real package barcode or enter item details manually.',
         { statusCode: 422 }
       );
     }
 
-    const cacheKey = `external-product:${productRegistry.name}:${gtin}`;
+    const shouldIncludeSuggestedPrice = includeSuggestedPrice !== false && Boolean(priceRegistry?.lookupSuggestedPriceByGtin);
+    const providerKey = shouldIncludeSuggestedPrice ? `${productRegistry.name}:${priceRegistry.name}` : productRegistry.name;
+    const cacheKey = `external-product:v2:${providerKey}:${gtin}`;
     const cached = cache ? await cache.get(cacheKey) : null;
     if (cached) {
       try {
@@ -24,9 +26,18 @@ export const buildLookupExternalProductUseCase = ({ productRegistry, cache = nul
 
     try {
       const result = await productRegistry.lookupByGtin(gtin);
+      let suggestedPrice = null;
+      if (result?.found && shouldIncludeSuggestedPrice) {
+        try {
+          suggestedPrice = await priceRegistry.lookupSuggestedPriceByGtin(gtin);
+        } catch {
+          // Price enrichment is advisory and must never block product lookup or manual item creation.
+        }
+      }
       const normalizedResult = {
         ...result,
-        code: gtin
+        code: gtin,
+        ...(suggestedPrice ? { suggested_price: suggestedPrice } : {})
       };
       if (cache) {
         await cache.set(cacheKey, JSON.stringify(normalizedResult), result.found ? 86400 : 900);

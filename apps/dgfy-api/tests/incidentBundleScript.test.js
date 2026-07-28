@@ -7,7 +7,7 @@ const require = createRequire(import.meta.url);
 const {
     createIncidentBundle,
     createRedactor
-} = require('../../scripts/create-incident-bundle.js');
+} = require('../../../scripts/create-incident-bundle.js');
 
 describe('incident bundle script', () => {
     it('redacts secrets and PII from excerpts', () => {

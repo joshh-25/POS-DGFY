@@ -41,7 +41,7 @@ describe('WorkflowModeRouteGate', () => {
           <Route
             path="/job-orders"
             element={(
-              <WorkflowModeRouteGate blockInFnb moduleLabel="Job Orders">
+              <WorkflowModeRouteGate requiredCapability="productionWorkflows" moduleLabel="Job Orders">
                 <div>Job order page mounted</div>
               </WorkflowModeRouteGate>
             )}

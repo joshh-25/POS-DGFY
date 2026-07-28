@@ -54,7 +54,7 @@ describe('imageAssetStorage utility', () => {
         expect(stored.variants.large.size).toBeLessThanOrEqual(MAX_PUBLIC_IMAGE_BYTES);
     });
 
-    it('avoids upscaling small graphics and keeps the primary delivery path stable', async () => {
+    it('creates every delivery variant for small graphics without upscaling', async () => {
         const tempPath = path.join(uploadsRoot, 'upload-graphic.png');
         await sharp({
             create: {
@@ -75,10 +75,15 @@ describe('imageAssetStorage utility', () => {
             tempPath
         });
 
-        const largeMeta = await sharp(path.join(uploadsRoot, stored.path)).metadata();
-        expect(largeMeta.width).toBe(320);
-        expect(stored.variants.thumbnail).toBeNull();
-        expect(stored.variants.medium).toBeNull();
+        const variantMetadata = await Promise.all(
+            Object.values(stored.variants).map((variant) => (
+                sharp(path.join(uploadsRoot, variant.path)).metadata()
+            ))
+        );
+        expect(variantMetadata.map((metadata) => metadata.width)).toEqual([320, 320, 320]);
+        expect(stored.variants.thumbnail.url).toMatch(/\/thumb\.png$/);
+        expect(stored.variants.medium.url).toMatch(/\/medium\.png$/);
+        expect(stored.variants.large.url).toMatch(/\/large\.png$/);
         expect(stored.path).toMatch(/storefront-assets\/tenant-b\/cover-test-.*\/large\.png$/);
     });
 

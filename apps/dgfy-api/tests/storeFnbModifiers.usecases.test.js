@@ -441,6 +441,78 @@ describe('storefront F&B modifier checkout contract', () => {
     }));
   });
 
+  it('persists stock_effect_type/stock_exempt_reason and skips the stock check for an untracked item (bug 1 + bug 2)', async () => {
+    // Before this fix, storefront checkout never set these fields at all (every
+    // online line silently persisted the model default 'inventory_issue',
+    // contradicting actual behavior), and pos_always_available was ignored
+    // entirely on this surface, so a zero-stock always-available item would be
+    // wrongly rejected here even though POS would sell it fine.
+    const repository = buildRepository([{
+      ...burgerItem,
+      current_stock: 0,
+      pos_always_available: true,
+      fnbModifierGroups: []
+    }]);
+    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+
+    const result = await useCase({
+      tenantId,
+      storeCustomer: {
+        customer_id: 55,
+        dgfy_account_id: 'dgfy-1',
+        name: 'Ana',
+        email: 'ana@example.test',
+        phone: '09170000000'
+      },
+      payload: {
+        idempotency_key: 'store-untracked-checkout',
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        lines: [{ item_id: 20, quantity: 3 }]
+      }
+    });
+
+    expect(result.success).toBe(true);
+    expect(repository.createOnlineTransactionWithLines).toHaveBeenCalledWith(expect.objectContaining({
+      lines: [expect.objectContaining({
+        item_id: 20,
+        stock_effect_type: 'stock_exempt',
+        stock_exempt_reason: 'pos_always_available',
+        cost_snapshot: 40
+      })]
+    }), expect.objectContaining({ transaction: expect.any(Object) }));
+  });
+
+  it('rejects checkout for a toggle-mode item the operator has marked unavailable', async () => {
+    const repository = buildRepository([{
+      ...burgerItem,
+      current_stock: 5,
+      tracking_mode: 'toggle',
+      tracking_toggle_available: false,
+      fnbModifierGroups: []
+    }]);
+    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+
+    const result = await useCase({
+      tenantId,
+      payload: {
+        idempotency_key: 'store-toggle-unavailable-checkout',
+        location_id: 4,
+        order_method: 'pickup',
+        payment_type: 'cash',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        lines: [{ item_id: 20, quantity: 1 }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.message).toContain('unavailable');
+    expect(repository.createOnlineTransactionWithLines).not.toHaveBeenCalled();
+  });
+
   it('replays an accepted F&B Storefront checkout without rechecking depleted ingredients', async () => {
     const repository = buildRepository([{
       ...burgerItem,

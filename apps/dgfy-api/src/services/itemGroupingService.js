@@ -2,6 +2,7 @@ import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import logger from '../config/logger.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
+import { isStockExemptServiceItem } from '../modules/shared/utils/stockBearingPolicy.js';
 
 /**
  * List all inventory folders with item counts
@@ -157,7 +158,9 @@ export const getFolderDetails = async (folderName) => {
                 sku_code: item.sku_code,
                 name: item.name,
                 category: item.category,
-                stock: item.current_stock,
+                // A service item carries no stock; report null rather than a
+                // raw current_stock number that would misleadingly read as "0 on hand".
+                stock: isStockExemptServiceItem(item) ? null : item.current_stock,
                 unit: item.unit_of_measure
             })) || []
         };

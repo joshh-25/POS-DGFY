@@ -1,14 +1,15 @@
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
+import { buildStockBearingItemWhere } from '../modules/shared/utils/stockBearingPolicy.js';
 
 export const forecastStockLevels = async (daysAhead = 30) => {
   const Item = dbStore.get('Item');
   const StockMovement = dbStore.get('StockMovement');
 
-  // Query 1: all active items
+  // Query 1: all active, stock-bearing items (services carry no stock to forecast)
   const items = await Item.findAll({
-    where: buildVisibleWhere({ status: 'active' })
+    where: buildStockBearingItemWhere(buildVisibleWhere({ status: 'active' }))
   });
 
   if (items.length === 0) return [];

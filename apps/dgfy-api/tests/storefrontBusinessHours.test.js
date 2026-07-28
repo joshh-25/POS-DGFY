@@ -1,7 +1,8 @@
 import {
   formatStorefrontBusinessHoursDisplay,
   normalizeStorefrontBusinessHours,
-  isDateWithinStorefrontBusinessHours
+  isDateWithinStorefrontBusinessHours,
+  getZonedDayStart
 } from '../src/modules/shared/utils/storefrontBusinessHours.js';
 
 const weeklyHours = (weekly) => ({
@@ -75,5 +76,27 @@ describe('storefront business hours utility', () => {
     });
 
     expect(normalized.display.length).toBeLessThanOrEqual(120);
+  });
+
+  it('getZonedDayStart returns the UTC instant for local midnight in the given timezone', () => {
+    // Jan 1 20:00 UTC is already Jan 2 04:00 in Manila (UTC+8) -- the zoned
+    // day start must roll to Jan 2 00:00 Manila (= Jan 1 16:00 UTC), not stay
+    // on the UTC calendar day.
+    expect(getZonedDayStart(new Date('2026-01-01T20:00:00Z'), 'Asia/Manila').toISOString())
+      .toBe('2026-01-01T16:00:00.000Z');
+    // Jan 1 05:00 UTC is still Jan 1 13:00 in Manila -- day start stays on Jan 1.
+    expect(getZonedDayStart(new Date('2026-01-01T05:00:00Z'), 'Asia/Manila').toISOString())
+      .toBe('2025-12-31T16:00:00.000Z');
+  });
+
+  it('getZonedDayStart defaults to Asia/Manila when no timezone is given', () => {
+    expect(getZonedDayStart(new Date('2026-01-01T05:00:00Z'), null).toISOString())
+      .toBe(getZonedDayStart(new Date('2026-01-01T05:00:00Z'), 'Asia/Manila').toISOString());
+  });
+
+  it('getZonedDayStart computes local midnight for a distinct timezone (no DST in January)', () => {
+    // Jan 1 05:00 UTC is Jan 1 00:00 in America/New_York (UTC-5 in January).
+    expect(getZonedDayStart(new Date('2026-01-01T05:00:00Z'), 'America/New_York').toISOString())
+      .toBe('2026-01-01T05:00:00.000Z');
   });
 });

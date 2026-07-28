@@ -1,7 +1,10 @@
+import * as Sentry from '@sentry/node';
 import {
+  initSentry,
   redactSensitiveData,
   resolveSentryConfig,
-  sanitizeSentryEvent
+  sanitizeSentryEvent,
+  sentryRequestContext
 } from '../src/config/sentry.js';
 
 describe('backend Sentry config', () => {
@@ -85,5 +88,58 @@ describe('backend Sentry config', () => {
         displayName: 'Admin'
       }
     });
+  });
+});
+
+// This module is a singleton (`let initialized`), so this describe block
+// runs after every test above and calls the real initSentry() once --
+// safe because Sentry.init() only configures a transport, it doesn't make
+// a network call, and Jest gives each test *file* its own module registry
+// so this doesn't leak into other test files.
+describe('sentryRequestContext isolation scope', () => {
+  beforeAll(() => {
+    initSentry({
+      env: { SENTRY_ENABLED: 'true', SENTRY_BACKEND_DSN: 'https://test@sentry.test/1' },
+      logger: { info: () => {}, warn: () => {} }
+    });
+  });
+
+  test('sets request/trace/tenant tags on the isolation scope for the current request', () => {
+    const req = {
+      requestId: 'req-abc',
+      traceId: 'trace-abc',
+      headers: { 'x-dgfy-surface': 'pos' },
+      user: { user_id: 7 },
+      tenant: { id: 99 }
+    };
+    let tagsSeenInsideNext = null;
+
+    sentryRequestContext(req, {}, () => {
+      tagsSeenInsideNext = Sentry.getIsolationScope().getScopeData().tags;
+    });
+
+    expect(tagsSeenInsideNext).toMatchObject({
+      service: 'backend',
+      request_id: 'req-abc',
+      trace_id: 'trace-abc',
+      surface: 'pos'
+    });
+  });
+
+  test('does not leak tags between two sequential requests', () => {
+    const makeReq = (id) => ({ requestId: id, traceId: id, headers: {} });
+    const seenRequestIds = [];
+
+    sentryRequestContext(makeReq('req-1'), {}, () => {
+      seenRequestIds.push(Sentry.getIsolationScope().getScopeData().tags.request_id);
+    });
+    sentryRequestContext(makeReq('req-2'), {}, () => {
+      seenRequestIds.push(Sentry.getIsolationScope().getScopeData().tags.request_id);
+    });
+
+    expect(seenRequestIds).toEqual(['req-1', 'req-2']);
+    // Outside any request-scoped middleware call, the ambient isolation
+    // scope must not carry a tag left over from either request above.
+    expect(Sentry.getIsolationScope().getScopeData().tags.request_id).toBeUndefined();
   });
 });

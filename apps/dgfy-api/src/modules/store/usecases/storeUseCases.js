@@ -37,8 +37,11 @@ import {
     parseBarcodeStructuredPayload
 } from '../../shared/utils/barcodePolicy.js';
 import {
-    isStockExemptServiceItem
+    isStockExemptServiceItem,
+    resolveStockBearingDescriptor,
+    resolveStockExemptReason
 } from '../../shared/utils/stockBearingPolicy.js';
+import { resolveWorkflowCapabilitySettings as resolveWorkflowCapabilitySettingsDefault } from '../../shared/utils/workflowCapabilitySettingsCache.js';
 import {
     hasExplicitSalePrice,
     requireExplicitSalePrice
@@ -719,17 +722,26 @@ const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false,
             );
         }
 
-        const isServiceItem = isStockExemptServiceItem(item);
+        const descriptor = resolveStockBearingDescriptor(item);
+        if (descriptor.is_toggle_available === false) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                `"${item.name}" is currently marked unavailable`,
+                { statusCode: 422 }
+            );
+        }
+
+        const isStockExemptLine = !descriptor.tracks_quantity;
         const currentStock = Number(item.current_stock || 0);
-        const requestedItemQuantity = isServiceItem || allowOutOfStockSales
+        const requestedItemQuantity = isStockExemptLine || allowOutOfStockSales
             ? quantity
             : round4((requestedQuantityByItemId.get(item.item_id) || 0) + quantity);
-        if (!isServiceItem && !allowOutOfStockSales) {
+        if (!isStockExemptLine && !allowOutOfStockSales) {
             requestedQuantityByItemId.set(item.item_id, requestedItemQuantity);
         }
 
         const hasRecipeConsumption = recipeItemIds.has(Number(item.item_id));
-        if (!isServiceItem && !allowOutOfStockSales && !hasRecipeConsumption && currentStock + 0.000001 < requestedItemQuantity) {
+        if (descriptor.blocks_on_shortfall && !allowOutOfStockSales && !hasRecipeConsumption && currentStock + 0.000001 < requestedItemQuantity) {
             const stockViolation = {
                 item_id: item.item_id,
                 item_name: item.name,
@@ -762,7 +774,9 @@ const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false,
             item_name: item.name,
             quantity: round4(quantity),
             unit_of_measure: item.unit_of_measure || null,
-            cost_snapshot: isServiceItem ? null : (item.cost_per_unit != null ? round4(item.cost_per_unit) : null),
+            cost_snapshot: descriptor.carries_cost ? (item.cost_per_unit != null ? round4(item.cost_per_unit) : null) : null,
+            stock_effect_type: isStockExemptLine ? 'stock_exempt' : 'inventory_issue',
+            stock_exempt_reason: resolveStockExemptReason(item, descriptor),
             sale_price: effectiveUnitPrice,
             sale_price_overridden: false,
             price_override_reason: null,
@@ -1276,7 +1290,10 @@ export const buildRegisterStoreCustomerUseCase = ({ storeRepository }) => {
     };
 };
 
-export const buildListStoreCatalogUseCase = ({ storeRepository }) => {
+export const buildListStoreCatalogUseCase = ({
+    storeRepository,
+    resolveWorkflowCapabilitySettings = resolveWorkflowCapabilitySettingsDefault
+}) => {
     return async ({ query = {} } = {}) => {
         if (!isPlainObject(query)) {
             return fail(new DomainError(
@@ -1299,6 +1316,12 @@ export const buildListStoreCatalogUseCase = ({ storeRepository }) => {
             }
 
             const accessPolicy = await resolveStorefrontAccessPolicy({ storeRepository });
+            // Live (15s-cached) workflow mode + composed-capability overlay, so a
+            // retail/fnb tenant with `services` enabled via ops_enabled_capabilities
+            // can be recognized by the storefront even though its scalar
+            // workflow_mode alone would say otherwise (see
+            // app/runtime/modePresentationRegistry.js on the frontend).
+            const { mode: workflowMode, enabledCapabilities } = await resolveWorkflowCapabilitySettings();
             if (isCustomerAccessEnabledForCurrentTenant() && accessPolicy.access_capabilities.catalog !== true) {
                 return ok({
                     items: [],
@@ -1308,7 +1331,9 @@ export const buildListStoreCatalogUseCase = ({ storeRepository }) => {
                             : 60,
                         count: 0
                     },
-                    access_policy: accessPolicy
+                    access_policy: accessPolicy,
+                    workflow_mode: workflowMode,
+                    enabled_capabilities: enabledCapabilities
                 });
             }
 
@@ -1331,7 +1356,9 @@ export const buildListStoreCatalogUseCase = ({ storeRepository }) => {
                         : 60,
                     count: serializedItems.length
                 },
-                access_policy: accessPolicy
+                access_policy: accessPolicy,
+                workflow_mode: workflowMode,
+                enabled_capabilities: enabledCapabilities
             });
         } catch (error) {
             if (error instanceof DomainError) {

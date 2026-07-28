@@ -70,8 +70,8 @@ jobs:
           FRONTEND=false
           DGFY_API=false
           MIGRATION_RUNNER=false
-          matches '^(frontend/|packages/pos-receipt/|infrastructure/docker/frontend/|\.github/workflows/)' && FRONTEND=true || true
-          matches '^(apps/dgfy-api/|infrastructure/docker/dgfy-api/|\.github/workflows/)' && DGFY_API=true || true
+          matches '^(frontend/|packages/pos-receipt/|packages/shared-constants/|infrastructure/docker/frontend/|\.github/workflows/)' && FRONTEND=true || true
+          matches '^(apps/dgfy-api/|packages/shared-constants/|infrastructure/docker/dgfy-api/|\.github/workflows/)' && DGFY_API=true || true
           matches '^(apps/dgfy-migration-runner/|infrastructure/docker/dgfy-migration-runner/|\.github/workflows/)' && MIGRATION_RUNNER=true || true
 
           {

@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter, Route, Routes } from 'react-router-dom';
+import { BrowserRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import './index.css';
 import StorefrontApp from './StorefrontApp.jsx';
@@ -11,10 +11,49 @@ import StorefrontAffiliateAcceptPage from './auth/pages/StorefrontAffiliateAccep
 import StorefrontResetPasswordPage from './auth/pages/StorefrontResetPasswordPage.jsx';
 import StorefrontBusinessGrowPage from './business/pages/StorefrontBusinessGrowPage.jsx';
 import { initBrowserSentry } from '../../../src/observability/sentryClient.js';
+import {
+  capturePageview,
+  getStoredAnalyticsConsent,
+  initBrowserAnalytics
+} from '../../../src/observability/analyticsClient.js';
+import { ConsentBanner } from './Components/ConsentBanner.jsx';
+import {
+  getCustomStorefrontRouteContext,
+  readRouteSlug,
+  readStoreSubpage
+} from './app/routing/storefrontRouting.js';
 
 const rootElement = document.getElementById('root');
 
 initBrowserSentry({ surface: 'store' });
+initBrowserAnalytics({ surface: 'store', consent: getStoredAnalyticsConsent() === true });
+
+// Only the public storefront prompts for tracking consent today — SKUpervisor
+// and POS are used by our own staff under an employment relationship, a
+// different consent basis than an anonymous public visitor.
+const handleConsentChange = (granted) => {
+  initBrowserAnalytics({ surface: 'store', consent: granted });
+};
+
+function AnalyticsRouteTracker() {
+  const location = useLocation();
+
+  useEffect(() => {
+    // The storefront's real routing is a second, window.location-based layer
+    // on top of react-router (see app/routing/storefrontRouting.js) — a
+    // custom merchant domain collapses everything to `/`, `/order`, etc, so
+    // react-router's location.pathname alone under-describes the page.
+    // Reading the routing helpers here captures what page this actually is.
+    capturePageview({
+      path: location.pathname,
+      route_slug: readRouteSlug(),
+      route_subpage: readStoreSubpage(),
+      is_custom_domain: Boolean(getCustomStorefrontRouteContext())
+    });
+  }, [location.pathname]);
+
+  return null;
+}
 
 // Kept exactly as-is: several integration tests render `<App/>` directly
 // (no router context), and StorefrontApp itself never touches react-router
@@ -36,6 +75,8 @@ export function App() {
 function StoreRoot() {
   return (
     <BrowserRouter basename={appBasePath === '/' ? undefined : appBasePath}>
+      <AnalyticsRouteTracker />
+      <ConsentBanner onConsentChange={handleConsentChange} />
       <Routes>
         <Route
           path="/login"

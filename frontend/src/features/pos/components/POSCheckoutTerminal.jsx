@@ -73,9 +73,15 @@ import {
     normalizeLowStockDisplayThreshold
 } from '../utils/posCatalogAvailability.js';
 import { subscribeToPosCatalogUpdates } from '../utils/posCatalogRefresh.js';
+import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
 import { getFolders } from '@/services/itemService.js';
 import { getAllSettings } from '@/services/settingsService';
-import { resolveAppAssetUrl, resolveAssetUrl, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
+import {
+    advanceAssetImageFallback,
+    resolveAppAssetUrl,
+    resolveAssetUrl,
+    resolveAssetVariantUrl
+} from '@/src/utils/assetUrl.js';
 import { openSkupervisorPath } from '../utils/skupervisorHandoff.js';
 import {
     notifyIminWebPosReady,
@@ -114,6 +120,16 @@ const RECEIPT_PAPER_OPTIONS = [
 
 const money = (value) => Number(value || 0).toFixed(2);
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
+// Manual quantity typing sanitizer: integer-only items keep the pre-existing
+// digits-only filter untouched; decimal-eligible items (weight/volume UOM,
+// e.g. weighed_goods sold per kg) additionally allow a single decimal point.
+const sanitizeQuantityInput = (rawValue, allowDecimal) => {
+    if (!allowDecimal) return String(rawValue || '').replace(/[^0-9]/g, '');
+    const cleaned = String(rawValue || '').replace(/[^0-9.]/g, '');
+    const firstDotIndex = cleaned.indexOf('.');
+    if (firstDotIndex === -1) return cleaned;
+    return cleaned.slice(0, firstDotIndex + 1) + cleaned.slice(firstDotIndex + 1).replace(/\./g, '');
+};
 const toArray = (value) => (Array.isArray(value) ? value : []);
 const isSeniorPwdDiscountEligible = (value) => value === true || value === 1 || value === '1';
 const normalizePromoCode = (value) => String(value || '').trim().toUpperCase().slice(0, 40);
@@ -625,10 +641,12 @@ const resolveMappedPosItemImage = (item = {}) => {
 
 const resolvePosCatalogImageSources = (item = {}, settings = {}) => {
     const configuredSrc = resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail');
+    const configuredLargeSrc = resolveAssetVariantUrl(item?.storefront_image_url, 'large');
     const mappedSrc = resolveAssetVariantUrl(resolveAppAssetUrl(resolveMappedPosItemImage(item)), 'thumbnail');
     const fallbackSrc = resolveCompanyIconFallbackUrl(settings);
     return {
         configuredSrc,
+        configuredLargeSrc,
         mappedSrc,
         fallbackSrc,
         src: configuredSrc || mappedSrc || fallbackSrc
@@ -1952,7 +1970,12 @@ export default function POSCheckoutTerminal({
             line_modifiers: defaultModifiers
         };
         const linePrice = round4(defaultPrice + resolveModifierDelta(modifierLineSeed, defaultModifiers));
-        if (isServiceCatalogItem(item)) {
+        // Only default order_method to 'appointment' when this service is the
+        // very first line in an empty basket. Previously this fired on every
+        // service add regardless of what else was already in the cart, so
+        // ringing up a service alongside unrelated retail lines silently
+        // reclassified the whole mixed-basket transaction as an appointment.
+        if (isServiceCatalogItem(item) && cart.length === 0) {
             setOrderMethod('appointment');
         }
         let stockWarning = '';
@@ -2071,8 +2094,12 @@ export default function POSCheckoutTerminal({
     };
 
     // Mobile catalog stepper: commits the typed value from tapping the item-count label.
+    // Weight/volume-UOM items (e.g. weighed_goods sold per kg) keep up to 4 decimal
+    // places instead of being floored to a whole number - see allowsDecimalQuantity.
     const commitManualCartQuantity = (item) => {
-        const parsedQuantity = Math.max(0, Math.floor(Number(quantityInputValue)) || 0);
+        const parsedQuantity = allowsDecimalQuantity(item.unit_of_measure)
+            ? Math.max(0, round4(Number(quantityInputValue)) || 0)
+            : Math.max(0, Math.floor(Number(quantityInputValue)) || 0);
         setEditingQuantityItemId(null);
         const existing = safeCart.find((line) => line.item_id === item.item_id);
         if (existing) {
@@ -3189,6 +3216,7 @@ export default function POSCheckoutTerminal({
                             const isBestSeller = item?.is_best_seller === true;
                             const isOutOfStock = !isServiceItem && !isAlwaysAvailable && Number(item.current_stock || 0) <= 0;
                             const {
+                                configuredLargeSrc: largePosImageSrc,
                                 fallbackSrc: fallbackPosImageSrc,
                                 src: posImageSrc
                             } = resolvePosCatalogImageSources(item, receiptSettings);
@@ -3242,13 +3270,7 @@ export default function POSCheckoutTerminal({
                                                 height={400}
                                                 className="product-image h-full w-full object-cover object-center"
                                                 onError={(event) => {
-                                                    const fallbackSrc = fallbackPosImageSrc;
-                                                    const currentSrc = String(event.currentTarget.src || '');
-                                                    const alreadyFallback = currentSrc.endsWith(fallbackSrc);
-                                                    if (!alreadyFallback) {
-                                                        event.currentTarget.src = fallbackSrc;
-                                                        return;
-                                                    }
+                                                    if (advanceAssetImageFallback(event, [largePosImageSrc, fallbackPosImageSrc])) return;
                                                     setCatalogImageErrors((previous) => {
                                                         const next = new Set(previous);
                                                         next.add(item.item_id);
@@ -3326,11 +3348,11 @@ export default function POSCheckoutTerminal({
                                                     {isEditingThisQuantity ? (
                                                         <input
                                                             type="text"
-                                                            inputMode="numeric"
-                                                            pattern="[0-9]*"
+                                                            inputMode={allowsDecimalQuantity(item.unit_of_measure) ? 'decimal' : 'numeric'}
+                                                            pattern={allowsDecimalQuantity(item.unit_of_measure) ? '[0-9]*\\.?[0-9]*' : '[0-9]*'}
                                                             autoFocus
                                                             value={quantityInputValue}
-                                                            onChange={(event) => setQuantityInputValue(event.target.value.replace(/[^0-9]/g, ''))}
+                                                            onChange={(event) => setQuantityInputValue(sanitizeQuantityInput(event.target.value, allowsDecimalQuantity(item.unit_of_measure)))}
                                                             onBlur={() => commitManualCartQuantity(item)}
                                                             onKeyDown={(event) => {
                                                                 if (event.key === 'Enter') {

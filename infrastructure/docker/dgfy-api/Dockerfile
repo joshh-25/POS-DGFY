@@ -11,6 +11,7 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY apps/dgfy-api/package*.json ./
+COPY packages/shared-constants /packages/shared-constants
 RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --omit=dev
 
 FROM node:22-alpine AS runtime
@@ -25,6 +26,7 @@ RUN apk add --no-cache curl tini su-exec \
  && addgroup -S app && adduser -S app -G app
 
 COPY --from=deps /app/node_modules ./node_modules
+COPY packages/shared-constants /packages/shared-constants
 COPY apps/dgfy-api/package*.json ./
 COPY apps/dgfy-api/src ./src
 COPY apps/dgfy-api/scripts ./scripts
@@ -48,4 +50,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD curl -fsS http://localhost:5100/api/v1/health || exit 1
 
 ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/entrypoint.sh"]
-CMD ["node", "src/server.js"]
+# --import loads src/instrument.js (Sentry.init) before server.js's own
+# imports, so express/mysql2 auto-instrumentation can patch those modules
+# at import time -- see the comment at the top of src/instrument.js.
+CMD ["node", "--import", "./src/instrument.js", "src/server.js"]

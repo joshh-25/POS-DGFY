@@ -19,7 +19,11 @@ jest.unstable_mockModule('../src/models/index.js', () => ({
         destroy: mockIndexDestroy,
         create: mockIndexCreate,
         count: mockIndexCount,
-        findOne: jest.fn()
+        findOne: jest.fn(),
+        // The index row rewrite runs destroy+create inside a transaction so a
+        // mid-flight failure can't drop a live store from the index. Run the
+        // callback straight through with a stub transaction handle.
+        sequelize: { transaction: jest.fn(async (fn) => fn('test-transaction')) }
     },
     StorefrontHandleReservation: {
         findOne: jest.fn(),

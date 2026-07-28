@@ -24,28 +24,28 @@ const DOCUMENTATION_INDEX = [
   },
   {
     id: 'api-specification',
-    file: '../../docs/api/specification.md',
+    file: '../../../docs/api/specification.md',
     title: 'API Specification',
     keywords: ['api', 'endpoint', 'route', 'request', 'response', 'http', 'rest'],
     description: 'Complete API endpoint documentation'
   },
   {
     id: 'database-schema',
-    file: '../../docs/database/schema.md',
+    file: '../../../docs/database/schema.md',
     title: 'Database Schema',
     keywords: ['database', 'table', 'schema', 'model', 'column', 'field', 'relation', 'mysql'],
     description: 'Database table definitions and relationships'
   },
   {
     id: 'nested-products',
-    file: '../../docs/features/NESTED_PRODUCTS.md',
+    file: '../../../docs/features/NESTED_PRODUCTS.md',
     title: 'Nested Products Guide',
     keywords: ['nested', 'product', 'recipe', 'ingredient', 'composition', 'level', 'hierarchy'],
     description: 'Guide for creating products that use other products as ingredients'
   },
   {
     id: 'csv-import',
-    file: '../../docs/guides/csv_import_guide.md',
+    file: '../../../docs/guides/csv_import_guide.md',
     title: 'CSV Import Guide',
     keywords: ['csv', 'import', 'export', 'file', 'upload', 'template', 'bulk', 'workflow_mode', 'msme', 'manufacturing'],
     description: 'How to import and export inventory data with workflow-mode template enforcement'
@@ -66,7 +66,7 @@ const DOCUMENTATION_INDEX = [
   },
   {
     id: 'quick-reference',
-    file: '../../docs/reference/QUICK_REFERENCE.md',
+    file: '../../../docs/reference/QUICK_REFERENCE.md',
     title: 'Quick Reference',
     keywords: ['reference', 'command', 'shortcut', 'cheatsheet', 'quick'],
     description: 'Quick reference for common commands and operations'

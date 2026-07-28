@@ -1434,13 +1434,13 @@ describe('pos use-cases application result contract', () => {
                 .mockResolvedValueOnce(completedOrder),
             updateOrderById: jest.fn().mockResolvedValue(completedOrder)
         };
-        const stockMovementService = {
+        const inventoryCommandService = {
             createStockMovement: jest.fn()
         };
 
         const useCase = buildUpdateOnlineOrderStatusUseCase({
             posRepository,
-            stockMovementService
+            inventoryCommandService
         });
 
         const result = await dbStore.run({ sequelize: fakeSequelize }, () => useCase({
@@ -1450,6 +1450,6 @@ describe('pos use-cases application result contract', () => {
         }));
 
         expect(result.success).toBe(true);
-        expect(stockMovementService.createStockMovement).not.toHaveBeenCalled();
+        expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
     });
 });

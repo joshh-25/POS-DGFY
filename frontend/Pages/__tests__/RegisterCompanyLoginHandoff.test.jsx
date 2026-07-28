@@ -442,7 +442,7 @@ describe('DGFY auth and business registration routes', () => {
     expect(await screen.findByText(/DGFY account connected/i)).toBeTruthy();
     expect(screen.queryByLabelText('Last Name')).toBeNull();
     expect(screen.getByLabelText('Company Name')).toBeTruthy();
-    expect(screen.getByLabelText('Business Industry')).toBeTruthy();
+    expect(screen.getByLabelText('Operating Mode')).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Auto Foods' } });
     fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
@@ -451,6 +451,7 @@ describe('DGFY auth and business registration routes', () => {
     await waitFor(() => expect(apiMock.post).toHaveBeenCalledWith('/admin/tenants/register', {
       name: 'Auto Foods',
       workflowMode: 'food_manufacturing',
+      industryTag: '',
       accepted_company_terms: true,
       company_terms_version: 'dgfy-company-terms-2026-06-08',
       marketplace_terms_version: 'dgfy-marketplace-provider-2026-06-08'

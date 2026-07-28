@@ -4,6 +4,8 @@ import dotenv from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, join } from 'path';
 
+import { getLandlordPoolMax } from './connectionBudget.js';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
@@ -33,8 +35,10 @@ const sequelize = new Sequelize(
     pool: {
       // Landlord DB is hit on every single request (tenant resolution).
       // At 50 users × ~3 concurrent requests = ~150 simultaneous touches at peak.
-      // 30 connections keeps waits near-zero while staying under MySQL's default max_connections (151).
-      max: 30,
+      // 30 connections keeps waits near-zero. This is one half of the process-wide
+      // connection budget — see src/config/connectionBudget.js for the full
+      // arithmetic and the startup check that flags an over-budget deployment.
+      max: getLandlordPoolMax(),
       min: 0,
       // Fail fast (10s) instead of making users wait 30s for a connection slot
       acquire: 10000,

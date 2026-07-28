@@ -14,6 +14,7 @@ import {
     listServiceBookingsUseCase,
     updateServiceBookingStatusUseCase,
     getServiceBookingByReferenceUseCase,
+    settleServiceBookingUseCase,
     claimServiceBookingUseCase,
     serviceDashboardUseCase,
     listServiceWaitlistUseCase,
@@ -170,6 +171,19 @@ export const updateBookingStatus = async (req, res, next) => {
             payload: req.validatedData || req.body
         });
         return sendResult(req, res, result, { message: 'Service booking updated successfully' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const settleBooking = async (req, res, next) => {
+    try {
+        const result = await settleServiceBookingUseCase({
+            bookingId: req.validatedParams?.booking_id || req.params.booking_id,
+            payload: req.validatedData || req.body,
+            user: req.user
+        });
+        return sendResult(req, res, result, { message: 'Service booking settled successfully' });
     } catch (error) {
         next(error);
     }

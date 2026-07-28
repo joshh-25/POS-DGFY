@@ -11,6 +11,8 @@ import {
 } from 'lucide-react';
 import { StoresMap } from '../../../../discovery/components/StoresMap.jsx';
 import { getStorefrontContactIcon } from '../../../../features/shared-storefront/utils/storefrontDisplayUtils.jsx';
+import { FnbHeroGalleryLightbox } from './FnbHeroGalleryLightbox.jsx';
+import { StorefrontDirectionsEta } from '../../../../shared/components/storefront/hero/StorefrontDirectionsEta.jsx';
 
 const FnbHeroMobileInfoCards = ({
   aboutText,
@@ -18,6 +20,8 @@ const FnbHeroMobileInfoCards = ({
   deliveryPlatformLinks,
   displayHours,
   galleryImages,
+  galleryImagesFull,
+  galleryOverflowCount = 0,
   hasAboutSection,
   hasAboutToggle,
   hasContactRows,
@@ -38,8 +42,36 @@ const FnbHeroMobileInfoCards = ({
 }) => {
   const [expandedMobileCard, setExpandedMobileCard] = useState(null);
   const mobileInfoCardWidth = 'calc(100% - 32px)';
+  // Mobile merges the gallery into the store-detail hero image instead of showing a
+  // separate "Gallery" card: the overlay counts every image other than the one shown
+  // (total gallery count - 1), not just the images beyond the desktop 4-tile preview cap.
+  const totalGalleryImageCount = galleryImages.length + galleryOverflowCount;
+  const storeDetailGalleryOverlayCount = Math.max(0, totalGalleryImageCount - 1);
+  // Fullscreen viewer navigates the full, unsliced gallery list; fall back to the
+  // (already-capped) preview array if the full list wasn't supplied for some reason.
+  const lightboxImages = Array.isArray(galleryImagesFull) && galleryImagesFull.length > 0
+    ? galleryImagesFull
+    : galleryImages;
+  const [isGalleryLightboxOpen, setIsGalleryLightboxOpen] = useState(false);
+  const [galleryLightboxIndex, setGalleryLightboxIndex] = useState(0);
+
+  const openGalleryLightbox = (startIndex = 0) => {
+    setGalleryLightboxIndex(startIndex);
+    setIsGalleryLightboxOpen(true);
+  };
+  const closeGalleryLightbox = () => setIsGalleryLightboxOpen(false);
+  const navigateGalleryLightbox = (direction) => {
+    setGalleryLightboxIndex((previousIndex) => {
+      const total = lightboxImages.length;
+      if (total === 0) return previousIndex;
+      if (direction === 'previous') return (previousIndex - 1 + total) % total;
+      return (previousIndex + 1) % total;
+    });
+  };
+  const addressRow = visibleContactRows.find((row) => row.label === 'Address');
 
   return (
+    <>
     <div className="no-scrollbar" style={{ width: '100%', maxWidth: '100%', minWidth: 0, padding: '12px 16px 20px', display: 'flex', flexDirection: 'row', gap: 14, overflowX: 'auto', overflowY: 'hidden', scrollSnapType: 'x mandatory', scrollPaddingInline: 16, WebkitOverflowScrolling: 'touch', margin: 0, alignItems: 'stretch', boxSizing: 'border-box' }}>
       {(hasAboutSection || hasMobileStoreDetailsSummary) && (
         <div style={{ width: mobileInfoCardWidth, minWidth: mobileInfoCardWidth, maxWidth: mobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: '1px solid #ffedd5', borderRadius: 16, padding: 16, boxShadow: '0 8px 24px rgba(249, 115, 22, 0.08)', boxSizing: 'border-box' }}>
@@ -78,9 +110,30 @@ const FnbHeroMobileInfoCards = ({
                 <div style={{ flex: 1 }} />
               )}
               {hasGallerySection && (
-                <div style={{ width: 100, height: 80, borderRadius: 12, overflow: 'hidden', flexShrink: 0 }}>
+                <button
+                  type="button"
+                  onClick={() => openGalleryLightbox(0)}
+                  aria-label="View store photos"
+                  style={{ width: 100, height: 80, borderRadius: 12, overflow: 'hidden', position: 'relative', flexShrink: 0, border: 'none', padding: 0, background: 'none', cursor: 'pointer' }}
+                >
                   <img src={galleryImages[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                </div>
+                  {storeDetailGalleryOverlayCount > 0 && (
+                    <div style={{
+                      position: 'absolute',
+                      inset: 0,
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: 'rgba(15, 23, 42, 0.6)',
+                      color: '#ffffff',
+                      fontSize: 18,
+                      fontWeight: 800,
+                      fontFamily: heroTheme.bodyFont
+                    }}>
+                      +{storeDetailGalleryOverlayCount}
+                    </div>
+                  )}
+                </button>
               )}
             </div>
           )}
@@ -131,21 +184,6 @@ const FnbHeroMobileInfoCards = ({
         </div>
       )}
 
-      {hasGallerySection && (
-        <div style={{ width: mobileInfoCardWidth, minWidth: mobileInfoCardWidth, maxWidth: mobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: '1px solid #ffedd5', borderRadius: 16, padding: 16, boxShadow: '0 8px 24px rgba(249, 115, 22, 0.08)', boxSizing: 'border-box' }}>
-          <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', marginBottom: 12, fontFamily: heroTheme.bodyFont }}>
-            Gallery
-          </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10 }}>
-            {galleryImages.slice(0, 4).map((url, index) => (
-              <div key={`${url}-${index}`} style={{ width: '100%', height: 108, borderRadius: 12, overflow: 'hidden', background: '#e2e8f0' }}>
-                <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
       {(hasContactRows || hasMapData) && (
         <div style={{ width: mobileInfoCardWidth, minWidth: mobileInfoCardWidth, maxWidth: mobileInfoCardWidth, scrollSnapAlign: 'start', background: '#fff', border: '1px solid #ffedd5', borderRadius: 16, padding: 16, boxShadow: '0 8px 24px rgba(249, 115, 22, 0.08)', boxSizing: 'border-box' }}>
           <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', marginBottom: 16, fontFamily: heroTheme.bodyFont }}>Contact & Location</div>
@@ -183,12 +221,15 @@ const FnbHeroMobileInfoCards = ({
                   {addressText ? <div style={{ fontSize: 13, color: '#0f172a', fontWeight: 600, fontFamily: heroTheme.bodyFont }}>{addressText}</div> : null}
                   {storefrontCityLabel ? <div style={{ fontSize: 13, color: '#64748b', fontWeight: 500, fontFamily: heroTheme.bodyFont }}>{storefrontCityLabel}</div> : null}
                 </div>
-                <button type="button" onClick={() => setIsExpandedMapOpen(true)} style={{ padding: 0, border: 'none', background: 'transparent', color: '#f97316', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: heroTheme.bodyFont }}>
-                  Get directions
-                </button>
+                <div style={{ display: 'grid', gap: 2, justifyItems: 'end' }}>
+                  <button type="button" onClick={() => setIsExpandedMapOpen(true)} style={{ padding: 0, border: 'none', background: 'transparent', color: '#f97316', fontSize: 12, fontWeight: 800, cursor: 'pointer', fontFamily: heroTheme.bodyFont }}>
+                    Get directions
+                  </button>
+                  <StorefrontDirectionsEta latitude={addressRow?.destinationLatitude} longitude={addressRow?.destinationLongitude} bodyFont={heroTheme.bodyFont} />
+                </div>
               </div>
               <div style={{ position: 'relative', width: '100%', height: 110, borderRadius: 12, overflow: 'hidden', border: '1px solid #edf2f7', background: '#f8fafc' }}>
-                <StoresMap stores={mapStores} selectedKey={mapSelectedKey} onSelectStore={() => { }} />
+                <StoresMap stores={mapStores} selectedKey={mapSelectedKey} onSelectStore={() => { }} height={110} />
                 <button
                   type="button"
                   onClick={() => setIsExpandedMapOpen(true)}
@@ -239,6 +280,14 @@ const FnbHeroMobileInfoCards = ({
         </div>
       )}
     </div>
+    <FnbHeroGalleryLightbox
+      open={isGalleryLightboxOpen}
+      images={lightboxImages}
+      currentIndex={galleryLightboxIndex}
+      onClose={closeGalleryLightbox}
+      onNavigate={navigateGalleryLightbox}
+    />
+    </>
   );
 };
 

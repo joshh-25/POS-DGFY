@@ -743,6 +743,7 @@ const buildTenantSnapshot = async (tenant) => {
         tenant_id: tenant.id,
         tenant_name: tenant.name,
         tenant_company_token: tenant.company_token,
+        entity_type: 'dgfy_native',
         slug,
         affiliate_slug: affiliateSlug,
         storefront_open: storefrontOpen,
@@ -804,6 +805,114 @@ const buildTenantSnapshot = async (tenant) => {
     };
 };
 
+// Builds a storefront_discovery_index row for a store that transacts on a
+// different platform (entity_type: 'external_listing'). Unlike buildTenantSnapshot,
+// this has no tenant DB to read from — every field comes from the master-admin
+// supplied payload, and there is no Tenant row, tenant_id, or company_token to
+// anchor it to (ADR 0037's Axis 3 "external listing" tier).
+const buildExternalListingSnapshot = (payload = {}) => {
+    const now = new Date();
+    return {
+        tenant_id: null,
+        tenant_name: toTrimmedString(payload.tenant_name, 255),
+        tenant_company_token: null,
+        entity_type: 'external_listing',
+        external_provider: payload.external_provider ? toTrimmedString(payload.external_provider, 60) : null,
+        external_reference_id: payload.external_reference_id ? toTrimmedString(payload.external_reference_id, 120) : null,
+        external_storefront_url: normalizeExternalHttpUrl(payload.external_storefront_url, 500),
+        slug: normalizeSlug(payload.slug),
+        affiliate_slug: null,
+        storefront_open: payload.storefront_open !== false,
+        workflow_mode: normalizeWorkflowMode(payload.workflow_mode || DEFAULT_WORKFLOW_MODE),
+        is_visible: payload.is_visible !== false,
+        location_id: null,
+        location_name: payload.location_name ? toTrimmedString(payload.location_name, 255) : null,
+        address_line: payload.address_line ? toTrimmedString(payload.address_line, 255) : null,
+        latitude: Number.isFinite(Number(payload.latitude)) ? Number(payload.latitude) : null,
+        longitude: Number.isFinite(Number(payload.longitude)) ? Number(payload.longitude) : null,
+        delivery_radius_km: toNumber(payload.delivery_radius_km, 0),
+        estimated_wait_minutes: toNumber(payload.estimated_wait_minutes, 15),
+        supports_delivery: payload.supports_delivery !== false,
+        supports_pickup: payload.supports_pickup !== false,
+        supports_dine_in: payload.supports_dine_in !== false,
+        store_delivery_fee: toNumber(payload.store_delivery_fee, 0),
+        catalog_count: 0,
+        storefront_cover_image_url: payload.storefront_cover_image_url
+            ? normalizeExternalHttpUrl(payload.storefront_cover_image_url, 500)
+            : null,
+        storefront_profile_image_url: payload.storefront_profile_image_url
+            ? normalizeExternalHttpUrl(payload.storefront_profile_image_url, 500)
+            : null,
+        storefront_tagline: payload.storefront_tagline ? toTrimmedString(payload.storefront_tagline, 120) : null,
+        storefront_about: payload.storefront_about ? toTrimmedString(payload.storefront_about, 1000) : null,
+        storefront_phone: payload.storefront_phone ? toTrimmedString(payload.storefront_phone, 50) : null,
+        storefront_hours: payload.storefront_hours ? toTrimmedString(payload.storefront_hours, 120) : null,
+        storefront_categories: Array.isArray(payload.storefront_categories)
+            ? normalizeStringList(payload.storefront_categories, 12, 60)
+            : null,
+        source_updated_at: now,
+        last_synced_at: now
+    };
+};
+
+// Create-or-replace by slug. Refuses to touch a slug that already belongs to a
+// dgfy_native row (a real tenant's storefront) rather than silently hijacking it.
+export const upsertExternalStorefrontListing = async ({ slug, payload = {} } = {}) => {
+    const normalizedSlug = normalizeSlug(slug || payload?.slug);
+    if (!normalizedSlug) {
+        return { status: 'invalid', reason: 'missing_slug' };
+    }
+
+    const existing = await StorefrontDiscoveryIndex.findOne({ where: { slug: normalizedSlug } });
+    if (existing && existing.entity_type !== 'external_listing') {
+        return { status: 'conflict', reason: 'slug_belongs_to_native_store', slug: normalizedSlug };
+    }
+
+    const snapshot = buildExternalListingSnapshot({ ...payload, slug: normalizedSlug });
+    await StorefrontDiscoveryIndex.destroy({ where: { slug: normalizedSlug, entity_type: 'external_listing' } });
+    const created = await StorefrontDiscoveryIndex.create(snapshot);
+    bumpStorefrontDiscoveryCacheVersion();
+    invalidateStorefrontDiscoverySharedSignatureCache();
+
+    return {
+        status: existing ? 'updated' : 'created',
+        slug: normalizedSlug,
+        row: created
+    };
+};
+
+export const removeExternalStorefrontListing = async ({ slug } = {}) => {
+    const normalizedSlug = normalizeSlug(slug);
+    if (!normalizedSlug) {
+        return { status: 'skipped', reason: 'missing_slug' };
+    }
+
+    const deleted = await StorefrontDiscoveryIndex.destroy({
+        where: { slug: normalizedSlug, entity_type: 'external_listing' }
+    });
+    if (deleted > 0) {
+        bumpStorefrontDiscoveryCacheVersion();
+        invalidateStorefrontDiscoverySharedSignatureCache();
+    }
+
+    return { status: deleted > 0 ? 'removed' : 'not_found', slug: normalizedSlug, deleted };
+};
+
+export const getExternalStorefrontListingBySlug = async ({ slug } = {}) => {
+    const normalizedSlug = normalizeSlug(slug);
+    if (!normalizedSlug) return null;
+    return StorefrontDiscoveryIndex.findOne({
+        where: { slug: normalizedSlug, entity_type: 'external_listing' }
+    });
+};
+
+export const listExternalStorefrontListings = async () => (
+    StorefrontDiscoveryIndex.findAll({
+        where: { entity_type: 'external_listing' },
+        order: [['tenant_name', 'ASC']]
+    })
+);
+
 export const getStorefrontDiscoveryIndexSnapshotForTenant = async ({ tenantId } = {}) => {
     const normalizedTenantId = String(tenantId || '').trim();
     if (!normalizedTenantId) return null;
@@ -820,6 +929,26 @@ export const getStorefrontDiscoveryIndexSnapshotForTenant = async ({ tenantId } 
         location_name: row.location_name,
         last_synced_at: row.last_synced_at
     };
+};
+
+/**
+ * Replace a tenant's discovery-index row atomically.
+ *
+ * There is no upsert here because a tenant's row is keyed by tenant_id but its
+ * contents (slug, location, catalog snapshot) are rebuilt wholesale, so the
+ * write has always been delete-then-insert. Unwrapped, that leaves a window
+ * where a failure between the two -- exactly what MySQL connection exhaustion
+ * produces -- drops a live store out of the index permanently, with nothing to
+ * put it back until the next reconcile happens to succeed. The transaction
+ * makes the pair all-or-nothing, so a mid-flight failure leaves the previous
+ * row standing. See
+ * docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md.
+ */
+const replaceDiscoveryIndexRow = async (tenantId, snapshot) => {
+    await StorefrontDiscoveryIndex.sequelize.transaction(async (transaction) => {
+        await StorefrontDiscoveryIndex.destroy({ where: { tenant_id: tenantId }, transaction });
+        await StorefrontDiscoveryIndex.create(snapshot, { transaction });
+    });
 };
 
 export const syncStorefrontDiscoveryIndexForTenant = async ({ tenantId } = {}) => {
@@ -855,8 +984,7 @@ export const syncStorefrontDiscoveryIndexForTenant = async ({ tenantId } = {}) =
     const usedFallbackPrimary = snapshot.__used_fallback_primary === true;
     delete snapshot.__used_fallback_primary;
 
-    await StorefrontDiscoveryIndex.destroy({ where: { tenant_id: normalizedTenantId } });
-    await StorefrontDiscoveryIndex.create(snapshot);
+    await replaceDiscoveryIndexRow(normalizedTenantId, snapshot);
     bumpStorefrontDiscoveryCacheVersion();
     invalidateStorefrontDiscoverySharedSignatureCache();
     return {
@@ -931,8 +1059,7 @@ export const reconcileStorefrontDiscoveryIndex = async ({
             delete snapshot.__used_fallback_primary;
 
             if (!dryRun) {
-                await StorefrontDiscoveryIndex.destroy({ where: { tenant_id: tenant.id } });
-                await StorefrontDiscoveryIndex.create(snapshot);
+                await replaceDiscoveryIndexRow(tenant.id, snapshot);
                 // Fire-and-forget: keeps geo-search's radius+alias matching roughly in
                 // sync with the Discovery index without slowing down reconciliation
                 // (including the synchronous auto-repair path in storefrontDiscoveryRepository).
@@ -965,9 +1092,13 @@ export const reconcileStorefrontDiscoveryIndex = async ({
 
     if (pruneStale && (!normalizedTenantIds || normalizedTenantIds.length === 0)) {
         const activeTenantIds = tenants.map((tenant) => tenant.id);
+        // Scoped to entity_type: 'dgfy_native' — external-listing rows have no
+        // Tenant row of their own (tenant_id is null) and must never be pruned by
+        // this tenant-liveness sweep. Explicit here rather than relying on
+        // Op.notIn's NULL semantics to exclude them.
         const staleWhere = activeTenantIds.length > 0
-            ? { tenant_id: { [Op.notIn]: activeTenantIds } }
-            : {};
+            ? { entity_type: 'dgfy_native', tenant_id: { [Op.notIn]: activeTenantIds } }
+            : { entity_type: 'dgfy_native' };
         const pruned = dryRun
             ? await StorefrontDiscoveryIndex.count({ where: staleWhere })
             : await StorefrontDiscoveryIndex.destroy({ where: staleWhere });

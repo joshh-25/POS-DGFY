@@ -104,6 +104,11 @@ const bookingInclude = () => ([
         as: 'posTransaction',
         required: false,
         attributes: ['pos_transaction_id', 'invoice_number', 'tracking_pin', 'payment_type', 'total_amount', 'document_type', 'document_context']
+    },
+    {
+        model: dbStore.get('ServiceBookingLine'),
+        as: 'lines',
+        required: false
     }
 ]);
 
@@ -872,5 +877,79 @@ export const serviceRepository = {
             transaction: options.transaction
         });
         return rows.map(toPlain);
+    },
+
+    async createBookingLines(rows = [], options = {}) {
+        const ServiceBookingLine = dbStore.get('ServiceBookingLine');
+        const created = await ServiceBookingLine.bulkCreate(rows, {
+            transaction: options.transaction,
+            individualHooks: true
+        });
+        return created.map(toPlain);
+    },
+
+    async updateBookingLineById(bookingLineId, payload = {}, options = {}) {
+        const ServiceBookingLine = dbStore.get('ServiceBookingLine');
+        const row = await ServiceBookingLine.findByPk(bookingLineId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+        await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    async findItemById(itemId, options = {}) {
+        const Item = dbStore.get('Item');
+        const row = await Item.findByPk(itemId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async nextSettlementInvoiceNumber(options = {}) {
+        const PosInvoiceCounter = dbStore.get('PosInvoiceCounter');
+        const transaction = options.transaction;
+        const counterKey = 'service_booking_settlement';
+
+        let counter = await PosInvoiceCounter.findByPk(counterKey, {
+            transaction,
+            lock: transaction ? transaction.LOCK.UPDATE : undefined
+        });
+        if (!counter) {
+            counter = await PosInvoiceCounter.create({ counter_key: counterKey, current_value: 0 }, { transaction });
+        }
+        const nextValue = (Number.parseInt(counter.current_value, 10) || 0) + 1;
+        await counter.update({ current_value: nextValue }, { transaction });
+        return `SVC-${String(nextValue).padStart(6, '0')}`;
+    },
+
+    async createSettlementTransaction({ header, lines }, options = {}) {
+        const PosTransaction = dbStore.get('PosTransaction');
+        const PosTransactionLine = dbStore.get('PosTransactionLine');
+        const transaction = options.transaction;
+
+        const created = await PosTransaction.create(header, { transaction });
+        const createdLines = [];
+        for (const line of lines) {
+            const createdLine = await PosTransactionLine.create({
+                ...line,
+                pos_transaction_id: created.pos_transaction_id
+            }, { transaction });
+            createdLines.push(toPlain(createdLine));
+        }
+        return {
+            transactionId: created.pos_transaction_id,
+            lines: createdLines
+        };
+    },
+
+    async getPosTransactionSnapshotById(posTransactionId, options = {}) {
+        const PosTransaction = dbStore.get('PosTransaction');
+        const row = await PosTransaction.findByPk(posTransactionId, {
+            transaction: options.transaction
+        });
+        return toPlain(row);
     }
 };

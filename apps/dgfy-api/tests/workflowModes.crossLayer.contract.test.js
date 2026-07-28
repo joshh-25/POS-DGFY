@@ -3,8 +3,12 @@ import {
     WORKFLOW_MODE_LABELS as backendLabels,
     WORKFLOW_MODE_PIN_META as backendPins,
     WORKFLOW_MODE_VALUES as backendValues,
+    ALL_WORKFLOW_CAPABILITIES as backendAllCapabilities,
+    ENABLED_CAPABILITIES_SETTING_KEY as backendEnabledCapabilitiesKey,
     modeHasCapability as backendModeHasCapability,
+    normalizeEnabledCapabilities as normalizeBackendEnabledCapabilities,
     normalizeWorkflowMode as normalizeBackendWorkflowMode,
+    resolveEffectiveCapabilities as resolveBackendEffectiveCapabilities,
     resolveWorkflowModeFamily as resolveBackendWorkflowModeFamily,
     resolveWorkflowTemplateMode as resolveBackendWorkflowTemplateMode
 } from '../src/modules/shared/constants/workflowModes.js';
@@ -13,8 +17,12 @@ import {
     WORKFLOW_MODE_LABELS as frontendLabels,
     WORKFLOW_MODE_PIN_META as frontendPins,
     WORKFLOW_MODE_VALUES as frontendValues,
+    ALL_WORKFLOW_CAPABILITIES as frontendAllCapabilities,
+    ENABLED_CAPABILITIES_SETTING_KEY as frontendEnabledCapabilitiesKey,
     modeHasCapability as frontendModeHasCapability,
+    normalizeEnabledCapabilities as normalizeFrontendEnabledCapabilities,
     normalizeWorkflowMode as normalizeFrontendWorkflowMode,
+    resolveEffectiveCapabilities as resolveFrontendEffectiveCapabilities,
     resolveWorkflowModeFamily as resolveFrontendWorkflowModeFamily,
     resolveWorkflowTemplateMode as resolveFrontendWorkflowTemplateMode
 } from '../../../frontend/src/features/settings/workflowMode.js';
@@ -52,6 +60,18 @@ describe('workflow mode cross-layer contracts', () => {
             const backendTemplate = resolveBackendWorkflowTemplateMode(input);
             const frontendTemplate = resolveFrontendWorkflowTemplateMode(input);
             expect(frontendTemplate).toBe(backendTemplate);
+        });
+    });
+
+    it('resolves an empty/missing mode to the platform default but an unrecognized mode string to the neutral fallback', () => {
+        ['', null, undefined].forEach((input) => {
+            expect(normalizeBackendWorkflowMode(input)).toBe(backendDefaultMode);
+            expect(normalizeFrontendWorkflowMode(input)).toBe(frontendDefaultMode);
+        });
+
+        ['UNKNOWN', 'decommissioned-mode', 'typo_mnaufacturing'].forEach((input) => {
+            expect(normalizeBackendWorkflowMode(input)).toBe('msme');
+            expect(normalizeFrontendWorkflowMode(input)).toBe('msme');
         });
     });
 
@@ -95,5 +115,53 @@ describe('workflow mode cross-layer contracts', () => {
         expect(frontendModeHasCapability('hospitality', 'productionWorkflows')).toBe(false);
         expect(frontendModeHasCapability('hospitality', 'fnbDining')).toBe(false);
         expect(frontendModeHasCapability('hospitality', 'services')).toBe(false);
+    });
+
+    describe('Phase 6 composed enabled_capabilities overlay', () => {
+        it('keeps the capability vocabulary and setting key aligned across layers', () => {
+            expect(frontendAllCapabilities).toEqual(backendAllCapabilities);
+            expect(frontendEnabledCapabilitiesKey).toBe(backendEnabledCapabilitiesKey);
+            expect(backendEnabledCapabilitiesKey).toBe('ops_enabled_capabilities');
+        });
+
+        it('leaves modeHasCapability byte-identical for callers that pass no overlay', () => {
+            expect(backendModeHasCapability('retail', 'services')).toBe(false);
+            expect(frontendModeHasCapability('retail', 'services')).toBe(false);
+            expect(backendModeHasCapability('retail', 'catalog')).toBe(true);
+            expect(frontendModeHasCapability('retail', 'catalog')).toBe(true);
+        });
+
+        it('grants an overlay capability on top of the base mode without altering the base list', () => {
+            expect(backendModeHasCapability('retail', 'services', ['services'])).toBe(true);
+            expect(frontendModeHasCapability('retail', 'services', ['services'])).toBe(true);
+            // The base mode's own fixed capabilities are untouched by the overlay.
+            expect(backendModeHasCapability('retail', 'catalog', ['services'])).toBe(true);
+            expect(backendModeHasCapability('services', 'foodManufacturing', ['services'])).toBe(false);
+        });
+
+        it('silently drops unknown/decommissioned capability strings from the overlay', () => {
+            const overlay = ['services', 'not-a-real-capability', ''];
+            expect(normalizeBackendEnabledCapabilities(overlay)).toEqual(['services']);
+            expect(normalizeFrontendEnabledCapabilities(overlay)).toEqual(['services']);
+            expect(backendModeHasCapability('retail', 'not-a-real-capability', overlay)).toBe(false);
+        });
+
+        it('resolves the effective capability set as the union of base mode and overlay identically across layers', () => {
+            const backendEffective = resolveBackendEffectiveCapabilities('retail', ['services', 'fnbDining']);
+            const frontendEffective = resolveFrontendEffectiveCapabilities('retail', ['services', 'fnbDining']);
+            expect(frontendEffective).toEqual(backendEffective);
+            expect([...backendEffective].sort()).toEqual(
+                [...new Set(['catalog', 'inventory', 'menuModifiers', 'pos', 'storefront', 'services', 'fnbDining'])].sort()
+            );
+        });
+
+        it('resolves to exactly the base mode capabilities when no overlay is configured', () => {
+            expect(resolveBackendEffectiveCapabilities('fnb')).toEqual(
+                resolveBackendEffectiveCapabilities('fnb', [])
+            );
+            expect(resolveBackendEffectiveCapabilities('fnb', undefined)).toEqual(
+                resolveBackendEffectiveCapabilities('fnb', [])
+            );
+        });
     });
 });

@@ -1,3 +1,5 @@
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../src/observability/analyticsEvents.js';
+
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the checkout-submission handlers
  * (`handleQuote`, `handleCheckout`, `handleDownloadCheckoutImage`).
@@ -38,7 +40,6 @@ export function useCheckoutSubmission({
   goStoreTrackPage,
   handleFnbCheckout,
   handleLoadAccountPanel,
-  hasMixedServiceCart,
   hasServiceCart,
   isDgfyCustomerSignedIn,
   isFnbMode,
@@ -47,6 +48,7 @@ export function useCheckoutSubmission({
   normalizeStorefrontErrorMessage,
   orderMethod,
   orderSuccessAnimationTimerRef,
+  productCartLines,
   readDgfyAuthToken,
   readStoreAuthToken,
   rememberCustomerDetails,
@@ -184,12 +186,6 @@ export function useCheckoutSubmission({
       toast.error(message);
       return;
     }
-    if (hasMixedServiceCart) {
-      const message = 'Book services separately from regular product orders.';
-      setCheckoutError(message);
-      toast.error(message);
-      return;
-    }
     if (!hasServiceCart && (isServicesMode && activeBookingService) && !serviceAppointmentAt) {
       const message = 'Choose an appointment date and time before booking.';
       setCheckoutError(message);
@@ -205,52 +201,125 @@ export function useCheckoutSubmission({
       return;
     }
     const cartSnapshot = cart.map((line) => ({ ...line }));
+    const hasMixedCart = hasServiceCart && Array.isArray(productCartLines) && productCartLines.length > 0;
     setCheckoutLoading(true);
+    trackFunnelEvent(ANALYTICS_EVENTS.CHECKOUT_SUBMITTED, {
+      store_slug: selectedStore?.slug,
+      order_value: totalsForDisplay?.total_amount ?? 0,
+      item_count: cartSnapshot.length,
+      fulfillment_type: orderMethod,
+      has_service_cart: hasServiceCart,
+      has_mixed_cart: hasMixedCart
+    });
+    let checkoutStage = 'checkout';
     try {
       const authToken = isDgfyCustomerSignedIn
         ? (readDgfyAuthToken() || readStoreAuthToken())
         : readStoreAuthToken();
-      const servicesSubmitContract = resolveServicesBookingSubmitContract({
-        hasServiceCart,
-        serviceCartLines,
-        serviceBookingLine,
-        customerName,
-        customerEmail,
-        customerPhone,
-        selectedLocationId,
-        storeLocationId: selectedStore?.location_id,
-        paymentTiming: servicePaymentTiming,
-        serviceIntakeResponses,
-        bookingPageIntakeFields,
-        customerAddress,
-        bookingFieldPlan,
-        createIdempotencyKey: createStorefrontIdempotencyKey
-      });
-      if ((hasServiceCart || (isServicesMode && serviceBookingLine)) && !servicesSubmitContract.compatible) {
-        setCheckoutError(servicesSubmitContract.message);
-        toast.error(servicesSubmitContract.message);
-        return;
-      }
-      const data = (hasServiceCart || (isServicesMode && serviceBookingLine))
-        ? await requestJson(servicesSubmitContract.route, {
-          method: 'POST',
-          storeSlug: selectedStore.slug,
-          authToken,
-          body: servicesSubmitContract.body
-        })
-        : await requestJson('/api/v1/store/checkout', {
-          method: 'POST',
-          storeSlug: selectedStore.slug,
-          authToken,
-          body: {
-            ...checkoutPayload(),
-            idempotency_key: window.crypto?.randomUUID?.() || `store-${Date.now()}`,
-            payment_type: fnbPaymentType
-          }
+      const wantsServicesSubmission = hasServiceCart || (isServicesMode && serviceBookingLine);
+      let servicesSubmitContract = null;
+      if (wantsServicesSubmission) {
+        servicesSubmitContract = resolveServicesBookingSubmitContract({
+          hasServiceCart,
+          serviceCartLines,
+          serviceBookingLine,
+          customerName,
+          customerEmail,
+          customerPhone,
+          selectedLocationId,
+          storeLocationId: selectedStore?.location_id,
+          paymentTiming: servicePaymentTiming,
+          serviceIntakeResponses,
+          bookingPageIntakeFields,
+          customerAddress,
+          bookingFieldPlan,
+          createIdempotencyKey: createStorefrontIdempotencyKey
         });
+        if (!servicesSubmitContract.compatible) {
+          setCheckoutError(servicesSubmitContract.message);
+          toast.error(servicesSubmitContract.message);
+          return;
+        }
+      }
+      const submitProductCheckout = () => requestJson('/api/v1/store/checkout', {
+        method: 'POST',
+        storeSlug: selectedStore.slug,
+        authToken,
+        body: {
+          ...checkoutPayload(undefined, hasMixedCart ? productCartLines : undefined),
+          idempotency_key: window.crypto?.randomUUID?.() || `store-${Date.now()}`,
+          payment_type: fnbPaymentType
+        }
+      });
+      const submitServicesBooking = () => requestJson(servicesSubmitContract.route, {
+        method: 'POST',
+        storeSlug: selectedStore.slug,
+        authToken,
+        body: servicesSubmitContract.body
+      });
+
+      let productData = null;
+      let servicesData = null;
+      if (!wantsServicesSubmission) {
+        productData = await submitProductCheckout();
+      } else if (!hasMixedCart) {
+        checkoutStage = 'booking';
+        servicesData = await submitServicesBooking();
+      } else {
+        // ADR 0016 keeps a booking ticket and a payment receipt as distinct
+        // documents, so a mixed cart submits as two requests rather than one.
+        // Product checkout goes first; if it fails, nothing else has happened
+        // yet, so the outer catch below behaves exactly like a pure
+        // product-cart failure. If it succeeds but the booking leg then
+        // fails, the product order already happened -- surface that partial
+        // success instead of reporting a bare failure and losing the order.
+        productData = await submitProductCheckout();
+        checkoutStage = 'booking';
+        try {
+          servicesData = await submitServicesBooking();
+        } catch (servicesError) {
+          setCart((prev) => prev.filter((line) => line.category === 'service'));
+          setCheckoutResult({
+            ...productData,
+            cart_lines: productCartLines,
+            totals: totalsForDisplay
+          });
+          if (productData?.tracking_pin) {
+            setTrackingPinInput(productData.tracking_pin);
+            setSelectedTrackingPin(String(productData.tracking_pin || '').trim().toUpperCase());
+            syncTrackedOrderSnapshot({
+              tracking_pin: productData.tracking_pin,
+              status: productData?.order?.status || 'placed',
+              status_label: productData?.order?.status_label || 'Order placed',
+              order_method: productData?.order?.order_method || orderMethod,
+              order: productData?.order || null,
+              order_name: productCartLines[0]?.variantName || productCartLines[0]?.name || '',
+              total_amount: totalsForDisplay?.total_amount ?? 0
+            }, productData.tracking_pin);
+          }
+          setQuoteResult(null);
+          setQuoteNeedsRefresh(true);
+          setCheckoutPromoCode('');
+          clearCheckoutAuthResumeDraft();
+          const message = `Your order was placed, but the service booking failed: ${formatServicesBookingFailureMessage(servicesError, serviceCartLines)}`;
+          setCheckoutError(message);
+          toast.error(message);
+          // The product order genuinely went through here even though the
+          // mixed-cart service booking leg failed -- still an order placed.
+          trackFunnelEvent(ANALYTICS_EVENTS.ORDER_PLACED, {
+            store_slug: selectedStore?.slug,
+            order_value: totalsForDisplay?.total_amount ?? 0,
+            item_count: productCartLines.length,
+            fulfillment_type: productData?.order?.order_method || orderMethod,
+            partial_booking_failure: true
+          });
+          return;
+        }
+      }
+      const data = { ...productData, ...servicesData };
       setCheckoutResult({
         ...data,
-        cart_lines: hasServiceCart
+        cart_lines: hasServiceCart && !hasMixedCart
           ? serviceCartLines
           : cartSnapshot,
         totals: totalsForDisplay
@@ -287,11 +356,9 @@ export function useCheckoutSubmission({
         setTrackingPinInput(data.booking.public_reference);
         writeLastTrackingPinForStore(selectedStore?.slug || routeSlug, data.booking.public_reference);
       }
+      setCart([]);
       if (hasServiceCart) {
-        setCart((prev) => prev.filter((line) => line.category !== 'service'));
         setSelectedServiceCartLineId('');
-      } else {
-        setCart([]);
       }
       setQuoteResult(null);
       setQuoteNeedsRefresh(true);
@@ -323,23 +390,43 @@ export function useCheckoutSubmission({
       }
       clearCheckoutAuthResumeDraft();
       toast.success(
-        hasServiceCart
-          ? 'Bookings created.'
-          : (data?.promo_feedback?.message || 'Checkout completed.')
+        hasMixedCart
+          ? 'Order placed and booking created.'
+          : hasServiceCart
+            ? 'Bookings created.'
+            : (data?.promo_feedback?.message || 'Checkout completed.')
       );
+      trackFunnelEvent(ANALYTICS_EVENTS.ORDER_PLACED, {
+        store_slug: selectedStore?.slug,
+        order_value: totalsForDisplay?.total_amount ?? 0,
+        item_count: cartSnapshot.length,
+        fulfillment_type: data?.order?.order_method || orderMethod,
+        has_service_cart: hasServiceCart,
+        has_mixed_cart: hasMixedCart
+      });
     } catch (error) {
       const violation = extractStockViolation(error);
       if (violation) {
         const message = buildStockExceededMessage(violation);
         setCheckoutError(message);
         toast.error(message);
+        trackFunnelEvent(ANALYTICS_EVENTS.CHECKOUT_FAILED, {
+          store_slug: selectedStore?.slug,
+          reason: 'stock_violation',
+          checkout_stage: checkoutStage
+        });
         return;
       }
-      const message = hasServiceCart
+      const message = checkoutStage === 'booking'
         ? formatServicesBookingFailureMessage(error, serviceCartLines)
         : normalizeStorefrontErrorMessage(error, 'Unable to complete checkout.');
       setCheckoutError(message);
       toast.error(message);
+      trackFunnelEvent(ANALYTICS_EVENTS.CHECKOUT_FAILED, {
+        store_slug: selectedStore?.slug,
+        reason: error?.errorCode || 'unknown',
+        checkout_stage: checkoutStage
+      });
     } finally {
       setCheckoutLoading(false);
     }

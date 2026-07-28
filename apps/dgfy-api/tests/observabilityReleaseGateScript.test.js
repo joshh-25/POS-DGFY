@@ -8,7 +8,7 @@ const {
     buildObservabilityEvidence,
     evaluateReleaseVerdict,
     parseHealthRuntimeSha
-} = require('../../scripts/gate-release-observability.js');
+} = require('../../../scripts/gate-release-observability.js');
 
 describe('observability release gate script', () => {
     const originalFetch = global.fetch;

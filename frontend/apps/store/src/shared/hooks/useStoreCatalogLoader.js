@@ -16,6 +16,7 @@ import {
   normalizeProfileLocations
 } from '../../features/discovery/utils/storefrontDiscoveryNormalization.js';
 import { buildAccessPolicyStorePatch } from '../model/customerAccess.js';
+import { buildWorkflowCapabilityStorePatch } from '../model/workflowCapabilities.js';
 import { classifyStoreCatalogError } from '../model/storefrontErrorMessages.js';
 
 /**
@@ -177,8 +178,9 @@ export function useStoreCatalogLoader({
       const catalogData = await requestJson(catalogQuery, { storeSlug: profile.slug, cache: 'no-store' });
       if (requestSequence !== storeLoadRequestSequenceRef.current) return;
       const accessPatch = buildAccessPolicyStorePatch(catalogData?.access_policy);
-      if (accessPatch) {
-        setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch } : prev));
+      const capabilityPatch = buildWorkflowCapabilityStorePatch(catalogData);
+      if (accessPatch || capabilityPatch) {
+        setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch, ...capabilityPatch } : prev));
       }
       setCatalog(Array.isArray(catalogData?.items) ? catalogData.items : []);
     } catch (error) {
@@ -219,8 +221,9 @@ export function useStoreCatalogLoader({
         const catalogData = await requestJson(catalogQuery, { storeSlug: selectedStore.slug, cache: 'no-store' });
         if (cancelled || requestSequence !== locationCatalogRequestSequenceRef.current) return;
         const accessPatch = buildAccessPolicyStorePatch(catalogData?.access_policy);
-        if (accessPatch) {
-          setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch } : prev));
+        const capabilityPatch = buildWorkflowCapabilityStorePatch(catalogData);
+        if (accessPatch || capabilityPatch) {
+          setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch, ...capabilityPatch } : prev));
         }
         setCatalog(Array.isArray(catalogData?.items) ? catalogData.items : []);
       } catch (error) {

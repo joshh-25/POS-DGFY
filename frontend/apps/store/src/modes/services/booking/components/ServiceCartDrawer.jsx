@@ -23,7 +23,6 @@ export function ServiceCartDrawer({
   productCartLines,
   serviceCartTotal,
   hasServiceCart,
-  hasMixedServiceCart,
   handleServicesCartCheckout,
 }) {
   return (
@@ -260,17 +259,17 @@ export function ServiceCartDrawer({
             <button
               type="button"
               onClick={handleServicesCartCheckout}
-              disabled={!hasServiceCart || hasMixedServiceCart}
+              disabled={!hasServiceCart}
               style={{
                 minHeight: 50,
                 borderRadius: 16,
                 border: 'none',
-                background: !hasServiceCart || hasMixedServiceCart ? '#cbd5e1' : `linear-gradient(135deg,${servicesPrimary},${servicesPrimaryDark})`,
+                background: !hasServiceCart ? '#cbd5e1' : `linear-gradient(135deg,${servicesPrimary},${servicesPrimaryDark})`,
                 color: '#fff',
                 fontSize: 15,
                 fontWeight: 900,
-                cursor: !hasServiceCart || hasMixedServiceCart ? 'not-allowed' : 'pointer',
-                boxShadow: !hasServiceCart || hasMixedServiceCart ? 'none' : `0 14px 30px ${servicesPrimaryShadowStrong}`,
+                cursor: !hasServiceCart ? 'not-allowed' : 'pointer',
+                boxShadow: !hasServiceCart ? 'none' : `0 14px 30px ${servicesPrimaryShadowStrong}`,
               }}
             >
               Continue to Booking

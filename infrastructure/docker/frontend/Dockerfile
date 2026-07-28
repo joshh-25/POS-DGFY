@@ -5,6 +5,7 @@ FROM node:22-alpine AS builder
 WORKDIR /app
 COPY frontend/package*.json ./
 COPY packages/pos-receipt /packages/pos-receipt
+COPY packages/shared-constants /packages/shared-constants
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm config set fetch-retries=5 fetch-retry-mintimeout=20000 fetch-retry-maxtimeout=120000 fetch-timeout=300000 \
     && (npm ci || (sleep 10 && npm ci) || (sleep 20 && npm ci))
@@ -48,6 +49,24 @@ ARG VITE_SENTRY_RELEASE=""
 ARG VITE_SENTRY_TRACES_SAMPLE_RATE=0
 ARG VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE=0
 ARG VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE=0
+# Comma-separated list of origins/URLs that get sentry-trace/baggage headers
+# attached to outgoing requests (distributed tracing). Falls back to
+# same-origin + VITE_API_URL when unset -- see
+# resolveTracePropagationTargets() in src/observability/sentryClient.js.
+ARG VITE_SENTRY_TRACE_PROPAGATION_TARGETS=""
+# Single shared PostHog project across all 3 surfaces (store/pos/skupervisor),
+# distinguished by the `surface` event property set in analyticsClient.js --
+# unlike Sentry's per-surface DSNs, there's no per-project quota reason to
+# split, and one project keeps cross-surface funnels queryable.
+ARG VITE_POSTHOG_ENABLED=false
+ARG VITE_POSTHOG_HOST=""
+ARG VITE_POSTHOG_KEY=""
+ARG VITE_POSTHOG_ENVIRONMENT=""
+# Session replay is off by default per surface -- POS records a fixed
+# all-day terminal showing customer PII, so it's gated independently from
+# the storefront. See analyticsClient.js's resolveSessionReplayFlag().
+ARG VITE_POSTHOG_SESSION_REPLAY_STORE=false
+ARG VITE_POSTHOG_SESSION_REPLAY_POS=false
 ARG SENTRY_UPLOAD_SOURCEMAPS=false
 ARG SENTRY_ORG=""
 ARG SENTRY_PROJECT_SKUPERVISOR=""
@@ -76,6 +95,13 @@ ENV VITE_API_URL=${VITE_API_URL} \
     VITE_SENTRY_TRACES_SAMPLE_RATE=${VITE_SENTRY_TRACES_SAMPLE_RATE} \
     VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE=${VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE} \
     VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE=${VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE} \
+    VITE_SENTRY_TRACE_PROPAGATION_TARGETS=${VITE_SENTRY_TRACE_PROPAGATION_TARGETS} \
+    VITE_POSTHOG_ENABLED=${VITE_POSTHOG_ENABLED} \
+    VITE_POSTHOG_HOST=${VITE_POSTHOG_HOST} \
+    VITE_POSTHOG_KEY=${VITE_POSTHOG_KEY} \
+    VITE_POSTHOG_ENVIRONMENT=${VITE_POSTHOG_ENVIRONMENT} \
+    VITE_POSTHOG_SESSION_REPLAY_STORE=${VITE_POSTHOG_SESSION_REPLAY_STORE} \
+    VITE_POSTHOG_SESSION_REPLAY_POS=${VITE_POSTHOG_SESSION_REPLAY_POS} \
     SENTRY_UPLOAD_SOURCEMAPS=${SENTRY_UPLOAD_SOURCEMAPS} \
     SENTRY_ORG=${SENTRY_ORG} \
     SENTRY_PROJECT_SKUPERVISOR=${SENTRY_PROJECT_SKUPERVISOR} \

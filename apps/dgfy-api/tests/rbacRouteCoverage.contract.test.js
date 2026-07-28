@@ -10,7 +10,7 @@ const posRoutesPath = path.resolve(__dirname, '../src/routes/pos.js');
 const complianceRoutesPath = path.resolve(__dirname, '../src/routes/compliance.js');
 const adminTenantRoutesPath = path.resolve(__dirname, '../src/routes/adminTenants.js');
 const settingsRoutesPath = path.resolve(__dirname, '../src/routes/settings.js');
-const rbacMatrixPath = path.resolve(__dirname, '../../docs/compliance/evidence/rbac-sensitive-action-matrix.md');
+const rbacMatrixPath = path.resolve(__dirname, '../../../docs/compliance/evidence/rbac-sensitive-action-matrix.md');
 
 const escapeRegexLiteral = (value) => String(value).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 

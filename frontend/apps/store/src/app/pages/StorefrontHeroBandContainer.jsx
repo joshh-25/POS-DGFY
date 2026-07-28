@@ -49,6 +49,7 @@ export function StorefrontHeroBandContainer(props) {
     catalogSearch,
     setCatalogSearch,
     goDiscovery,
+    goStore,
     hasServiceCart,
     goStoreBookingPage,
     cartCount,
@@ -118,6 +119,7 @@ export function StorefrontHeroBandContainer(props) {
           catalogSearch={catalogSearch}
           setCatalogSearch={setCatalogSearch}
           goDiscovery={goDiscovery}
+          goStore={goStore}
           hasServiceCart={hasServiceCart}
           goStoreBookingPage={goStoreBookingPage}
           cartCount={cartCount}
@@ -194,6 +196,7 @@ export function StorefrontHeroBandContainer(props) {
               cartCount={cartCount}
               setIsCheckoutOpen={setIsCheckoutOpen}
               goDiscovery={goDiscovery}
+              goStore={goStore}
               hasMultipleStoreBranches={hasMultipleStoreBranches}
               hasSelectedBranchFromMenu={hasSelectedBranchFromMenu}
               selectedLocationId={selectedLocationId}
@@ -236,6 +239,7 @@ export function StorefrontHeroBandContainer(props) {
               catalogSearch={catalogSearch}
               setCatalogSearch={setCatalogSearch}
               goDiscovery={goDiscovery}
+              goStore={goStore}
               cartCount={cartCount}
               setIsCheckoutOpen={setIsCheckoutOpen}
               modeAdapter={modeAdapter}

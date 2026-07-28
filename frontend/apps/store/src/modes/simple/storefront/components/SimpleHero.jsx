@@ -16,6 +16,8 @@ import { SimpleHeroAbout } from './SimpleHeroAbout.jsx';
 import { SimpleHeroContactLocation } from './SimpleHeroContactLocation.jsx';
 import { SimpleHeroMobileInfoCards } from './SimpleHeroMobileInfoCards.jsx';
 import { SimpleHeroWhyShopHere } from './SimpleHeroWhyShopHere.jsx';
+import { StorefrontAccountBranchSwitcher } from '../../../../shared/components/storefront/hero/StorefrontAccountBranchSwitcher.jsx';
+import { useStorefrontAccountBranches } from '../../../../shared/hooks/useStorefrontAccountBranches.js';
 
 const SimpleHero = ({
   simpleHeroModel,
@@ -29,6 +31,7 @@ const SimpleHero = ({
   catalogSearch,
   setCatalogSearch,
   goDiscovery,
+  goStore,
   cartCount,
   setIsCheckoutOpen,
   modeAdapter,
@@ -55,6 +58,10 @@ const SimpleHero = ({
 }) => {
   const { Badge, GhostButton, PrimaryButton, StorefrontExpandableBusinessHours, StorefrontHeroShell } = ui;
   const { buildVisibleStorefrontContactRows } = helperFns;
+  const { accountBranches, hasMultipleAccountBranches } = useStorefrontAccountBranches({
+    isStorefrontAccountAuthenticated,
+    selectedStore
+  });
   const {
     HERO_CANVAS_MAX_WIDTH,
     MAX_STOREFRONT_WHY_CHOOSE_US,
@@ -157,6 +164,14 @@ const SimpleHero = ({
               />
             </label>
           )
+        ) : null}
+        accountStoreSwitcher={hasMultipleAccountBranches ? (
+          <StorefrontAccountBranchSwitcher
+            branches={accountBranches}
+            currentSlug={selectedStore?.slug}
+            onSelectStore={goStore}
+            compactLabel={isMobileViewport}
+          />
         ) : null}
       />
 

@@ -21,7 +21,6 @@ export function useServiceBookingViewModel({
   cart,
   createStorefrontIdempotencyKey,
   getGoStoreBookingPage,
-  hasMixedServiceCart,
   hasServiceCart,
   isServicesMode,
   missingRequiredSelectedServiceIntake,
@@ -58,10 +57,6 @@ export function useServiceBookingViewModel({
   const handleServicesCartCheckout = () => {
     if (cart.length === 0) {
       toast.error('Your cart is empty.');
-      return;
-    }
-    if (hasMixedServiceCart) {
-      toast.error('Book services separately from regular product orders.');
       return;
     }
     if (!hasServiceCart || serviceCartLines.length === 0) {
@@ -106,12 +101,6 @@ export function useServiceBookingViewModel({
     }
     if (!bookingPermitted || accessCapabilities.booking === false) {
       const message = 'This storefront is not accepting service bookings right now.';
-      setCheckoutError(message);
-      toast.error(message);
-      return;
-    }
-    if (cart.some((line) => line.category !== 'service')) {
-      const message = 'Book services separately from regular product orders.';
       setCheckoutError(message);
       toast.error(message);
       return;

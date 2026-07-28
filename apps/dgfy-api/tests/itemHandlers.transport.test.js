@@ -16,6 +16,7 @@ const mockListStorefrontCatalogOverridesUseCase = jest.fn();
 const mockUpdateStorefrontCatalogOverrideUseCase = jest.fn();
 const mockUpdateBulkStorefrontCatalogOverridesUseCase = jest.fn();
 const mockUploadStorefrontCatalogImageUseCase = jest.fn();
+const mockImportExternalProductImageUseCase = jest.fn();
 const mockUploadStorefrontCatalogGalleryImagesUseCase = jest.fn();
 const mockUploadBulkStorefrontCatalogImagesUseCase = jest.fn();
 const mockUpdateStorefrontCatalogGalleryUseCase = jest.fn();
@@ -28,6 +29,7 @@ const mockUpdateItemBarcodeUseCase = jest.fn();
 const mockDeactivateItemBarcodeUseCase = jest.fn();
 const mockSetPrimaryItemBarcodeUseCase = jest.fn();
 const mockResolveItemBarcodeUseCase = jest.fn();
+const mockLookupExternalProductUseCase = jest.fn();
 const mockResolveItemBarcodeConflictUseCase = jest.fn();
 const mockRenderItemBarcodeLabelUseCase = jest.fn();
 const mockGetFoldersUseCase = jest.fn();
@@ -53,6 +55,7 @@ jest.unstable_mockModule('../src/modules/inventory/index.js', () => ({
   updateStorefrontCatalogOverrideUseCase: mockUpdateStorefrontCatalogOverrideUseCase,
   updateBulkStorefrontCatalogOverridesUseCase: mockUpdateBulkStorefrontCatalogOverridesUseCase,
   uploadStorefrontCatalogImageUseCase: mockUploadStorefrontCatalogImageUseCase,
+  importExternalProductImageUseCase: mockImportExternalProductImageUseCase,
   uploadStorefrontCatalogGalleryImagesUseCase: mockUploadStorefrontCatalogGalleryImagesUseCase,
   uploadBulkStorefrontCatalogImagesUseCase: mockUploadBulkStorefrontCatalogImagesUseCase,
   updateStorefrontCatalogGalleryUseCase: mockUpdateStorefrontCatalogGalleryUseCase,
@@ -65,6 +68,7 @@ jest.unstable_mockModule('../src/modules/inventory/index.js', () => ({
   deactivateItemBarcodeUseCase: mockDeactivateItemBarcodeUseCase,
   setPrimaryItemBarcodeUseCase: mockSetPrimaryItemBarcodeUseCase,
   resolveItemBarcodeUseCase: mockResolveItemBarcodeUseCase,
+  lookupExternalProductUseCase: mockLookupExternalProductUseCase,
   resolveItemBarcodeConflictUseCase: mockResolveItemBarcodeConflictUseCase,
   renderItemBarcodeLabelUseCase: mockRenderItemBarcodeLabelUseCase,
   getFoldersUseCase: mockGetFoldersUseCase,
@@ -84,6 +88,7 @@ let validateComposition;
 let updateFolder;
 let replaceItemSuppliers;
 let resolveItemBarcode;
+let importExternalStorefrontCatalogImage;
 
 beforeAll(async () => {
   const mod = await import('../src/modules/inventory/controllers/itemHandlers.js');
@@ -94,6 +99,7 @@ beforeAll(async () => {
   updateFolder = mod.updateFolder;
   replaceItemSuppliers = mod.replaceItemSuppliers;
   resolveItemBarcode = mod.resolveItemBarcode;
+  importExternalStorefrontCatalogImage = mod.importExternalStorefrontCatalogImage;
 });
 
 const createRes = () => {
@@ -367,6 +373,42 @@ describe('itemHandlers transport contracts', () => {
         status: 'resolved'
       })
     }));
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('importExternalStorefrontCatalogImage forwards only the accepted barcode and authenticated context', async () => {
+    mockImportExternalProductImageUseCase.mockResolvedValue({
+      item_id: 44,
+      storefront_image_url: '/uploads/storefront-catalog/item-44.webp'
+    });
+
+    const req = {
+      params: { item_id: '44' },
+      validatedParams: { item_id: 44 },
+      validatedData: { code: '049000042566' },
+      user: { user_id: 99, tenant_id: 'tenant-1' },
+      requestId: 'req-external-image-import'
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    await importExternalStorefrontCatalogImage(req, res, next);
+
+    expect(mockImportExternalProductImageUseCase).toHaveBeenCalledWith({
+      itemId: 44,
+      code: '049000042566',
+      user: req.user
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+    expect(res.json).toHaveBeenCalledWith({
+      success: true,
+      data: {
+        item_id: 44,
+        storefront_image_url: '/uploads/storefront-catalog/item-44.webp'
+      },
+      message: 'External product image imported successfully',
+      timestamp: expect.any(String)
+    });
     expect(next).not.toHaveBeenCalled();
   });
 });

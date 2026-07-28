@@ -25,7 +25,6 @@ export function useCheckoutTotalsAndGating({
   checkoutError,
   checkoutLoading,
   checkoutResult,
-  hasMixedServiceCart,
   hasServiceCart,
   isFnbMode,
   isSimpleMode,
@@ -103,7 +102,7 @@ export function useCheckoutTotalsAndGating({
     quoteResult,
     quoteNeedsRefresh,
     requireQuote: requireQuoteForCheckout
-  }) && !hasMixedServiceCart && (!hasServiceCart || serviceCartValidationIssues.length === 0);
+  }) && (!hasServiceCart || serviceCartValidationIssues.length === 0);
   const fnbCartStatusLabel = useMemo(() => buildFnbCartStatusLabel({
     cartCount,
     storefrontClosedByHours,

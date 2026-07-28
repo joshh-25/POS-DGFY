@@ -7,10 +7,13 @@ const featureRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '
 const readSource = (relativePath) => fs.readFileSync(path.join(featureRoot, relativePath), 'utf8');
 
 describe('Hospitality POS contract', () => {
-    it('renders a front-desk folio panel only for Hospitality mode', () => {
+    it('renders a front-desk folio panel gated on the hospitalityReservations capability', () => {
+        // Real render-behavior coverage (not just this source-text check) lives in
+        // posPageShellCapabilityPanels.behavior.test.jsx, which also proves the
+        // panel composes with other verticals under the Phase 6 capability overlay.
         const page = readSource('pages/PosPageShell.jsx');
 
-        expect(page).toContain('isHospitalityWorkflowMode');
+        expect(page).toContain("hasCapability('hospitalityReservations')");
         expect(page).toContain('HospitalityPosPanel');
         expect(page).toContain('Loading Hospitality front desk POS');
     });

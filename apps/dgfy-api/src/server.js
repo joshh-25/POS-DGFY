@@ -21,6 +21,7 @@ import express from 'express'; // Added missing express import if it was implici
 // Let's just fix the order.
 
 import { testConnection } from './config/database.js';
+import { assertConnectionBudget } from './config/connectionBudget.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { requestContext } from './middleware/requestContext.js';
@@ -717,11 +718,13 @@ app.use('/uploads', express.static(join(__dirname, '..', 'uploads'), {
 // Tenant Resolution & Context Middleware (Must be before API routes)
 import dgfyRoutes from './routes/dgfy.js';
 import geoSearchRoutes from './routes/geoSearch.js';
+import routeCalculatorRoutes from './routes/routeCalculator.js';
 import internalStorefrontDomainOperationRoutes from './routes/internalStorefrontDomainOperations.js';
 app.use('/api/v1/internal/storefront-domain-operations', internalStorefrontDomainOperationRoutes);
 app.use(csrfProtection);
 app.use('/api/v1/dgfy', tenantHandler, dgfyRoutes);
 app.use('/api/v1/geo', geoSearchRoutes);
+app.use('/api/v1/geo', routeCalculatorRoutes);
 
 app.use(tenantHandler);
 
@@ -786,6 +789,7 @@ app.use('/api/v1/store/hospitality', hospitalityStorefrontRoutes);
 app.use('/api/v1/store', storeRoutes);
 app.use('/api/v1/storefront', storefrontDiscoveryRoutes);
 app.use('/api/v1/storefront', geoSearchRoutes);
+app.use('/api/v1/storefront', routeCalculatorRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/feedback', feedbackRoutes);
 app.use('/api/v1/payments', paymentRoutes);
@@ -839,6 +843,10 @@ const startServer = async () => {
       logger.error('Failed to connect to database. Exiting...');
       process.exit(1);
     }
+
+    // Surface an over-provisioned connection budget at boot rather than as a
+    // wave of "Too many connections" under load. See connectionBudget.js.
+    assertConnectionBudget(logger);
 
     // Runtime schema preflight: fail fast when required migrations/columns are missing.
     if (runtimeSchemaAuditEnabled) {

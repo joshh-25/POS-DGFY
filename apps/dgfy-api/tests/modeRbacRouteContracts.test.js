@@ -25,13 +25,36 @@ describe('mode RBAC route contracts', () => {
   it('keeps F&B capability denial before permission checks and uses switchable fallback', () => {
     const source = readRoute('src/routes/fnb.js');
 
-    expect(source).toContain("router.use(requireWorkflowCapability('fnbDining', 'Food & Beverage'))");
+    // The `/fnb` router used to blanket-gate all 26 endpoints with a single
+    // `router.use(requireWorkflowCapability('fnbDining', ...))`, which is what
+    // kept add-on management restaurant-only. Gating is now per-route so the
+    // four modifier endpoints can sit behind `menuModifiers` instead. The
+    // contract this test protects is unchanged: capability denial still runs
+    // before any permission check, on every route.
+    expect(source).toContain("const requireFnbDining = requireWorkflowCapability('fnbDining', 'Food & Beverage')");
+    expect(source).toContain("const requireMenuModifiers = requireWorkflowCapability('menuModifiers', 'Menu Modifiers')");
+    expect(source).not.toContain('router.use(requireWorkflowCapability(');
     expect(source).toContain('buildModePermissionRequirements(primary, fallback)');
     expect(source).toContain('checkAnyPermission');
     expect(source).not.toContain('checkPermission(');
-    expect(source.indexOf("router.use(requireWorkflowCapability('fnbDining', 'Food & Beverage'))"))
-      .toBeLessThan(source.indexOf("router.get('/dashboard'"));
     expect(source).toContain('PERMISSIONS.FNB.actions.MANAGE_CHECKS');
     expect(source).toContain('PERMISSIONS.POS.actions.TRANSACT_POS');
+
+    const routeLines = source
+      .split('\n')
+      .filter((line) => /^router\.(get|post|put|patch|delete)\(/.test(line.trim()));
+
+    // Every endpoint carries a capability guard, and it precedes modePermission.
+    expect(routeLines).toHaveLength(26);
+    routeLines.forEach((line) => {
+      const guard = line.includes('requireMenuModifiers') ? 'requireMenuModifiers' : 'requireFnbDining';
+      expect(line).toContain(guard);
+      expect(line.indexOf(guard)).toBeLessThan(line.indexOf('modePermission('));
+    });
+
+    // Exactly the four modifier-management endpoints are de-gated from fnbDining.
+    const modifierRoutes = routeLines.filter((line) => line.includes('requireMenuModifiers'));
+    expect(modifierRoutes).toHaveLength(4);
+    expect(modifierRoutes.every((line) => /'\/(item-)?modifier-groups/.test(line))).toBe(true);
   });
 });
