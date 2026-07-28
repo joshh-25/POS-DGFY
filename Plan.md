@@ -1,3 +1,71 @@
+# Plan — POS Storefront Locations UI & Layout Redesign
+
+## High-Level Strategy
+Redesign the Storefront Locations management UI in `TerminalOperationsWorkspace.jsx` (lines 7507–7608) from the old layout (Picture 1) to closely match the modern dashboard layout of Picture 2. The new interface will organize content into a 2-column master-detail layout: a dedicated Locations list sidebar on the left (`w-full lg:w-80 xl:w-96`), and a structured 2x2 grid of grouped settings cards (Basic Details, Coordinates, Map & Coverage, Operational Settings) on the right.
+
+This is a strictly UI-only change: no backend logic, routing, APIs, MapLibre functionality, validations, field bindings, labels, text, or existing behavior will be modified. All interactive map picker components (`MapPinPicker`) and handlers (`handleSaveLocation`, `handleEditLocation`, `handleSetPrimaryLocation`, `handleDeactivateLocation`, `resetLocationForm`, etc.) will be 100% preserved.
+
+## Goals
+- [x] 1. **Header Bar**: Render a soft blue icon badge (`MapPin`), bold title (**Storefront Locations**), subtitle (*Manage your public storefront locations, delivery coverage, and operational settings.*), and top-right Refresh button.
+- [x] 2. **Left Locations List Sidebar**: Build a sidebar panel (`lg:col-span-4` / `w-full lg:w-80`) with a count pill badge (`Locations 2`), `+` Add Location button, `Search locations...` filter input, and location cards list featuring radio indicators (`●` / `○`), location name, address, status badges (`Active`, `Open`, `Primary`), radius, wait time, and coordinates.
+- [x] 3. **Active Location Header Bar**: Position a top card bar for the selected location displaying location name, status badge (`Active`), and quick action buttons (`Edit`, `Set Primary`, `Deactivate` / `Reactivate`).
+- [x] 4. **2x2 Grouped Settings Cards**:
+  - **Basic Details**: Location Name *, Address *.
+  - **Coordinates**: Latitude *, Longitude *, and info callout pill (*Pinned coordinates: These coordinates are used for delivery coverage and ETA calculations.*).
+  - **Map & Coverage**: Map pin toolbar (`Reset View`, `Pin Current Location`, `Adjust Pin`), MapLibre canvas box (Map component untouched), and delivery coverage preview info pill.
+  - **Operational Settings**: Delivery Radius (km) *, Wait Time (min) *, and structured checkboxes with subtext (*Open*, *Primary*, *Allow OOS Sales*).
+- [x] 5. **Bottom Action Bar**: Render a bottom card bar with title, subtext (*Add a new location or clear the form to start over.*), `Clear` outline button, and `Add Location` / `Update Location` primary button.
+- [x] 6. **Contract Test & Build Verification**: Ensure ESLint, Vitest contract tests, and frontend build compile cleanly without regression.
+
+---
+
+# Plan — POS Item Saved Confirmation Modal Redesign
+
+## High-Level Strategy
+Redesign the item saved success modal overlay (`savedMessage` state in `TerminalOperationsWorkspace.jsx`) from the old left-aligned card (Picture 1) to match the centered, modern card design of Picture 2. This is a strictly UI-only change: no backend logic, routing, APIs, validation rules, field bindings, text labels, or functionality will be changed. The modal title ID (`pos-items-saved-modal-title`), modal backdrop behavior, and state resets (`setSavedMessage({ name: '', barcode: '', action: 'updated' })`) will be fully preserved.
+
+## Goals
+- [x] 1. **Centered Card Container**: Transform the popup layout into a centered rounded white card (`rounded-3xl border border-slate-100 bg-white p-7 sm:p-8 text-center max-w-md w-full shadow-2xl shadow-slate-900/10`).
+- [x] 2. **Top Centered Success Badge**: Position a glowing green circular checkmark badge (`h-16 w-16 rounded-full bg-emerald-50 border border-emerald-200/80 shadow-[0_0_20px_rgba(16,185,129,0.18)] text-emerald-600`) at the top center of the card.
+- [x] 3. **Title & Subtitle**: Format centered main title ("Item saved successfully" / "Item created successfully") with ID `pos-items-saved-modal-title`, followed by the item update description subtext.
+- [x] 4. **Inner Summary Card Box**: Add a rounded inner card (`bg-[#F8FAFC] border border-slate-200/70 p-4 rounded-2xl flex items-center gap-3.5 text-left my-5`) containing a food cloche icon badge on the left, a vertical divider line, the item title, a green status indicator dot (`●`), and the status copy ("Updated in POS and IMS").
+- [x] 5. **Centered Navy Action Button**: Replace the right-aligned button with a centered navy blue button ("Got it" / "OK", `bg-[#0B3067] hover:bg-[#072047] text-white font-bold rounded-xl max-w-[200px] w-full h-11`).
+- [x] 6. **Contract Test & Build Verification**: Ensure ESLint, Vitest contract tests, and frontend build compile cleanly without regression.
+
+---
+
+# Plan — POS Restoration Loading Screen Redesign
+
+## High-Level Strategy
+Redesign the POS workspace startup loading screen in `TerminalPage.jsx` to closely match the provided reference image layout and graphic styling. The new loading screen will feature a centered white card with smooth rounded corners (`rounded-[28px]`), soft backdrop blur overlay, a floating vector POS illustration (monitor screen, cash drawer base, and calculator keypad terminal in a soft blue circular backdrop), bold title ("Restoring POS workspace..."), dynamic status subtext ("Preparing your workspace..."), an animated horizontal blue progress bar (0–100%), a rotating circular spinner, and a smooth fade-in / scale-up / fade-out transition sequence.
+
+All underlying startup logic, hydration hooks, routing, state restoration functions, and contract test assertions will be 100% preserved.
+
+## Goals
+- [x] 1. **CSS Animation Keyframes**: Add custom keyframe rules (`pos-overlay-fade-in`, `pos-card-scale-up`, `pos-illustration-float`) to `frontend/src/index.css`.
+- [x] 2. **POS Vector Illustration**: Create a crisp, high-fidelity SVG illustration matching the reference image graphic (blue monitor display, cash drawer, and desktop calculator keypad) enclosed within a soft blue circular container (`bg-[#EFF6FF]`).
+- [x] 3. **Centered Card & UI Components**: Build the loading screen layout with centered alignment, smooth card box-shadow (`shadow-[0_20px_50px_rgba(0,0,0,0.06)]`), exact title text ("Restoring POS workspace..."), status message subtext, horizontal progress track with animated blue fill bar, and centered circular spinner (`border-[#2563EB] animate-spin`).
+- [x] 4. **Full Animation Sequence**: Implement the full lifecycle animation sequence (overlay fade-in, card scale-up, continuous floating illustration, smooth 0–100% progress fill, changing status subtext, and smooth exit fade-out on completion).
+- [x] 5. **Contract Test & Build Verification**: Ensure ESLint, Vitest contract tests, and frontend build compile cleanly without regression.
+
+---
+
+# Plan — POS Edit Item Modal UI Layout & Styling Redesign
+
+## High-Level Strategy
+Redesign the "Edit Item" modal layout in `TerminalOperationsWorkspace.jsx` (Picture 1) to closely match the updated visual hierarchy and structural 3-column layout of Picture 2. This is a strictly UI-only change: no backend logic, routing, APIs, validation rules, field bindings, labels, text, or functionality will be changed. All element IDs (`pos-items-edit-modal-title`, `pos-items-edit-category`, `pos-items-edit-always-available`, `pos-items-edit-best-seller-mode`, `pos-items-edit-senior-pwd`) and accessibility attributes will be fully preserved.
+
+## Goals
+- [x] 1. **Horizontal Top Toggle Cards Row**: Move the 3 toggle cards ("Always Available", "Best Seller", "Senior/PWD Eligible") into a single horizontal 3-column row right below the header. Each card will have a distinct colored icon box on the left (`Package` in blue for Always Available, `Star` in green for Best Seller, `Percent` in purple for Senior/PWD Eligible), title and subtext, and the toggle `Switch` on the right.
+- [x] 2. **3-Column Content Layout**: Reorganize the body content below the top toggle row into 3 side-by-side columns on desktop (`grid grid-cols-1 lg:grid-cols-3 gap-5`):
+  - **Column 1 (Product Image)**: Wrapped inside a rounded bordered card container (`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm`). Contains section title/subtitle, upload dropzone (`pos-item-edit-image`), preview thumbnail, and a bottom notice pill (`Image will be visible in POS and storefront.` with an `Info` icon).
+  - **Column 2 (Item Details)**: Wrapped inside a rounded bordered card container (`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm`). Stacks Item Name *, Stock Quantity * (with a package box icon prefix inside input), Selling Price * (with ₱ prefix), Cost Price * (with ₱ prefix), and Description / Notes (with character counter `0 / 500`).
+  - **Column 3 (Category & QR Section)**: Wrapped inside a rounded bordered card container (`rounded-2xl border border-slate-200 bg-white p-5 shadow-sm`). Stacks Food Category * dropdown + helper text on top, and the QR Code card section on the bottom (item name, QR code in white card with share icon overlay, and "Open Storefront item ↗" link).
+- [x] 3. **Redesigned Footer Bar**: Replace the dark navy footer with a light white footer bar (`bg-white border-t border-slate-100 px-6 py-4`). Position the notice box with a blue `ShieldCheck` icon ("Changes will update this item across POS and storefront immediately.") on the left, and the Cancel / Save Item action buttons on the right.
+- [x] 4. **Contract Test & Build Verification**: Ensure ESLint, Vitest contract tests, and frontend build compile cleanly without regression.
+
+---
+
 # Plan — Food & Beverage (F&B) Saving Menu Item Modal Redesign
 
 ## High-Level Strategy
