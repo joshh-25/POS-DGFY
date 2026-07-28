@@ -80,6 +80,10 @@ export function useStorefrontCatalog({
     if (selectedLocationId == null) return null;
     return storeLocations.find((location) => Number(location.location_id) === Number(selectedLocationId)) || null;
   }, [storeLocations, selectedLocationId]);
+  const mapPublicationDisabled = Boolean(
+    selectedStore?.store_has_no_location
+    || selectedStore?.map_publication_disabled
+  );
   const accessCapabilities = useMemo(() => getAccessCapabilities(selectedStore), [selectedStore]);
   const catalogPermitted = canViewCatalog(selectedStore);
   const productCartPermitted = canUseProductCart(selectedStore);
@@ -87,9 +91,11 @@ export function useStorefrontCatalog({
   const bookingPermitted = canUseBooking(selectedStore);
   const serviceHeroModel = useMemo(() => {
     if (!selectedStore || !isServicesMode) return null;
-    const mapStores = storeLocations.length > 0
-      ? storeLocations.map((location) => ({ ...location, tenant_name: selectedStore?.tenant_name }))
-      : [selectedStore];
+    const mapStores = mapPublicationDisabled
+      ? []
+      : (storeLocations.length > 0
+          ? storeLocations.map((location) => ({ ...location, tenant_name: selectedStore?.tenant_name }))
+          : [selectedStore]);
     const locationName = String(selectedLocation?.name || overviewSectionModel?.location?.label || selectedStore?.location_name || '').trim();
     const addressLine = formatStorefrontAddress(selectedLocation || overviewSectionModel?.location || selectedStore || {});
     const galleryPreview = Array.isArray(supportingSectionModel?.galleryImages)
@@ -116,11 +122,13 @@ export function useStorefrontCatalog({
       || selectedStore?.tenant_created_at
       || selectedStore?.created_at
     );
-    const directionsUrl = buildGoogleMapsDirectionsUrl({
-      latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
-      longitude: selectedLocation?.longitude ?? selectedStore?.longitude,
-      addressLine
-    });
+    const directionsUrl = mapPublicationDisabled
+      ? ''
+      : buildGoogleMapsDirectionsUrl({
+          latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
+          longitude: selectedLocation?.longitude ?? selectedStore?.longitude,
+          addressLine
+        });
     const mergedGalleryImages = [...new Set(galleryPreview)];
     const mergedGalleryPreview = mergedGalleryImages.slice(0, 4);
     const whyChooseUs = Array.isArray(overviewSectionModel?.whyChooseUs) && overviewSectionModel.whyChooseUs.length > 0
@@ -204,6 +212,7 @@ export function useStorefrontCatalog({
   }, [
     selectedStore,
     isServicesMode,
+    mapPublicationDisabled,
     storeLocations,
     selectedLocation,
     overviewSectionModel,
@@ -266,20 +275,24 @@ export function useStorefrontCatalog({
       || selectedStore?.tenant_created_at
       || selectedStore?.created_at
     );
-    const mapStores = storeLocations.length > 0
-      ? storeLocations.map((location) => ({ ...location, tenant_name: selectedStore?.tenant_name }))
-      : [selectedStore];
+    const mapStores = mapPublicationDisabled
+      ? []
+      : (storeLocations.length > 0
+          ? storeLocations.map((location) => ({ ...location, tenant_name: selectedStore?.tenant_name }))
+          : [selectedStore]);
     const whyChooseUs = Array.isArray(overviewSectionModel?.whyChooseUs) && overviewSectionModel.whyChooseUs.length > 0
       ? overviewSectionModel.whyChooseUs.slice(0, 4)
       : buildSimpleFallbackReasons({
           categories: Array.isArray(overviewSectionModel?.categories) ? overviewSectionModel.categories : [],
           catalog
         });
-    const directionsUrl = buildGoogleMapsDirectionsUrl({
-      latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
-      longitude: selectedLocation?.longitude ?? selectedStore?.longitude,
-      addressLine
-    });
+    const directionsUrl = mapPublicationDisabled
+      ? ''
+      : buildGoogleMapsDirectionsUrl({
+          latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
+          longitude: selectedLocation?.longitude ?? selectedStore?.longitude,
+          addressLine
+        });
     return {
       coverImageUrl: withAssetOrigin(heroSectionModel?.coverImageUrl),
       profileImageUrl: withAssetOrigin(heroSectionModel?.profileImageUrl),
@@ -326,6 +339,7 @@ export function useStorefrontCatalog({
   }, [
     selectedStore,
     isSimpleMode,
+    mapPublicationDisabled,
     heroSectionModel,
     selectedLocation,
     overviewSectionModel,

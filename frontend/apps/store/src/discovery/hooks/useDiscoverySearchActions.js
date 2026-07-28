@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useRef } from 'react';
 
 import { resolveDiscoveryCategoryFilterValue } from '../../features/discovery/utils/storefrontDiscoveryNormalization.js';
 
@@ -17,6 +17,8 @@ export function useDiscoverySearchActions({
   setSearch,
   setSelectedMapPin
 }) {
+  const lastSubmittedSearchRef = useRef(null);
+
   const handleNearMe = useCallback(() => {
     const currentSearch = String(searchRef.current || search || '').trim();
     setHasDiscoveryExplorationStarted(true);
@@ -65,6 +67,10 @@ export function useDiscoverySearchActions({
     setSelectedMapPin(null);
     setDebouncedDiscoverySearch(currentSearch);
     setDiscoveryPinScope('tenant_primary');
+    if (lastSubmittedSearchRef.current === currentSearch) {
+      return;
+    }
+    lastSubmittedSearchRef.current = currentSearch;
     loadStores(null, { useImmediateSearch: true, pinScope: 'tenant_primary' });
   }, [
     loadStores,

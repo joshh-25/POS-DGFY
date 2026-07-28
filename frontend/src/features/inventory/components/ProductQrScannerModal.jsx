@@ -2,7 +2,6 @@ import React, { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Camera, Loader2, ScanLine, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { parseProductQrPayload } from '@/src/utils/barcodePolicy.js';
 
 const getCameraStartupError = (error) => {
   if (error?.name === 'NotAllowedError') {
@@ -21,7 +20,6 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
   const videoRef = useRef(null);
   const controlsRef = useRef(null);
   const detectedRef = useRef(false);
-  const lastRejectedPayloadRef = useRef('');
   const onDetectedRef = useRef(onDetected);
   const closeButtonRef = useRef(null);
   const [cameraRequested, setCameraRequested] = useState(false);
@@ -59,7 +57,6 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
       ? ''
       : 'Camera scanning requires HTTPS. Use a secure POS URL or enter the barcode manually.');
     detectedRef.current = false;
-    lastRejectedPayloadRef.current = '';
 
     return undefined;
   }, [cameraAvailable, open]);
@@ -69,7 +66,6 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
 
     let cancelled = false;
     detectedRef.current = false;
-    lastRejectedPayloadRef.current = '';
     setScanError('');
     setStarting(true);
 
@@ -92,10 +88,26 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
       }
 
       try {
-        const { BrowserQRCodeReader } = await import('@zxing/browser');
+        const [
+          { BrowserMultiFormatOneDReader },
+          { BarcodeFormat, DecodeHintType }
+        ] = await Promise.all([
+          import('@zxing/browser'),
+          import('@zxing/library')
+        ]);
         if (cancelled) return;
 
-        const reader = new BrowserQRCodeReader(undefined, { delayBetweenScanAttempts: 150 });
+        const hints = new Map();
+        hints.set(DecodeHintType.POSSIBLE_FORMATS, [
+          BarcodeFormat.EAN_8,
+          BarcodeFormat.EAN_13,
+          BarcodeFormat.UPC_A,
+          BarcodeFormat.UPC_E,
+          BarcodeFormat.ITF,
+          BarcodeFormat.CODE_128,
+          BarcodeFormat.CODE_39
+        ]);
+        const reader = new BrowserMultiFormatOneDReader(hints, { delayBetweenScanAttempts: 150 });
         const controls = await reader.decodeFromConstraints(
           {
             audio: false,
@@ -109,19 +121,12 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
           (result, _error, activeControls) => {
             if (!result || detectedRef.current) return;
 
-            const payload = result.getText();
-            const parsed = parseProductQrPayload(payload);
-            if (parsed.error) {
-              if (payload !== lastRejectedPayloadRef.current) {
-                lastRejectedPayloadRef.current = payload;
-                setScanError(parsed.error);
-              }
-              return;
-            }
+            const code = String(result.getText() || '').trim();
+            if (!code) return;
 
             detectedRef.current = true;
             activeControls.stop();
-            onDetectedRef.current(parsed.code);
+            onDetectedRef.current(code);
           }
         );
 
@@ -154,7 +159,7 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
       className="pos-mobile-no-focus-zoom fixed inset-0 z-[10050] flex items-center justify-center bg-slate-950/70 p-4 backdrop-blur-sm"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="product-qr-scanner-title"
+      aria-labelledby="product-barcode-scanner-title"
       onClick={() => onOpenChange(false)}
     >
       <div
@@ -162,19 +167,19 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
         onClick={(event) => event.stopPropagation()}
       >
         <div className="border-b border-slate-200 p-6 pr-16">
-          <h2 id="product-qr-scanner-title" className="flex items-center gap-2 text-xl font-bold text-slate-900">
+          <h2 id="product-barcode-scanner-title" className="flex items-center gap-2 text-xl font-bold text-slate-900">
             <ScanLine className="h-5 w-5 text-blue-700" aria-hidden="true" />
-            Scan Product QR
+            Scan Product Barcode
           </h2>
           <p className="mt-2 text-sm text-slate-500">
-            Point the rear camera at a product QR containing a GTIN. Payment and website QRs are not accepted.
+            Point the rear camera at a UPC, EAN, ITF, Code 128, or Code 39 product barcode. QR codes are not accepted.
           </p>
           <button
             ref={closeButtonRef}
             type="button"
             onClick={() => onOpenChange(false)}
             className="absolute right-5 top-5 rounded-full border border-slate-200 bg-white p-2 text-slate-600 hover:bg-slate-50"
-            aria-label="Close QR scanner"
+            aria-label="Close product barcode scanner"
           >
             <X className="h-5 w-5" />
           </button>
@@ -188,7 +193,7 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
               muted
               autoPlay
               playsInline
-              aria-label="Product QR camera preview"
+              aria-label="Product barcode camera preview"
             />
             <div className="pointer-events-none absolute inset-[14%] rounded-2xl border-2 border-white/90 shadow-[0_0_0_999px_rgba(15,23,42,0.38)]" />
             {!cameraRequested && !starting ? (
@@ -200,22 +205,10 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
                   </p>
                   <p className="mt-1 text-xs text-slate-300">
                     {cameraAvailable
-                      ? 'Your browser will ask permission after you enable the camera.'
+                      ? 'Press Scan below to request camera access.'
                       : 'Open the POS through a trusted HTTPS address to use the camera.'}
                   </p>
                 </div>
-                <Button
-                  type="button"
-                  onClick={() => {
-                    setScanError('');
-                    setCameraRequested(true);
-                  }}
-                  disabled={!cameraAvailable}
-                  className="min-h-11 bg-blue-600 text-white hover:bg-blue-700"
-                >
-                  <Camera className="mr-2 h-4 w-4" aria-hidden="true" />
-                  {scanError && cameraAvailable ? 'Try Camera Again' : 'Enable Camera'}
-                </Button>
               </div>
             ) : null}
             {starting ? (
@@ -234,13 +227,29 @@ export default function ProductQrScannerModal({ open, onOpenChange, onDetected }
             <p className="flex items-center gap-2 text-sm text-slate-600" role="status">
               <Camera className="h-4 w-4" aria-hidden="true" />
               {cameraRequested
-                ? 'Hold the QR steady inside the frame. Lookup starts automatically after a valid scan.'
-                : 'Camera access begins only after you press Enable Camera.'}
+                ? 'Hold the barcode steady inside the frame. Valid GTINs are looked up; private codes can be saved as internal POS barcodes.'
+                : 'Camera access begins only after you press Scan.'}
             </p>
           )}
         </div>
 
-        <div className="flex justify-end border-t border-slate-200 p-4">
+        <div className="flex justify-end gap-3 border-t border-slate-200 p-4">
+          <Button
+            type="button"
+            onClick={() => {
+              setScanError('');
+              setCameraRequested(true);
+            }}
+            disabled={!cameraAvailable || cameraRequested || starting}
+            className="min-h-11 bg-blue-600 text-white hover:bg-blue-700"
+          >
+            {starting ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <ScanLine className="mr-2 h-4 w-4" aria-hidden="true" />
+            )}
+            {starting ? 'Starting...' : cameraRequested ? 'Scanning...' : 'Scan'}
+          </Button>
           <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
             Enter manually
           </Button>

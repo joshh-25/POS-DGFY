@@ -204,8 +204,8 @@ describe('storefront profile launcher', () => {
     await user.click(profileButton);
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/tenant-store/alpha');
-      expect(screen.getAllByRole('button', { name: /^Profile$/i }).length).toBeGreaterThan(0);
+      expect(window.location.pathname).toBe('/map-dgfy/account');
+      expect(screen.getByTestId('dgfy-customer-account-page')).toBeTruthy();
       expect(fetchMock).toHaveBeenCalled();
     });
   }, 10000);

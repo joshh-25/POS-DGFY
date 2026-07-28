@@ -3375,11 +3375,13 @@ export default function StorefrontApp() {
 
         {isStorePage && (
           <>
-            <StorefrontHeroBandContainer {...storefrontHeroBandProps} />
+            {!isFnbDetailsSubpage && (
+              <StorefrontHeroBandContainer {...storefrontHeroBandProps} />
+            )}
 
 
             {/* ZONE 4: Catalog Grid with Sidebar */}
-            {catalogPermitted && selectedStore && (
+            {(isFnbDetailsSubpage || (catalogPermitted && selectedStore)) && (
               <StorefrontCatalogRouteContainer {...storefrontCatalogRouteProps} />
             )}
           </>
