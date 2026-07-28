@@ -3,6 +3,7 @@ import {
     getMobilePosSettingsBootstrapUseCase,
     getMobilePosDevicePolicyUseCase,
     syncMobilePosCheckoutsUseCase,
+    syncMobilePosItemsUseCase,
     syncMobilePosShiftsUseCase,
     syncMobilePosHardwareEventsUseCase,
     acknowledgeMobilePosCheckpointUseCase
@@ -87,6 +88,22 @@ export const syncCheckouts = async (req, res, next) => {
     }
 };
 
+export const syncItems = async (req, res, next) => {
+    try {
+        const result = await syncMobilePosItemsUseCase({
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => buildSuccessPayload(result, 'Mobile POS item sync processed'),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const syncShifts = async (req, res, next) => {
     try {
         const result = await syncMobilePosShiftsUseCase({
@@ -140,6 +157,7 @@ export default {
     getSettingsBootstrap,
     getDevicePolicy,
     syncCheckouts,
+    syncItems,
     syncShifts,
     syncHardwareEvents,
     acknowledgeCheckpoint

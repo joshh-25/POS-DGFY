@@ -3,6 +3,8 @@ import { jest } from '@jest/globals';
 const mockListPosCatalogUseCase = jest.fn();
 const mockScanPosBarcodeUseCase = jest.fn();
 const mockCheckoutPosUseCase = jest.fn();
+const mockListPosDiscountApproversUseCase = jest.fn();
+const mockVerifyPosDiscountApprovalUseCase = jest.fn();
 const mockListPosTransactionsUseCase = jest.fn();
 const mockGetPosReportsOverviewUseCase = jest.fn();
 const mockExportPosReportsUseCase = jest.fn();
@@ -33,8 +35,11 @@ const mockSwitchTerminalShiftLocationUseCase = jest.fn();
 const mockGetCurrentTerminalShiftUseCase = jest.fn();
 const mockRecordCashDrawerEventUseCase = jest.fn();
 const mockCloseTerminalShiftUseCase = jest.fn();
+const mockForceCloseStaleTerminalShiftUseCase = jest.fn();
 const mockGetTerminalTodayDashboardUseCase = jest.fn();
 const mockListIncomingOnlineOrdersUseCase = jest.fn();
+const mockGetAdminLocationMonitorUseCase = jest.fn();
+const mockCollectCashPickupOrderUseCase = jest.fn();
 const mockUpdateOnlineOrderStatusUseCase = jest.fn();
 const mockGetPosDeviceStatusUseCase = jest.fn();
 const mockPrintPosReceiptUseCase = jest.fn();
@@ -47,6 +52,8 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     listPosCatalogUseCase: mockListPosCatalogUseCase,
     scanPosBarcodeUseCase: mockScanPosBarcodeUseCase,
     checkoutPosUseCase: mockCheckoutPosUseCase,
+    listPosDiscountApproversUseCase: mockListPosDiscountApproversUseCase,
+    verifyPosDiscountApprovalUseCase: mockVerifyPosDiscountApprovalUseCase,
     listPosTransactionsUseCase: mockListPosTransactionsUseCase,
     getPosReportsOverviewUseCase: mockGetPosReportsOverviewUseCase,
     exportPosReportsUseCase: mockExportPosReportsUseCase,
@@ -77,8 +84,11 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     getCurrentTerminalShiftUseCase: mockGetCurrentTerminalShiftUseCase,
     recordCashDrawerEventUseCase: mockRecordCashDrawerEventUseCase,
     closeTerminalShiftUseCase: mockCloseTerminalShiftUseCase,
+    forceCloseStaleTerminalShiftUseCase: mockForceCloseStaleTerminalShiftUseCase,
     getTerminalTodayDashboardUseCase: mockGetTerminalTodayDashboardUseCase,
     listIncomingOnlineOrdersUseCase: mockListIncomingOnlineOrdersUseCase,
+    getAdminLocationMonitorUseCase: mockGetAdminLocationMonitorUseCase,
+    collectCashPickupOrderUseCase: mockCollectCashPickupOrderUseCase,
     updateOnlineOrderStatusUseCase: mockUpdateOnlineOrderStatusUseCase,
     getPosDeviceStatusUseCase: mockGetPosDeviceStatusUseCase,
     printPosReceiptUseCase: mockPrintPosReceiptUseCase,
@@ -104,6 +114,8 @@ let openTerminalShift;
 let switchTerminalShiftLocation;
 let recordCashDrawerEvent;
 let closeTerminalShift;
+let forceCloseStaleTerminalShift;
+let getAdminLocationMonitor;
 let updateOnlineOrderStatus;
 
 beforeAll(async () => {
@@ -120,6 +132,8 @@ beforeAll(async () => {
     switchTerminalShiftLocation = mod.switchTerminalShiftLocation;
     recordCashDrawerEvent = mod.recordCashDrawerEvent;
     closeTerminalShift = mod.closeTerminalShift;
+    forceCloseStaleTerminalShift = mod.forceCloseStaleTerminalShift;
+    getAdminLocationMonitor = mod.getAdminLocationMonitor;
     updateOnlineOrderStatus = mod.updateOnlineOrderStatus;
 });
 
@@ -744,6 +758,57 @@ describe('posHandlers transport contracts', () => {
         expect(next).not.toHaveBeenCalled();
     });
 
+    it('forceCloseStaleTerminalShift forwards the recovery evidence contract', async () => {
+        mockForceCloseStaleTerminalShiftUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                idempotent_replay: false,
+                replay_outcome: 'processed',
+                shift: { pos_terminal_shift_id: 77, status: 'closed' },
+                recovery_authorization: {
+                    shift_cashier_id: 4,
+                    authorization_mode: 'master_admin_stale_recovery'
+                }
+            }
+        });
+
+        const req = {
+            validatedParams: { id: 77 },
+            params: { id: 77 },
+            validatedData: {
+                idempotency_key: 'stale-shift-recovery-77',
+                closing_cash_amount: 1200,
+                reason: 'Operator left without closing'
+            },
+            body: {},
+            user: { user_id: 1, tenant_id: 'tenant-1', is_master_admin: true },
+            requestId: 'req-pos-stale-shift-recovery'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await forceCloseStaleTerminalShift(req, res, next);
+
+        expect(mockForceCloseStaleTerminalShiftUseCase).toHaveBeenCalledWith({
+            shiftId: 77,
+            payload: expect.objectContaining({
+                idempotency_key: 'stale-shift-recovery-77',
+                closing_cash_amount: 1200
+            }),
+            user: expect.objectContaining({ user_id: 1 })
+        });
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: expect.objectContaining({
+                replay_outcome: 'processed'
+            }),
+            message: 'Stale terminal shift recovered successfully',
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
     it('updateOnlineOrderStatus preserves replay metadata contract in success responses', async () => {
         mockUpdateOnlineOrderStatusUseCase.mockResolvedValue({
             success: true,
@@ -778,6 +843,44 @@ describe('posHandlers transport contracts', () => {
                 replay_outcome: 'processed'
             }),
             message: 'Online order status updated successfully',
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('getAdminLocationMonitor returns branch monitoring data without changing shift ownership', async () => {
+        mockGetAdminLocationMonitorUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                location_id: 3,
+                orders: [{ pos_transaction_id: 89 }],
+                terminal_shifts: [{ pos_terminal_shift_id: 77 }]
+            }
+        });
+
+        const req = {
+            validatedQuery: { location_id: 3 },
+            query: {},
+            user: { user_id: 4, tenant_id: 'tenant-1', role: 'admin' },
+            requestId: 'req-pos-admin-monitor'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await getAdminLocationMonitor(req, res, next);
+
+        expect(mockGetAdminLocationMonitorUseCase).toHaveBeenCalledWith({
+            query: { location_id: 3 },
+            user: expect.objectContaining({ user_id: 4 })
+        });
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: expect.objectContaining({
+                location_id: 3,
+                orders: expect.any(Array),
+                terminal_shifts: expect.any(Array)
+            }),
             timestamp: expect.any(String)
         });
         expect(next).not.toHaveBeenCalled();

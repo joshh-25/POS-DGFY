@@ -249,6 +249,7 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceBridgeService
         const userId = parsePositiveInt(user?.user_id);
         const transactionId = parsePositiveInt(payload?.transaction_id);
         const copies = Math.max(1, Math.min(Number.parseInt(payload?.copies, 10) || 1, 5));
+        const paperWidth = payload?.paper_width === '57mm' ? '57mm' : '80mm';
         const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
         const reason = String(payload?.reason || '').trim() || 'manual_reprint';
 
@@ -270,6 +271,7 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceBridgeService
         const replayRequestHash = hashPayload({
             transaction_id: transactionId,
             copies,
+            paper_width: paperWidth,
             reason
         });
 
@@ -305,10 +307,11 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceBridgeService
             }
 
             const allSettings = unwrapApplicationResultOrThrow(await getAllSettingsUseCase());
-            const receipt = buildReceiptPayload({ transaction, settings: allSettings });
+            const receipt = { ...buildReceiptPayload({ transaction, settings: allSettings }), paper_width: paperWidth };
             const bridgeResponse = await deviceBridgeService.printReceipt({
                 receipt,
-                copies
+                copies,
+                paper_width: paperWidth
             });
 
             await posRepository.createAuditLog({
@@ -320,6 +323,7 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceBridgeService
                     operation: 'print_receipt',
                     reason,
                     copies,
+                    paper_width: paperWidth,
                     invoice_number: transaction.invoice_number || null,
                     bridge_result: bridgeResponse?.result || null
                 },
@@ -333,6 +337,7 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceBridgeService
                     total_amount: transaction.total_amount
                 },
                 receipt_contract: receipt.receipt_contract,
+                paper_width: paperWidth,
                 bridge: bridgeResponse
             };
 

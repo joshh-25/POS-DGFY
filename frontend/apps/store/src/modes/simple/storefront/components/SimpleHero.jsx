@@ -16,6 +16,8 @@ import { SimpleHeroAbout } from './SimpleHeroAbout.jsx';
 import { SimpleHeroContactLocation } from './SimpleHeroContactLocation.jsx';
 import { SimpleHeroMobileInfoCards } from './SimpleHeroMobileInfoCards.jsx';
 import { SimpleHeroWhyShopHere } from './SimpleHeroWhyShopHere.jsx';
+import { StorefrontAccountBranchSwitcher } from '../../../../shared/components/storefront/hero/StorefrontAccountBranchSwitcher.jsx';
+import { useStorefrontAccountBranches } from '../../../../shared/hooks/useStorefrontAccountBranches.js';
 
 const SimpleHero = ({
   simpleHeroModel,
@@ -29,6 +31,7 @@ const SimpleHero = ({
   catalogSearch,
   setCatalogSearch,
   goDiscovery,
+  goStore,
   cartCount,
   setIsCheckoutOpen,
   modeAdapter,
@@ -55,6 +58,10 @@ const SimpleHero = ({
 }) => {
   const { Badge, GhostButton, PrimaryButton, StorefrontExpandableBusinessHours, StorefrontHeroShell } = ui;
   const { buildVisibleStorefrontContactRows } = helperFns;
+  const { accountBranches, hasMultipleAccountBranches } = useStorefrontAccountBranches({
+    isStorefrontAccountAuthenticated,
+    selectedStore
+  });
   const {
     HERO_CANVAS_MAX_WIDTH,
     MAX_STOREFRONT_WHY_CHOOSE_US,
@@ -157,6 +164,14 @@ const SimpleHero = ({
               />
             </label>
           )
+        ) : null}
+        accountStoreSwitcher={hasMultipleAccountBranches ? (
+          <StorefrontAccountBranchSwitcher
+            branches={accountBranches}
+            currentSlug={selectedStore?.slug}
+            onSelectStore={goStore}
+            compactLabel={isMobileViewport}
+          />
         ) : null}
       />
 
@@ -297,7 +312,7 @@ const SimpleHero = ({
 
       <div style={{ display: isMobileViewport ? 'block' : 'none', background: '#fff' }}>
           <div style={{ padding: '14px 16px 10px' }}>
-            <div style={{ display: 'flex', marginLeft: 118, gap: 8, marginBottom: 12, marginRight: 2 }}>
+            <div style={{ display: 'flex', minHeight: 38, marginLeft: 118, gap: 8, marginBottom: 12, marginRight: 2 }}>
               {simpleHeroModel.actions?.canMessage && (
                 <GhostButton onClick={() => openStorefrontActionLink(simpleHeroModel.actions.messageHref)} style={{ flex: 1, background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, fontFamily: heroTheme.bodyFont, fontWeight: 600, fontSize: 13 }}>
                   <MessageSquare size={16} />

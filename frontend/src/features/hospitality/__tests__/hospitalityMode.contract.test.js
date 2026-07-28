@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { isWorkflowPageVisible, isWorkflowPathBlocked } from '../../settings/workflowMode.js';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../..');
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
@@ -14,11 +15,19 @@ describe('Hospitality frontend contract', () => {
 
     expect(main).toContain("path=\"/hospitality\"");
     expect(main).toContain('requiredCapability="hospitalityReservations"');
-    expect(main).toContain('blockInHospitality moduleLabel="Job Orders"');
-    expect(main).toContain('blockInHospitality moduleLabel="Dispatch Orders"');
     expect(layout).toContain("name: 'Hospitality'");
     expect(layout).toContain("page: 'Hospitality'");
     expect(utils).toContain("'Hospitality': '/hospitality'");
+  });
+
+  it('keeps manufacturing production modules out of Hospitality by capability, not by a hardcoded mode list', () => {
+    // Previously asserted as the literal source text `blockInHospitality
+    // moduleLabel="Job Orders"`. Both surfaces now derive from
+    // `productionWorkflows`, which Hospitality does not hold.
+    expect(isWorkflowPageVisible('JobOrders', 'hospitality')).toBe(false);
+    expect(isWorkflowPageVisible('DispatchOrders', 'hospitality')).toBe(false);
+    expect(isWorkflowPathBlocked('/job-orders', 'hospitality')).toBe(true);
+    expect(isWorkflowPathBlocked('/dispatch-orders', 'hospitality')).toBe(true);
   });
 
   it('exposes Hospitality APIs for rooms, reservations, guests, operations, folios, amenities, rates, and reports', () => {

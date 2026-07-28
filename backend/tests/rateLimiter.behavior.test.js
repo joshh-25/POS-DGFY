@@ -14,6 +14,7 @@ let storeTrackingReadLimiter;
 let storeGuestCheckoutOtpRequestLimiter;
 let storeGuestCheckoutOtpVerifyLimiter;
 let mobilePosFreeSyncLimiter;
+let itemOperationsLimiter;
 let logger;
 let defaultAuthRateLimitWindowMs;
 
@@ -33,6 +34,8 @@ beforeAll(async () => {
   process.env.RATE_LIMIT_STORE_TRACKING_READ_MAX_REQUESTS = '1';
   process.env.RATE_LIMIT_MOBILE_POS_FREE_SYNC_WINDOW_MS = '60000';
   process.env.RATE_LIMIT_MOBILE_POS_FREE_SYNC_MAX_REQUESTS = '2';
+  process.env.RATE_LIMIT_ITEM_OPERATIONS_WINDOW_MS = '60000';
+  process.env.RATE_LIMIT_ITEM_OPERATIONS_MAX_REQUESTS = '1';
   process.env.RATE_LIMIT_ALERT_THRESHOLD = '999999';
 
   const loggerModule = await import('../src/config/logger.js');
@@ -50,6 +53,7 @@ beforeAll(async () => {
   storeGuestCheckoutOtpRequestLimiter = limiterModule.storeGuestCheckoutOtpRequestLimiter;
   storeGuestCheckoutOtpVerifyLimiter = limiterModule.storeGuestCheckoutOtpVerifyLimiter;
   mobilePosFreeSyncLimiter = limiterModule.mobilePosFreeSyncLimiter;
+  itemOperationsLimiter = limiterModule.itemOperationsLimiter;
 });
 
 afterAll(() => {
@@ -114,6 +118,54 @@ describe('Rate limiter behavior', () => {
 
     await request(app).post('/api/v1/items').set(headers).send({ name: 'First item' }).expect(200);
     await request(app).post('/api/v1/items').set(headers).send({ name: 'Second item' }).expect(200);
+  });
+
+  it('rate-limits authenticated item operations once the general IP bucket has been skipped', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/api', (req, _res, next) => {
+      req.user = { user_id: req.headers['x-test-user-id'] || 'user-a' };
+      next();
+    }, itemOperationsLimiter);
+    app.get('/api/v1/items/barcodes/resolve', (_req, res) => res.status(200).json({ ok: true }));
+
+    const headers = {
+      authorization: 'Bearer authenticated-item-operation',
+      'x-company-token': 'tenant-token-1'
+    };
+
+    await request(app).get('/api/v1/items/barcodes/resolve').set(headers).expect(200);
+
+    const second = await request(app).get('/api/v1/items/barcodes/resolve').set(headers).expect(429);
+    expect(second.body).toEqual(expect.objectContaining({
+      success: false,
+      message: 'Item request limit reached. Please wait before retrying.',
+      retryAfterSeconds: expect.any(Number),
+      limitScope: 'item_operations',
+      limitKeyType: 'tenant_user',
+      timestamp: expect.any(String),
+    }));
+    expect(Number(second.headers['retry-after'])).toBeGreaterThan(0);
+  });
+
+  it('keys item operations by tenant+user so different users do not share the same bucket', async () => {
+    const app = express();
+    app.use(express.json());
+    app.use('/api', (req, _res, next) => {
+      req.user = { user_id: req.headers['x-test-user-id'] };
+      next();
+    }, itemOperationsLimiter);
+    app.get('/api/v1/items/barcodes/resolve', (_req, res) => res.status(200).json({ ok: true }));
+
+    await request(app)
+      .get('/api/v1/items/barcodes/resolve')
+      .set({ authorization: 'Bearer user-c', 'x-company-token': 'tenant-token-2', 'x-test-user-id': 'user-c' })
+      .expect(200);
+
+    await request(app)
+      .get('/api/v1/items/barcodes/resolve')
+      .set({ authorization: 'Bearer user-d', 'x-company-token': 'tenant-token-2', 'x-test-user-id': 'user-d' })
+      .expect(200);
   });
 
   it('keeps guest checkout OTP sends and verification attempts in separate rate-limit buckets', async () => {

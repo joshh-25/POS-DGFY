@@ -1,4 +1,40 @@
 import Joi from 'joi';
+import { hasValidGtinCheckDigit } from '../modules/shared/utils/barcodePolicy.js';
+import { TRACKING_MODE } from '../modules/shared/utils/stockBearingPolicy.js';
+
+// recipe_derived is reserved (frozen recipe engine - no producibility
+// projection is being built) and deliberately not settable via the item
+// write path. external_ims became settable in Phase 9, but only structurally
+// here: Joi has no tenant context, so it cannot enforce the real gate (a
+// tenant may only set external_ims once its inventory_authority setting has
+// delegated the ledger to an external system). That tenant-conditional check
+// happens one layer up, at the use-case level - see
+// assertTrackingModeAuthorizedForInventoryAuthority in
+// inventory/usecases/inventoryAuthorityTrackingModeGate.js, wired into
+// createItemUseCase/updateItemUseCase/finalizeItemUseCase - mirroring how
+// validateItemAgainstModeTaxonomy already does tenant-conditional item
+// validation outside of Joi (resolveWorkflowMode/resolveEnabledCapabilities
+// are not available at this pure-schema layer either).
+const SETTABLE_TRACKING_MODES = [
+  TRACKING_MODE.UNTRACKED,
+  TRACKING_MODE.COUNT_LEDGER,
+  TRACKING_MODE.FULL_FIFO,
+  TRACKING_MODE.TOGGLE,
+  TRACKING_MODE.CAPACITY,
+  TRACKING_MODE.EXTERNAL_IMS
+];
+const trackingModeSchema = Joi.string().valid(...SETTABLE_TRACKING_MODES).allow(null, '').messages({
+  'any.only': `tracking_mode must be one of: ${SETTABLE_TRACKING_MODES.join(', ')}`
+});
+const trackingToggleAvailableSchema = Joi.boolean().allow(null);
+
+const manufacturerBarcodeSchema = Joi.object({
+  code: Joi.string().trim().pattern(/^\d{8}$|^\d{12,14}$/).custom((value, helpers) => (
+    hasValidGtinCheckDigit(value) ? value : helpers.error('barcode.checkDigit')
+  )).required().messages({
+    'barcode.checkDigit': 'Manufacturer barcode has an invalid GTIN check digit.'
+  })
+}).allow(null).optional();
 
 export const createItemSchema = Joi.object({
   sku_code: Joi.string().min(1).max(50).required().messages({
@@ -29,6 +65,8 @@ export const createItemSchema = Joi.object({
   mode_item_preset: Joi.string().max(64).allow(null, '').messages({
     'string.max': 'Mode item preset must not exceed 64 characters'
   }),
+  tracking_mode: trackingModeSchema,
+  tracking_toggle_available: trackingToggleAvailableSchema,
   product_folder: Joi.string().max(100).allow(null, '').messages({
     'string.max': 'Product folder must not exceed 100 characters'
   }),
@@ -159,7 +197,8 @@ export const createItemSchema = Joi.object({
   current_stock: Joi.number().min(0).allow(null, ''),
   location_id: Joi.number().integer().positive().allow(null),
   wizard_metadata: Joi.object().allow(null),
-  status: Joi.string().valid('draft', 'active', 'inactive').default('active')
+  status: Joi.string().valid('draft', 'active', 'inactive').default('active'),
+  manufacturer_barcode: manufacturerBarcodeSchema
 });
 
 // Draft schema - only requires name, everything else optional
@@ -182,6 +221,8 @@ export const createItemDraftSchema = Joi.object({
     otherwise: Joi.valid(null, '')
   }),
   mode_item_preset: Joi.string().max(64).allow(null, ''),
+  tracking_mode: trackingModeSchema,
+  tracking_toggle_available: trackingToggleAvailableSchema,
   product_folder: Joi.string().max(100).allow(null, ''),
   folder_id: Joi.number().integer().positive().allow(null),
   description: Joi.string().allow(null, ''),
@@ -272,7 +313,8 @@ export const createItemDraftSchema = Joi.object({
   current_stock: Joi.number().min(0).allow(null, ''),
   location_id: Joi.number().integer().positive().allow(null, ''),
   wizard_metadata: Joi.object().allow(null),
-  status: Joi.string().valid('draft').default('draft')
+  status: Joi.string().valid('draft').default('draft'),
+  manufacturer_barcode: manufacturerBarcodeSchema
 });
 
 export const updateItemSchema = Joi.object({
@@ -293,6 +335,8 @@ export const updateItemSchema = Joi.object({
     otherwise: Joi.valid(null, '')
   }),
   mode_item_preset: Joi.string().max(64).allow(null, ''),
+  tracking_mode: trackingModeSchema,
+  tracking_toggle_available: trackingToggleAvailableSchema,
   product_folder: Joi.string().max(100).allow(null, ''),
   folder_id: Joi.number().integer().positive().allow(null),
   create_category_name: Joi.string().trim().replace(/\s+/g, ' ').min(1).max(100).allow(null, ''),
@@ -558,6 +602,18 @@ const barcodeResolveQuerySchema = Joi.object({
   operation: Joi.string().valid('lookup', 'inventory_scan', 'stock_movement', 'receiving', 'transfer', 'count').default('lookup')
 });
 
+const externalProductLookupQuerySchema = Joi.object({
+  code: Joi.string().trim().pattern(/^\d{8}$|^\d{12,14}$/).required().messages({
+    'string.pattern.base': 'Barcode must be a GTIN-8, UPC-A, EAN-13, or GTIN-14 value.'
+  })
+});
+
+const externalProductImageImportSchema = Joi.object({
+  code: Joi.string().trim().pattern(/^\d{8}$|^\d{12,14}$/).required().messages({
+    'string.pattern.base': 'Barcode must be a GTIN-8, UPC-A, EAN-13, or GTIN-14 value.'
+  })
+});
+
 const barcodeAttachSchema = Joi.object({
   code: Joi.string().trim().max(512).required(),
   source: barcodeSourceSchema.default('manufacturer'),
@@ -635,6 +691,8 @@ export const validateUpdateFolder = validateSchema(updateFolderSchema, 'body', '
 export const validateDeleteFolder = validateSchema(deleteFolderSchema, 'body', 'validatedData');
 export const validateReplaceItemSuppliers = validateSchema(replaceItemSuppliersSchema, 'body', 'validatedData');
 export const validateBarcodeResolveQuery = validateSchema(barcodeResolveQuerySchema, 'query', 'validatedQuery');
+export const validateExternalProductLookupQuery = validateSchema(externalProductLookupQuerySchema, 'query', 'validatedQuery');
+export const validateExternalProductImageImport = validateSchema(externalProductImageImportSchema, 'body', 'validatedData');
 export const validateAttachBarcode = validateSchema(barcodeAttachSchema, 'body', 'validatedData');
 export const validateGenerateBarcode = validateSchema(barcodeGenerateSchema, 'body', 'validatedData');
 export const validateBarcodeIdParam = validateSchema(barcodeIdParamSchema, 'params', 'validatedParams');

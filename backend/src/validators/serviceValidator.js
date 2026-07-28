@@ -7,6 +7,7 @@ const SERVICE_AREA_TYPES = ['in_store', 'customer_location', 'online', 'hybrid']
 const RESOURCE_TYPES = ['provider', 'room', 'equipment', 'vehicle', 'station'];
 const WAITLIST_STATUSES = ['waiting', 'notified', 'booked', 'expired', 'cancelled'];
 const REMINDER_STATUSES = ['pending', 'sent', 'failed', 'skipped'];
+const POS_PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph'];
 
 const serviceCatalogQuerySchema = Joi.object({
     search: Joi.string().trim().allow('', null).optional(),
@@ -107,7 +108,14 @@ const bookingQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(300).default(100)
 });
 
-const serviceBookingSchema = Joi.object({
+// Fields common to every booking-creation caller (public storefront and admin/POS).
+// NOTE: pos_transaction_id is deliberately NOT part of this core schema. It links a
+// booking to a settled POS transaction and must only ever be settable by trusted
+// internal callers (see adminServiceBookingSchema below) -- accepting it from the
+// public storefront route would let an unauthenticated caller attach an arbitrary
+// transaction id to a booking it controls, then read that transaction's
+// invoice_number/tracking_pin/total_amount back via GET .../bookings/:public_reference.
+const serviceBookingCoreSchema = {
     service_item_id: Joi.number().integer().positive().required(),
     start_at: Joi.date().iso().required(),
     end_at: Joi.date().iso().greater(Joi.ref('start_at')).allow(null).optional(),
@@ -121,13 +129,95 @@ const serviceBookingSchema = Joi.object({
     payment_timing: Joi.string().valid(...PAYMENT_TIMINGS).default('postpaid'),
     notes: Joi.string().trim().max(4000).allow('', null).optional(),
     intake_responses: Joi.object().allow(null).optional(),
+    quantity: Joi.number().integer().min(1).max(10000).optional(),
+    idempotency_key: Joi.string().trim().min(1).max(200).optional(),
+    hold_token: Joi.string().trim().min(1).max(200).optional()
+};
+
+// Public storefront booking creation: no pos_transaction_id (see note above).
+const serviceBookingSchema = Joi.object(serviceBookingCoreSchema);
+
+// Admin/POS booking creation: may link the booking to an existing POS transaction.
+const adminServiceBookingSchema = Joi.object({
+    ...serviceBookingCoreSchema,
     pos_transaction_id: Joi.number().integer().positive().allow(null).optional()
+});
+
+const serviceAvailabilityQuerySchema = Joi.object({
+    service_item_id: Joi.number().integer().positive().required(),
+    date: Joi.string().trim().pattern(/^\d{4}-\d{2}-\d{2}$/).required(),
+    quantity: Joi.number().integer().min(1).max(10000).optional(),
+    resource_id: Joi.number().integer().positive().optional(),
+    provider_user_id: Joi.number().integer().positive().optional(),
+    location_id: Joi.number().integer().positive().optional(),
+    slot_interval_minutes: Joi.number().integer().min(5).max(240).optional()
+});
+
+// Same shape as serviceBookingCoreSchema minus customer fields -- a hold reserves
+// capacity ahead of the customer-detail step and never links to pos_transaction_id.
+const serviceBookingHoldSchema = Joi.object({
+    service_item_id: Joi.number().integer().positive().required(),
+    start_at: Joi.date().iso().required(),
+    end_at: Joi.date().iso().greater(Joi.ref('start_at')).allow(null).optional(),
+    duration_minutes: Joi.number().integer().min(1).max(1440).optional(),
+    provider_user_id: Joi.number().integer().positive().allow(null).optional(),
+    resource_id: Joi.number().integer().positive().allow(null).optional(),
+    location_id: Joi.number().integer().positive().allow(null).optional(),
+    quantity: Joi.number().integer().min(1).max(10000).optional(),
+    hold_token: Joi.string().trim().min(1).max(200).optional(),
+    replace_hold_token: Joi.string().trim().min(1).max(200).optional(),
+    idempotency_key: Joi.string().trim().min(1).max(200).optional()
+});
+
+// One booking draft within a batch. Customer fields are optional here because the
+// batch-level schema below carries the shared customer identity; a draft may still
+// override any of them.
+const serviceBookingDraftSchema = Joi.object({
+    service_item_id: Joi.number().integer().positive().required(),
+    start_at: Joi.date().iso().required(),
+    end_at: Joi.date().iso().greater(Joi.ref('start_at')).allow(null).optional(),
+    duration_minutes: Joi.number().integer().min(1).max(1440).optional(),
+    provider_user_id: Joi.number().integer().positive().allow(null).optional(),
+    resource_id: Joi.number().integer().positive().allow(null).optional(),
+    location_id: Joi.number().integer().positive().allow(null).optional(),
+    quantity: Joi.number().integer().min(1).max(10000).optional(),
+    hold_token: Joi.string().trim().min(1).max(200).optional(),
+    notes: Joi.string().trim().max(4000).allow('', null).optional(),
+    intake_responses: Joi.object().allow(null).optional(),
+    customer_name: Joi.string().trim().min(1).max(255).optional(),
+    customer_email: Joi.string().email({ tlds: { allow: false } }).trim().lowercase().max(255).allow('', null).optional(),
+    customer_phone: Joi.string().trim().max(50).allow('', null).optional(),
+    payment_timing: Joi.string().valid(...PAYMENT_TIMINGS).optional()
+});
+
+const serviceBookingBatchSchema = Joi.object({
+    customer_name: Joi.string().trim().min(1).max(255).optional(),
+    customer_email: Joi.string().email({ tlds: { allow: false } }).trim().lowercase().max(255).allow('', null).optional(),
+    customer_phone: Joi.string().trim().max(50).allow('', null).optional(),
+    payment_timing: Joi.string().valid(...PAYMENT_TIMINGS).optional(),
+    location_id: Joi.number().integer().positive().allow(null).optional(),
+    idempotency_key: Joi.string().trim().min(1).max(200).optional(),
+    bookings: Joi.array().items(serviceBookingDraftSchema).min(1).required()
 });
 
 const bookingStatusSchema = Joi.object({
     status: Joi.string().valid(...BOOKING_STATUSES).required(),
     cancellation_reason: Joi.string().trim().max(500).allow('', null).optional(),
     pos_transaction_id: Joi.number().integer().positive().allow(null).optional()
+});
+
+const settleBookingPartSchema = Joi.object({
+    item_id: Joi.number().integer().positive().required(),
+    quantity: Joi.number().positive().precision(4).required()
+});
+
+const settleBookingSchema = Joi.object({
+    parts: Joi.array().items(settleBookingPartSchema).max(50).optional(),
+    payment_type: Joi.string().valid(...POS_PAYMENT_TYPES).default('cash'),
+    cash_received: Joi.number().min(0).precision(4).allow(null).optional(),
+    change_amount: Joi.number().min(0).precision(4).allow(null).optional(),
+    terminal_id: Joi.string().trim().max(100).allow('', null).optional(),
+    location_id: Joi.number().integer().positive().allow(null).optional()
 });
 
 const waitlistQuerySchema = Joi.object({
@@ -201,10 +291,15 @@ export const validateCreateServiceAssignment = validateSchema(serviceAssignmentS
 export const validateUpdateServiceAssignment = validateSchema(serviceAssignmentUpdateSchema, 'body', 'validatedData');
 export const validateServiceAssignmentIdParam = validateSchema(assignmentIdParamSchema, 'params', 'validatedParams');
 export const validateServiceBookingQuery = validateSchema(bookingQuerySchema, 'query', 'validatedQuery');
+export const validateServiceAvailabilityQuery = validateSchema(serviceAvailabilityQuerySchema, 'query', 'validatedQuery');
 export const validateCreateServiceBooking = validateSchema(serviceBookingSchema, 'body', 'validatedData');
+export const validateCreateAdminServiceBooking = validateSchema(adminServiceBookingSchema, 'body', 'validatedData');
+export const validateCreateServiceBookingHold = validateSchema(serviceBookingHoldSchema, 'body', 'validatedData');
+export const validateCreateServiceBookingBatch = validateSchema(serviceBookingBatchSchema, 'body', 'validatedData');
 export const validateServiceBookingIdParam = validateSchema(bookingIdParamSchema, 'params', 'validatedParams');
 export const validateServiceBookingReferenceParam = validateSchema(bookingReferenceParamSchema, 'params', 'validatedParams');
 export const validateUpdateServiceBookingStatus = validateSchema(bookingStatusSchema, 'body', 'validatedData');
+export const validateSettleServiceBooking = validateSchema(settleBookingSchema, 'body', 'validatedData');
 export const validateClaimServiceBooking = validateSchema(claimBookingSchema, 'body', 'validatedData');
 export const validateServiceWaitlistQuery = validateSchema(waitlistQuerySchema, 'query', 'validatedQuery');
 export const validateCreateServiceWaitlistEntry = validateSchema(serviceWaitlistSchema, 'body', 'validatedData');

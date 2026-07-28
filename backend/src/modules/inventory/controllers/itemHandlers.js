@@ -27,6 +27,8 @@ import {
   deactivateItemBarcodeUseCase,
   setPrimaryItemBarcodeUseCase,
   resolveItemBarcodeUseCase,
+  lookupExternalProductUseCase,
+  importExternalProductImageUseCase,
   resolveItemBarcodeConflictUseCase,
   renderItemBarcodeLabelUseCase,
   getFoldersUseCase,
@@ -587,6 +589,20 @@ export const resolveItemBarcode = async (req, res, next) => {
   }
 };
 
+export const lookupExternalProduct = async (req, res, next) => {
+  try {
+    const result = await runInventoryUseCase(
+      () => lookupExternalProductUseCase({
+        code: req.validatedQuery?.code || req.query.code
+      }),
+      'Failed to look up external product'
+    );
+    return sendBarcodeResult(req, res, result);
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const resolveItemBarcodeConflict = async (req, res, next) => {
   try {
     const result = await resolveItemBarcodeConflictUseCase({
@@ -703,6 +719,32 @@ export const uploadStorefrontCatalogImage = async (req, res, next) => {
         success: true,
         data: result.data,
         message: 'Storefront catalog image uploaded successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const importExternalStorefrontCatalogImage = async (req, res, next) => {
+  try {
+    const result = await runInventoryUseCase(
+      () => importExternalProductImageUseCase({
+        itemId: req.validatedParams?.item_id || req.params.item_id,
+        code: req.validatedData?.code,
+        user: req.user
+      }),
+      'Failed to import external product image'
+    );
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'External product image imported successfully',
         timestamp: timestamp()
       }),
       errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)

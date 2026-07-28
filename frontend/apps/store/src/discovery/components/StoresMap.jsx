@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
 import { MapPin } from 'lucide-react';
 import {
@@ -10,7 +10,10 @@ import {
   buildUserLocationSourceData,
   ensureDiscoveryMapLayers,
   ensureMapImage,
-  setGeoJsonSourceData
+  ensureRouteLineLayer,
+  hasPlottableCoordinate,
+  setGeoJsonSourceData,
+  setRouteLineData
 } from '../model/discoveryMapLayers.js';
 import {
   DEFAULT_CENTER,
@@ -20,6 +23,7 @@ import {
 import { withAssetOrigin } from '../../app/runtime/storefrontRuntime.js';
 import { getDiscoveryMarkerKey } from '../model/discoveryMapDom.js';
 import { createStoreMarkerPreviewNode } from '../model/storefrontMarkerPreview.js';
+import { useStoreRoute } from '../../shared/hooks/useStoreRoute.js';
 
 const toSlug = (value) => String(value || '').trim().toLowerCase();
 
@@ -27,6 +31,13 @@ const EMPTY_HIGHLIGHTED_MARKER_KEYS = [];
 const STORE_MARKER_POPUP_OFFSET = { bottom: [0, -58], top: [0, 58], left: [58, 0], right: [-58, 0] };
 const STORE_MARKER_FIT_PADDING = { top: 76, right: 76, bottom: 104, left: 76 };
 const STORE_MARKER_AUTO_OPEN_FIT_PADDING = { top: 96, right: 96, bottom: 120, left: 96 };
+// The pin symbol layer anchors each icon at its bottom tip ('icon-anchor: bottom' in
+// ensureDiscoveryMapLayers), so the marker's geographic coordinate sits at the very
+// bottom of the ~48px-tall glyph, not at the visible round badge. Centering the camera
+// directly on that coordinate (as a plain `center` would) leaves the badge rendered well
+// above the container's true center. This offset shifts the camera target down by the
+// badge's distance above the anchor so the visible pin lands in the middle of the view.
+const STORE_MARKER_SINGLE_PIN_CENTER_OFFSET = [0, 30];
 
 export function StoresMap({
   stores,
@@ -53,8 +64,63 @@ export function StoresMap({
   const viewportHasFitRef = useRef(false);
   const lastViewportLocationSignatureRef = useRef('');
   const lastViewportSignalRef = useRef('');
+  const resizeTimersRef = useRef([]);
   const [mapUnavailable, setMapUnavailable] = useState(false);
   const [mapStyleReady, setMapStyleReady] = useState(false);
+  const [containerResizeTick, setContainerResizeTick] = useState(0);
+
+  // Some callers (e.g. the storefront's Contact & Location card) mount this
+  // component as part of the hero's initial page load, where cover/profile images
+  // and web fonts can still be loading and reflowing the surrounding layout well
+  // after the first paint — unlike the expanded map modal, which only mounts once
+  // the user clicks to open it, by which point the page has already settled. Without
+  // an explicit resize once the container's *final* size is known, MapLibre keeps
+  // using whatever (possibly stale) dimensions it read earlier, so the flyTo/
+  // fitBounds centering math below lands the pin somewhere other than the middle of
+  // the eventual, settled container. The staggered timers plus a `window.load`
+  // listener mirror (and extend) the resize handling already proven in
+  // features/locations/components/DeliveryPinMap.jsx for this same class of
+  // dynamically-sized map containers.
+  const scheduleMapResize = useCallback(() => {
+    resizeTimersRef.current.forEach((cancel) => cancel());
+    resizeTimersRef.current = [];
+    const runResize = () => {
+      const map = mapRef.current;
+      const container = ref.current;
+      if (!map || !container) return;
+      const rect = container.getBoundingClientRect();
+      if (!rect.width || !rect.height) return;
+      map.resize();
+      setContainerResizeTick((tick) => tick + 1);
+    };
+    if (typeof window === 'undefined') return;
+    const rafId = window.requestAnimationFrame(runResize);
+    const timers = [60, 220, 500, 1000].map((delay) => window.setTimeout(runResize, delay));
+    resizeTimersRef.current = [
+      () => window.cancelAnimationFrame(rafId),
+      ...timers.map((timerId) => () => window.clearTimeout(timerId))
+    ];
+  }, []);
+
+  const selectedStore = useMemo(() => {
+    if (!selectedKey) return null;
+    const rows = Array.isArray(stores) ? stores : [];
+    return rows.find((store) => getDiscoveryMarkerKey(store) === selectedKey) || null;
+  }, [stores, selectedKey]);
+
+  const routeEnabled = Boolean(
+    userLocation
+    && selectedStore
+    && hasPlottableCoordinate(selectedStore.latitude, selectedStore.longitude)
+  );
+  const routeDestination = routeEnabled
+    ? { latitude: selectedStore.latitude, longitude: selectedStore.longitude }
+    : null;
+  const { geometry: routeGeometry, distanceKm: routeDistanceKm, durationMinutes: routeDurationMinutes, loading: routeLoading } = useStoreRoute({
+    origin: userLocation,
+    destination: routeDestination,
+    enabled: routeEnabled
+  });
 
   useEffect(() => {
     onSelectStoreRef.current = onSelectStore;
@@ -76,6 +142,11 @@ export function StoresMap({
         zoom: 11,
         bearing: 0,
         pitch: 0,
+        // The default compact attribution control renders as a small "i" toggle
+        // that expands into a text box covering most of the map at these small
+        // embed sizes (110-156px tall). Disable it outright rather than just
+        // hiding the toggle affordance.
+        attributionControl: false,
       });
     } catch (error) {
       console.warn('[MapLibre init unavailable]', error);
@@ -86,7 +157,10 @@ export function StoresMap({
 
     map.on('error', (e) => console.error('[MapLibre error]', e));
     map.on('tileerror', (e) => console.error('[MapLibre] tile error', e));
-    const markReady = () => setMapStyleReady(true);
+    const markReady = () => {
+      setMapStyleReady(true);
+      scheduleMapResize();
+    };
     if (typeof map.isStyleLoaded === 'function') {
       if (map.isStyleLoaded()) {
         markReady();
@@ -98,8 +172,11 @@ export function StoresMap({
     } else {
       markReady();
     }
+    scheduleMapResize();
 
     return () => {
+      resizeTimersRef.current.forEach((cancel) => cancel());
+      resizeTimersRef.current = [];
       if (typeof map.off === 'function') {
         try { map.off('load', markReady); } catch {
           // MapLibre cleanup is best-effort across mocked and real maps.
@@ -109,7 +186,16 @@ export function StoresMap({
       mapRef.current = null;
       setMapStyleReady(false);
     };
-  }, []);
+  }, [scheduleMapResize]);
+
+  useEffect(() => {
+    const container = ref.current;
+    if (!container || typeof ResizeObserver === 'undefined') return undefined;
+    const observer = new ResizeObserver(() => scheduleMapResize());
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [scheduleMapResize]);
+
   useEffect(() => () => {
     if (typeof window !== 'undefined' && autoOpenFrameRef.current != null) {
       window.cancelAnimationFrame(autoOpenFrameRef.current);
@@ -479,7 +565,11 @@ export function StoresMap({
       || viewportSignalChanged
       || userLocationChanged;
     if (shouldFitViewport && bounds.length === 1) {
-      map.flyTo({ center: bounds[0], zoom: autoOpenPopups ? 14 : 15 });
+      map.flyTo({
+        center: bounds[0],
+        zoom: autoOpenPopups ? 14 : 15,
+        offset: STORE_MARKER_SINGLE_PIN_CENTER_OFFSET
+      });
       viewportHasFitRef.current = true;
     }
     if (shouldFitViewport && bounds.length > 1) {
@@ -516,7 +606,14 @@ export function StoresMap({
         layerEventCleanupRef.current = null;
       }
     };
-  }, [stores, selectedKey, highlightedKeys, userLocation, autoOpenPopups, openPopupOnHover, viewportPolicy, viewportSignal, mapStyleReady]);
+  }, [stores, selectedKey, highlightedKeys, userLocation, autoOpenPopups, openPopupOnHover, viewportPolicy, viewportSignal, mapStyleReady, containerResizeTick]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapStyleReady) return;
+    ensureRouteLineLayer(map, { width: 4 });
+    setRouteLineData(map, routeGeometry || null);
+  }, [routeGeometry, mapStyleReady]);
 
   if (mapUnavailable) {
     return (
@@ -544,5 +641,18 @@ export function StoresMap({
     );
   }
 
-  return <div ref={ref} style={{ height, border: '1px solid #d6e2e8', borderRadius: 24, overflow: 'hidden' }} />;
+  const showRouteChip = routeEnabled && (routeLoading || Number.isFinite(routeDistanceKm));
+
+  return (
+    <div style={{ position: 'relative', height, border: '1px solid #d6e2e8', borderRadius: 24, overflow: 'hidden' }}>
+      <div ref={ref} style={{ height: '100%' }} />
+      {showRouteChip && (
+        <div style={{ position: 'absolute', left: 12, bottom: 12, display: 'flex', alignItems: 'center', gap: 6, background: '#fff', borderRadius: 999, padding: '6px 14px', boxShadow: '0 2px 10px rgba(15,23,42,0.16)', fontSize: 12, fontWeight: 800, color: '#0f172a' }}>
+          {routeLoading
+            ? 'Calculating route…'
+            : `${routeDistanceKm.toFixed(1)} km · ${routeDurationMinutes} min drive`}
+        </div>
+      )}
+    </div>
+  );
 }

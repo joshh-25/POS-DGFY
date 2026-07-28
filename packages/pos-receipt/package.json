@@ -1,0 +1,25 @@
+{
+  "name": "@sieitzz/pos-receipt",
+  "version": "0.1.1",
+  "description": "Dependency-free HTML and thermal POS receipt renderer.",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "import": "./src/index.js",
+      "default": "./src/index.js"
+    }
+  },
+  "files": [
+    "src",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sieitzz/dgfy-platform.git",
+    "directory": "packages/pos-receipt"
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
+  }
+}

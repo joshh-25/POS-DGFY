@@ -1,6 +1,7 @@
 import api from './api.js';
 import { setBrowserSession } from './browserSession.js';
 import { clearClientSession } from './sessionCleanup.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../observability/analyticsEvents.js';
 
 let dgfyToken = '';
 let dgfyAccount = null;
@@ -151,11 +152,24 @@ export const registerDgfyAccount = async (payload) => {
   const response = await api.post('/dgfy/auth/register', payload, dgfyRequestConfig(''));
   const data = response.data.data;
   storeDgfySession(data);
+  trackFunnelEvent(ANALYTICS_EVENTS.ACCOUNT_REGISTERED, { account_id: data?.account?.id });
   return data;
 };
 
 export const preflightDgfyAccountRegistration = async (payload) => {
   const response = await api.post('/dgfy/auth/register/preflight', payload, dgfyRequestConfig(''));
+  return response.data.data;
+};
+
+// Affiliate invite claim: preview is public (used to lock the register email + show the business);
+// accept requires a logged-in DGFY account.
+export const fetchAffiliateInvitePreview = async (token) => {
+  const response = await api.get(`/dgfy/affiliate/invites/${encodeURIComponent(token)}`, dgfyRequestConfig(''));
+  return response.data.data;
+};
+
+export const acceptAffiliateInvite = async (token) => {
+  const response = await api.post('/dgfy/affiliate/invites/accept', { token }, dgfyRequestConfig());
   return response.data.data;
 };
 
@@ -178,6 +192,7 @@ export const loginDgfyAccount = async (payload) => {
   const response = await api.post('/dgfy/auth/login', payload, dgfyRequestConfig(''));
   const data = response.data.data;
   storeDgfySession(data);
+  trackFunnelEvent(ANALYTICS_EVENTS.ACCOUNT_SIGNED_IN, { account_id: data?.account?.id });
   return data;
 };
 
@@ -294,7 +309,20 @@ export const listDgfyAccountCompanies = async (token = getStoredDgfyToken()) => 
 };
 
 export const listDgfyAccountCompaniesForTenantSession = async () => {
-  const response = await api.get('/dgfy/account/companies', dgfyTenantBridgeRequestConfig());
+  // skipAuthRefresh: a DGFY-only storefront visitor (no tenant/IMS session) will
+  // legitimately 401 here -- authenticateDgfyAccountOrTenantMembership forces the
+  // tenant-membership path via x-dgfy-auth-mode and that path requires a tenant
+  // Bearer token the visitor never has. Without this flag, api.js's response
+  // interceptor treats that 401 as an expired *tenant* session, attempts
+  // /auth/refresh-token, fails, and hard-redirects the whole page to
+  // /login?reason=session_expired -- destroying a perfectly valid DGFY session
+  // just because the "other stores" switcher lookup wasn't authorized. Letting
+  // the 401 propagate here instead lands it in fetchStorefrontAccountBranches's
+  // existing catch { return []; }, which just hides the switcher as intended.
+  const response = await api.get('/dgfy/account/companies', {
+    ...dgfyTenantBridgeRequestConfig(),
+    skipAuthRefresh: true
+  });
   return response.data.data;
 };
 

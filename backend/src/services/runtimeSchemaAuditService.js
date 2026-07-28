@@ -38,13 +38,18 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260504000001-add-customer-access-fields-to-discovery-index.cjs',
     '20260601000001-add-rmo-fiscal-document-snapshot-fields.cjs',
     '20260629000001-add-pos-always-available-contract.cjs',
+    '20260703000002-enforce-one-open-shift-per-terminal.cjs',
     '20260705000001-add-admin-provisioned-membership-source.cjs',
     '20260710000001-create-delivery-jobs.cjs',
     '20260711000001-add-pickup-cash-collection-fields.cjs',
     '20260711000002-add-item-folder-active-contract.cjs',
     '20260711000003-repair-pickup-cash-collection-columns.cjs',
     '20260714000002-add-pos-best-seller-contract.cjs',
-    '20260502000001-add-services-mode-booking-tables.cjs'
+    '20260724000001-enforce-one-open-shift-per-operator.cjs',
+    '20260502000001-add-services-mode-booking-tables.cjs',
+    '20260726000001-add-tracking-mode-to-items.cjs',
+    '20260726000002-add-service-booking-lines.cjs',
+    '20260726000003-add-entity-type-to-discovery-index.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -66,7 +71,7 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'compliance_revert_last_cycle_version'
     ],
     users: ['user_id', 'role', 'is_master_admin', 'deleted_at'],
-    items: ['item_id', 'vat_type'],
+    items: ['item_id', 'vat_type', 'tracking_mode', 'tracking_toggle_available'],
     item_folders: ['folder_id', 'name', 'show_in_pos_filter', 'is_active'],
     pos_catalog_overrides: ['pos_catalog_override_id', 'item_id', 'pos_visible', 'pos_image_url', 'pos_always_available', 'pos_best_seller_mode'],
     pos_transactions: [
@@ -109,6 +114,15 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'provider',
         'status'
     ],
+    service_booking_lines: [
+        'booking_line_id',
+        'booking_id',
+        'line_type',
+        'item_id',
+        'unit_price',
+        'line_amount',
+        'stock_effect_type'
+    ],
     stock_movements: ['movement_id', 'item_id', 'movement_type', 'quantity', 'location_id', 'source_location_id', 'destination_location_id'],
     fifo_batches: ['batch_id', 'item_id', 'location_id', 'quantity', 'quantity_consumed'],
     item_location_stocks: ['item_location_stock_id', 'item_id', 'location_id', 'quantity_on_hand'],
@@ -137,7 +151,15 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'stock_effect_type',
         'stock_exempt_reason'
     ],
-    pos_terminal_shifts: ['pos_terminal_shift_id', 'business_date', 'terminal_id', 'cashier_id', 'status'],
+    pos_terminal_shifts: [
+        'pos_terminal_shift_id',
+        'business_date',
+        'terminal_id',
+        'cashier_id',
+        'status',
+        'active_terminal_id',
+        'active_operator_user_id'
+    ],
     pos_cash_drawer_events: ['pos_cash_drawer_event_id', 'pos_terminal_shift_id', 'event_type', 'amount', 'recorded_by'],
     pos_operation_replays: ['pos_operation_replay_id', 'operation_key', 'idempotency_key', 'request_hash', 'replay_status'],
     system_settings: ['setting_id', 'setting_key', 'setting_value', 'data_type'],
@@ -149,6 +171,10 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
     storefront_discovery_index: [
         'storefront_discovery_index_id',
         'tenant_id',
+        'entity_type',
+        'external_provider',
+        'external_reference_id',
+        'external_storefront_url',
         'slug',
         'is_visible',
         'storefront_cover_image_url',
@@ -204,6 +230,11 @@ const REQUIRED_COLUMN_CONTRACTS = Object.freeze({
             allowNull: false,
             enumValues: ['founder', 'invite', 'admin_handover', 'admin_provisioned']
         }
+    },
+    storefront_discovery_index: {
+        tenant_id: { allowNull: true },
+        tenant_company_token: { allowNull: true },
+        entity_type: { allowNull: false }
     }
 });
 

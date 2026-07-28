@@ -11,6 +11,7 @@ import {
 import { clearClientSession } from './sessionCleanup.js';
 import { emitGlobalApiError } from '../utils/errorHandler.js';
 import { resolveApiBaseUrl, getRuntimeConfig } from '../utils/runtimeConfig.js';
+import { tagRequestFailureContext } from '../observability/sentryClient.js';
 
 const isTestEnvironment = (() => {
   try {
@@ -489,6 +490,22 @@ api.interceptors.response.use(
       window.location.href = getPhoneCompletionRedirect();
     }
 
+    // Handle 429 rate-limit responses: attach a normalized retryAfterSeconds
+    // (mirroring what apps/store/src/services/requestJson.js already exposes)
+    // so callers can back off instead of retrying at their normal cadence into
+    // a limiter that's already rejecting them.
+    if (error.response?.status === 429) {
+      const headers = error.response?.headers || {};
+      const retryAfterHeader = headers['retry-after'] ?? headers['Retry-After'];
+      const retryAfterSeconds = Number(
+        error.response?.data?.retryAfterSeconds
+        ?? retryAfterHeader
+      );
+      error.retryAfterSeconds = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
+        ? retryAfterSeconds
+        : null;
+    }
+
     // Log detailed validation errors for 422 responses
     if (error.response?.status === 422) {
       logError(`❌ API 422 Validation Error: ${formatApiValidationError(error.response.data)}`);
@@ -511,6 +528,26 @@ api.interceptors.response.use(
       emitGlobalApiError({ error, source: 'tenant-api' });
     }
 
+    return Promise.reject(error);
+  }
+);
+
+// Separate, trailing interceptor rather than folding into the block above:
+// that block retries/refreshes/queues extensively (CSRF retry, 401 refresh
+// with a request queue), and most of those paths resolve successfully on
+// retry. Registering this one after it means axios only reaches it once an
+// error has propagated past every retry above with nothing left to recover
+// it -- a genuine, final failure -- without this needing to know about any
+// of that retry logic itself.
+api.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    const requestId = error.response?.headers?.['x-request-id'] || error.response?.data?.request_id;
+    tagRequestFailureContext({
+      requestId,
+      url: error.config?.url,
+      status: error.response?.status
+    });
     return Promise.reject(error);
   }
 );

@@ -1,5 +1,6 @@
 import { getBusinessModePinMeta, normalizeBusinessMode } from '../../discovery/model/businessModePins.js';
 import { getStorefrontTemplateConfig } from './storefrontTemplateRegistry.js';
+import { hasServicesCapability as hasComposedServicesCapability } from '../../shared/model/workflowCapabilities.js';
 
 export const ModePresentationRegistry = Object.freeze({
   default: Object.freeze({
@@ -57,7 +58,7 @@ export const ModePresentationRegistry = Object.freeze({
     heroDescription: 'Book service families, answer intake questions, and keep one ticket for the full appointment journey.',
     catalogHeading: 'Book Services',
     catalogSubtitle: 'Choose a service family, pick a service type, then complete the booking details in the cart.',
-    catalogSearchPlaceholder: 'Search laundry or aircon services...',
+    catalogSearchPlaceholder: 'Search services...',
     primaryActionLabel: 'Book a Service',
     trackHeading: 'Track Booking or Order',
     trackDescription: 'Enter a booking reference or order tracking PIN to check the latest status without leaving the sheet.',
@@ -150,6 +151,57 @@ export const ModePresentationRegistry = Object.freeze({
       accent: '#0f766e',
       accentDark: '#134e4a',
       accentSoft: '#ecfeff',
+      surface: '#0f172a'
+    })
+  }),
+  retail: Object.freeze({
+    heroEyebrow: 'Retail storefront',
+    heroDescription: 'Browse shelf items, weighed goods, and refills, then check out or reserve for pickup.',
+    catalogHeading: 'Shop the Store',
+    catalogSubtitle: 'Browse general merchandise, per-kilo goods, and refill products currently in stock.',
+    catalogSearchPlaceholder: 'Search products, brands, or categories...',
+    primaryActionLabel: 'Add to Cart',
+    trackHeading: 'Track Order',
+    trackDescription: 'Enter a tracking PIN to check your latest order status.',
+    supportsServiceGrouping: false,
+    supportsProductGrouping: true,
+    templateContent: Object.freeze({
+      navigation: Object.freeze({
+        brandLabel: 'DGFY Retail',
+        searchPlaceholder: 'Search products, stores, or categories',
+        primaryLinks: Object.freeze(['Shop', 'Offers', 'Reviews']),
+        utilityLinks: Object.freeze(['Delivery', 'Support'])
+      }),
+      hero: Object.freeze({
+        eyebrow: 'Retail storefront template',
+        primaryActionLabel: 'Shop Now',
+        secondaryActionLabel: 'View Categories',
+        tertiaryActionLabel: 'Ask a Question',
+        supportBadge: 'Shared shell adapted for retail shelf browsing'
+      }),
+      promo: Object.freeze({
+        eyebrow: 'Promos and bundles',
+        title: 'Use shared promo cards for price-led retail campaigns.',
+        description: 'This section can surface bundle offers, discounts, or time-based store notices.',
+        emptyLabel: 'No active promos'
+      }),
+      reviews: Object.freeze({
+        eyebrow: 'Customer feedback',
+        title: 'Retail storefront reviews keep the same layout as other modes.',
+        description: 'Review content stays data-driven so each store can show different proof without changing the template.',
+        emptyLabel: 'No product reviews yet'
+      }),
+      footer: Object.freeze({
+        description: 'Use the shared footer shell for ordering, support, and policy links.',
+        legalLine: 'Reusable footer basis for retail storefronts.'
+      })
+    }),
+    heroTheme: Object.freeze({
+      displayFont: "'Avenir Next', 'Segoe UI', sans-serif",
+      bodyFont: "'Avenir Next', 'Segoe UI', sans-serif",
+      accent: '#ea580c',
+      accentDark: '#9a3412',
+      accentSoft: '#fff7ed',
       surface: '#0f172a'
     })
   }),
@@ -247,6 +299,13 @@ export const getStorefrontModeAdapter = (store = null) => {
   const modeConfig = ModePresentationRegistry[mode] || ModePresentationRegistry.default;
   const storefrontTemplate = getStorefrontTemplateConfig(mode);
   const pin = getBusinessModePinMeta(mode);
+  // A tenant whose scalar mode is NOT 'services' can still have the `services`
+  // capability composed in via the ops_enabled_capabilities overlay (Phase 6a).
+  // That must not flip isServicesMode (which several consumers treat as "this
+  // storefront is a booking-only shell with no product catalog") -- it only
+  // needs to unlock service grouping/booking affordances alongside the
+  // tenant's own primary mode. See workflowCapabilities.js.
+  const hasServicesCapability = mode === 'services' || hasComposedServicesCapability(store);
 
   return {
     mode,
@@ -261,6 +320,9 @@ export const getStorefrontModeAdapter = (store = null) => {
     isServicesMode: mode === 'services',
     isFnbMode: mode === 'fnb',
     isSimpleMode: mode === 'msme',
-    isHospitalityMode: mode === 'hospitality'
+    isHospitalityMode: mode === 'hospitality',
+    isRetailMode: mode === 'retail',
+    hasServicesCapability,
+    supportsServiceGrouping: modeConfig.supportsServiceGrouping === true || hasServicesCapability
   };
 };

@@ -18,6 +18,7 @@ import {
 import {
     TEMPLATE_SCHEMA_VERSION,
     buildTemplateSignature,
+    getTemplateCompatibilityNote,
     getTemplateDefinition,
     getTemplateHeaders,
     ITEMS_CATEGORIES,
@@ -166,17 +167,6 @@ const shouldUseLegacyExport = (options = {}) => (
     options.templateType && LEGACY_TEMPLATE_TYPES.includes(options.templateType)
 );
 
-const getModeCompatibilityNote = (workflowMode) => {
-    const labels = {
-        food_manufacturing: 'Food Manufacturing',
-        msme: 'Simple (MSME)',
-        services: 'Services',
-        fnb: 'Food & Beverage',
-        hospitality: 'Hospitality'
-    };
-    return `This CSV template is for ${labels[workflowMode] || workflowMode} mode only. It will be rejected for incompatible tenant modes.`;
-};
-
 const resolveModePresetForItem = (workflowMode, item = {}) => {
     if (item.mode_item_preset) return item.mode_item_preset;
     return findItemPresetForValues(workflowMode, {
@@ -230,7 +220,7 @@ const buildModeFieldMap = (item, workflowMode, templateMetadata) => {
         allergens: formatDirectAllergens(item),
         ...barcodeExportMap(item),
         template_workflow_mode: templateMetadata.workflowMode,
-        mode_compatibility_note: getModeCompatibilityNote(templateMetadata.workflowMode),
+        mode_compatibility_note: getTemplateCompatibilityNote(templateMetadata.workflowMode),
         template_schema_version: templateMetadata.schemaVersion,
         template_issued_at: templateMetadata.issuedAt,
         template_signature: templateMetadata.signature

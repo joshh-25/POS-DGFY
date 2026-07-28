@@ -21,6 +21,7 @@ import express from 'express'; // Added missing express import if it was implici
 // Let's just fix the order.
 
 import { testConnection } from './config/database.js';
+import { assertConnectionBudget } from './config/connectionBudget.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFoundHandler } from './middleware/notFoundHandler.js';
 import { requestContext } from './middleware/requestContext.js';
@@ -53,6 +54,7 @@ import {
 import * as aiController from './controllers/aiController.js';
 import { paymentsEnabled } from './config/paymentsFeature.js';
 import productionEnvValidation from './config/productionEnvValidation.cjs';
+import { resolveUploadCacheControl } from './modules/shared/utils/uploadCachePolicy.js';
 import {
   readRequestHostname,
   resolveActiveStorefrontDomain
@@ -61,8 +63,11 @@ import {
   startStorefrontDomainMaintenanceScheduler,
   stopStorefrontDomainMaintenanceScheduler
 } from './modules/storefrontDomains/services/storefrontDomainMaintenanceService.js';
+import { initSentry, sentryErrorHandler, sentryRequestContext } from './config/sentry.js';
 
 const { formatValidationFailure, validateProductionEnv } = productionEnvValidation;
+
+initSentry({ logger });
 
 const app = express();
 
@@ -378,6 +383,7 @@ app.use(helmet({
 
 // Attach per-request context metadata (request ID, trace root values).
 app.use(requestContext);
+app.use(sentryRequestContext);
 app.use(requestOutcomeLogger);
 
 // Gzip compression — reduces JSON response sizes by 60-80%
@@ -701,6 +707,7 @@ app.get('/metrics', (req, res) => {
 app.use('/uploads', express.static(join(__dirname, '..', 'uploads'), {
   setHeaders: (res, filePath) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', resolveUploadCacheControl(filePath));
     if (String(filePath || '').toLowerCase().endsWith('.svg')) {
       // Legacy SVG uploads are served as plain text to avoid inline script execution.
       res.setHeader('Content-Type', 'text/plain; charset=utf-8');
@@ -711,11 +718,13 @@ app.use('/uploads', express.static(join(__dirname, '..', 'uploads'), {
 // Tenant Resolution & Context Middleware (Must be before API routes)
 import dgfyRoutes from './routes/dgfy.js';
 import geoSearchRoutes from './routes/geoSearch.js';
+import routeCalculatorRoutes from './routes/routeCalculator.js';
 import internalStorefrontDomainOperationRoutes from './routes/internalStorefrontDomainOperations.js';
 app.use('/api/v1/internal/storefront-domain-operations', internalStorefrontDomainOperationRoutes);
 app.use(csrfProtection);
 app.use('/api/v1/dgfy', tenantHandler, dgfyRoutes);
 app.use('/api/v1/geo', geoSearchRoutes);
+app.use('/api/v1/geo', routeCalculatorRoutes);
 
 app.use(tenantHandler);
 
@@ -739,6 +748,7 @@ import feedbackRoutes from './routes/feedback.js';
 import aiRoutes from './routes/ai.js';
 import posRoutes from './routes/pos.js';
 import mobilePosRoutes from './routes/mobilePos.js';
+import affiliateAdminRoutes from './routes/affiliateAdmin.js';
 import servicesRoutes from './routes/services.js';
 import fnbRoutes from './routes/fnb.js';
 import hospitalityRoutes, { hospitalityStorefrontRoutes } from './routes/hospitality.js';
@@ -769,6 +779,7 @@ app.use('/api/v1/receive-tokens', receiveTokenRoutes);
 app.use('/api/v1/ai', aiRoutes);
 app.use('/api/v1/pos', posRoutes);
 app.use('/api/v1/mobile-pos', mobilePosRoutes);
+app.use('/api/v1/affiliates', affiliateAdminRoutes);
 app.use('/api/v1/services', servicesRoutes);
 app.use('/api/v1/fnb', fnbRoutes);
 app.use('/api/v1/hospitality', hospitalityRoutes);
@@ -778,6 +789,7 @@ app.use('/api/v1/store/hospitality', hospitalityStorefrontRoutes);
 app.use('/api/v1/store', storeRoutes);
 app.use('/api/v1/storefront', storefrontDiscoveryRoutes);
 app.use('/api/v1/storefront', geoSearchRoutes);
+app.use('/api/v1/storefront', routeCalculatorRoutes);
 app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/feedback', feedbackRoutes);
 app.use('/api/v1/payments', paymentRoutes);
@@ -791,6 +803,7 @@ app.use('/api/v1/onboarding', onboardingRoutes);
 
 // Error handling middleware (must be last)
 app.use(notFoundHandler);
+app.use(sentryErrorHandler);
 app.use(errorHandler);
 
 // Start server
@@ -830,6 +843,10 @@ const startServer = async () => {
       logger.error('Failed to connect to database. Exiting...');
       process.exit(1);
     }
+
+    // Surface an over-provisioned connection budget at boot rather than as a
+    // wave of "Too many connections" under load. See connectionBudget.js.
+    assertConnectionBudget(logger);
 
     // Runtime schema preflight: fail fast when required migrations/columns are missing.
     if (runtimeSchemaAuditEnabled) {

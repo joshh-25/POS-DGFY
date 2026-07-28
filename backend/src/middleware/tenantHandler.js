@@ -167,8 +167,8 @@ export const tenantHandler = async (req, res, next) => {
         // Active custom host (public store routes) -> Header -> Store slug -> Auth context.
         let companyToken = req.headers['x-company-token'];
         const storeSlug = String(req.headers['x-store-slug'] || '').trim().toLowerCase();
-        const allowStoreSlugResolution = STOREFRONT_ROUTE_PATTERN.test(path);
-        if (allowStoreSlugResolution) {
+        const isStorefrontRoute = STOREFRONT_ROUTE_PATTERN.test(path);
+        if (isStorefrontRoute) {
             const requestHostname = readRequestHostname(req);
             if (requestHostname) {
                 const domainContext = await resolveActiveStorefrontDomain(requestHostname);
@@ -240,7 +240,7 @@ export const tenantHandler = async (req, res, next) => {
         }
 
         // 1.1 No Tenant Token?
-        if (!companyToken && allowStoreSlugResolution && storeSlug) {
+        if (!companyToken && isStorefrontRoute && storeSlug) {
             try {
                 const tenantBySlug = await resolveTenantByStoreSlug(storeSlug);
                 if (tenantBySlug?.company_token) {
@@ -249,6 +249,19 @@ export const tenantHandler = async (req, res, next) => {
                 }
             } catch (slugResolveError) {
                 logger.warn(`[TenantHandler] Store slug resolution failed for "${storeSlug}": ${slugResolveError.message}`);
+                // A THROW here means the lookup itself broke (landlord DB down,
+                // connection pool exhausted) -- distinct from resolving cleanly to
+                // null, which just means the slug is unknown. Falling through would
+                // land in the default-context branch below and surface as 400
+                // "Company token required", i.e. an infrastructure outage reported
+                // as the caller's mistake. That mislabelling is what made the
+                // 2026-07-27 stage incident hard to read.
+                return sendTenantContextError(
+                    res,
+                    503,
+                    'Storefront lookup is currently unavailable. Please try again.',
+                    'STOREFRONT_LOOKUP_UNAVAILABLE'
+                );
             }
         }
 
@@ -295,7 +308,11 @@ export const tenantHandler = async (req, res, next) => {
             }
         } catch (lookupError) {
             logger.error(`[TenantHandler] Tenant lookup failed for token ${companyToken}: ${lookupError.message}`);
-            if (isStrictAuthRoute) {
+            // Storefront routes get the same treatment as strict-auth routes: every
+            // route under /api/v1/store sits behind requireTenantContext, so
+            // degrading to the default context here cannot produce a working
+            // response -- it only converts a 503-shaped fault into a 400.
+            if (isStrictAuthRoute || isStorefrontRoute) {
                 return sendTenantContextError(
                     res,
                     503,
@@ -342,7 +359,11 @@ export const tenantHandler = async (req, res, next) => {
             sequelizeInstance = await tenantConnector.getConnection(tenant);
         } catch {
             logger.warn(`[TenantHandler] Could not connect to tenant DB for ${tenant.name} (${tenant.status}). Falling back to default context.`);
-            if (isStrictAuthRoute) {
+            // Same reasoning as the lookup-error branch: on a storefront route the
+            // default context is a dead end, and resolveStrictAuthDbFailure already
+            // distinguishes a genuinely un-provisioned tenant (pending/rejected ->
+            // 403/409) from an unreachable one (-> 503 TENANT_DB_UNAVAILABLE).
+            if (isStrictAuthRoute || isStorefrontRoute) {
                 const failure = resolveStrictAuthDbFailure(tenant.status);
                 return sendTenantContextError(
                     res,

@@ -2,12 +2,15 @@
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'url';
 import path from 'path';
+import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../sentryViteConfig.js';
+import { posOfflinePrecachePlugin } from './vitePosOfflinePrecachePlugin.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const frontendRoot = path.resolve(__dirname, '../..');
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000';
 const allowedHosts = true;
+const appSurface = 'pos';
 const proxyTargets = {
   '/api': {
     target: apiProxyTarget,
@@ -18,6 +21,25 @@ const proxyTargets = {
     target: apiProxyTarget,
     changeOrigin: true,
     secure: false
+  },
+  // Same-origin PostHog (EU cloud) dev proxy, mirroring
+  // infrastructure/docker/nginx/nginx.conf.template's /ingest/ blocks so local
+  // dev exercises the same path analyticsClient.js defaults to. More specific
+  // prefixes first -- Vite matches proxy keys in insertion order.
+  '/ingest/static': {
+    target: 'https://eu-assets.i.posthog.com',
+    changeOrigin: true,
+    rewrite: (path) => path.replace(/^\/ingest\/static/, '/static')
+  },
+  '/ingest/array': {
+    target: 'https://eu-assets.i.posthog.com',
+    changeOrigin: true,
+    rewrite: (path) => path.replace(/^\/ingest\/array/, '/array')
+  },
+  '/ingest': {
+    target: 'https://eu.i.posthog.com',
+    changeOrigin: true,
+    rewrite: (path) => path.replace(/^\/ingest/, '')
   }
 };
 const frontendNodeModules = path.resolve(frontendRoot, 'node_modules');
@@ -35,7 +57,7 @@ export default defineConfig({
   root: __dirname,
   cacheDir: path.resolve(frontendRoot, 'node_modules/.vite-pos'),
   base: './',
-  plugins: [react()],
+  plugins: [react(), posOfflinePrecachePlugin(), ...buildSentryVitePlugins(appSurface)],
   define: {
     'import.meta.env.VITE_APP_SURFACE': JSON.stringify('pos')
   },
@@ -71,6 +93,7 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, '../../../dist-apps/pos'),
     emptyOutDir: true,
+    sourcemap: sentrySourcemapBuildValue(appSurface),
     // Keep optional map rendering separate from the terminal's primary startup path.
     chunkSizeWarningLimit: 1100,
     rollupOptions: {

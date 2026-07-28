@@ -2,7 +2,9 @@ import React from 'react';
 import { Info, MapPin, Navigation } from 'lucide-react';
 
 import { DiscoveryMapCard } from '../../Components/store/DiscoveryResponsiveLayout.jsx';
+import { openStorefrontActionLink, sanitizeExternalLink } from '../../shared/utils/externalLinks.js';
 import { StoresMap } from './StoresMap.jsx';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../src/observability/analyticsEvents.js';
 
 export function DiscoveryHeroMapStage({
   discoveryCoords,
@@ -42,6 +44,17 @@ export function DiscoveryHeroMapStage({
             setHasDiscoveryExplorationStarted(true);
             setHighlightedStoreSlug(pin.slug);
             setHighlightedDiscoveryMarkerKey(getDiscoveryMarkerKey(pin) || '');
+            trackFunnelEvent(ANALYTICS_EVENTS.DISCOVERY_MAP_PIN_CLICKED, {
+              store_slug: pin.slug,
+              entity_type: pin.entity_type,
+              business_mode: pin.workflow_mode || pin.business_mode
+            });
+            // External listings have no DGFY storefront to open — routing them into
+            // goStore would land the visitor on a broken/empty catalog shell.
+            if (pin.entity_type === 'external_listing') {
+              openStorefrontActionLink(sanitizeExternalLink(pin.storefront_url));
+              return;
+            }
             goStore(pin.slug, pin.location_id ?? null);
           }}
         />
@@ -107,10 +120,9 @@ export function DiscoveryHeroMapStage({
               <span style={{ fontSize: 7, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#64748b', lineHeight: 1 }}>Store</span>
               <span style={{ fontSize: 8, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>Location</span>
             </button>
-            <button type="button" onClick={handleNearMe} style={{ width: 84, minHeight: 80, borderRadius: 16, border: '1px solid rgba(148,163,184,0.28)', background: 'rgba(255,255,255,.96)', boxShadow: '0 6px 18px rgba(15,23,42,.16)', display: 'grid', placeItems: 'center', gap: 4, padding: '8px 6px', color: '#0f172a', cursor: 'pointer' }} aria-label="Current location">
+            <button type="button" onClick={handleNearMe} style={{ width: 84, minHeight: 80, borderRadius: 16, border: '1px solid rgba(148,163,184,0.28)', background: 'rgba(255,255,255,.96)', boxShadow: '0 6px 18px rgba(15,23,42,.16)', display: 'grid', placeItems: 'center', gap: 4, padding: '8px 6px', color: '#0f172a', cursor: 'pointer' }} aria-label="Use current location on map">
               <Navigation size={16} fill="#0f172a" />
-              <span style={{ fontSize: 7, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: '#64748b', lineHeight: 1 }}>Current</span>
-              <span style={{ fontSize: 8, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>Location</span>
+              <span style={{ fontSize: 8, fontWeight: 800, color: '#0f172a', lineHeight: 1.15, textAlign: 'center' }}>My location</span>
             </button>
             <button type="button" aria-label="Map information" style={{ width: 38, height: 38, borderRadius: 999, border: '1px solid rgba(148,163,184,0.28)', background: 'rgba(255,255,255,.98)', color: '#0f172a', boxShadow: '0 6px 14px rgba(15,23,42,.16)', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', cursor: 'default' }}>
               <Info size={15} />

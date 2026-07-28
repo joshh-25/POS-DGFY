@@ -42,15 +42,9 @@ const resolvePublicSkupervisorOrigin = () => {
   return `${protocol}//skupervisor.${hostname}`;
 };
 
-const DEFAULT_BUSINESS_REGISTRATION_URL = isLocalRuntime()
-  ? `${resolveDevSkupervisorOrigin()}/register-company`
-  : `${resolvePublicSkupervisorOrigin()}/register-company`;
 const DEFAULT_DGFY_AUTH_URL = isLocalRuntime()
   ? `${resolveDevSkupervisorOrigin()}/dgfy/auth`
   : `${resolvePublicSkupervisorOrigin()}/dgfy/auth`;
-const DEFAULT_DGFY_RESET_URL = isLocalRuntime()
-  ? `${resolveDevSkupervisorOrigin()}/dgfy/reset-password`
-  : `${resolvePublicSkupervisorOrigin()}/dgfy/reset-password`;
 
 const normalizeUrl = (configured, fallbackUrl) => {
   const trimmed = String(configured || '').trim();
@@ -67,27 +61,22 @@ const normalizeUrl = (configured, fallbackUrl) => {
   }
 };
 
-const normalizeBusinessRegistrationBaseUrl = () => (
-  normalizeUrl(import.meta.env?.VITE_SKUPERVISOR_REGISTRATION_URL, DEFAULT_BUSINESS_REGISTRATION_URL)
-);
-
 const normalizeDgfyAuthBaseUrl = () => (
   normalizeUrl(import.meta.env?.VITE_DGFY_AUTH_URL, DEFAULT_DGFY_AUTH_URL)
 );
 
-const normalizeDgfyResetBaseUrl = () => (
-  normalizeUrl(import.meta.env?.VITE_DGFY_RESET_URL, DEFAULT_DGFY_RESET_URL)
-);
+// Business registration is hosted in-app at dgfy.ph/business/grow now, so this
+// returns a same-origin path instead of the old skupervisor /register-company
+// URL. The optional handoff token is still honoured for inbound cross-app links
+// (POS/skupervisor), which StorefrontBusinessGrowPage exchanges on mount.
+export const BUSINESS_REGISTRATION_PATH = '/business/grow';
 
 export const buildBusinessRegistrationUrl = (handoffToken = '') => {
-  const target = new URL(normalizeBusinessRegistrationBaseUrl());
-  target.searchParams.set('source', 'dgfy');
-  target.searchParams.set('auth', 'login');
+  const search = new URLSearchParams();
   if (handoffToken) {
-    target.searchParams.set('handoff_token', handoffToken);
+    search.set('handoff_token', handoffToken);
   }
-  target.hash = 'business-registration';
-  return target.toString();
+  return `${BUSINESS_REGISTRATION_PATH}${search.toString() ? `?${search.toString()}` : ''}`;
 };
 
 export const buildBusinessLoginUrl = () => {
@@ -152,18 +141,17 @@ export const buildDgfyAuthUrl = ({
   return target.toString();
 };
 
+// Password reset is hosted in-app at dgfy.ph/reset-password now, so this returns
+// a same-origin path instead of the old skupervisor /dgfy/reset-password URL.
 export const buildDgfyResetPasswordUrl = ({
   intent = 'customer',
   returnTo = '',
   email = ''
 } = {}) => {
-  const target = new URL(normalizeDgfyResetBaseUrl());
-  target.pathname = '/dgfy/reset-password';
-  target.search = '';
-  target.hash = '';
-  target.searchParams.set('intent', String(intent || '').trim() === 'register-business' ? 'register-business' : 'customer');
-  target.searchParams.set('mode', 'sign-in');
-  if (returnTo) target.searchParams.set('return_to', String(returnTo).trim());
-  if (email) target.searchParams.set('email', String(email).trim());
-  return target.toString();
+  const search = new URLSearchParams();
+  search.set('intent', String(intent || '').trim() === 'register-business' ? 'register-business' : 'customer');
+  search.set('mode', 'sign-in');
+  if (returnTo) search.set('return_to', String(returnTo).trim());
+  if (email) search.set('email', String(email).trim());
+  return `/reset-password?${search.toString()}`;
 };

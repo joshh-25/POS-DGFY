@@ -5,6 +5,7 @@ import {
   Home,
   MapPin,
   Package,
+  Percent,
   Store,
   User
 } from 'lucide-react';
@@ -34,6 +35,7 @@ export const CUSTOMER_DASHBOARD_NAV_ITEMS = [
   { id: 'bookings', label: 'Bookings', icon: CalendarDays },
   { id: 'addresses', label: 'Addresses', icon: MapPin },
   { id: 'loyalty', label: 'Loyalty', icon: Award },
+  { id: 'affiliate', label: 'Affiliate', icon: Percent },
   { id: 'account', label: 'Account', icon: User },
   { id: 'business', label: 'Business', icon: Store, premium: true }
 ];

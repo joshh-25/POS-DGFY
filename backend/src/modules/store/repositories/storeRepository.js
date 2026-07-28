@@ -12,7 +12,26 @@ import {
     isBarcodeScopeAllowedForSurface,
     normalizeBarcodeValue
 } from '../../shared/utils/barcodePolicy.js';
-import { isStockExemptServiceItem } from '../../shared/utils/stockBearingPolicy.js';
+import {
+    AVAILABILITY_SOURCE,
+    isStockExemptServiceItem,
+    resolveStockBearingDescriptor
+} from '../../shared/utils/stockBearingPolicy.js';
+
+// Availability for an item whose descriptor says it isn't stock-tracked
+// (untracked, toggle, or capacity/service): no per-location stock row should
+// ever collapse it to "out of stock" (that was bug 5's "?? 0" conflation for
+// these modes specifically) - it gates on the declared toggle boolean instead,
+// or is simply always available/bookable.
+const resolveDescriptorAvailability = (descriptor) => {
+    const isAvailable = descriptor.is_toggle_available !== false;
+    return {
+        is_available: isAvailable,
+        availability_status: descriptor.availability_source === AVAILABILITY_SOURCE.CAPACITY
+            ? 'bookable'
+            : (isAvailable ? 'in_stock' : 'out_of_stock')
+    };
+};
 
 const toPlain = (value) => (
     value && typeof value.toJSON === 'function'
@@ -185,14 +204,17 @@ const loadLocationStockMap = async (itemIds = [], locationId = null, options = {
 const applyLocationStock = (rows = [], stockMap = new Map()) => (
     (Array.isArray(rows) ? rows : []).map((row) => {
         const payload = toPlain(row);
-        const isServiceItem = isStockExemptServiceItem(payload);
+        const descriptor = resolveStockBearingDescriptor(payload);
+        if (!descriptor.tracks_quantity) {
+            return { ...payload, ...resolveDescriptorAvailability(descriptor) };
+        }
         const stock = stockMap.get(Number(payload.item_id));
         const currentStock = Number.isFinite(stock) ? Math.max(0, stock) : 0;
         return {
             ...payload,
-            current_stock: isServiceItem ? 0 : currentStock,
-            is_available: isServiceItem || currentStock > 0,
-            availability_status: isServiceItem ? 'bookable' : (currentStock > 0 ? 'in_stock' : 'out_of_stock')
+            current_stock: currentStock,
+            is_available: currentStock > 0,
+            availability_status: currentStock > 0 ? 'in_stock' : 'out_of_stock'
         };
     })
 );
@@ -553,6 +575,9 @@ export const storeRepository = {
                 'description',
                 'category',
                 'product_type',
+                'mode_item_preset',
+                'tracking_mode',
+                'tracking_toggle_available',
                 'product_folder',
                 'unit_of_measure',
                 'current_stock',
@@ -659,6 +684,9 @@ export const storeRepository = {
                 'description',
                 'category',
                 'product_type',
+                'mode_item_preset',
+                'tracking_mode',
+                'tracking_toggle_available',
                 'product_folder',
                 'unit_of_measure',
                 'current_stock',
@@ -681,6 +709,9 @@ export const storeRepository = {
                 name: row.name,
                 description: row.description,
                 category: row.category,
+                mode_item_preset: row.mode_item_preset,
+                tracking_mode: row.tracking_mode,
+                tracking_toggle_available: row.tracking_toggle_available,
                 folder_name: row.product_folder || row?.folder?.name || null,
                 unit_of_measure: row.unit_of_measure,
                 current_stock: isStockExemptServiceItem(row) ? 0 : row.current_stock,
@@ -723,11 +754,15 @@ export const storeRepository = {
             return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationStock.locationScopeResolved
                 ? applyLocationStock(branchAvailableRows, locationStock.stockMap)
                 : branchAvailableRows.map((row) => {
-                    const isServiceItem = isStockExemptServiceItem(row);
+                    const descriptor = resolveStockBearingDescriptor(row);
+                    if (!descriptor.tracks_quantity) {
+                        return { ...row, ...resolveDescriptorAvailability(descriptor) };
+                    }
+                    const currentStock = Number(row.current_stock || 0);
                     return {
                         ...row,
-                        is_available: isServiceItem || Number(row.current_stock || 0) > 0,
-                        availability_status: isServiceItem ? 'bookable' : (Number(row.current_stock || 0) > 0 ? 'in_stock' : 'out_of_stock')
+                        is_available: currentStock > 0,
+                        availability_status: currentStock > 0 ? 'in_stock' : 'out_of_stock'
                     };
                 });
         } catch (error) {
@@ -802,11 +837,15 @@ export const storeRepository = {
             return Number.isInteger(normalizedLocationId) && normalizedLocationId > 0 && locationStock.locationScopeResolved
                 ? applyLocationStock(branchAvailableRows, locationStock.stockMap)
                 : branchAvailableRows.map((row) => {
-                    const isServiceItem = isStockExemptServiceItem(row);
+                    const descriptor = resolveStockBearingDescriptor(row);
+                    if (!descriptor.tracks_quantity) {
+                        return { ...row, ...resolveDescriptorAvailability(descriptor) };
+                    }
+                    const currentStock = Number(row.current_stock || 0);
                     return {
                         ...row,
-                        is_available: isServiceItem || Number(row.current_stock || 0) > 0,
-                        availability_status: isServiceItem ? 'bookable' : (Number(row.current_stock || 0) > 0 ? 'in_stock' : 'out_of_stock')
+                        is_available: currentStock > 0,
+                        availability_status: currentStock > 0 ? 'in_stock' : 'out_of_stock'
                     };
                 });
         }

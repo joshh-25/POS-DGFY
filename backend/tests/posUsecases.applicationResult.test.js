@@ -13,6 +13,7 @@ import {
     buildUpdateBulkPosCatalogOverridesUseCase,
     buildUploadPosCatalogImageUseCase,
     buildUploadBulkPosCatalogImagesUseCase,
+    buildListIncomingOnlineOrdersUseCase,
     buildUpdateOnlineOrderStatusUseCase,
     buildOpenTerminalShiftUseCase
 } from '../src/modules/pos/usecases/posUseCases.js';
@@ -1021,6 +1022,126 @@ describe('pos use-cases application result contract', () => {
         expect(await pathExists(tempPath)).toBe(false);
     });
 
+    it('listIncomingOnlineOrders derives queue visibility from the authenticated active shift', async () => {
+        const activeShift = {
+            pos_terminal_shift_id: 12,
+            cashier_id: 7,
+            location_id: 2,
+            status: 'open'
+        };
+        const posRepository = {
+            getTerminalShiftById: jest.fn().mockResolvedValue(activeShift),
+            listIncomingOnlineOrders: jest.fn().mockResolvedValue([
+                { pos_transaction_id: 54, location_id: 2 }
+            ])
+        };
+        const resolveLocationScope = jest.fn().mockResolvedValue({
+            location_id: 2,
+            location: { location_id: 2 }
+        });
+        const useCase = buildListIncomingOnlineOrdersUseCase({
+            posRepository,
+            resolveLocationScope
+        });
+
+        const result = await useCase({
+            query: { shift_id: 12, limit: 25 },
+            user: { user_id: 7 }
+        });
+
+        expect(result.success).toBe(true);
+        expect(posRepository.getTerminalShiftById).toHaveBeenCalledWith(12, {});
+        expect(resolveLocationScope).toHaveBeenCalledWith({
+            requestedLocationId: 2,
+            userId: 7,
+            operationLabel: 'POS incoming orders read'
+        });
+        expect(posRepository.listIncomingOnlineOrders).toHaveBeenCalledWith({
+            locationId: 2,
+            limit: 25
+        });
+        expect(result.data.orders).toEqual([{ pos_transaction_id: 54, location_id: 2 }]);
+    });
+
+    it('listIncomingOnlineOrders rejects a branch request outside the active shift location', async () => {
+        const posRepository = {
+            getTerminalShiftById: jest.fn().mockResolvedValue({
+                pos_terminal_shift_id: 12,
+                cashier_id: 7,
+                location_id: 2,
+                status: 'open'
+            }),
+            listIncomingOnlineOrders: jest.fn()
+        };
+        const resolveLocationScope = jest.fn();
+        const useCase = buildListIncomingOnlineOrdersUseCase({
+            posRepository,
+            resolveLocationScope
+        });
+
+        const result = await useCase({
+            query: { shift_id: 12, location_id: 1 },
+            user: { user_id: 7 }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(403);
+        expect(result.error.details).toMatchObject({
+            reason_code: 'POS_SHIFT_LOCATION_MISMATCH',
+            shift_id: 12,
+            shift_location_id: 2,
+            requested_location_id: 1
+        });
+        expect(resolveLocationScope).not.toHaveBeenCalled();
+        expect(posRepository.listIncomingOnlineOrders).not.toHaveBeenCalled();
+    });
+
+    it('updateOnlineOrderStatus rejects an order outside the operator active-shift location', async () => {
+        const transaction = {
+            finished: false,
+            LOCK: { UPDATE: 'UPDATE' },
+            commit: jest.fn(async () => { transaction.finished = true; }),
+            rollback: jest.fn(async () => { transaction.finished = true; })
+        };
+        const fakeSequelize = {
+            transaction: jest.fn().mockResolvedValue(transaction)
+        };
+        const existingOrder = {
+            pos_transaction_id: 54,
+            order_source: 'online_store',
+            order_method: 'pickup',
+            fulfillment_status: 'placed',
+            location_id: 2,
+            lines: []
+        };
+        const posRepository = {
+            findOpenTerminalShift: jest.fn().mockResolvedValue(null),
+            getOrderByIdForLifecycle: jest.fn().mockResolvedValue(existingOrder),
+            updateOrderById: jest.fn()
+        };
+        const useCase = buildUpdateOnlineOrderStatusUseCase({ posRepository });
+
+        const result = await dbStore.run({ sequelize: fakeSequelize }, () => useCase({
+            posTransactionId: 54,
+            payload: { fulfillment_status: 'confirmed' },
+            user: { user_id: 7 }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(result.error.details).toMatchObject({ reason_code: 'POS_SHIFT_CLOSED' });
+        expect(posRepository.findOpenTerminalShift).toHaveBeenCalledWith(
+            {
+                terminalId: null,
+                cashierId: 7,
+                locationId: 2
+            },
+            expect.objectContaining({ transaction, lock: true })
+        );
+        expect(posRepository.updateOrderById).not.toHaveBeenCalled();
+        expect(transaction.rollback).toHaveBeenCalledTimes(1);
+    });
+
     it('updateOnlineOrderStatus deducts inventory when online order transitions to completed', async () => {
         const transaction = {
             finished: false,
@@ -1039,6 +1160,7 @@ describe('pos use-cases application result contract', () => {
             order_source: 'online_store',
             order_method: 'pickup',
             fulfillment_status: 'ready_for_pickup',
+            payment_status: 'paid',
             location_id: 3,
             lines: [
                 {
@@ -1141,6 +1263,7 @@ describe('pos use-cases application result contract', () => {
             order_source: 'online_store',
             order_method: 'pickup',
             fulfillment_status: 'ready_for_pickup',
+            payment_status: 'paid',
             location_id: 4,
             lines: [{
                 line_id: 10,
@@ -1311,13 +1434,13 @@ describe('pos use-cases application result contract', () => {
                 .mockResolvedValueOnce(completedOrder),
             updateOrderById: jest.fn().mockResolvedValue(completedOrder)
         };
-        const stockMovementService = {
+        const inventoryCommandService = {
             createStockMovement: jest.fn()
         };
 
         const useCase = buildUpdateOnlineOrderStatusUseCase({
             posRepository,
-            stockMovementService
+            inventoryCommandService
         });
 
         const result = await dbStore.run({ sequelize: fakeSequelize }, () => useCase({
@@ -1327,6 +1450,6 @@ describe('pos use-cases application result contract', () => {
         }));
 
         expect(result.success).toBe(true);
-        expect(stockMovementService.createStockMovement).not.toHaveBeenCalled();
+        expect(inventoryCommandService.createStockMovement).not.toHaveBeenCalled();
     });
 });

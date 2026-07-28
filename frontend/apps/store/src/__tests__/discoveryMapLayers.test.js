@@ -11,13 +11,18 @@ import {
   DISCOVERY_PIN_SOURCE_ID,
   DISCOVERY_USER_LAYER_ID,
   DISCOVERY_USER_SOURCE_ID,
+  ROUTE_LINE_LAYER_ID,
+  ROUTE_LINE_SOURCE_ID,
   buildDiscoveryPinLayerModel,
+  buildRouteLineGeoJson,
   buildUserLocationSourceData,
   ensureDiscoveryMapLayers,
+  ensureRouteLineLayer,
   getDistanceMeters,
   getDiscoveryPinIconId,
   hasPlottableCoordinate,
-  setGeoJsonSourceData
+  setGeoJsonSourceData,
+  setRouteLineData
 } from '../discovery/model/discoveryMapLayers.js';
 
 describe('discovery map layer helpers', () => {
@@ -246,5 +251,63 @@ describe('discovery map layer helpers', () => {
 
     expect(setGeoJsonSourceData(map, DISCOVERY_USER_SOURCE_ID, data)).toBe(true);
     expect(setData).toHaveBeenCalledWith(data);
+  });
+
+  describe('route line helpers', () => {
+    it('builds an empty FeatureCollection for missing/invalid geometry instead of throwing', () => {
+      expect(buildRouteLineGeoJson(null)).toEqual({ type: 'FeatureCollection', features: [] });
+      expect(buildRouteLineGeoJson({ type: 'Point', coordinates: [0, 0] })).toEqual({ type: 'FeatureCollection', features: [] });
+    });
+
+    it('wraps a LineString geometry as a single-feature FeatureCollection', () => {
+      const geometry = { type: 'LineString', coordinates: [[122.56, 10.7], [122.57, 10.71]] };
+      expect(buildRouteLineGeoJson(geometry)).toEqual({
+        type: 'FeatureCollection',
+        features: [{ type: 'Feature', properties: {}, geometry }]
+      });
+    });
+
+    it('adds the route source/layer idempotently and is reused by both tracking and discovery callers', () => {
+      const sources = new Map();
+      const layers = [];
+      const map = {
+        getSource: vi.fn((id) => sources.get(id)),
+        addSource: vi.fn((id, source) => {
+          sources.set(id, { ...source, setData: vi.fn() });
+        }),
+        getLayer: vi.fn((id) => layers.find((layer) => layer.id === id)),
+        addLayer: vi.fn((layer) => {
+          layers.push(layer);
+        })
+      };
+
+      expect(ensureRouteLineLayer(map, { dashArray: [2, 2] })).toBe(true);
+      expect(map.addSource).toHaveBeenCalledWith(ROUTE_LINE_SOURCE_ID, expect.objectContaining({ type: 'geojson' }));
+      expect(layers).toEqual([
+        expect.objectContaining({
+          id: ROUTE_LINE_LAYER_ID,
+          type: 'line',
+          source: ROUTE_LINE_SOURCE_ID,
+          paint: expect.objectContaining({ 'line-dasharray': [2, 2] })
+        })
+      ]);
+
+      // Calling again must not re-add the source/layer.
+      ensureRouteLineLayer(map);
+      expect(map.addSource).toHaveBeenCalledTimes(1);
+      expect(layers).toHaveLength(1);
+    });
+
+    it('routes setRouteLineData through the shared GeoJSON source setter, clearing on null geometry', () => {
+      const setData = vi.fn();
+      const map = { getSource: vi.fn(() => ({ setData })) };
+      const geometry = { type: 'LineString', coordinates: [[122.56, 10.7], [122.57, 10.71]] };
+
+      setRouteLineData(map, geometry);
+      expect(setData).toHaveBeenCalledWith(buildRouteLineGeoJson(geometry));
+
+      setRouteLineData(map, null);
+      expect(setData).toHaveBeenCalledWith({ type: 'FeatureCollection', features: [] });
+    });
   });
 });

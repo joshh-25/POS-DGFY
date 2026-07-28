@@ -55,7 +55,8 @@ describe('store use-cases application result contract', () => {
                         default_sale_price: 10
                     }
                 ])
-            }
+            },
+            resolveWorkflowCapabilitySettings: jest.fn().mockResolvedValue({ mode: 'retail', enabledCapabilities: [] })
         });
 
         const result = await useCase({ query: { search: 'calamansi', limit: 20 } });
@@ -87,7 +88,8 @@ describe('store use-cases application result contract', () => {
                         default_sale_price: 25
                     }
                 ])
-            }
+            },
+            resolveWorkflowCapabilitySettings: jest.fn().mockResolvedValue({ mode: 'retail', enabledCapabilities: [] })
         });
 
         const result = await useCase({ query: { limit: 10 } });
@@ -100,6 +102,24 @@ describe('store use-cases application result contract', () => {
         }));
         expect(result.data.items[0]).not.toHaveProperty('current_stock');
         expect(result.data.items[0]).not.toHaveProperty('cost_per_unit');
+    });
+
+    it('listStoreCatalog surfaces the live workflow_mode and enabled_capabilities overlay (composed-capability storefront gap)', async () => {
+        const useCase = buildListStoreCatalogUseCase({
+            storeRepository: {
+                listStoreCatalog: jest.fn().mockResolvedValue([])
+            },
+            resolveWorkflowCapabilitySettings: jest.fn().mockResolvedValue({
+                mode: 'retail',
+                enabledCapabilities: ['services']
+            })
+        });
+
+        const result = await useCase({ query: { limit: 10 } });
+
+        expect(result.success).toBe(true);
+        expect(result.data.workflow_mode).toBe('retail');
+        expect(result.data.enabled_capabilities).toEqual(['services']);
     });
 
     it('listStoreCatalog suppresses customer-visible rows without explicit sale price', async () => {
@@ -121,7 +141,8 @@ describe('store use-cases application result contract', () => {
                         cost_per_unit: 45
                     }
                 ])
-            }
+            },
+            resolveWorkflowCapabilitySettings: jest.fn().mockResolvedValue({ mode: 'retail', enabledCapabilities: [] })
         });
 
         const result = await useCase({ query: { limit: 10 } });
@@ -151,7 +172,10 @@ describe('store use-cases application result contract', () => {
                 }
             ])
         };
-        const useCase = buildListStoreCatalogUseCase({ storeRepository });
+        const useCase = buildListStoreCatalogUseCase({
+            storeRepository,
+            resolveWorkflowCapabilitySettings: jest.fn().mockResolvedValue({ mode: 'retail', enabledCapabilities: [] })
+        });
 
         const result = await useCase({ query: { limit: 10 } });
 
@@ -505,7 +529,8 @@ describe('store use-cases application result contract', () => {
                         availability_status: 'in_stock'
                     }
                 ])
-            }
+            },
+            resolveWorkflowCapabilitySettings: jest.fn().mockResolvedValue({ mode: 'retail', enabledCapabilities: [] })
         });
 
         const result = await useCase({ query: { limit: 10 } });
@@ -816,7 +841,7 @@ describe('store use-cases application result contract', () => {
         expect(result.error.details.reason_code).toBe('MISSING_PRICE');
     });
 
-    it('storeCartQuote blocks checkout when storefront is closed by POS open status', async () => {
+    it('storeCartQuote ignores POS shift status when the storefront location is open', async () => {
         const useCase = buildStoreCartQuoteUseCase({
             storeRepository: {
                 findSellableItemsByIds: jest.fn().mockResolvedValue([
@@ -866,8 +891,9 @@ describe('store use-cases application result contract', () => {
             }
         });
 
-        expect(result.success).toBe(false);
-        expect(result.error.code).toBe(DomainErrorCode.CONFLICT);
+        expect(result.success).toBe(true);
+        expect(result.data.storefront_open).toBe(true);
+        expect(result.data.total_amount).toBe(121);
     });
 
     it('storeCartQuote blocks unsupported location order method capabilities', async () => {

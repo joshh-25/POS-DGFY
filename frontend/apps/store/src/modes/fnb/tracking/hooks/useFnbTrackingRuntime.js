@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fetchNormalizedTrackingEntity } from '../../../../tracking/core.js';
 import {
+  buildTrackedOrdersSignature,
   readLastTrackingPinForStore,
   readTrackedOrdersAcrossStores,
   readTrackedOrdersForStore,
@@ -18,17 +19,9 @@ import {
   resolveTrackingRetryDelayMs
 } from '../../../../tracking/customerTrackingRefresh.js';
 import { buildFnbTrackedOrderEntry, toFnbTrackingViewState } from '../model/fnbTrackingPayload.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../src/observability/analyticsEvents.js';
 
 const BACKGROUND_PIN_POLL_MS = { visible: 60000, hidden: 120000 };
-
-// Stable per-entry signature (pin:status) so a re-fetch that changes nothing
-// doesn't produce a new array identity and doesn't retrigger effects/polling.
-const buildTrackedOrdersSignature = (entries = []) => (
-  entries
-    .map((entry) => `${String(entry?.tracking_pin || '').trim().toUpperCase()}:${String(entry?.status || '').trim().toLowerCase()}`)
-    .sort()
-    .join('|')
-);
 
 export function useFnbTrackingRuntime({ checkoutTab, isFnbOrderSubpage, normalizeErrorMessage, requestJson, routeSlug, selectedStore, toSlug, trackingAdapterRegistry, trackingMode }) {
   const [trackingPinInput, setTrackingPinInput] = useState('');
@@ -117,6 +110,21 @@ export function useFnbTrackingRuntime({ checkoutTab, isFnbOrderSubpage, normaliz
     () => buildTrackingPinKey(guestTrackedOrders, { excludePin: selectedPin }),
     [guestTrackedOrders, selectedPin]
   );
+
+  // `checkoutTab === 'track' && isFnbOrderSubpage` is the same gate the
+  // polling effect below uses to decide the tracking view is actually on
+  // screen -- reusing it here (rather than the store-slug effect above,
+  // which also fires on unrelated store navigation) keeps this to one
+  // event per time a visitor actually opens tracking.
+  const isTrackingViewActive = checkoutTab === 'track' && isFnbOrderSubpage;
+  useEffect(() => {
+    if (!isTrackingViewActive) return;
+    trackFunnelEvent(ANALYTICS_EVENTS.ORDER_TRACKING_VIEWED, {
+      store_slug: selectedStore?.slug,
+      tracking_pin: selectedPin || undefined
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTrackingViewActive]);
 
   // Route unstable callbacks/closures (and the ever-changing tracking status)
   // through refs so the polling effect below only needs to depend on stable

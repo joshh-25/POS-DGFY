@@ -2,6 +2,7 @@ import React from 'react';
 import { Bike, Maximize } from 'lucide-react';
 import { StoresMap } from '../../../../discovery/components/StoresMap.jsx';
 import { getStorefrontContactIcon } from '../../../../features/shared-storefront/utils/storefrontDisplayUtils.jsx';
+import { StorefrontDirectionsEta } from '../../../../shared/components/storefront/hero/StorefrontDirectionsEta.jsx';
 
 const FnbHeroDesktopContactLocation = ({
   STYLES,
@@ -42,6 +43,9 @@ const FnbHeroDesktopContactLocation = ({
                       {row.actionLabel || 'Get directions'}
                     </button>
                   ) : null}
+                  {row.label === 'Address' ? (
+                    <StorefrontDirectionsEta latitude={row.destinationLatitude} longitude={row.destinationLongitude} bodyFont={heroTheme.bodyFont} />
+                  ) : null}
                 </div>
               </div>
             );
@@ -59,7 +63,7 @@ const FnbHeroDesktopContactLocation = ({
       {hasMapData && (
         <div style={{ display: 'grid', gap: 10, alignContent: 'start', marginTop: -30 }}>
           <div style={{ position: 'relative', width: '100%', height: 156, borderRadius: 14, overflow: 'hidden', border: '1px solid #edf2f7', background: '#f8fafc' }}>
-            <StoresMap stores={mapStores} selectedKey={mapSelectedKey} onSelectStore={() => { }} />
+            <StoresMap stores={mapStores} selectedKey={mapSelectedKey} onSelectStore={() => { }} height={156} />
             <button
               type="button"
               onClick={() => setIsExpandedMapOpen(true)}

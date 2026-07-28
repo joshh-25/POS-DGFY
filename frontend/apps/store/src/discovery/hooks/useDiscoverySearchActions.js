@@ -1,6 +1,9 @@
 import { useCallback } from 'react';
 
 import { resolveDiscoveryCategoryFilterValue } from '../../features/discovery/utils/storefrontDiscoveryNormalization.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../src/observability/analyticsEvents.js';
+
+const DISCOVERY_LOCATION_PERMISSION_KEY = 'dgfy_storefront_discovery_location_permission_v1';
 
 export function useDiscoverySearchActions({
   loadStores,
@@ -29,6 +32,7 @@ export function useDiscoverySearchActions({
 
     navigator.geolocation.getCurrentPosition(
       (position) => {
+        window.localStorage?.setItem(DISCOVERY_LOCATION_PERMISSION_KEY, 'granted');
         setDebouncedDiscoverySearch(currentSearch);
         loadStores({
           latitude: position.coords.latitude,
@@ -54,39 +58,29 @@ export function useDiscoverySearchActions({
     setIsMobileResultsCollapsed
   ]);
 
-  const handleDiscoverySearch = useCallback(() => {
+  // `source` distinguishes an explicit search-box submit from
+  // handlePopularDiscoveryCategory() delegating here below -- category
+  // clicks fire their own DISCOVERY_CATEGORY_SELECTED event instead, so a
+  // single click doesn't double-count as both a category select and a
+  // search submit.
+  const handleDiscoverySearch = useCallback((source = 'search_box') => {
     const currentSearch = String(searchRef.current || search || '').trim();
     setHasDiscoveryExplorationStarted(true);
     setIsStoreListVisible(false);
     setIsMobileResultsCollapsed(false);
     setSelectedMapPin(null);
     setDebouncedDiscoverySearch(currentSearch);
-
-    if (!navigator?.geolocation) {
-      loadStores(undefined, { useImmediateSearch: true });
-      return;
+    setDiscoveryPinScope('tenant_primary');
+    if (source === 'search_box') {
+      trackFunnelEvent(ANALYTICS_EVENTS.DISCOVERY_SEARCH_SUBMITTED, { query: currentSearch });
     }
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        loadStores({
-          latitude: position.coords.latitude,
-          longitude: position.coords.longitude
-        }, { useImmediateSearch: true });
-      },
-      () => {
-        loadStores(undefined, { useImmediateSearch: true });
-      },
-      {
-        enableHighAccuracy: true,
-        timeout: 8000
-      }
-    );
+    loadStores(null, { useImmediateSearch: true, pinScope: 'tenant_primary' });
   }, [
     loadStores,
     search,
     searchRef,
     setDebouncedDiscoverySearch,
+    setDiscoveryPinScope,
     setHasDiscoveryExplorationStarted,
     setIsMobileResultsCollapsed,
     setIsStoreListVisible,
@@ -103,7 +97,11 @@ export function useDiscoverySearchActions({
     searchRef.current = nextSearch;
     setDebouncedDiscoverySearch(nextSearch);
     setDiscoveryCategoryFilter(categoryFilterValue);
-    handleDiscoverySearch();
+    trackFunnelEvent(ANALYTICS_EVENTS.DISCOVERY_CATEGORY_SELECTED, {
+      category: normalized,
+      category_filter: categoryFilterValue
+    });
+    handleDiscoverySearch('category');
   }, [
     handleDiscoverySearch,
     searchRef,

@@ -22,7 +22,9 @@
 /android
 /System_Audit
 /release-controller
-/packages
+/packages/*
+!/packages/pos-receipt
+!/packages/shared-constants
 /artifacts
 /nginx
 /skills

@@ -1,6 +1,15 @@
 import { Op } from 'sequelize';
 import dbStore from '../utils/dbStore.js';
-import { consumeStockForProduction, receiveProducedStock } from '../modules/inventory/commands/stockCommandService.js';
+// Phase 9 scoping note: jobOrderService.js is a legacy (non-factory) service
+// injected wholesale as the jobOrders module's port at
+// modules/jobOrders/index.js (`{ jobOrderService }`). Converting it to true
+// constructor-injected DI for just this one dependency would mean
+// restructuring ~800 lines of positional-arg exports; out of proportion for
+// this phase. The safe, in-proportion fix: depend on inventory's public
+// composition root (index.js) instead of reaching into its internal
+// commands/ file directly - the same boundary discipline the DI-at-index.js
+// convention protects, without a full service refactor.
+import { consumeStockForProduction, receiveProducedStock } from '../modules/inventory/index.js';
 import { convertQuantity, areCompatible, normalizeUom } from '../utils/uomConverter.js';
 import { buildVisibleWhere } from '../utils/softDeletePolicy.js';
 

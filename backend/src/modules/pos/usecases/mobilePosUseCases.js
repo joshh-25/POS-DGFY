@@ -57,17 +57,22 @@ const toFailurePayload = (error) => ({
     details: error?.details || null
 });
 
-const buildSyncSummary = ({ totalEntries, acceptedEntries, replayedEntries, rejectedEntries, checkpointToken }) => ({
+const buildSyncSummary = ({ totalEntries, acceptedEntries, replayedEntries, rejectedEntries, checkpointToken, includeLimitPolicy = true }) => ({
     total_entries: totalEntries,
     accepted_count: acceptedEntries,
     replayed_count: replayedEntries,
     rejected_count: rejectedEntries,
     checkpoint_token: checkpointToken,
-    sync_limit_policy: {
-        successful_full_syncs_per_day: MOBILE_SYNC_LIMIT_PER_DAY,
-        business_day_reset_hour: MOBILE_SYNC_RESET_HOUR,
-        business_day_reset_minute: MOBILE_SYNC_RESET_MINUTE
-    }
+    // Item sync isn't behind mobilePosFreeSyncLimiter (see
+    // buildSyncMobilePosItemsUseCase), so it has no daily cap to advertise -
+    // don't imply one exists for a route that doesn't enforce it.
+    ...(includeLimitPolicy ? {
+        sync_limit_policy: {
+            successful_full_syncs_per_day: MOBILE_SYNC_LIMIT_PER_DAY,
+            business_day_reset_hour: MOBILE_SYNC_RESET_HOUR,
+            business_day_reset_minute: MOBILE_SYNC_RESET_MINUTE
+        }
+    } : {})
 });
 
 const pickSettings = (settings = {}) => MOBILE_SETTINGS_KEYS.reduce((acc, key) => {
@@ -252,6 +257,175 @@ export const buildSyncMobilePosCheckoutsUseCase = ({ checkoutPosUseCase }) => {
                 replayedEntries,
                 rejectedEntries,
                 checkpointToken
+            })
+        });
+    };
+};
+
+// Item sync has no plan-tier gating (unlike checkout/shift/hardware sync,
+// which share mobilePosFreeSyncLimiter's 2/day free-tier budget) - item/
+// catalog CRUD has never been plan-gated anywhere else in the app, and
+// folding it into that shared budget would make catalog management
+// unusable for free-tier tenants. See routes/mobilePos.js.
+export const buildSyncMobilePosItemsUseCase = ({ createItemUseCase, updateItemUseCase, deleteItemUseCase, itemRepository }) => {
+    const resolveCanManageCategories = (user) => {
+        const role = String(user?.role || '').trim().toLowerCase();
+        return user?.is_master_admin === true || role === 'admin';
+    };
+
+    const hasPermission = (user, permission) => (
+        user?.is_master_admin === true || (user?.permissions || []).includes(permission)
+    );
+
+    return async ({ payload = {}, user }) => {
+        const entries = Array.isArray(payload.entries) ? payload.entries : [];
+        if (entries.length === 0) {
+            return ok({
+                generated_at: new Date().toISOString(),
+                device_id: safeTrimmedText(payload.device_id, null),
+                results: [],
+                summary: buildSyncSummary({
+                    totalEntries: 0,
+                    acceptedEntries: 0,
+                    replayedEntries: 0,
+                    rejectedEntries: 0,
+                    checkpointToken: null,
+                    includeLimitPolicy: false
+                })
+            });
+        }
+
+        const results = [];
+        let acceptedEntries = 0;
+        let replayedEntries = 0;
+        let rejectedEntries = 0;
+
+        for (const entry of entries) {
+            // local_transaction_id/payload is the generic entry shape shared
+            // with checkout sync (mobile's LiveSyncTransport hardcodes this
+            // envelope for every entity) - op lives inside payload rather
+            // than as a sibling field because the transport forwards
+            // whatever the repository builds as `payload` verbatim, with no
+            // per-entity control over the entry envelope itself.
+            const localTransactionId = safeTrimmedText(entry?.local_transaction_id, null);
+            const entryPayload = safeObject(entry?.payload);
+            const op = safeTrimmedText(entryPayload.op, '');
+            const itemData = { ...entryPayload };
+            delete itemData.op;
+
+            const requiredPermission = op === 'create'
+                ? 'items:create'
+                : op === 'update'
+                    ? 'items:edit'
+                    : op === 'delete'
+                        ? 'items:delete'
+                        : null;
+
+            if (!requiredPermission) {
+                rejectedEntries += 1;
+                results.push({
+                    local_transaction_id: localTransactionId,
+                    status: 'rejected',
+                    error: toFailurePayload({ message: `Unsupported item sync operation: ${op || 'unknown'}`, statusCode: 422 })
+                });
+                continue;
+            }
+
+            if (!hasPermission(user, requiredPermission)) {
+                rejectedEntries += 1;
+                results.push({
+                    local_transaction_id: localTransactionId,
+                    status: 'rejected',
+                    error: toFailurePayload({ message: 'Access denied: insufficient permissions', code: 'AUTHORIZATION_FAILED', statusCode: 403 })
+                });
+                continue;
+            }
+
+            try {
+                if (op === 'create') {
+                    let item;
+                    try {
+                        item = await createItemUseCase({
+                            itemData,
+                            userId: user?.user_id,
+                            canManageCategories: resolveCanManageCategories(user)
+                        });
+                    } catch (error) {
+                        // Same SKU conflict on a retried create means the
+                        // earlier push already succeeded server-side but the
+                        // client never saw the response - treat it as a
+                        // replay of the existing item rather than a failure.
+                        if (error?.statusCode === 409 && itemData?.sku_code) {
+                            const [existing] = await itemRepository.findItemsBySkuCodes([itemData.sku_code]);
+                            if (existing) {
+                                replayedEntries += 1;
+                                results.push({ local_transaction_id: localTransactionId, status: 'replayed', server_item_id: existing.item_id });
+                                continue;
+                            }
+                        }
+                        throw error;
+                    }
+                    acceptedEntries += 1;
+                    results.push({ local_transaction_id: localTransactionId, status: 'accepted', server_item_id: item.item_id });
+                } else if (op === 'update') {
+                    const serverItemId = toPositiveInt(itemData.server_item_id);
+                    if (!serverItemId) {
+                        throw Object.assign(new Error('server_item_id is required for update'), { statusCode: 422 });
+                    }
+                    const item = await updateItemUseCase({
+                        itemId: serverItemId,
+                        itemData,
+                        userId: user?.user_id,
+                        canManageCategories: resolveCanManageCategories(user)
+                    });
+                    acceptedEntries += 1;
+                    results.push({ local_transaction_id: localTransactionId, status: 'accepted', server_item_id: item.item_id });
+                } else {
+                    const serverItemId = toPositiveInt(itemData.server_item_id);
+                    if (!serverItemId) {
+                        throw Object.assign(new Error('server_item_id is required for delete'), { statusCode: 422 });
+                    }
+                    try {
+                        await deleteItemUseCase({ itemId: serverItemId, userId: user?.user_id });
+                        acceptedEntries += 1;
+                        results.push({ local_transaction_id: localTransactionId, status: 'accepted', server_item_id: serverItemId });
+                    } catch (error) {
+                        // Already deleted (e.g. by an earlier attempt whose
+                        // response was lost) - the desired end state is
+                        // already achieved, so treat as a replay.
+                        if (error?.statusCode === 404) {
+                            replayedEntries += 1;
+                            results.push({ local_transaction_id: localTransactionId, status: 'replayed', server_item_id: serverItemId });
+                            continue;
+                        }
+                        throw error;
+                    }
+                }
+            } catch (error) {
+                rejectedEntries += 1;
+                results.push({
+                    local_transaction_id: localTransactionId,
+                    status: 'rejected',
+                    error: toFailurePayload(error)
+                });
+            }
+        }
+
+        // No checkpoint_token / ack step here (unlike checkout/shift sync) -
+        // items aren't a financial reconciliation flow, so there's nothing
+        // that needs a client to acknowledge receipt of the sync result.
+        return ok({
+            generated_at: new Date().toISOString(),
+            device_id: safeTrimmedText(payload.device_id, null),
+            client_sync_run_id: safeTrimmedText(payload.client_sync_run_id, null),
+            results,
+            summary: buildSyncSummary({
+                totalEntries: entries.length,
+                acceptedEntries,
+                replayedEntries,
+                rejectedEntries,
+                checkpointToken: null,
+                includeLimitPolicy: false
             })
         });
     };

@@ -1,0 +1,206 @@
+# Production simulation stack: real restored data (landlord + tenant DBs,
+# uploads) served through the actual container images, for local testing.
+# Not part of the reusable multi-server topology (../docker-compose.yml) —
+# this one builds from source and uses port-based routing (5173/5174/5175,
+# no TLS, no Host header tricks) instead of the production domain-based edge
+# nginx.
+#
+# Run against the "dgfy" Lima docker context, from this directory:
+#   docker --context dgfy compose --env-file .env.compose up -d --build
+#
+# --env-file .env.compose is required (not just cosmetic): Compose
+# auto-discovers a `.env` file in the working directory for its own
+# top-level YAML `${VAR}` interpolation, separate from the `env_file:`
+# directive below. Since this file and the real (unescaped) `.env` now live
+# in the same directory, omitting --env-file makes Compose choke on the `$`
+# characters in .env's ADMIN_PASSWORD_HASH bcrypt value.
+#
+# DB_USER/DB_PASSWORD/MYSQL_ROOT_PASSWORD below are deliberately NOT the real
+# values from .env (which are live production credentials) — this stack
+# always uses fresh local-only creds, and .env's DB_HOST/DB_USER/DB_PASSWORD/
+# REDIS_URL/PORT/CORS_ORIGIN/etc. are overridden by the `environment:` blocks
+# below for the same reason.
+
+name: dgfy-local-test
+
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    # See infrastructure/docker/docker-compose.yml for why this flag is
+    # needed (a migration creates a trigger; MySQL 8 requires SUPER
+    # privilege for that while binary logging is on, and the app DB user
+    # here isn't root/SUPER).
+    command: --log-bin-trust-function-creators=1
+    environment:
+      MYSQL_ROOT_PASSWORD: localtest_root_pw
+      MYSQL_DATABASE: sku_inventory_manager
+      MYSQL_USER: localtest_app
+      MYSQL_PASSWORD: localtest_app_pw
+    ports:
+      - "3306:3306"
+    volumes:
+      - local_test_mysql_data:/var/lib/mysql
+      - .:/local-test:ro
+    networks: [dgfy_local_test]
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-plocaltest_root_pw"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    networks: [dgfy_local_test]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ../../..
+      dockerfile: infrastructure/docker/backend/Dockerfile
+    image: dgfy-local-test-backend:latest
+    restart: unless-stopped
+    # .env.compose is .env with literal `$` doubled to `$$` — compose
+    # interpolates `$VAR` syntax found inside env_file contents, and
+    # ADMIN_PASSWORD_HASH (a bcrypt hash) is full of unescaped `$`.
+    # Regenerate via: sed 's/\$/\$\$/g' .env > .env.compose
+    env_file: .env.compose
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: sku_inventory_manager
+      DB_USER: localtest_app
+      DB_PASSWORD: localtest_app_pw
+      DB_DIALECT: mysql
+      REDIS_URL: redis://redis:6379
+      PORT: 5000
+      # local-test/.env carries production-oriented security flags that
+      # assume TLS termination — this stack is plain HTTP on 5173-5175.
+      # ENFORCE_HTTPS can be safely disabled. SESSION_COOKIE_SECURE CANNOT:
+      # backend/src/config/productionEnvValidation.cjs hard-fails startup
+      # unless it's "true" whenever NODE_ENV=production. Leaving it true
+      # works anyway — modern browsers treat http://localhost as a secure
+      # context, so Secure cookies are still set/sent there.
+      ENFORCE_HTTPS: "false"
+      TRUST_PROXY: "true"
+      CORS_ORIGIN: http://localhost:5173,http://localhost:5174,http://localhost:5175,https://dgfy-ims.nicenature.space,https://dgfy-pos.nicenature.space,https://dgfy-store.nicenature.space,https://dgfy.nicenature.space
+      # Pre-existing audit-query bug unrelated to Docker (see
+      # infrastructure/docker/.env.example) — flips /api/v1/health to 503
+      # and would block this container's own healthcheck.
+      BILLING_FUNNEL_AUDIT_ENABLED: "false"
+      # This dump's ~25 tenant DBs are a real production snapshot and can be
+      # a few migrations/index changes behind current code — expect this
+      # (the app has graceful per-repository fallbacks, it's not fatal).
+      # Disabled here only so degraded-but-working tenants don't flip
+      # /api/v1/health to 503 and block container orchestration; the app
+      # still functions with these tenants, just without some index-backed
+      # query optimizations. Re-enable and check `docker logs` /
+      # /api/v1/health directly if you want to see which tenants/indexes.
+      SCHEMA_INDEX_AUDIT_ENABLED: "false"
+      SENTRY_ENABLED: ${SENTRY_ENABLED:-false}
+      SENTRY_BACKEND_DSN: ${SENTRY_BACKEND_DSN:-}
+      SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-local-test}
+      SENTRY_RELEASE: ${SENTRY_RELEASE:-local-test}
+      SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
+      SENTRY_SEND_DEFAULT_PII: ${SENTRY_SEND_DEFAULT_PII:-false}
+      SENTRY_DEBUG: ${SENTRY_DEBUG:-false}
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./uploads:/app/uploads
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks: [dgfy_local_test]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5000/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  frontend:
+    build:
+      context: ../../..
+      dockerfile: infrastructure/docker/frontend/Dockerfile
+      args:
+        VITE_API_URL: /api/v1
+        VITE_STORE_BASE_PATH: /
+        # Cloudflare tunnel domains (dgfy-ims./dgfy-pos./dgfy. prefixes)
+        # don't match the skupervisor./pos./store. naming convention that
+        # businessRegistrationUrl.js / skupervisorHandoff.js / dgfyRouteHelpers.js
+        # guess from window.location.hostname at runtime -- set explicitly
+        # here to bypass that heuristic, same as deploy-frontend.yml does
+        # for beta/prod.
+        VITE_DGFY_AUTH_URL: https://dgfy-ims.nicenature.space/dgfy/auth
+        VITE_SKUPERVISOR_REGISTRATION_URL: https://dgfy-ims.nicenature.space/register-company
+        VITE_DGFY_RESET_URL: https://dgfy-ims.nicenature.space/dgfy/reset-password
+        VITE_SKUPERVISOR_BASE_URL: https://dgfy-ims.nicenature.space
+        VITE_STOREFRONT_ACCOUNT_URL: https://dgfy-store.nicenature.space/map-dgfy/account
+        VITE_POS_TERMINAL_URL: https://dgfy-pos.nicenature.space/terminal
+        VITE_SENTRY_ENABLED: ${VITE_SENTRY_ENABLED:-false}
+        VITE_SENTRY_DSN_SKUPERVISOR: ${VITE_SENTRY_DSN_SKUPERVISOR:-}
+        VITE_SENTRY_DSN_POS: ${VITE_SENTRY_DSN_POS:-}
+        VITE_SENTRY_DSN_STORE: ${VITE_SENTRY_DSN_STORE:-}
+        VITE_SENTRY_ENVIRONMENT: ${VITE_SENTRY_ENVIRONMENT:-local-test}
+        VITE_SENTRY_RELEASE: ${VITE_SENTRY_RELEASE:-local-test}
+        VITE_SENTRY_TRACES_SAMPLE_RATE: ${VITE_SENTRY_TRACES_SAMPLE_RATE:-0}
+        VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE: ${VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE:-0}
+        VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE: ${VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE:-0}
+        VITE_SENTRY_TRACE_PROPAGATION_TARGETS: ${VITE_SENTRY_TRACE_PROPAGATION_TARGETS:-}
+        SENTRY_UPLOAD_SOURCEMAPS: ${SENTRY_UPLOAD_SOURCEMAPS:-false}
+        SENTRY_ORG: ${SENTRY_ORG:-}
+        SENTRY_PROJECT_SKUPERVISOR: ${SENTRY_PROJECT_SKUPERVISOR:-}
+        SENTRY_PROJECT_POS: ${SENTRY_PROJECT_POS:-}
+        SENTRY_PROJECT_STORE: ${SENTRY_PROJECT_STORE:-}
+        SENTRY_URL: ${SENTRY_URL:-}
+    image: dgfy-local-test-frontend:latest
+    restart: unless-stopped
+    networks: [dgfy_local_test]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  nginx:
+    # Stock image, not custom-built -- the production nginx setup (see
+    # ../docker-compose.yml) now uses a stock image + envsubst'd template
+    # too, but local-test doesn't need domain templating or TLS at all, so
+    # this just bind-mounts the fixed port-based conf.d directly.
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ../nginx/conf.d.local-test:/etc/nginx/conf.d:ro
+    ports:
+      - "5173:5173"
+      - "5174:5174"
+      - "5175:5175"
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy
+    networks: [dgfy_local_test]
+    healthcheck:
+      # wget (busybox), not curl -- the stock nginx:alpine image has no
+      # curl installed (only relevant now that this switched from a
+      # custom-built image that had curl added).
+      test: ["CMD", "wget", "-q", "-O-", "http://localhost:5173/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+networks:
+  dgfy_local_test:
+    driver: bridge
+
+volumes:
+  local_test_mysql_data:

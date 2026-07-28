@@ -79,6 +79,17 @@ describe('StorefrontBusinessHoursScheduler', () => {
     expect(saturday.getAttribute('aria-pressed')).toBe('false');
   });
 
+  it('keeps native time controls shrinkable inside mobile cards', () => {
+    const view = render(<ControlledScheduler />);
+    const openTime = within(view.container).getByLabelText(/Open time/i);
+    const closeTime = within(view.container).getByLabelText(/Close time/i);
+
+    expect(openTime.className).toContain('min-w-0');
+    expect(openTime.className).toContain('max-w-full');
+    expect(closeTime.className).toContain('min-w-0');
+    expect(closeTime.className).toContain('max-w-full');
+  });
+
   it('confirms before applying a new all-days time set over existing schedules', async () => {
     const user = userEvent.setup();
     const onChange = vi.fn();

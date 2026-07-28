@@ -20,14 +20,6 @@ services:
     ports:
       - "5000:5000"
 
-  dgfy-api:
-    image: dgfy-platform-api:dev
-    build:
-      context: ../..
-      dockerfile: infrastructure/docker/dgfy-api/Dockerfile
-    ports:
-      - "5100:5100"
-
   frontend:
     image: dgfy-platform-frontend:dev
     build:
@@ -36,6 +28,7 @@ services:
       args:
         VITE_API_URL: /api/v1
         VITE_STORE_BASE_PATH: /
+        VITE_SENTRY_ENABLED: "false"
 
   nginx:
     environment:

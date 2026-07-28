@@ -46,7 +46,7 @@ export function useDiscoveryStoreLoader({
       if (requestSearch) query.set('search', requestSearch);
       query.set('result_mode', discoveryResultMode);
       query.set('stock_filter', discoveryStockFilter);
-      query.set('pin_scope', discoveryPinScope);
+      query.set('pin_scope', options?.pinScope || discoveryPinScope);
       query.set('include_match_meta', discoveryIncludeMatchMeta ? 'true' : 'false');
 
       if (resolvedCoords?.latitude && resolvedCoords?.longitude) {

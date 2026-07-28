@@ -1,5 +1,11 @@
 import { StorefrontDiscoveryIndex } from '../../../models/index.js';
-import { reconcileStorefrontDiscoveryIndex } from '../../../services/storefrontDiscoveryIndexService.js';
+import { geoSearchRepository } from '../../geoSearch/repositories/geoSearchRepository.js';
+import {
+    reconcileStorefrontDiscoveryIndex,
+    upsertExternalStorefrontListing,
+    removeExternalStorefrontListing,
+    listExternalStorefrontListings
+} from '../../../services/storefrontDiscoveryIndexService.js';
 import { getStorefrontDiscoveryCacheVersion } from '../../../services/storefrontDiscoveryCacheState.js';
 import { getStorefrontDiscoverySharedSignature } from '../../../services/storefrontDiscoveryFreshnessService.js';
 import logger from '../../../config/logger.js';
@@ -603,6 +609,10 @@ const toPlainEntry = (row) => {
     return {
     tenant_id: plain.tenant_id,
     tenant_name: plain.tenant_name,
+    entity_type: plain.entity_type || 'dgfy_native',
+    external_provider: plain.external_provider || null,
+    external_reference_id: plain.external_reference_id || null,
+    external_storefront_url: plain.external_storefront_url || null,
     slug: plain.slug,
     storefront_open: plain.storefront_open === true,
     workflow_mode: normalizeWorkflowMode(plain.workflow_mode || DEFAULT_WORKFLOW_MODE),
@@ -899,13 +909,61 @@ const applyDiscoveryQuery = async (entries = [], query = {}) => {
         });
     }
 
+    // Supplemental signal only — never the sole gate for a match. geo-search brings its
+    // own radius+alias (geo_item_aliases) matching, populated from the same reconciliation
+    // pass as the Discovery index (see geoCatalogSyncService.js), so it can surface tenants
+    // whose item text doesn't literally contain the query/alias terms. Additive-only: it
+    // can never remove a tenant the snapshot-based match already found, so a lagging or
+    // unpopulated geo-search table degrades back to today's behavior, not to fewer results.
+    if (search && withDistance) {
+        try {
+            const geoResult = await geoSearchRepository.searchNearbyStores({
+                query: search,
+                latitude: lat,
+                longitude: lng,
+                radius: 50,
+                stockFilter: stockFilter === 'include_out_of_stock' ? 'include_out_of_stock' : 'in_stock_only',
+                page: 1,
+                limit: 50
+            });
+            (geoResult?.stores || []).forEach((store) => {
+                const tenantId = String(store?.tenant_id || '').trim();
+                if (!tenantId) return;
+                const geoMeta = {
+                    matching_item_count: Number(store.matched_item_count || 0),
+                    matching_item_sample: Array.isArray(store.matched_item_names) ? store.matched_item_names.slice(0, 3) : [],
+                    matching_location_ids: [],
+                    in_stock_location_ids: [],
+                    has_in_stock_match: Number(store.in_stock_match_count || 0) > 0
+                };
+                const existing = itemMatchByTenant.get(tenantId);
+                if (!existing) {
+                    itemMatchByTenant.set(tenantId, geoMeta);
+                    return;
+                }
+                itemMatchByTenant.set(tenantId, {
+                    matching_item_count: Math.max(existing.matching_item_count || 0, geoMeta.matching_item_count),
+                    matching_item_sample: existing.matching_item_sample?.length > 0 ? existing.matching_item_sample : geoMeta.matching_item_sample,
+                    matching_location_ids: existing.matching_location_ids,
+                    in_stock_location_ids: existing.in_stock_location_ids,
+                    has_in_stock_match: existing.has_in_stock_match || geoMeta.has_in_stock_match
+                });
+            });
+        } catch (error) {
+            logger.warn('[StorefrontDiscovery] Geo-search supplemental match failed', {
+                error: error?.message || 'unknown_error'
+            });
+        }
+    }
+
     if (search) {
         rows.forEach((entry) => {
             const matched = publicSearchTextMatches([
                 entry?.tenant_name,
                 entry?.slug,
                 entry?.address_line,
-                entry?.location_name
+                entry?.location_name,
+                ...(Array.isArray(entry?.storefront_categories) ? entry.storefront_categories : [])
             ].filter(Boolean).join(' '), search);
             if (matched) tenantFieldMatches.add(String(entry.tenant_id || ''));
         });
@@ -1076,7 +1134,12 @@ export const storefrontDiscoveryRepository = {
             findFn: StorefrontDiscoveryIndex.findOne.bind(StorefrontDiscoveryIndex),
             queryOptions: {
             where: {
-                slug: normalizedSlug,
+                // Accept either the canonical storefront slug or the compact affiliate
+                // slug (used by short QR/share links) — both resolve to the same store.
+                [Op.or]: [
+                    { slug: normalizedSlug },
+                    { affiliate_slug: normalizedSlug }
+                ],
                 is_visible: true
             }
             },
@@ -1119,6 +1182,19 @@ export const storefrontDiscoveryRepository = {
         };
         await writeRedisCacheEntry(cacheKey, enriched, DISCOVERY_PROFILE_REDIS_CACHE_TTL_SECONDS);
         return enriched;
+    },
+
+    async upsertExternalListing({ slug, payload } = {}) {
+        return upsertExternalStorefrontListing({ slug, payload });
+    },
+
+    async deleteExternalListingBySlug(slug) {
+        return removeExternalStorefrontListing({ slug });
+    },
+
+    async listExternalListings() {
+        const rows = await listExternalStorefrontListings();
+        return (rows || []).map(toPlainEntry);
     }
 };
 

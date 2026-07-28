@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from '../main.jsx';
+import { BrowserRouter } from 'react-router-dom';
 
 vi.mock('maplibre-gl', () => {
   function PopupApi() {
@@ -200,7 +201,7 @@ describe('discovery header customer account actions', () => {
   });
 
   it('shows separate customer auth and business registration actions on discovery header', async () => {
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
@@ -210,12 +211,12 @@ describe('discovery header customer account actions', () => {
 
   it('routes the discovery auth action to the canonical DGFY auth page', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await user.click(screen.getByRole('button', { name: /log in \/ sign up/i }));
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/dgfy/auth');
+      expect(window.location.pathname).toBe('/login');
     });
     const authParams = new URLSearchParams(window.location.search);
     expect(authParams.get('intent')).toBe('customer');
@@ -234,7 +235,7 @@ describe('discovery header customer account actions', () => {
         email: 'kate@example.com'
       }
     });
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
@@ -253,7 +254,7 @@ describe('discovery header customer account actions', () => {
         email: 'kate@example.com'
       }
     });
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /back to discovery/i })).toBeTruthy();
@@ -273,7 +274,7 @@ describe('discovery header customer account actions', () => {
         email: 'cookie@example.com'
       }
     });
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /^cc$/i })).toBeTruthy();
@@ -298,7 +299,7 @@ describe('discovery header customer account actions', () => {
       }
     });
     const user = userEvent.setup();
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /log in \/ sign up/i })).toBeTruthy();
@@ -308,7 +309,7 @@ describe('discovery header customer account actions', () => {
 
     await user.click(screen.getByRole('button', { name: /log in \/ sign up/i }));
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/dgfy/auth');
+      expect(window.location.pathname).toBe('/login');
     });
     const authParams = new URLSearchParams(window.location.search);
     expect(authParams.get('intent')).toBe('customer');
@@ -330,7 +331,7 @@ describe('discovery header customer account actions', () => {
       }
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /^cc$/i })).toBeTruthy();
@@ -353,7 +354,7 @@ describe('discovery header customer account actions', () => {
       }
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
       expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/v1/dgfy/auth/handoff/exchange'))).toBe(true);
@@ -383,7 +384,7 @@ describe('discovery header customer account actions', () => {
       }
     });
 
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /back to discovery/i })).toBeTruthy();
@@ -414,7 +415,7 @@ describe('discovery header customer account actions', () => {
       }
     });
     const user = userEvent.setup();
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /back to discovery/i })).toBeTruthy();
@@ -443,7 +444,7 @@ describe('discovery header customer account actions', () => {
       }
     });
     const user = userEvent.setup();
-    render(<App />);
+    render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: /back to discovery/i })).toBeTruthy();

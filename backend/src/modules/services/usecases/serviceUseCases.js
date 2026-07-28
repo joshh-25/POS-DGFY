@@ -10,7 +10,19 @@ import {
     isCustomerAccessModesEnabled,
     resolveAccessPolicyFromSettings
 } from '../../shared/utils/customerAccessPolicy.js';
-import { isDateWithinStorefrontBusinessHours } from '../../shared/utils/storefrontBusinessHours.js';
+import {
+    getZonedDayStart,
+    isDateWithinStorefrontBusinessHours,
+    normalizeStorefrontBusinessHours
+} from '../../shared/utils/storefrontBusinessHours.js';
+import {
+    resolveStockBearingDescriptor,
+    resolveStockExemptReason
+} from '../../shared/utils/stockBearingPolicy.js';
+
+const VAT_RATE = 0.12;
+const POS_PAYMENT_TYPES = Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph']);
+const SETTLEABLE_BOOKING_STATUSES = Object.freeze(['requested', 'confirmed', 'checked_in', 'in_service', 'completed']);
 
 const BOOKING_STATUSES = Object.freeze(['requested', 'confirmed', 'checked_in', 'in_service', 'completed', 'cancelled', 'no_show']);
 const PAYMENT_POLICIES = Object.freeze(['customer_choice', 'prepaid_required', 'postpaid_only', 'deposit_allowed']);
@@ -242,10 +254,24 @@ const serializeCatalogItem = (row = {}, options = {}) => {
     return payload;
 };
 
-const bookingAmount = (row = {}) => round4(
-    (row?.serviceItem?.default_sale_price ?? row?.service?.default_sale_price ?? 0)
-    * Math.max(1, Number(row?.quantity || 1))
-);
+// Bookings created after booking_lines existed carry a price snapshot taken at
+// booking time -- summing it keeps a later item price change from silently
+// rewriting the amount of a historical booking. Bookings created before this
+// column existed have no lines and fall back to the legacy live-price read.
+const sumBookingLineAmounts = (row = {}) => {
+    const lines = Array.isArray(row?.lines) ? row.lines : [];
+    if (lines.length === 0) return null;
+    return round4(lines.reduce((sum, line) => sum + Number(line?.line_amount || 0), 0));
+};
+
+const bookingAmount = (row = {}) => {
+    const snapshotTotal = sumBookingLineAmounts(row);
+    if (snapshotTotal !== null) return snapshotTotal;
+    return round4(
+        (row?.serviceItem?.default_sale_price ?? row?.service?.default_sale_price ?? 0)
+        * Math.max(1, Number(row?.quantity || 1))
+    );
+};
 
 const bookingDurationMinutes = (row = {}, detail = null) => {
     const fromDetail = toPositiveInt(detail?.duration_minutes);
@@ -299,7 +325,6 @@ const serializeBooking = (booking = {}, { publicSafe = false } = {}) => {
         payment_status: row.payment_status,
         payment_reference: row.payment_reference || null,
         payment_checkout_url: row.payment_checkout_url || null,
-        pos_transaction_id: row.pos_transaction_id || null,
         total_amount: bookingAmount(row),
         source: row.source,
         notes: row.notes || null,
@@ -320,13 +345,18 @@ const serializeBooking = (booking = {}, { publicSafe = false } = {}) => {
             default_sale_price: item.default_sale_price,
             vat_type: item.vat_type || 'vatable',
             duration_minutes: detail?.duration_minutes || null
-        } : null,
-        pos_transaction: row.posTransaction || null
+        } : null
     };
+    // pos_transaction / pos_transaction_id link a booking to its settled POS transaction
+    // (invoice_number, tracking_pin, total_amount, ...). These are internal fields, not
+    // customer-facing -- an unauthenticated caller must never be able to read another
+    // transaction's details back through a guessed or replayed booking reference.
     if (!publicSafe) {
         payload.customer_name = row.customer_name;
         payload.customer_email = row.customer_email || null;
         payload.customer_phone = row.customer_phone || null;
+        payload.pos_transaction_id = row.pos_transaction_id || null;
+        payload.pos_transaction = row.posTransaction || null;
     }
     return payload;
 };
@@ -897,7 +927,11 @@ const intervalsOverlap = (leftStart, leftEnd, rightStart, rightEnd) => (
 );
 
 const bookingQuantity = (booking = {}) => Math.max(1, Number(booking.quantity || 1));
-const bookingLineAmount = (booking = {}) => round4(Number(booking?.serviceItem?.default_sale_price || 0) * bookingQuantity(booking));
+const bookingLineAmount = (booking = {}) => {
+    const snapshotTotal = sumBookingLineAmounts(booking);
+    if (snapshotTotal !== null) return snapshotTotal;
+    return round4(Number(booking?.serviceItem?.default_sale_price || 0) * bookingQuantity(booking));
+};
 
 const pendingBookingConflicts = ({
     providerUserId,
@@ -932,20 +966,21 @@ const formatLocalDateKey = (date) => `${date.getFullYear()}-${String(date.getMon
 
 const addMinutes = (date, minutes) => new Date(date.getTime() + (minutes * 60 * 1000));
 
-const startOfDay = (date) => {
-    const clone = new Date(date);
-    clone.setHours(0, 0, 0, 0);
-    return clone;
-};
-
+// NOTE: dayAvailabilityKeys()/isWithinWeeklyAvailability() still key off
+// Date.prototype.getDay()/getHours() (server-local time), used at actual
+// booking-creation validation time (createServiceBookingRecord and friends).
+// That is a separate, larger fix -- it touches the booking-creation path
+// itself, not just this browse-time preview -- and is intentionally left for
+// a follow-up rather than folded into this one.
 const buildAvailabilityStartCandidates = ({
     date,
     durationMinutes,
     intervalMinutes,
     leadTimeMinutes,
-    weeklyAvailability = null
+    weeklyAvailability = null,
+    timezone = null
 }) => {
-    const dayStart = startOfDay(date);
+    const dayStart = getZonedDayStart(date, timezone);
     const dayEnd = addMinutes(dayStart, 24 * 60);
     const earliest = new Date(Date.now() + (toNonNegativeInt(leadTimeMinutes, 0) * 60 * 1000));
     const hasAvailabilityRules = isPlainObject(weeklyAvailability) && Object.keys(weeklyAvailability).length > 0;
@@ -965,11 +1000,6 @@ const buildAvailabilityStartCandidates = ({
             candidates.push(new Date(cursor));
         }
     });
-    if (candidates.length === 0 && !hasAvailabilityRules) {
-        for (let cursor = addMinutes(dayStart, 9 * 60); cursor.getTime() + (durationMinutes * 60 * 1000) <= addMinutes(dayStart, 17 * 60).getTime(); cursor = addMinutes(cursor, intervalMinutes)) {
-            if (cursor.getTime() >= earliest.getTime() && cursor.getTime() < dayEnd.getTime()) candidates.push(new Date(cursor));
-        }
-    }
     return candidates;
 };
 
@@ -1160,6 +1190,8 @@ export const buildGetServiceAvailabilityUseCase = ({ serviceRepository }) => asy
         const requestedProviderUserId = toPositiveInt(query.provider_user_id);
         const requestedLocationId = toPositiveInt(query.location_id);
         const intervalMinutes = Math.max(5, Math.min(240, toPositiveInt(query.slot_interval_minutes, 30)));
+        const storefrontSettings = await loadServiceStorefrontSettings(serviceRepository);
+        const timezone = normalizeStorefrontBusinessHours(storefrontSettings?.storefront_hours?.value)?.timezone || null;
 
         const service = await serviceRepository.findServiceItemById(serviceItemId, {
             storefrontLocationId: storefrontOnly ? requestedLocationId : null
@@ -1213,8 +1245,9 @@ export const buildGetServiceAvailabilityUseCase = ({ serviceRepository }) => asy
         let checkedSlots = 0;
         const bufferBeforeMinutes = toNonNegativeInt(detail.buffer_before_minutes, 0);
         const bufferAfterMinutes = toNonNegativeInt(detail.buffer_after_minutes, 0);
-        const dayWindowStart = addMinutes(startOfDay(date), -bufferBeforeMinutes);
-        const dayWindowEnd = addMinutes(startOfDay(date), (24 * 60) + durationMinutes + bufferAfterMinutes);
+        const zonedDayStart = getZonedDayStart(date, timezone);
+        const dayWindowStart = addMinutes(zonedDayStart, -bufferBeforeMinutes);
+        const dayWindowEnd = addMinutes(zonedDayStart, (24 * 60) + durationMinutes + bufferAfterMinutes);
         const availabilityConflicts = typeof serviceRepository.findAvailabilityConflicts === 'function'
             ? await serviceRepository.findAvailabilityConflicts({
                 serviceItemId: service.item_id,
@@ -1240,7 +1273,8 @@ export const buildGetServiceAvailabilityUseCase = ({ serviceRepository }) => asy
                 durationMinutes,
                 intervalMinutes,
                 leadTimeMinutes: detail.lead_time_minutes,
-                weeklyAvailability: candidate.weeklyAvailability
+                weeklyAvailability: candidate.weeklyAvailability,
+                timezone
             });
             if (startCandidates.length === 0) {
                 incrementReason(reasonCounts, 'outside_weekly_availability_or_lead_time');
@@ -1678,6 +1712,22 @@ const createServiceBookingRecord = async ({
             intake_responses: isPlainObject(payload.intake_responses) ? payload.intake_responses : null,
             ...(accountResolution.claimTokenPayload || {})
         }, { transaction });
+        // A price snapshot taken now, not read live off the item at serialization
+        // time, so a later price change never rewrites a historical booking's amount.
+        if (typeof serviceRepository.createBookingLines === 'function') {
+            await serviceRepository.createBookingLines([{
+                booking_id: booking.booking_id,
+                line_type: 'service',
+                item_id: service.item_id,
+                name_snapshot: trim(service.name, 255) || 'Service',
+                quantity,
+                unit_price: salePrice,
+                line_amount: round4(salePrice * quantity),
+                vat_type_snapshot: service.vat_type || 'vatable',
+                stock_effect_type: 'stock_exempt',
+                stock_exempt_reason: 'service_item'
+            }], { transaction });
+        }
         const hydrated = await serviceRepository.getBookingById(booking.booking_id, { transaction });
         if (activeHold && typeof serviceRepository.updateHoldById === 'function') {
             await serviceRepository.updateHoldById(activeHold.hold_id, { status: 'consumed' }, { transaction, lock: true });
@@ -2330,6 +2380,251 @@ export const buildGetServiceBookingByReferenceUseCase = ({ serviceRepository }) 
         return ok({ booking: serializeBooking(booking, { publicSafe: true }) });
     } catch (error) {
         return fail(mapError(error, 'Failed to load service booking'));
+    }
+};
+
+const serializeSettlementTransaction = (transaction = {}) => {
+    const row = toPlain(transaction) || {};
+    return {
+        pos_transaction_id: row.pos_transaction_id,
+        invoice_number: row.invoice_number,
+        document_type: row.document_type,
+        document_context: row.document_context,
+        payment_type: row.payment_type,
+        payment_status: row.payment_status,
+        total_amount: row.total_amount,
+        created_at: row.created_at
+    };
+};
+
+// Calls the injected inventory command port the same way POS checkout does
+// (posUseCases.js's executeInventoryStockCommand) -- duplicated locally rather
+// than imported cross-module, since usecases in one module don't reach into
+// another module's usecases file.
+const callInventoryStockCommand = async ({ inventoryCommandService, command, movementData, userId, transaction }) => {
+    const commandFn = inventoryCommandService?.[command] || inventoryCommandService?.createStockMovement;
+    if (typeof commandFn !== 'function') {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            `Inventory stock command is unavailable: ${command}`,
+            { statusCode: 409 }
+        );
+    }
+    return commandFn(movementData, userId, transaction);
+};
+
+// Booking -> sale settlement (ADR 0016:107 anticipates this: "creates an
+// unpaid booking/ticket for POS collection later"). Produces a linked
+// pos_transaction that issues its own receipt -- the booking ticket stays a
+// separate document (ADR 0016:20) -- and is idempotent: settling an already-
+// settled booking replays the existing transaction rather than creating a
+// second one.
+export const buildSettleServiceBookingUseCase = ({ serviceRepository, inventoryCommandService }) => async ({
+    bookingId,
+    payload = {},
+    user = null
+} = {}) => {
+    const normalizedBookingId = toPositiveInt(bookingId);
+    if (!normalizedBookingId) {
+        return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'booking_id is required', { statusCode: 422 }));
+    }
+    const normalizedUserId = toPositiveInt(user?.user_id);
+
+    const transaction = await serviceRepository.beginTransaction();
+    try {
+        const booking = await serviceRepository.getBookingById(normalizedBookingId, { transaction, lock: true });
+        if (!booking) {
+            throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Booking not found', { statusCode: 404 });
+        }
+        if (!SETTLEABLE_BOOKING_STATUSES.includes(String(booking.status || ''))) {
+            throw new DomainError(
+                DomainErrorCode.CONFLICT,
+                `Cannot settle a booking with status ${booking.status}`,
+                { statusCode: 409 }
+            );
+        }
+
+        if (booking.pos_transaction_id) {
+            const existingTransaction = await serviceRepository.getPosTransactionSnapshotById(
+                booking.pos_transaction_id,
+                { transaction }
+            );
+            await transaction.commit();
+            return ok({
+                booking: serializeBooking(booking),
+                pos_transaction: serializeSettlementTransaction(existingTransaction),
+                idempotency: { outcome: 'idempotent_replay', idempotent_replay: true }
+            });
+        }
+
+        const existingLines = Array.isArray(booking.lines) && booking.lines.length > 0
+            ? booking.lines.map(toPlain)
+            : [{
+                line_type: 'service',
+                item_id: booking.service_item_id,
+                name_snapshot: booking.serviceItem?.name || 'Service',
+                quantity: Math.max(1, Number(booking.quantity || 1)),
+                unit_price: round4(bookingAmount(booking) / Math.max(1, Number(booking.quantity || 1))),
+                line_amount: bookingAmount(booking),
+                vat_type_snapshot: booking.serviceItem?.vat_type || 'vatable',
+                stock_effect_type: 'stock_exempt',
+                stock_exempt_reason: 'service_item'
+            }];
+
+        const requestedParts = Array.isArray(payload.parts) ? payload.parts : [];
+        const newPartLineRows = [];
+        for (const part of requestedParts) {
+            const itemId = toPositiveInt(part?.item_id);
+            const quantity = Number(part?.quantity);
+            if (!itemId || !Number.isFinite(quantity) || quantity <= 0) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Each part requires a positive item_id and quantity',
+                    { statusCode: 422 }
+                );
+            }
+            const item = await serviceRepository.findItemById(itemId, { transaction, lock: true });
+            if (!item) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, `Part item ${itemId} not found`, { statusCode: 404 });
+            }
+            const descriptor = resolveStockBearingDescriptor(item);
+            const unitPrice = round4(item.default_sale_price);
+            newPartLineRows.push({
+                booking_id: normalizedBookingId,
+                line_type: 'part',
+                item_id: item.item_id,
+                name_snapshot: trim(item.name, 255) || `Item ${item.item_id}`,
+                quantity,
+                unit_price: unitPrice,
+                line_amount: round4(unitPrice * quantity),
+                vat_type_snapshot: item.vat_type || 'vatable',
+                stock_effect_type: descriptor.emits_movements ? 'inventory_issue' : 'stock_exempt',
+                stock_exempt_reason: descriptor.emits_movements ? null : resolveStockExemptReason(item, descriptor)
+            });
+        }
+        const createdPartLines = newPartLineRows.length > 0
+            ? await serviceRepository.createBookingLines(newPartLineRows, { transaction })
+            : [];
+
+        const allLines = [...existingLines, ...createdPartLines];
+        if (allLines.length === 0) {
+            throw new DomainError(DomainErrorCode.CONFLICT, 'Booking has no lines to settle', { statusCode: 409 });
+        }
+
+        let vatableGross = 0;
+        let vatExemptSales = 0;
+        let zeroRatedSales = 0;
+        allLines.forEach((line) => {
+            const amount = round4(line.line_amount);
+            if (line.vat_type_snapshot === 'zero_rated') zeroRatedSales = round4(zeroRatedSales + amount);
+            else if (line.vat_type_snapshot === 'vat_exempt') vatExemptSales = round4(vatExemptSales + amount);
+            else vatableGross = round4(vatableGross + amount);
+        });
+        const vatableSales = round4(vatableGross / (1 + VAT_RATE));
+        const vatAmount = round4(vatableGross - vatableSales);
+        const totalAmount = round4(vatableGross + vatExemptSales + zeroRatedSales);
+
+        const idempotencyKey = `SERVICE_BOOKING_SETTLE:${booking.public_reference}`;
+        const requestHash = hashRequestPayload({
+            booking_id: normalizedBookingId,
+            lines: allLines.map((line) => ({ item_id: line.item_id, quantity: line.quantity, unit_price: line.unit_price }))
+        });
+        const invoiceNumber = await serviceRepository.nextSettlementInvoiceNumber({ transaction });
+        const locationId = toPositiveInt(booking.location_id) || toPositiveInt(payload.location_id) || null;
+        const paymentType = POS_PAYMENT_TYPES.includes(String(payload.payment_type || '').trim())
+            ? String(payload.payment_type).trim()
+            : 'cash';
+
+        const { transactionId, lines: createdPosLines } = await serviceRepository.createSettlementTransaction({
+            header: {
+                invoice_number: invoiceNumber,
+                document_type: 'non_fiscal_slip',
+                document_context: 'non_fiscal',
+                idempotency_key: idempotencyKey,
+                request_hash: requestHash,
+                cashier_id: normalizedUserId,
+                terminal_id: trim(payload.terminal_id, 100) || null,
+                order_source: 'in_store',
+                order_method: 'appointment',
+                fulfillment_status: 'completed',
+                location_id: locationId,
+                customer_name: booking.customer_name,
+                customer_email: booking.customer_email || null,
+                customer_phone: booking.customer_phone || null,
+                payment_type: paymentType,
+                cash_received: payload.cash_received == null ? null : round4(payload.cash_received),
+                change_amount: payload.change_amount == null ? null : round4(payload.change_amount),
+                subtotal_amount: totalAmount,
+                vatable_sales: vatableSales,
+                vat_amount: vatAmount,
+                vat_exempt_sales: vatExemptSales,
+                zero_rated_sales: zeroRatedSales,
+                total_amount: totalAmount,
+                status: 'completed',
+                payment_status: 'paid',
+                special_instructions: `Service booking settlement for ${booking.public_reference}`
+            },
+            lines: allLines.map((line) => ({
+                item_id: line.item_id,
+                quantity: line.quantity,
+                stock_effect_type: line.stock_effect_type,
+                stock_exempt_reason: line.stock_exempt_reason || null,
+                sale_price: line.unit_price,
+                line_subtotal: line.line_amount,
+                vat_type_snapshot: line.vat_type_snapshot || 'vatable',
+                vat_rate_snapshot: line.vat_type_snapshot === 'vatable' ? VAT_RATE : 0
+            }))
+        }, { transaction });
+
+        for (let index = 0; index < allLines.length; index += 1) {
+            const line = allLines[index];
+            const posLineId = createdPosLines[index]?.line_id || null;
+            if (line.stock_effect_type === 'inventory_issue') {
+                const movement = await callInventoryStockCommand({
+                    inventoryCommandService,
+                    command: 'issueStockForPosSale',
+                    movementData: {
+                        item_id: line.item_id,
+                        quantity: Number(line.quantity),
+                        movement_type: 'goods_issue',
+                        location_id: locationId,
+                        reference_type: 'POS',
+                        reference_id: String(transactionId),
+                        notes: `Part consumed for service booking ${booking.public_reference}`
+                    },
+                    userId: normalizedUserId,
+                    transaction
+                });
+                if (line.booking_line_id) {
+                    await serviceRepository.updateBookingLineById(line.booking_line_id, {
+                        stock_movement_id: movement?.movement_id || null,
+                        pos_transaction_line_id: posLineId
+                    }, { transaction });
+                }
+            } else if (line.booking_line_id) {
+                await serviceRepository.updateBookingLineById(line.booking_line_id, {
+                    pos_transaction_line_id: posLineId
+                }, { transaction });
+            }
+        }
+
+        await serviceRepository.updateBookingById(normalizedBookingId, {
+            pos_transaction_id: transactionId,
+            payment_status: 'paid',
+            status: 'completed'
+        }, { transaction, lock: true });
+
+        const updatedBooking = await serviceRepository.getBookingById(normalizedBookingId, { transaction });
+        const settlementTransaction = await serviceRepository.getPosTransactionSnapshotById(transactionId, { transaction });
+        await transaction.commit();
+        return ok({
+            booking: serializeBooking(updatedBooking),
+            pos_transaction: serializeSettlementTransaction(settlementTransaction),
+            idempotency: { outcome: 'settled', idempotent_replay: false }
+        });
+    } catch (error) {
+        if (!transaction.finished) await transaction.rollback();
+        return fail(mapError(error, 'Failed to settle service booking'));
     }
 };
 

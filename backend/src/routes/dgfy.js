@@ -70,6 +70,22 @@ import {
     validateDgfyReviewInvite,
     verifyDgfyTrackingRecovery
 } from '../modules/dgfy/controllers/dgfyCustomerHandlers.js';
+import {
+    acceptAffiliateInvite,
+    cancelAffiliateCashout,
+    captureAffiliateAttribution,
+    createAffiliatePayoutMethod,
+    deleteAffiliatePayoutMethod,
+    enrollSelfServeAffiliate,
+    getAffiliateEarnings,
+    getAffiliateInvitePreview,
+    listAffiliatePayoutMethods,
+    listMyAffiliateCashouts,
+    listMyAffiliateEnrollments,
+    requestAffiliateCashout,
+    setDefaultAffiliatePayoutMethod,
+    updateAffiliatePayoutMethod
+} from '../modules/dgfy/controllers/dgfyAffiliateHandlers.js';
 
 const router = express.Router();
 
@@ -137,5 +153,27 @@ router.get('/customer/reviews/moderation', authenticateAdmin, listDgfyCustomerRe
 router.post('/customer/reviews/:review_id/moderate', authenticateAdmin, moderateDgfyCustomerReview);
 router.post('/customer/tracking-recovery/request', authLimiter, requestDgfyTrackingRecovery);
 router.post('/customer/tracking-recovery/verify', authLimiter, verifyDgfyTrackingRecovery);
+
+router.get('/affiliate/enrollments', authenticateDgfyAccount, listMyAffiliateEnrollments);
+router.post('/affiliate/enroll', authenticateDgfyAccount, enrollSelfServeAffiliate);
+router.get('/affiliate/earnings', authenticateDgfyAccount, getAffiliateEarnings);
+router.get('/affiliate/payout-methods', authenticateDgfyAccount, listAffiliatePayoutMethods);
+router.post('/affiliate/payout-methods', authenticateDgfyAccount, createAffiliatePayoutMethod);
+router.patch('/affiliate/payout-methods/:payout_method_id/default', authenticateDgfyAccount, setDefaultAffiliatePayoutMethod);
+router.put('/affiliate/payout-methods/:payout_method_id', authenticateDgfyAccount, updateAffiliatePayoutMethod);
+router.patch('/affiliate/payout-methods/:payout_method_id', authenticateDgfyAccount, updateAffiliatePayoutMethod);
+router.delete('/affiliate/payout-methods/:payout_method_id', authenticateDgfyAccount, deleteAffiliatePayoutMethod);
+router.post('/affiliate/cashouts', authenticateDgfyAccount, requestAffiliateCashout);
+router.get('/affiliate/cashouts', authenticateDgfyAccount, listMyAffiliateCashouts);
+router.patch('/affiliate/cashouts/:cashout_id/cancel', authenticateDgfyAccount, cancelAffiliateCashout);
+// Public, unauthenticated: a storefront page calls this on load with the ?p= short code. Dormant
+// until frontend/apps/store is wired to it (out of scope for this phase) - readies the endpoint so
+// that later phase is frontend-only.
+router.post('/affiliate/attribution/capture', authLimiter, captureAffiliateAttribution);
+
+// Affiliate invite claim flow. Preview is public (the storefront accept/register page reads it to
+// show the inviting business + lock the email); accept requires a logged-in DGFY account.
+router.get('/affiliate/invites/:token', authLimiter, getAffiliateInvitePreview);
+router.post('/affiliate/invites/accept', authenticateDgfyAccount, acceptAffiliateInvite);
 
 export default router;

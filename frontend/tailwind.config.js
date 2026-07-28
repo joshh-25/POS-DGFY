@@ -6,6 +6,15 @@ export default {
     "./src/**/*.{js,ts,jsx,tsx}",
     "./Components/**/*.{js,jsx}",
     "./Pages/**/*.{js,jsx}",
+    // The store app's DGFY auth/business pages are ports of Pages/DgfyAuthPage.jsx,
+    // Pages/DgfyResetPasswordPage.jsx and Pages/RegisterCompany.jsx, so they need the
+    // same utilities generated. Deliberately scoped to those two directories rather
+    // than all of ./apps/**: other app files (Components/store/InfoGrid.jsx,
+    // MenuSection.jsx, the mode hero components, discoveryResultsRenderer.jsx) carry
+    // Tailwind class names that have never been generated, and widening the glob
+    // would restyle those live surfaces as a side effect.
+    "./apps/store/src/auth/**/*.{js,jsx}",
+    "./apps/store/src/business/**/*.{js,jsx}",
   ],
   theme: {
     extend: {

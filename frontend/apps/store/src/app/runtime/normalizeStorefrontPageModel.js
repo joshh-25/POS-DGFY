@@ -404,6 +404,8 @@ export const normalizeStorefrontPageModel = ({
       contactRows,
       whyChooseUs,
       galleryPreview: galleryImages.slice(0, 4).map(img => img.url),
+      galleryTotalCount: galleryImages.length,
+      galleryFull: galleryImages.map(img => img.url),
       actions: {
         canCall: Boolean(phone),
         canMessage: Boolean(messageHref),

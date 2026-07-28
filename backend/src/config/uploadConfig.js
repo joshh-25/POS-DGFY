@@ -98,6 +98,23 @@ const buildBulkCatalogImageUpload = ({ maxBytes = BULK_CATALOG_IMAGE_TRANSPORT_M
     }
 });
 
+// Menu import (PDF/PNG/JPG) — a dedicated filter rather than reusing the generic
+// `upload` above, which allows gif/webp/csv/excel/text mimetypes this feature
+// doesn't handle; those would otherwise slip past multer and fail downstream with
+// a confusing extraction error instead of a clear "unsupported file type" one.
+export const menuImportFileUpload = multer({
+    storage,
+    limits: { fileSize: IMAGE_UPLOAD_MAX_BYTES, files: 1 },
+    fileFilter: (req, file, cb) => {
+        const mime = String(file?.mimetype || '').trim().toLowerCase();
+        if (['application/pdf', 'image/jpeg', 'image/png'].includes(mime)) {
+            cb(null, true);
+            return;
+        }
+        cb(new multer.MulterError('LIMIT_UNEXPECTED_FILE', file?.fieldname || 'file'), false);
+    }
+});
+
 export const storefrontAssetUpload = buildStrictImageUpload({ maxBytes: IMAGE_UPLOAD_MAX_BYTES, maxFiles: 1 });
 export const posCatalogImageUpload = buildStrictImageUpload({ maxBytes: CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES, maxFiles: 1 });
 export const posCatalogBulkImageUpload = buildBulkCatalogImageUpload({ maxBytes: BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES, maxFiles: BULK_CATALOG_IMAGE_TRANSPORT_MAX_FILES });

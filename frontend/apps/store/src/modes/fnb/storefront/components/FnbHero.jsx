@@ -10,6 +10,8 @@ import { FnbHeroBranchSelector } from './FnbHeroBranchSelector.jsx';
 import { FnbHeroBrandingSection } from './FnbHeroBrandingSection.jsx';
 import { FnbHeroMobileInfoCards } from './FnbHeroMobileInfoCards.jsx';
 import { FnbHeroMobileOverview } from './FnbHeroMobileOverview.jsx';
+import { StorefrontAccountBranchSwitcher } from '../../../../shared/components/storefront/hero/StorefrontAccountBranchSwitcher.jsx';
+import { useStorefrontAccountBranches } from '../../../../shared/hooks/useStorefrontAccountBranches.js';
 export const FnbHero = ({
   modeAdapter,
   heroSectionModel,
@@ -19,6 +21,7 @@ export const FnbHero = ({
   cartCount,
   setIsCheckoutOpen,
   goDiscovery,
+  goStore,
   hasMultipleStoreBranches,
   hasSelectedBranchFromMenu,
   selectedLocationId,
@@ -48,6 +51,10 @@ export const FnbHero = ({
   const { HERO_CANVAS_MAX_WIDTH, MAX_STOREFRONT_WHY_CHOOSE_US, MOBILE_DROPDOWN_MENU_STYLE, MOBILE_DROPDOWN_OPTION_STYLE, MOBILE_NATIVE_SELECT_STYLE, STOREFRONT_CONTACT_INFO_COLUMNS, STOREFRONT_INFO_ICON_COLUMN, STOREFRONT_INFO_PANEL_MAX_WIDTH, STOREFRONT_INFO_ROW_GAP, STYLES } = heroStyles;
   const [isExpandedMapOpen, setIsExpandedMapOpen] = useState(false);
   const heroTheme = modeAdapter.heroTheme || {};
+  const { accountBranches, hasMultipleAccountBranches } = useStorefrontAccountBranches({
+    isStorefrontAccountAuthenticated,
+    selectedStore
+  });
   const heroViewModel = useMemo(() => buildFnbHeroViewModel({
     cartCount,
     fnbViewModel,
@@ -68,6 +75,8 @@ export const FnbHero = ({
     displayHours,
     followersLabel,
     galleryImages,
+    galleryImagesFull,
+    galleryOverflowCount,
     hasAboutOrGallerySection,
     hasAboutSection,
     hasAboutToggle,
@@ -151,6 +160,14 @@ export const FnbHero = ({
             textColor={STYLES.colors.dark}
           />
         ) : null}
+        accountStoreSwitcher={hasMultipleAccountBranches ? (
+          <StorefrontAccountBranchSwitcher
+            branches={accountBranches}
+            currentSlug={selectedStore?.slug}
+            onSelectStore={goStore}
+            compactLabel={isMobileViewport}
+          />
+        ) : null}
       />
 
       <FnbHeroBrandingSection
@@ -199,6 +216,8 @@ export const FnbHero = ({
             deliveryPlatformLinks={deliveryPlatformLinks}
             displayHours={displayHours}
             galleryImages={galleryImages}
+            galleryImagesFull={galleryImagesFull}
+            galleryOverflowCount={galleryOverflowCount}
             hasAboutSection={hasAboutSection}
             hasAboutToggle={hasAboutToggle}
             hasContactRows={hasContactRows}
@@ -237,6 +256,8 @@ export const FnbHero = ({
               STYLES={STYLES}
               aboutText={aboutText}
               galleryImages={galleryImages}
+              galleryImagesFull={galleryImagesFull}
+              galleryOverflowCount={galleryOverflowCount}
               hasAboutSection={hasAboutSection}
               hasAboutToggle={hasAboutToggle}
               hasGallerySection={hasGallerySection}
