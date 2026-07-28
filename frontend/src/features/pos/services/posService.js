@@ -17,6 +17,11 @@ export const fetchPosCatalog = async (params = {}) => {
     return response.data?.data || [];
 };
 
+export const fetchPosSettingsBootstrap = async (requestConfig = {}) => {
+    const response = await api.get('/mobile-pos/bootstrap/settings', requestConfig);
+    return response.data?.data?.settings || {};
+};
+
 export const scanPosBarcode = async (payload = {}) => {
     const response = await api.post('/pos/scan', payload, {
         headers: payload?.terminal_id

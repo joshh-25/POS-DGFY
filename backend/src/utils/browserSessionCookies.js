@@ -87,11 +87,11 @@ const appendSetCookie = (res, cookie) => {
   res.setHeader('Set-Cookie', Array.isArray(existing) ? [...existing, cookie] : [existing, cookie]);
 };
 
-export const issueCsrfToken = (res) => {
+export const issueCsrfToken = (res, { maxAgeMs = DEFAULT_REFRESH_MAX_AGE_MS } = {}) => {
   const token = crypto.randomBytes(32).toString('base64url');
   appendSetCookie(res, serializeCookie(SESSION_COOKIE_NAMES.csrf, token, {
     httpOnly: false,
-    maxAgeMs: DEFAULT_REFRESH_MAX_AGE_MS
+    maxAgeMs
   }));
   return token;
 };
@@ -109,7 +109,7 @@ export const setTenantSessionCookies = (res, { refreshToken, tenantToken }) => {
 export const setBearerSessionCookie = (res, name, token, { maxAgeMs = DEFAULT_ACCESS_MAX_AGE_MS } = {}) => {
   if (!token) return;
   appendSetCookie(res, serializeCookie(name, token, { maxAgeMs }));
-  issueCsrfToken(res);
+  issueCsrfToken(res, { maxAgeMs });
 };
 
 export const clearSessionCookie = (res, name, { httpOnly = true } = {}) => {

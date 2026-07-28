@@ -2,6 +2,7 @@ import React, { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Bell, Menu, UserRound } from 'lucide-react';
 import { resolveAppAssetUrl } from '../../../utils/assetUrl.js';
+import { getCompanyRoleLabel } from '../../../utils/companySwitcherRows.js';
 import { playOrderAlertWithIminBridge } from '../utils/iminHardwareBridge.js';
 
 import TerminalLockDrawer from './TerminalLockDrawer.jsx';
@@ -400,7 +401,7 @@ export default function TerminalPageLayout({
         type="button"
         onClick={() => setCompanyMenuOpen((open) => !open)}
         className="flex min-w-0 items-center gap-2 rounded-2xl px-1 py-1 text-left transition hover:bg-slate-100"
-        aria-label="Open admin profile menu"
+        aria-label="Open account profile menu"
         aria-expanded={companyMenuOpen}
       >
         <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#0B449C] text-white">
@@ -414,26 +415,27 @@ export default function TerminalPageLayout({
       {companyMenuOpen && (
         <div className="absolute right-0 top-full z-50 mt-2 w-80 max-w-[calc(100vw-1.5rem)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl shadow-slate-950/15">
           <div className="border-b border-slate-100 px-4 py-3">
-            <p className="text-sm font-extrabold text-[#0F172A]">Admin Profile</p>
-            <p className="mt-0.5 text-xs text-[#64748B]">Choose a company to open its POS workspace.</p>
+            <p className="text-sm font-extrabold text-[#0F172A]">Account Profile</p>
+            <p className="mt-0.5 text-xs text-[#64748B]">Choose a company and review your role before opening its POS workspace.</p>
           </div>
           <div className="max-h-72 overflow-y-auto p-2">
             {companyRows.length > 0 ? companyRows.map((company) => {
               const tenantId = String(company?.tenant_id || '').trim();
               const isCurrent = company?.is_current === true || (currentCompanyId && tenantId === currentCompanyId);
+              const roleLabel = getCompanyRoleLabel(company);
               const unavailable = Boolean(companySwitchBlockedReason) || companySwitching || isCurrent || company?.can_switch !== true;
               return (
                 <button
                   key={tenantId}
                   type="button"
                   disabled={unavailable}
-                  title={isCurrent ? 'Current company' : (companySwitchBlockedReason || '')}
+                  title={isCurrent ? `Current company as ${roleLabel}` : (companySwitchBlockedReason || `Switch to ${company?.company_name || 'company'} as ${roleLabel}`)}
                   onClick={() => onSwitchCompany(tenantId)}
                   className={`flex w-full items-center justify-between gap-3 rounded-xl px-3 py-2.5 text-left ${unavailable ? 'cursor-not-allowed opacity-60' : 'hover:bg-blue-50'}`}
                 >
                   <span className="min-w-0">
                     <span className="block truncate text-sm font-bold text-[#0F172A]">{company?.company_name || 'Unnamed company'}</span>
-                    <span className="mt-0.5 block truncate text-xs text-[#64748B]">{isCurrent ? 'Current company' : (company?.role || 'Accessible company')}</span>
+                    <span className="mt-0.5 block truncate text-xs font-semibold text-[#64748B]">{roleLabel}</span>
                   </span>
                   <span className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-extrabold uppercase tracking-wide ${isCurrent ? 'bg-blue-100 text-blue-800' : 'bg-slate-100 text-slate-600'}`}>
                     {isCurrent ? 'Current' : (companySwitching ? 'Switching' : 'Switch')}

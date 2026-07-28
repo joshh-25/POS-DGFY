@@ -188,6 +188,7 @@ export const PERMISSIONS = {
             VIEW_SETTINGS: "settings:view",  // View system settings
             EDIT_SETTINGS: "settings:edit",  // Change system settings
             EDIT_STOREFRONT_BRANDING: "settings:storefront_branding_edit", // Upload/remove storefront cover + profile assets
+            MANAGE_CATEGORIES: "categories:manage", // Create, update, deactivate, delete, and reassign categories
             MANAGE_USERS: "users:manage",    // Manage other users (Master Admin/Admin)
             VIEW_USERS: "users:view",        // View other users (Admin/Manager)
             DELETE_USERS: "users:delete",    // Remove/Deactivate users (Admin/Manager)

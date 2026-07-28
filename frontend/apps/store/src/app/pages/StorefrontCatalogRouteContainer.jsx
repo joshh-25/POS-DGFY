@@ -204,11 +204,14 @@ export function StorefrontCatalogRouteContainer(props) {
   const activeGroupMeta = activeGroup?.categoryMeta;
   const ActiveServiceGroupIcon = activeGroupMeta?.iconToken ? (SERVICE_CATEGORY_ICON_MAP[activeGroupMeta.iconToken] || Sparkles) : Sparkles;
 
-  if ((isFnbMode || isSimpleMode) && isFnbDetailsSubpage) {
+  if (isFnbDetailsSubpage) {
     return (
       <FnbProductDetailsRoute
         isActive
         {...fnbProductDetailsRouteProps}
+        loadError={catalogError}
+        loading={loadingCatalog || (!selectedStore && !catalogError)}
+        onRetry={refreshStorePageForTenantSetup}
       />
     );
   }

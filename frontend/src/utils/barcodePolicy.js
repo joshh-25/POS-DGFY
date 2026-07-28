@@ -1,6 +1,27 @@
 const SUPPORTED_GTIN_LENGTHS = new Set([8, 12, 13, 14]);
+const INTERNAL_BARCODE_PATTERN = /^[A-Z0-9._:/-]+$/;
 
 export const normalizeGtin = (value) => String(value || '').replace(/\D/g, '');
+
+export const normalizeBarcodeEntry = (value) => String(value || '')
+  .split('')
+  .filter((character) => {
+    const characterCode = character.charCodeAt(0);
+    return characterCode >= 32 && characterCode !== 127;
+  })
+  .join('')
+  .trim()
+  .toUpperCase()
+  .slice(0, 128);
+
+export const getInternalBarcodeValidationMessage = (value) => {
+  const code = normalizeBarcodeEntry(value);
+  if (code.length < 4) return 'Internal barcode must be at least 4 characters.';
+  if (!INTERNAL_BARCODE_PATTERN.test(code)) {
+    return 'Internal barcode contains unsupported characters.';
+  }
+  return '';
+};
 
 export const hasValidGtinCheckDigit = (value) => {
   const code = normalizeGtin(value);
@@ -16,7 +37,11 @@ export const hasValidGtinCheckDigit = (value) => {
 };
 
 export const getGtinValidationMessage = (value) => {
-  const code = normalizeGtin(value);
+  const rawCode = normalizeBarcodeEntry(value);
+  if (!/^\d+$/.test(rawCode)) {
+    return 'Enter a numeric GTIN-8, UPC-A, EAN-13, or GTIN-14 barcode.';
+  }
+  const code = normalizeGtin(rawCode);
   if (!SUPPORTED_GTIN_LENGTHS.has(code.length)) {
     return 'Enter a GTIN-8, UPC-A, EAN-13, or GTIN-14 barcode.';
   }

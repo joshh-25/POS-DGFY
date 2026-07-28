@@ -26,6 +26,7 @@ import {
     buildRequestDgfyBusinessStepUpUseCase,
     buildRequestDgfyPasswordResetUseCase,
     buildRequestDgfyEmailVerificationUseCase,
+    buildRecordDgfyCompanySwitchOutcomeUseCase,
     buildSearchDgfyBusinessAccountsUseCase,
     buildStartDgfyPosSessionUseCase,
     buildStartDgfyTenantSessionUseCase,
@@ -84,6 +85,7 @@ import {
 import { requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
 import { createTenantSessionForDgfyAccount } from '../../services/dgfyTenantSessionService.js';
 import { validateDgfyPosTerminalPolicy } from '../../services/dgfyPosTerminalPolicyService.js';
+import { findOwnedOpenShiftForCompanySwitch } from '../../services/posShiftCompanySwitchGuardService.js';
 import { sendEmail, sendAffiliateInviteEmail } from '../../services/emailService.js';
 import { hashInvitationToken } from '../../services/landlordService.js';
 import { buildLegacyDgfyLinkStatus } from '../../services/dgfyLegacyAccessPolicy.js';
@@ -209,10 +211,15 @@ export const requestDgfyBusinessStepUpUseCase = buildRequestDgfyBusinessStepUpUs
 export const switchDgfyCompanyUseCase = buildSwitchDgfyCompanyUseCase({
     repository: dgfyAccountRepository,
     createTenantSessionForDgfyAccount,
+    findOwnedOpenShift: findOwnedOpenShiftForCompanySwitch,
     verifyEmailOtp,
     emailOtpPurposes: {
         DGFY_BUSINESS_STEP_UP: 'dgfy_business_step_up'
     }
+});
+
+export const recordDgfyCompanySwitchOutcomeUseCase = buildRecordDgfyCompanySwitchOutcomeUseCase({
+    repository: dgfyAccountRepository
 });
 
 export const leaveDgfyCompanyUseCase = buildLeaveDgfyCompanyUseCase({

@@ -1226,6 +1226,7 @@ export const itemRepository = {
                 quality_control,
                 regulatory_compliance,
                 manufacturer_barcode,
+                internal_barcode,
                 ...dbFields
             } = itemData;
 
@@ -1289,9 +1290,25 @@ export const itemRepository = {
 
             const item = await Item.create(dataToCreate, { transaction });
 
-            if (manufacturer_barcode?.code) {
+            const requestedBarcode = manufacturer_barcode?.code
+                ? {
+                    code: manufacturer_barcode.code,
+                    source: 'manufacturer',
+                    scope: 'inventory',
+                    metadata: { attached_via: 'external_registry_prefill' }
+                }
+                : internal_barcode?.code
+                    ? {
+                        code: internal_barcode.code,
+                        source: 'tenant_generated',
+                        scope: 'pos',
+                        metadata: { attached_via: 'manual_internal_barcode' }
+                    }
+                    : null;
+
+            if (requestedBarcode) {
                 const ItemBarcode = dbStore.get('ItemBarcode');
-                const normalizedCode = normalizeBarcodeValue(manufacturer_barcode.code);
+                const normalizedCode = normalizeBarcodeValue(requestedBarcode.code);
                 const existingBarcode = await ItemBarcode.findOne({
                     where: { normalized_code: normalizedCode, is_active: true },
                     include: barcodeIncludeItem(),
@@ -1304,16 +1321,16 @@ export const itemRepository = {
 
                 const barcode = await ItemBarcode.create({
                     item_id: item.item_id,
-                    code: String(manufacturer_barcode.code).trim(),
+                    code: String(requestedBarcode.code).trim(),
                     normalized_code: normalizedCode,
-                    symbology: detectBarcodeSymbology(manufacturer_barcode.code),
-                    source: 'manufacturer',
-                    scope: 'inventory',
+                    symbology: detectBarcodeSymbology(requestedBarcode.code),
+                    source: requestedBarcode.source,
+                    scope: requestedBarcode.scope,
                     packaging_level: 'unit',
                     quantity_multiplier: 1,
                     is_primary: true,
                     is_active: true,
-                    metadata: { attached_via: 'external_registry_prefill' },
+                    metadata: requestedBarcode.metadata,
                     created_by: userId || null,
                     updated_by: userId || null
                 }, { transaction });
@@ -1323,7 +1340,10 @@ export const itemRepository = {
                     barcode,
                     action: 'CREATE',
                     eventType: 'barcode.created',
-                    changes: { source: 'manufacturer', scope: 'inventory' },
+                    changes: {
+                        source: requestedBarcode.source,
+                        scope: requestedBarcode.scope
+                    },
                     transaction
                 });
             }
@@ -1381,7 +1401,9 @@ export const itemRepository = {
             }
             if (isActiveBarcodeUniqueConstraintError(error)) {
                 const ItemBarcode = dbStore.get('ItemBarcode');
-                const normalizedCode = normalizeBarcodeValue(itemData?.manufacturer_barcode?.code);
+                const normalizedCode = normalizeBarcodeValue(
+                    itemData?.manufacturer_barcode?.code || itemData?.internal_barcode?.code
+                );
                 const existing = normalizedCode
                     ? await ItemBarcode.findOne({
                         where: { normalized_code: normalizedCode, is_active: true },

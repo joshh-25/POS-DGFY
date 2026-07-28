@@ -82,13 +82,12 @@ const payoutSnapshotSummary = (snapshot) => {
 
 export default function AffiliatesWorkspacePanel({ terminalUser, locked = false, isOnline = true, sectionId }) {
     const isMasterAdmin = terminalUser?.is_master_admin === true;
-    const normalizedRole = String(terminalUser?.role || '').trim().toLowerCase();
     const permissionList = useMemo(() => resolveUserPermissionList(terminalUser), [terminalUser]);
-    const canManage = isMasterAdmin || normalizedRole === 'admin' || permissionList.includes('affiliates:manage');
-    const canManageSettings = isMasterAdmin || normalizedRole === 'admin' || permissionList.includes('affiliates:settings');
+    const canManage = isMasterAdmin || permissionList.includes('affiliates:manage');
+    const canManageSettings = isMasterAdmin || permissionList.includes('affiliates:settings');
     const canView = canManage || canManageSettings || permissionList.includes('affiliates:view');
-    const canApproveCashouts = isMasterAdmin || normalizedRole === 'admin' || permissionList.includes('affiliates:cashout_approve');
-    const canPayCashouts = isMasterAdmin || normalizedRole === 'admin' || permissionList.includes('affiliates:cashout_pay');
+    const canApproveCashouts = isMasterAdmin || permissionList.includes('affiliates:cashout_approve');
+    const canPayCashouts = isMasterAdmin || permissionList.includes('affiliates:cashout_pay');
     const canSeeCashoutQueue = canApproveCashouts || canPayCashouts;
 
     const [loading, setLoading] = useState(true);

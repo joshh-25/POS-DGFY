@@ -9,11 +9,14 @@ const readSource = (relativePath) => fs.readFileSync(path.join(appRoot, relative
 const appSource = () => readSource('StorefrontApp.jsx');
 const routingSource = () => readSource('app/routing/storefrontRouting.js');
 const navigationSource = () => readSource('app/routing/storefrontNavigation.js');
+const storefrontAppSource = () => readSource('StorefrontApp.jsx');
 const productDetailsRouteSource = () => readSource('modes/fnb/storefront/pages/FnbProductDetailsRoute.jsx');
 const productDetailsPageSource = () => readSource('modes/fnb/storefront/pages/FnbProductDetailsPage.jsx');
+const catalogRouteContainerSource = () => readSource('app/pages/StorefrontCatalogRouteContainer.jsx');
 const productDetailsMediaSource = () => readSource('modes/fnb/storefront/components/FnbProductMediaGallery.jsx');
 const productDetailsNutritionSource = () => readSource('modes/fnb/storefront/components/FnbProductNutritionAllergens.jsx');
 const productDetailsReviewsSource = () => readSource('modes/fnb/storefront/components/FnbProductReviewsSection.jsx');
+const productDetailsRoutePropsSource = () => readSource('modes/fnb/storefront/hooks/useFnbProductDetailsRouteProps.js');
 const productDetailActionsSource = () => readSource('modes/fnb/storefront/hooks/useFnbProductDetailActions.js');
 const productCardSource = () => readSource('modes/fnb/storefront/components/FnbProductCard.jsx');
 const cartMutationsHookSource = () => readSource('shared/hooks/useCartMutations.js');
@@ -74,6 +77,36 @@ describe('Food & Beverage storefront contract', () => {
     expect(mediaSource).toContain('aria-label="Next slide"');
     expect(storefrontCatalogHookSource()).toContain('filterCatalogItems');
     expect(catalogRuntimeSource()).toContain('buildFnbCatalogPresentation');
+  });
+
+  it('keeps the customer-facing item QR out of Storefront item details', () => {
+    const detailsSource = productDetailsPageSource();
+    const routePropsSource = productDetailsRoutePropsSource();
+
+    expect(routePropsSource).not.toContain('storeSlug:');
+    expect(detailsSource).not.toContain('StorefrontItemQrCard');
+    expect(detailsSource).not.toContain('storefrontItemUrl');
+  });
+
+  it('resolves Storefront item availability before showing a final detail state', () => {
+    const appSource = storefrontAppSource();
+    const containerSource = catalogRouteContainerSource();
+    const detailsSource = productDetailsPageSource();
+    const loadingStateIndex = detailsSource.indexOf('if (!item && loading)');
+    const errorStateIndex = detailsSource.indexOf('if (!item && loadError)');
+    const unavailableStateIndex = detailsSource.indexOf('if (!item) {');
+
+    expect(appSource).toContain('!isFnbDetailsSubpage && (');
+    expect(appSource).toContain('(isFnbDetailsSubpage || (catalogPermitted && selectedStore))');
+    expect(containerSource).toContain('if (isFnbDetailsSubpage)');
+    expect(containerSource).toContain('loading={loadingCatalog || (!selectedStore && !catalogError)}');
+    expect(containerSource).toContain('loadError={catalogError}');
+    expect(containerSource).toContain('onRetry={refreshStorePageForTenantSetup}');
+    expect(detailsSource).toContain('Checking item availability...');
+    expect(detailsSource).toContain('Unable to load item');
+    expect(loadingStateIndex).toBeGreaterThan(-1);
+    expect(errorStateIndex).toBeGreaterThan(loadingStateIndex);
+    expect(unavailableStateIndex).toBeGreaterThan(errorStateIndex);
   });
 
   it('opens the cart drawer from product details without changing menu-card fly behavior', () => {

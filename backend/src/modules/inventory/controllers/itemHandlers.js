@@ -40,6 +40,8 @@ import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js'
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode, isDomainError } from '../../shared/contracts/domainErrors.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
+import { PERMISSIONS } from '../../../config/permissions.js';
+import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
@@ -161,8 +163,10 @@ export const createItem = async (req, res, next) => {
   try {
     const itemData = req.validatedData;
     const userId = req.user.user_id;
-    const role = String(req.user?.role || '').trim().toLowerCase();
-    const canManageCategories = req.user?.is_master_admin === true || role === 'admin';
+    const canManageCategories = hasEffectivePermission(
+      req.user,
+      PERMISSIONS.SYSTEM.actions.MANAGE_CATEGORIES
+    );
     const result = await runInventoryUseCase(
       () => createItemUseCase({ itemData, userId, canManageCategories }),
       'Failed to create item'
@@ -214,8 +218,10 @@ export const updateItem = async (req, res, next) => {
     const { item_id } = req.params;
     const itemData = req.validatedData;
     const userId = req.user.user_id;
-    const role = String(req.user?.role || '').trim().toLowerCase();
-    const canManageCategories = req.user?.is_master_admin === true || role === 'admin';
+    const canManageCategories = hasEffectivePermission(
+      req.user,
+      PERMISSIONS.SYSTEM.actions.MANAGE_CATEGORIES
+    );
     const result = await runInventoryUseCase(
       () => updateItemUseCase({ itemId: item_id, itemData, userId, canManageCategories }),
       'Failed to update item'
