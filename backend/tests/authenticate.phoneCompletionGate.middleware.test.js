@@ -93,7 +93,7 @@ describe('authenticate middleware phone completion gate behavior', () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  it('restores default POS permissions for an admin with a stale partial permission list', async () => {
+  it('preserves explicit company-local permissions for an admin-labeled membership', async () => {
     const loaded = await loadAuthenticate({ enforcePhoneCompletion: false });
     configureUser(loaded);
     loaded.mockFindByPk.mockResolvedValue({
@@ -114,7 +114,8 @@ describe('authenticate middleware phone completion gate behavior', () => {
     await loaded.authenticate(req, res, next);
 
     expect(next).toHaveBeenCalledTimes(1);
-    expect(req.user.permissions).toEqual(expect.arrayContaining(['pos:view', 'pos:transact']));
+    expect(req.user.permissions).toEqual(['users:view']);
+    expect(req.user.permissions).not.toEqual(expect.arrayContaining(['pos:view', 'pos:transact']));
   });
 
   it('blocks normal requests when enforcement is active', async () => {

@@ -22,46 +22,9 @@ import logger from '../config/logger.js';
 import { isValidPhoneNumber, normalizePhoneNumber, PHONE_NUMBER_VALIDATION_MESSAGE } from '../utils/phoneNumber.js';
 import { verifyEmailOtp, EMAIL_OTP_PURPOSES } from './emailOtpService.js';
 import { buildLegacyDgfyLinkStatus } from './dgfyLegacyAccessPolicy.js';
+import { hasEffectivePermission, resolveEffectivePermissions } from '../utils/userPermissions.js';
 
-const normalizePermissionArray = (rawPermissions) => {
-  let normalized = rawPermissions;
-
-  if (typeof normalized === 'string') {
-    try {
-      normalized = JSON.parse(normalized);
-    } catch {
-      normalized = [];
-    }
-  }
-
-  if (!Array.isArray(normalized)) {
-    return [];
-  }
-
-  return Array.from(
-    new Set(
-      normalized
-        .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
-        .filter(Boolean)
-    )
-  );
-};
-
-const resolveEffectivePermissions = (user) => {
-  const parsedPermissions = normalizePermissionArray(user?.permissions);
-  if (parsedPermissions.length > 0) {
-    return parsedPermissions;
-  }
-
-  const normalizedRole = String(user?.role || '').trim().toLowerCase();
-  const defaults = DEFAULT_ROLE_PERMISSIONS[normalizedRole];
-  return Array.isArray(defaults) ? [...defaults] : [];
-};
-
-const hasPermission = (user, permission) => {
-  const effectivePermissions = resolveEffectivePermissions(user);
-  return effectivePermissions.includes(permission);
-};
+const hasPermission = hasEffectivePermission;
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 

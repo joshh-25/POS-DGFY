@@ -7,9 +7,12 @@ import {
     DGFY_LEGAL_TERM_FLOWS
 } from '../../shared/utils/dgfyLegalTerms.js';
 import { normalizePhoneNumber, isValidPhoneNumber } from '../../../utils/phoneNumber.js';
+import { getModeRolePreset, getRoleCatalogMode } from '../../../config/modeRolePresets.js';
 
 const JWT_EXPIRY = process.env.DGFY_JWT_EXPIRY || process.env.JWT_EXPIRY || '24h';
 const HANDOFF_JWT_EXPIRY = process.env.DGFY_HANDOFF_JWT_EXPIRY || '2m';
+const DEFAULT_DGFY_SESSION_SECONDS = 24 * 60 * 60;
+const REMEMBERED_DGFY_SESSION_SECONDS = 30 * 24 * 60 * 60;
 const parseStepUpWindowMinutes = () => {
     const parsed = Number.parseInt(process.env.DGFY_BUSINESS_STEP_UP_WINDOW_MINUTES || process.env.EMAIL_OTP_TTL_MINUTES || '10', 10);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : 10;
@@ -100,6 +103,28 @@ const getBusinessStepUpState = (account) => {
     };
 };
 
+const compactAuditEvidence = (values = {}) => Object.fromEntries(
+    Object.entries(values).filter(([, value]) => value !== undefined && value !== null && value !== '')
+);
+
+const buildMembershipAuditEvidence = ({
+    account,
+    membership = null,
+    tenantId = null,
+    evidence = {}
+} = {}) => compactAuditEvidence({
+    actor_dgfy_account_id: account?.id || null,
+    tenant_id: tenantId || membership?.tenant_id || membership?.tenant?.id || null,
+    membership_id: membership?.id || null,
+    tenant_user_id: membership?.tenant_user_id || null,
+    company_name: membership?.tenant?.name || null,
+    role: membership?.role || null,
+    role_preset_key: membership?.role_preset_key || null,
+    membership_status: membership?.status || null,
+    source: membership?.source || null,
+    ...evidence
+});
+
 const buildBusinessAuditPayload = ({
     account,
     membership = null,
@@ -107,19 +132,32 @@ const buildBusinessAuditPayload = ({
     action,
     result,
     reason = '',
-    metadata = {}
-} = {}) => ({
-    dgfy_account_id: account?.id,
-    tenant_id: tenantId || membership?.tenant_id || membership?.tenant?.id || null,
-    membership_id: membership?.id || null,
-    action,
-    result,
-    reason: reason ? String(reason).slice(0, 500) : null,
-    request_id: metadata.request_id || null,
-    ip_address: metadata.ip_address || null,
-    user_agent: metadata.user_agent || null,
-    metadata: metadata.extra || null
-});
+    metadata = {},
+    evidence = {}
+} = {}) => {
+    const auditEvidence = buildMembershipAuditEvidence({
+        account,
+        membership,
+        tenantId,
+        evidence: {
+            ...(metadata.extra || {}),
+            ...evidence
+        }
+    });
+
+    return {
+        dgfy_account_id: account?.id,
+        tenant_id: tenantId || membership?.tenant_id || membership?.tenant?.id || null,
+        membership_id: membership?.id || null,
+        action,
+        result,
+        reason: reason ? String(reason).slice(0, 500) : null,
+        request_id: metadata.request_id || null,
+        ip_address: metadata.ip_address || null,
+        user_agent: metadata.user_agent || null,
+        metadata: Object.keys(auditEvidence).length > 0 ? auditEvidence : null
+    };
+};
 
 const isMembershipOwner = (membership, accountId = '') => {
     const tenant = membership?.tenant || null;
@@ -240,13 +278,17 @@ export const sanitizeDgfyAccount = (account) => {
     };
 };
 
-export const generateDgfyToken = (account) => jwt.sign({
+export const generateDgfyToken = (account, {
+    expiresIn = JWT_EXPIRY,
+    sessionPersistence = 'standard'
+} = {}) => jwt.sign({
     token_scope: 'dgfy',
     jti: randomUUID(),
     dgfy_account_id: account.id,
     email: account.email,
-    username: account.username
-}, process.env.JWT_SECRET, { expiresIn: JWT_EXPIRY });
+    username: account.username,
+    session_persistence: sessionPersistence
+}, process.env.JWT_SECRET, { expiresIn });
 
 export const generateDgfyHandoffToken = (account, jti) => jwt.sign({
     token_scope: 'dgfy_handoff',
@@ -444,6 +486,7 @@ export const buildLoginDgfyAccountUseCase = ({
 }) => async ({ body }) => {
     const email = normalizeEmail(body?.email);
     const password = String(body?.password || '');
+    const rememberDevice = body?.remember_device === true;
     if (!email || !password) {
         return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Email and password are required.', { statusCode: 400 }));
     }
@@ -466,14 +509,21 @@ export const buildLoginDgfyAccountUseCase = ({
     const reloaded = await repository.findById(account.id);
     await repository.mirrorPendingInvitationsForAccount?.(reloaded || account);
     await repository.mirrorLegacyFounderMembershipsForAccount?.(reloaded || account);
-    const token = generateDgfyToken(reloaded || account);
+    const expiresIn = rememberDevice
+        ? REMEMBERED_DGFY_SESSION_SECONDS
+        : DEFAULT_DGFY_SESSION_SECONDS;
+    const token = generateDgfyToken(reloaded || account, {
+        expiresIn,
+        sessionPersistence: rememberDevice ? 'remembered_device' : 'standard'
+    });
     return ok({
         payload: {
             success: true,
             data: {
                 account: sanitizeDgfyAccount(reloaded || account),
                 token,
-                expiresIn: 24 * 60 * 60
+                expiresIn,
+                rememberDevice
             }
         }
     });
@@ -902,9 +952,10 @@ export const buildCreateDgfyInvitationUseCase = ({
     sendEmail = null
 }) => async ({ tenant, adminUser, body = {}, metadata = {} }) => {
     const dgfyAccountId = String(body?.dgfy_account_id || body?.dgfyAccountId || '').trim();
-    const role = String(body?.role || 'staff').trim().toLowerCase() || 'staff';
-    const rolePresetKey = body?.role_preset_key || body?.rolePresetKey || null;
-    const permissions = role === 'cashier' ? [] : (Array.isArray(body?.permissions) ? body.permissions : []);
+    const requestedRole = String(body?.role || '').trim().toLowerCase();
+    const rolePresetKey = String(body?.role_preset_key || body?.rolePresetKey || '').trim() || null;
+    let role = requestedRole || 'staff';
+    let permissions = role === 'cashier' ? [] : (Array.isArray(body?.permissions) ? body.permissions : []);
     const locationIds = Array.isArray(body?.location_ids) ? body.location_ids : (Array.isArray(body?.locationIds) ? body.locationIds : []);
     const allowedRoles = new Set(['staff', 'cashier', 'po', 'do', 'jo', 'manager', 'admin']);
 
@@ -913,6 +964,36 @@ export const buildCreateDgfyInvitationUseCase = ({
     }
     if (!tenant?.id || !tenant?.company_token) {
         return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Tenant context is required.', { statusCode: 400 }));
+    }
+    if (rolePresetKey) {
+        try {
+            const workflowMode = await repository.getTenantWorkflowMode(tenant);
+            const preset = getModeRolePreset(rolePresetKey, workflowMode);
+            if (!preset) {
+                const roleCatalog = getRoleCatalogMode(workflowMode).replace(/_/g, ' ');
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    `Role preset is not valid for this company's ${roleCatalog} workflow.`,
+                    { statusCode: 422 }
+                ));
+            }
+            if (requestedRole && requestedRole !== preset.role) {
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Invitation role does not match the selected role preset.',
+                    { statusCode: 422 }
+                ));
+            }
+            role = preset.role;
+            permissions = preset.permissions;
+        } catch (error) {
+            if (error instanceof DomainError) return fail(error);
+            return fail(new DomainError(
+                DomainErrorCode.INTERNAL_ERROR,
+                error.message || 'Unable to resolve the company role catalog.',
+                { statusCode: error.statusCode || 500, cause: error }
+            ));
+        }
     }
     if (!allowedRoles.has(role)) {
         return fail(new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Invitation role is invalid.', { statusCode: 422 }));
@@ -956,7 +1037,18 @@ export const buildCreateDgfyInvitationUseCase = ({
             membership: result.membership,
             action: 'invitation_created',
             result: 'success',
-            metadata
+            metadata,
+            evidence: {
+                actor_tenant_user_id: adminUser?.user_id || null,
+                actor_username: adminUser?.username || null,
+                target_dgfy_account_id: result.account?.id || dgfyAccountId,
+                selected_role: role,
+                selected_role_preset_key: rolePresetKey,
+                location_ids: locationIds,
+                permissions,
+                email_sent: emailSent,
+                delivery_error: deliveryError
+            }
         }));
 
         return ok({
@@ -1009,8 +1101,17 @@ export const buildRequestDgfyBusinessStepUpUseCase = ({
 
 export const buildSwitchDgfyCompanyUseCase = ({
     repository,
-    createTenantSessionForDgfyAccount
-}) => async ({ account, tenantId, body = {}, metadata = {} }) => {
+    createTenantSessionForDgfyAccount,
+    findOwnedOpenShift = null
+}) => async ({
+    account,
+    tenantId,
+    body = {},
+    metadata = {},
+    currentTenantUserId = null,
+    currentTenantId = null,
+    authSource = ''
+}) => {
     const resolvedTenantId = String(tenantId || body?.tenant_id || body?.tenantId || '').trim();
 
     if (!resolvedTenantId) {
@@ -1029,26 +1130,59 @@ export const buildSwitchDgfyCompanyUseCase = ({
             throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'No active accepted company membership is available for this DGFY account.', { statusCode: 403 });
         }
 
+        if (
+            authSource === 'tenant_membership'
+            && currentTenantUserId
+            && typeof findOwnedOpenShift === 'function'
+        ) {
+            const openShift = await findOwnedOpenShift({
+                tenantUserId: currentTenantUserId,
+                tenantId: currentTenantId
+            });
+            if (openShift) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Close your active shift before switching companies.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: 'ACTIVE_SHIFT_OWNED',
+                            current_tenant_id: currentTenantId || null,
+                            ...openShift
+                        }
+                    }
+                );
+            }
+        }
+
         const session = await createTenantSessionForDgfyAccount({
             account,
             tenantId: resolvedTenantId
         });
         await repository.updateMembershipLastSelected?.(membership);
-        await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({
-            account,
-            membership,
-            action: 'company_switch_success',
-            result: 'success',
-            metadata
-        }));
 
-        return ok({
-            payload: {
-                success: true,
-                data: session,
-                message: 'Company switched.'
+        return {
+            ...ok({
+                payload: {
+                    success: true,
+                    data: session,
+                    message: 'Company switched.'
+                }
+            }),
+            auditContext: {
+                account,
+                membership,
+                tenantId: resolvedTenantId,
+                evidence: {
+                    current_tenant_id: currentTenantId,
+                    current_tenant_user_id: currentTenantUserId,
+                    target_tenant_user_id: membership.tenant_user_id || session?.user_id || null,
+                    target_role: membership.role || session?.role || null,
+                    target_role_preset_key: membership.role_preset_key || null,
+                    auth_source: authSource
+                }
             }
-        });
+        };
     } catch (error) {
         await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({
             account,
@@ -1057,7 +1191,24 @@ export const buildSwitchDgfyCompanyUseCase = ({
             action: 'company_switch_failed',
             result: 'failure',
             reason: error.message || 'Company switch failed.',
-            metadata
+            metadata,
+            evidence: {
+                current_tenant_id: currentTenantId,
+                current_tenant_user_id: currentTenantUserId,
+                target_tenant_id: resolvedTenantId,
+                target_tenant_user_id: membership?.tenant_user_id || null,
+                target_role: membership?.role || null,
+                target_role_preset_key: membership?.role_preset_key || null,
+                auth_source: authSource,
+                reason_code: error?.details?.reason_code || error?.code || null,
+                shift_id: error?.details?.shift_id || null,
+                terminal_id: error?.details?.terminal_id || null,
+                location_id: error?.details?.location_id || null,
+                cashier_id: error?.details?.cashier_id || null,
+                previous_session_revoked: false,
+                new_session_issued: false,
+                session_rotated: false
+            }
         }));
         if (error instanceof DomainError) return fail(error);
         return fail(new DomainError(
@@ -1066,6 +1217,34 @@ export const buildSwitchDgfyCompanyUseCase = ({
             { statusCode: error?.statusCode || 403, cause: error }
         ));
     }
+};
+
+export const buildRecordDgfyCompanySwitchOutcomeUseCase = ({
+    repository
+}) => async ({
+    account,
+    membership = null,
+    tenantId = null,
+    result = 'success',
+    reason = '',
+    metadata = {},
+    evidence = {}
+}) => {
+    const normalizedResult = result === 'success' ? 'success' : 'failure';
+    await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({
+        account,
+        membership,
+        tenantId,
+        action: normalizedResult === 'success' ? 'company_switch_success' : 'company_switch_failed',
+        result: normalizedResult,
+        reason,
+        metadata,
+        evidence
+    }));
+
+    return ok({
+        recorded: true
+    });
 };
 
 export const buildAcceptDgfyInvitationUseCase = ({
@@ -1118,7 +1297,11 @@ export const buildAcceptDgfyInvitationUseCase = ({
             membership: acceptedMembership,
             action: 'invitation_accept_success',
             result: 'success',
-            metadata
+            metadata,
+            evidence: {
+                decision: 'accepted',
+                accepted_at: acceptedMembership?.accepted_at || null
+            }
         }));
 
         return ok({
@@ -1151,7 +1334,11 @@ export const buildAcceptDgfyInvitationUseCase = ({
             action: 'invitation_accept_failed',
             result: 'failure',
             reason: error.message || 'DGFY invitation acceptance failed.',
-            metadata
+            metadata,
+            evidence: {
+                decision: 'accept',
+                reason_code: error?.details?.reason_code || error?.code || null
+            }
         }));
         if (error instanceof DomainError) return fail(error);
         return fail(new DomainError(
@@ -1190,7 +1377,10 @@ export const buildRejectDgfyInvitationUseCase = ({
             membership: declined,
             action: 'invitation_reject_success',
             result: 'success',
-            metadata
+            metadata,
+            evidence: {
+                decision: 'rejected'
+            }
         }));
         return ok({
             payload: {
@@ -1206,7 +1396,11 @@ export const buildRejectDgfyInvitationUseCase = ({
             action: 'invitation_reject_failed',
             result: 'failure',
             reason: error.message || 'DGFY invitation rejection failed.',
-            metadata
+            metadata,
+            evidence: {
+                decision: 'reject',
+                reason_code: error?.details?.reason_code || error?.code || null
+            }
         }));
         if (error instanceof DomainError) return fail(error);
         return fail(new DomainError(DomainErrorCode.INTERNAL_ERROR, 'Failed to reject DGFY invitation.', { statusCode: 500, cause: error }));
@@ -1415,6 +1609,7 @@ export const buildStartDgfyPosSessionUseCase = ({
                 terminalId,
                 tenantUserId: membership?.tenant_user_id || session?.user_id || null,
                 userRole: session?.role || membership?.role || '',
+                permissions,
                 isMasterAdmin: session?.is_master_admin === true
             })
             : { terminal_id: terminalId, reason_code: 'NOT_VALIDATED' };

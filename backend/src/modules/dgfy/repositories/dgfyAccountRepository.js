@@ -19,6 +19,7 @@ import logger from '../../../config/logger.js';
 import { DEFAULT_ROLE_PERMISSIONS } from '../../../config/permissions.js';
 import { normalizePhoneNumber } from '../../../utils/phoneNumber.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
+import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 
 const parsePositiveInt = (value) => {
     const parsed = Number.parseInt(value, 10);
@@ -29,6 +30,19 @@ const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
 const normalizeName = (value) => String(value || '').trim().replace(/\s+/g, ' ');
 const normalizeSearch = (value) => String(value || '').trim();
 const INERT_TENANT_DGFY_HASH = 'DGFY_ACCOUNT_AUTH_ONLY';
+const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
+const parseWorkflowModeSetting = (setting) => {
+    if (!setting) return DEFAULT_WORKFLOW_MODE;
+    const raw = setting.setting_value;
+    if (setting.data_type === 'json' && typeof raw === 'string') {
+        try {
+            return normalizeWorkflowMode(JSON.parse(raw));
+        } catch {
+            return DEFAULT_WORKFLOW_MODE;
+        }
+    }
+    return normalizeWorkflowMode(raw);
+};
 const maskPhone = (value) => {
     const raw = String(value || '').trim();
     if (!raw) return '';
@@ -886,6 +900,35 @@ export const dgfyAccountRepository = {
         });
     },
 
+    async getTenantWorkflowMode(tenant) {
+        if (!tenant?.id || !tenant?.company_token) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Tenant context is required to resolve the company role catalog.',
+                { statusCode: 400 }
+            );
+        }
+
+        const sequelizeInstance = await tenantConnector.getConnection(tenant);
+        const tenantModels = getTenantModels(sequelizeInstance);
+        return dbStore.run({
+            sequelize: sequelizeInstance,
+            tenantId: tenant.id,
+            tenantToken: tenant.company_token,
+            tenantName: tenant.name,
+            tenantPlan: tenant.plan,
+            ...tenantModels
+        }, async () => {
+            const SystemSetting = dbStore.get('SystemSetting');
+            if (!SystemSetting) return DEFAULT_WORKFLOW_MODE;
+            const setting = await SystemSetting.findOne({
+                where: { setting_key: WORKFLOW_MODE_SETTING_KEY },
+                attributes: ['setting_key', 'setting_value', 'data_type']
+            }).catch(() => null);
+            return parseWorkflowModeSetting(setting);
+        });
+    },
+
     findMembershipById(id, options = {}) {
         return DgfyAccountTenantMembership.findByPk(id, options);
     },
@@ -944,7 +987,14 @@ export const dgfyAccountRepository = {
                 const username = await buildUniqueUsername(User, account.first_name, tenantUserId, { transaction: tenantTransaction });
 
                 user = tenantUserId ? await User.findByPk(tenantUserId, { transaction: tenantTransaction }) : null;
-                if (!user) {
+                if (tenantUserId && !user) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'The invited company role is no longer available. Ask a company administrator to send a new invitation.',
+                        { statusCode: 409 }
+                    );
+                }
+                if (!tenantUserId) {
                     user = await User.findOne({ where: { email }, transaction: tenantTransaction });
                 }
 
