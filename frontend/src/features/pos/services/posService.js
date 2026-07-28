@@ -1,5 +1,6 @@
 import api from '@/services/api';
 import { emitPosHardwareMessage } from '../utils/posHardwareMessageBus.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../observability/analyticsEvents.js';
 
 const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
 
@@ -36,7 +37,17 @@ export const createPosCheckout = async (payload) => {
             ? { 'x-pos-terminal-id': payload.terminal_id }
             : undefined
     });
-    return response.data?.data;
+    const data = response.data?.data;
+    trackFunnelEvent(ANALYTICS_EVENTS.POS_PAYMENT_METHOD_SELECTED, {
+        payment_method: payload?.payment_method
+    });
+    trackFunnelEvent(ANALYTICS_EVENTS.POS_ORDER_COMPLETED, {
+        order_value: data?.total_amount ?? payload?.total_amount,
+        item_count: Array.isArray(payload?.items) ? payload.items.length : undefined,
+        payment_method: payload?.payment_method,
+        fulfillment_type: payload?.order_method || payload?.fulfillment_type
+    });
+    return data;
 };
 
 export const fetchPosDiscountApprovers = async () => {
@@ -62,6 +73,10 @@ export const fetchPosTransactionById = async (id) => {
 export const voidPosTransaction = async (id, payload = {}) => {
     const response = await api.post(`/pos/transactions/${id}/void`, payload, {
         headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    trackFunnelEvent(ANALYTICS_EVENTS.POS_ORDER_VOIDED, {
+        transaction_id: id,
+        reason: payload?.reason
     });
     return response.data?.data;
 };
@@ -110,6 +125,9 @@ export const printPosReceipt = async (payload = {}) => {
             tone: 'error',
             source: 'POS hardware',
             details: error?.response?.data?.errors || null
+        });
+        trackFunnelEvent(ANALYTICS_EVENTS.POS_PRINT_FAILED, {
+            reason: error?.response?.data?.message || error?.message
         });
         throw error;
     }
@@ -176,6 +194,9 @@ export const fetchCurrentTerminalShift = async (params = {}, requestConfig = {})
 
 export const openTerminalShift = async (payload = {}) => {
     const response = await api.post('/pos/terminal/shifts/open', payload);
+    trackFunnelEvent(ANALYTICS_EVENTS.POS_SHIFT_OPENED, {
+        location_id: payload?.location_id
+    });
     return response.data?.data;
 };
 
@@ -197,6 +218,7 @@ export const closeTerminalShift = async (shiftId, payload = {}) => {
     const response = await api.post(`/pos/terminal/shifts/${shiftId}/close`, payload, {
         headers: getRegisteredTerminalHeaders(payload?.terminal_id)
     });
+    trackFunnelEvent(ANALYTICS_EVENTS.POS_SHIFT_CLOSED, { shift_id: shiftId, forced: false });
     return response.data?.data;
 };
 
@@ -204,6 +226,7 @@ export const forceCloseStaleTerminalShift = async (shiftId, payload = {}) => {
     const response = await api.post(`/pos/terminal/shifts/${shiftId}/force-close`, payload, {
         headers: getRegisteredTerminalHeaders(payload?.terminal_id)
     });
+    trackFunnelEvent(ANALYTICS_EVENTS.POS_SHIFT_CLOSED, { shift_id: shiftId, forced: true });
     return response.data?.data;
 };
 

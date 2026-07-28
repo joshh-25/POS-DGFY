@@ -414,3 +414,49 @@ export const setGeoJsonSourceData = (map, sourceId, data) => {
   }
   return false;
 };
+
+// Shared maplibre source/layer for drawing a line between two points — used by
+// both order tracking (store -> customer, straight line today) and the
+// discovery map (customer -> selected store, real GraphHopper route).
+export const ROUTE_LINE_SOURCE_ID = 'dgfy-route-line';
+export const ROUTE_LINE_LAYER_ID = 'dgfy-route-line-layer';
+
+export const buildRouteLineGeoJson = (geometry) => {
+  if (!geometry || geometry.type !== 'LineString' || !Array.isArray(geometry.coordinates)) {
+    return { type: 'FeatureCollection', features: [] };
+  }
+  return {
+    type: 'FeatureCollection',
+    features: [{ type: 'Feature', properties: {}, geometry }]
+  };
+};
+
+export const ensureRouteLineLayer = (map, {
+  sourceId = ROUTE_LINE_SOURCE_ID,
+  layerId = ROUTE_LINE_LAYER_ID,
+  color = '#1a4e8d',
+  width = 4,
+  dashArray = null,
+  beforeId
+} = {}) => {
+  if (!map) return false;
+  if (typeof map.getSource === 'function' && !map.getSource(sourceId) && typeof map.addSource === 'function') {
+    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: [] } });
+  }
+  if (typeof map.getLayer === 'function' && !map.getLayer(layerId) && typeof map.addLayer === 'function') {
+    const paint = { 'line-color': color, 'line-width': width };
+    if (dashArray) paint['line-dasharray'] = dashArray;
+    map.addLayer({
+      id: layerId,
+      type: 'line',
+      source: sourceId,
+      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      paint
+    }, beforeId);
+  }
+  return true;
+};
+
+export const setRouteLineData = (map, geometry, { sourceId = ROUTE_LINE_SOURCE_ID } = {}) => (
+  setGeoJsonSourceData(map, sourceId, buildRouteLineGeoJson(geometry))
+);

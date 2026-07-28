@@ -41,7 +41,19 @@ services:
     # create triggers/functions while it's on -- the app's DB_USER below
     # is intentionally a scoped, non-root/non-SUPER user, so this flag is
     # needed instead.
-    command: --log-bin-trust-function-creators=1
+    #
+    # max_connections: MUST stay at or above the backend's connection budget --
+    # TENANT_MAX_CACHED_CONNECTIONS x TENANT_DB_POOL_MAX + LANDLORD_DB_POOL_MAX,
+    # which is 20 x 7 + 30 = 170 at the defaults in
+    # backend/src/config/connectionBudget.js. MySQL's own default is 151, i.e.
+    # BELOW that budget -- relying on it silently under-provisions the server.
+    # 200 leaves headroom for the healthcheck, migrations, and admin sessions.
+    # Keep this in sync with DB_MAX_CONNECTIONS on the backend service; the
+    # backend logs a warning at boot when the two disagree.
+    command: >
+      mysqld
+      --log-bin-trust-function-creators=1
+      --max_connections=200
     environment:
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
       MYSQL_DATABASE: ${DB_NAME}
@@ -79,12 +91,17 @@ services:
       DB_DIALECT: mysql
       REDIS_URL: redis://redis:6379
       PORT: 5000
+      # Must match the mysql service's --max_connections above. The backend
+      # compares its own pool budget against this at boot and warns on a
+      # mismatch instead of failing later under load.
+      DB_MAX_CONNECTIONS: ${DB_MAX_CONNECTIONS:-200}
       SENTRY_ENABLED: ${SENTRY_ENABLED:-false}
       SENTRY_BACKEND_DSN: ${SENTRY_BACKEND_DSN:-}
       SENTRY_ENVIRONMENT: ${SENTRY_ENVIRONMENT:-}
       SENTRY_RELEASE: ${SENTRY_RELEASE:-}
       SENTRY_TRACES_SAMPLE_RATE: ${SENTRY_TRACES_SAMPLE_RATE:-0}
       SENTRY_SEND_DEFAULT_PII: ${SENTRY_SEND_DEFAULT_PII:-false}
+      SENTRY_DEBUG: ${SENTRY_DEBUG:-false}
     volumes:
       - ./data/backend/uploads:/app/uploads
       - ./data/backend/storage:/app/storage

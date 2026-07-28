@@ -17,6 +17,11 @@ import {
   initBrowserAnalytics
 } from '../../../src/observability/analyticsClient.js';
 import { ConsentBanner } from './Components/ConsentBanner.jsx';
+import {
+  getCustomStorefrontRouteContext,
+  readRouteSlug,
+  readStoreSubpage
+} from './app/routing/storefrontRouting.js';
 
 const rootElement = document.getElementById('root');
 
@@ -34,7 +39,17 @@ function AnalyticsRouteTracker() {
   const location = useLocation();
 
   useEffect(() => {
-    capturePageview({ path: location.pathname });
+    // The storefront's real routing is a second, window.location-based layer
+    // on top of react-router (see app/routing/storefrontRouting.js) — a
+    // custom merchant domain collapses everything to `/`, `/order`, etc, so
+    // react-router's location.pathname alone under-describes the page.
+    // Reading the routing helpers here captures what page this actually is.
+    capturePageview({
+      path: location.pathname,
+      route_slug: readRouteSlug(),
+      route_subpage: readStoreSubpage(),
+      is_custom_domain: Boolean(getCustomStorefrontRouteContext())
+    });
   }, [location.pathname]);
 
   return null;

@@ -45,7 +45,9 @@ function deriveServicesHeroContent({
     hours: serviceHeroModel.hours,
     rawHoursData: serviceHeroModel.rawHoursData,
     addressText,
-    directionsUrl: serviceHeroModel.directionsUrl
+    directionsUrl: serviceHeroModel.directionsUrl,
+    destinationLatitude: selectedLocation?.latitude ?? selectedStore?.latitude,
+    destinationLongitude: selectedLocation?.longitude ?? selectedStore?.longitude
   });
   const hasWhyChooseUs = visibleWhyChooseUs.length > 0;
   const hasContactRows = visibleContactRows.length > 0;

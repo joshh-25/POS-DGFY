@@ -47,4 +47,7 @@ HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
   CMD curl -fsS http://localhost:5000/api/v1/health || exit 1
 
 ENTRYPOINT ["/sbin/tini", "--", "/usr/local/bin/entrypoint.sh"]
-CMD ["node", "src/server.js"]
+# --import loads src/instrument.js (Sentry.init) before server.js's own
+# imports, so express/mysql2 auto-instrumentation can patch those modules
+# at import time -- see the comment at the top of src/instrument.js.
+CMD ["node", "--import", "./src/instrument.js", "src/server.js"]

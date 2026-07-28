@@ -116,4 +116,42 @@ describe('storefrontTenantResolver', () => {
             company_token: 'token-2'
         });
     });
+
+    // A reconcile opens a connection to every active tenant, so an unauthenticated
+    // caller must not be able to trigger one per distinct slug. See
+    // docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md.
+    it('runs at most one reconcile for a burst of distinct unknown slugs', async () => {
+        findAllMock.mockResolvedValue([
+            {
+                slug: 'known-store',
+                tenant_id: 'tenant-1',
+                tenant_name: 'Known',
+                tenant_company_token: 'token-1'
+            }
+        ]);
+        reconcileStorefrontDiscoveryIndexMock.mockResolvedValue({ status: 'healthy' });
+
+        const results = await Promise.all([
+            resolveTenantByStoreSlug('unknown-a'),
+            resolveTenantByStoreSlug('unknown-b'),
+            resolveTenantByStoreSlug('unknown-c'),
+            resolveTenantByStoreSlug('unknown-d')
+        ]);
+
+        expect(results).toEqual([null, null, null, null]);
+        expect(reconcileStorefrontDiscoveryIndexMock).toHaveBeenCalledTimes(1);
+
+        // Sequential misses after the burst stay inside the global cooldown too.
+        await resolveTenantByStoreSlug('unknown-e');
+        await resolveTenantByStoreSlug('unknown-f');
+        expect(reconcileStorefrontDiscoveryIndexMock).toHaveBeenCalledTimes(1);
+
+        // A slug that IS in the index still resolves without any extra reconcile.
+        await expect(resolveTenantByStoreSlug('known-store')).resolves.toEqual({
+            id: 'tenant-1',
+            name: 'Known',
+            company_token: 'token-1'
+        });
+        expect(reconcileStorefrontDiscoveryIndexMock).toHaveBeenCalledTimes(1);
+    });
 });

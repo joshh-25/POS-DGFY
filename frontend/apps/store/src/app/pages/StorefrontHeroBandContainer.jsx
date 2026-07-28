@@ -21,7 +21,6 @@ import { ServicesHero } from '../../modes/services/storefront/components/Service
 import { FnbHero } from '../../modes/fnb/storefront/components/FnbHero.jsx';
 import { SimpleHero } from '../../modes/simple/storefront/components/SimpleHero.jsx';
 import HospitalityBookingPanel from '../../modes/hospitality/booking/components/HospitalityBookingPanel.jsx';
-import { StoresMap } from '../../discovery/components/StoresMap.jsx';
 
 // ZONE 1-3: Navigation & Header / Hero Branding / Location Map Snapshot + hospitality booking
 // panel — cross-mode composition (services/fnb/simple/hospitality/shared/discovery). Moved
@@ -49,6 +48,7 @@ export function StorefrontHeroBandContainer(props) {
     catalogSearch,
     setCatalogSearch,
     goDiscovery,
+    goStore,
     hasServiceCart,
     goStoreBookingPage,
     cartCount,
@@ -84,7 +84,6 @@ export function StorefrontHeroBandContainer(props) {
     handleShareAction,
     isResolvedOrderSubpage,
     simpleStorefrontModel,
-    setSelectedLocationId,
     isHospitalityMode
   } = props;
 
@@ -118,6 +117,7 @@ export function StorefrontHeroBandContainer(props) {
           catalogSearch={catalogSearch}
           setCatalogSearch={setCatalogSearch}
           goDiscovery={goDiscovery}
+          goStore={goStore}
           hasServiceCart={hasServiceCart}
           goStoreBookingPage={goStoreBookingPage}
           cartCount={cartCount}
@@ -194,6 +194,7 @@ export function StorefrontHeroBandContainer(props) {
               cartCount={cartCount}
               setIsCheckoutOpen={setIsCheckoutOpen}
               goDiscovery={goDiscovery}
+              goStore={goStore}
               hasMultipleStoreBranches={hasMultipleStoreBranches}
               hasSelectedBranchFromMenu={hasSelectedBranchFromMenu}
               selectedLocationId={selectedLocationId}
@@ -236,6 +237,7 @@ export function StorefrontHeroBandContainer(props) {
               catalogSearch={catalogSearch}
               setCatalogSearch={setCatalogSearch}
               goDiscovery={goDiscovery}
+              goStore={goStore}
               cartCount={cartCount}
               setIsCheckoutOpen={setIsCheckoutOpen}
               modeAdapter={modeAdapter}
@@ -263,27 +265,41 @@ export function StorefrontHeroBandContainer(props) {
             />
           ) : (!isFnbMode && !isSimpleMode) ? (
             <DefaultStorefrontHero
-              HERO_CANVAS_MAX_WIDTH={HERO_CANVAS_MAX_WIDTH}
-              STYLES={STYLES}
               modeAdapter={modeAdapter}
+              heroSectionModel={heroSectionModel}
               selectedStore={selectedStore}
               isMobileViewport={isMobileViewport}
-              handleShareAction={handleShareAction}
+              cartCount={cartCount}
               setIsCheckoutOpen={setIsCheckoutOpen}
+              goDiscovery={goDiscovery}
+              goStore={goStore}
+              hasMultipleStoreBranches={hasMultipleStoreBranches}
+              hasSelectedBranchFromMenu={hasSelectedBranchFromMenu}
+              selectedLocationId={selectedLocationId}
+              handleBranchMenuSelection={handleBranchMenuSelection}
+              storeLocations={storeLocations}
+              isBrandingImageBlocked={isBrandingImageBlocked}
+              markBrandingImageError={markBrandingImageError}
+              selectedLocation={selectedLocation}
+              openStorefrontActionLink={openStorefrontActionLink}
+              openTrackPanel={openTrackPanel}
+              openAccountPanel={openStorefrontHeaderAccount}
+              onRegisterBusiness={openBusinessRegistrationFlow}
+              isStorefrontAccountAuthenticated={isStorefrontAccountAuthenticated}
+              activeCustomerOrderCount={activeCustomerOrderCount}
+              accountIdentityName={accountIdentityName}
+              accountIdentityRawEmail={accountIdentityRawEmail}
+              accountIdentityContact={accountIdentityContact}
+              accountIdentityInitials={accountIdentityInitials}
+              followEnabled={followUiEnabledForStore}
+              shareEnabled={shareEnabledForStore}
+              followState={followState}
+              handleFollowAction={handleFollowAction}
+              ui={{ StorefrontExpandableBusinessHours }}
+              heroStyles={{ HERO_CANVAS_MAX_WIDTH, MAX_STOREFRONT_WHY_CHOOSE_US, MOBILE_DROPDOWN_MENU_STYLE, MOBILE_DROPDOWN_OPTION_STYLE, MOBILE_NATIVE_SELECT_STYLE, STOREFRONT_CONTACT_INFO_COLUMNS, STOREFRONT_INFO_ICON_COLUMN, STOREFRONT_INFO_PANEL_MAX_WIDTH, STOREFRONT_INFO_ROW_GAP, STYLES }}
             />
           ) : null}
         </>
-      )}
-
-      {/* ZONE 3: Location Map Snapshot */}
-      {!isServicesMode && !isFnbMode && !isSimpleMode && selectedStore && (
-        <section style={{ background: '#fff', borderRadius: STYLES.radius.card, border: `1px solid ${STYLES.colors.border}`, padding: 16, marginBottom: 24, boxShadow: STYLES.shadow.sm }}>
-          <StoresMap
-            stores={storeLocations.length > 0 ? storeLocations.map(l => ({ ...l, tenant_name: selectedStore?.tenant_name })) : [selectedStore]}
-            selectedKey={selectedLocationId != null ? `loc-${selectedLocationId}` : null}
-            onSelectStore={(l) => l?.location_id && setSelectedLocationId(l.location_id)}
-          />
-        </section>
       )}
 
       {isHospitalityMode && selectedStore && (

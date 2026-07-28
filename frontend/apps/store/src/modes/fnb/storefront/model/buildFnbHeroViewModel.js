@@ -3,7 +3,7 @@ import {
   buildGoogleMapsDirectionsUrl,
   buildVisibleStorefrontContactRows
 } from '../../../../shared/utils/storefrontContactPresentation.js';
-import { buildPublicStorefrontUrl } from '../../../../app/runtime/storefrontRuntime.js';
+import { buildPublicStorefrontUrl, withAssetOrigin } from '../../../../app/runtime/storefrontRuntime.js';
 import { buildFnbFallbackReasons } from './fnbStorefrontPresentation.js';
 import { buildFnbHeroDeliveryPartners } from './fnbHeroDeliveryPartners.js';
 
@@ -39,7 +39,22 @@ export function buildFnbHeroViewModel({
   );
   const addressText = String(safeHeroSectionModel.addressLine || safeHeroSectionModel.locationLabel || '').trim();
   const selectedBranchLabel = String(selectedLocation?.name || safeHeroSectionModel.locationLabel || '').trim();
-  const galleryImages = Array.isArray(safeHeroSectionModel.galleryPreview) ? safeHeroSectionModel.galleryPreview.filter(Boolean) : [];
+  const galleryImages = Array.isArray(safeHeroSectionModel.galleryPreview)
+    ? safeHeroSectionModel.galleryPreview.filter(Boolean).map((url) => withAssetOrigin(url)).filter(Boolean)
+    : [];
+  // `galleryPreview` is already capped at 4 entries upstream (normalizeStorefrontPageModel.js),
+  // so the overflow count must come from `galleryTotalCount` (the true, unsliced count) rather
+  // than comparing galleryImages against itself, which would always be zero.
+  const galleryTotalCount = Number.isFinite(Number(safeHeroSectionModel.galleryTotalCount))
+    ? Number(safeHeroSectionModel.galleryTotalCount)
+    : galleryImages.length;
+  const galleryOverflowCount = Math.max(0, galleryTotalCount - galleryImages.length);
+  // Full, unsliced gallery list (asset-origin resolved) for the mobile fullscreen
+  // viewer, which must be able to navigate every uploaded image, not just the
+  // 4-tile preview cap used by the grid/overlay.
+  const galleryImagesFull = Array.isArray(safeHeroSectionModel.galleryFull)
+    ? safeHeroSectionModel.galleryFull.filter(Boolean).map((url) => withAssetOrigin(url)).filter(Boolean)
+    : galleryImages;
   const aboutText = String(safeHeroSectionModel.aboutText || '').trim();
   const deliveryPlatformLinks = buildFnbHeroDeliveryPartners(safeHeroSectionModel.deliveryPartners);
   const whyChooseUs = Array.isArray(safeHeroSectionModel.whyChooseUs) && safeHeroSectionModel.whyChooseUs.length > 0
@@ -64,7 +79,9 @@ export function buildFnbHeroViewModel({
           longitude: publicLongitude,
           addressLine: addressText
         })
-      : ''
+      : '',
+    destinationLatitude: hasMapData ? publicLatitude : null,
+    destinationLongitude: hasMapData ? publicLongitude : null
   });
   const hasWhyChooseUs = visibleWhyChooseUs.length > 0;
 
@@ -78,6 +95,8 @@ export function buildFnbHeroViewModel({
     displayHours: String(safeHeroSectionModel.hours || '').trim(),
     followersLabel: followEnabled ? formatFollowersLabel(followersCount) : '',
     galleryImages,
+    galleryImagesFull,
+    galleryOverflowCount,
     hasAboutOrGallerySection,
     hasAboutSection,
     hasAboutToggle: aboutText.length > 180,
@@ -92,7 +111,12 @@ export function buildFnbHeroViewModel({
     mapStores: mapPublicationDisabled
       ? []
       : (safeStoreLocations.length > 0
-          ? safeStoreLocations.map((location) => ({ ...location, tenant_name: selectedStore?.tenant_name }))
+          ? safeStoreLocations.map((location) => ({
+            ...location,
+            tenant_name: selectedStore?.tenant_name,
+            workflow_mode: selectedStore?.workflow_mode,
+            business_mode: selectedStore?.business_mode
+          }))
           : (hasMapData ? [selectedStore] : [])),
     orderLabel: cartCount > 0 ? 'Open Cart' : (safeHeroSectionModel.actions?.orderLabel || 'Browse Menu'),
     profileImageKey: `hero-profile:${selectedStore?.slug || 'store'}`,

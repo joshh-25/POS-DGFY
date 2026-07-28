@@ -51,6 +51,25 @@ const proxyTargets = {
     changeOrigin: true,
     rewrite: (path) => path.replace(/^\/openfreemap/, ''),
     secure: false
+  },
+  // Same-origin PostHog (EU cloud) dev proxy, mirroring
+  // infrastructure/docker/nginx/nginx.conf.template's /ingest/ blocks so local
+  // dev exercises the same path analyticsClient.js defaults to. More specific
+  // prefixes first -- Vite matches proxy keys in insertion order.
+  '/ingest/static': {
+    target: 'https://eu-assets.i.posthog.com',
+    changeOrigin: true,
+    rewrite: (path) => path.replace(/^\/ingest\/static/, '/static')
+  },
+  '/ingest/array': {
+    target: 'https://eu-assets.i.posthog.com',
+    changeOrigin: true,
+    rewrite: (path) => path.replace(/^\/ingest\/array/, '/array')
+  },
+  '/ingest': {
+    target: 'https://eu.i.posthog.com',
+    changeOrigin: true,
+    rewrite: (path) => path.replace(/^\/ingest/, '')
   }
 };
 

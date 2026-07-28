@@ -9,8 +9,15 @@ import { WorkflowModeProvider } from '../../../src/features/settings/WorkflowMod
 import { Toaster } from '@/components/ui/sonner';
 import { buildSkupervisorPath } from '../../../src/features/pos/utils/skupervisorHandoff.js';
 import { login as loginTenantSession } from '../../../src/services/authService.js';
+import { getCurrentUser } from '../../../src/services/authService.js';
 import { initBrowserSentry } from '../../../src/observability/sentryClient.js';
-import { capturePageview, initBrowserAnalytics } from '../../../src/observability/analyticsClient.js';
+import {
+  capturePageview,
+  identifyAnalyticsUser,
+  initBrowserAnalytics,
+  resetAnalyticsIdentity,
+  setAnalyticsContext
+} from '../../../src/observability/analyticsClient.js';
 import '../../../src/index.css';
 
 function PosRouteNotFound() {
@@ -72,6 +79,43 @@ function AnalyticsRouteTracker() {
   return null;
 }
 
+// Cashier identity isn't known at mount (TerminalPage.jsx owns the login
+// flow); resolve it the same way PermissionContext does -- via
+// getCurrentUser() -- on mount and whenever auth state changes, rather than
+// reaching into the 4,892-line TerminalPage component.
+function AnalyticsIdentitySync() {
+  useEffect(() => {
+    let cancelled = false;
+
+    const sync = async () => {
+      try {
+        const user = await getCurrentUser();
+        if (cancelled) return;
+        if (user?.id) {
+          identifyAnalyticsUser({ id: user.id, role: user.role });
+          setAnalyticsContext({ tenantId: user.company?.id, businessMode: user.company?.business_mode });
+        } else {
+          resetAnalyticsIdentity();
+        }
+      } catch {
+        // Identity sync is best-effort; a failed lookup just leaves the
+        // anonymous PostHog id in place.
+      }
+    };
+
+    sync();
+    window.addEventListener('auth:login', sync);
+    window.addEventListener('auth:logout', sync);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('auth:login', sync);
+      window.removeEventListener('auth:logout', sync);
+    };
+  }, []);
+
+  return null;
+}
+
 const registerPosServiceWorker = async () => {
   if (typeof window === 'undefined') return;
   if (import.meta.env.DEV) return;
@@ -99,6 +143,7 @@ const mountApp = () => {
       <ErrorBoundary>
         <HashRouter>
           <AnalyticsRouteTracker />
+          <AnalyticsIdentitySync />
           <PermissionProvider>
             <WorkflowModeProvider>
               <GlobalApiErrorListener />
