@@ -356,6 +356,70 @@ export function useStorefrontCatalog({
     checkoutPermitted,
     productCartPermitted
   ]);
+  // Reviews/promo/footer data for every industry that isn't services/fnb/simple
+  // (hospitality, healthcare, retail, food_manufacturing, ticketing_transport,
+  // logistics_distribution, education_institutions, ...) — mirrors
+  // simpleStorefrontModel's shape (the fields StorefrontClassicCatalog's shared
+  // Reviews/Footer sections consume), scoped down to just those fields since the
+  // rest of the hero (contact/map/gallery/why-choose-us) is handled independently
+  // inside DefaultStorefrontHero via buildFnbHeroViewModel.
+  const defaultStorefrontModel = useMemo(() => {
+    if (!selectedStore || isServicesMode || isFnbMode || isSimpleMode) return null;
+    const socialLinks = parseOptionalObject(selectedStore?.storefront_social_links) || {};
+    const facebookLink = String(socialLinks.facebook || '').trim();
+    const instagramLink = String(socialLinks.instagram || '').trim();
+    const tiktokLink = String(socialLinks.tiktok || '').trim();
+    const websiteLink = String(socialLinks.website || socialLinks.web || '').trim();
+    const messengerLink = String(heroSectionModel?.messengerLink || socialLinks.messenger || '').trim();
+    const email = String(heroSectionModel?.email || '').trim();
+    const phone = String(heroSectionModel?.phone || '').trim();
+    const reviewSummary = supportingSectionModel?.reviewSummary || parseOptionalObject(selectedStore?.storefront_review_summary) || null;
+    const reviewHighlights = Array.isArray(supportingSectionModel?.reviewHighlights)
+      ? supportingSectionModel.reviewHighlights.filter(Boolean)
+      : [];
+    const productGroups = [...new Set(
+      (Array.isArray(catalog) ? catalog : [])
+        .map((item) => String(item?.categoryMeta?.label || item?.category_name || item?.category || '').trim())
+        .filter(Boolean)
+    )].slice(0, 5);
+    const registrationYear = deriveStorefrontRegistrationYear(
+      selectedStore?.business_registered_at
+      || selectedStore?.registered_at
+      || selectedStore?.tenant_created_at
+      || selectedStore?.created_at
+    );
+    return {
+      name: heroSectionModel?.storeName || selectedStore?.tenant_name || 'Storefront',
+      tagline: heroSectionModel?.tagline || '',
+      aboutText: heroSectionModel?.aboutText || '',
+      hours: formatStorefrontHoursLabel(
+        selectedStore?.storefront_hours,
+        heroSectionModel?.hours || selectedStore?.storefront_hours_status?.display || ''
+      ),
+      reviewSummary,
+      reviewHighlights,
+      productGroups,
+      registrationYear,
+      locationLabel: heroSectionModel?.locationSummary || heroSectionModel?.addressLine || '',
+      footerLinks: [
+        websiteLink ? { label: 'Website', href: websiteLink } : null,
+        facebookLink ? { label: 'Facebook', href: facebookLink } : null,
+        instagramLink ? { label: 'Instagram', href: instagramLink } : null,
+        tiktokLink ? { label: 'TikTok', href: tiktokLink } : null,
+        messengerLink ? { label: 'Messenger', href: messengerLink } : null,
+        phone ? { label: 'Call', href: `tel:${phone}` } : null,
+        email ? { label: 'Email', href: `mailto:${email}` } : null
+      ].filter(Boolean)
+    };
+  }, [
+    selectedStore,
+    isServicesMode,
+    isFnbMode,
+    isSimpleMode,
+    heroSectionModel,
+    supportingSectionModel,
+    catalog
+  ]);
   const catalogState = useMemo(() => {
     if (loadingCatalog && catalog.length === 0) return 'empty_setup';
     if (loadingCatalog) return 'loading';
@@ -394,6 +458,7 @@ export function useStorefrontCatalog({
     serviceHeroModel,
     fnbCommunityModel,
     simpleStorefrontModel,
+    defaultStorefrontModel,
     catalogState
   };
 }
