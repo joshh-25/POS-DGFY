@@ -796,6 +796,7 @@ export default function StorefrontApp() {
     serviceHeroModel,
     fnbCommunityModel,
     simpleStorefrontModel,
+    defaultStorefrontModel,
     catalogState
   } = useStorefrontCatalog({
     selectedStore,
@@ -3070,6 +3071,7 @@ export default function StorefrontApp() {
     deliveryLocationAction,
     deliveryLocationDisplayAddress,
     deliverySavedLocations,
+    applySavedDeliveryLocation,
     getCartFlySourceRect,
     goStoreCatalogPage,
     handleAddPinnedLocation,
@@ -3193,7 +3195,8 @@ export default function StorefrontApp() {
     setFnbViewMode,
     setIsFnbCategoryDropdownOpen,
     simpleCheckoutRouteProps,
-    simpleStorefrontModel
+    simpleStorefrontModel,
+    defaultStorefrontModel
   });
   const storefrontHeroBandProps = useStorefrontHeroBandProps({
     selectedStore,

@@ -99,6 +99,7 @@ export function StorefrontClassicCatalog({
   setReviewDraft,
   simpleCheckoutRouteProps,
   simpleStorefrontModel,
+  defaultStorefrontModel,
   submitFnbItemReview,
   totalFnbPages,
   viewportWidth
@@ -683,6 +684,71 @@ export function StorefrontClassicCatalog({
             onWriteReview={() => setIsReviewModalOpen(true)}
           />
         )}
+
+        {!isServicesMode && !isFnbMode && !isSimpleMode && defaultStorefrontModel && (
+          <>
+            <SharedStorefrontPromoSection
+              items={promoSectionModel}
+              isMobileViewport={isMobileViewport}
+              layoutVariant="feature"
+              palette="teal"
+              titleFontFamily={modeAdapter.heroTheme?.displayFont}
+              bodyFontFamily={modeAdapter.heroTheme?.bodyFont}
+              titleSize={isMobileViewport ? 28 : 36}
+              subtitleSize={isMobileViewport ? 14 : 16}
+              activePromoCode={checkoutPromoCode}
+              onApplyPromo={handlePromoCardApply}
+            />
+
+            <SharedStorefrontReviewsSection
+              isMobileViewport={isMobileViewport}
+              viewportWidth={viewportWidth}
+              title="Customer Reviews"
+              subtitle="See what customers say about this storefront"
+              onWriteReview={() => setIsReviewModalOpen(true)}
+              reviewHighlights={defaultStorefrontModel.reviewHighlights}
+              emptyMessage="Customer reviews will appear here once this storefront adds review data in SKUpervisor."
+              titleFontFamily={modeAdapter.heroTheme?.displayFont}
+              bodyFontFamily={modeAdapter.heroTheme?.bodyFont}
+              titleSize={isMobileViewport ? 28 : 36}
+              subtitleSize={isMobileViewport ? 14 : 16}
+              starSymbol="*"
+            />
+
+            <SharedStorefrontFooterSection
+              isMobileViewport={isMobileViewport}
+              name={defaultStorefrontModel.name}
+              registrationYear={defaultStorefrontModel.registrationYear}
+              description={defaultStorefrontModel.tagline || defaultStorefrontModel.aboutText || 'Storefront powered by SKUpervisor content.'}
+              displayFont={modeAdapter.heroTheme?.displayFont}
+              bodyFontFamily={modeAdapter.heroTheme?.bodyFont}
+              badgeLinks={getStorefrontSocialFooterLinks(defaultStorefrontModel.footerLinks)}
+              columns={[
+                {
+                  title: 'Products',
+                  items: defaultStorefrontModel.productGroups.map((group) => ({ label: group })),
+                  emptyText: 'No product categories yet.'
+                },
+                {
+                  title: 'Socials',
+                  items: getStorefrontSocialFooterLinks(defaultStorefrontModel.footerLinks).map((link) => ({ label: link.label, href: link.href })),
+                  emptyText: 'No social links yet.'
+                },
+                {
+                  title: 'Contact',
+                  items: [
+                    ...getStorefrontContactFooterLinks(defaultStorefrontModel.footerLinks).map((link) => ({
+                      label: link.label === 'Call' ? String(link.href).replace('tel:', '') : String(link.href).replace('mailto:', ''),
+                      href: link.href
+                    })),
+                    ...(defaultStorefrontModel.hours ? [{ label: defaultStorefrontModel.hours }] : []),
+                    { label: defaultStorefrontModel.locationLabel }
+                  ]
+                }
+              ]}
+            />
+          </>
+        )}
       </div>
   
       {/* ZONE 5: Sidebar (Desktop) */}
@@ -705,6 +771,22 @@ export function StorefrontClassicCatalog({
           starShadow="0 10px 20px rgba(20,184,166,0.16)"
           keyPrefix="simple-review-rating"
           messagePlaceholder="Tell customers what stood out about the product selection, ordering, or pickup experience."
+          reviewDraft={reviewDraft}
+          onReviewDraftChange={setReviewDraft}
+          onClose={() => setIsReviewModalOpen(false)}
+          onSubmit={submitFnbItemReview}
+        />
+      )}
+
+      {isReviewModalOpen && !isServicesMode && !isFnbMode && !isSimpleMode && (
+        <StorefrontReviewModal
+          isMobileViewport={isMobileViewport}
+          eyebrowColor={modeAdapter.heroTheme?.accent || '#0f766e'}
+          starColor="#14b8a6"
+          starBg="#ecfeff"
+          starShadow="0 10px 20px rgba(20,184,166,0.16)"
+          keyPrefix="default-review-rating"
+          messagePlaceholder="Tell customers what stood out about your experience with this storefront."
           reviewDraft={reviewDraft}
           onReviewDraftChange={setReviewDraft}
           onClose={() => setIsReviewModalOpen(false)}
