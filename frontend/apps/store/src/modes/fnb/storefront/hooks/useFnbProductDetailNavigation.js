@@ -1,5 +1,7 @@
 import { useCallback } from 'react';
 
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../src/observability/analyticsEvents.js';
+
 /**
  * Owns F&B item-detail navigation while the app shell continues to provide the
  * existing route primitives. This preserves the current browser-history
@@ -51,6 +53,12 @@ export function useFnbProductDetailNavigation({
     setRouteItemId(itemId);
     setRouteReviewToken(reviewToken);
     setIsCheckoutOpen(false);
+    trackFunnelEvent(ANALYTICS_EVENTS.ITEM_VIEWED, {
+      store_slug: normalizedStoreSlug,
+      item_id: itemId,
+      item_name: item?.name,
+      price: item?.default_sale_price ?? item?.price
+    });
     window.requestAnimationFrame(() => {
       window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
     });

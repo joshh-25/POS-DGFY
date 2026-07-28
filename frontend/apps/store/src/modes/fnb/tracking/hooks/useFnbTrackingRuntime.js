@@ -19,6 +19,7 @@ import {
   resolveTrackingRetryDelayMs
 } from '../../../../tracking/customerTrackingRefresh.js';
 import { buildFnbTrackedOrderEntry, toFnbTrackingViewState } from '../model/fnbTrackingPayload.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../src/observability/analyticsEvents.js';
 
 const BACKGROUND_PIN_POLL_MS = { visible: 60000, hidden: 120000 };
 
@@ -109,6 +110,21 @@ export function useFnbTrackingRuntime({ checkoutTab, isFnbOrderSubpage, normaliz
     () => buildTrackingPinKey(guestTrackedOrders, { excludePin: selectedPin }),
     [guestTrackedOrders, selectedPin]
   );
+
+  // `checkoutTab === 'track' && isFnbOrderSubpage` is the same gate the
+  // polling effect below uses to decide the tracking view is actually on
+  // screen -- reusing it here (rather than the store-slug effect above,
+  // which also fires on unrelated store navigation) keeps this to one
+  // event per time a visitor actually opens tracking.
+  const isTrackingViewActive = checkoutTab === 'track' && isFnbOrderSubpage;
+  useEffect(() => {
+    if (!isTrackingViewActive) return;
+    trackFunnelEvent(ANALYTICS_EVENTS.ORDER_TRACKING_VIEWED, {
+      store_slug: selectedStore?.slug,
+      tracking_pin: selectedPin || undefined
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isTrackingViewActive]);
 
   // Route unstable callbacks/closures (and the ever-changing tracking status)
   // through refs so the polling effect below only needs to depend on stable

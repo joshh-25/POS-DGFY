@@ -1,5 +1,7 @@
 import { useCallback } from 'react';
 
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../src/observability/analyticsEvents.js';
+
 /**
  * Submits a standard F&B order. Services and Simple submissions intentionally
  * remain outside this hook because they use different contracts and outcomes.
@@ -83,6 +85,12 @@ export function useFnbCheckoutSubmission({
     // Retain storefront presentation fields for the tracking snapshot.
     const cartSnapshot = cart.map((line) => ({ ...line }));
     setCheckoutLoading(true);
+    trackFunnelEvent(ANALYTICS_EVENTS.CHECKOUT_SUBMITTED, {
+      store_slug: selectedStore?.slug,
+      order_value: totalsForDisplay?.total_amount ?? 0,
+      item_count: cartSnapshot.length,
+      fulfillment_type: orderMethod
+    });
     try {
       const authToken = isDgfyCustomerSignedIn
         ? (readDgfyAuthToken() || readStoreAuthToken())
@@ -149,6 +157,12 @@ export function useFnbCheckoutSubmission({
       }
       clearCheckoutAuthResumeDraft();
       toast.success(data?.promo_feedback?.message || 'Checkout completed.');
+      trackFunnelEvent(ANALYTICS_EVENTS.ORDER_PLACED, {
+        store_slug: selectedStore?.slug,
+        order_value: totalsForDisplay?.total_amount ?? 0,
+        item_count: cartSnapshot.length,
+        fulfillment_type: data?.order?.order_method || orderMethod
+      });
     } catch (error) {
       const violation = extractStockViolation(error);
       const message = violation
@@ -156,6 +170,10 @@ export function useFnbCheckoutSubmission({
         : normalizeErrorMessage(error, 'Unable to complete checkout.');
       setCheckoutError(message);
       toast.error(message);
+      trackFunnelEvent(ANALYTICS_EVENTS.CHECKOUT_FAILED, {
+        store_slug: selectedStore?.slug,
+        reason: violation ? 'stock_violation' : (error?.errorCode || 'unknown')
+      });
     } finally {
       setCheckoutLoading(false);
     }

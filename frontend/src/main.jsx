@@ -9,7 +9,7 @@ import { WorkflowModeProvider } from './features/settings/WorkflowModeContext.js
 import WorkflowModeRouteGate from './features/settings/components/WorkflowModeRouteGate.jsx'
 import { getPageNameFromPath } from '../utils.js'
 import { getAccessToken, refreshBrowserSession, setBrowserSession } from './services/browserSession.js'
-import { login as loginTenantSession } from './services/authService.js'
+import { login as loginTenantSession, getCurrentUser } from './services/authService.js'
 import { shouldRefreshBrowserSessionForPath } from './services/publicRoutePolicy.js'
 import ErrorBoundary from './components/common/ErrorBoundary.jsx' // Fix 10.3
 import NotFoundPage from './components/common/NotFoundPage.jsx'
@@ -17,6 +17,13 @@ import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.j
 import { Toaster } from '@/components/ui/sonner'
 import { getRuntimeConfig } from './utils/runtimeConfig.js'
 import { initBrowserSentry } from './observability/sentryClient.js'
+import {
+  capturePageview,
+  identifyAnalyticsUser,
+  initBrowserAnalytics,
+  resetAnalyticsIdentity,
+  setAnalyticsContext
+} from './observability/analyticsClient.js'
 import './index.css'
 
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/'
@@ -26,6 +33,10 @@ const RootRouter = runtimeConfig.isDesktopShell ? HashRouter : BrowserRouter
 const devAutoLoginEnabled = String(import.meta.env.VITE_DEV_AUTO_LOGIN_ENABLED || '').trim().toLowerCase() === 'true'
 
 initBrowserSentry({ surface: runtimeConfig.appSurface || 'skupervisor' })
+// SKUpervisor previously had no PostHog init at all -- it's staff-facing
+// (same consent basis as POS: employment relationship, not the storefront's
+// anonymous-visitor consent banner), so behavioral analytics apply here too.
+initBrowserAnalytics({ surface: runtimeConfig.appSurface || 'skupervisor' })
 
 const shouldRunDevAutoLogin = () => {
   if (!import.meta.env.DEV) return false
@@ -120,6 +131,10 @@ function App() {
     if (!shouldRefreshBrowserSessionForPath(location.pathname)) return;
     if (getAccessToken()) return;
     refreshBrowserSession().catch(() => {});
+  }, [location.pathname]);
+
+  useEffect(() => {
+    capturePageview({ path: location.pathname });
   }, [location.pathname]);
 
   return (
@@ -286,6 +301,43 @@ function App() {
   )
 }
 
+// Mirrors apps/pos/src/main.jsx's AnalyticsIdentitySync: resolves the
+// signed-in staff member via getCurrentUser() (same call PermissionContext
+// makes) on mount and on auth state changes, without expanding
+// PermissionContext's public API just for analytics.
+function AnalyticsIdentitySync() {
+  useEffect(() => {
+    let cancelled = false;
+
+    const sync = async () => {
+      try {
+        const user = await getCurrentUser();
+        if (cancelled) return;
+        if (user?.id) {
+          identifyAnalyticsUser({ id: user.id, role: user.role });
+          setAnalyticsContext({ tenantId: user.company?.id, businessMode: user.company?.business_mode });
+        } else {
+          resetAnalyticsIdentity();
+        }
+      } catch {
+        // Identity sync is best-effort; a failed lookup just leaves the
+        // anonymous PostHog id in place.
+      }
+    };
+
+    sync();
+    window.addEventListener('auth:login', sync);
+    window.addEventListener('auth:logout', sync);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('auth:login', sync);
+      window.removeEventListener('auth:logout', sync);
+    };
+  }, []);
+
+  return null;
+}
+
 const rootElement = document.getElementById('root');
 
 const mountApp = () => {
@@ -299,6 +351,7 @@ const mountApp = () => {
             v7_relativeSplatPath: true,
           }}
         >
+          <AnalyticsIdentitySync />
           <PermissionProvider>
             <WorkflowModeProvider>
               <GlobalApiErrorListener />

@@ -2,6 +2,7 @@ import {
   buildOfflinePosScopeKey,
   toOfflinePosScopeFields
 } from './offlinePosScope.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../observability/analyticsEvents.js';
 
 const DB_NAME = 'sku_pos_terminal_sync_queue';
 const DB_VERSION = 2;
@@ -463,8 +464,8 @@ export const markTerminalOperationReplaying = async (intentId) => (
   }))
 );
 
-export const markTerminalOperationReplayed = async (intentId, details = {}) => (
-  updateEntry(intentId, (current) => ({
+export const markTerminalOperationReplayed = async (intentId, details = {}) => {
+  const result = await updateEntry(intentId, (current) => ({
     ...current,
     status: TERMINAL_QUEUE_STATUS.REPLAYED,
     updated_at: toIso(),
@@ -475,8 +476,15 @@ export const markTerminalOperationReplayed = async (intentId, details = {}) => (
     resolution_source: details.resolution_source || current.resolution_source || null,
     resolution_note: details.resolution_note || current.resolution_note || null,
     resolved_at: details.resolved_at ? toIso(details.resolved_at) : (current.resolved_at || null)
-  }))
-);
+  }));
+  // Each successfully replayed intent is a piece of the offline queue being
+  // flushed back to the server -- there's no single batch-level "flush
+  // complete" callback upstream, so this per-entry point is the reliable one.
+  trackFunnelEvent(ANALYTICS_EVENTS.POS_OFFLINE_QUEUE_FLUSHED, {
+    operation_type: result?.operation_type || result?.type
+  });
+  return result;
+};
 
 export const markTerminalOperationQueued = async (
   intentId,

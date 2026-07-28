@@ -8,6 +8,7 @@ import {
 } from '../model/storefrontCatalogModel.js';
 import { withAssetOrigin } from '../../app/runtime/storefrontRuntime.js';
 import { createStorefrontIdempotencyKey } from '../utils/idempotency.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../src/observability/analyticsEvents.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: cart-mutation handlers
@@ -235,25 +236,64 @@ export function useCartMutations({
     if (stockWarning) {
       toast.error(stockWarning);
     }
+    trackFunnelEvent(ANALYTICS_EVENTS.CART_ITEM_ADDED, {
+      item_id: item?.item_id,
+      item_name: item?.name,
+      price,
+      quantity: requestedQuantity,
+      category: isServiceCatalogItem(item) ? 'service' : item?.category
+    });
   };
 
   const removeCartItem = (itemId, cartLineId = '') => {
+    // `cart` (closure var, not the setCart updater arg) still holds the
+    // pre-removal lines, so the removed line's name/price/qty can be read
+    // off it before the filter runs -- removeCartItem's own args only carry
+    // ids, not item details.
+    const removedLine = cart.find((line) => (
+      cartLineId
+        ? String(line.cart_line_id || '') === String(cartLineId)
+        : Number(line.item_id) === Number(itemId)
+    ));
     setCart((prev) => prev.filter((line) => (
       cartLineId
         ? String(line.cart_line_id || '') !== String(cartLineId)
         : Number(line.item_id) !== Number(itemId)
     )));
+    if (removedLine) {
+      trackFunnelEvent(ANALYTICS_EVENTS.CART_ITEM_REMOVED, {
+        item_id: removedLine.item_id,
+        item_name: removedLine.name,
+        price: removedLine.price,
+        quantity: removedLine.quantity,
+        category: removedLine.category
+      });
+    }
   };
 
   const updateQty = (itemId, qty, cartLineId = '') => {
     const parsed = Number(qty);
     if (!Number.isFinite(parsed)) return;
     if (parsed <= 0) {
+      const removedLine = cart.find((line) => (
+        cartLineId
+          ? String(line.cart_line_id || '') === String(cartLineId)
+          : Number(line.item_id) === Number(itemId)
+      ));
       setCart((prev) => prev.filter((line) => (
         cartLineId
           ? String(line.cart_line_id || '') !== String(cartLineId)
           : Number(line.item_id) !== Number(itemId)
       )));
+      if (removedLine) {
+        trackFunnelEvent(ANALYTICS_EVENTS.CART_ITEM_REMOVED, {
+          item_id: removedLine.item_id,
+          item_name: removedLine.name,
+          price: removedLine.price,
+          quantity: removedLine.quantity,
+          category: removedLine.category
+        });
+      }
       return;
     }
     let stockWarning = '';
