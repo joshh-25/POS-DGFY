@@ -92,6 +92,12 @@ const createSmtpSession = (socket) => {
         sendSmtpLine(socket, '250-local-maildev');
         sendSmtpLine(socket, '250 SIZE 1048576');
         break;
+      // Local QA accepts SMTP authentication so it can exercise the same
+      // Nodemailer configuration path as the application. Credentials are
+      // intentionally not validated or stored by this disposable sink.
+      case 'AUTH':
+        sendSmtpLine(socket, '235 Authentication successful');
+        break;
       case 'MAIL':
         mailFrom = rest.replace(/^FROM:\s*/i, '');
         sendSmtpLine(socket, '250 Sender ok');

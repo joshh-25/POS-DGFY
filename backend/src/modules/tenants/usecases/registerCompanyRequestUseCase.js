@@ -47,16 +47,14 @@ const toLegalPersistenceFailure = (error) => (
 
 export const buildRegisterCompanyRequestUseCase = ({
     tenantAdminRepository,
+    companyRegistrationRepository,
     paypalService,
     trackEngagementEvent,
     addEmailTenantMapping,
     dgfyAccountRepository,
-    provisionTenant,
-    createPayMongoChildAccountForTenant = null,
-    shouldAutoCreatePayMongoChildAccounts = () => false,
     emailService,
     idGenerator,
-    getTenantRegistrationApprovalMode = () => TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD,
+    getTenantRegistrationApprovalMode = () => TENANT_REGISTRATION_APPROVAL_MODES.MANUAL,
     logger
 }) => {
     return async ({ body, dgfyAccount, correlationId, metadata = {} }) => {
@@ -68,7 +66,6 @@ export const buildRegisterCompanyRequestUseCase = ({
         } = body || {};
         const adminEmail = String(dgfyAccount?.email || '').trim().toLowerCase();
         const adminPhone = String(dgfyAccount?.phone || '').trim();
-        const adminUsername = String(dgfyAccount?.first_name || dgfyAccount?.username || 'Admin').trim() || 'Admin';
         const adminPasswordHash = dgfyAccount?.password_hash || null;
         const plan = resolveRegisteredTenantPlan();
         const complianceModeState = 'non_compliant_active';
@@ -100,36 +97,6 @@ export const buildRegisterCompanyRequestUseCase = ({
         });
         let tenant = null;
         let validatedSubscriptionId = null;
-        let paymongoChildAccountStatus;
-
-        const createPendingPayMongoChildAccount = async ({ source }) => {
-            if (!shouldAutoCreatePayMongoChildAccounts() || typeof createPayMongoChildAccountForTenant !== 'function') {
-                return 'skipped';
-            }
-
-            try {
-                const result = await createPayMongoChildAccountForTenant({
-                    tenantId: tenant.id,
-                    payload: { trade_name: tenant.name },
-                    actor: source
-                });
-                if (result?.success === false || result?.error) {
-                    logger?.warn?.('[Registration] PayMongo child account creation did not complete', {
-                        tenant_id: tenant.id,
-                        error: result?.error?.message || result?.message || 'unknown_error'
-                    });
-                    return 'failed';
-                }
-                return result?.data?.idempotent_replay ? 'existing' : 'created';
-            } catch (paymongoError) {
-                logger?.warn?.('[Registration] PayMongo child account creation failed after tenant provisioning', {
-                    tenant_id: tenant.id,
-                    error: paymongoError.message
-                });
-                return 'failed';
-            }
-        };
-
         try {
             await tracker.attempt();
 
@@ -261,16 +228,10 @@ export const buildRegisterCompanyRequestUseCase = ({
             let currentPeriodEnd = null;
             let billingCycleAnchor = null;
             let paymentMethod = 'manual';
-            let autoApprovalSource = null;
-            let shouldProvisionImmediately = false;
 
             const approvalMode = getTenantRegistrationApprovalMode();
-            const shouldAutoApproveStandard = !subscriptionId
-                && approvalMode === TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD;
-
-            if (shouldAutoApproveStandard) {
-                shouldProvisionImmediately = true;
-                autoApprovalSource = 'auto_standard';
+            if (approvalMode !== TENANT_REGISTRATION_APPROVAL_MODES.MANUAL) {
+                throw new DomainError(DomainErrorCode.INTERNAL_ERROR, 'Public registration must use mandatory manual approval.', { statusCode: 500 });
             }
 
             // Both Standard and Premium support PayPal (if subscriptionId provided) OR manual path.
@@ -278,12 +239,10 @@ export const buildRegisterCompanyRequestUseCase = ({
                 try {
                     const subDetails = await paypalService.verifySubscription(subscriptionId);
                     if (subDetails && subDetails.status === 'ACTIVE') {
-                        initialStatus = 'active';
-                        shouldProvisionImmediately = true;
+                        initialStatus = 'pending';
                         subscriptionStatus = 'active';
                         paymentMethod = 'paypal';
                         validatedSubscriptionId = subscriptionId;
-                        autoApprovalSource = 'paypal';
 
                         const paypalNextBillingTime = toValidDate(subDetails.billing_info?.next_billing_time);
                         if (paypalNextBillingTime) {
@@ -332,7 +291,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                         domain: subdomain,
                         db_name: dbName,
                         company_token: companyToken,
-                        status: shouldProvisionImmediately ? 'pending' : initialStatus,
+                        status: initialStatus,
                         admin_email: adminEmail,
                         admin_phone: normalizedAdminPhone,
                         admin_password_hash: adminPasswordHash,
@@ -365,8 +324,17 @@ export const buildRegisterCompanyRequestUseCase = ({
                         accepted_at: new Date()
                     }, { transaction });
 
-                    if (!shouldProvisionImmediately && dgfyAccountRepository?.upsertFounderMembership) {
-                        await dgfyAccountRepository.upsertFounderMembership({
+                    const application = await companyRegistrationRepository.createInitial({
+                        tenant: createdTenant,
+                        dgfyAccount,
+                        legalAcknowledgement,
+                        workflowMode: normalizedWorkflowMode,
+                        industryTag: normalizedIndustryTag,
+                        transaction
+                    });
+
+                    if (dgfyAccountRepository?.upsertPendingFounderMembership) {
+                        await dgfyAccountRepository.upsertPendingFounderMembership({
                             dgfyAccountId: dgfyAccount.id,
                             tenantId: createdTenant.id,
                             tenantUserId: null,
@@ -374,7 +342,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                         }, { transaction });
                     }
 
-                    return createdTenant;
+                    return { tenant: createdTenant, application };
                 });
             } catch (legalPersistenceError) {
                 const persistenceError = toLegalPersistenceFailure(legalPersistenceError);
@@ -388,100 +356,14 @@ export const buildRegisterCompanyRequestUseCase = ({
                 return fail(persistenceError);
             }
 
-            if (!shouldProvisionImmediately) {
-                try {
-                    await addEmailTenantMapping(adminEmail, tenant.id);
-                } catch (mappingError) {
-                    logger?.warn?.(
-                        `[Registration] Failed to create email-tenant mapping for ${adminEmail}: ${mappingError.message}`
-                    );
-                }
-            }
-
-            if (shouldProvisionImmediately) {
-                logger?.info?.(
-                    `[Registration] Auto-provisioning ${normalizedPlan} tenant (${autoApprovalSource || 'active'}): ${name}`
+            const registrationApplication = tenant.application;
+            tenant = tenant.tenant;
+            try {
+                await addEmailTenantMapping(adminEmail, tenant.id);
+            } catch (mappingError) {
+                logger?.warn?.(
+                    `[Registration] Failed to create email-tenant mapping for ${adminEmail}: ${mappingError.message}`
                 );
-                const provisionedTenant = await provisionTenant({
-                    tenantId: tenant.id,
-                    name: tenant.name,
-                    dbName: tenant.db_name,
-                    companyToken: tenant.company_token,
-                    adminEmail: tenant.admin_email,
-                    adminPhone: tenant.admin_phone,
-                    adminUsername,
-                    adminPasswordHash: tenant.admin_password_hash,
-                    workflowMode: normalizedWorkflowMode
-                });
-
-                if (dgfyAccountRepository?.upsertFounderMembership) {
-                    await dgfyAccountRepository.upsertFounderMembership({
-                        dgfyAccountId: dgfyAccount.id,
-                        tenantId: tenant.id,
-                        tenantUserId: provisionedTenant?.admin_user_id || null,
-                        role: 'admin'
-                    });
-                    if (!tenant.owner_dgfy_account_id) {
-                        await tenant.update({ owner_dgfy_account_id: dgfyAccount.id }).catch(() => {});
-                    }
-                }
-
-                paymongoChildAccountStatus = await createPendingPayMongoChildAccount({
-                    source: 'company_registration_auto_provision'
-                });
-
-                let emailSent = false;
-                if (emailService?.isEmailConfigured?.()) {
-                    try {
-                        await emailService.sendCompanyApprovedEmail({
-                            email: tenant.admin_email,
-                            companyName: tenant.name,
-                            companyToken: tenant.company_token
-                        });
-                        emailSent = true;
-                        logger?.info?.(`[Registration] Approval email sent to ${tenant.admin_email}`);
-                    } catch (emailError) {
-                        logger?.warn?.(
-                            `[Registration] Failed to send approval email to ${tenant.admin_email}: ${emailError.message}`
-                        );
-                    }
-                }
-
-                await tracker.succeeded({
-                    tenantId: tenant.id,
-                    subscriptionId: validatedSubscriptionId,
-                    metadata: {
-                        status: provisionedTenant?.status || 'active',
-                        auto_approved: true,
-                        auto_approval_source: autoApprovalSource,
-                        email_sent: emailSent,
-                        paymongo_child_account_status: paymongoChildAccountStatus
-                    }
-                });
-
-                const activeMessage = autoApprovalSource === 'auto_standard'
-                    ? 'Company registered and activated successfully. You can sign in now.'
-                    : `Company registered and activated successfully! Welcome to ${normalizedPlan.charAt(0).toUpperCase() + normalizedPlan.slice(1)}.`;
-
-                return ok({
-                    statusCode: 201,
-                    payload: {
-                        success: true,
-                        message: activeMessage,
-                        data: {
-                            id: tenant.id,
-                            name: tenant.name,
-                            status: 'active',
-                            plan: normalizedPlan,
-                            compliance_mode_state: complianceModeState,
-                            workflow_mode: normalizedWorkflowMode,
-                            industry_tag: normalizedIndustryTag,
-                            company_token: tenant.company_token,
-                            email_sent: emailSent,
-                            paymongo_child_account_status: paymongoChildAccountStatus
-                        }
-                    }
-                });
             }
 
             await tracker.succeeded({
@@ -506,7 +388,7 @@ export const buildRegisterCompanyRequestUseCase = ({
                         compliance_mode_state: complianceModeState,
                         workflow_mode: normalizedWorkflowMode,
                         industry_tag: normalizedIndustryTag,
-                        company_token: tenant.company_token
+                        application_id: registrationApplication.id
                     }
                 }
             });

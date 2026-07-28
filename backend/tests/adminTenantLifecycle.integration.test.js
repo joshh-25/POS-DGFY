@@ -247,7 +247,7 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
         expect(byKey.paypal_product_id).toBe(`prod-${testSuffix}`);
     });
 
-    it('auto-accepts standard public registration when auto_standard mode is enabled', async () => {
+    it('keeps public registration pending when a legacy auto_standard value is configured', async () => {
         const previousMode = process.env.TENANT_REGISTRATION_APPROVAL_MODE;
         process.env.TENANT_REGISTRATION_APPROVAL_MODE = 'auto_standard';
 
@@ -270,16 +270,11 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
 
             expect(response.status).toBe(201);
             expect(response.body.success).toBe(true);
-            expect(response.body.message).toBe('Company registered and activated successfully. You can sign in now.');
-            expect(response.body.data.status).toBe('active');
-            expect(response.body.data.email_sent).toBe(false);
-            expect(response.body.data.company_token).toMatch(/^token-admingatetest/);
-            expect(mockProvisionTenant).toHaveBeenCalledWith(expect.objectContaining({
-                name: `${ADMIN_TEST_TENANT_PREFIX} Auto Register`,
-                adminEmail: dgfyAccount.email,
-                adminPhone: dgfyAccount.phone,
-                workflowMode: 'food_manufacturing'
-            }));
+            expect(response.body.message).toContain('submitted for Platform Admin review');
+            expect(response.body.data.status).toBe('pending_review');
+            expect(response.body.data.application_id).toEqual(expect.any(Number));
+            expect(response.body.data).not.toHaveProperty('company_token');
+            expect(mockProvisionTenant).not.toHaveBeenCalled();
         } finally {
             if (previousMode === undefined) {
                 delete process.env.TENANT_REGISTRATION_APPROVAL_MODE;
