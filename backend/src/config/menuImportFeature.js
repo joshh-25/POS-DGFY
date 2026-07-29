@@ -44,6 +44,11 @@ export const MENU_IMPORT_MAX_PDF_PAGES = parsePositiveIntEnv(process.env.MENU_IM
 export const MENU_IMPORT_MAX_VISION_CALLS_PER_BATCH = parsePositiveIntEnv(process.env.MENU_IMPORT_MAX_VISION_CALLS_PER_BATCH, 25);
 export const MENU_IMPORT_DAILY_USD_BUDGET = parsePositiveFloatEnv(process.env.MENU_IMPORT_DAILY_USD_BUDGET, 5.0);
 export const MENU_IMPORT_WORKER_CONCURRENCY = parsePositiveIntEnv(process.env.MENU_IMPORT_WORKER_CONCURRENCY, 2);
+// Post-dedup ceiling for the merge/preview use case (modules/menuImport/usecases/
+// previewMenuImportJobUseCase.js) — per-file extraction is already capped at
+// MAX_MENU_ITEMS_PER_IMPORT (menuExtractionService.js), but nothing caps the
+// merged total across a whole batch until this.
+export const MENU_IMPORT_MAX_MERGED_ITEMS = parsePositiveIntEnv(process.env.MENU_IMPORT_MAX_MERGED_ITEMS, 200);
 
 /**
  * Reports whether batch menu import is safely configured. Same

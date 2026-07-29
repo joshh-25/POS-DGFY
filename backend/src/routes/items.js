@@ -117,6 +117,12 @@ router.get(
   checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS),
   menuImportBatchHandlers.getMenuImportJob
 );
+router.post(
+  '/import/menu/jobs/:jobId/preview',
+  requireMenuImportBatchEnabled,
+  checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS),
+  menuImportBatchHandlers.previewMenuImportJob
+);
 // Confirm is identical to the single-file path's confirm — there is nothing
 // batch-specific about persisting already-previewed rows, so this reuses the
 // same handler rather than duplicating it (see D8 in the menu batch import ADR).

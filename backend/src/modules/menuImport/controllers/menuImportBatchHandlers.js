@@ -12,7 +12,7 @@
  */
 import crypto from 'crypto';
 import fs from 'fs/promises';
-import { createMenuImportJobUseCase, getMenuImportJobUseCase } from '../index.js';
+import { createMenuImportJobUseCase, getMenuImportJobUseCase, previewMenuImportJobUseCase } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
 import logger from '../../../config/logger.js';
@@ -124,4 +124,28 @@ export const getMenuImportJob = async (req, res) => {
     }
 };
 
-export default { createMenuImportJob, getMenuImportJob };
+export const previewMenuImportJob = async (req, res) => {
+    try {
+        const result = await previewMenuImportJobUseCase({
+            tenantId: req.user?.tenant_id,
+            jobId: req.params.jobId
+        });
+
+        if (!result?.success) {
+            return sendUseCaseResult(res, result, {
+                errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+            });
+        }
+
+        return res.status(200).json({ success: true, data: result.data });
+    } catch (error) {
+        logger.error('Menu batch import job preview error:', error);
+        return res.status(500).json({
+            success: false,
+            message: 'Failed to preview menu import job',
+            error: error.message
+        });
+    }
+};
+
+export default { createMenuImportJob, getMenuImportJob, previewMenuImportJob };
