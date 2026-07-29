@@ -9,22 +9,22 @@ topic: menu_import_batch_handoff
 
 # Batch Menu Import (Multi-File + Camera Capture) — Handoff
 
-Date: July 28–29, 2026 (Phases 1–4 + 6)
+Date: July 28–29, 2026 (Phases 1–6)
 Branches:
 - `claude/menu-import-batch-async` — Phases 1–3, **PRed to `main`**:
   https://github.com/Sieitzz/dgfy-platform/pull/133 (three commits: `447ceb03` Phase 1,
   `e1c02e69` Phase 2, `57c71030` Phase 3)
 - `claude/menu-import-batch-handoff-2fnerq` — continues from the same history and adds **Phase 6
-  (governance) and Phase 4 (frontend)**. See "What's built so far" below.
+  (governance), Phase 4 (frontend), and Phase 5 (camera capture)**. See "What's built so far".
 
-**Phase 5 (camera capture + quality scoring) and Phase 7 (single-file deprecation) are the only
-phases still unbuilt.**
+**Phase 7 (deprecating the single-file endpoints) is the only phase still unbuilt — and it is
+gated on live verification, not on more code.**
 
 ## Purpose
 
 This note is for whoever (human or AI) picks up this build next. It exists so a different
 assistant/tool can continue without re-deriving the design decisions already made, or the
-constraints that shaped them. **Phases 1–4 and 6 of a 7-phase plan are built.** Read this whole
+constraints that shaped them. **Phases 1–6 of a 7-phase plan are built.** Read this whole
 doc before touching the code — the "don't re-derive" section especially. This doc has already
 saved one recovery: an earlier session lost its Phase 2 planning to a client crash, and the
 previous version of this file (Phase-1-only) was what let a fresh session reconstruct Phase 2
@@ -215,6 +215,30 @@ Two smaller decisions inside D11 worth not re-deriving:
   anyway. Same reason `Date.now()` in the poll loop had to move to a module-scope helper
   (`react-hooks/purity` forbids clock reads inside a hook body).
 
+**D12 — Camera capture produces ordinary Files, and its quality check never blocks (Phase 5).**
+`MenuPhotoCaptureSheet.jsx` captures frames to JPEG `File` objects that join the same
+`selectedFiles` list the picker and drop zone feed, so **nothing downstream changed to support
+capture** — job creation, polling, merge, confirm all treat a captured photo as a picked one. It
+renders inline inside the batch wizard rather than as its own `Dialog` (a modal inside a modal
+fights focus management for no benefit). `src/utils/menuPhotoQuality.js` scores the live preview
+before the shutter and the captured frame after it: sharpness (std-dev of the Laplacian over luma),
+mean exposure, clipped-highlight ratio for glare, and source resolution — judged against the *source*
+frame dimensions, never the downsampled analysis sample.
+
+**The quality check warns and never blocks — user-confirmed, and asserted by a test.**
+`analyzeMenuPhotoQuality` returns `blocking: false` unconditionally, no threshold refuses a capture,
+and a warned-about shot is still added if the operator keeps it. A cheap heuristic cannot separate an
+unreadable photo from an unusual but legible menu (dark chalkboard, spotlit letterboard). Do not
+turn this into a gate. The thresholds themselves are calibrated against **synthetic** frames and
+should be re-tuned against real store photos before the flag goes on for tenants — a mis-tuned
+threshold degrades to noisy or absent advice, which is exactly why warn-only matters.
+
+Permission handling: camera is requested only when the operator opens the capture surface, never on
+modal open. `NotAllowedError`/`SecurityError` → "blocked" copy; `NotFound`/`Overconstrained`/
+`NotReadable` → "unsupported"; anything else → generic — all three degrade to the file picker rather
+than dead-ending. Tracks stop on cancel, on hand-off, and on unmount; object URLs are revoked from a
+ref so unmount cleanup doesn't re-run per shot.
+
 **Phase-0 spike result, done live during Phase 3 planning (this is what unblocked D10):**
 `pdfjs-dist@5.4.296` + `@napi-rs/canvas@0.1.80` (both already transitive deps of `pdf-parse@2.4.5`,
 promoted to direct deps in Phase 3) were verified end-to-end rendering a real PDF page to a real
@@ -225,7 +249,7 @@ cairo/pango/poppler at all). **No `poppler-utils`/`pdftoppm` fallback is needed.
 that did this work) — see the verification checklist below, this is the top real-infra item still
 outstanding.
 
-## What's built so far — Phases 1, 2, 3, 4, and 6
+## What's built so far — Phases 1 through 6
 
 **Module** — `backend/src/modules/menuImport/` (passes both
 `node scripts/check-architecture-guardrails.js` and `check-controller-boundaries.js`):
@@ -304,16 +328,38 @@ job-scoped `reserveVisionCall` closure and passes it into `extractMenuItemsFromF
   derived constants, a label swap on the existing import button (`Import Menu` vs `Import from
   PDF`), and a modal branch. With the batch flag off, the rendered page is what shipped before.
 
+**Camera capture (Phase 5)** — see D12:
+- `frontend/src/utils/menuPhotoQuality.js` (new) — pure, no DOM. `analyzeMenuPhotoQuality(imageData,
+  {sourceWidth, sourceHeight})` → `{sharpness, brightness, glareRatio, warnings[], level,
+  blocking:false}`, plus `MENU_PHOTO_QUALITY_THRESHOLDS` and `MENU_PHOTO_QUALITY_WARNING`.
+- `frontend/Components/items/MenuPhotoCaptureSheet.jsx` (new) — live preview with a 700ms sampling
+  loop scoring a 320px downsample, shutter capturing at full frame size, per-shot thumbnails with
+  their warning (or "Looks good") and a discard button, remaining-slot awareness so a capture can't
+  push the batch past the file cap, and the permission/no-camera fallbacks from D12. Also exports
+  `supportsMenuPhotoCapture()`.
+- `frontend/Components/items/MenuImportBatchModal.jsx` — a "Take Photos" button (only when
+  `mediaDevices.getUserMedia` exists), the inline capture panel, and the handler appending captured
+  files to `selectedFiles`. The file input moved out of its wrapping `<label>` so the capture
+  sheet's "add photos from device" fallback can `.click()` it through a ref.
+
 **Governance (Phase 6)**:
-- `docs/architecture/adr/0039-batch-menu-import-async-extraction.md` — accepted; covers D1–D11.
+- `docs/architecture/adr/0039-batch-menu-import-async-extraction.md` — accepted; covers D1–D12
+  (the camera-capture decision was folded into the same ADR rather than a new one — 0039 was
+  authored in this workstream and had not merged).
   (0039 was genuinely free — the directory has duplicate 0022/0023/0024/0025/0029/0030/0036 numbers
   but tops out at 0038.)
 - `docs/compliance/impact-declarations/2026-07-29-pos-batch-menu-import.md` — `major`,
   surfaces `pos,terminal`, the floor forced by touching `frontend/src/features/pos/**`.
-  `npm run check:compliance` and `npm run lint:docs` both pass. **Read its Verification Evidence
-  section before merging** — the request-time preflight (`POST /api/v1/compliance/preflight`) has
-  *not* been run; it needs a live tenant environment, and the front-matter preflight fields record
-  the classification decision, not an observed API response.
+- `docs/compliance/impact-declarations/2026-07-29-pos-menu-photo-capture.md` — Phase 5. Note that
+  `check:compliance` reports **"No compliance-sensitive changes detected"** for the Phase 5 diff on
+  its own: nothing in it matches the classification matrix's paths. It was filed anyway because
+  camera access is a new device-permission surface, and that judgement is stated in the declaration
+  rather than dressed up as a rule the tooling enforced.
+- `npm run check:compliance` and `npm run lint:docs` pass for both. **Read each declaration's
+  Verification Evidence section before merging** — the request-time preflight
+  (`POST /api/v1/compliance/preflight`) has *not* been run for either; it needs a live tenant
+  environment, and the front-matter preflight fields record the classification decision, not an
+  observed API response.
 
 **Modified** (all backward-compatible, existing single-file tests pass unchanged):
 - `backend/src/config/menuImportFeature.js`, `backend/src/config/uploadConfig.js` (new
@@ -390,7 +436,7 @@ node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.confi
 - `backend/tests/menuPdfRasterService.test.js` (Phase 3, new) — renders every page under the cap,
   caps + flags `truncated` over it, single-page doc, corrupt-buffer rejection, bounded concurrency.
 
-**Frontend tests added (Phase 4), all passing** — 15 tests across 4 files, run via
+**Frontend tests added (Phases 4–5), all passing** — 30 tests across 6 files, run via
 `npx vitest run <paths>` from `frontend/`:
 - `src/services/__tests__/menuImportService.contract.test.js` — the flag is exactly-`'true'`-gated,
   every file goes under the multipart `files` field, and each of the four routes is hit at the
@@ -406,8 +452,18 @@ node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.confi
 - `src/features/pos/__tests__/menuImportBatchEntry.contract.test.js` — source-level gating contract
   for `TerminalOperationsWorkspace.jsx` (matches how the other POS contract tests in that directory
   are written).
+- `src/utils/__tests__/menuPhotoQuality.test.js` (Phase 5) — each warning from synthetic frames
+  (alternating columns = sharp text, flat gradient = motion blur, clipped corner = glare),
+  resolution judged on the source not the sample, and the worst possible frame still returning
+  `blocking: false`.
+- `Components/items/__tests__/MenuPhotoCaptureSheet.behavior.test.jsx` (Phase 5) — rear camera
+  requested, a blurry preview warns without disabling the shutter, the shutter yields a JPEG `File`
+  and releasing it stops the camera tracks, a warned-about shot is still addable, zero remaining
+  slots disables the shutter, `NotAllowedError` falls back to the file picker, unmount stops the
+  tracks. Mocks `getUserMedia`, canvas `getContext`/`toBlob`, and `videoWidth`/`videoHeight` —
+  **jsdom has no real camera or canvas, so none of this is evidence the camera works on a device.**
 
-Also re-run and green after Phase 4: the 69 existing POS/Items vitest tests
+Also re-run and green after Phases 4–5: the 69 existing POS/Items vitest tests
 (`terminalViewModeContracts`, `itemsPagination`, `posPageShell`, `Components/items`),
 `npm run build` in `frontend/`, `npx eslint` on every new/changed frontend file (0 errors),
 `npm --prefix backend run check:architecture-guardrails` + `check:controller-boundaries`,
@@ -417,38 +473,33 @@ Also re-run and green after Phase 4: the 69 existing POS/Items vitest tests
 
 **Phases 1–3** are on `claude/menu-import-batch-async` (`447ceb03`, `e1c02e69`, `57c71030`), PR
 https://github.com/Sieitzz/dgfy-platform/pull/133 targeting `main`.
-**Phases 6 and 4** continue from that same history on `claude/menu-import-batch-handoff-2fnerq`.
+**Phases 6, 4, and 5** continue from that same history on `claude/menu-import-batch-handoff-2fnerq`.
 `git status` should be clean for everything this doc covers — uncommitted changes touching
 `menuImport` are *new* work on top of this, not leftovers.
 
 ## Resolved: the `.env.example` blocker
 
 Phase 1 and Phase 2/3 sessions were each blocked by a directory-level permission deny rule on
-`backend/.env.example`. **That block did not recur in the Phase 4/6 session, and the file is now
+`backend/.env.example`. **That block did not recur in the Phase 4/5/6 session, and the file is now
 updated** — `MENU_IMPORT_BATCH_ENABLED` plus all six caps are documented there. Nothing left to
 append manually.
 
-## What's NOT done yet — Phases 5 and 7
+## What's NOT done yet — Phase 7 only
 
-**Phase 5 is the actual next step.** The batch path is now usable end to end by a real operator
-(upload several files from disk → progress → merged review → import), so what remains is the
-in-app camera capture the user asked for, and then deprecation.
+**Every phase that is a coding task is done.** What's left is not blocked on more code:
 
-5. **Camera capture + quality scoring** — no `menuPhotoQuality.js`, no capture sheet. This was a
-   headline ask from the user and is entirely unbuilt. It plugs into
-   `MenuImportBatchModal.jsx`'s step 1: captured frames become `File` objects appended to the same
-   `selectedFiles` list the picker/drop-zone feeds, so nothing downstream (job creation, polling,
-   merge review, confirm) needs to change. The pre-shutter quality check **warns but never blocks**
-   — that was explicit from the user, and it matches how every other gap in this feature is handled
-   (surface it, don't block). Expect the real work to be `getUserMedia` plumbing, a canvas-based
-   blur/exposure/glare heuristic, iOS Safari quirks, and permission-denied fallback to the file
-   picker. Governance note: it touches `TerminalOperationsWorkspace.jsx` only if it adds a new entry
-   point — if it stays inside the batch modal, the existing impact declaration's surfaces already
-   cover it, but a **new declaration is still required** for the diff (camera access is a new
-   device-permission surface worth declaring on its own).
-6. ~~**Governance**~~ — done, see "What's built so far".
-7. **Deprecation of the old single-file endpoints** — still not applicable until Phase 5 ships and
-   the batch path has been exercised against a real environment.
+4–6. ~~Frontend, camera capture, governance~~ — done, see "What's built so far".
+7. **Deprecation of the old single-file endpoints** (`/items/import/pdf/preview` and `/confirm`,
+   `PdfMenuImportModal.jsx`, `usePdfMenuImport.js`, `VITE_MENU_PDF_IMPORT_ENABLED`) — **do not start
+   this yet.** It is gated on evidence, not effort. The batch path has never run against a real
+   Redis, a real worker, a real OpenAI key, or a real camera; deprecating the only path that *has*
+   shipped, on the strength of a path verified entirely against mocks, would leave tenants with no
+   working importer if the batch path turns out to be broken in production. Preconditions, in order:
+   (a) the live-environment checklist below is green; (b) `MENU_IMPORT_BATCH_ENABLED` has been on
+   for real tenants long enough to trust; (c) someone has decided whether the single-file path is
+   worth keeping as a fallback for non-F&B or Redis-less deployments — the batch path hard-requires
+   Redis and the single-file path does not, so "deprecate" may correctly turn out to mean "keep as
+   the degraded path" rather than "delete".
 
 ## Sandbox limitations that affected how this was verified
 
@@ -515,13 +566,24 @@ No live Redis, no live MySQL. As a result:
       progress bar advancing as files settle, a failed file listed with its reason, a price-conflict
       row, and confirm creating only the checked rows. The component test covers the rendering
       contract; nothing has exercised it against a live job.
-- [ ] Re-run the frontend vitest suite in full (`npm --prefix frontend test`) — only the 4 new files
+- [ ] Re-run the frontend vitest suite in full (`npm --prefix frontend test`) — only the 6 new files
       plus 9 POS/Items suites were run in-sandbox.
+- [ ] **Camera capture on real devices** — Android Chrome and iOS Safari at minimum: permission
+      prompt, rear-camera selection, orientation, capture quality, and the permission-denied
+      fallback to the file picker. jsdom mocks proved the wiring, not the camera.
+- [ ] **Re-tune `MENU_PHOTO_QUALITY_THRESHOLDS` against real store photos.** They are currently
+      calibrated against synthetic frames. Take ~20 genuine menu photos (good, blurry, dark,
+      glare-covered), log the scores, and adjust. Because the check only warns, a mis-tuned
+      threshold is noisy advice, not a blocked capture — but noisy advice trains operators to
+      ignore it.
 
 ## Suggested next step
 
-**Phase 5 — camera capture + quality scoring.** See "What's NOT done yet" for where it plugs into
-`MenuImportBatchModal.jsx` (append captured frames to `selectedFiles`; nothing downstream changes)
-and for the governance note (a new impact declaration is required for that diff even though the
-surfaces are already declared). The warn-never-block rule for the pre-shutter quality check is a
-user decision, not an inference — do not turn it into a hard gate.
+**Nothing left to build — the next step is verification, not code.** Work the live-environment
+checklist above (Redis + worker + a real OpenAI key, then the device pass on camera capture), then
+re-tune the photo-quality thresholds against real photos. Phase 7 only becomes a real question after
+that; see "What's NOT done yet" for why deprecating the single-file path may turn out to be the
+wrong call even then.
+
+The one governance loose end is the request-time preflight for both impact declarations — it needs
+a live tenant environment and could not be run from a sandbox.

@@ -26,6 +26,20 @@ vi.mock('sonner', () => ({
     toast: { error: vi.fn(), success: vi.fn() }
 }));
 
+// The capture sheet's camera behavior is covered by its own test; here we only
+// care that a captured frame joins the same staged-file list the picker feeds.
+vi.mock('../MenuPhotoCaptureSheet.jsx', () => ({
+    default: ({ onAddFiles, remainingSlots }) => (
+        <button
+            type="button"
+            onClick={() => onAddFiles([new File(['jpeg'], 'menu-photo-1.jpg', { type: 'image/jpeg' })])}
+        >
+            {`stub-capture (${remainingSlots} slots)`}
+        </button>
+    ),
+    supportsMenuPhotoCapture: () => true
+}));
+
 const { default: MenuImportBatchModal } = await import('../MenuImportBatchModal.jsx');
 
 const stageFiles = (files) => {
@@ -113,6 +127,29 @@ describe('MenuImportBatchModal', () => {
         });
         await act(async () => { await vi.advanceTimersByTimeAsync(0); });
     };
+
+    it('stages a captured photo alongside picked files and uploads them together', async () => {
+        createMenuImportJob.mockResolvedValue({ job_id: 'job-1', total_files: 2 });
+        getMenuImportJob.mockResolvedValue(completedJob);
+        previewMenuImportJob.mockResolvedValue(previewPayload);
+
+        render(<MenuImportBatchModal open onClose={() => {}} onSuccess={() => {}} />);
+
+        stageFiles([new File(['a'], 'menu-a.jpg', { type: 'image/jpeg' })]);
+
+        fireEvent.click(screen.getByRole('button', { name: /Take Photos/ }));
+        // The sheet is offered the batch's unused slots, not the raw cap.
+        fireEvent.click(screen.getByRole('button', { name: /stub-capture \(19 slots\)/ }));
+
+        expect(screen.getByText('menu-photo-1.jpg')).toBeTruthy();
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: /Extract Items \(2\)/ }));
+        });
+
+        expect(createMenuImportJob.mock.calls[0][0].map((file) => file.name))
+            .toEqual(['menu-a.jpg', 'menu-photo-1.jpg']);
+    });
 
     it('accepts several files and uploads them as one job', async () => {
         await runToReviewStep();

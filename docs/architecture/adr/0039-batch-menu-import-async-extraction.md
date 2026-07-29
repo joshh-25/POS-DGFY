@@ -93,6 +93,30 @@ This change crosses the Inventory/POS and external-integration boundary. It foll
   job status and the single-file preview response expose these fields, and the POS wizard renders
   them.
 
+### In-app photo capture
+
+- The POS wizard can capture menu photos directly from the device camera
+  (`getUserMedia`, rear camera preferred). Captured frames are encoded as ordinary JPEG `File`
+  objects and join the same staged list the file picker and drop zone feed, so job creation,
+  polling, merge, and confirm cannot distinguish a captured photo from a picked one and needed no
+  changes to support capture.
+- A quality heuristic scores the live preview before the shutter and the captured frame after it:
+  sharpness (std-dev of the Laplacian over luma), mean exposure, clipped-highlight ratio for glare,
+  and source resolution.
+- **The quality check warns and never blocks.** No threshold refuses a capture, no warned-about shot
+  is discarded, and the scorer's `blocking` field is always false. A cheap heuristic cannot separate
+  an unreadable photo from an unusual but legible menu (dark chalkboard, spotlit letterboard), and
+  refusing an operator's photo on that basis is worse than letting the extraction try and showing
+  them the result. This is the same rule the pipeline already applies to price conflicts and
+  truncated scans.
+- Camera access is requested only when the operator opens the capture surface, never on modal open.
+  A denied permission, an absent camera, or a browser without `mediaDevices` degrades to the file
+  picker rather than dead-ending, and camera tracks are stopped when the sheet is dismissed, when
+  captures are handed over, and on unmount.
+- Captured frames never leave the browser except as files on the same authenticated upload the
+  picker uses; nothing is written to local storage and no preview is retained after the wizard
+  closes.
+
 ### Cost control
 
 Six server-side caps live in `backend/src/config/menuImportFeature.js`, all env-overridable:
@@ -158,6 +182,12 @@ batch outright rather than truncating it silently).
   run.
 - Component-test the POS wizard rendering price conflicts, near-duplicates, truncated scans, and
   unreadable files, and confirming only the rows still selected.
+- Unit-test the photo quality heuristic against synthetic frames for each warning, that resolution
+  is judged on the source frame rather than the analysis sample, and that the worst possible frame
+  still returns `blocking: false`.
+- Component-test capture: the rear camera is requested, a warned-about frame still allows the
+  shutter and is still added, the batch's remaining slots bound the shutter, a refused permission
+  falls back to the file picker, and camera tracks stop on hand-off and on unmount.
 - Verify both flags off returns 404 on every batch route, and flag-on-without-Redis returns 503 with
   the missing configuration listed.
 - Run architecture guardrails, controller-boundary checks, the compliance impact check, the frontend

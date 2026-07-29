@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import {
     Dialog,
     DialogContent,
@@ -23,9 +23,11 @@ import {
     ArrowRight,
     RefreshCw,
     Trash2,
-    Scissors
+    Scissors,
+    Camera
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
+import MenuPhotoCaptureSheet, { supportsMenuPhotoCapture } from './MenuPhotoCaptureSheet.jsx';
 import { useMenuImportJob } from '../../src/hooks/useMenuImportJob.js';
 import {
     MENU_IMPORT_ACCEPTED_FILE_PATTERN,
@@ -83,6 +85,9 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
     const [selectedFiles, setSelectedFiles] = useState([]);
     const [editableRows, setEditableRows] = useState([]);
     const [importResult, setImportResult] = useState(null);
+    const [capturing, setCapturing] = useState(false);
+    const cameraAvailable = supportsMenuPhotoCapture();
+    const fileInputRef = useRef(null);
 
     const {
         phase,
@@ -122,6 +127,7 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
         setSelectedFiles([]);
         setEditableRows([]);
         setImportResult(null);
+        setCapturing(false);
         reset();
     };
 
@@ -171,6 +177,19 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
 
     const removeFile = (index) => {
         setSelectedFiles((current) => current.filter((_, i) => i !== index));
+    };
+
+    // Captured frames are ordinary JPEG Files, so they join the same staged
+    // list the picker and drop zone feed — nothing downstream distinguishes
+    // a photo taken here from one picked off the device.
+    const handleCaptured = (files) => {
+        addFiles(files);
+        setCapturing(false);
+    };
+
+    const handleCaptureFallbackToPicker = () => {
+        setCapturing(false);
+        fileInputRef.current?.click();
     };
 
     const handleExtract = async () => {
@@ -249,7 +268,27 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
 
     const renderUploadStep = () => (
         <div className="space-y-4">
-            {!isProcessing && (
+            {/* Lives outside the drop zone so the capture sheet's
+                "add photos from device" fallback can still reach it. */}
+            <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                accept={MENU_IMPORT_FILE_ACCEPT_ATTRIBUTE}
+                onChange={handleFileSelect}
+                className="hidden"
+            />
+
+            {capturing && !isProcessing && (
+                <MenuPhotoCaptureSheet
+                    onAddFiles={handleCaptured}
+                    onCancel={() => setCapturing(false)}
+                    onUseFilePicker={handleCaptureFallbackToPicker}
+                    remainingSlots={MENU_IMPORT_MAX_FILES_HINT - selectedFiles.length}
+                />
+            )}
+
+            {!isProcessing && !capturing && (
                 <div
                     className="text-center p-6 border-2 border-dashed border-slate-300 rounded-xl bg-slate-50 hover:border-teal-400 hover:bg-teal-50/30 transition-all"
                     onDrop={handleDrop}
@@ -259,18 +298,26 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
                     <p className="text-slate-600 mb-2">
                         Drag and drop menu PDFs or photos here, or
                     </p>
-                    <label className="inline-block">
-                        <input
-                            type="file"
-                            multiple
-                            accept={MENU_IMPORT_FILE_ACCEPT_ATTRIBUTE}
-                            onChange={handleFileSelect}
-                            className="hidden"
-                        />
-                        <span className="text-teal-600 hover:text-teal-700 font-medium cursor-pointer underline">
-                            browse to select
-                        </span>
-                    </label>
+                    <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="text-teal-600 hover:text-teal-700 font-medium underline"
+                    >
+                        browse to select
+                    </button>
+                    {cameraAvailable && (
+                        <div className="mt-4">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setCapturing(true)}
+                                disabled={selectedFiles.length >= MENU_IMPORT_MAX_FILES_HINT}
+                            >
+                                <Camera className="mr-2 h-4 w-4" />
+                                Take Photos
+                            </Button>
+                        </div>
+                    )}
                     <p className="mt-2 text-xs text-slate-500">
                         Up to {MENU_IMPORT_MAX_FILES_HINT} files per import — PDF, PNG, or JPG.
                     </p>
@@ -621,7 +668,7 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
                             ) : (
                                 <Button
                                     onClick={handleExtract}
-                                    disabled={selectedFiles.length === 0 || isProcessing}
+                                    disabled={selectedFiles.length === 0 || isProcessing || capturing}
                                     className="bg-teal-600 hover:bg-teal-700"
                                 >
                                     {isProcessing ? (
