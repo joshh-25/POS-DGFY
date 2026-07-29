@@ -49,8 +49,11 @@ jest.unstable_mockModule('../src/services/tenantProvisioningService.js', () => (
 jest.unstable_mockModule('../src/services/emailService.js', () => ({
     isEmailConfigured: jest.fn().mockReturnValue(false),
     sendEmail: jest.fn(),
+    sendAffiliateInviteEmail: jest.fn(),
     sendCompanyApprovedEmail: jest.fn(),
-    sendCompanyRejectedEmail: jest.fn()
+    sendCompanyRejectedEmail: jest.fn(),
+    sendCompanySubmissionReceivedEmail: jest.fn(),
+    sendResubmissionConfirmationEmail: jest.fn()
 }));
 
 process.env.MOCK_PAYPAL = 'false';
@@ -67,7 +70,9 @@ const {
     SystemSetting,
     DgfyAccount,
     DgfyAccountTenantMembership,
-    DgfyLegalAcknowledgement
+    DgfyLegalAcknowledgement,
+    PlatformAdminUser,
+    PlatformAdminSession
 } = await import('../src/models/index.js');
 const { generateDgfyToken } = await import('../src/modules/dgfy/usecases/dgfyAuthUseCases.js');
 const { DGFY_LEGAL_TERM_VERSIONS } = await import('../src/modules/shared/utils/dgfyLegalTerms.js');
@@ -76,6 +81,8 @@ const { DataTypes, Op } = await import('sequelize');
 
 describe('Admin Tenant Lifecycle Integration - Parity', () => {
     let adminApiToken;
+    let platformAdminUser;
+    let platformAdminSession;
     let dgfyAccount;
     let dgfyToken;
     const testSuffix = Date.now();
@@ -108,8 +115,28 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
     beforeAll(async () => {
         await sequelize.authenticate();
         await ensureLandlordTenantSchemaReady();
+        platformAdminUser = await PlatformAdminUser.create({
+            username: `admin_lifecycle_${testSuffix}`,
+            username_normalized: `admin_lifecycle_${testSuffix}`,
+            password_hash: '$2a$12$8cIJyb0nC8.ZyZbmXRb5FO3R8T.n5V4s2EbMiA.mCCi.l/47tmKzK',
+            is_master: true,
+            auth_source: 'bootstrap_env',
+            status: 'active',
+            auth_version: 1
+        });
+        platformAdminSession = await PlatformAdminSession.create({
+            admin_user_id: platformAdminUser.id,
+            auth_version: platformAdminUser.auth_version,
+            issued_at: new Date(),
+            expires_at: new Date(Date.now() + 60 * 60 * 1000)
+        });
         adminApiToken = jwt.sign(
-            { username: `admin_lifecycle_${testSuffix}`, role: 'admin', type: 'admin' },
+            {
+                admin_id: platformAdminUser.id,
+                session_id: platformAdminSession.id,
+                auth_version: platformAdminUser.auth_version,
+                type: 'platform_admin'
+            },
             process.env.JWT_SECRET,
             { expiresIn: '1h' }
         );
@@ -188,6 +215,8 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
         if (dgfyAccount) {
             await DgfyAccount.destroy({ where: { id: dgfyAccount.id } });
         }
+        if (platformAdminSession) await PlatformAdminSession.destroy({ where: { id: platformAdminSession.id } });
+        if (platformAdminUser) await PlatformAdminUser.destroy({ where: { id: platformAdminUser.id } });
 
         for (const key of PRICING_KEYS) {
             const backupValue = pricingBackup.get(key);
@@ -270,9 +299,9 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
 
             expect(response.status).toBe(201);
             expect(response.body.success).toBe(true);
-            expect(response.body.message).toContain('submitted for Platform Admin review');
-            expect(response.body.data.status).toBe('pending_review');
-            expect(response.body.data.application_id).toEqual(expect.any(Number));
+            expect(response.body.message).toContain('submitted for review');
+            expect(response.body.data.status).toBe('pending');
+            expect(response.body.data.application_id).toEqual(expect.any(String));
             expect(response.body.data).not.toHaveProperty('company_token');
             expect(mockProvisionTenant).not.toHaveBeenCalled();
         } finally {

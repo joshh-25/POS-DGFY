@@ -2,6 +2,7 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 import { resolveRegisteredTenantPlan } from './tenantPlanPolicy.js';
+import { resolveCompanyRegistrationStatusUrl } from '../entities/companyRegistrationStatusUrl.js';
 
 const extractWorkflowModeFromTenant = (tenant) => {
     const rawSettings = tenant?.settings;
@@ -112,7 +113,7 @@ export const buildApproveTenantUseCase = ({
                     await emailService.sendCompanyApprovedEmail({
                         email: tenant.admin_email,
                         companyName: tenant.name,
-                        statusUrl: `${process.env.STOREFRONT_PUBLIC_ORIGIN || process.env.APP_URL || 'http://localhost:5173'}/register-company/status/${application.id}`
+                        statusUrl: resolveCompanyRegistrationStatusUrl(application.id)
                     });
                     emailSent = true;
                     logger?.info?.(`[TenantApproval] Approval email sent to ${tenant.admin_email}`);

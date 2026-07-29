@@ -18,6 +18,7 @@ import {
     resolveRegisteredTenantPlan
 } from './tenantPlanPolicy.js';
 import { isValidPhoneNumber, normalizePhoneNumber } from '../../../utils/phoneNumber.js';
+import { resolveCompanyRegistrationStatusUrl } from '../entities/companyRegistrationStatusUrl.js';
 
 const buildLegalPersistenceError = () => new DomainError(
     DomainErrorCode.INTERNAL_ERROR,
@@ -374,6 +375,32 @@ export const buildRegisterCompanyRequestUseCase = ({
                     auto_approved: false
                 }
             });
+
+            const submissionDelivery = registrationApplication.submissionEmailDelivery;
+            if (submissionDelivery && emailService?.isEmailConfigured?.()) {
+                try {
+                    const deliveryResult = await emailService.sendCompanySubmissionReceivedEmail({
+                        email: adminEmail,
+                        companyName: tenant.name,
+                        statusUrl: resolveCompanyRegistrationStatusUrl(registrationApplication.id)
+                    });
+                    await companyRegistrationRepository.updateEmailDelivery(submissionDelivery, {
+                        status: 'sent_to_provider',
+                        provider_message_id: deliveryResult?.messageId || null,
+                        sent_at: new Date(),
+                        last_error_summary: null
+                    });
+                } catch (emailError) {
+                    await companyRegistrationRepository.updateEmailDelivery(submissionDelivery, {
+                        status: 'failed',
+                        last_error_summary: String(emailError.message || 'Submission email failed.').slice(0, 500)
+                    }).catch(() => {});
+                    logger?.warn?.('[Registration] Submission confirmation email failed', {
+                        application_id: registrationApplication.id,
+                        error: emailError.message
+                    });
+                }
+            }
 
             return ok({
                 statusCode: 201,
