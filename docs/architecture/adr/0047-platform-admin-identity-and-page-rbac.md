@@ -1,11 +1,14 @@
 ---
 status: accepted
+authority_level: authoritative
+owner: architecture
 date: 2026-07-28
 last_reviewed: 2026-07-28
-classification: authoritative
+review_by: 2027-01-28
+topic: platform_admin_identity_rbac
 ---
 
-# ADR 0039: Platform Admin Identity and Page RBAC
+# ADR 0047: Platform Admin Identity and Page RBAC
 
 ## Context
 

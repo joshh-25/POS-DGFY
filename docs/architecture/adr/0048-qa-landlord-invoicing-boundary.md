@@ -1,11 +1,14 @@
 ---
 status: accepted
+authority_level: authoritative
+owner: architecture
 date: 2026-07-28
 last_reviewed: 2026-07-28
-classification: authoritative
+review_by: 2027-01-28
+topic: qa_landlord_invoicing
 ---
 
-# ADR 0040: QA Landlord Invoicing Boundary
+# ADR 0048: QA Landlord Invoicing Boundary
 
 ## Context
 

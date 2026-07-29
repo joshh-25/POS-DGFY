@@ -69,6 +69,8 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0044 | [POS Terminal Device Pairing](0044-pos-terminal-device-pairing.md) | `accepted` | pos_terminal_device_pairing | 2026-12-28 | 0 |
 | 0045 | [Shared POS Receipt Renderer](0045-shared-pos-receipt-renderer.md) | `accepted` | shared_pos_receipt_renderer | 2027-01-23 | 0 |
 | 0046 | [Verified Storefront Custom Domains](0046-verified-storefront-custom-domains.md) | `accepted` | verified_storefront_custom_domains | 2026-09-04 | 0 |
+| 0047 | [Platform Admin Identity and Page RBAC](0047-platform-admin-identity-and-page-rbac.md) | `accepted` | platform_admin_identity_rbac | 2027-01-28 | 0 |
+| 0048 | [QA Landlord Invoicing Boundary](0048-qa-landlord-invoicing-boundary.md) | `accepted` | qa_landlord_invoicing | 2027-01-28 | 0 |
 
 ## Renumbered (collision stubs)
 
