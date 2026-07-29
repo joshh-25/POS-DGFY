@@ -1,6 +1,6 @@
 /** @vitest-environment jsdom */
 import { act, renderHook } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const TERMINAL_STATUSES = ['completed', 'completed_with_errors', 'failed'];
 
@@ -17,7 +17,9 @@ vi.mock('../../services/menuImportService.js', () => ({
     isMenuImportTerminalStatus: (status) => TERMINAL_STATUSES.includes(status)
 }));
 
-const { useMenuImportJob, MENU_IMPORT_POLL_INTERVAL_MS, MENU_IMPORT_POLL_TIMEOUT_MS } = await import('../useMenuImportJob.js');
+let useMenuImportJob;
+let MENU_IMPORT_POLL_INTERVAL_MS;
+let MENU_IMPORT_POLL_TIMEOUT_MS;
 
 const jobAt = (status, totals) => ({
     job_id: 'job-1',
@@ -27,6 +29,10 @@ const jobAt = (status, totals) => ({
 });
 
 describe('useMenuImportJob', () => {
+    beforeAll(async () => {
+        ({ useMenuImportJob, MENU_IMPORT_POLL_INTERVAL_MS, MENU_IMPORT_POLL_TIMEOUT_MS } = await import('../useMenuImportJob.js'));
+    });
+
     beforeEach(() => {
         vi.useFakeTimers();
         createMenuImportJob.mockReset();
