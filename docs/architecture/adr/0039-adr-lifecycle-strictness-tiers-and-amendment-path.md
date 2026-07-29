@@ -1,6 +1,6 @@
 ---
-status: proposed
-authority_level: reference
+status: amended
+authority_level: authoritative
 owner: architecture
 date: 2026-07-29
 last_reviewed: 2026-07-29
@@ -13,7 +13,8 @@ topic: adr_lifecycle_governance
 
 ## Status
 
-Proposed (2026-07-29)
+Accepted (2026-07-29)
+Amended (2026-07-29): migration executed; see Amendments.
 
 This ADR governs how ADRs themselves are written, graded, amended, and retired.
 It is a process decision in the same family as ADR 0004 (compliance automation)
@@ -242,3 +243,44 @@ and are the real cost.
 5. ADR 0004 — architecture compliance automation (precedent for process ADRs)
 6. ADR 0035 — compatibility-seam governance (precedent for manifest + gate +
    removal-path design)
+
+## Amendments
+
+### 2026-07-29 — Collision resolution keeps historical records intact
+- Clause amended: Migration Plan step 1 (`default`)
+- Change: the file that keeps a contested number is the one with the most
+  inbound references, not the earliest-dated one. Renumbered files leave a
+  `status: moved` stub at the old path, and only living docs get their
+  references rewritten — dated compliance impact declarations and release
+  merge-adoption manifests are left byte-identical.
+- Reason: 311 inbound references exist across the repo, and several point at
+  colliding ADRs from dated archival records. Rewriting those would falsify the
+  record; a chronological rule would also have churned the two most-referenced
+  ADRs (0025 pos-application-shells, 0029 catalog-inventory) for no benefit.
+- Cost: filename-level number prefixes still repeat on stub paths. The checker
+  enforces uniqueness across live ADRs and skips stubs, which is the invariant
+  that matters.
+- PR: ADR 0039 migration
+
+### 2026-07-29 — Gate promoted immediately rather than after a soak
+- Clause amended: Decision 6 and Migration Plan step 6 (`default`)
+- Change: `scripts/check-adr.js` ships wired to `--strict` through
+  `npm run lint:docs` rather than running report-only first. Report-only mode
+  remains available as the default invocation.
+- Reason: the backfill landed in the same change, and the corpus validates
+  clean, so there is nothing for a soak period to discover.
+- PR: ADR 0039 migration
+
+### 2026-07-29 — ADRs are validated by check-adr.js, not the document registry
+- Clause amended: Decision 6 (`default`)
+- Change: ADRs are not bulk-registered in `docs/_meta/document-registry.json`.
+  `scripts/check-adr.js` owns ADR validation; the registry keeps its existing
+  single ADR entry.
+- Reason: ADR rules (lifecycle status, tier tags, number uniqueness, index
+  freshness) do not fit the registry's per-document `expected_status` schema,
+  and 46 more registry entries would duplicate the checker without adding
+  coverage. The one registered ADR did surface the real conflict — its
+  `expected_status` moved from `authoritative` to `accepted`, the axis split in
+  Decision 2.
+- PR: ADR 0039 migration
+

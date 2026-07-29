@@ -61,7 +61,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0036 | [Affiliates Program — Commission Ledger, Attribution, and Cashout](0036-affiliates-program-commission-and-cashout.md) | `accepted` | affiliates_program_commission_and_cashout | 2027-01-24 | 0 |
 | 0037 | [Open Multi-Vertical Product Model and Capability-Driven Store Types](0037-unified-product-domain-and-capability-driven-store-types.md) | `proposed` | unified_product_domain_and_capability_driven_store_types | 2027-01-25 | 0 |
 | 0038 | [External Barcode Product Registry Lookup](0038-external-barcode-product-registry-lookup.md) | `accepted` | external_barcode_product_registry_lookup | 2027-01-25 | 0 |
-| 0039 | [ADR Lifecycle, Strictness Tiers, and Amendment Path](0039-adr-lifecycle-strictness-tiers-and-amendment-path.md) | `proposed` | adr_lifecycle_governance | 2026-10-29 | 1 |
+| 0039 | [ADR Lifecycle, Strictness Tiers, and Amendment Path](0039-adr-lifecycle-strictness-tiers-and-amendment-path.md) | `amended` | adr_lifecycle_governance | 2026-10-29 | 1 |
 | 0040 | [On-Hand Weighted Average Cost Valuation Across Inventory, PO, JO, Suppliers, and Reporting](0040-weighted-average-cost-valuation-and-variance-analytics.md) | `accepted` | weighted_average_cost_valuation_and_variance_analytics | 2026-10-20 | 0 |
 | 0041 | [Hospitality Mode PMS And Stay Management](0041-hospitality-mode-pms-stay-management.md) | `accepted` | hospitality_mode_pms_stay_management | 2026-11-19 | 0 |
 | 0042 | [BIR RMO 24-2023 Fiscal Document and Accreditation Closure](0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md) | `accepted` | bir_rmo_24_2023_fiscal_document_and_accreditation_closure | 2026-12-01 | 0 |
