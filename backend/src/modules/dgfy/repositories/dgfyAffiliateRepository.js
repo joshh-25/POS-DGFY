@@ -51,7 +51,14 @@ const DEFAULT_SETTINGS = Object.freeze({
     default_rate_bps: 500,
     attribution_window_days: 60,
     min_cashout_centavos: 20000,
-    auto_approve_enrollment: false
+    auto_approve_enrollment: false,
+    // Phase 1 affiliate pricing rule engine defaults - see
+    // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md. Mirrors the model-level
+    // defaults in TenantAffiliateSettings.js so a tenant with no settings row yet resolves
+    // identically to one with a freshly-created row.
+    commission_type: 'PERCENTAGE_OF_BASE',
+    settlement_policy: null,
+    commission_base_mode: 'discounted_subtotal'
 });
 
 const ENROLLMENT_ACCOUNT_INCLUDE = {

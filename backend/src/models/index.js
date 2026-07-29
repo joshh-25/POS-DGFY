@@ -145,6 +145,7 @@ import DgfyAffiliateCommissionFactory from './Landlord/DgfyAffiliateCommission.j
 import DgfyAffiliatePayoutMethodFactory from './Landlord/DgfyAffiliatePayoutMethod.js';
 import DgfyAffiliateCashoutFactory from './Landlord/DgfyAffiliateCashout.js';
 import DgfyAffiliateInviteFactory from './Landlord/DgfyAffiliateInvite.js';
+import DgfyAffiliatePriceRuleFactory from './Landlord/DgfyAffiliatePriceRule.js';
 import TenantAffiliateSettingsFactory from './Landlord/TenantAffiliateSettings.js';
 import PlatformAdminUserFactory from './Landlord/PlatformAdminUser.js';
 import PlatformAdminPermissionFactory from './Landlord/PlatformAdminPermission.js';
@@ -203,6 +204,7 @@ const DgfyAffiliateCommission = DgfyAffiliateCommissionFactory(sequelize);
 const DgfyAffiliatePayoutMethod = DgfyAffiliatePayoutMethodFactory(sequelize);
 const DgfyAffiliateCashout = DgfyAffiliateCashoutFactory(sequelize);
 const DgfyAffiliateInvite = DgfyAffiliateInviteFactory(sequelize);
+const DgfyAffiliatePriceRule = DgfyAffiliatePriceRuleFactory(sequelize);
 const TenantAffiliateSettings = TenantAffiliateSettingsFactory(sequelize);
 const PlatformAdminUser = PlatformAdminUserFactory(sequelize);
 const PlatformAdminPermission = PlatformAdminPermissionFactory(sequelize);
@@ -337,6 +339,13 @@ Tenant.hasOne(TenantAffiliateSettings, { foreignKey: 'tenant_id', as: 'affiliate
 TenantAffiliateSettings.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(DgfyAffiliateInvite, { foreignKey: 'tenant_id', as: 'affiliateInvites' });
 DgfyAffiliateInvite.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+// dgfy_affiliate_price_rules only associates on tenant_id: enrollment_id and item_id use the
+// sentinel-0 "applies to all" convention (see the migration), so a strict belongsTo association on
+// either would misrepresent template rows as referencing a real enrollment/item that doesn't exist.
+// Resolution queries (Stage D) filter directly on tenant_id/enrollment_id/item_id instead of a
+// Sequelize include.
+Tenant.hasMany(DgfyAffiliatePriceRule, { foreignKey: 'tenant_id', as: 'affiliatePriceRules' });
+DgfyAffiliatePriceRule.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 
 // User associations
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
@@ -886,6 +895,7 @@ const db = {
   DgfyAffiliatePayoutMethod,
   DgfyAffiliateCashout,
   DgfyAffiliateInvite,
+  DgfyAffiliatePriceRule,
   TenantAffiliateSettings
   ,PlatformAdminUser
   ,PlatformAdminPermission
@@ -1051,6 +1061,7 @@ export {
   DgfyAffiliatePayoutMethod,
   DgfyAffiliateCashout,
   DgfyAffiliateInvite,
+  DgfyAffiliatePriceRule,
   TenantAffiliateSettings,
   PlatformAdminUser,
   PlatformAdminPermission,
