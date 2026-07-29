@@ -147,6 +147,32 @@ batch outright rather than truncating it silently).
   the batch flag is on it replaces the single-file wizard at the same permission-gated entry point;
   neither wizard renders for a user who cannot already create items manually.
 
+### Deprecating the single-file path
+
+- `POST /items/import/pdf/preview` and `/confirm`, `PdfMenuImportModal.jsx`, and
+  `usePdfMenuImport.js` are **deprecated, not removed**. The batch path supersedes them
+  functionally, and the POS Items view already renders the batch wizard instead wherever the batch
+  flag is on.
+- Deprecation is announced rather than assumed: both endpoints answer with `Deprecation: true`, a
+  `Link` to the successor, and a `Sunset` date when one is configured, and every call is logged with
+  its tenant. Removal is to be driven by that usage signal reaching zero, not by a chosen date —
+  nothing else in the system can say whether a tenant still depends on this path.
+- `MENU_IMPORT_LEGACY_SINGLE_FILE_ENABLED=false` retires the endpoints per environment (410 Gone,
+  naming the successor) without a deploy, and restores them just as fast. 410 rather than 404 so a
+  client can distinguish "intentionally gone" from "never existed".
+- **Removal criteria — all four, in order:**
+  1. The live-environment checklist for the batch path is green: real Redis, real worker, real
+     OpenAI key, a scanned PDF end to end, and camera capture on real devices.
+  2. `MENU_IMPORT_BATCH_ENABLED` has been on for real tenants long enough to trust, with the
+     deprecation log showing single-file usage at zero.
+  3. A decision has been recorded on Redis-less deployments. The batch path hard-requires Redis and
+     the single-file path does not, so "remove" may correctly resolve to "keep as the degraded
+     fallback" — that is a legitimate outcome of this criterion, not a failure to finish.
+  4. Non-F&B and offline/LAN terminal cases have been checked against the same question.
+- Until those hold, the single-file path is the only menu importer that has run in production, and
+  the replacement has been verified against mocks. Removing it first would leave tenants with no
+  working importer if the batch path fails in production.
+
 ## Consequences
 
 - Batch import has a hard Redis dependency the single-file path does not. With Redis down, the
@@ -190,5 +216,8 @@ batch outright rather than truncating it silently).
   falls back to the file picker, and camera tracks stop on hand-off and on unmount.
 - Verify both flags off returns 404 on every batch route, and flag-on-without-Redis returns 503 with
   the missing configuration listed.
+- Unit-test the deprecation guard: enabled by default, `Deprecation`/`Link` headers present, each
+  call logged with its tenant, `Sunset` emitted only for a parseable date, 410 with the successor
+  once the kill switch is set, and only the exact string `false` turning it off.
 - Run architecture guardrails, controller-boundary checks, the compliance impact check, the frontend
   production build, and the menu-import backend suites.

@@ -9,22 +9,24 @@ topic: menu_import_batch_handoff
 
 # Batch Menu Import (Multi-File + Camera Capture) — Handoff
 
-Date: July 28–29, 2026 (Phases 1–6)
+Date: July 28–29, 2026 (Phases 1–7 — all of them)
 Branches:
 - `claude/menu-import-batch-async` — Phases 1–3, **PRed to `main`**:
   https://github.com/Sieitzz/dgfy-platform/pull/133 (three commits: `447ceb03` Phase 1,
   `e1c02e69` Phase 2, `57c71030` Phase 3)
 - `claude/menu-import-batch-handoff-2fnerq` — continues from the same history and adds **Phase 6
-  (governance), Phase 4 (frontend), and Phase 5 (camera capture)**. See "What's built so far".
+  (governance), Phase 4 (frontend), Phase 5 (camera capture), and Phase 7 (deprecation)**. See
+  "What's built so far".
 
-**Phase 7 (deprecating the single-file endpoints) is the only phase still unbuilt — and it is
-gated on live verification, not on more code.**
+**All seven phases are built.** What remains is verification against a real environment, plus the
+*removal* of the deprecated single-file path — which Phase 7 deliberately did not do, and which is
+gated on evidence rather than effort (see D13).
 
 ## Purpose
 
 This note is for whoever (human or AI) picks up this build next. It exists so a different
 assistant/tool can continue without re-deriving the design decisions already made, or the
-constraints that shaped them. **Phases 1–6 of a 7-phase plan are built.** Read this whole
+constraints that shaped them. **All 7 phases of the plan are built.** Read this whole
 doc before touching the code — the "don't re-derive" section especially. This doc has already
 saved one recovery: an earlier session lost its Phase 2 planning to a client crash, and the
 previous version of this file (Phase-1-only) was what let a fresh session reconstruct Phase 2
@@ -247,6 +249,34 @@ first cut gated it, which meant it silently vanished on an insecure origin — i
 the feature not existing, and the first thing a reviewer asked about. An always-present entry point
 that explains itself beats a conditionally-absent one.
 
+**D13 — Phase 7 deprecates the single-file path; it does not remove it.** "Deprecation" here means
+announce + kill switch + removal criteria, and that is the whole phase. The single-file endpoints
+(`/items/import/pdf/preview`, `/confirm`), `PdfMenuImportModal.jsx`, and `usePdfMenuImport.js` all
+still work.
+
+Why not delete: the single-file path is the **only menu importer that has ever run in production**,
+and its replacement has been verified entirely against mocks — no real Redis, worker, OpenAI key, or
+camera yet. It also works **without Redis**, which the batch path hard-requires, so it is the
+fallback for any deployment that has no Redis or whose worker is down. Deleting it first risks
+leaving tenants with no importer at all.
+
+How it's expressed:
+- `markLegacyMenuImportDeprecated` (`backend/src/middleware/menuImportDeprecation.js`) sets
+  `Deprecation: true`, `Link: <successor>; rel="successor-version"`, and `Sunset` (only when
+  `MENU_IMPORT_LEGACY_SUNSET_DATE` parses), then **logs every call with its tenant**. That log is
+  the point — removal should be driven by observed usage hitting zero, and nothing else in this
+  codebase could tell us whether a tenant still depends on the path.
+- `MENU_IMPORT_LEGACY_SINGLE_FILE_ENABLED=false` retires both endpoints per environment with **410
+  Gone** naming the successor — no deploy to turn off, no deploy to turn back on. 410 not 404 so a
+  client can tell "intentionally gone" from "never existed" or "flag off". Only the exact string
+  `false` disables it (asserted by a test) — a typo must not silently retire a live path.
+- `@deprecated` JSDoc on the legacy modal and hook, each pointing at the replacement and at the
+  removal criteria rather than just saying "old".
+- **Removal criteria live in ADR 0039**, four of them, in order. Criterion 3 is worth reading before
+  anyone "finishes the job": the batch path requires Redis and this one doesn't, so the correct
+  outcome may be **keep as the degraded fallback**, not delete. That is a legitimate result of the
+  criterion, not an unfinished phase.
+
 **Phase-0 spike result, done live during Phase 3 planning (this is what unblocked D10):**
 `pdfjs-dist@5.4.296` + `@napi-rs/canvas@0.1.80` (both already transitive deps of `pdf-parse@2.4.5`,
 promoted to direct deps in Phase 3) were verified end-to-end rendering a real PDF page to a real
@@ -257,7 +287,7 @@ cairo/pango/poppler at all). **No `poppler-utils`/`pdftoppm` fallback is needed.
 that did this work) — see the verification checklist below, this is the top real-infra item still
 outstanding.
 
-## What's built so far — Phases 1 through 6
+## What's built so far — Phases 1 through 7
 
 **Module** — `backend/src/modules/menuImport/` (passes both
 `node scripts/check-architecture-guardrails.js` and `check-controller-boundaries.js`):
@@ -355,6 +385,23 @@ and `VITE_MENU_IMPORT_BATCH_ENABLED=true`) → wizard step 1 → "Take Photos", 
 zone with the capture panel in place. It is **not** mobile-only — `facingMode: 'environment'` is
 `ideal`, not `exact`, so a laptop webcam is used happily. It does require a secure origin.
 
+**Deprecation (Phase 7)** — see D13:
+- `backend/src/middleware/menuImportDeprecation.js` (new) — `markLegacyMenuImportDeprecated`:
+  410 kill switch first, then deprecation headers + per-call tenant-scoped warn log.
+- `backend/src/config/menuImportFeature.js` — `isMenuImportLegacySingleFileEnabled()`,
+  `menuImportLegacySunsetHttpDate()`, `menuImportLegacyRetiredMessage`,
+  `MENU_IMPORT_LEGACY_SUCCESSOR_PATH`. These read `process.env` **at call time** rather than at
+  import (unlike the caps above) — it's an operational switch, and call-time reads keep it testable
+  without module-registry juggling. `requireMenuImportConfig()` already reads env this way.
+- `backend/src/routes/items.js` — the middleware sits on both legacy routes, after
+  `requireMenuImportEnabled` and before the permission check.
+- `frontend/Components/items/PdfMenuImportModal.jsx`, `frontend/src/hooks/usePdfMenuImport.js` —
+  `@deprecated` JSDoc pointing at the replacement and at ADR 0039's removal criteria. No behavior
+  change; the POS entry point already prefers the batch wizard (Phase 4).
+- `backend/.env.example` — both new vars, commented out, with the "don't retire this yet" warning.
+- `docs/architecture/adr/0039-*` — a "Deprecating the single-file path" decision section and the
+  four removal criteria.
+
 **Governance (Phase 6)**:
 - `docs/architecture/adr/0039-batch-menu-import-async-extraction.md` — accepted; covers D1–D12
   (the camera-capture decision was folded into the same ADR rather than a new one — 0039 was
@@ -418,15 +465,15 @@ finally exercised this code path for real). Also disabled pdf-parse's default pe
 "text" non-empty, which would have permanently defeated `PDF_TEXT_EMPTY` detection and therefore
 D10's whole rasterization fallback trigger.
 
-**Backend tests added, all passing.** Phase 1 (34 tests) + Phase 2 (24 tests) + Phase 3 (17 tests)
-= **75 tests across 7 suites** (Phase 4's one-line `PUBLIC_FILE_FIELDS` change kept all 75 green),
-run via:
+**Backend tests added, all passing.** Phase 1 (34) + Phase 2 (24) + Phase 3 (17) + Phase 7 (6)
+= **81 tests across 8 suites** (Phase 4's one-line `PUBLIC_FILE_FIELDS` change kept the first 75
+green), run via:
 ```
 node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand \
   --runTestsByPath tests/menuExtractionService.test.js tests/menuImportJobRepository.test.js \
   tests/menuImportWorker.test.js tests/mergeMenuImportItems.test.js \
   tests/previewMenuImportJobUseCase.test.js tests/menuImportBatchHandlers.test.js \
-  tests/menuPdfRasterService.test.js
+  tests/menuPdfRasterService.test.js tests/menuImportLegacyDeprecation.test.js
 ```
 - `backend/tests/menuImportJobRepository.test.js` — status derivation across all transitions,
   Redis-unavailable handling, job expiry, **Phase 3: `reserveVisionCall` grants/denies/compensates
@@ -448,6 +495,10 @@ node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.confi
   status/error_code mapping.
 - `backend/tests/menuPdfRasterService.test.js` (Phase 3, new) — renders every page under the cap,
   caps + flags `truncated` over it, single-page doc, corrupt-buffer rejection, bounded concurrency.
+- `backend/tests/menuImportLegacyDeprecation.test.js` (Phase 7, new) — enabled by default (the
+  legacy path must not disappear on upgrade), `Deprecation`/`Link` headers, per-call tenant-scoped
+  log, `Sunset` only for a parseable date, 410 + successor once the kill switch is set, and only
+  the exact string `false` turning it off.
 
 **Frontend tests added (Phases 4–5), all passing** — 30 tests across 6 files, run via
 `npx vitest run <paths>` from `frontend/`:
@@ -498,22 +549,18 @@ Phase 1 and Phase 2/3 sessions were each blocked by a directory-level permission
 updated** — `MENU_IMPORT_BATCH_ENABLED` plus all six caps are documented there. Nothing left to
 append manually.
 
-## What's NOT done yet — Phase 7 only
+## What's NOT done yet — nothing to build
 
-**Every phase that is a coding task is done.** What's left is not blocked on more code:
+All seven phases are built. Two things remain, neither of which is a coding task:
 
-4–6. ~~Frontend, camera capture, governance~~ — done, see "What's built so far".
-7. **Deprecation of the old single-file endpoints** (`/items/import/pdf/preview` and `/confirm`,
-   `PdfMenuImportModal.jsx`, `usePdfMenuImport.js`, `VITE_MENU_PDF_IMPORT_ENABLED`) — **do not start
-   this yet.** It is gated on evidence, not effort. The batch path has never run against a real
-   Redis, a real worker, a real OpenAI key, or a real camera; deprecating the only path that *has*
-   shipped, on the strength of a path verified entirely against mocks, would leave tenants with no
-   working importer if the batch path turns out to be broken in production. Preconditions, in order:
-   (a) the live-environment checklist below is green; (b) `MENU_IMPORT_BATCH_ENABLED` has been on
-   for real tenants long enough to trust; (c) someone has decided whether the single-file path is
-   worth keeping as a fallback for non-F&B or Redis-less deployments — the batch path hard-requires
-   Redis and the single-file path does not, so "deprecate" may correctly turn out to mean "keep as
-   the degraded path" rather than "delete".
+1. **Verification against a real environment** — the checklist below. Everything in Phases 1–7 was
+   verified against mocks, a jsdom camera, and a sandbox with no Redis, no MySQL, and no nginx.
+2. **Actual removal of the deprecated single-file path** — deliberately not done in Phase 7, gated
+   on ADR 0039's four removal criteria (see D13). Criterion 3 may legitimately resolve to "keep it
+   as the Redis-less fallback" rather than "delete it". Do not treat that as an unfinished phase.
+
+**If you are picking this up expecting to write code: there is none queued.** Resist inventing
+some. The most valuable next contribution is running the checklist and reporting what breaks.
 
 ## Sandbox limitations that affected how this was verified
 
@@ -562,6 +609,11 @@ No live Redis, no live MySQL. As a result:
       same napi-rs-published package), but not yet directly observed.
 - [ ] Flip `MENU_IMPORT_BATCH_ENABLED` off → all new routes 404 (including `/preview`). Unset
       `REDIS_URL` with the flag on → 503 with `missing: ['REDIS_URL']`.
+- [ ] Confirm the deprecation layer on a live server: `POST /items/import/pdf/preview` still works
+      and returns `Deprecation: true` + `Link: <...>; rel="successor-version"`, and the warn log
+      carries the tenant. Then set `MENU_IMPORT_LEGACY_SINGLE_FILE_ENABLED=false`, restart, and
+      confirm 410 with `error_code: MENU_IMPORT_LEGACY_RETIRED` — **and set it back**. Do not leave
+      it off until ADR 0039's removal criteria hold.
 - [ ] `sudo nginx -t` against the real rendered nginx config once `envsubst`'d, confirming the
       `location =` blocks don't conflict with the existing `location /api` prefix match.
 - [ ] `npm run check:architecture-guardrails && npm run check:controller-boundaries` from
@@ -593,11 +645,14 @@ No live Redis, no live MySQL. As a result:
 
 ## Suggested next step
 
-**Nothing left to build — the next step is verification, not code.** Work the live-environment
-checklist above (Redis + worker + a real OpenAI key, then the device pass on camera capture), then
-re-tune the photo-quality thresholds against real photos. Phase 7 only becomes a real question after
-that; see "What's NOT done yet" for why deprecating the single-file path may turn out to be the
-wrong call even then.
+**Nothing left to build — the next step is verification, not code.** In order:
 
-The one governance loose end is the request-time preflight for both impact declarations — it needs
-a live tenant environment and could not be run from a sandbox.
+1. Work the live-environment checklist above: Redis + worker + a real OpenAI key, a genuinely
+   scanned PDF through both paths, the `linux/amd64` canvas smoke check, and `nginx -t`.
+2. Do the camera device pass (Android Chrome, iOS Safari) on a secure origin, then re-tune
+   `MENU_PHOTO_QUALITY_THRESHOLDS` against real store photos.
+3. Run `POST /api/v1/compliance/preflight` for both impact declarations and reconcile their
+   front-matter preflight fields — the one governance loose end, and it needs a live tenant
+   environment.
+4. Only then revisit ADR 0039's removal criteria for the deprecated single-file path. The
+   deprecation log added in Phase 7 is what should decide it.

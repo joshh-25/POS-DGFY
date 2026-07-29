@@ -33,6 +33,7 @@ import {
   validateReplaceItemSuppliers
 } from '../validators/itemValidator.js';
 import { authenticate, checkPermission, requireTenantAdmin } from '../middleware/auth.js';
+import { markLegacyMenuImportDeprecated } from '../middleware/menuImportDeprecation.js';
 import { requireLocalInventoryLedgerOwnership, bodyDeclaresCurrentStock } from '../middleware/inventoryAuthorityGate.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import { itemOperationsLimiter } from '../middleware/rateLimiter.js';
@@ -73,9 +74,15 @@ const requireMenuImportEnabled = (req, res, next) => {
   }
   return next();
 };
+// Deprecated in favour of the batch endpoints below (see ADR 0039). Still
+// served — this is the only menu importer that has run in production, and the
+// only one that works without Redis — but every call is announced as
+// deprecated and logged, and MENU_IMPORT_LEGACY_SINGLE_FILE_ENABLED=false
+// retires it per-environment without a deploy.
 router.post(
   '/import/pdf/preview',
   requireMenuImportEnabled,
+  markLegacyMenuImportDeprecated,
   checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS),
   menuImportFileUpload.single('file'),
   menuImportController.previewPdfImport
@@ -83,6 +90,7 @@ router.post(
 router.post(
   '/import/pdf/confirm',
   requireMenuImportEnabled,
+  markLegacyMenuImportDeprecated,
   checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS),
   menuImportController.confirmPdfImport
 );
