@@ -18,11 +18,17 @@ Accepted (2026-03-04)
 The codebase has high-risk hotspots and mixed layering. We need stronger boundaries without breaking public APIs.
 
 ## Decision
+
+> **Strictness tiers (ADR 0039).** Clauses below are tagged `[binding]`, `[default]`,
+> or `[snapshot]`. `binding` needs a superseding ADR to change; `default` needs an
+> amendment block in the implementing PR; `snapshot` is documentation and may be
+> updated by ordinary work. Untagged clauses elsewhere in this document are `default`.
+
 Adopt modular monolith boundaries:
 
-`routes -> controllers -> usecases -> repositories -> models`
+`routes -> controllers -> usecases -> repositories -> models` `[binding]`
 
-Introduce `backend/src/modules/<domain>/...` and keep legacy files as compatibility facades during migration.
+Introduce `backend/src/modules/<domain>/...` and keep legacy files as compatibility facades during migration. `[default]`
 
 ## Consequences
 1. New code lands in `src/modules`.
