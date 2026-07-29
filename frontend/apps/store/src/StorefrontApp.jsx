@@ -285,6 +285,7 @@ import {
   writeStoreAuthToken
 } from './auth/storefrontSessionStorage.js';
 import { requestJson } from './services/requestJson.js';
+import { isKnownDgfyPlatformHost } from './shared/utils/storefrontPlatformHost.js';
 import { hasCustomerName, hasPrimaryContact, isCustomerStepComplete } from './checkout/checkoutValidation.js';
 import { buildFnbTrackingRouteProps } from './modes/fnb/tracking/model/buildFnbTrackingRouteProps.js';
 import {
@@ -345,6 +346,13 @@ export default function StorefrontApp() {
 
   useEffect(() => {
     if (routeSlug || typeof window === 'undefined') return undefined;
+    // This probe only ever resolves a context on an actual customer custom
+    // domain -- the backend's own hostname policy guarantees a 404 on
+    // dgfy.ph and its subdomains (see hostnamePolicy.js), which the frontend
+    // then discards anyway (see the `.then` chain below). Skipping it here
+    // avoids a false-positive 404 in the console/error dashboards on every
+    // anonymous root landing on the platform's own domain.
+    if (isKnownDgfyPlatformHost(window.location.hostname)) return undefined;
     let cancelled = false;
 
     fetch('/api/v1/store/domain-context', { credentials: 'include', cache: 'no-store' })

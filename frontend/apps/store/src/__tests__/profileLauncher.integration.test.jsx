@@ -83,6 +83,14 @@ describe('storefront profile launcher', () => {
     window.history.pushState({}, '', '/');
     window.localStorage.clear();
     window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
+    // The default fetchMock below always resolves /auth/me to a signed-in
+    // account, i.e. this file's fixture models a cookie-backed session. The
+    // real backend always issues `sku_csrf_token` (readable, non-httpOnly)
+    // alongside that session -- see backend/src/utils/browserSessionCookies.js
+    // issueCsrfToken -- which useStorefrontSession now checks before firing
+    // the probe at all (hasDgfyBrowserSessionHint in dgfyAuthService.js).
+    // Without this, every test here would skip the probe as if anonymous.
+    document.cookie = 'sku_csrf_token=test-hint';
     fetchMock = vi.fn(async (url) => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/storefront/discovery?')) {
@@ -173,6 +181,7 @@ describe('storefront profile launcher', () => {
     vi.unstubAllGlobals();
     window.localStorage.clear();
     window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
+    document.cookie = 'sku_csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
   });
 
   it('does not show the profile launcher entry on the main discovery page', async () => {

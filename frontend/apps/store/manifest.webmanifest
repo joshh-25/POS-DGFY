@@ -9,13 +9,13 @@
   "description": "Discover stores, browse catalogs, and place online orders.",
   "icons": [
     {
-      "src": "dgfy-symbologo-192.png",
+      "src": "/dgfy-symbologo-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any maskable"
     },
     {
-      "src": "dgfy-symbologo-512.png",
+      "src": "/dgfy-symbologo-512.png",
       "sizes": "512x512",
       "type": "image/png",
       "purpose": "any maskable"
