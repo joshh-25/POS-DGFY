@@ -1,8 +1,10 @@
 ---
-status: authoritative
+status: accepted
 authority_level: authoritative
 owner: architecture
+date: 2026-06-28
 last_reviewed: 2026-06-30
+review_by: 2026-12-28
 applies_to: development_to_production_release_authorization
 topic: free_tier_signed_release_authorization
 ---

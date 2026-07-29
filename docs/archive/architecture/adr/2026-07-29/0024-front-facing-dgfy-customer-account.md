@@ -1,12 +1,19 @@
 ---
-status: authoritative
+status: superseded
 authority_level: authoritative
 owner: architecture
 last_reviewed: 2026-05-28
 applies_to: dgfy_accounts, storefront_account, customer_orders, customer_tracking
 topic: front_facing_dgfy_customer_account
+superseded_by: ../../../../architecture/adr/0023-front-facing-dgfy-customer-account.md
 ---
 
+
+
+> **Superseded (2026-07-29).** This document is an abandoned duplicate copy of
+> ADR 0023, created during an earlier renumbering and never maintained. The live
+> decision is [`0023-front-facing-dgfy-customer-account.md`](../../../../architecture/adr/0023-front-facing-dgfy-customer-account.md).
+> Archived under ADR 0039 migration step 4. Do not cite this file in new plans.
 # ADR 0024: Front-Facing DGFY Customer Account
 
 ## Context

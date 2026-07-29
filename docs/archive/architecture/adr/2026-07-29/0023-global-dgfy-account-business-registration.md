@@ -1,12 +1,19 @@
 ---
-status: authoritative
+status: superseded
 authority_level: authoritative
 owner: architecture
 last_reviewed: 2026-05-28
 applies_to: dgfy_accounts, tenant_registration, storefront_account, tenant_user_invitations
 topic: global_dgfy_account_business_registration
+superseded_by: ../../../../architecture/adr/0022-global-dgfy-account-business-registration.md
 ---
 
+
+
+> **Superseded (2026-07-29).** This document is an abandoned duplicate copy of
+> ADR 0022, created during an earlier renumbering and never maintained. The live
+> decision is [`0022-global-dgfy-account-business-registration.md`](../../../../architecture/adr/0022-global-dgfy-account-business-registration.md).
+> Archived under ADR 0039 migration step 4. Do not cite this file in new plans.
 # ADR 0023: Global DGFY Account For Business Registration
 
 ## Context

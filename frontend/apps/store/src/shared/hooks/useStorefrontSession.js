@@ -9,7 +9,10 @@ import {
   readStoreAuthToken,
   writeDgfyAuthToken
 } from '../../auth/storefrontSessionStorage.js';
-import { markDgfySessionActive } from '../../../../../src/services/dgfyAuthService.js';
+import {
+  hasDgfyBrowserSessionHint,
+  markDgfySessionActive
+} from '../../../../../src/services/dgfyAuthService.js';
 import { getOrCreateStorefrontVisitorId } from '../model/storefrontCustomerStorage.js';
 import {
   identifyAnalyticsUser,
@@ -90,6 +93,18 @@ export function useStorefrontSession({ setIsAccountDrawerOpen }) {
       }
 
       const legacyToken = readDgfyAuthToken();
+
+      // Anonymous visitors have neither a session-hint cookie nor a legacy
+      // token, so the /auth/me probe below can only ever 401 for them. Skip it:
+      // the 401 is logged by the browser's network layer before any JS runs, so
+      // it can't be caught or silenced -- not sending it is the only way to keep
+      // it out of the console (and out of error dashboards as a false positive).
+      // Anyone with either credential still takes the normal path unchanged.
+      if (!consumedHandoff && !legacyToken && !hasDgfyBrowserSessionHint()) {
+        setDgfySessionAccount(null);
+        return;
+      }
+
       try {
         const payload = await requestJson('/api/v1/dgfy/auth/me', { cache: 'no-store' });
         if (cancelled) return;

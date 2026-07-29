@@ -1,8 +1,12 @@
 ---
 status: proposed
+authority_level: authoritative
+owner: architecture
 date: 2026-07-25
 last_reviewed: 2026-07-25
-classification: authoritative
+review_by: 2027-01-25
+applies_to: architecture_decision
+topic: unified_product_domain_and_capability_driven_store_types
 ---
 
 # ADR 0037: Open Multi-Vertical Product Model and Capability-Driven Store Types
@@ -578,7 +582,7 @@ catalog, and the phased roadmap live in
 - `docs/architecture/adr/0034-manual-delivery-job-foundation.md`
 - `docs/architecture/adr/0035-compatibility-seam-governance.md`
 - `docs/architecture/adr/0009-multi-location-inventory-ledger-and-safety-rollout.md`
-- `docs/architecture/adr/0010-weighted-average-cost-valuation-and-variance-analytics.md`
+- `docs/architecture/adr/0040-weighted-average-cost-valuation-and-variance-analytics.md`
 - `docs/features/UNIFIED_PRODUCT_DOMAIN.md`
 - `docs/features/OFFERING_ARCHETYPES.md`
 - `docs/features/INVENTORY_TRACKING_MODES.md`

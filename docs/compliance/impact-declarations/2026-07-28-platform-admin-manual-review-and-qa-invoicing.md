@@ -2,7 +2,7 @@
 status: reference
 owner: engineering
 last_reviewed: 2026-07-28
-related_adr: docs/architecture/adr/0039-platform-admin-identity-and-page-rbac.md,docs/architecture/adr/0040-qa-landlord-invoicing-boundary.md
+related_adr: docs/architecture/adr/0047-platform-admin-identity-and-page-rbac.md,docs/architecture/adr/0048-qa-landlord-invoicing-boundary.md
 declaration_id: 2026-07-28-platform-admin-manual-review-and-qa-invoicing
 classification: regulatory
 surfaces: settings,compliance,tenant-registration,admin,api,invoicing,pos,terminal,docs
