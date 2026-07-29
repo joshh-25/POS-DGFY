@@ -231,19 +231,28 @@ the repository layer.
 
 ## 6. Where the price is actually resolved
 
-Exactly four sale-price resolution sites exist in the backend. This is what makes the
-storefront-only boundary (B1) provable rather than aspirational:
+Exactly four `requireExplicitSalePrice(item, context)` call sites exist in the backend, all from
+`backend/src/modules/shared/utils/itemFinancialPolicy.js`. This is what makes the storefront-only
+boundary (B1) provable rather than aspirational:
 
 | Site | Surface | Phase 1 |
 |---|---|---|
-| `backend/src/modules/inventory/usecases/storefrontCatalogUseCases.js:152` | Storefront catalog display | **In scope** |
+| `backend/src/modules/inventory/usecases/storefrontCatalogUseCases.js:152` | Owner-side readiness check (`assertStorefrontPriceReady`, runs when enabling storefront visibility) | Not a buyer-facing price site — see correction below |
 | `backend/src/modules/store/usecases/storeUseCases.js:765` | Storefront checkout | **In scope** |
 | `backend/src/modules/pos/usecases/posUseCases.js:2548` | In-store POS checkout | Deferred (§8) |
 | `backend/src/services/dispatchOrderService.js:47` | Dispatch orders | Out of scope |
 
-All four call `requireExplicitSalePrice(item, context)` from
-`backend/src/modules/shared/utils/itemFinancialPolicy.js`. The affiliate rule engine wraps that
-call at the two in-scope sites only.
+**Correction (found during Phase 1 planning):** the row above was originally listed as the
+buyer-facing storefront catalog price site. It is not — it only gates whether an owner can flip an
+item's `storefront_visible` flag on, and never runs on the buyer's browsing path. The actual
+buyer-facing catalog price is `serializeStoreCatalogItem`
+(`backend/src/modules/store/usecases/storeUseCases.js:894`, emitting `default_sale_price` at `:911`),
+reached from two callers: the catalog list endpoint (`:1348`) and the barcode-resolve endpoint
+(`:1494`). Both must become affiliate-aware together — this is the second in-scope site, alongside
+storefront checkout at `:765`.
+
+`serializeStoreCatalogItem`'s two callers, plus `storeUseCases.js:765`, are the affiliate rule
+engine's actual wrap points.
 
 **Both in-scope sites must change together.** If the catalog is not affiliate-aware but checkout
 is, the buyer sees ₱100 in the product list and ₱90 (or ₱120) at checkout. Today the
