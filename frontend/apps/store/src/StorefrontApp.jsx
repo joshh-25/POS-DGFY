@@ -205,6 +205,7 @@ import { useServiceBookingFieldFocus } from './modes/services/booking/hooks/useS
 import { useServiceBookingReviewProps } from './modes/services/booking/hooks/useServiceBookingReviewProps.js';
 import { useServiceCartDrawerProps } from './modes/services/booking/hooks/useServiceCartDrawerProps.js';
 import { useSimpleCartDrawerProps } from './modes/simple/checkout/hooks/useSimpleCartDrawerProps.js';
+import { useSimpleCheckoutGating } from './modes/simple/checkout/hooks/useSimpleCheckoutGating.js';
 import { useSimpleCheckoutRouteProps } from './modes/simple/checkout/hooks/useSimpleCheckoutRouteProps.js';
 import { StoresMap } from './discovery/components/StoresMap.jsx';
 import {
@@ -285,7 +286,6 @@ import {
   writeStoreAuthToken
 } from './auth/storefrontSessionStorage.js';
 import { requestJson } from './services/requestJson.js';
-import { hasCustomerName, hasPrimaryContact, isCustomerStepComplete } from './checkout/checkoutValidation.js';
 import { buildFnbTrackingRouteProps } from './modes/fnb/tracking/model/buildFnbTrackingRouteProps.js';
 import {
   formatServicesBookingFailureMessage,
@@ -2716,19 +2716,26 @@ export default function StorefrontApp() {
     setQuoteError,
     storefrontClosedByHours,
   ]);
-  const simpleCustomerStepComplete = isCustomerStepComplete({
+  const {
+    simpleCheckoutAllowed,
+    simpleCustomerStepComplete,
+    simpleHasCustomerIdentity,
+    simpleHasPrimaryIdentityContact,
+    simpleStepOneReady
+  } = useSimpleCheckoutGating({
+    cart,
+    checkoutAllowed,
+    customerAddress,
+    customerEmail,
     customerName,
     customerPhone,
-    customerEmail,
-    isDeliveryOrder,
-    customerAddress,
-    usePinnedAddress: false
+    fnbScheduleMode,
+    fnbScheduledFor,
+    isDeliveryOrder
   });
-  const simpleHasCustomerIdentity = hasCustomerName(customerName);
-  const simpleHasPrimaryIdentityContact = hasPrimaryContact({ phone: customerPhone, email: customerEmail });
-  const simpleStepOneReady = cart.length > 0;
-  const simpleCheckoutAllowed = checkoutAllowed && simpleCustomerStepComplete;
   const simpleCheckoutRouteProps = useSimpleCheckoutRouteProps({
+    applySavedDeliveryLocation,
+    canAddPinnedLocation,
     canUseGuestCheckoutFlow,
     cart,
     cartCount,
@@ -2737,16 +2744,23 @@ export default function StorefrontApp() {
     checkoutResult,
     customerAddress,
     customerPin,
+    deliveryLocationAction,
+    deliveryLocationDisplayAddress,
+    deliverySavedLocations,
     DropdownComponent: StorefrontDropdown,
     fnbPaymentType,
+    fnbScheduleMode,
     fnbScheduledFor,
     fnbSpecialInstructions,
     goStoreCatalogPage,
+    handleAddPinnedLocation,
     handleCheckout,
     handleDownloadCheckoutImage,
     handlePaymentTypeChange,
     handlePinMyLocation,
     handleQuote,
+    handleRemoveDeliveryAddress,
+    handleSetDefaultDeliveryAddress,
     isDeliveryOrder,
     isDesktopCheckout,
     isDgfyCustomerSignedIn,
@@ -2766,18 +2780,25 @@ export default function StorefrontApp() {
     requireQuoteForCheckout,
     selectedLocation,
     selectedLocationId,
+    selectedSavedLocationId,
     selectedStore,
     servicesBodyFont,
     servicesDisplayFont,
     setCheckoutResult,
     setCustomerAddress,
     setCustomerPin,
+    setDeliveryLocationAction,
     setFnbScheduledFor,
+    setFnbScheduleMode,
     setFnbSpecialInstructions,
     setOrderMethod,
     setPinLocationError,
+    setResolvedDeliveryAddress,
     setSelectedLocationId,
+    setSelectedSavedLocationId,
+    setShowExpandedDeliveryMap,
     setSimpleOrderStep,
+    showExpandedDeliveryMap,
     simpleCheckoutAllowed,
     simpleCustomerStepComplete,
     simpleHasCustomerIdentity,
