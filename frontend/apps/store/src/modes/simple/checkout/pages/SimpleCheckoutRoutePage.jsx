@@ -1,24 +1,27 @@
-import { CheckoutHeroHeader } from '../../../../shared/components/checkout/CheckoutHeroHeader.jsx';
-import { CheckoutStepProgressHeader } from '../../../../shared/components/checkout/CheckoutStepProgressHeader.jsx';
 import { OrderSummaryCard } from '../../../../shared/components/checkout/OrderSummaryCard.jsx';
 import { SimpleCheckoutCustomerStep } from '../components/SimpleCheckoutCustomerStep.jsx';
 import { SimpleCheckoutFulfillmentStep } from '../components/SimpleCheckoutFulfillmentStep.jsx';
+import { SimpleCheckoutJourneyHeader } from '../components/SimpleCheckoutJourneyHeader.jsx';
 import { SimpleCheckoutPaymentStep } from '../components/SimpleCheckoutPaymentStep.jsx';
 import { SimpleCheckoutStoreHeader } from '../components/SimpleCheckoutStoreHeader.jsx';
 import { SimpleCheckoutSuccessStep } from '../components/SimpleCheckoutSuccessStep.jsx';
 import { SimpleCheckoutSummaryCard } from '../components/SimpleCheckoutSummaryCard.jsx';
 
 export function SimpleCheckoutRoutePage({
+  canAddPinnedLocation = false,
   canUseGuestCheckoutFlow = false,
   cart = [],
   cartCount = 0,
   checkoutError = '',
   checkoutLoading = false,
   checkoutResult = null,
-  customerAddress = '',
   customerPin = null,
+  deliveryLocationAction = 'saved',
+  deliveryLocationDisplayAddress = '',
+  deliverySavedLocations = [],
   DropdownComponent,
   fnbPaymentType = 'cash',
+  fnbScheduleMode = 'asap',
   fnbScheduledFor = '',
   fnbSpecialInstructions = '',
   isDeliveryOrder = false,
@@ -39,10 +42,11 @@ export function SimpleCheckoutRoutePage({
   renderStorefrontClosedNotice,
   requireQuoteForCheckout = false,
   selectedLocation = null,
-  selectedLocationId = null,
+  selectedSavedLocationId = '',
   selectedStore = null,
   servicesBodyFont,
   servicesDisplayFont,
+  showExpandedDeliveryMap = false,
   simpleCheckoutAllowed = false,
   simpleCustomerStepComplete = false,
   simpleHasCustomerIdentity = false,
@@ -51,24 +55,26 @@ export function SimpleCheckoutRoutePage({
   simpleOrderStep = 1,
   simpleStepOneReady = false,
   storefrontClosedByHours = false,
-  storeLocations = [],
   totalsForDisplay,
   withAssetOrigin,
+  onAddPinnedLocation,
   onBackToCatalog,
   onCheckout,
-  onCustomerAddressChange,
+  onCloseExpandedMap,
   onDownloadCheckoutImage,
+  onOpenExpandedMap,
   onOrderMethodChange,
   onPaymentTypeChange,
   onPinChange,
-  onPinClear,
   onPinMyLocation,
   onQuote,
+  onScheduleModeChange,
   onScheduledForChange,
-  onSelectedLocationChange,
+  onSelectAddress,
   onSetCheckoutResult,
   onSetSimpleOrderStep,
-  onSpecialInstructionsChange
+  onSpecialInstructionsChange,
+  onStartMapPin
 }) {
   const totals = totalsForDisplay || {};
   const stepGridStyle = {
@@ -92,38 +98,16 @@ export function SimpleCheckoutRoutePage({
         withAssetOrigin={withAssetOrigin}
       />
 
-      <CheckoutHeroHeader
-        eyebrow="Order Journey"
-        title="Complete Your Product Order"
-        description="Set fulfillment first, provide one reliable contact, then review payment and totals before submitting."
-        badges={[
-          { label: `${cartCount} item${cartCount === 1 ? '' : 's'}`, tone: 'pill' },
-          { label: isDeliveryOrder ? 'Delivery order flow' : 'Pickup order flow' }
-        ]}
-        isMobileViewport={isMobileViewport}
-        accentColor="#0f766e"
-        accentSoft="#ecfeff"
-        accentBorder="#99f6e4"
-        displayFont={servicesDisplayFont}
-      />
-
-      <CheckoutStepProgressHeader
-        steps={[
-          { realStep: 1, displayStep: 1, label: isDgfyCustomerSignedIn ? 'Account' : 'Customer', allow: true },
-          { realStep: 2, displayStep: 2, label: 'Fulfillment', allow: cart.length > 0 && simpleCustomerStepComplete },
-          { realStep: 3, displayStep: 3, label: 'Review & Pay', allow: cart.length > 0 && simpleCustomerStepComplete },
-          { realStep: 4, displayStep: 4, label: 'Confirmation', allow: Boolean(checkoutResult), completeWhen: () => Boolean(checkoutResult) }
-        ]}
+      <SimpleCheckoutJourneyHeader
         activeStep={simpleOrderStep}
-        onStepClick={(item) => {
-          if (!item.allow) return;
-          onSetSimpleOrderStep(item.realStep);
-        }}
-        variant="cards"
+        cartCount={cartCount}
+        cartHasItems={cart.length > 0}
+        isCustomerStepComplete={simpleCustomerStepComplete}
+        isDeliveryOrder={isDeliveryOrder}
         isMobileViewport={isMobileViewport}
-        accentColor="#0f766e"
-        accentSoft="#ecfeff"
-        accentBorder="#99f6e4"
+        displayFont={servicesDisplayFont}
+        onStepChange={onSetSimpleOrderStep}
+        signedIn={isDgfyCustomerSignedIn}
       />
 
       {simpleOrderStep === 1 && (
@@ -163,9 +147,13 @@ export function SimpleCheckoutRoutePage({
       {simpleOrderStep === 2 && (
         <div style={stepGridStyle}>
           <SimpleCheckoutFulfillmentStep
+            canAddPinnedLocation={canAddPinnedLocation}
             canUseGuestCheckoutFlow={canUseGuestCheckoutFlow}
-            customerAddress={customerAddress}
             customerPin={customerPin}
+            deliveryLocationAction={deliveryLocationAction}
+            deliveryLocationDisplayAddress={deliveryLocationDisplayAddress}
+            deliverySavedLocations={deliverySavedLocations}
+            fnbScheduleMode={fnbScheduleMode}
             isDeliveryOrder={isDeliveryOrder}
             isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
             isMobileViewport={isMobileViewport}
@@ -175,21 +163,26 @@ export function SimpleCheckoutRoutePage({
             renderGuestCheckoutEntry={renderGuestCheckoutEntry}
             scheduledFor={fnbScheduledFor}
             selectedLocation={selectedLocation}
-            selectedLocationId={selectedLocationId}
+            selectedSavedLocationId={selectedSavedLocationId}
+            servicesBodyFont={servicesBodyFont}
+            servicesDisplayFont={servicesDisplayFont}
+            showExpandedDeliveryMap={showExpandedDeliveryMap}
             simpleOrderMethodOptions={simpleOrderMethodOptions}
             simpleStepOneReady={simpleStepOneReady}
             specialInstructions={fnbSpecialInstructions}
-            storeLocations={storeLocations}
+            onAddPinnedLocation={onAddPinnedLocation}
             onBack={() => onSetSimpleOrderStep(1)}
+            onCloseExpandedMap={onCloseExpandedMap}
             onContinue={() => onSetSimpleOrderStep(3)}
-            onCustomerAddressChange={onCustomerAddressChange}
+            onOpenExpandedMap={onOpenExpandedMap}
             onOrderMethodChange={onOrderMethodChange}
             onPinChange={onPinChange}
-            onPinClear={onPinClear}
             onPinMyLocation={onPinMyLocation}
+            onScheduleModeChange={onScheduleModeChange}
             onScheduledForChange={onScheduledForChange}
-            onSelectedLocationChange={onSelectedLocationChange}
+            onSelectAddress={onSelectAddress}
             onSpecialInstructionsChange={onSpecialInstructionsChange}
+            onStartMapPin={onStartMapPin}
           />
           {renderCheckoutPromoStack(
             <SimpleCheckoutSummaryCard

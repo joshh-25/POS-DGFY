@@ -55,4 +55,47 @@ describe('buildFnbCheckoutPayload', () => {
     expect(payload.delivery_latitude).toBeNull();
     expect(payload.delivery_longitude).toBeNull();
   });
+
+  it('includes a non-null scheduled_for when fnbScheduleMode is "schedule" and fnbScheduledFor is populated (MSME schedule-drop regression guard)', () => {
+    const payload = buildFnbCheckoutPayload({
+      selectedLocationId: 'branch-1',
+      selectedStore: { slug: 'corner-store-9f21', businessId: 'tenant-cornerstore' },
+      orderMethod: 'delivery',
+      customerName: 'Ana Reyes',
+      customerPhone: '+639181234567',
+      customerEmail: 'ana@example.com',
+      isDeliveryOrder: true,
+      deliveryAddress: 'Jaro, Iloilo City',
+      customerPin: { latitude: 10.72, longitude: 122.56 },
+      promoCode: '',
+      fnbScheduleMode: 'schedule',
+      fnbScheduledFor: '2026-08-01T10:30',
+      fnbSpecialInstructions: '',
+      cart: [{ item_id: 2, quantity: 1, price: 250, name: 'Rice Bundle' }]
+    });
+
+    expect(payload.scheduled_for).not.toBeNull();
+    expect(payload.scheduled_for).toBe(new Date('2026-08-01T10:30').toISOString());
+  });
+
+  it('keeps scheduled_for null when fnbScheduleMode is "asap" even if a stale fnbScheduledFor value is present', () => {
+    const payload = buildFnbCheckoutPayload({
+      selectedLocationId: 'branch-1',
+      selectedStore: { slug: 'corner-store-9f21', businessId: 'tenant-cornerstore' },
+      orderMethod: 'pickup',
+      customerName: 'Ana Reyes',
+      customerPhone: '+639181234567',
+      customerEmail: 'ana@example.com',
+      isDeliveryOrder: false,
+      deliveryAddress: 'Jaro, Iloilo City',
+      customerPin: { latitude: 10.72, longitude: 122.56 },
+      promoCode: '',
+      fnbScheduleMode: 'asap',
+      fnbScheduledFor: '2026-08-01T10:30',
+      fnbSpecialInstructions: '',
+      cart: [{ item_id: 2, quantity: 1, price: 250, name: 'Rice Bundle' }]
+    });
+
+    expect(payload.scheduled_for).toBeNull();
+  });
 });
