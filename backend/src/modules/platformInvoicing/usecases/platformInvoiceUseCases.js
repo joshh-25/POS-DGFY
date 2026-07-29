@@ -51,7 +51,7 @@ export const buildPlatformInvoiceUseCases = ({ repository, artifactStore, emailS
       try {
         const existingOriginal = await repository.findOriginalForApplication(application.id, transaction);
         if (existingOriginal) return failure(409, 'An original invoice already exists for this registration.');
-        const invoice = await repository.createDraft({ registration_application_id: application.id, invoice_kind: 'original', mode: 'qa', ...calculation, seller_snapshot: QA_SELLER, buyer_snapshot: buyer, service_snapshot: serviceSnapshot, recipient_email_snapshot: application.registration_email_snapshot }, transaction);
+        const invoice = await repository.createDraft({ registration_application_id: application.id, original_registration_application_id: application.id, invoice_kind: 'original', mode: 'qa', ...calculation, seller_snapshot: QA_SELLER, buyer_snapshot: buyer, service_snapshot: serviceSnapshot, recipient_email_snapshot: application.registration_email_snapshot }, transaction);
         await repository.createEvent({ invoice_id: invoice.id, event_type: 'draft_created', actor_admin_id: actor?.id || null, details: { source_application_id: application.id } }, transaction);
         return { success: true, status: 201, data: invoice };
       } catch (error) { if (/unique/i.test(error.message)) return failure(409, 'An original invoice already exists for this registration.'); throw error; }
@@ -91,8 +91,8 @@ export const buildPlatformInvoiceUseCases = ({ repository, artifactStore, emailS
       const invoice = await repository.findInvoice(invoiceId, transaction, { lock: true });
       if (!invoice) return failure(404, 'Invoice not found.');
       if (invoice.invoice_status !== 'draft') return failure(422, 'Only an unissued draft can be discarded.');
+      await repository.discardDraft(invoice, transaction);
       await repository.createEvent({ invoice_id: invoice.id, event_type: 'draft_discarded', actor_admin_id: actor?.id || null }, transaction);
-      await repository.destroyDraft(invoice, transaction);
       return { success: true, data: { id: invoiceId, discarded: true } };
     });
   },
@@ -125,7 +125,7 @@ export const buildPlatformInvoiceUseCases = ({ repository, artifactStore, emailS
     return repository.transaction(async (transaction) => {
       const invoice = await repository.findInvoice(invoiceId, transaction, { lock: true });
       if (!invoice) return failure(404, 'Invoice not found.');
-      if (invoice.invoice_status !== 'issued') return failure(422, 'Cash payments can only be recorded against an issued original invoice.');
+      if (invoice.invoice_status !== 'issued' || invoice.invoice_kind !== 'original') return failure(422, 'Cash payments can only be recorded against an issued original invoice.');
       const appliedPreviously = (invoice.payments || []).reduce((total, payment) => total + Number(payment.amount_applied_centavos || 0), 0);
       const remaining = Number(invoice.gross_centavos) - appliedPreviously;
       if (remaining <= 0) return failure(422, 'This invoice is already paid in full.');
@@ -148,7 +148,7 @@ export const buildPlatformInvoiceUseCases = ({ repository, artifactStore, emailS
     return repository.transaction(async (transaction) => {
       const invoice = await repository.findInvoice(invoiceId, transaction, { lock: true });
       if (!invoice) return failure(404, 'Invoice not found.');
-      if (invoice.invoice_status !== 'issued') return failure(422, 'Only an issued original invoice can receive a full credit.');
+      if (invoice.invoice_status !== 'issued' || invoice.invoice_kind !== 'original') return failure(422, 'Only an issued original invoice can receive a full credit.');
       const adjustment = await repository.createAdjustment({ invoice_id: invoice.id, adjustment_type: 'full_credit', reason, amount_centavos: Number(invoice.gross_centavos), confirmed_at: new Date(), created_by_admin_id: actor?.id || null }, transaction);
       await invoice.update({ invoice_status: 'fully_credited' }, { transaction });
       await repository.createEvent({ invoice_id: invoice.id, event_type: 'full_credit_recorded', actor_admin_id: actor?.id || null, details: { adjustment_id: adjustment.id, amount_centavos: Number(invoice.gross_centavos), reason } }, transaction);
@@ -172,13 +172,19 @@ export const buildPlatformInvoiceUseCases = ({ repository, artifactStore, emailS
     let actualRecipient;
     try { actualRecipient = invoice.mode === 'qa' ? resolveQaDestination(invoice.recipient_email_snapshot) : invoice.recipient_email_snapshot; }
     catch (error) { return failure(422, error.message); }
-    const latest = await repository.findLatestDelivery(invoice.id);
-    if (latest?.retry_after && new Date(latest.retry_after) > new Date()) return { ...failure(429, 'Please wait before requesting another invoice email.'), retry_after: latest.retry_after };
-    const delivery = await repository.transaction(async (transaction) => {
+    const deliveryResult = await repository.transaction(async (transaction) => {
+      // Lock the invoice row as the serialization anchor even when no prior
+      // delivery row exists, preventing two first-send requests from racing.
+      const lockedInvoice = await repository.findInvoice(invoice.id, transaction, { lock: true });
+      if (!lockedInvoice) return failure(404, 'Invoice not found.');
+      const latest = await repository.findLatestDelivery(invoice.id, transaction, { lock: true });
+      if (latest?.retry_after && new Date(latest.retry_after) > new Date()) return { ...failure(429, 'Please wait before requesting another invoice email.'), retry_after: latest.retry_after };
       const created = await repository.createDelivery({ invoice_id: invoice.id, artifact_id: artifact.id, recipient_email_snapshot: invoice.recipient_email_snapshot, actual_recipient_email_snapshot: actualRecipient, requested_by_admin_id: actor?.id || null, retry_after: new Date(Date.now() + 30_000) }, transaction);
       await repository.createEvent({ invoice_id: invoice.id, event_type: 'email_delivery_queued', actor_admin_id: actor?.id || null, details: { delivery_id: created.id, intended_recipient: invoice.recipient_email_snapshot, actual_recipient: actualRecipient } }, transaction);
-      return created;
+      return { success: true, data: created };
     });
+    if (!deliveryResult.success) return deliveryResult;
+    const delivery = deliveryResult.data;
     try {
       if (!artifactStore || !emailService) throw new Error('Invoice email delivery is unavailable.');
       const buffer = await artifactStore.read(artifact);
