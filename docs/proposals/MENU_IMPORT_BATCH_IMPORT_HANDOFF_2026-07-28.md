@@ -9,16 +9,22 @@ topic: menu_import_batch_handoff
 
 # Batch Menu Import (Multi-File + Camera Capture) — Handoff
 
-Date: July 28–29, 2026 (Phases 1–3)
-Branch: `claude/menu-import-batch-async` — **PRed to `main`**: https://github.com/Sieitzz/dgfy-platform/pull/133
-(three commits: `447ceb03` Phase 1, `e1c02e69` Phase 2, `57c71030` Phase 3 — all pushed and committed,
-nothing uncommitted on this branch as of this doc)
+Date: July 28–29, 2026 (Phases 1–4 + 6)
+Branches:
+- `claude/menu-import-batch-async` — Phases 1–3, **PRed to `main`**:
+  https://github.com/Sieitzz/dgfy-platform/pull/133 (three commits: `447ceb03` Phase 1,
+  `e1c02e69` Phase 2, `57c71030` Phase 3)
+- `claude/menu-import-batch-handoff-2fnerq` — continues from the same history and adds **Phase 6
+  (governance) and Phase 4 (frontend)**. See "What's built so far" below.
+
+**Phase 5 (camera capture + quality scoring) and Phase 7 (single-file deprecation) are the only
+phases still unbuilt.**
 
 ## Purpose
 
 This note is for whoever (human or AI) picks up this build next. It exists so a different
 assistant/tool can continue without re-deriving the design decisions already made, or the
-constraints that shaped them. **Phases 1–3 of a 7-phase plan are built and PRed.** Read this whole
+constraints that shaped them. **Phases 1–4 and 6 of a 7-phase plan are built.** Read this whole
 doc before touching the code — the "don't re-derive" section especially. This doc has already
 saved one recovery: an earlier session lost its Phase 2 planning to a client crash, and the
 previous version of this file (Phase-1-only) was what let a fresh session reconstruct Phase 2
@@ -39,7 +45,8 @@ A single-file PDF/image menu importer already shipped on `develop`, env-gated OF
 - `backend/src/config/uploadConfig.js`'s `menuImportFileUpload` — multer, `files: 1`.
 - `frontend/Components/items/PdfMenuImportModal.jsx` — 3-step wizard (Upload/Review/Result),
   single file only, mounted in the POS Items view (`TerminalOperationsWorkspace.jsx`). **Still
-  single-file as of this doc — Phase 4 hasn't touched it yet.**
+  single-file and untouched — Phase 4 deliberately added a sibling batch wizard rather than
+  modifying it (see D11).**
 - `docs/compliance/impact-declarations/2026-07-25-pos-pdf-menu-import.md` — the impact
   declaration for that original single-file feature.
 
@@ -183,6 +190,31 @@ This applies to both the batch worker (`setFileResult`'s stored record) and the 
 philosophy as D4's `price_conflict` handling: surface the gap, don't block, don't quietly hand back
 an incomplete result that looks complete.
 
+**D11 — The batch wizard is a sibling component, not a mode inside the single-file one (Phase 4).**
+`frontend/Components/items/MenuImportBatchModal.jsx` is new; `PdfMenuImportModal.jsx` is untouched.
+The batch flow has an asynchronous processing stage (progress bar, per-file status/failure list) and
+a merge-review layer (price conflicts, near-duplicates, truncated scans) that the synchronous
+single-file wizard has no concept of, and the two flags ship independently — folding both into one
+component would have coupled a shipped path to an unshipped one for no reuse worth having. The POS
+Items view (`TerminalOperationsWorkspace.jsx`) picks between them: batch wins where its flag is on,
+otherwise the existing single-file wizard renders exactly as before. Both stay behind the same
+`canCreateItems` gate that already guards "Add Item". Supporting pieces:
+`src/services/menuImportService.js` (the only place batch HTTP calls live, per the project rule that
+components never call axios) and `src/hooks/useMenuImportJob.js` (upload → poll → preview state
+machine).
+
+Two smaller decisions inside D11 worth not re-deriving:
+- **Polling is bounded and run-scoped.** 2s interval, 10-minute ceiling (`POLL_TIMEOUT` error rather
+  than an eternal spinner — a job that hasn't settled by then means a wedged/absent worker). Every
+  `startJob`/`reset` bumps a run id that async continuations check, so a late poll or preview from
+  an abandoned run can never overwrite a newer one, and unmount cancels the timer.
+- **The review step opens from an `onReady` callback passed into `startJob`, not from a
+  `useEffect` watching `phase`.** The merged preview lands deep inside the poll continuation; the
+  repo's React lint rules reject `setState` in an effect body (`react-hooks/set-state-in-effect`),
+  and the callback is the honest expression of "this happens once, when the preview arrives"
+  anyway. Same reason `Date.now()` in the poll loop had to move to a module-scope helper
+  (`react-hooks/purity` forbids clock reads inside a hook body).
+
 **Phase-0 spike result, done live during Phase 3 planning (this is what unblocked D10):**
 `pdfjs-dist@5.4.296` + `@napi-rs/canvas@0.1.80` (both already transitive deps of `pdf-parse@2.4.5`,
 promoted to direct deps in Phase 3) were verified end-to-end rendering a real PDF page to a real
@@ -193,7 +225,7 @@ cairo/pango/poppler at all). **No `poppler-utils`/`pdftoppm` fallback is needed.
 that did this work) — see the verification checklist below, this is the top real-infra item still
 outstanding.
 
-## What's built so far — Phases 1, 2, and 3
+## What's built so far — Phases 1, 2, 3, 4, and 6
 
 **Module** — `backend/src/modules/menuImport/` (passes both
 `node scripts/check-architecture-guardrails.js` and `check-controller-boundaries.js`):
@@ -212,7 +244,10 @@ outstanding.
   `DomainErrorCode` enum is small/frozen and wasn't meant to carry feature-specific reasons.
 - `usecases/getMenuImportJobUseCase.js` — reads a job, strips `items`/`path` before it reaches the
   client (those are server-only — items go through the preview use case, path is a filesystem
-  detail), returns a distinguishable `JOB_EXPIRED_OR_NOT_FOUND` rather than a bare 404.
+  detail), returns a distinguishable `JOB_EXPIRED_OR_NOT_FOUND` rather than a bare 404. **Phase 4
+  added `pages_total`/`truncated` to `PUBLIC_FILE_FIELDS`** — Phase 3 stored them but this
+  projection dropped them, so the truncation flag D10 promises could never actually reach the batch
+  client (the single-file path was unaffected; it has its own response wiring).
 - **`usecases/previewMenuImportJobUseCase.js` (Phase 2)** — reads a job, requires it to be in a
   terminal status (`JOB_NOT_READY` 409 otherwise), collects completed files' items, merges/dedups
   them (`support/mergeMenuImportItems.js`), enforces `MENU_IMPORT_MAX_MERGED_ITEMS`
@@ -250,6 +285,35 @@ job-scoped `reserveVisionCall` closure and passes it into `extractMenuItemsFromF
   Node-side font fetcher uses global `fetch()`, which can't read `file://` URLs, so it would trade
   a harmless warning for a hard failure with no rendering difference (confirmed visually). Target
   render resolution ~1600px on the long edge.
+
+**Frontend (Phase 4)** — see D11 for the design decisions:
+- `frontend/src/services/menuImportService.js` (new) — the only place batch HTTP calls live:
+  `createMenuImportJob` (multipart, field name `files`), `getMenuImportJob`,
+  `previewMenuImportJob`, `confirmMenuImport`, plus `isMenuImportBatchEnabled()` and the shared
+  accept-pattern/terminal-status constants.
+- `frontend/src/hooks/useMenuImportJob.js` (new) — upload → poll → preview state machine.
+  Phases: `idle → uploading → processing → previewing → ready → confirming → done`, `error`
+  reachable from any of them. Exposes `progress` (derived from the job's `totals`), `busy`,
+  `startJob(files, {onReady})`, `confirmImport(rows)`, `reset()`.
+- `frontend/Components/items/MenuImportBatchModal.jsx` (new) — 3-step wizard. Step 1 doubles as the
+  live progress view (bar + per-file status/`item_count`/`scanned PDF`/failure-reason/truncation
+  line); step 2 renders the merge summary, the price-conflict banner + per-row badge + other
+  observed prices, near-duplicate pairs, truncated-scan list, unreadable-file list, and the same
+  editable row table the single-file wizard uses; step 3 is the created/failed result.
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx` — one flag read, two
+  derived constants, a label swap on the existing import button (`Import Menu` vs `Import from
+  PDF`), and a modal branch. With the batch flag off, the rendered page is what shipped before.
+
+**Governance (Phase 6)**:
+- `docs/architecture/adr/0039-batch-menu-import-async-extraction.md` — accepted; covers D1–D11.
+  (0039 was genuinely free — the directory has duplicate 0022/0023/0024/0025/0029/0030/0036 numbers
+  but tops out at 0038.)
+- `docs/compliance/impact-declarations/2026-07-29-pos-batch-menu-import.md` — `major`,
+  surfaces `pos,terminal`, the floor forced by touching `frontend/src/features/pos/**`.
+  `npm run check:compliance` and `npm run lint:docs` both pass. **Read its Verification Evidence
+  section before merging** — the request-time preflight (`POST /api/v1/compliance/preflight`) has
+  *not* been run; it needs a live tenant environment, and the front-matter preflight fields record
+  the classification decision, not an observed API response.
 
 **Modified** (all backward-compatible, existing single-file tests pass unchanged):
 - `backend/src/config/menuImportFeature.js`, `backend/src/config/uploadConfig.js` (new
@@ -295,8 +359,9 @@ finally exercised this code path for real). Also disabled pdf-parse's default pe
 "text" non-empty, which would have permanently defeated `PDF_TEXT_EMPTY` detection and therefore
 D10's whole rasterization fallback trigger.
 
-**Tests added, all passing.** Phase 1 (34 tests) + Phase 2 (24 tests) + Phase 3 (17 tests) = **75
-tests across 7 suites**, run via:
+**Backend tests added, all passing.** Phase 1 (34 tests) + Phase 2 (24 tests) + Phase 3 (17 tests)
+= **75 tests across 7 suites** (Phase 4's one-line `PUBLIC_FILE_FIELDS` change kept all 75 green),
+run via:
 ```
 node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.config.cjs --runInBand \
   --runTestsByPath tests/menuExtractionService.test.js tests/menuImportJobRepository.test.js \
@@ -325,51 +390,65 @@ node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.confi
 - `backend/tests/menuPdfRasterService.test.js` (Phase 3, new) — renders every page under the cap,
   caps + flags `truncated` over it, single-page doc, corrupt-buffer rejection, bounded concurrency.
 
+**Frontend tests added (Phase 4), all passing** — 15 tests across 4 files, run via
+`npx vitest run <paths>` from `frontend/`:
+- `src/services/__tests__/menuImportService.contract.test.js` — the flag is exactly-`'true'`-gated,
+  every file goes under the multipart `files` field, and each of the four routes is hit at the
+  path the backend actually registers.
+- `src/hooks/__tests__/useMenuImportJob.test.js` — polls to a terminal status then auto-previews
+  and fires `onReady`; an upload rejection surfaces the server's message/`error_code` and never
+  starts polling; the 10-minute ceiling ends the loop; `reset()` abandons an in-flight run so no
+  further polls fire. Uses fake timers.
+- `Components/items/__tests__/MenuImportBatchModal.behavior.test.jsx` — full render: multi-file
+  staging → one job → review step showing price conflicts, near-duplicates, a truncated scan with
+  both page counts, and an unreadable file with its reason → confirm submits only the still-checked
+  rows.
+- `src/features/pos/__tests__/menuImportBatchEntry.contract.test.js` — source-level gating contract
+  for `TerminalOperationsWorkspace.jsx` (matches how the other POS contract tests in that directory
+  are written).
+
+Also re-run and green after Phase 4: the 69 existing POS/Items vitest tests
+(`terminalViewModeContracts`, `itemsPagination`, `posPageShell`, `Components/items`),
+`npm run build` in `frontend/`, `npx eslint` on every new/changed frontend file (0 errors),
+`npm --prefix backend run check:architecture-guardrails` + `check:controller-boundaries`,
+`npm run check:compliance`, and `npm run lint:docs`.
+
 ## Commit status — read this before doing anything else
 
-**Phases 1–3 are committed and pushed.** Branch `claude/menu-import-batch-async`, three commits
-(`447ceb03`, `e1c02e69`, `57c71030`), PR open at
-https://github.com/Sieitzz/dgfy-platform/pull/133 targeting `main`. `git status` on this branch
-should be clean for everything this doc covers — if you see uncommitted changes touching
-`menuImport`, that's *new* work on top of this, not leftover from Phases 1–3.
+**Phases 1–3** are on `claude/menu-import-batch-async` (`447ceb03`, `e1c02e69`, `57c71030`), PR
+https://github.com/Sieitzz/dgfy-platform/pull/133 targeting `main`.
+**Phases 6 and 4** continue from that same history on `claude/menu-import-batch-handoff-2fnerq`.
+`git status` should be clean for everything this doc covers — uncommitted changes touching
+`menuImport` are *new* work on top of this, not leftovers.
 
-## One blocker, needs a human (or a differently-permissioned session)
+## Resolved: the `.env.example` blocker
 
-`backend/.env.example` has been blocked by a directory-level permission deny rule across every
-session that touched this feature so far (both Phase 1 and Phase 2/3 sessions independently hit
-this exact same block on this exact path). **Still not resolved — append manually:**
-```
-MENU_IMPORT_BATCH_ENABLED=false
-MENU_IMPORT_MAX_FILES_PER_BATCH=20
-MENU_IMPORT_MAX_PDF_PAGES=15
-MENU_IMPORT_MAX_VISION_CALLS_PER_BATCH=25
-MENU_IMPORT_DAILY_USD_BUDGET=5.0
-MENU_IMPORT_WORKER_CONCURRENCY=2
-MENU_IMPORT_MAX_MERGED_ITEMS=200
-```
-(The first six are Phase 1's; `MENU_IMPORT_MAX_MERGED_ITEMS` is Phase 2's. Phase 3 needed no new
-env vars — both caps it reads already existed.)
+Phase 1 and Phase 2/3 sessions were each blocked by a directory-level permission deny rule on
+`backend/.env.example`. **That block did not recur in the Phase 4/6 session, and the file is now
+updated** — `MENU_IMPORT_BATCH_ENABLED` plus all six caps are documented there. Nothing left to
+append manually.
 
-## What's NOT done yet — Phases 4–7 of the original plan
+## What's NOT done yet — Phases 5 and 7
 
-**This is the actual next step for whoever picks this up — Phases 1–3 are backend-complete and
-API-usable (via curl/Postman), but nothing is usable by a real end user until Phase 4 ships.**
+**Phase 5 is the actual next step.** The batch path is now usable end to end by a real operator
+(upload several files from disk → progress → merged review → import), so what remains is the
+in-app camera capture the user asked for, and then deprecation.
 
-4. **Frontend multi-file UI** — `PdfMenuImportModal.jsx` still only accepts one file. No
-   `useMenuImportJob` polling hook, no `menuImportService.js`, no progress bar, no rendering of
-   `price_conflict`/`near_duplicates`/`truncated` exist yet. The three-now-four backend routes
-   (`POST /jobs`, `GET /jobs/:jobId`, `POST /jobs/:jobId/preview`, `POST /confirm`) have no caller
-   anywhere in the frontend.
 5. **Camera capture + quality scoring** — no `menuPhotoQuality.js`, no capture sheet. This was a
-   headline ask from the user and is entirely unbuilt.
-6. **Governance** — no ADR for this work exists yet (would need to be
-   `docs/architecture/adr/0039-...` or later — **check the directory first**, several numbers are
-   duplicated there, e.g. two `0036-*`, two `0029-*`, two `0030-*`), and no impact declaration
-   (`docs/compliance/impact-declarations/`) covers the batch path. **This is a hard gate in front of
-   Phase 4, not a followup to it** — `frontend/src/features/pos/**` is compliance-classified and
-   Phase 4 cannot merge without an impact declaration first, modeled on
-   `2026-07-25-pos-pdf-menu-import.md`. The eventual ADR should cover D1–D10 above.
-7. **Deprecation of the old single-file endpoints** — not applicable until Phases 4–6 ship.
+   headline ask from the user and is entirely unbuilt. It plugs into
+   `MenuImportBatchModal.jsx`'s step 1: captured frames become `File` objects appended to the same
+   `selectedFiles` list the picker/drop-zone feeds, so nothing downstream (job creation, polling,
+   merge review, confirm) needs to change. The pre-shutter quality check **warns but never blocks**
+   — that was explicit from the user, and it matches how every other gap in this feature is handled
+   (surface it, don't block). Expect the real work to be `getUserMedia` plumbing, a canvas-based
+   blur/exposure/glare heuristic, iOS Safari quirks, and permission-denied fallback to the file
+   picker. Governance note: it touches `TerminalOperationsWorkspace.jsx` only if it adds a new entry
+   point — if it stays inside the batch modal, the existing impact declaration's surfaces already
+   cover it, but a **new declaration is still required** for the diff (camera access is a new
+   device-permission surface worth declaring on its own).
+6. ~~**Governance**~~ — done, see "What's built so far".
+7. **Deprecation of the old single-file endpoints** — still not applicable until Phase 5 ships and
+   the batch path has been exercised against a real environment.
 
 ## Sandbox limitations that affected how this was verified
 
@@ -421,17 +500,28 @@ No live Redis, no live MySQL. As a result:
 - [ ] `sudo nginx -t` against the real rendered nginx config once `envsubst`'d, confirming the
       `location =` blocks don't conflict with the existing `location /api` prefix match.
 - [ ] `npm run check:architecture-guardrails && npm run check:controller-boundaries` from
-      `backend/` (both passed in-sandbox for all three phases; re-confirm after any further changes).
+      `backend/` (both passed in-sandbox for all four phases; re-confirm after any further changes).
 - [ ] Re-run the full backend Jest suite (not just the 7 files touched here) — a full
       `npm test --runInBand` run OOM'd in the Phase 2 session's sandbox after only 2 of hundreds of
       suites (pre-existing sandbox memory limit, not something these phases caused — the targeted
       75-test run above is what actually verifies this feature).
-- [ ] Append the still-outstanding `.env.example` lines (see "One blocker" above).
+- [x] Append the `.env.example` lines — **done in the Phase 4/6 session**, the permission block
+      that stopped earlier sessions did not recur.
+- [ ] **Run `POST /api/v1/compliance/preflight`** for declaration
+      `2026-07-29-pos-batch-menu-import` against a live tenant environment and reconcile
+      `preflight_run_at` / `preflight_request_ref` in its front matter. This is the one governance
+      item Phase 6 could not close from a sandbox.
+- [ ] Click through the batch wizard against a real backend with the flag on: 20-file cap toast,
+      progress bar advancing as files settle, a failed file listed with its reason, a price-conflict
+      row, and confirm creating only the checked rows. The component test covers the rendering
+      contract; nothing has exercised it against a live job.
+- [ ] Re-run the frontend vitest suite in full (`npm --prefix frontend test`) — only the 4 new files
+      plus 9 POS/Items suites were run in-sandbox.
 
 ## Suggested next step
 
-Start Phase 6's compliance impact declaration and ADR *before* Phase 4's frontend work, since
-Phase 4 can't merge without it anyway (see "What's NOT done yet"). Model the impact declaration on
-`docs/compliance/impact-declarations/2026-07-25-pos-pdf-menu-import.md`; model the ADR on the
-existing single-file PDF import ADR if one exists (check `docs/architecture/adr/` — numbering has
-duplicates, verify before claiming a number) and have it cover D1–D10 above.
+**Phase 5 — camera capture + quality scoring.** See "What's NOT done yet" for where it plugs into
+`MenuImportBatchModal.jsx` (append captured frames to `selectedFiles`; nothing downstream changes)
+and for the governance note (a new impact declaration is required for that diff even though the
+surfaces are already declared). The warn-never-block rule for the pre-shutter quality check is a
+user decision, not an inference — do not turn it into a hard gate.

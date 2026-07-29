@@ -1,7 +1,11 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 
-const PUBLIC_FILE_FIELDS = ['file_id', 'original_name', 'mime_type', 'status', 'error_code', 'error_message', 'kind', 'pages'];
+// `pages_total`/`truncated` are here so the client can tell the operator that a
+// long scanned PDF was only partly read (the page/vision-call caps keep
+// whatever was extracted rather than failing the file — surfacing the gap is
+// the whole point, so it must survive this projection).
+const PUBLIC_FILE_FIELDS = ['file_id', 'original_name', 'mime_type', 'status', 'error_code', 'error_message', 'kind', 'pages', 'pages_total', 'truncated'];
 
 // Strips extracted `items` and the on-disk `path` before a job record ever
 // reaches the client — those are server-side-only (items go through the
