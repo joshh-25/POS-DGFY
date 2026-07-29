@@ -386,7 +386,14 @@ export const dgfyAffiliateRepository = {
         commissionableBaseCentavos,
         rateBpsSnapshot,
         amountCentavos,
-        reason = 'in_store_sale'
+        reason = 'in_store_sale',
+        // Phase 1 affiliate pricing rule engine snapshot fields - all null unless an affiliate
+        // price rule was actually applied to this order.
+        baseSubtotalCentavos = null,
+        buyerSubtotalCentavos = null,
+        resellerMarginCentavos = null,
+        priceRuleTypeSnapshot = null,
+        settlementPolicySnapshot = null
     }) {
         const [row, created] = await DgfyAffiliateCommission.findOrCreate({
             where: { tenant_id: tenantId, order_reference: orderReference },
@@ -401,7 +408,12 @@ export const dgfyAffiliateRepository = {
                 amount_centavos: amountCentavos,
                 status: 'earned',
                 reason,
-                earned_at: new Date()
+                earned_at: new Date(),
+                base_subtotal_centavos: baseSubtotalCentavos,
+                buyer_subtotal_centavos: buyerSubtotalCentavos,
+                reseller_margin_centavos: resellerMarginCentavos,
+                price_rule_type_snapshot: priceRuleTypeSnapshot,
+                settlement_policy_snapshot: settlementPolicySnapshot
             }
         });
         return { commission: toPlain(row), created };
@@ -419,7 +431,14 @@ export const dgfyAffiliateRepository = {
         commissionableBaseCentavos,
         rateBpsSnapshot,
         amountCentavos,
-        reason = 'online_order'
+        reason = 'online_order',
+        // Phase 1 affiliate pricing rule engine snapshot fields - all null unless an affiliate
+        // price rule was actually applied to this order.
+        baseSubtotalCentavos = null,
+        buyerSubtotalCentavos = null,
+        resellerMarginCentavos = null,
+        priceRuleTypeSnapshot = null,
+        settlementPolicySnapshot = null
     }) {
         const [row, created] = await DgfyAffiliateCommission.findOrCreate({
             where: { tenant_id: tenantId, order_reference: orderReference },
@@ -433,7 +452,12 @@ export const dgfyAffiliateRepository = {
                 rate_bps_snapshot: rateBpsSnapshot,
                 amount_centavos: amountCentavos,
                 status: 'pending',
-                reason
+                reason,
+                base_subtotal_centavos: baseSubtotalCentavos,
+                buyer_subtotal_centavos: buyerSubtotalCentavos,
+                reseller_margin_centavos: resellerMarginCentavos,
+                price_rule_type_snapshot: priceRuleTypeSnapshot,
+                settlement_policy_snapshot: settlementPolicySnapshot
             }
         });
         return { commission: toPlain(row), created };

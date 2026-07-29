@@ -74,7 +74,16 @@ const makeFakeRepository = ({
                 rate_bps_snapshot: payload.rateBpsSnapshot,
                 amount_centavos: payload.amountCentavos,
                 status: 'earned',
-                reason: payload.reason
+                reason: payload.reason,
+                // Phase 1 affiliate pricing rule engine snapshot fields - only present on the row
+                // when the caller actually supplied them, matching the real repository's behavior
+                // of defaulting to null (here: simply omitted, so callers can assert
+                // `toBeUndefined()` the same way a fresh-from-DB row would read `null`).
+                ...(payload.baseSubtotalCentavos != null && { base_subtotal_centavos: payload.baseSubtotalCentavos }),
+                ...(payload.buyerSubtotalCentavos != null && { buyer_subtotal_centavos: payload.buyerSubtotalCentavos }),
+                ...(payload.resellerMarginCentavos != null && { reseller_margin_centavos: payload.resellerMarginCentavos }),
+                ...(payload.priceRuleTypeSnapshot != null && { price_rule_type_snapshot: payload.priceRuleTypeSnapshot }),
+                ...(payload.settlementPolicySnapshot != null && { settlement_policy_snapshot: payload.settlementPolicySnapshot })
             };
             recordedCommissions.push(row);
             return { commission: row, created: true };
@@ -94,7 +103,12 @@ const makeFakeRepository = ({
                 rate_bps_snapshot: payload.rateBpsSnapshot,
                 amount_centavos: payload.amountCentavos,
                 status: 'pending',
-                reason: payload.reason
+                reason: payload.reason,
+                ...(payload.baseSubtotalCentavos != null && { base_subtotal_centavos: payload.baseSubtotalCentavos }),
+                ...(payload.buyerSubtotalCentavos != null && { buyer_subtotal_centavos: payload.buyerSubtotalCentavos }),
+                ...(payload.resellerMarginCentavos != null && { reseller_margin_centavos: payload.resellerMarginCentavos }),
+                ...(payload.priceRuleTypeSnapshot != null && { price_rule_type_snapshot: payload.priceRuleTypeSnapshot }),
+                ...(payload.settlementPolicySnapshot != null && { settlement_policy_snapshot: payload.settlementPolicySnapshot })
             };
             recordedCommissions.push(row);
             return { commission: row, created: true };
@@ -448,6 +462,81 @@ describe('reversal — reverseAffiliateCommissionForOrder / missing-reference gu
             repository
         });
         expect(result).toEqual({ reversed: false, reason: 'not_found' });
+    });
+});
+
+describe('resolvedCommission override — Phase 1 affiliate pricing rule engine (added post-A3)', () => {
+    // These cover the new resolvedCommission/snapshot parameters added for NONE and RESELLER_MARGIN
+    // commission types, which don't fit the bps-of-base formula the rest of this module assumes.
+    // The override is opt-in and every existing caller omits it entirely - the "commission base"
+    // describe block above already proves the default (bps-ladder) path is untouched.
+
+    test('resolvedCommission bypasses the rate-resolution ladder entirely, even when an enrollment override exists', async () => {
+        const enrollment = { enrollment_id: 80, dgfy_account_id: 'acct-80', commission_rate_bps: 800 };
+        const repository = makeFakeRepository({ settings: { program_enabled: true, default_rate_bps: 500 } });
+        const commission = await accrueEarnedForInStoreSale({
+            tenantId: TENANT_ID,
+            enrollment,
+            orderReference: 'ORD-20',
+            commissionableBaseCentavos: 10000,
+            resolvedCommission: { rateBps: 0, amountCentavos: 2000 }, // e.g. RESELLER_MARGIN: rate is meaningless, amount is the margin
+            repository
+        });
+        expect(commission.rate_bps_snapshot).toBe(0);
+        expect(commission.amount_centavos).toBe(2000);
+    });
+
+    test('resolvedCommission with amountCentavos 0 accrues a zero-value row for commission_type NONE', async () => {
+        const enrollment = { enrollment_id: 81, dgfy_account_id: 'acct-81', commission_rate_bps: 500 };
+        const repository = makeFakeRepository();
+        const commission = await accruePendingForOnlineOrder({
+            tenantId: TENANT_ID,
+            enrollment,
+            orderReference: 'ORD-21',
+            commissionableBaseCentavos: 10000,
+            resolvedCommission: { rateBps: 0, amountCentavos: 0 },
+            repository
+        });
+        expect(commission.amount_centavos).toBe(0);
+    });
+
+    test('snapshot fields are persisted onto the commission row when supplied', async () => {
+        const enrollment = { enrollment_id: 82, dgfy_account_id: 'acct-82', commission_rate_bps: 500 };
+        const repository = makeFakeRepository();
+        await accrueEarnedForInStoreSale({
+            tenantId: TENANT_ID,
+            enrollment,
+            orderReference: 'ORD-22',
+            commissionableBaseCentavos: 10000,
+            snapshot: {
+                baseSubtotalCentavos: 10000,
+                buyerSubtotalCentavos: 9000,
+                resellerMarginCentavos: null,
+                priceRuleTypeSnapshot: 'PERCENTAGE_DISCOUNT',
+                settlementPolicySnapshot: 'MERCHANT_FUNDED'
+            },
+            repository
+        });
+        const row = repository.__state.commissions.find((c) => c.order_reference === 'ORD-22');
+        expect(row.base_subtotal_centavos).toBe(10000);
+        expect(row.buyer_subtotal_centavos).toBe(9000);
+        expect(row.price_rule_type_snapshot).toBe('PERCENTAGE_DISCOUNT');
+        expect(row.settlement_policy_snapshot).toBe('MERCHANT_FUNDED');
+    });
+
+    test('omitting resolvedCommission and snapshot entirely (every existing caller) behaves exactly as before', async () => {
+        const enrollment = { enrollment_id: 83, dgfy_account_id: 'acct-83', commission_rate_bps: null };
+        const repository = makeFakeRepository({ settings: { program_enabled: true, default_rate_bps: 500 } });
+        const commission = await accrueEarnedForInStoreSale({
+            tenantId: TENANT_ID,
+            enrollment,
+            orderReference: 'ORD-23',
+            commissionableBaseCentavos: 10000,
+            repository
+        });
+        expect(commission.rate_bps_snapshot).toBe(500);
+        expect(commission.amount_centavos).toBe(500);
+        expect(commission.base_subtotal_centavos).toBeUndefined();
     });
 });
 
