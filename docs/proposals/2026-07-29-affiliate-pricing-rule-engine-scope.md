@@ -421,3 +421,43 @@ integration against a real tenant DB, and the mobile config UI.
 
 ADR 0036 records that its own migration was never run against a live database. That debt is
 inherited here and should be cleared in the same session that runs Phase 1's migration.
+
+---
+
+## 12. Environment readiness — measured 2026-07-29
+
+Verified by running the toolchain, not assumed.
+
+| Check | Result |
+|---|---|
+| `backend` dependency install | **Works** — 784 packages, ~12s |
+| Pure unit test without MySQL | **Works** — `tests/commercialPromoPolicy.unit.test.js`, 5 passed. `backend/tests/setup.js` mocks Redis in-memory, so pure-logic suites need no services |
+| `npm run check:adr` | **Passes** — 55 ADRs validated |
+| Disk / Node | 30 GB free, Node 22.22.2, npm 10.9.7 |
+| Redis / Docker binaries | Both present |
+| MySQL | **Absent.** CI (`.github/workflows/ci.yml` `test-backend`) provisions `mysql:8.0` + `redis:7` as services, runs `sequelize-cli db:migrate`, then the suite. Docker is available, so a containerized MySQL is a plausible workaround but is **unproven** |
+
+Test layout note: the backend suite is `backend/tests` (399 files), run from `./backend` with
+`backend/jest.config.cjs`. The root `./tests` directory is a separate suite, and the root
+`npm test` script references a root-level jest that is not installed by root `npm install`.
+
+### 12.1 The gap that most affects this work
+
+**There is zero affiliate test coverage.** Grepping all 399 files in `backend/tests` for
+`affiliate` returns nothing — the ADR 0036 feature shipped without tests in this suite.
+
+This matters directly: decision A3 changes commission accrual behavior, and there is no existing
+regression net under it. Phase 1 must therefore **write characterization tests for today's accrual
+behavior before changing it**, so the A3 change is a deliberate, visible diff in test expectations
+rather than an unobserved behavior shift. This is added scope the external pack does not account
+for, and it should be the first task in Phase 1, ahead of the calculation service.
+
+### 12.2 Implications for unattended/long-running work
+
+- The container is **ephemeral** and reclaimed after inactivity. Any unattended run must commit and
+  push continuously; work held only in the container is lost.
+- **Well suited to run here:** the pure calculation service, rule resolution, validators (including
+  the A9 floor guard), and their unit tests — the largest and most logic-dense part of Phase 1.
+- **Cannot complete here:** the migration against live MySQL, storefront catalog/checkout
+  integration, the mobile config UI, and the Hardening Contract's rendered-UI proof (which needs
+  the app running, which needs MySQL).
