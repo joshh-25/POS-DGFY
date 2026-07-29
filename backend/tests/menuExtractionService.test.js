@@ -298,15 +298,6 @@ describe('menuExtractionService', () => {
     // request context, in modules/menuImport/usecases/createMenuImportJobUseCase.js
     // before a job is ever enqueued (see resolveTenantWorkflowMode below).
     describe('extractMenuItemsFromFile', () => {
-        // The PDF branch (extractPdfText -> real pdf-parse/pdfjs-dist) is
-        // deliberately not exercised with an actual PDF buffer here, matching
-        // this suite's existing convention — the extractMenuCsvFromFile tests
-        // above never reach real PDF parsing either (their fnb-check always
-        // short-circuits first). pdfjs-dist needs a native canvas binding this
-        // sandbox doesn't have, which isn't something to paper over with a
-        // deeper mock of a third-party parser; the image branch below already
-        // covers everything specific to this function (no workflow-mode
-        // check) without depending on that binding.
         it('extracts items from an image without checking tenant workflow mode', async () => {
             mockOpenAiJson({ items: [{ name: 'From Image', price: 45 }] });
 
@@ -320,6 +311,131 @@ describe('menuExtractionService', () => {
         it('throws UNSUPPORTED_FILE_TYPE for anything other than pdf/jpeg/png', async () => {
             await expect(extractMenuItemsFromFile(Buffer.from('x'), 'image/gif', { user_id: 1 }))
                 .rejects.toMatchObject({ name: 'MenuExtractionError', code: 'UNSUPPORTED_FILE_TYPE' });
+        });
+
+        // A PDF with a real embedded text content stream — confirms
+        // extractPdfText's fast path (no vision calls at all) still wins
+        // when there's real text, and regression-guards pdf-parse's
+        // pageJoiner:'' fix (without it, pdf-parse's default page-boundary
+        // marker means even a blank page never counts as "empty").
+        const textPdf = (text) => Buffer.from(`%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length ${text.length + 20} >>
+stream
+BT /F1 24 Tf 20 100 Td (${text}) Tj ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f
+trailer
+<< /Size 6 /Root 1 0 R >>
+%%EOF`);
+
+        it('uses the fast text path (no rasterization/vision) when the PDF has real embedded text', async () => {
+            mockOpenAiJson({ items: [{ name: 'From Text', price: 33 }] });
+
+            const result = await extractMenuItemsFromFile(textPdf('Real Menu Text'), 'application/pdf', { user_id: 1 });
+
+            expect(result.kind).toBe('pdf_text');
+            expect(result.pages).toBe(1);
+            expect(result.items).toEqual([{ name: 'From Text', price: 33, section: null, description: null }]);
+            expect(mockCreateCompletion).toHaveBeenCalledTimes(1);
+        });
+
+        // A hand-built single-page PDF with no text content stream at all (no
+        // /Contents on the page) — pdf-parse's real text extraction reads it
+        // as empty, so this reliably exercises the rasterization fallback
+        // (Phase 3) without needing to mock pdf-parse/pdfjs-dist itself. The
+        // combination is proven to actually render in this sandbox (see
+        // tests/menuPdfRasterService.test.js and the Phase 3 planning spike
+        // in docs/proposals/MENU_IMPORT_BATCH_IMPORT_HANDOFF_2026-07-28.md) —
+        // only the OpenAI vision call itself is mocked here, same as every
+        // other test in this suite.
+        const blankTextPdf = (pageCount = 1) => {
+            const pageObjNums = Array.from({ length: pageCount }, (_, i) => 3 + i);
+            const pagesObj = `2 0 obj\n<< /Type /Pages /Kids [${pageObjNums.map((n) => `${n} 0 R`).join(' ')}] /Count ${pageCount} >>\nendobj\n`;
+            const pageObjs = pageObjNums.map((n) => (
+                `${n} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>\nendobj\n`
+            )).join('');
+            const size = 3 + pageCount;
+            return Buffer.from(
+                '%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n'
+                + pagesObj + pageObjs
+                + `xref\n0 ${size}\n0000000000 65535 f \n`
+                + `trailer\n<< /Size ${size} /Root 1 0 R >>\n%%EOF`
+            );
+        };
+
+        it('falls back to rasterization + vision when PDF text extraction is empty', async () => {
+            mockOpenAiJson({ items: [{ name: 'From Rasterized Page', price: 88 }] });
+
+            const result = await extractMenuItemsFromFile(blankTextPdf(1), 'application/pdf', { user_id: 1 });
+
+            expect(result.kind).toBe('pdf_rasterized');
+            expect(result.pages).toBe(1);
+            expect(result.pages_total).toBe(1);
+            expect(result.truncated).toBe(false);
+            expect(result.items).toEqual([{ name: 'From Rasterized Page', price: 88, section: null, description: null }]);
+        });
+
+        it('concatenates items across every rendered page', async () => {
+            mockCreateCompletion
+                .mockResolvedValueOnce({ model: 'gpt-4o', choices: [{ message: { content: JSON.stringify({ items: [{ name: 'Page 1 Item', price: 10 }] }) } }] })
+                .mockResolvedValueOnce({ model: 'gpt-4o', choices: [{ message: { content: JSON.stringify({ items: [{ name: 'Page 2 Item', price: 20 }] }) } }] });
+
+            const result = await extractMenuItemsFromFile(blankTextPdf(2), 'application/pdf', { user_id: 1 });
+
+            expect(result.pages).toBe(2);
+            expect(result.items.map((i) => i.name).sort()).toEqual(['Page 1 Item', 'Page 2 Item']);
+        });
+
+        it('stops rendering once reserveVisionCall denies a page, keeping items already extracted and flagging truncated', async () => {
+            mockOpenAiJson({ items: [{ name: 'Only Page Processed', price: 15 }] });
+            // Exactly 2 pages with the default worker-concurrency of 2 means
+            // exactly one reserveVisionCall per page (each pool worker claims
+            // one page and never loops back for a third) — deterministic
+            // regardless of which worker's call lands first.
+            const reserveVisionCall = jest.fn()
+                .mockResolvedValueOnce(true)
+                .mockResolvedValueOnce(false);
+
+            const result = await extractMenuItemsFromFile(blankTextPdf(2), 'application/pdf', { user_id: 1 }, { reserveVisionCall });
+
+            expect(result.pages).toBe(1);
+            expect(result.pages_total).toBe(2);
+            expect(result.truncated).toBe(true);
+            expect(result.items).toEqual([{ name: 'Only Page Processed', price: 15, section: null, description: null }]);
+            expect(mockCreateCompletion).toHaveBeenCalledTimes(1);
+        });
+
+        it('throws PDF_TEXT_EMPTY when reserveVisionCall denies even the first page', async () => {
+            const reserveVisionCall = jest.fn().mockResolvedValue(false);
+
+            await expect(extractMenuItemsFromFile(blankTextPdf(1), 'application/pdf', { user_id: 1 }, { reserveVisionCall }))
+                .rejects.toMatchObject({ name: 'MenuExtractionError', code: 'PDF_TEXT_EMPTY' });
+            expect(mockCreateCompletion).not.toHaveBeenCalled();
+        });
+
+        it('runs uninterrupted up to the page cap when no reserveVisionCall is provided (single-file sync path)', async () => {
+            mockOpenAiJson({ items: [{ name: 'Uncapped Page Item', price: 5 }] });
+
+            const result = await extractMenuItemsFromFile(blankTextPdf(2), 'application/pdf', { user_id: 1 });
+
+            expect(result.pages).toBe(2);
+            expect(result.truncated).toBe(false);
         });
     });
 

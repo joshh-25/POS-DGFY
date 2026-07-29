@@ -232,6 +232,29 @@ export const readJob = async ({ tenantId, jobId }) => {
 };
 
 /**
+ * Atomically reserves one vision-extraction call against a job's shared
+ * budget (Phase 3 rasterization: a scanned PDF can spend one call per
+ * rendered page, so a multi-file batch needs a cap across the whole job, not
+ * just per file). Uses the same hash HINCRBY is atomic under Redis's
+ * single-threaded execution as D2's rPop-based queue argument — no CAS
+ * needed: increment first, and if that pushes the count over `maxCalls`,
+ * decrement back down and report the reservation as denied. A worker only
+ * proceeds with a page's vision call when this returns true.
+ * @returns {Promise<boolean>} true if the call is granted, false if the budget is exhausted.
+ */
+export const reserveVisionCall = async ({ tenantId, jobId, maxCalls }) => {
+    const redis = getRedisClient();
+    if (!redis) return false;
+    const key = jobHashKey(tenantId, jobId);
+    const used = await redis.hIncrBy(key, 'vision_calls_used', 1);
+    if (used > maxCalls) {
+        await redis.hIncrBy(key, 'vision_calls_used', -1);
+        return false;
+    }
+    return true;
+};
+
+/**
  * Deletes a job's hash outright. Used when a job is confirmed (its result
  * has been persisted as real items — the Redis copy no longer serves a
  * purpose) or explicitly cancelled.
@@ -248,6 +271,7 @@ export default {
     dequeueFileTask,
     beginProcessingFile,
     setFileResult,
+    reserveVisionCall,
     readJob,
     deleteJob
 };

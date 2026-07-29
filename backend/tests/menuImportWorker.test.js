@@ -21,11 +21,13 @@ class MockMenuExtractionError extends Error {
 const mockBeginProcessingFile = jest.fn();
 const mockSetFileResult = jest.fn();
 const mockExtractMenuItemsFromFile = jest.fn();
+const mockReserveVisionCall = jest.fn();
 
 jest.unstable_mockModule('../src/modules/menuImport/index.js', () => ({
     menuImportJobRepository: {
         beginProcessingFile: mockBeginProcessingFile,
-        setFileResult: mockSetFileResult
+        setFileResult: mockSetFileResult,
+        reserveVisionCall: mockReserveVisionCall
     }
 }));
 
@@ -77,7 +79,8 @@ describe('menuImportWorker.processFileTask', () => {
         expect(mockExtractMenuItemsFromFile).toHaveBeenCalledWith(
             Buffer.from('fake-bytes'),
             'image/png',
-            { tenant_id: 'tenant-1', user_id: 42 }
+            { tenant_id: 'tenant-1', user_id: 42 },
+            { reserveVisionCall: expect.any(Function) }
         );
         expect(mockSetFileResult).toHaveBeenCalledWith({
             tenantId: 'tenant-1',
@@ -91,6 +94,50 @@ describe('menuImportWorker.processFileTask', () => {
             }
         });
         expect(mockUnlink).toHaveBeenCalledWith('/tmp/f1.png');
+    });
+
+    it('passes pages_total/truncated through to setFileResult when the extraction result carries them (rasterized PDF)', async () => {
+        mockBeginProcessingFile.mockResolvedValue(fileRecord({ file_id: 'f3', path: '/tmp/f3.pdf', mime_type: 'application/pdf' }));
+        mockExtractMenuItemsFromFile.mockResolvedValue({
+            items: [{ name: 'Scanned Item', price: 40, section: null, description: null }],
+            kind: 'pdf_rasterized',
+            pages: 2,
+            pages_total: 5,
+            truncated: true
+        });
+
+        await processFileTask({ tenantId: 'tenant-1', jobId: 'job-1', fileId: 'f3' });
+
+        expect(mockSetFileResult).toHaveBeenCalledWith({
+            tenantId: 'tenant-1',
+            jobId: 'job-1',
+            fileId: 'f3',
+            result: {
+                status: 'completed',
+                items: [{ name: 'Scanned Item', price: 40, section: null, description: null }],
+                kind: 'pdf_rasterized',
+                pages: 2,
+                pages_total: 5,
+                truncated: true
+            }
+        });
+    });
+
+    it('builds a reserveVisionCall that delegates to the job-scoped repository budget', async () => {
+        mockBeginProcessingFile.mockResolvedValue(fileRecord({ file_id: 'f4', path: '/tmp/f4.pdf', mime_type: 'application/pdf', tenant_id: 'tenant-9' }));
+        mockReserveVisionCall.mockResolvedValue(true);
+        mockExtractMenuItemsFromFile.mockImplementation(async (buffer, mimeType, user, { reserveVisionCall }) => {
+            const granted = await reserveVisionCall();
+            return { items: [], kind: 'pdf_rasterized', pages: granted ? 1 : 0, pages_total: 1, truncated: !granted };
+        });
+
+        await processFileTask({ tenantId: 'tenant-9', jobId: 'job-9', fileId: 'f4' });
+
+        expect(mockReserveVisionCall).toHaveBeenCalledWith({
+            tenantId: 'tenant-9',
+            jobId: 'job-9',
+            maxCalls: expect.any(Number)
+        });
     });
 
     it('records a failed result with the extraction error code, and still unlinks the file', async () => {

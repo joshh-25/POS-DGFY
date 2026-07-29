@@ -23,7 +23,7 @@
 import fs from 'fs/promises';
 import { isRedisConnected } from '../config/redis.js';
 import logger from '../config/logger.js';
-import { MENU_IMPORT_WORKER_CONCURRENCY } from '../config/menuImportFeature.js';
+import { MENU_IMPORT_WORKER_CONCURRENCY, MENU_IMPORT_MAX_VISION_CALLS_PER_BATCH } from '../config/menuImportFeature.js';
 import { menuImportJobRepository } from '../modules/menuImport/index.js';
 import { extractMenuItemsFromFile, MenuExtractionError } from '../services/menuExtractionService.js';
 
@@ -67,12 +67,26 @@ export const processFileTask = async ({ tenantId, jobId, fileId }) => {
 
     try {
         const fileBuffer = await fs.readFile(fileRecord.path);
-        const { items, kind, pages } = await extractMenuItemsFromFile(fileBuffer, fileRecord.mime_type, user);
+        // Job-scoped: gates rasterized-PDF page extraction (Phase 3) against
+        // the batch-wide vision-call budget shared across every file in this
+        // job, not just this one. Ignored by non-PDF/non-rasterized
+        // extraction paths, which never call it.
+        const reserveVisionCall = () => menuImportJobRepository.reserveVisionCall({
+            tenantId,
+            jobId,
+            maxCalls: MENU_IMPORT_MAX_VISION_CALLS_PER_BATCH
+        });
+        const { items, kind, pages, pages_total: pagesTotal, truncated } = await extractMenuItemsFromFile(
+            fileBuffer,
+            fileRecord.mime_type,
+            user,
+            { reserveVisionCall }
+        );
         await menuImportJobRepository.setFileResult({
             tenantId,
             jobId,
             fileId,
-            result: { status: 'completed', items, kind, pages }
+            result: { status: 'completed', items, kind, pages, pages_total: pagesTotal, truncated }
         });
     } catch (error) {
         const isKnownExtractionError = error instanceof MenuExtractionError;

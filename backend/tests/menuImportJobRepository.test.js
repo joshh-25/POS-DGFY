@@ -34,6 +34,13 @@ const makeFakeRedisClient = () => {
             const hash = hashes.get(key);
             return hash ? Object.fromEntries(hash.entries()) : {};
         }),
+        hIncrBy: jest.fn(async (key, field, increment) => {
+            if (!hashes.has(key)) hashes.set(key, new Map());
+            const hash = hashes.get(key);
+            const next = (Number(hash.get(field)) || 0) + increment;
+            hash.set(field, String(next));
+            return next;
+        }),
         expire: jest.fn(async () => 1),
         lPush: jest.fn(async (key, value) => {
             if (!lists.has(key)) lists.set(key, []);
@@ -198,6 +205,35 @@ describe('menuImportJobRepository', () => {
 
             const job = await repo.readJob({ tenantId: 't1', jobId });
             expect(job.status).toBe('failed');
+        });
+    });
+
+    describe('reserveVisionCall', () => {
+        it('grants reservations up to maxCalls', async () => {
+            const { jobId } = await repo.createJob({ tenantId: 't1', userId: 1, files: [makeFile()] });
+
+            expect(await repo.reserveVisionCall({ tenantId: 't1', jobId, maxCalls: 2 })).toBe(true);
+            expect(await repo.reserveVisionCall({ tenantId: 't1', jobId, maxCalls: 2 })).toBe(true);
+        });
+
+        it('denies a reservation beyond maxCalls and compensates the counter back down', async () => {
+            const { jobId } = await repo.createJob({ tenantId: 't1', userId: 1, files: [makeFile()] });
+
+            expect(await repo.reserveVisionCall({ tenantId: 't1', jobId, maxCalls: 1 })).toBe(true);
+            expect(await repo.reserveVisionCall({ tenantId: 't1', jobId, maxCalls: 1 })).toBe(false);
+
+            // Compensated back down — a later call at a higher cap succeeds
+            // rather than staying permanently over-counted.
+            expect(await repo.reserveVisionCall({ tenantId: 't1', jobId, maxCalls: 2 })).toBe(true);
+        });
+
+        it('tracks the budget per job independently', async () => {
+            const { jobId: jobA } = await repo.createJob({ tenantId: 't1', userId: 1, files: [makeFile()] });
+            const { jobId: jobB } = await repo.createJob({ tenantId: 't1', userId: 1, files: [makeFile()] });
+
+            expect(await repo.reserveVisionCall({ tenantId: 't1', jobId: jobA, maxCalls: 1 })).toBe(true);
+            expect(await repo.reserveVisionCall({ tenantId: 't1', jobId: jobB, maxCalls: 1 })).toBe(true);
+            expect(await repo.reserveVisionCall({ tenantId: 't1', jobId: jobA, maxCalls: 1 })).toBe(false);
         });
     });
 
