@@ -47,7 +47,8 @@ import {
 import { resolveWorkflowCapabilitySettings as resolveWorkflowCapabilitySettingsDefault } from '../../shared/utils/workflowCapabilitySettingsCache.js';
 import {
     hasExplicitSalePrice,
-    requireExplicitSalePrice
+    requireExplicitSalePrice,
+    getExplicitSalePrice
 } from '../../shared/utils/itemFinancialPolicy.js';
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
@@ -948,7 +949,42 @@ const serializeStorefrontModifierGroups = (value) => (
         : []
 );
 
-const serializeStoreCatalogItem = (item = {}, accessPolicy = {}) => {
+// Phase 1 affiliate pricing rule engine: applies affiliateSellingPriceRule (resolved once per
+// request by the caller, see resolveAffiliateSellingPriceRuleForDisplay above) to the catalog price
+// shown to a browsing buyer. Unlike checkout (decision A13, fails closed on an unresolvable rule),
+// catalog display is best-effort - a misconfigured or unresolvable rule falls back to the plain
+// catalog price rather than taking the whole listing offline, since browsing has not committed to
+// anything yet and checkout re-validates and fails closed at the point that actually matters.
+const applyAffiliateDisplayPrice = (item, affiliateSellingPriceRule) => {
+    if (!affiliateSellingPriceRule) {
+        return { price: item.default_sale_price, applied: false };
+    }
+    try {
+        const catalogPrice = getExplicitSalePrice(item);
+        if (catalogPrice === null) return { price: item.default_sale_price, applied: false };
+
+        const affiliateUnitPriceCentavos = resolveAffiliateUnitPriceCentavos({
+            basePriceCentavos: Math.round(catalogPrice * 100),
+            rule: affiliateSellingPriceRule
+        });
+        if (affiliateUnitPriceCentavos < 0) {
+            logger.warn('[StorefrontCatalog] Affiliate price rule resolved negative, showing catalog price instead', {
+                item_id: item.item_id,
+                rule_type: affiliateSellingPriceRule.type
+            });
+            return { price: item.default_sale_price, applied: false };
+        }
+        return { price: affiliateUnitPriceCentavos / 100, applied: true };
+    } catch (error) {
+        logger.warn('[StorefrontCatalog] Failed to resolve affiliate display price, showing catalog price instead', {
+            item_id: item.item_id,
+            error: error?.message
+        });
+        return { price: item.default_sale_price, applied: false };
+    }
+};
+
+const serializeStoreCatalogItem = (item = {}, accessPolicy = {}, affiliateSellingPriceRule = null) => {
     const availabilityStatus = normalizeAvailabilityStatus(item);
     const isAvailable = availabilityStatus === 'in_stock' || availabilityStatus === 'bookable';
     const serviceDetail = item.service_detail
@@ -957,6 +993,7 @@ const serializeStoreCatalogItem = (item = {}, accessPolicy = {}) => {
             intake_form_schema: normalizeIntakeFormSchema(item.service_detail.intake_form_schema)
         }
         : null;
+    const { price: displaySalePrice, applied: affiliatePriceApplied } = applyAffiliateDisplayPrice(item, affiliateSellingPriceRule);
     return {
         item_id: item.item_id,
         name: item.name,
@@ -965,7 +1002,8 @@ const serializeStoreCatalogItem = (item = {}, accessPolicy = {}) => {
         product_type: item.product_type || null,
         folder_name: item.folder_name || item.product_folder || item?.folder?.name || null,
         unit_of_measure: item.unit_of_measure || null,
-        default_sale_price: item.default_sale_price,
+        default_sale_price: displaySalePrice,
+        affiliate_price_applied: affiliatePriceApplied,
         vat_type: item.vat_type || 'vatable',
         image_url: item.image_url || null,
         image_gallery: Array.isArray(item.image_gallery) ? item.image_gallery : [],
@@ -1165,6 +1203,29 @@ const resolveAffiliatePricingForCheckout = async ({ tenantId, enrollmentId }) =>
         settlementPolicy: settings?.settlement_policy || null,
         commissionBaseMode: settings?.commission_base_mode || 'discounted_subtotal'
     };
+};
+
+// Cheaper, display-only twin of resolveAffiliatePricingForCheckout used by the two buyer-facing
+// catalog display sites (§6: serializeStoreCatalogItem's callers). Skips the settings/commission
+// fetch entirely - a browsing page never needs to know how commission is computed, only what price
+// to show - so it's one fewer query per catalog list/QR-resolve request than the checkout path.
+// Returns null on no/invalid attribution, same null-means-no-attribution contract as the rest of
+// this file.
+const resolveAffiliateSellingPriceRuleForDisplay = async ({ tenantId, enrollmentId }) => {
+    if (!tenantId || !enrollmentId) return null;
+
+    const enrollment = await resolveActiveAffiliateEnrollmentById({ tenantId, enrollmentId });
+    if (!enrollment) return null;
+
+    const priceRule = await dgfyAffiliateRepository.resolveActivePriceRule({
+        tenantId,
+        enrollmentId: enrollment.enrollment_id,
+        itemId: 0
+    });
+
+    return priceRule
+        ? { type: priceRule.rule_type, rateBps: priceRule.rate_bps, amountCentavos: priceRule.amount_centavos }
+        : null;
 };
 
 const resolveCheckoutContext = async ({
@@ -1419,7 +1480,11 @@ export const buildListStoreCatalogUseCase = ({
     storeRepository,
     resolveWorkflowCapabilitySettings = resolveWorkflowCapabilitySettingsDefault
 }) => {
-    return async ({ query = {} } = {}) => {
+    // tenantId/attributionEnrollmentId are optional and additive - a caller that omits them (or the
+    // cookie/tenant simply isn't present) gets exactly today's catalog, unaffected. See
+    // storeHandlers.js's listStoreCatalog controller for where these come from (mirrors the existing
+    // checkout cookie bridge).
+    return async ({ query = {}, tenantId = null, attributionEnrollmentId = null } = {}) => {
         if (!isPlainObject(query)) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -1462,15 +1527,20 @@ export const buildListStoreCatalogUseCase = ({
                 });
             }
 
-            const items = await storeRepository.listStoreCatalog({
-                search: query.search,
-                limit: query.limit,
-                location_id: requestedLocationId
-            });
+            const [items, affiliateSellingPriceRule] = await Promise.all([
+                storeRepository.listStoreCatalog({
+                    search: query.search,
+                    limit: query.limit,
+                    location_id: requestedLocationId
+                }),
+                attributionEnrollmentId
+                    ? resolveAffiliateSellingPriceRuleForDisplay({ tenantId, enrollmentId: attributionEnrollmentId })
+                    : Promise.resolve(null)
+            ]);
             const serializedItems = (Array.isArray(items) ? items : [])
                 .filter((item) => hasExplicitSalePrice(item))
                 .map((item) => (
-                    serializeStoreCatalogItem(item, accessPolicy)
+                    serializeStoreCatalogItem(item, accessPolicy, affiliateSellingPriceRule)
                 ));
 
             return ok({
@@ -1504,7 +1574,8 @@ export const buildListStoreCatalogUseCase = ({
 };
 
 export const buildResolveStoreQrUseCase = ({ storeRepository }) => {
-    return async ({ query = {} } = {}) => {
+    // Same additive tenantId/attributionEnrollmentId contract as buildListStoreCatalogUseCase above.
+    return async ({ query = {}, tenantId = null, attributionEnrollmentId = null } = {}) => {
         if (!isPlainObject(query)) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -1616,7 +1687,10 @@ export const buildResolveStoreQrUseCase = ({ storeRepository }) => {
                 }));
             }
 
-            const item = serializeStoreCatalogItem(result.item, accessPolicy);
+            const affiliateSellingPriceRule = attributionEnrollmentId
+                ? await resolveAffiliateSellingPriceRuleForDisplay({ tenantId, enrollmentId: attributionEnrollmentId })
+                : null;
+            const item = serializeStoreCatalogItem(result.item, accessPolicy, affiliateSellingPriceRule);
             return ok({
                 status: 'resolved',
                 reason_code: null,

@@ -138,10 +138,13 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
         if (!canManageSettings || !settingsDraft) return;
         setSavingSettings(true);
         try {
+            // Decision A12 (Phase 1 affiliate pricing rule engine): attribution_window_days is no
+            // longer shown here. It was never enforced anywhere in accrual, and the attribution
+            // cookie moving to session-scoped (decision B3) makes a "days" setting actively
+            // misleading rather than merely unused.
             const updated = await updateAffiliateSettings({
                 program_enabled: settingsDraft.program_enabled === true,
                 default_rate_bps: percentStringToBps(bpsToPercentString(settingsDraft.default_rate_bps)) ?? 500,
-                attribution_window_days: Math.max(1, Number(settingsDraft.attribution_window_days) || 60),
                 min_cashout_centavos: pesoStringToCentavos(centavosToPesoString(settingsDraft.min_cashout_centavos)),
                 auto_approve_enrollment: settingsDraft.auto_approve_enrollment === true
             });
@@ -360,18 +363,6 @@ export default function AffiliatesWorkspacePanel({ terminalUser, locked = false,
                                 disabled={!canManageSettings}
                                 value={bpsToPercentString(settingsDraft.default_rate_bps)}
                                 onChange={(e) => setSettingsDraft((prev) => ({ ...prev, default_rate_bps: percentStringToBps(e.target.value) }))}
-                            />
-                        </div>
-                        <div className="space-y-1">
-                            <label className="text-xs font-semibold text-[#0F172A]">Attribution window (days)</label>
-                            <Input
-                                type="number"
-                                min="1"
-                                max="365"
-                                className="h-8 text-xs"
-                                disabled={!canManageSettings}
-                                value={settingsDraft.attribution_window_days ?? ''}
-                                onChange={(e) => setSettingsDraft((prev) => ({ ...prev, attribution_window_days: e.target.value }))}
                             />
                         </div>
                         <div className="space-y-1">
