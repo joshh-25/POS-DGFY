@@ -12,7 +12,9 @@ import {
     DollarSign,
     Server,
     CreditCard,
-    UsersRound
+    UsersRound,
+    FileText,
+    ShieldCheck
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,12 +23,14 @@ import { cn } from "@/lib/utils";
 import * as adminService from '@/services/adminService';
 
 const SIDEBAR_ITEMS = [
-    { path: '/admin/feedback', label: 'Feedback', icon: MessageSquare },
-    { path: '/admin/tenants', label: 'Tenants', icon: Building2 },
-    { path: '/admin/dgfy-accounts', label: 'DGFY Accounts', icon: UsersRound },
-    { path: '/admin/payments', label: 'Payments', icon: CreditCard },
-    { path: '/admin/pricing', label: 'Plan Pricing', icon: DollarSign },
-    { path: '/admin/hosting', label: 'Hosting', icon: Server },
+    { path: '/admin/feedback', label: 'Feedback', icon: MessageSquare, permission: 'admin.feedback' },
+    { path: '/admin/tenants', label: 'Tenants', icon: Building2, permission: 'admin.tenants' },
+    { path: '/admin/dgfy-accounts', label: 'DGFY Accounts', icon: UsersRound, permission: 'admin.dgfy_accounts' },
+    { path: '/admin/payments', label: 'Payments', icon: CreditCard, permission: 'admin.payments' },
+    { path: '/admin/pricing', label: 'Plan Pricing', icon: DollarSign, permission: 'admin.pricing' },
+    { path: '/admin/hosting', label: 'Hosting', icon: Server, permission: 'admin.hosting' },
+    { path: '/admin/invoices', label: 'Invoices', icon: FileText, permission: 'admin.invoices' },
+    { path: '/admin/platform-admins', label: 'Platform Admins', icon: ShieldCheck, masterOnly: true },
 ];
 
 export default function AdminLayout() {
@@ -40,6 +44,12 @@ export default function AdminLayout() {
     const [loginError, setLoginError] = useState('');
     const [loggingIn, setLoggingIn] = useState(false);
     const [sessionExpired, setSessionExpired] = useState(false);
+    const [adminProfile, setAdminProfile] = useState(null);
+    const [showPasswordChange, setShowPasswordChange] = useState(false);
+    const [passwordChange, setPasswordChange] = useState({ current_password: '', new_password: '', confirmation: '' });
+    const [passwordChangeError, setPasswordChangeError] = useState('');
+    const [passwordChanging, setPasswordChanging] = useState(false);
+    const allowedItems = SIDEBAR_ITEMS.filter((item) => adminProfile?.is_master || (!item.masterOnly && adminProfile?.permissions?.includes(item.permission)));
 
     // Sidebar state
     const [sidebarCollapsed, setSidebarCollapsed] = useState(() => (
@@ -54,17 +64,26 @@ export default function AdminLayout() {
         return () => media.removeEventListener?.('change', syncMobileSidebar);
     }, []);
 
-    // Check authentication on mount and register auth failure callback
     useEffect(() => {
-        if (adminService.isAuthenticated()) {
-            setIsAuthenticated(true);
-        }
+        if (!isAuthenticated || !adminProfile) return;
+        const requestedItem = SIDEBAR_ITEMS.find((item) => item.path === location.pathname);
+        const permitted = requestedItem && allowedItems.some((item) => item.path === requestedItem.path);
+        if (!permitted && allowedItems[0]) navigate(allowedItems[0].path, { replace: true });
+    }, [adminProfile, isAuthenticated, location.pathname, navigate]);
+
+    // Rehydrate only through the HttpOnly-cookie-backed identity endpoint.
+    useEffect(() => {
+        let mounted = true;
+        adminService.getCurrentAdmin().then((response) => {
+            if (mounted && response?.success) { setAdminProfile(response.data || null); setIsAuthenticated(true); }
+        }).catch(() => {});
 
         // Register callback for authentication failures
         adminService.setAuthFailureCallback(() => {
             setIsAuthenticated(false);
             setSessionExpired(true);
         });
+        return () => { mounted = false; };
     }, []);
 
     const handleLogin = async (e) => {
@@ -74,7 +93,8 @@ export default function AdminLayout() {
         setSessionExpired(false); // Clear the session expired message
 
         try {
-            await adminService.login(username, password);
+            const response = await adminService.login(username, password);
+            setAdminProfile(response?.admin || null);
             setIsAuthenticated(true);
             // Redirect to tenants if on base /admin
             if (location.pathname === '/admin') {
@@ -92,6 +112,24 @@ export default function AdminLayout() {
         setIsAuthenticated(false);
         setUsername('');
         setPassword('');
+        setAdminProfile(null);
+    };
+
+    const handlePasswordChange = async (event) => {
+        event.preventDefault();
+        setPasswordChangeError('');
+        setPasswordChanging(true);
+        try {
+            await adminService.changeOwnPlatformAdminPassword(passwordChange);
+            setPasswordChange({ current_password: '', new_password: '', confirmation: '' });
+            setShowPasswordChange(false);
+            const refreshed = await adminService.getCurrentAdmin();
+            setAdminProfile(refreshed.data || null);
+        } catch (err) {
+            setPasswordChangeError(err.response?.data?.message || 'Password change failed.');
+        } finally {
+            setPasswordChanging(false);
+        }
     };
 
     // Login Form
@@ -216,7 +254,7 @@ export default function AdminLayout() {
 
                 {/* Navigation */}
                 <nav className="flex-1 p-2 space-y-1">
-                    {SIDEBAR_ITEMS.map(item => {
+                    {allowedItems.map(item => {
                         const Icon = item.icon;
                         const isActive = location.pathname === item.path;
                         return (
@@ -254,10 +292,12 @@ export default function AdminLayout() {
 
             {/* Main Content */}
             <main className="min-w-0 flex-1 overflow-auto p-3 sm:p-6">
-                <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                    Admin access is on temporary credential mode during hardening. Avoid sharing credentials and report unexpected login activity immediately.
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    <span>{adminProfile?.temporary_password_active ? 'This account is using the default temporary password. It is not production-secure; change it before routine use.' : 'Admin sessions are database-backed and access is limited to assigned pages.'}</span>
+                    <Button type="button" size="sm" variant="outline" onClick={() => setShowPasswordChange((value) => !value)}>Change password</Button>
                 </div>
-                <Outlet />
+                {showPasswordChange && <form onSubmit={handlePasswordChange} className="mb-4 max-w-xl space-y-3 rounded-lg border bg-white p-4 shadow-sm"><h2 className="font-semibold text-slate-900">Change password</h2><p className="text-sm text-slate-600">Use your current password and a new password of at least 8 characters. This revokes your other active sessions.</p>{passwordChangeError && <p role="alert" className="text-sm text-red-700">{passwordChangeError}</p>}<Input required type="password" autoComplete="current-password" value={passwordChange.current_password} onChange={(event) => setPasswordChange({ ...passwordChange, current_password: event.target.value })} placeholder="Current password"/><Input required minLength={8} type="password" autoComplete="new-password" value={passwordChange.new_password} onChange={(event) => setPasswordChange({ ...passwordChange, new_password: event.target.value })} placeholder="New password (8+ characters)"/><Input required minLength={8} type="password" autoComplete="new-password" value={passwordChange.confirmation} onChange={(event) => setPasswordChange({ ...passwordChange, confirmation: event.target.value })} placeholder="Confirm new password"/><div className="flex gap-2"><Button disabled={passwordChanging} type="submit">{passwordChanging ? 'Changing…' : 'Change password'}</Button><Button type="button" variant="outline" onClick={() => setShowPasswordChange(false)}>Cancel</Button></div></form>}
+                {allowedItems.length ? <Outlet /> : <section className="mx-auto max-w-xl rounded-xl border border-amber-200 bg-white p-6 shadow-sm"><h1 className="text-xl font-semibold text-slate-900">No page access assigned</h1><p className="mt-2 text-sm text-slate-600">Your Platform Admin account is active, but the Platform Master Admin has not assigned any page permissions. Contact the Platform Master Admin to request access.</p></section>}
             </main>
         </div>
     );

@@ -5,6 +5,10 @@ When to use:
 2. Architecture decision records (ADRs)
 3. Refactor-safe design decisions and constraints
 
-Current cross-boundary planning references:
-1. `docs/architecture/adr/0017-customer-access-modes-and-inventory-display.md`
-- Customer Access Modes and Inventory Display across onboarding, Settings, Storefront, inventory presentation, and checkout/payment gating.
+ADRs:
+1. `docs/architecture/adr/INDEX.md` — generated index of every ADR with its
+   lifecycle status, topic, review date, and binding-clause count. Start here
+   instead of grepping the directory.
+2. `docs/architecture/adr/0039-adr-lifecycle-strictness-tiers-and-amendment-path.md`
+- how ADRs are graded, amended, superseded, and retired. Read before writing or
+  changing an ADR.

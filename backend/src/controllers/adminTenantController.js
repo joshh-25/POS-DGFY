@@ -6,6 +6,7 @@ export {
     registerCompanyRequest,
     listTenants,
     approveTenant,
+    retryTenantProvisioning,
     rejectTenant,
     provisionNewTenant,
     createAdminProvisionedTenant,
@@ -35,14 +36,14 @@ export {
     adminResolveComplianceSecurityIncident,
     adminSelectComplianceMode,
     adminUpgradeComplianceMode,
-    adminForceNonCompliant,
-    resubmitRegistration
+    adminForceNonCompliant
 } from '../modules/tenants/controllers/adminTenantHandlers.js';
 
 import {
     registerCompanyRequest,
     listTenants,
     approveTenant,
+    retryTenantProvisioning,
     rejectTenant,
     provisionNewTenant,
     createAdminProvisionedTenant,
@@ -72,8 +73,7 @@ import {
     adminResolveComplianceSecurityIncident,
     adminSelectComplianceMode,
     adminUpgradeComplianceMode,
-    adminForceNonCompliant,
-    resubmitRegistration
+    adminForceNonCompliant
 } from '../modules/tenants/controllers/adminTenantHandlers.js';
 
 export default {
@@ -109,6 +109,5 @@ export default {
     adminResolveComplianceSecurityIncident,
     adminSelectComplianceMode,
     adminUpgradeComplianceMode,
-    adminForceNonCompliant,
-    resubmitRegistration
+    adminForceNonCompliant
 };

@@ -1,8 +1,10 @@
 ---
-status: authoritative
+status: accepted
 authority_level: authoritative
 owner: architecture
+date: 2026-07-08
 last_reviewed: 2026-05-29
+review_by: 2027-01-08
 applies_to: dgfy_reviews, storefront_fnb_item_detail, storefront_tracking
 topic: fulfilled_guest_item_reviews
 ---

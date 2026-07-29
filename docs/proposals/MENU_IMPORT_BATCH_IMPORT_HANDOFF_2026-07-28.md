@@ -272,7 +272,7 @@ How it's expressed:
   `false` disables it (asserted by a test) — a typo must not silently retire a live path.
 - `@deprecated` JSDoc on the legacy modal and hook, each pointing at the replacement and at the
   removal criteria rather than just saying "old".
-- **Removal criteria live in ADR 0039**, four of them, in order. Criterion 3 is worth reading before
+- **Removal criteria live in ADR 0049**, four of them, in order. Criterion 3 is worth reading before
   anyone "finishes the job": the batch path requires Redis and this one doesn't, so the correct
   outcome may be **keep as the degraded fallback**, not delete. That is a legitimate result of the
   criterion, not an unfinished phase.
@@ -396,18 +396,24 @@ zone with the capture panel in place. It is **not** mobile-only — `facingMode:
 - `backend/src/routes/items.js` — the middleware sits on both legacy routes, after
   `requireMenuImportEnabled` and before the permission check.
 - `frontend/Components/items/PdfMenuImportModal.jsx`, `frontend/src/hooks/usePdfMenuImport.js` —
-  `@deprecated` JSDoc pointing at the replacement and at ADR 0039's removal criteria. No behavior
+  `@deprecated` JSDoc pointing at the replacement and at ADR 0049's removal criteria. No behavior
   change; the POS entry point already prefers the batch wizard (Phase 4).
 - `backend/.env.example` — both new vars, commented out, with the "don't retire this yet" warning.
-- `docs/architecture/adr/0039-*` — a "Deprecating the single-file path" decision section and the
-  four removal criteria.
+- `docs/architecture/adr/0049-batch-menu-import-async-extraction.md` — a "Deprecating the
+  single-file path" decision section and the four removal criteria.
 
 **Governance (Phase 6)**:
-- `docs/architecture/adr/0039-batch-menu-import-async-extraction.md` — accepted; covers D1–D12
-  (the camera-capture decision was folded into the same ADR rather than a new one — 0039 was
-  authored in this workstream and had not merged).
-  (0039 was genuinely free — the directory has duplicate 0022/0023/0024/0025/0029/0030/0036 numbers
-  but tops out at 0038.)
+- `docs/architecture/adr/0049-batch-menu-import-async-extraction.md` — accepted; covers D1–D12
+  (the camera-capture decision was folded into the same ADR rather than a new one). **Originally
+  authored as `0039-*`** (0039 was genuinely free at the time — the directory had duplicate
+  0022/0023/0024/0025/0029/0030/0036 numbers but topped out at 0038). **Renumbered to 0049 during
+  the `origin/develop` merge** (this session, 2026-07-29): develop had concurrently added its own
+  new 0039 (`0039-adr-lifecycle-strictness-tiers-and-amendment-path.md` — the ADR that defines the
+  `check:adr` gate this repo now enforces), so keeping our 0039 would have been a live collision.
+  0049 was the first free number after the merge (tops out at 0048 on develop's side). Also added
+  the front-matter keys develop's `check:adr --strict` gate now requires
+  (`authority_level`/`owner`/`review_by`/`topic`) that didn't exist when this ADR was first
+  written.
 - `docs/compliance/impact-declarations/2026-07-29-pos-batch-menu-import.md` — `major`,
   surfaces `pos,terminal`, the floor forced by touching `frontend/src/features/pos/**`.
 - `docs/compliance/impact-declarations/2026-07-29-pos-menu-photo-capture.md` — Phase 5. Note that
@@ -556,7 +562,7 @@ All seven phases are built. Two things remain, neither of which is a coding task
 1. **Verification against a real environment** — the checklist below. Everything in Phases 1–7 was
    verified against mocks, a jsdom camera, and a sandbox with no Redis, no MySQL, and no nginx.
 2. **Actual removal of the deprecated single-file path** — deliberately not done in Phase 7, gated
-   on ADR 0039's four removal criteria (see D13). Criterion 3 may legitimately resolve to "keep it
+   on ADR 0049's four removal criteria (see D13). Criterion 3 may legitimately resolve to "keep it
    as the Redis-less fallback" rather than "delete it". Do not treat that as an unfinished phase.
 
 **If you are picking this up expecting to write code: there is none queued.** Resist inventing
@@ -613,7 +619,7 @@ No live Redis, no live MySQL. As a result:
       and returns `Deprecation: true` + `Link: <...>; rel="successor-version"`, and the warn log
       carries the tenant. Then set `MENU_IMPORT_LEGACY_SINGLE_FILE_ENABLED=false`, restart, and
       confirm 410 with `error_code: MENU_IMPORT_LEGACY_RETIRED` — **and set it back**. Do not leave
-      it off until ADR 0039's removal criteria hold.
+      it off until ADR 0049's removal criteria hold.
 - [ ] `sudo nginx -t` against the real rendered nginx config once `envsubst`'d, confirming the
       `location =` blocks don't conflict with the existing `location /api` prefix match.
 - [ ] `npm run check:architecture-guardrails && npm run check:controller-boundaries` from
@@ -654,5 +660,5 @@ No live Redis, no live MySQL. As a result:
 3. Run `POST /api/v1/compliance/preflight` for both impact declarations and reconcile their
    front-matter preflight fields — the one governance loose end, and it needs a live tenant
    environment.
-4. Only then revisit ADR 0039's removal criteria for the deprecated single-file path. The
+4. Only then revisit ADR 0049's removal criteria for the deprecated single-file path. The
    deprecation log added in Phase 7 is what should decide it.

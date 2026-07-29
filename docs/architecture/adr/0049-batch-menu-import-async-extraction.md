@@ -1,11 +1,14 @@
 ---
 status: accepted
+authority_level: authoritative
+owner: architecture
 date: 2026-07-29
 last_reviewed: 2026-07-29
-classification: authoritative
+review_by: 2027-01-29
+topic: batch_menu_import
 ---
 
-# ADR 0039: Batch Menu Import via Asynchronous Extraction
+# ADR 0049: Batch Menu Import via Asynchronous Extraction
 
 ## Context
 

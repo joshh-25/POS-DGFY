@@ -249,8 +249,8 @@ FRONTEND_URL=http://localhost:5173
 # Payments are off by default for local development
 PAYMENTS_ENABLED=false
 
-# Tenant registration defaults to auto-standard activation; set manual only for admin-review rollback tests.
-TENANT_REGISTRATION_APPROVAL_MODE=auto_standard
+# Public tenant registration requires Platform Admin review.
+TENANT_REGISTRATION_APPROVAL_MODE=manual
 
 # Customer Access Mode runtime enforcement is on by default.
 # Set this to false only for explicit rollback testing.
@@ -418,7 +418,7 @@ Local URLs:
 Use production-safe defaults for local setup unless a test specifically needs different behavior:
 
 ```env
-TENANT_REGISTRATION_APPROVAL_MODE=auto_standard
+TENANT_REGISTRATION_APPROVAL_MODE=manual
 CUSTOMER_ACCESS_MODES_ENABLED=true
 CUSTOMER_ACCESS_MODES_ENABLED_TENANTS=
 PAYMENTS_ENABLED=false

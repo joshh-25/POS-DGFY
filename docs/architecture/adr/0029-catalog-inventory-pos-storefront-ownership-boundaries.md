@@ -1,8 +1,12 @@
 ---
 status: accepted
+authority_level: authoritative
+owner: architecture
 date: 2026-06-26
 last_reviewed: 2026-07-14
-classification: authoritative
+review_by: 2026-12-26
+applies_to: architecture_decision
+topic: catalog_inventory_pos_storefront_ownership_boundaries
 ---
 
 # ADR 0029: Catalog, Inventory, POS, and Storefront Ownership Boundaries
@@ -24,18 +28,24 @@ catalog behavior. It follows `docs/START_HERE.md`,
 
 ## Decision
 
+> **Strictness tiers (ADR 0039).** Clauses below are tagged `[binding]`, `[default]`,
+> or `[snapshot]`. `binding` needs a superseding ADR to change; `default` needs an
+> amendment block in the implementing PR; `snapshot` is documentation and may be
+> updated by ordinary work. Untagged clauses elsewhere in this document are `default`.
+
+
 Adopt these ownership boundaries:
 
 1. Inventory owns stock truth: `stock_movements`, `item_location_stocks`,
    location-scoped FIFO batches, transfers, receiving, adjustments, losses, and
-   valuation.
+   valuation. `[binding]`
 2. Catalog owns item identity: products/items, SKUs, barcode identity, variants,
-   units of measure, categories, and base sale price data.
+   units of measure, categories, and base sale price data. `[binding]`
 3. POS owns sales execution: POS transaction headers/lines, payments, receipts,
-   cashier or terminal sessions, discounts, and void/return lifecycle.
+   cashier or terminal sessions, discounts, and void/return lifecycle. `[binding]`
 4. Storefront owns public commerce presentation: public business page,
    customer-facing item visibility, quote/order flow, customer availability
-   presentation, and map/discovery behavior.
+   presentation, and map/discovery behavior. `[binding]`
 
 The core rule is:
 
@@ -51,20 +61,20 @@ Only Inventory records stock effects and updates stock balances.
    schema split is considered. ("This phase" refers to the phase this ADR was
    written for; superseded by the v2.1 milestone amendment below, which reads
    `items` data into new `dgfy_business_*.products` rows without mutating the
-   legacy table.)
+   legacy table.) `[snapshot]`
 2. `items.current_stock` remains a derived compatibility aggregate. Stock truth
    is `item_location_stocks` plus `stock_movements`, with FIFO batches carrying
-   batch age, cost, and expiry evidence.
+   batch age, cost, and expiry evidence. `[snapshot]`
 3. Online Storefront orders remain stored in `pos_transactions` for v1
    compatibility and unified sales reporting. This table is treated as the
    unified sales transaction ledger for current behavior, not proof that POS
    owns Storefront. (Superseded for migration purposes by the v2.1 milestone
    amendment below: `pos_transactions` sales history is additionally migrated
-   into `availments` starting Phase 14; the legacy table itself is untouched.)
+   into `availments` starting Phase 14; the legacy table itself is untouched.) `[snapshot]`
 4. Stock reservations are intentionally out of scope for this phase. If online
    order placement must reserve stock before fulfillment, a separate ADR must
    define reservation state, expiry, commit, release, and available-to-sell
-   semantics.
+   semantics. `[default]`
 
 ## Boundary Rules
 

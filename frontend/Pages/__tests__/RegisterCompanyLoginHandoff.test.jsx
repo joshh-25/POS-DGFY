@@ -99,6 +99,7 @@ const renderRoutes = (initialEntries = ['/dgfy/auth']) => render(
       <Route path="/legal/:slug" element={<LegalDocument />} />
       <Route path="/privacy" element={<LegalDocument />} />
       <Route path="/register-company" element={<RegisterCompany />} />
+      <Route path="/register-company/status/:applicationId" element={<div>Registration status route</div>} />
       <Route path="/done" element={<div>Done screen</div>} />
       <Route path="/login" element={<div>Login screen</div>} />
       <Route path="/" element={<div>Dashboard screen</div>} />
@@ -419,20 +420,12 @@ describe('DGFY auth and business registration routes', () => {
       token: 'dgfy-token',
       account: dgfyAccount
     });
-    dgfyAuthMock.startDgfyTenantSession.mockResolvedValue({
-      token: 'ims-token',
-      company: { token: 'token-autofoods-12345678' }
-    });
     apiMock.post.mockResolvedValueOnce({
       data: {
         success: true,
-        message: 'Company registered and activated successfully. You can sign in now.',
+        message: 'Company registration submitted for approval.',
         data: {
-          id: 'tenant-1',
-          name: 'Auto Foods',
-          status: 'active',
-          company_token: 'token-autofoods-12345678',
-          workflow_mode: 'food_manufacturing'
+          application_id: 'application-autofoods'
         }
       }
     });
@@ -460,144 +453,11 @@ describe('DGFY auth and business registration routes', () => {
       skipTenantAuthHeaders: true,
       withCredentials: true
     })));
-    await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalledWith({
-      tenantId: 'tenant-1',
-      companyToken: 'token-autofoods-12345678'
-    }, 'dgfy-token'));
-    await waitFor(() => expect(mockLocation.assign).toHaveBeenCalledWith(
-      expect.stringContaining('/terminal?setup_flow=tenant_onboarding&setup_step=storefront_setup')
-    ));
+    expect(await screen.findByText('Registration status route')).toBeTruthy();
+    expect(dgfyAuthMock.startDgfyTenantSession).not.toHaveBeenCalled();
+    expect(mockLocation.assign).not.toHaveBeenCalled();
   });
 
-  it('uses cookie-backed DGFY auth for company registration and tenant-session handoff when no bearer token is in memory', async () => {
-    dgfyAuthMock.fetchDgfyMe.mockResolvedValueOnce({
-      account: dgfyAccount
-    });
-    dgfyAuthMock.getStoredDgfyToken.mockReturnValue('');
-    dgfyAuthMock.dgfyAuthHeader.mockReturnValue({});
-    dgfyAuthMock.startDgfyTenantSession.mockResolvedValue({
-      token: 'ims-token',
-      company: { token: 'token-cookiefoods-12345678' }
-    });
-    apiMock.post.mockResolvedValueOnce({
-      data: {
-        success: true,
-        message: 'Company registered and activated successfully. You can sign in now.',
-        data: {
-          id: 'tenant-2',
-          name: 'Cookie Foods',
-          status: 'active',
-          company_token: 'token-cookiefoods-12345678',
-          workflow_mode: 'food_manufacturing'
-        }
-      }
-    });
-
-    renderRoutes(['/register-company#business-registration']);
-
-    expect(await screen.findByText(/DGFY account connected/i)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Cookie Foods' } });
-    fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
-    fireEvent.click(screen.getByRole('button', { name: /create company/i }));
-
-    await waitFor(() => expect(apiMock.post).toHaveBeenCalledWith('/admin/tenants/register', expect.objectContaining({
-      name: 'Cookie Foods'
-    }), expect.objectContaining({
-      headers: {},
-      skipTenantAuthHeaders: true,
-      withCredentials: true
-    })));
-    await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalledWith({
-      tenantId: 'tenant-2',
-      companyToken: 'token-cookiefoods-12345678'
-    }, ''));
-    await waitFor(() => expect(mockLocation.assign).toHaveBeenCalledWith(
-      expect.stringContaining('/terminal?setup_flow=tenant_onboarding&setup_step=storefront_setup')
-    ));
-  });
-
-  it('falls back to POS sign-in when the automatic POS session cannot start', async () => {
-    dgfyAuthMock.fetchDgfyMe.mockResolvedValueOnce({
-      token: 'dgfy-token',
-      account: dgfyAccount
-    });
-    dgfyAuthMock.startDgfyTenantSession.mockRejectedValue({
-      response: { data: { message: 'Unable to start a POS session for this DGFY account.' } }
-    });
-    apiMock.post.mockResolvedValueOnce({
-      data: {
-        success: true,
-        message: 'Company registered and activated successfully. You can sign in now.',
-        data: {
-          id: 'tenant-1',
-          name: 'Auto Foods',
-          status: 'active',
-          company_token: 'token-autofoods-12345678',
-          workflow_mode: 'food_manufacturing'
-        }
-      }
-    });
-
-    renderRoutes(['/register-company#business-registration']);
-
-    expect(await screen.findByText(/DGFY account connected/i)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Auto Foods' } });
-    fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
-    fireEvent.click(screen.getByRole('button', { name: /create company/i }));
-
-    await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalledWith({
-      tenantId: 'tenant-1',
-      companyToken: 'token-autofoods-12345678'
-    }, 'dgfy-token'));
-    expect(await screen.findByText('Company Created')).toBeTruthy();
-    expect(screen.getByText(/company registered and activated successfully/i)).toBeTruthy();
-    await waitFor(() => {
-      expect(screen.getByText(/unable to start a pos session/i)).toBeTruthy();
-      expect(screen.getByRole('button', { name: /proceed to pos/i })).toBeTruthy();
-    }, { timeout: 3000 });
-  });
-
-  it('does not retry tenant-session handoff when business session opening is rate-limited', async () => {
-    dgfyAuthMock.fetchDgfyMe.mockResolvedValueOnce({
-      token: 'dgfy-token',
-      account: dgfyAccount
-    });
-    dgfyAuthMock.startDgfyTenantSession.mockRejectedValue({
-      response: {
-        status: 429,
-        data: {
-          message: 'Too many business session attempts. Please wait before opening this company again.',
-          retryAfterSeconds: 180
-        }
-      }
-    });
-    apiMock.post.mockResolvedValueOnce({
-      data: {
-        success: true,
-        message: 'Company registered and activated successfully. You can sign in now.',
-        data: {
-          id: 'tenant-429',
-          name: 'Retry Foods',
-          status: 'active',
-          company_token: 'token-retryfoods-12345678',
-          workflow_mode: 'food_manufacturing'
-        }
-      }
-    });
-
-    renderRoutes(['/register-company#business-registration']);
-
-    expect(await screen.findByText(/DGFY account connected/i)).toBeTruthy();
-    fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Retry Foods' } });
-    fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
-    fireEvent.click(screen.getByRole('button', { name: /create company/i }));
-
-    await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalledTimes(1));
-    expect(await screen.findByText('Company Created')).toBeTruthy();
-    expect(screen.getByText(/pos session opening is temporarily rate-limited/i)).toBeTruthy();
-    expect(screen.getByText(/about 3 minutes/i)).toBeTruthy();
-    expect(screen.getByRole('button', { name: /proceed to pos/i })).toBeTruthy();
-  });
 
   it('shows the sign-in form instead of auto-restoring a cookie session after explicit sign-out', async () => {
     dgfyAuthMock.hasDgfyExplicitSignOut.mockReturnValue(true);

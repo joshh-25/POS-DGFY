@@ -2,7 +2,7 @@
 status: reference
 owner: engineering
 last_reviewed: 2026-07-29
-related_adr: docs/architecture/adr/0039-batch-menu-import-async-extraction.md
+related_adr: docs/architecture/adr/0049-batch-menu-import-async-extraction.md
 declaration_id: 2026-07-29-pos-menu-photo-capture
 classification: major
 surfaces: pos,terminal

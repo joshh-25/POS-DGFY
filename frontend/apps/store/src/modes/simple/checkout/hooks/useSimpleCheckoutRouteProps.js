@@ -1,4 +1,6 @@
 export function useSimpleCheckoutRouteProps({
+  applySavedDeliveryLocation,
+  canAddPinnedLocation = false,
   canUseGuestCheckoutFlow = false,
   cart = [],
   cartCount = 0,
@@ -7,16 +9,23 @@ export function useSimpleCheckoutRouteProps({
   checkoutResult = null,
   customerAddress = '',
   customerPin = null,
+  deliveryLocationAction = 'saved',
+  deliveryLocationDisplayAddress = '',
+  deliverySavedLocations = [],
   DropdownComponent,
   fnbPaymentType = 'cash',
+  fnbScheduleMode = 'asap',
   fnbScheduledFor = '',
   fnbSpecialInstructions = '',
   goStoreCatalogPage,
+  handleAddPinnedLocation,
   handleCheckout,
   handleDownloadCheckoutImage,
   handlePaymentTypeChange,
   handlePinMyLocation,
   handleQuote,
+  handleRemoveDeliveryAddress,
+  handleSetDefaultDeliveryAddress,
   isDeliveryOrder = false,
   isDesktopCheckout = false,
   isDgfyCustomerSignedIn = false,
@@ -36,18 +45,25 @@ export function useSimpleCheckoutRouteProps({
   requireQuoteForCheckout = false,
   selectedLocation = null,
   selectedLocationId = null,
+  selectedSavedLocationId = '',
   selectedStore = null,
   servicesBodyFont,
   servicesDisplayFont,
   setCheckoutResult,
   setCustomerAddress,
   setCustomerPin,
+  setDeliveryLocationAction,
   setFnbScheduledFor,
+  setFnbScheduleMode,
   setFnbSpecialInstructions,
   setOrderMethod,
   setPinLocationError,
+  setResolvedDeliveryAddress,
   setSelectedLocationId,
+  setSelectedSavedLocationId,
+  setShowExpandedDeliveryMap,
   setSimpleOrderStep,
+  showExpandedDeliveryMap = false,
   simpleCheckoutAllowed = false,
   simpleCustomerStepComplete = false,
   simpleHasCustomerIdentity = false,
@@ -61,6 +77,7 @@ export function useSimpleCheckoutRouteProps({
   withAssetOrigin
 }) {
   return {
+    canAddPinnedLocation,
     canUseGuestCheckoutFlow,
     cart,
     cartCount,
@@ -69,8 +86,12 @@ export function useSimpleCheckoutRouteProps({
     checkoutResult,
     customerAddress,
     customerPin,
+    deliveryLocationAction,
+    deliveryLocationDisplayAddress,
+    deliverySavedLocations,
     DropdownComponent,
     fnbPaymentType,
+    fnbScheduleMode,
     fnbScheduledFor,
     fnbSpecialInstructions,
     isDeliveryOrder,
@@ -92,9 +113,14 @@ export function useSimpleCheckoutRouteProps({
     requireQuoteForCheckout,
     selectedLocation,
     selectedLocationId,
+    selectedSavedLocationId,
     selectedStore,
     servicesBodyFont,
     servicesDisplayFont,
+    setDeliveryLocationAction,
+    setSelectedSavedLocationId,
+    setShowExpandedDeliveryMap,
+    showExpandedDeliveryMap,
     simpleCheckoutAllowed,
     simpleCustomerStepComplete,
     simpleHasCustomerIdentity,
@@ -114,15 +140,45 @@ export function useSimpleCheckoutRouteProps({
       setOrderMethod(nextOrderMethod);
       setPinLocationError('');
     },
+    onAddPinnedLocation: handleAddPinnedLocation,
+    onCloseExpandedMap: () => setShowExpandedDeliveryMap(false),
+    onOpenExpandedMap: () => setShowExpandedDeliveryMap(true),
     onPaymentTypeChange: handlePaymentTypeChange,
-    onPinChange: setCustomerPin,
+    onPinChange: (nextPin) => {
+      setDeliveryLocationAction('map');
+      setSelectedSavedLocationId('');
+      setCustomerPin(nextPin);
+    },
     onPinClear: () => setCustomerPin(null),
     onPinMyLocation: handlePinMyLocation,
     onQuote: handleQuote,
-    onScheduledForChange: setFnbScheduledFor,
+    onRemoveDeliveryAddress: handleRemoveDeliveryAddress,
+    onScheduleModeChange: (nextMode) => {
+      setFnbScheduleMode(nextMode);
+      if (nextMode === 'asap') setFnbScheduledFor('');
+    },
+    onScheduledForChange: (nextScheduledFor) => {
+      setFnbScheduledFor(nextScheduledFor);
+      setFnbScheduleMode('schedule');
+    },
+    onSelectAddress: (location) => {
+      applySavedDeliveryLocation(location);
+      if (typeof handleSetDefaultDeliveryAddress === 'function' && !location.isDefault) {
+        handleSetDefaultDeliveryAddress(location);
+      }
+    },
     onSelectedLocationChange: setSelectedLocationId,
     onSetCheckoutResult: setCheckoutResult,
+    onSetDefaultDeliveryAddress: handleSetDefaultDeliveryAddress,
     onSetSimpleOrderStep: setSimpleOrderStep,
-    onSpecialInstructionsChange: setFnbSpecialInstructions
+    onSpecialInstructionsChange: setFnbSpecialInstructions,
+    onStartMapPin: () => {
+      setDeliveryLocationAction('map');
+      setSelectedSavedLocationId('');
+      setPinLocationError('');
+      setResolvedDeliveryAddress('');
+      setCustomerAddress('');
+      setCustomerPin(null);
+    }
   };
 }

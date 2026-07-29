@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronDown, ChevronUp, Loader2, AlertTriangle, Send, ArrowRight, Eye, EyeOff } from 'lucide-react';
+import { ChevronDown, ChevronUp, Loader2, AlertTriangle, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import dgfyLogo from '../src/assets/dgfy/dgfy-logo.png';
 
 const handleDgfyLogoError = (event) => {
@@ -42,9 +42,6 @@ export default function Login() {
   const [tenantStatus, setTenantStatus] = useState(null); // 'inactive' | 'rejected' | null
   const [rejectionReason, setRejectionReason] = useState('');
   const [identifiedToken, setIdentifiedToken] = useState(initialRegistrationToken);
-  const [isActioning, setIsActioning] = useState(false);
-  const [actionSent, setActionSent] = useState(false);
-  const [actionError, setActionError] = useState('');
   const [lastLookupEmail, setLastLookupEmail] = useState(initialRegistrationEmail.toLowerCase());
   const lookupGenerationRef = useRef(0);
 
@@ -63,8 +60,6 @@ export default function Login() {
     setTenantStatus(null);
     setRejectionReason('');
     setIdentifiedToken('');
-    setActionSent(false);
-    setActionError('');
     setLastLookupEmail('');
     setError('');
   };
@@ -103,8 +98,6 @@ export default function Login() {
     setTenantStatus(null);
     setRejectionReason('');
     setIdentifiedToken('');
-    setActionSent(false);
-    setActionError('');
     let resolvedToken = null;
 
     try {
@@ -164,21 +157,6 @@ export default function Login() {
     return resolvedToken;
   };
 
-
-  const handleResubmitRegistration = async () => {
-    setIsActioning(true);
-    setActionError('');
-    try {
-      await api.post('/admin/tenants/resubmit', {}, {
-        headers: { 'x-company-token': identifiedToken }
-      });
-      setActionSent(true);
-    } catch (err) {
-      setActionError(err.response?.data?.message || 'Failed to re-submit registration. Please try again.');
-    } finally {
-      setIsActioning(false);
-    }
-  };
 
   const handleSubmit = async (e) => {
     if (e) e.preventDefault();
@@ -363,8 +341,6 @@ export default function Login() {
                       const selected = availableTenants.find(t => t.company_token === value);
                       if (selected) {
                         setIdentifiedToken(value);
-                        setActionSent(false);
-                        setActionError('');
                         if (selected.status === 'inactive') {
                           setTenantStatus('inactive');
                         } else if (selected.status === 'rejected') {
@@ -472,26 +448,7 @@ export default function Login() {
                   {rejectionReason && (
                     <p className="text-xs text-red-700 mt-1">Reason: {rejectionReason}</p>
                   )}
-                  <p className="text-xs text-red-700 mt-1">
-                    You may update your details and re-submit for review.
-                  </p>
-                  {actionSent ? (
-                    <p className="text-xs text-green-700 font-medium mt-2">Re-submission received. Our team will review it shortly.</p>
-                  ) : (
-                    <>
-                      {actionError && <p className="text-xs text-red-600 mt-1">{actionError}</p>}
-                      <Button
-                        type="button"
-                        size="sm"
-                        className="mt-3 bg-red-600 hover:bg-red-700 text-white"
-                        onClick={handleResubmitRegistration}
-                        disabled={isActioning}
-                      >
-                        {isActioning ? <Loader2 className="w-3 h-3 animate-spin mr-1" /> : <Send className="w-3 h-3 mr-1" />}
-                        Re-submit Registration
-                      </Button>
-                    </>
-                  )}
+                  <p className="text-xs text-red-700 mt-1">Sign in to the DGFY account that submitted the registration, then use its protected registration-status page to correct and resubmit it. Company tokens cannot resubmit applications.</p>
                 </div>
               </div>
             </div>

@@ -201,6 +201,46 @@ After June 17, 2027, unlinked legacy users cannot use IMS/POS until they create 
   - `20260422000001-add-compliance-downgrade-override-controls.cjs` adds governed downgrade columns, audit event types, and controlled downgrade trigger support.
   - `20260422000002-harden-compliance-downgrade-controls.cjs` tightens trigger invariants (same-update marker mutation, no mixed override+revert mutation, and tenant one-per-cycle enforcement parity).
 
+## Platform Admin, Manual Registration Review, And QA Invoicing Addendum (2026-07-28)
+
+Primary landlord migrations:
+
+1. `20260728000001-create-platform-admin-identity.cjs`
+2. `20260728000002-create-company-registration-applications.cjs`
+3. `20260728000003-create-platform-invoices.cjs`
+4. `20260728000004-create-platform-invoice-payments-and-sequences.cjs`
+5. `20260728000005-create-platform-invoice-artifacts-and-deliveries.cjs`
+6. `20260728000006-create-platform-invoice-adjustments.cjs`
+7. `20260728000007-create-platform-invoice-events.cjs`
+8. `20260728000008-add-platform-invoice-replacements.cjs`
+9. `20260728000009-remove-platform-invoice-original-unique-index.cjs`
+
+Platform Admin tables:
+
+1. `platform_admin_users` stores delegated/master identity state and password hashes.
+2. `platform_admin_permissions` stores live page grants; API middleware resolves these rows on every protected request.
+3. `platform_admin_sessions` stores revocable, expiring HttpOnly admin sessions.
+4. `platform_admin_audit_logs` stores reasoned privileged identity and grant changes without password values.
+
+Company-registration review tables:
+
+1. `company_registration_applications` stores the submitting DGFY account, tenant, review state, provisioning state, current attempt, and optimistic version.
+2. `company_registration_attempts` stores immutable submission/legal snapshots and review decisions.
+3. `company_registration_events` stores the append-only review/provisioning lifecycle.
+4. `company_registration_email_deliveries` stores durable applicant notification attempts.
+
+QA landlord-invoice tables:
+
+1. `platform_invoices` stores immutable seller, buyer, service, VAT, status, numbering, and replacement-parent snapshots.
+2. `platform_invoice_sequences` allocates non-reused TEST invoice numbers atomically.
+3. `platform_invoice_payments` stores append-only cash tender, applied amount, and confirmed change.
+4. `platform_invoice_artifacts` stores private PDF metadata, storage keys, and SHA-256 digests.
+5. `platform_invoice_deliveries` stores rate-limited provider delivery attempts and actual QA recipients.
+6. `platform_invoice_adjustments` stores full-credit records.
+7. `platform_invoice_events` stores the append-only invoice lifecycle.
+
+These are landlord-only tables. They must not be cloned into tenant databases or joined to tenant POS invoice/payment/inventory ledgers. Live fiscal issuance remains disabled while the seller snapshot contains TEST mode or unresolved fiscal authority placeholders.
+
 ## DGFY Legal Acknowledgement Addendum (2026-06-08)
 
 DGFY account registration and public company registration require versioned ToS/T&C acknowledgement before the mutation proceeds.

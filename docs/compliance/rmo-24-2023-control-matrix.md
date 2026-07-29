@@ -5,7 +5,7 @@ owner: compliance
 last_reviewed: 2026-06-01
 applies_to: ph_pos_software_provider
 topic: rmo_24_2023_control_matrix
-related_adr: 0025-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md
+related_adr: 0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md
 ---
 
 # RMO 24-2023 Control Matrix

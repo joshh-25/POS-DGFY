@@ -2,7 +2,7 @@
 status: reference
 owner: engineering
 last_reviewed: 2026-07-29
-related_adr: docs/architecture/adr/0039-batch-menu-import-async-extraction.md
+related_adr: docs/architecture/adr/0049-batch-menu-import-async-extraction.md
 declaration_id: 2026-07-29-pos-batch-menu-import
 classification: major
 surfaces: pos,terminal
@@ -31,7 +31,7 @@ already use in production, so no new persistence, pricing, or validation logic i
 whole capability is off by default in every environment.
 
 The backend half of this feature (async job backbone, merge/dedup preview, scanned-PDF
-rasterization) landed earlier on the same branch and is governed by ADR 0039; this declaration
+rasterization) landed earlier on the same branch and is governed by ADR 0049; this declaration
 covers the full batch capability, including the POS-surface wizard that makes it reachable by an
 operator for the first time.
 

@@ -3,6 +3,7 @@ import {
     registerCompanyRequest,
     listTenants,
     approveTenant,
+    retryTenantProvisioning,
     rejectTenant,
     provisionNewTenant,
     getPricingSettings,
@@ -32,8 +33,7 @@ import {
     adminForceNonCompliant,
     assignTenantOwnerByAdmin,
     createAdminProvisionedAccountAndTenant,
-    createAdminProvisionedTenant,
-    resubmitRegistration
+    createAdminProvisionedTenant
 } from '../controllers/adminTenantController.js';
 import { authenticateAdmin } from '../middleware/auth.js';
 import { authenticateDgfyAccount } from '../middleware/dgfyAuth.js';
@@ -75,9 +75,6 @@ const router = express.Router();
 // PUBLIC ENTRY, DGFY ACCOUNT REQUIRED: Submit company registration request.
 router.post('/register', tenantRegistrationLimiter, authenticateDgfyAccount, registerCompanyRequest);
 
-// PUBLIC: Re-submit a rejected registration (x-company-token only, no JWT)
-router.post('/resubmit', tenantRegistrationLimiter, resubmitRegistration);
-
 // ADMIN: List all tenants (requires admin auth)
 router.get('/', authenticateAdmin, listTenants);
 
@@ -91,6 +88,7 @@ router.put('/pricing', authenticateAdmin, updatePricingSettings);
 
 // ADMIN: Approve a pending tenant (triggers provisioning)
 router.post('/:id/approve', authenticateAdmin, approveTenant);
+router.post('/:id/retry-provisioning', authenticateAdmin, retryTenantProvisioning);
 
 // ADMIN: Reject a pending tenant
 router.post('/:id/reject', authenticateAdmin, rejectTenant);
