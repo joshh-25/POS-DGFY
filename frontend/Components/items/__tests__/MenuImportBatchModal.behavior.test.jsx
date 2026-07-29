@@ -36,8 +36,7 @@ vi.mock('../MenuPhotoCaptureSheet.jsx', () => ({
         >
             {`stub-capture (${remainingSlots} slots)`}
         </button>
-    ),
-    supportsMenuPhotoCapture: () => true
+    )
 }));
 
 const { default: MenuImportBatchModal } = await import('../MenuImportBatchModal.jsx');

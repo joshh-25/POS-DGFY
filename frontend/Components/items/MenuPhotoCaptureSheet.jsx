@@ -42,6 +42,7 @@ const CAMERA_CONSTRAINTS = {
 };
 
 const STATUS_MESSAGES = {
+    insecure: 'Taking photos requires HTTPS. Open the POS on a secure URL to use the camera, or add photos from your device instead.',
     denied: 'Camera access was blocked. Allow camera permission for this site in your browser settings, or add photos from your device instead.',
     unsupported: 'This device or browser cannot open a camera here. Add photos from your device instead.',
     error: 'The camera could not be started. Add photos from your device instead.'
@@ -54,8 +55,20 @@ const errorStatusFor = (error) => {
     return 'error';
 };
 
+/**
+ * `navigator.mediaDevices` only exists in a secure context, so a POS opened
+ * over plain HTTP on a LAN IP has no camera API at all. Checking
+ * `isSecureContext` separately lets the sheet say *why* rather than looking
+ * like a missing feature — same call `ProductQrScannerModal` makes.
+ */
+export const isSecureCameraContext = () => (
+    typeof window === 'undefined' || window.isSecureContext !== false
+);
+
 export const supportsMenuPhotoCapture = () => (
-    typeof navigator !== 'undefined' && Boolean(navigator.mediaDevices?.getUserMedia)
+    typeof navigator !== 'undefined'
+    && isSecureCameraContext()
+    && Boolean(navigator.mediaDevices?.getUserMedia)
 );
 
 export default function MenuPhotoCaptureSheet({ onAddFiles, onCancel, onUseFilePicker, remainingSlots = 0 }) {
@@ -102,6 +115,10 @@ export default function MenuPhotoCaptureSheet({ onAddFiles, onCancel, onUseFileP
         let sampleTimer = null;
 
         const start = async () => {
+            if (!isSecureCameraContext()) {
+                setStatus('insecure');
+                return;
+            }
             if (!supportsMenuPhotoCapture()) {
                 setStatus('unsupported');
                 return;
@@ -208,7 +225,7 @@ export default function MenuPhotoCaptureSheet({ onAddFiles, onCancel, onUseFileP
         onUseFilePicker?.();
     };
 
-    const cameraFailed = status === 'denied' || status === 'unsupported' || status === 'error';
+    const cameraFailed = Object.prototype.hasOwnProperty.call(STATUS_MESSAGES, status);
 
     return (
         <div className="space-y-4">

@@ -234,10 +234,18 @@ should be re-tuned against real store photos before the flag goes on for tenants
 threshold degrades to noisy or absent advice, which is exactly why warn-only matters.
 
 Permission handling: camera is requested only when the operator opens the capture surface, never on
-modal open. `NotAllowedError`/`SecurityError` → "blocked" copy; `NotFound`/`Overconstrained`/
-`NotReadable` → "unsupported"; anything else → generic — all three degrade to the file picker rather
-than dead-ending. Tracks stop on cancel, on hand-off, and on unmount; object URLs are revoked from a
-ref so unmount cleanup doesn't re-run per shot.
+modal open. `window.isSecureContext === false` → "requires HTTPS" copy, checked *before*
+`getUserMedia` so a plain-HTTP LAN POS (ADR 0025's LAN-host runtime) is told why rather than blamed
+on the device — `navigator.mediaDevices` is simply undefined outside a secure context, and
+`ProductQrScannerModal.jsx` already makes this exact check. Then `NotAllowedError`/`SecurityError` →
+"blocked"; `NotFound`/`Overconstrained`/`NotReadable` → "unsupported"; anything else → generic. All
+four degrade to the file picker rather than dead-ending. Tracks stop on cancel, on hand-off, and on
+unmount; object URLs are revoked from a ref so unmount cleanup doesn't re-run per shot.
+
+**The "Take Photos" button is always rendered**, not gated on `supportsMenuPhotoCapture()`. The
+first cut gated it, which meant it silently vanished on an insecure origin — indistinguishable from
+the feature not existing, and the first thing a reviewer asked about. An always-present entry point
+that explains itself beats a conditionally-absent one.
 
 **Phase-0 spike result, done live during Phase 3 planning (this is what unblocked D10):**
 `pdfjs-dist@5.4.296` + `@napi-rs/canvas@0.1.80` (both already transitive deps of `pdf-parse@2.4.5`,
@@ -337,10 +345,15 @@ job-scoped `reserveVisionCall` closure and passes it into `extractMenuItemsFromF
   their warning (or "Looks good") and a discard button, remaining-slot awareness so a capture can't
   push the batch past the file cap, and the permission/no-camera fallbacks from D12. Also exports
   `supportsMenuPhotoCapture()`.
-- `frontend/Components/items/MenuImportBatchModal.jsx` — a "Take Photos" button (only when
-  `mediaDevices.getUserMedia` exists), the inline capture panel, and the handler appending captured
-  files to `selectedFiles`. The file input moved out of its wrapping `<label>` so the capture
-  sheet's "add photos from device" fallback can `.click()` it through a ref.
+- `frontend/Components/items/MenuImportBatchModal.jsx` — a "Take Photos" button (always shown, see
+  D12), the inline capture panel, and the handler appending captured files to `selectedFiles`. The
+  file input moved out of its wrapping `<label>` so the capture sheet's "add photos from device"
+  fallback can `.click()` it through a ref.
+
+**Where the operator actually finds this:** POS Items view → "Import Menu" (needs `canCreateItems`
+and `VITE_MENU_IMPORT_BATCH_ENABLED=true`) → wizard step 1 → "Take Photos", which replaces the drop
+zone with the capture panel in place. It is **not** mobile-only — `facingMode: 'environment'` is
+`ideal`, not `exact`, so a laptop webcam is used happily. It does require a secure origin.
 
 **Governance (Phase 6)**:
 - `docs/architecture/adr/0039-batch-menu-import-async-extraction.md` — accepted; covers D1–D12
@@ -459,7 +472,8 @@ node --experimental-vm-modules node_modules/jest/bin/jest.js --config jest.confi
 - `Components/items/__tests__/MenuPhotoCaptureSheet.behavior.test.jsx` (Phase 5) — rear camera
   requested, a blurry preview warns without disabling the shutter, the shutter yields a JPEG `File`
   and releasing it stops the camera tracks, a warned-about shot is still addable, zero remaining
-  slots disables the shutter, `NotAllowedError` falls back to the file picker, unmount stops the
+  slots disables the shutter, an insecure origin reports the HTTPS requirement *without* calling
+  `getUserMedia`, `NotAllowedError` falls back to the file picker, unmount stops the
   tracks. Mocks `getUserMedia`, canvas `getContext`/`toBlob`, and `videoWidth`/`videoHeight` —
   **jsdom has no real camera or canvas, so none of this is evidence the camera works on a device.**
 

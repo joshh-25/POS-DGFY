@@ -63,6 +63,7 @@ describe('MenuPhotoCaptureSheet', () => {
         HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
         URL.createObjectURL = vi.fn(() => 'blob:preview');
         URL.revokeObjectURL = vi.fn();
+        Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
         mockCanvas();
     });
 
@@ -144,6 +145,23 @@ describe('MenuPhotoCaptureSheet', () => {
 
         expect(screen.getByText(/already at its file limit/)).toBeTruthy();
         expect(screen.getByRole('button', { name: /Take Photo/ }).disabled).toBe(true);
+    });
+
+    it('explains that HTTPS is required instead of looking broken on an insecure origin', async () => {
+        const onUseFilePicker = vi.fn();
+        // A POS served over plain HTTP on a LAN IP: mediaDevices does not exist
+        // at all, so without this check the sheet would blame the device.
+        Object.defineProperty(window, 'isSecureContext', { configurable: true, value: false });
+
+        await renderLive({ onUseFilePicker });
+
+        expect(screen.getByText(/requires HTTPS/)).toBeTruthy();
+        expect(getUserMedia).not.toHaveBeenCalled();
+
+        fireEvent.click(screen.getByRole('button', { name: /Add photos from device/ }));
+        expect(onUseFilePicker).toHaveBeenCalledTimes(1);
+
+        Object.defineProperty(window, 'isSecureContext', { configurable: true, value: true });
     });
 
     it('falls back to the file picker when camera permission is refused', async () => {

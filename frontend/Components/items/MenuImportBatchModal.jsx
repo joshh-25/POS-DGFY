@@ -27,7 +27,7 @@ import {
     Camera
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
-import MenuPhotoCaptureSheet, { supportsMenuPhotoCapture } from './MenuPhotoCaptureSheet.jsx';
+import MenuPhotoCaptureSheet from './MenuPhotoCaptureSheet.jsx';
 import { useMenuImportJob } from '../../src/hooks/useMenuImportJob.js';
 import {
     MENU_IMPORT_ACCEPTED_FILE_PATTERN,
@@ -86,7 +86,6 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
     const [editableRows, setEditableRows] = useState([]);
     const [importResult, setImportResult] = useState(null);
     const [capturing, setCapturing] = useState(false);
-    const cameraAvailable = supportsMenuPhotoCapture();
     const fileInputRef = useRef(null);
 
     const {
@@ -305,19 +304,23 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
                     >
                         browse to select
                     </button>
-                    {cameraAvailable && (
-                        <div className="mt-4">
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => setCapturing(true)}
-                                disabled={selectedFiles.length >= MENU_IMPORT_MAX_FILES_HINT}
-                            >
-                                <Camera className="mr-2 h-4 w-4" />
-                                Take Photos
-                            </Button>
-                        </div>
-                    )}
+                    {/* Always offered, even where the camera turns out to be
+                        unreachable (no webcam, blocked permission, or a POS
+                        served over plain HTTP where mediaDevices does not
+                        exist at all). A silently missing button reads as a
+                        missing feature; the sheet says which of those it is
+                        and hands the operator back to the file picker. */}
+                    <div className="mt-4">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setCapturing(true)}
+                            disabled={selectedFiles.length >= MENU_IMPORT_MAX_FILES_HINT}
+                        >
+                            <Camera className="mr-2 h-4 w-4" />
+                            Take Photos
+                        </Button>
+                    </div>
                     <p className="mt-2 text-xs text-slate-500">
                         Up to {MENU_IMPORT_MAX_FILES_HINT} files per import — PDF, PNG, or JPG.
                     </p>

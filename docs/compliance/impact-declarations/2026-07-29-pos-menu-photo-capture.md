@@ -38,9 +38,10 @@ path-matching rules happen to cover.
   Rendered inline inside the batch wizard rather than as its own dialog.
 - `frontend/src/utils/menuPhotoQuality.js` (new): pure scoring heuristic (sharpness, exposure,
   glare, source resolution). No DOM, no network, no storage.
-- `frontend/Components/items/MenuImportBatchModal.jsx`: adds a "Take Photos" button shown only when
-  `navigator.mediaDevices.getUserMedia` exists, the conditional render of the capture sheet, and the
-  handler that appends captured files to the same staged list the picker and drop zone feed. The
+- `frontend/Components/items/MenuImportBatchModal.jsx`: adds a "Take Photos" button, the conditional
+  render of the capture sheet, and the handler that appends captured files to the same staged list
+  the picker and drop zone feed. The button is always offered and the sheet reports why the camera
+  is unreachable when it is, rather than the entry point silently disappearing. The
   file input moved out of its wrapping label so the capture sheet's fallback can trigger it; its
   behavior is unchanged.
 - No backend file is changed. Captured photos travel the identical authenticated upload path picked
@@ -54,7 +55,9 @@ path-matching rules happen to cover.
    No new permission, role, or route is introduced.
 2. Camera permission is requested only on explicit operator action — opening the capture surface —
    never on page load or modal open. Denial is non-blocking: the surface degrades to the existing
-   file picker rather than trapping the operator.
+   file picker rather than trapping the operator. A POS served over plain HTTP (a LAN-host terminal,
+   per ADR 0025) has no `mediaDevices` API at all; that case is reported as an HTTPS requirement
+   with the same file-picker fallback, matching how `ProductQrScannerModal` already handles it.
 3. The quality check never blocks. `analyzeMenuPhotoQuality` returns `blocking: false`
    unconditionally, no threshold refuses a capture, and a warned-about shot is still added if the
    operator keeps it. This is an explicit product decision, asserted by a test.
