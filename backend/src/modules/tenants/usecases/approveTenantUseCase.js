@@ -21,13 +21,15 @@ const extractWorkflowModeFromTenant = (tenant) => {
 
 export const buildApproveTenantUseCase = ({
     tenantAdminRepository,
+    companyRegistrationRepository,
+    dgfyAccountRepository,
     provisionTenant,
     createPayMongoChildAccountForTenant = null,
     shouldAutoCreatePayMongoChildAccounts = () => false,
     emailService,
     logger
 }) => {
-    return async ({ id }) => {
+    return async ({ id, actor, retry = false }) => {
         try {
             const tenant = await tenantAdminRepository.findTenantById(id);
             if (!tenant) {
@@ -41,12 +43,23 @@ export const buildApproveTenantUseCase = ({
             if (tenant.status !== 'pending') {
                 return fail(new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                    `Cannot approve tenant with status: ${tenant.status}`,
+                    `Cannot ${retry ? 'retry provisioning for' : 'approve'} tenant with status: ${tenant.status}`,
                     { statusCode: 400 }
                 ));
             }
 
-            const result = await provisionTenant({
+            const application = await companyRegistrationRepository.markProvisioningStarted({ tenantId: tenant.id, actor, retry });
+            if (!application) {
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    retry ? 'Only an approved registration with failed provisioning can be retried.' : 'This tenant is not a pending public registration application.',
+                    { statusCode: 422 }
+                ));
+            }
+
+            let result;
+            try {
+                result = await provisionTenant({
                 tenantId: tenant.id,
                 name: tenant.name,
                 dbName: tenant.db_name,
@@ -54,8 +67,19 @@ export const buildApproveTenantUseCase = ({
                 adminEmail: tenant.admin_email,
                 adminPhone: tenant.admin_phone,
                 adminPasswordHash: tenant.admin_password_hash,
-                workflowMode: extractWorkflowModeFromTenant(tenant)
-            });
+                    workflowMode: extractWorkflowModeFromTenant(tenant)
+                });
+                await dgfyAccountRepository.upsertFounderMembership({
+                    dgfyAccountId: tenant.owner_dgfy_account_id,
+                    tenantId: tenant.id,
+                    tenantUserId: result?.admin_user_id || null,
+                    role: 'admin'
+                });
+                await companyRegistrationRepository.markProvisioningOutcome({ tenantId: tenant.id, succeeded: true });
+            } catch (provisioningError) {
+                await companyRegistrationRepository.markProvisioningOutcome({ tenantId: tenant.id, succeeded: false, details: { error: provisioningError.message } });
+                throw provisioningError;
+            }
 
             let paymongoChildAccountStatus = 'skipped';
             if (shouldAutoCreatePayMongoChildAccounts() && typeof createPayMongoChildAccountForTenant === 'function') {
@@ -88,7 +112,7 @@ export const buildApproveTenantUseCase = ({
                     await emailService.sendCompanyApprovedEmail({
                         email: tenant.admin_email,
                         companyName: tenant.name,
-                        companyToken: tenant.company_token
+                        statusUrl: `${process.env.STOREFRONT_PUBLIC_ORIGIN || process.env.APP_URL || 'http://localhost:5173'}/register-company/status/${application.id}`
                     });
                     emailSent = true;
                     logger?.info?.(`[TenantApproval] Approval email sent to ${tenant.admin_email}`);
@@ -108,7 +132,7 @@ export const buildApproveTenantUseCase = ({
                 statusCode: 200,
                 payload: {
                     success: true,
-                    message: 'Tenant approved and provisioned successfully',
+                    message: retry ? 'Tenant provisioning retry completed successfully' : 'Tenant approved and provisioned successfully',
                     data: { ...result, email_sent: emailSent, paymongo_child_account_status: paymongoChildAccountStatus }
                 }
             });

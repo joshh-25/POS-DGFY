@@ -12,6 +12,7 @@ import * as landlordService from '../../services/landlordService.js';
 import { trackEngagementEvent } from '../../services/engagementService.js';
 import { getTenantRegistrationApprovalMode } from '../../config/tenantRegistrationApproval.js';
 import { tenantAdminRepository } from './repositories/tenantAdminRepository.js';
+import { companyRegistrationRepository } from './repositories/companyRegistrationRepository.js';
 import { dgfyAccountRepository } from '../dgfy/index.js';
 import { createTenantPayMongoChildAccountUseCase } from '../commercePayments/index.js';
 import { buildRegisterCompanyRequestUseCase } from './usecases/registerCompanyRequestUseCase.js';
@@ -28,7 +29,7 @@ import { buildGetPricingSettingsUseCase } from './usecases/getPricingSettingsUse
 import { buildUpdatePricingSettingsUseCase } from './usecases/updatePricingSettingsUseCase.js';
 import { buildUpdateTenantUseCase } from './usecases/updateTenantUseCase.js';
 import { buildDeleteTenantUseCase } from './usecases/deleteTenantUseCase.js';
-import { buildResubmitRegistrationUseCase } from './usecases/resubmitRegistrationUseCase.js';
+import { buildGetCompanyRegistrationStatusUseCase, buildResubmitCompanyRegistrationUseCase } from './usecases/companyRegistrationStatusUseCase.js';
 import { buildUpdateTenantCapabilitiesUseCase } from './usecases/updateTenantCapabilitiesUseCase.js';
 import {
     buildListTenantCapabilityAuditLogsUseCase,
@@ -46,13 +47,11 @@ const shouldAutoCreatePayMongoChildAccounts = () => (
 
 export const registerCompanyRequestUseCase = buildRegisterCompanyRequestUseCase({
     tenantAdminRepository,
+    companyRegistrationRepository,
     paypalService,
     trackEngagementEvent,
     addEmailTenantMapping: landlordService.addEmailTenantMapping,
     dgfyAccountRepository,
-    provisionTenant,
-    createPayMongoChildAccountForTenant: createTenantPayMongoChildAccountUseCase,
-    shouldAutoCreatePayMongoChildAccounts,
     emailService,
     idGenerator: uuidv4,
     getTenantRegistrationApprovalMode: () => getTenantRegistrationApprovalMode(process.env, logger),
@@ -68,6 +67,8 @@ export const listTenantsUseCase = buildListTenantsUseCase({
 
 export const approveTenantUseCase = buildApproveTenantUseCase({
     tenantAdminRepository,
+    companyRegistrationRepository,
+    dgfyAccountRepository,
     provisionTenant,
     createPayMongoChildAccountForTenant: createTenantPayMongoChildAccountUseCase,
     shouldAutoCreatePayMongoChildAccounts,
@@ -77,6 +78,7 @@ export const approveTenantUseCase = buildApproveTenantUseCase({
 
 export const rejectTenantUseCase = buildRejectTenantUseCase({
     tenantAdminRepository,
+    companyRegistrationRepository,
     emailService,
     logger
 });
@@ -123,8 +125,6 @@ export const updatePricingSettingsUseCase = buildUpdatePricingSettingsUseCase({
 
 export const updateTenantUseCase = buildUpdateTenantUseCase({
     tenantAdminRepository,
-    provisionTenant,
-    emailService,
     logger
 });
 
@@ -166,8 +166,10 @@ export const deleteTenantUseCase = buildDeleteTenantUseCase({
     logger
 });
 
-export const resubmitRegistrationUseCase = buildResubmitRegistrationUseCase({
-    tenantAdminRepository,
+export const getCompanyRegistrationStatusUseCase = buildGetCompanyRegistrationStatusUseCase({ repository: companyRegistrationRepository });
+export const resubmitCompanyRegistrationUseCase = buildResubmitCompanyRegistrationUseCase({
+    repository: companyRegistrationRepository,
+    transaction: tenantAdminRepository.transaction,
     emailService,
     logger
 });
@@ -176,3 +178,4 @@ export * from './contracts/tenantRepository.contract.js';
 export * from './contracts/tenantAdminRepository.contract.js';
 export * from './repositories/tenantRepository.js';
 export * from './repositories/tenantAdminRepository.js';
+export * from './repositories/companyRegistrationRepository.js';

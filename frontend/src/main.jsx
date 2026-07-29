@@ -101,6 +101,7 @@ const Settings = lazy(() => import('../Pages/Settings.jsx'))
 const Login = lazy(() => import('../Pages/Login.jsx'))
 const Register = lazy(() => import('../Pages/Register.jsx'))
 const RegisterCompany = lazy(() => import('../Pages/RegisterCompany.jsx'))
+const CompanyRegistrationStatus = lazy(() => import('../Pages/CompanyRegistrationStatus.jsx'))
 const DgfyAuthPage = lazy(() => import('../Pages/DgfyAuthPage.jsx'))
 const DgfyResetPasswordPage = lazy(() => import('../Pages/DgfyResetPasswordPage.jsx'))
 const LegalDocument = lazy(() => import('../Pages/LegalDocument.jsx'))
@@ -118,6 +119,8 @@ const DgfyAccountManager = lazy(() => import('../Pages/admin/DgfyAccountManager.
 const PaymentOperations = lazy(() => import('../Pages/admin/PaymentOperations.jsx'))
 const AdminPricing = lazy(() => import('../Pages/admin/AdminPricing.jsx'))
 const HostingStatus = lazy(() => import('../Pages/admin/HostingStatus.jsx'))
+const InvoiceManager = lazy(() => import('../Pages/admin/InvoiceManager.jsx'))
+const PlatformAdminManager = lazy(() => import('../Pages/admin/PlatformAdminManager.jsx'))
 
 function App() {
   const location = useLocation()
@@ -144,6 +147,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/register-company" element={<RegisterCompany />} />
+        <Route path="/register-company/status/:applicationId" element={<CompanyRegistrationStatus />} />
         <Route path="/dgfy/auth" element={<DgfyAuthPage />} />
         <Route path="/dgfy/reset-password" element={<DgfyResetPasswordPage />} />
         <Route path="/legal/:slug" element={<LegalDocument />} />
@@ -291,6 +295,8 @@ function App() {
           <Route path="payments" element={<PaymentOperations />} />
           <Route path="pricing" element={<AdminPricing />} />
           <Route path="hosting" element={<HostingStatus />} />
+          <Route path="invoices" element={<InvoiceManager />} />
+          <Route path="platform-admins" element={<PlatformAdminManager />} />
         </Route>
 
          {/* Legacy route - redirect to new admin portal */}

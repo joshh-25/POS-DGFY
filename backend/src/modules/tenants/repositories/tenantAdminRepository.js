@@ -8,6 +8,7 @@ const getPaymentModel = () => dbStore.get('Payment');
 const getEngagementEventModel = () => dbStore.get('EngagementEvent');
 const getAiUsageLogModel = () => dbStore.get('AiUsageLog');
 const getTenantAdminAuditLogModel = () => dbStore.get('TenantAdminAuditLog');
+const getCompanyRegistrationApplicationModel = () => dbStore.get('CompanyRegistrationApplication');
 
 const COMPLIANCE_TRANSITIONS = Object.freeze({
     non_compliant_active: new Set(['non_compliant_active', 'compliant_pending']),
@@ -46,6 +47,7 @@ export const tenantAdminRepository = {
     },
     listTenants(where = {}) {
         const Tenant = getTenantModel();
+        const CompanyRegistrationApplication = getCompanyRegistrationApplicationModel();
         return Tenant.findAll({
             where,
             order: [['createdAt', 'DESC']],
@@ -53,8 +55,6 @@ export const tenantAdminRepository = {
                 'id',
                 'name',
                 'domain',
-                'db_name',
-                'company_token',
                 'status',
                 'admin_email',
                 'plan',
@@ -66,7 +66,8 @@ export const tenantAdminRepository = {
                 'compliance_mode_choice_required',
                 'compliance_activated_at',
                 'compliance_policy_version'
-            ]
+            ],
+            include: [{ model: CompanyRegistrationApplication, as: 'registrationApplication', required: false, attributes: ['id', 'review_status', 'provisioning_status'] }]
         });
     },
     updateTenant(tenant, payload, options = {}) {

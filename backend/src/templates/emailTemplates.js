@@ -449,9 +449,8 @@ export const getCashierCredentialTemplate = ({
  * @param {string} params.appUrl - The base URL of the application
  * @returns {string} HTML email content
  */
-export const getCompanyApprovedTemplate = ({ companyName, adminEmail, appUrl }) => {
-  const loginUrlRaw = `${appUrl}/login`;
-  const loginUrl = appendUtm(loginUrlRaw, 'company_approved');
+export const getCompanyApprovedTemplate = ({ companyName, adminEmail, appUrl, statusUrl }) => {
+  const continueUrl = appendUtm(statusUrl || `${appUrl}/register-company`, 'company_approved');
 
   return `
 <!DOCTYPE html>
@@ -510,8 +509,8 @@ export const getCompanyApprovedTemplate = ({ companyName, adminEmail, appUrl }) 
 
               <!-- CTA Button -->
               <div style="text-align: center; margin-bottom: 24px;">
-                <a href="${loginUrl}" style="display: inline-block; background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 14px rgba(13, 148, 136, 0.4);">
-                  Login to Your Account
+                <a href="${continueUrl}" style="display: inline-block; background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 14px rgba(13, 148, 136, 0.4);">
+                  View company status
                 </a>
               </div>
 

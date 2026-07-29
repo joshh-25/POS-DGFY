@@ -601,6 +601,17 @@ export const dgfyAccountRepository = {
         });
     },
 
+    upsertPendingFounderMembership({ dgfyAccountId, tenantId, role = 'admin' }, options = {}) {
+        return DgfyAccountTenantMembership.findOrCreate({
+            where: { dgfy_account_id: dgfyAccountId, tenant_id: tenantId },
+            defaults: { dgfy_account_id: dgfyAccountId, tenant_id: tenantId, tenant_user_id: null, role, status: 'pending', source: 'founder' },
+            ...options
+        }).then(async ([membership]) => {
+            if (membership.status !== 'accepted') await membership.update({ role, status: 'pending', source: 'founder', tenant_user_id: null }, options);
+            return membership.reload(options);
+        });
+    },
+
     async upsertInvitationMembership({
         dgfyAccountId,
         tenantId,
