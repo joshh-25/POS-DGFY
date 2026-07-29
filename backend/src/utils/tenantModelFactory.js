@@ -46,7 +46,26 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     'TenantComplianceFinalReviewSignoff',
     'TenantPaymentAccount',
     'CommercePaymentSession',
-    'CommercePaymentRefund'
+    'CommercePaymentRefund',
+    // Platform administration, registration review, and platform invoicing are
+    // landlord-only records. Rebinding them into a tenant database makes
+    // Sequelize emit foreign keys for landlord tables (for example `tenants`),
+    // which do not exist in an isolated tenant schema.
+    'PlatformAdminUser',
+    'PlatformAdminPermission',
+    'PlatformAdminSession',
+    'PlatformAdminAuditLog',
+    'CompanyRegistrationApplication',
+    'CompanyRegistrationAttempt',
+    'CompanyRegistrationEvent',
+    'CompanyRegistrationEmailDelivery',
+    'PlatformInvoice',
+    'PlatformInvoicePayment',
+    'PlatformInvoiceSequence',
+    'PlatformInvoiceArtifact',
+    'PlatformInvoiceDelivery',
+    'PlatformInvoiceAdjustment',
+    'PlatformInvoiceEvent'
 ]);
 
 const isSequelizeModel = (candidate) => (

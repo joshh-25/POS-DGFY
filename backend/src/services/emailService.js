@@ -121,7 +121,17 @@ const buildBrevoRecipients = (to) => {
     .filter((entry) => entry.email);
 };
 
-export const sendEmailViaBrevoApi = async ({ to, subject, html, text, fromName, fromEmail }) => {
+const normalizeAttachmentsForBrevo = (attachments = []) => attachments.map((attachment) => {
+  if (!attachment?.filename || attachment?.content == null) throw new Error('Email attachments require a filename and in-memory content.');
+  return {
+    name: String(attachment.filename),
+    content: Buffer.isBuffer(attachment.content)
+      ? attachment.content.toString('base64')
+      : Buffer.from(String(attachment.content)).toString('base64')
+  };
+});
+
+export const sendEmailViaBrevoApi = async ({ to, subject, html, text, fromName, fromEmail, attachments = [] }) => {
   if (!isBrevoApiConfigured()) {
     const error = new Error('Brevo API email delivery is not configured. Set BREVO_API_KEY and EMAIL_FROM.');
     error.code = 'BREVO_API_NOT_CONFIGURED';
@@ -139,6 +149,7 @@ export const sendEmailViaBrevoApi = async ({ to, subject, html, text, fromName, 
     htmlContent: html,
     textContent: text || stripHtml(html)
   };
+  if (attachments.length) payload.attachment = normalizeAttachmentsForBrevo(attachments);
 
   if (!payload.to.length) {
     const error = new Error('At least one recipient email is required for Brevo API delivery.');
@@ -188,16 +199,16 @@ export const sendEmailViaBrevoApi = async ({ to, subject, html, text, fromName, 
  * @param {string} [options.text] - Plain text content (optional)
  * @returns {Promise<Object>} - Nodemailer send result
  */
-export const sendEmail = async ({ to, subject, html, text, fromName, fromEmail }) => {
+export const sendEmail = async ({ to, subject, html, text, fromName, fromEmail, attachments = [] }) => {
   const provider = getEmailDeliveryProvider();
   const allowBrevoFallback = process.env.EMAIL_DELIVERY_FALLBACK_TO_BREVO_API !== 'false';
 
   if (provider === 'brevo_api') {
-    return sendEmailViaBrevoApi({ to, subject, html, text, fromName, fromEmail });
+    return sendEmailViaBrevoApi({ to, subject, html, text, fromName, fromEmail, attachments });
   }
 
   if (!isSmtpConfigured() && isBrevoApiConfigured()) {
-    return sendEmailViaBrevoApi({ to, subject, html, text, fromName, fromEmail });
+    return sendEmailViaBrevoApi({ to, subject, html, text, fromName, fromEmail, attachments });
   }
 
   const transporter = getTransporter();
@@ -215,7 +226,8 @@ export const sendEmail = async ({ to, subject, html, text, fromName, fromEmail }
     to,
     subject,
     html,
-    text: text || stripHtml(html)
+    text: text || stripHtml(html),
+    attachments
   };
 
   try {
@@ -229,7 +241,7 @@ export const sendEmail = async ({ to, subject, html, text, fromName, fromEmail }
     logger.error(`Failed to send email to ${to}:`, error);
     if (allowBrevoFallback && isBrevoApiConfigured()) {
       logger.warn(`Retrying email to ${to} through Brevo API after SMTP failure`);
-      return sendEmailViaBrevoApi({ to, subject, html, text, fromName, fromEmail });
+      return sendEmailViaBrevoApi({ to, subject, html, text, fromName, fromEmail, attachments });
     }
     throw error;
   }
@@ -352,18 +364,15 @@ export const sendCashierCredentialEmail = async ({
  * @param {Object} params - Email parameters
  * @param {string} params.email - Admin's email address
  * @param {string} params.companyName - Company/tenant name
- * @param {string} params.companyToken - Company's unique login token
+ * @param {string} params.statusUrl - Owner-authorized company registration status URL
  * @returns {Promise<Object>} - Nodemailer send result
  */
-export const sendCompanyApprovedEmail = async ({ email, companyName, companyToken }) => {
+export const sendCompanyApprovedEmail = async ({ email, companyName, statusUrl }) => {
   const appUrl = getAppUrl();
-  const loginUrl = `${appUrl}/login`;
-
   const html = getCompanyApprovedTemplate({
     companyName,
     adminEmail: email,
-    companyToken,
-    loginUrl,
+    statusUrl,
     appUrl
   });
 

@@ -1,3 +1,14 @@
+---
+status: accepted
+authority_level: authoritative
+owner: architecture
+date: 2026-04-10
+last_reviewed: 2026-04-10
+review_by: 2026-10-10
+applies_to: architecture_decision
+topic: tenant_workflow_mode_msme_simplification
+---
+
 # ADR 0008: Tenant Workflow Mode (Manufacturing vs MSME)
 
 ## Status

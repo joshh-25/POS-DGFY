@@ -1,8 +1,12 @@
 ---
 status: accepted
+authority_level: authoritative
+owner: architecture
 date: 2026-05-05
 last_reviewed: 2026-05-05
-classification: authoritative
+review_by: 2026-11-05
+applies_to: architecture_decision
+topic: barcode_identity_labels_and_scan_routing
 ---
 
 # ADR 0018: Barcode Identity, Labels, And Scan Routing

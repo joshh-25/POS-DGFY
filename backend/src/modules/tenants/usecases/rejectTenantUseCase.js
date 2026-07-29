@@ -1,9 +1,17 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 
-export const buildRejectTenantUseCase = ({ tenantAdminRepository, emailService, logger }) => {
-    return async ({ id, reason }) => {
+export const buildRejectTenantUseCase = ({ tenantAdminRepository, companyRegistrationRepository, emailService, logger }) => {
+    return async ({ id, reason, actor }) => {
         try {
+            const safeReason = String(reason || '').trim().slice(0, 500);
+            if (!safeReason) {
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'A short applicant-visible rejection reason is required.',
+                    { statusCode: 422 }
+                ));
+            }
             const tenant = await tenantAdminRepository.findTenantById(id);
             if (!tenant) {
                 return fail(new DomainError(
@@ -23,9 +31,10 @@ export const buildRejectTenantUseCase = ({ tenantAdminRepository, emailService, 
 
             await tenantAdminRepository.updateTenant(tenant, {
                 status: 'rejected',
-                rejection_reason: reason || null,
-                settings: { ...tenant.settings, rejection_reason: reason }
+                rejection_reason: safeReason,
+                settings: { ...tenant.settings, rejection_reason: safeReason }
             });
+            await companyRegistrationRepository.markRejected({ tenantId: tenant.id, actor, reason: safeReason });
 
             let emailSent = false;
             if (emailService?.isEmailConfigured?.()) {
@@ -33,7 +42,7 @@ export const buildRejectTenantUseCase = ({ tenantAdminRepository, emailService, 
                     await emailService.sendCompanyRejectedEmail({
                         email: tenant.admin_email,
                         companyName: tenant.name,
-                        rejectionReason: reason
+                        rejectionReason: safeReason
                     });
                     emailSent = true;
                     logger?.info?.(`[TenantRejection] Rejection email sent to ${tenant.admin_email}`);

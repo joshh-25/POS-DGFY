@@ -57,6 +57,7 @@ Thumbs.db
 *.temp
 *.log
 backend/storage/temp-ai-exports/
+backend/storage/platform-invoices/
 
 # Database
 *.sqlite

@@ -10,13 +10,21 @@ export const buildResubmitRegistrationUseCase = ({
     emailService,
     logger
 }) => {
-    return async ({ tenantId }) => {
+    return async ({ tenantId, dgfyAccountId }) => {
         const tenant = await tenantAdminRepository.findTenantById(tenantId);
         if (!tenant) {
             return fail(new DomainError(
                 DomainErrorCode.TENANT_NOT_FOUND,
                 'Tenant not found',
                 { statusCode: 404 }
+            ));
+        }
+
+        if (!dgfyAccountId || tenant.owner_dgfy_account_id !== dgfyAccountId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHORIZATION_FAILED,
+                'Only the DGFY account that submitted this application may resubmit it.',
+                { statusCode: 403 }
             ));
         }
 

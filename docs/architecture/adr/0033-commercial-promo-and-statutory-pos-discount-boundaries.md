@@ -1,8 +1,12 @@
 ---
 status: accepted
+authority_level: authoritative
+owner: architecture
 date: 2026-07-07
 last_reviewed: 2026-07-08
-classification: authoritative
+review_by: 2027-01-07
+applies_to: architecture_decision
+topic: commercial_promo_and_statutory_pos_discount_boundaries
 ---
 
 # ADR 0033: Commercial Promo and Statutory POS Discount Boundaries
@@ -121,4 +125,4 @@ both Storefront and POS without affecting completed transactions.
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
 - `docs/architecture/adr/0007-pos-storefront-and-payment-boundaries.md`
 - `docs/architecture/adr/0017-fiscalization-boundary-and-government-api-adapters.md`
-- `docs/architecture/adr/0025-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md`
+- `docs/architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md`

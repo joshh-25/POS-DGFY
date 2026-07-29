@@ -14,15 +14,14 @@ import {
     logoutDgfyAccount,
     requestDgfyPasswordReset,
     registerDgfyAccount,
-    startDgfyTenantSession
 } from '../src/services/dgfyAuthService.js';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { AlertTriangle, Building2, CheckCircle2, Eye, EyeOff, LogOut, UserRound } from 'lucide-react';
+import { AlertTriangle, Building2, Eye, EyeOff, LogOut, UserRound } from 'lucide-react';
 import DgfyAuthHero from '../src/features/dgfy/components/DgfyAuthHero.jsx';
 import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_SELECT_VALUES } from '../src/features/settings/workflowMode.js';
-import { buildDgfyAuthPath, DGFY_REGISTER_COMPANY_ENTRY, resolvePosTerminalUrl } from '../src/features/dgfyRouteHelpers.js';
+import { buildDgfyAuthPath, DGFY_REGISTER_COMPANY_ENTRY } from '../src/features/dgfyRouteHelpers.js';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -37,31 +36,6 @@ const hasCompanyLegalVersions = (snapshot = {}) => Boolean(
     snapshot.company_terms_version
     && snapshot.marketplace_terms_version
 );
-const wait = (ms) => new Promise((resolve) => window.setTimeout(resolve, ms));
-const POS_ONBOARDING_ENTRY_SEARCH = '?setup_flow=tenant_onboarding&setup_step=storefront_setup';
-
-const getStatusCode = (error) => Number(error?.response?.status || error?.status || 0);
-
-const getRetryAfterSeconds = (error) => {
-    const retryAfterSeconds = Number(error?.response?.data?.retryAfterSeconds || error?.retryAfterSeconds || 0);
-    if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) return Math.ceil(retryAfterSeconds);
-
-    const retryAfterHeader = error?.response?.headers?.['retry-after'] || error?.response?.headers?.get?.('retry-after');
-    const retryAfter = Number(retryAfterHeader || 0);
-    return Number.isFinite(retryAfter) && retryAfter > 0 ? Math.ceil(retryAfter) : 0;
-};
-
-const getTenantSessionFallbackMessage = (error) => {
-    if (getStatusCode(error) !== 429) {
-        return error?.response?.data?.message || 'Company created. Use the button below to sign in to POS with this company prefilled.';
-    }
-
-    const retryAfterSeconds = getRetryAfterSeconds(error);
-    const retryCopy = retryAfterSeconds > 0
-        ? ` Please wait about ${Math.max(1, Math.ceil(retryAfterSeconds / 60))} minute${Math.ceil(retryAfterSeconds / 60) === 1 ? '' : 's'} before trying the automatic POS handoff again.`
-        : ' Please wait before trying the automatic POS handoff again.';
-    return `Company created. POS session opening is temporarily rate-limited.${retryCopy} You can still use the button below to continue through POS sign-in.`;
-};
 
 const PasswordInput = ({
     id,
@@ -234,7 +208,6 @@ export default function RegisterCompany() {
         industryTag: '',
         acceptedCompanyTerms: false
     });
-    const [success, setSuccess] = useState(null);
     const [error, setError] = useState('');
     const [notice, setNotice] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -347,52 +320,6 @@ export default function RegisterCompany() {
         }).catch(() => {});
     };
 
-    const startTenantSessionWithRetry = useCallback(async (tenantData = {}, token = dgfyToken) => {
-        const tenantId = String(tenantData?.id || '').trim();
-        const companyToken = String(tenantData?.company_token || '').trim();
-        if (!tenantId || !companyToken) {
-            throw new Error('POS session handoff is missing the required tenant identity.');
-        }
-
-        let lastError = null;
-        for (let attempt = 0; attempt < 3; attempt += 1) {
-            try {
-                return await startDgfyTenantSession({
-                    tenantId,
-                    companyToken
-                }, token);
-            } catch (error) {
-                lastError = error;
-                if (getStatusCode(error) === 429) break;
-                if (attempt === 2) break;
-                await wait(350 * (attempt + 1));
-            }
-        }
-
-        throw lastError || new Error('POS session handoff failed.');
-    }, [dgfyToken]);
-
-    const redirectToPos = useCallback(() => {
-        if (typeof window !== 'undefined') {
-            const target = resolvePosTerminalUrl(POS_ONBOARDING_ENTRY_SEARCH);
-            try {
-                const targetUrl = new URL(target, window.location.origin);
-                if (targetUrl.origin === window.location.origin) {
-                    navigate({
-                        pathname: targetUrl.pathname,
-                        search: targetUrl.search
-                    }, { replace: true });
-                    return;
-                }
-                window.location.assign(targetUrl.toString());
-                return;
-            } catch {
-                window.location.assign(target);
-                return;
-            }
-        }
-        navigate('/terminal', { replace: true });
-    }, [navigate]);
 
     useEffect(() => {
         const handoffToken = String(searchParams.get('handoff_token') || '').trim();
@@ -544,7 +471,6 @@ export default function RegisterCompany() {
     const handleSubmitCompany = async (event) => {
         event.preventDefault();
         setError('');
-        setSuccess(null);
 
         const activeDgfyToken = dgfyToken || getStoredDgfyToken();
         if (!dgfyAccount) {
@@ -579,22 +505,10 @@ export default function RegisterCompany() {
                 throw new Error(response.data?.message || 'Registration failed');
             }
 
-            const registrationSuccess = {
-                message: response.data.message,
-                data: response.data.data || {}
-            };
-            setSuccess(registrationSuccess);
+            const registrationSuccess = { message: response.data.message, data: response.data.data || {} };
             setCompanyForm((current) => ({ ...current, acceptedCompanyTerms: false }));
-            if (registrationSuccess.data?.company_token && registrationSuccess.data?.status === 'active') {
-                try {
-                    await startTenantSessionWithRetry(registrationSuccess.data, activeDgfyToken);
-                    redirectToPos();
-                    return;
-                } catch (sessionError) {
-                    setNotice(getTenantSessionFallbackMessage(sessionError));
-                    return;
-                }
-            }
+            if (registrationSuccess.data?.application_id) { navigate(`/register-company/status/${registrationSuccess.data.application_id}`); return; }
+            setError('Registration submitted without an application reference. Please contact support.');
         } catch (err) {
             setError(err.response?.data?.message || err.message || 'Registration failed. Please try again.');
         } finally {
@@ -602,77 +516,14 @@ export default function RegisterCompany() {
         }
     };
 
-    const goToManualPosLogin = useCallback(() => {
-        if (typeof window !== 'undefined') {
-            window.location.assign(resolvePosTerminalUrl());
-            return;
-        }
-        navigate('/terminal');
-    }, [navigate]);
-
-    const handleProceedToPos = useCallback(async () => {
-        setError('');
-        setNotice('');
-
-        const activeDgfyToken = dgfyToken || getStoredDgfyToken();
-        if (!success?.data?.company_token || success?.data?.status !== 'active') {
-            goToManualPosLogin();
-            return;
-        }
-
-        setIsLoading(true);
-        try {
-            await startTenantSessionWithRetry(success.data, activeDgfyToken);
-            redirectToPos();
-        } catch (sessionError) {
-            setNotice(getTenantSessionFallbackMessage(sessionError));
-            goToManualPosLogin();
-        } finally {
-            setIsLoading(false);
-        }
-    }, [dgfyToken, goToManualPosLogin, redirectToPos, startTenantSessionWithRetry, success?.data]);
-
     const handleSignOutDgfy = async () => {
         dgfySessionGenerationRef.current += 1;
         await logoutDgfyAccount(dgfyToken).catch(() => clearDgfySession());
         setDgfyToken('');
         setDgfyAccount(null);
-        setSuccess(null);
     };
 
     const renderContent = () => {
-        if (success) {
-            return (
-                <div className="mx-auto w-full max-w-[500px]">
-                    <div className="rounded-[28px] border border-[#d8e8e3] bg-white p-8 shadow-sm">
-                        <CheckCircle2 className="mx-auto mb-4 h-14 w-14 text-[#0f7f73]" />
-                        <h1 className="text-center text-2xl font-bold text-[#132033]">Company Created</h1>
-                        <p className="mt-2 text-center text-sm text-slate-600">{success.message}</p>
-                        {notice && (
-                            <div className="mt-5 rounded-2xl border border-[#b7ded7] bg-[#eefaf7] p-3 text-sm text-[#0f766e]">
-                                {notice}
-                            </div>
-                        )}
-                        <div className="mt-6 rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">
-                            <p className="text-sm font-semibold text-[#132033]">{success.data?.name}</p>
-                            <p className="mt-1 text-sm text-slate-600">Operating mode: {WORKFLOW_MODE_LABELS[success.data?.workflow_mode] || success.data?.workflow_mode}</p>
-                            {success.data?.industry_tag && (
-                                <p className="mt-1 text-sm text-slate-600">Industry: {success.data.industry_tag}</p>
-                            )}
-                            <p className="mt-1 text-sm text-slate-600">Compliance starts as non-compliant. You can upgrade later in Settings &gt; Compliance.</p>
-                        </div>
-                        <Button
-                            className="mt-6 w-full bg-[#1f5f9f] hover:bg-[#174f86]"
-                            onClick={handleProceedToPos}
-                            disabled={isLoading}
-                        >
-                            {isLoading ? 'Opening POS...' : 'Proceed to POS'}
-                        </Button>
-                    </div>
-                </div>
-            );
-        }
-
         if (!dgfyAccount) {
             return (
                 <div className="mx-auto w-full max-w-md text-center">
@@ -758,7 +609,7 @@ export default function RegisterCompany() {
                                     <option key={mode.value} value={mode.value}>{mode.label}</option>
                                 ))}
                             </select>
-                            <p className="mt-1 text-xs text-slate-500">Configures which DGFY tools and workflows are set up for your account. You can pick the closest match — this isn't your industry.</p>
+                            <p className="mt-1 text-xs text-slate-500">Configures which DGFY tools and workflows are set up for your account. You can pick the closest match — this isn&apos;t your industry.</p>
                         </div>
 
                         <div>
@@ -787,7 +638,7 @@ export default function RegisterCompany() {
                                 disabled={isLoading}
                                 className="mt-1"
                             />
-                            <p className="mt-1 text-xs text-slate-500">How you'd describe your business, for your profile only — it doesn't change how DGFY works for you.</p>
+                            <p className="mt-1 text-xs text-slate-500">How you&apos;d describe your business, for your profile only — it doesn&apos;t change how DGFY works for you.</p>
                         </div>
 
                         <div className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">
@@ -814,12 +665,6 @@ export default function RegisterCompany() {
                     </form>
                 </div>
 
-                <div className="mt-6 text-center text-sm text-slate-600">
-                    Already have a company?{' '}
-                    <a href={resolvePosTerminalUrl()} className="font-medium text-[#1f5f9f] hover:text-[#174f86]">
-                        Sign in to POS
-                    </a>
-                </div>
             </div>
         );
     };

@@ -79,4 +79,13 @@ describe('service worker caching contracts', () => {
     expect(source).toContain('const serviceWorkerUrl = appBasePath === \'/\' ? \'/sw.js\' : `${appBasePath}/sw.js`;');
     expect(source).toContain('scope: appBasePath === \'/\' ? \'/\' : `${appBasePath}/`');
   });
+
+  it('removes stale root-scoped workers before mounting the local POS app', () => {
+    const source = readSource(posMainPath);
+    expect(source).toContain('const resetStaleDevelopmentServiceWorkers = async () => {');
+    expect(source).toContain('await navigator.serviceWorker.getRegistrations()');
+    expect(source).toContain('registration.unregister()');
+    expect(source).toContain("cacheName.startsWith('sku-admin-') || cacheName.startsWith('sku-pos-')");
+    expect(source).toContain('if (await resetStaleDevelopmentServiceWorkers()) return;');
+  });
 });
