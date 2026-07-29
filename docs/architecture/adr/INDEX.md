@@ -71,6 +71,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0046 | [Verified Storefront Custom Domains](0046-verified-storefront-custom-domains.md) | `accepted` | verified_storefront_custom_domains | 2026-09-04 | 0 |
 | 0047 | [Platform Admin Identity and Page RBAC](0047-platform-admin-identity-and-page-rbac.md) | `accepted` | platform_admin_identity_rbac | 2027-01-28 | 0 |
 | 0048 | [QA Landlord Invoicing Boundary](0048-qa-landlord-invoicing-boundary.md) | `accepted` | qa_landlord_invoicing | 2027-01-28 | 0 |
+| 0049 | [Batch Menu Import via Asynchronous Extraction](0049-batch-menu-import-async-extraction.md) | `accepted` | batch_menu_import | 2027-01-29 | 0 |
 
 ## Renumbered (collision stubs)
 

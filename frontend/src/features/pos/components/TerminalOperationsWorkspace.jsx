@@ -109,7 +109,9 @@ import { normalizeStorefrontBusinessHours, serializeStorefrontBusinessHours } fr
 import resolveAssetUrl, { advanceAssetImageFallback, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
 import UserInvitationModal from '@/Components/users/UserInvitationModal.jsx';
 import PdfMenuImportModal from '@/Components/items/PdfMenuImportModal.jsx';
+import MenuImportBatchModal from '@/Components/items/MenuImportBatchModal.jsx';
 import { isPdfMenuImportEnabled } from '@/hooks/usePdfMenuImport.js';
+import { isMenuImportBatchEnabled } from '@/services/menuImportService.js';
 import { IncomingQueueWorkspace, WorkspaceShell } from './TerminalOperationsPanels.jsx';
 import {
   fetchPosSetupCashiers,
@@ -1882,6 +1884,11 @@ function ItemsWorkspace({
   const { createItem, loading: creatingItem } = useCreateItem();
   const [showPdfMenuImport, setShowPdfMenuImport] = useState(false);
   const pdfMenuImportEnabled = isPdfMenuImportEnabled();
+  // Batch (multi-file) import supersedes the single-file wizard wherever it is
+  // enabled; both flags default OFF and are independently killable.
+  const menuImportBatchEnabled = isMenuImportBatchEnabled();
+  const menuImportEntryEnabled = pdfMenuImportEnabled || menuImportBatchEnabled;
+  const menuImportButtonLabel = menuImportBatchEnabled ? 'Import Menu' : 'Import from PDF';
   const { updateItem, loading: savingItem } = useUpdateItem();
   const { deleteItem, loading: deletingItem } = useDeleteItem();
   const [editingItemId, setEditingItemId] = useState(null);
@@ -2835,7 +2842,7 @@ function ItemsWorkspace({
                 Add Item
               </Button>
             ) : null}
-            {canCreateItems && pdfMenuImportEnabled ? (
+            {canCreateItems && menuImportEntryEnabled ? (
               <Button
                 type="button"
                 variant="outline"
@@ -2844,7 +2851,7 @@ function ItemsWorkspace({
                 className="h-11 rounded-xl border-[#1A4E8D]/30 px-5 text-[#1A4E8D] shadow-sm hover:bg-[#1A4E8D]/5 xl:self-end"
               >
                 <Upload className="mr-2 h-4 w-4" />
-                Import from PDF
+                {menuImportButtonLabel}
               </Button>
             ) : null}
         </div>
@@ -2916,7 +2923,7 @@ function ItemsWorkspace({
               Add Item
             </Button>
           ) : null}
-          {canCreateItems && pdfMenuImportEnabled ? (
+          {canCreateItems && menuImportEntryEnabled ? (
             <Button
               type="button"
               variant="outline"
@@ -2925,13 +2932,19 @@ function ItemsWorkspace({
               className="mt-2 h-11 w-full rounded-xl border-[#1A4E8D]/30 text-[#1A4E8D] hover:bg-[#1A4E8D]/5"
             >
               <Upload className="mr-2 h-4 w-4" />
-              Import from PDF
+              {menuImportButtonLabel}
             </Button>
           ) : null}
         </div>
       </div>
 
-      {canCreateItems && pdfMenuImportEnabled ? (
+      {canCreateItems && menuImportBatchEnabled ? (
+        <MenuImportBatchModal
+          open={showPdfMenuImport}
+          onClose={() => setShowPdfMenuImport(false)}
+          onSuccess={() => { loadItems(); }}
+        />
+      ) : canCreateItems && pdfMenuImportEnabled ? (
         <PdfMenuImportModal
           open={showPdfMenuImport}
           onClose={() => setShowPdfMenuImport(false)}

@@ -39,8 +39,10 @@ jest.unstable_mockModule('openai', () => ({
 describe('menuExtractionService', () => {
     let extractMenuItemsFromText;
     let extractMenuItemsFromImage;
+    let extractMenuItemsFromFile;
     let buildSignedCsv;
     let extractMenuCsvFromFile;
+    let resolveTenantWorkflowMode;
     let MenuExtractionError;
     let previewImport;
 
@@ -49,8 +51,10 @@ describe('menuExtractionService', () => {
         const mod = await import('../src/services/menuExtractionService.js');
         extractMenuItemsFromText = mod.extractMenuItemsFromText;
         extractMenuItemsFromImage = mod.extractMenuItemsFromImage;
+        extractMenuItemsFromFile = mod.extractMenuItemsFromFile;
         buildSignedCsv = mod.buildSignedCsv;
         extractMenuCsvFromFile = mod.extractMenuCsvFromFile;
+        resolveTenantWorkflowMode = mod.resolveTenantWorkflowMode;
         MenuExtractionError = mod.MenuExtractionError;
 
         const csvMod = await import('../src/services/csvImportService.js');
@@ -186,6 +190,55 @@ describe('menuExtractionService', () => {
             expect(result.success).toBe(false);
             expect(result.details).toMatchObject({ code: 'WORKFLOW_MODE_TEMPLATE_MISMATCH' });
         });
+
+        // Regression coverage for the batch-import SKU fix: the stamp used to be
+        // computed inside the row .map(), so a batch whose rows straddled a
+        // second boundary could emit mixed SKU stamps — and since a SKU
+        // collision resolves to a silent UPDATE in previewImport rather than an
+        // error, two imports landing in the same second could silently
+        // overwrite each other's items. Hoisting the stamp out of the map fixes
+        // that for both the single-file path (default options, tested above)
+        // and the batch path (skuPrefix/batchToken, tested here).
+        it('stamps every row in a call with the same timestamp regardless of row count', () => {
+            const items = Array.from({ length: 50 }, (_, i) => ({ name: `Item ${i}`, price: 10 + i }));
+            const csvContent = buildSignedCsv(items);
+            const rows = csvContent.split('\n').slice(1);
+            const stamps = rows.map((row) => row.split(',')[0].split('-')[1]);
+            expect(new Set(stamps).size).toBe(1);
+        });
+
+        it('applies a custom skuPrefix and batchToken, keeping SKUs distinguishable across a multi-file batch', async () => {
+            mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('fnb'));
+
+            const csvContent = buildSignedCsv(
+                [{ name: 'Batch Item A', price: 10 }, { name: 'Batch Item B', price: 20 }],
+                { skuPrefix: 'MENUBATCH', batchToken: 'ab12cd' }
+            );
+
+            const result = await previewImport(csvContent);
+            expect(result.success).toBe(true);
+            expect(result.invalidRows).toBe(0);
+            for (const row of result.rows) {
+                expect(row.sku_code).toMatch(/^MENUBATCH-\d{14}-ab12cd-\d{3}$/);
+            }
+        });
+
+        it('keeps two separately-built batches from colliding on sku_code when combined into one import', async () => {
+            mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('fnb'));
+
+            const batchOneCsv = buildSignedCsv([{ name: 'From File 1', price: 10 }], { batchToken: 'file1x' });
+            const batchTwoCsv = buildSignedCsv([{ name: 'From File 2', price: 20 }], { batchToken: 'file2x' });
+
+            // Simulate the merge use case combining two files' rows into one CSV
+            // (drop the second file's header line).
+            const combinedCsv = `${batchOneCsv}\n${batchTwoCsv.split('\n').slice(1).join('\n')}`;
+            const result = await previewImport(combinedCsv);
+
+            expect(result.success).toBe(true);
+            expect(result.invalidRows).toBe(0);
+            const skus = result.rows.map((row) => row.sku_code);
+            expect(new Set(skus).size).toBe(2);
+        });
     });
 
     describe('extractMenuItemsFromImage', () => {
@@ -236,6 +289,160 @@ describe('menuExtractionService', () => {
                     name: 'MenuExtractionError',
                     code: 'UNSUPPORTED_FILE_TYPE'
                 });
+        });
+    });
+
+    // extractMenuItemsFromFile is the function workers/menuImportWorker.js calls
+    // directly for batch import — deliberately WITHOUT a workflow-mode check,
+    // since the worker has no tenant DB access. That check happens once, in
+    // request context, in modules/menuImport/usecases/createMenuImportJobUseCase.js
+    // before a job is ever enqueued (see resolveTenantWorkflowMode below).
+    describe('extractMenuItemsFromFile', () => {
+        it('extracts items from an image without checking tenant workflow mode', async () => {
+            mockOpenAiJson({ items: [{ name: 'From Image', price: 45 }] });
+
+            const result = await extractMenuItemsFromFile(Buffer.from('fake-png-bytes'), 'image/png', { user_id: 1 });
+
+            expect(mockGetAllSettingsUseCase).not.toHaveBeenCalled();
+            expect(result.kind).toBe('image');
+            expect(result.items).toEqual([{ name: 'From Image', price: 45, section: null, description: null }]);
+        });
+
+        it('throws UNSUPPORTED_FILE_TYPE for anything other than pdf/jpeg/png', async () => {
+            await expect(extractMenuItemsFromFile(Buffer.from('x'), 'image/gif', { user_id: 1 }))
+                .rejects.toMatchObject({ name: 'MenuExtractionError', code: 'UNSUPPORTED_FILE_TYPE' });
+        });
+
+        // A PDF with a real embedded text content stream — confirms
+        // extractPdfText's fast path (no vision calls at all) still wins
+        // when there's real text, and regression-guards pdf-parse's
+        // pageJoiner:'' fix (without it, pdf-parse's default page-boundary
+        // marker means even a blank page never counts as "empty").
+        const textPdf = (text) => Buffer.from(`%PDF-1.4
+1 0 obj
+<< /Type /Catalog /Pages 2 0 R >>
+endobj
+2 0 obj
+<< /Type /Pages /Kids [3 0 R] /Count 1 >>
+endobj
+3 0 obj
+<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>
+endobj
+4 0 obj
+<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>
+endobj
+5 0 obj
+<< /Length ${text.length + 20} >>
+stream
+BT /F1 24 Tf 20 100 Td (${text}) Tj ET
+endstream
+endobj
+xref
+0 6
+0000000000 65535 f
+trailer
+<< /Size 6 /Root 1 0 R >>
+%%EOF`);
+
+        it('uses the fast text path (no rasterization/vision) when the PDF has real embedded text', async () => {
+            mockOpenAiJson({ items: [{ name: 'From Text', price: 33 }] });
+
+            const result = await extractMenuItemsFromFile(textPdf('Real Menu Text'), 'application/pdf', { user_id: 1 });
+
+            expect(result.kind).toBe('pdf_text');
+            expect(result.pages).toBe(1);
+            expect(result.items).toEqual([{ name: 'From Text', price: 33, section: null, description: null }]);
+            expect(mockCreateCompletion).toHaveBeenCalledTimes(1);
+        });
+
+        // A hand-built single-page PDF with no text content stream at all (no
+        // /Contents on the page) — pdf-parse's real text extraction reads it
+        // as empty, so this reliably exercises the rasterization fallback
+        // (Phase 3) without needing to mock pdf-parse/pdfjs-dist itself. The
+        // combination is proven to actually render in this sandbox (see
+        // tests/menuPdfRasterService.test.js and the Phase 3 planning spike
+        // in docs/proposals/MENU_IMPORT_BATCH_IMPORT_HANDOFF_2026-07-28.md) —
+        // only the OpenAI vision call itself is mocked here, same as every
+        // other test in this suite.
+        const blankTextPdf = (pageCount = 1) => {
+            const pageObjNums = Array.from({ length: pageCount }, (_, i) => 3 + i);
+            const pagesObj = `2 0 obj\n<< /Type /Pages /Kids [${pageObjNums.map((n) => `${n} 0 R`).join(' ')}] /Count ${pageCount} >>\nendobj\n`;
+            const pageObjs = pageObjNums.map((n) => (
+                `${n} 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 200 200] >>\nendobj\n`
+            )).join('');
+            const size = 3 + pageCount;
+            return Buffer.from(
+                '%PDF-1.4\n1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n'
+                + pagesObj + pageObjs
+                + `xref\n0 ${size}\n0000000000 65535 f \n`
+                + `trailer\n<< /Size ${size} /Root 1 0 R >>\n%%EOF`
+            );
+        };
+
+        it('falls back to rasterization + vision when PDF text extraction is empty', async () => {
+            mockOpenAiJson({ items: [{ name: 'From Rasterized Page', price: 88 }] });
+
+            const result = await extractMenuItemsFromFile(blankTextPdf(1), 'application/pdf', { user_id: 1 });
+
+            expect(result.kind).toBe('pdf_rasterized');
+            expect(result.pages).toBe(1);
+            expect(result.pages_total).toBe(1);
+            expect(result.truncated).toBe(false);
+            expect(result.items).toEqual([{ name: 'From Rasterized Page', price: 88, section: null, description: null }]);
+        });
+
+        it('concatenates items across every rendered page', async () => {
+            mockCreateCompletion
+                .mockResolvedValueOnce({ model: 'gpt-4o', choices: [{ message: { content: JSON.stringify({ items: [{ name: 'Page 1 Item', price: 10 }] }) } }] })
+                .mockResolvedValueOnce({ model: 'gpt-4o', choices: [{ message: { content: JSON.stringify({ items: [{ name: 'Page 2 Item', price: 20 }] }) } }] });
+
+            const result = await extractMenuItemsFromFile(blankTextPdf(2), 'application/pdf', { user_id: 1 });
+
+            expect(result.pages).toBe(2);
+            expect(result.items.map((i) => i.name).sort()).toEqual(['Page 1 Item', 'Page 2 Item']);
+        });
+
+        it('stops rendering once reserveVisionCall denies a page, keeping items already extracted and flagging truncated', async () => {
+            mockOpenAiJson({ items: [{ name: 'Only Page Processed', price: 15 }] });
+            // Exactly 2 pages with the default worker-concurrency of 2 means
+            // exactly one reserveVisionCall per page (each pool worker claims
+            // one page and never loops back for a third) — deterministic
+            // regardless of which worker's call lands first.
+            const reserveVisionCall = jest.fn()
+                .mockResolvedValueOnce(true)
+                .mockResolvedValueOnce(false);
+
+            const result = await extractMenuItemsFromFile(blankTextPdf(2), 'application/pdf', { user_id: 1 }, { reserveVisionCall });
+
+            expect(result.pages).toBe(1);
+            expect(result.pages_total).toBe(2);
+            expect(result.truncated).toBe(true);
+            expect(result.items).toEqual([{ name: 'Only Page Processed', price: 15, section: null, description: null }]);
+            expect(mockCreateCompletion).toHaveBeenCalledTimes(1);
+        });
+
+        it('throws PDF_TEXT_EMPTY when reserveVisionCall denies even the first page', async () => {
+            const reserveVisionCall = jest.fn().mockResolvedValue(false);
+
+            await expect(extractMenuItemsFromFile(blankTextPdf(1), 'application/pdf', { user_id: 1 }, { reserveVisionCall }))
+                .rejects.toMatchObject({ name: 'MenuExtractionError', code: 'PDF_TEXT_EMPTY' });
+            expect(mockCreateCompletion).not.toHaveBeenCalled();
+        });
+
+        it('runs uninterrupted up to the page cap when no reserveVisionCall is provided (single-file sync path)', async () => {
+            mockOpenAiJson({ items: [{ name: 'Uncapped Page Item', price: 5 }] });
+
+            const result = await extractMenuItemsFromFile(blankTextPdf(2), 'application/pdf', { user_id: 1 });
+
+            expect(result.pages).toBe(2);
+            expect(result.truncated).toBe(false);
+        });
+    });
+
+    describe('resolveTenantWorkflowMode', () => {
+        it('is exported for reuse by createMenuImportJobUseCase and normalizes the tenant setting', async () => {
+            mockGetAllSettingsUseCase.mockResolvedValue(makeSettingsResult('fnb'));
+            await expect(resolveTenantWorkflowMode()).resolves.toBe('fnb');
         });
     });
 });

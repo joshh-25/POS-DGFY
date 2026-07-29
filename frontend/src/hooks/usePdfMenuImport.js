@@ -2,6 +2,12 @@ import { useState } from 'react';
 import api from '../services/api.js';
 
 /**
+ * @deprecated Superseded by `useMenuImportJob` + `menuImportService.js`, which
+ * handle several files per import, scanned PDFs, camera capture, and merge
+ * review. Kept because the batch path hard-requires Redis and this one does
+ * not, so it remains the fallback where the batch worker is unavailable. Do
+ * not extend it; see ADR 0039's removal criteria before deleting it.
+ *
  * PDF menu import hook — mirrors useCSVImport.js's preview/confirm shape.
  * Preview uploads the PDF (multipart) for server-side LLM extraction and
  * returns the same preview row shape CSV import returns; confirm reuses the

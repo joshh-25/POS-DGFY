@@ -98,6 +98,29 @@ server {
         proxy_cache_bypass $http_upgrade;
     }
 
+    # Batch menu import upload -- a dedicated location rather than a global
+    # client_max_body_size bump above, since this is the one endpoint that
+    # intentionally accepts up to MENU_IMPORT_MAX_FILES_PER_BATCH PDFs/photos
+    # in a single multipart request (~20 files x ~2MB post-compression budget
+    # = ~40MB; 64m leaves headroom). proxy_read_timeout is raised too, though
+    # in practice the upload use case only writes to Redis and returns a
+    # job_id -- extraction itself runs asynchronously in
+    # workers/menuImportWorker.js, not inline in this request.
+    location = /api/v1/items/import/menu/jobs {
+        set $backend_upstream backend:5000;
+        client_max_body_size 64m;
+        proxy_read_timeout 120s;
+        proxy_pass http://$backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
     location /uploads {
         set $backend_upstream backend:5000;
         proxy_pass http://$backend_upstream;
@@ -208,6 +231,29 @@ server {
         proxy_cache_bypass $http_upgrade;
     }
 
+    # Batch menu import upload -- a dedicated location rather than a global
+    # client_max_body_size bump above, since this is the one endpoint that
+    # intentionally accepts up to MENU_IMPORT_MAX_FILES_PER_BATCH PDFs/photos
+    # in a single multipart request (~20 files x ~2MB post-compression budget
+    # = ~40MB; 64m leaves headroom). proxy_read_timeout is raised too, though
+    # in practice the upload use case only writes to Redis and returns a
+    # job_id -- extraction itself runs asynchronously in
+    # workers/menuImportWorker.js, not inline in this request.
+    location = /api/v1/items/import/menu/jobs {
+        set $backend_upstream backend:5000;
+        client_max_body_size 64m;
+        proxy_read_timeout 120s;
+        proxy_pass http://$backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
     location /uploads {
         set $backend_upstream backend:5000;
         proxy_pass http://$backend_upstream;
@@ -287,6 +333,29 @@ server {
 
     location /api {
         set $backend_upstream backend:5000;
+        proxy_pass http://$backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # Batch menu import upload -- a dedicated location rather than a global
+    # client_max_body_size bump above, since this is the one endpoint that
+    # intentionally accepts up to MENU_IMPORT_MAX_FILES_PER_BATCH PDFs/photos
+    # in a single multipart request (~20 files x ~2MB post-compression budget
+    # = ~40MB; 64m leaves headroom). proxy_read_timeout is raised too, though
+    # in practice the upload use case only writes to Redis and returns a
+    # job_id -- extraction itself runs asynchronously in
+    # workers/menuImportWorker.js, not inline in this request.
+    location = /api/v1/items/import/menu/jobs {
+        set $backend_upstream backend:5000;
+        client_max_body_size 64m;
+        proxy_read_timeout 120s;
         proxy_pass http://$backend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -442,6 +511,29 @@ server {
         proxy_cache_bypass $http_upgrade;
     }
 
+    # Batch menu import upload -- a dedicated location rather than a global
+    # client_max_body_size bump above, since this is the one endpoint that
+    # intentionally accepts up to MENU_IMPORT_MAX_FILES_PER_BATCH PDFs/photos
+    # in a single multipart request (~20 files x ~2MB post-compression budget
+    # = ~40MB; 64m leaves headroom). proxy_read_timeout is raised too, though
+    # in practice the upload use case only writes to Redis and returns a
+    # job_id -- extraction itself runs asynchronously in
+    # workers/menuImportWorker.js, not inline in this request.
+    location = /api/v1/items/import/menu/jobs {
+        set $backend_upstream backend:5000;
+        client_max_body_size 64m;
+        proxy_read_timeout 120s;
+        proxy_pass http://$backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
     location /uploads {
         set $backend_upstream backend:5000;
         proxy_pass http://$backend_upstream;
@@ -540,6 +632,29 @@ server {
         proxy_cache_bypass $http_upgrade;
     }
 
+    # Batch menu import upload -- a dedicated location rather than a global
+    # client_max_body_size bump above, since this is the one endpoint that
+    # intentionally accepts up to MENU_IMPORT_MAX_FILES_PER_BATCH PDFs/photos
+    # in a single multipart request (~20 files x ~2MB post-compression budget
+    # = ~40MB; 64m leaves headroom). proxy_read_timeout is raised too, though
+    # in practice the upload use case only writes to Redis and returns a
+    # job_id -- extraction itself runs asynchronously in
+    # workers/menuImportWorker.js, not inline in this request.
+    location = /api/v1/items/import/menu/jobs {
+        set $backend_upstream backend:5000;
+        client_max_body_size 64m;
+        proxy_read_timeout 120s;
+        proxy_pass http://$backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
     location /uploads {
         set $backend_upstream backend:5000;
         proxy_pass http://$backend_upstream;
@@ -617,6 +732,29 @@ server {
 
     location /api {
         set $backend_upstream backend:5000;
+        proxy_pass http://$backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # Batch menu import upload -- a dedicated location rather than a global
+    # client_max_body_size bump above, since this is the one endpoint that
+    # intentionally accepts up to MENU_IMPORT_MAX_FILES_PER_BATCH PDFs/photos
+    # in a single multipart request (~20 files x ~2MB post-compression budget
+    # = ~40MB; 64m leaves headroom). proxy_read_timeout is raised too, though
+    # in practice the upload use case only writes to Redis and returns a
+    # job_id -- extraction itself runs asynchronously in
+    # workers/menuImportWorker.js, not inline in this request.
+    location = /api/v1/items/import/menu/jobs {
+        set $backend_upstream backend:5000;
+        client_max_body_size 64m;
+        proxy_read_timeout 120s;
         proxy_pass http://$backend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
