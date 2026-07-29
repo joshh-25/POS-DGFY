@@ -80,7 +80,10 @@ import {
     buildRejectAffiliateCashoutUseCase,
     buildRequestAffiliateCashoutUseCase,
     buildUpdateAffiliateEnrollmentUseCase,
-    buildUpdateAffiliateSettingsUseCase
+    buildUpdateAffiliateSettingsUseCase,
+    buildListAffiliatePriceRulesUseCase,
+    buildUpsertAffiliatePriceRuleUseCase,
+    buildDeactivateAffiliatePriceRuleUseCase
 } from './usecases/dgfyAffiliateUseCases.js';
 import { requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
 import { createTenantSessionForDgfyAccount } from '../../services/dgfyTenantSessionService.js';
@@ -306,6 +309,9 @@ export const acceptAffiliateInviteUseCase = buildAcceptAffiliateInviteUseCase({
     hashInviteToken: hashInvitationToken
 });
 export const updateAffiliateEnrollmentUseCase = buildUpdateAffiliateEnrollmentUseCase();
+export const listAffiliatePriceRulesUseCase = buildListAffiliatePriceRulesUseCase();
+export const upsertAffiliatePriceRuleUseCase = buildUpsertAffiliatePriceRuleUseCase();
+export const deactivateAffiliatePriceRuleUseCase = buildDeactivateAffiliatePriceRuleUseCase();
 export const getAffiliateQrPayloadUseCase = buildGetAffiliateQrPayloadUseCase();
 export const listMyAffiliateEnrollmentsUseCase = buildListMyAffiliateEnrollmentsUseCase();
 export const enrollSelfServeAffiliateUseCase = buildEnrollSelfServeAffiliateUseCase();

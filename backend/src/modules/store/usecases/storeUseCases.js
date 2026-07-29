@@ -815,6 +815,23 @@ const prepareCheckoutLines = ({
                     }
                 );
             }
+            // Decision A9: refuse a sale that would go below the item's own cost. Enforced here
+            // (per real item, at resolution time) rather than at rule-save time, because a Phase 1
+            // rule is tenant/enrollment-wide and applies across every product a tenant sells - there
+            // is no single representative cost to validate against when the owner configures it.
+            if (descriptor.carries_cost && item.cost_per_unit != null) {
+                const costPerUnitCentavos = toCentavos(item.cost_per_unit);
+                if (affiliateUnitPriceCentavos < costPerUnitCentavos) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        `The affiliate price for "${item.name}" would sell below its cost`,
+                        {
+                            statusCode: 422,
+                            details: { reason_code: 'AFFILIATE_BELOW_COST_FLOOR', item_id: item.item_id }
+                        }
+                    );
+                }
+            }
             affiliateUnitPrice = affiliateUnitPriceCentavos / 100;
         }
 
@@ -973,6 +990,18 @@ const applyAffiliateDisplayPrice = (item, affiliateSellingPriceRule) => {
                 rule_type: affiliateSellingPriceRule.type
             });
             return { price: item.default_sale_price, applied: false };
+        }
+        // Decision A9, display-time twin of the checkout floor guard: same reasoning, same
+        // fail-open convention as the rest of this function.
+        if (item.cost_per_unit != null) {
+            const costPerUnitCentavos = Math.round(Number(item.cost_per_unit) * 100);
+            if (affiliateUnitPriceCentavos < costPerUnitCentavos) {
+                logger.warn('[StorefrontCatalog] Affiliate price rule would sell below cost, showing catalog price instead', {
+                    item_id: item.item_id,
+                    rule_type: affiliateSellingPriceRule.type
+                });
+                return { price: item.default_sale_price, applied: false };
+            }
         }
         return { price: affiliateUnitPriceCentavos / 100, applied: true };
     } catch (error) {
