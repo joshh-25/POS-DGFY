@@ -3,11 +3,17 @@ import { platformInvoiceRepository } from '../repositories/platformInvoiceReposi
 import { platformInvoiceArtifactStore } from '../services/platformInvoiceArtifactStore.js';
 import { renderPlatformInvoicePdf } from '../services/platformInvoicePdf.js';
 import * as emailService from '../../../services/emailService.js';
+import logger from '../../../config/logger.js';
 
 const useCases = buildPlatformInvoiceUseCases({ repository: platformInvoiceRepository, artifactStore: platformInvoiceArtifactStore, emailService, pdfRenderer: renderPlatformInvoicePdf });
+const VALIDATION_ERROR_CODES = new Set(['INVALID_MONEY_AMOUNT', 'GROSS_REQUIRED', 'CHANGE_RETURN_CONFIRMATION_REQUIRED', 'PLATFORM_INVOICING_LIVE_GATE_CLOSED']);
 const send = async (res, action) => {
   try { const result = await action(); return res.status(result.status || (result.success ? 200 : 400)).json(result); }
-  catch { return res.status(500).json({ success: false, message: 'Platform invoice operation failed.' }); }
+  catch (error) {
+    logger.error('Platform invoice operation failed', { error: error?.message, code: error?.code });
+    if (VALIDATION_ERROR_CODES.has(error?.code)) return res.status(422).json({ success: false, message: error.message, error_code: error.code });
+    return res.status(500).json({ success: false, message: 'Platform invoice operation failed.' });
+  }
 };
 export const listPlatformInvoices = (_req, res) => send(res, () => useCases.list());
 export const listEligiblePlatformInvoiceApplications = (_req, res) => send(res, () => useCases.listEligibleApplications());
@@ -26,7 +32,8 @@ export const deliverPlatformInvoiceEmail = async (req, res) => {
       res.set('Retry-After', String(seconds));
     }
     return res.status(result.status || (result.success ? 200 : 400)).json(result);
-  } catch {
+  } catch (error) {
+    logger.error('Platform invoice email delivery failed', { error: error?.message, code: error?.code });
     return res.status(500).json({ success: false, message: 'Platform invoice email delivery failed.' });
   }
 };
@@ -37,7 +44,8 @@ export const downloadPlatformInvoiceArtifact = async (req, res) => {
     const { artifact, buffer } = result.data;
     res.set({ 'Content-Type': artifact.content_type, 'Content-Length': String(buffer.length), 'Content-Disposition': `attachment; filename="${artifact.filename}"`, 'Cache-Control': 'private, no-store' });
     return res.status(200).send(buffer);
-  } catch {
+  } catch (error) {
+    logger.error('Platform invoice artifact read failed', { error: error?.message, code: error?.code });
     return res.status(500).json({ success: false, message: 'Platform invoice artifact could not be read.' });
   }
 };

@@ -383,6 +383,20 @@ export const sendCompanyApprovedEmail = async ({ email, companyName, statusUrl }
   });
 };
 
+export const sendCompanySubmissionReceivedEmail = async ({ email, companyName, statusUrl }) => sendEmail({
+  to: email,
+  subject: `Registration received: ${companyName}`,
+  html: `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2>We received your company registration</h2>
+      <p><strong>${companyName}</strong> is waiting for Platform Admin review.</p>
+      <p>You can safely close the app and return to the owner-authorized status page at any time.</p>
+      <p><a href="${statusUrl}">View registration status</a></p>
+    </div>
+  `,
+  text: `We received the company registration for ${companyName}. It is waiting for Platform Admin review. View status: ${statusUrl}`
+});
+
 /**
  * Send company rejection notification email
  * @param {Object} params - Email parameters
@@ -391,15 +405,14 @@ export const sendCompanyApprovedEmail = async ({ email, companyName, statusUrl }
  * @param {string} [params.rejectionReason] - Optional rejection reason
  * @returns {Promise<Object>} - Nodemailer send result
  */
-export const sendCompanyRejectedEmail = async ({ email, companyName, rejectionReason }) => {
+export const sendCompanyRejectedEmail = async ({ email, companyName, rejectionReason, statusUrl }) => {
   const appUrl = getAppUrl();
-  const registerUrl = `${appUrl}/register-company`;
 
   const html = getCompanyRejectedTemplate({
     companyName,
     adminEmail: email,
     rejectionReason,
-    registerUrl,
+    statusUrl,
     appUrl
   });
 
@@ -626,6 +639,7 @@ export default {
   sendAffiliateInviteEmail,
   sendWelcomeEmail,
   sendCashierCredentialEmail,
+  sendCompanySubmissionReceivedEmail,
   sendCompanyApprovedEmail,
   sendCompanyRejectedEmail,
   sendEmailOtpCode,

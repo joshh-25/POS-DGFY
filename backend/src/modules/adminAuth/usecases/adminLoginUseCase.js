@@ -38,15 +38,23 @@ export const buildAdminLoginUseCase = ({
     }
 
     const usernameMatches = normalizedInputUsername === normalizedConfiguredUsername;
+    const configuredPasswordMatches = usernameMatches
+      ? await bcrypt.compare(String(password), passwordHash)
+      : false;
     let platformUser = null;
     if (platformAdminRepository) {
-      platformUser = usernameMatches
+      // Never reconcile the bootstrap identity from an unauthenticated request.
+      // A changed environment hash is applied only after the caller proves they
+      // know the configured bootstrap password.
+      platformUser = usernameMatches && configuredPasswordMatches
         ? await platformAdminRepository.ensureBootstrapMaster({ username: normalizedConfiguredUsername, passwordHash })
-        : await platformAdminRepository.findActiveByUsername(normalizedInputUsername);
+        : (!usernameMatches ? await platformAdminRepository.findActiveByUsername(normalizedInputUsername) : null);
     }
     // Always compare a bcrypt hash, including unknown users, to avoid an observable
     // user-existence timing oracle. The configured master hash is safe as a fallback.
-    const passwordMatches = await bcrypt.compare(String(password), platformUser?.password_hash || passwordHash);
+    const passwordMatches = usernameMatches
+      ? configuredPasswordMatches
+      : await bcrypt.compare(String(password), platformUser?.password_hash || passwordHash);
 
     if ((!platformAdminRepository && !usernameMatches) || !passwordMatches || (platformAdminRepository && !platformUser)) {
       await lockoutPolicy?.registerFailure?.(identityKey);

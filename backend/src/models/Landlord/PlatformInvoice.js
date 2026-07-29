@@ -5,10 +5,11 @@ export default (sequelize) => {
   PlatformInvoice.init({
     id: { type: DataTypes.UUID, defaultValue: DataTypes.UUIDV4, primaryKey: true },
     registration_application_id: { type: DataTypes.UUID, allowNull: false },
+    original_registration_application_id: { type: DataTypes.UUID, allowNull: true, unique: true },
     parent_invoice_id: { type: DataTypes.UUID, allowNull: true }, invoice_kind: { type: DataTypes.ENUM('original', 'replacement'), allowNull: false, defaultValue: 'original' },
     mode: { type: DataTypes.ENUM('qa', 'live'), allowNull: false, defaultValue: 'qa' },
     invoice_number: { type: DataTypes.STRING(80), allowNull: true, unique: true },
-    invoice_status: { type: DataTypes.ENUM('draft', 'issued', 'partially_credited', 'fully_credited'), allowNull: false, defaultValue: 'draft' },
+    invoice_status: { type: DataTypes.ENUM('draft', 'issued', 'partially_credited', 'fully_credited', 'discarded'), allowNull: false, defaultValue: 'draft' },
     payment_status: { type: DataTypes.ENUM('unpaid', 'partial', 'paid', 'partially_refunded', 'refunded'), allowNull: false, defaultValue: 'unpaid' },
     currency: { type: DataTypes.STRING(3), allowNull: false, defaultValue: 'PHP' },
     gross_centavos: { type: DataTypes.BIGINT, allowNull: false }, vat_centavos: { type: DataTypes.BIGINT, allowNull: false }, vatable_sales_centavos: { type: DataTypes.BIGINT, allowNull: false },

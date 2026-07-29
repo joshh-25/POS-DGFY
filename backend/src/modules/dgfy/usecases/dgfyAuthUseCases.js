@@ -910,6 +910,7 @@ export const buildListDgfyAccountCompaniesUseCase = ({ repository }) => async ({
     await repository.mirrorPendingInvitationsForAccount?.(account);
     await repository.mirrorLegacyFounderMembershipsForAccount?.(account);
     const memberships = await repository.listMemberships(account.id);
+    const registrationApplications = await repository.listRegistrationApplications?.(account.id) || [];
     const companies = memberships.map((membership) => serializeCompanyMembership(membership, {
         currentTenantToken,
         accountId: account.id
@@ -925,6 +926,17 @@ export const buildListDgfyAccountCompaniesUseCase = ({ repository }) => async ({
                 owned_companies: ownedCompanies,
                 invited_companies: invitedCompanies,
                 pending_invitations: pendingInvitations,
+                registration_applications: registrationApplications.map((application) => ({
+                    application_id: application.id,
+                    company_name: application.tenant?.name || '',
+                    status: application.review_status === 'rejected' ? 'rejected'
+                        : application.provisioning_status === 'succeeded' ? 'ready'
+                            : application.provisioning_status === 'failed' ? 'setup_delayed'
+                                : application.provisioning_status === 'in_progress' ? 'setting_up_company'
+                                    : 'pending_review',
+                    status_path: `/register-company/status/${encodeURIComponent(String(application.id))}`,
+                    updated_at: application.updatedAt
+                })),
                 accepted_count: companies.filter((entry) => entry.can_switch).length,
                 pending_count: pendingInvitations.length,
                 business_step_up: getBusinessStepUpState(account)

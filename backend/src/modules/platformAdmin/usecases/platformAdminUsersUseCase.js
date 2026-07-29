@@ -70,6 +70,7 @@ export const buildPlatformAdminUsersUseCase = ({ repository }) => ({
     });
   },
   async changeOwnPassword({ actor, currentPassword, newPassword, confirmation }) {
+    if (actor?.is_master) return failure(422, 'The bootstrap Platform Master Admin password is managed through the environment configuration.');
     if (newPassword !== confirmation) return failure(422, 'New password confirmation does not match.');
     if (!securePassword(newPassword)) return failure(422, 'New Platform Admin passwords must be at least 8 characters.');
     const user = await repository.findUserById(actor.id);

@@ -3,7 +3,7 @@ status: accepted
 authority_level: authoritative
 owner: architecture
 date: 2026-07-28
-last_reviewed: 2026-07-28
+last_reviewed: 2026-07-29
 review_by: 2027-01-28
 topic: platform_admin_identity_rbac
 ---
@@ -22,6 +22,7 @@ The historical admin JWT represented a shared master credential and carried no r
 - Use explicit page permissions. The backend enforces the route matrix before every protected endpoint; hiding a menu item is only a usability control.
 - Issue delegated accounts the documented temporary default when none is supplied and visibly mark that account as temporary-password active. Explicit delegated and changed passwords require at least eight characters. Password changes, grant changes, suspension, and deletion revoke active sessions.
 - Keep old shared-admin JWTs invalid once database-backed Platform Admin sessions are enabled.
+- Reconcile a changed bootstrap environment hash only after the caller proves knowledge of the password represented by that hash; failed login attempts must not mutate the master identity or revoke sessions.
 
 ## Consequences
 

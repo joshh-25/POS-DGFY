@@ -50,6 +50,23 @@ describe('buildAdminLoginUseCase', () => {
     expect(decoded.type).toBe('admin');
   });
 
+  it('does not reconcile the bootstrap database identity for an invalid password', async () => {
+    const platformAdminRepository = {
+      ensureBootstrapMaster: jest.fn(),
+      findActiveByUsername: jest.fn()
+    };
+    const useCase = buildUseCase({ platformAdminRepository });
+
+    const result = await useCase({
+      username: 'skupervisor',
+      password: 'wrong'
+    });
+
+    expect(result.success).toBe(false);
+    expect(platformAdminRepository.ensureBootstrapMaster).not.toHaveBeenCalled();
+    expect(platformAdminRepository.findActiveByUsername).not.toHaveBeenCalled();
+  });
+
   it('returns internal error when token signing fails', async () => {
     const useCase = buildUseCase({
       jwtSecretProvider: () => undefined
