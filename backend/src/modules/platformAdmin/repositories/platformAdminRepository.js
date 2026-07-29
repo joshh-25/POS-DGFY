@@ -44,6 +44,14 @@ export const createPlatformAdminRepository = () => ({
   },
   async createSession({ user, sourceIp, userAgent }) {
     const now = new Date();
+    await PlatformAdminSession.destroy({
+      where: {
+        [Op.or]: [
+          { expires_at: { [Op.lt]: now } },
+          { revoked_at: { [Op.lt]: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) } }
+        ]
+      }
+    });
     return PlatformAdminSession.create({
       admin_user_id: user.id, auth_version: user.auth_version, issued_at: now,
       expires_at: new Date(now.getTime() + 8 * 60 * 60 * 1000),

@@ -68,7 +68,7 @@ describe('authenticateAdmin middleware', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('attaches admin context and calls next for valid token', async () => {
+  it('rejects legacy admin tokens that have no revocable database session', async () => {
     mockIsTokenBlacklisted.mockResolvedValue(false);
     mockVerifyToken.mockReturnValue({
       type: 'admin',
@@ -82,10 +82,12 @@ describe('authenticateAdmin middleware', () => {
 
     await authenticateAdmin(req, res, next);
 
-    expect(req.admin).toEqual({
-      username: 'skupervisor',
-      role: 'admin'
+    expect(req.admin).toBeUndefined();
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith({
+      success: false,
+      message: 'Please sign in again to establish a secure admin session'
     });
-    expect(next).toHaveBeenCalledTimes(1);
+    expect(next).not.toHaveBeenCalled();
   });
 });

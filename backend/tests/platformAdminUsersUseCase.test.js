@@ -27,4 +27,21 @@ describe('Platform Admin user lifecycle', () => {
     const result = await buildPlatformAdminUsersUseCase({ repository }).create({ actor: { id: 'master-1', username: 'master' }, body: { username: 'qa-admin', password: 'eight888', permissions: ['admin.invoices'] } });
     expect(result).toMatchObject({ success: true, status: 201, data: { temporaryPasswordActive: false } });
   });
+
+  test('keeps the bootstrap master password environment-managed', async () => {
+    const repository = {
+      findUserById: jest.fn(),
+      transaction: jest.fn(),
+      changePassword: jest.fn()
+    };
+    const result = await buildPlatformAdminUsersUseCase({ repository }).changeOwnPassword({
+      actor: { id: 'master-1', username: 'master', is_master: true },
+      currentPassword: 'current-password',
+      newPassword: 'new-password',
+      confirmation: 'new-password'
+    });
+
+    expect(result).toMatchObject({ success: false, status: 422, message: expect.stringContaining('environment configuration') });
+    expect(repository.findUserById).not.toHaveBeenCalled();
+  });
 });

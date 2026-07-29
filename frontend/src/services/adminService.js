@@ -44,7 +44,7 @@ adminApi.interceptors.response.use(
             sessionKnown = false;
 
             // Notify the UI to show login form
-            if (authFailureCallback) {
+            if (authFailureCallback && !error?.config?.suppressAuthFailure) {
                 authFailureCallback();
             }
         }
@@ -110,7 +110,7 @@ export const getToken = () => {
 };
 
 export const getCurrentAdmin = async () => {
-    const response = await adminApi.get('/admin/me', { skipGlobalErrorToast: true });
+    const response = await adminApi.get('/admin/me', { skipGlobalErrorToast: true, suppressAuthFailure: true });
     sessionKnown = Boolean(response.data?.success);
     return response.data;
 };
