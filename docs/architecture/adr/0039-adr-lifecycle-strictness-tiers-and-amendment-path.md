@@ -2,11 +2,11 @@
 status: proposed
 authority_level: reference
 owner: architecture
+date: 2026-07-29
 last_reviewed: 2026-07-29
+review_by: 2026-10-29
 applies_to: architecture_decision_records
 topic: adr_lifecycle_governance
-date: 2026-07-29
-review_by: 2026-10-29
 ---
 
 # ADR 0039: ADR Lifecycle, Strictness Tiers, and Amendment Path

@@ -1,8 +1,12 @@
 ---
 status: accepted
+authority_level: authoritative
+owner: architecture
 date: 2026-06-26
 last_reviewed: 2026-07-14
-classification: authoritative
+review_by: 2026-12-26
+applies_to: architecture_decision
+topic: catalog_inventory_pos_storefront_ownership_boundaries
 ---
 
 # ADR 0029: Catalog, Inventory, POS, and Storefront Ownership Boundaries

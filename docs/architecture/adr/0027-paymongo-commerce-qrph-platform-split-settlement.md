@@ -1,8 +1,10 @@
 ---
-status: authoritative
+status: accepted
 authority_level: authoritative
 owner: architecture
+date: 2026-05-19
 last_reviewed: 2026-06-08
+review_by: 2026-11-19
 applies_to: storefront_commerce_payments
 topic: paymongo_qrph_platform_split_settlement
 ---

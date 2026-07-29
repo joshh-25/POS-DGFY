@@ -1,3 +1,14 @@
+---
+status: accepted
+authority_level: authoritative
+owner: architecture
+date: 2026-04-21
+last_reviewed: 2026-04-21
+review_by: 2026-10-21
+applies_to: architecture_decision
+topic: compliance_downgrade_escape_hatches
+---
+
 # ADR 0011: Compliance Downgrade Escape Hatches
 
 ## Status

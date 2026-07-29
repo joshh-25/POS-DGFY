@@ -1,3 +1,14 @@
+---
+status: accepted
+authority_level: authoritative
+owner: architecture
+date: 2026-07-12
+last_reviewed: 2026-07-12
+review_by: 2027-01-12
+applies_to: architecture_decision
+topic: compatibility_seam_governance
+---
+
 # ADR 0035: Compatibility-Seam Governance
 
 ## Status

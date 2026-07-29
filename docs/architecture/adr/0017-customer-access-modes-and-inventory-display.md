@@ -1,8 +1,12 @@
 ---
 status: accepted
+authority_level: authoritative
+owner: architecture
 date: 2026-05-03
 last_reviewed: 2026-06-03
-classification: authoritative
+review_by: 2026-11-03
+applies_to: architecture_decision
+topic: customer_access_modes_and_inventory_display
 ---
 
 # ADR 0017: Customer Access Modes And Inventory Display Controls

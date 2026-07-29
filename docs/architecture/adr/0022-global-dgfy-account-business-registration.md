@@ -1,8 +1,10 @@
 ---
-status: authoritative
+status: accepted
 authority_level: authoritative
 owner: architecture
+date: 2026-07-08
 last_reviewed: 2026-06-27
+review_by: 2027-01-08
 applies_to: dgfy_accounts, tenant_registration, storefront_account, tenant_user_invitations
 topic: global_dgfy_account_business_registration
 ---

@@ -1,3 +1,14 @@
+---
+status: accepted
+authority_level: authoritative
+owner: architecture
+date: 2026-03-04
+last_reviewed: 2026-03-04
+review_by: 2026-09-04
+applies_to: architecture_decision
+topic: modular_monolith_boundaries
+---
+
 # ADR 0001: Modular Monolith Boundaries
 
 ## Status

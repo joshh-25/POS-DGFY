@@ -1,3 +1,14 @@
+---
+status: accepted
+authority_level: authoritative
+owner: architecture
+date: 2026-03-06
+last_reviewed: 2026-03-06
+review_by: 2026-09-06
+applies_to: architecture_decision
+topic: architecture_compliance_automation
+---
+
 # ADR 0004: Architecture Compliance Automation
 
 ## Status

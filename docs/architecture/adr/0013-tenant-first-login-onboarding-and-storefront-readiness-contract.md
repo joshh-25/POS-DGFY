@@ -1,3 +1,14 @@
+---
+status: accepted
+authority_level: authoritative
+owner: architecture
+date: 2026-04-25
+last_reviewed: 2026-04-25
+review_by: 2026-10-25
+applies_to: architecture_decision
+topic: tenant_first_login_onboarding_and_storefront_readiness_contract
+---
+
 # ADR 0013: Tenant First-Login Onboarding and Storefront Readiness Contract
 
 ## Status

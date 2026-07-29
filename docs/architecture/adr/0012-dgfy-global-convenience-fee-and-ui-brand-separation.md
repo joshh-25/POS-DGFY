@@ -1,3 +1,14 @@
+---
+status: accepted
+authority_level: authoritative
+owner: architecture
+date: 2026-04-23
+last_reviewed: 2026-04-23
+review_by: 2026-10-23
+applies_to: architecture_decision
+topic: dgfy_global_convenience_fee_and_ui_brand_separation
+---
+
 # ADR 0012: DGFY Global Convenience Fee and UI Brand Separation
 
 ## Status

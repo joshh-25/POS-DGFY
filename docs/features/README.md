@@ -44,7 +44,7 @@ When to use:
 - `docs/architecture/adr/0008-tenant-workflow-mode-msme-simplification.md`
 - `docs/architecture/adr/0009-multi-location-inventory-ledger-and-safety-rollout.md`
 - `docs/architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md`
-- `docs/architecture/adr/0010-weighted-average-cost-valuation-and-variance-analytics.md`
+- `docs/architecture/adr/0040-weighted-average-cost-valuation-and-variance-analytics.md`
 - `docs/architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md`
 - `docs/architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md`
 - `docs/architecture/adr/0016-services-mode-independent-booking-and-ticketing.md`

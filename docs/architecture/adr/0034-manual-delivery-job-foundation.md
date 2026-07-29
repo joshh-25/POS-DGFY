@@ -1,8 +1,12 @@
 ---
 status: accepted
+authority_level: authoritative
+owner: architecture
 date: 2026-07-10
 last_reviewed: 2026-07-17
-classification: authoritative
+review_by: 2027-01-10
+applies_to: architecture_decision
+topic: manual_delivery_job_foundation
 ---
 
 # ADR 0034: Manual Delivery Job Foundation

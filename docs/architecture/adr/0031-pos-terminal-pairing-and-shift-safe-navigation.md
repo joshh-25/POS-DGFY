@@ -1,8 +1,12 @@
 ---
 status: accepted
+authority_level: authoritative
+owner: architecture
 date: 2026-06-29
 last_reviewed: 2026-07-02
-classification: authoritative
+review_by: 2026-12-28
+applies_to: architecture_decision
+topic: pos_terminal_pairing_and_shift_safe_navigation
 ---
 
 # ADR 0031: POS Terminal Pairing and Shift-Safe Navigation
