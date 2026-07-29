@@ -51,3 +51,20 @@ Regulatory. This slice changes the approval boundary between a public company-re
 6. SKUpervisor, POS, and Storefront production builds completed successfully.
 7. Fresh local `sku_test` migration chain completed, followed by a real registration approval retry after tenant-schema isolation was corrected.
 8. Local protected API QA completed draft, issued cash invoice with confirmed change, private PDF read (`%PDF`, 2,261 bytes), full credit, and a separate replacement draft.
+
+## 2026-07-29 Stabilization Addendum
+
+1. Compound tenant/account administration routes retain both required permissions with or without a trailing slash.
+2. Bootstrap-master password reconciliation occurs only after the configured credential is proven; the master password is not UI-editable.
+3. Public-registration submission, approval, and rejection messages use the owner-authorized SKUpervisor application-status route. Rejection requires an applicant-visible reason and correction reuses the existing application.
+4. Legacy pending public registrations receive a clearly marked synthetic review record rather than bypassing manual review or remaining unapprovable.
+5. Original QA invoices have a database uniqueness guard compatible with replacement invoices. Discarding a draft preserves the invoice and append-only events.
+6. Money and live-gate validation errors return a client-actionable validation response; unexpected failures remain internal and are logged without invoice contents.
+
+## 2026-07-29 Verification Evidence
+
+1. Focused backend qualification: 96 assertions passed across Platform Admin authentication/RBAC, DGFY company/application discovery, registration submission/status, and QA invoice behavior.
+2. Focused frontend qualification: 9 assertions passed for admin session probing and Tenant Manager behavior.
+3. SKUpervisor production build completed successfully.
+4. Documentation lint, strict ADR validation, architecture guardrails, controller-boundary checks, compliance impact checks, API compliance contracts, ESLint (changed implementation files), migration syntax checks, and `git diff --check` passed.
+5. The database-backed lifecycle integration suite could not execute in this shell because no test-database credentials are configured. The full backend aggregate command also exceeded the available command windows; neither run produced an implementation assertion failure. Database migration/lifecycle proof remains required in CI or a configured test environment before merge.
