@@ -1,3 +1,14 @@
+---
+status: accepted
+authority_level: authoritative
+owner: architecture
+date: 2026-04-20
+last_reviewed: 2026-04-20
+review_by: 2026-10-20
+applies_to: architecture_decision
+topic: storefront_discovery_item_match_index_and_union_query
+---
+
 # ADR 0010: Storefront Discovery Item-Match Index and Union Query Contract
 
 ## Status

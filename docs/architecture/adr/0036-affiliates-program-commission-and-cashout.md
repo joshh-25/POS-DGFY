@@ -2,7 +2,9 @@
 status: accepted
 authority_level: authoritative
 owner: architecture
+date: 2026-07-24
 last_reviewed: 2026-07-24
+review_by: 2027-01-24
 applies_to: affiliates_program, backend, pos_frontend
 topic: affiliates_program_commission_and_cashout
 ---

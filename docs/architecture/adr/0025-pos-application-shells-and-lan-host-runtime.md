@@ -1,7 +1,10 @@
 ---
 status: accepted
+authority_level: authoritative
 owner: architecture
+date: 2026-06-03
 last_reviewed: 2026-06-03
+review_by: 2026-12-03
 applies_to: pos_windows_android_clients_and_lan_store_runtime
 topic: pos_application_shells_and_lan_host_runtime
 ---

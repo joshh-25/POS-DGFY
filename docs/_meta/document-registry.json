@@ -48,7 +48,7 @@
     {
       "path": "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
       "topic": "free_tier_signed_release_authorization",
-      "expected_status": "authoritative",
+      "expected_status": "accepted",
       "expected_authority_level": "authoritative"
     },
     {

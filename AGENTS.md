@@ -46,7 +46,7 @@ If any part of a requested change conflicts with `docs/ai/PR.md`, flag the confl
 1. `docs/START_HERE.md`
 2. `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 3. `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
-4. Relevant ADRs in `docs/architecture/adr/`
+4. Relevant ADRs in `docs/architecture/adr/` — use `docs/architecture/adr/INDEX.md` to find them
 5. Domain-specific docs (`docs/features`, `docs/api`, `docs/database`, `docs/testing`)
 6. Historical docs only if explicitly marked as needed
 
@@ -57,7 +57,15 @@ If any part of a requested change conflicts with `docs/ai/PR.md`, flag the confl
 - `authoritative` overrides `reference`
 - `reference` overrides `historical`
 - `deprecated` must not be used for new design decisions
-4. Cross-boundary changes require ADR update or new ADR.
+4. Cross-boundary changes take the cheapest path matching the strictness tier of
+the clause being changed (ADR 0039):
+- `[binding]` clause: new superseding ADR + tech-lead approval
+- `[default]` clause, or any untagged clause: dated `## Amendments` block on the
+  existing ADR in the same PR; set `status: amended`
+- `[snapshot]` clause: ordinary implementation work
+- no ADR covers the decision: create one
+5. Do not cite ADRs with `status: superseded` or `status: retired`. ADRs with
+`status: proposed` constrain nothing.
 
 ## Prohibited Behavior
 1. Do not treat `docs/archive/**` as a planning source.
