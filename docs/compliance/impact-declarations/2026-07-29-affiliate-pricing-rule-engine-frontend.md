@@ -8,12 +8,12 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.07.29
-verification_evidence: backend/tests/browserSessionCookies.test.js (11 passed - session-scoped attribution cookie behavior), frontend eslint (clean) on AffiliatesWorkspacePanel.jsx, buildCompliancePreflightUseCase run locally with an ALLOW-stubbed evaluateComplianceOperationUseCase (see Verification Evidence section for methodology)
-rollback_note: Revert the "Attribution window (days)" field and its save-payload key in AffiliatesWorkspacePanel.jsx; no checkout, payment, receipt, terminal operation, or persisted transaction record is changed by this or the planned Stage G config-UI additions to the same file.
+verification_evidence: backend/tests/browserSessionCookies.test.js (11 passed), frontend eslint (clean) on all touched files, frontend vitest (216/216 passed in src/features/pos/__tests__, including 13 new affiliatePricingPreview.test.js cases), npm run build:pos and build:store (both succeed), buildCompliancePreflightUseCase run locally with an ALLOW-stubbed evaluateComplianceOperationUseCase (see Verification Evidence section for methodology)
+rollback_note: Revert the "Attribution window (days)" field removal, the Selling Price section, the per-affiliate price-override editor, and affiliatePricingPreview.js/.test.js in AffiliatesWorkspacePanel.jsx and its sibling files; no checkout, payment, receipt, terminal operation, or persisted transaction record is changed by any of it.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
-preflight_run_at: 2026-07-29T16:41:00+08:00
-preflight_request_ref: AFFILIATE-PRICING-PHASE1-STAGE-F
+preflight_run_at: 2026-07-29T17:03:21Z
+preflight_request_ref: AFFILIATE-PRICING-PHASE1-STAGE-G
 ---
 
 # Affiliate Pricing Rule Engine — Frontend Touches to AffiliatesWorkspacePanel.jsx
@@ -24,27 +24,35 @@ Major. `frontend/src/features/pos/components/AffiliatesWorkspacePanel.jsx` lives
 `frontend/src/features/pos/`, which floors any change there at `major`/`pos,terminal` regardless of
 what the change actually does (see `docs/compliance/compliance-classification-matrix.md`). The
 panel itself is an owner-facing back-office settings screen for the DGFY affiliate program - it is
-not part of the checkout, payment, receipt, or terminal-operation path, and this declaration also
-covers the further additions planned for this same file under Stage G of
-[the affiliate pricing rule engine scope](../../proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md)
-(a rule-type selector, live price/commission preview, and a promo-stacking warning), so a second
-declaration is not required when that work lands against the same file.
+not part of the checkout, payment, receipt, or terminal-operation path. This declaration covers
+both the Stage F removal (decision A12) and the Stage G owner-config-UI additions landed in the same
+working session - see
+[the affiliate pricing rule engine scope](../../proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md).
 
 ## Affected Surfaces
 
-1. `frontend/src/features/pos/components/AffiliatesWorkspacePanel.jsx` - removed the "Attribution
-   window (days)" field and its corresponding key in the settings save payload (decision A12). Stage
-   G will add new, purely additive owner-facing controls (selling-price rule type, live calculation
-   preview, template-vs-per-affiliate toggle) to this same file.
-2. `backend/src/utils/browserSessionCookies.js` - the affiliate attribution cookie moved from a
-   30-day lifetime to session-scoped (decision B3). This file is not under a compliance-sensitive
-   path pattern itself; recorded here because A12 and B3 are the same paired decision (the "days"
-   setting became actively misleading once the cookie stopped carrying a multi-day lifetime).
+1. `frontend/src/features/pos/components/AffiliatesWorkspacePanel.jsx` - Stage F removed the
+   "Attribution window (days)" field (decision A12). Stage G added: a "Selling Price" section
+   (rule-type selector, one numeric input whose label/unit changes with the selected type, a live
+   buyer-price/commission/merchant-net preview, and a promo-stacking warning banner) for the
+   tenant-wide template, plus a per-affiliate "price override" inline editor on each affiliate row
+   using the same controls, and a "Commission type" selector in Program Settings.
+2. `frontend/src/features/pos/services/affiliateService.js` - three new API client functions
+   (fetchAffiliatePriceRules, upsertAffiliatePriceRule, deactivateAffiliatePriceRule) calling the
+   new backend endpoints under `/affiliates/price-rules`.
+3. `frontend/src/features/pos/utils/affiliatePricingPreview.js` (new) - a frontend-local port of
+   the backend's pure calculation service, used only to compute the live preview above. No I/O, no
+   checkout/payment/receipt logic.
+4. `backend/src/utils/browserSessionCookies.js` - the affiliate attribution cookie moved from a
+   30-day lifetime to session-scoped (decision B3), recorded here since A12/B3 are one paired
+   decision.
 
 ## Compliance Preconditions
 
 1. No checkout totals, discounts, taxes, payments, receipts, refunds, voids, or shift cash
-   calculations are changed by this commit.
+   calculations are changed by this commit. The new preview module
+   (affiliatePricingPreview.js) only renders a number in this settings panel - it is never called
+   from the checkout or POS terminal code path.
 2. No POS terminal operation, fiscal document rendering, or persisted transaction record is
    touched.
 3. The removed field (`attribution_window_days`) was never enforced anywhere in commission accrual
@@ -54,15 +62,27 @@ declaration is not required when that work lands against the same file.
    any runtime accrual, checkout, or compliance behavior.
 4. The backend column/default (`tenant_affiliate_settings.attribution_window_days`) is left in
    place; only the panel's UI and its save payload changed.
+5. The new price-rule endpoints (`GET/PUT /affiliates/price-rules`,
+   `DELETE /affiliates/price-rules/:id`) are gated by the same `AFFILIATES.actions.VIEW_AFFILIATES` /
+   `MANAGE_AFFILIATE_SETTINGS` permissions already enforced on the existing `/affiliates/settings`
+   and `/affiliates/affiliates/:enrollment_id` routes - no new permission surface was introduced.
 
 ## Verification Evidence
 
-1. `backend/tests/browserSessionCookies.test.js` - 11 tests passed, including 5 new tests added in
-   this change specifically pinning the session-scoped attribution cookie behavior (no prior test
-   coverage existed for this cookie at all).
-2. `npx eslint src/features/pos/components/AffiliatesWorkspacePanel.jsx` (run from `frontend/`) -
-   clean, no errors or warnings.
-3. **Preflight methodology note:** this working environment has no live MySQL and no running
+1. `backend/tests/browserSessionCookies.test.js` - 11 tests passed (session-scoped attribution
+   cookie behavior).
+2. `npx eslint` (run from `frontend/`) on every touched file - clean, no errors. One pre-existing,
+   unrelated warning (`accentSoft` unused in `FnbProductCard.jsx`) predates this change, confirmed
+   via `git stash`.
+3. `npx vitest run src/features/pos/__tests__` - 216/216 passed across 42 files, including 13 new
+   tests in `affiliatePricingPreview.test.js` (a byte-identical fixture-parity check against the
+   backend's original acceptance fixtures, plus the acceptance cases themselves).
+4. `npm run build:pos` and `npm run build:store` - both succeed.
+5. `npx vitest run apps/store/src/modes/fnb/storefront/model/buildFnbCatalogPresentation.test.js` -
+   3/3 passed (storefront "affiliate price" labelling added to `SimpleProductCard.jsx` and
+   `FnbProductCard.jsx`, both gated on a boolean flag from the API, no existing rendering path
+   changed).
+6. **Preflight methodology note:** this working environment has no live MySQL and no running
    backend server, so the real `POST /api/v1/compliance/preflight` endpoint (which evaluates a
    specific tenant's live compliance state) could not be called end-to-end. Instead,
    `buildCompliancePreflightUseCase` - the same use case that endpoint invokes - was run directly
