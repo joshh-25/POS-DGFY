@@ -34,8 +34,19 @@ const props = {
     company: { id: 'tenant-current' }
   },
   accessibleCompanies: [
-    { tenant_id: 'tenant-current', company_name: 'Current Cafe', is_current: true, can_switch: false },
-    { tenant_id: 'tenant-second', company_name: 'Second Cafe', role: 'admin', can_switch: true }
+    {
+      tenant_id: 'tenant-current',
+      company_name: 'Current Cafe',
+      role: 'fnb_cashier',
+      is_current: true,
+      can_switch: false
+    },
+    {
+      tenant_id: 'tenant-second',
+      company_name: 'Second Cafe',
+      role: 'admin',
+      can_switch: true
+    }
   ],
   onSwitchCompany,
   posViewMode: 'checkout',
@@ -83,10 +94,12 @@ describe('TerminalPageLayout company switcher', () => {
   it('lists accessible companies and switches only a non-current company', () => {
     renderLayout();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open admin profile menu' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open account profile menu' }));
 
     expect(screen.getByText('Current Cafe')).toBeTruthy();
     expect(screen.getByText('Second Cafe')).toBeTruthy();
+    expect(screen.getByText('Cashier')).toBeTruthy();
+    expect(screen.getByTitle('Switch to Second Cafe as Admin')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Current Cafe/i }).disabled).toBe(true);
 
     fireEvent.click(screen.getByRole('button', { name: /Second Cafe/i }));
@@ -96,7 +109,7 @@ describe('TerminalPageLayout company switcher', () => {
   it('keeps company choices disabled while an active shift blocks switching', () => {
     renderLayout({ companySwitchBlockedReason: 'Close the active shift before switching companies.' });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Open admin profile menu' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open account profile menu' }));
 
     expect(screen.getByText('Close the active shift before switching companies.')).toBeTruthy();
     expect(screen.getByRole('button', { name: /Second Cafe/i }).disabled).toBe(true);

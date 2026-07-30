@@ -4,15 +4,18 @@
 
 export {
   adminLogin,
-  adminLogout
+  adminLogout,
+  adminMe
 } from '../modules/adminAuth/controllers/adminAuthHandlers.js';
 
 import {
   adminLogin,
-  adminLogout
+  adminLogout,
+  adminMe
 } from '../modules/adminAuth/controllers/adminAuthHandlers.js';
 
 export default {
   adminLogin,
-  adminLogout
+  adminLogout,
+  adminMe
 };

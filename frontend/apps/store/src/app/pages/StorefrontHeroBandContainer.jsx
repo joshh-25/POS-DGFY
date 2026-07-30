@@ -171,7 +171,7 @@ export function StorefrontHeroBandContainer(props) {
       {!isServicesMode && (
         <>
           {/* ZONE 1: Navigation & Header */}
-          {!isFnbMode && !isSimpleMode && (
+          {!isFnbMode && !isSimpleMode && !isResolvedOrderSubpage && (
             <section style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
               <GhostButton onClick={goDiscovery} style={{ padding: '8px 16px', minHeight: 44, fontSize: 13 }}>
                 Back to Discovery
@@ -263,7 +263,7 @@ export function StorefrontHeroBandContainer(props) {
               heroStyles={{ HERO_CANVAS_MAX_WIDTH, MAX_STOREFRONT_WHY_CHOOSE_US, MOBILE_DROPDOWN_MENU_STYLE, MOBILE_DROPDOWN_OPTION_STYLE, MOBILE_NATIVE_SELECT_STYLE, STOREFRONT_CONTACT_INFO_COLUMNS, STOREFRONT_INFO_ICON_COLUMN, STOREFRONT_INFO_PANEL_MAX_WIDTH, STOREFRONT_INFO_ROW_GAP, STYLES }}
               helperFns={{ buildVisibleStorefrontContactRows }}
             />
-          ) : (!isFnbMode && !isSimpleMode) ? (
+          ) : (!isFnbMode && !isSimpleMode && !isResolvedOrderSubpage) ? (
             <DefaultStorefrontHero
               modeAdapter={modeAdapter}
               heroSectionModel={heroSectionModel}

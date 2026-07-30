@@ -40,12 +40,23 @@ describe('external product lookup contracts', () => {
     expect(barcodePolicyContent).toContain('Invalid GTIN check digit. Scan a real package barcode or enter item details manually.');
   });
 
-  it('requires explicit acceptance before persisting a manufacturer barcode', () => {
+  it('persists a valid scanned barcode even when registry metadata is unavailable', () => {
     [modalContent, posModalContent].forEach((content) => {
       expect(content).toContain('Use product details');
-      expect(content).toContain('acceptedExternalProduct?.found');
-      expect(content).toContain('manufacturer_barcode: { code: acceptedExternalProduct.code }');
+      expect(content).toContain('manufacturer_barcode: { code: externalBarcode }');
+      expect(content).toContain('this barcode will still be saved');
     });
+  });
+
+  it('requires explicit confirmation before saving a private code as an internal POS barcode', () => {
+    [modalContent, posModalContent].forEach((content) => {
+      expect(content).toContain('Use as Internal Barcode');
+      expect(content).toContain('internal_barcode: { code: externalBarcode }');
+      expect(content).toContain('useInternalBarcode');
+      expect(content).toContain('getInternalBarcodeValidationMessage');
+    });
+    expect(barcodePolicyContent).toContain('normalizeBarcodeEntry');
+    expect(barcodePolicyContent).toContain('Internal barcode contains unsupported characters.');
   });
 
   it('applies category suggestions only after explicit acceptance', () => {
@@ -71,18 +82,29 @@ describe('external product lookup contracts', () => {
     expect(storefrontServiceContent).toContain("api.post(`/items/${itemId}/storefront-image/external`, { code })");
   });
 
-  it('offers a camera QR scanner in both create-item surfaces and reuses the governed lookup', () => {
+  it('offers a camera product scanner in both create-item surfaces and reuses the governed lookup', () => {
     [modalContent, posModalContent].forEach((content) => {
       expect(content).toContain('ProductQrScannerModal');
-      expect(content).toContain('Scan QR');
+      expect(content).toMatch(/<ScanLine[\s\S]*?\n\s*Scan\s*\n/);
       expect(content).toContain('handleExternalProductLookup(code)');
     });
   });
 
-  it('loads the scanner lazily, prefers the rear camera, and stops camera tracks', () => {
+  it('loads a barcode-only scanner lazily, prefers the rear camera, and stops camera tracks', () => {
     expect(scannerContent).toContain("import('@zxing/browser')");
+    expect(scannerContent).toContain("import('@zxing/library')");
+    expect(scannerContent).toContain('BrowserMultiFormatOneDReader');
+    expect(scannerContent).toContain('DecodeHintType.POSSIBLE_FORMATS');
+    ['EAN_8', 'EAN_13', 'UPC_A', 'UPC_E', 'ITF', 'CODE_128', 'CODE_39'].forEach((format) => {
+      expect(scannerContent).toContain(`BarcodeFormat.${format}`);
+    });
+    expect(scannerContent).not.toContain('BarcodeFormat.QR_CODE');
+    expect(scannerContent).not.toContain('BrowserMultiFormatReader');
+    expect(scannerContent).not.toContain('BrowserQRCodeReader');
     expect(scannerContent).toContain("facingMode: { ideal: 'environment' }");
-    expect(scannerContent).toContain('parseProductQrPayload');
+    expect(scannerContent).not.toContain('parseProductQrPayload');
+    expect(scannerContent).not.toContain('getGtinValidationMessage');
+    expect(scannerContent).toContain("String(result.getText() || '').trim()");
     expect(scannerContent).toContain('activeControls.stop()');
     expect(scannerContent).toContain('stream.getTracks().forEach((track) => track.stop())');
     expect(scannerContent).toContain('Camera scanning requires HTTPS');
@@ -91,8 +113,15 @@ describe('external product lookup contracts', () => {
   it('requests camera permission only after an explicit operator action', () => {
     expect(scannerContent).toContain('if (!open || !cameraRequested)');
     expect(scannerContent).toContain("setCameraRequested(true)");
-    expect(scannerContent).toContain('Enable Camera');
-    expect(scannerContent).toContain('Try Camera Again');
+    expect(scannerContent).toContain("cameraRequested ? 'Scanning...' : 'Scan'");
+    expect(scannerContent).toMatch(/Scanning[\s\S]*Enter manually/);
     expect(scannerContent).toContain('trusted HTTPS address');
+  });
+
+  it('keeps automatic lookup active after the operator starts scanning', () => {
+    expect(scannerContent).toContain('onDetectedRef.current(code)');
+    [modalContent, posModalContent].forEach((content) => {
+      expect(content).toContain('handleExternalProductLookup(code)');
+    });
   });
 });

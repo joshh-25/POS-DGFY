@@ -165,4 +165,61 @@ describe('POS terminal readiness context', () => {
     expect(listIncomingOnlineOrders).not.toHaveBeenCalled();
     expect(listOpenTerminalShiftsForLocation).not.toHaveBeenCalled();
   });
+
+  it('rejects a role admin when explicit permissions omit location switching', async () => {
+    const listIncomingOnlineOrders = jest.fn();
+    const listOpenTerminalShiftsForLocation = jest.fn();
+    const useCase = buildGetAdminLocationMonitorUseCase({
+      posRepository: {
+        listIncomingOnlineOrders,
+        listOpenTerminalShiftsForLocation
+      }
+    });
+
+    const result = await useCase({
+      query: { location_id: 9 },
+      user: {
+        user_id: 7,
+        is_master_admin: false,
+        role: 'admin',
+        permissions: ['pos:view']
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.statusCode).toBe(403);
+    expect(listIncomingOnlineOrders).not.toHaveBeenCalled();
+    expect(listOpenTerminalShiftsForLocation).not.toHaveBeenCalled();
+  });
+
+  it('allows a cashier explicitly granted location switching permission', async () => {
+    const listIncomingOnlineOrders = jest.fn().mockResolvedValue([]);
+    const listOpenTerminalShiftsForLocation = jest.fn().mockResolvedValue([]);
+    const resolveLocationScope = jest.fn().mockResolvedValue({ location_id: 9 });
+    const useCase = buildGetAdminLocationMonitorUseCase({
+      posRepository: {
+        listIncomingOnlineOrders,
+        listOpenTerminalShiftsForLocation
+      },
+      resolveLocationScope
+    });
+
+    const result = await useCase({
+      query: { location_id: 9 },
+      user: {
+        user_id: 12,
+        is_master_admin: false,
+        role: 'cashier',
+        permissions: ['pos:view', 'pos:switch_location']
+      }
+    });
+
+    expect(result.success).toBe(true);
+    expect(resolveLocationScope).toHaveBeenCalledWith(expect.objectContaining({
+      requestedLocationId: 9,
+      userId: 12
+    }));
+    expect(listIncomingOnlineOrders).toHaveBeenCalledWith({ locationId: 9, limit: 200 });
+    expect(listOpenTerminalShiftsForLocation).toHaveBeenCalledWith({ locationId: 9 });
+  });
 });

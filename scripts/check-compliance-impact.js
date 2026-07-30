@@ -170,11 +170,27 @@ const PROMOTION_HEAD_BY_BASE = Object.freeze({
   main: new Set(['staging'])
 });
 
+// Release-candidate PRs into `main` carry an unmodified staging snapshot in
+// under a human-readable name (release/2026-07-30) instead of reusing the
+// literal `staging` ref -- see docs/ops/RELEASE_CANDIDATE_POLICY.md. Scoped
+// to `main` and to this one prefix, same reasoning as PROMOTION_HEAD_BY_BASE
+// above: a hotfix PR opened directly against main from an arbitrary branch
+// name (e.g. PR #83) must still get full per-declaration scrutiny, so this
+// must not become "anything into main".
+const PROMOTION_HEAD_PREFIX_BY_BASE = Object.freeze({
+  main: /^release\//
+});
+
 const isAggregatePromotionPr = () => {
   const baseRef = String(process.env.GITHUB_BASE_REF || '').trim();
   const headRef = String(process.env.GITHUB_HEAD_REF || '').trim();
+  if (!baseRef || !headRef) return false;
+
   const allowedHeads = PROMOTION_HEAD_BY_BASE[baseRef];
-  return Boolean(allowedHeads && allowedHeads.has(headRef));
+  if (allowedHeads && allowedHeads.has(headRef)) return true;
+
+  const allowedPrefix = PROMOTION_HEAD_PREFIX_BY_BASE[baseRef];
+  return Boolean(allowedPrefix && allowedPrefix.test(headRef));
 };
 
 const DECLARATION_FILE_PATTERN = /^docs\/compliance\/impact-declarations\/.+\.md$/;

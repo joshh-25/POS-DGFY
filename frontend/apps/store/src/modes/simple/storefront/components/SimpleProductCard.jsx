@@ -63,7 +63,18 @@ const SimpleProductCard = ({
         </div>
         <div style={{ marginTop: 'auto', display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-            <strong style={{ fontSize: 19, fontWeight: 800, color: accentDark, fontFamily: displayFont }}>{money(item.default_sale_price ?? 0)}</strong>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <strong style={{ fontSize: 19, fontWeight: 800, color: accentDark, fontFamily: displayFont }}>{money(item.default_sale_price ?? 0)}</strong>
+              {item.affiliate_price_applied && (
+                // Phase 1 affiliate pricing rule engine: a buyer arriving through an affiliate
+                // link sees a price that differs from the public catalog - this label is what
+                // stops that from reading as a bug (see
+                // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md).
+                <span style={{ fontSize: 10, fontWeight: 800, color: '#7c3aed', background: '#f3e8ff', borderRadius: 999, padding: '2px 7px' }}>
+                  Affiliate price
+                </span>
+              )}
+            </div>
             <span style={{ fontSize: 12, fontWeight: 700, color: available ? '#047857' : '#be123c' }}>{availabilityLabel}</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>

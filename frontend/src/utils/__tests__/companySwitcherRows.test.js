@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildCurrentCompanyFromUser,
+  getCompanyRoleLabel,
   mergeCurrentCompanyWithMemberships
 } from '../companySwitcherRows.js';
 
@@ -15,6 +16,16 @@ const user = {
 };
 
 describe('companySwitcherRows', () => {
+  it.each([
+    [{ ownership: 'owner', role: 'admin' }, 'Business Owner'],
+    [{ role: 'admin' }, 'Admin'],
+    [{ role: 'msme_manager' }, 'Manager'],
+    [{ role: 'fnb_cashier' }, 'Cashier'],
+    [{ role: 'inventory_auditor' }, 'Inventory Auditor']
+  ])('formats the company-specific role for the account selector', (company, expectedLabel) => {
+    expect(getCompanyRoleLabel(company)).toBe(expectedLabel);
+  });
+
   it('builds a current company row from the authenticated IMS user', () => {
     expect(buildCurrentCompanyFromUser(user)).toEqual(expect.objectContaining({
       membership_id: 'current-ims-session',

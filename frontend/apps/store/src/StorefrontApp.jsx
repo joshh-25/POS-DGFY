@@ -38,6 +38,8 @@ import { useCartMutations } from './shared/hooks/useCartMutations.js';
 import { useCheckoutAuthResumeRestore } from './shared/hooks/useCheckoutAuthResumeRestore.js';
 import { useCheckoutSubmission } from './shared/hooks/useCheckoutSubmission.js';
 import { useCustomerAuthNavigation } from './shared/hooks/useCustomerAuthNavigation.js';
+import { useDefaultOrderPageProps } from './shared/hooks/useDefaultOrderPageProps.js';
+import { useDefaultProductCartDrawerProps } from './shared/hooks/useDefaultProductCartDrawerProps.js';
 import { useDeliveryPinResolution } from './shared/hooks/useDeliveryPinResolution.js';
 import { useServiceBookingViewModel } from './shared/hooks/useServiceBookingViewModel.js';
 import { useStorefrontCartPersistence } from './shared/hooks/useStorefrontCartPersistence.js';
@@ -205,6 +207,7 @@ import { useServiceBookingFieldFocus } from './modes/services/booking/hooks/useS
 import { useServiceBookingReviewProps } from './modes/services/booking/hooks/useServiceBookingReviewProps.js';
 import { useServiceCartDrawerProps } from './modes/services/booking/hooks/useServiceCartDrawerProps.js';
 import { useSimpleCartDrawerProps } from './modes/simple/checkout/hooks/useSimpleCartDrawerProps.js';
+import { useSimpleCheckoutGating } from './modes/simple/checkout/hooks/useSimpleCheckoutGating.js';
 import { useSimpleCheckoutRouteProps } from './modes/simple/checkout/hooks/useSimpleCheckoutRouteProps.js';
 import { StoresMap } from './discovery/components/StoresMap.jsx';
 import {
@@ -285,6 +288,7 @@ import {
   writeStoreAuthToken
 } from './auth/storefrontSessionStorage.js';
 import { requestJson } from './services/requestJson.js';
+import { isKnownDgfyPlatformHost } from './shared/utils/storefrontPlatformHost.js';
 import { hasCustomerName, hasPrimaryContact, isCustomerStepComplete } from './checkout/checkoutValidation.js';
 import { buildFnbTrackingRouteProps } from './modes/fnb/tracking/model/buildFnbTrackingRouteProps.js';
 import {
@@ -345,6 +349,13 @@ export default function StorefrontApp() {
 
   useEffect(() => {
     if (routeSlug || typeof window === 'undefined') return undefined;
+    // This probe only ever resolves a context on an actual customer custom
+    // domain -- the backend's own hostname policy guarantees a 404 on
+    // dgfy.ph and its subdomains (see hostnamePolicy.js), which the frontend
+    // then discards anyway (see the `.then` chain below). Skipping it here
+    // avoids a false-positive 404 in the console/error dashboards on every
+    // anonymous root landing on the platform's own domain.
+    if (isKnownDgfyPlatformHost(window.location.hostname)) return undefined;
     let cancelled = false;
 
     fetch('/api/v1/store/domain-context', { credentials: 'include', cache: 'no-store' })
@@ -2511,6 +2522,33 @@ export default function StorefrontApp() {
     updateQty,
     withAssetOrigin
   });
+  const defaultProductCartDrawerProps = useDefaultProductCartDrawerProps({
+    activeOrderMethodLabel,
+    cart,
+    cartCount,
+    cartImageErrors,
+    cartTotal,
+    goStoreOrderPage,
+    isCheckoutOpen,
+    isMobileViewport,
+    money,
+    removeCartItem,
+    setCartImageErrors,
+    setIsCheckoutOpen,
+    updateQty,
+    withAssetOrigin
+  });
+  const defaultOrderRouteProps = useDefaultOrderPageProps({
+    cart,
+    cartCount,
+    isMobileViewport,
+    money,
+    selectedStore,
+    servicesBodyFont,
+    servicesDisplayFont,
+    goStoreCatalogPage,
+    withAssetOrigin
+  });
   const isFnbCartDrawerSurfaceOpen = Boolean(fnbCartDrawerRouteProps.isActive);
   const fnbCustomerStepComplete = fnbCustomerIdentityStepComplete && guestCheckoutOtpVerified;
   const fnbCheckoutRouteProps = useFnbCheckoutRouteProps({
@@ -2716,19 +2754,26 @@ export default function StorefrontApp() {
     setQuoteError,
     storefrontClosedByHours,
   ]);
-  const simpleCustomerStepComplete = isCustomerStepComplete({
+  const {
+    simpleCheckoutAllowed,
+    simpleCustomerStepComplete,
+    simpleHasCustomerIdentity,
+    simpleHasPrimaryIdentityContact,
+    simpleStepOneReady
+  } = useSimpleCheckoutGating({
+    cart,
+    checkoutAllowed,
+    customerAddress,
+    customerEmail,
     customerName,
     customerPhone,
-    customerEmail,
-    isDeliveryOrder,
-    customerAddress,
-    usePinnedAddress: false
+    fnbScheduleMode,
+    fnbScheduledFor,
+    isDeliveryOrder
   });
-  const simpleHasCustomerIdentity = hasCustomerName(customerName);
-  const simpleHasPrimaryIdentityContact = hasPrimaryContact({ phone: customerPhone, email: customerEmail });
-  const simpleStepOneReady = cart.length > 0;
-  const simpleCheckoutAllowed = checkoutAllowed && simpleCustomerStepComplete;
   const simpleCheckoutRouteProps = useSimpleCheckoutRouteProps({
+    applySavedDeliveryLocation,
+    canAddPinnedLocation,
     canUseGuestCheckoutFlow,
     cart,
     cartCount,
@@ -2737,16 +2782,23 @@ export default function StorefrontApp() {
     checkoutResult,
     customerAddress,
     customerPin,
+    deliveryLocationAction,
+    deliveryLocationDisplayAddress,
+    deliverySavedLocations,
     DropdownComponent: StorefrontDropdown,
     fnbPaymentType,
+    fnbScheduleMode,
     fnbScheduledFor,
     fnbSpecialInstructions,
     goStoreCatalogPage,
+    handleAddPinnedLocation,
     handleCheckout,
     handleDownloadCheckoutImage,
     handlePaymentTypeChange,
     handlePinMyLocation,
     handleQuote,
+    handleRemoveDeliveryAddress,
+    handleSetDefaultDeliveryAddress,
     isDeliveryOrder,
     isDesktopCheckout,
     isDgfyCustomerSignedIn,
@@ -2766,18 +2818,25 @@ export default function StorefrontApp() {
     requireQuoteForCheckout,
     selectedLocation,
     selectedLocationId,
+    selectedSavedLocationId,
     selectedStore,
     servicesBodyFont,
     servicesDisplayFont,
     setCheckoutResult,
     setCustomerAddress,
     setCustomerPin,
+    setDeliveryLocationAction,
     setFnbScheduledFor,
+    setFnbScheduleMode,
     setFnbSpecialInstructions,
     setOrderMethod,
     setPinLocationError,
+    setResolvedDeliveryAddress,
     setSelectedLocationId,
+    setSelectedSavedLocationId,
+    setShowExpandedDeliveryMap,
     setSimpleOrderStep,
+    showExpandedDeliveryMap,
     simpleCheckoutAllowed,
     simpleCustomerStepComplete,
     simpleHasCustomerIdentity,
@@ -3196,7 +3255,8 @@ export default function StorefrontApp() {
     setIsFnbCategoryDropdownOpen,
     simpleCheckoutRouteProps,
     simpleStorefrontModel,
-    defaultStorefrontModel
+    defaultStorefrontModel,
+    defaultOrderRouteProps
   });
   const storefrontHeroBandProps = useStorefrontHeroBandProps({
     selectedStore,
@@ -3271,6 +3331,7 @@ export default function StorefrontApp() {
     serviceCartFlyAnimations,
     isSimpleCartSurfaceMode,
     simpleCartDrawerProps,
+    defaultProductCartDrawerProps,
     serviceCartFabRef,
     isDesktopViewport,
     hasServiceCart,
@@ -3314,7 +3375,7 @@ export default function StorefrontApp() {
         width: '100%',
         boxSizing: 'border-box',
         margin: '0 auto',
-        paddingTop: isStorePage && (isServicesMode || isFnbMode || isSimpleMode) ? 0 : (isMobileViewport ? 6 : 10),
+        paddingTop: isStorePage && (isServicesMode || isFnbMode || isSimpleMode || (isResolvedOrderSubpage && !isServicesMode && !isFnbMode && !isSimpleMode)) ? 0 : (isMobileViewport ? 6 : 10),
         paddingRight: isStorePage && (isServicesMode || isFnbMode || isSimpleMode) ? 0 : (isMobileViewport ? 12 : 20),
         paddingLeft: isStorePage && (isServicesMode || isFnbMode || isSimpleMode) ? 0 : (isMobileViewport ? 12 : 20),
         paddingBottom: isStorePage ? ((isServicesMode || isFnbMode || isSimpleMode || !hasDiscoverySearch) ? 0 : (isMobileViewport ? 96 : 120)) : 0
@@ -3439,11 +3500,13 @@ export default function StorefrontApp() {
 
         {isStorePage && (
           <>
-            <StorefrontHeroBandContainer {...storefrontHeroBandProps} />
+            {!isFnbDetailsSubpage && (
+              <StorefrontHeroBandContainer {...storefrontHeroBandProps} />
+            )}
 
 
             {/* ZONE 4: Catalog Grid with Sidebar */}
-            {catalogPermitted && selectedStore && (
+            {(isFnbDetailsSubpage || (catalogPermitted && selectedStore)) && (
               <StorefrontCatalogRouteContainer {...storefrontCatalogRouteProps} />
             )}
           </>

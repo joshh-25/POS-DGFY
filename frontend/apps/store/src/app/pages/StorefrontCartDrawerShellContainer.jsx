@@ -1,9 +1,10 @@
 import React from 'react';
 import { StorefrontFollowFloatingAction } from '../../shared/components/storefront/StorefrontFollowFloatingAction.jsx';
 import { StorefrontCartFab } from '../../shared/components/storefront/StorefrontCartFab.jsx';
+import { DefaultProductCartFab } from '../../shared/components/storefront/DefaultProductCartFab.jsx';
+import { DefaultProductCartDrawer } from '../../shared/components/storefront/DefaultProductCartDrawer.jsx';
 import { StorefrontCartFlyAnimations } from '../../shared/components/StorefrontCartFlyAnimations.jsx';
 import { StorefrontCheckoutDrawerFrame } from '../../shared/components/StorefrontCheckoutDrawerFrame.jsx';
-import { StorefrontCheckoutSummaryContainer } from '../../shared/components/StorefrontCheckoutSummaryContainer.jsx';
 import { StorefrontOrderSuccessOverlay } from '../../shared/components/storefront/StorefrontOrderSuccessOverlay.jsx';
 import { DGFY_BRAND_NAME } from '../../shared/model/storefrontConstants.js';
 import { parseBooleanFlag } from '../../shared/model/storefrontJsonModel.js';
@@ -38,6 +39,7 @@ export function StorefrontCartDrawerShellContainer(props) {
     serviceCartFlyAnimations,
     isSimpleCartSurfaceMode,
     simpleCartDrawerProps,
+    defaultProductCartDrawerProps,
     serviceCartFabRef,
     isDesktopViewport,
     hasServiceCart,
@@ -68,10 +70,14 @@ export function StorefrontCartDrawerShellContainer(props) {
     checkoutTab,
     fnbCheckoutRouteProps,
     serviceBookingReviewProps,
-    storefrontCheckoutSummaryProps,
     fnbTrackingRouteProps,
     showOrderSuccessAnimation
   } = props;
+
+  // Any industry that isn't F&B/Services/Simple (retail, hospitality, healthcare, etc.) — the
+  // mode DefaultProductCartFab/DefaultProductCartDrawer serve, replacing StorefrontCartFab's
+  // default branch for this mode only.
+  const isDefaultCartSurfaceMode = !isFnbMode && !isServicesMode && !isSimpleMode;
 
   return (
     <>
@@ -94,6 +100,14 @@ export function StorefrontCartDrawerShellContainer(props) {
           <SimpleCartDrawerSurface {...simpleCartDrawerProps.drawerSurfaceProps} />
         </>
       )}
+      {!isAccountDrawerOpen && isDefaultCartSurfaceMode && (
+        <>
+          <DefaultProductCartFab {...defaultProductCartDrawerProps.floatingButtonProps} />
+
+          <DefaultProductCartDrawer {...defaultProductCartDrawerProps.drawerSurfaceProps} />
+        </>
+      )}
+      {!isDefaultCartSurfaceMode && (
       <StorefrontCartFab
         serviceCartFabRef={serviceCartFabRef}
         isFnbMode={isFnbMode}
@@ -121,6 +135,7 @@ export function StorefrontCartDrawerShellContainer(props) {
         money={money}
         cartTotal={cartTotal}
       />
+      )}
 
         <FnbCartDrawerSurface
           cartCount={cartCount}
@@ -134,7 +149,7 @@ export function StorefrontCartDrawerShellContainer(props) {
         <StorefrontCheckoutDrawerFrame
           compactMode={isFnbMode || isSimpleMode}
           desktop={isDesktopCheckout}
-          disabled={isFnbCartDrawerSurfaceOpen || isServicesCartDrawerMode || isSimpleCartSurfaceMode || (isSimpleMode && isResolvedOrderSubpage)}
+          disabled={isFnbCartDrawerSurfaceOpen || isServicesCartDrawerMode || isSimpleCartSurfaceMode || isDefaultCartSurfaceMode || (isSimpleMode && isResolvedOrderSubpage)}
           fullPage={isFnbOrderSubpage}
           headerContent={(
             <div>
@@ -211,10 +226,6 @@ export function StorefrontCartDrawerShellContainer(props) {
 
             {checkoutTab === 'review' && hasServiceCart && !isServicesMode && (
               <ServiceBookingReviewContainer {...serviceBookingReviewProps} />
-            )}
-
-            {checkoutTab === 'checkout' && !isFnbOrderSubpage && !isFnbMode && !isServicesMode && !(isSimpleMode && isResolvedOrderSubpage) && (
-              <StorefrontCheckoutSummaryContainer {...storefrontCheckoutSummaryProps} />
             )}
 
             <FnbTrackingRouteContainer {...fnbTrackingRouteProps} renderDrawer={false} />

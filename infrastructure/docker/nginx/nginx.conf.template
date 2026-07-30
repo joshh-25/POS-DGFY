@@ -33,6 +33,10 @@
 # other reason -- a "502 Bad Gateway" that only a manual `nginx -s reload`
 # fixes. Routing through a variable forces nginx to actually consult the
 # `resolver` directive (Docker's embedded DNS) on each connection.
+#
+# Production and beta share this single container: the beta domain group
+# below proxies to the `frontend-beta` service, the PRODUCTION domain group
+# further down proxies to `frontend` -- both share the same `backend`.
 
 resolver 127.0.0.11 valid=10s;
 
@@ -62,7 +66,7 @@ server {
 # issuance and renewal), redirect everything else to HTTPS.
 server {
     listen 80;
-    server_name ${SKUPERVISOR_DOMAIN} ${POS_DOMAIN} ${STOREFRONT_DOMAIN} ${STOREFRONT_ALT_DOMAIN};
+    server_name ${SKUPERVISOR_DOMAIN} ${POS_DOMAIN} ${STOREFRONT_DOMAIN} ${STOREFRONT_ALT_DOMAIN} ${SKUPERVISOR_DOMAIN_PROD} ${POS_DOMAIN_PROD} ${STOREFRONT_DOMAIN_PROD};
 
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
@@ -83,6 +87,29 @@ server {
 
     location /api {
         set $backend_upstream backend:5000;
+        proxy_pass http://$backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # Batch menu import upload -- a dedicated location rather than a global
+    # client_max_body_size bump above, since this is the one endpoint that
+    # intentionally accepts up to MENU_IMPORT_MAX_FILES_PER_BATCH PDFs/photos
+    # in a single multipart request (~20 files x ~2MB post-compression budget
+    # = ~40MB; 64m leaves headroom). proxy_read_timeout is raised too, though
+    # in practice the upload use case only writes to Redis and returns a
+    # job_id -- extraction itself runs asynchronously in
+    # workers/menuImportWorker.js, not inline in this request.
+    location = /api/v1/items/import/menu/jobs {
+        set $backend_upstream backend:5000;
+        client_max_body_size 64m;
+        proxy_read_timeout 120s;
         proxy_pass http://$backend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -170,7 +197,7 @@ server {
     }
 
     location / {
-        set $frontend_upstream frontend:8081;
+        set $frontend_upstream frontend-beta:8081;
         proxy_pass http://$frontend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -193,6 +220,29 @@ server {
 
     location /api {
         set $backend_upstream backend:5000;
+        proxy_pass http://$backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # Batch menu import upload -- a dedicated location rather than a global
+    # client_max_body_size bump above, since this is the one endpoint that
+    # intentionally accepts up to MENU_IMPORT_MAX_FILES_PER_BATCH PDFs/photos
+    # in a single multipart request (~20 files x ~2MB post-compression budget
+    # = ~40MB; 64m leaves headroom). proxy_read_timeout is raised too, though
+    # in practice the upload use case only writes to Redis and returns a
+    # job_id -- extraction itself runs asynchronously in
+    # workers/menuImportWorker.js, not inline in this request.
+    location = /api/v1/items/import/menu/jobs {
+        set $backend_upstream backend:5000;
+        client_max_body_size 64m;
+        proxy_read_timeout 120s;
         proxy_pass http://$backend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -260,7 +310,7 @@ server {
     # This matches confirmed live production behavior, not an oversight.
 
     location / {
-        set $frontend_upstream frontend:8082;
+        set $frontend_upstream frontend-beta:8082;
         proxy_pass http://$frontend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
@@ -294,11 +344,476 @@ server {
         proxy_cache_bypass $http_upgrade;
     }
 
+    # Batch menu import upload -- a dedicated location rather than a global
+    # client_max_body_size bump above, since this is the one endpoint that
+    # intentionally accepts up to MENU_IMPORT_MAX_FILES_PER_BATCH PDFs/photos
+    # in a single multipart request (~20 files x ~2MB post-compression budget
+    # = ~40MB; 64m leaves headroom). proxy_read_timeout is raised too, though
+    # in practice the upload use case only writes to Redis and returns a
+    # job_id -- extraction itself runs asynchronously in
+    # workers/menuImportWorker.js, not inline in this request.
+    location = /api/v1/items/import/menu/jobs {
+        set $backend_upstream backend:5000;
+        client_max_body_size 64m;
+        proxy_read_timeout 120s;
+        proxy_pass http://$backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
     location /uploads {
         set $backend_upstream backend:5000;
         proxy_pass http://$backend_upstream;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Same-origin PostHog (EU cloud) proxy -- see
+    # frontend/src/observability/analyticsClient.js and
+    # docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md.
+    # Same three locations as the skupervisor/POS server blocks above.
+    location /ingest/static/ {
+        set $posthog_assets_upstream eu-assets.i.posthog.com;
+        rewrite ^/ingest/static/(.*)$ /static/$1 break;
+        proxy_pass https://$posthog_assets_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $posthog_assets_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /ingest/array/ {
+        set $posthog_assets_upstream eu-assets.i.posthog.com;
+        rewrite ^/ingest/array/(.*)$ /array/$1 break;
+        proxy_pass https://$posthog_assets_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $posthog_assets_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /ingest/ {
+        set $posthog_upstream eu.i.posthog.com;
+        rewrite ^/ingest/(.*)$ /$1 break;
+        proxy_pass https://$posthog_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $posthog_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /openfreemap/ {
+        set $openfreemap_upstream tiles.openfreemap.org;
+        rewrite ^/openfreemap/(.*)$ /$1 break;
+        proxy_pass https://$openfreemap_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $openfreemap_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /tenant-store {
+        return 301 /tenant-store/;
+    }
+
+    location /tenant-store/ {
+        set $frontend_upstream frontend-beta:8083;
+        rewrite ^/tenant-store/(.*)$ /$1 break;
+        proxy_pass http://$frontend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # Hand-provisioned custom-domain redirect predating the generalized
+    # custom-storefronts registry (`include /etc/nginx/custom-storefronts/*.conf`
+    # above) -- confirmed live on dgfy-gha 2026-07-28, carried over verbatim
+    # during nginx.conf.template/live reconciliation. Do not remove or alter
+    # without confirming bar.space.com.ph has been migrated to the registry.
+    location = / {
+        if ($host = bar.space.com.ph) {
+            return 302 /tenant-store/space-bar-iloilo-d90073;
+        }
+
+        set $frontend_upstream frontend-beta:8083;
+        proxy_pass http://$frontend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location / {
+        set $frontend_upstream frontend-beta:8083;
+        proxy_pass http://$frontend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+# ============================================================================
+# PRODUCTION domain group (dgfy.ph / skupervisor.dgfy.ph / pos.dgfy.ph).
+# Mirrors the beta blocks above but serves the PROD frontend container
+# (`frontend`, prod VITE_* baked in) and uses the separate ${CERT_DOMAIN_PROD}
+# certificate. /api + /uploads proxy to the SAME shared `backend:5000`.
+# ============================================================================
+
+server {
+    listen 443 ssl;
+    server_name ${SKUPERVISOR_DOMAIN_PROD};
+    client_max_body_size 8m;
+
+    ssl_certificate /etc/letsencrypt/live/${CERT_DOMAIN_PROD}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN_PROD}/privkey.pem;
+
+    location /api {
+        set $backend_upstream backend:5000;
+        proxy_pass http://$backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # Batch menu import upload -- a dedicated location rather than a global
+    # client_max_body_size bump above, since this is the one endpoint that
+    # intentionally accepts up to MENU_IMPORT_MAX_FILES_PER_BATCH PDFs/photos
+    # in a single multipart request (~20 files x ~2MB post-compression budget
+    # = ~40MB; 64m leaves headroom). proxy_read_timeout is raised too, though
+    # in practice the upload use case only writes to Redis and returns a
+    # job_id -- extraction itself runs asynchronously in
+    # workers/menuImportWorker.js, not inline in this request.
+    location = /api/v1/items/import/menu/jobs {
+        set $backend_upstream backend:5000;
+        client_max_body_size 64m;
+        proxy_read_timeout 120s;
+        proxy_pass http://$backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location /uploads {
+        set $backend_upstream backend:5000;
+        proxy_pass http://$backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Same-origin PostHog (EU cloud) proxy -- see
+    # frontend/src/observability/analyticsClient.js and
+    # docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md and
+    # docs/ops/PRODUCTION_READINESS_POSTHOG_AND_NGINX_DRIFT.md. Same three
+    # locations as the beta skupervisor/POS/storefront server blocks above.
+    location /ingest/static/ {
+        set $posthog_assets_upstream eu-assets.i.posthog.com;
+        rewrite ^/ingest/static/(.*)$ /static/$1 break;
+        proxy_pass https://$posthog_assets_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $posthog_assets_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /ingest/array/ {
+        set $posthog_assets_upstream eu-assets.i.posthog.com;
+        rewrite ^/ingest/array/(.*)$ /array/$1 break;
+        proxy_pass https://$posthog_assets_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $posthog_assets_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /ingest/ {
+        set $posthog_upstream eu.i.posthog.com;
+        rewrite ^/ingest/(.*)$ /$1 break;
+        proxy_pass https://$posthog_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $posthog_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /openfreemap/ {
+        set $openfreemap_upstream tiles.openfreemap.org;
+        rewrite ^/openfreemap/(.*)$ /$1 break;
+        proxy_pass https://$openfreemap_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $openfreemap_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        set $frontend_upstream frontend:8081;
+        proxy_pass http://$frontend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name ${POS_DOMAIN_PROD};
+    client_max_body_size 8m;
+
+    ssl_certificate /etc/letsencrypt/live/${CERT_DOMAIN_PROD}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN_PROD}/privkey.pem;
+
+    location /api {
+        set $backend_upstream backend:5000;
+        proxy_pass http://$backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # Batch menu import upload -- a dedicated location rather than a global
+    # client_max_body_size bump above, since this is the one endpoint that
+    # intentionally accepts up to MENU_IMPORT_MAX_FILES_PER_BATCH PDFs/photos
+    # in a single multipart request (~20 files x ~2MB post-compression budget
+    # = ~40MB; 64m leaves headroom). proxy_read_timeout is raised too, though
+    # in practice the upload use case only writes to Redis and returns a
+    # job_id -- extraction itself runs asynchronously in
+    # workers/menuImportWorker.js, not inline in this request.
+    location = /api/v1/items/import/menu/jobs {
+        set $backend_upstream backend:5000;
+        client_max_body_size 64m;
+        proxy_read_timeout 120s;
+        proxy_pass http://$backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location /uploads {
+        set $backend_upstream backend:5000;
+        proxy_pass http://$backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Same-origin PostHog (EU cloud) proxy -- see
+    # frontend/src/observability/analyticsClient.js and
+    # docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md and
+    # docs/ops/PRODUCTION_READINESS_POSTHOG_AND_NGINX_DRIFT.md. Same three
+    # locations as the beta skupervisor/POS/storefront server blocks above.
+    location /ingest/static/ {
+        set $posthog_assets_upstream eu-assets.i.posthog.com;
+        rewrite ^/ingest/static/(.*)$ /static/$1 break;
+        proxy_pass https://$posthog_assets_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $posthog_assets_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /ingest/array/ {
+        set $posthog_assets_upstream eu-assets.i.posthog.com;
+        rewrite ^/ingest/array/(.*)$ /array/$1 break;
+        proxy_pass https://$posthog_assets_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $posthog_assets_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /ingest/ {
+        set $posthog_upstream eu.i.posthog.com;
+        rewrite ^/ingest/(.*)$ /$1 break;
+        proxy_pass https://$posthog_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $posthog_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # POS intentionally has no /openfreemap proxy -- mirrors the beta pos block.
+
+    location / {
+        set $frontend_upstream frontend:8082;
+        proxy_pass http://$frontend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+server {
+    listen 443 ssl;
+    server_name ${STOREFRONT_DOMAIN_PROD};
+    client_max_body_size 8m;
+
+    ssl_certificate /etc/letsencrypt/live/${CERT_DOMAIN_PROD}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN_PROD}/privkey.pem;
+
+    location /api {
+        set $backend_upstream backend:5000;
+        proxy_pass http://$backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    # Batch menu import upload -- a dedicated location rather than a global
+    # client_max_body_size bump above, since this is the one endpoint that
+    # intentionally accepts up to MENU_IMPORT_MAX_FILES_PER_BATCH PDFs/photos
+    # in a single multipart request (~20 files x ~2MB post-compression budget
+    # = ~40MB; 64m leaves headroom). proxy_read_timeout is raised too, though
+    # in practice the upload use case only writes to Redis and returns a
+    # job_id -- extraction itself runs asynchronously in
+    # workers/menuImportWorker.js, not inline in this request.
+    location = /api/v1/items/import/menu/jobs {
+        set $backend_upstream backend:5000;
+        client_max_body_size 64m;
+        proxy_read_timeout 120s;
+        proxy_pass http://$backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location /uploads {
+        set $backend_upstream backend:5000;
+        proxy_pass http://$backend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Same-origin PostHog (EU cloud) proxy -- see
+    # frontend/src/observability/analyticsClient.js and
+    # docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md and
+    # docs/ops/PRODUCTION_READINESS_POSTHOG_AND_NGINX_DRIFT.md. This is the
+    # block that was missing in production, causing DGFY-STORE-1
+    # (SyntaxError: Unexpected token '<' on /ingest/array/.../config.js --
+    # the request fell through to `location /` and got index.html back).
+    location /ingest/static/ {
+        set $posthog_assets_upstream eu-assets.i.posthog.com;
+        rewrite ^/ingest/static/(.*)$ /static/$1 break;
+        proxy_pass https://$posthog_assets_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $posthog_assets_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /ingest/array/ {
+        set $posthog_assets_upstream eu-assets.i.posthog.com;
+        rewrite ^/ingest/array/(.*)$ /array/$1 break;
+        proxy_pass https://$posthog_assets_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $posthog_assets_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location /ingest/ {
+        set $posthog_upstream eu.i.posthog.com;
+        rewrite ^/ingest/(.*)$ /$1 break;
+        proxy_pass https://$posthog_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $posthog_upstream;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;

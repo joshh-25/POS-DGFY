@@ -7,9 +7,10 @@ import { getAdminCredentials } from '../../../config/adminAuthConfig.js';
 export const buildAdminLoginUseCase = ({
   jwtSecretProvider,
   adminCredentialsProvider = getAdminCredentials,
-  lockoutPolicy = null
+  lockoutPolicy = null,
+  platformAdminRepository = null
 }) => {
-  return async ({ username, password, sourceIp = 'unknown-ip' }) => {
+  return async ({ username, password, sourceIp = 'unknown-ip', userAgent = '' }) => {
     if (!username || !password) {
       return fail(new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
@@ -37,9 +38,25 @@ export const buildAdminLoginUseCase = ({
     }
 
     const usernameMatches = normalizedInputUsername === normalizedConfiguredUsername;
-    const passwordMatches = await bcrypt.compare(String(password), passwordHash);
+    const configuredPasswordMatches = usernameMatches
+      ? await bcrypt.compare(String(password), passwordHash)
+      : false;
+    let platformUser = null;
+    if (platformAdminRepository) {
+      // Never reconcile the bootstrap identity from an unauthenticated request.
+      // A changed environment hash is applied only after the caller proves they
+      // know the configured bootstrap password.
+      platformUser = usernameMatches && configuredPasswordMatches
+        ? await platformAdminRepository.ensureBootstrapMaster({ username: normalizedConfiguredUsername, passwordHash })
+        : (!usernameMatches ? await platformAdminRepository.findActiveByUsername(normalizedInputUsername) : null);
+    }
+    // Always compare a bcrypt hash, including unknown users, to avoid an observable
+    // user-existence timing oracle. The configured master hash is safe as a fallback.
+    const passwordMatches = usernameMatches
+      ? configuredPasswordMatches
+      : await bcrypt.compare(String(password), platformUser?.password_hash || passwordHash);
 
-    if (!usernameMatches || !passwordMatches) {
+    if ((!platformAdminRepository && !usernameMatches) || !passwordMatches || (platformAdminRepository && !platformUser)) {
       await lockoutPolicy?.registerFailure?.(identityKey);
       return fail(new DomainError(
         DomainErrorCode.AUTHENTICATION_FAILED,
@@ -50,19 +67,29 @@ export const buildAdminLoginUseCase = ({
     await lockoutPolicy?.clear?.(identityKey);
 
     try {
-      const token = jwt.sign(
-        {
-          username: normalizedConfiguredUsername,
-          role: 'admin',
-          type: 'admin'
-        },
+      const session = platformAdminRepository
+        ? await platformAdminRepository.createSession({ user: platformUser, sourceIp, userAgent })
+        : null;
+      const token = jwt.sign(platformAdminRepository ? {
+        admin_id: platformUser.id,
+        session_id: session.id,
+        auth_version: platformUser.auth_version,
+        type: 'platform_admin'
+      } : {
+        username: normalizedConfiguredUsername, role: 'admin', type: 'admin'
+      },
         jwtSecretProvider(),
         { expiresIn: '8h' }
       );
 
+      const permissions = platformAdminRepository && !platformUser.is_master
+        ? await platformAdminRepository.listPermissionKeys(platformUser.id)
+        : [];
       return ok({
         token,
-        admin: { username: normalizedConfiguredUsername }
+        admin: platformAdminRepository
+          ? platformAdminRepository.publicUser(platformUser, permissions)
+          : { username: normalizedConfiguredUsername }
       });
     } catch (error) {
       return fail(new DomainError(

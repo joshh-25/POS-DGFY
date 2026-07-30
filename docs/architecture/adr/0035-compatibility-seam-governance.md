@@ -1,3 +1,14 @@
+---
+status: accepted
+authority_level: authoritative
+owner: architecture
+date: 2026-07-12
+last_reviewed: 2026-07-12
+review_by: 2027-01-12
+applies_to: architecture_decision
+topic: compatibility_seam_governance
+---
+
 # ADR 0035: Compatibility-Seam Governance
 
 ## Status
@@ -20,13 +31,19 @@ and `apps/dgfy-migration-runner/` node_modules, and is entirely absent from the 
 CONTEXT-sanctioned JSON fallback avoided adding any new dependency.
 
 ## Decision
+
+> **Strictness tiers (ADR 0039).** Clauses below are tagged `[binding]`, `[default]`,
+> or `[snapshot]`. `binding` needs a superseding ADR to change; `default` needs an
+> amendment block in the implementing PR; `snapshot` is documentation and may be
+> updated by ordinary work. Untagged clauses elsewhere in this document are `default`.
+
 1. **JSON manifest as the single source of truth (D-03/D-04).** `docs/architecture/compatibility-seams.json`
    holds `version` + a `seams[]` array; each seam carries `id`, `type`, `status`, `rationale`,
    `tests`, `rollback`, and `removal_criteria`. The JSON fallback was adopted over YAML because no
    package in the repo declares a YAML parser as a direct dependency (only transitive copies exist
    in `backend/`, `apps/dgfy-api/`, and `apps/dgfy-migration-runner/`), and JSON requires zero new
    dependencies while matching the runner's existing JSON manifest/report conventions
-   (`scripts/check-compat-seams.js`, `scripts/generate-compat-inventory.js`).
+   (`scripts/check-compat-seams.js`, `scripts/generate-compat-inventory.js`). `[binding]`
 2. **Mechanical CI acceptance gate (D-06).** `scripts/check-compat-seams.js` validates manifest
    schema, gates completeness for `active`/`accepted` seams, checks `tests` path-safety, and
    bidirectionally reconciles in-code `@compat-seam id=<id>` markers against manifest entries. The
@@ -34,7 +51,7 @@ CONTEXT-sanctioned JSON fallback avoided adding any new dependency.
    compatibility-seam manifest gate" step) and `.husky/pre-commit` (`--staged` mode) — one
    validator, one manifest, no drift between local and CI enforcement. A code-level seam with no
    complete, matching manifest entry fails the build; an `active`/`accepted` manifest entry with no
-   matching code marker also fails the build (in full-tree/CI mode).
+   matching code marker also fails the build (in full-tree/CI mode). `[binding]`
 3. **Guardrail extension confining compatibility/continuity code out of the domain layer (D-05).**
    `backend/scripts/check-architecture-guardrails.js` was extended in place — not forked — with a
    `COMPAT_IMPORT_PATTERN` and a new `domainCompatLeak` violation bucket. The guardrail previously
@@ -42,7 +59,7 @@ CONTEXT-sanctioned JSON fallback avoided adding any new dependency.
    would have passed undetected. The extension adds an `entities/` scan alongside the existing
    `usecases/` scan, so both domain-layer directories are covered. A sibling ESLint
    `no-restricted-imports` block in `apps/dgfy-api/eslint.config.mjs` bans the same import groups
-   declaratively, mirroring the existing controllers→models ban.
+   declaratively, mirroring the existing controllers→models ban. `[binding]`
 
 ## Consequences
 1. Every compatibility/continuity seam has a single, machine-validated governance record; Phase 6

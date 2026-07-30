@@ -24,8 +24,8 @@ export function SimpleCheckoutPaymentStep({
   onQuote
 }) {
   return (
-    <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
-      <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Step 3: Review and Payment</div>
+    <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 14 }}>
+      <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>Step 3: Review & Payment</div>
       <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Review the cart, refresh the quote when needed, then choose payment and submit the order.</div>
       <PaymentMethodSelectorBlock
         label="Payment Type"

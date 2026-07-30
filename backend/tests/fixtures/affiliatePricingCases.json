@@ -1,0 +1,260 @@
+{
+  "_comment": "Canonical acceptance fixtures translated from the external affiliate-pricing-spec pack's 04-acceptance-tests.md (originally decimal pesos and percentage points) into integer centavos and basis points, per decision B5. Consumed by backend/tests/affiliatePricingPolicy.unit.test.js and mirrored by the frontend live-preview test (Stage G) so both sides are provably computing the same thing - this is what satisfies the external pack's Test 16 ('mobile preview matches final calculation').",
+
+  "calculationCases": [
+    {
+      "id": "test-1-percentage-markup",
+      "description": "Percentage markup reproduces the recording's base ₱50 -> ₱55 example",
+      "input": {
+        "basePriceCentavos": 5000,
+        "quantity": 1,
+        "sellingPriceRule": { "type": "PERCENTAGE_MARKUP", "rateBps": 1000 },
+        "commissionRule": { "type": "NONE" }
+      },
+      "expected": {
+        "buyerUnitPriceCentavos": 5500,
+        "buyerTotalCentavos": 5500,
+        "priceAdjustmentCentavos": 500,
+        "resellerMarginCentavos": 0,
+        "baseCommissionAmountCentavos": 0,
+        "totalAffiliateEarningsCentavos": 0
+      }
+    },
+    {
+      "id": "test-2-exact-reseller-price",
+      "description": "Exact reseller selling price: buyer pays ₱120, affiliate keeps the ₱20 margin over the ₱100 base",
+      "input": {
+        "basePriceCentavos": 10000,
+        "quantity": 1,
+        "sellingPriceRule": { "type": "EXACT_AFFILIATE_PRICE", "amountCentavos": 12000 },
+        "commissionRule": { "type": "RESELLER_MARGIN" }
+      },
+      "expected": {
+        "buyerUnitPriceCentavos": 12000,
+        "buyerTotalCentavos": 12000,
+        "resellerMarginCentavos": 2000,
+        "baseCommissionAmountCentavos": 0,
+        "totalAffiliateEarningsCentavos": 2000,
+        "merchantBaseAmountCentavos": 10000
+      }
+    },
+    {
+      "id": "test-3-commission-added-to-buyer-price",
+      "description": "Sell at ₱110 (10% markup), merchant base ₱100, affiliate commission ₱10",
+      "input": {
+        "basePriceCentavos": 10000,
+        "quantity": 1,
+        "sellingPriceRule": { "type": "PERCENTAGE_MARKUP", "rateBps": 1000 },
+        "commissionRule": { "type": "PERCENTAGE_OF_BASE", "rateBps": 1000 },
+        "settlementPolicy": "COMMISSION_ADDED_TO_BUYER_PRICE"
+      },
+      "expected": {
+        "buyerUnitPriceCentavos": 11000,
+        "buyerTotalCentavos": 11000,
+        "baseCommissionAmountCentavos": 1000,
+        "totalAffiliateEarningsCentavos": 1000,
+        "merchantNetCentavos": 10000
+      }
+    },
+    {
+      "id": "test-4-percentage-discount-only",
+      "description": "Percentage discount only, no commission, merchant-funded",
+      "input": {
+        "basePriceCentavos": 10000,
+        "quantity": 1,
+        "sellingPriceRule": { "type": "PERCENTAGE_DISCOUNT", "rateBps": 1000 },
+        "commissionRule": { "type": "NONE" },
+        "settlementPolicy": "MERCHANT_FUNDED"
+      },
+      "expected": {
+        "buyerUnitPriceCentavos": 9000,
+        "buyerTotalCentavos": 9000,
+        "priceAdjustmentCentavos": -1000,
+        "totalAffiliateEarningsCentavos": 0,
+        "merchantNetCentavos": 9000
+      }
+    },
+    {
+      "id": "test-5-exact-affiliate-price-below-base",
+      "description": "Exact affiliate price below base price (the ₱95 discounted affiliate example)",
+      "input": {
+        "basePriceCentavos": 10000,
+        "quantity": 1,
+        "sellingPriceRule": { "type": "EXACT_AFFILIATE_PRICE", "amountCentavos": 9500 },
+        "commissionRule": { "type": "NONE" },
+        "settlementPolicy": "MERCHANT_FUNDED"
+      },
+      "expected": {
+        "buyerUnitPriceCentavos": 9500,
+        "priceAdjustmentCentavos": -500,
+        "merchantNetCentavos": 9500
+      }
+    },
+    {
+      "id": "test-6-discount-plus-base-price-commission",
+      "description": "Discount plus base-price commission, valid only once a settlement policy is chosen",
+      "input": {
+        "basePriceCentavos": 10000,
+        "quantity": 1,
+        "sellingPriceRule": { "type": "PERCENTAGE_DISCOUNT", "rateBps": 1000 },
+        "commissionRule": { "type": "PERCENTAGE_OF_BASE", "rateBps": 500 },
+        "settlementPolicy": "MERCHANT_FUNDED"
+      },
+      "expected": {
+        "buyerUnitPriceCentavos": 9000,
+        "baseCommissionAmountCentavos": 500,
+        "totalAffiliateEarningsCentavos": 500,
+        "merchantNetCentavos": 8500
+      }
+    },
+    {
+      "id": "test-6b-discount-plus-commission-without-settlement-policy-is-blocked",
+      "description": "Same as test 6 but with no settlement policy supplied - must fail closed (decision A13), never silently invent a merchant net",
+      "input": {
+        "basePriceCentavos": 10000,
+        "quantity": 1,
+        "sellingPriceRule": { "type": "PERCENTAGE_DISCOUNT", "rateBps": 1000 },
+        "commissionRule": { "type": "PERCENTAGE_OF_BASE", "rateBps": 500 }
+      },
+      "expectedError": "UNRESOLVED_SETTLEMENT_POLICY"
+    },
+    {
+      "id": "test-7-fixed-markup",
+      "description": "Fixed markup: base price + ₱50",
+      "input": {
+        "basePriceCentavos": 10000,
+        "quantity": 1,
+        "sellingPriceRule": { "type": "FIXED_MARKUP", "amountCentavos": 5000 },
+        "commissionRule": { "type": "NONE" }
+      },
+      "expected": {
+        "buyerUnitPriceCentavos": 15000,
+        "priceAdjustmentCentavos": 5000
+      }
+    },
+    {
+      "id": "test-8-fixed-discount",
+      "description": "Fixed discount: base price - ₱10",
+      "input": {
+        "basePriceCentavos": 10000,
+        "quantity": 1,
+        "sellingPriceRule": { "type": "FIXED_DISCOUNT", "amountCentavos": 1000 },
+        "commissionRule": { "type": "NONE" }
+      },
+      "expected": {
+        "buyerUnitPriceCentavos": 9000,
+        "priceAdjustmentCentavos": -1000
+      }
+    },
+    {
+      "id": "test-9-base-commission-below-first-volume-tier",
+      "description": "5% base commission, accumulated volume just under the first ₱50,000 tier threshold",
+      "input": {
+        "basePriceCentavos": 10000,
+        "quantity": 1,
+        "commissionRule": { "type": "PERCENTAGE_OF_BASE", "rateBps": 500 },
+        "currentQualifiedVolumeCentavos": 4999999,
+        "volumeTiers": [
+          { "minimumVolumeCentavos": 5000000, "bonusPercentagePoints": 1 },
+          { "minimumVolumeCentavos": 10000000, "bonusPercentagePoints": 2 }
+        ]
+      },
+      "expected": {
+        "baseCommissionRateBps": 500,
+        "tierBonusRateBps": 0,
+        "totalCommissionRateBps": 500,
+        "baseCommissionAmountCentavos": 500,
+        "tierBonusAmountCentavos": 0,
+        "totalAffiliateEarningsCentavos": 500
+      }
+    },
+    {
+      "id": "test-10-first-volume-tier",
+      "description": "Accumulated volume exactly at the first ₱50,000 tier threshold: +1 percentage point",
+      "input": {
+        "basePriceCentavos": 10000,
+        "quantity": 1,
+        "commissionRule": { "type": "PERCENTAGE_OF_BASE", "rateBps": 500 },
+        "currentQualifiedVolumeCentavos": 5000000,
+        "volumeTiers": [
+          { "minimumVolumeCentavos": 5000000, "bonusPercentagePoints": 1 },
+          { "minimumVolumeCentavos": 10000000, "bonusPercentagePoints": 2 }
+        ]
+      },
+      "expected": {
+        "baseCommissionRateBps": 500,
+        "tierBonusRateBps": 100,
+        "totalCommissionRateBps": 600,
+        "baseCommissionAmountCentavos": 500,
+        "tierBonusAmountCentavos": 100,
+        "totalAffiliateEarningsCentavos": 600
+      }
+    },
+    {
+      "id": "test-11-second-volume-tier",
+      "description": "Accumulated volume at the second ₱100,000 tier threshold: highest tier wins (+2 points, not +1+2)",
+      "input": {
+        "basePriceCentavos": 10000,
+        "quantity": 1,
+        "commissionRule": { "type": "PERCENTAGE_OF_BASE", "rateBps": 500 },
+        "currentQualifiedVolumeCentavos": 10000000,
+        "volumeTiers": [
+          { "minimumVolumeCentavos": 5000000, "bonusPercentagePoints": 1 },
+          { "minimumVolumeCentavos": 10000000, "bonusPercentagePoints": 2 }
+        ]
+      },
+      "expected": {
+        "baseCommissionRateBps": 500,
+        "tierBonusRateBps": 200,
+        "totalCommissionRateBps": 700,
+        "baseCommissionAmountCentavos": 500,
+        "tierBonusAmountCentavos": 200,
+        "totalAffiliateEarningsCentavos": 700
+      }
+    }
+  ],
+
+  "priceRuleValidationCases": [
+    {
+      "id": "test-12-percentage-discount-cannot-exceed-100-percent",
+      "description": "A 110% discount is rejected outright",
+      "input": {
+        "rule": { "type": "PERCENTAGE_DISCOUNT", "rateBps": 11000 }
+      },
+      "expected": { "valid": false, "error_code": "INVALID_DISCOUNT_PERCENTAGE" }
+    },
+    {
+      "id": "test-13-fixed-discount-cannot-make-buyer-price-negative",
+      "description": "A ₱150 fixed discount on a ₱100 base would make the buyer price negative",
+      "input": {
+        "rule": { "type": "FIXED_DISCOUNT", "amountCentavos": 15000 },
+        "basePriceCentavos": 10000
+      },
+      "expected": { "valid": false, "error_code": "NEGATIVE_BUYER_PRICE" }
+    },
+    {
+      "id": "below-cost-floor-guard-a9",
+      "description": "Decision A9: a discount that would sell below the item's own cost is rejected at config time",
+      "input": {
+        "rule": { "type": "PERCENTAGE_DISCOUNT", "rateBps": 9000 },
+        "basePriceCentavos": 10000,
+        "costPerUnitCentavos": 3000
+      },
+      "expected": { "valid": false, "error_code": "BELOW_COST_FLOOR" }
+    }
+  ],
+
+  "volumeTierValidationCases": [
+    {
+      "id": "test-14-duplicate-volume-thresholds-are-invalid",
+      "description": "Two tiers with the same minimum volume threshold cannot both exist - undefined which one wins",
+      "input": {
+        "volumeTiers": [
+          { "minimumVolumeCentavos": 5000000, "bonusPercentagePoints": 1 },
+          { "minimumVolumeCentavos": 5000000, "bonusPercentagePoints": 2 }
+        ]
+      },
+      "expected": { "valid": false, "error_code": "DUPLICATE_VOLUME_THRESHOLD" }
+    }
+  ]
+}

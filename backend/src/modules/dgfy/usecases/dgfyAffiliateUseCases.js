@@ -2,12 +2,24 @@ import crypto from 'crypto';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { dgfyAffiliateRepository } from '../repositories/dgfyAffiliateRepository.js';
+import {
+    AFFILIATE_SELLING_PRICE_RULE_TYPES,
+    AFFILIATE_COMMISSION_RULE_TYPES,
+    AFFILIATE_SETTLEMENT_POLICIES,
+    validateAffiliatePriceRule
+} from '../../shared/utils/affiliatePricingPolicy.js';
 
 const MAX_RATE_BPS = 10000; // 100.00%
 const MIN_ATTRIBUTION_WINDOW_DAYS = 1;
 const MAX_ATTRIBUTION_WINDOW_DAYS = 365;
 const ENROLLMENT_STATUS_VALUES = new Set(['active', 'suspended', 'revoked']);
 const PAYOUT_METHOD_TYPES = new Set(['bank', 'gcash', 'maya']);
+const COMMISSION_TYPE_VALUES = new Set(AFFILIATE_COMMISSION_RULE_TYPES);
+const SETTLEMENT_POLICY_VALUES = new Set(AFFILIATE_SETTLEMENT_POLICIES);
+const PRICE_RULE_TYPE_VALUES = new Set(AFFILIATE_SELLING_PRICE_RULE_TYPES);
+// Sentinel meaning "applies to all" for enrollment_id/item_id - see
+// backend/migrations/20260729000003-add-affiliate-price-rules.cjs.
+const PRICE_RULE_SCOPE_ALL = 0;
 
 const mapError = (error, fallbackMessage) => {
     if (error instanceof DomainError) return error;
@@ -155,6 +167,34 @@ export const buildUpdateAffiliateSettingsUseCase = ({ repository = dgfyAffiliate
                 updates.min_cashout_centavos = parseOptionalPositiveInt(body.min_cashout_centavos, { field: 'min_cashout_centavos', min: 0 });
             }
             if (body.auto_approve_enrollment !== undefined) updates.auto_approve_enrollment = body.auto_approve_enrollment === true;
+
+            // Phase 1 affiliate pricing rule engine (see
+            // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md).
+            if (body.commission_type !== undefined) {
+                const commissionType = String(body.commission_type || '').trim();
+                if (!COMMISSION_TYPE_VALUES.has(commissionType)) {
+                    throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `commission_type must be one of: ${[...COMMISSION_TYPE_VALUES].join(', ')}.`, { statusCode: 422 });
+                }
+                updates.commission_type = commissionType;
+            }
+            if (body.settlement_policy !== undefined) {
+                if (body.settlement_policy === null || body.settlement_policy === '') {
+                    updates.settlement_policy = null;
+                } else {
+                    const settlementPolicy = String(body.settlement_policy || '').trim();
+                    if (!SETTLEMENT_POLICY_VALUES.has(settlementPolicy)) {
+                        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `settlement_policy must be one of: ${[...SETTLEMENT_POLICY_VALUES].join(', ')}.`, { statusCode: 422 });
+                    }
+                    updates.settlement_policy = settlementPolicy;
+                }
+            }
+            if (body.commission_base_mode !== undefined) {
+                const commissionBaseMode = String(body.commission_base_mode || '').trim();
+                if (commissionBaseMode !== 'discounted_subtotal' && commissionBaseMode !== 'base_price_subtotal') {
+                    throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'commission_base_mode must be one of: discounted_subtotal, base_price_subtotal.', { statusCode: 422 });
+                }
+                updates.commission_base_mode = commissionBaseMode;
+            }
 
             const settings = await repository.upsertSettings(tenant, updates);
             return ok({ settings });
@@ -405,6 +445,17 @@ export const buildUpdateAffiliateEnrollmentUseCase = ({ repository = dgfyAffilia
                 }
                 updates.status = status;
             }
+            if (body.commission_type !== undefined) {
+                if (body.commission_type === null || body.commission_type === '') {
+                    updates.commission_type = null; // inherit the tenant's commission_type
+                } else {
+                    const commissionType = String(body.commission_type || '').trim();
+                    if (!COMMISSION_TYPE_VALUES.has(commissionType)) {
+                        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `commission_type must be one of: ${[...COMMISSION_TYPE_VALUES].join(', ')}.`, { statusCode: 422 });
+                    }
+                    updates.commission_type = commissionType;
+                }
+            }
             if (Object.keys(updates).length === 0) {
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'No updatable fields were provided.', { statusCode: 422 });
             }
@@ -416,6 +467,110 @@ export const buildUpdateAffiliateEnrollmentUseCase = ({ repository = dgfyAffilia
             return ok({ enrollment });
         } catch (error) {
             return fail(mapError(error, 'Failed to update affiliate enrollment'));
+        }
+    }
+);
+
+// --- Affiliate price rules (Phase 1 affiliate pricing rule engine - selling-price rule only; see
+// docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md). Phase 1 only ever writes/reads
+// item_id = PRICE_RULE_SCOPE_ALL (0) - the item_id parameter exists so the API contract doesn't need
+// to change when Phase 2 activates per-product rules. ---
+
+const RATE_BASED_RULE_TYPES = new Set(['PERCENTAGE_MARKUP', 'PERCENTAGE_DISCOUNT']);
+const AMOUNT_BASED_RULE_TYPES = new Set(['FIXED_MARKUP', 'FIXED_DISCOUNT', 'EXACT_AFFILIATE_PRICE']);
+
+const parsePriceRuleBody = (body = {}) => {
+    const ruleType = String(body.rule_type || '').trim();
+    if (!PRICE_RULE_TYPE_VALUES.has(ruleType)) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `rule_type must be one of: ${[...PRICE_RULE_TYPE_VALUES].join(', ')}.`, { statusCode: 422 });
+    }
+
+    let rateBps = null;
+    let amountCentavos = null;
+    if (RATE_BASED_RULE_TYPES.has(ruleType)) {
+        rateBps = parseRequiredRateBps(body.rate_bps, { field: 'rate_bps' });
+    } else if (AMOUNT_BASED_RULE_TYPES.has(ruleType)) {
+        amountCentavos = parseOptionalPositiveInt(body.amount_centavos, { field: 'amount_centavos', min: 0 });
+        if (amountCentavos === undefined || amountCentavos === null) {
+            throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'amount_centavos is required for this rule_type.', { statusCode: 422 });
+        }
+    }
+    // BASE_PRICE needs neither - rateBps and amountCentavos both stay null.
+
+    const rule = { type: ruleType, rateBps, amountCentavos };
+    const validation = validateAffiliatePriceRule({ rule, basePriceCentavos: body.sample_base_price_centavos ?? null });
+    if (!validation.valid) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `Invalid price rule: ${validation.error_code}.`, {
+            statusCode: 422,
+            details: { reason_code: validation.error_code }
+        });
+    }
+
+    return { ruleType, rateBps, amountCentavos };
+};
+
+export const buildListAffiliatePriceRulesUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+            const priceRules = await repository.listPriceRulesForTenant(tenant);
+            return ok({ price_rules: priceRules });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to list affiliate price rules'));
+        }
+    }
+);
+
+// Creates or updates the single price rule at a given scope (tenant template when enrollmentId is
+// omitted/0, or a specific affiliate's override). No below-cost floor check here (decision A9) -
+// a Phase 1 rule applies to every product a tenant sells, which may have widely varying costs, so
+// there is no single representative cost to validate against at save time. The floor is instead
+// enforced per-item at the point the rule is actually resolved against a real product (checkout and
+// catalog display), where the item's own cost_per_unit is known.
+export const buildUpsertAffiliatePriceRuleUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId, body = {} }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+            const enrollmentId = parseOptionalPositiveInt(body.enrollment_id, { field: 'enrollment_id', min: 0 }) ?? PRICE_RULE_SCOPE_ALL;
+            const itemId = parseOptionalPositiveInt(body.item_id, { field: 'item_id', min: 0 }) ?? PRICE_RULE_SCOPE_ALL;
+            const active = body.active !== undefined ? body.active === true : true;
+
+            if (enrollmentId !== PRICE_RULE_SCOPE_ALL) {
+                const enrollment = await repository.findEnrollmentById(tenant, enrollmentId);
+                if (!enrollment) {
+                    throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate enrollment not found.', { statusCode: 404 });
+                }
+            }
+
+            const { ruleType, rateBps, amountCentavos } = parsePriceRuleBody(body);
+
+            const priceRule = await repository.upsertPriceRule({
+                tenantId: tenant,
+                enrollmentId,
+                itemId,
+                ruleType,
+                rateBps,
+                amountCentavos,
+                active
+            });
+            return ok({ price_rule: priceRule });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to save affiliate price rule'));
+        }
+    }
+);
+
+export const buildDeactivateAffiliatePriceRuleUseCase = ({ repository = dgfyAffiliateRepository } = {}) => (
+    async ({ tenantId, priceRuleId }) => {
+        try {
+            const tenant = ensureTenantId(tenantId);
+            const priceRule = await repository.deactivatePriceRule(tenant, priceRuleId);
+            if (!priceRule) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Affiliate price rule not found.', { statusCode: 404 });
+            }
+            return ok({ price_rule: priceRule });
+        } catch (error) {
+            return fail(mapError(error, 'Failed to deactivate affiliate price rule'));
         }
     }
 );

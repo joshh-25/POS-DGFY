@@ -150,6 +150,26 @@ export const resolveStorefrontHomeUrl = () => {
   }
 };
 
+export const resolveStorefrontItemUrl = ({
+  slug = '',
+  itemId = null,
+  storefrontHomeUrl = resolveStorefrontHomeUrl()
+} = {}) => {
+  const normalizedSlug = String(slug || '').trim().toLowerCase();
+  const normalizedItemId = Number(itemId);
+  if (!normalizedSlug || !Number.isInteger(normalizedItemId) || normalizedItemId <= 0) return '';
+
+  try {
+    const target = new URL(storefrontHomeUrl);
+    target.pathname = `/tenant-store/${encodeURIComponent(normalizedSlug)}/item`;
+    target.search = new URLSearchParams({ item: String(normalizedItemId) }).toString();
+    target.hash = '';
+    return target.toString();
+  } catch {
+    return '';
+  }
+};
+
 // Mirrors STORE_BOOKING_SUBPAGE / STORE_ORDER_SUBPAGE / STORE_TRACK_SUBPAGE /
 // STORE_SERVICE_SUBPAGE / STORE_ITEM_SUBPAGE from
 // apps/store/src/app/routing/storefrontRouting.js - duplicated here rather

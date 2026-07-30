@@ -15,10 +15,12 @@ import {
   CircleDollarSign,
   ClipboardList,
   Clock,
+  Compass,
   Barcode,
   FileText,
   Ghost,
   ImagePlus,
+  Info,
   KeyRound,
   Mail,
   MapPin,
@@ -52,6 +54,8 @@ import {
   X
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import StorefrontItemQrCard from '@/components/items/StorefrontItemQrCard.jsx';
+import { resolveStorefrontItemUrl } from '@/src/features/dgfyRouteHelpers.js';
 import { isShiftOwnedByUserId, resolvePosUserId } from '../utils/shiftOwnership.js';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import {
@@ -76,7 +80,11 @@ import {
   updateFolder
 } from '@/services/itemService.js';
 import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
-import { getGtinValidationMessage } from '@/src/utils/barcodePolicy.js';
+import {
+  getGtinValidationMessage,
+  getInternalBarcodeValidationMessage,
+  normalizeBarcodeEntry
+} from '@/src/utils/barcodePolicy.js';
 import ProductQrScannerModal from '@/src/features/inventory/components/ProductQrScannerModal.jsx';
 import { notifyPosCatalogUpdated } from '../utils/posCatalogRefresh.js';
 import {
@@ -101,7 +109,9 @@ import { normalizeStorefrontBusinessHours, serializeStorefrontBusinessHours } fr
 import resolveAssetUrl, { advanceAssetImageFallback, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
 import UserInvitationModal from '@/Components/users/UserInvitationModal.jsx';
 import PdfMenuImportModal from '@/Components/items/PdfMenuImportModal.jsx';
+import MenuImportBatchModal from '@/Components/items/MenuImportBatchModal.jsx';
 import { isPdfMenuImportEnabled } from '@/hooks/usePdfMenuImport.js';
+import { isMenuImportBatchEnabled } from '@/services/menuImportService.js';
 import { IncomingQueueWorkspace, WorkspaceShell } from './TerminalOperationsPanels.jsx';
 import {
   fetchPosSetupCashiers,
@@ -1864,6 +1874,7 @@ function ItemsWorkspace({
   isOnline = true,
   onQueueOfflineItemDraft = async () => '',
   operatingLocationId = null,
+  storefrontSlug = '',
   sectionId
 }) {
   const [items, setItems] = useState([]);
@@ -1873,6 +1884,11 @@ function ItemsWorkspace({
   const { createItem, loading: creatingItem } = useCreateItem();
   const [showPdfMenuImport, setShowPdfMenuImport] = useState(false);
   const pdfMenuImportEnabled = isPdfMenuImportEnabled();
+  // Batch (multi-file) import supersedes the single-file wizard wherever it is
+  // enabled; both flags default OFF and are independently killable.
+  const menuImportBatchEnabled = isMenuImportBatchEnabled();
+  const menuImportEntryEnabled = pdfMenuImportEnabled || menuImportBatchEnabled;
+  const menuImportButtonLabel = menuImportBatchEnabled ? 'Import Menu' : 'Import from PDF';
   const { updateItem, loading: savingItem } = useUpdateItem();
   const { deleteItem, loading: deletingItem } = useDeleteItem();
   const [editingItemId, setEditingItemId] = useState(null);
@@ -1911,6 +1927,7 @@ function ItemsWorkspace({
   const [externalProductLookup, setExternalProductLookup] = useState(null);
   const [acceptedExternalProduct, setAcceptedExternalProduct] = useState(null);
   const [externalQrScannerOpen, setExternalQrScannerOpen] = useState(false);
+  const [useInternalBarcode, setUseInternalBarcode] = useState(false);
   const [pendingCreateRecovery, setPendingCreateRecovery] = useState(null);
   const [postCreateSaving, setPostCreateSaving] = useState(false);
   const posItemPreset = useMemo(() => resolveSellablePosItemPreset(workflowMode), [workflowMode]);
@@ -2127,6 +2144,10 @@ function ItemsWorkspace({
     () => sortedItems.find((item) => Number(item?.item_id) === Number(editingItemId)) || null,
     [editingItemId, sortedItems]
   );
+  const activeEditStorefrontUrl = useMemo(() => resolveStorefrontItemUrl({
+    slug: storefrontSlug,
+    itemId: activeEditItem?.item_id
+  }), [activeEditItem?.item_id, storefrontSlug]);
 
   const openEdit = (item) => {
     const savedFolderId = Number(item?.folder_id || 0);
@@ -2184,6 +2205,7 @@ function ItemsWorkspace({
     setExternalProductLookup(null);
     setAcceptedExternalProduct(null);
     setExternalQrScannerOpen(false);
+    setUseInternalBarcode(false);
     setPendingCreateRecovery(null);
     setShowCreateModal(true);
   };
@@ -2199,6 +2221,7 @@ function ItemsWorkspace({
     setExternalLookupError('');
     setExternalProductLookup(null);
     setAcceptedExternalProduct(null);
+    setUseInternalBarcode(false);
     setExternalQrScannerOpen(false);
     if (force) setPendingCreateRecovery(null);
   };
@@ -2321,8 +2344,9 @@ function ItemsWorkspace({
   };
 
   const handleExternalBarcodeChange = (value) => {
-    const normalized = String(value || '').replace(/\D/g, '').slice(0, 14);
+    const normalized = normalizeBarcodeEntry(value);
     setExternalBarcode(normalized);
+    setUseInternalBarcode(false);
     if (normalized !== externalProductLookup?.code) {
       setExternalLookupError('');
       setExternalProductLookup(null);
@@ -2343,16 +2367,17 @@ function ItemsWorkspace({
     setExternalLookupError('');
     setExternalProductLookup(null);
     setAcceptedExternalProduct(null);
+    setUseInternalBarcode(false);
     try {
       const result = await lookupExternalProduct(lookupCode);
       setExternalProductLookup(result);
       if (!result?.found) {
-        setExternalLookupError('No registry match was found. You can still create the item manually.');
+        setExternalLookupError('Barcode captured. No registry details were found. Complete the remaining item details; this barcode will still be saved.');
       }
     } catch (lookupError) {
       setExternalLookupError(
         lookupError?.response?.data?.message
-        || 'The product registry is unavailable. Enter the item manually or try again.'
+        || 'The product registry is unavailable. Complete the item manually; this valid barcode will still be saved.'
       );
     } finally {
       setExternalLookupLoading(false);
@@ -2363,6 +2388,20 @@ function ItemsWorkspace({
     setExternalQrScannerOpen(false);
     handleExternalBarcodeChange(code);
     void handleExternalProductLookup(code);
+  };
+
+  const handleUseInternalBarcode = () => {
+    const validationMessage = getInternalBarcodeValidationMessage(externalBarcode);
+    if (validationMessage) {
+      setExternalLookupError(validationMessage);
+      toast.error(validationMessage);
+      return;
+    }
+
+    setUseInternalBarcode(true);
+    setExternalLookupError('');
+    setExternalProductLookup(null);
+    setAcceptedExternalProduct(null);
   };
 
   const applyExternalProductDetails = () => {
@@ -2590,6 +2629,15 @@ function ItemsWorkspace({
       return;
     }
 
+    const barcodeValidationMessage = externalBarcode
+      ? getGtinValidationMessage(externalBarcode)
+      : '';
+    if (barcodeValidationMessage && !useInternalBarcode) {
+      setExternalLookupError(barcodeValidationMessage);
+      toast.error(barcodeValidationMessage);
+      return;
+    }
+
     const resolvedStock = category === 'product' || category === 'supplies' ? stock : 0;
     const payload = {
       sku_code: skuCode,
@@ -2614,9 +2662,11 @@ function ItemsWorkspace({
       fifo_enabled: category === 'product' ? posItemPreset.fifo_enabled !== false : true,
       vat_type: 'vatable',
       senior_pwd_discount_eligible: createForm.senior_pwd_discount_eligible === true,
-      ...(acceptedExternalProduct?.found ? {
-        manufacturer_barcode: { code: acceptedExternalProduct.code }
-      } : {}),
+      ...(externalBarcode
+        ? useInternalBarcode
+          ? { internal_barcode: { code: externalBarcode } }
+          : { manufacturer_barcode: { code: externalBarcode } }
+        : {}),
       status: 'active'
     };
 
@@ -2792,7 +2842,7 @@ function ItemsWorkspace({
                 Add Item
               </Button>
             ) : null}
-            {canCreateItems && pdfMenuImportEnabled ? (
+            {canCreateItems && menuImportEntryEnabled ? (
               <Button
                 type="button"
                 variant="outline"
@@ -2801,7 +2851,7 @@ function ItemsWorkspace({
                 className="h-11 rounded-xl border-[#1A4E8D]/30 px-5 text-[#1A4E8D] shadow-sm hover:bg-[#1A4E8D]/5 xl:self-end"
               >
                 <Upload className="mr-2 h-4 w-4" />
-                Import from PDF
+                {menuImportButtonLabel}
               </Button>
             ) : null}
         </div>
@@ -2873,7 +2923,7 @@ function ItemsWorkspace({
               Add Item
             </Button>
           ) : null}
-          {canCreateItems && pdfMenuImportEnabled ? (
+          {canCreateItems && menuImportEntryEnabled ? (
             <Button
               type="button"
               variant="outline"
@@ -2882,13 +2932,19 @@ function ItemsWorkspace({
               className="mt-2 h-11 w-full rounded-xl border-[#1A4E8D]/30 text-[#1A4E8D] hover:bg-[#1A4E8D]/5"
             >
               <Upload className="mr-2 h-4 w-4" />
-              Import from PDF
+              {menuImportButtonLabel}
             </Button>
           ) : null}
         </div>
       </div>
 
-      {canCreateItems && pdfMenuImportEnabled ? (
+      {canCreateItems && menuImportBatchEnabled ? (
+        <MenuImportBatchModal
+          open={showPdfMenuImport}
+          onClose={() => setShowPdfMenuImport(false)}
+          onSuccess={() => { loadItems(); }}
+        />
+      ) : canCreateItems && pdfMenuImportEnabled ? (
         <PdfMenuImportModal
           open={showPdfMenuImport}
           onClose={() => setShowPdfMenuImport(false)}
@@ -3189,8 +3245,8 @@ function ItemsWorkspace({
                     <Barcode className="h-5 w-5" aria-hidden="true" />
                   </div>
                   <div>
-                    <h3 id="pos-external-barcode-heading" className="text-sm font-semibold text-slate-900">Scan UPC / EAN</h3>
-                    <p className="text-xs text-slate-600">Look up packaged-product details before creating the item. Manual entry remains available.</p>
+                    <h3 id="pos-external-barcode-heading" className="text-sm font-semibold text-slate-900">Scan Product Barcode</h3>
+                    <p className="text-xs text-slate-600">Look up valid UPC/EAN details, or explicitly save a private code as an internal POS barcode.</p>
                   </div>
                 </div>
 
@@ -3204,9 +3260,11 @@ function ItemsWorkspace({
                         handleExternalProductLookup();
                       }
                     }}
-                    inputMode="numeric"
+                    inputMode="text"
+                    autoCapitalize="characters"
+                    spellCheck={false}
                     autoComplete="off"
-                    placeholder="Scan or enter GTIN / UPC / EAN"
+                    placeholder="Scan or enter GTIN / UPC / EAN / internal code"
                     aria-label="Product barcode"
                     disabled={externalLookupLoading || creatingItem || postCreateSaving}
                   />
@@ -3218,7 +3276,7 @@ function ItemsWorkspace({
                     disabled={externalLookupLoading || creatingItem || postCreateSaving}
                   >
                     <ScanLine className="mr-2 h-4 w-4" aria-hidden="true" />
-                    Scan QR
+                    Scan
                   </Button>
                   <Button
                     type="button"
@@ -3235,6 +3293,24 @@ function ItemsWorkspace({
                 {externalLookupError ? (
                   <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" role="status">
                     {externalLookupError}
+                  </p>
+                ) : null}
+
+                {externalBarcode && getGtinValidationMessage(externalBarcode) && !useInternalBarcode ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 sm:w-fit"
+                    onClick={handleUseInternalBarcode}
+                    disabled={externalLookupLoading || creatingItem || postCreateSaving}
+                  >
+                    Use as Internal Barcode
+                  </Button>
+                ) : null}
+
+                {useInternalBarcode ? (
+                  <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900" role="status">
+                    Internal barcode selected. It will be saved for this company and can be used by the POS scanner. Registry details will not be imported.
                   </p>
                 ) : null}
 
@@ -3622,7 +3698,7 @@ function ItemsWorkspace({
           onClick={closeEdit}
         >
           <div
-            className="relative flex h-[calc(100dvh-1.5rem)] w-full max-w-4xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
+            className="relative flex h-[calc(100dvh-1.5rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white shadow-2xl shadow-slate-950/20 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
             onClick={(event) => event.stopPropagation()}
           >
             {/* Header */}
@@ -3647,302 +3723,347 @@ function ItemsWorkspace({
               </button>
             </div>
 
-            <div className="min-h-0 flex-1 overflow-y-auto p-5 sm:p-6 bg-white">
-              <div className="grid gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">Product Image</label>
-                    <p className="mt-0.5 text-[11px] leading-normal text-[#64748B]">
-                      The same image will be used for POS and storefront visibility.
-                    </p>
+            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/50 space-y-4 sm:space-y-5">
+              {/* Top Horizontal Row: 3 Toggle Cards */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 sm:gap-4">
+                {/* Toggle Card 1: Always Available */}
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-sm">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600">
+                      <Package className="h-5 w-5" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0">
+                      <label htmlFor="pos-items-edit-always-available" className="block text-xs sm:text-[13px] font-bold text-[#0F172A] cursor-pointer">
+                        Always Available
+                      </label>
+                      <span className="block text-[10px] text-[#64748B] truncate">Allow POS sales at zero stock.</span>
+                    </div>
                   </div>
-
-                  {(() => {
-                    const editGallery = normalizeStorefrontItemGallery(activeEditItem || {});
-                    return (
-                      <>
-                        <label
-                          htmlFor="pos-item-edit-image"
-                          className={`flex min-h-[160px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200 bg-blue-50/10 p-5 text-center transition-colors hover:bg-blue-50/20 ${(savingItem || persistingEditAssets) ? 'cursor-not-allowed opacity-50' : ''}`}
-                        >
-                          <Upload className="mx-auto h-10 w-10 text-blue-500" aria-hidden="true" />
-                          <p className="mt-3 text-xs sm:text-sm font-semibold text-[#0F172A]">Click to upload product image</p>
-                          <p className="mt-1 text-[11px] font-medium text-[#64748B]">JPG, PNG or WEBP (Max 10MB)</p>
-                          <p className="mt-3 text-[10px] leading-normal text-[#94A3B8]">
-                            Only 1 image per item. The same image will be used for POS and storefront visibility.
-                          </p>
-                          <input
-                            id="pos-item-edit-image"
-                            type="file"
-                            accept="image/*"
-                            className="hidden"
-                            disabled={savingItem || persistingEditAssets}
-                            onChange={(event) => {
-                              const files = Array.from(event.target.files || []);
-                              if (files.length && activeEditItem) {
-                                handleUploadStorefrontImage(activeEditItem, files);
-                              }
-                              event.target.value = '';
-                            }}
-                          />
-                        </label>
-
-                        {editGallery.length > 0 && (
-                          <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-1">
-                            <img
-                              src={editGallery[0].url}
-                              alt="Product preview"
-                              className="h-40 w-full rounded-xl object-contain"
-                            />
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteStorefrontImage(activeEditItem)}
-                              disabled={savingItem || persistingEditAssets}
-                              className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/80 text-white hover:bg-slate-900 transition-colors"
-                            >
-                              <X className="h-4 w-4" />
-                            </button>
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
+                  <Switch
+                    id="pos-items-edit-always-available"
+                    checked={editForm.pos_always_available === true}
+                    onCheckedChange={(checked) => setEditForm((current) => ({
+                      ...current,
+                      pos_always_available: Boolean(checked)
+                    }))}
+                    disabled={savingItem || persistingEditAssets}
+                  />
                 </div>
 
-                <div className="space-y-4">
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    {/* order-* values below make the current DOM order explicit so the xl:
-                        swap on Best Seller/Selling Price (further down) can't disturb anything
-                        else's position on mobile/tablet, where no xl: override is active and
-                        these explicit values just reproduce today's natural order exactly. */}
-                    <div className="space-y-1.5 order-1">
-                      <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
-                        Item Name <span className="text-rose-500">*</span>
+                {/* Toggle Card 2: Best Seller */}
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-sm">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-50 text-emerald-600">
+                      <Star className="h-5 w-5" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0">
+                      <label htmlFor="pos-items-edit-best-seller-mode" className="block text-xs sm:text-[13px] font-bold text-[#0F172A] cursor-pointer">
+                        Best Seller
                       </label>
-                      <Input
-                        value={editForm.name}
-                        onChange={(event) => setEditForm((current) => ({ ...current, name: event.target.value }))}
-                        className="h-11 rounded-xl border-slate-200 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
-                        disabled={savingItem || persistingEditAssets}
-                      />
+                      <span className="block text-[10px] text-[#64748B] truncate">Manually tag this item as a Best Seller.</span>
+                    </div>
+                  </div>
+                  <Switch
+                    id="pos-items-edit-best-seller-mode"
+                    checked={editForm.pos_best_seller_mode === 'force'}
+                    onCheckedChange={(checked) => setEditForm((current) => ({
+                      ...current,
+                      pos_best_seller_mode: checked ? 'force' : 'never'
+                    }))}
+                    disabled={savingItem || persistingEditAssets}
+                  />
+                </div>
+
+                {/* Toggle Card 3: Senior/PWD Eligible */}
+                <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200/80 bg-white p-3.5 shadow-sm">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-50 text-purple-600">
+                      <Percent className="h-5 w-5" aria-hidden="true" />
+                    </div>
+                    <div className="min-w-0">
+                      <label htmlFor="pos-items-edit-senior-pwd" className="block text-xs sm:text-[13px] font-bold text-[#0F172A] cursor-pointer">
+                        Senior/PWD Eligible
+                      </label>
+                      <span className="block text-[10px] text-[#64748B] truncate">Allow statutory discount selection.</span>
+                    </div>
+                  </div>
+                  <Switch
+                    id="pos-items-edit-senior-pwd"
+                    aria-checked={editForm.senior_pwd_discount_eligible}
+                    checked={editForm.senior_pwd_discount_eligible === true}
+                    onCheckedChange={(checked) => setEditForm((current) => ({
+                      ...current,
+                      senior_pwd_discount_eligible: Boolean(checked)
+                    }))}
+                    disabled={savingItem || persistingEditAssets}
+                  />
+                </div>
+              </div>
+
+              {/* Main Body: 3 Columns Grid */}
+              <div className="grid gap-4 sm:gap-5 lg:grid-cols-3 items-stretch">
+                {/* Column 1: Product Image */}
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-4 flex flex-col justify-between">
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">Product Image</label>
+                      <p className="mt-0.5 text-[11px] leading-normal text-[#64748B]">
+                        The same image will be used for POS and storefront visibility.
+                      </p>
                     </div>
 
-                    <div className="space-y-1.5 order-2">
-                      <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
-                        Food Category <span className="text-rose-500">*</span>
-                      </label>
-                      {canManageCategories ? (
-                        <>
-                          <EditableFoodCategoryCombobox
-                            id="pos-items-edit-category"
-                            value={editCategoryInput}
-                            onChange={(nextValue) => {
-                              const matchedCategory = foodCategoryOptions.find((option) => (
-                                normalizeFolderNameKey(option.name) === normalizeFolderNameKey(nextValue)
-                              ));
-                              setEditCategoryInput(nextValue);
-                              setEditForm((current) => ({
-                                ...current,
-                                pos_category: matchedCategory?.value || ''
-                              }));
-                            }}
-                            onSelect={(option) => {
-                              setEditCategoryInput(option.name);
-                              setEditForm((current) => ({ ...current, pos_category: option.value }));
-                            }}
-                            options={foodCategoryOptions}
-                            disabled={savingItem || persistingEditAssets}
-                          />
-                          <p className="text-[11px] text-slate-500">Select an existing category, or enter a new name to create it when this item is saved.</p>
-                        </>
-                      ) : (
-                        <>
-                          <select
-                            value={editForm.pos_category}
-                            onChange={(event) => setEditForm((current) => ({ ...current, pos_category: event.target.value }))}
-                            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-[#0F172A] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm"
-                            disabled={savingItem || persistingEditAssets}
+                    {(() => {
+                      const editGallery = normalizeStorefrontItemGallery(activeEditItem || {});
+                      return (
+                        <div className="space-y-3">
+                          <label
+                            htmlFor="pos-item-edit-image"
+                            className={`flex min-h-[140px] cursor-pointer flex-col items-center justify-center rounded-2xl border border-dashed border-blue-200 bg-blue-50/10 p-4 text-center transition-colors hover:bg-blue-50/20 ${(savingItem || persistingEditAssets) ? 'cursor-not-allowed opacity-50' : ''}`}
                           >
-                            {!editForm.pos_category && <option value="">Select an active category</option>}
-                            {editForm.pos_category && !foodCategoryOptions.some((option) => option.value === editForm.pos_category) && (
-                              <option value={editForm.pos_category} disabled>Current category is inactive</option>
-                            )}
-                            {foodCategoryOptions.map((option) => (
-                              <option key={option.value} value={option.value}>{option.label}</option>
-                            ))}
-                          </select>
-                          <p className="text-[11px] text-slate-500">Inactive categories remain on existing items but cannot be selected again. Only an administrator can create new categories.</p>
-                        </>
-                      )}
-                    </div>
+                            <Upload className="mx-auto h-9 w-9 text-blue-500" aria-hidden="true" />
+                            <p className="mt-2.5 text-xs sm:text-sm font-semibold text-[#0F172A]">Click to upload product image</p>
+                            <p className="mt-0.5 text-[11px] font-medium text-[#64748B]">JPG, PNG or WEBP (Max 10MB)</p>
+                            <p className="mt-2 text-[10px] leading-normal text-[#94A3B8]">
+                              Only 1 image per item. The same image will be used for POS and storefront visibility.
+                            </p>
+                            <input
+                              id="pos-item-edit-image"
+                              type="file"
+                              accept="image/*"
+                              className="hidden"
+                              disabled={savingItem || persistingEditAssets}
+                              onChange={(event) => {
+                                const files = Array.from(event.target.files || []);
+                                if (files.length && activeEditItem) {
+                                  handleUploadStorefrontImage(activeEditItem, files);
+                                }
+                                event.target.value = '';
+                              }}
+                            />
+                          </label>
 
-                    <div className="space-y-1.5 order-3">
-                      <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
-                        Stock Quantity <span className="text-rose-500">*</span>
-                      </label>
+                          {editGallery.length > 0 && (
+                            <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-1">
+                              <img
+                                src={editGallery[0].url}
+                                alt="Product preview"
+                                className="h-36 w-full rounded-xl object-contain"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteStorefrontImage(activeEditItem)}
+                                disabled={savingItem || persistingEditAssets}
+                                className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/80 text-white hover:bg-slate-900 transition-colors"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+
+                  {/* Column 1 Footer Notice */}
+                  <div className="rounded-xl border border-slate-100 bg-slate-50/90 p-2.5 flex items-center gap-2 text-xs text-slate-500">
+                    <Info className="h-4 w-4 shrink-0 text-blue-500" aria-hidden="true" />
+                    <span>Image will be visible in POS and storefront.</span>
+                  </div>
+                </div>
+
+                {/* Column 2: Item Details */}
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-3.5">
+                  <div className="space-y-1.5">
+                    <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
+                      Item Name <span className="text-rose-500">*</span>
+                    </label>
+                    <Input
+                      value={editForm.name}
+                      onChange={(event) => setEditForm((current) => ({ ...current, name: event.target.value }))}
+                      className="h-11 rounded-xl border-slate-200 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
+                      disabled={savingItem || persistingEditAssets}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
+                      Stock Quantity <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded bg-blue-50 text-blue-600">
+                        <Package className="h-3.5 w-3.5" aria-hidden="true" />
+                      </span>
                       <Input
                         type="number"
                         min="0"
                         step="1"
                         value={editForm.current_stock}
                         onChange={(event) => setEditForm((current) => ({ ...current, current_stock: event.target.value }))}
-                        className="h-11 rounded-xl border-slate-200 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
+                        className="h-11 rounded-xl border-slate-200 pl-10 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
                         disabled={savingItem || persistingEditAssets}
                       />
                     </div>
+                  </div>
 
-                    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 order-4">
-                      <div className="min-w-0">
-                        <label htmlFor="pos-items-edit-always-available" className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">
-                          Always Available
-                        </label>
-                        <span className="block text-[10px] text-[#64748B]">Allow POS sales at zero stock.</span>
-                      </div>
-                      <Switch
-                        id="pos-items-edit-always-available"
-                        checked={editForm.pos_always_available === true}
-                        onCheckedChange={(checked) => setEditForm((current) => ({
+                  <div className="space-y-1.5">
+                    <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
+                      Selling Price <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs sm:text-sm font-medium text-slate-400">₱</span>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        value={focusedEditMoneyField === 'default_sale_price'
+                          ? editForm.default_sale_price
+                          : formatMoneyInput(editForm.default_sale_price)}
+                        onFocus={() => setFocusedEditMoneyField('default_sale_price')}
+                        onBlur={() => setFocusedEditMoneyField('')}
+                        onChange={(event) => setEditForm((current) => ({
                           ...current,
-                          pos_always_available: Boolean(checked)
+                          default_sale_price: normalizeMoneyInput(event.target.value)
                         }))}
+                        className="h-11 rounded-xl border-slate-200 pl-8 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
                         disabled={savingItem || persistingEditAssets}
                       />
                     </div>
+                  </div>
 
-                    {/* Best Seller toggle - manual on/off, mirroring the Always Available switch
-                        above. Turning it on force-tags the item; turning it off defers back to
-                        the auto sales-ranking policy (there is no manual "never" state here).
-                        Visible on every viewport (mobile, tablet, desktop) - was previously
-                        hidden on tablet (sm:hidden), which made manual Best Seller activation
-                        invisible there; removed that restriction. order-5/md:order-6 swaps it
-                        with Selling Price (order-6/md:order-5) into the right column on tablet
-                        AND desktop (md: has no upper bound, so it carries through to xl: too) -
-                        base order-5 keeps mobile's stacking position unchanged. */}
-                    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 order-5 md:order-6">
-                      <div className="min-w-0">
-                        <label htmlFor="pos-items-edit-best-seller-mode" className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">
-                          Best Seller
-                        </label>
-                        <span className="block text-[10px] text-[#64748B]">Manually tag this item as a Best Seller.</span>
-                      </div>
-                      <Switch
-                        id="pos-items-edit-best-seller-mode"
-                        checked={editForm.pos_best_seller_mode === 'force'}
-                        onCheckedChange={(checked) => setEditForm((current) => ({
+                  <div className="space-y-1.5">
+                    <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
+                      Cost Price <span className="text-rose-500">*</span>
+                    </label>
+                    <div className="relative">
+                      <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs sm:text-sm font-medium text-slate-400">₱</span>
+                      <Input
+                        type="text"
+                        inputMode="decimal"
+                        value={focusedEditMoneyField === 'cost_per_unit'
+                          ? editForm.cost_per_unit
+                          : formatMoneyInput(editForm.cost_per_unit)}
+                        onFocus={() => setFocusedEditMoneyField('cost_per_unit')}
+                        onBlur={() => setFocusedEditMoneyField('')}
+                        onChange={(event) => setEditForm((current) => ({
                           ...current,
-                          pos_best_seller_mode: checked ? 'force' : 'never'
+                          cost_per_unit: normalizeMoneyInput(event.target.value)
                         }))}
+                        className="h-11 rounded-xl border-slate-200 pl-8 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
                         disabled={savingItem || persistingEditAssets}
                       />
                     </div>
+                  </div>
 
-                    <div className="space-y-1.5 order-6 md:order-5">
-                      <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
-                        Selling Price <span className="text-rose-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs sm:text-sm font-medium text-slate-400">₱</span>
-                        <Input
-                          type="text"
-                          inputMode="decimal"
-                          value={focusedEditMoneyField === 'default_sale_price'
-                            ? editForm.default_sale_price
-                            : formatMoneyInput(editForm.default_sale_price)}
-                          onFocus={() => setFocusedEditMoneyField('default_sale_price')}
-                          onBlur={() => setFocusedEditMoneyField('')}
-                          onChange={(event) => setEditForm((current) => ({
-                            ...current,
-                            default_sale_price: normalizeMoneyInput(event.target.value)
-                          }))}
-                          className="h-11 rounded-xl border-slate-200 pl-8 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
+                  <div className="space-y-1.5">
+                    <div className="flex justify-between items-center">
+                      <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">Description / Notes</label>
+                      <span className="text-[10px] text-slate-400 font-medium">
+                        {String(editForm.description || '').length} / 500
+                      </span>
+                    </div>
+                    <textarea
+                      value={editForm.description}
+                      onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value.slice(0, 500) }))}
+                      className="min-h-24 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs sm:text-sm text-[#0F172A] shadow-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none"
+                      disabled={savingItem || persistingEditAssets}
+                      placeholder="Optional notes visible in POS"
+                    />
+                  </div>
+                </div>
+
+                {/* Column 3: Category & QR Section */}
+                <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-4 flex flex-col justify-between">
+                  <div className="space-y-1.5">
+                    <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
+                      Food Category <span className="text-rose-500">*</span>
+                    </label>
+                    {canManageCategories ? (
+                      <>
+                        <EditableFoodCategoryCombobox
+                          id="pos-items-edit-category"
+                          value={editCategoryInput}
+                          onChange={(nextValue) => {
+                            const matchedCategory = foodCategoryOptions.find((option) => (
+                              normalizeFolderNameKey(option.name) === normalizeFolderNameKey(nextValue)
+                            ));
+                            setEditCategoryInput(nextValue);
+                            setEditForm((current) => ({
+                              ...current,
+                              pos_category: matchedCategory?.value || ''
+                            }));
+                          }}
+                          onSelect={(option) => {
+                            setEditCategoryInput(option.name);
+                            setEditForm((current) => ({ ...current, pos_category: option.value }));
+                          }}
+                          options={foodCategoryOptions}
                           disabled={savingItem || persistingEditAssets}
                         />
-                      </div>
-                    </div>
-
-                    <div className="space-y-1.5 order-7">
-                      <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
-                        Cost Price <span className="text-rose-500">*</span>
-                      </label>
-                      <div className="relative">
-                        <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-xs sm:text-sm font-medium text-slate-400">₱</span>
-                        <Input
-                          type="text"
-                          inputMode="decimal"
-                          value={focusedEditMoneyField === 'cost_per_unit'
-                            ? editForm.cost_per_unit
-                            : formatMoneyInput(editForm.cost_per_unit)}
-                          onFocus={() => setFocusedEditMoneyField('cost_per_unit')}
-                          onBlur={() => setFocusedEditMoneyField('')}
-                          onChange={(event) => setEditForm((current) => ({
-                            ...current,
-                            cost_per_unit: normalizeMoneyInput(event.target.value)
-                          }))}
-                          className="h-11 rounded-xl border-slate-200 pl-8 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
+                        <p className="mt-1 text-[11px] text-slate-500 leading-normal">Select an existing category, or enter a new name to create it when this item is saved.</p>
+                      </>
+                    ) : (
+                      <>
+                        <select
+                          value={editForm.pos_category}
+                          onChange={(event) => setEditForm((current) => ({ ...current, pos_category: event.target.value }))}
+                          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-[#0F172A] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm"
                           disabled={savingItem || persistingEditAssets}
-                        />
-                      </div>
-                    </div>
+                        >
+                          {!editForm.pos_category && <option value="">Select an active category</option>}
+                          {editForm.pos_category && !foodCategoryOptions.some((option) => option.value === editForm.pos_category) && (
+                            <option value={editForm.pos_category} disabled>Current category is inactive</option>
+                          )}
+                          {foodCategoryOptions.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                        <p className="mt-1 text-[11px] text-slate-500 leading-normal">Inactive categories remain on existing items but cannot be selected again. Only an administrator can create new categories.</p>
+                      </>
+                    )}
+                  </div>
 
-                    <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 order-8">
-                      <div className="min-w-0">
-                        <label htmlFor="pos-items-edit-senior-pwd" className="block text-xs sm:text-[13px] font-bold text-[#0F172A]">
-                          Senior/PWD Eligible
-                        </label>
-                        <span className="block text-[10px] text-[#64748B]">Allow statutory discount selection.</span>
-                      </div>
-                      <Switch
-                        id="pos-items-edit-senior-pwd"
-                        aria-checked={editForm.senior_pwd_discount_eligible}
-                        checked={editForm.senior_pwd_discount_eligible === true}
-                        onCheckedChange={(checked) => setEditForm((current) => ({
-                          ...current,
-                          senior_pwd_discount_eligible: Boolean(checked)
-                        }))}
-                        disabled={savingItem || persistingEditAssets}
-                      />
-                    </div>
-
-                    <div className="space-y-1.5 sm:col-span-2 order-9">
-                      <div className="flex justify-between items-center">
-                        <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">Description / Notes</label>
-                        <span className="text-[10px] text-slate-400 font-medium">
-                          {String(editForm.description || '').length} / 500
-                        </span>
-                      </div>
-                      <textarea
-                        value={editForm.description}
-                        onChange={(event) => setEditForm((current) => ({ ...current, description: event.target.value.slice(0, 500) }))}
-                        className="mt-2 min-h-24 w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-xs sm:text-sm text-[#0F172A] shadow-sm outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                        disabled={savingItem || persistingEditAssets}
-                        placeholder="Optional notes visible in POS"
-                      />
-                    </div>
+                  {/* QR Card Container */}
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50/70 p-4 text-center space-y-3 flex-1 flex flex-col items-center justify-center">
+                    <StorefrontItemQrCard
+                      itemName={editForm.name || activeEditItem.name}
+                      itemUrl={activeEditStorefrontUrl}
+                      helperText=""
+                      compact
+                      qrSize={104}
+                    />
                   </div>
                 </div>
               </div>
             </div>
 
             {/* Footer */}
-            <div className="shrink-0 bg-[#0F172A] px-5 py-3 sm:px-6 flex justify-end gap-2.5">
-              <Button
-                type="button"
-                variant="outline"
-                onClick={closeEdit}
-                disabled={savingItem || persistingEditAssets}
-                className="h-11 rounded-xl border-slate-700 bg-transparent px-5 text-xs sm:text-sm font-semibold text-white hover:bg-slate-800 hover:text-white transition-colors"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                onClick={handleSave}
-                disabled={savingItem || persistingEditAssets}
-                className="h-11 rounded-xl bg-blue-600 px-5 text-xs sm:text-sm font-bold text-white hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"
-              >
-                <Save className="h-4 w-4" />
-                {savingItem || persistingEditAssets ? 'Saving...' : 'Save Item'}
-              </Button>
+            <div className="shrink-0 bg-white border-t border-slate-200/80 px-5 py-3.5 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex items-center gap-2.5 rounded-xl border border-slate-200/80 bg-slate-50 px-3.5 py-2 text-xs font-medium text-slate-600 w-full sm:w-auto">
+                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600">
+                  <ShieldCheck className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <span>Changes will update this item across POS and storefront immediately.</span>
+              </div>
+
+              <div className="flex items-center gap-2.5 shrink-0 w-full sm:w-auto justify-end">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={closeEdit}
+                  disabled={savingItem || persistingEditAssets}
+                  className="h-11 rounded-xl border-slate-200 bg-white px-5 text-xs sm:text-sm font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleSave}
+                  disabled={savingItem || persistingEditAssets}
+                  className="h-11 rounded-xl bg-blue-600 px-5 text-xs sm:text-sm font-bold text-white hover:bg-blue-700 transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Save className="h-4 w-4" />
+                  {savingItem || persistingEditAssets ? 'Saving...' : 'Save Item'}
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -4008,44 +4129,60 @@ function ItemsWorkspace({
 
       {savedMessage.name && typeof document !== 'undefined' && createPortal((
         <div
-          className="fixed inset-0 z-[9999] flex items-start justify-center overflow-hidden bg-slate-950/60 px-3 py-3 sm:items-center sm:px-4 sm:py-6"
+          className="fixed inset-0 z-[9999] flex items-center justify-center overflow-hidden bg-slate-950/60 backdrop-blur-sm px-4 py-6 animate-pos-overlay-fade-in"
           role="dialog"
           aria-modal="true"
           aria-labelledby="pos-items-saved-modal-title"
           onClick={() => setSavedMessage({ name: '', barcode: '', action: 'updated' })}
         >
           <div
-            className="flex h-[calc(100dvh-1.5rem)] w-full max-w-md flex-col overflow-hidden rounded-xl border border-emerald-200 bg-white shadow-2xl shadow-slate-950/25 sm:h-auto sm:max-h-[calc(100dvh-3rem)]"
+            className="relative flex w-full max-w-[420px] flex-col overflow-hidden rounded-[28px] border border-slate-100 bg-white p-7 sm:p-8 text-center shadow-2xl shadow-slate-900/10 animate-pos-card-scale-up"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="p-5">
-              <div className="flex items-start gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
-                  <Check className="h-5 w-5" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p id="pos-items-saved-modal-title" className="text-lg font-black text-[#0F172A]">
-                    Item {savedMessage.action === 'created' ? 'created' : 'saved'}
-                  </p>
-                  <p className="mt-1 text-sm text-[#64748B]">
-                    <span className="font-bold text-[#0F172A]">{savedMessage.name}</span> was {savedMessage.action === 'created' ? 'created in IMS and added to POS.' : 'updated in POS and IMS.'}
-                  </p>
-                  {savedMessage.barcode ? (
-                    <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-[#64748B]">
-                      Barcode: <span className="font-mono text-[#0F172A]">{savedMessage.barcode}</span>
-                    </p>
-                  ) : null}
-                </div>
+            {/* Top Centered Success Badge */}
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 border border-emerald-200/80 shadow-[0_0_20px_rgba(16,185,129,0.18)] text-emerald-600">
+              <Check className="h-8 w-8 stroke-[2.5]" aria-hidden="true" />
+            </div>
+
+            {/* Title */}
+            <p id="pos-items-saved-modal-title" className="mt-4 text-xl font-bold tracking-tight text-[#0F172A]">
+              Item {savedMessage.action === 'created' ? 'created' : 'saved'} successfully
+            </p>
+
+            {/* Main Subtitle */}
+            <p className="mt-1.5 text-xs sm:text-sm font-medium text-[#64748B] leading-relaxed">
+              <span className="font-semibold text-slate-800">{savedMessage.name}</span> was {savedMessage.action === 'created' ? 'created in IMS and added to POS.' : 'updated in POS and IMS.'}
+            </p>
+
+            {/* Inner Summary Detail Card */}
+            <div className="my-5 flex items-center gap-3.5 rounded-2xl border border-slate-200/70 bg-[#F8FAFC] p-4 text-left shadow-sm">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">
+                <UtensilsCrossed className="h-6 w-6" aria-hidden="true" />
               </div>
-              <div className="mt-5 flex justify-end">
-                <Button
-                  type="button"
-                  onClick={() => setSavedMessage({ name: '', barcode: '', action: 'updated' })}
-                  className="h-11 rounded-lg bg-[#1A4E8D] px-5 text-white hover:bg-[#143F73]"
-                >
-                  OK
-                </Button>
+              <div className="h-9 w-px bg-slate-200/80 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-bold text-[#0F172A] truncate">{savedMessage.name}</p>
+                <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-slate-600">
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0" aria-hidden="true" />
+                  <span>{savedMessage.action === 'created' ? 'Created in IMS and added to POS' : 'Updated in POS and IMS'}</span>
+                </div>
+                {savedMessage.barcode ? (
+                  <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-slate-500">
+                    Barcode: <span className="font-mono text-slate-700">{savedMessage.barcode}</span>
+                  </p>
+                ) : null}
               </div>
+            </div>
+
+            {/* Bottom Centered Action Button */}
+            <div className="mt-1 flex justify-center">
+              <Button
+                type="button"
+                onClick={() => setSavedMessage({ name: '', barcode: '', action: 'updated' })}
+                className="h-11 w-full max-w-[200px] rounded-xl bg-[#0B3067] px-6 text-sm font-bold text-white hover:bg-[#072047] transition-colors shadow-sm"
+              >
+                Got it
+              </Button>
             </div>
           </div>
         </div>
@@ -4451,7 +4588,7 @@ function SettingsWorkspace({
     || resolveUserPermissionList(terminalUser).includes('users:manage');
   const canManageDiscountApprovalPins = terminalUser?.is_master_admin === true;
   const canManageCategories = terminalUser?.is_master_admin === true
-    || String(terminalUser?.role || '').trim().toLowerCase() === 'admin';
+    || resolveUserPermissionList(terminalUser).includes('categories:manage');
   const [activeTab, setActiveTab] = useState(initialTab);
   const [renderedTab, setRenderedTab] = useState(initialTab);
   const [paneInlineStyle, setPaneInlineStyle] = useState({
@@ -7381,104 +7518,415 @@ function SettingsWorkspace({
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[13px] font-black text-[#0F172A]">Storefront Locations{storefrontLocationRequired ? <RequiredMark /> : null}</p>
-          <Button type="button" variant="outline" onClick={() => loadStorefrontLocations()} disabled={locationsLoading || locationSaving}>
+      <div className="rounded-2xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm">
+        {/* Header Bar */}
+        <div className="flex flex-wrap items-center justify-between gap-4 pb-5 border-b border-slate-100">
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600 shadow-sm border border-blue-100">
+              <MapPin className="h-5 w-5" aria-hidden="true" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-lg font-bold tracking-tight text-[#0F172A]">
+                  Storefront Locations{storefrontLocationRequired ? <RequiredMark /> : null}
+                </h2>
+              </div>
+              <p className="text-xs sm:text-sm font-medium text-slate-500 mt-0.5">
+                {storefrontLocationRequired
+                  ? 'A public storefront with map publication needs one active primary storefront location before Storefront settings can be saved.'
+                  : 'Manage your public storefront locations, delivery coverage, and operational settings.'}
+              </p>
+            </div>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => loadStorefrontLocations()}
+            disabled={locationsLoading || locationSaving}
+            className="h-10 rounded-xl border-slate-200 px-4 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-sm"
+          >
+            <RefreshCcw className={`mr-2 h-3.5 w-3.5 ${locationsLoading ? 'animate-spin' : ''}`} aria-hidden="true" />
             {locationsLoading ? 'Refreshing...' : 'Refresh'}
           </Button>
         </div>
-        <p className="mt-1 text-[12px] text-[#475569]">
-          {storefrontLocationRequired
-            ? 'A public storefront with map publication needs one active primary storefront location before Storefront settings can be saved.'
-            : 'Add and manage storefront map pins here. These locations stay optional while searchable-without-map-pin is enabled.'}
-        </p>
-        <div className="mt-4 grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-          <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
-            <p className="text-sm font-semibold text-slate-900">{editingLocationId ? 'Edit Location' : 'Add Location'}</p>
-            <div className="mt-3 grid gap-3 md:grid-cols-2">
-              <div className="grid gap-2">
-                <Label className="text-[12px] font-black text-[#0F172A]">Location Name<RequiredMark /></Label>
-                <Input value={locationForm.name} onChange={(event) => setLocationForm((current) => ({ ...current, name: event.target.value }))} placeholder="Main Branch" />
+
+        {/* Master-Detail 2-Column Responsive Layout */}
+        <div className="mt-6 grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+          {/* Left Column: Locations List Sidebar (lg:col-span-4) */}
+          <div className="lg:col-span-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm space-y-4">
+            {/* Sidebar Header */}
+            <div className="flex items-center justify-between gap-2 pb-1">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-[#0F172A]">Locations</h3>
+                <span className="inline-flex items-center justify-center px-2 py-0.5 text-xs font-bold rounded-full bg-blue-50 text-blue-700 border border-blue-100">
+                  {storefrontLocations.length}
+                </span>
               </div>
-              <div className="grid gap-2">
-                <Label className="text-[12px] font-black text-[#0F172A]">Address<RequiredMark /></Label>
-                <Input value={locationForm.address_line} onChange={(event) => setLocationForm((current) => ({ ...current, address_line: event.target.value }))} placeholder="Street, City, Province" />
-              </div>
-              <div className="grid gap-2 md:col-span-2">
-                <Label className="text-[12px] font-black text-[#0F172A]">Map Pin (MapLibre)<RequiredMark /></Label>
-                <Suspense fallback={<div className="rounded-lg border border-slate-200 bg-white px-3 py-6 text-sm text-slate-500">Loading map picker...</div>}>
-                  <MapPinPicker
-                    latitude={locationForm.latitude}
-                    longitude={locationForm.longitude}
-                    deliveryRadiusKm={locationForm.delivery_radius_km}
-                    onChange={handleLocationPinChange}
-                  />
-                </Suspense>
-              </div>
-              <div className="grid gap-2">
-                <Label className="text-[12px] font-black text-[#0F172A]">Latitude<RequiredMark /></Label>
-                <Input value={locationForm.latitude} onChange={(event) => setLocationForm((current) => ({ ...current, latitude: event.target.value }))} placeholder="Latitude" />
-              </div>
-              <div className="grid gap-2">
-                <Label className="text-[12px] font-black text-[#0F172A]">Longitude<RequiredMark /></Label>
-                <Input value={locationForm.longitude} onChange={(event) => setLocationForm((current) => ({ ...current, longitude: event.target.value }))} placeholder="Longitude" />
-              </div>
-              <div className="grid gap-2">
-                <Label className="text-[12px] font-black text-[#0F172A]">Delivery Radius (km)</Label>
-                <Input value={locationForm.delivery_radius_km} onChange={(event) => setLocationForm((current) => ({ ...current, delivery_radius_km: event.target.value }))} placeholder="Delivery radius (km)" />
-              </div>
-              <div className="grid gap-2">
-                <Label className="text-[12px] font-black text-[#0F172A]">Wait Time (min)</Label>
-                <Input value={locationForm.current_wait_time_minutes} onChange={(event) => setLocationForm((current) => ({ ...current, current_wait_time_minutes: event.target.value }))} placeholder="Wait time (min)" />
-              </div>
+              <Button
+                type="button"
+                size="sm"
+                onClick={resetLocationForm}
+                disabled={locationSaving}
+                className="h-8 w-8 p-0 rounded-lg bg-blue-600 hover:bg-blue-700 text-white shadow-sm flex items-center justify-center"
+                title="Add new location"
+              >
+                <Plus className="h-4 w-4" aria-hidden="true" />
+              </Button>
             </div>
-            <div className="mt-3 grid gap-2 md:grid-cols-3">
-              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700"><input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={locationForm.is_open === true} onChange={(event) => setLocationForm((current) => ({ ...current, is_open: event.target.checked }))} />Open</label>
-              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700"><input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={locationForm.is_primary_storefront === true} onChange={(event) => setLocationForm((current) => ({ ...current, is_primary_storefront: event.target.checked }))} />Primary</label>
-              <label className="flex items-center gap-2 text-xs font-semibold text-slate-700"><input type="checkbox" className="h-4 w-4 accent-[#1A4E8D]" checked={locationForm.allow_out_of_stock_sales === true} onChange={(event) => setLocationForm((current) => ({ ...current, allow_out_of_stock_sales: event.target.checked }))} />Allow OOS Sales</label>
+
+            {/* Location Cards List */}
+            <div className="space-y-3 max-h-[580px] overflow-y-auto pr-1">
+              {storefrontLocations.length === 0 ? (
+                <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 text-center text-xs text-slate-500">
+                  No storefront locations configured.
+                </div>
+              ) : (
+                storefrontLocations.map((location) => {
+                  const activeEditingId = locationForm?.location_id || locationForm?.id;
+                  const isSelected = activeEditingId === location.location_id;
+                  return (
+                    <div
+                      key={`pos-storefront-location-${location.location_id}`}
+                      onClick={() => handleEditLocation(location)}
+                      className={`group relative rounded-xl p-3.5 transition-all cursor-pointer border ${
+                        isSelected
+                          ? 'border-2 border-blue-600 bg-blue-50/20 shadow-sm'
+                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/60'
+                      }`}
+                    >
+                      {/* Top Title & Badges Row */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className={`h-3 w-3 rounded-full border flex items-center justify-center shrink-0 ${isSelected ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-white'}`}>
+                            {isSelected && <span className="h-1 w-1 rounded-full bg-white" />}
+                          </span>
+                          <p className="text-sm font-bold text-[#0F172A] truncate group-hover:text-blue-600 transition-colors">
+                            {location.name}
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${location.is_active ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
+                            {location.is_active ? 'Active' : 'Inactive'}
+                          </span>
+                          <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${location.is_open ? 'bg-teal-50 text-teal-700 border border-teal-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
+                            {location.is_open ? 'Open' : 'Closed'}
+                          </span>
+                          {location.is_primary_storefront === true && (
+                            <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-blue-50 text-blue-700 border border-blue-200">
+                              Primary
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Address Line */}
+                      <div className="mt-2 flex items-start gap-1.5 text-xs text-slate-500">
+                        <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0 mt-0.5" aria-hidden="true" />
+                        <span className="truncate">{location.address_line || 'No address specified'}</span>
+                      </div>
+
+                      {/* Metadata Details Row */}
+                      <div className="mt-2.5 pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-2 text-[11px] font-medium text-slate-500">
+                        <span className="flex items-center gap-1">
+                          <Compass className="h-3 w-3 text-slate-400" />
+                          {location.delivery_radius_km} km
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <Clock className="h-3 w-3 text-slate-400" />
+                          {location.current_wait_time_minutes} min
+                        </span>
+                        <span className="font-mono text-[10px] text-slate-400">
+                          {location.latitude}, {location.longitude}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button type="button" onClick={handleSaveLocation} disabled={locationSaving}>{locationSaving ? 'Saving...' : (editingLocationId ? 'Update Location' : 'Add Location')}</Button>
-              <Button type="button" variant="outline" onClick={resetLocationForm} disabled={locationSaving}>Clear</Button>
+
+            {/* Sidebar Footer */}
+            <div className="pt-2 border-t border-slate-100 text-center text-xs text-slate-400 font-medium">
+              Showing {storefrontLocations.length} of {storefrontLocations.length} locations
             </div>
           </div>
-          <div className="space-y-3">
-            {storefrontLocations.length === 0 ? (
-              <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-4 text-sm text-slate-600">No storefront locations configured.</div>
-            ) : storefrontLocations.map((location) => (
-              <div key={`pos-storefront-location-${location.location_id}`} className="rounded-lg border border-slate-200 p-3">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-slate-900">{location.name}</p>
-                    <p className="text-xs text-slate-500">{location.address_line}</p>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${location.is_active ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>{location.is_active ? 'Active' : 'Inactive'}</span>
-                    <span className={`rounded-full px-2 py-1 text-xs font-semibold ${location.is_open ? 'bg-teal-100 text-teal-700' : 'bg-amber-100 text-amber-700'}`}>{location.is_open ? 'Open' : 'Closed'}</span>
-                    {location.is_primary_storefront === true ? <span className="rounded-full bg-sky-100 px-2 py-1 text-xs font-semibold text-sky-700">Primary</span> : null}
-                  </div>
+
+          {/* Right Column: Main Form & Settings Area (lg:col-span-8) */}
+          <div className="lg:col-span-8 space-y-5">
+            {/* Selected Location Action Header Card */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm flex flex-wrap items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
+                  <Store className="h-5 w-5" aria-hidden="true" />
                 </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-600 md:grid-cols-4">
-                  <p>Lat: {location.latitude}</p>
-                  <p>Lng: {location.longitude}</p>
-                  <p>Radius: {location.delivery_radius_km} km</p>
-                  <p>Wait: {location.current_wait_time_minutes} min</p>
-                </div>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button type="button" size="sm" variant="outline" onClick={() => handleEditLocation(location)}>Edit</Button>
-                  <Button type="button" size="sm" variant="outline" onClick={() => handleSetPrimaryLocation(location)} disabled={locationSaving || location.is_active !== true || location.is_primary_storefront === true}>{location.is_primary_storefront === true ? 'Primary' : 'Set Primary'}</Button>
-                  {location.is_active ? (
-                    <Button type="button" size="sm" variant="outline" onClick={() => handleDeactivateLocation(location.location_id)} disabled={locationSaving}>Deactivate</Button>
-                  ) : (
-                    <>
-                      <Button type="button" size="sm" variant="outline" onClick={() => handleReactivateLocation(location.location_id)} disabled={locationSaving}>Reactivate</Button>
-                      <Button type="button" size="sm" variant="outline" className="border-red-200 text-red-700 hover:bg-red-50" onClick={() => handleDeleteLocation(location.location_id)} disabled={locationSaving}>Delete Pin</Button>
-                    </>
-                  )}
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base font-bold text-[#0F172A]">
+                      {locationForm?.location_id ? (locationForm.name || 'Edit Location') : (locationForm.name || 'New Location')}
+                    </h3>
+                    <span className={`px-2 py-0.5 text-[11px] font-bold rounded-full ${locationForm.is_active !== false ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
+                      {locationForm.is_active !== false ? 'Active' : 'Inactive'}
+                    </span>
+                  </div>
                 </div>
               </div>
-            ))}
+
+              {/* Action Buttons Header Bar */}
+              <div className="flex flex-wrap items-center gap-2">
+                {locationForm?.location_id && (
+                  <>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const loc = storefrontLocations.find(l => l.location_id === locationForm.location_id);
+                        if (loc) handleEditLocation(loc);
+                      }}
+                      className="h-9 px-3 text-xs font-semibold rounded-xl"
+                    >
+                      <Pencil className="mr-1.5 h-3.5 w-3.5 text-slate-500" />
+                      Edit
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        const loc = storefrontLocations.find(l => l.location_id === locationForm.location_id);
+                        if (loc) handleSetPrimaryLocation(loc);
+                      }}
+                      disabled={locationSaving || locationForm.is_active === false || locationForm.is_primary_storefront === true}
+                      className="h-9 px-3 text-xs font-semibold rounded-xl"
+                    >
+                      {locationForm.is_primary_storefront === true ? 'Primary' : 'Set Primary'}
+                    </Button>
+                    {locationForm.is_active !== false ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleDeactivateLocation(locationForm.location_id)}
+                        disabled={locationSaving}
+                        className="h-9 px-3 text-xs font-semibold rounded-xl text-rose-600 border-rose-200 hover:bg-rose-50"
+                      >
+                        Deactivate
+                      </Button>
+                    ) : (
+                      <>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleReactivateLocation(locationForm.location_id)}
+                          disabled={locationSaving}
+                          className="h-9 px-3 text-xs font-semibold rounded-xl text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+                        >
+                          Reactivate
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleDeleteLocation(locationForm.location_id)}
+                          disabled={locationSaving}
+                          className="h-9 px-3 text-xs font-semibold rounded-xl text-red-700 border-red-200 hover:bg-red-50"
+                        >
+                          Delete Pin
+                        </Button>
+                      </>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* 2x2 Section Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {/* Card 1: Basic Details */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                  <Store className="h-4 w-4 text-blue-600" aria-hidden="true" />
+                  <h4 className="text-sm font-bold text-[#0F172A]">Basic Details</h4>
+                </div>
+                <div className="space-y-3">
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs font-bold text-[#0F172A]">Location Name<RequiredMark /></Label>
+                    <Input
+                      value={locationForm.name}
+                      onChange={(event) => setLocationForm((current) => ({ ...current, name: event.target.value }))}
+                      placeholder="Main Branch"
+                      className="h-10 rounded-xl border-slate-200 text-xs"
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs font-bold text-[#0F172A]">Address<RequiredMark /></Label>
+                    <Input
+                      value={locationForm.address_line}
+                      onChange={(event) => setLocationForm((current) => ({ ...current, address_line: event.target.value }))}
+                      placeholder="Street, City, Province"
+                      className="h-10 rounded-xl border-slate-200 text-xs"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Card 2: Coordinates */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                  <MapPin className="h-4 w-4 text-blue-600" aria-hidden="true" />
+                  <h4 className="text-sm font-bold text-[#0F172A]">Coordinates</h4>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs font-bold text-[#0F172A]">Latitude<RequiredMark /></Label>
+                    <Input
+                      value={locationForm.latitude}
+                      onChange={(event) => setLocationForm((current) => ({ ...current, latitude: event.target.value }))}
+                      placeholder="10.69690400"
+                      className="h-10 rounded-xl border-slate-200 text-xs font-mono"
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs font-bold text-[#0F172A]">Longitude<RequiredMark /></Label>
+                    <Input
+                      value={locationForm.longitude}
+                      onChange={(event) => setLocationForm((current) => ({ ...current, longitude: event.target.value }))}
+                      placeholder="122.56127000"
+                      className="h-10 rounded-xl border-slate-200 text-xs font-mono"
+                    />
+                  </div>
+                </div>
+                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 flex items-start gap-2 text-xs text-blue-800 font-medium">
+                  <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+                  <span><strong>Pinned coordinates:</strong> These coordinates are used for delivery coverage and ETA calculations.</span>
+                </div>
+              </div>
+
+              {/* Card 3: Map & Coverage */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+                <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                  <div className="flex items-center gap-2">
+                    <MapPinned className="h-4 w-4 text-blue-600" aria-hidden="true" />
+                    <h4 className="text-sm font-bold text-[#0F172A]">Map & Coverage</h4>
+                  </div>
+                </div>
+
+                {/* Map Component Container (Map component untouched!) */}
+                <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-50">
+                  <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white px-3 py-12 text-center text-xs text-slate-500">Loading map picker...</div>}>
+                    <MapPinPicker
+                      latitude={locationForm.latitude}
+                      longitude={locationForm.longitude}
+                      deliveryRadiusKm={locationForm.delivery_radius_km}
+                      onChange={handleLocationPinChange}
+                    />
+                  </Suspense>
+                </div>
+
+                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 flex items-start gap-2 text-xs text-blue-800 font-medium">
+                  <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" aria-hidden="true" />
+                  <span>Delivery coverage preview: {locationForm.delivery_radius_km || 5.00} km radius around the pinned location.</span>
+                </div>
+              </div>
+
+              {/* Card 4: Operational Settings */}
+              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+                <div className="flex items-center gap-2 pb-2 border-b border-slate-100">
+                  <Settings2 className="h-4 w-4 text-blue-600" aria-hidden="true" />
+                  <h4 className="text-sm font-bold text-[#0F172A]">Operational Settings</h4>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs font-bold text-[#0F172A]">Delivery Radius (km)<RequiredMark /></Label>
+                    <Input
+                      value={locationForm.delivery_radius_km}
+                      onChange={(event) => setLocationForm((current) => ({ ...current, delivery_radius_km: event.target.value }))}
+                      placeholder="5"
+                      className="h-10 rounded-xl border-slate-200 text-xs"
+                    />
+                  </div>
+                  <div className="grid gap-1.5">
+                    <Label className="text-xs font-bold text-[#0F172A]">Wait Time (min)<RequiredMark /></Label>
+                    <Input
+                      value={locationForm.current_wait_time_minutes}
+                      onChange={(event) => setLocationForm((current) => ({ ...current, current_wait_time_minutes: event.target.value }))}
+                      placeholder="15"
+                      className="h-10 rounded-xl border-slate-200 text-xs"
+                    />
+                  </div>
+                </div>
+
+                {/* Switches / Checkboxes with Subtext */}
+                <div className="space-y-3 pt-2">
+                  <label className="flex items-start gap-3 p-2.5 rounded-xl border border-slate-100 hover:bg-slate-50/70 transition-colors cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 accent-blue-600 mt-0.5"
+                      checked={locationForm.is_open === true}
+                      onChange={(event) => setLocationForm((current) => ({ ...current, is_open: event.target.checked }))}
+                    />
+                    <div>
+                      <p className="text-xs font-bold text-[#0F172A]">Open</p>
+                      <p className="text-[11px] text-slate-500">Location is open for orders</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-3 p-2.5 rounded-xl border border-slate-100 hover:bg-slate-50/70 transition-colors cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 accent-blue-600 mt-0.5"
+                      checked={locationForm.is_primary_storefront === true}
+                      onChange={(event) => setLocationForm((current) => ({ ...current, is_primary_storefront: event.target.checked }))}
+                    />
+                    <div>
+                      <p className="text-xs font-bold text-[#0F172A]">Primary</p>
+                      <p className="text-[11px] text-slate-500">Primary storefront for map publication</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-3 p-2.5 rounded-xl border border-slate-100 hover:bg-slate-50/70 transition-colors cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="h-4 w-4 rounded border-slate-300 text-blue-600 accent-blue-600 mt-0.5"
+                      checked={locationForm.allow_out_of_stock_sales === true}
+                      onChange={(event) => setLocationForm((current) => ({ ...current, allow_out_of_stock_sales: event.target.checked }))}
+                    />
+                    <div>
+                      <p className="text-xs font-bold text-[#0F172A]">Allow OOS Sales</p>
+                      <p className="text-[11px] text-slate-500">Allow out-of-stock item sales</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Action Bar Card */}
+            <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="text-sm font-bold text-[#0F172A]">Action Bar</p>
+                <p className="text-xs text-slate-500">Add a new location or clear the form to start over.</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={resetLocationForm}
+                  disabled={locationSaving}
+                  className="h-10 px-4 rounded-xl border-slate-200 text-xs font-semibold text-slate-700"
+                >
+                  Clear
+                </Button>
+                <Button
+                  type="button"
+                  onClick={handleSaveLocation}
+                  disabled={locationSaving}
+                  className="h-10 px-6 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold shadow-sm"
+                >
+                  {locationSaving ? 'Saving...' : (locationForm?.location_id ? 'Update Location' : 'Add Location')}
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -7917,12 +8365,16 @@ export default function TerminalOperationsWorkspace({
           canCreateItems={canCreateItems}
           canEditItems={canEditItems}
           canDeleteItems={canDeleteItems}
-          canManageCategories={terminalUser?.is_master_admin === true || String(terminalUser?.role || '').trim().toLowerCase() === 'admin'}
+          canManageCategories={
+            terminalUser?.is_master_admin === true
+            || resolveUserPermissionList(terminalUser).includes('categories:manage')
+          }
           stockFilterPreset={itemsStockFilterPreset}
           onStockFilterPresetApplied={onItemsStockFilterPresetApplied}
           workflowMode={workflowMode}
           locked={locked}
           operatingLocationId={operatingLocationId}
+          storefrontSlug={terminalMeta?.storefrontSlug || ''}
           sectionId={sectionIds.items}
         />
       );

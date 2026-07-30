@@ -3,7 +3,14 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { BrowserRouter } from 'react-router-dom';
 import { App } from '../main.jsx';
+
+const renderStorefrontApp = () => render(
+  <BrowserRouter>
+    <App />
+  </BrowserRouter>
+);
 
 vi.mock('sonner', () => ({
   Toaster: () => null,
@@ -123,7 +130,7 @@ describe('storefront follow integration', () => {
 
   it('transitions Follow -> Following -> Follow and updates count', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderStorefrontApp();
 
     await waitFor(() => {
       expect(screen.getAllByText('3 followers').length).toBeGreaterThan(0);
@@ -146,7 +153,7 @@ describe('storefront follow integration', () => {
   it('repairs stale invalid visitor ids before loading follow status', async () => {
     window.localStorage.setItem('dgfy_storefront_visitor_id', 'stale visitor id with spaces');
 
-    render(<App />);
+    renderStorefrontApp();
 
     await waitFor(() => {
       expect(screen.getAllByText('3 followers').length).toBeGreaterThan(0);
@@ -165,7 +172,7 @@ describe('storefront follow integration', () => {
     window.sessionStorage.setItem('dgfy_store_customer_token', 'stale-store-token');
     const user = userEvent.setup();
 
-    render(<App />);
+    renderStorefrontApp();
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Follow this storefront' })).toBeTruthy();
@@ -227,7 +234,7 @@ describe('storefront follow integration', () => {
     });
 
     const user = userEvent.setup();
-    render(<App />);
+    renderStorefrontApp();
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Unfollow this storefront' })).toBeTruthy();
@@ -276,7 +283,7 @@ describe('storefront follow integration', () => {
     });
 
     const user = userEvent.setup();
-    render(<App />);
+    renderStorefrontApp();
 
     await waitFor(() => {
       expect(screen.getByRole('button', { name: 'Follow this storefront' })).toBeTruthy();

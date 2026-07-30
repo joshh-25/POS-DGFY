@@ -16,6 +16,7 @@ import { FnbItemReviewModal } from '../../../modes/fnb/storefront/components/Fnb
 import { FnbCommunitySection } from '../../../modes/fnb/storefront/components/FnbCommunitySection.jsx';
 import { SimpleProductCard } from '../../../modes/simple/storefront/components/SimpleProductCard.jsx';
 import { SimpleCheckoutRoutePage } from '../../../modes/simple/checkout/pages/SimpleCheckoutRoutePage.jsx';
+import { DefaultOrderPage } from './DefaultOrderPage.jsx';
 import { SERVICE_CATEGORY_ICON_MAP } from '../../../modes/services/storefront/model/serviceCategoryIconMap.jsx';
 import { ServiceProductCard } from '../../../modes/services/storefront/components/ServiceProductCard.jsx';
 import { ServicesPerformanceSidebar } from '../../../modes/services/storefront/components/ServicesPerformanceSidebar.jsx';
@@ -100,10 +101,12 @@ export function StorefrontClassicCatalog({
   simpleCheckoutRouteProps,
   simpleStorefrontModel,
   defaultStorefrontModel,
+  defaultOrderRouteProps,
   submitFnbItemReview,
   totalFnbPages,
   viewportWidth
 }) {
+  const isDefaultLikeMode = !isServicesMode && !isFnbMode && !isSimpleMode;
   return (
     <>
       <style>{`
@@ -128,7 +131,7 @@ export function StorefrontClassicCatalog({
       boxSizing: 'border-box'
     }}>
       <div style={{ display: 'grid', gap: isFnbMode ? 0 : 24, width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
-        {!(isSimpleMode && isResolvedOrderSubpage) && (
+        {!((isSimpleMode || isDefaultLikeMode) && isResolvedOrderSubpage) && (
         <section id="storefront-catalog-section" style={{
           display: 'grid',
           gap: isFnbMode ? (isMobileViewport ? 16 : 24) : (isSimpleMode ? 22 : undefined),
@@ -607,6 +610,9 @@ export function StorefrontClassicCatalog({
         {isSimpleMode && isResolvedOrderSubpage && simpleStorefrontModel && (
           <SimpleCheckoutRoutePage {...simpleCheckoutRouteProps} />
         )}
+        {isDefaultLikeMode && isResolvedOrderSubpage && defaultStorefrontModel && (
+          <DefaultOrderPage {...defaultOrderRouteProps} />
+        )}
         {isSimpleMode && !isResolvedOrderSubpage && simpleStorefrontModel && (
           <>
             <SharedStorefrontPromoSection
@@ -685,7 +691,7 @@ export function StorefrontClassicCatalog({
           />
         )}
 
-        {!isServicesMode && !isFnbMode && !isSimpleMode && defaultStorefrontModel && (
+        {isDefaultLikeMode && !isResolvedOrderSubpage && defaultStorefrontModel && (
           <>
             <SharedStorefrontPromoSection
               items={promoSectionModel}

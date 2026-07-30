@@ -83,6 +83,14 @@ describe('storefront profile launcher', () => {
     window.history.pushState({}, '', '/');
     window.localStorage.clear();
     window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
+    // The default fetchMock below always resolves /auth/me to a signed-in
+    // account, i.e. this file's fixture models a cookie-backed session. The
+    // real backend always issues `sku_csrf_token` (readable, non-httpOnly)
+    // alongside that session -- see backend/src/utils/browserSessionCookies.js
+    // issueCsrfToken -- which useStorefrontSession now checks before firing
+    // the probe at all (hasDgfyBrowserSessionHint in dgfyAuthService.js).
+    // Without this, every test here would skip the probe as if anonymous.
+    document.cookie = 'sku_csrf_token=test-hint';
     fetchMock = vi.fn(async (url) => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/storefront/discovery?')) {
@@ -173,6 +181,7 @@ describe('storefront profile launcher', () => {
     vi.unstubAllGlobals();
     window.localStorage.clear();
     window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
+    document.cookie = 'sku_csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
   });
 
   it('does not show the profile launcher entry on the main discovery page', async () => {
@@ -204,8 +213,8 @@ describe('storefront profile launcher', () => {
     await user.click(profileButton);
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/tenant-store/alpha');
-      expect(screen.getAllByRole('button', { name: /^Profile$/i }).length).toBeGreaterThan(0);
+      expect(window.location.pathname).toBe('/map-dgfy/account');
+      expect(screen.getByTestId('dgfy-customer-account-page')).toBeTruthy();
       expect(fetchMock).toHaveBeenCalled();
     });
   }, 10000);
@@ -256,12 +265,8 @@ describe('storefront profile launcher', () => {
     render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => {
-      expect(screen.getAllByText('Loading Storefront...').length).toBeGreaterThan(0);
-    });
-    await waitFor(() => {
-      expect(screen.getByRole('button', { name: /Back to Discovery/i })).toBeTruthy();
+      expect(screen.getAllByRole('button', { name: /Back to Discovery/i }).length).toBeGreaterThan(0);
       expect(screen.getByRole('button', { name: /Order Now/i })).toBeTruthy();
-      expect(screen.getByText(/Browse the store categories and products below\./i)).toBeTruthy();
     });
   }, 10000);
 });

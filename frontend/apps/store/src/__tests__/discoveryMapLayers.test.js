@@ -146,7 +146,7 @@ describe('discovery map layer helpers', () => {
     });
   });
 
-  it('renders multiple placeholder-coordinate storefronts as a count cluster but hides a single placeholder pin', () => {
+  it('excludes provisioned placeholder coordinates from public map layers', () => {
     const single = buildDiscoveryPinLayerModel({
       stores: [
         { slug: 'alpha', location_id: 1, latitude: 10.699817, longitude: 122.559893, workflow_mode: 'services' }
@@ -161,12 +161,7 @@ describe('discovery map layer helpers', () => {
       ]
     });
 
-    expect(grouped.sourceData.features).toHaveLength(1);
-    expect(grouped.sourceData.features[0].properties).toMatchObject({
-      count: 2,
-      type: 'cluster',
-      placeholderCluster: true
-    });
+    expect(grouped.sourceData.features).toHaveLength(0);
   });
 
   it('adds user location below pin halo and pin symbol layers', () => {

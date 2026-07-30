@@ -75,8 +75,16 @@ export const registerStoreCustomer = async (req, res, next) => {
 
 export const listStoreCatalog = async (req, res, next) => {
     try {
+        const tenantId = resolveTenantId(req);
         const result = await listStoreCatalogUseCase({
-            query: req.validatedQuery || req.query
+            query: req.validatedQuery || req.query,
+            tenantId,
+            // Phase 1 affiliate pricing rule engine: same cookie bridge already used by the
+            // checkout handler below, extended to catalog browsing so a buyer sees the same price
+            // in the product list as they will at checkout (see
+            // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md section 6 - "both
+            // in-scope sites must change together"). A no-op when the cookie is absent.
+            attributionEnrollmentId: getAffiliateAttributionCookie(req, tenantId)
         });
 
         return sendUseCaseResult(res, result, {
@@ -95,8 +103,11 @@ export const listStoreCatalog = async (req, res, next) => {
 
 export const resolveStoreQr = async (req, res, next) => {
     try {
+        const tenantId = resolveTenantId(req);
         const result = await resolveStoreQrUseCase({
-            query: req.validatedQuery || req.query
+            query: req.validatedQuery || req.query,
+            tenantId,
+            attributionEnrollmentId: getAffiliateAttributionCookie(req, tenantId)
         });
 
         return sendUseCaseResult(res, result, {

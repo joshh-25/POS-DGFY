@@ -1,8 +1,11 @@
 ---
-status: authoritative
-authority_level: authoritative
+status: superseded
+superseded_by: ../../ops/RELEASE_CANDIDATE_POLICY.md
+authority_level: historical
 owner: architecture
-last_reviewed: 2026-06-30
+date: 2026-06-28
+last_reviewed: 2026-07-30
+review_by: 2026-12-28
 applies_to: development_to_production_release_authorization
 topic: free_tier_signed_release_authorization
 ---
@@ -12,6 +15,15 @@ topic: free_tier_signed_release_authorization
 ## Status
 
 Accepted (2026-06-28)
+Superseded (2026-07-30): see `docs/ops/RELEASE_CANDIDATE_POLICY.md`. This
+decision was written for a `master` branch and a root-owned external release
+controller, neither of which was ever built in this repository (`Sieitz/
+dgfy-platform`; there is no `master`, and no controller was installed). The
+workflows that implemented it (`staging-qualification.yml`,
+`exact-master-sha-qualification.yml`, `promote-staging-to-master.yml`) were
+failing or permanently skipped on every recent run before being archived to
+`.github/workflows-archive/`. Kept here as historical record only — do not
+cite this ADR in new plans.
 
 ## Context
 
