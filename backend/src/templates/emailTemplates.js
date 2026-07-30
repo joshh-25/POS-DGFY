@@ -449,9 +449,8 @@ export const getCashierCredentialTemplate = ({
  * @param {string} params.appUrl - The base URL of the application
  * @returns {string} HTML email content
  */
-export const getCompanyApprovedTemplate = ({ companyName, adminEmail, appUrl }) => {
-  const loginUrlRaw = `${appUrl}/login`;
-  const loginUrl = appendUtm(loginUrlRaw, 'company_approved');
+export const getCompanyApprovedTemplate = ({ companyName, adminEmail, appUrl, statusUrl }) => {
+  const continueUrl = appendUtm(statusUrl || `${appUrl}/register-company`, 'company_approved');
 
   return `
 <!DOCTYPE html>
@@ -510,8 +509,8 @@ export const getCompanyApprovedTemplate = ({ companyName, adminEmail, appUrl }) 
 
               <!-- CTA Button -->
               <div style="text-align: center; margin-bottom: 24px;">
-                <a href="${loginUrl}" style="display: inline-block; background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 14px rgba(13, 148, 136, 0.4);">
-                  Login to Your Account
+                <a href="${continueUrl}" style="display: inline-block; background: linear-gradient(135deg, #0d9488 0%, #0891b2 100%); color: #ffffff; text-decoration: none; padding: 14px 40px; border-radius: 8px; font-weight: 600; font-size: 16px; box-shadow: 0 4px 14px rgba(13, 148, 136, 0.4);">
+                  View company status
                 </a>
               </div>
 
@@ -543,9 +542,8 @@ export const getCompanyApprovedTemplate = ({ companyName, adminEmail, appUrl }) 
  * @param {string} params.appUrl - The base URL of the application
  * @returns {string} HTML email content
  */
-export const getCompanyRejectedTemplate = ({ companyName, rejectionReason, appUrl }) => {
-  const registerUrlRaw = `${appUrl}/register`;
-  const registerUrl = appendUtm(registerUrlRaw, 'company_rejected');
+export const getCompanyRejectedTemplate = ({ companyName, rejectionReason, statusUrl, appUrl }) => {
+  const correctionUrl = appendUtm(statusUrl || `${appUrl}/dgfy/account`, 'company_rejected');
 
   const reasonSection = rejectionReason ? `
               <!-- Reason Box -->
@@ -605,13 +603,13 @@ ${reasonSection}
 
               <!-- Help Text -->
               <p style="margin: 0 0 24px; color: #6b7280; font-size: 14px; text-align: center;">
-                If you believe this was a mistake or would like to provide additional information, please contact our support team. You may also try registering again with updated information.
+                Open your existing application to correct the information and resubmit it. Do not create a duplicate company registration.
               </p>
 
               <!-- CTA Button -->
               <div style="text-align: center; margin-bottom: 24px;">
-                <a href="${registerUrl}" style="display: inline-block; background-color: #6b7280; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 8px; font-weight: 600; font-size: 14px;">
-                  Try Again
+                <a href="${correctionUrl}" style="display: inline-block; background-color: #6b7280; color: #ffffff; text-decoration: none; padding: 12px 32px; border-radius: 8px; font-weight: 600; font-size: 14px;">
+                  Correct and resubmit
                 </a>
               </div>
 

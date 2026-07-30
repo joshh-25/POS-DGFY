@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
+  identifyAnalyticsUser,
   resolvePostHogBrowserConfig
 } from '../analyticsClient.js';
 
@@ -77,5 +78,72 @@ describe('browser PostHog config', () => {
     const config = resolvePostHogBrowserConfig({});
 
     expect(config.surface).toBe('skupervisor');
+  });
+
+  it('scopes autocapture to interactive elements on the pos surface, leaves it unrestricted elsewhere', () => {
+    const posConfig = resolvePostHogBrowserConfig({}, 'pos');
+    const storeConfig = resolvePostHogBrowserConfig({}, 'store');
+
+    expect(posConfig.autocapture).toEqual({
+      element_allowlist: ['button', 'a', 'input', 'select'],
+      css_selector_ignorelist: ['.ph-no-capture', '[data-ph-no-capture]']
+    });
+    expect(storeConfig.autocapture).toBe(true);
+  });
+
+  it('resolves session replay per-surface, falling back to the shared flag, defaulting off', () => {
+    expect(resolvePostHogBrowserConfig({}, 'store').sessionReplayEnabled).toBe(false);
+    expect(resolvePostHogBrowserConfig({
+      VITE_POSTHOG_SESSION_REPLAY_STORE: 'true'
+    }, 'store').sessionReplayEnabled).toBe(true);
+    // POS is untouched by the STORE-specific flag.
+    expect(resolvePostHogBrowserConfig({
+      VITE_POSTHOG_SESSION_REPLAY_STORE: 'true'
+    }, 'pos').sessionReplayEnabled).toBe(false);
+    // Shared fallback flag applies when no surface-specific flag is set.
+    expect(resolvePostHogBrowserConfig({
+      VITE_POSTHOG_SESSION_REPLAY: 'true'
+    }, 'skupervisor').sessionReplayEnabled).toBe(true);
+  });
+});
+
+describe('identifyAnalyticsUser', () => {
+  it('strips email/phone/address/token/secret/password traits before identifying', async () => {
+    const identifyMock = vi.fn();
+    vi.doMock('posthog-js', () => ({
+      default: {
+        init: vi.fn(),
+        register: vi.fn(),
+        identify: identifyMock,
+        reset: vi.fn(),
+        capture: vi.fn()
+      }
+    }));
+    vi.resetModules();
+    const freshModule = await import('../analyticsClient.js');
+
+    freshModule.initBrowserAnalytics({
+      env: { VITE_POSTHOG_ENABLED: 'true', VITE_POSTHOG_KEY: 'phc_test' },
+      surface: 'store'
+    });
+    // The dynamic import('posthog-js') inside initBrowserAnalytics resolves
+    // on a microtask; flush it before asserting on the mocked module.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    freshModule.identifyAnalyticsUser({
+      id: 'cust-1',
+      email: 'visitor@example.com',
+      phone: '+63123456789',
+      delivery_address: '123 Main St',
+      auth_token: 'secret-token',
+      role: 'customer'
+    });
+
+    expect(identifyMock).toHaveBeenCalledWith('cust-1', { role: 'customer' });
+    vi.doUnmock('posthog-js');
+  });
+
+  it('is a no-op when called without an id', () => {
+    expect(() => identifyAnalyticsUser({ email: 'no-id@example.com' })).not.toThrow();
   });
 });

@@ -1,6 +1,7 @@
 import { useCallback } from 'react';
 
 import { buildFnbCheckoutPayload } from '../model/buildFnbCheckoutPayload.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../src/observability/analyticsEvents.js';
 
 const getValidationField = (error) => {
   const validationErrors = [
@@ -141,9 +142,17 @@ export function useFnbCheckoutQuote({
     }
 
     try {
+      // Every earlier `return` above is a "code added, but not yet
+      // server-validated" state (closed hours, no cart, etc). This is the
+      // only branch that actually round-trips the code to the server, so
+      // it's the one place "applied" (as opposed to merely "typed") is true.
       await requestQuote({
         promoCodeOverride: normalizedPromoCode,
         successMessage: `Promo code ${normalizedPromoCode} applied.`,
+      });
+      trackFunnelEvent(ANALYTICS_EVENTS.PROMO_CODE_APPLIED, {
+        store_slug: selectedStore?.slug,
+        promo_code: normalizedPromoCode
       });
     } catch (error) {
       const violation = extractStockViolation(error);

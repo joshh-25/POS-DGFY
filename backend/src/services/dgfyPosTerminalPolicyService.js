@@ -3,6 +3,8 @@ import dbStore from '../utils/dbStore.js';
 import tenantConnector from '../utils/TenantConnector.js';
 import { getTenantModels } from '../utils/tenantModelFactory.js';
 import { DomainError, DomainErrorCode } from '../modules/shared/contracts/domainErrors.js';
+import { PERMISSIONS } from '../config/permissions.js';
+import { hasEffectivePermission } from '../utils/userPermissions.js';
 
 const TERMINAL_ID_PATTERN = /^[A-Z0-9][A-Z0-9_-]{1,39}$/;
 
@@ -35,16 +37,12 @@ const parseJsonSetting = (setting) => {
   }
 };
 
-const isAdminLikeRole = (role, isMasterAdmin = false) => {
-  const normalizedRole = String(role || '').trim().toLowerCase();
-  return isMasterAdmin === true || normalizedRole === 'admin';
-};
-
 export const validateDgfyPosTerminalPolicy = async ({
   tenantId,
   terminalId,
   tenantUserId = null,
   userRole = '',
+  permissions = [],
   isMasterAdmin = false
 } = {}) => {
   const resolvedTenantId = String(tenantId || '').trim();
@@ -97,7 +95,12 @@ export const validateDgfyPosTerminalPolicy = async ({
     const bindingEnforced = parseBooleanSetting(lookup.get('pos_terminal_location_binding_enforced')?.setting_value);
     const registryEntry = registry.find((entry) => entry.terminal_id === normalizedTerminalId) || null;
     const resolvedTenantUserId = parsePositiveInt(tenantUserId);
-    const requiresLocationGrant = resolvedTenantUserId && !isAdminLikeRole(userRole, isMasterAdmin);
+    const canSwitchLocation = hasEffectivePermission({
+      role: userRole,
+      permissions,
+      is_master_admin: isMasterAdmin
+    }, PERMISSIONS.POS.actions.SWITCH_LOCATION_POS);
+    const requiresLocationGrant = resolvedTenantUserId && !canSwitchLocation;
 
     const context = {
       terminal_id: normalizedTerminalId,

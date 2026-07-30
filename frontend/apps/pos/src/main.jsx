@@ -9,8 +9,15 @@ import { WorkflowModeProvider } from '../../../src/features/settings/WorkflowMod
 import { Toaster } from '@/components/ui/sonner';
 import { buildSkupervisorPath } from '../../../src/features/pos/utils/skupervisorHandoff.js';
 import { login as loginTenantSession } from '../../../src/services/authService.js';
+import { getCurrentUser } from '../../../src/services/authService.js';
 import { initBrowserSentry } from '../../../src/observability/sentryClient.js';
-import { capturePageview, initBrowserAnalytics } from '../../../src/observability/analyticsClient.js';
+import {
+  capturePageview,
+  identifyAnalyticsUser,
+  initBrowserAnalytics,
+  resetAnalyticsIdentity,
+  setAnalyticsContext
+} from '../../../src/observability/analyticsClient.js';
 import '../../../src/index.css';
 
 function PosRouteNotFound() {
@@ -58,6 +65,7 @@ const enableDevAutoLogin = import.meta.env.DEV && import.meta.env.VITE_POS_DEV_A
 const devAutoLoginCompanyToken = String(import.meta.env.VITE_POS_DEV_COMPANY_TOKEN || 'token-original').trim();
 const devAutoLoginEmail = String(import.meta.env.VITE_POS_DEV_EMAIL || 'admin@test.com').trim();
 const devAutoLoginPassword = String(import.meta.env.VITE_POS_DEV_PASSWORD || 'Admin123!').trim();
+const POS_DEV_SERVICE_WORKER_RESET_MARKER = 'dgfy_pos_dev_service_worker_reset_v1';
 
 initBrowserSentry({ surface: 'pos' });
 initBrowserAnalytics({ surface: 'pos' });
@@ -68,6 +76,43 @@ function AnalyticsRouteTracker() {
   useEffect(() => {
     capturePageview({ path: location.pathname });
   }, [location.pathname]);
+
+  return null;
+}
+
+// Cashier identity isn't known at mount (TerminalPage.jsx owns the login
+// flow); resolve it the same way PermissionContext does -- via
+// getCurrentUser() -- on mount and whenever auth state changes, rather than
+// reaching into the 4,892-line TerminalPage component.
+function AnalyticsIdentitySync() {
+  useEffect(() => {
+    let cancelled = false;
+
+    const sync = async () => {
+      try {
+        const user = await getCurrentUser();
+        if (cancelled) return;
+        if (user?.id) {
+          identifyAnalyticsUser({ id: user.id, role: user.role });
+          setAnalyticsContext({ tenantId: user.company?.id, businessMode: user.company?.business_mode });
+        } else {
+          resetAnalyticsIdentity();
+        }
+      } catch {
+        // Identity sync is best-effort; a failed lookup just leaves the
+        // anonymous PostHog id in place.
+      }
+    };
+
+    sync();
+    window.addEventListener('auth:login', sync);
+    window.addEventListener('auth:logout', sync);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('auth:login', sync);
+      window.removeEventListener('auth:logout', sync);
+    };
+  }, []);
 
   return null;
 }
@@ -93,12 +138,47 @@ const registerPosServiceWorker = async () => {
   }
 };
 
+const resetStaleDevelopmentServiceWorkers = async () => {
+  if (typeof window === 'undefined' || !import.meta.env.DEV) return false;
+  if (!('serviceWorker' in navigator)) return false;
+
+  try {
+    const registrations = await navigator.serviceWorker.getRegistrations();
+    const hasController = Boolean(navigator.serviceWorker.controller);
+    if (registrations.length === 0 && !hasController) {
+      window.sessionStorage.removeItem(POS_DEV_SERVICE_WORKER_RESET_MARKER);
+      return false;
+    }
+
+    await Promise.all(registrations.map((registration) => registration.unregister()));
+    if ('caches' in window) {
+      const cacheNames = await window.caches.keys();
+      await Promise.all(
+        cacheNames
+          .filter((cacheName) => cacheName.startsWith('sku-admin-') || cacheName.startsWith('sku-pos-'))
+          .map((cacheName) => window.caches.delete(cacheName))
+      );
+    }
+
+    if (window.sessionStorage.getItem(POS_DEV_SERVICE_WORKER_RESET_MARKER) !== 'reloaded') {
+      window.sessionStorage.setItem(POS_DEV_SERVICE_WORKER_RESET_MARKER, 'reloaded');
+      window.location.reload();
+      return true;
+    }
+    window.sessionStorage.removeItem(POS_DEV_SERVICE_WORKER_RESET_MARKER);
+  } catch {
+    // A stale local worker must never prevent the POS app from mounting.
+  }
+  return false;
+};
+
 const mountApp = () => {
   ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>
       <ErrorBoundary>
         <HashRouter>
           <AnalyticsRouteTracker />
+          <AnalyticsIdentitySync />
           <PermissionProvider>
             <WorkflowModeProvider>
               <GlobalApiErrorListener />
@@ -123,8 +203,10 @@ const mountApp = () => {
   );
 };
 
-if (enableDevAutoLogin) {
-  (async () => {
+const bootstrapPosApp = async () => {
+  if (await resetStaleDevelopmentServiceWorkers()) return;
+
+  if (enableDevAutoLogin) {
     try {
       window.localStorage.setItem('pos_terminal_identity_v1', 'COUNTER-01');
 
@@ -138,9 +220,11 @@ if (enableDevAutoLogin) {
     } finally {
       mountApp();
     }
-  })();
-} else {
-  mountApp();
-}
+  } else {
+    mountApp();
+  }
 
-registerPosServiceWorker();
+  registerPosServiceWorker();
+};
+
+bootstrapPosApp();

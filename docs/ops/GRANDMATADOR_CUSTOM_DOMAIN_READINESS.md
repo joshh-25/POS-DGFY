@@ -165,7 +165,7 @@ DNS rollback may be delayed by TTL and resolver caches.
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
 - `docs/architecture/adr/0013-tenant-first-login-onboarding-and-storefront-readiness-contract.md`
-- `docs/architecture/adr/0036-verified-storefront-custom-domains.md`
+- `docs/architecture/adr/0046-verified-storefront-custom-domains.md`
 - `docs/ai/PR.md`
 - `docs/ops/CUSTOM_STOREFRONT_DOMAINS.md`
 - `docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md`

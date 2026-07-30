@@ -387,13 +387,13 @@ npm --prefix frontend run build:skupervisor
 git diff --check
 ```
 
-## Tenant Registration Auto-Accept Smoke
+## Platform Admin Manual Registration Review And QA Invoice Smoke
 
-Use these checks when changing public company registration, tenant provisioning, auth login handoff, public registration rate limits, admin-assisted tenant provisioning, or `TENANT_REGISTRATION_APPROVAL_MODE`.
+Use these checks when changing public company registration, Platform Admin identity/permissions, approval provisioning, applicant status/resubmission, or QA landlord invoicing.
 
 Targeted backend suites:
 ```bash
-npm --prefix backend test -- --runTestsByPath tests/registerCompanyRequestUseCase.autoApproval.test.js tests/rateLimiter.behavior.test.js tests/adminTenantHandlers.transport.test.js tests/adminTenantLifecycle.integration.test.js
+npm --prefix backend test -- --runTestsByPath tests/registerCompanyRequestUseCase.autoApproval.test.js tests/companyRegistrationStatusUseCase.test.js tests/platformAdminUsersUseCase.test.js tests/platformAdminRouteClassification.test.js tests/platformInvoiceUseCases.test.js
 ```
 
 Tenant provisioning/model graph suites:
@@ -409,20 +409,24 @@ npm --prefix backend test -- --runTestsByPath tests/adminAssistedProvisioningUse
 Fresh-schema proof:
 1. Run a disposable MySQL tenant schema sync against the complete model graph when a mode adds tenant-local models or foreign keys.
 2. Confirm the mode matrix covers every value in `WORKFLOW_MODE_VALUES`, including placeholder modes using conservative defaults.
-3. Confirm failed approval/auto-approval provisioning restores a retryable `pending` landlord status and drops zombie tenant databases.
+3. Confirm a public submission creates a pending application without a tenant database or company-token capability.
+4. Confirm approval provisions once, activation follows successful provisioning, and a failure remains retryable without a zombie tenant database.
+5. Confirm delegated Platform Admin users cannot call routes outside their live database grants.
+6. Confirm QA invoices remain `TEST-` numbered, cash-only, privately stored, hash-verified, and blocked from live fiscal/email behavior unless the QA delivery sink/allowlist is configured.
 
 Targeted frontend suite:
 ```bash
-npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx
+npm --prefix frontend test -- Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx apps/store/src/__tests__/businessRegistrationApprovalHandoff.contract.test.js src/features/pos/__tests__/serviceWorkerCaching.contract.test.js
 ```
 
-Manual smoke for the default auto-standard environment:
-1. Confirm `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` or leave the value unset so the backend uses its default.
-2. Register a new standard company from `/register-company`.
-3. Confirm the tenant is created as non-loginable until provisioning completes, then returned as `status=active`.
-4. Confirm the frontend calls the normal login API and lands on the authenticated app.
-5. Confirm manual-login fallback pre-fills email and company token if the follow-up login fails.
-6. Confirm premium/subscription registration still returns `503` with `PAYMENTS_DISABLED` while `PAYMENTS_ENABLED=false`.
+Manual smoke:
+1. Register a company from either `/register-company` or Storefront `/business/grow`.
+2. Confirm the response/status route shows `Waiting for approval`, with no `Proceed to POS` action and no company token.
+3. Confirm the Platform Admin tenant page can approve or reject with an audit reason and that rejection details are visible only to the submitting DGFY account.
+4. After approval/provisioning succeeds, confirm the applicant status becomes `ready` and can start the normal tenant session.
+5. Open `/admin/invoices` on a phone viewport, select an approved company, confirm company name/email autofill, enter the PHP amount, and create a QA draft.
+6. Issue a cash invoice, inspect the stored PDF for `Payment details`, `DGFY platform fee`, the Sieitz seller block/logo, TEST-only warning, and red missing-fiscal placeholders.
+7. Open standalone POS at `http://localhost:5174/terminal`; confirm required assets return `200`, no stale service-worker controller remains in development, and the rendered terminal is not blank.
 
 ## Platform Admin Compliance Lifecycle Smoke
 

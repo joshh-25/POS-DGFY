@@ -1,3 +1,5 @@
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../src/observability/analyticsEvents.js';
+
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the checkout-submission handlers
  * (`handleQuote`, `handleCheckout`, `handleDownloadCheckoutImage`).
@@ -201,6 +203,14 @@ export function useCheckoutSubmission({
     const cartSnapshot = cart.map((line) => ({ ...line }));
     const hasMixedCart = hasServiceCart && Array.isArray(productCartLines) && productCartLines.length > 0;
     setCheckoutLoading(true);
+    trackFunnelEvent(ANALYTICS_EVENTS.CHECKOUT_SUBMITTED, {
+      store_slug: selectedStore?.slug,
+      order_value: totalsForDisplay?.total_amount ?? 0,
+      item_count: cartSnapshot.length,
+      fulfillment_type: orderMethod,
+      has_service_cart: hasServiceCart,
+      has_mixed_cart: hasMixedCart
+    });
     let checkoutStage = 'checkout';
     try {
       const authToken = isDgfyCustomerSignedIn
@@ -294,6 +304,15 @@ export function useCheckoutSubmission({
           const message = `Your order was placed, but the service booking failed: ${formatServicesBookingFailureMessage(servicesError, serviceCartLines)}`;
           setCheckoutError(message);
           toast.error(message);
+          // The product order genuinely went through here even though the
+          // mixed-cart service booking leg failed -- still an order placed.
+          trackFunnelEvent(ANALYTICS_EVENTS.ORDER_PLACED, {
+            store_slug: selectedStore?.slug,
+            order_value: totalsForDisplay?.total_amount ?? 0,
+            item_count: productCartLines.length,
+            fulfillment_type: productData?.order?.order_method || orderMethod,
+            partial_booking_failure: true
+          });
           return;
         }
       }
@@ -377,12 +396,25 @@ export function useCheckoutSubmission({
             ? 'Bookings created.'
             : (data?.promo_feedback?.message || 'Checkout completed.')
       );
+      trackFunnelEvent(ANALYTICS_EVENTS.ORDER_PLACED, {
+        store_slug: selectedStore?.slug,
+        order_value: totalsForDisplay?.total_amount ?? 0,
+        item_count: cartSnapshot.length,
+        fulfillment_type: data?.order?.order_method || orderMethod,
+        has_service_cart: hasServiceCart,
+        has_mixed_cart: hasMixedCart
+      });
     } catch (error) {
       const violation = extractStockViolation(error);
       if (violation) {
         const message = buildStockExceededMessage(violation);
         setCheckoutError(message);
         toast.error(message);
+        trackFunnelEvent(ANALYTICS_EVENTS.CHECKOUT_FAILED, {
+          store_slug: selectedStore?.slug,
+          reason: 'stock_violation',
+          checkout_stage: checkoutStage
+        });
         return;
       }
       const message = checkoutStage === 'booking'
@@ -390,6 +422,11 @@ export function useCheckoutSubmission({
         : normalizeStorefrontErrorMessage(error, 'Unable to complete checkout.');
       setCheckoutError(message);
       toast.error(message);
+      trackFunnelEvent(ANALYTICS_EVENTS.CHECKOUT_FAILED, {
+        store_slug: selectedStore?.slug,
+        reason: error?.errorCode || 'unknown',
+        checkout_stage: checkoutStage
+      });
     } finally {
       setCheckoutLoading(false);
     }

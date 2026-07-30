@@ -1,3 +1,14 @@
+---
+status: accepted
+authority_level: authoritative
+owner: architecture
+date: 2026-04-16
+last_reviewed: 2026-04-16
+review_by: 2026-10-16
+applies_to: architecture_decision
+topic: multi_location_inventory_ledger_and_safety_rollout
+---
+
 # ADR 0009: Multi-Location Inventory Ledger and Safety-First Rollout
 
 ## Status

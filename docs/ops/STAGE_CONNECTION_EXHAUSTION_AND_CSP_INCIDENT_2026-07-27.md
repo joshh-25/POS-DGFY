@@ -107,6 +107,22 @@ Chosen over CSP-loosening or feature-disabling because it needs **zero CSP chang
 
 The skupervisor surface never calls `initBrowserAnalytics` at all — `frontend/apps/skupervisor/src/main.jsx` re-exports `frontend/src/main.jsx`, which only initializes Sentry — despite a Dockerfile comment claiming all three surfaces are covered. Out of scope for these two incidents; flagged as a follow-up.
 
+## Follow-up (2026-07-28): the first `/ingest` rollout silently no-op'd on stage
+
+The fix above shipped and deployed cleanly (PR #116 → `develop`, PR #117 → `staging`), but the CSP console errors on `stage.dgfy.ph` were **unchanged** afterward. The code was correct and confirmed present in the deployed bundle; two *deployment-config* gaps — both outside the code — prevented it from taking effect:
+
+1. **A CI variable overrode the `/ingest` default.** `analyticsClient.js` resolves `apiHost` as `VITE_POSTHOG_HOST || '/ingest'`. The GitHub **STAGING** environment variable `VITE_POSTHOG_HOST` was already set to `https://eu.i.posthog.com` (predating this fix), so the explicit value always won and `/ingest` was never used.
+2. **The proxy was added to the wrong nginx.** The `/ingest` blocks went into `infrastructure/docker/nginx/nginx.conf.template`, which configures the *containerized* `nginx` service in the repo's compose file. But `/opt/dgfy-stage/docker-compose.yml` — the actual deployment for `stage.dgfy.ph` — is a hand-diverged copy with **no nginx service at all**; it exposes backend/frontend directly on loopback ports, and `stage.dgfy.ph` is fronted by a **host** nginx at `/etc/nginx/sites-available/dgfy-staging` that had **no tracked source anywhere in this repo** until this follow-up. This is exactly the caveat the original writeup flagged and left open (see the "Durable in repo vs. live-only on the server" table above) — it turned out to be the actual blocker.
+
+**Order mattered:** nginx had to be fixed before the variable was flipped — flipping the variable first would have pointed `api_host` at `/ingest` while it still 404/fell-through to the SPA, breaking event ingest too (which was working throughout).
+
+**Fixed:**
+- `infrastructure/nginx-host/stage.dgfy.ph.conf` (new) — a tracked copy of the live host nginx vhost, with `/ingest/static/`, `/ingest/array/`, and `/ingest/` added to the three frontend server blocks (`stage.dgfy.ph`, `pos.stage.dgfy.ph`, `skupervisor.stage.dgfy.ph`; `api.stage.dgfy.ph` is backend-only and untouched). Applied to the live server, verified via `nginx -t` before and after, and confirmed live: `/ingest/static/surveys.js` returns `Content-Type: application/javascript` (previously the SPA's `index.html`), with no regression on `/api`, `/uploads`, `/openfreemap/`, or the SPA root.
+- GitHub **STAGING** environment variable `VITE_POSTHOG_HOST` set explicitly to `/ingest` (rather than deleted, so the value stays visible to anyone reading the environment config), and the staging build rerun to bake it into a fresh image.
+- Confirmed end-to-end: the new deployed bundle contains `VITE_POSTHOG_HOST:"/ingest"`, and `/ingest/static/surveys.js` / `/ingest/array/<key>/config.js` both return real PostHog JS content in production traffic.
+
+**Broader implication, not yet fixed:** production and beta share one host (`dgfy-gha`) and one containerized nginx, so in principle they don't have stage's "wrong nginx" problem — `infrastructure/docker/nginx/nginx.conf.template` **is** what fronts them. But investigating that host surfaced a *third*, more serious gap: its deployed `nginx.conf.template` has drifted substantially from the repo's tracked version (production-specific dual-domain server blocks were added directly on the server and never merged back), such that naively copying the repo template over would break production routing. See `docs/ops/PRODUCTION_READINESS_POSTHOG_AND_NGINX_DRIFT.md` for the full findings and required steps before this proxy — or any other nginx template change — can safely reach production.
+
 ## Connection-budget reference
 
 The relationship any future capacity change must preserve, now computed at boot by `backend/src/config/connectionBudget.js` rather than living only in comments:
@@ -130,7 +146,8 @@ TENANT_MAX_CACHED_CONNECTIONS × TENANT_DB_POOL_MAX + LANDLORD_DB_POOL_MAX  ≤ 
 | `max_connections` pinned to 200 in compose | Yes, for anything deployed from `infrastructure/docker/docker-compose.yml` | Staging's live compose is a separately-maintained copy — see next row |
 | Staging's live `--max_connections=20` and 350 MB MySQL memory limit | **No** | `/opt/dgfy-stage/docker-compose.yml` was **not** live-patched as part of this incident (explicit scope decision). Still needs `--max_connections` raised and the memory limit lifted above 350 MB (already at 94.7%; host has 12.8 GB free), then `docker compose up -d mysql`. |
 | Global reconcile cooldown / transactional index rewrite / 503-not-400 | Yes | All in `backend/src/services/` and `backend/src/middleware/`, ship with the next backend deploy |
-| PostHog `/ingest` nginx proxy | Yes, for anything deployed from `infrastructure/docker/nginx/nginx.conf.template` | Staging currently runs `nginx/dgfy.ph.conf` (a PM2-era, separately-maintained file per its own header comment) for `staging.dgfy.ph` specifically — confirm which nginx config actually fronts `stage.dgfy.ph` before assuming this proxy is live there without a redeploy |
+| PostHog `/ingest` nginx proxy on `stage.dgfy.ph` | **Yes, now** | Resolved in the 2026-07-28 follow-up above. `stage.dgfy.ph` is fronted by a host nginx, not the containerized one — now tracked at `infrastructure/nginx-host/stage.dgfy.ph.conf` and applied live. |
+| PostHog `/ingest` nginx proxy on production/beta | **Yes, as of 2026-07-28** | Was still drifted when PROD's `VITE_POSTHOG_*` variables were enabled, causing Sentry issue `DGFY-STORE-1` on `dgfy.ph`. Reconciled and deployed same day — see the update at the top of `docs/ops/PRODUCTION_READINESS_POSTHOG_AND_NGINX_DRIFT.md`. |
 | `analyticsClient.js` default-to-proxy `api_host` | Yes | Ships with the next frontend build |
 
 ## Production gates

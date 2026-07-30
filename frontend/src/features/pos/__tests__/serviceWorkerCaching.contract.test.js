@@ -38,7 +38,8 @@ describe('service worker caching contracts', () => {
     expect(pluginSource).toContain("const PRECACHE_FILE_NAME = 'precache-manifest.json';");
     expect(pluginSource).toContain("const CRITICAL_ASSET_PATTERN = /\\.(?:css|js|webmanifest|woff2?)$/i;");
     expect(pluginSource).toContain('assets: collectPosOfflinePrecacheAssets(bundle)');
-    expect(viteSource).toContain('plugins: [react(), posOfflinePrecachePlugin()]');
+    expect(viteSource).toContain('plugins: [react(), posOfflinePrecachePlugin(),');
+    expect(viteSource).toContain('...buildSentryVitePlugins(appSurface)');
   });
 
   it('creates a distinct POS worker revision for each production build', () => {
@@ -77,5 +78,14 @@ describe('service worker caching contracts', () => {
     expect(source).toContain('const appBasePath = String(import.meta.env.BASE_URL || \'/\')');
     expect(source).toContain('const serviceWorkerUrl = appBasePath === \'/\' ? \'/sw.js\' : `${appBasePath}/sw.js`;');
     expect(source).toContain('scope: appBasePath === \'/\' ? \'/\' : `${appBasePath}/`');
+  });
+
+  it('removes stale root-scoped workers before mounting the local POS app', () => {
+    const source = readSource(posMainPath);
+    expect(source).toContain('const resetStaleDevelopmentServiceWorkers = async () => {');
+    expect(source).toContain('await navigator.serviceWorker.getRegistrations()');
+    expect(source).toContain('registration.unregister()');
+    expect(source).toContain("cacheName.startsWith('sku-admin-') || cacheName.startsWith('sku-pos-')");
+    expect(source).toContain('if (await resetStaleDevelopmentServiceWorkers()) return;');
   });
 });

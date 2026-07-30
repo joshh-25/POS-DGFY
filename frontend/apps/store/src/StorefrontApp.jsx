@@ -49,6 +49,8 @@ import { useGuestCustomerIdentity } from './shared/hooks/useGuestCustomerIdentit
 import { useStorefrontUiChrome } from './shared/hooks/useStorefrontUiChrome.js';
 import { useStorefrontTrackingIntent } from './shared/hooks/useStorefrontTrackingIntent.js';
 import { useAffiliateAttributionCapture } from './shared/hooks/useAffiliateAttributionCapture.js';
+import { setAnalyticsContext } from '../../../src/observability/analyticsClient.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../src/observability/analyticsEvents.js';
 import {
   buildCustomerFullName,
   clearCheckoutAuthResumeDraft,
@@ -203,6 +205,7 @@ import { useServiceBookingFieldFocus } from './modes/services/booking/hooks/useS
 import { useServiceBookingReviewProps } from './modes/services/booking/hooks/useServiceBookingReviewProps.js';
 import { useServiceCartDrawerProps } from './modes/services/booking/hooks/useServiceCartDrawerProps.js';
 import { useSimpleCartDrawerProps } from './modes/simple/checkout/hooks/useSimpleCartDrawerProps.js';
+import { useSimpleCheckoutGating } from './modes/simple/checkout/hooks/useSimpleCheckoutGating.js';
 import { useSimpleCheckoutRouteProps } from './modes/simple/checkout/hooks/useSimpleCheckoutRouteProps.js';
 import { StoresMap } from './discovery/components/StoresMap.jsx';
 import {
@@ -283,6 +286,7 @@ import {
   writeStoreAuthToken
 } from './auth/storefrontSessionStorage.js';
 import { requestJson } from './services/requestJson.js';
+import { isKnownDgfyPlatformHost } from './shared/utils/storefrontPlatformHost.js';
 import { hasCustomerName, hasPrimaryContact, isCustomerStepComplete } from './checkout/checkoutValidation.js';
 import { buildFnbTrackingRouteProps } from './modes/fnb/tracking/model/buildFnbTrackingRouteProps.js';
 import {
@@ -343,6 +347,13 @@ export default function StorefrontApp() {
 
   useEffect(() => {
     if (routeSlug || typeof window === 'undefined') return undefined;
+    // This probe only ever resolves a context on an actual customer custom
+    // domain -- the backend's own hostname policy guarantees a 404 on
+    // dgfy.ph and its subdomains (see hostnamePolicy.js), which the frontend
+    // then discards anyway (see the `.then` chain below). Skipping it here
+    // avoids a false-positive 404 in the console/error dashboards on every
+    // anonymous root landing on the platform's own domain.
+    if (isKnownDgfyPlatformHost(window.location.hostname)) return undefined;
     let cancelled = false;
 
     fetch('/api/v1/store/domain-context', { credentials: 'include', cache: 'no-store' })
@@ -553,6 +564,17 @@ export default function StorefrontApp() {
   } = useDiscoveryFeaturedMerchants({ normalizeStorefrontCategories });
   const [selectedStore, setSelectedStore] = useState(null);
   const isStorePage = Boolean(routeSlug);
+  // AnalyticsRouteTracker (apps/store/src/main.jsx) already fires a
+  // $pageview for every route, including the discovery home -- this named
+  // event exists separately so "landed on discovery" reads as a funnel
+  // entry step in the PostHog UI rather than requiring a $pageview filter.
+  useEffect(() => {
+    if (isStorePage) return;
+    trackFunnelEvent(ANALYTICS_EVENTS.DISCOVERY_VIEWED, {
+      path: typeof window === 'undefined' ? '/' : (window.location.pathname || '/')
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isStorePage]);
   const currentPathSubpage = readStoreSubpage();
   const currentPathname = typeof window === 'undefined' ? '/' : (window.location.pathname || '/');
   const isBookingSubpage = routeSubpage === STORE_BOOKING_SUBPAGE;
@@ -727,6 +749,16 @@ export default function StorefrontApp() {
     closeAccountDrawer
   } = useStorefrontSession({ setIsAccountDrawerOpen });
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
+  // isCheckoutOpen has many true-setting call sites (cart-add auto-open, hero
+  // CTAs, tracking-intent resume, guest-checkout-auth resume) with no single
+  // "start checkout" function to instrument -- watching its state origin
+  // here is the one chokepoint that covers all of them without duplicating
+  // the event at every call site.
+  useEffect(() => {
+    if (!isCheckoutOpen) return;
+    trackFunnelEvent(ANALYTICS_EVENTS.CHECKOUT_STARTED, { store_slug: selectedStore?.slug });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isCheckoutOpen]);
   const [checkoutTab, setCheckoutTab] = useState('checkout');
   const [pendingOrderInitialTab, setPendingOrderInitialTab] = useState('');
   const [hasAppliedCheckoutAuthResume, setHasAppliedCheckoutAuthResume] = useState(false);
@@ -773,6 +805,7 @@ export default function StorefrontApp() {
     serviceHeroModel,
     fnbCommunityModel,
     simpleStorefrontModel,
+    defaultStorefrontModel,
     catalogState
   } = useStorefrontCatalog({
     selectedStore,
@@ -1481,6 +1514,43 @@ export default function StorefrontApp() {
   useEffect(() => {
     setHasSelectedBranchFromMenu(false);
   }, [selectedStore?.slug]);
+  // Registers store/tenant/business-mode as PostHog super properties + groups
+  // once a store resolves, so every event fired afterwards (funnel events,
+  // autocapture, pageviews) can be sliced by "which store" / "which tenant"
+  // without a join -- this is what answers "which stores do visitors most
+  // often come from" in the PostHog UI.
+  useEffect(() => {
+    if (!selectedStore?.slug) return;
+    setAnalyticsContext({
+      storeSlug: selectedStore.slug,
+      storeName: selectedStore.tenant_name,
+      tenantId: selectedStore.tenant_id,
+      businessMode: selectedStore.workflow_mode || selectedStore.ops_workflow_mode || selectedStore.business_mode,
+      locationId: selectedLocationId
+    });
+    trackFunnelEvent(ANALYTICS_EVENTS.STORE_VIEWED, {
+      store_slug: selectedStore.slug,
+      business_mode: selectedStore.workflow_mode || selectedStore.ops_workflow_mode || selectedStore.business_mode,
+      location_id: selectedLocationId
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedStore?.slug, selectedStore?.tenant_id, selectedStore?.workflow_mode, selectedLocationId]);
+
+  // Catalog search is purely client-side filtering (no network call, no
+  // existing debounce), so this is debounced here specifically to avoid
+  // firing an event per keystroke.
+  const catalogFilterEventTimerRef = useRef(null);
+  useEffect(() => {
+    if (!catalogSearch.trim()) return undefined;
+    clearTimeout(catalogFilterEventTimerRef.current);
+    catalogFilterEventTimerRef.current = setTimeout(() => {
+      trackFunnelEvent(ANALYTICS_EVENTS.STORE_CATALOG_FILTERED, {
+        query: catalogSearch.trim(),
+        store_slug: selectedStore?.slug
+      });
+    }, 600);
+    return () => clearTimeout(catalogFilterEventTimerRef.current);
+  }, [catalogSearch, selectedStore?.slug]);
   const {
     submitFnbItemReview,
     openFnbItemReviewFromInvite,
@@ -2655,19 +2725,26 @@ export default function StorefrontApp() {
     setQuoteError,
     storefrontClosedByHours,
   ]);
-  const simpleCustomerStepComplete = isCustomerStepComplete({
+  const {
+    simpleCheckoutAllowed,
+    simpleCustomerStepComplete,
+    simpleHasCustomerIdentity,
+    simpleHasPrimaryIdentityContact,
+    simpleStepOneReady
+  } = useSimpleCheckoutGating({
+    cart,
+    checkoutAllowed,
+    customerAddress,
+    customerEmail,
     customerName,
     customerPhone,
-    customerEmail,
-    isDeliveryOrder,
-    customerAddress,
-    usePinnedAddress: false
+    fnbScheduleMode,
+    fnbScheduledFor,
+    isDeliveryOrder
   });
-  const simpleHasCustomerIdentity = hasCustomerName(customerName);
-  const simpleHasPrimaryIdentityContact = hasPrimaryContact({ phone: customerPhone, email: customerEmail });
-  const simpleStepOneReady = cart.length > 0;
-  const simpleCheckoutAllowed = checkoutAllowed && simpleCustomerStepComplete;
   const simpleCheckoutRouteProps = useSimpleCheckoutRouteProps({
+    applySavedDeliveryLocation,
+    canAddPinnedLocation,
     canUseGuestCheckoutFlow,
     cart,
     cartCount,
@@ -2676,16 +2753,23 @@ export default function StorefrontApp() {
     checkoutResult,
     customerAddress,
     customerPin,
+    deliveryLocationAction,
+    deliveryLocationDisplayAddress,
+    deliverySavedLocations,
     DropdownComponent: StorefrontDropdown,
     fnbPaymentType,
+    fnbScheduleMode,
     fnbScheduledFor,
     fnbSpecialInstructions,
     goStoreCatalogPage,
+    handleAddPinnedLocation,
     handleCheckout,
     handleDownloadCheckoutImage,
     handlePaymentTypeChange,
     handlePinMyLocation,
     handleQuote,
+    handleRemoveDeliveryAddress,
+    handleSetDefaultDeliveryAddress,
     isDeliveryOrder,
     isDesktopCheckout,
     isDgfyCustomerSignedIn,
@@ -2705,18 +2789,25 @@ export default function StorefrontApp() {
     requireQuoteForCheckout,
     selectedLocation,
     selectedLocationId,
+    selectedSavedLocationId,
     selectedStore,
     servicesBodyFont,
     servicesDisplayFont,
     setCheckoutResult,
     setCustomerAddress,
     setCustomerPin,
+    setDeliveryLocationAction,
     setFnbScheduledFor,
+    setFnbScheduleMode,
     setFnbSpecialInstructions,
     setOrderMethod,
     setPinLocationError,
+    setResolvedDeliveryAddress,
     setSelectedLocationId,
+    setSelectedSavedLocationId,
+    setShowExpandedDeliveryMap,
     setSimpleOrderStep,
+    showExpandedDeliveryMap,
     simpleCheckoutAllowed,
     simpleCustomerStepComplete,
     simpleHasCustomerIdentity,
@@ -3010,6 +3101,7 @@ export default function StorefrontApp() {
     deliveryLocationAction,
     deliveryLocationDisplayAddress,
     deliverySavedLocations,
+    applySavedDeliveryLocation,
     getCartFlySourceRect,
     goStoreCatalogPage,
     handleAddPinnedLocation,
@@ -3133,7 +3225,8 @@ export default function StorefrontApp() {
     setFnbViewMode,
     setIsFnbCategoryDropdownOpen,
     simpleCheckoutRouteProps,
-    simpleStorefrontModel
+    simpleStorefrontModel,
+    defaultStorefrontModel
   });
   const storefrontHeroBandProps = useStorefrontHeroBandProps({
     selectedStore,
@@ -3376,11 +3469,13 @@ export default function StorefrontApp() {
 
         {isStorePage && (
           <>
-            <StorefrontHeroBandContainer {...storefrontHeroBandProps} />
+            {!isFnbDetailsSubpage && (
+              <StorefrontHeroBandContainer {...storefrontHeroBandProps} />
+            )}
 
 
             {/* ZONE 4: Catalog Grid with Sidebar */}
-            {catalogPermitted && selectedStore && (
+            {(isFnbDetailsSubpage || (catalogPermitted && selectedStore)) && (
               <StorefrontCatalogRouteContainer {...storefrontCatalogRouteProps} />
             )}
           </>

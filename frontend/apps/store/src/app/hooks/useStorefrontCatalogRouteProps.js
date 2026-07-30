@@ -39,6 +39,7 @@ export function useStorefrontCatalogRouteProps({
   deliveryLocationAction,
   deliveryLocationDisplayAddress,
   deliverySavedLocations,
+  applySavedDeliveryLocation,
   getCartFlySourceRect,
   goStoreCatalogPage,
   handleAddPinnedLocation,
@@ -162,7 +163,8 @@ export function useStorefrontCatalogRouteProps({
   setFnbViewMode,
   setIsFnbCategoryDropdownOpen,
   simpleCheckoutRouteProps,
-  simpleStorefrontModel
+  simpleStorefrontModel,
+  defaultStorefrontModel
 }) {
   return {
     isServicesMode,
@@ -202,6 +204,7 @@ export function useStorefrontCatalogRouteProps({
     deliveryLocationAction,
     deliveryLocationDisplayAddress,
     deliverySavedLocations,
+    applySavedDeliveryLocation,
     getCartFlySourceRect,
     goStoreCatalogPage,
     handleAddPinnedLocation,
@@ -325,6 +328,7 @@ export function useStorefrontCatalogRouteProps({
     setFnbViewMode,
     setIsFnbCategoryDropdownOpen,
     simpleCheckoutRouteProps,
-    simpleStorefrontModel
+    simpleStorefrontModel,
+    defaultStorefrontModel
   };
 }

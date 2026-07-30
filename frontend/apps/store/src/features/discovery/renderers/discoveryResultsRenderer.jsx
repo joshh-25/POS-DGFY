@@ -612,7 +612,7 @@ const resultsSubtitle = isClusterResultsActive
                 }
                 goStore(pin.slug, pin.location_id ?? null);
               }}
-              autoOpenPopups={!isClusterResultsActive && filteredDiscoveryStores.length > 0}
+              autoOpenPopups={false}
               openPopupOnHover={true}
               onSelectCluster={handleDiscoveryClusterSelect}
             />
@@ -624,6 +624,9 @@ const resultsSubtitle = isClusterResultsActive
           {isDiscoveryMobileViewport && (
             <button
               type="button"
+              aria-label={isResultsPanelVisible
+                ? 'Collapse results panel - Hide Results'
+                : `Expand results panel - View Results (${panelTotalCount})`}
               onClick={() => {
                 clearDiscoveryClusterResults();
                 setIsMobileResultsCollapsed(isResultsPanelVisible);
@@ -659,6 +662,9 @@ const resultsSubtitle = isClusterResultsActive
           {!isDiscoveryMobileViewport && <div style={{ position: 'absolute', top: 16, right: 16, zIndex: 11 }}>
             <button
               type="button"
+              aria-label={isResultsPanelVisible
+                ? 'Collapse results panel - Hide Results'
+                : `Expand results panel - View Results (${panelTotalCount})`}
               onClick={() => {
                 clearDiscoveryClusterResults();
                 setIsStoreListVisible(!isResultsPanelVisible);

@@ -1,12 +1,13 @@
 /** @vitest-environment jsdom */
 import React from 'react';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import TerminalLockDrawer from '../components/TerminalLockDrawer.jsx';
 
 const baseFormData = {
   email: '',
   password: '',
+  rememberDevice: false,
   dgfyTenantId: '',
   terminalId: ''
 };
@@ -34,9 +35,40 @@ describe('TerminalLockDrawer DGFY access UI', () => {
     expect(screen.getByRole('heading', { name: 'Terminal Login Required' })).toBeTruthy();
     expect(screen.getByLabelText('DGFY or Cashier Email')).toBeTruthy();
     expect(screen.getByLabelText('Password')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Show password' })).toBeTruthy();
+    expect(screen.getByLabelText(/Remember this device for 30 days/i)).toBeTruthy();
     expect(screen.queryByLabelText('Company')).toBeNull();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();
     expect(screen.getByText('Legacy access until June 17, 2027')).toBeTruthy();
+  });
+
+  it('toggles password visibility and opts in to a remembered device', () => {
+    const setFormData = vi.fn();
+
+    render(
+      <TerminalLockDrawer
+        drawerOpen
+        formData={{ ...baseFormData, password: 'password123' }}
+        setFormData={setFormData}
+        dgfyPosState={{ authenticated: false, companies: [] }}
+        submitting={false}
+        onSubmit={vi.fn()}
+        onLegacySubmit={vi.fn()}
+      />
+    );
+
+    const passwordInput = screen.getByLabelText('Password');
+    expect(passwordInput.type).toBe('password');
+    fireEvent.click(screen.getByRole('button', { name: 'Show password' }));
+    expect(passwordInput.type).toBe('text');
+    expect(screen.getByRole('button', { name: 'Hide password' })).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText(/Remember this device for 30 days/i));
+    const updateFormData = setFormData.mock.calls.at(-1)?.[0];
+    expect(updateFormData(baseFormData)).toEqual({
+      ...baseFormData,
+      rememberDevice: true
+    });
   });
 
   it('shows accessible companies after DGFY auth', () => {

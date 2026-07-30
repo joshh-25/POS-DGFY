@@ -52,16 +52,20 @@ export function buildDiscoveryMapPins({
     const nearestMatchingLocation = Number.isInteger(nearestMatchingLocationId)
       ? (activeWithCoords.find((location) => Number(location.location_id) === nearestMatchingLocationId) || null)
       : null;
-    if (activeWithCoords.length === 0) {
+    const hasUnresolvedIndexedLocation = Number.isInteger(nearestMatchingLocationId)
+      && nearestMatchingLocationId > 0
+      && !nearestMatchingLocation;
+    if (activeWithCoords.length === 0 || hasUnresolvedIndexedLocation) {
       const lat = toNumberOrNull(store?.latitude);
       const lng = toNumberOrNull(store?.longitude);
       if (lat == null || lng == null) return;
+      const fallbackLocationId = store?.location_id ?? nearestMatchingLocationId ?? null;
       pins.push({
         ...store,
-        marker_key: `${slug}:fallback`,
+        marker_key: `${slug}:${fallbackLocationId || 'fallback'}`,
         latitude: lat,
         longitude: lng,
-        location_id: store?.location_id ?? null,
+        location_id: fallbackLocationId,
         location_name: store?.nearest_location_name || store?.tenant_name,
         branch_label: 'Storefront pin',
         distance_km: Number.isFinite(Number(store?.nearest_distance_km)) ? Number(store.nearest_distance_km) : null
@@ -85,16 +89,6 @@ export function buildDiscoveryMapPins({
         scopedLocationMap.set(locationIdentity, location);
       }
     });
-    if (discoveryPinScope === 'all_matching_branches') {
-      const primaryScoped = activeWithCoords.find((location) => location?.is_primary_storefront === true);
-      if (primaryScoped) {
-        const locationIdentity = getLocationIdentity(primaryScoped, toSlug);
-        if (!scopedLocationMap.has(locationIdentity)) {
-          scopedLocationMap.set(locationIdentity, primaryScoped);
-        }
-      }
-    }
-
     Array.from(scopedLocationMap.values()).forEach((location) => {
       const numericLocationId = Number(location.location_id);
       const stableLocationId = Number.isInteger(numericLocationId) && numericLocationId > 0

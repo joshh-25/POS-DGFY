@@ -2,7 +2,6 @@ import {
   DgfyAccountTenantMembership,
   Tenant
 } from '../models/index.js';
-import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 import tenantConnector from '../utils/TenantConnector.js';
 import dbStore from '../utils/dbStore.js';
 import { getTenantModels } from '../utils/tenantModelFactory.js';
@@ -11,26 +10,7 @@ import {
   generateToken
 } from './authService.js';
 import { onboardingRepository } from '../modules/onboarding/repositories/onboardingRepository.js';
-
-const normalizePermissionArray = (rawPermissions) => {
-  let normalized = rawPermissions;
-  if (typeof normalized === 'string') {
-    try {
-      normalized = JSON.parse(normalized);
-    } catch {
-      normalized = [];
-    }
-  }
-  if (!Array.isArray(normalized)) return [];
-  return Array.from(new Set(normalized.map((entry) => String(entry || '').trim()).filter(Boolean)));
-};
-
-const resolveEffectivePermissionsForUser = (user) => {
-  const explicit = normalizePermissionArray(user?.permissions);
-  if (explicit.length > 0) return explicit;
-  const role = String(user?.role || 'staff').trim().toLowerCase();
-  return Array.isArray(DEFAULT_ROLE_PERMISSIONS[role]) ? [...DEFAULT_ROLE_PERMISSIONS[role]] : [];
-};
+import { resolveEffectivePermissions } from '../utils/userPermissions.js';
 
 const findAcceptedMembership = async ({ account, tenantId, companyToken }) => {
   const where = {
@@ -131,7 +111,7 @@ export const createTenantSessionForDgfyAccount = async ({
       email: user.email,
       phone_number: user.phone_number || null,
       role: user.role,
-      permissions: resolveEffectivePermissionsForUser(user),
+      permissions: resolveEffectivePermissions(user),
       is_master_admin: user.is_master_admin || false,
       onboarding,
       token,

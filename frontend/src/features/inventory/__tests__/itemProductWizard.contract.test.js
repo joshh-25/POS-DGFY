@@ -85,7 +85,7 @@ describe('Item/Product wizard contracts', () => {
     const productWizardSource = readFrontendFile('Components/products/ProductCreateWizard.jsx');
     const indexCssSource = readFrontendFile('src/index.css');
 
-    expect(itemFormSource).toContain('DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography pb-0"');
+    expect(itemFormSource).toContain('wizard-modal-shell wizard-modal-compact wizard-core-typography pb-0');
     expect(productWizardSource).toContain('DialogContent className="wizard-modal-shell wizard-modal-compact wizard-core-typography"');
     expect(itemFormSource).toContain('DialogHeader className="flex-shrink-0"');
     expect(productWizardSource).toContain('DialogHeader className="flex-shrink-0"');

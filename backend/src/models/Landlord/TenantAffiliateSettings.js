@@ -34,6 +34,29 @@ export default (sequelize) => {
             type: DataTypes.BOOLEAN,
             allowNull: false,
             defaultValue: false
+        },
+        // Defaults to PERCENTAGE_OF_BASE - every affiliate today implicitly earns a
+        // percentage-of-base commission via commission_rate_bps, so this preserves current
+        // behavior for every existing tenant.
+        commission_type: {
+            type: DataTypes.ENUM('NONE', 'PERCENTAGE_OF_BASE', 'RESELLER_MARGIN'),
+            allowNull: false,
+            defaultValue: 'PERCENTAGE_OF_BASE'
+        },
+        // NULL until an owner configures an affiliate price rule - which policy would apply is moot
+        // before that. Decision A8: three values, CUSTOM_OR_UNRESOLVED from the external spec pack
+        // is intentionally not one of them.
+        settlement_policy: {
+            type: DataTypes.ENUM('MERCHANT_FUNDED', 'COMMISSION_ADDED_TO_BUYER_PRICE', 'RESELLER_MARGIN'),
+            allowNull: true
+        },
+        // Decision A3, gated behind this flag: existing affiliates keep accruing on
+        // subtotal-minus-discount (today's ADR 0036 Decision 3 base) until an owner explicitly
+        // opts a tenant into commission-on-base-price-subtotal.
+        commission_base_mode: {
+            type: DataTypes.ENUM('discounted_subtotal', 'base_price_subtotal'),
+            allowNull: false,
+            defaultValue: 'discounted_subtotal'
         }
     }, {
         sequelize,

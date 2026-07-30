@@ -17,7 +17,6 @@ import {
     getTenantPosMetadataUseCase,
     updateTenantPosMetadataUseCase,
     deleteTenantUseCase,
-    resubmitRegistrationUseCase,
     tenantAdminRepository
 } from '../index.js';
 import { setupPayPalRecurringUseCase, changePlanUseCase } from '../../payments/index.js';
@@ -122,7 +121,8 @@ export const listTenants = async (req, res) => {
  */
 export const approveTenant = async (req, res) => {
     const result = await approveTenantUseCase({
-        id: req.params?.id
+        id: req.params?.id,
+        actor: req.admin
     });
     await trackProductUsageFromResult({
         req,
@@ -138,13 +138,19 @@ export const approveTenant = async (req, res) => {
     return sendUseCaseResult(res, result);
 };
 
+export const retryTenantProvisioning = async (req, res) => {
+    const result = await approveTenantUseCase({ id: req.params.id, actor: req.admin, retry: true });
+    return sendUseCaseResult(res, result, { fallbackErrorMessage: 'Tenant provisioning retry failed' });
+};
+
 /**
  * ADMIN: Reject a pending tenant request
  */
 export const rejectTenant = async (req, res) => {
     const result = await rejectTenantUseCase({
         id: req.params?.id,
-        reason: req.body?.reason
+        reason: req.body?.reason,
+        actor: req.admin
     });
     await trackProductUsageFromResult({
         req,
@@ -828,23 +834,11 @@ export const adminUpdateComplianceFinalReviewDocumentReview = async (req, res) =
     });
 };
 
-/**
- * PUBLIC: Re-submit a rejected registration for re-review
- * Uses x-company-token; no JWT required
- */
-export const resubmitRegistration = async (req, res) => {
-    const result = await resubmitRegistrationUseCase({
-        tenantId: req.tenant?.id
-    });
-    return sendUseCaseResult(res, result, {
-        fallbackErrorMessage: 'Re-submission failed'
-    });
-};
-
 export default {
     registerCompanyRequest,
     listTenants,
     approveTenant,
+    retryTenantProvisioning,
     rejectTenant,
     provisionNewTenant,
     createAdminProvisionedTenant,
@@ -872,6 +866,5 @@ export default {
     adminResolveComplianceSecurityIncident,
     adminSelectComplianceMode,
     adminUpgradeComplianceMode,
-    adminForceNonCompliant,
-    resubmitRegistration
+    adminForceNonCompliant
 };

@@ -1,8 +1,12 @@
 ---
 status: accepted
+authority_level: authoritative
+owner: architecture
 date: 2026-05-03
 last_reviewed: 2026-06-03
-classification: authoritative
+review_by: 2026-11-03
+applies_to: architecture_decision
+topic: customer_access_modes_and_inventory_display
 ---
 
 # ADR 0017: Customer Access Modes And Inventory Display Controls
@@ -13,15 +17,21 @@ The existing onboarding classifier exposes `visibility_mode` values (`ghost`, `c
 This change follows `docs/START_HERE.md`, `docs/architecture/ARCHITECTURE_BOUNDARIES.md`, `docs/architecture/ARCHITECTURE_GOVERNANCE.md`, ADR 0006, ADR 0007, ADR 0008, ADR 0009, ADR 0010, ADR 0013, ADR 0014, and ADR 0016. It is a cross-boundary change because it touches tenant-local settings, onboarding classification, Storefront discovery/profile/catalog/checkout behavior, customer-facing UI, inventory visibility, compliance/payment readiness, telemetry, and documentation.
 
 ## Decision
-- Introduce Customer Access Mode as the runtime storefront capability contract. Keep internal v1 codes compatible with the existing classifier: `ghost`, `catalog`, `inquiry`, and `transaction`, with user-facing labels `Map Listing Only`, `Catalog Only`, `Inquiry Mode`, and `Online Ordering Mode`.
-- Add tenant-local settings for `customer_access_mode` and `inventory_display_mode` in `system_settings`. Use `catalog` and `availability` as default values for existing tenants.
-- Keep `visibility_mode` as a backward-compatible alias in onboarding snapshots during migration. New UI copy must use Customer Access Mode.
-- Compute an effective customer access mode from the saved requested mode and the declared/verified readiness stage. Storefront public behavior must use the effective mode, not only the raw saved setting.
-- Registration-stage guidance is enforced for customer checkout and payment capability. Tenant UI should guide and limit normal selection, while backend quote/checkout/payment paths fail closed when the effective mode does not allow the requested action.
-- Inquiry Mode v1 uses existing tenant contact channels as the customer action. It does not add a persisted lead/inquiry inbox until a separate lead-management contract is approved.
-- Inventory Display is independent from Customer Access Mode. It controls customer-facing stock presentation only; exact stock remains server-side unless `inventory_display_mode=exact_quantity`.
-- Item-level storefront catalog visibility is independent from POS visibility. Inventory-facing users control this with `storefront_catalog_overrides.storefront_visible`, while POS continues to use `pos_catalog_overrides.pos_visible`.
-- Storefront item images are independent from POS menu images. Storefront catalog reads prefer `storefront_catalog_overrides.storefront_image_url` as the primary image and `storefront_catalog_overrides.storefront_image_gallery` as the ordered detail gallery. POS image data is used only as rollout/backfill fallback.
+
+> **Strictness tiers (ADR 0039).** Clauses below are tagged `[binding]`, `[default]`,
+> or `[snapshot]`. `binding` needs a superseding ADR to change; `default` needs an
+> amendment block in the implementing PR; `snapshot` is documentation and may be
+> updated by ordinary work. Untagged clauses elsewhere in this document are `default`.
+
+- Introduce Customer Access Mode as the runtime storefront capability contract. Keep internal v1 codes compatible with the existing classifier: `ghost`, `catalog`, `inquiry`, and `transaction`, with user-facing labels `Map Listing Only`, `Catalog Only`, `Inquiry Mode`, and `Online Ordering Mode`. `[binding]`
+- Add tenant-local settings for `customer_access_mode` and `inventory_display_mode` in `system_settings`. Use `catalog` and `availability` as default values for existing tenants. `[snapshot]`
+- Keep `visibility_mode` as a backward-compatible alias in onboarding snapshots during migration. New UI copy must use Customer Access Mode. `[snapshot]`
+- Compute an effective customer access mode from the saved requested mode and the declared/verified readiness stage. Storefront public behavior must use the effective mode, not only the raw saved setting. `[binding]`
+- Registration-stage guidance is enforced for customer checkout and payment capability. Tenant UI should guide and limit normal selection, while backend quote/checkout/payment paths fail closed when the effective mode does not allow the requested action. `[binding]`
+- Inquiry Mode v1 uses existing tenant contact channels as the customer action. It does not add a persisted lead/inquiry inbox until a separate lead-management contract is approved. `[default]`
+- Inventory Display is independent from Customer Access Mode. It controls customer-facing stock presentation only; exact stock remains server-side unless `inventory_display_mode=exact_quantity`. `[binding]`
+- Item-level storefront catalog visibility is independent from POS visibility. Inventory-facing users control this with `storefront_catalog_overrides.storefront_visible`, while POS continues to use `pos_catalog_overrides.pos_visible`. `[default]`
+- Storefront item images are independent from POS menu images. Storefront catalog reads prefer `storefront_catalog_overrides.storefront_image_url` as the primary image and `storefront_catalog_overrides.storefront_image_gallery` as the ordered detail gallery. POS image data is used only as rollout/backfill fallback. `[default]`
 
 ## Mode Contract
 | Internal code | Label | Customer can see | Customer can do |

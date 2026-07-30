@@ -33,6 +33,13 @@ const PDF_IMPORT_STEPS = Object.freeze([
 
 const ACCEPTED_FILE_PATTERN = /\.(pdf|png|jpe?g)$/i;
 
+/**
+ * @deprecated Superseded by `MenuImportBatchModal.jsx`, which the POS Items
+ * view renders instead wherever `VITE_MENU_IMPORT_BATCH_ENABLED` is on. This
+ * single-file wizard stays as the fallback for deployments without Redis (the
+ * batch path requires it). Do not extend it — see ADR 0039's removal criteria.
+ */
+
 // Deep-copies the preview rows into an editable working set, and normalizes an
 // `included` flag per row (valid rows default to included; invalid rows
 // default to excluded so a bad extraction never silently creates junk items).

@@ -1,8 +1,10 @@
 ---
-status: authoritative
+status: accepted
 authority_level: authoritative
 owner: architecture
+date: 2026-05-17
 last_reviewed: 2026-06-11
+review_by: 2026-11-17
 applies_to: auth, tenant_registration, tenant_user_invitations, profile_email_change, dgfy_accounts
 topic: email_otp_verification
 ---

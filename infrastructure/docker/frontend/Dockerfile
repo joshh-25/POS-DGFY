@@ -23,6 +23,9 @@ ARG VITE_PAYMENTS_ENABLED=false
 # PDF menu import (quick/temporary feature, default off — see
 # docs/compliance/impact-declarations/2026-07-25-pos-pdf-menu-import.md).
 ARG VITE_MENU_PDF_IMPORT_ENABLED=false
+# Batch menu import (multi-file: several PDFs/photos in one job), default off
+# — a second capability tier on top of the single-file flag above.
+ARG VITE_MENU_IMPORT_BATCH_ENABLED=false
 # Consumed by frontend/apps/store/vite.config.js as a cache-busting/build
 # marker; falls back to the build timestamp if unset, so a stable value
 # (e.g. the git SHA) is preferable for reproducible CI builds.
@@ -49,6 +52,11 @@ ARG VITE_SENTRY_RELEASE=""
 ARG VITE_SENTRY_TRACES_SAMPLE_RATE=0
 ARG VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE=0
 ARG VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE=0
+# Comma-separated list of origins/URLs that get sentry-trace/baggage headers
+# attached to outgoing requests (distributed tracing). Falls back to
+# same-origin + VITE_API_URL when unset -- see
+# resolveTracePropagationTargets() in src/observability/sentryClient.js.
+ARG VITE_SENTRY_TRACE_PROPAGATION_TARGETS=""
 # Single shared PostHog project across all 3 surfaces (store/pos/skupervisor),
 # distinguished by the `surface` event property set in analyticsClient.js --
 # unlike Sentry's per-surface DSNs, there's no per-project quota reason to
@@ -56,6 +64,12 @@ ARG VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE=0
 ARG VITE_POSTHOG_ENABLED=false
 ARG VITE_POSTHOG_HOST=""
 ARG VITE_POSTHOG_KEY=""
+ARG VITE_POSTHOG_ENVIRONMENT=""
+# Session replay is off by default per surface -- POS records a fixed
+# all-day terminal showing customer PII, so it's gated independently from
+# the storefront. See analyticsClient.js's resolveSessionReplayFlag().
+ARG VITE_POSTHOG_SESSION_REPLAY_STORE=false
+ARG VITE_POSTHOG_SESSION_REPLAY_POS=false
 ARG SENTRY_UPLOAD_SOURCEMAPS=false
 ARG SENTRY_ORG=""
 ARG SENTRY_PROJECT_SKUPERVISOR=""
@@ -68,6 +82,7 @@ ENV VITE_API_URL=${VITE_API_URL} \
     VITE_ROOT_TENANT_SLUGS=${VITE_ROOT_TENANT_SLUGS} \
     VITE_PAYMENTS_ENABLED=${VITE_PAYMENTS_ENABLED} \
     VITE_MENU_PDF_IMPORT_ENABLED=${VITE_MENU_PDF_IMPORT_ENABLED} \
+    VITE_MENU_IMPORT_BATCH_ENABLED=${VITE_MENU_IMPORT_BATCH_ENABLED} \
     VITE_BUILD_STAMP=${VITE_BUILD_STAMP} \
     VITE_DGFY_AUTH_URL=${VITE_DGFY_AUTH_URL} \
     VITE_SKUPERVISOR_REGISTRATION_URL=${VITE_SKUPERVISOR_REGISTRATION_URL} \
@@ -84,9 +99,13 @@ ENV VITE_API_URL=${VITE_API_URL} \
     VITE_SENTRY_TRACES_SAMPLE_RATE=${VITE_SENTRY_TRACES_SAMPLE_RATE} \
     VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE=${VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE} \
     VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE=${VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE} \
+    VITE_SENTRY_TRACE_PROPAGATION_TARGETS=${VITE_SENTRY_TRACE_PROPAGATION_TARGETS} \
     VITE_POSTHOG_ENABLED=${VITE_POSTHOG_ENABLED} \
     VITE_POSTHOG_HOST=${VITE_POSTHOG_HOST} \
     VITE_POSTHOG_KEY=${VITE_POSTHOG_KEY} \
+    VITE_POSTHOG_ENVIRONMENT=${VITE_POSTHOG_ENVIRONMENT} \
+    VITE_POSTHOG_SESSION_REPLAY_STORE=${VITE_POSTHOG_SESSION_REPLAY_STORE} \
+    VITE_POSTHOG_SESSION_REPLAY_POS=${VITE_POSTHOG_SESSION_REPLAY_POS} \
     SENTRY_UPLOAD_SOURCEMAPS=${SENTRY_UPLOAD_SOURCEMAPS} \
     SENTRY_ORG=${SENTRY_ORG} \
     SENTRY_PROJECT_SKUPERVISOR=${SENTRY_PROJECT_SKUPERVISOR} \

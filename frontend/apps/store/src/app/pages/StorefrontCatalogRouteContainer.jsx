@@ -49,6 +49,7 @@ export function StorefrontCatalogRouteContainer(props) {
     deliveryLocationAction,
     deliveryLocationDisplayAddress,
     deliverySavedLocations,
+    applySavedDeliveryLocation,
     getCartFlySourceRect,
     goStoreCatalogPage,
     handleAddPinnedLocation,
@@ -172,7 +173,8 @@ export function StorefrontCatalogRouteContainer(props) {
     setFnbViewMode,
     setIsFnbCategoryDropdownOpen,
     simpleCheckoutRouteProps,
-    simpleStorefrontModel
+    simpleStorefrontModel,
+    defaultStorefrontModel
   } = props;
 
   // --- Service Tab logic ---
@@ -202,11 +204,14 @@ export function StorefrontCatalogRouteContainer(props) {
   const activeGroupMeta = activeGroup?.categoryMeta;
   const ActiveServiceGroupIcon = activeGroupMeta?.iconToken ? (SERVICE_CATEGORY_ICON_MAP[activeGroupMeta.iconToken] || Sparkles) : Sparkles;
 
-  if ((isFnbMode || isSimpleMode) && isFnbDetailsSubpage) {
+  if (isFnbDetailsSubpage) {
     return (
       <FnbProductDetailsRoute
         isActive
         {...fnbProductDetailsRouteProps}
+        loadError={catalogError}
+        loading={loadingCatalog || (!selectedStore && !catalogError)}
+        onRetry={refreshStorePageForTenantSetup}
       />
     );
   }
@@ -241,6 +246,7 @@ export function StorefrontCatalogRouteContainer(props) {
         deliveryLocationAction={deliveryLocationAction}
         deliveryLocationDisplayAddress={deliveryLocationDisplayAddress}
         deliverySavedLocations={deliverySavedLocations}
+        applySavedDeliveryLocation={applySavedDeliveryLocation}
         filteredCatalog={filteredCatalog}
         getCartFlySourceRect={getCartFlySourceRect}
         goStoreCatalogPage={goStoreCatalogPage}
@@ -411,6 +417,7 @@ export function StorefrontCatalogRouteContainer(props) {
       setReviewDraft={setReviewDraft}
       simpleCheckoutRouteProps={simpleCheckoutRouteProps}
       simpleStorefrontModel={simpleStorefrontModel}
+      defaultStorefrontModel={defaultStorefrontModel}
       submitFnbItemReview={submitFnbItemReview}
       totalFnbPages={totalFnbPages}
       viewportWidth={viewportWidth}

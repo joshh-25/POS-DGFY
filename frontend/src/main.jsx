@@ -9,7 +9,7 @@ import { WorkflowModeProvider } from './features/settings/WorkflowModeContext.js
 import WorkflowModeRouteGate from './features/settings/components/WorkflowModeRouteGate.jsx'
 import { getPageNameFromPath } from '../utils.js'
 import { getAccessToken, refreshBrowserSession, setBrowserSession } from './services/browserSession.js'
-import { login as loginTenantSession } from './services/authService.js'
+import { login as loginTenantSession, getCurrentUser } from './services/authService.js'
 import { shouldRefreshBrowserSessionForPath } from './services/publicRoutePolicy.js'
 import ErrorBoundary from './components/common/ErrorBoundary.jsx' // Fix 10.3
 import NotFoundPage from './components/common/NotFoundPage.jsx'
@@ -17,6 +17,13 @@ import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.j
 import { Toaster } from '@/components/ui/sonner'
 import { getRuntimeConfig } from './utils/runtimeConfig.js'
 import { initBrowserSentry } from './observability/sentryClient.js'
+import {
+  capturePageview,
+  identifyAnalyticsUser,
+  initBrowserAnalytics,
+  resetAnalyticsIdentity,
+  setAnalyticsContext
+} from './observability/analyticsClient.js'
 import './index.css'
 
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/'
@@ -26,6 +33,10 @@ const RootRouter = runtimeConfig.isDesktopShell ? HashRouter : BrowserRouter
 const devAutoLoginEnabled = String(import.meta.env.VITE_DEV_AUTO_LOGIN_ENABLED || '').trim().toLowerCase() === 'true'
 
 initBrowserSentry({ surface: runtimeConfig.appSurface || 'skupervisor' })
+// SKUpervisor previously had no PostHog init at all -- it's staff-facing
+// (same consent basis as POS: employment relationship, not the storefront's
+// anonymous-visitor consent banner), so behavioral analytics apply here too.
+initBrowserAnalytics({ surface: runtimeConfig.appSurface || 'skupervisor' })
 
 const shouldRunDevAutoLogin = () => {
   if (!import.meta.env.DEV) return false
@@ -90,6 +101,7 @@ const Settings = lazy(() => import('../Pages/Settings.jsx'))
 const Login = lazy(() => import('../Pages/Login.jsx'))
 const Register = lazy(() => import('../Pages/Register.jsx'))
 const RegisterCompany = lazy(() => import('../Pages/RegisterCompany.jsx'))
+const CompanyRegistrationStatus = lazy(() => import('../Pages/CompanyRegistrationStatus.jsx'))
 const DgfyAuthPage = lazy(() => import('../Pages/DgfyAuthPage.jsx'))
 const DgfyResetPasswordPage = lazy(() => import('../Pages/DgfyResetPasswordPage.jsx'))
 const LegalDocument = lazy(() => import('../Pages/LegalDocument.jsx'))
@@ -107,6 +119,8 @@ const DgfyAccountManager = lazy(() => import('../Pages/admin/DgfyAccountManager.
 const PaymentOperations = lazy(() => import('../Pages/admin/PaymentOperations.jsx'))
 const AdminPricing = lazy(() => import('../Pages/admin/AdminPricing.jsx'))
 const HostingStatus = lazy(() => import('../Pages/admin/HostingStatus.jsx'))
+const InvoiceManager = lazy(() => import('../Pages/admin/InvoiceManager.jsx'))
+const PlatformAdminManager = lazy(() => import('../Pages/admin/PlatformAdminManager.jsx'))
 
 function App() {
   const location = useLocation()
@@ -122,6 +136,10 @@ function App() {
     refreshBrowserSession().catch(() => {});
   }, [location.pathname]);
 
+  useEffect(() => {
+    capturePageview({ path: location.pathname });
+  }, [location.pathname]);
+
   return (
     <Suspense fallback={<div className="flex items-center justify-center h-screen text-gray-400">Loading...</div>}>
       <Routes>
@@ -129,6 +147,7 @@ function App() {
         <Route path="/login" element={<Login />} />
         <Route path="/register" element={<Register />} />
         <Route path="/register-company" element={<RegisterCompany />} />
+        <Route path="/register-company/status/:applicationId" element={<CompanyRegistrationStatus />} />
         <Route path="/dgfy/auth" element={<DgfyAuthPage />} />
         <Route path="/dgfy/reset-password" element={<DgfyResetPasswordPage />} />
         <Route path="/legal/:slug" element={<LegalDocument />} />
@@ -276,6 +295,8 @@ function App() {
           <Route path="payments" element={<PaymentOperations />} />
           <Route path="pricing" element={<AdminPricing />} />
           <Route path="hosting" element={<HostingStatus />} />
+          <Route path="invoices" element={<InvoiceManager />} />
+          <Route path="platform-admins" element={<PlatformAdminManager />} />
         </Route>
 
          {/* Legacy route - redirect to new admin portal */}
@@ -284,6 +305,43 @@ function App() {
        </Routes>
     </Suspense>
   )
+}
+
+// Mirrors apps/pos/src/main.jsx's AnalyticsIdentitySync: resolves the
+// signed-in staff member via getCurrentUser() (same call PermissionContext
+// makes) on mount and on auth state changes, without expanding
+// PermissionContext's public API just for analytics.
+function AnalyticsIdentitySync() {
+  useEffect(() => {
+    let cancelled = false;
+
+    const sync = async () => {
+      try {
+        const user = await getCurrentUser();
+        if (cancelled) return;
+        if (user?.id) {
+          identifyAnalyticsUser({ id: user.id, role: user.role });
+          setAnalyticsContext({ tenantId: user.company?.id, businessMode: user.company?.business_mode });
+        } else {
+          resetAnalyticsIdentity();
+        }
+      } catch {
+        // Identity sync is best-effort; a failed lookup just leaves the
+        // anonymous PostHog id in place.
+      }
+    };
+
+    sync();
+    window.addEventListener('auth:login', sync);
+    window.addEventListener('auth:logout', sync);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('auth:login', sync);
+      window.removeEventListener('auth:logout', sync);
+    };
+  }, []);
+
+  return null;
 }
 
 const rootElement = document.getElementById('root');
@@ -299,6 +357,7 @@ const mountApp = () => {
             v7_relativeSplatPath: true,
           }}
         >
+          <AnalyticsIdentitySync />
           <PermissionProvider>
             <WorkflowModeProvider>
               <GlobalApiErrorListener />

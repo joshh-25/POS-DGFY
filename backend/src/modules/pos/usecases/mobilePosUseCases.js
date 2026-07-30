@@ -3,6 +3,8 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicationResultHelpers.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { getAllSettingsUseCase } from '../../settings/index.js';
+import { PERMISSIONS } from '../../../config/permissions.js';
+import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 
 // Exported so middleware/rateLimiter.js can enforce the same number it
 // advertises to clients in sync_policy/sync_limit_policy - see
@@ -14,6 +16,7 @@ const MOBILE_CHECKPOINT_VERSION = 'mobile-pos.v1';
 
 const MOBILE_SETTINGS_KEYS = [
     'ops_workflow_mode',
+    'store_tenant_slug',
     'pos_business_name',
     'pos_address',
     'pos_tin_branch',
@@ -24,6 +27,8 @@ const MOBILE_SETTINGS_KEYS = [
     'pos_software_version',
     'pos_software_serial_number',
     'pos_receipt_footer_message',
+    'pos_petty_cash_symbol',
+    'pos_petty_cash_amount',
     'pos_discount_profiles',
     'pos_order_method_fees',
     'pos_terminal_registry_mode',
@@ -269,13 +274,10 @@ export const buildSyncMobilePosCheckoutsUseCase = ({ checkoutPosUseCase }) => {
 // unusable for free-tier tenants. See routes/mobilePos.js.
 export const buildSyncMobilePosItemsUseCase = ({ createItemUseCase, updateItemUseCase, deleteItemUseCase, itemRepository }) => {
     const resolveCanManageCategories = (user) => {
-        const role = String(user?.role || '').trim().toLowerCase();
-        return user?.is_master_admin === true || role === 'admin';
+        return hasEffectivePermission(user, PERMISSIONS.SYSTEM.actions.MANAGE_CATEGORIES);
     };
 
-    const hasPermission = (user, permission) => (
-        user?.is_master_admin === true || (user?.permissions || []).includes(permission)
-    );
+    const hasPermission = hasEffectivePermission;
 
     return async ({ payload = {}, user }) => {
         const entries = Array.isArray(payload.entries) ? payload.entries : [];

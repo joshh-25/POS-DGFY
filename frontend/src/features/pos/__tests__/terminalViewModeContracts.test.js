@@ -132,8 +132,13 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('const [loadingUser, setLoadingUser] = useState(true);');
     expect(terminalPageContent).toContain('const [terminalStartupReady, setTerminalStartupReady] = useState(false);');
     expect(terminalPageContent).toContain('const terminalStartupLoading = !terminalStartupReady');
+    expect(terminalPageContent).toContain('setTerminalStartupReady(false);\n      setLocked(false);');
+    expect(terminalPageContent).not.toContain("if (locked || terminalUser?.is_master_admin !== true) {\n      setSetupFlowState({");
     expect(terminalPageContent).toContain('useLayoutEffect(() => {');
     expect(terminalPageContent).toContain('Restoring POS workspace...');
+    expect(terminalPageContent).toContain('<Suspense fallback={<PosRestorationLoadingScreen />}>');
+    expect(terminalPageContent).not.toContain('transition-opacity duration-300 animate-pos-overlay-fade-in');
+    expect(terminalPageContent).not.toContain('border border-slate-100 animate-pos-card-scale-up');
   });
 
   it('restores the last POS page once on page load, without overriding navigation clicks', () => {
@@ -163,7 +168,8 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('keeps admin setup readiness out of the non-admin DGFY cashier unlock path', () => {
-    expect(terminalPageContent).toContain('const loginResult = await loginDgfyAccount({ email, password });');
+    expect(terminalPageContent).toContain('const loginResult = await loginDgfyAccount({');
+    expect(terminalPageContent).toContain('remember_device: formData.rememberDevice === true');
     expect(terminalPageContent).toContain("toast.error('Unable to start DGFY session. Sign in again.');");
     expect(terminalPageContent).toContain('const continuingAfterCompanyPicker = dgfyPosState.authenticated === true;');
     expect(terminalPageContent).toContain("toast.message('Confirm the company, then continue to POS.');");
@@ -173,8 +179,11 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('const selectedTenantUser = await fetchCurrentUser(SUPPRESS_GLOBAL_ERROR_TOAST);');
     expect(terminalPageContent).toContain('The selected company session could not be verified. Sign in again.');
     expect(terminalPageContent).toContain('const effectiveSelectedTenantUser = selectedTenantUser;');
-    expect(terminalPageContent).toContain('const selectedTenantAdminPayloads = selectedUserIsAdmin');
-    expect(terminalPageContent).toContain(': [null, effectiveSelectedTenantUser ? [effectiveSelectedTenantUser] : []];');
+    expect(terminalPageContent).toContain('const selectedPermissionList = parseUserPermissions(effectiveSelectedTenantUser);');
+    expect(terminalPageContent).toContain("selectedPermissionList.includes('settings:view')");
+    expect(terminalPageContent).toContain("selectedPermissionList.includes('users:view')");
+    expect(terminalPageContent).toContain(': fetchPosSettingsBootstrap(SUPPRESS_GLOBAL_ERROR_TOAST).catch(() => ({})),');
+    expect(terminalPageContent).toContain(': Promise.resolve(effectiveSelectedTenantUser ? [effectiveSelectedTenantUser] : [])');
     expect(terminalPageContent).toContain('const selectedTenantSetupState = buildTenantSetupStateSnapshot({');
     expect(terminalPageContent).toContain('&& selectedTenantSetupStep !== POS_TERMINAL_SETUP_STEPS.COMPLETE');
     expect(terminalPageContent).toContain('usersPayload: selectedTenantUsers');

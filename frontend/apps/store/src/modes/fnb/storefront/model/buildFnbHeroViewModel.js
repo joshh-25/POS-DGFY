@@ -21,6 +21,22 @@ export function buildFnbHeroViewModel({
 }) {
   const safeHeroSectionModel = heroSectionModel || {};
   const safeStoreLocations = Array.isArray(storeLocations) ? storeLocations : [];
+  const mapPublicationDisabled = Boolean(
+    selectedStore?.store_has_no_location
+    || selectedStore?.map_publication_disabled
+  );
+  const publicLatitude = mapPublicationDisabled
+    ? null
+    : (selectedLocation?.latitude ?? selectedStore?.latitude);
+  const publicLongitude = mapPublicationDisabled
+    ? null
+    : (selectedLocation?.longitude ?? selectedStore?.longitude);
+  const hasPublicCoordinate = (value) => (
+    value !== null
+    && value !== undefined
+    && String(value).trim() !== ''
+    && Number.isFinite(Number(value))
+  );
   const addressText = String(safeHeroSectionModel.addressLine || safeHeroSectionModel.locationLabel || '').trim();
   const selectedBranchLabel = String(selectedLocation?.name || safeHeroSectionModel.locationLabel || '').trim();
   const galleryImages = Array.isArray(safeHeroSectionModel.galleryPreview)
@@ -51,20 +67,21 @@ export function buildFnbHeroViewModel({
   const hasAboutSection = aboutText.length > 0;
   const hasGallerySection = galleryImages.length > 0;
   const hasAboutOrGallerySection = hasAboutSection || hasGallerySection;
-  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
-    && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
+  const hasMapData = hasPublicCoordinate(publicLatitude) && hasPublicCoordinate(publicLongitude);
   const visibleContactRows = buildVisibleStorefrontContactRows({
     contactRows: safeHeroSectionModel.contactRows,
     hours: safeHeroSectionModel.hours,
     rawHoursData: safeHeroSectionModel.rawHoursData,
     addressText,
-    directionsUrl: buildGoogleMapsDirectionsUrl({
-      latitude: selectedLocation?.latitude ?? selectedStore?.latitude,
-      longitude: selectedLocation?.longitude ?? selectedStore?.longitude,
-      addressLine: addressText
-    }),
-    destinationLatitude: selectedLocation?.latitude ?? selectedStore?.latitude,
-    destinationLongitude: selectedLocation?.longitude ?? selectedStore?.longitude
+    directionsUrl: hasMapData
+      ? buildGoogleMapsDirectionsUrl({
+          latitude: publicLatitude,
+          longitude: publicLongitude,
+          addressLine: addressText
+        })
+      : '',
+    destinationLatitude: hasMapData ? publicLatitude : null,
+    destinationLongitude: hasMapData ? publicLongitude : null
   });
   const hasWhyChooseUs = visibleWhyChooseUs.length > 0;
 
@@ -91,19 +108,16 @@ export function buildFnbHeroViewModel({
     mapSelectedKey: selectedLocationId != null
       ? `loc-${selectedLocationId}`
       : `tenant-${selectedStore?.tenant_id || selectedStore?.slug || 'store'}`,
-    // Location records from /api/v1/store/locations don't carry the tenant's
-    // business type, so the Discovery-shared marker icon lookup
-    // (singleStore?.workflow_mode || singleStore?.business_mode) would otherwise
-    // always fall back to the default icon. Carry it over from selectedStore so
-    // the Contact & Location map pin matches the Discovery Map pin for this store.
-    mapStores: safeStoreLocations.length > 0
-      ? safeStoreLocations.map((location) => ({
-        ...location,
-        tenant_name: selectedStore?.tenant_name,
-        workflow_mode: selectedStore?.workflow_mode,
-        business_mode: selectedStore?.business_mode
-      }))
-      : [selectedStore],
+    mapStores: mapPublicationDisabled
+      ? []
+      : (safeStoreLocations.length > 0
+          ? safeStoreLocations.map((location) => ({
+            ...location,
+            tenant_name: selectedStore?.tenant_name,
+            workflow_mode: selectedStore?.workflow_mode,
+            business_mode: selectedStore?.business_mode
+          }))
+          : (hasMapData ? [selectedStore] : [])),
     orderLabel: cartCount > 0 ? 'Open Cart' : (safeHeroSectionModel.actions?.orderLabel || 'Browse Menu'),
     profileImageKey: `hero-profile:${selectedStore?.slug || 'store'}`,
     selectedBranchLabel,

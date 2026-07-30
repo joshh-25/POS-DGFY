@@ -1,7 +1,12 @@
 ---
-status: authoritative
+status: accepted
 authority_level: authoritative
+owner: architecture
+date: 2026-07-08
 last_reviewed: 2026-07-02
+review_by: 2027-01-08
+applies_to: architecture_decision
+topic: dgfy_account_company_switching
 ---
 
 # ADR 0028: DGFY-Only Company Access And Switching

@@ -83,6 +83,7 @@ export function StorefrontServicesCatalog({
   deliveryLocationAction,
   deliveryLocationDisplayAddress,
   deliverySavedLocations,
+  applySavedDeliveryLocation,
   filteredCatalog,
   getCartFlySourceRect,
   goStoreCatalogPage,
@@ -663,6 +664,7 @@ export function StorefrontServicesCatalog({
                           isMobileViewport={isMobileViewport}
                           DeliveryPinMap={DeliveryPinMap}
                           deliverySavedLocations={deliverySavedLocations}
+                          applySavedDeliveryLocation={applySavedDeliveryLocation}
                           selectedSavedLocationId={selectedSavedLocationId}
                           setSelectedSavedLocationId={setSelectedSavedLocationId}
                           setDeliveryLocationAction={setDeliveryLocationAction}
