@@ -37,6 +37,7 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     'DgfyAffiliatePayoutMethod',
     'DgfyAffiliateCashout',
     'DgfyAffiliateInvite',
+    'DgfyAffiliatePriceRule',
     'TenantAffiliateSettings',
     'TenantComplianceArtifact',
     'TenantCompliancePeripheral',

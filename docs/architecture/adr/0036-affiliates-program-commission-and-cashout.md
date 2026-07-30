@@ -1,11 +1,11 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-24
-last_reviewed: 2026-07-24
+last_reviewed: 2026-07-29
 review_by: 2027-01-24
-applies_to: affiliates_program, backend, pos_frontend
+applies_to: affiliates_program, backend, pos_frontend, storefront
 topic: affiliates_program_commission_and_cashout
 ---
 
@@ -13,6 +13,7 @@ topic: affiliates_program_commission_and_cashout
 
 ## Status
 Accepted (2026-07-24)
+Amended (2026-07-29): commission-base clause tiered and amended; see Amendments.
 
 ## Context
 The Affiliates Program lets a DGFY account earn a commission on sales it refers to a tenant's
@@ -56,12 +57,14 @@ build log). It touches money handling already governed by two prior ADRs:
    `DECIMAL`. `commission_rate_bps` defaults to 500 (5%), with a nullable per-affiliate override
    that falls back to the tenant's `default_rate_bps`. The resolved rate is snapshotted onto the
    commission row (`rate_bps_snapshot`) at accrual time so a later rate change never rewrites
-   historical ledger entries.
+   historical ledger entries. `[binding]`
 
 3. **Commission base excludes the DGFY convenience fee and delivery fee (per ADR 0012).** Base =
    `round(subtotal − discount)` in centavos. `amount = round(base × bps / 10000)`. This keeps
    affiliate commission strictly a function of the tenant's own subtotal, not of DGFY's or a
-   delivery provider's separately-governed fees.
+   delivery provider's separately-governed fees. `[default]` — see Amendments: this base
+   changes under [ADR 0050](0050-affiliate-buyer-facing-pricing-rule-engine.md) when a tenant opts
+   into `commission_base_mode = base_price_subtotal`.
 
 4. **Channel-specific lifecycle: in-store earns immediately, online is pending until settled.**
    In-store POS sales are born `completed` at checkout (no pending stage in the POS transaction
@@ -125,3 +128,28 @@ build log). It touches money handling already governed by two prior ADRs:
    suite, and a frontend build/lint/test pass are still required (this branch was built in a
    sandbox with no live DB and no `node_modules` for either workspace — see the handoff doc's
    "Sandbox limitations" section for what was and wasn't verified).
+
+## Amendments
+
+### 2026-07-29 — Commission base gains a tenant-opt-in alternative (decision A3)
+- Clause amended: Decision 3 (`default`)
+- Change: [ADR 0050](0050-affiliate-buyer-facing-pricing-rule-engine.md) adds
+  `tenant_affiliate_settings.commission_base_mode`. The value here,
+  `discounted_subtotal`, remains the default and is unchanged for every tenant
+  that never touches the new setting — the commission base is still
+  `round(subtotal − discount)`. A tenant may opt into `base_price_subtotal`,
+  under which the commission base is the catalog subtotal regardless of any
+  buyer-facing discount, per ADR 0050.
+- Reason: ADR 0050 makes an affiliate's identity an input to the buyer-facing
+  price for the first time. Once an affiliate discount can itself reduce
+  `subtotal`, this clause's original base silently lets an affiliate's own
+  discount shrink their own commission — the opt-in flag exists so a tenant can
+  choose the recording's "affiliate earns the same whether or not a discount is
+  running" behavior instead, without changing it for tenants who never asked
+  for it.
+- Consequence 4 above (no user-facing behavior change for
+  `frontend/apps/store`) no longer holds once ADR 0050 ships — the storefront
+  now shows and charges an affiliate-adjusted price. That consequence described
+  this ADR's own scope at the time it was written and is superseded by ADR
+  0050's consequences, not restated here.
+- PR: affiliate pricing rule engine, Phase 1

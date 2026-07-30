@@ -58,7 +58,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0033 | [Commercial Promo and Statutory POS Discount Boundaries](0033-commercial-promo-and-statutory-pos-discount-boundaries.md) | `accepted` | commercial_promo_and_statutory_pos_discount_boundaries | 2027-01-07 | 0 |
 | 0034 | [Manual Delivery Job Foundation](0034-manual-delivery-job-foundation.md) | `accepted` | manual_delivery_job_foundation | 2027-01-10 | 0 |
 | 0035 | [Compatibility-Seam Governance](0035-compatibility-seam-governance.md) | `accepted` | compatibility_seam_governance | 2027-01-12 | 4 |
-| 0036 | [Affiliates Program — Commission Ledger, Attribution, and Cashout](0036-affiliates-program-commission-and-cashout.md) | `accepted` | affiliates_program_commission_and_cashout | 2027-01-24 | 0 |
+| 0036 | [Affiliates Program — Commission Ledger, Attribution, and Cashout](0036-affiliates-program-commission-and-cashout.md) | `amended` | affiliates_program_commission_and_cashout | 2027-01-24 | 1 |
 | 0037 | [Open Multi-Vertical Product Model and Capability-Driven Store Types](0037-unified-product-domain-and-capability-driven-store-types.md) | `proposed` | unified_product_domain_and_capability_driven_store_types | 2027-01-25 | 0 |
 | 0038 | [External Barcode Product Registry Lookup](0038-external-barcode-product-registry-lookup.md) | `accepted` | external_barcode_product_registry_lookup | 2027-01-25 | 0 |
 | 0039 | [ADR Lifecycle, Strictness Tiers, and Amendment Path](0039-adr-lifecycle-strictness-tiers-and-amendment-path.md) | `amended` | adr_lifecycle_governance | 2026-10-29 | 1 |
@@ -72,6 +72,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0047 | [Platform Admin Identity and Page RBAC](0047-platform-admin-identity-and-page-rbac.md) | `accepted` | platform_admin_identity_rbac | 2027-01-28 | 0 |
 | 0048 | [QA Landlord Invoicing Boundary](0048-qa-landlord-invoicing-boundary.md) | `accepted` | qa_landlord_invoicing | 2027-01-28 | 0 |
 | 0049 | [Batch Menu Import via Asynchronous Extraction](0049-batch-menu-import-async-extraction.md) | `accepted` | batch_menu_import | 2027-01-29 | 0 |
+| 0050 | [Affiliate Buyer-Facing Pricing Rule Engine (Phase 1)](0050-affiliate-buyer-facing-pricing-rule-engine.md) | `accepted` | affiliate_buyer_facing_pricing_rule_engine | 2027-01-29 | 3 |
 
 ## Renumbered (collision stubs)
 

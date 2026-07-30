@@ -14,7 +14,6 @@ export const SESSION_COOKIE_NAMES = Object.freeze({
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 const DEFAULT_REFRESH_MAX_AGE_MS = 7 * ONE_DAY_MS;
 const DEFAULT_ACCESS_MAX_AGE_MS = ONE_DAY_MS;
-const AFFILIATE_ATTRIBUTION_MAX_AGE_MS = 30 * ONE_DAY_MS;
 
 const isProduction = () => process.env.NODE_ENV === 'production';
 
@@ -147,14 +146,24 @@ const readAffiliateAttributionMap = (req) => {
   }
 };
 
+// Decision B3 (Phase 1 affiliate pricing rule engine): session-scoped, not a 30-day cookie. Omitting
+// maxAgeMs entirely (rather than passing a duration) is what makes serializeCookie skip the
+// Max-Age/Expires attributes below, so the browser drops this cookie when it closes rather than
+// persisting it - a deliberate, live behavior change from the previous 30-day lifetime. Paired with
+// removing the now-misleading attribution_window_days setting from the owner panel (decision A12) -
+// that setting was never actually enforced anywhere in accrual, and session-scoping makes it
+// actively wrong to keep showing.
 export const setAffiliateAttributionCookie = (req, res, tenantId, enrollmentId) => {
   const normalizedTenantId = String(tenantId || '').trim();
   const normalizedEnrollmentId = String(enrollmentId || '').trim();
   if (!normalizedTenantId || !normalizedEnrollmentId) return;
   const map = readAffiliateAttributionMap(req);
   map[normalizedTenantId] = normalizedEnrollmentId;
+  // Explicit null, not omitted: serializeCookie's maxAgeMs parameter defaults to
+  // DEFAULT_REFRESH_MAX_AGE_MS (7 days) when the options object is left empty, which would
+  // silently reintroduce a persistent cookie instead of the session-scoped one decision B3 requires.
   appendSetCookie(res, serializeCookie(SESSION_COOKIE_NAMES.affiliateAttribution, JSON.stringify(map), {
-    maxAgeMs: AFFILIATE_ATTRIBUTION_MAX_AGE_MS
+    maxAgeMs: null
   }));
 };
 

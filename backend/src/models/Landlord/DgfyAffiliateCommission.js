@@ -70,6 +70,28 @@ export default (sequelize) => {
         paid_at: {
             type: DataTypes.DATE,
             allowNull: true
+        },
+        // Phase 1 affiliate pricing rule engine snapshot columns - all nullable, all NULL for any
+        // row accrued with no affiliate price rule attached (pre-existing rows included).
+        base_subtotal_centavos: {
+            type: DataTypes.INTEGER,
+            allowNull: true
+        },
+        buyer_subtotal_centavos: {
+            type: DataTypes.INTEGER,
+            allowNull: true
+        },
+        reseller_margin_centavos: {
+            type: DataTypes.INTEGER,
+            allowNull: true
+        },
+        price_rule_type_snapshot: {
+            type: DataTypes.STRING(32),
+            allowNull: true
+        },
+        settlement_policy_snapshot: {
+            type: DataTypes.STRING(32),
+            allowNull: true
         }
     }, {
         sequelize,

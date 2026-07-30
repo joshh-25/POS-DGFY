@@ -46,6 +46,12 @@ export default (sequelize) => {
         activated_at: {
             type: DataTypes.DATE,
             allowNull: true
+        },
+        // Nullable override, same fallback pattern as commission_rate_bps: NULL means "inherit the
+        // tenant's commission_type" (TenantAffiliateSettings). Phase 1 affiliate pricing rule engine.
+        commission_type: {
+            type: DataTypes.ENUM('NONE', 'PERCENTAGE_OF_BASE', 'RESELLER_MARGIN'),
+            allowNull: true
         }
     }, {
         sequelize,
