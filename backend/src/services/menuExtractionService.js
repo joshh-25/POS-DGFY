@@ -22,7 +22,7 @@ import { unwrapApplicationResultOrThrow } from '../modules/shared/contracts/appl
 import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode, isFnbWorkflowMode } from '../modules/shared/constants/workflowModes.js';
 import { resolveItemPreset } from '../modules/shared/constants/modeItemTaxonomy.js';
 import { AiUsageLog } from '../models/index.js';
-import { rasterizePdfPages } from './menuPdfRasterService.js';
+import { rasterizePdfPages, MenuRasterUnsupportedError } from './menuPdfRasterService.js';
 import { MENU_IMPORT_MAX_PDF_PAGES, MENU_IMPORT_WORKER_CONCURRENCY } from '../config/menuImportFeature.js';
 
 const require = createRequire(import.meta.url);
@@ -375,10 +375,32 @@ const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png'];
  * @returns {Promise<{items: Array, pages: number, pagesTotal: number, truncated: boolean}>}
  */
 const extractMenuItemsFromRasterizedPdf = async (pdfBuffer, user, reserveVisionCall) => {
-    const { buffers, pagesTotal, truncated: pageCapTruncated } = await rasterizePdfPages(pdfBuffer, {
-        maxPages: MENU_IMPORT_MAX_PDF_PAGES,
-        concurrency: MENU_IMPORT_WORKER_CONCURRENCY
-    });
+    let rasterized;
+    try {
+        rasterized = await rasterizePdfPages(pdfBuffer, {
+            maxPages: MENU_IMPORT_MAX_PDF_PAGES,
+            concurrency: MENU_IMPORT_WORKER_CONCURRENCY
+        });
+    } catch (error) {
+        // The host can't rasterize at all (see menuPdfRasterService.js's
+        // header on why that is a real, survivable condition rather than a
+        // crash). Convert it into this feature's own error type so the batch
+        // worker records a per-file 'failed' result and the single-file path
+        // returns a clean client error — instead of it surfacing as an
+        // unknown internal fault.
+        if (error instanceof MenuRasterUnsupportedError) {
+            logger.error('[MenuExtraction] PDF rasterization unsupported on this host', {
+                message: error.message
+            });
+            throw new MenuExtractionError(
+                'This server cannot read scanned PDFs. Upload a PNG/JPG photo of your menu instead.',
+                'PDF_RASTER_UNSUPPORTED'
+            );
+        }
+        throw error;
+    }
+
+    const { buffers, pagesTotal, truncated: pageCapTruncated } = rasterized;
 
     const items = [];
     let pagesProcessed = 0;

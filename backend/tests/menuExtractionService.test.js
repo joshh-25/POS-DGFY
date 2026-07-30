@@ -437,6 +437,29 @@ trailer
             expect(result.pages).toBe(2);
             expect(result.truncated).toBe(false);
         });
+
+        // On a host whose CPU cannot load @napi-rs/canvas, rasterization is
+        // impossible rather than merely failing (see menuPdfRasterService.js's
+        // header). MENU_IMPORT_PDF_RASTER_ENABLED=false reproduces that state
+        // without needing such a CPU. The contract: a normal MenuExtractionError
+        // that menuImportWorker.js already records as a per-file 'failed'
+        // result — never an unknown internal fault, and never a dead process.
+        it('maps an unsupported-host rasterization failure to MenuExtractionError', async () => {
+            const original = process.env.MENU_IMPORT_PDF_RASTER_ENABLED;
+            process.env.MENU_IMPORT_PDF_RASTER_ENABLED = 'false';
+
+            try {
+                await expect(extractMenuItemsFromFile(blankTextPdf(1), 'application/pdf', { user_id: 1 }))
+                    .rejects.toMatchObject({ name: 'MenuExtractionError', code: 'PDF_RASTER_UNSUPPORTED' });
+                expect(mockCreateCompletion).not.toHaveBeenCalled();
+            } finally {
+                if (original === undefined) {
+                    delete process.env.MENU_IMPORT_PDF_RASTER_ENABLED;
+                } else {
+                    process.env.MENU_IMPORT_PDF_RASTER_ENABLED = original;
+                }
+            }
+        });
     });
 
     describe('resolveTenantWorkflowMode', () => {
