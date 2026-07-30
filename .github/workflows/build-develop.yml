@@ -30,13 +30,23 @@ jobs:
       contents: read
       packages: write
 
+  changes:
+    uses: ./.github/workflows/shared-changed-paths.yml
+    with:
+      base_sha: ${{ github.event.before }}
+      runner_labels_json: '["self-hosted"]'
+
   build-and-push:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true'
     uses: ./.github/workflows/deployment-orchestrator.yml
     with:
       environment: DEV
       image_tags: "develop"
       publish: true
       vpn_required: true
+      build_backend: ${{ needs.changes.outputs.backend == 'true' }}
+      build_frontend: ${{ needs.changes.outputs.frontend == 'true' }}
       runner_labels_json: '["self-hosted"]'
     secrets: inherit
     permissions:
