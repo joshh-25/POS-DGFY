@@ -52,7 +52,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0027 | [PayMongo QR Ph Commerce Payment Sessions and Platform Split Settlement](0027-paymongo-commerce-qrph-platform-split-settlement.md) | `accepted` | paymongo_qrph_platform_split_settlement | 2026-11-19 | 0 |
 | 0028 | [DGFY-Only Company Access And Switching](0028-dgfy-account-company-switching.md) | `accepted` | dgfy_account_company_switching | 2027-01-08 | 0 |
 | 0029 | [Catalog, Inventory, POS, and Storefront Ownership Boundaries](0029-catalog-inventory-pos-storefront-ownership-boundaries.md) | `accepted` | catalog_inventory_pos_storefront_ownership_boundaries | 2026-12-26 | 5 |
-| 0030 | [Free-Tier Signed Release Authorization](0030-free-tier-signed-release-authorization.md) | `accepted` | free_tier_signed_release_authorization | 2026-12-28 | 0 |
+| 0030 | [Free-Tier Signed Release Authorization](0030-free-tier-signed-release-authorization.md) | `superseded` | free_tier_signed_release_authorization | 2026-12-28 | 0 |
 | 0031 | [POS Terminal Pairing and Shift-Safe Navigation](0031-pos-terminal-pairing-and-shift-safe-navigation.md) | `accepted` | pos_terminal_pairing_and_shift_safe_navigation | 2026-12-28 | 0 |
 | 0032 | [Standalone DGFY API Service (`apps/dgfy-api`)](0032-standalone-dgfy-api-service.md) | `accepted` | standalone_dgfy_api_service | 2027-01-08 | 0 |
 | 0033 | [Commercial Promo and Statutory POS Discount Boundaries](0033-commercial-promo-and-statutory-pos-discount-boundaries.md) | `accepted` | commercial_promo_and_statutory_pos_discount_boundaries | 2027-01-07 | 0 |

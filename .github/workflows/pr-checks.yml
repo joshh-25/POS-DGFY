@@ -23,7 +23,7 @@ env:
 
 jobs:
   changes:
-    uses: ./.github/workflows/pr-changed-paths.yml
+    uses: ./.github/workflows/shared-changed-paths.yml
     with:
       runner_labels_json: *runner_labels_json
 
