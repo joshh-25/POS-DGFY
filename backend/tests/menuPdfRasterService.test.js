@@ -1,4 +1,8 @@
-import { rasterizePdfPages } from '../src/services/menuPdfRasterService.js';
+import {
+    rasterizePdfPages,
+    isPdfRasterizationSupported,
+    MenuRasterUnsupportedError
+} from '../src/services/menuPdfRasterService.js';
 
 // Minimal hand-built PDFs (no external fixture files) — same construction
 // used to spike-verify pdfjs-dist + @napi-rs/canvas actually renders (see
@@ -103,5 +107,53 @@ describe('menuPdfRasterService.rasterizePdfPages', () => {
 
         expect(result.buffers).toHaveLength(4);
         expect(result.truncated).toBe(false);
+    });
+});
+
+// The @napi-rs/canvas addon SIGILLs on CPUs below its prebuilt Skia binary's
+// ISA level (see the module header). A SIGILL is a signal, not a catchable
+// exception, so the addon is probed out-of-process and only ever imported once
+// that probe says it is safe. These cover the "cannot rasterize here" branch —
+// the one that used to be an exit-132 crash loop instead of an error.
+describe('menuPdfRasterService capability gating', () => {
+    const originalFlag = process.env.MENU_IMPORT_PDF_RASTER_ENABLED;
+
+    afterEach(() => {
+        if (originalFlag === undefined) {
+            delete process.env.MENU_IMPORT_PDF_RASTER_ENABLED;
+        } else {
+            process.env.MENU_IMPORT_PDF_RASTER_ENABLED = originalFlag;
+        }
+    });
+
+    it('reports rasterization as supported on a host whose CPU can load the addon', () => {
+        // Guards the probe itself: if this ever fails while the render tests
+        // above pass, the probe has become wrong rather than the host.
+        expect(isPdfRasterizationSupported()).toBe(true);
+    });
+
+    it('degrades to MenuRasterUnsupportedError instead of crashing when unsupported', async () => {
+        process.env.MENU_IMPORT_PDF_RASTER_ENABLED = 'false';
+
+        await expect(rasterizePdfPages(singlePagePdf(), { maxPages: 15 }))
+            .rejects.toThrow(MenuRasterUnsupportedError);
+    });
+
+    it('tags the unsupported error with the PDF_RASTER_UNSUPPORTED code', async () => {
+        process.env.MENU_IMPORT_PDF_RASTER_ENABLED = 'false';
+
+        await expect(rasterizePdfPages(singlePagePdf(), { maxPages: 15 }))
+            .rejects.toMatchObject({ code: 'PDF_RASTER_UNSUPPORTED' });
+    });
+
+    it('reads the kill switch at call time, so flipping it back restores rendering', async () => {
+        process.env.MENU_IMPORT_PDF_RASTER_ENABLED = 'false';
+        expect(isPdfRasterizationSupported()).toBe(false);
+
+        process.env.MENU_IMPORT_PDF_RASTER_ENABLED = 'true';
+        expect(isPdfRasterizationSupported()).toBe(true);
+
+        const result = await rasterizePdfPages(singlePagePdf(), { maxPages: 15 });
+        expect(result.buffers).toHaveLength(1);
     });
 });
