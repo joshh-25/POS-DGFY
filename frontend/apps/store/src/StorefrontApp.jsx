@@ -38,6 +38,8 @@ import { useCartMutations } from './shared/hooks/useCartMutations.js';
 import { useCheckoutAuthResumeRestore } from './shared/hooks/useCheckoutAuthResumeRestore.js';
 import { useCheckoutSubmission } from './shared/hooks/useCheckoutSubmission.js';
 import { useCustomerAuthNavigation } from './shared/hooks/useCustomerAuthNavigation.js';
+import { useDefaultOrderPageProps } from './shared/hooks/useDefaultOrderPageProps.js';
+import { useDefaultProductCartDrawerProps } from './shared/hooks/useDefaultProductCartDrawerProps.js';
 import { useDeliveryPinResolution } from './shared/hooks/useDeliveryPinResolution.js';
 import { useServiceBookingViewModel } from './shared/hooks/useServiceBookingViewModel.js';
 import { useStorefrontCartPersistence } from './shared/hooks/useStorefrontCartPersistence.js';
@@ -2520,6 +2522,33 @@ export default function StorefrontApp() {
     updateQty,
     withAssetOrigin
   });
+  const defaultProductCartDrawerProps = useDefaultProductCartDrawerProps({
+    activeOrderMethodLabel,
+    cart,
+    cartCount,
+    cartImageErrors,
+    cartTotal,
+    goStoreOrderPage,
+    isCheckoutOpen,
+    isMobileViewport,
+    money,
+    removeCartItem,
+    setCartImageErrors,
+    setIsCheckoutOpen,
+    updateQty,
+    withAssetOrigin
+  });
+  const defaultOrderRouteProps = useDefaultOrderPageProps({
+    cart,
+    cartCount,
+    isMobileViewport,
+    money,
+    selectedStore,
+    servicesBodyFont,
+    servicesDisplayFont,
+    goStoreCatalogPage,
+    withAssetOrigin
+  });
   const isFnbCartDrawerSurfaceOpen = Boolean(fnbCartDrawerRouteProps.isActive);
   const fnbCustomerStepComplete = fnbCustomerIdentityStepComplete && guestCheckoutOtpVerified;
   const fnbCheckoutRouteProps = useFnbCheckoutRouteProps({
@@ -3226,7 +3255,8 @@ export default function StorefrontApp() {
     setIsFnbCategoryDropdownOpen,
     simpleCheckoutRouteProps,
     simpleStorefrontModel,
-    defaultStorefrontModel
+    defaultStorefrontModel,
+    defaultOrderRouteProps
   });
   const storefrontHeroBandProps = useStorefrontHeroBandProps({
     selectedStore,
@@ -3301,6 +3331,7 @@ export default function StorefrontApp() {
     serviceCartFlyAnimations,
     isSimpleCartSurfaceMode,
     simpleCartDrawerProps,
+    defaultProductCartDrawerProps,
     serviceCartFabRef,
     isDesktopViewport,
     hasServiceCart,
@@ -3344,7 +3375,7 @@ export default function StorefrontApp() {
         width: '100%',
         boxSizing: 'border-box',
         margin: '0 auto',
-        paddingTop: isStorePage && (isServicesMode || isFnbMode || isSimpleMode) ? 0 : (isMobileViewport ? 6 : 10),
+        paddingTop: isStorePage && (isServicesMode || isFnbMode || isSimpleMode || (isResolvedOrderSubpage && !isServicesMode && !isFnbMode && !isSimpleMode)) ? 0 : (isMobileViewport ? 6 : 10),
         paddingRight: isStorePage && (isServicesMode || isFnbMode || isSimpleMode) ? 0 : (isMobileViewport ? 12 : 20),
         paddingLeft: isStorePage && (isServicesMode || isFnbMode || isSimpleMode) ? 0 : (isMobileViewport ? 12 : 20),
         paddingBottom: isStorePage ? ((isServicesMode || isFnbMode || isSimpleMode || !hasDiscoverySearch) ? 0 : (isMobileViewport ? 96 : 120)) : 0
