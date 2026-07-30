@@ -9,7 +9,7 @@ applies_to: affiliates_program, storefront, commerce_payments, backend
 topic: affiliate_buyer_facing_pricing_rule_engine
 ---
 
-# ADR 0049: Affiliate Buyer-Facing Pricing Rule Engine (Phase 1)
+# ADR 0050: Affiliate Buyer-Facing Pricing Rule Engine (Phase 1)
 
 ## Status
 Accepted (2026-07-29)

@@ -63,7 +63,7 @@ build log). It touches money handling already governed by two prior ADRs:
    `round(subtotal − discount)` in centavos. `amount = round(base × bps / 10000)`. This keeps
    affiliate commission strictly a function of the tenant's own subtotal, not of DGFY's or a
    delivery provider's separately-governed fees. `[default]` — see Amendments: this base
-   changes under [ADR 0049](0049-affiliate-buyer-facing-pricing-rule-engine.md) when a tenant opts
+   changes under [ADR 0050](0050-affiliate-buyer-facing-pricing-rule-engine.md) when a tenant opts
    into `commission_base_mode = base_price_subtotal`.
 
 4. **Channel-specific lifecycle: in-store earns immediately, online is pending until settled.**
@@ -133,14 +133,14 @@ build log). It touches money handling already governed by two prior ADRs:
 
 ### 2026-07-29 — Commission base gains a tenant-opt-in alternative (decision A3)
 - Clause amended: Decision 3 (`default`)
-- Change: [ADR 0049](0049-affiliate-buyer-facing-pricing-rule-engine.md) adds
+- Change: [ADR 0050](0050-affiliate-buyer-facing-pricing-rule-engine.md) adds
   `tenant_affiliate_settings.commission_base_mode`. The value here,
   `discounted_subtotal`, remains the default and is unchanged for every tenant
   that never touches the new setting — the commission base is still
   `round(subtotal − discount)`. A tenant may opt into `base_price_subtotal`,
   under which the commission base is the catalog subtotal regardless of any
-  buyer-facing discount, per ADR 0049.
-- Reason: ADR 0049 makes an affiliate's identity an input to the buyer-facing
+  buyer-facing discount, per ADR 0050.
+- Reason: ADR 0050 makes an affiliate's identity an input to the buyer-facing
   price for the first time. Once an affiliate discount can itself reduce
   `subtotal`, this clause's original base silently lets an affiliate's own
   discount shrink their own commission — the opt-in flag exists so a tenant can
@@ -148,8 +148,8 @@ build log). It touches money handling already governed by two prior ADRs:
   running" behavior instead, without changing it for tenants who never asked
   for it.
 - Consequence 4 above (no user-facing behavior change for
-  `frontend/apps/store`) no longer holds once ADR 0049 ships — the storefront
+  `frontend/apps/store`) no longer holds once ADR 0050 ships — the storefront
   now shows and charges an affiliate-adjusted price. That consequence described
   this ADR's own scope at the time it was written and is superseded by ADR
-  0049's consequences, not restated here.
+  0050's consequences, not restated here.
 - PR: affiliate pricing rule engine, Phase 1

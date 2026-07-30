@@ -827,8 +827,12 @@ export default function TenantManager() {
     };
 
     const handleReject = async (tenantId) => {
-        const reason = prompt('Rejection reason (optional):');
+        const reason = prompt('Rejection reason (required, visible to the applicant):');
         if (reason === null) return; // cancelled
+        if (reason.trim().length < 3) {
+            toast.error('Enter a short applicant-visible rejection reason.');
+            return;
+        }
 
         setActionLoading(tenantId);
         try {

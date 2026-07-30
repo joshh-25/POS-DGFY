@@ -17,7 +17,7 @@
 // blanket rule for the same item, regardless of which affiliate is selling it.
 //
 // Sentinel 0 means "applies to all" for both enrollment_id and item_id (see
-// backend/migrations/20260729000001-add-affiliate-price-rules.cjs for why 0 rather than NULL).
+// backend/migrations/20260729000003-add-affiliate-price-rules.cjs for why 0 rather than NULL).
 // Phase 1 only ever writes/queries item_id = 0, so only levels 3-5 are exercised in practice; levels
 // 1-2 are schema-ready and already correctly ordered for when Phase 2 starts writing item-specific
 // rows.

@@ -6,6 +6,7 @@ import {
     DgfyAccountHandoff,
     DgfyAccountTenantMembership,
     DgfyLegalAcknowledgement,
+    CompanyRegistrationApplication,
     Tenant,
     UserTenantMapping,
     UserInvitation
@@ -1245,6 +1246,18 @@ export const dgfyAccountRepository = {
                 ['updated_at', 'DESC'],
                 ['created_at', 'DESC']
             ]
+        });
+    },
+
+    listRegistrationApplications(dgfyAccountId) {
+        return CompanyRegistrationApplication.findAll({
+            where: { dgfy_account_id: dgfyAccountId },
+            include: [{
+                model: Tenant,
+                as: 'tenant',
+                attributes: ['name', 'status']
+            }],
+            order: [['updated_at', 'DESC']]
         });
     },
 

@@ -2,7 +2,7 @@ import { DataTypes, Model } from 'sequelize';
 
 // The selling-price rule only (what the buyer pays) - Phase 1 of the affiliate pricing rule engine.
 // See docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md and
-// backend/migrations/20260729000001-add-affiliate-price-rules.cjs for the sentinel-0 convention on
+// backend/migrations/20260729000003-add-affiliate-price-rules.cjs for the sentinel-0 convention on
 // enrollment_id (0 = tenant-wide template) and item_id (0 = all products; Phase 2 only).
 // Commission configuration is not modeled here - it lives on TenantAffiliateSettings /
 // DgfyAffiliateEnrollment as commission_type, alongside the existing commission_rate_bps override.

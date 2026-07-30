@@ -18,7 +18,7 @@ const COMMISSION_TYPE_VALUES = new Set(AFFILIATE_COMMISSION_RULE_TYPES);
 const SETTLEMENT_POLICY_VALUES = new Set(AFFILIATE_SETTLEMENT_POLICIES);
 const PRICE_RULE_TYPE_VALUES = new Set(AFFILIATE_SELLING_PRICE_RULE_TYPES);
 // Sentinel meaning "applies to all" for enrollment_id/item_id - see
-// backend/migrations/20260729000001-add-affiliate-price-rules.cjs.
+// backend/migrations/20260729000003-add-affiliate-price-rules.cjs.
 const PRICE_RULE_SCOPE_ALL = 0;
 
 const mapError = (error, fallbackMessage) => {

@@ -2,10 +2,10 @@
 status: reference
 owner: engineering
 last_reviewed: 2026-07-29
-related_adr: docs/architecture/adr/0049-affiliate-buyer-facing-pricing-rule-engine.md
+related_adr: docs/architecture/adr/0050-affiliate-buyer-facing-pricing-rule-engine.md
 declaration_id: 2026-07-29-affiliate-pricing-rule-engine-checkout
 classification: major
-surfaces: payments
+surfaces: payments,pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.07.29
 verification_evidence: backend/tests/storeCheckoutAffiliatePricing.unit.test.js (9 passed), backend/tests/affiliateCommissionAccrual.unit.test.js (29 passed, including 4 new resolvedCommission/snapshot override cases), backend/tests/affiliatePricingPolicy.unit.test.js (29 passed, all external acceptance-pack cases), full backend affiliate-prefixed suite (176/183 passed - 7 pre-existing unrelated failures confirmed via git stash), buildCompliancePreflightUseCase run locally with an ALLOW-stubbed evaluateComplianceOperationUseCase
@@ -30,6 +30,14 @@ than used as a reason to skip documentation: this change alters VAT computation,
 convenience fee base, and commission accrual on real storefront orders, which is squarely
 money-affecting even though no automated gate currently requires a declaration for it.
 
+`pos,terminal` is also declared here, alongside `payments`, because
+`scripts/check-compliance-impact.js` requires every declaration in a changeset to state the full
+set of surfaces the changeset touches, not only the surfaces its own file happens to affect. The
+`pos`/`terminal` floor comes from this PR's `frontend/src/features/pos/**` changes, covered
+in-depth by the companion declaration
+(`2026-07-29-affiliate-pricing-rule-engine-frontend.md`) — this file's own subject matter (storefront
+checkout financial math) does not itself touch POS or terminal code.
+
 ## Affected Surfaces
 
 1. `backend/src/modules/store/usecases/storeUseCases.js` - `prepareCheckoutLines` now applies an
@@ -39,7 +47,7 @@ money-affecting even though no automated gate currently requires a declaration f
    RESELLER_MARGIN commission types.
 2. `backend/src/modules/dgfy/utils/affiliateCommissionAccrual.js` - `resolvedCommission`/`snapshot`
    optional parameters, additive and omitted by the in-store POS accrual path.
-3. `backend/migrations/20260729000001-add-affiliate-price-rules.cjs` - new
+3. `backend/migrations/20260729000003-add-affiliate-price-rules.cjs` - new
    `dgfy_affiliate_price_rules` table and additive columns on three existing landlord tables.
 
 ## Compliance Preconditions
@@ -47,7 +55,7 @@ money-affecting even though no automated gate currently requires a declaration f
 1. **VAT.** `vatableSales` derives from `line_subtotal`, which now reflects the affiliate-adjusted
    price when a rule is active. This is correct per BIR (VAT is computed on the price actually
    paid), not a compliance violation - stated explicitly in
-   [ADR 0049](../../architecture/adr/0049-affiliate-buyer-facing-pricing-rule-engine.md) consequence
+   [ADR 0050](../../architecture/adr/0050-affiliate-buyer-facing-pricing-rule-engine.md) consequence
    1 so it is not mistaken for one.
 2. **No fiscal document renderer, receipt template, or POS terminal path is touched.** Phase 1 is
    storefront-only; `backend/src/modules/pos/usecases/posUseCases.js:2548` (the in-store price

@@ -3,7 +3,13 @@ import * as itemController from '../controllers/itemController.js';
 import * as csvImportController from '../controllers/csvImportController.js';
 import * as csvExportController from '../controllers/csvExportController.js';
 import * as menuImportController from '../controllers/menuImportController.js';
-import { requireMenuImportConfig, menuImportDisabledMessage } from '../config/menuImportFeature.js';
+import * as menuImportBatchHandlers from '../modules/menuImport/controllers/menuImportBatchHandlers.js';
+import {
+  requireMenuImportConfig,
+  menuImportDisabledMessage,
+  requireMenuBatchImportConfig,
+  menuImportBatchDisabledMessage
+} from '../config/menuImportFeature.js';
 import {
   validateCreateItem,
   validateUpdateItem,
@@ -27,6 +33,7 @@ import {
   validateReplaceItemSuppliers
 } from '../validators/itemValidator.js';
 import { authenticate, checkPermission, requireTenantAdmin } from '../middleware/auth.js';
+import { markLegacyMenuImportDeprecated } from '../middleware/menuImportDeprecation.js';
 import { requireLocalInventoryLedgerOwnership, bodyDeclaresCurrentStock } from '../middleware/inventoryAuthorityGate.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import { itemOperationsLimiter } from '../middleware/rateLimiter.js';
@@ -34,7 +41,8 @@ import {
   storefrontCatalogBulkImageUpload,
   storefrontCatalogGalleryImageUpload,
   storefrontCatalogImageUpload,
-  menuImportFileUpload
+  menuImportFileUpload,
+  menuImportBatchUpload
 } from '../config/uploadConfig.js';
 
 const router = express.Router();
@@ -66,9 +74,15 @@ const requireMenuImportEnabled = (req, res, next) => {
   }
   return next();
 };
+// Deprecated in favour of the batch endpoints below (see ADR 0039). Still
+// served — this is the only menu importer that has run in production, and the
+// only one that works without Redis — but every call is announced as
+// deprecated and logged, and MENU_IMPORT_LEGACY_SINGLE_FILE_ENABLED=false
+// retires it per-environment without a deploy.
 router.post(
   '/import/pdf/preview',
   requireMenuImportEnabled,
+  markLegacyMenuImportDeprecated,
   checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS),
   menuImportFileUpload.single('file'),
   menuImportController.previewPdfImport
@@ -76,6 +90,53 @@ router.post(
 router.post(
   '/import/pdf/confirm',
   requireMenuImportEnabled,
+  markLegacyMenuImportDeprecated,
+  checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS),
+  menuImportController.confirmPdfImport
+);
+
+// Batch Menu Import routes (multiple PDFs/photos, extracted asynchronously by
+// workers/menuImportWorker.js) - a second capability tier on top of the
+// single-file routes above, separately gated
+// (MENU_IMPORT_BATCH_ENABLED, default OFF; also requires REDIS_URL since job
+// state lives only in Redis). Must be before :item_id routes to avoid conflicts.
+const requireMenuImportBatchEnabled = (req, res, next) => {
+  const { configured, missing } = requireMenuBatchImportConfig();
+  if (!configured) {
+    const notEnabled = missing.includes('MENU_IMPORT_ENABLED') || missing.includes('MENU_IMPORT_BATCH_ENABLED');
+    return res.status(notEnabled ? 404 : 503).json({
+      success: false,
+      message: notEnabled ? menuImportBatchDisabledMessage : 'Batch menu import is enabled but not fully configured.',
+      missing: notEnabled ? undefined : missing
+    });
+  }
+  return next();
+};
+router.post(
+  '/import/menu/jobs',
+  requireMenuImportBatchEnabled,
+  checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS),
+  menuImportBatchUpload.array('files'),
+  menuImportBatchHandlers.createMenuImportJob
+);
+router.get(
+  '/import/menu/jobs/:jobId',
+  requireMenuImportBatchEnabled,
+  checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS),
+  menuImportBatchHandlers.getMenuImportJob
+);
+router.post(
+  '/import/menu/jobs/:jobId/preview',
+  requireMenuImportBatchEnabled,
+  checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS),
+  menuImportBatchHandlers.previewMenuImportJob
+);
+// Confirm is identical to the single-file path's confirm — there is nothing
+// batch-specific about persisting already-previewed rows, so this reuses the
+// same handler rather than duplicating it (see D8 in the menu batch import ADR).
+router.post(
+  '/import/menu/confirm',
+  requireMenuImportBatchEnabled,
   checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS),
   menuImportController.confirmPdfImport
 );

@@ -20,7 +20,7 @@ import {
 } from '../utils/affiliatePriceRuleResolution.js';
 
 // Sentinel meaning "applies to all" for enrollment_id/item_id - see
-// backend/migrations/20260729000001-add-affiliate-price-rules.cjs.
+// backend/migrations/20260729000003-add-affiliate-price-rules.cjs.
 const PRICE_RULE_SCOPE_ALL = 0;
 
 const toPlain = (value) => (

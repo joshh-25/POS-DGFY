@@ -22,18 +22,22 @@ import { unwrapApplicationResultOrThrow } from '../modules/shared/contracts/appl
 import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode, isFnbWorkflowMode } from '../modules/shared/constants/workflowModes.js';
 import { resolveItemPreset } from '../modules/shared/constants/modeItemTaxonomy.js';
 import { AiUsageLog } from '../models/index.js';
+import { rasterizePdfPages } from './menuPdfRasterService.js';
+import { MENU_IMPORT_MAX_PDF_PAGES, MENU_IMPORT_WORKER_CONCURRENCY } from '../config/menuImportFeature.js';
 
 const require = createRequire(import.meta.url);
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const MAX_PDF_TEXT_CHARS = 50000; // Matches prepareChatPayloadUseCase.js's truncateFileContent limit.
 const MAX_MENU_ITEMS_PER_IMPORT = 200;
 
-let _pdfParse = null;
-const getPdfParse = () => {
-    if (!_pdfParse) {
-        _pdfParse = require('pdf-parse');
+let _PDFParse = null;
+const getPDFParseClass = () => {
+    if (!_PDFParse) {
+        // pdf-parse@2's real API is `new PDFParse({data}).getText()` — the
+        // package no longer exports a callable function the way v1 did.
+        ({ PDFParse: _PDFParse } = require('pdf-parse'));
     }
-    return _pdfParse;
+    return _PDFParse;
 };
 
 let _openai = null;
@@ -103,8 +107,19 @@ const resolveTenantWorkflowMode = async () => {
  * @returns {Promise<string>}
  */
 const extractPdfText = async (pdfBuffer) => {
-    const parsed = await getPdfParse()(pdfBuffer);
-    return String(parsed?.text || '').trim();
+    const PDFParse = getPDFParseClass();
+    const parser = new PDFParse({ data: pdfBuffer });
+    try {
+        // pdf-parse defaults to appending a '-- N of M --' page-boundary
+        // marker to every page's text, even a completely blank one — leaving
+        // that in place would mean image-only PDFs never actually parse as
+        // "empty" and this codebase's PDF_TEXT_EMPTY / Phase 3 rasterization
+        // fallback would never trigger. pageJoiner: '' disables the marker.
+        const parsed = await parser.getText({ pageJoiner: '' });
+        return String(parsed?.text || '').trim();
+    } finally {
+        await parser.destroy();
+    }
 };
 
 const EXTRACTION_SYSTEM_PROMPT = `You extract a sellable menu's items from a restaurant/store menu document.
@@ -255,9 +270,15 @@ const escapeCsvCell = (value) => {
     return str;
 };
 
-const slugForSku = (name, index) => {
-    const stamp = new Date().toISOString().replace(/[^0-9]/g, '').slice(0, 14); // YYYYMMDDHHmmss
-    return `PDFMENU-${stamp}-${String(index + 1).padStart(3, '0')}`.slice(0, 50);
+// skuPrefix/batchToken let a multi-file batch import (modules/menuImport/) stamp
+// every row in the batch with the same prefix/token while numbering
+// contiguously across files — see buildSignedCsv below for why `stamp` is
+// computed once per call rather than once per row.
+const slugForSku = (index, { stamp, skuPrefix = 'PDFMENU', batchToken = '' } = {}) => {
+    const parts = [skuPrefix, stamp];
+    if (batchToken) parts.push(batchToken);
+    parts.push(String(index + 1).padStart(3, '0'));
+    return parts.join('-').slice(0, 50);
 };
 
 /**
@@ -268,17 +289,30 @@ const slugForSku = (name, index) => {
  * require. Producing a signed CSV — rather than new item-creation code — means
  * PDF-imported rows flow through the exact same validation/persistence path as
  * CSV-imported rows.
+ *
+ * `stamp` is computed once for the whole call, not per row — computing it
+ * inside the row .map() (as this used to do) let a batch whose rows straddle
+ * a second boundary emit mixed SKU stamps, and since a SKU collision resolves
+ * to a silent UPDATE in the CSV import pipeline rather than an error, two
+ * imports landing in the same second could silently overwrite each other's
+ * items. `batchToken` lets a multi-file batch (modules/menuImport/) keep SKUs
+ * unique across the whole batch using one shared, contiguous index instead of
+ * a per-file one.
  * @param {Array<{name, price, section, description}>} extractedItems
+ * @param {Object} [options]
+ * @param {string} [options.skuPrefix='PDFMENU']
+ * @param {string} [options.batchToken=''] - short token distinguishing this batch, e.g. derived from a job id.
  * @returns {string} CSV content
  */
-const buildSignedCsv = (extractedItems) => {
+const buildSignedCsv = (extractedItems, { skuPrefix = 'PDFMENU', batchToken = '' } = {}) => {
     const preset = resolveItemPreset('fnb', 'menu_item');
     const issuedAt = new Date().toISOString();
     const schemaVersion = TEMPLATE_SCHEMA_VERSION;
     const signature = buildTemplateSignature({ workflowMode: 'fnb', schemaVersion, issuedAt });
+    const stamp = issuedAt.replace(/[^0-9]/g, '').slice(0, 14); // YYYYMMDDHHmmss
 
     const rows = extractedItems.map((item, index) => ([
-        slugForSku(item.name, index),
+        slugForSku(index, { stamp, skuPrefix, batchToken }),
         item.name,
         preset.category,
         preset.product_type,
@@ -305,10 +339,130 @@ const buildSignedCsv = (extractedItems) => {
 
 // Exported for focused unit testing (mirrors csvImportService.js's convention
 // of exporting internal helpers like buildTemplateSignature/parseCSV) — not
-// intended as a general-purpose public API of this module.
-export { extractMenuItemsFromText, extractMenuItemsFromImage, buildSignedCsv };
+// intended as a general-purpose public API of this module. resolveTenantWorkflowMode
+// is also a real dependency of modules/menuImport/usecases/createMenuImportJobUseCase.js,
+// which needs the same tenant-workflow-mode check the single-file path below
+// does, run in request context before a batch job is ever enqueued (the
+// worker that drains the batch queue has no tenant DB access — see
+// modules/menuImport/README.md).
+export { extractMenuItemsFromText, extractMenuItemsFromImage, buildSignedCsv, resolveTenantWorkflowMode };
 
 const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png'];
+
+/**
+ * Renders a PDF's pages (up to MENU_IMPORT_MAX_PDF_PAGES) and runs each
+ * through the same vision extraction path used for photos — the fallback
+ * for scanned/image-only PDFs where extractPdfText comes back empty. One
+ * OpenAI vision call per page (reuses extractMenuItemsFromImage as-is, no
+ * new OpenAI-calling code); a page's items are concatenated onto the file's
+ * result (cross-page duplicate items are handled later — Phase 2's preview
+ * use case already merges every completed file's items across the whole
+ * job regardless of page origin, so no per-file dedup is needed here).
+ *
+ * `reserveVisionCall`, when provided (only the batch worker provides it —
+ * see extractMenuItemsFromFile below), gates each page's vision call against
+ * a job-wide shared budget (MENU_IMPORT_MAX_VISION_CALLS_PER_BATCH) so a
+ * multi-file batch of scanned PDFs can't spend hundreds of calls just
+ * because each file individually fits under the per-file page cap. Pages
+ * left unprocessed because that budget (or the page cap) was hit are
+ * reported via `truncated`/`pages`/`pages_total` — extracted items from
+ * whatever pages *did* get processed are still returned, never discarded
+ * (explicit product decision: partial + flagged, never a silent drop, never
+ * a hard failure of the whole file).
+ * @param {Buffer} pdfBuffer
+ * @param {Object} [user]
+ * @param {Function} [reserveVisionCall] - () => Promise<boolean>
+ * @returns {Promise<{items: Array, pages: number, pagesTotal: number, truncated: boolean}>}
+ */
+const extractMenuItemsFromRasterizedPdf = async (pdfBuffer, user, reserveVisionCall) => {
+    const { buffers, pagesTotal, truncated: pageCapTruncated } = await rasterizePdfPages(pdfBuffer, {
+        maxPages: MENU_IMPORT_MAX_PDF_PAGES,
+        concurrency: MENU_IMPORT_WORKER_CONCURRENCY
+    });
+
+    const items = [];
+    let pagesProcessed = 0;
+    let budgetTruncated = false;
+
+    // Bounded concurrency across pages, same shape as the raster service's
+    // own worker pool — keeps this fast for the synchronous single-file
+    // endpoint while still respecting reserveVisionCall's ordering (a page
+    // only proceeds once it has secured a reservation).
+    let nextIndex = 0;
+    const runWorker = async () => {
+        while (nextIndex < buffers.length) {
+            const currentIndex = nextIndex;
+            nextIndex += 1;
+
+            if (reserveVisionCall) {
+                const granted = await reserveVisionCall();
+                if (!granted) {
+                    budgetTruncated = true;
+                    break;
+                }
+            }
+
+            const pageItems = await extractMenuItemsFromImage(buffers[currentIndex], 'image/png', user);
+            items.push(...pageItems);
+            pagesProcessed += 1;
+        }
+    };
+    await Promise.all(Array.from({ length: Math.min(MENU_IMPORT_WORKER_CONCURRENCY, buffers.length) }, runWorker));
+
+    return {
+        items,
+        pages: pagesProcessed,
+        pagesTotal,
+        truncated: pageCapTruncated || budgetTruncated
+    };
+};
+
+/**
+ * Extracts menu items from a single file buffer — PDF text, PDF rasterized
+ * to images (fallback for scanned/image-only PDFs), or PNG/JPG vision —
+ * WITHOUT the tenant workflow-mode check or CSV serialization. This is the
+ * function the batch import worker (workers/menuImportWorker.js) calls
+ * directly: that worker deliberately has no tenant DB access, so it cannot
+ * itself check workflow mode — modules/menuImport/usecases/createMenuImportJobUseCase.js
+ * does that check once, in request context, before a job is ever enqueued.
+ * extractMenuCsvFromFile (below) is the single-file path and still does its
+ * own workflow-mode check, since it has no separate "create job" step to do
+ * it in.
+ * @param {Buffer} fileBuffer
+ * @param {string} mimeType - 'application/pdf', 'image/jpeg', or 'image/png'
+ * @param {Object} [user] - requesting user, for AI usage logging
+ * @param {Object} [options]
+ * @param {Function} [options.reserveVisionCall] - job-scoped budget gate for
+ *   rasterized-PDF page extraction, provided only by the batch worker (see
+ *   menuImportWorker.js). Omitted by the single-file sync path, which has no
+ *   batch/shared budget — only the per-file MENU_IMPORT_MAX_PDF_PAGES cap applies.
+ * @returns {Promise<{items: Array<{name,price,section,description}>, kind: 'pdf_text'|'pdf_rasterized'|'image', pages: number, pages_total?: number, truncated?: boolean}>}
+ */
+export const extractMenuItemsFromFile = async (fileBuffer, mimeType, user, { reserveVisionCall } = {}) => {
+    if (mimeType === 'application/pdf') {
+        const menuText = await extractPdfText(fileBuffer);
+        if (menuText) {
+            const items = await extractMenuItemsFromText(menuText, user);
+            return { items, kind: 'pdf_text', pages: 1 };
+        }
+
+        const { items, pages, pagesTotal, truncated } = await extractMenuItemsFromRasterizedPdf(fileBuffer, user, reserveVisionCall);
+        if (pages === 0) {
+            throw new MenuExtractionError(
+                "Couldn't read this PDF as text or as a scanned image. Try a different export, or upload a PNG/JPG photo of your menu instead.",
+                'PDF_TEXT_EMPTY'
+            );
+        }
+        return { items, kind: 'pdf_rasterized', pages, pages_total: pagesTotal, truncated };
+    }
+
+    if (IMAGE_MIME_TYPES.includes(mimeType)) {
+        const items = await extractMenuItemsFromImage(fileBuffer, mimeType, user);
+        return { items, kind: 'image', pages: 1 };
+    }
+
+    throw new MenuExtractionError('Unsupported file type for menu import.', 'UNSUPPORTED_FILE_TYPE');
+};
 
 /**
  * Extracts menu items from an uploaded PDF or PNG/JPG menu photo and returns
@@ -323,7 +477,7 @@ const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png'];
  * @param {Buffer} fileBuffer
  * @param {string} mimeType - 'application/pdf', 'image/jpeg', or 'image/png'
  * @param {Object} [user] - requesting user, for AI usage logging
- * @returns {Promise<{csvContent: string, itemCount: number}>}
+ * @returns {Promise<{csvContent: string, itemCount: number, pages: number, pages_total?: number, truncated: boolean}>}
  */
 export const extractMenuCsvFromFile = async (fileBuffer, mimeType, user) => {
     const tenantWorkflowMode = await resolveTenantWorkflowMode();
@@ -335,21 +489,7 @@ export const extractMenuCsvFromFile = async (fileBuffer, mimeType, user) => {
         );
     }
 
-    let items;
-    if (mimeType === 'application/pdf') {
-        const menuText = await extractPdfText(fileBuffer);
-        if (!menuText) {
-            throw new MenuExtractionError(
-                "Couldn't read any text from this PDF. Try a text-based PDF export, or upload a PNG/JPG photo of your menu instead.",
-                'PDF_TEXT_EMPTY'
-            );
-        }
-        items = await extractMenuItemsFromText(menuText, user);
-    } else if (IMAGE_MIME_TYPES.includes(mimeType)) {
-        items = await extractMenuItemsFromImage(fileBuffer, mimeType, user);
-    } else {
-        throw new MenuExtractionError('Unsupported file type for menu import.', 'UNSUPPORTED_FILE_TYPE');
-    }
+    const { items, pages, pages_total: pagesTotal, truncated } = await extractMenuItemsFromFile(fileBuffer, mimeType, user);
 
     if (items.length === 0) {
         throw new MenuExtractionError(
@@ -358,7 +498,21 @@ export const extractMenuCsvFromFile = async (fileBuffer, mimeType, user) => {
         );
     }
 
-    return { csvContent: buildSignedCsv(items), itemCount: items.length };
+    return {
+        csvContent: buildSignedCsv(items),
+        itemCount: items.length,
+        pages,
+        pages_total: pagesTotal,
+        truncated: Boolean(truncated)
+    };
 };
 
-export default { extractMenuCsvFromFile, extractMenuItemsFromText, extractMenuItemsFromImage, buildSignedCsv, MenuExtractionError };
+export default {
+    extractMenuCsvFromFile,
+    extractMenuItemsFromFile,
+    extractMenuItemsFromText,
+    extractMenuItemsFromImage,
+    buildSignedCsv,
+    resolveTenantWorkflowMode,
+    MenuExtractionError
+};

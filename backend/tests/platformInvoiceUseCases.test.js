@@ -14,9 +14,41 @@ describe('platform landlord invoice use cases', () => {
     expect(() => calculateVatInclusiveInvoice({ grossCentavos: 100, cashTenderedCentavos: 101 })).toThrow('Cash change must be confirmed');
   });
 
+  test('sets the database uniqueness guard only on an original draft', async () => {
+    const repository = {
+      findApplication: jest.fn().mockResolvedValue({
+        id: 'application-1',
+        provisioning_status: 'succeeded',
+        registration_email_snapshot: 'owner@example.test'
+      }),
+      transaction: async (callback) => callback({}),
+      findOriginalForApplication: jest.fn().mockResolvedValue(null),
+      createDraft: jest.fn().mockResolvedValue({ id: 'draft-1' }),
+      createEvent: jest.fn().mockResolvedValue()
+    };
+
+    const result = await buildPlatformInvoiceUseCases({ repository }).createDraft({
+      body: {
+        registration_application_id: 'application-1',
+        billing_frequency: 'one_time',
+        payment_method: 'cash',
+        gross_centavos: 11200,
+        buyer: { legal_name: 'Buyer Corp' }
+      },
+      actor: { id: 'admin-1' }
+    });
+
+    expect(result).toMatchObject({ success: true, status: 201 });
+    expect(repository.createDraft).toHaveBeenCalledWith(expect.objectContaining({
+      registration_application_id: 'application-1',
+      original_registration_application_id: 'application-1',
+      invoice_kind: 'original'
+    }), expect.anything());
+  });
+
   test('appends later cash payment only to an issued original and updates remaining balance', async () => {
     const invoice = {
-      id: 'invoice-1', invoice_status: 'issued', payment_status: 'partial', gross_centavos: 10000,
+      id: 'invoice-1', invoice_status: 'issued', invoice_kind: 'original', payment_status: 'partial', gross_centavos: 10000,
       payments: [{ amount_applied_centavos: 4000 }], update: jest.fn().mockResolvedValue()
     };
     const repository = {
@@ -35,7 +67,7 @@ describe('platform landlord invoice use cases', () => {
   });
 
   test('rejects an over-tendered later payment until change return is confirmed', async () => {
-    const invoice = { id: 'invoice-1', invoice_status: 'issued', gross_centavos: 10000, payments: [{ amount_applied_centavos: 9000 }], update: jest.fn() };
+    const invoice = { id: 'invoice-1', invoice_status: 'issued', invoice_kind: 'original', gross_centavos: 10000, payments: [{ amount_applied_centavos: 9000 }], update: jest.fn() };
     const repository = { transaction: async (callback) => callback({ LOCK: { UPDATE: 'UPDATE' } }), findInvoice: jest.fn().mockResolvedValue(invoice), createPayment: jest.fn() };
     await expect(buildPlatformInvoiceUseCases({ repository }).recordCashPayment({ invoiceId: invoice.id, body: { cash_tendered_centavos: 2000 }, actor: { id: 'admin-1' } })).resolves.toMatchObject({ success: false, status: 422, message: expect.stringContaining('Cash change must be confirmed') });
     expect(repository.createPayment).not.toHaveBeenCalled();
@@ -70,7 +102,7 @@ describe('platform landlord invoice use cases', () => {
   });
 
   test('records an append-only full credit without editing the original snapshot', async () => {
-    const invoice = { id: 'invoice-1', invoice_status: 'issued', gross_centavos: 11200, update: jest.fn().mockResolvedValue() };
+    const invoice = { id: 'invoice-1', invoice_status: 'issued', invoice_kind: 'original', gross_centavos: 11200, update: jest.fn().mockResolvedValue() };
     const repository = { transaction: async (callback) => callback({ LOCK: { UPDATE: 'UPDATE' } }), findInvoice: jest.fn().mockResolvedValue(invoice), createAdjustment: jest.fn().mockResolvedValue({ id: 'credit-1' }), createEvent: jest.fn().mockResolvedValue() };
     const result = await buildPlatformInvoiceUseCases({ repository }).creditInvoice({ invoiceId: invoice.id, actor: { id: 'admin-1' }, body: { reason: 'Duplicate charge', confirmed: true } });
     expect(result.success).toBe(true);
@@ -98,6 +130,28 @@ describe('platform landlord invoice use cases', () => {
     expect(draft.update).toHaveBeenCalledWith(expect.objectContaining({ gross_centavos: 11200, buyer_snapshot: expect.objectContaining({ legal_name: 'Correct Buyer', address: null, tin: null }) }), expect.anything());
     repository.findInvoice.mockResolvedValue({ ...draft, invoice_status: 'issued' });
     await expect(buildPlatformInvoiceUseCases({ repository }).updateDraft({ invoiceId: draft.id, body: { gross_centavos: 11200, buyer: { legal_name: 'Correct Buyer' } } })).resolves.toMatchObject({ success: false, status: 422 });
+  });
+
+  test('discards a draft without deleting its append-only audit history', async () => {
+    const draft = { id: 'draft-1', invoice_status: 'draft' };
+    const repository = {
+      transaction: async (callback) => callback({ LOCK: { UPDATE: 'UPDATE' } }),
+      findInvoice: jest.fn().mockResolvedValue(draft),
+      discardDraft: jest.fn().mockResolvedValue(),
+      createEvent: jest.fn().mockResolvedValue()
+    };
+
+    const result = await buildPlatformInvoiceUseCases({ repository }).discardDraft({
+      invoiceId: draft.id,
+      actor: { id: 'admin-1' }
+    });
+
+    expect(result).toMatchObject({ success: true, data: { id: draft.id, discarded: true } });
+    expect(repository.discardDraft).toHaveBeenCalledWith(draft, expect.anything());
+    expect(repository.createEvent).toHaveBeenCalledWith(expect.objectContaining({
+      invoice_id: draft.id,
+      event_type: 'draft_discarded'
+    }), expect.anything());
   });
 
   test('refuses QA invoice email when neither a safe sink nor an allowlist is configured', async () => {

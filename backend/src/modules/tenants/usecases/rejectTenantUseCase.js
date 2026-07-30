@@ -1,5 +1,6 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
+import { resolveCompanyRegistrationStatusUrl } from '../entities/companyRegistrationStatusUrl.js';
 
 export const buildRejectTenantUseCase = ({ tenantAdminRepository, companyRegistrationRepository, emailService, logger }) => {
     return async ({ id, reason, actor }) => {
@@ -29,12 +30,23 @@ export const buildRejectTenantUseCase = ({ tenantAdminRepository, companyRegistr
                 ));
             }
 
-            await tenantAdminRepository.updateTenant(tenant, {
-                status: 'rejected',
-                rejection_reason: safeReason,
-                settings: { ...tenant.settings, rejection_reason: safeReason }
+            let application;
+            await tenantAdminRepository.transaction(async (transaction) => {
+                application = await companyRegistrationRepository.markRejected({ tenantId: tenant.id, actor, reason: safeReason, transaction });
+                if (!application) return;
+                await tenantAdminRepository.updateTenant(tenant, {
+                    status: 'rejected',
+                    rejection_reason: safeReason,
+                    settings: { ...tenant.settings, rejection_reason: safeReason }
+                }, { transaction });
             });
-            await companyRegistrationRepository.markRejected({ tenantId: tenant.id, actor, reason: safeReason });
+            if (!application) {
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'This tenant is not a public registration application.',
+                    { statusCode: 422 }
+                ));
+            }
 
             let emailSent = false;
             if (emailService?.isEmailConfigured?.()) {
@@ -42,7 +54,8 @@ export const buildRejectTenantUseCase = ({ tenantAdminRepository, companyRegistr
                     await emailService.sendCompanyRejectedEmail({
                         email: tenant.admin_email,
                         companyName: tenant.name,
-                        rejectionReason: safeReason
+                        rejectionReason: safeReason,
+                        statusUrl: resolveCompanyRegistrationStatusUrl(application.id)
                     });
                     emailSent = true;
                     logger?.info?.(`[TenantRejection] Rejection email sent to ${tenant.admin_email}`);
