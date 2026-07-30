@@ -2,6 +2,8 @@ import React from 'react';
 import {
   ArrowLeft,
   ChefHat,
+  Loader2,
+  RefreshCw,
 } from 'lucide-react';
 import { FnbProductReviewsSection } from '../components/FnbProductReviewsSection.jsx';
 import { FnbRecommendedPairings } from '../components/FnbRecommendedPairings.jsx';
@@ -48,8 +50,122 @@ const actionButtonBase = {
   letterSpacing: '0.01em'
 };
 
+function FnbProductDetailsState({
+  description,
+  icon,
+  iconBackground,
+  iconBorder,
+  iconColor,
+  isMobileViewport,
+  primaryAction = null,
+  primaryLabel = '',
+  secondaryAction = null,
+  secondaryLabel = '',
+  title,
+  type = 'status'
+}) {
+  return (
+    <section style={{
+      fontFamily: FNB_BODY_FONT,
+      width: '100vw',
+      marginLeft: 'calc(50% - 50vw)',
+      background: '#ffffff',
+      minHeight: '100vh',
+      padding: isMobileViewport ? '32px 16px 48px' : '56px 24px 72px',
+      boxSizing: 'border-box'
+    }}>
+      <div
+        aria-live={type === 'alert' ? 'assertive' : 'polite'}
+        aria-busy={type === 'loading' ? 'true' : undefined}
+        role={type === 'alert' ? 'alert' : 'status'}
+        style={{
+          maxWidth: 920,
+          margin: '0 auto',
+          border: '1px solid rgba(226, 232, 240, 0.8)',
+          borderRadius: 28,
+          background: '#fff',
+          padding: isMobileViewport ? 24 : 40,
+          display: 'grid',
+          gap: 16,
+          boxShadow: '0 20px 48px rgba(15,23,42,0.04)'
+        }}
+      >
+        <div style={{
+          width: 56,
+          height: 56,
+          borderRadius: 18,
+          background: iconBackground,
+          color: iconColor,
+          display: 'grid',
+          placeItems: 'center',
+          border: `1px solid ${iconBorder}`
+        }}>
+          {icon}
+        </div>
+        <h2 style={{
+          margin: 0,
+          fontSize: isMobileViewport ? 28 : 36,
+          lineHeight: 1.05,
+          fontWeight: 900,
+          color: '#0f172a',
+          fontFamily: FNB_DISPLAY_FONT
+        }}>
+          {title}
+        </h2>
+        <p style={{
+          margin: 0,
+          maxWidth: 560,
+          fontSize: 16,
+          lineHeight: 1.65,
+          color: '#475569'
+        }}>
+          {description}
+        </p>
+        {(primaryAction || secondaryAction) && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10 }}>
+            {primaryAction && (
+              <button
+                type="button"
+                onClick={primaryAction}
+                style={{
+                  ...actionButtonBase,
+                  minHeight: 48,
+                  border: 'none',
+                  background: '#22C55E',
+                  color: '#fff',
+                  boxShadow: '0 14px 28px rgba(34,197,94,0.24)'
+                }}
+              >
+                {primaryLabel}
+              </button>
+            )}
+            {secondaryAction && (
+              <button
+                type="button"
+                onClick={secondaryAction}
+                style={{
+                  ...actionButtonBase,
+                  minHeight: 48,
+                  border: '1px solid #cbd5e1',
+                  background: '#fff',
+                  color: '#334155'
+                }}
+              >
+                {secondaryLabel}
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 export function FnbProductDetailsPage({
   item,
+  loading = false,
+  loadError = '',
+  onRetry = null,
   storeName,
   storeLogoUrl,
   branchLabel,
@@ -89,53 +205,53 @@ export function FnbProductDetailsPage({
     return initial;
   });
 
-  /* --- Empty / not-found state --- */
+  if (!item && loading) {
+    return (
+      <FnbProductDetailsState
+        description="Please wait while we confirm that this item exists and is available in the current storefront catalog."
+        icon={<Loader2 className="animate-spin" size={24} />}
+        iconBackground="#eff6ff"
+        iconBorder="#bfdbfe"
+        iconColor="#2563eb"
+        isMobileViewport={isMobileViewport}
+        title="Checking item availability..."
+        type="loading"
+      />
+    );
+  }
+
+  if (!item && loadError) {
+    return (
+      <FnbProductDetailsState
+        description="We could not load the latest item information. Try again, or return to the menu."
+        icon={<RefreshCw size={24} />}
+        iconBackground="#fef2f2"
+        iconBorder="#fecaca"
+        iconColor="#dc2626"
+        isMobileViewport={isMobileViewport}
+        primaryAction={onRetry}
+        primaryLabel={<><RefreshCw size={16} /> Try Again</>}
+        secondaryAction={onBack}
+        secondaryLabel={<><ArrowLeft size={16} /> Back to Menu</>}
+        title="Unable to load item"
+        type="alert"
+      />
+    );
+  }
+
   if (!item) {
     return (
-      <section style={{
-        fontFamily: FNB_BODY_FONT,
-        width: '100vw',
-        marginLeft: 'calc(50% - 50vw)',
-        background: '#ffffff',
-        minHeight: '100vh',
-        padding: isMobileViewport ? '32px 16px 48px' : '56px 24px 72px',
-        boxSizing: 'border-box'
-      }}>
-        <div style={{
-          maxWidth: 920,
-          margin: '0 auto',
-          border: '1px solid rgba(226, 232, 240, 0.8)',
-          borderRadius: 28,
-          background: '#fff',
-          padding: isMobileViewport ? 24 : 40,
-          display: 'grid',
-          gap: 16,
-          boxShadow: '0 20px 48px rgba(15,23,42,0.04)'
-        }}>
-          <div style={{ width: 56, height: 56, borderRadius: 18, background: '#fff', color: '#f97316', display: 'grid', placeItems: 'center', border: '1px solid #fed7aa' }}>
-            <ChefHat size={24} />
-          </div>
-          <h2 style={{ margin: 0, fontSize: isMobileViewport ? 28 : 36, lineHeight: 1.05, fontWeight: 900, color: '#0f172a', fontFamily: FNB_DISPLAY_FONT }}>Item not available</h2>
-          <p style={{ margin: 0, maxWidth: 560, fontSize: 16, lineHeight: 1.65, color: '#475569' }}>The item link is valid but the product is no longer available in the current storefront catalog.</p>
-          <div>
-            <button
-              type="button"
-              onClick={onBack}
-              style={{
-                ...actionButtonBase,
-                minHeight: 48,
-                border: 'none',
-                background: '#22C55E',
-                color: '#fff',
-                boxShadow: '0 14px 28px rgba(34,197,94,0.24)'
-              }}
-            >
-              <ArrowLeft size={16} />
-              Back to Menu
-            </button>
-          </div>
-        </div>
-      </section>
+      <FnbProductDetailsState
+        description="The item link is valid but the product is no longer available in the current storefront catalog."
+        icon={<ChefHat size={24} />}
+        iconBackground="#fff"
+        iconBorder="#fed7aa"
+        iconColor="#f97316"
+        isMobileViewport={isMobileViewport}
+        primaryAction={onBack}
+        primaryLabel={<><ArrowLeft size={16} /> Back to Menu</>}
+        title="Item not available"
+      />
     );
   }
 
@@ -300,6 +416,7 @@ export function FnbProductDetailsPage({
                 selectedModifiers={selectedModifiers}
                 spacing={sp}
               />
+
               {isMobileViewport && renderReviewsSection()}
 
               {isMobileViewport && renderRecommendedPairings()}

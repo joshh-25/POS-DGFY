@@ -15,7 +15,7 @@ This is the canonical entry point for implementation planning.
 1. This file (`docs/START_HERE.md`)
 2. `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 3. `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
-4. Relevant ADRs under `docs/architecture/adr/`
+4. Relevant ADRs under `docs/architecture/adr/` — start from `docs/architecture/adr/INDEX.md`
 5. Feature/domain docs needed by your change
 
 ## How To Decide Which Docs Are Authoritative
@@ -26,6 +26,13 @@ This is the canonical entry point for implementation planning.
 - `status: deprecated` means do not use for new decisions
 2. If two docs conflict, higher authority wins:
 - authoritative > reference > historical > deprecated
+3. ADRs carry two separate fields. `authority_level` is document authority, as
+above. `status` is the ADR's lifecycle state: `proposed`, `accepted`, `amended`,
+`superseded`, `retired` (ADR 0039). Do not cite `superseded` or `retired` ADRs
+in new plans; `proposed` ADRs constrain nothing.
+4. Inside an accepted ADR, only `[binding]` clauses are hard constraints.
+`[default]` clauses can be changed with an amendment block in your PR, and
+untagged clauses are `default`.
 
 ## Folder Usage Guide
 - `docs/architecture`: architecture rules, governance, ADRs

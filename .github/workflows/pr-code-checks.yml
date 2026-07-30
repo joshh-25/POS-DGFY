@@ -25,26 +25,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
-          cache: npm
-          cache-dependency-path: |
-            package-lock.json
-            backend/package-lock.json
-            frontend/package-lock.json
+
+      - name: Configure job-scoped npm cache
+        shell: bash
+        run: echo "NPM_CONFIG_CACHE=$RUNNER_TEMP/dgfy-pr-code-npm-cache" >> "$GITHUB_ENV"
 
       - name: Install root dependencies
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
       - name: Install backend dependencies
-        run: npm --prefix backend ci
-
-      - name: Install frontend dependencies
-        run: npm --prefix frontend ci
+        run: npm --prefix backend ci --no-audit --no-fund
 
       - name: Lint backend
         run: npm --prefix backend run lint
-
-      - name: Lint frontend
-        run: npm --prefix frontend run lint
 
       - name: Enforce modular architecture guardrails + controller boundaries
         run: npm run check:architecture
@@ -62,3 +55,18 @@ jobs:
 
       - name: Lint governed documentation
         run: npm run lint:docs
+
+      - name: Reclaim backend dependency space before frontend install
+        shell: bash
+        run: rm -rf node_modules backend/node_modules "$NPM_CONFIG_CACHE"
+
+      - name: Install frontend dependencies
+        run: npm --prefix frontend ci --no-audit --no-fund
+
+      - name: Lint frontend
+        run: npm --prefix frontend run lint
+
+      - name: Reclaim job dependency space
+        if: always()
+        shell: bash
+        run: rm -rf node_modules backend/node_modules frontend/node_modules "$NPM_CONFIG_CACHE"

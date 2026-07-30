@@ -41,6 +41,7 @@ import { requireExplicitSalePrice } from '../../shared/utils/itemFinancialPolicy
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
 import { getDgfyLegacyLinkStatus } from '../../dgfy/index.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
+import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 import { calculatePosDiscount } from '../domain/posDiscountCalculator.js';
 import { resolvePosGovernedDiscount } from '../domain/posDiscountPolicy.js';
 import { verifyPosDiscountApprover } from '../domain/posDiscountApprovalPolicy.js';
@@ -6173,10 +6174,10 @@ export const buildGetAdminLocationMonitorUseCase = ({
                 { statusCode: 401 }
             ));
         }
-        if (!isAdminLikeUser(user)) {
+        if (!hasEffectivePermission(user, PERMISSION_SWITCH_LOCATION)) {
             return fail(new DomainError(
                 DomainErrorCode.AUTHORIZATION_FAILED,
-                'Only POS administrators can monitor another branch without an active shift.',
+                'POS location switching permission is required to monitor another branch without an active shift.',
                 { statusCode: 403 }
             ));
         }

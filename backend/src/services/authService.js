@@ -20,6 +20,7 @@ import { DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
 import { getTokenBlacklistFailureMode } from '../config/hostingProfile.js';
 import { verifyEmailOtp, EMAIL_OTP_PURPOSES } from './emailOtpService.js';
 import { assertLegacyTenantLoginAllowed } from './dgfyLegacyAccessPolicy.js';
+import { resolveEffectivePermissions } from '../utils/userPermissions.js';
 
 
 const TEST_JWT_SECRET_FALLBACK = 'test_jwt_secret_for_ci_only_32_chars!';
@@ -54,41 +55,6 @@ const JWT_SECRET = process.env.JWT_SECRET;
 const JWT_EXPIRY = process.env.JWT_EXPIRY || '24h';
 const REFRESH_TOKEN_SECRET = process.env.REFRESH_TOKEN_SECRET;
 const REFRESH_TOKEN_EXPIRY = process.env.REFRESH_TOKEN_EXPIRY || '7d';
-
-const normalizePermissionArray = (rawPermissions) => {
-  let normalized = rawPermissions;
-
-  if (typeof normalized === 'string') {
-    try {
-      normalized = JSON.parse(normalized);
-    } catch {
-      normalized = [];
-    }
-  }
-
-  if (!Array.isArray(normalized)) {
-    return [];
-  }
-
-  return Array.from(
-    new Set(
-      normalized
-        .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
-        .filter(Boolean)
-    )
-  );
-};
-
-const resolveEffectivePermissionsForUser = (user) => {
-  const normalizedRole = String(user?.role || 'staff').trim().toLowerCase();
-  const parsedPermissions = normalizePermissionArray(user?.permissions);
-  if (parsedPermissions.length > 0) {
-    return parsedPermissions;
-  }
-
-  const roleDefaults = DEFAULT_ROLE_PERMISSIONS[normalizedRole];
-  return Array.isArray(roleDefaults) ? [...roleDefaults] : [];
-};
 
 const resolveTenantIdForToken = (user, explicitTenantId = null) => {
   const normalizedExplicit = String(explicitTenantId || '').trim();
@@ -268,7 +234,7 @@ export const registerUser = async (userData) => {
     email: user.email,
     phone_number: user.phone_number || null,
     role: user.role,
-    permissions: resolveEffectivePermissionsForUser(user),
+    permissions: resolveEffectivePermissions(user),
     is_master_admin: user.is_master_admin || false
   };
 };
@@ -371,7 +337,7 @@ export const loginUser = async (email, password, options = {}) => {
     email: user.email,
     phone_number: user.phone_number || null,
     role: user.role,
-    permissions: resolveEffectivePermissionsForUser(user),
+    permissions: resolveEffectivePermissions(user),
     is_master_admin: user.is_master_admin || false,
     dgfy_link_status: dgfyLinkStatus.dgfy_link_status,
     legacy_grace_expires_at: dgfyLinkStatus.legacy_grace_expires_at,

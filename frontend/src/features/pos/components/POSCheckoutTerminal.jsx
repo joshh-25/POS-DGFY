@@ -918,7 +918,7 @@ export default function POSCheckoutTerminal({
             return [];
         }
     }, [terminalUser?.permissions]);
-    const canVoidTransactions = signedInUserIsAdminLike || terminalPermissionList.includes('pos:void');
+    const canVoidTransactions = terminalUser?.is_master_admin === true || terminalPermissionList.includes('pos:void');
     const safeAppliedDiscount = appliedDiscount && typeof appliedDiscount === 'object'
         ? { ...appliedDiscount, eligible_item_ids: toArray(appliedDiscount.eligible_item_ids), eligible_items: toArray(appliedDiscount.eligible_items) }
         : null;

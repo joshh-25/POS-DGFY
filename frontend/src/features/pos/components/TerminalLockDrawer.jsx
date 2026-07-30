@@ -1,5 +1,5 @@
-import React from 'react';
-import { Building2, ShieldCheck } from 'lucide-react';
+import React, { useState } from 'react';
+import { Building2, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { Button } from '../../../../Components/ui/button.jsx';
 import { Input } from '../../../../Components/ui/input.jsx';
 import { Label } from '../../../../Components/ui/label.jsx';
@@ -17,6 +17,7 @@ export default function TerminalLockDrawer({
   onUseDifferentAccount,
   onLegacySubmit
 }) {
+  const [passwordVisible, setPasswordVisible] = useState(false);
   const dgfyCompanies = Array.isArray(dgfyPosState?.companies) ? dgfyPosState.companies : [];
   const dgfyAuthenticated = Boolean(dgfyPosState?.authenticated);
   const cashierCompanySelection = Boolean(dgfyPosState?.cashierCompanySelection);
@@ -102,17 +103,50 @@ export default function TerminalLockDrawer({
             ) : null}
           </div>
           {!companySelectionActive ? (
-            <div className="space-y-1.5">
-              <Label htmlFor="dgfy-pos-password" className="text-[13px] font-bold text-[#0F172A]">Password</Label>
-              <Input
-                id="dgfy-pos-password"
-                type="password"
-                value={formData.password}
-                onChange={(event) => setFormData((prev) => ({ ...prev, password: event.target.value }))}
-                placeholder="Enter your password"
-                autoComplete="current-password"
-                className="h-12 rounded-2xl border-blue-200 bg-[#f2f7ff] text-sm text-[#0F172A] shadow-none placeholder:text-[#94A3B8] focus-visible:border-[#93C5FD] focus-visible:ring-[#93C5FD]"
-              />
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="dgfy-pos-password" className="text-[13px] font-bold text-[#0F172A]">Password</Label>
+                <div className="relative">
+                  <Input
+                    id="dgfy-pos-password"
+                    type={passwordVisible ? 'text' : 'password'}
+                    value={formData.password}
+                    onChange={(event) => setFormData((prev) => ({ ...prev, password: event.target.value }))}
+                    placeholder="Enter your password"
+                    autoComplete="current-password"
+                    className="h-12 rounded-2xl border-blue-200 bg-[#f2f7ff] pr-12 text-base text-[#0F172A] shadow-none placeholder:text-[#94A3B8] focus-visible:border-[#93C5FD] focus-visible:ring-[#93C5FD] md:text-sm"
+                  />
+                  <button
+                    type="button"
+                    aria-label={passwordVisible ? 'Hide password' : 'Show password'}
+                    aria-pressed={passwordVisible}
+                    className="absolute inset-y-0 right-0 grid w-12 place-items-center rounded-r-2xl text-[#64748B] hover:text-[#1A4E8D] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#93C5FD]"
+                    onClick={() => setPasswordVisible((visible) => !visible)}
+                  >
+                    {passwordVisible ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-white px-3 py-3">
+                <input
+                  type="checkbox"
+                  checked={formData.rememberDevice === true}
+                  onChange={(event) => {
+                    const rememberDevice = event.target.checked;
+                    setFormData((prev) => ({
+                      ...prev,
+                      rememberDevice
+                    }));
+                  }}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-300 accent-[#1A4E8D]"
+                />
+                <span className="space-y-0.5">
+                  <span className="block text-[12px] font-extrabold text-[#0F172A]">Remember this device for 30 days</span>
+                  <span className="block text-[11px] leading-5 text-[#64748B]">
+                    Uses a secure session cookie. Your password is not stored by the POS.
+                  </span>
+                </span>
+              </label>
             </div>
           ) : null}
           {companySelectionActive ? (

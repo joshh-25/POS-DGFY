@@ -5,7 +5,7 @@ owner: compliance
 last_reviewed: 2026-06-01
 applies_to: ph_pos_software_provider
 topic: rmo_24_2023_gap_closure_plan
-related_adr: 0007-dual-mode-pos-compliance-program.md,0011-compliance-downgrade-escape-hatches.md,0025-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md
+related_adr: 0007-dual-mode-pos-compliance-program.md,0011-compliance-downgrade-escape-hatches.md,0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md
 ---
 
 # RMO 24-2023 Gap Closure Plan

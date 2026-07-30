@@ -31,7 +31,7 @@ the new canonical DGFY schema.
 - `docs/architecture/adr/0010-storefront-discovery-item-match-index-and-union-query.md` — landlord discovery index projection/read-model contract this foundation's `storefront_discovery_index` follows.
 - `docs/architecture/adr/0028-dgfy-account-company-switching.md` — tenant-local-staff-first authentication model; DGFY account linkage is optional for staff and accepted-membership evidence is still required for DGFY linking.
 - `docs/architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md` — product/inventory/POS/Storefront operational ownership boundaries; explicitly out of scope here.
-- `docs/architecture/adr/0029-standalone-native-hardware-pos-runtime.md` — terminal identity/policy is backend-authoritative later; this foundation stores only the identity/status/location-binding foundation.
+- `docs/architecture/adr/0043-standalone-native-hardware-pos-runtime.md` — terminal identity/policy is backend-authoritative later; this foundation stores only the identity/status/location-binding foundation.
 - `docs/architecture/adr/0032-standalone-dgfy-api-service.md` — standalone DGFY API service boundary and `apps/*` convention.
 - `docs/database/README.md` and `docs/database/schema.md` — legacy/current database reference (not canonical for DGFY-era schema).
 

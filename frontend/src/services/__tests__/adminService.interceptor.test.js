@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import MockAdapter from 'axios-mock-adapter';
-import { adminApi, getFeedback, login, logout } from '../adminService.js';
+import { adminApi, getCurrentAdmin, getFeedback, login, logout, setAuthFailureCallback } from '../adminService.js';
 
 const listeners = {};
 
@@ -119,5 +119,15 @@ describe('adminService interceptor global error behavior', () => {
     await expect(getFeedback()).rejects.toBeTruthy();
     expect(onApiError).not.toHaveBeenCalled();
     expect(onLegacy).not.toHaveBeenCalled();
+  });
+
+  it('does not report an expired session when the initial session probe finds no cookie', async () => {
+    const onAuthFailure = vi.fn();
+    setAuthFailureCallback(onAuthFailure);
+    mockAdminApi.onGet('/admin/me').reply(401, { message: 'Admin authentication required' });
+
+    await expect(getCurrentAdmin()).rejects.toBeTruthy();
+
+    expect(onAuthFailure).not.toHaveBeenCalled();
   });
 });

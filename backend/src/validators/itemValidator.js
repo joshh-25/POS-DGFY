@@ -36,6 +36,14 @@ const manufacturerBarcodeSchema = Joi.object({
   })
 }).allow(null).optional();
 
+const internalBarcodeSchema = Joi.object({
+  code: Joi.string().trim().min(4).max(128).pattern(/^[A-Za-z0-9._:/-]+$/).required().messages({
+    'string.min': 'Internal barcode must be at least 4 characters.',
+    'string.max': 'Internal barcode must not exceed 128 characters.',
+    'string.pattern.base': 'Internal barcode contains unsupported characters.'
+  })
+}).allow(null).optional();
+
 export const createItemSchema = Joi.object({
   sku_code: Joi.string().min(1).max(50).required().messages({
     'string.min': 'SKU code must be at least 1 character',
@@ -198,8 +206,9 @@ export const createItemSchema = Joi.object({
   location_id: Joi.number().integer().positive().allow(null),
   wizard_metadata: Joi.object().allow(null),
   status: Joi.string().valid('draft', 'active', 'inactive').default('active'),
-  manufacturer_barcode: manufacturerBarcodeSchema
-});
+  manufacturer_barcode: manufacturerBarcodeSchema,
+  internal_barcode: internalBarcodeSchema
+}).oxor('manufacturer_barcode', 'internal_barcode');
 
 // Draft schema - only requires name, everything else optional
 export const createItemDraftSchema = Joi.object({
@@ -314,8 +323,9 @@ export const createItemDraftSchema = Joi.object({
   location_id: Joi.number().integer().positive().allow(null, ''),
   wizard_metadata: Joi.object().allow(null),
   status: Joi.string().valid('draft').default('draft'),
-  manufacturer_barcode: manufacturerBarcodeSchema
-});
+  manufacturer_barcode: manufacturerBarcodeSchema,
+  internal_barcode: internalBarcodeSchema
+}).oxor('manufacturer_barcode', 'internal_barcode');
 
 export const updateItemSchema = Joi.object({
   sku_code: Joi.string().min(1).max(50).messages({

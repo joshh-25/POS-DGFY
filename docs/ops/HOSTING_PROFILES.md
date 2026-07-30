@@ -28,7 +28,7 @@ Authoritative planning inputs:
 
 `vps` is the Redis-capable profile. It requires `REDIS_URL`, uses Redis-backed token blacklist/rate limiting/cache paths when connected, and requires fail-closed blacklist checks.
 
-Both profiles keep `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` as the default so public company registration provisions tenants immediately. Use `manual` only as an explicit rollback/admin-review mode; keep `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS=3600000` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS=5` or stricter because public registration can provision tenant databases.
+Both profiles require `TENANT_REGISTRATION_APPROVAL_MODE=manual`. Public company registration creates pending landlord review state, and only Platform Admin approval may provision a tenant database. Keep `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS=3600000` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS=5` or stricter.
 
 ## Runtime Surfaces
 The backend exposes non-secret capability status at both endpoints:
@@ -110,9 +110,9 @@ Token blacklist runtime behavior must match the reported capability mode:
 Production browser session cookies require `SESSION_COOKIE_SECURE=true`. Use `SESSION_COOKIE_DOMAIN` only when an approved production domain intentionally shares sessions across subdomains; otherwise keep cookies host-only.
 
 Tenant registration approval mode is security-sensitive operational config:
-- `auto_standard` immediately provisions non-subscription registrations from a signed-in DGFY account and then the frontend automatically exchanges the accepted founder membership for a normal tenant session, with manual login fallback if tenant-session exchange fails.
-- `manual` keeps company registrations pending until platform-admin approval and is the explicit rollback/admin-review mode.
-- Invalid values fall back to the default `auto_standard`; do not depend on typoed values for rollout state.
+- `manual` keeps company registrations pending until Platform Admin approval and is the required current mode.
+- `auto_standard` is a legacy compatibility value only; current public-registration use cases still fail closed to manual review.
+- Invalid values fall back to `manual`; do not depend on typoed values for rollout state.
 - New pending and active registrations are premium-capable by plan metadata, but provider subscription registration remains blocked while `PAYMENTS_ENABLED=false`.
 
 In `vps` mode, Redis is a required capability. If `REDIS_URL` is configured but Redis is disconnected, `/health` and `/api/v1/health` should report degraded/unhealthy status so deploy automation and operators do not treat the runtime as fully ready.

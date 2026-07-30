@@ -8,10 +8,17 @@ const terminalPageSource = fs.readFileSync(path.resolve(__dirname, '../pages/Ter
 const sidebarSource = fs.readFileSync(path.resolve(__dirname, '../components/TerminalWorkspaceSidebar.jsx'), 'utf8');
 
 describe('DGFY POS administrator bypass contract', () => {
-  it('limits bypass activation to DGFY tenant admins', () => {
-    expect(terminalPageSource).toContain("String(effectiveSelectedTenantUser?.role || '').trim().toLowerCase() === 'admin'");
-    expect(terminalPageSource).toContain('setDgfyAdminBypassActive(selectedUserIsAdmin)');
-    expect(terminalPageSource).toContain('if (selectedUserIsAdmin) {');
+  it('limits bypass activation to the selected company settings permission', () => {
+    expect(terminalPageSource).toContain("selectedPermissionList.includes('settings:view')");
+    expect(terminalPageSource).toContain('setDgfyAdminBypassActive(selectedCanAccessSettings)');
+    expect(terminalPageSource).toContain('if (selectedCanAccessSettings) {');
+    expect(terminalPageSource).toContain(': fetchPosSettingsBootstrap(SUPPRESS_GLOBAL_ERROR_TOAST).catch(() => ({}))');
+    expect(terminalPageSource).not.toContain("String(effectiveSelectedTenantUser?.role || '').trim().toLowerCase() === 'admin'");
+  });
+
+  it('uses the POS-safe settings bootstrap for terminal metadata', () => {
+    expect(terminalPageSource).toContain('const allSettings = await fetchPosSettingsBootstrap(');
+    expect(terminalPageSource).not.toContain('const allSettings = await getAllSettings(');
   });
 
   it('keeps terminal credential bypass separate from mandatory admin shift opening', () => {
@@ -24,21 +31,19 @@ describe('DGFY POS administrator bypass contract', () => {
     expect(terminalPageSource).toContain('<Dialog open={shiftOpeningModalOpen} onOpenChange={handleShiftOpeningModalOpenChange}>');
   });
 
-  it('restores admin bypass on refresh but not across manual lock', () => {
+  it('restores permission-backed bypass on refresh but not across manual lock', () => {
     expect(terminalPageSource).toContain('const [dgfyAdminBypassActive, setDgfyAdminBypassActive] = useState(false);');
-    expect(terminalPageSource).toContain('const userIsAdmin = user?.is_master_admin === true;');
-    expect(terminalPageSource).toContain('setDgfyAdminBypassActive(userIsAdmin && !storedLockActive);');
-    expect(terminalPageSource).toContain('&& !userIsAdmin');
+    expect(terminalPageSource).toContain("parseUserPermissions(user).includes('settings:view')");
+    expect(terminalPageSource).toContain('setDgfyAdminBypassActive(userCanAccessSettings && !storedLockActive);');
+    expect(terminalPageSource).toContain('&& !userCanAccessSettings');
     expect(terminalPageSource).toContain('const adminLock = terminalUser?.is_master_admin === true || dgfyAdminBypassActive;');
     expect(terminalPageSource).toContain('if (hasOpenShift && !adminLock) {');
     expect(terminalPageSource).toContain('setDgfyAdminBypassActive(false);');
   });
 
-  it('treats role admin users as admin-like for shift bypass visibility', () => {
-    expect(terminalPageSource).toContain("const userIsAdminLike = terminalUser?.is_master_admin === true");
-    expect(terminalPageSource).toContain("const normalizedTerminalRole = String(terminalUser?.role || '').trim().toLowerCase();");
-    expect(terminalPageSource).toContain("|| normalizedTerminalRole === 'admin'");
-    expect(terminalPageSource).toContain('const canAdminBypassShiftPrompt = userIsAdminLike || dgfyAdminBypassActive;');
+  it('uses settings permission rather than role name for shift bypass visibility', () => {
+    expect(terminalPageSource).toContain("const canAdminBypassShiftPrompt = hasPermission('settings:view') || dgfyAdminBypassActive;");
+    expect(terminalPageSource).not.toContain("|| normalizedTerminalRole === 'admin'");
   });
 
   it('returns admin lock to the full POS login session instead of the unlock modal', () => {

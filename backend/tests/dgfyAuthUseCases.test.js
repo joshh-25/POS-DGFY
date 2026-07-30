@@ -14,6 +14,7 @@ import {
     buildRequestDgfyBusinessStepUpUseCase,
     buildRequestDgfyPasswordResetUseCase,
     buildRequestDgfyEmailVerificationUseCase,
+    buildRecordDgfyCompanySwitchOutcomeUseCase,
     buildRejectDgfyInvitationUseCase,
     buildSearchDgfyBusinessAccountsUseCase,
     buildStartDgfyPosSessionUseCase,
@@ -418,6 +419,69 @@ describe('dgfyAuthUseCases', () => {
         expect(repository.mirrorLegacyFounderMembershipsForAccount).toHaveBeenCalledWith(account);
         expect(result.data.payload.data.account.email).toBe('ada@example.test');
         expect(result.data.payload.data.token).toBeTruthy();
+        expect(result.data.payload.data.expiresIn).toBe(24 * 60 * 60);
+        expect(result.data.payload.data.rememberDevice).toBe(false);
+        expect(jwt.decode(result.data.payload.data.token)).toMatchObject({
+            session_persistence: 'standard'
+        });
+    });
+
+    it('issues a 30-day DGFY session only for an explicit remembered-device login', async () => {
+        const account = createAccount();
+        const repository = {
+            findByEmail: jest.fn().mockResolvedValue(account),
+            findById: jest.fn().mockResolvedValue(account),
+            updateLastLogin: jest.fn().mockResolvedValue(null),
+            mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([]),
+            mirrorLegacyFounderMembershipsForAccount: jest.fn().mockResolvedValue([])
+        };
+        const useCase = buildLoginDgfyAccountUseCase({
+            repository,
+            comparePassword: jest.fn().mockResolvedValue(true)
+        });
+
+        const result = await useCase({
+            body: {
+                email: 'ada@example.test',
+                password: 'password123',
+                remember_device: true
+            }
+        });
+
+        expect(result.data.payload.data.expiresIn).toBe(30 * 24 * 60 * 60);
+        expect(result.data.payload.data.rememberDevice).toBe(true);
+        expect(jwt.decode(result.data.payload.data.token)).toMatchObject({
+            session_persistence: 'remembered_device'
+        });
+    });
+
+    it('does not enable remembered-device login for truthy non-boolean input', async () => {
+        const account = createAccount();
+        const repository = {
+            findByEmail: jest.fn().mockResolvedValue(account),
+            findById: jest.fn().mockResolvedValue(account),
+            updateLastLogin: jest.fn().mockResolvedValue(null),
+            mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([]),
+            mirrorLegacyFounderMembershipsForAccount: jest.fn().mockResolvedValue([])
+        };
+        const useCase = buildLoginDgfyAccountUseCase({
+            repository,
+            comparePassword: jest.fn().mockResolvedValue(true)
+        });
+
+        const result = await useCase({
+            body: {
+                email: 'ada@example.test',
+                password: 'password123',
+                remember_device: 'true'
+            }
+        });
+
+        expect(result.data.payload.data.expiresIn).toBe(24 * 60 * 60);
+        expect(result.data.payload.data.rememberDevice).toBe(false);
+        expect(jwt.decode(result.data.payload.data.token)).toMatchObject({
+            session_persistence: 'standard'
+        });
     });
 
     it('requests and verifies DGFY account email OTP', async () => {
@@ -583,7 +647,14 @@ describe('dgfyAuthUseCases', () => {
         const repository = {
             mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([]),
             mirrorLegacyFounderMembershipsForAccount: jest.fn().mockResolvedValue([]),
-            listMemberships: jest.fn().mockResolvedValue(membershipRows)
+            listMemberships: jest.fn().mockResolvedValue(membershipRows),
+            listRegistrationApplications: jest.fn().mockResolvedValue([{
+                id: 'application-pending',
+                review_status: 'pending',
+                provisioning_status: 'not_started',
+                updatedAt: new Date('2026-07-29T00:00:00.000Z'),
+                tenant: { name: 'Company Awaiting Review' }
+            }])
         };
         const useCase = buildListDgfyAccountCompaniesUseCase({ repository });
 
@@ -675,7 +746,14 @@ describe('dgfyAuthUseCases', () => {
         const repository = {
             mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([]),
             mirrorLegacyFounderMembershipsForAccount: jest.fn().mockResolvedValue([]),
-            listMemberships: jest.fn().mockResolvedValue(membershipRows)
+            listMemberships: jest.fn().mockResolvedValue(membershipRows),
+            listRegistrationApplications: jest.fn().mockResolvedValue([{
+                id: 'application-pending',
+                review_status: 'pending',
+                provisioning_status: 'not_started',
+                updatedAt: new Date('2026-07-29T00:00:00.000Z'),
+                tenant: { name: 'Company Awaiting Review' }
+            }])
         };
         const useCase = buildListDgfyAccountCompaniesUseCase({ repository });
 
@@ -705,6 +783,13 @@ describe('dgfyAuthUseCases', () => {
                 requires_action: 'accept_invitation'
             })
         ]);
+        expect(result.data.payload.data.registration_applications).toEqual([{
+            application_id: 'application-pending',
+            company_name: 'Company Awaiting Review',
+            status: 'pending_review',
+            status_path: '/register-company/status/application-pending',
+            updated_at: new Date('2026-07-29T00:00:00.000Z')
+        }]);
         expect(result.data.payload.data.companies.map((company) => company.tenant_id)).toEqual([
             'company-b-owned',
             'company-1-invited',
@@ -741,6 +826,9 @@ describe('dgfyAuthUseCases', () => {
         const membership = {
             id: 12,
             tenant_id: 'tenant-1',
+            tenant_user_id: 31,
+            role: 'cashier',
+            role_preset_key: 'cashier',
             tenant: {
                 id: 'tenant-1',
                 name: 'Switch Foods',
@@ -781,12 +869,243 @@ describe('dgfyAuthUseCases', () => {
             tenantId: 'tenant-1'
         });
         expect(repository.updateMembershipLastSelected).toHaveBeenCalledWith(membership);
+        expect(repository.createBusinessAuditLog).not.toHaveBeenCalled();
+        expect(result.auditContext).toEqual(expect.objectContaining({
+            account,
+            membership,
+            tenantId: 'tenant-1',
+            evidence: expect.objectContaining({
+                target_tenant_user_id: 31,
+                target_role: 'cashier',
+                target_role_preset_key: 'cashier'
+            })
+        }));
+        expect(result.data.payload.data).toEqual(session);
+    });
+
+    it('records the final company-switch audit after session rotation', async () => {
+        const account = createAccount();
+        const membership = {
+            id: 12,
+            tenant_id: 'tenant-2',
+            tenant_user_id: 32,
+            role: 'cashier',
+            role_preset_key: 'cashier',
+            tenant: {
+                id: 'tenant-2',
+                name: 'Target Foods'
+            }
+        };
+        const repository = {
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const useCase = buildRecordDgfyCompanySwitchOutcomeUseCase({ repository });
+
+        const result = await useCase({
+            account,
+            membership,
+            tenantId: 'tenant-2',
+            result: 'success',
+            metadata: {
+                request_id: 'req-switch-final',
+                ip_address: '127.0.0.1',
+                user_agent: 'test-agent'
+            },
+            evidence: {
+                current_tenant_id: 'tenant-1',
+                current_tenant_user_id: 18,
+                target_tenant_user_id: 32,
+                target_role: 'cashier',
+                target_role_preset_key: 'cashier',
+                previous_session_revoked: true,
+                new_session_issued: true,
+                session_rotated: true
+            }
+        });
+
+        expect(result.success).toBe(true);
         expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
             action: 'company_switch_success',
             result: 'success',
-            request_id: 'req-switch'
+            request_id: 'req-switch-final',
+            dgfy_account_id: account.id,
+            tenant_id: 'tenant-2',
+            membership_id: 12,
+            metadata: expect.objectContaining({
+                actor_dgfy_account_id: account.id,
+                tenant_user_id: 32,
+                role: 'cashier',
+                role_preset_key: 'cashier',
+                current_tenant_id: 'tenant-1',
+                current_tenant_user_id: 18,
+                target_tenant_user_id: 32,
+                previous_session_revoked: true,
+                new_session_issued: true,
+                session_rotated: true
+            })
         }));
-        expect(result.data.payload.data).toEqual(session);
+    });
+
+    it('blocks a tenant operator from switching companies while they own an open shift', async () => {
+        const account = createAccount();
+        const membership = {
+            id: 12,
+            tenant_id: 'tenant-2',
+            tenant: {
+                id: 'tenant-2',
+                name: 'Target Foods',
+                company_token: 'target-token',
+                status: 'active',
+                plan: 'premium'
+            }
+        };
+        const repository = {
+            findMembershipForAccount: jest.fn().mockResolvedValue(membership),
+            updateMembershipLastSelected: jest.fn(),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const createTenantSessionForDgfyAccount = jest.fn();
+        const findOwnedOpenShift = jest.fn().mockResolvedValue({
+            shift_id: 44,
+            terminal_id: 'JOHN-01',
+            location_id: 7,
+            cashier_id: 18
+        });
+        const useCase = buildSwitchDgfyCompanyUseCase({
+            repository,
+            createTenantSessionForDgfyAccount,
+            findOwnedOpenShift
+        });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-2',
+            currentTenantUserId: 18,
+            currentTenantId: 'tenant-1',
+            authSource: 'tenant_membership',
+            metadata: { request_id: 'req-shift-block' }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(409);
+        expect(result.error.message).toBe('Close your active shift before switching companies.');
+        expect(result.error.details).toEqual({
+            reason_code: 'ACTIVE_SHIFT_OWNED',
+            current_tenant_id: 'tenant-1',
+            shift_id: 44,
+            terminal_id: 'JOHN-01',
+            location_id: 7,
+            cashier_id: 18
+        });
+        expect(findOwnedOpenShift).toHaveBeenCalledWith({
+            tenantUserId: 18,
+            tenantId: 'tenant-1'
+        });
+        expect(createTenantSessionForDgfyAccount).not.toHaveBeenCalled();
+        expect(repository.updateMembershipLastSelected).not.toHaveBeenCalled();
+        expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            action: 'company_switch_failed',
+            result: 'failure',
+            reason: 'Close your active shift before switching companies.',
+            request_id: 'req-shift-block',
+            metadata: expect.objectContaining({
+                reason_code: 'ACTIVE_SHIFT_OWNED',
+                current_tenant_id: 'tenant-1',
+                current_tenant_user_id: 18,
+                target_tenant_id: 'tenant-2',
+                shift_id: 44,
+                terminal_id: 'JOHN-01',
+                session_rotated: false
+            })
+        }));
+    });
+
+    it('switches companies after confirming the current tenant user has no open shift', async () => {
+        const account = createAccount();
+        const membership = {
+            id: 12,
+            tenant_id: 'tenant-2',
+            tenant: {
+                id: 'tenant-2',
+                name: 'Target Foods',
+                company_token: 'target-token',
+                status: 'active',
+                plan: 'premium'
+            }
+        };
+        const session = {
+            token: 'tenant-access',
+            refreshToken: 'tenant-refresh',
+            company: { id: 'tenant-2', name: 'Target Foods', token: 'target-token' }
+        };
+        const repository = {
+            findMembershipForAccount: jest.fn().mockResolvedValue(membership),
+            updateMembershipLastSelected: jest.fn().mockResolvedValue(null),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const createTenantSessionForDgfyAccount = jest.fn().mockResolvedValue(session);
+        const findOwnedOpenShift = jest.fn().mockResolvedValue(null);
+        const useCase = buildSwitchDgfyCompanyUseCase({
+            repository,
+            createTenantSessionForDgfyAccount,
+            findOwnedOpenShift
+        });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-2',
+            currentTenantUserId: 18,
+            currentTenantId: 'tenant-1',
+            authSource: 'tenant_membership'
+        });
+
+        expect(result.success).toBe(true);
+        expect(findOwnedOpenShift).toHaveBeenCalledWith({
+            tenantUserId: 18,
+            tenantId: 'tenant-1'
+        });
+        expect(createTenantSessionForDgfyAccount).toHaveBeenCalledWith({
+            account,
+            tenantId: 'tenant-2'
+        });
+    });
+
+    it('does not run the POS shift guard without an authenticated tenant operator context', async () => {
+        const account = createAccount();
+        const membership = {
+            id: 12,
+            tenant_id: 'tenant-2',
+            tenant: {
+                id: 'tenant-2',
+                name: 'Target Foods',
+                company_token: 'target-token',
+                status: 'active',
+                plan: 'premium'
+            }
+        };
+        const repository = {
+            findMembershipForAccount: jest.fn().mockResolvedValue(membership),
+            updateMembershipLastSelected: jest.fn().mockResolvedValue(null),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const createTenantSessionForDgfyAccount = jest.fn().mockResolvedValue({
+            token: 'tenant-access'
+        });
+        const findOwnedOpenShift = jest.fn();
+        const useCase = buildSwitchDgfyCompanyUseCase({
+            repository,
+            createTenantSessionForDgfyAccount,
+            findOwnedOpenShift
+        });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-2',
+            authSource: 'dgfy_account'
+        });
+
+        expect(result.success).toBe(true);
+        expect(findOwnedOpenShift).not.toHaveBeenCalled();
     });
 
     it('switches DGFY companies with a recent business step-up without consuming another OTP', async () => {
@@ -1368,7 +1687,8 @@ describe('dgfyAuthUseCases', () => {
             terminalId: 'COUNTER-01',
             tenantUserId: 8,
             userRole: '',
-            isMasterAdmin: false
+            isMasterAdmin: false,
+            permissions: ['pos:view']
         });
         expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
             action: 'pos_unlock_attempted',
@@ -1807,7 +2127,8 @@ describe('dgfyAuthUseCases', () => {
             terminalId: 'COUNTER-99',
             tenantUserId: 8,
             userRole: 'cashier',
-            isMasterAdmin: false
+            isMasterAdmin: false,
+            permissions: ['pos:view']
         });
         expect(repository.createBusinessAuditLog).toHaveBeenCalledWith(expect.objectContaining({
             action: 'pos_unlock_attempted',

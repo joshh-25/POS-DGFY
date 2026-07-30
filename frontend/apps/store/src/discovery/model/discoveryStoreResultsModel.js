@@ -43,9 +43,10 @@ export function buildStoresWithNearestBranch({
       const fallbackLng = toNumberOrNull(store?.longitude);
       // DEFAULT_CENTER is a map viewport fallback, not storefront location data.
       // Keeping missing coordinates null prevents no-location stores from becoming
-      // fake pins at the center of the map.
-      const anchorLatitude = fallbackLocation?.latitude ?? fallbackLat ?? null;
-      const anchorLongitude = fallbackLocation?.longitude ?? fallbackLng ?? null;
+      // fake pins at the center of the map. Indexed discovery coordinates also
+      // take precedence over unrelated tenant-location enrichment.
+      const anchorLatitude = nearestMatchingLocation?.latitude ?? fallbackLat ?? fallbackLocation?.latitude ?? null;
+      const anchorLongitude = nearestMatchingLocation?.longitude ?? fallbackLng ?? fallbackLocation?.longitude ?? null;
       const nearestPinWithDistance = hasDiscoveryLocation
         ? pins
           .map((location) => ({

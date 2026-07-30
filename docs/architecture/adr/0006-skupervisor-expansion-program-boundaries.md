@@ -1,3 +1,14 @@
+---
+status: accepted
+authority_level: authoritative
+owner: architecture
+date: 2026-03-30
+last_reviewed: 2026-03-30
+review_by: 2026-09-28
+applies_to: architecture_decision
+topic: skupervisor_expansion_program_boundaries
+---
+
 ﻿# ADR 0006: SKUpervisor Expansion Program Boundaries And Rollout Strategy
 
 ## Status

@@ -1,8 +1,10 @@
 ---
-status: authoritative
+status: accepted
 authority_level: authoritative
 owner: architecture
+date: 2026-07-08
 last_reviewed: 2026-06-11
+review_by: 2027-01-08
 applies_to: dgfy_accounts, storefront_account, customer_orders, customer_tracking
 topic: front_facing_dgfy_customer_account
 ---

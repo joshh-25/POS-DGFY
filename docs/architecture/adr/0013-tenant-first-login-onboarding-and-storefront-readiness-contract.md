@@ -1,3 +1,14 @@
+---
+status: accepted
+authority_level: authoritative
+owner: architecture
+date: 2026-04-25
+last_reviewed: 2026-04-25
+review_by: 2026-10-25
+applies_to: architecture_decision
+topic: tenant_first_login_onboarding_and_storefront_readiness_contract
+---
+
 # ADR 0013: Tenant First-Login Onboarding and Storefront Readiness Contract
 
 ## Status
@@ -9,7 +20,7 @@ The product direction requires three connected surfaces:
 2. DGFY POS
 3. SKUpervisor IMS
 
-Tenant registration originally entered onboarding after platform-admin approval. As of the 2026-05-18 addendum, public company registration defaults to auto-standard provisioning and activation, and the tenant master admin needs the same deterministic first-login setup flow after the normal login handoff.
+Tenant registration originally entered onboarding after platform-admin approval. The 2026-05-18 auto-standard provisioning addendum is historical and was superseded by ADR 0022 on 2026-07-28; public company registration again requires Platform Admin approval before provisioning. After that approval, the tenant master admin needs the same deterministic first-login setup flow after the normal login handoff.
 
 Before this ADR:
 1. Registration + approval lifecycle exists.
@@ -107,6 +118,10 @@ Adopt a tenant-scoped onboarding lifecycle with soft-reminder UX:
 2. The tenant is provisioned and activated during registration, then the frontend immediately exchanges the signed-in DGFY founder membership for a normal tenant session and redirects to IMS/onboarding. Manual login with prefilled company context remains the fallback if tenant-session exchange fails.
 3. `TENANT_REGISTRATION_APPROVAL_MODE=manual` remains available as an explicit rollback/admin-review mode for operators who need pending platform-admin approval before provisioning.
 4. Tenant onboarding initialization still occurs during provisioning and remains a soft-reminder flow after first login.
+
+## Addendum (2026-07-28): Public Registration Review Boundary
+
+ADR 0022 supersedes the May 18 auto-activation decision for public company registration. Public submission now creates pending landlord review state and an applicant status page without tenant provisioning, activation, company-token disclosure, or POS handoff. Platform Admin approval is the only trigger for public-registration provisioning. This ADR continues to govern the soft-reminder onboarding flow after approved provisioning succeeds.
 
 ## Addendum (2026-05-18): Mode-Aware Three-Step Onboarding
 1. The previous business-profile, business-classification, and readiness-only wizard contract is replaced by three merchant setup steps: optional brand assets, primary storefront location, and mode-aware bulk starter items.

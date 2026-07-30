@@ -8,11 +8,20 @@ import {
     DgfyAffiliatePayoutMethod,
     DgfyAffiliateCashout,
     DgfyAffiliateInvite,
+    DgfyAffiliatePriceRule,
     StorefrontDiscoveryIndex,
     Tenant,
     TenantAffiliateSettings
 } from '../../../models/index.js';
 import { resolveTenantByStoreSlug } from '../../../services/storefrontTenantResolver.js';
+import {
+    resolvePriceRuleFromCandidates,
+    hasDuplicatePriceRuleScope
+} from '../utils/affiliatePriceRuleResolution.js';
+
+// Sentinel meaning "applies to all" for enrollment_id/item_id - see
+// backend/migrations/20260729000003-add-affiliate-price-rules.cjs.
+const PRICE_RULE_SCOPE_ALL = 0;
 
 const toPlain = (value) => (
     value && typeof value.toJSON === 'function'
@@ -51,7 +60,14 @@ const DEFAULT_SETTINGS = Object.freeze({
     default_rate_bps: 500,
     attribution_window_days: 60,
     min_cashout_centavos: 20000,
-    auto_approve_enrollment: false
+    auto_approve_enrollment: false,
+    // Phase 1 affiliate pricing rule engine defaults - see
+    // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md. Mirrors the model-level
+    // defaults in TenantAffiliateSettings.js so a tenant with no settings row yet resolves
+    // identically to one with a freshly-created row.
+    commission_type: 'PERCENTAGE_OF_BASE',
+    settlement_policy: null,
+    commission_base_mode: 'discounted_subtotal'
 });
 
 const ENROLLMENT_ACCOUNT_INCLUDE = {
@@ -370,7 +386,14 @@ export const dgfyAffiliateRepository = {
         commissionableBaseCentavos,
         rateBpsSnapshot,
         amountCentavos,
-        reason = 'in_store_sale'
+        reason = 'in_store_sale',
+        // Phase 1 affiliate pricing rule engine snapshot fields - all null unless an affiliate
+        // price rule was actually applied to this order.
+        baseSubtotalCentavos = null,
+        buyerSubtotalCentavos = null,
+        resellerMarginCentavos = null,
+        priceRuleTypeSnapshot = null,
+        settlementPolicySnapshot = null
     }) {
         const [row, created] = await DgfyAffiliateCommission.findOrCreate({
             where: { tenant_id: tenantId, order_reference: orderReference },
@@ -385,7 +408,12 @@ export const dgfyAffiliateRepository = {
                 amount_centavos: amountCentavos,
                 status: 'earned',
                 reason,
-                earned_at: new Date()
+                earned_at: new Date(),
+                base_subtotal_centavos: baseSubtotalCentavos,
+                buyer_subtotal_centavos: buyerSubtotalCentavos,
+                reseller_margin_centavos: resellerMarginCentavos,
+                price_rule_type_snapshot: priceRuleTypeSnapshot,
+                settlement_policy_snapshot: settlementPolicySnapshot
             }
         });
         return { commission: toPlain(row), created };
@@ -403,7 +431,14 @@ export const dgfyAffiliateRepository = {
         commissionableBaseCentavos,
         rateBpsSnapshot,
         amountCentavos,
-        reason = 'online_order'
+        reason = 'online_order',
+        // Phase 1 affiliate pricing rule engine snapshot fields - all null unless an affiliate
+        // price rule was actually applied to this order.
+        baseSubtotalCentavos = null,
+        buyerSubtotalCentavos = null,
+        resellerMarginCentavos = null,
+        priceRuleTypeSnapshot = null,
+        settlementPolicySnapshot = null
     }) {
         const [row, created] = await DgfyAffiliateCommission.findOrCreate({
             where: { tenant_id: tenantId, order_reference: orderReference },
@@ -417,7 +452,12 @@ export const dgfyAffiliateRepository = {
                 rate_bps_snapshot: rateBpsSnapshot,
                 amount_centavos: amountCentavos,
                 status: 'pending',
-                reason
+                reason,
+                base_subtotal_centavos: baseSubtotalCentavos,
+                buyer_subtotal_centavos: buyerSubtotalCentavos,
+                reseller_margin_centavos: resellerMarginCentavos,
+                price_rule_type_snapshot: priceRuleTypeSnapshot,
+                settlement_policy_snapshot: settlementPolicySnapshot
             }
         });
         return { commission: toPlain(row), created };
@@ -705,6 +745,90 @@ export const dgfyAffiliateRepository = {
             }, { transaction });
             return { cashout: toPlain(await cashout.reload({ transaction })), reason: null };
         });
+    },
+
+    // --- Affiliate price rules (Phase 1 of the affiliate pricing rule engine - see
+    // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md). Selling-price rule only;
+    // commission configuration lives on TenantAffiliateSettings / DgfyAffiliateEnrollment as
+    // commission_type, alongside the existing commission_rate_bps override. ---
+
+    async listPriceRulesForTenant(tenantId) {
+        const rows = await DgfyAffiliatePriceRule.findAll({
+            where: { tenant_id: tenantId },
+            order: [['enrollment_id', 'ASC'], ['item_id', 'ASC']]
+        });
+        return rows.map(toPlain);
+    },
+
+    // Resolves the single active price rule that applies to a sale, per the priority order in
+    // affiliatePriceRuleResolution.js. itemId defaults to the "applies to all products" sentinel -
+    // Phase 1 never populates a real item scope, but the query and resolver both already handle one
+    // correctly for when Phase 2 starts writing them. Returns null (never throws) when nothing
+    // matches, meaning the caller should fall back to the plain catalog price.
+    async resolveActivePriceRule({ tenantId, enrollmentId, itemId = PRICE_RULE_SCOPE_ALL }) {
+        if (!tenantId || !enrollmentId) return null;
+
+        const candidateRows = await DgfyAffiliatePriceRule.findAll({
+            where: {
+                tenant_id: tenantId,
+                active: true,
+                enrollment_id: { [Op.in]: [Number(enrollmentId), PRICE_RULE_SCOPE_ALL] },
+                item_id: { [Op.in]: [Number(itemId) || PRICE_RULE_SCOPE_ALL, PRICE_RULE_SCOPE_ALL] }
+            }
+        });
+
+        return resolvePriceRuleFromCandidates({
+            candidateRows: candidateRows.map(toPlain),
+            enrollmentId,
+            itemId
+        });
+    },
+
+    // Pre-flight duplicate-scope check ahead of a write, so a conflicting rule surfaces as a clean
+    // validation error rather than a raw unique-constraint violation. Advisory only - the table's
+    // UNIQUE (tenant_id, enrollment_id, item_id) index remains the real guarantee under concurrent
+    // writes.
+    async priceRuleScopeIsTaken({ tenantId, enrollmentId = PRICE_RULE_SCOPE_ALL, itemId = PRICE_RULE_SCOPE_ALL, excludePriceRuleId = null }) {
+        const existingRows = await this.listPriceRulesForTenant(tenantId);
+        return hasDuplicatePriceRuleScope(existingRows, { enrollmentId, itemId, excludePriceRuleId });
+    },
+
+    // Creates or updates the single price rule at a given (tenant_id, enrollment_id, item_id) scope.
+    // findOrCreate on the unique scope index is the real concurrency guard; the update afterward
+    // covers the "already exists, change its rule" case (an owner editing their tenant template or a
+    // per-affiliate override).
+    async upsertPriceRule({
+        tenantId,
+        enrollmentId = PRICE_RULE_SCOPE_ALL,
+        itemId = PRICE_RULE_SCOPE_ALL,
+        ruleType,
+        rateBps = null,
+        amountCentavos = null,
+        active = true
+    }) {
+        const [row] = await DgfyAffiliatePriceRule.findOrCreate({
+            where: { tenant_id: tenantId, enrollment_id: enrollmentId, item_id: itemId },
+            defaults: {
+                tenant_id: tenantId,
+                enrollment_id: enrollmentId,
+                item_id: itemId,
+                rule_type: ruleType,
+                rate_bps: rateBps,
+                amount_centavos: amountCentavos,
+                active
+            }
+        });
+        await row.update({ rule_type: ruleType, rate_bps: rateBps, amount_centavos: amountCentavos, active });
+        return toPlain(await row.reload());
+    },
+
+    async deactivatePriceRule(tenantId, priceRuleId) {
+        const row = await DgfyAffiliatePriceRule.findOne({
+            where: { tenant_id: tenantId, price_rule_id: priceRuleId }
+        });
+        if (!row) return null;
+        await row.update({ active: false });
+        return toPlain(await row.reload());
     }
 };
 

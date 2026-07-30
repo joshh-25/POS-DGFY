@@ -1,3 +1,14 @@
+---
+status: accepted
+authority_level: authoritative
+owner: architecture
+date: 2026-03-27
+last_reviewed: 2026-03-27
+review_by: 2026-09-27
+applies_to: architecture_decision
+topic: unified_sales_read_model
+---
+
 # ADR 0005: Unified Sales Read Model Across POS and Dispatch
 
 ## Status

@@ -27,6 +27,13 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Lint governed documentation
         run: npm run lint:docs
+      - name: Verify ADR index matches the ADR corpus
+        run: |
+          npm run generate:adr-index
+          git diff --exit-code -- docs/architecture/adr/INDEX.md || {
+            echo "ADR INDEX.md is stale — run npm run generate:adr-index and commit the result."
+            exit 1
+          }
       - name: Verify compatibility inventory doc matches manifest
         run: |
           npm run generate:compat-inventory
@@ -85,6 +92,8 @@ jobs:
         run: npm ci
       - name: Run compat-seams regression suite
         run: npm run test:compat-seams
+      - name: Run ADR governance regression suite
+        run: npm run test:adr
       - name: Generate and validate batch inventory
         shell: bash
         run: |

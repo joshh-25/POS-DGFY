@@ -13,6 +13,7 @@ import {
     loginDgfyAccountUseCase,
     getDgfyMeUseCase,
     rejectDgfyInvitationUseCase,
+    recordDgfyCompanySwitchOutcomeUseCase,
     requestDgfyBusinessStepUpUseCase,
     requestDgfyPasswordResetUseCase,
     requestDgfyEmailVerificationUseCase,
@@ -33,8 +34,10 @@ import {
     startLegacyRegistrationHandoff
 } from '../../../services/dgfyLegacyLinkService.js';
 import {
+    clearTenantSessionCookies,
     clearSessionCookie,
     getCookie,
+    getTenantRefreshToken,
     isMobileClientRequest,
     SESSION_COOKIE_NAMES,
     setTenantSessionCookies,
@@ -42,8 +45,16 @@ import {
 } from '../../../utils/browserSessionCookies.js';
 
 const setDgfyCookieFromResult = (res, result) => {
-    const token = result?.data?.payload?.data?.token || result?.data?.token;
-    if (token) setBearerSessionCookie(res, SESSION_COOKIE_NAMES.dgfy, token);
+    const session = result?.data?.payload?.data || result?.data || {};
+    const token = session?.token;
+    const expiresInSeconds = Number(session?.expiresIn);
+    if (token) {
+        setBearerSessionCookie(res, SESSION_COOKIE_NAMES.dgfy, token, {
+            maxAgeMs: Number.isFinite(expiresInSeconds) && expiresInSeconds > 0
+                ? expiresInSeconds * 1000
+                : undefined
+        });
+    }
 };
 
 const buildRequestMetadata = (req) => ({
@@ -51,6 +62,15 @@ const buildRequestMetadata = (req) => ({
     ip_address: req.ip || null,
     user_agent: req.get?.('user-agent') || req.headers['user-agent'] || null
 });
+
+const revokePreviousTenantSession = async (req) => {
+    const previousTokens = [
+        getTenantRefreshToken(req),
+        String(req.headers['x-previous-tenant-access-token'] || '').trim()
+    ].filter(Boolean);
+
+    await Promise.all(previousTokens.map((token) => blacklistToken(token)));
+};
 
 // Browser clients keep the existing httpOnly-cookie-only (more
 // XSS-resistant) behavior. Mobile clients (React Native, no cookie jar)
@@ -344,17 +364,57 @@ export const searchDgfyBusinessAccounts = async (req, res) => {
 };
 
 export const switchDgfyCompany = async (req, res) => {
+    const metadata = buildRequestMetadata(req);
     const result = await switchDgfyCompanyUseCase({
         account: req.dgfyAccount,
         tenantId: req.params.tenant_id,
         body: req.body,
-        metadata: buildRequestMetadata(req)
+        metadata,
+        currentTenantUserId: req.user?.user_id || null,
+        currentTenantId: req.tenant?.id || req.user?.tenant_id || null,
+        authSource: req.dgfyAuthSource || ''
     });
 
     if (result?.success) {
-        setTenantSessionCookies(res, {
-            refreshToken: result.data?.payload?.data?.refreshToken,
-            tenantToken: result.data?.payload?.data?.company?.token || null
+        const auditContext = result.auditContext || {};
+        try {
+            await revokePreviousTenantSession(req);
+            clearTenantSessionCookies(res);
+            setTenantSessionCookies(res, {
+                refreshToken: result.data?.payload?.data?.refreshToken,
+                tenantToken: result.data?.payload?.data?.company?.token || null
+            });
+        } catch (error) {
+            await recordDgfyCompanySwitchOutcomeUseCase({
+                ...auditContext,
+                account: auditContext.account || req.dgfyAccount,
+                tenantId: auditContext.tenantId || req.params.tenant_id,
+                result: 'failure',
+                reason: error?.message || 'Tenant session rotation failed.',
+                metadata,
+                evidence: {
+                    ...auditContext.evidence,
+                    previous_session_revoked: false,
+                    new_session_issued: false,
+                    session_rotated: false,
+                    reason_code: 'SESSION_ROTATION_FAILED'
+                }
+            });
+            throw error;
+        }
+
+        await recordDgfyCompanySwitchOutcomeUseCase({
+            ...auditContext,
+            account: auditContext.account || req.dgfyAccount,
+            tenantId: auditContext.tenantId || req.params.tenant_id,
+            result: 'success',
+            metadata,
+            evidence: {
+                ...auditContext.evidence,
+                previous_session_revoked: true,
+                new_session_issued: true,
+                session_rotated: true
+            }
         });
     }
 

@@ -147,7 +147,7 @@ TENANT_MAX_CACHED_CONNECTIONS × TENANT_DB_POOL_MAX + LANDLORD_DB_POOL_MAX  ≤ 
 | Staging's live `--max_connections=20` and 350 MB MySQL memory limit | **No** | `/opt/dgfy-stage/docker-compose.yml` was **not** live-patched as part of this incident (explicit scope decision). Still needs `--max_connections` raised and the memory limit lifted above 350 MB (already at 94.7%; host has 12.8 GB free), then `docker compose up -d mysql`. |
 | Global reconcile cooldown / transactional index rewrite / 503-not-400 | Yes | All in `backend/src/services/` and `backend/src/middleware/`, ship with the next backend deploy |
 | PostHog `/ingest` nginx proxy on `stage.dgfy.ph` | **Yes, now** | Resolved in the 2026-07-28 follow-up above. `stage.dgfy.ph` is fronted by a host nginx, not the containerized one — now tracked at `infrastructure/nginx-host/stage.dgfy.ph.conf` and applied live. |
-| PostHog `/ingest` nginx proxy on production/beta | **No** | The containerized `nginx.conf.template` has the blocks, but production's deployed copy has drifted from the repo (see `docs/ops/PRODUCTION_READINESS_POSTHOG_AND_NGINX_DRIFT.md`) and nothing copies template changes to the server automatically. |
+| PostHog `/ingest` nginx proxy on production/beta | **Yes, as of 2026-07-28** | Was still drifted when PROD's `VITE_POSTHOG_*` variables were enabled, causing Sentry issue `DGFY-STORE-1` on `dgfy.ph`. Reconciled and deployed same day — see the update at the top of `docs/ops/PRODUCTION_READINESS_POSTHOG_AND_NGINX_DRIFT.md`. |
 | `analyticsClient.js` default-to-proxy `api_host` | Yes | Ships with the next frontend build |
 
 ## Production gates

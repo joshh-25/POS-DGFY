@@ -198,7 +198,19 @@ describe('discovery header customer account actions', () => {
     vi.unstubAllGlobals();
     window.localStorage.clear();
     window.__SKU_DGFY_CUSTOMER_AUTH_TOKEN__ = '';
+    document.cookie = 'sku_csrf_token=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/';
   });
+
+  // The real backend always issues `sku_csrf_token` (readable, non-httpOnly)
+  // alongside the httpOnly session cookie -- see backend/src/utils/
+  // browserSessionCookies.js issueCsrfToken -- so it's the client-side signal
+  // useStorefrontSession uses to decide whether the /auth/me probe is worth
+  // sending at all (see hasDgfyBrowserSessionHint in dgfyAuthService.js).
+  // Tests simulating a pre-existing cookie-backed session (no legacy token in
+  // memory) must set this or the probe is now skipped, same as production.
+  const simulateDgfySessionHintCookie = () => {
+    document.cookie = 'sku_csrf_token=test-hint';
+  };
 
   it('shows separate customer auth and business registration actions on discovery header', async () => {
     render(<BrowserRouter><App /></BrowserRouter>);
@@ -207,6 +219,16 @@ describe('discovery header customer account actions', () => {
 
     expect(screen.getByRole('button', { name: /log in \/ sign up/i })).toBeTruthy();
     expect(screen.getAllByRole('button', { name: /register your business/i }).length).toBeGreaterThan(0);
+  }, 10000);
+
+  it('skips the /auth/me probe for a genuinely anonymous visitor (no token, no session-hint cookie)', async () => {
+    render(<BrowserRouter><App /></BrowserRouter>);
+
+    await waitFor(() => {
+      expect(screen.getByRole('button', { name: /log in \/ sign up/i })).toBeTruthy();
+    });
+
+    expect(fetchMock.mock.calls.some(([url]) => String(url).includes('/api/v1/dgfy/auth/me'))).toBe(false);
   }, 10000);
 
   it('routes the discovery auth action to the canonical DGFY auth page', async () => {
@@ -266,6 +288,7 @@ describe('discovery header customer account actions', () => {
   }, 10000);
 
   it('rehydrates the discovery account state from a cookie-backed DGFY session after memory token loss', async () => {
+    simulateDgfySessionHintCookie();
     dgfyMeResponse = makeJsonResponse({
       account: {
         id: 'acct-cookie',
@@ -406,6 +429,7 @@ describe('discovery header customer account actions', () => {
 
   it('logs out a cookie-backed DGFY session even when no bearer token is in memory', async () => {
     window.history.pushState({}, '', '/map-dgfy/account');
+    simulateDgfySessionHintCookie();
     dgfyMeResponse = makeJsonResponse({
       account: {
         id: 'acct-cookie',
@@ -435,6 +459,7 @@ describe('discovery header customer account actions', () => {
 
   it('returns the standalone account page to discovery after sign out', async () => {
     window.history.pushState({}, '', '/map-dgfy/account');
+    simulateDgfySessionHintCookie();
     dgfyMeResponse = makeJsonResponse({
       account: {
         id: 'acct-standalone',

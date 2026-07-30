@@ -4,11 +4,13 @@ import { resolveApiBaseUrl } from '../utils/runtimeConfig.js';
 import { getCsrfToken } from './browserSession.js';
 
 const API_BASE_URL = resolveApiBaseUrl(import.meta.env, typeof window !== 'undefined' ? window.location : undefined);
-const ADMIN_TOKEN_KEY = 'admin_token';
+const COOKIE_SESSION_MARKER = 'cookie-session';
+let sessionKnown = false;
 
 // Create a dedicated axios instance for admin requests
 const adminApi = axios.create({
-    baseURL: API_BASE_URL
+    baseURL: API_BASE_URL,
+    withCredentials: true
 });
 
 // Callback to notify the UI of authentication failures
@@ -30,6 +32,7 @@ adminApi.interceptors.request.use((config) => {
             config.headers['x-csrf-token'] = csrfToken;
         }
     }
+    if (config.headers.Authorization === `Bearer ${COOKIE_SESSION_MARKER}`) delete config.headers.Authorization;
     return config;
 });
 
@@ -38,11 +41,10 @@ adminApi.interceptors.response.use(
     (response) => response,
     (error) => {
         if (error.response && error.response.status === 401) {
-            // Clear the invalid token
-            sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+            sessionKnown = false;
 
             // Notify the UI to show login form
-            if (authFailureCallback) {
+            if (authFailureCallback && !error?.config?.suppressAuthFailure) {
                 authFailureCallback();
             }
         }
@@ -66,10 +68,7 @@ export const login = async (username, password) => {
         password
     });
 
-    if (response.data.success && response.data.token) {
-        // Store token in sessionStorage (cleared on browser close)
-        sessionStorage.setItem(ADMIN_TOKEN_KEY, response.data.token);
-    }
+    if (response.data.success) sessionKnown = true;
 
     return response.data;
 };
@@ -93,22 +92,49 @@ export const logout = () => {
             // Best-effort revoke; always clear local token.
         });
     }
-    sessionStorage.removeItem(ADMIN_TOKEN_KEY);
+    sessionKnown = false;
 };
 
 /**
  * Check if admin is authenticated
  */
 export const isAuthenticated = () => {
-    return !!sessionStorage.getItem(ADMIN_TOKEN_KEY);
+    return sessionKnown;
 };
 
 /**
  * Get admin token
  */
 export const getToken = () => {
-    return sessionStorage.getItem(ADMIN_TOKEN_KEY);
+    return sessionKnown ? COOKIE_SESSION_MARKER : null;
 };
+
+export const getCurrentAdmin = async () => {
+    const response = await adminApi.get('/admin/me', { skipGlobalErrorToast: true, suppressAuthFailure: true });
+    sessionKnown = Boolean(response.data?.success);
+    return response.data;
+};
+
+export const listPlatformInvoices = async () => (await adminApi.get('/admin/invoices', requireAdminAuthConfig())).data;
+export const listEligiblePlatformInvoiceApplications = async () => (await adminApi.get('/admin/invoices/eligible-applications', requireAdminAuthConfig())).data;
+export const createPlatformInvoiceDraft = async (payload) => (await adminApi.post('/admin/invoices/drafts', payload, requireAdminAuthConfig())).data;
+export const createPlatformInvoiceReplacementDraft = async (invoiceId, payload) => (await adminApi.post(`/admin/invoices/${invoiceId}/replacement-drafts`, payload, requireAdminAuthConfig())).data;
+export const updatePlatformInvoiceDraft = async (invoiceId, payload) => (await adminApi.patch(`/admin/invoices/${invoiceId}/draft`, payload, requireAdminAuthConfig())).data;
+export const discardPlatformInvoiceDraft = async (invoiceId) => (await adminApi.delete(`/admin/invoices/${invoiceId}/draft`, requireAdminAuthConfig())).data;
+export const issuePlatformInvoice = async (invoiceId, payload) => (await adminApi.post(`/admin/invoices/${invoiceId}/issue`, payload, requireAdminAuthConfig())).data;
+export const recordPlatformInvoiceCashPayment = async (invoiceId, payload) => (await adminApi.post(`/admin/invoices/${invoiceId}/payments/cash`, payload, requireAdminAuthConfig())).data;
+export const creditPlatformInvoice = async (invoiceId, payload) => (await adminApi.post(`/admin/invoices/${invoiceId}/credits/full`, payload, requireAdminAuthConfig())).data;
+export const deliverPlatformInvoiceEmail = async (invoiceId) => (await adminApi.post(`/admin/invoices/${invoiceId}/deliveries/email`, {}, requireAdminAuthConfig())).data;
+export const downloadPlatformInvoiceArtifact = async (invoiceId) => (await adminApi.get(`/admin/invoices/${invoiceId}/artifact`, { ...requireAdminAuthConfig(), responseType: 'blob' }));
+export const listPlatformAdmins = async () => (await adminApi.get('/admin/platform-admins', requireAdminAuthConfig())).data;
+export const getPlatformAdminReadiness = async () => (await adminApi.get('/admin/platform-admins/readiness', requireAdminAuthConfig())).data;
+export const createPlatformAdmin = async (payload) => (await adminApi.post('/admin/platform-admins', payload, requireAdminAuthConfig())).data;
+export const updatePlatformAdminPermissions = async (adminId, permissions) => (await adminApi.patch(`/admin/platform-admins/${adminId}/permissions`, { permissions }, requireAdminAuthConfig())).data;
+export const suspendPlatformAdmin = async (adminId, reason = '') => (await adminApi.post(`/admin/platform-admins/${adminId}/suspend`, { reason }, requireAdminAuthConfig())).data;
+export const reactivatePlatformAdmin = async (adminId) => (await adminApi.post(`/admin/platform-admins/${adminId}/reactivate`, {}, requireAdminAuthConfig())).data;
+export const resetPlatformAdminPassword = async (adminId) => (await adminApi.post(`/admin/platform-admins/${adminId}/reset-password`, {}, requireAdminAuthConfig())).data;
+export const deletePlatformAdmin = async (adminId, reason) => (await adminApi.delete(`/admin/platform-admins/${adminId}`, { ...requireAdminAuthConfig(), data: { reason } })).data;
+export const changeOwnPlatformAdminPassword = async (payload) => (await adminApi.post('/admin/change-password', payload, requireAdminAuthConfig())).data;
 
 const requireAdminAuthConfig = () => {
     const token = getToken();
@@ -258,6 +284,7 @@ export const approveTenant = async (tenantId) => {
 
     return response.data;
 };
+export const retryTenantProvisioning = async (tenantId) => (await adminApi.post(`/admin/tenants/${tenantId}/retry-provisioning`, {}, requireAdminAuthConfig())).data;
 
 /**
  * Reject a pending tenant

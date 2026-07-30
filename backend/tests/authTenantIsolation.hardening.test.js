@@ -192,6 +192,28 @@ describe('Auth tenant isolation hardening', () => {
     expect(response.body.error_code).toBe('TENANT_BINDING_MISMATCH');
   });
 
+  it('rejects browser requests when the active company cookie is stale', async () => {
+    const activeTenant = await createActiveTenant();
+    const signingSecret = process.env.JWT_SECRET || 'test_jwt_secret_for_ci_only_32_chars!';
+    const token = jwt.sign({
+      user_id: 1,
+      username: 'stale-company-context',
+      email: 'stale-company-context@example.com',
+      role: 'admin',
+      tenant_id: activeTenant.id
+    }, signingSecret, { expiresIn: '10m' });
+
+    const response = await request(app)
+      .get('/api/v1/users/me')
+      .set('x-company-token', activeTenant.company_token)
+      .set('Cookie', 'sku_tenant_context=previous-company-token')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(409);
+
+    expect(response.body.success).toBe(false);
+    expect(response.body.error_code).toBe('TENANT_SESSION_CONTEXT_MISMATCH');
+  });
+
   it('fails closed for invite validation when token-only invite cannot be resolved', async () => {
     const fakeInviteToken = 'a'.repeat(64);
 

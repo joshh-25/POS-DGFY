@@ -30,8 +30,16 @@ Target flow:
 - `docs/START_HERE.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
-- relevant ADRs
-3. If `cross-boundary`, create or update an ADR in `docs/architecture/adr/`.
+- relevant ADRs, found via `docs/architecture/adr/INDEX.md`
+3. If `cross-boundary`, take the cheapest path that matches the strictness tier
+   of the clause you are changing (ADR 0039):
+- changing a `binding` clause: new ADR that supersedes it, plus tech-lead approval
+- changing a `default` clause: append a dated `## Amendments` block to the existing
+  ADR in the implementing PR, set `status: amended`, refresh `last_reviewed`.
+  No new ADR, no tech-lead approval
+- changing a `snapshot` clause, or a clause with no tier tag: ordinary
+  implementation work; update the clause when convenient
+- new cross-boundary decision with no ADR covering it: create an ADR
 4. Implement with module boundaries first; use legacy facades only for compatibility.
 5. Provide proof in PR:
 - `npm run check:architecture` output
@@ -78,11 +86,17 @@ The final response or PR evidence must state which hardening items passed, which
   or an `@compat-seam` code marker are staged (ADR-0035)
 5. `scripts/lint-docs.js`
 - validates governed docs metadata, authority conflicts, and internal links
-6. `scripts/check-compat-seams.js`
+6. `scripts/check-adr.js`
+- validates ADR number uniqueness, front-matter schema, lifecycle status,
+  `superseded_by`/`retired_reason` completeness, and strictness tier tags (ADR-0039)
+- enforces one in-force ADR per topic for `binding` clauses
+- generates `docs/architecture/adr/INDEX.md`; CI fails if the index is stale
+- chained from `npm run lint:docs`; regression suite is `npm run test:adr`
+7. `scripts/check-compat-seams.js`
 - validates the `docs/architecture/compatibility-seams.json` manifest schema, gates completeness
   of `active`/`accepted` seams, and bidirectionally reconciles in-code `@compat-seam id=<id>`
   markers against manifest entries (CMP-02, ADR-0035)
-7. `AGENTS.md`
+8. `AGENTS.md`
 - enforces mandatory documentation lookup order for AI agents
 
 ## Exception Policy
@@ -97,6 +111,22 @@ The final response or PR evidence must state which hardening items passed, which
 - linked task ID
 - planned removal phase/date
 3. Exception without ADR + removal plan is non-compliant.
+
+## ADR Strictness Tiers
+ADR Decision clauses are graded (ADR 0039). The tier decides the cost of changing
+the clause, not how important the feature is.
+
+1. `binding` — system invariant. Change requires a superseding ADR and tech-lead
+   approval. Reserved for data-ownership truth, fail-closed security/compliance
+   controls, money/audit integrity, and layer boundaries.
+2. `default` — the chosen approach. Change requires an amendment block in the
+   implementing PR. No new ADR.
+3. `snapshot` — state at a point in time. Not a constraint; staleness is not a
+   violation.
+
+Untagged clauses are `default`. A `binding` clause whose `review_by` has passed
+decays to `default` until someone refreshes `last_reviewed` — see the review
+column in `docs/architecture/adr/INDEX.md`.
 
 ## Release Readiness Gates
 1. Architecture gates pass in CI.

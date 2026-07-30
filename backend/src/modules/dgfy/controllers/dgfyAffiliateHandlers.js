@@ -25,7 +25,10 @@ import {
     setDefaultAffiliatePayoutMethodUseCase,
     updateAffiliateEnrollmentUseCase,
     updateAffiliatePayoutMethodUseCase,
-    updateAffiliateSettingsUseCase
+    updateAffiliateSettingsUseCase,
+    listAffiliatePriceRulesUseCase,
+    upsertAffiliatePriceRuleUseCase,
+    deactivateAffiliatePriceRuleUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { setAffiliateAttributionCookie } from '../../../utils/browserSessionCookies.js';
@@ -137,6 +140,37 @@ export const updateAffiliateEnrollment = async (req, res, next) => {
         }), {
             message: 'Affiliate enrollment updated successfully'
         });
+    } catch (error) {
+        next(error);
+    }
+};
+
+// Phase 1 affiliate pricing rule engine (see
+// docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md).
+export const listAffiliatePriceRules = async (req, res, next) => {
+    try {
+        return send(res, await listAffiliatePriceRulesUseCase({ tenantId: req.user?.tenant_id }));
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const upsertAffiliatePriceRule = async (req, res, next) => {
+    try {
+        return send(res, await upsertAffiliatePriceRuleUseCase({ tenantId: req.user?.tenant_id, body: req.body }), {
+            message: 'Affiliate price rule saved successfully'
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const deactivateAffiliatePriceRule = async (req, res, next) => {
+    try {
+        return send(res, await deactivateAffiliatePriceRuleUseCase({
+            tenantId: req.user?.tenant_id,
+            priceRuleId: req.params.price_rule_id
+        }), { message: 'Affiliate price rule deactivated' });
     } catch (error) {
         next(error);
     }
