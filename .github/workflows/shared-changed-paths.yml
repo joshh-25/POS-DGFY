@@ -1,4 +1,4 @@
-name: Changed Paths
+name: Shared Changed Paths
 
 # Tells callers which image builds a given range of commits actually needs, so
 # a backend-only change doesn't spend a runner rebuilding the frontend image

@@ -31,7 +31,7 @@ jobs:
       packages: write
 
   changes:
-    uses: ./.github/workflows/changed-paths.yml
+    uses: ./.github/workflows/shared-changed-paths.yml
     with:
       base_sha: ${{ github.event.before }}
       runner_labels_json: '["self-hosted"]'
