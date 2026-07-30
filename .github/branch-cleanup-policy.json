@@ -1,5 +1,5 @@
 {
-  "allowedBaseBranches": ["staging", "master"],
+  "allowedBaseBranches": ["staging", "main"],
   "eligibleHeadPrefixes": [
     "codex/",
     "feature/",
@@ -11,7 +11,7 @@
     "test/"
   ],
   "protectedBranches": [
-    "master",
+    "main",
     "staging",
     "development",
     "pr-testing",
