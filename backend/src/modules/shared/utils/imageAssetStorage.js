@@ -13,7 +13,10 @@ export const IMAGE_VARIANT_WIDTHS = Object.freeze({
 export const MAX_PUBLIC_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_INPUT_IMAGE_PIXELS = 40 * 1024 * 1024;
 const PHOTO_QUALITY_STEPS = Object.freeze([80, 76, 72, 68]);
+const AVIF_QUALITY_STEPS = Object.freeze([65, 60, 55, 50]);
 const GRAPHIC_QUALITY_STEPS = Object.freeze([100, 90, 80]);
+const RESPONSIVE_ASSET_VERSION = 2;
+const PLACEHOLDER_WIDTH = 32;
 
 const IMAGE_VARIANT_FILE_NAMES = Object.freeze({
     thumbnail: 'thumb',
@@ -73,6 +76,14 @@ const getPublicFormat = ({ classification }) => (
         : { ext: '.png', encoder: 'png' }
 );
 
+const getDeliveryFormats = ({ classification }) => {
+    const fallback = getPublicFormat({ classification });
+    const formats = new Map([[fallback.encoder, fallback]]);
+    formats.set('webp', { ext: '.webp', encoder: 'webp' });
+    formats.set('avif', { ext: '.avif', encoder: 'avif' });
+    return Array.from(formats.values());
+};
+
 const getSafeImageInput = (sourcePath) => sharp(sourcePath, {
     limitInputPixels: MAX_INPUT_IMAGE_PIXELS,
     failOn: 'error'
@@ -105,7 +116,11 @@ const buildVariantOutput = async ({
     const candidateWidths = maxBytes
         ? getCandidateWidths({ width, sourceWidth })
         : [width];
-    const qualitySteps = encoder === 'webp' ? PHOTO_QUALITY_STEPS : GRAPHIC_QUALITY_STEPS;
+    const qualitySteps = encoder === 'webp'
+        ? PHOTO_QUALITY_STEPS
+        : encoder === 'avif'
+            ? AVIF_QUALITY_STEPS
+            : GRAPHIC_QUALITY_STEPS;
 
     for (const candidateWidth of candidateWidths) {
         for (const quality of qualitySteps) {
@@ -118,6 +133,8 @@ const buildVariantOutput = async ({
 
             if (encoder === 'webp') {
                 transform.webp({ quality, effort: 5 });
+            } else if (encoder === 'avif') {
+                transform.avif({ quality, effort: 5 });
             } else {
                 transform.png({ compressionLevel: 9, palette: true, quality });
             }
@@ -173,15 +190,33 @@ export const deriveImageAssetVariantUrls = ({ storedPath = null, storedUrl = nul
     }
 
     const parentDir = path.posix.dirname(normalized);
-    const buildUrlForVariant = (variantKey) => buildPublicUrl(path.posix.join(
+    const assetFolder = path.posix.basename(parentDir);
+    const isResponsiveAsset = /-v2-[0-9a-f]{8}$/i.test(assetFolder);
+    const buildUrlForVariant = (variantKey, targetExtension = extension) => buildPublicUrl(path.posix.join(
         parentDir,
-        `${IMAGE_VARIANT_FILE_NAMES[variantKey]}${extension}`
+        `${IMAGE_VARIANT_FILE_NAMES[variantKey]}${targetExtension}`
     ));
 
-    return {
+    const fallbackVariants = {
         thumbnail_url: buildUrlForVariant('thumbnail'),
         medium_url: buildUrlForVariant('medium'),
         large_url: buildUrlForVariant('large')
+    };
+    if (!isResponsiveAsset) return fallbackVariants;
+
+    const buildFormatVariants = (targetExtension) => ({
+        thumbnail_url: buildUrlForVariant('thumbnail', targetExtension),
+        medium_url: buildUrlForVariant('medium', targetExtension),
+        large_url: buildUrlForVariant('large', targetExtension)
+    });
+
+    return {
+        ...fallbackVariants,
+        placeholder_url: buildPublicUrl(path.posix.join(parentDir, 'placeholder.webp')),
+        avif: buildFormatVariants('.avif'),
+        webp: buildFormatVariants('.webp'),
+        widths: { ...IMAGE_VARIANT_WIDTHS },
+        version: RESPONSIVE_ASSET_VERSION
     };
 };
 
@@ -202,7 +237,7 @@ export const storeOptimizedImageAsset = async ({
     const normalizedScopeSegments = (Array.isArray(scopeSegments) ? scopeSegments : [])
         .map((segment) => sanitizeSegment(segment, 'default'))
         .filter(Boolean);
-    const assetId = `${sanitizeSegment(assetBaseName)}-${Date.now()}-${crypto.randomUUID().slice(0, 8)}`;
+    const assetId = `${sanitizeSegment(assetBaseName)}-${Date.now()}-v${RESPONSIVE_ASSET_VERSION}-${crypto.randomUUID().slice(0, 8)}`;
     const publicAssetDir = path.join(uploadsRoot, normalizedSurface, ...normalizedScopeSegments, assetId);
     const originalAssetDir = path.join(uploadsRoot, 'originals', normalizedSurface, ...normalizedScopeSegments, assetId);
     await fsPromises.mkdir(publicAssetDir, { recursive: true });
@@ -210,7 +245,8 @@ export const storeOptimizedImageAsset = async ({
 
     try {
         const classification = classifyImageAsset({ reportedMime });
-        const { ext: publicExt, encoder } = getPublicFormat({ classification });
+        const { encoder } = getPublicFormat({ classification });
+        const deliveryFormats = getDeliveryFormats({ classification });
         const originalExt = getOriginalExtension({ originalName, reportedMime });
         const originalFilename = `original${originalExt}`;
         const originalAbsolutePath = path.join(originalAssetDir, originalFilename);
@@ -221,33 +257,53 @@ export const storeOptimizedImageAsset = async ({
         const sourceWidth = Number.isFinite(originalMeta?.width) ? originalMeta.width : null;
         const sourceHeight = Number.isFinite(originalMeta?.height) ? originalMeta.height : null;
 
-        const generatedVariants = {};
-        for (const [variantKey, width] of Object.entries(IMAGE_VARIANT_WIDTHS)) {
-            const variantFilename = `${IMAGE_VARIANT_FILE_NAMES[variantKey]}${publicExt}`;
-            const variantRelativePath = path.posix.join(
-                normalizedSurface,
-                ...normalizedScopeSegments.map((segment) => toPosixRelative(segment)),
-                assetId,
-                variantFilename
-            );
-            const variantAbsolutePath = path.join(publicAssetDir, variantFilename);
-            const output = await buildVariantOutput({
-                sourcePath: originalAbsolutePath,
-                destinationPath: variantAbsolutePath,
-                encoder,
-                width,
-                sourceWidth,
-                maxBytes: variantKey === 'large' ? MAX_PUBLIC_IMAGE_BYTES : null
-            });
-            generatedVariants[variantKey] = {
-                path: variantRelativePath,
-                url: buildPublicUrl(variantRelativePath),
-                width: output.width,
-                height: output.height,
-                size: output.size,
-                mime: encoder === 'webp' ? 'image/webp' : 'image/png'
-            };
+        const generatedByFormat = {};
+        for (const format of deliveryFormats) {
+            generatedByFormat[format.encoder] = {};
+            for (const [variantKey, width] of Object.entries(IMAGE_VARIANT_WIDTHS)) {
+                const variantFilename = `${IMAGE_VARIANT_FILE_NAMES[variantKey]}${format.ext}`;
+                const variantRelativePath = path.posix.join(
+                    normalizedSurface,
+                    ...normalizedScopeSegments.map((segment) => toPosixRelative(segment)),
+                    assetId,
+                    variantFilename
+                );
+                const variantAbsolutePath = path.join(publicAssetDir, variantFilename);
+                const output = await buildVariantOutput({
+                    sourcePath: originalAbsolutePath,
+                    destinationPath: variantAbsolutePath,
+                    encoder: format.encoder,
+                    width,
+                    sourceWidth,
+                    maxBytes: variantKey === 'large' ? MAX_PUBLIC_IMAGE_BYTES : null
+                });
+                generatedByFormat[format.encoder][variantKey] = {
+                    path: variantRelativePath,
+                    url: buildPublicUrl(variantRelativePath),
+                    width: output.width,
+                    height: output.height,
+                    size: output.size,
+                    mime: `image/${format.encoder}`
+                };
+            }
         }
+
+        const placeholderFilename = 'placeholder.webp';
+        const placeholderRelativePath = path.posix.join(
+            normalizedSurface,
+            ...normalizedScopeSegments.map((segment) => toPosixRelative(segment)),
+            assetId,
+            placeholderFilename
+        );
+        const placeholderOutput = await buildVariantOutput({
+            sourcePath: originalAbsolutePath,
+            destinationPath: path.join(publicAssetDir, placeholderFilename),
+            encoder: 'webp',
+            width: PLACEHOLDER_WIDTH,
+            sourceWidth
+        });
+
+        const generatedVariants = generatedByFormat[encoder];
 
         const largeVariant = generatedVariants.large;
         if (!largeVariant?.path || !largeVariant?.url) {
@@ -255,43 +311,55 @@ export const storeOptimizedImageAsset = async ({
         }
 
         const manifest = {
-        asset_id: assetId,
-        surface: normalizedSurface,
-        scope_segments: normalizedScopeSegments,
-        classification,
-        original: {
-            path: toPosixRelative(path.relative(uploadsRoot, originalAbsolutePath)),
-            filename: originalFilename,
-            mime: String(reportedMime || '').trim().toLowerCase() || null,
-            width: sourceWidth,
-            height: sourceHeight,
-            size: Number.isFinite(originalStat?.size) ? originalStat.size : null
-        },
-        variants: generatedVariants
+            version: RESPONSIVE_ASSET_VERSION,
+            asset_id: assetId,
+            surface: normalizedSurface,
+            scope_segments: normalizedScopeSegments,
+            classification,
+            original: {
+                path: toPosixRelative(path.relative(uploadsRoot, originalAbsolutePath)),
+                filename: originalFilename,
+                mime: String(reportedMime || '').trim().toLowerCase() || null,
+                width: sourceWidth,
+                height: sourceHeight,
+                size: Number.isFinite(originalStat?.size) ? originalStat.size : null
+            },
+            variants: generatedVariants,
+            formats: generatedByFormat,
+            placeholder: {
+                path: placeholderRelativePath,
+                url: buildPublicUrl(placeholderRelativePath),
+                width: placeholderOutput.width,
+                height: placeholderOutput.height,
+                size: placeholderOutput.size,
+                mime: 'image/webp'
+            }
         };
         const manifestPath = path.join(publicAssetDir, 'asset.json');
         await fsPromises.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
 
         return {
-        path: largeVariant.path,
-        url: largeVariant.url,
-        variants: {
-            thumbnail: generatedVariants.thumbnail,
-            medium: generatedVariants.medium,
-            large: generatedVariants.large
-        },
-        image_variants: deriveImageAssetVariantUrls({
-            storedPath: largeVariant.path,
-            storedUrl: largeVariant.url
-        }),
-        original: {
-            path: manifest.original.path,
-            url: null,
-            width: manifest.original.width,
-            height: manifest.original.height,
-            size: manifest.original.size,
-            mime: manifest.original.mime
-        },
+            path: largeVariant.path,
+            url: largeVariant.url,
+            variants: {
+                thumbnail: generatedVariants.thumbnail,
+                medium: generatedVariants.medium,
+                large: generatedVariants.large
+            },
+            format_variants: generatedByFormat,
+            placeholder: manifest.placeholder,
+            image_variants: deriveImageAssetVariantUrls({
+                storedPath: largeVariant.path,
+                storedUrl: largeVariant.url
+            }),
+            original: {
+                path: manifest.original.path,
+                url: null,
+                width: manifest.original.width,
+                height: manifest.original.height,
+                size: manifest.original.size,
+                mime: manifest.original.mime
+            },
             classification
         };
     } catch (error) {

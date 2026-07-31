@@ -192,8 +192,8 @@ export const fetchCurrentTerminalShift = async (params = {}, requestConfig = {})
     return response.data?.data;
 };
 
-export const openTerminalShift = async (payload = {}) => {
-    const response = await api.post('/pos/terminal/shifts/open', payload);
+export const openTerminalShift = async (payload = {}, requestConfig = {}) => {
+    const response = await api.post('/pos/terminal/shifts/open', payload, requestConfig);
     trackFunnelEvent(ANALYTICS_EVENTS.POS_SHIFT_OPENED, {
         location_id: payload?.location_id
     });

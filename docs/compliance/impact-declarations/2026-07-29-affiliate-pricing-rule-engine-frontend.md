@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-07-29
 related_adr: docs/architecture/adr/0036-affiliates-program-commission-and-cashout.md
 declaration_id: 2026-07-29-affiliate-pricing-rule-engine-frontend
-classification: major
-surfaces: pos,terminal
+classification: regulatory
+surfaces: pos,terminal,settings,compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.07.29
 verification_evidence: backend/tests/browserSessionCookies.test.js (11 passed), frontend eslint (clean) on all touched files, frontend vitest (216/216 passed in src/features/pos/__tests__, including 13 new affiliatePricingPreview.test.js cases), npm run build:pos and build:store (both succeed), buildCompliancePreflightUseCase run locally with an ALLOW-stubbed evaluateComplianceOperationUseCase (see Verification Evidence section for methodology)

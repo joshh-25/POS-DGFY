@@ -6,6 +6,16 @@ import { storeCheckoutUseCase } from '../../store/index.js';
 
 const toPlain = (value) => (value?.get ? value.get({ plain: true }) : value);
 const getAttributes = (resource = {}) => resource?.attributes || resource || {};
+const parseJsonObject = (value) => {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value !== 'string' || !value.trim()) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+};
 
 export const getPaymentIdFromPayMongoResource = (resource = {}) => {
   const attrs = getAttributes(resource);
@@ -57,8 +67,10 @@ export const finalizePaidCommerceSession = async ({
     ...tenantModels
   };
 
+  const storedCheckoutPayload = parseJsonObject(plainSession.checkout_payload);
+  const verifiedStoreCustomer = parseJsonObject(storedCheckoutPayload._verified_store_customer);
   const checkoutPayload = {
-    ...(plainSession.checkout_payload || {}),
+    ...storedCheckoutPayload,
     idempotency_key: plainSession.idempotency_key,
     payment_type: 'qrph',
     payment_status: 'paid',
@@ -70,8 +82,9 @@ export const finalizePaidCommerceSession = async ({
   };
 
   const result = await dbStore.run(context, () => storeCheckoutUseCase({
+    tenantId: tenant.id,
     payload: checkoutPayload,
-    storeCustomer: null
+    storeCustomer: verifiedStoreCustomer
   }));
 
   if (!result.success) {
@@ -79,7 +92,9 @@ export const finalizePaidCommerceSession = async ({
   }
 
   const order = result.data?.order || {};
-  const nextStatus = hasPayMongoSplitFailure(resource)
+  const feePolicy = parseJsonObject(plainSession.fee_policy);
+  const usesPayMongoSplit = feePolicy.collection_model !== 'dgfy_collects_then_settles_tenant';
+  const nextStatus = usesPayMongoSplit && hasPayMongoSplitFailure(resource)
     ? 'split_failed_manual_settlement_required'
     : 'finalized';
 

@@ -58,14 +58,20 @@ export default function TerminalWorkspaceSidebar({
   isOnline = true,
   isMsmeMode = false,
   terminalUser = null,
+  accessibleCompanies = [],
+  companyName: propCompanyName = '',
+  branchName: propBranchName = '',
   currentViewMode = 'checkout',
   canViewPos = false,
+  canManageCategories = false,
   allowAdminNavigationWithoutShift = false,
   canAdjustCashDrawer = false,
   canCloseDay = false,
   shiftState = { shift: null },
   incomingOrdersState = { orders: [] },
   locationsState = { locations: [] },
+  operatingLocationId = null,
+  terminalMeta = null,
   queueLocationScopeId = null,
   queueSummary = {},
   onboardingRestricted = false,
@@ -83,12 +89,45 @@ export default function TerminalWorkspaceSidebar({
   const showIncomingQueue = !isMsmeMode;
   const hasActiveShift = Boolean(shiftState?.shift);
   const navigationShiftReady = hasActiveShift || allowAdminNavigationWithoutShift;
+  const canAccessItemsWorkspace = canViewPos || canManageCategories;
   const sellWorkspaceModes = new Set(['checkout', 'receipt']);
   const onboardingCaption = 'Finish onboarding in Settings first';
 
+  const companyRows = Array.isArray(accessibleCompanies) ? accessibleCompanies : [];
+  const currentCompanyId = String(terminalUser?.company?.id || terminalUser?.tenant_id || '').trim();
+  const currentCompany = companyRows.find(
+    (c) => c?.is_current === true || (currentCompanyId && String(c?.tenant_id || '').trim() === currentCompanyId)
+  ) || companyRows[0];
+
+  const resolvedCompanyName = String(
+    propCompanyName ||
+    currentCompany?.company_name ||
+    currentCompany?.name ||
+    terminalUser?.company_name ||
+    terminalUser?.company?.name ||
+    terminalUser?.business_name ||
+    ''
+  ).trim();
+
+  const locationsList = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
+  const activeLocation = locationsList.find(
+    (loc) => String(loc?.id || loc?.location_id || '').trim() === String(operatingLocationId || queueLocationScopeId || '').trim()
+  ) || locationsList[0];
+
+  const resolvedBranchName = String(
+    propBranchName ||
+    activeLocation?.name ||
+    activeLocation?.location_name ||
+    shiftState?.shift?.branch_name ||
+    shiftState?.shift?.location_name ||
+    terminalMeta?.branch_name ||
+    terminalMeta?.location_name ||
+    ''
+  ).trim();
+
   return (
     <aside
-      className={`${className} rounded-none border-0 border-r border-slate-200 bg-white shadow-sm xl:h-full xl:min-h-0 xl:overflow-hidden`}
+      className={`${className} h-full min-h-0 overflow-hidden rounded-none border-0 border-r border-slate-200 bg-white shadow-sm`}
       style={{
         background: 'var(--pos-shell-sidebar)',
         borderColor: 'var(--pos-shell-sidebar-border)',
@@ -97,14 +136,34 @@ export default function TerminalWorkspaceSidebar({
     >
       <div className="dgfy-pos-sidebar-scroll min-h-0 flex-1 overflow-y-auto">
         {showBrand && (
-        <div className="relative h-[60px] overflow-hidden bg-transparent px-4">
-          <div className="flex h-full items-center justify-center">
+        <div className="relative overflow-hidden bg-transparent px-3 pt-3 pb-2 text-center">
+          <div className="flex items-center justify-center">
             <img
               src={DGFY_POS_LOGO}
               alt="DGFY"
               className="w-[120px] h-auto object-contain"
             />
           </div>
+          {(resolvedCompanyName || resolvedBranchName) ? (
+            <div className="mt-1.5 min-w-0 px-1 text-center">
+              {resolvedCompanyName ? (
+                <div
+                  className="truncate text-[13px] font-extrabold text-[#0F172A] leading-snug"
+                  title={resolvedCompanyName}
+                >
+                  {resolvedCompanyName}
+                </div>
+              ) : null}
+              {resolvedBranchName ? (
+                <div
+                  className="mt-0.5 truncate text-[11px] font-semibold text-[#64748B] leading-snug"
+                  title={resolvedBranchName}
+                >
+                  {resolvedBranchName}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </div>
         )}
 
@@ -170,11 +229,21 @@ export default function TerminalWorkspaceSidebar({
             active={currentViewMode === 'items'}
             onClick={() => onSelectViewMode('items')}
             onPrefetch={() => onPrefetchViewMode('items')}
-            disabled={locked || onboardingRestricted || !canViewPos}
+            disabled={locked || onboardingRestricted || !canAccessItemsWorkspace}
             caption={
               locked
                 ? 'Unlock terminal to continue'
-                : (!isOnline ? 'Offline item drafts will sync manually' : (onboardingRestricted ? onboardingCaption : (!canViewPos ? 'POS view permission required' : (!navigationShiftReady ? 'Protected by POS access PIN' : (isCashierRole ? 'View store items only' : 'Edit SKUpervisor item price and cost')))))
+                : (onboardingRestricted
+                  ? onboardingCaption
+                  : (!canAccessItemsWorkspace
+                    ? 'POS view or category-management permission required'
+                    : (!canViewPos
+                      ? (isOnline ? 'Manage item categories' : 'Reconnect to manage item categories')
+                      : (!isOnline
+                        ? 'Offline item drafts will sync manually'
+                        : (!navigationShiftReady
+                          ? 'Protected by POS access PIN'
+                          : (isCashierRole ? 'View store items only' : 'Manage items and categories'))))))
             }
             testId="pos-nav-items"
           />

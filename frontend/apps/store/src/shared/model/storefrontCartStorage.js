@@ -7,6 +7,33 @@ const STOREFRONT_CART_STORAGE_PREFIX = 'dgfy_storefront_cart_v1:';
 
 const optionalText = (value) => String(value || '').trim();
 
+const normalizeImageVariantSet = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const normalized = {
+    thumbnail_url: optionalText(value.thumbnail_url) || null,
+    medium_url: optionalText(value.medium_url) || null,
+    large_url: optionalText(value.large_url) || null
+  };
+  return Object.values(normalized).some(Boolean) ? normalized : null;
+};
+
+const normalizeImageVariants = (value) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const fallback = normalizeImageVariantSet(value);
+  const avif = normalizeImageVariantSet(value.avif);
+  const webp = normalizeImageVariantSet(value.webp);
+  const placeholderUrl = optionalText(value.placeholder_url) || null;
+  const version = Number(value.version);
+  const normalized = {
+    ...(fallback || {}),
+    ...(avif ? { avif } : {}),
+    ...(webp ? { webp } : {}),
+    ...(placeholderUrl ? { placeholder_url: placeholderUrl } : {}),
+    ...(Number.isFinite(version) && version > 0 ? { version } : {})
+  };
+  return Object.keys(normalized).length > 0 ? normalized : null;
+};
+
 const normalizeCartModifier = (entry) => {
   if (!entry || typeof entry !== 'object') return null;
   const modifierGroupId = entry.modifier_group_id;
@@ -36,6 +63,8 @@ export const normalizeStorefrontCartLine = (line) => {
     quantity,
     price: Number(line.price || 0) || 0,
     image_url: optionalText(line.image_url) || null,
+    thumbnail_url: optionalText(line.thumbnail_url) || optionalText(line.image_url) || null,
+    image_variants: normalizeImageVariants(line.image_variants),
     unit_of_measure: optionalText(line.unit_of_measure),
     max_stock: line.max_stock == null
       ? Number.POSITIVE_INFINITY

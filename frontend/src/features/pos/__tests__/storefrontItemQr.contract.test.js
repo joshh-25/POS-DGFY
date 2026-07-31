@@ -40,6 +40,9 @@ describe('POS customer-facing item QR contract', () => {
     expect(workspaceSource).toContain('compact');
     expect(workspaceSource).toContain('helperText=""');
     expect(workspaceSource).toContain('qrSize={104}');
+    expect(workspaceSource).toContain('Generate Storefront ID');
+    expect(workspaceSource).toContain('generateStorefrontSlug');
+    expect(terminalPageSource).toContain('hydrateTerminalMeta({ suppressGlobalErrors: true })');
   });
 
   it('places the item name above the generated QR code', () => {

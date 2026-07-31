@@ -18,9 +18,11 @@ import {
   XCircle,
   Hourglass,
   Truck,
-  PieChart
+  PieChart,
+  WalletCards
 } from 'lucide-react';
 import CostAnalysisWidget from '@/components/reports/CostAnalysisWidget';
+import TenantRevenueReadOnlyPanel from '../src/features/reports/TenantRevenueReadOnlyPanel.jsx';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -321,7 +323,15 @@ export default function Reports() {
             <PieChart className="w-4 h-4" />
             Cost Analysis
           </TabsTrigger>
+          <TabsTrigger value="tenant-revenue" className="flex items-center gap-2 data-[state=active]:bg-blue-50 data-[state=active]:text-blue-700">
+            <WalletCards className="w-4 h-4" />
+            Revenue & Settlement
+          </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="tenant-revenue">
+          <TenantRevenueReadOnlyPanel startDate={dateFilters.startDate} endDate={dateFilters.endDate} />
+        </TabsContent>
 
         {/* EXPIRY REPORT TAB */}
         <TabsContent value="expiry">
@@ -1062,5 +1072,3 @@ export default function Reports() {
     </div>
   );
 }
-
-

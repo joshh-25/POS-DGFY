@@ -1,5 +1,7 @@
 import React from 'react';
 import { ChefHat, ChevronRight, Minus, Plus, Trash2 } from 'lucide-react';
+import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
+import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 
 /**
  * F&B-owned cart drawer body. The storefront shell still owns the shared
@@ -25,7 +27,6 @@ export function FnbCartDrawerContent({
   setCartImageErrors,
   setIsCheckoutOpen,
   updateQty,
-  withAssetOrigin,
 }) {
   return (              <div style={{ display: 'flex', flexDirection: 'column', minHeight: 0, height: isDesktopCheckout ? 'calc(100vh - 126px)' : 'calc(92vh - 122px)' }}>
                 <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMobileViewport ? '14px 16px 18px' : '16px 20px 18px', display: 'grid', gap: isMobileViewport ? 10 : 12, alignContent: 'start' }}>
@@ -53,10 +54,15 @@ export function FnbCartDrawerContent({
                               <div style={{ position: 'absolute', top: 6, right: 6, minWidth: 24, height: 24, padding: '0 7px', borderRadius: 999, background: '#f97316', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 900, boxShadow: '0 8px 18px rgba(249,115,22,0.18)', zIndex: 1 }}>
                                 {Math.max(1, Number(line.quantity || 1))}
                               </div>
-                              {line.image_url && !cartImageErrors.has(Number(line.item_id)) ? (
-                                <img
-                                  src={withAssetOrigin(line.image_url)}
+                              {(line.thumbnail_url || line.image_url) && !cartImageErrors.has(Number(line.item_id)) ? (
+                                <StorefrontResponsiveImage
+                                  imageSources={resolveStorefrontImageSources(line, { preferred: 'thumbnail' })}
                                   alt={line.name}
+                                  sizes={isMobileViewport ? '72px' : '78px'}
+                                  width={isMobileViewport ? 72 : 78}
+                                  height={isMobileViewport ? 72 : 78}
+                                  loading="lazy"
+                                  decoding="async"
                                   style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                                   onError={() => {
                                     const normalizedLineItemId = Number(line.item_id);

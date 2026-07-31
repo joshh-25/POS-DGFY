@@ -25,6 +25,8 @@ export function useFnbCheckoutSubmission({
   normalizeErrorMessage,
   orderMethod,
   orderSuccessAnimationTimerRef,
+  qrphIdempotencyKey,
+  qrphPaymentSession,
   readDgfyAuthToken,
   readStoreAuthToken,
   rememberCustomerDetails,
@@ -41,6 +43,7 @@ export function useFnbCheckoutSubmission({
   setFnbOrderStep,
   setQuoteNeedsRefresh,
   setQuoteResult,
+  setQrphPaymentSession,
   setSelectedTrackingPin,
   setShowOrderSuccessAnimation,
   setTrackingPinInput,
@@ -95,6 +98,39 @@ export function useFnbCheckoutSubmission({
       const authToken = isDgfyCustomerSignedIn
         ? (readDgfyAuthToken() || readStoreAuthToken())
         : readStoreAuthToken();
+      if (fnbPaymentType === 'qrph') {
+        if (qrphPaymentSession?.payment_session_id) {
+          const message = 'A QR Ph payment is already awaiting confirmation. Refresh its status or use cash instead.';
+          setCheckoutError(message);
+          toast.error(message);
+          return;
+        }
+
+        const sessionResult = await requestJson('/api/v1/store/checkout/payment-sessions', {
+          method: 'POST',
+          storeSlug: selectedStore.slug,
+          authToken,
+          body: {
+            ...buildPayload(),
+            idempotency_key: isDgfyCustomerSignedIn
+              ? qrphIdempotencyKey
+              : guestCheckoutIntentId,
+            payment_type: 'qrph',
+            guest_checkout_proof: isDgfyCustomerSignedIn ? null : guestCheckoutProof?.proof || null,
+          },
+        });
+        const paymentSession = sessionResult?.payment_session;
+        if (!paymentSession?.payment_session_id) {
+          throw new Error('PayMongo did not return a QR Ph payment session.');
+        }
+        setQrphPaymentSession(paymentSession);
+        if (paymentSession.status === 'failed') {
+          throw new Error(paymentSession.failure_reason || 'PayMongo could not create this QR Ph payment.');
+        }
+        toast.success('QR Ph payment created. Complete the PayMongo test payment to continue.');
+        return;
+      }
+
       const data = await requestJson('/api/v1/store/checkout', {
         method: 'POST',
         storeSlug: selectedStore.slug,
@@ -196,6 +232,8 @@ export function useFnbCheckoutSubmission({
     normalizeErrorMessage,
     orderMethod,
     orderSuccessAnimationTimerRef,
+    qrphIdempotencyKey,
+    qrphPaymentSession,
     readDgfyAuthToken,
     readStoreAuthToken,
     rememberCustomerDetails,
@@ -212,6 +250,7 @@ export function useFnbCheckoutSubmission({
     setFnbOrderStep,
     setQuoteNeedsRefresh,
     setQuoteResult,
+    setQrphPaymentSession,
     setSavedCustomerDetails,
     setSelectedTrackingPin,
     setShowOrderSuccessAnimation,

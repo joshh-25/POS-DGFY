@@ -9,44 +9,39 @@ let companyToken = '';
 let refreshInFlight = null;
 let csrfBootstrapInFlight = null;
 let standalonePosSessionActivated = false;
+let sessionGeneration = 0;
 
 const readPosSessionStorage = () => {
   if (!IS_STANDALONE_POS_SURFACE || typeof window === 'undefined') {
-    return { token: '', companyToken: '', active: false };
+    return { active: false };
   }
 
   try {
     const parsed = JSON.parse(window.sessionStorage.getItem(POS_BROWSER_SESSION_STORAGE_KEY) || 'null');
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-      return { token: '', companyToken: '', active: false };
+      return { active: false };
     }
 
     return {
-      token: String(parsed.token || '').trim(),
-      companyToken: String(parsed.companyToken || '').trim(),
       active: parsed.active === true
     };
   } catch {
-    return { token: '', companyToken: '', active: false };
+    return { active: false };
   }
 };
 
-const writePosSessionStorage = ({ token, companyToken: nextCompanyToken, active } = {}) => {
+const writePosSessionStorage = ({ active } = {}) => {
   if (!IS_STANDALONE_POS_SURFACE || typeof window === 'undefined') return;
 
-  const normalizedToken = String(token || '').trim();
-  const normalizedCompanyToken = String(nextCompanyToken || '').trim();
   const normalizedActive = active === true;
 
-  if (!normalizedToken && !normalizedCompanyToken && !normalizedActive) {
+  if (!normalizedActive) {
     window.sessionStorage.removeItem(POS_BROWSER_SESSION_STORAGE_KEY);
     return;
   }
 
   window.sessionStorage.setItem(POS_BROWSER_SESSION_STORAGE_KEY, JSON.stringify({
-    token: normalizedToken,
-    companyToken: normalizedCompanyToken,
-    active: normalizedActive
+    active: true
   }));
 };
 
@@ -79,9 +74,9 @@ const consumePosCompanySwitchHandoff = () => {
 
 const bootstrapStandalonePosSession = () => {
   const persisted = readPosSessionStorage();
-  accessToken = persisted.token;
-  companyToken = persisted.companyToken;
-  standalonePosSessionActivated = persisted.active === true && Boolean(persisted.token);
+  accessToken = '';
+  companyToken = '';
+  standalonePosSessionActivated = persisted.active === true;
 };
 
 bootstrapStandalonePosSession();
@@ -143,17 +138,23 @@ export const ensureCsrfToken = async ({ force = false } = {}) => {
 };
 
 export const setBrowserSession = ({ token, companyToken: nextCompanyToken } = {}) => {
+  let sessionChanged = false;
   if (token !== undefined) {
-    accessToken = String(token || '').trim();
+    const normalizedToken = String(token || '').trim();
+    sessionChanged = sessionChanged || normalizedToken !== accessToken;
+    accessToken = normalizedToken;
     if (IS_STANDALONE_POS_SURFACE && accessToken) {
       standalonePosSessionActivated = true;
     }
   }
-  if (nextCompanyToken !== undefined) companyToken = String(nextCompanyToken || '').trim();
+  if (nextCompanyToken !== undefined) {
+    const normalizedCompanyToken = String(nextCompanyToken || '').trim();
+    sessionChanged = sessionChanged || normalizedCompanyToken !== companyToken;
+    companyToken = normalizedCompanyToken;
+  }
+  if (sessionChanged) sessionGeneration += 1;
   if (IS_STANDALONE_POS_SURFACE) {
     writePosSessionStorage({
-      token: accessToken,
-      companyToken,
       active: standalonePosSessionActivated
     });
   }
@@ -166,6 +167,7 @@ export const setBrowserSession = ({ token, companyToken: nextCompanyToken } = {}
 };
 
 export const clearBrowserSession = () => {
+  sessionGeneration += 1;
   accessToken = '';
   companyToken = '';
   standalonePosSessionActivated = false;
@@ -190,6 +192,12 @@ export const preparePosCompanySwitchHandoff = ({ tenantId } = {}) => {
 
 export const getAccessToken = () => accessToken;
 export const getCompanyToken = () => companyToken;
+export const getBrowserSessionSnapshot = () => ({
+  token: accessToken,
+  companyToken,
+  generation: sessionGeneration,
+  active: standalonePosSessionActivated
+});
 export const canRefreshBrowserSession = () => (
   !IS_STANDALONE_POS_SURFACE
   || standalonePosSessionActivated

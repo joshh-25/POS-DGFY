@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-07-29
 related_adr: docs/architecture/adr/0050-affiliate-buyer-facing-pricing-rule-engine.md
 declaration_id: 2026-07-29-affiliate-pricing-rule-engine-checkout
-classification: major
-surfaces: payments,pos,terminal
+classification: regulatory
+surfaces: payments,pos,terminal,settings,compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.07.29
 verification_evidence: backend/tests/storeCheckoutAffiliatePricing.unit.test.js (9 passed), backend/tests/affiliateCommissionAccrual.unit.test.js (29 passed, including 4 new resolvedCommission/snapshot override cases), backend/tests/affiliatePricingPolicy.unit.test.js (29 passed, all external acceptance-pack cases), full backend affiliate-prefixed suite (176/183 passed - 7 pre-existing unrelated failures confirmed via git stash), buildCompliancePreflightUseCase run locally with an ALLOW-stubbed evaluateComplianceOperationUseCase

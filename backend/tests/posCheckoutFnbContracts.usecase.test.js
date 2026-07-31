@@ -170,7 +170,7 @@ describe('POS checkout F&B contracts', () => {
     it('sells a direct always-available item at zero stock without creating inventory movement', async () => {
         let createdTransaction = null;
         const posRepository = {
-            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({ mode: 'warn', active_registry: [] }),
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
             findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
             findSellableItemsByIds: jest.fn().mockResolvedValue([{
                 item_id: 1,
@@ -319,7 +319,7 @@ describe('POS checkout F&B contracts', () => {
             }
         }));
 
-        expect(result.success).toBe(true);
+        expect(result).toMatchObject({ success: true });
         expect(createdTransaction).toEqual(expect.objectContaining({
             document_type: 'fiscal_invoice',
             document_context: 'fiscal',
@@ -350,7 +350,7 @@ describe('POS checkout F&B contracts', () => {
                 address: 'Quezon City'
             }),
             totals: expect.objectContaining({
-                total_amount: 101,
+                total_amount: 100,
                 payment_type: 'cash'
             }),
             lines: [expect.objectContaining({
@@ -425,6 +425,7 @@ describe('POS checkout F&B contracts', () => {
                 buyer_address: null,
                 special_instructions: null,
                 discount_beneficiary: null,
+                governed_discount: null,
                 lines: [{
                     sequence: 0,
                     item_id: 1,
@@ -626,10 +627,10 @@ describe('POS checkout F&B contracts', () => {
 
         expect(result.success).toBe(true);
         expect(createdTransaction.subtotal_amount).toBe(240);
-        expect(createdTransaction.service_fee_amount).toBe(2.4);
+        expect(createdTransaction.service_fee_amount).toBe(0);
         expect(createdTransaction.restaurant_service_charge_amount).toBe(24);
         expect(createdTransaction.restaurant_service_charge_taxable).toBe(true);
-        expect(createdTransaction.total_amount).toBe(266.4);
+        expect(createdTransaction.total_amount).toBe(264);
         expect(createdTransaction).toEqual(expect.objectContaining({
             document_type: 'non_fiscal_slip',
             document_context: 'non_fiscal',

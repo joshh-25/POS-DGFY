@@ -86,6 +86,12 @@ export const updateSettingByKey = async (key, value) => {
   return response.data.data;
 };
 
+export const generateStorefrontSlug = async () => {
+  const response = await api.post('/settings/storefront-slug/generate');
+  invalidateSettingsCache();
+  return response.data.data;
+};
+
 /**
  * Reset all settings to default values (admin only)
  */

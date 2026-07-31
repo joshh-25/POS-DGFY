@@ -5,6 +5,9 @@ import { describe, expect, it } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
+const sidebarPath = path.resolve(__dirname, '../components/TerminalWorkspaceSidebar.jsx');
+const layoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
+const terminalPagePath = path.resolve(__dirname, '../pages/TerminalPage.jsx');
 
 describe('POS category management contract', () => {
   it('lets admins explicitly create a category while saving a new item without creating defaults', () => {
@@ -36,13 +39,52 @@ describe('POS category management contract', () => {
   it('keeps category lifecycle controls behind the company-local category permission', () => {
     const source = fs.readFileSync(workspacePath, 'utf8');
 
-    expect(source).toContain("resolveUserPermissionList(terminalUser).includes('categories:manage')");
-    expect(source).not.toContain("String(terminalUser?.role || '').trim().toLowerCase() === 'admin'");
+    expect(source).toContain('canManageCategories={canManageCategories}');
     expect(source).toContain("{ id: 'categories', label: 'Categories', icon: Tags }");
     expect(source).toContain('Move assigned items to');
     expect(source).toContain('replacementFolderId');
     expect(source).toContain("Select an active replacement category before deleting this category.");
     expect(source).toContain('replacementFolderIdNumber > 0');
+  });
+
+  it('places category management inside Items and removes it from Settings', () => {
+    const source = fs.readFileSync(workspacePath, 'utf8');
+    const catalogStart = source.indexOf('function ItemsCatalogWorkspace');
+    const settingsStart = source.indexOf('function SettingsWorkspace');
+    const workspaceExport = source.indexOf('export default function TerminalOperationsWorkspace');
+    const catalogSource = source.slice(catalogStart, settingsStart);
+    const settingsSource = source.slice(settingsStart, workspaceExport);
+
+    expect(catalogStart).toBeGreaterThan(-1);
+    expect(catalogSource).toContain('aria-label="Items workspace navigation"');
+    expect(catalogSource).toContain("{ id: 'categories', label: 'Categories', icon: Tags }");
+    expect(source).toContain('<ItemsCatalogWorkspace');
+    expect(settingsSource).not.toContain("{ id: 'categories', label: 'Categories', icon: Tags }");
+    expect(settingsSource).not.toContain('<CategoryManagementWorkspace');
+  });
+
+  it('preserves category-only access and keeps category mutations online-only', () => {
+    const workspaceSource = fs.readFileSync(workspacePath, 'utf8');
+    const sidebarSource = fs.readFileSync(sidebarPath, 'utf8');
+    const layoutSource = fs.readFileSync(layoutPath, 'utf8');
+    const terminalPageSource = fs.readFileSync(terminalPagePath, 'utf8');
+    const historyBlock = sidebarSource.slice(
+      sidebarSource.indexOf('label="History"'),
+      sidebarSource.indexOf('{!isCashierRole')
+    );
+    const itemsBlock = sidebarSource.slice(
+      sidebarSource.indexOf('label="Items"'),
+      sidebarSource.indexOf('{showIncomingQueue')
+    );
+
+    expect(terminalPageSource).toContain("const canManageCategories = hasPermission('categories:manage');");
+    expect(terminalPageSource).toContain("normalizedView === 'items' && !canViewPos && !canManageCategories");
+    expect(layoutSource).toContain('canManageCategories={canManageCategories}');
+    expect(layoutSource.match(/onQueueOfflineItemDraft=\{onQueueOfflineItemDraft\}/g)).toHaveLength(2);
+    expect(sidebarSource).toContain('const canAccessItemsWorkspace = canViewPos || canManageCategories;');
+    expect(historyBlock).toContain('disabled={locked || onboardingRestricted || !canViewPos}');
+    expect(itemsBlock).toContain('disabled={locked || onboardingRestricted || !canAccessItemsWorkspace}');
+    expect(workspaceSource).toContain('Category management is available online only.');
   });
 
   it('maps the saved category ID back into the edit-item category control', () => {

@@ -16,7 +16,7 @@ describe('hosted POS catalog performance contracts', () => {
 
     expect(checkoutSource).toContain("resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail')");
     expect(checkoutSource).toContain("loading={itemIndex < 4 ? 'eager' : 'lazy'}");
-    expect(checkoutSource).toContain("fetchPriority={itemIndex < 4 ? 'high' : 'auto'}");
+    expect(checkoutSource).toContain("fetchpriority={itemIndex < 4 ? 'high' : 'auto'}");
     expect(checkoutSource).toContain('nextCatalogImageUrls');
     expect(checkoutSource).toContain("image.fetchPriority = 'low';");
     expect(operationsSource).toContain("resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail')");
@@ -32,6 +32,15 @@ describe('hosted POS catalog performance contracts', () => {
     expect(checkoutSource).toContain('if (!sessionLocked) return;');
     expect(checkoutSource).toContain('Refreshing catalog...');
     expect(checkoutSource).toContain('aria-busy={catalogRefreshing}');
+  });
+
+  it('initializes receipt settings before callbacks that use them', () => {
+    const checkoutSource = readSource(checkoutPath);
+    const receiptSettingsStateIndex = checkoutSource.indexOf('const [receiptSettings, setReceiptSettings] = useState({});');
+    const addToCartToastIndex = checkoutSource.indexOf('const triggerAddToCartToast = useCallback');
+
+    expect(receiptSettingsStateIndex).toBeGreaterThanOrEqual(0);
+    expect(addToCartToastIndex).toBeGreaterThan(receiptSettingsStateIndex);
   });
 
   it('preloads lazy workspaces on idle and navigation intent', () => {

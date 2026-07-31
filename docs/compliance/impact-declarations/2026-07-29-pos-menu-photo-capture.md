@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-07-29
 related_adr: docs/architecture/adr/0049-batch-menu-import-async-extraction.md
 declaration_id: 2026-07-29-pos-menu-photo-capture
-classification: major
-surfaces: pos,terminal
+classification: regulatory
+surfaces: pos,terminal,settings,compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.07.29
 verification_evidence: npx vitest run src/utils/__tests__/menuPhotoQuality.test.js (8 passed),npx vitest run Components/items/__tests__/MenuPhotoCaptureSheet.behavior.test.jsx (7 passed),npx vitest run src/services/__tests__/menuImportService.contract.test.js src/hooks/__tests__/useMenuImportJob.test.js src/features/pos/__tests__/menuImportBatchEntry.contract.test.js src/utils/__tests__/menuPhotoQuality.test.js Components/items (48 passed),npm --prefix frontend run build (succeeded),npx eslint on all new/changed frontend files (0 errors)

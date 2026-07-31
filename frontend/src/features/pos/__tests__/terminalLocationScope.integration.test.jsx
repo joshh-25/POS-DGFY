@@ -81,7 +81,7 @@ afterEach(() => {
 });
 
 describe('POS terminal location UX integration', () => {
-  it('keeps queue scope control independent from operating location state', () => {
+  it('renders the incoming queue scope without exposing the operating-location selector', () => {
     const setQueueLocationScopeId = vi.fn();
     const setOperatingLocationId = vi.fn();
     const props = buildBaseProps({
@@ -97,6 +97,27 @@ describe('POS terminal location UX integration', () => {
     expect(screen.queryByLabelText('Operating Location')).toBeNull();
     expect(setQueueLocationScopeId).not.toHaveBeenCalled();
     expect(setOperatingLocationId).not.toHaveBeenCalled();
+  });
+
+  it('hides incoming orders until the terminal has an active shift', () => {
+    const props = buildBaseProps({
+      viewMode: 'incoming_queue',
+      incomingOrdersState: {
+        loading: false,
+        accessState: 'shift_required',
+        errorMessage: 'Open a shift to view orders for this branch.',
+        orders: [{
+          pos_transaction_id: 301,
+          customer_name: 'Main Branch Buyer',
+          fulfillment_status: 'placed'
+        }]
+      }
+    });
+
+    render(<TerminalOperationsWorkspace {...props} />);
+
+    expect(screen.getByText('Open a shift to view orders for this branch.')).toBeTruthy();
+    expect(screen.queryByText('Main Branch Buyer')).toBeNull();
   });
 
   it('does not render an unguarded operating-location selector while a shift is active', () => {

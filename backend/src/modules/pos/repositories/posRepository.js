@@ -1313,9 +1313,12 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
             const grossSales = round4(line?.line_subtotal || 0);
             const share = subtotalAmount > 0 ? grossSales / subtotalAmount : 0;
             const persistedDiscountAllocation = discountAllocationByLineId.get(Number(line?.line_id));
-            const lineDiscount = persistedDiscountAllocation
+            const recordedLineDiscount = persistedDiscountAllocation
                 ? round4(persistedDiscountAllocation.discount_amount)
                 : round4(discountAmount * share);
+            // Preserve the recorded discount on the transaction for audit, but do not
+            // count it as an active discount after the sale is voided or refunded.
+            const lineDiscount = isVoidedOrRefunded ? 0 : recordedLineDiscount;
             const lineRefund = isVoidedOrRefunded ? grossSales : 0;
             const lineNetSales = round4(Math.max(0, grossSales - lineDiscount - lineRefund));
             const lineCostPerUnit = line?.cost_snapshot != null ? Number(line.cost_snapshot || 0) : Number(item?.cost_per_unit || 0);
@@ -1347,9 +1350,11 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
                 discount_label: transaction?.discount_label_snapshot || null,
                 discount_type: transaction?.discount?.discount_type || null,
                 promo_code: transaction?.discount?.promo_code || null,
-                vat_removed: persistedDiscountAllocation
-                    ? round4(persistedDiscountAllocation.vat_removed)
-                    : round4(Number(transaction?.discount?.vat_removed || 0) * share),
+                vat_removed: isVoidedOrRefunded
+                    ? 0
+                    : persistedDiscountAllocation
+                        ? round4(persistedDiscountAllocation.vat_removed)
+                        : round4(Number(transaction?.discount?.vat_removed || 0) * share),
                 refund_amount: lineRefund,
                 vat_amount: isVoidedOrRefunded ? 0 : round4(vatAmount * share),
                 service_fee_amount: isVoidedOrRefunded ? 0 : round4(totalServiceFeeAmount * share),

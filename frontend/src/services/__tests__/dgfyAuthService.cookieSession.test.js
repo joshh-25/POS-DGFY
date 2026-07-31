@@ -237,6 +237,68 @@ describe('dgfyAuthService cookie session rehydration', () => {
     }));
   });
 
+  it('defers tenant-session activation until the caller verifies the selected company', async () => {
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal('CustomEvent', class TestCustomEvent {
+      constructor(type) {
+        this.type = type;
+      }
+    });
+    vi.stubGlobal('window', { dispatchEvent });
+    apiPost.mockResolvedValueOnce({
+      data: {
+        data: {
+          token: 'candidate-tenant-token',
+          company: { token: 'candidate-company-token' }
+        }
+      }
+    });
+
+    const service = await import('../dgfyAuthService.js');
+    const candidate = await service.startDgfyTenantSession({
+      tenantId: 'tenant-cookie',
+      companyToken: 'candidate-company-token'
+    }, '', { activate: false });
+
+    expect(setBrowserSessionMock).not.toHaveBeenCalled();
+    expect(dispatchEvent).not.toHaveBeenCalled();
+
+    service.activateDgfyTenantSession(candidate);
+
+    expect(setBrowserSessionMock).toHaveBeenCalledWith({
+      token: 'candidate-tenant-token',
+      companyToken: 'candidate-company-token'
+    });
+    expect(dispatchEvent).toHaveBeenCalledTimes(1);
+    expect(dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'auth:login' }));
+  });
+
+  it('defers POS-session activation until terminal and shift state are ready', async () => {
+    apiPost.mockResolvedValueOnce({
+      data: {
+        data: {
+          token: 'candidate-pos-token',
+          company: { token: 'candidate-pos-company-token' },
+          user_id: 7
+        }
+      }
+    });
+
+    const service = await import('../dgfyAuthService.js');
+    const candidate = await service.startDgfyPosSession({
+      tenantId: 'tenant-cookie',
+      terminalId: 'JOHN-01'
+    }, '', { activate: false });
+
+    expect(apiPost).toHaveBeenCalledWith(
+      '/dgfy/account/companies/tenant-cookie/pos-session',
+      { terminal_id: 'JOHN-01' },
+      dgfyCookieConfig
+    );
+    expect(candidate.token).toBe('candidate-pos-token');
+    expect(setBrowserSessionMock).not.toHaveBeenCalled();
+  });
+
   it('rejects incomplete tenant-session responses without replacing the active browser session', async () => {
     apiPost.mockResolvedValueOnce({
       data: {

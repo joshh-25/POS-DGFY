@@ -3,7 +3,7 @@ import Joi from 'joi';
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'appointment'];
 const ORDER_METHOD_FILTERS = [...ORDER_METHODS, 'online'];
 const ORDER_SOURCES = ['in_store', 'online_store'];
-const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer'];
+const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'employee_credit'];
 const REPORT_GRANULARITIES = ['daily', 'weekly', 'monthly', 'yearly'];
 const REPORT_SOURCE_FILTERS = ['in_store', 'online_store', 'delivery', 'pickup'];
 const REPORT_SECTIONS = ['daily', 'monthly', 'yearly', 'comparison', 'profit_loss'];
@@ -99,6 +99,9 @@ const checkoutPosSchema = Joi.object({
     document_context: Joi.string().valid(...DOCUMENT_CONTEXTS).optional(),
     order_method: Joi.string().valid(...ORDER_METHODS).default('dine_in'),
     payment_type: Joi.string().valid(...PAYMENT_TYPES).default('cash'),
+    employee_credit: Joi.object({
+        account_code: Joi.string().trim().uppercase().min(4).max(40).required()
+    }).optional(),
     payment_handoff_mode: Joi.string().valid(...PAYMENT_HANDOFF_MODES).optional(),
     cash_received: Joi.number().min(0).precision(4).allow(null).optional(),
     change_amount: Joi.number().min(0).precision(4).allow(null).optional(),
@@ -138,6 +141,18 @@ const checkoutPosSchema = Joi.object({
     const hasProfile = Boolean(String(value?.discount_profile_name || '').trim());
     const hasDiscountRate = value?.discount_rate !== undefined && value?.discount_rate !== null;
     const discountMode = String(value?.discount_mode || '').trim() || (hasProfile ? 'preset' : (hasDiscountRate ? 'percentage' : (discountAmount > 0 ? 'amount' : 'none')));
+
+    if (value.payment_type === 'employee_credit' && !value.employee_credit) {
+        return helpers.error('any.invalid', {
+            message: 'employee_credit account_code is required'
+        });
+    }
+
+    if (value.payment_type !== 'employee_credit' && value.employee_credit) {
+        return helpers.error('any.invalid', {
+            message: 'employee_credit details are only allowed for Employee Credit payments'
+        });
+    }
 
     if (discountMode === 'none' && (hasProfile || hasDiscountRate || discountAmount > 0)) {
         return helpers.error('any.invalid', {
@@ -387,7 +402,12 @@ const forceCloseStaleTerminalShiftSchema = Joi.object({
 
 const updateOnlineOrderStatusSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
-    fulfillment_status: Joi.string().valid(...ONLINE_FULFILLMENT_STATUSES).required()
+    fulfillment_status: Joi.string().valid(...ONLINE_FULFILLMENT_STATUSES).required(),
+    reason: Joi.string().trim().min(3).max(255).when('fulfillment_status', {
+        is: 'rejected',
+        then: Joi.required(),
+        otherwise: Joi.optional().allow('', null)
+    })
 });
 const collectCashPickupOrderSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required(),
@@ -509,6 +529,78 @@ const mobilePosCheckpointAckSchema = Joi.object({
     last_successful_sync_at: Joi.date().iso().allow(null).optional()
 });
 
+const employeeCreditUserParamSchema = Joi.object({
+    userId: Joi.number().integer().positive().required()
+});
+
+const employeeCreditAccountParamSchema = Joi.object({
+    accountId: Joi.number().integer().positive().required()
+});
+
+const employeeParamSchema = Joi.object({
+    employeeId: Joi.number().integer().positive().required()
+});
+
+const employeeListQuerySchema = Joi.object({
+    include_inactive: Joi.boolean().truthy('true').falsy('false').default(false)
+});
+
+const employeeCreateSchema = Joi.object({
+    employee_code: Joi.string().trim().uppercase().min(2).max(40).pattern(/^[A-Z0-9._-]+$/).required(),
+    full_name: Joi.string().trim().min(2).max(255).required(),
+    email: Joi.string().trim().email().max(255).allow('', null).optional(),
+    phone: Joi.string().trim().max(40).allow('', null).optional(),
+    location_id: Joi.number().integer().positive().allow(null).optional(),
+    is_active: Joi.boolean().default(true)
+});
+
+const employeeUpdateSchema = Joi.object({
+    employee_code: Joi.string().trim().uppercase().min(2).max(40).pattern(/^[A-Z0-9._-]+$/).optional(),
+    full_name: Joi.string().trim().min(2).max(255).optional(),
+    email: Joi.string().trim().email().max(255).allow('', null).optional(),
+    phone: Joi.string().trim().max(40).allow('', null).optional(),
+    location_id: Joi.number().integer().positive().allow(null).optional(),
+    is_active: Joi.boolean().optional()
+}).min(1);
+
+const employeeCreditAccountUpdateSchema = Joi.object({
+    is_eligible: Joi.boolean().optional(),
+    credit_limit: Joi.number().min(0).precision(4).allow(null).optional(),
+    adjustment_amount: Joi.number().precision(4).default(0),
+    reason: Joi.string().trim().min(3).max(500).allow('', null).optional(),
+    idempotency_key: Joi.string().trim().min(8).max(120).allow('', null).optional()
+}).or('is_eligible', 'credit_limit', 'adjustment_amount');
+
+const employeeCreditRepaymentSchema = Joi.object({
+    amount: Joi.number().positive().precision(4).required(),
+    reason: Joi.string().trim().min(3).max(500).required(),
+    idempotency_key: Joi.string().trim().min(8).max(120).required()
+});
+
+const employeeCreditOutstandingAdjustmentSchema = Joi.object({
+    adjustment_amount: Joi.number().precision(4).invalid(0).required(),
+    reason: Joi.string().trim().min(3).max(500).required(),
+    idempotency_key: Joi.string().trim().min(8).max(120).required()
+});
+
+const employeeCreditLookupQuerySchema = Joi.object({
+    account_code: Joi.string().trim().uppercase().min(4).max(40).required()
+});
+
+const employeeCreditCheckoutOptionsQuerySchema = Joi.object({
+    search: Joi.string().trim().max(100).allow('').default(''),
+    location_id: Joi.number().integer().positive().optional(),
+    limit: Joi.number().integer().min(1).max(100).default(50)
+});
+
+const employeeCreditReportQuerySchema = Joi.object({
+    date_from: Joi.date().iso().optional(),
+    date_to: Joi.date().iso().min(Joi.ref('date_from')).optional(),
+    account_id: Joi.number().integer().positive().optional(),
+    entry_type: Joi.string().valid('grant', 'debit', 'charge', 'repayment', 'reversal', 'adjustment', 'expiration').optional(),
+    limit: Joi.number().integer().min(1).max(1000).default(500)
+});
+
 const buildValidationErrorResponse = (error) => ({
     success: false,
     data: null,
@@ -577,3 +669,15 @@ export const validateMobilePosItemSync = validateSchema(mobilePosItemSyncSchema,
 export const validateMobilePosShiftSync = validateSchema(mobilePosShiftSyncSchema, 'body', 'validatedData');
 export const validateMobilePosHardwareEventSync = validateSchema(mobilePosHardwareEventSyncSchema, 'body', 'validatedData');
 export const validateMobilePosCheckpointAck = validateSchema(mobilePosCheckpointAckSchema, 'body', 'validatedData');
+export const validateEmployeeCreditUserParam = validateSchema(employeeCreditUserParamSchema, 'params', 'validatedParams');
+export const validateEmployeeCreditAccountParam = validateSchema(employeeCreditAccountParamSchema, 'params', 'validatedParams');
+export const validateEmployeeParam = validateSchema(employeeParamSchema, 'params', 'validatedParams');
+export const validateEmployeeListQuery = validateSchema(employeeListQuerySchema, 'query', 'validatedQuery');
+export const validateEmployeeCreate = validateSchema(employeeCreateSchema, 'body', 'validatedData');
+export const validateEmployeeUpdate = validateSchema(employeeUpdateSchema, 'body', 'validatedData');
+export const validateEmployeeCreditAccountUpdate = validateSchema(employeeCreditAccountUpdateSchema, 'body', 'validatedData');
+export const validateEmployeeCreditRepayment = validateSchema(employeeCreditRepaymentSchema, 'body', 'validatedData');
+export const validateEmployeeCreditOutstandingAdjustment = validateSchema(employeeCreditOutstandingAdjustmentSchema, 'body', 'validatedData');
+export const validateEmployeeCreditLookupQuery = validateSchema(employeeCreditLookupQuerySchema, 'query', 'validatedQuery');
+export const validateEmployeeCreditCheckoutOptionsQuery = validateSchema(employeeCreditCheckoutOptionsQuerySchema, 'query', 'validatedQuery');
+export const validateEmployeeCreditReportQuery = validateSchema(employeeCreditReportQuerySchema, 'query', 'validatedQuery');

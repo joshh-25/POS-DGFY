@@ -1,6 +1,8 @@
 import React from 'react';
 import { DeliveryPinMap } from '../../features/locations/components/DeliveryPinMap.jsx';
 import { DGFY_ACRONYM, ORDER_METHOD_OPTIONS } from '../model/storefrontConstants.js';
+import { StorefrontResponsiveImage } from './storefront/StorefrontResponsiveImage.jsx';
+import { resolveStorefrontImageSources } from '../utils/storefrontImageSources.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the product/service checkout tab
@@ -74,7 +76,6 @@ export function StorefrontCheckoutSummaryContainer({
   storeLocations,
   totalsForDisplay,
   updateQty,
-  withAssetOrigin,
 }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.5fr) minmax(340px, 420px)' : '1fr', gap: 16, alignItems: 'start' }}>
@@ -288,10 +289,15 @@ export function StorefrontCheckoutSummaryContainer({
             {cart.map((line) => (
               <div key={line.item_id} style={{ display: 'grid', gridTemplateColumns: '58px 1fr 78px 96px', gap: 10, alignItems: 'center', marginBottom: 10, padding: 10, border: '1px solid #e6edf2', borderRadius: 14, background: '#fff' }}>
                 <div style={{ width: 58, height: 58, borderRadius: 12, overflow: 'hidden', border: '1px solid #e2e8f0', background: 'linear-gradient(135deg,#f8fafc,#eef2f7)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {line.image_url && !cartImageErrors.has(Number(line.item_id)) ? (
-                    <img
-                      src={withAssetOrigin(line.image_url)}
+                  {(line.thumbnail_url || line.image_url) && !cartImageErrors.has(Number(line.item_id)) ? (
+                    <StorefrontResponsiveImage
+                      imageSources={resolveStorefrontImageSources(line, { preferred: 'thumbnail' })}
                       alt={line.name}
+                      sizes="58px"
+                      width={58}
+                      height={58}
+                      loading="lazy"
+                      decoding="async"
                       style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                       onError={() => {
                         const normalizedLineItemId = Number(line.item_id);

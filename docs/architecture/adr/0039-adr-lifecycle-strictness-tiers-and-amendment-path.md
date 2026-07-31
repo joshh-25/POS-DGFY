@@ -261,7 +261,6 @@ and are the real cost.
   enforces uniqueness across live ADRs and skips stubs, which is the invariant
   that matters.
 - PR: ADR 0039 migration
-
 ### 2026-07-29 — Gate promoted immediately rather than after a soak
 - Clause amended: Decision 6 and Migration Plan step 6 (`default`)
 - Change: `scripts/check-adr.js` ships wired to `--strict` through
@@ -283,4 +282,3 @@ and are the real cost.
   `expected_status` moved from `authoritative` to `accepted`, the axis split in
   Decision 2.
 - PR: ADR 0039 migration
-

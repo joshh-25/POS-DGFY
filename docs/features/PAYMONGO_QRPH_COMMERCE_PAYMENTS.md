@@ -1,13 +1,18 @@
 ---
-status: authoritative
-authority_level: authoritative
+status: deprecated
+authority_level: historical
 owner: product_engineering
-last_reviewed: 2026-06-26
+last_reviewed: 2026-07-30
 applies_to: storefront_commerce_payments
 topic: paymongo_qrph_commerce_payments
+superseded_by: docs/features/TENANT_REVENUE_SETTLEMENT.md
 ---
 
 # PayMongo QR Ph Commerce Payments
+
+> Deprecated for new settlement decisions. The commerce payment-session history
+> remains useful context, but its split-payment and customer-paid DGFY fee model is
+> superseded by ADR 0040 and `docs/features/TENANT_REVENUE_SETTLEMENT.md`.
 
 ## Current Implemented Slice
 

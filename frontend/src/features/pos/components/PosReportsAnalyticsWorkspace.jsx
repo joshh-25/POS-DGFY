@@ -26,6 +26,7 @@ import {
   exportPosReportCsv,
   fetchPosReportsOverview
 } from '../services/posService.js';
+import EmployeeCreditReportPanel from './EmployeeCreditReportPanel.jsx';
 
 const REPORT_SECTIONS = [
   { id: 'daily', label: 'Daily Report' },
@@ -49,7 +50,8 @@ const PAYMENT_OPTIONS = [
   { value: 'gcash', label: 'GCash' },
   { value: 'card', label: 'Card' },
   { value: 'maya', label: 'Online' },
-  { value: 'bank_transfer', label: 'Bank Transfer' }
+  { value: 'bank_transfer', label: 'Bank Transfer' },
+  { value: 'employee_credit', label: 'Employee Credit' }
 ];
 
 const SOURCE_OPTIONS = [
@@ -243,6 +245,7 @@ const DataTable = ({ columns = [], rows = [], emptyMessage = 'No rows found.' })
 function PosReportsAnalyticsWorkspace({
   terminalMeta,
   reportRefreshKey = 0,
+  employeeCreditReportRefreshKey = 0,
   isOnline = true,
   offlineSnapshotScope = {},
   sectionId
@@ -852,6 +855,13 @@ function PosReportsAnalyticsWorkspace({
           </div>
         </div>
       )}
+      <EmployeeCreditReportPanel
+        dateFrom={normalizedDateRange.dateFrom}
+        dateTo={normalizedDateRange.dateTo}
+        currencySymbol={currencySymbol}
+        refreshKey={employeeCreditReportRefreshKey}
+        isOnline={isOnline}
+      />
     </div>
   );
 }
