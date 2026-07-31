@@ -7,7 +7,7 @@ import {
   requireMasterAdmin
 } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
-import { storefrontAssetUpload } from '../config/uploadConfig.js';
+import { storefrontAssetUpload, preserveTenantContext } from '../config/uploadConfig.js';
 import {
   validateVerifyPosSettingsAccessPin,
   validateStorefrontAssetTypeParam,
@@ -36,6 +36,13 @@ router.post(
   authenticate,
   validateVerifyPosSettingsAccessPin,
   settingsController.verifyPosSettingsAccessPin
+);
+
+router.post(
+  '/storefront-slug/generate',
+  authenticate,
+  checkPermission(PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS),
+  settingsController.generateStorefrontSlug
 );
 
 /**
@@ -76,7 +83,7 @@ router.post(
   authenticate,
   checkStorefrontBrandingEditPermission,
   validateStorefrontAssetTypeParam,
-  storefrontAssetUpload.single('image'),
+  preserveTenantContext(storefrontAssetUpload.single('image')),
   settingsController.uploadStorefrontAsset
 );
 

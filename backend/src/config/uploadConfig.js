@@ -3,6 +3,7 @@ import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
 import { SAFE_IMAGE_MIME_TYPES } from '../modules/shared/utils/imageUploadValidation.js';
+import dbStore from '../utils/dbStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,6 +21,21 @@ export const IMAGE_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 export const CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES = 100 * 1024 * 1024;
 export const BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES = 10 * 1024 * 1024;
 export const BULK_CATALOG_IMAGE_TRANSPORT_MAX_FILES = 50;
+
+// Multipart parsers may finish their stream callbacks on a different async
+// resource. Re-enter the request's tenant store before continuing so the
+// handler cannot fall back to the default database after a valid tenant-auth
+// request has already passed authentication.
+export const preserveTenantContext = (multipartMiddleware) => (req, res, next) => {
+    const tenantContext = dbStore.getStore();
+    if (!tenantContext) {
+        return multipartMiddleware(req, res, next);
+    }
+
+    return dbStore.run(tenantContext, () => multipartMiddleware(req, res, (error) => (
+        dbStore.run(tenantContext, () => next(error))
+    )));
+};
 
 // Configure storage
 const storage = multer.diskStorage({

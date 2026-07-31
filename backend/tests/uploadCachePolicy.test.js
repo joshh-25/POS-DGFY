@@ -6,9 +6,15 @@ import {
 describe('upload cache policy', () => {
   it('uses immutable caching for versioned optimized image variants', () => {
     const imagePath = 'C:\\app\\uploads\\pos-catalog\\tenant-a\\item-42-1784770200000-acde1234\\thumb.webp';
+    const responsiveImagePath = 'C:\\app\\uploads\\pos-catalog\\tenant-a\\item-42-1784770200000-v2-acde1234\\thumb.avif';
+    const placeholderPath = 'C:\\app\\uploads\\pos-catalog\\tenant-a\\item-42-1784770200000-v2-acde1234\\placeholder.webp';
 
     expect(isVersionedOptimizedUpload(imagePath)).toBe(true);
     expect(resolveUploadCacheControl(imagePath)).toBe('public, max-age=31536000, immutable');
+    expect(isVersionedOptimizedUpload(responsiveImagePath)).toBe(true);
+    expect(resolveUploadCacheControl(responsiveImagePath)).toBe('public, max-age=31536000, immutable');
+    expect(isVersionedOptimizedUpload(placeholderPath)).toBe(true);
+    expect(resolveUploadCacheControl(placeholderPath)).toBe('public, max-age=31536000, immutable');
   });
 
   it('uses bounded revalidation for legacy raster image URLs', () => {

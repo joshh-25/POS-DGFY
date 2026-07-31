@@ -32,6 +32,7 @@ const RESOLVED_WEBHOOK_SECRET = PAYMONGO_MODE === 'live'
 
 const BASE_URL = process.env.PAYMONGO_API_BASE_URL || 'https://api.paymongo.com/v1';
 const ACCOUNTS_BASE_URL = process.env.PAYMONGO_ACCOUNTS_API_BASE_URL || 'https://api.paymongo.com/v2';
+const SECURE_AUTHENTICATION_API_BASE_URL = 'https://secure-authentication-api.paymongo.com';
 
 const WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS = Number.parseInt(
     process.env.PAYMONGO_WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS || '300',
@@ -279,6 +280,61 @@ export class PayMongoService {
             logger.error('PayMongo Attach Payment Intent Error:', error.response?.data || error.message);
             throw error;
         }
+    }
+
+    async retrievePaymentIntent(paymentIntentId) {
+        try {
+            const cleanPaymentIntentId = String(paymentIntentId || '').trim();
+            if (!cleanPaymentIntentId.startsWith('pi_')) {
+                throw new Error('A valid PayMongo payment intent ID is required');
+            }
+
+            const response = await axios.get(`${this.baseUrl}/payment_intents/${cleanPaymentIntentId}`, {
+                headers: this.getAuthHeader()
+            });
+            return response.data.data;
+        } catch (error) {
+            logger.error('PayMongo Retrieve Payment Intent Error:', error.response?.data || error.message);
+            throw error;
+        }
+    }
+
+    async confirmSandboxQrphPayment({
+        paymentIntentId,
+        expectedAmount,
+        expectedCurrency = 'PHP'
+    }) {
+        if (PAYMONGO_MODE === 'live' || process.env.NODE_ENV === 'production') {
+            throw new Error('PayMongo sandbox confirmation is unavailable outside test mode');
+        }
+
+        const paymentIntent = await this.retrievePaymentIntent(paymentIntentId);
+        const attributes = paymentIntent?.attributes || {};
+        if (
+            Number(attributes.amount) !== Number(expectedAmount)
+            || String(attributes.currency || '').toUpperCase() !== String(expectedCurrency || '').toUpperCase()
+        ) {
+            throw new Error('PayMongo sandbox payment amount or currency does not match this checkout');
+        }
+        const code = attributes.next_action?.code || {};
+        const testUrl = String(code.test_url || '').trim();
+        const sourceId = new URL(testUrl).searchParams.get('id') || '';
+        const codeId = String(code.id || new URL(testUrl).searchParams.get('code_id') || '').trim();
+
+        if (!sourceId.startsWith('src_') || !codeId.startsWith('qr_')) {
+            throw new Error('PayMongo did not return a confirmable sandbox QR Ph source');
+        }
+
+        const response = await axios.post(
+            `${SECURE_AUTHENTICATION_API_BASE_URL}/sources/${sourceId}/charge`,
+            { code_id: codeId },
+            { headers: { 'Content-Type': 'application/json' } }
+        );
+
+        return {
+            paymentIntent,
+            source: response.data?.data || null
+        };
     }
 
     async createQrphPaymentIntent({

@@ -35,7 +35,8 @@ describe('POS terminal readiness context', () => {
       posRepository: {
         getShiftLocationBindingReadinessSummary: jest.fn().mockResolvedValue(null),
         findOpenTerminalShift
-      }
+      },
+      resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 9 })
     });
 
     const result = await useCase({
@@ -58,7 +59,8 @@ describe('POS terminal readiness context', () => {
       posRepository: {
         getShiftLocationBindingReadinessSummary: jest.fn().mockResolvedValue(null),
         findOpenTerminalShift
-      }
+      },
+      resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 9 })
     });
 
     await useCase({
@@ -70,6 +72,71 @@ describe('POS terminal readiness context', () => {
       terminalId: 'JOHN-01',
       cashierId: 7,
       locationId: 9
+    });
+  });
+
+  it('reports an occupied terminal without exposing another cashier shift', async () => {
+    const findOpenTerminalShift = jest.fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        pos_terminal_shift_id: 44,
+        terminal_id: 'JOHN-01',
+        location_id: 9,
+        cashier_id: 12,
+        opening_float_amount: 1500,
+        status: 'open'
+      });
+    const useCase = buildGetCurrentTerminalShiftUseCase({
+      posRepository: {
+        getShiftLocationBindingReadinessSummary: jest.fn().mockResolvedValue(null),
+        findOpenTerminalShift
+      },
+      resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 9 })
+    });
+
+    const result = await useCase({
+      query: { terminal_id: 'JOHN-01', location_id: 9 },
+      user: { user_id: 7, role: 'cashier' }
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.shift).toBeNull();
+    expect(result.data.cash_summary).toBeNull();
+    expect(result.data.terminal_occupancy).toEqual({
+      status: 'occupied_by_other',
+      terminal_id: 'JOHN-01',
+      location_id: 9,
+      requires_supervisor: true
+    });
+    expect(result.data.terminal_occupancy).not.toHaveProperty('cashier_id');
+    expect(result.data.terminal_occupancy).not.toHaveProperty('opening_float_amount');
+    expect(findOpenTerminalShift).toHaveBeenNthCalledWith(2, {
+      terminalId: 'JOHN-01',
+      locationId: 9
+    });
+  });
+
+  it('reports the selected terminal as available when no cashier owns it', async () => {
+    const findOpenTerminalShift = jest.fn().mockResolvedValue(null);
+    const useCase = buildGetCurrentTerminalShiftUseCase({
+      posRepository: {
+        getShiftLocationBindingReadinessSummary: jest.fn().mockResolvedValue(null),
+        findOpenTerminalShift
+      },
+      resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 9 })
+    });
+
+    const result = await useCase({
+      query: { terminal_id: 'JOHN-01', location_id: 9 },
+      user: { user_id: 7, role: 'cashier' }
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.terminal_occupancy).toEqual({
+      status: 'available',
+      terminal_id: 'JOHN-01',
+      location_id: 9,
+      requires_supervisor: false
     });
   });
 

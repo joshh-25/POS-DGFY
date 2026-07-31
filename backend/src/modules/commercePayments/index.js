@@ -14,6 +14,8 @@ import {
   buildUpsertTenantPaymentAccountUseCase
 } from './usecases/commercePaymentAdminUseCases.js';
 import { buildGetPayMongoSandboxCertificationUseCase } from './usecases/paymongoSandboxCertificationUseCase.js';
+import { buildHandleCommerceOrderLifecycleUseCase } from './usecases/commerceOrderLifecycleUseCase.js';
+import { recordTenantRevenueOrderFulfillmentUseCase } from '../tenantRevenue/index.js';
 
 export const handlePayMongoCommerceWebhookUseCase = buildHandlePayMongoCommerceWebhookUseCase({
   commercePaymentRepository,
@@ -40,6 +42,12 @@ export const retryCommercePaymentFinalizationUseCase = buildRetryCommercePayment
 export const createCommercePaymentRefundUseCase = buildCreateCommercePaymentRefundUseCase({
   commercePaymentRepository,
   paymongoService
+});
+
+export const handleCommerceOrderLifecycleUseCase = buildHandleCommerceOrderLifecycleUseCase({
+  commercePaymentRepository,
+  createCommercePaymentRefundUseCase,
+  recordTenantRevenueOrderFulfillmentUseCase
 });
 
 export const createTenantPayMongoChildAccountUseCase = buildCreateTenantPayMongoChildAccountUseCase({

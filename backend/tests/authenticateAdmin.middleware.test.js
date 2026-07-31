@@ -84,7 +84,8 @@ describe('authenticateAdmin middleware', () => {
 
     expect(req.admin).toEqual({
       username: 'skupervisor',
-      role: 'admin'
+      role: 'admin',
+      financial_role: 'platform_admin'
     });
     expect(next).toHaveBeenCalledTimes(1);
   });

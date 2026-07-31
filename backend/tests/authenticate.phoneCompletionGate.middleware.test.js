@@ -81,6 +81,40 @@ const configureUser = ({ mockVerifyToken, mockIsTokenBlacklisted, mockFindByPk }
 };
 
 describe('authenticate middleware phone completion gate behavior', () => {
+  it('rejects a protected request when the bearer token is missing', async () => {
+    const loaded = await loadAuthenticate({ enforcePhoneCompletion: false });
+    const res = createRes();
+    const next = jest.fn();
+
+    await loaded.authenticate(buildRequest({ headers: {} }), res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      message: 'Authentication required. Please provide a valid token.'
+    }));
+  });
+
+  it('rejects a protected request when the bearer token is expired', async () => {
+    const loaded = await loadAuthenticate({ enforcePhoneCompletion: false });
+    loaded.mockIsTokenBlacklisted.mockResolvedValue(false);
+    loaded.mockVerifyToken.mockImplementation(() => {
+      const error = new Error('jwt expired');
+      error.name = 'TokenExpiredError';
+      throw error;
+    });
+    const res = createRes();
+    const next = jest.fn();
+
+    await loaded.authenticate(buildRequest(), res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(401);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      message: 'Token expired'
+    }));
+  });
+
   it('allows normal requests in observe mode', async () => {
     const loaded = await loadAuthenticate({ enforcePhoneCompletion: false });
     configureUser(loaded);

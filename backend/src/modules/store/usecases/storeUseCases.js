@@ -9,6 +9,7 @@ import {
     computeDgfyConvenienceFee,
     getDgfyConvenienceFeeLabel
 } from '../../shared/utils/dgfyConvenienceFee.js';
+import { tenantRevenueSharingEnabled } from '../../../config/tenantRevenueFeature.js';
 import {
     accruePendingForOnlineOrder,
     resolveActiveAffiliateEnrollmentById
@@ -174,6 +175,20 @@ const hashPayload = (payload) => crypto.createHash('sha256').update(stableString
 const isStorefrontGuestOtpRequired = () => String(process.env.STOREFRONT_GUEST_OTP_REQUIRED || 'true').trim().toLowerCase() !== 'false';
 
 const isDgfyStoreCustomer = (storeCustomer) => Boolean(String(storeCustomer?.dgfy_account_id || '').trim());
+
+const snapshotVerifiedStoreCustomer = (storeCustomer) => {
+    if (!storeCustomer || typeof storeCustomer !== 'object') return null;
+    const customerId = parsePositiveInt(storeCustomer.customer_id);
+    const dgfyAccountId = String(storeCustomer.dgfy_account_id || '').trim() || null;
+    if (!customerId && !dgfyAccountId) return null;
+    return {
+        customer_id: customerId,
+        dgfy_account_id: dgfyAccountId,
+        name: String(storeCustomer.name || '').trim(),
+        email: String(storeCustomer.email || '').trim().toLowerCase(),
+        phone: String(storeCustomer.phone || '').trim()
+    };
+};
 
 export const assertGuestCheckoutProof = ({ tenantId, email, idempotencyKey, proof, storeCustomer }) => {
     if (!isStorefrontGuestOtpRequired() || isDgfyStoreCustomer(storeCustomer)) return;
@@ -894,6 +909,10 @@ const serializeStorefrontModifierGroups = (value) => (
 const serializeStoreCatalogItem = (item = {}, accessPolicy = {}) => {
     const availabilityStatus = normalizeAvailabilityStatus(item);
     const isAvailable = availabilityStatus === 'in_stock' || availabilityStatus === 'bookable';
+    const imageUrl = item.image_url || null;
+    const imageVariants = item.image_variants && typeof item.image_variants === 'object'
+        ? item.image_variants
+        : {};
     const serviceDetail = item.service_detail
         ? {
             ...item.service_detail,
@@ -910,7 +929,13 @@ const serializeStoreCatalogItem = (item = {}, accessPolicy = {}) => {
         unit_of_measure: item.unit_of_measure || null,
         default_sale_price: item.default_sale_price,
         vat_type: item.vat_type || 'vatable',
-        image_url: item.image_url || null,
+        image_url: imageUrl,
+        image_variants: {
+            ...imageVariants,
+            thumbnail_url: imageVariants.thumbnail_url || imageUrl,
+            medium_url: imageVariants.medium_url || imageUrl,
+            large_url: imageVariants.large_url || imageUrl
+        },
         image_gallery: Array.isArray(item.image_gallery) ? item.image_gallery : [],
         service_detail: serviceDetail,
         allergens: serializeStorefrontAllergens(item.allergens),
@@ -1194,7 +1219,9 @@ const resolveCheckoutContext = async ({
     });
 
     const deliveryFee = resolveStoreDeliveryFee(settings, orderMethod);
-    const serviceFeeAmount = computeDgfyConvenienceFee(prepared.subtotalAmount);
+    const serviceFeeAmount = tenantRevenueSharingEnabled
+        ? 0
+        : computeDgfyConvenienceFee(prepared.subtotalAmount);
     const serviceFeeLabel = getDgfyConvenienceFeeLabel();
     const totalAmount = round4(prepared.subtotalAmount - promoApplication.discountAmount + deliveryFee + serviceFeeAmount);
     const outsideRadiusFlag = resolveDeliveryRadiusFlag({
@@ -2366,6 +2393,7 @@ const serializePaymentSession = (session = {}) => ({
 export const buildStoreCheckoutPaymentSessionUseCase = ({
     storeRepository,
     commercePaymentRepository,
+    tenantRevenueRepository,
     paymongoService,
     commercePaymentsEnabled = false,
     commerceQrphEnabled = false,
@@ -2407,8 +2435,31 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'idempotency_key is required', { statusCode: 422 });
             }
 
-            const account = await commercePaymentRepository.findTenantPaymentAccount({ tenantId, provider: 'paymongo' });
-            if (!account || account.onboarding_status !== 'active' || !account.qrph_enabled || !account.split_enabled || !account.charges_enabled) {
+            const account = tenantRevenueSharingEnabled
+                ? null
+                : await commercePaymentRepository.findTenantPaymentAccount({ tenantId, provider: 'paymongo' });
+            const revenuePolicy = tenantRevenueSharingEnabled
+                ? await tenantRevenueRepository?.findEffectiveFeePolicy?.(tenantId, new Date())
+                : null;
+            if (tenantRevenueSharingEnabled && (
+                !revenuePolicy
+                || revenuePolicy.settlement_status !== 'active'
+                || !revenuePolicy.payout_destination_masked
+            )) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This storefront does not have an active tenant revenue and payout policy.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            code: 'TENANT_REVENUE_POLICY_NOT_READY',
+                            policy_status: revenuePolicy?.settlement_status || 'missing',
+                            payout_destination_configured: Boolean(revenuePolicy?.payout_destination_masked)
+                        }
+                    }
+                );
+            }
+            if (!tenantRevenueSharingEnabled && (!account || account.onboarding_status !== 'active' || !account.qrph_enabled || !account.split_enabled || !account.charges_enabled)) {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
                     'This storefront is not ready for PayMongo QR Ph split payments.',
@@ -2425,7 +2476,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                     }
                 );
             }
-            if (account.wallet_status !== 'enabled' || !account.wallet_verified_at) {
+            if (!tenantRevenueSharingEnabled && (account.wallet_status !== 'enabled' || !account.wallet_verified_at)) {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
                     'This storefront does not have verified PayMongo enabled-wallet evidence.',
@@ -2442,7 +2493,8 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
 
             const normalizedPayload = {
                 ...payload,
-                payment_type: 'qrph'
+                payment_type: 'qrph',
+                _verified_store_customer: snapshotVerifiedStoreCustomer(storeCustomer)
             };
             const requestHash = crypto.createHash('sha256').update(stableStringify(normalizedPayload)).digest('hex');
             const existing = await commercePaymentRepository.findSessionByIdempotency({
@@ -2464,17 +2516,26 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             });
 
             const totalAmountCentavos = toCentavos(resolved.totalAmount);
-            const platformFeeCentavos = toCentavos(resolved.serviceFeeAmount);
-            if (totalAmountCentavos <= 0 || platformFeeCentavos <= 0 || platformFeeCentavos >= totalAmountCentavos) {
+            const platformFeeCentavos = tenantRevenueSharingEnabled
+                ? Math.round((totalAmountCentavos * Number(revenuePolicy.dgfy_rate_bps || 0)) / 10000)
+                : toCentavos(resolved.serviceFeeAmount);
+            if (
+                totalAmountCentavos <= 0
+                || platformFeeCentavos < 0
+                || platformFeeCentavos >= totalAmountCentavos
+                || (!tenantRevenueSharingEnabled && platformFeeCentavos <= 0)
+            ) {
                 throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                    'QR Ph checkout amount is too low for fixed DGFY split settlement.',
+                    tenantRevenueSharingEnabled
+                        ? 'QR Ph checkout amount is invalid for tenant revenue settlement.'
+                        : 'QR Ph checkout amount is too low for fixed DGFY split settlement.',
                     { statusCode: 422 }
                 );
             }
 
             const publicReference = `CPS-${randomAlphaNumeric(10)}`;
-            if (account.provider_merchant_id === process.env.PAYMONGO_DGFY_MERCHANT_ID) {
+            if (!tenantRevenueSharingEnabled && account.provider_merchant_id === process.env.PAYMONGO_DGFY_MERCHANT_ID) {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
                     'Tenant PayMongo merchant ID must be different from the DGFY platform merchant ID.',
@@ -2484,7 +2545,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                     }
                 );
             }
-            const splitPayload = commercePaymongoSplitEnabled ? {
+            const splitPayload = !tenantRevenueSharingEnabled && commercePaymongoSplitEnabled ? {
                 transfer_to: account.provider_merchant_id,
                 recipients: [{
                     merchant_id: process.env.PAYMONGO_DGFY_MERCHANT_ID,
@@ -2492,15 +2553,28 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                     value: platformFeeCentavos
                 }]
             } : null;
-            const feePolicy = {
-                dgfy_fee_basis: 'subtotal',
-                dgfy_fee_rate: '0.01',
-                dgfy_fee_charged_to: 'customer',
-                provider_fee_shoulder: 'tenant_company',
-                provider_fee_customer_passthrough: false,
-                refund_policy: 'full_refund_reverses_dgfy_and_tenant_shares',
-                gross_sales_visibility: ['gross_sales', 'net_sales']
-            };
+            const feePolicy = tenantRevenueSharingEnabled
+                ? {
+                    collection_model: 'dgfy_collects_then_settles_tenant',
+                    split_payment_used: false,
+                    tenant_revenue_policy_id: revenuePolicy.policy_id,
+                    tenant_revenue_policy_version: revenuePolicy.version,
+                    dgfy_fee_basis: 'provider_gross',
+                    dgfy_fee_rate_bps: revenuePolicy.dgfy_rate_bps,
+                    dgfy_fee_charged_to: 'tenant',
+                    provider_fee_shoulder: revenuePolicy.provider_fee_payer,
+                    provider_fee_customer_passthrough: false,
+                    settlement_cycle_days: Number(revenuePolicy.settlement_cycle_days)
+                }
+                : {
+                    dgfy_fee_basis: 'subtotal',
+                    dgfy_fee_rate: '0.01',
+                    dgfy_fee_charged_to: 'customer',
+                    provider_fee_shoulder: 'tenant_company',
+                    provider_fee_customer_passthrough: false,
+                    refund_policy: 'full_refund_reverses_dgfy_and_tenant_shares',
+                    gross_sales_visibility: ['gross_sales', 'net_sales']
+                };
 
             const session = await commercePaymentRepository.createSession({
                 public_reference: publicReference,
@@ -2520,7 +2594,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                 total_amount_centavos: totalAmountCentavos,
                 platform_fee_centavos: platformFeeCentavos,
                 fee_policy: feePolicy,
-                tenant_transfer_merchant_id: account.provider_merchant_id,
+                tenant_transfer_merchant_id: tenantRevenueSharingEnabled ? null : account.provider_merchant_id,
                 split_payload: splitPayload
             });
 
@@ -2542,7 +2616,9 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                         platform_fee_centavos: String(platformFeeCentavos),
                         dgfy_fee_basis: feePolicy.dgfy_fee_basis,
                         dgfy_fee_charged_to: feePolicy.dgfy_fee_charged_to,
-                        provider_fee_shoulder: feePolicy.provider_fee_shoulder
+                        provider_fee_shoulder: feePolicy.provider_fee_shoulder,
+                        collection_model: feePolicy.collection_model || 'paymongo_split',
+                        tenant_revenue_policy_version: String(feePolicy.tenant_revenue_policy_version || '')
                     },
                     splitPayment: splitPayload,
                     returnUrl: trustedReturnUrl || process.env.STOREFRONT_PAYMENT_RETURN_URL || null
@@ -2590,6 +2666,91 @@ export const buildGetStoreCheckoutPaymentSessionUseCase = ({ commercePaymentRepo
             return ok({ payment_session: serializePaymentSession(session) });
         } catch (error) {
             return fail(mapStoreUseCaseError(error, 'Failed to load QR Ph payment session'));
+        }
+    };
+};
+
+const isLoopbackAddress = (value) => {
+    const address = String(value || '').trim().toLowerCase();
+    return address === '127.0.0.1'
+        || address === '::1'
+        || address === '::ffff:127.0.0.1';
+};
+
+export const buildConfirmStoreCheckoutSandboxPaymentUseCase = ({
+    commercePaymentRepository,
+    paymongoService
+}) => {
+    return async ({ paymentSessionId, remoteAddress }) => {
+        try {
+            if (
+                process.env.PAYMONGO_MODE === 'live'
+                || process.env.NODE_ENV === 'production'
+                || !isLoopbackAddress(remoteAddress)
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'Sandbox payment confirmation is not available.',
+                    { statusCode: 404 }
+                );
+            }
+
+            const reference = String(paymentSessionId || '').trim().toUpperCase();
+            if (!/^CPS-[A-Z0-9]{10}$/.test(reference)) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Invalid payment session reference', { statusCode: 422 });
+            }
+
+            const tenantContext = dbStore.getStore() || {};
+            const tenantId = normalizeTenantIdentifier(tenantContext.tenantId);
+            const session = await commercePaymentRepository.findSessionByPublicReference(reference);
+            if (!session || normalizeTenantIdentifier(session.tenant_id) !== tenantId) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
+            }
+            if (session.status === 'finalized') {
+                return ok({
+                    confirmation_requested: false,
+                    idempotent_replay: true,
+                    payment_session: serializePaymentSession(session)
+                });
+            }
+            if (session.status !== 'awaiting_payment') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    `Payment session cannot be confirmed while ${String(session.status || 'unknown').replaceAll('_', ' ')}.`,
+                    { statusCode: 409 }
+                );
+            }
+            if (!session.provider_payment_intent_id) {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Payment session has no PayMongo payment intent.', { statusCode: 409 });
+            }
+            if (session.expires_at && new Date(session.expires_at).getTime() <= Date.now()) {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'The PayMongo QR Ph payment has expired.', { statusCode: 409 });
+            }
+
+            const providerResult = await paymongoService.confirmSandboxQrphPayment({
+                paymentIntentId: session.provider_payment_intent_id,
+                expectedAmount: session.total_amount_centavos,
+                expectedCurrency: session.currency || 'PHP'
+            });
+            const providerAttributes = providerResult.paymentIntent?.attributes || {};
+            if (
+                Number(providerAttributes.amount) !== Number(session.total_amount_centavos)
+                || String(providerAttributes.currency || '').toUpperCase() !== String(session.currency || 'PHP').toUpperCase()
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'PayMongo sandbox payment amount or currency does not match this checkout.',
+                    { statusCode: 409 }
+                );
+            }
+
+            return ok({
+                confirmation_requested: true,
+                idempotent_replay: false,
+                payment_session: serializePaymentSession(session)
+            });
+        } catch (error) {
+            return fail(mapStoreUseCaseError(error, 'Failed to confirm PayMongo sandbox payment'));
         }
     };
 };

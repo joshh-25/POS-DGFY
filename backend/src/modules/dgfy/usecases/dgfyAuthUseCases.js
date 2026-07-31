@@ -1584,7 +1584,15 @@ export const buildStartDgfyPosSessionUseCase = ({
                 tenantId: resolvedTenantId,
                 status: 'accepted'
             });
-            if (!membership || !membership.tenant || membership.tenant.status !== 'active') {
+            const membershipStatus = String(membership?.status || '').trim().toLowerCase();
+            const membershipTenantId = String(membership?.tenant_id || membership?.tenant?.id || '').trim();
+            const tenantStatus = String(membership?.tenant?.status || '').trim().toLowerCase();
+            if (
+                !membership
+                || membershipStatus !== 'accepted'
+                || membershipTenantId !== resolvedTenantId
+                || tenantStatus !== 'active'
+            ) {
                 throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'No active company membership is available for this DGFY account.', { statusCode: 403 });
             }
             await repository.createBusinessAuditLog?.(buildBusinessAuditPayload({
@@ -1599,7 +1607,25 @@ export const buildStartDgfyPosSessionUseCase = ({
             account,
             tenantId: resolvedTenantId
         });
+        if (String(session?.company?.id || '').trim() !== resolvedTenantId) {
+            throw new DomainError(
+                DomainErrorCode.AUTHORIZATION_FAILED,
+                'The authenticated tenant session does not match the selected company.',
+                { statusCode: 403 }
+            );
+        }
         const permissions = Array.isArray(session?.permissions) ? session.permissions : [];
+        const userRole = String(session?.role || '').trim().toLowerCase();
+        const hasAllowedPosRole = session?.is_master_admin === true
+            || userRole === 'cashier'
+            || userRole === 'admin';
+        if (!hasAllowedPosRole) {
+            throw new DomainError(
+                DomainErrorCode.AUTHORIZATION_FAILED,
+                'An active Cashier or Admin role is required for POS access in the selected company.',
+                { statusCode: 403 }
+            );
+        }
         if (!permissions.includes('pos:view') && !permissions.includes('pos:transact')) {
             throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, 'This DGFY account does not have POS access for the selected company.', { statusCode: 403 });
         }
@@ -1608,7 +1634,7 @@ export const buildStartDgfyPosSessionUseCase = ({
                 tenantId: resolvedTenantId,
                 terminalId,
                 tenantUserId: membership?.tenant_user_id || session?.user_id || null,
-                userRole: session?.role || membership?.role || '',
+                userRole,
                 permissions,
                 isMasterAdmin: session?.is_master_admin === true
             })

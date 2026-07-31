@@ -30,7 +30,7 @@ export const resolveSentryConfig = (env = process.env) => {
 
 export const redactSensitiveData = (value) => {
   if (!value || typeof value !== 'object') return value;
-  const sensitiveKeyPattern = /(authorization|cookie|token|secret|password|otp|email|phone|companytoken|company_token|auth|session)/i;
+  const sensitiveKeyPattern = /(authorization|cookie|token|secret|password|pin|otp|email|phone|companytoken|company_token|auth|session)/i;
 
   if (Array.isArray(value)) {
     return value.map((entry) => redactSensitiveData(entry));

@@ -2,11 +2,14 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
-import { getAdminCredentials } from '../../../config/adminAuthConfig.js';
+import {
+  ADMIN_FINANCIAL_ROLES,
+  getAdminAccounts
+} from '../../../config/adminAuthConfig.js';
 
 export const buildAdminLoginUseCase = ({
   jwtSecretProvider,
-  adminCredentialsProvider = getAdminCredentials,
+  adminCredentialsProvider = getAdminAccounts,
   lockoutPolicy = null
 }) => {
   return async ({ username, password, sourceIp = 'unknown-ip' }) => {
@@ -17,9 +20,19 @@ export const buildAdminLoginUseCase = ({
       ));
     }
 
-    const { username: configuredUsername, passwordHash } = adminCredentialsProvider();
+    const configuredValue = adminCredentialsProvider();
+    const configuredAccounts = (Array.isArray(configuredValue) ? configuredValue : [configuredValue])
+      .map((account) => ({
+        username: String(account?.username || '').trim(),
+        passwordHash: String(account?.passwordHash || account?.password_hash || '').trim(),
+        financialRole: String(
+          account?.financialRole
+          || account?.financial_role
+          || ADMIN_FINANCIAL_ROLES.PLATFORM_ADMIN
+        ).trim().toLowerCase()
+      }))
+      .filter((account) => account.username && account.passwordHash);
     const normalizedInputUsername = String(username).trim();
-    const normalizedConfiguredUsername = String(configuredUsername).trim();
     const identityKey = `${normalizedInputUsername.toLowerCase()}|${String(sourceIp || 'unknown-ip').trim()}`;
 
     const lockState = await lockoutPolicy?.check?.(identityKey);
@@ -36,10 +49,15 @@ export const buildAdminLoginUseCase = ({
       ));
     }
 
-    const usernameMatches = normalizedInputUsername === normalizedConfiguredUsername;
-    const passwordMatches = await bcrypt.compare(String(password), passwordHash);
+    const configuredAccount = configuredAccounts.find(
+      (account) => account.username.toLowerCase() === normalizedInputUsername.toLowerCase()
+    );
+    const comparisonHash = configuredAccount?.passwordHash || configuredAccounts[0]?.passwordHash;
+    const passwordMatches = comparisonHash
+      ? await bcrypt.compare(String(password), comparisonHash)
+      : false;
 
-    if (!usernameMatches || !passwordMatches) {
+    if (!configuredAccount || !passwordMatches) {
       await lockoutPolicy?.registerFailure?.(identityKey);
       return fail(new DomainError(
         DomainErrorCode.AUTHENTICATION_FAILED,
@@ -52,9 +70,10 @@ export const buildAdminLoginUseCase = ({
     try {
       const token = jwt.sign(
         {
-          username: normalizedConfiguredUsername,
+          username: configuredAccount.username,
           role: 'admin',
-          type: 'admin'
+          type: 'admin',
+          financial_role: configuredAccount.financialRole
         },
         jwtSecretProvider(),
         { expiresIn: '8h' }
@@ -62,7 +81,10 @@ export const buildAdminLoginUseCase = ({
 
       return ok({
         token,
-        admin: { username: normalizedConfiguredUsername }
+        admin: {
+          username: configuredAccount.username,
+          financial_role: configuredAccount.financialRole
+        }
       });
     } catch (error) {
       return fail(new DomainError(

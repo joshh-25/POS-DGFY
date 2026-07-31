@@ -1631,6 +1631,7 @@ describe('dgfyAuthUseCases', () => {
         };
         const createTenantSessionForDgfyAccount = jest.fn().mockResolvedValue({
             user_id: 8,
+            role: 'cashier',
             permissions: ['pos:view'],
             company: { id: 'tenant-pos', token: 'secret-pos-token' }
         });
@@ -1665,7 +1666,7 @@ describe('dgfyAuthUseCases', () => {
             tenantId: 'tenant-pos',
             terminalId: 'COUNTER-01',
             tenantUserId: 8,
-            userRole: '',
+            userRole: 'cashier',
             isMasterAdmin: false,
             permissions: ['pos:view']
         });
@@ -1712,6 +1713,7 @@ describe('dgfyAuthUseCases', () => {
         const useCase = buildStartDgfyPosSessionUseCase({
             repository,
             createTenantSessionForDgfyAccount: jest.fn().mockResolvedValue({
+                role: 'cashier',
                 permissions: ['pos:view'],
                 company: { id: 'tenant-pos', token: 'secret-pos-token' }
             }),
@@ -1755,6 +1757,7 @@ describe('dgfyAuthUseCases', () => {
         const useCase = buildStartDgfyPosSessionUseCase({
             repository,
             createTenantSessionForDgfyAccount: jest.fn().mockResolvedValue({
+                role: 'cashier',
                 permissions: ['items:view'],
                 company: { id: 'tenant-pos', token: 'secret-pos-token' }
             }),
@@ -1776,6 +1779,215 @@ describe('dgfyAuthUseCases', () => {
             reason: 'This DGFY account does not have POS access for the selected company.',
             request_id: 'req-pos-denied'
         }));
+    });
+
+    it('allows an active company admin with POS permission to start a POS session', async () => {
+        const account = createAccount({ id: 'dgfy-pos-admin' });
+        const membership = {
+            id: 54,
+            tenant_id: 'tenant-pos',
+            tenant_user_id: 9,
+            status: 'accepted',
+            tenant: { id: 'tenant-pos', status: 'active' }
+        };
+        const validateTerminalPolicy = jest.fn().mockResolvedValue({
+            terminal_id: 'COUNTER-01',
+            reason_code: 'ALLOWED'
+        });
+        const useCase = buildStartDgfyPosSessionUseCase({
+            repository: {
+                findMembershipForAccount: jest.fn().mockResolvedValue(membership),
+                createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+            },
+            createTenantSessionForDgfyAccount: jest.fn().mockResolvedValue({
+                user_id: 9,
+                role: 'admin',
+                permissions: ['pos:transact'],
+                company: { id: 'tenant-pos', token: 'secret-pos-token' }
+            }),
+            validateTerminalPolicy
+        });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-pos',
+            body: { terminal_id: 'counter-01' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(validateTerminalPolicy).toHaveBeenCalledWith(expect.objectContaining({
+            tenantUserId: 9,
+            userRole: 'admin',
+            permissions: ['pos:transact']
+        }));
+    });
+
+    it('allows a cashier membership backed by a master-admin tenant session', async () => {
+        const account = createAccount({ id: 'dgfy-pos-dual-role' });
+        const validateTerminalPolicy = jest.fn().mockResolvedValue({
+            terminal_id: 'COUNTER-01',
+            reason_code: 'ALLOWED'
+        });
+        const useCase = buildStartDgfyPosSessionUseCase({
+            repository: {
+                findMembershipForAccount: jest.fn().mockResolvedValue({
+                    id: 55,
+                    tenant_id: 'tenant-pos',
+                    tenant_user_id: 10,
+                    role: 'cashier',
+                    status: 'accepted',
+                    tenant: { id: 'tenant-pos', status: 'active' }
+                }),
+                createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+            },
+            createTenantSessionForDgfyAccount: jest.fn().mockResolvedValue({
+                user_id: 10,
+                role: 'cashier',
+                is_master_admin: true,
+                permissions: ['pos:view', 'pos:transact'],
+                company: { id: 'tenant-pos', token: 'secret-pos-token' }
+            }),
+            validateTerminalPolicy
+        });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-pos',
+            body: { terminal_id: 'COUNTER-01' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(validateTerminalPolicy).toHaveBeenCalledWith(expect.objectContaining({
+            userRole: 'cashier',
+            isMasterAdmin: true
+        }));
+    });
+
+    it('rejects a POS permission when the authoritative tenant role is not Cashier or Admin', async () => {
+        const account = createAccount({ id: 'dgfy-pos-wrong-role' });
+        const validateTerminalPolicy = jest.fn();
+        const useCase = buildStartDgfyPosSessionUseCase({
+            repository: {
+                findMembershipForAccount: jest.fn().mockResolvedValue({
+                    id: 56,
+                    tenant_id: 'tenant-pos',
+                    tenant_user_id: 11,
+                    status: 'accepted',
+                    tenant: { id: 'tenant-pos', status: 'active' }
+                }),
+                createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+            },
+            createTenantSessionForDgfyAccount: jest.fn().mockResolvedValue({
+                user_id: 11,
+                role: 'staff',
+                permissions: ['pos:view'],
+                company: { id: 'tenant-pos', token: 'secret-pos-token' }
+            }),
+            validateTerminalPolicy
+        });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-pos',
+            body: { terminal_id: 'COUNTER-01' }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(403);
+        expect(result.error.message).toBe('An active Cashier or Admin role is required for POS access in the selected company.');
+        expect(validateTerminalPolicy).not.toHaveBeenCalled();
+    });
+
+    it('rejects POS access for a company without an accepted active membership', async () => {
+        const account = createAccount({ id: 'dgfy-pos-wrong-company' });
+        const createTenantSessionForDgfyAccount = jest.fn();
+        const repository = {
+            findMembershipForAccount: jest.fn().mockResolvedValue(null),
+            createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+        };
+        const useCase = buildStartDgfyPosSessionUseCase({
+            repository,
+            createTenantSessionForDgfyAccount,
+            validateTerminalPolicy: jest.fn()
+        });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-not-assigned',
+            body: { terminal_id: 'COUNTER-01' }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(403);
+        expect(createTenantSessionForDgfyAccount).not.toHaveBeenCalled();
+        expect(repository.findMembershipForAccount).toHaveBeenCalledWith({
+            dgfyAccountId: account.id,
+            tenantId: 'tenant-not-assigned',
+            status: 'accepted'
+        });
+    });
+
+    it('rejects POS access when the selected company membership is inactive', async () => {
+        const account = createAccount({ id: 'dgfy-pos-inactive-membership' });
+        const createTenantSessionForDgfyAccount = jest.fn();
+        const useCase = buildStartDgfyPosSessionUseCase({
+            repository: {
+                findMembershipForAccount: jest.fn().mockResolvedValue({
+                    id: 57,
+                    tenant_id: 'tenant-pos',
+                    status: 'inactive',
+                    tenant: { id: 'tenant-pos', status: 'active' }
+                }),
+                createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+            },
+            createTenantSessionForDgfyAccount,
+            validateTerminalPolicy: jest.fn()
+        });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-pos',
+            body: { terminal_id: 'COUNTER-01' }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(403);
+        expect(createTenantSessionForDgfyAccount).not.toHaveBeenCalled();
+    });
+
+    it('rejects a tenant session that resolves to a different company', async () => {
+        const account = createAccount({ id: 'dgfy-pos-session-company-mismatch' });
+        const validateTerminalPolicy = jest.fn();
+        const useCase = buildStartDgfyPosSessionUseCase({
+            repository: {
+                findMembershipForAccount: jest.fn().mockResolvedValue({
+                    id: 58,
+                    tenant_id: 'tenant-pos',
+                    tenant_user_id: 12,
+                    status: 'accepted',
+                    tenant: { id: 'tenant-pos', status: 'active' }
+                }),
+                createBusinessAuditLog: jest.fn().mockResolvedValue(null)
+            },
+            createTenantSessionForDgfyAccount: jest.fn().mockResolvedValue({
+                user_id: 12,
+                role: 'cashier',
+                permissions: ['pos:view'],
+                company: { id: 'another-tenant', token: 'wrong-company-token' }
+            }),
+            validateTerminalPolicy
+        });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-pos',
+            body: { terminal_id: 'COUNTER-01' }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(403);
+        expect(result.error.message).toBe('The authenticated tenant session does not match the selected company.');
+        expect(validateTerminalPolicy).not.toHaveBeenCalled();
     });
 
     it('transfers ownership only from the current owner to an accepted member', async () => {

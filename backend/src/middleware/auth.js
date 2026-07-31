@@ -6,6 +6,9 @@ import { paymentsEnabled } from '../config/paymentsFeature.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import { isPhoneCompletionEnforcedForTenant } from '../config/phoneCompletionRollout.js';
 import { resolveEffectivePermissions } from '../utils/userPermissions.js';
+import {
+  ADMIN_FINANCIAL_ROLES
+} from '../config/adminAuthConfig.js';
 
 // Short-lived in-memory cache to avoid a DB round-trip on every authenticated request.
 // The JWT is cryptographically verified before the cache is consulted, so this is safe.
@@ -521,13 +524,42 @@ export const authenticateAdmin = async (req, res, next) => {
     // Attach admin info to request
     req.admin = {
       username: decoded.username,
-      role: decoded.role
+      role: decoded.role,
+      financial_role: decoded.financial_role || ADMIN_FINANCIAL_ROLES.PLATFORM_ADMIN
     };
 
     next();
   } catch (error) {
     next(error);
   }
+};
+
+export const authorizeAdminFinancialRoles = (...allowedRoles) => {
+  const allowed = new Set(allowedRoles.flat().filter(Boolean));
+  return (req, res, next) => {
+    if (!req.admin) {
+      return res.status(401).json({
+        success: false,
+        message: 'Admin authentication required'
+      });
+    }
+
+    const financialRole = String(
+      req.admin.financial_role || ADMIN_FINANCIAL_ROLES.PLATFORM_ADMIN
+    ).trim().toLowerCase();
+    if (
+      financialRole === ADMIN_FINANCIAL_ROLES.PLATFORM_ADMIN
+      || allowed.has(financialRole)
+    ) {
+      return next();
+    }
+
+    return res.status(403).json({
+      success: false,
+      message: 'This financial action requires an authorized finance role.',
+      required_financial_roles: [...allowed]
+    });
+  };
 };
 
 /**

@@ -170,7 +170,7 @@ describe('POS checkout F&B contracts', () => {
     it('sells a direct always-available item at zero stock without creating inventory movement', async () => {
         let createdTransaction = null;
         const posRepository = {
-            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({ mode: 'warn', active_registry: [] }),
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
             findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
             findSellableItemsByIds: jest.fn().mockResolvedValue([{
                 item_id: 1,
@@ -319,7 +319,7 @@ describe('POS checkout F&B contracts', () => {
             }
         }));
 
-        expect(result.success).toBe(true);
+        expect(result).toMatchObject({ success: true });
         expect(createdTransaction).toEqual(expect.objectContaining({
             document_type: 'fiscal_invoice',
             document_context: 'fiscal',
@@ -425,6 +425,7 @@ describe('POS checkout F&B contracts', () => {
                 buyer_address: null,
                 special_instructions: null,
                 discount_beneficiary: null,
+                governed_discount: null,
                 lines: [{
                     sequence: 0,
                     item_id: 1,
