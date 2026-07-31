@@ -24,6 +24,19 @@ export const CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES = 100 * 1024 * 1024;
 export const BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES = 10 * 1024 * 1024;
 export const BULK_CATALOG_IMAGE_TRANSPORT_MAX_FILES = 50;
 
+// Multipart callbacks may complete outside the authenticated request's async
+// context. Restore that tenant context before invoking downstream handlers.
+export const preserveTenantContext = (multipartMiddleware) => (req, res, next) => {
+    const tenantContext = dbStore.getStore();
+    if (!tenantContext) {
+        return multipartMiddleware(req, res, next);
+    }
+
+    return dbStore.run(tenantContext, () => multipartMiddleware(req, res, (error) => (
+        dbStore.run(tenantContext, () => next(error))
+    )));
+};
+
 // Configure storage
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
