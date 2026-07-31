@@ -6,6 +6,8 @@ import { ANALYTICS_EVENTS, trackFunnelEvent } from '../observability/analyticsEv
 let dgfyToken = '';
 let dgfyAccount = null;
 const DGFY_EXPLICIT_SIGN_OUT_KEY = 'dgfy_customer_explicit_sign_out';
+// Mirrors SESSION_COOKIE_NAMES.csrf in backend/src/utils/browserSessionCookies.js.
+const DGFY_SESSION_HINT_COOKIE = 'sku_csrf_token';
 
 const dgfyRequestConfig = (token = getStoredDgfyToken()) => {
   const normalizedToken = String(token || '').trim();
@@ -158,6 +160,35 @@ export const hasDgfyExplicitSignOut = () => {
     return Boolean(window.sessionStorage.getItem(DGFY_EXPLICIT_SIGN_OUT_KEY));
   } catch {
     return false;
+  }
+};
+
+// Cheap client-side "is a session plausibly present?" probe.
+//
+// The session cookies themselves are httpOnly and unreadable here, but the
+// backend issues `sku_csrf_token` with httpOnly:false alongside every one of
+// them (see backend/src/utils/browserSessionCookies.js issueCsrfToken), and
+// clears it in clearAllSessionCookies. So its presence is a reliable-enough
+// signal to decide whether an auth probe is worth sending at all.
+//
+// This is deliberately a HINT, not proof: it can be present without a valid
+// session (cookie outlived the session) or absent with one (cleared
+// separately). Callers must still handle a failing probe normally -- the only
+// thing this buys is skipping a request that would otherwise return 401 and
+// print an unsuppressable "Failed to load resource: 401" in the browser
+// console on every anonymous page load. That console line is emitted by the
+// network layer before any JS runs, so it cannot be caught or silenced; not
+// sending the request is the only way to avoid it.
+export const hasDgfyBrowserSessionHint = () => {
+  if (typeof document === 'undefined') return false;
+  try {
+    return document.cookie
+      .split(';')
+      .some((entry) => entry.trim().startsWith(`${DGFY_SESSION_HINT_COOKIE}=`));
+  } catch {
+    // Treat an unreadable cookie jar as "might have a session" so the probe
+    // still runs -- failing open keeps real sessions working.
+    return true;
   }
 };
 

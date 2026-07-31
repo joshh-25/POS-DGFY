@@ -19,4 +19,4 @@ Safety invariants:
 - automatic payout remains fail-closed without external approval and an approved adapter;
 - PayMongo split mode and tenant revenue sharing cannot be enabled together.
 
-Authoritative design: `docs/architecture/adr/0040-tenant-revenue-collection-ledger-and-settlement.md`.
+Authoritative design: `docs/architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md`.

@@ -530,6 +530,11 @@ export function FnbCheckoutRouteContainer({
                     )}
                   />
             </FnbCheckoutExpandedMapModal>
+            <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+              Special Instructions (optional)
+              <textarea value={fnbSpecialInstructions} onChange={(event) => setFnbSpecialInstructions(event.target.value.slice(0, 250))} placeholder="Ex. Less ice, no onions, gate color and unit number." rows={3} style={{ minHeight: 96, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical', boxSizing: 'border-box' }} />
+              <span style={{ justifySelf: 'end', fontSize: 12, color: '#94a3b8' }}>{Math.min(String(fnbSpecialInstructions || '').length, 250)}/250</span>
+            </label>
             {!isFnbOrderResponsiveFlow && (
               <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12, marginTop: 4 }}>
                 <button type="button" onClick={() => setFnbOrderStep(3)} style={{ minHeight: 50, borderRadius: 14, border: '1px solid #dbe5ee', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15, fontFamily: servicesBodyFont }}><ArrowLeft size={17} strokeWidth={2.5} />Back</button>
@@ -613,8 +618,6 @@ export function FnbCheckoutRouteContainer({
             mutedTextColor={fnbOrderMutedBlueText}
             onBack={goStoreCatalogPage}
             onContinue={() => setFnbOrderStep(2)}
-            onSpecialInstructionsChange={setFnbSpecialInstructions}
-            specialInstructions={fnbSpecialInstructions}
           />
           ) : renderGuestCheckoutEntry({
             title: 'Continue to your order',
@@ -662,11 +665,19 @@ export function FnbCheckoutRouteContainer({
           <FnbCheckoutPaymentStep
             brandColor={fnbOrderBrand}
             canSubmit={checkoutAllowed && !qrphPaymentSession}
+            cart={cart}
+            cartImageErrors={cartImageErrors}
             checkoutError={checkoutError}
             closedNotice={storefrontClosedByHours ? renderStorefrontClosedNotice({ accent: fnbOrderBrand, background: '#fff7ed', border: '#fdba74' }) : null}
             isMobileViewport={isMobileViewport}
             isResponsive={isFnbOrderResponsiveFlow}
+            money={money}
             onBack={() => setFnbOrderStep(2)}
+            onImageError={(itemId) => {
+              const normalizedLineItemId = Number(itemId);
+              if (!Number.isFinite(normalizedLineItemId)) return;
+              setCartImageErrors((previous) => new Set([...previous, normalizedLineItemId]));
+            }}
             onSubmit={handleCheckout}
             paymentControl={(
               <div style={{ display: 'grid', gap: 12 }}>
@@ -741,8 +752,6 @@ export function FnbCheckoutRouteContainer({
           cartImageErrors={cartImageErrors}
           checkoutAllowed={checkoutAllowed}
           checkoutLoading={checkoutLoading}
-          checkoutPrimaryLabel={fnbPaymentType === 'qrph' ? 'Generate QR Ph' : 'Place Order'}
-          checkoutPrimaryLocked={Boolean(qrphPaymentSession)}
           fnbCustomerStepComplete={fnbCustomerStepComplete}
           fnbFulfillmentStepComplete={fnbFulfillmentStepComplete}
           itemCountLabel={fnbMobileSummaryItemCountLabel}

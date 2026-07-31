@@ -1,8 +1,12 @@
 ---
 status: accepted
+authority_level: authoritative
+owner: architecture
 date: 2026-07-25
 last_reviewed: 2026-07-27
-classification: authoritative
+review_by: 2027-01-25
+applies_to: architecture_decision
+topic: external_barcode_product_registry_lookup
 ---
 
 # ADR 0038: External Barcode Product Registry Lookup

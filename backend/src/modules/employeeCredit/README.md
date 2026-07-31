@@ -18,4 +18,4 @@ Flow:
 - The legacy authorization hash column remains unused for schema compatibility and is never returned by an API.
 - Employee Credit is online-only, excluded from cashflow, and unavailable to Storefront checkout.
 
-See `docs/architecture/adr/0039-pos-employee-credit-tender-and-ledger.md`.
+See `docs/architecture/adr/0051-pos-employee-credit-tender-and-ledger.md`.

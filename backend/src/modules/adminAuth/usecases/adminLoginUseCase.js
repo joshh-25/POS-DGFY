@@ -10,9 +10,10 @@ import {
 export const buildAdminLoginUseCase = ({
   jwtSecretProvider,
   adminCredentialsProvider = getAdminAccounts,
-  lockoutPolicy = null
+  lockoutPolicy = null,
+  platformAdminRepository = null
 }) => {
-  return async ({ username, password, sourceIp = 'unknown-ip' }) => {
+  return async ({ username, password, sourceIp = 'unknown-ip', userAgent = '' }) => {
     if (!username || !password) {
       return fail(new DomainError(
         DomainErrorCode.VALIDATION_FAILED,
@@ -32,7 +33,12 @@ export const buildAdminLoginUseCase = ({
         ).trim().toLowerCase()
       }))
       .filter((account) => account.username && account.passwordHash);
+    const bootstrapAccount = configuredAccounts[0];
     const normalizedInputUsername = String(username).trim();
+    const configuredAccount = configuredAccounts.find(
+      (account) => account.username.toLowerCase() === normalizedInputUsername.toLowerCase()
+    );
+    const normalizedBootstrapUsername = String(bootstrapAccount?.username || '').trim();
     const identityKey = `${normalizedInputUsername.toLowerCase()}|${String(sourceIp || 'unknown-ip').trim()}`;
 
     const lockState = await lockoutPolicy?.check?.(identityKey);
@@ -49,15 +55,40 @@ export const buildAdminLoginUseCase = ({
       ));
     }
 
-    const configuredAccount = configuredAccounts.find(
-      (account) => account.username.toLowerCase() === normalizedInputUsername.toLowerCase()
-    );
-    const comparisonHash = configuredAccount?.passwordHash || configuredAccounts[0]?.passwordHash;
-    const passwordMatches = comparisonHash
-      ? await bcrypt.compare(String(password), comparisonHash)
+    const bootstrapUsernameMatches = normalizedInputUsername.toLowerCase() === normalizedBootstrapUsername.toLowerCase();
+    const configuredPasswordMatches = configuredAccount
+      ? await bcrypt.compare(String(password), configuredAccount.passwordHash)
       : false;
+    let platformUser = null;
+    if (platformAdminRepository) {
+      // Never reconcile the bootstrap identity from an unauthenticated request.
+      // A changed environment hash is applied only after the caller proves they
+      // know the configured bootstrap password.
+      platformUser = bootstrapUsernameMatches
+        ? (configuredPasswordMatches
+          ? await platformAdminRepository.ensureBootstrapMaster({
+            username: normalizedBootstrapUsername,
+            passwordHash: bootstrapAccount.passwordHash
+          })
+          : null)
+        : await platformAdminRepository.findActiveByUsername(normalizedInputUsername);
+    }
+    // Always compare a bcrypt hash, including unknown users, to avoid an observable
+    // user-existence timing oracle. The configured master hash is safe as a fallback.
+    const passwordMatches = !platformAdminRepository
+      ? configuredPasswordMatches
+      : bootstrapUsernameMatches
+        ? configuredPasswordMatches
+        : await bcrypt.compare(
+          String(password),
+          platformUser?.password_hash || bootstrapAccount?.passwordHash
+        );
 
-    if (!configuredAccount || !passwordMatches) {
+    if (
+      (!platformAdminRepository && !configuredAccount)
+      || !passwordMatches
+      || (platformAdminRepository && !platformUser)
+    ) {
       await lockoutPolicy?.registerFailure?.(identityKey);
       return fail(new DomainError(
         DomainErrorCode.AUTHENTICATION_FAILED,
@@ -68,23 +99,41 @@ export const buildAdminLoginUseCase = ({
     await lockoutPolicy?.clear?.(identityKey);
 
     try {
-      const token = jwt.sign(
-        {
-          username: configuredAccount.username,
-          role: 'admin',
-          type: 'admin',
-          financial_role: configuredAccount.financialRole
-        },
+      const session = platformAdminRepository
+        ? await platformAdminRepository.createSession({ user: platformUser, sourceIp, userAgent })
+        : null;
+      const token = jwt.sign(platformAdminRepository ? {
+        admin_id: platformUser.id,
+        session_id: session.id,
+        auth_version: platformUser.auth_version,
+        type: 'platform_admin'
+      } : {
+        username: configuredAccount.username,
+        role: 'admin',
+        type: 'admin',
+        financial_role: configuredAccount.financialRole
+      },
         jwtSecretProvider(),
         { expiresIn: '8h' }
       );
 
+      const permissions = platformAdminRepository && !platformUser.is_master
+        ? await platformAdminRepository.listPermissionKeys(platformUser.id)
+        : [];
       return ok({
         token,
-        admin: {
-          username: configuredAccount.username,
-          financial_role: configuredAccount.financialRole
-        }
+        admin: platformAdminRepository
+          ? {
+            ...platformAdminRepository.publicUser(platformUser, permissions),
+            financial_role: configuredAccount?.financialRole
+              || (platformUser.is_master
+                ? ADMIN_FINANCIAL_ROLES.PLATFORM_ADMIN
+                : ADMIN_FINANCIAL_ROLES.FINANCE_VIEWER)
+          }
+          : {
+            username: configuredAccount.username,
+            financial_role: configuredAccount.financialRole
+          }
       });
     } catch (error) {
       return fail(new DomainError(

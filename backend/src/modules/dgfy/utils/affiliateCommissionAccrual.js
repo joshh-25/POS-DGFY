@@ -9,8 +9,10 @@ const roundBpsAmount = (baseCentavos, rateBps) => (
 
 // Shared rate resolution: enrollment-level override, else the tenant's configured default, else the
 // hardcoded fallback. Used by both the in-store and online accrual paths so a rate change in either
-// place can never drift between channels.
-const resolveCommissionRateBps = (enrollment, settings) => (
+// place can never drift between channels. Exported so storeUseCases.js (Phase 1 affiliate pricing
+// rule engine) can resolve the same rate for a buyer-facing preview and pass it through via
+// resolvedCommission, rather than re-deriving a potentially different value.
+export const resolveCommissionRateBps = (enrollment, settings) => (
     Number.isInteger(enrollment?.commission_rate_bps)
         ? enrollment.commission_rate_bps
         : (Number.isInteger(settings?.default_rate_bps) ? settings.default_rate_bps : DEFAULT_RATE_BPS)
@@ -48,6 +50,19 @@ export const accrueEarnedForInStoreSale = async ({
     commissionableBaseCentavos,
     buyerDgfyAccountId = null,
     storeSlug = null,
+    // Phase 1 affiliate pricing rule engine override (see
+    // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md). When provided, bypasses the
+    // internal rate-resolution ladder entirely: { rateBps, amountCentavos } are used as-is. This
+    // exists because NONE and RESELLER_MARGIN commission types don't fit the
+    // bps-of-commissionableBase formula below (NONE always earns 0 regardless of rate;
+    // RESELLER_MARGIN's amount is a price gap, not a percentage) - the caller (storeUseCases.js)
+    // pre-resolves the correct amount via calculateAffiliateSale and hands it through here so this
+    // module doesn't need to know about selling-price rules at all. Omitted entirely by every
+    // existing caller (in-store POS), so default behavior is provably unchanged.
+    resolvedCommission = null,
+    // Optional Phase 1 snapshot fields, persisted alongside the commission row for audit/reporting.
+    // All default to null - a row accrued with no affiliate price rule attached leaves them NULL.
+    snapshot = null,
     repository = dgfyAffiliateRepository
 }) => {
     if (!tenantId || !enrollment || !orderReference) return null;
@@ -66,9 +81,13 @@ export const accrueEarnedForInStoreSale = async ({
     }
 
     const settings = await repository.getSettings(tenantId);
-    const rateBps = resolveCommissionRateBps(enrollment, settings);
     const baseCentavos = Math.max(0, Math.round(Number(commissionableBaseCentavos) || 0));
-    const amountCentavos = roundBpsAmount(baseCentavos, rateBps);
+    const rateBps = resolvedCommission
+        ? Math.max(0, Math.round(Number(resolvedCommission.rateBps) || 0))
+        : resolveCommissionRateBps(enrollment, settings);
+    const amountCentavos = resolvedCommission
+        ? Math.max(0, Math.round(Number(resolvedCommission.amountCentavos) || 0))
+        : roundBpsAmount(baseCentavos, rateBps);
 
     await repository.recordAttribution({
         tenantId,
@@ -87,7 +106,12 @@ export const accrueEarnedForInStoreSale = async ({
         commissionableBaseCentavos: baseCentavos,
         rateBpsSnapshot: rateBps,
         amountCentavos,
-        reason: 'in_store_sale'
+        reason: 'in_store_sale',
+        baseSubtotalCentavos: snapshot?.baseSubtotalCentavos ?? null,
+        buyerSubtotalCentavos: snapshot?.buyerSubtotalCentavos ?? null,
+        resellerMarginCentavos: snapshot?.resellerMarginCentavos ?? null,
+        priceRuleTypeSnapshot: snapshot?.priceRuleTypeSnapshot ?? null,
+        settlementPolicySnapshot: snapshot?.settlementPolicySnapshot ?? null
     });
 
     return commission;
@@ -135,6 +159,10 @@ export const accruePendingForOnlineOrder = async ({
     commissionableBaseCentavos,
     buyerDgfyAccountId = null,
     storeSlug = null,
+    // See accrueEarnedForInStoreSale's resolvedCommission/snapshot for the full rationale - same
+    // Phase 1 affiliate pricing rule engine override, mirrored here for the online path.
+    resolvedCommission = null,
+    snapshot = null,
     repository = dgfyAffiliateRepository
 }) => {
     if (!tenantId || !enrollment || !orderReference) return null;
@@ -151,9 +179,13 @@ export const accruePendingForOnlineOrder = async ({
     }
 
     const settings = await repository.getSettings(tenantId);
-    const rateBps = resolveCommissionRateBps(enrollment, settings);
     const baseCentavos = Math.max(0, Math.round(Number(commissionableBaseCentavos) || 0));
-    const amountCentavos = roundBpsAmount(baseCentavos, rateBps);
+    const rateBps = resolvedCommission
+        ? Math.max(0, Math.round(Number(resolvedCommission.rateBps) || 0))
+        : resolveCommissionRateBps(enrollment, settings);
+    const amountCentavos = resolvedCommission
+        ? Math.max(0, Math.round(Number(resolvedCommission.amountCentavos) || 0))
+        : roundBpsAmount(baseCentavos, rateBps);
 
     await repository.recordAttribution({
         tenantId,
@@ -171,7 +203,12 @@ export const accruePendingForOnlineOrder = async ({
         commissionableBaseCentavos: baseCentavos,
         rateBpsSnapshot: rateBps,
         amountCentavos,
-        reason: 'online_order'
+        reason: 'online_order',
+        baseSubtotalCentavos: snapshot?.baseSubtotalCentavos ?? null,
+        buyerSubtotalCentavos: snapshot?.buyerSubtotalCentavos ?? null,
+        resellerMarginCentavos: snapshot?.resellerMarginCentavos ?? null,
+        priceRuleTypeSnapshot: snapshot?.priceRuleTypeSnapshot ?? null,
+        settlementPolicySnapshot: snapshot?.settlementPolicySnapshot ?? null
     });
 
     return commission;
@@ -200,6 +237,7 @@ export const settleAffiliateCommissionForOrder = async ({
 export default {
     resolveActiveAffiliateEnrollment,
     resolveActiveAffiliateEnrollmentById,
+    resolveCommissionRateBps,
     accrueEarnedForInStoreSale,
     accruePendingForOnlineOrder,
     settleAffiliateCommissionForOrder,

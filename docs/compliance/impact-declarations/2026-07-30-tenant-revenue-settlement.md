@@ -2,7 +2,7 @@
 status: reference
 owner: engineering
 last_reviewed: 2026-07-30
-related_adr: docs/architecture/adr/0040-tenant-revenue-collection-ledger-and-settlement.md
+related_adr: docs/architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md
 declaration_id: 2026-07-30-tenant-revenue-settlement
 classification: regulatory
 surfaces: payments,storefront_catalog,admin,reports,tenant_financials,pos,terminal,settings,compliance

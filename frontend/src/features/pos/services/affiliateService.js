@@ -45,6 +45,26 @@ export const fetchAffiliateQrPayload = async (enrollmentId) => {
     return response.data?.data || null;
 };
 
+// Phase 1 affiliate pricing rule engine (see
+// docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md). Selling-price rule only -
+// commission configuration goes through updateAffiliateSettings/updateAffiliateEnrollment above.
+export const fetchAffiliatePriceRules = async () => {
+    const response = await api.get('/affiliates/price-rules');
+    return response.data?.data?.price_rules || [];
+};
+
+// enrollment_id omitted (or 0) saves the tenant-wide template; a real enrollment_id saves that
+// affiliate's override.
+export const upsertAffiliatePriceRule = async (payload = {}) => {
+    const response = await api.put('/affiliates/price-rules', payload);
+    return response.data?.data?.price_rule || null;
+};
+
+export const deactivateAffiliatePriceRule = async (priceRuleId) => {
+    const response = await api.delete(`/affiliates/price-rules/${priceRuleId}`);
+    return response.data?.data?.price_rule || null;
+};
+
 export const fetchAffiliateCashouts = async (params = {}) => {
     const response = await api.get('/affiliates/cashouts', { params });
     return response.data?.data?.cashouts || [];
@@ -78,5 +98,8 @@ export default {
     fetchAffiliateCashouts,
     approveAffiliateCashout,
     markAffiliateCashoutPaid,
-    rejectAffiliateCashout
+    rejectAffiliateCashout,
+    fetchAffiliatePriceRules,
+    upsertAffiliatePriceRule,
+    deactivateAffiliatePriceRule
 };

@@ -6,6 +6,7 @@ import {
     DgfyAccountHandoff,
     DgfyAccountTenantMembership,
     DgfyLegalAcknowledgement,
+    CompanyRegistrationApplication,
     Tenant,
     UserTenantMapping,
     UserInvitation
@@ -597,6 +598,17 @@ export const dgfyAccountRepository = {
             if (tenant && !tenant.owner_dgfy_account_id) {
                 await tenant.update({ owner_dgfy_account_id: dgfyAccountId }, options).catch(() => {});
             }
+            return membership.reload(options);
+        });
+    },
+
+    upsertPendingFounderMembership({ dgfyAccountId, tenantId, role = 'admin' }, options = {}) {
+        return DgfyAccountTenantMembership.findOrCreate({
+            where: { dgfy_account_id: dgfyAccountId, tenant_id: tenantId },
+            defaults: { dgfy_account_id: dgfyAccountId, tenant_id: tenantId, tenant_user_id: null, role, status: 'pending', source: 'founder' },
+            ...options
+        }).then(async ([membership]) => {
+            if (membership.status !== 'accepted') await membership.update({ role, status: 'pending', source: 'founder', tenant_user_id: null }, options);
             return membership.reload(options);
         });
     },
@@ -1234,6 +1246,18 @@ export const dgfyAccountRepository = {
                 ['updated_at', 'DESC'],
                 ['created_at', 'DESC']
             ]
+        });
+    },
+
+    listRegistrationApplications(dgfyAccountId) {
+        return CompanyRegistrationApplication.findAll({
+            where: { dgfy_account_id: dgfyAccountId },
+            include: [{
+                model: Tenant,
+                as: 'tenant',
+                attributes: ['name', 'status']
+            }],
+            order: [['updated_at', 'DESC']]
         });
     },
 

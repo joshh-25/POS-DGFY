@@ -657,7 +657,17 @@ export default function DgfyAuthPage() {
     try {
       const requestSignupOtp = getRequestDgfySignupOtp();
       if (!SHOULD_USE_LEGACY_TEST_VERIFICATION_FLOW && typeof requestSignupOtp === 'function') {
-        await requestSignupOtp(authForm.email.trim());
+        const otpResponse = await requestSignupOtp(authForm.email.trim());
+        const localDevCode = import.meta.env.DEV && window.location.hostname === 'localhost'
+          ? String(otpResponse?.dev_code || '').trim()
+          : '';
+        if (localDevCode) {
+          setVerificationState({
+            requestStatus: 'sent',
+            guidance: `Local development verification code: ${localDevCode}. This code is never shown outside localhost development.`,
+            errorCode: ''
+          });
+        }
       } else {
         const session = await registerDgfyAccount({
           first_name: authForm.firstName,
@@ -678,11 +688,11 @@ export default function DgfyAuthPage() {
           await requestDgfyEmailVerification(token);
         }
       }
-      setVerificationState({
+      setVerificationState((current) => current.guidance.startsWith('Local development verification code:') ? current : ({
         requestStatus: 'sent',
         guidance: 'We sent a 6-digit verification code to your email. Enter the latest code to finish creating your DGFY account.',
         errorCode: ''
-      });
+      }));
       setResendCooldown(60);
       toast.success('Verification code sent.');
     } catch (requestError) {

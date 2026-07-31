@@ -1,3 +1,14 @@
+---
+status: accepted
+authority_level: authoritative
+owner: architecture
+date: 2026-04-06
+last_reviewed: 2026-04-06
+review_by: 2026-10-06
+applies_to: architecture_decision
+topic: dual_mode_pos_compliance_program
+---
+
 # ADR 0007: Dual-Mode POS Compliance Program
 
 ## Status

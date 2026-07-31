@@ -3,6 +3,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import TenantManager from '../../../Pages/admin/TenantManager.jsx';
 
 const mocks = vi.hoisted(() => ({
@@ -21,6 +22,7 @@ const fillShared = async (user) => {
   await user.type(screen.getByPlaceholderText('Company name'), 'Assisted Foods');
   await user.type(screen.getByPlaceholderText('Audit reason'), 'Merchant onboarding');
 };
+const renderTenantManager = () => render(<MemoryRouter><TenantManager /></MemoryRouter>);
 
 describe('TenantManager assisted provisioning', () => {
   beforeEach(() => {
@@ -35,7 +37,7 @@ describe('TenantManager assisted provisioning', () => {
   afterEach(cleanup);
 
   it('removes the legacy add-tenant entry point while retaining unrelated controls', async () => {
-    render(<TenantManager />);
+    renderTenantManager();
     await screen.findByText('Assisted provisioning');
 
     expect(screen.queryByText('+ Add Tenant')).toBeNull();
@@ -49,7 +51,7 @@ describe('TenantManager assisted provisioning', () => {
 
   it('switches modes without submitting and posts company-only data to the retained service', async () => {
     const user = userEvent.setup();
-    render(<TenantManager />);
+    renderTenantManager();
     await screen.findByText('Assisted provisioning');
 
     await user.click(screen.getByRole('button', { name: 'DGFY + Company' }));
@@ -76,7 +78,7 @@ describe('TenantManager assisted provisioning', () => {
 
   it('posts DGFY plus company data and clears the one-time password on the next attempt', async () => {
     const user = userEvent.setup();
-    render(<TenantManager />);
+    renderTenantManager();
     await screen.findByText('Assisted provisioning');
     await user.click(screen.getByRole('button', { name: 'DGFY + Company' }));
     await fillShared(user);
@@ -108,7 +110,7 @@ describe('TenantManager assisted provisioning', () => {
     const user = userEvent.setup();
     let rejectRequest;
     mocks.adminService.createAdminProvisionedTenant.mockReturnValue(new Promise((_, reject) => { rejectRequest = reject; }));
-    render(<TenantManager />);
+    renderTenantManager();
     await screen.findByText('Assisted provisioning');
     await fillShared(user);
     await user.type(screen.getByPlaceholderText('Admin email'), 'ops@example.test');

@@ -1,8 +1,12 @@
 ---
 status: accepted
+authority_level: authoritative
+owner: architecture
 date: 2026-05-02
 last_reviewed: 2026-05-12
-classification: authoritative
+review_by: 2026-11-02
+applies_to: architecture_decision
+topic: services_mode_independent_booking_and_ticketing
 ---
 
 # ADR 0016: Services Mode Independent Booking And Ticketing

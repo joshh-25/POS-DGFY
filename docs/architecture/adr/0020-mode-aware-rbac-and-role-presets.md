@@ -1,8 +1,12 @@
 ---
 status: accepted
+authority_level: authoritative
+owner: architecture
 date: 2026-05-06
 last_reviewed: 2026-05-06
-classification: authoritative
+review_by: 2026-11-06
+applies_to: architecture_decision
+topic: mode_aware_rbac_and_role_presets
 ---
 
 # ADR 0020: Mode-Aware RBAC And Role Presets

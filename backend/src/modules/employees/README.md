@@ -16,4 +16,4 @@ Flow:
 - Employee Credit accounts may reference directory employees while legacy user-linked accounts remain supported.
 - Create and update operations are transactional and write audit records.
 
-See `docs/architecture/adr/0039-pos-employee-credit-tender-and-ledger.md`.
+See `docs/architecture/adr/0051-pos-employee-credit-tender-and-ledger.md`.

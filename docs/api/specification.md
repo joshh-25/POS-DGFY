@@ -4901,7 +4901,7 @@ Browser registration recovery may include `"soft_fail": true`. With that flag, e
 
 Requires `Authorization: Bearer <dgfy-account-token>`.
 
-Start a normal SKUpervisor tenant session from an authenticated DGFY account and an accepted active company membership. This endpoint is used after active auto-standard company registration so the founder can enter IMS directly without re-entering the DGFY password.
+Start a normal SKUpervisor tenant session from an authenticated DGFY account and an accepted active company membership. For public registration, this endpoint may be used only after Platform Admin approval and provisioning have completed and the applicant status is `ready`.
 
 **Request**
 
@@ -5425,16 +5425,15 @@ Submit a public company registration request.
 
 **Current policy**
 - All new registrations persist `plan: "premium"` by default so mode-specific premium-gated surfaces are available after activation.
-- `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard` (default): public company registrations are provisioned immediately and return `status: "active"` with a `company_token`; the registration UI then immediately starts a normal SKUpervisor tenant session through the authenticated DGFY account membership handoff.
-- `TENANT_REGISTRATION_APPROVAL_MODE=manual`: registrations return `status: "pending"` and require platform admin approval before login. Use this as an explicit rollback/admin-review mode.
+- Public company registration is mandatory manual review. It creates a pending landlord tenant, pending founder membership, `company_registration_applications` row, immutable first attempt, submission event, and email-delivery record in one governed flow.
+- Registration does not provision a tenant database, activate the tenant, return a `company_token`, or start a tenant/POS session. The client opens `/register-company/status/:applicationId`.
+- Only Platform Admin approval may start provisioning. Provisioning failure remains retryable; rejection and resubmission preserve immutable attempts and applicant-visible reasons.
 - Provider subscription registration remains disabled while `PAYMENTS_ENABLED=false`; payloads with `subscriptionId` return `503` with `PAYMENTS_DISABLED`.
-- Auto-standard and manual premium-capable registrations keep `subscription_status: "inactive"` while payments are paused. In that mode, premium route access is plan-driven and does not require an active subscription row.
-- Approval email delivery is non-blocking after provisioning; active responses include `email_sent`.
-- Active registration responses do not include tenant auth tokens. For active auto-standard responses, the frontend immediately calls `POST /api/v1/dgfy/auth/tenant-session` with the returned tenant identity while authenticated as the DGFY account; that endpoint sets the standard SKUpervisor session cookies and returns the normal tenant access token payload. If that exchange fails, the frontend routes the founder to manual sign-in with email/company token prefilled.
-- Storefront-originated business registration starts from the signed-in DGFY account surface. The storefront creates a short-lived one-time DGFY handoff token and routes to `/register-company?source=dgfy&auth=login&handoff_token=<token>#business-registration`; after exchange, the page focuses the business registration section.
-- Manual pending registrations create founder email lookup mappings during registration. Default auto-standard registrations rely on the provisioning path to create the mapping after successful activation.
-- Abuse control: public company registration is IP rate-limited by `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS` (production default: 5 requests per hour). Keep this strict because each accepted registration provisions an isolated tenant database by default.
-- Tenant-session fallback: if the DGFY tenant-session exchange fails after active provisioning, the frontend routes the founder to manual sign-in with email/company token prefilled.
+- Premium-capable registrations keep `subscription_status: "inactive"` while payments are paused. Premium route access begins only after approval/provisioning and remains plan-driven in this phase.
+- Approval/rejection email delivery is non-blocking after the durable lifecycle transition. Email failure does not roll back a successful review/provisioning decision.
+- Storefront-originated business registration uses its signed-in DGFY session and opens the SKUpervisor applicant-status route using the returned `application_id`; it must not show a pending-registration POS action.
+- Pending registrations create founder email lookup mappings during submission. Active tenant-user and accepted-membership links are completed during approved provisioning.
+- Abuse control: public company registration is IP rate-limited by `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS` (production default: 5 requests per hour).
 - Founder contact and credentials: public company registration no longer accepts `adminEmail`, `adminPhone`, or `adminPassword`; the server derives them from the authenticated DGFY account.
 - Founder account source: public company registration requires a signed-in active DGFY account. The backend derives founder email, phone, username seed, and password hash from that account and does not require a separate DGFY email-code step or `email_verified_at` gate before tenant creation.
 - Legal acknowledgement: public company registration requires the current company terms and marketplace-provider terms acknowledgement from `GET /dgfy/legal-terms/current` before tenant creation. The backend fails closed before tenant creation if legal acknowledgement persistence is unavailable. After confirming there is a signed-in active DGFY account, the landlord tenant row, pending-founder membership when applicable, and acknowledgement evidence are written in one landlord transaction. The acknowledgement states that DGFY is an e-marketplace/platform service provider, the seller owns the product, sets the price, fulfills the order, remains seller of record, payment is processed by a licensed payment partner, and DGFY deducts disclosed fees before remitting the seller's net settlement. Missing, false, or stale acknowledgement returns `422 TERMS_ACKNOWLEDGEMENT_REQUIRED`.
@@ -5455,7 +5454,7 @@ Combined provisioning accepts a DGFY account payload plus company payload and re
 
 Owner assignment accepts `dgfy_account_id`, `reason`, and optional `force` (default `true`). The target must be an existing active DGFY account. The backend must not infer ownership from raw email or phone values.
 
-**Response (201, explicit manual mode)**
+**Response (201)**
 ```json
 {
   "success": true,
@@ -5465,26 +5464,58 @@ Owner assignment accepts `dgfy_account_id`, `reason`, and optional `force` (defa
     "name": "ACME Corp",
     "status": "pending",
     "plan": "premium",
-    "company_token": "token-acme-123"
+    "workflow_mode": "food_manufacturing",
+    "application_id": "registration-application-uuid"
   }
 }
 ```
 
-**Response (201, default auto_standard mode)**
-```json
-{
-  "success": true,
-  "message": "Company registered and activated successfully. You can sign in now.",
-  "data": {
-    "id": "tenant-id",
-    "name": "ACME Corp",
-    "status": "active",
-    "plan": "premium",
-    "company_token": "token-acme-123",
-    "email_sent": false
-  }
-}
-```
+### GET /dgfy/company-registration/:applicationId
+
+Requires the submitting DGFY account. Returns the owner-authorized lifecycle state: `pending_review`, `setting_up_company`, `ready`, `setup_delayed`, or `rejected`. `tenant_id` is returned only when the application is `ready`; company-token capabilities are never returned.
+
+### POST /dgfy/company-registration/:applicationId/resubmit
+
+Requires the submitting DGFY account and a rejected application. Accepts corrected `name`, `workflowMode`, optional `industryTag`, and current company/marketplace legal acknowledgement. Creates a new immutable attempt and returns the application to `pending_review`.
+
+### Platform Admin identity and permissions
+
+Platform Admin authentication uses an HttpOnly landlord session cookie. `/admin/me`, `/admin/logout`, and `/admin/change-password` require an active session. All other protected Platform Admin routes resolve the current database authority and page grant on every request; frontend navigation visibility is not authorization.
+
+`/admin/platform-admins*` is Platform Master only:
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/admin/platform-admins` | List delegated Platform Admin identities and live grants |
+| `GET` | `/admin/platform-admins/readiness` | Report temporary-password and production-readiness state |
+| `POST` | `/admin/platform-admins` | Create a delegated identity with selected page grants |
+| `PATCH` | `/admin/platform-admins/:adminId/permissions` | Replace page grants with an audited reason |
+| `POST` | `/admin/platform-admins/:adminId/suspend` | Revoke access and active sessions |
+| `POST` | `/admin/platform-admins/:adminId/reactivate` | Restore an identity without inventing new grants |
+| `POST` | `/admin/platform-admins/:adminId/reset-password` | Set a new temporary password and revoke active sessions |
+| `DELETE` | `/admin/platform-admins/:adminId` | Remove an eligible delegated identity |
+
+Blank delegated-user password input applies the documented temporary default. Explicit creation/reset passwords and own-password changes require at least eight characters. Password values are never returned by list/read endpoints or written to audit details.
+
+### QA landlord invoices
+
+All `/admin/invoices*` endpoints require an active Platform Admin session with `admin.invoices`. These records are landlord-only and QA-only; they do not create tenant POS receipts, inventory movements, subscriptions, or payment-provider transactions.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/admin/invoices` | List QA invoice records and lifecycle state |
+| `GET` | `/admin/invoices/eligible-applications` | List approved/provisioned registration buyers |
+| `POST` | `/admin/invoices/drafts` | Create a one-time cash QA draft using centavos |
+| `PATCH` | `/admin/invoices/:invoiceId/draft` | Amend a mutable draft |
+| `DELETE` | `/admin/invoices/:invoiceId/draft` | Discard a mutable draft |
+| `POST` | `/admin/invoices/:invoiceId/issue` | Allocate TEST numbering and store the immutable PDF |
+| `POST` | `/admin/invoices/:invoiceId/payments/cash` | Append a cash payment; over-tender requires change confirmation |
+| `POST` | `/admin/invoices/:invoiceId/credits/full` | Append a full-credit adjustment |
+| `POST` | `/admin/invoices/:invoiceId/replacement-drafts` | Create a replacement only after full credit |
+| `GET` | `/admin/invoices/:invoiceId/artifact` | Download the private stored PDF |
+| `POST` | `/admin/invoices/:invoiceId/deliveries/email` | Send the exact stored artifact through the configured QA sink/allowlist |
+
+The Platform Admin UI accepts a Philippine-peso amount and converts it to integer centavos at the API boundary. Company name and registration email come from the selected approved application. The server-owned seller snapshot renders `Payment details`, `DGFY platform fee`, the Sieitz seller identity/logo, a red TEST-only warning, and red `MISSING` placeholders for unresolved fiscal authority data.
 
 ### GET /admin/tenants
 List all tenant registrations with their status.

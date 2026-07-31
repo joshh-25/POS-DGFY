@@ -1,11 +1,13 @@
 ---
-status: deprecated
+status: superseded
 authority_level: historical
 owner: architecture
+date: 2026-05-19
 last_reviewed: 2026-07-30
+review_by: 2026-07-30
 applies_to: storefront_commerce_payments
 topic: paymongo_qrph_platform_split_settlement
-superseded_by: docs/architecture/adr/0040-tenant-revenue-collection-ledger-and-settlement.md
+superseded_by: 0052-tenant-revenue-collection-ledger-and-settlement.md
 ---
 
 # ADR 0027: PayMongo QR Ph Commerce Payment Sessions and Platform Split Settlement

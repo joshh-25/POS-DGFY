@@ -647,7 +647,14 @@ describe('dgfyAuthUseCases', () => {
         const repository = {
             mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([]),
             mirrorLegacyFounderMembershipsForAccount: jest.fn().mockResolvedValue([]),
-            listMemberships: jest.fn().mockResolvedValue(membershipRows)
+            listMemberships: jest.fn().mockResolvedValue(membershipRows),
+            listRegistrationApplications: jest.fn().mockResolvedValue([{
+                id: 'application-pending',
+                review_status: 'pending',
+                provisioning_status: 'not_started',
+                updatedAt: new Date('2026-07-29T00:00:00.000Z'),
+                tenant: { name: 'Company Awaiting Review' }
+            }])
         };
         const useCase = buildListDgfyAccountCompaniesUseCase({ repository });
 
@@ -739,7 +746,14 @@ describe('dgfyAuthUseCases', () => {
         const repository = {
             mirrorPendingInvitationsForAccount: jest.fn().mockResolvedValue([]),
             mirrorLegacyFounderMembershipsForAccount: jest.fn().mockResolvedValue([]),
-            listMemberships: jest.fn().mockResolvedValue(membershipRows)
+            listMemberships: jest.fn().mockResolvedValue(membershipRows),
+            listRegistrationApplications: jest.fn().mockResolvedValue([{
+                id: 'application-pending',
+                review_status: 'pending',
+                provisioning_status: 'not_started',
+                updatedAt: new Date('2026-07-29T00:00:00.000Z'),
+                tenant: { name: 'Company Awaiting Review' }
+            }])
         };
         const useCase = buildListDgfyAccountCompaniesUseCase({ repository });
 
@@ -769,6 +783,13 @@ describe('dgfyAuthUseCases', () => {
                 requires_action: 'accept_invitation'
             })
         ]);
+        expect(result.data.payload.data.registration_applications).toEqual([{
+            application_id: 'application-pending',
+            company_name: 'Company Awaiting Review',
+            status: 'pending_review',
+            status_path: '/register-company/status/application-pending',
+            updated_at: new Date('2026-07-29T00:00:00.000Z')
+        }]);
         expect(result.data.payload.data.companies.map((company) => company.tenant_id)).toEqual([
             'company-b-owned',
             'company-1-invited',

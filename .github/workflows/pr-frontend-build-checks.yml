@@ -16,37 +16,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Named + retained builder: the default (argument-less) invocation creates
-      # a throwaway builder and `buildx rm`s it in post-job, which threw away
-      # every layer and forced a full re-hydrate from `type=gha` on the next
-      # run. On these self-hosted runners that round-trip measured ~236s to
-      # pull back ~306MB (the node_modules layer alone moved at 0.87MB/s) for a
-      # build whose every layer was already CACHED. Keeping the builder means
-      # the layer cache, the npm cache mount and both base images just stay on
-      # the runner's disk. gckeepstorage caps that so it can't run away — lowered
-      # from 20GB to 8GB after these runners' ~39GB root disks started filling
-      # up (self-hosted-runner disk-space CI failures, 2026-07-26); 20GB left too
-      # little headroom for the OS, other tagged images, and build scratch space.
       - uses: docker/setup-buildx-action@v3
-        with:
-          name: dgfy-builder
-          keep-state: true
-          cleanup: false
-          buildkitd-config-inline: |
-            [worker.oci]
-              gc = true
-              gckeepstorage = "8GB"
 
       # Same build as deploy-frontend.yml, minus the push -- just proves the
       # image builds cleanly off this PR's code. Deliberately omits the
       # VITE_* build-args block: those resolve from a GitHub Environment's
       # vars.* and aren't needed just to prove the build succeeds -- the
-      # Dockerfile's own ARG defaults are fine here. No cache-from/cache-to:
-      # the retained builder above IS the cache, and `type=gha` cost more in
-      # network transfer than the build it was caching.
+      # Dockerfile's own ARG defaults are fine here. Reads the canonical
+      # `frontend` cache scope that deploy-frontend.yml writes (usually warm
+      # from the last develop/staging/main build), but writes to a PR-scoped
+      # cache so a broken PR build can never poison the canonical scope -- and
+      # repeated pushes to the same PR still hit cache. GitHub evicts the
+      # PR-scoped cache automatically once the PR closes.
       - name: Build frontend image (no push)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: infrastructure/docker/frontend/Dockerfile
           push: false
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend-pr-${{ github.event.pull_request.number }}

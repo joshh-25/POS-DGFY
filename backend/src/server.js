@@ -52,6 +52,11 @@ import {
   startGeoInventoryWorker,
   stopGeoInventoryWorker
 } from './workers/geoInventoryWorker.js';
+import {
+  startMenuImportWorker,
+  stopMenuImportWorker
+} from './workers/menuImportWorker.js';
+import { MENU_IMPORT_BATCH_ENABLED } from './config/menuImportFeature.js';
 import * as aiController from './controllers/aiController.js';
 import { paymentsEnabled } from './config/paymentsFeature.js';
 import productionEnvValidation from './config/productionEnvValidation.cjs';
@@ -759,6 +764,8 @@ import storeRoutes from './routes/store.js';
 import storefrontDiscoveryRoutes from './routes/storefrontDiscovery.js';
 import adminAuthRoutes from './routes/adminAuth.js';
 import adminTenantRoutes from './routes/adminTenants.js';
+import platformAdminRoutes from './routes/platformAdmins.js';
+import adminInvoiceRoutes from './routes/adminInvoices.js';
 import complianceRoutes from './routes/compliance.js';
 import onboardingRoutes from './routes/onboarding.js';
 
@@ -798,6 +805,8 @@ app.use('/api/v1/commerce-payments', commercePaymentRoutes);
 app.use('/api/v1/tenant-revenue', tenantRevenueRoutes);
 // Mount specific admin routes first to avoid catching issues
 app.use('/api/v1/admin/tenants', adminTenantRoutes);
+app.use('/api/v1/admin/platform-admins', platformAdminRoutes);
+app.use('/api/v1/admin/invoices', adminInvoiceRoutes);
 
 app.use('/api/v1/admin', adminAuthRoutes);
 app.use('/api/v1/compliance', complianceRoutes);
@@ -896,6 +905,13 @@ const startServer = async () => {
     startStorefrontDomainMaintenanceScheduler();
     startGeoInventoryWorker();
 
+    // Batch menu import worker — gated on its own flag (like geo inventory
+    // above, its tick() no-ops whenever Redis isn't connected, so it's safe
+    // to start unconditionally once the flag says the feature is wanted).
+    if (MENU_IMPORT_BATCH_ENABLED) {
+      startMenuImportWorker();
+    }
+
     // Initialize Redis (non-blocking - server will start even if Redis fails)
     if (process.env.REDIS_URL) {
       initializeRedis().catch((error) => {
@@ -945,6 +961,9 @@ const startServer = async () => {
       stopStorefrontDiscoveryIndexReconciliationScheduler();
       stopStorefrontDomainMaintenanceScheduler();
       stopGeoInventoryWorker();
+      if (MENU_IMPORT_BATCH_ENABLED) {
+        stopMenuImportWorker();
+      }
       aiController.stopAiCleanupScheduler?.();
 
       // Close Redis connection

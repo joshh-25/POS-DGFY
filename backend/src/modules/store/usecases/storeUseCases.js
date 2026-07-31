@@ -12,8 +12,11 @@ import {
 import { tenantRevenueSharingEnabled } from '../../../config/tenantRevenueFeature.js';
 import {
     accruePendingForOnlineOrder,
-    resolveActiveAffiliateEnrollmentById
+    resolveActiveAffiliateEnrollmentById,
+    resolveCommissionRateBps
 } from '../../dgfy/utils/affiliateCommissionAccrual.js';
+import { dgfyAffiliateRepository } from '../../dgfy/repositories/dgfyAffiliateRepository.js';
+import { resolveAffiliateUnitPriceCentavos } from '../../shared/utils/affiliatePricingPolicy.js';
 import {
     generateStoreCancelProof,
     generateStoreClaimToken,
@@ -45,7 +48,8 @@ import {
 import { resolveWorkflowCapabilitySettings as resolveWorkflowCapabilitySettingsDefault } from '../../shared/utils/workflowCapabilitySettingsCache.js';
 import {
     hasExplicitSalePrice,
-    requireExplicitSalePrice
+    requireExplicitSalePrice,
+    getExplicitSalePrice
 } from '../../shared/utils/itemFinancialPolicy.js';
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
@@ -705,7 +709,16 @@ const resolveStorefrontLineModifiers = ({ item, line }) => {
     return { priceDelta, snapshot };
 };
 
-const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false, recipeItemIds = new Set() }) => {
+const prepareCheckoutLines = ({
+    rawLines,
+    itemMap,
+    allowOutOfStockSales = false,
+    recipeItemIds = new Set(),
+    // Phase 1 affiliate pricing rule engine (see
+    // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md). Null means no active
+    // attribution - every line then prices exactly as it did before this parameter existed.
+    affiliateSellingPriceRule = null
+}) => {
     if (!Array.isArray(rawLines) || rawLines.length === 0) {
         throw new DomainError(
             DomainErrorCode.VALIDATION_FAILED,
@@ -716,6 +729,10 @@ const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false,
 
     const preparedLines = [];
     let subtotalAmount = 0;
+    // Catalog-price subtotal, pre-affiliate-rule - identical to subtotalAmount when no rule is
+    // active. This is what decision A3's commission_base_mode = 'base_price_subtotal' accrues
+    // against, kept alongside the buyer-facing subtotalAmount rather than replacing it (§7.3).
+    let baseSubtotalAmount = 0;
     const requestedQuantityByItemId = new Map();
 
     for (const line of rawLines) {
@@ -779,10 +796,67 @@ const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false,
 
         const resolvedPrice = requireExplicitSalePrice(item, 'Storefront checkout');
 
+        // Affiliate selling-price rule applies to the item's base price only - a modifier add-on
+        // (e.g. "extra cheese +PHP20") costs the same regardless of any affiliate markup/discount,
+        // so modifierResolution.priceDelta is added to both the affiliate-adjusted price and the
+        // plain base price below, symmetrically.
+        let affiliateUnitPrice = resolvedPrice;
+        if (affiliateSellingPriceRule) {
+            let affiliateUnitPriceCentavos;
+            try {
+                affiliateUnitPriceCentavos = resolveAffiliateUnitPriceCentavos({
+                    basePriceCentavos: toCentavos(resolvedPrice),
+                    rule: affiliateSellingPriceRule
+                });
+            } catch (error) {
+                // A13: pricing is pre-commit and blocking - an unresolvable affiliate rule fails
+                // checkout rather than silently falling back to the catalog price.
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    `Unable to resolve the affiliate price for "${item.name}"`,
+                    {
+                        statusCode: 422,
+                        details: { reason_code: 'AFFILIATE_PRICE_UNRESOLVED', item_id: item.item_id }
+                    }
+                );
+            }
+            if (affiliateUnitPriceCentavos < 0) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    `The affiliate price for "${item.name}" would be negative`,
+                    {
+                        statusCode: 422,
+                        details: { reason_code: 'AFFILIATE_NEGATIVE_PRICE', item_id: item.item_id }
+                    }
+                );
+            }
+            // Decision A9: refuse a sale that would go below the item's own cost. Enforced here
+            // (per real item, at resolution time) rather than at rule-save time, because a Phase 1
+            // rule is tenant/enrollment-wide and applies across every product a tenant sells - there
+            // is no single representative cost to validate against when the owner configures it.
+            if (descriptor.carries_cost && item.cost_per_unit != null) {
+                const costPerUnitCentavos = toCentavos(item.cost_per_unit);
+                if (affiliateUnitPriceCentavos < costPerUnitCentavos) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        `The affiliate price for "${item.name}" would sell below its cost`,
+                        {
+                            statusCode: 422,
+                            details: { reason_code: 'AFFILIATE_BELOW_COST_FLOOR', item_id: item.item_id }
+                        }
+                    );
+                }
+            }
+            affiliateUnitPrice = affiliateUnitPriceCentavos / 100;
+        }
+
         const modifierResolution = resolveStorefrontLineModifiers({ item, line });
-        const effectiveUnitPrice = round4(resolvedPrice + modifierResolution.priceDelta);
+        const effectiveUnitPrice = round4(affiliateUnitPrice + modifierResolution.priceDelta);
+        const baseEffectiveUnitPrice = round4(resolvedPrice + modifierResolution.priceDelta);
         const lineSubtotal = round4(quantity * effectiveUnitPrice);
+        const baseLineSubtotal = round4(quantity * baseEffectiveUnitPrice);
         subtotalAmount = round4(subtotalAmount + lineSubtotal);
+        baseSubtotalAmount = round4(baseSubtotalAmount + baseLineSubtotal);
 
         preparedLines.push({
             item_id: item.item_id,
@@ -793,8 +867,8 @@ const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false,
             stock_effect_type: isStockExemptLine ? 'stock_exempt' : 'inventory_issue',
             stock_exempt_reason: resolveStockExemptReason(item, descriptor),
             sale_price: effectiveUnitPrice,
-            sale_price_overridden: false,
-            price_override_reason: null,
+            sale_price_overridden: Boolean(affiliateSellingPriceRule),
+            price_override_reason: affiliateSellingPriceRule ? 'affiliate_program' : null,
             line_subtotal: lineSubtotal,
             vat_type_snapshot: item.vat_type || 'vatable',
             vat_rate_snapshot: round4(VAT_RATE),
@@ -822,6 +896,7 @@ const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false,
     return {
         preparedLines,
         subtotalAmount,
+        baseSubtotalAmount,
         vatableSales,
         vatAmount,
         vatExemptSales,
@@ -906,7 +981,54 @@ const serializeStorefrontModifierGroups = (value) => (
         : []
 );
 
-const serializeStoreCatalogItem = (item = {}, accessPolicy = {}) => {
+// Phase 1 affiliate pricing rule engine: applies affiliateSellingPriceRule (resolved once per
+// request by the caller, see resolveAffiliateSellingPriceRuleForDisplay above) to the catalog price
+// shown to a browsing buyer. Unlike checkout (decision A13, fails closed on an unresolvable rule),
+// catalog display is best-effort - a misconfigured or unresolvable rule falls back to the plain
+// catalog price rather than taking the whole listing offline, since browsing has not committed to
+// anything yet and checkout re-validates and fails closed at the point that actually matters.
+const applyAffiliateDisplayPrice = (item, affiliateSellingPriceRule) => {
+    if (!affiliateSellingPriceRule) {
+        return { price: item.default_sale_price, applied: false };
+    }
+    try {
+        const catalogPrice = getExplicitSalePrice(item);
+        if (catalogPrice === null) return { price: item.default_sale_price, applied: false };
+
+        const affiliateUnitPriceCentavos = resolveAffiliateUnitPriceCentavos({
+            basePriceCentavos: Math.round(catalogPrice * 100),
+            rule: affiliateSellingPriceRule
+        });
+        if (affiliateUnitPriceCentavos < 0) {
+            logger.warn('[StorefrontCatalog] Affiliate price rule resolved negative, showing catalog price instead', {
+                item_id: item.item_id,
+                rule_type: affiliateSellingPriceRule.type
+            });
+            return { price: item.default_sale_price, applied: false };
+        }
+        // Decision A9, display-time twin of the checkout floor guard: same reasoning, same
+        // fail-open convention as the rest of this function.
+        if (item.cost_per_unit != null) {
+            const costPerUnitCentavos = Math.round(Number(item.cost_per_unit) * 100);
+            if (affiliateUnitPriceCentavos < costPerUnitCentavos) {
+                logger.warn('[StorefrontCatalog] Affiliate price rule would sell below cost, showing catalog price instead', {
+                    item_id: item.item_id,
+                    rule_type: affiliateSellingPriceRule.type
+                });
+                return { price: item.default_sale_price, applied: false };
+            }
+        }
+        return { price: affiliateUnitPriceCentavos / 100, applied: true };
+    } catch (error) {
+        logger.warn('[StorefrontCatalog] Failed to resolve affiliate display price, showing catalog price instead', {
+            item_id: item.item_id,
+            error: error?.message
+        });
+        return { price: item.default_sale_price, applied: false };
+    }
+};
+
+const serializeStoreCatalogItem = (item = {}, accessPolicy = {}, affiliateSellingPriceRule = null) => {
     const availabilityStatus = normalizeAvailabilityStatus(item);
     const isAvailable = availabilityStatus === 'in_stock' || availabilityStatus === 'bookable';
     const imageUrl = item.image_url || null;
@@ -919,6 +1041,7 @@ const serializeStoreCatalogItem = (item = {}, accessPolicy = {}) => {
             intake_form_schema: normalizeIntakeFormSchema(item.service_detail.intake_form_schema)
         }
         : null;
+    const { price: displaySalePrice, applied: affiliatePriceApplied } = applyAffiliateDisplayPrice(item, affiliateSellingPriceRule);
     return {
         item_id: item.item_id,
         name: item.name,
@@ -927,7 +1050,8 @@ const serializeStoreCatalogItem = (item = {}, accessPolicy = {}) => {
         product_type: item.product_type || null,
         folder_name: item.folder_name || item.product_folder || item?.folder?.name || null,
         unit_of_measure: item.unit_of_measure || null,
-        default_sale_price: item.default_sale_price,
+        default_sale_price: displaySalePrice,
+        affiliate_price_applied: affiliatePriceApplied,
         vat_type: item.vat_type || 'vatable',
         image_url: imageUrl,
         image_variants: {
@@ -1089,12 +1213,88 @@ const buildOrderAccountAction = async ({ storeRepository, order, tenantId, store
     }
 };
 
+// Resolves everything needed to price and account for an affiliate-attributed storefront checkout:
+// the enrollment itself, the selling-price rule to apply (or BASE_PRICE when none is configured),
+// and the commission configuration to accrue against (including decision A3's commission_base_mode
+// flag). Returns null when there is no active attribution at all - the caller then prices and
+// accrues exactly as it did before Phase 1 of the affiliate pricing rule engine existed.
+//
+// Unlike the post-commit accrual write elsewhere in this file, this is NOT wrapped in try/catch by
+// its caller (decision A13: pricing is pre-commit and blocking - if resolution genuinely errors,
+// checkout must fail rather than risk silently charging the wrong price). A missing/invalid/revoked
+// enrollment is not an error here, though: resolveActiveAffiliateEnrollmentById's established
+// null-means-no-attribution contract just means no affiliate pricing applies, and this function
+// returns null in that case too, same as if attribution_enrollment_id had never been sent.
+const resolveAffiliatePricingForCheckout = async ({ tenantId, enrollmentId }) => {
+    if (!tenantId || !enrollmentId) return null;
+
+    const enrollment = await resolveActiveAffiliateEnrollmentById({ tenantId, enrollmentId });
+    if (!enrollment) return null;
+
+    const [settings, priceRule] = await Promise.all([
+        dgfyAffiliateRepository.getSettings(tenantId),
+        dgfyAffiliateRepository.resolveActivePriceRule({
+            tenantId,
+            enrollmentId: enrollment.enrollment_id,
+            itemId: 0
+        })
+    ]);
+
+    const sellingPriceRule = priceRule
+        ? { type: priceRule.rule_type, rateBps: priceRule.rate_bps, amountCentavos: priceRule.amount_centavos }
+        : { type: 'BASE_PRICE' };
+
+    // Same override-falls-back-to-tenant-default pattern already established for
+    // commission_rate_bps.
+    const commissionType = enrollment.commission_type || settings?.commission_type || 'PERCENTAGE_OF_BASE';
+    const commissionRateBps = resolveCommissionRateBps(enrollment, settings);
+
+    return {
+        enrollment,
+        priceRule,
+        sellingPriceRule,
+        commissionRule: { type: commissionType, rateBps: commissionRateBps },
+        settlementPolicy: settings?.settlement_policy || null,
+        commissionBaseMode: settings?.commission_base_mode || 'discounted_subtotal'
+    };
+};
+
+// Cheaper, display-only twin of resolveAffiliatePricingForCheckout used by the two buyer-facing
+// catalog display sites (§6: serializeStoreCatalogItem's callers). Skips the settings/commission
+// fetch entirely - a browsing page never needs to know how commission is computed, only what price
+// to show - so it's one fewer query per catalog list/QR-resolve request than the checkout path.
+// Returns null on no/invalid attribution, same null-means-no-attribution contract as the rest of
+// this file.
+const resolveAffiliateSellingPriceRuleForDisplay = async ({ tenantId, enrollmentId }) => {
+    if (!tenantId || !enrollmentId) return null;
+
+    const enrollment = await resolveActiveAffiliateEnrollmentById({ tenantId, enrollmentId });
+    if (!enrollment) return null;
+
+    const priceRule = await dgfyAffiliateRepository.resolveActivePriceRule({
+        tenantId,
+        enrollmentId: enrollment.enrollment_id,
+        itemId: 0
+    });
+
+    return priceRule
+        ? { type: priceRule.rule_type, rateBps: priceRule.rate_bps, amountCentavos: priceRule.amount_centavos }
+        : null;
+};
+
 const resolveCheckoutContext = async ({
     storeRepository,
     payload,
     storeCustomer = null,
     options = {},
-    validateRecipeAvailability = true
+    validateRecipeAvailability = true,
+    // Explicit tenantId for the Phase 1 affiliate pricing rule engine lookup only. Optional and
+    // falls back to the ambient dbStore context (currentTenantAccessContext()) when omitted, to
+    // preserve today's behavior for the two callers (cart quote, QRPh payment session) that don't
+    // have an explicit tenantId in scope. buildStoreCheckoutUseCase - the money-writing path - does
+    // have one and passes it explicitly, so affiliate pricing there never depends on ambient context
+    // being populated the same way the rest of that function already trusts its own tenantId param.
+    tenantId = null
 }) => {
     const normalized = buildNormalizedCheckoutRequest(payload, storeCustomer);
     const orderMethod = normalized.order_method || 'delivery';
@@ -1203,11 +1403,25 @@ const resolveCheckoutContext = async ({
         locationId: normalized.location_id,
         validateAvailability: validateRecipeAvailability
     });
+    // Phase 1 affiliate pricing rule engine. Sourced from the raw payload (not `normalized`) and
+    // the ambient tenant context, mirroring the checkout controller's existing cookie bridge
+    // (getAffiliateAttributionCookie / storeHandlers.js) - this function has no tenantId parameter
+    // of its own, consistent with the rest of this shared context resolver relying on dbStore's
+    // request-scoped tenant context (see currentTenantAccessContext() above).
+    const attributionEnrollmentId = payload?.attribution_enrollment_id || null;
+    const affiliatePricing = attributionEnrollmentId
+        ? await resolveAffiliatePricingForCheckout({
+            tenantId: tenantId || currentTenantAccessContext().tenantId,
+            enrollmentId: attributionEnrollmentId
+        })
+        : null;
+
     const prepared = prepareCheckoutLines({
         rawLines: normalized.lines,
         itemMap,
         allowOutOfStockSales,
-        recipeItemIds: recipePlan.recipeItemIds
+        recipeItemIds: recipePlan.recipeItemIds,
+        affiliateSellingPriceRule: affiliatePricing?.sellingPriceRule || null
     });
     const promoApplication = resolveStorefrontPromoApplication({
         settings,
@@ -1245,7 +1459,8 @@ const resolveCheckoutContext = async ({
         serviceFeeLabel,
         totalAmount,
         outsideRadiusFlag,
-        scheduledFor
+        scheduledFor,
+        affiliatePricing
     };
 };
 
@@ -1321,7 +1536,11 @@ export const buildListStoreCatalogUseCase = ({
     storeRepository,
     resolveWorkflowCapabilitySettings = resolveWorkflowCapabilitySettingsDefault
 }) => {
-    return async ({ query = {} } = {}) => {
+    // tenantId/attributionEnrollmentId are optional and additive - a caller that omits them (or the
+    // cookie/tenant simply isn't present) gets exactly today's catalog, unaffected. See
+    // storeHandlers.js's listStoreCatalog controller for where these come from (mirrors the existing
+    // checkout cookie bridge).
+    return async ({ query = {}, tenantId = null, attributionEnrollmentId = null } = {}) => {
         if (!isPlainObject(query)) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -1364,15 +1583,20 @@ export const buildListStoreCatalogUseCase = ({
                 });
             }
 
-            const items = await storeRepository.listStoreCatalog({
-                search: query.search,
-                limit: query.limit,
-                location_id: requestedLocationId
-            });
+            const [items, affiliateSellingPriceRule] = await Promise.all([
+                storeRepository.listStoreCatalog({
+                    search: query.search,
+                    limit: query.limit,
+                    location_id: requestedLocationId
+                }),
+                attributionEnrollmentId
+                    ? resolveAffiliateSellingPriceRuleForDisplay({ tenantId, enrollmentId: attributionEnrollmentId })
+                    : Promise.resolve(null)
+            ]);
             const serializedItems = (Array.isArray(items) ? items : [])
                 .filter((item) => hasExplicitSalePrice(item))
                 .map((item) => (
-                    serializeStoreCatalogItem(item, accessPolicy)
+                    serializeStoreCatalogItem(item, accessPolicy, affiliateSellingPriceRule)
                 ));
 
             return ok({
@@ -1406,7 +1630,8 @@ export const buildListStoreCatalogUseCase = ({
 };
 
 export const buildResolveStoreQrUseCase = ({ storeRepository }) => {
-    return async ({ query = {} } = {}) => {
+    // Same additive tenantId/attributionEnrollmentId contract as buildListStoreCatalogUseCase above.
+    return async ({ query = {}, tenantId = null, attributionEnrollmentId = null } = {}) => {
         if (!isPlainObject(query)) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -1518,7 +1743,10 @@ export const buildResolveStoreQrUseCase = ({ storeRepository }) => {
                 }));
             }
 
-            const item = serializeStoreCatalogItem(result.item, accessPolicy);
+            const affiliateSellingPriceRule = attributionEnrollmentId
+                ? await resolveAffiliateSellingPriceRuleForDisplay({ tenantId, enrollmentId: attributionEnrollmentId })
+                : null;
+            const item = serializeStoreCatalogItem(result.item, accessPolicy, affiliateSellingPriceRule);
             return ok({
                 status: 'resolved',
                 reason_code: null,
@@ -2071,7 +2299,8 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
                 payload,
                 storeCustomer: normalizedStoreCustomer,
                 options: { transaction, lock: true },
-                validateRecipeAvailability: !existing
+                validateRecipeAvailability: !existing,
+                tenantId: normalizedTenantId
             });
             const { normalized } = resolved;
 
@@ -2281,27 +2510,88 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
                 tracking_pin: created?.tracking_pin
             }));
 
-            // Best-effort, post-commit: dormant until a storefront visit sets the attribution
-            // cookie (no caller sends attribution_enrollment_id yet). Writes a `pending` commission
-            // - unlike the in-store sale, which is earned immediately - because the online order's
-            // real outcome (completed vs cancelled/rejected) isn't known until the fulfillment
-            // lifecycle hook settles it later. Must never fail the checkout that already succeeded,
-            // mirroring recordDgfyOrderActivity's convention above.
+            // Best-effort, post-commit: was dormant until a storefront visit set the attribution
+            // cookie, now live via the Phase 1 affiliate pricing rule engine (see
+            // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md). Writes a `pending`
+            // commission - unlike the in-store sale, which is earned immediately - because the
+            // online order's real outcome (completed vs cancelled/rejected) isn't known until the
+            // fulfillment lifecycle hook settles it later. Must never fail the checkout that already
+            // succeeded, mirroring recordDgfyOrderActivity's convention above.
             if (payload?.attribution_enrollment_id) {
                 try {
-                    const affiliateEnrollment = await resolveActiveAffiliateEnrollmentById({
-                        tenantId: normalizedTenantId,
-                        enrollmentId: payload.attribution_enrollment_id
-                    });
+                    // Reuse whatever resolveCheckoutContext already resolved (same enrollment/rule
+                    // that priced this exact order) rather than re-querying - falls back to a fresh
+                    // lookup only if that resolution is unexpectedly missing, so a transient gap
+                    // there still degrades to pre-Phase-1 behavior instead of skipping accrual.
+                    const affiliatePricing = resolved.affiliatePricing;
+                    const affiliateEnrollment = affiliatePricing?.enrollment
+                        || await resolveActiveAffiliateEnrollmentById({
+                            tenantId: normalizedTenantId,
+                            enrollmentId: payload.attribution_enrollment_id
+                        });
                     if (affiliateEnrollment) {
+                        // baseSubtotalAmount is the catalog-price subtotal, pre-affiliate-rule;
+                        // subtotalAmount is what the buyer actually paid. The two are identical
+                        // when no selling-price rule is active (e.g. commission-only attribution).
+                        const baseSubtotalCentavos = toCentavos(
+                            resolved.prepared.baseSubtotalAmount ?? resolved.prepared.subtotalAmount
+                        );
+                        const buyerSubtotalCentavos = toCentavos(resolved.prepared.subtotalAmount);
+                        const discountCentavos = toCentavos(resolved.promoApplication.discountAmount);
+
+                        const commissionBaseMode = affiliatePricing?.commissionBaseMode || 'discounted_subtotal';
+                        const commissionType = affiliatePricing?.commissionRule?.type || 'PERCENTAGE_OF_BASE';
+
+                        // Decision A3, gated behind commission_base_mode: 'discounted_subtotal' (the
+                        // default) is today's formula, generalized - it subtracts the promo discount
+                        // from the buyer-paid subtotal, which is byte-identical to pre-Phase-1
+                        // behavior whenever no affiliate price rule is active (buyerSubtotalCentavos
+                        // === baseSubtotalCentavos in that case). 'base_price_subtotal' ignores any
+                        // discount entirely - the commission is always computed on the catalog
+                        // subtotal, per the recording's "affiliate earns the same whether or not a
+                        // discount is running" example.
+                        const commissionableBaseCentavos = commissionBaseMode === 'base_price_subtotal'
+                            ? Math.max(0, baseSubtotalCentavos)
+                            : Math.max(0, buyerSubtotalCentavos - discountCentavos);
+
+                        // NONE and RESELLER_MARGIN don't fit the bps-of-base formula
+                        // accruePendingForOnlineOrder falls back to internally, so both are resolved
+                        // here using the real, already-computed line-level subtotals rather than a
+                        // parallel single-item recalculation (which could drift from what the buyer
+                        // was actually charged across a multi-line cart). PERCENTAGE_OF_BASE is
+                        // resolved here too, using the exact rate already loaded onto
+                        // affiliatePricing, so the same rate is guaranteed to be reflected in any
+                        // buyer/owner-facing preview and in the accrued commission.
+                        let resolvedCommission;
+                        let resellerMarginCentavos = null;
+                        if (commissionType === 'NONE') {
+                            resolvedCommission = { rateBps: 0, amountCentavos: 0 };
+                        } else if (commissionType === 'RESELLER_MARGIN') {
+                            resellerMarginCentavos = Math.max(0, buyerSubtotalCentavos - baseSubtotalCentavos);
+                            resolvedCommission = { rateBps: 0, amountCentavos: resellerMarginCentavos };
+                        } else {
+                            const rateBps = Number.isInteger(affiliatePricing?.commissionRule?.rateBps)
+                                ? affiliatePricing.commissionRule.rateBps
+                                : 500;
+                            resolvedCommission = {
+                                rateBps,
+                                amountCentavos: Math.round(commissionableBaseCentavos * rateBps / 10000)
+                            };
+                        }
+
                         await accruePendingForOnlineOrder({
                             tenantId: normalizedTenantId,
                             enrollment: affiliateEnrollment,
                             orderReference: String(orderId),
-                            commissionableBaseCentavos: Math.max(
-                                0,
-                                toCentavos(resolved.prepared.subtotalAmount) - toCentavos(resolved.promoApplication.discountAmount)
-                            ),
+                            commissionableBaseCentavos,
+                            resolvedCommission,
+                            snapshot: {
+                                baseSubtotalCentavos,
+                                buyerSubtotalCentavos,
+                                resellerMarginCentavos,
+                                priceRuleTypeSnapshot: affiliatePricing?.priceRule?.rule_type || null,
+                                settlementPolicySnapshot: affiliatePricing?.settlementPolicy || null
+                            },
                             buyerDgfyAccountId: normalizedStoreCustomer?.dgfy_account_id || null,
                             storeSlug: String(payload.store_slug || '').trim().toLowerCase() || null
                         });

@@ -79,6 +79,14 @@ const FnbProductCard = ({
               <CategoryIcon size={32} />
             </div>
           )}
+          {item.affiliate_price_applied && (
+            // Phase 1 affiliate pricing rule engine: labels a price that differs from the public
+            // catalog because of the affiliate this buyer arrived through (see
+            // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md).
+            <div style={{ position: 'absolute', top: 6, left: 6, background: '#7c3aed', color: '#fff', fontSize: 9, fontWeight: 800, borderRadius: 999, padding: '2px 6px', lineHeight: 1 }}>
+              Affiliate price
+            </div>
+          )}
 
           <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(35,23,18,0.0) 40%, rgba(32,20,15,0.2) 100%)', pointerEvents: 'none' }} />
           <div style={{
@@ -242,6 +250,12 @@ const FnbProductCard = ({
         )}
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(35,23,18,0.02) 0%, rgba(35,23,18,0.08) 100%)', pointerEvents: 'none' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(255,255,255,0) 44%, rgba(32,20,15,0.22) 100%)', pointerEvents: 'none' }} />
+        {item.affiliate_price_applied && (
+          // Phase 1 affiliate pricing rule engine - see the mobile-list variant above for context.
+          <div style={{ position: 'absolute', top: isMobileViewport ? 10 : 16, left: isMobileViewport ? 10 : 16, background: '#7c3aed', color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 999, padding: '3px 8px', lineHeight: 1 }}>
+            Affiliate price
+          </div>
+        )}
         <div style={{
           position: 'absolute',
           right: isMobileViewport ? 10 : 16,

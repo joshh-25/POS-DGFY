@@ -35,7 +35,8 @@ import {
   storefrontCatalogGalleryImageUpload,
   storefrontCatalogImageUpload,
   preserveTenantContext,
-  menuImportFileUpload
+  menuImportFileUpload,
+  menuImportBatchUpload
 } from '../config/uploadConfig.js';
 
 const router = express.Router();
