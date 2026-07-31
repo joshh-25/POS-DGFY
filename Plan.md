@@ -422,6 +422,14 @@ Key requirements:
 - [x] 1. **POS Item Save Compression**: Ensure POS Edit Item modal (`TerminalOperationsWorkspace.jsx`) triggers backend WebP thumbnail generation on item save.
 - [x] 2. **POS Bulk Optimizer**: Batch optimize all 100+ existing POS catalog images into 400px WebP thumbnails on disk so POS catalog cards scroll smoothly without lag.
 - [x] 3. **Verification**: Verify POS catalog cards load downscaled thumbnails in `POSCheckoutTerminal.jsx` with 0 network lag.
+---
 
+# Plan — Revenue Workspace Admin Authentication Action Button
 
+## High-Level Strategy
+Add an actionable `Sign in as Platform Admin` button to the error banner in `TenantRevenueSettlementPanel.jsx` when unauthenticated users or expired sessions access the protected Revenue Workspace, providing a 1-click login path to `/admin`.
+
+## Goals
+- [x] 1. **Add Platform Admin Login Action**: Enhance the error banner in `TenantRevenueSettlementPanel.jsx` to render a primary `Sign in as Platform Admin` button when `error` contains `Admin authentication required` or session expiration.
+- [x] 2. **Verification**: Run frontend tests and verify clean rendering.
 

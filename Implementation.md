@@ -3389,9 +3389,13 @@ The first command is a dry run. Review its candidate, skipped, and failed counts
   ```
   This batch-processes all 100+ existing POS item pictures on disk into 400px WebP thumbnails without requiring SKUpervisor.
 
+# 2026-07-31 - Revenue Workspace Admin Authentication Action Button
+
+### Implemented solution
+- Enhanced error alert in `TenantRevenueSettlementPanel.jsx` to render an explicit `Sign in as Platform Admin` button when `error` contains `Admin authentication required` or session expiration, directing admins to `/admin`.
+
 ### Files modified
-- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `frontend/src/features/admin/tenantRevenue/TenantRevenueSettlementPanel.jsx`
 - `Plan.md`
 - `Implementation.md`
-
 
