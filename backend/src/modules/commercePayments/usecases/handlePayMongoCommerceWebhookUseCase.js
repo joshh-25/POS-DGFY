@@ -5,6 +5,11 @@ import {
   getPaymentIdFromPayMongoResource
 } from './finalizePaidCommerceSession.js';
 import { reconcileRefundedPaymentState } from './commercePaymentAdminUseCases.js';
+import {
+  postPaidTenantRevenueTransactionUseCase,
+  recordTenantRevenueChargebackUseCase,
+  recordSucceededTenantRevenueRefundUseCase
+} from '../../tenantRevenue/index.js';
 
 const toPlain = (value) => (value?.get ? value.get({ plain: true }) : value);
 
@@ -31,6 +36,39 @@ const getEventResource = (body = {}) => (
 );
 
 const getAttributes = (resource = {}) => resource?.attributes || resource || {};
+const normalizeCurrency = (value) => String(value || '').trim().toUpperCase();
+const toPositiveInteger = (value) => {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
+};
+const getPaidPaymentValidationFailure = ({ session, resource }) => {
+  const attrs = getAttributes(resource);
+  const providerStatus = String(attrs.status || '').trim().toLowerCase();
+  const expectedAmount = toPositiveInteger(session?.total_amount_centavos);
+  const paidAmount = toPositiveInteger(attrs.amount);
+  const expectedCurrency = normalizeCurrency(session?.currency || 'PHP');
+  const paidCurrency = normalizeCurrency(attrs.currency);
+
+  if (providerStatus !== 'paid') {
+    return {
+      code: 'PAYMENT_STATUS_MISMATCH',
+      reason: `PayMongo payment.paid event contained payment status "${providerStatus || 'missing'}".`
+    };
+  }
+  if (!expectedAmount || !paidAmount || paidAmount !== expectedAmount) {
+    return {
+      code: 'PAYMENT_AMOUNT_MISMATCH',
+      reason: `Paid amount ${paidAmount || 'missing'} centavos does not match expected amount ${expectedAmount || 'missing'} centavos.`
+    };
+  }
+  if (!paidCurrency || paidCurrency !== expectedCurrency) {
+    return {
+      code: 'PAYMENT_CURRENCY_MISMATCH',
+      reason: `Paid currency ${paidCurrency || 'missing'} does not match expected currency ${expectedCurrency}.`
+    };
+  }
+  return null;
+};
 const getAccountId = (resource = {}) => {
   const attrs = getAttributes(resource);
   return resource?.id || attrs.account_id || attrs.merchant_id || attrs.id || null;
@@ -117,13 +155,21 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
     const status = ['succeeded', 'success', 'refunded'].includes(providerStatus)
       ? 'succeeded'
       : (['failed', 'cancelled', 'canceled'].includes(providerStatus) ? 'failed' : 'pending');
-    await commercePaymentRepository.updateRefundById(refund.refund_id, {
+    const updatedRefund = await commercePaymentRepository.updateRefundById(refund.refund_id, {
       status,
       provider_payload: resource,
       failure_code: status === 'failed' ? 'PROVIDER_REFUND_FAILED' : null,
       failure_reason: status === 'failed' ? (attrs.failed_message || 'PayMongo reported refund failure.') : null
     });
     const updatedSession = await reconcileRefundedPaymentState({ commercePaymentRepository, session });
+    if (status === 'succeeded') {
+      const revenueResult = await recordSucceededTenantRevenueRefundUseCase({
+        session: updatedSession,
+        refund: updatedRefund,
+        actor: 'paymongo_webhook'
+      });
+      if (!revenueResult.success) throw revenueResult.error;
+    }
     await commercePaymentRepository.createAuditLog?.({
       user_id: null,
       entity_type: 'CommercePayment',
@@ -261,7 +307,74 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
         return ok({ handled: false, reason: 'session_not_found' });
       }
 
+      if (['payment.chargeback', 'payment.disputed', 'payment.dispute.created'].includes(eventType)) {
+        const revenueResult = await recordTenantRevenueChargebackUseCase({
+          session,
+          resource,
+          providerEventId,
+          actor: 'paymongo_webhook'
+        });
+        if (!revenueResult.success) throw revenueResult.error;
+        return ok({
+          handled: true,
+          status: 'chargeback_recorded',
+          payment_session: session.public_reference
+        });
+      }
+
       if (eventType === 'payment.paid') {
+        if (session.status === 'finalized' || session.pos_transaction_id || session.tracking_pin) {
+          return ok({
+            handled: true,
+            idempotent_replay: true,
+            status: session.status === 'paid' ? 'finalized' : session.status,
+            payment_session: session.public_reference
+          });
+        }
+        if (session.status === 'paid_manual_resolution_required') {
+          return ok({
+            handled: true,
+            idempotent_replay: true,
+            status: session.status,
+            payment_session: session.public_reference
+          });
+        }
+        const paymentValidationFailure = getPaidPaymentValidationFailure({ session, resource });
+        if (paymentValidationFailure) {
+          const heldSession = await commercePaymentRepository.updateSessionById(session.session_id, {
+            status: 'paid_manual_resolution_required',
+            paid_at: new Date(),
+            provider_event_id: providerEventId || session.provider_event_id,
+            provider_payment_id: getPaymentId(resource) || session.provider_payment_id,
+            provider_payload: resource,
+            failure_code: paymentValidationFailure.code,
+            failure_reason: paymentValidationFailure.reason
+          });
+          await commercePaymentRepository.createAuditLog?.({
+            user_id: null,
+            entity_type: 'CommercePayment',
+            entity_id: session.session_id,
+            action: 'UPDATE',
+            changes: {
+              event: 'commerce_payment_paid_validation_hold',
+              provider_event_id: providerEventId,
+              payment_session: session.public_reference,
+              failure_code: paymentValidationFailure.code,
+              expected_amount_centavos: toPositiveInteger(session.total_amount_centavos),
+              provider_amount_centavos: toPositiveInteger(getAttributes(resource).amount),
+              expected_currency: normalizeCurrency(session.currency || 'PHP'),
+              provider_currency: normalizeCurrency(getAttributes(resource).currency)
+            },
+            user_agent: 'PayMongo Commerce Webhook'
+          });
+          return ok({
+            handled: true,
+            status: heldSession.status,
+            payment_session: heldSession.public_reference,
+            manual_resolution_required: true,
+            failure_code: paymentValidationFailure.code
+          });
+        }
         const paidSession = await commercePaymentRepository.updateSessionById(session.session_id, {
           status: 'paid',
           paid_at: new Date(),
@@ -269,6 +382,13 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
           provider_payment_id: getPaymentId(resource) || session.provider_payment_id,
           provider_payload: resource
         });
+        const revenueResult = await postPaidTenantRevenueTransactionUseCase({
+          session: paidSession,
+          resource,
+          providerEventId,
+          actor: 'paymongo_webhook'
+        });
+        if (!revenueResult.success) throw revenueResult.error;
         const finalized = await finalizePaidCommerceSession({
           session: paidSession,
           resource,

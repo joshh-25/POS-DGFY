@@ -78,9 +78,24 @@ describe('standalone POS browser session bootstrap', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(successfulRefreshResponse()));
 
     const reloadedSession = await import('../browserSession.js');
-    expect(reloadedSession.getAccessToken()).toBe('explicit-pos-login-token');
-    expect(reloadedSession.getCompanyToken()).toBe('tenant-company-token');
+    expect(reloadedSession.getAccessToken()).toBe('');
+    expect(reloadedSession.getCompanyToken()).toBe('');
     expect(reloadedSession.canRefreshBrowserSession()).toBe(true);
+    await expect(reloadedSession.refreshBrowserSession()).resolves.toBe('refreshed-access-token');
+    expect(reloadedSession.getAccessToken()).toBe('refreshed-access-token');
+    expect(reloadedSession.getCompanyToken()).toBe('tenant-company-token');
+  });
+
+  it('persists only a non-sensitive active marker for standalone POS reload', async () => {
+    const session = await import('../browserSession.js');
+    session.setBrowserSession({
+      token: 'must-not-be-persisted',
+      companyToken: 'must-not-be-persisted-either'
+    });
+
+    const stored = globalThis.window.sessionStorage.getItem('pos_browser_session_v1');
+    expect(JSON.parse(stored)).toEqual({ active: true });
+    expect(stored).not.toContain('must-not-be-persisted');
   });
 
   it('allows one cookie-backed POS restore after a successful company switch handoff', async () => {

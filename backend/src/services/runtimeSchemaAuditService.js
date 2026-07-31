@@ -49,7 +49,10 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260502000001-add-services-mode-booking-tables.cjs',
     '20260726000001-add-tracking-mode-to-items.cjs',
     '20260726000002-add-service-booking-lines.cjs',
-    '20260726000003-add-entity-type-to-discovery-index.cjs'
+    '20260726000003-add-entity-type-to-discovery-index.cjs',
+    '20260729000001-create-employee-credit-ledger.cjs',
+    '20260729000002-create-employee-directory.cjs',
+    '20260730000001-convert-employee-credit-to-outstanding-balance.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -105,7 +108,54 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'payment_collected_at',
         'payment_collected_by',
         'payment_collected_shift_id',
-        'payment_collected_terminal_id'
+        'payment_collected_terminal_id',
+        'employee_credit_account_id',
+        'employee_credit_user_id',
+        'employee_credit_employee_id',
+        'employee_credit_employee_name_snapshot',
+        'employee_credit_account_code_snapshot',
+        'employee_credit_amount',
+        'employee_credit_balance_after',
+        'employee_credit_outstanding_after',
+        'employee_credit_authorization_reference'
+    ],
+    employee_credit_accounts: [
+        'account_id',
+        'user_id',
+        'employee_id',
+        'account_code',
+        'is_eligible',
+        'balance',
+        'outstanding_balance',
+        'credit_limit',
+        'authorization_pin_hash',
+        'version'
+    ],
+    employees: [
+        'employee_id',
+        'employee_code',
+        'full_name',
+        'email',
+        'phone',
+        'location_id',
+        'is_active',
+        'created_by',
+        'updated_by'
+    ],
+    employee_credit_ledger_entries: [
+        'ledger_entry_id',
+        'account_id',
+        'pos_transaction_id',
+        'entry_type',
+        'amount',
+        'balance_before',
+        'balance_after',
+        'actor_user_id',
+        'shift_id',
+        'terminal_id',
+        'location_id',
+        'authorization_reference',
+        'idempotency_key'
     ],
     delivery_jobs: [
         'delivery_job_id',

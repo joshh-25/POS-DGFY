@@ -31,8 +31,11 @@ const forbiddenLocalStorageTokenKeys = [
 ];
 
 const forbiddenSessionStorageTokenKeys = [
-  'admin_token'
+  'admin_token',
+  ...forbiddenLocalStorageTokenKeys
 ];
+
+const serializedSessionTokenPattern = /sessionStorage\.setItem\([^,]+,\s*JSON\.stringify\(\s*\{[^}]*\b(?:token|companyToken|refreshToken)\b/;
 
 const containsForbiddenKey = (source, keys) => keys.some((key) => (
   new RegExp(`['"\`]${key}['"\`]`).test(source)
@@ -131,6 +134,9 @@ describe('browser token storage guard', () => {
         if (pattern.test(source)) {
           violations.push(`${file}: ${pattern}`);
         }
+      }
+      if (serializedSessionTokenPattern.test(source)) {
+        violations.push(`${file}: sessionStorage serialized payload contains a privileged token`);
       }
       for (const collectionName of findTokenKeyCollections(source, forbiddenLocalStorageTokenKeys)) {
         if (hasCollectionStorageReadWrite(source, collectionName, 'localStorage')) {

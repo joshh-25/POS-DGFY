@@ -4,6 +4,7 @@ import {
   getSettingByKeyUseCase,
   updateSettingsUseCase,
   updateSettingByKeyUseCase,
+  generateStorefrontSlugUseCase,
   verifyPosSettingsAccessPinUseCase,
   resetSettingsToDefaultUseCase,
   getCompanyInfoUseCase,
@@ -219,6 +220,50 @@ export const updateSettingByKey = async (req, res, next) => {
         success: true,
         data: result.data,
         message: 'Setting updated successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const generateStorefrontSlug = async (req, res, next) => {
+  try {
+    const result = await generateStorefrontSlugUseCase({
+      context: {
+        tenantId: req.tenant?.id || req.user?.tenant_id || null,
+        tenant_id: req.tenant?.id || req.user?.tenant_id || null,
+        tenantName: req.tenant?.name || req.tenant?.company_name || null,
+        tenant_name: req.tenant?.name || req.tenant?.company_name || null
+      },
+      actorUser: req.user
+    });
+    if (result?.success) {
+      invalidateTenantCache(req);
+    }
+    if (result?.success && req.tenant?.id) {
+      syncStorefrontDiscoveryWithReliability({
+        tenantId: req.tenant.id,
+        source: 'settings_generate_storefront_slug',
+        requestId: requestId(req, res)
+      }).catch((error) => {
+        logger.warn('[SettingsHandlers] Storefront discovery sync failed after Storefront ID generation', {
+          tenantId: req.tenant?.id || null,
+          requestId: requestId(req, res),
+          error: error?.message || 'unknown_error'
+        });
+      });
+    }
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: result.data?.generated
+          ? 'Storefront ID generated successfully'
+          : 'Storefront ID is already configured',
         timestamp: timestamp()
       }),
       errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)

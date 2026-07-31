@@ -15,6 +15,7 @@ import {
     verifyStoreGuestCheckoutOtpUseCase,
     storeCheckoutPaymentSessionUseCase,
     getStoreCheckoutPaymentSessionUseCase,
+    confirmStoreCheckoutSandboxPaymentUseCase,
     storeCheckoutUseCase,
     trackStoreOrderUseCase,
     claimStoreOrderUseCase,
@@ -423,6 +424,28 @@ export const getCheckoutPaymentSession = async (req, res, next) => {
             successPayloadResolver: () => ({
                 success: true,
                 data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const confirmCheckoutSandboxPayment = async (req, res, next) => {
+    try {
+        const result = await confirmStoreCheckoutSandboxPaymentUseCase({
+            paymentSessionId: req.validatedParams?.payment_session_id || req.params.payment_session_id,
+            remoteAddress: req.socket?.remoteAddress || req.connection?.remoteAddress || null
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 202,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'PayMongo sandbox confirmation requested',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)

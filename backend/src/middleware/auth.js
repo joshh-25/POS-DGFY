@@ -6,6 +6,19 @@ import { paymentsEnabled } from '../config/paymentsFeature.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import { isPhoneCompletionEnforcedForTenant } from '../config/phoneCompletionRollout.js';
 import { resolveEffectivePermissions } from '../utils/userPermissions.js';
+import {
+  ADMIN_FINANCIAL_ROLES,
+  getAdminAccounts
+} from '../config/adminAuthConfig.js';
+
+const resolveAdminFinancialRole = (username, isMaster = false) => {
+  const normalizedUsername = String(username || '').trim().toLowerCase();
+  const configuredAccount = getAdminAccounts().find(
+    (account) => String(account.username || '').trim().toLowerCase() === normalizedUsername
+  );
+  return configuredAccount?.financialRole
+    || (isMaster ? ADMIN_FINANCIAL_ROLES.PLATFORM_ADMIN : ADMIN_FINANCIAL_ROLES.FINANCE_VIEWER);
+};
 
 // Short-lived in-memory cache to avoid a DB round-trip on every authenticated request.
 // The JWT is cryptographically verified before the cache is consulted, so this is safe.
@@ -525,6 +538,10 @@ export const authenticateAdmin = async (req, res, next) => {
         username: authority.user.username,
         is_master: Boolean(authority.user.is_master),
         permissions: authority.permissions,
+        financial_role: resolveAdminFinancialRole(
+          authority.user.username,
+          Boolean(authority.user.is_master)
+        ),
         temporary_password_active: Boolean(authority.user.temporary_password_active),
         session_id: authority.session.id
       };
@@ -583,6 +600,35 @@ export const requirePlatformMaster = (req, res, next) => {
   if (!req.admin) return res.status(401).json({ success: false, message: 'Admin authentication required' });
   if (req.admin.is_master) return next();
   return res.status(403).json({ success: false, message: 'Platform Master Admin access required' });
+};
+
+export const authorizeAdminFinancialRoles = (...allowedRoles) => {
+  const allowed = new Set(allowedRoles.flat().filter(Boolean));
+  return (req, res, next) => {
+    if (!req.admin) {
+      return res.status(401).json({
+        success: false,
+        message: 'Admin authentication required'
+      });
+    }
+
+    const financialRole = String(
+      req.admin.financial_role
+      || resolveAdminFinancialRole(req.admin.username, req.admin.is_master)
+    ).trim().toLowerCase();
+    if (
+      financialRole === ADMIN_FINANCIAL_ROLES.PLATFORM_ADMIN
+      || allowed.has(financialRole)
+    ) {
+      return next();
+    }
+
+    return res.status(403).json({
+      success: false,
+      message: 'This financial action requires an authorized finance role.',
+      required_financial_roles: [...allowed]
+    });
+  };
 };
 
 /**

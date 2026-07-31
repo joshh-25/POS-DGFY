@@ -1,7 +1,8 @@
 import { jest } from '@jest/globals';
 import {
   validateOpenTerminalShift,
-  validateSwitchTerminalShiftLocation
+  validateSwitchTerminalShiftLocation,
+  validateUpdateOnlineOrderStatus
 } from '../src/validators/posValidator.js';
 
 const createRes = () => {
@@ -67,5 +68,32 @@ describe('POS open shift validator terminal identity', () => {
     expect(next).toHaveBeenCalledTimes(1);
     expect(res.status).not.toHaveBeenCalled();
     expect(req.validatedData.target_location_id).toBe(3);
+  });
+
+  it('requires a reason when rejecting an online order', () => {
+    const req = { body: { fulfillment_status: 'rejected' } };
+    const res = createRes();
+    const next = jest.fn();
+
+    validateUpdateOnlineOrderStatus(req, res, next);
+
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(422);
+  });
+
+  it('accepts a reason with an online-order rejection', () => {
+    const req = {
+      body: {
+        fulfillment_status: 'rejected',
+        reason: 'Item is unavailable'
+      }
+    };
+    const res = createRes();
+    const next = jest.fn();
+
+    validateUpdateOnlineOrderStatus(req, res, next);
+
+    expect(next).toHaveBeenCalledTimes(1);
+    expect(req.validatedData.reason).toBe('Item is unavailable');
   });
 });

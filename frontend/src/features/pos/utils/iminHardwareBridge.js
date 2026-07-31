@@ -380,6 +380,16 @@ export const formatIminReceiptText = ({ transaction, businessSettings = {}, rece
             pair('Change', money(transaction?.change_amount))
         );
     }
+    if (transaction?.payment_type === 'employee_credit') {
+        receiptRows.push(
+            `Employee: ${safeText(transaction?.employee_credit_employee_name_snapshot)}`,
+            pair('Credit Account', safeText(transaction?.employee_credit_account_code_snapshot)),
+            pair('Credit Amount', money(transaction?.employee_credit_amount)),
+            pair('Remaining Credit', money(transaction?.employee_credit_balance_after)),
+            `Authorization: ${safeText(transaction?.employee_credit_authorization_reference)}`,
+            'Employee Signature: ____________________'
+        );
+    }
     if (showSeniorPwdReceiptFields) {
         receiptRows.push(
             `SC/PWD/NAAC/MOV/Solo Parent ID No.: ${safeText(governedDiscount?.senior_pwd_id_number, '____________')}`,

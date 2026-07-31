@@ -1,6 +1,7 @@
 import React from 'react';
 import { Info, MapPinned, RefreshCcw, Tag, User, Wallet, Receipt, ShoppingBag, Calendar, MapPin, Clipboard, Printer, ExternalLink, Check, Ban, Truck } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import {
   FULFILLMENT_STATUS_LABELS,
   ORDER_METHOD_LABELS,
@@ -89,6 +90,7 @@ function IncomingQueueWorkspace({
   sectionId
 }) {
   const [orderSort, setOrderSort] = React.useState('newest');
+  const [pendingRejectionOrderId, setPendingRejectionOrderId] = React.useState(null);
   const locations = Array.isArray(locationsState?.locations) ? locationsState.locations : [];
   const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
   const sortedIncomingOrders = [...incomingOrders].sort((left, right) => {
@@ -252,7 +254,13 @@ function IncomingQueueWorkspace({
                   size="sm"
                   variant={status === 'rejected' ? 'destructive' : 'outline'}
                   disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift}
-                  onClick={() => handleIncomingOrderStatusChange?.(order.pos_transaction_id, status)}
+                  onClick={() => {
+                    if (status === 'rejected') {
+                      setPendingRejectionOrderId(Number(order.pos_transaction_id));
+                      return;
+                    }
+                    handleIncomingOrderStatusChange?.(order.pos_transaction_id, status);
+                  }}
                 >
                   {actionLoading === status ? null : getStatusIcon(status)}
                   {actionLoading === status ? 'Saving...' : getFulfillmentActionLabel(status, order)}
@@ -446,6 +454,30 @@ function IncomingQueueWorkspace({
           })}
         </div>
       )}
+      <ConfirmActionDialog
+        open={pendingRejectionOrderId !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingRejectionOrderId(null);
+        }}
+        title="Reject and refund this order?"
+        description="The order will be rejected. If PayMongo already collected payment, DGFY will request a full refund and keep the transaction out of tenant settlement."
+        confirmLabel="Reject and request refund"
+        cancelLabel="Keep order"
+        variant="destructive"
+        reasonLabel="Rejection reason"
+        reasonPlaceholder="Explain why this paid order is being rejected."
+        reasonRequired
+        reasonMinLength={3}
+        onConfirm={async (reason) => {
+          const succeeded = await handleIncomingOrderStatusChange?.(
+            pendingRejectionOrderId,
+            'rejected',
+            reason
+          );
+          if (succeeded !== false) setPendingRejectionOrderId(null);
+          return succeeded;
+        }}
+      />
     </div>
   );
 }

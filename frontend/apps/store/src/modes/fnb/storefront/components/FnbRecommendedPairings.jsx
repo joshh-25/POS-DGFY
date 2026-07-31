@@ -1,12 +1,13 @@
 import { ChefHat, Plus } from 'lucide-react';
+import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
+import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 
 export const FnbRecommendedPairings = ({
   formatMoney,
   isMobileViewport,
   onQuickAdd,
   onSelectRelatedItem,
-  relatedItems,
-  resolveImageUrl
+  relatedItems
 }) => {
   if (!Array.isArray(relatedItems) || relatedItems.length === 0) return null;
 
@@ -41,12 +42,13 @@ export const FnbRecommendedPairings = ({
         <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 800, color: '#0f172a' }}>Recommended Pairings</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {relatedItems.slice(0, 5).map((recommended) => {
-            const imageUrl = resolveImageUrl(recommended.image_url);
+            const imageSources = resolveStorefrontImageSources(recommended, { preferred: 'thumbnail' });
+            const imageUrl = imageSources.src;
             const category = String(recommended.sectionLabel || recommended.category || '').trim();
             return (
               <div key={`recommended-mob-${recommended.item_id}`} onClick={() => onSelectRelatedItem?.(recommended)} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: '#fff', border: '1px solid rgba(226, 232, 240, 0.9)', borderRadius: 16, boxShadow: '0 2px 10px rgba(15,23,42,0.04)', cursor: 'pointer' }}>
                 <div style={{ width: 64, height: 64, borderRadius: 12, overflow: 'hidden', background: '#f1f5f9', flexShrink: 0, border: '1px solid rgba(226,232,240,0.7)' }}>
-                  {imageUrl ? <img src={imageUrl} alt={recommended.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: '#94a3b8' }}><ChefHat size={24} strokeWidth={1.5} /></div>}
+                  {imageUrl ? <StorefrontResponsiveImage imageSources={imageSources} sizes="64px" alt={recommended.name} loading="lazy" decoding="async" width={64} height={64} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} /> : <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: '#94a3b8' }}><ChefHat size={24} strokeWidth={1.5} /></div>}
                 </div>
                 <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 3 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{recommended.name}</div>
@@ -67,11 +69,12 @@ export const FnbRecommendedPairings = ({
       <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f172a' }}>Recommended Pairings</h3>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
         {relatedItems.slice(0, 3).map((recommended) => {
-          const imageUrl = resolveImageUrl(recommended.image_url);
+          const imageSources = resolveStorefrontImageSources(recommended, { preferred: 'thumbnail' });
+          const imageUrl = imageSources.src;
           return (
             <div key={`recommended-desk-${recommended.item_id}`} onClick={() => onSelectRelatedItem?.(recommended)} style={{ display: 'flex', flexDirection: 'column', gap: 8, cursor: 'pointer', background: '#fff', border: '1px solid rgba(226, 232, 240, 0.8)', borderRadius: 18, padding: 12 }}>
               <div style={{ width: '100%', height: 110, borderRadius: 12, overflow: 'hidden', background: '#f8fafc', flexShrink: 0 }}>
-                {imageUrl ? <img src={imageUrl} alt={recommended.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: '#64748b' }}><ChefHat size={20} /></div>}
+                {imageUrl ? <StorefrontResponsiveImage imageSources={imageSources} sizes="110px" alt={recommended.name} loading="lazy" decoding="async" width={110} height={110} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: '#64748b' }}><ChefHat size={20} /></div>}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flexGrow: 1 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{recommended.name}</div>

@@ -1,10 +1,12 @@
 import { toast as sonnerToast } from 'sonner';
+import { createErrorToastDeduper } from './errorToastDedupe.js';
 
 export const IMIN_POS_FEEDBACK_EVENT = 'dgfy:imin-pos-feedback';
 
 let sequence = 0;
 const recentMessages = new Map();
 const DEDUPE_WINDOW_MS = 1_500;
+const posErrorToastDeduper = createErrorToastDeduper();
 
 export const isIminWrapperRuntime = (windowObj = typeof window !== 'undefined' ? window : null) => {
   const bridge = windowObj?.iMinBridge;
@@ -53,6 +55,13 @@ export const emitIminPosFeedback = (
 };
 
 const createToastMethod = (tone) => (message, options = {}) => {
+  if (
+    tone === 'error'
+    && posErrorToastDeduper.shouldSuppress(`${String(message || '').trim()}:${String(options?.description || '').trim()}`)
+  ) {
+    return null;
+  }
+
   if (!isIminWrapperRuntime()) {
     return sonnerToast[tone](message, options);
   }

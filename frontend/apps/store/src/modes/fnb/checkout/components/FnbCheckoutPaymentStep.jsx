@@ -33,6 +33,7 @@ export function FnbCheckoutPaymentStep({
   paymentControl,
   processing,
   quoteError,
+  submitLabel = 'Place Order',
   withAssetOrigin
 }) {
   return (
@@ -52,7 +53,7 @@ export function FnbCheckoutPaymentStep({
       {!isResponsive ? (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <button type="button" onClick={onBack} style={{ minHeight: 44, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><ChevronLeft size={18} /> Back</button>
-          <button type="button" onClick={onSubmit} disabled={!canSubmit} style={{ minHeight: 44, borderRadius: 12, border: 'none', background: canSubmit ? brandColor : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: canSubmit ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{processing ? 'Processing...' : 'Place Order'}</button>
+          <button type="button" onClick={onSubmit} disabled={!canSubmit} style={{ minHeight: 44, borderRadius: 12, border: 'none', background: canSubmit ? brandColor : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: canSubmit ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{processing ? 'Processing...' : submitLabel}</button>
         </div>
       ) : null}
       {closedNotice}

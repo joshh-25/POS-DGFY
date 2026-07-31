@@ -38,6 +38,7 @@ import {
 } from '../../src/utils/tenantCapabilityMessages.js';
 import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_SELECT_VALUES } from '../../src/features/settings/workflowMode.js';
 import StorefrontCustomDomainsModal from '../../src/features/admin/components/StorefrontCustomDomainsModal.jsx';
+import TenantRevenueSettlementPanel from '../../src/features/admin/tenantRevenue/TenantRevenueSettlementPanel.jsx';
 
 const STATUS_CONFIG = {
     pending: { label: 'Pending', color: 'text-amber-600 bg-amber-50 border-amber-200', icon: Clock },
@@ -1385,6 +1386,8 @@ export default function TenantManager() {
                     Subscription plan-change and billing setup actions are disabled in the admin portal.
                 </div>
             </div>
+
+            <TenantRevenueSettlementPanel tenants={tenants} />
 
             <form onSubmit={submitAssistedProvisioning} className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

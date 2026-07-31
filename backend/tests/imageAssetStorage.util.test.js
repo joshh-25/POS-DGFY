@@ -48,9 +48,21 @@ describe('imageAssetStorage utility', () => {
         expect(stored.image_variants.thumbnail_url).toMatch(/\/thumb\.webp$/);
         expect(stored.image_variants.medium_url).toMatch(/\/medium\.webp$/);
         expect(stored.image_variants.large_url).toMatch(/\/large\.webp$/);
+        expect(stored.image_variants.version).toBe(2);
+        expect(stored.image_variants.placeholder_url).toMatch(/\/placeholder\.webp$/);
+        expect(stored.image_variants.avif.thumbnail_url).toMatch(/\/thumb\.avif$/);
+        expect(stored.image_variants.webp.large_url).toMatch(/\/large\.webp$/);
 
         await expect(fs.access(path.join(uploadsRoot, stored.path))).resolves.toBeUndefined();
         await expect(fs.access(path.join(uploadsRoot, stored.original.path))).resolves.toBeUndefined();
+        await expect(fs.access(path.join(
+            uploadsRoot,
+            stored.image_variants.avif.thumbnail_url.replace(/^\/uploads\//, '')
+        ))).resolves.toBeUndefined();
+        await expect(fs.access(path.join(
+            uploadsRoot,
+            stored.image_variants.placeholder_url.replace(/^\/uploads\//, '')
+        ))).resolves.toBeUndefined();
         expect(stored.variants.large.size).toBeLessThanOrEqual(MAX_PUBLIC_IMAGE_BYTES);
     });
 
@@ -85,6 +97,8 @@ describe('imageAssetStorage utility', () => {
         expect(stored.variants.medium.url).toMatch(/\/medium\.png$/);
         expect(stored.variants.large.url).toMatch(/\/large\.png$/);
         expect(stored.path).toMatch(/storefront-assets\/tenant-b\/cover-test-.*\/large\.png$/);
+        expect(stored.image_variants.webp.thumbnail_url).toMatch(/\/thumb\.webp$/);
+        expect(stored.image_variants.avif.thumbnail_url).toMatch(/\/thumb\.avif$/);
     });
 
     it('derives sibling variant urls and removes the full asset footprint', async () => {

@@ -12,6 +12,30 @@ Credentials are env-backed and password verification uses bcrypt hash comparison
 
 - `ADMIN_USERNAME` (default: `skupervisor`)
 - `ADMIN_PASSWORD_HASH` (default hash maps to password `252378`)
+- `ADMIN_FINANCIAL_ROLE` (legacy single-account role, default: `platform_admin`)
+- `ADMIN_ACCOUNTS_JSON` (preferred production roster; replaces the single account when set)
+
+`ADMIN_ACCOUNTS_JSON` contains bcrypt hashes only—never plaintext passwords:
+
+```json
+[
+  {
+    "username": "finance.preparer",
+    "password_hash": "$2b$12$...",
+    "financial_role": "finance_preparer"
+  },
+  {
+    "username": "finance.approver",
+    "password_hash": "$2b$12$...",
+    "financial_role": "finance_approver"
+  }
+]
+```
+
+Allowed financial roles are `platform_admin`, `finance_viewer`,
+`finance_preparer`, and `finance_approver`. Tenant-revenue endpoints enforce
+these roles server-side. Maker-checker rules still require the preparing and
+approving usernames to be different.
 
 Lockout policy (Redis-backed when available, in-memory fallback, per `username|ip` identity):
 
