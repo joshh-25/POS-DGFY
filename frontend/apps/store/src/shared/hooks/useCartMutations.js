@@ -31,6 +31,7 @@ export function useCartMutations({
   cart,
   isFnbMode,
   isServicesMode,
+  isSimpleMode,
   productCartPermitted,
   serviceCartFabRef,
   servicePaymentTiming,
@@ -225,9 +226,9 @@ export function useCartMutations({
       animateCartCardToFab(options?.sourceRect || null);
     } else {
       setCheckoutTab(isFnbMode ? 'cart' : 'review');
-      const shouldOpenCartDrawer = Boolean(options?.openCart) || !isFnbMode;
+      const shouldOpenCartDrawer = Boolean(options?.openCart) || (!isFnbMode && !isSimpleMode);
       setIsCheckoutOpen(shouldOpenCartDrawer);
-      if (isFnbMode && !shouldOpenCartDrawer) {
+      if (!shouldOpenCartDrawer) {
         animateCartCardToFab(options?.sourceRect || null);
       }
     }

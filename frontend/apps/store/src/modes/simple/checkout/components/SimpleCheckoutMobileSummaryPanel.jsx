@@ -1,66 +1,63 @@
-import { ChevronDown, ChevronLeft, ChevronRight, Lock, Plus, ShoppingBag, X } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, Lock, ShoppingBag, X } from 'lucide-react';
 
-import { FnbCheckoutMobileSummary } from './FnbCheckoutMobileSummary.jsx';
+const SIMPLE_BRAND = '#0f766e';
+const SIMPLE_BRAND_DARK = '#134e4a';
+const SIMPLE_BRAND_SHADOW = 'rgba(15,118,110,.28)';
 
 /**
- * F&B mobile checkout summary sheet and persistent action footer.
- * State and checkout transitions stay in the route container until the
- * fulfillment/location interaction can be extracted as a focused slice.
+ * MSME (Simple) mobile checkout summary sheet and persistent action footer.
+ * Structurally mirrors FnbCheckoutMobileSummaryPanel (same bottom-sheet +
+ * floating footer pattern) while keeping MSME's own teal accent and simpler
+ * sequential step numbering (1 Customer / 2 Fulfillment / 3 Payment).
  */
-export function FnbCheckoutMobileSummaryPanel({
-  brandColor,
-  brandColorDark,
-  brandShadowStrong,
+export function SimpleCheckoutMobileSummaryPanel({
   cart,
-  cartCount,
+  cartCount = 0,
   cartImageErrors,
-  checkoutAllowed,
-  checkoutLoading,
-  fnbCustomerStepComplete,
-  fnbFulfillmentStepComplete,
-  isDeliveryOrder,
-  itemCountLabel,
+  checkoutAllowed = false,
+  checkoutLoading = false,
+  customerStepComplete = false,
+  fulfillmentStepComplete = false,
+  isDeliveryOrder = false,
   money,
-  onBackToCart,
+  onBackToCatalog,
   onCheckout,
-  onDecreaseStep,
   onImageError,
-  onIncreaseStep,
-  onToggleSummary,
+  onStepChange,
   orderStep,
   promoDiscountSummaryRow,
   promoPanel,
-  scheduleLabel,
+  scheduleLabel = 'NOW',
   setSummaryOpen,
   showSummary,
-  totalFeeAndTaxes,
-  totals,
+  totals = {},
   withAssetOrigin,
 }) {
-  const isPrimaryDisabled = orderStep === 3
-    ? !fnbCustomerStepComplete
-    : orderStep === 4
+  const totalFeeAndTaxes = (totals.service_fee_amount || 0) + (totals.vat_amount || 0);
+  const isPrimaryDisabled = orderStep === 1
+    ? !customerStepComplete
+    : orderStep === 3
       ? !checkoutAllowed
-      : !fnbFulfillmentStepComplete;
+      : !fulfillmentStepComplete;
 
   const handleBack = () => {
-    if (orderStep === 3) {
-      onBackToCart();
+    if (orderStep === 1) {
+      onBackToCatalog();
       return;
     }
-    onDecreaseStep();
+    onStepChange(orderStep - 1);
   };
 
   const handlePrimary = () => {
-    if (orderStep === 3 || orderStep === 2) {
-      onIncreaseStep();
+    if (orderStep === 1 || orderStep === 2) {
+      onStepChange(orderStep + 1);
       return;
     }
     onCheckout();
   };
 
   return (
-    <FnbCheckoutMobileSummary isResponsive>
+    <>
       {showSummary && (
         <div
           style={{ position: 'fixed', inset: 0, zIndex: 2200, background: 'rgba(15,23,42,0.38)', display: 'grid', alignItems: 'end' }}
@@ -88,7 +85,7 @@ export function FnbCheckoutMobileSummaryPanel({
               </div>
               <div style={{ display: 'grid', gap: 12 }}>
                 {cart.map((line) => (
-                  <div key={`fnb-mobile-order-summary-${line.cart_line_id || line.item_id}`} style={{ display: 'grid', gridTemplateColumns: '64px minmax(0, 1fr) auto', gap: 12, alignItems: 'start', border: '1px solid #e2e8f0', borderRadius: 18, padding: 12 }}>
+                  <div key={`simple-mobile-order-summary-${line.cart_line_id || line.item_id}`} style={{ display: 'grid', gridTemplateColumns: '64px minmax(0, 1fr) auto', gap: 12, alignItems: 'start', border: '1px solid #e2e8f0', borderRadius: 18, padding: 12 }}>
                     <div style={{ width: 64, height: 64, borderRadius: 16, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center' }}>
                       {line.image_url && !cartImageErrors.has(Number(line.item_id)) ? (
                         <img src={withAssetOrigin(line.image_url)} alt={line.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => onImageError(line.item_id)} />
@@ -99,17 +96,6 @@ export function FnbCheckoutMobileSummaryPanel({
                     <div style={{ minWidth: 0, display: 'grid', gap: 4 }}>
                       <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', lineHeight: 1.2 }}>{line.name}</div>
                       <div style={{ fontSize: 13, color: '#64748b' }}>x {Math.max(1, Number(line.quantity || 1))}</div>
-                      {Array.isArray(line.line_modifiers) && line.line_modifiers.length > 0 && (
-                        <div style={{ display: 'grid', gap: 6, marginTop: 2 }}>
-                          {line.line_modifiers.map((modifier, index) => (
-                            <div key={`mobile-summary-modifier-${line.cart_line_id || line.item_id}-${index}`} style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr) auto', gap: 8, alignItems: 'center', borderRadius: 10, border: '1px solid #bbf7d0', background: '#f0fdf4', padding: '6px 8px' }}>
-                              <Plus size={14} color="#16a34a" />
-                              <span style={{ fontSize: 13, color: '#166534', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{modifier.name}</span>
-                              <span style={{ fontSize: 13, fontWeight: 800, color: '#16a34a' }}>{money(Number(modifier.price_delta || 0))}</span>
-                            </div>
-                          ))}
-                        </div>
-                      )}
                     </div>
                     <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap' }}>{money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0))}</div>
                   </div>
@@ -131,30 +117,28 @@ export function FnbCheckoutMobileSummaryPanel({
         </div>
       )}
 
-      <div key={`fnb-responsive-footer-step-${orderStep}`} style={{ position: 'fixed', left: 16, right: 16, bottom: 0, zIndex: 30, marginTop: 16, padding: '0 0 calc(env(safe-area-inset-bottom, 0px) + 14px)', background: 'transparent' }}>
+      <div key={`simple-responsive-footer-step-${orderStep}`} style={{ position: 'fixed', left: 16, right: 16, bottom: 0, zIndex: 30, marginTop: 16, padding: '0 0 calc(env(safe-area-inset-bottom, 0px) + 14px)', background: 'transparent' }}>
         <div style={{ borderRadius: 24, border: '1px solid #dbe5ee', background: '#fff', boxShadow: '0 -16px 36px rgba(15,23,42,0.14)', padding: '14px 14px 16px', display: 'grid', gap: 14, width: '100%', maxWidth: '100%', minWidth: 0, margin: '0 auto', boxSizing: 'border-box' }}>
-          <button type="button" onClick={onToggleSummary} style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr) auto', gap: 12, alignItems: 'center', border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'left' }}>
-            <div style={{ width: 46, height: 46, borderRadius: 14, border: '1px solid #dbe5ee', background: '#f8fbff', display: 'grid', placeItems: 'center', color: brandColor }}><ShoppingBag size={20} /></div>
+          <button type="button" onClick={() => setSummaryOpen((previous) => !previous)} style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr) auto', gap: 12, alignItems: 'center', border: 'none', background: 'transparent', padding: 0, cursor: 'pointer', textAlign: 'left' }}>
+            <div style={{ width: 46, height: 46, borderRadius: 14, border: '1px solid #dbe5ee', background: '#f0fdfa', display: 'grid', placeItems: 'center', color: SIMPLE_BRAND }}><ShoppingBag size={20} /></div>
             <div style={{ minWidth: 0, display: 'grid', gap: 2 }}>
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{itemCountLabel} - {money(totals.total_amount)}</div>
-              <div style={{ fontSize: 14, color: brandColor, fontWeight: 700 }}>View Order Summary</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#0f172a' }}>{cartCount} Item{cartCount === 1 ? '' : 's'} - {money(totals.total_amount)}</div>
+              <div style={{ fontSize: 14, color: SIMPLE_BRAND, fontWeight: 700 }}>View Order Summary</div>
             </div>
-            <ChevronDown size={20} color={brandColor} style={{ transform: showSummary ? 'rotate(180deg)' : 'none', transition: 'transform 200ms ease' }} />
+            <ChevronDown size={20} color={SIMPLE_BRAND} style={{ transform: showSummary ? 'rotate(180deg)' : 'none', transition: 'transform 200ms ease' }} />
           </button>
-          <div style={{ display: 'grid', gridTemplateColumns: orderStep === 1 ? '1fr' : '1fr 1fr', gap: 12 }}>
-            {orderStep !== 1 && (
-              <button type="button" onClick={handleBack} style={secondaryButtonStyle}>
-                <ChevronLeft size={18} />
-                Back
-              </button>
-            )}
-            <button type="button" onClick={handlePrimary} disabled={isPrimaryDisabled} style={{ ...primaryButtonStyle, background: `linear-gradient(180deg, ${brandColor} 0%, ${brandColorDark} 100%)`, boxShadow: `0 12px 24px ${brandShadowStrong}`, opacity: isPrimaryDisabled ? 0.6 : 1 }}>
-              {orderStep === 4 ? <><Lock size={18} />{checkoutLoading ? 'Processing...' : 'Place Order'}</> : <>Continue<ChevronRight size={20} /></>}
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <button type="button" onClick={handleBack} style={secondaryButtonStyle}>
+              <ChevronLeft size={18} />
+              Back
+            </button>
+            <button type="button" onClick={handlePrimary} disabled={isPrimaryDisabled} style={{ ...primaryButtonStyle, background: `linear-gradient(180deg, ${SIMPLE_BRAND} 0%, ${SIMPLE_BRAND_DARK} 100%)`, boxShadow: `0 12px 24px ${SIMPLE_BRAND_SHADOW}`, opacity: isPrimaryDisabled ? 0.6 : 1 }}>
+              {orderStep === 3 ? <><Lock size={18} />{checkoutLoading ? 'Processing...' : 'Place Order'}</> : <>Continue<ChevronRight size={20} /></>}
             </button>
           </div>
         </div>
       </div>
-    </FnbCheckoutMobileSummary>
+    </>
   );
 }
 

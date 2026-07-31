@@ -37,7 +37,8 @@ export function FnbCheckoutPaymentStep({
 }) {
   return (
     <section style={{ border: '1px solid #e2e8f0', borderRadius: isResponsive ? 20 : 16, background: '#fff', padding: isResponsive ? 16 : isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
-      {!isResponsive ? <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>Payment and Submit</div> : null}
+      <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>Step 3: Review &amp; Payment</div>
+      <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Review the cart, refresh the quote when needed, then choose payment and submit the order.</div>
       {paymentControl}
       <FnbOnlinePaymentPlaceholder />
       <FnbCheckoutReviewItemsList

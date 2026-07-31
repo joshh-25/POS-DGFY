@@ -59,7 +59,7 @@ export function SelectableOptionCard({
           {typeof icon === 'function' ? icon({ size: iconSize, active }) : icon}
         </div>
       ) : null}
-      <div style={{ flex: '1 1 0%', minWidth: 0, fontSize, fontWeight, color: active ? (activeTextColor || '#1e293b') : inactiveTextColor }}>
+      <div style={{ flex: '1 1 0%', minWidth: 0, fontSize, fontWeight, color: active ? (activeTextColor || '#1e293b') : inactiveTextColor, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
         {label}
       </div>
       {showCheck ? (
