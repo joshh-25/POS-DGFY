@@ -30,6 +30,7 @@ import { FnbCheckoutFulfillmentStepView } from '../components/FnbCheckoutFulfill
 import { FnbCheckoutMobileSummaryPanel } from '../components/FnbCheckoutMobileSummaryPanel.jsx';
 import { FnbCheckoutPaymentStep } from '../components/FnbCheckoutPaymentStep.jsx';
 import { FnbCheckoutPaymentStepView } from '../components/FnbCheckoutPaymentStepView.jsx';
+import { FnbQrphPaymentPanel } from '../components/FnbQrphPaymentPanel.jsx';
 import { FnbCheckoutRouteBody } from '../components/FnbCheckoutRouteBody.jsx';
 import { FnbCheckoutSavedAddressSelector } from '../components/FnbCheckoutSavedAddressSelector.jsx';
 import { FnbCheckoutSummaryContent } from '../components/FnbCheckoutSummaryContent.jsx';
@@ -112,6 +113,8 @@ export function FnbCheckoutRouteContainer({
   handleGuestCheckoutOtpCodeChange,
   handlePaymentTypeChange,
   handlePinMyLocation,
+  handleConfirmQrphTestPayment,
+  handleRefreshQrphPaymentSession,
   handleRemoveDeliveryAddress,
   handleRequestGuestCheckoutOtp,
   handleSetDefaultDeliveryAddress,
@@ -129,12 +132,15 @@ export function FnbCheckoutRouteContainer({
   pinLocationError,
   pinLocationLoading,
   promoDiscountSummaryRow,
+  qrphPaymentSession,
+  qrphPaymentStatusLoading,
   quoteError,
   renderAccountOwnedIdentitySummary,
   renderGuestCheckoutEntry,
   renderGuestIdentityFields,
   renderPromoCodePanel,
   renderStorefrontClosedNotice,
+  resetQrphPaymentSession,
   resolvingPinnedDeliveryAddress,
   selectedSavedLocationId,
   selectedStore,
@@ -655,7 +661,7 @@ export function FnbCheckoutRouteContainer({
         >
           <FnbCheckoutPaymentStep
             brandColor={fnbOrderBrand}
-            canSubmit={checkoutAllowed}
+            canSubmit={checkoutAllowed && !qrphPaymentSession}
             checkoutError={checkoutError}
             closedNotice={storefrontClosedByHours ? renderStorefrontClosedNotice({ accent: fnbOrderBrand, background: '#fff7ed', border: '#fdba74' }) : null}
             isMobileViewport={isMobileViewport}
@@ -663,23 +669,38 @@ export function FnbCheckoutRouteContainer({
             onBack={() => setFnbOrderStep(2)}
             onSubmit={handleCheckout}
             paymentControl={(
-              <PaymentMethodSelectorBlock
-                label="Payment Type"
-                value={fnbPaymentType}
-                onChange={handlePaymentTypeChange}
-                options={STOREFRONT_CHECKOUT_PAYMENT_OPTIONS.filter((option) => isEnabledStorefrontCheckoutPaymentType(option.value))}
-                DropdownComponent={StorefrontDropdown}
-                triggerStyle={isFnbOrderResponsiveFlow ? { ...MOBILE_NATIVE_SELECT_STYLE, minHeight: 50, fontSize: 15, borderRadius: 16, padding: '0 44px 0 14px', boxSizing: 'border-box' } : { minHeight: 44, borderRadius: 12 }}
-                menuStyle={isFnbOrderResponsiveFlow ? MOBILE_DROPDOWN_MENU_STYLE : undefined}
-                optionStyle={isFnbOrderResponsiveFlow ? MOBILE_DROPDOWN_OPTION_STYLE : undefined}
-                selectedLabelStyle={isFnbOrderResponsiveFlow ? { fontSize: 15, fontWeight: 700 } : undefined}
-                showCashInfo={fnbPaymentType === 'cash'}
-                cashInfoAccent={fnbOrderBrand}
-                bodyFont={servicesBodyFont}
-              />
+              <div style={{ display: 'grid', gap: 12 }}>
+                <PaymentMethodSelectorBlock
+                  label="Payment Type"
+                  value={fnbPaymentType}
+                  onChange={handlePaymentTypeChange}
+                  options={STOREFRONT_CHECKOUT_PAYMENT_OPTIONS.filter((option) => isEnabledStorefrontCheckoutPaymentType(option.value))}
+                  DropdownComponent={StorefrontDropdown}
+                  triggerStyle={isFnbOrderResponsiveFlow ? { ...MOBILE_NATIVE_SELECT_STYLE, minHeight: 50, fontSize: 15, borderRadius: 16, padding: '0 44px 0 14px', boxSizing: 'border-box' } : { minHeight: 44, borderRadius: 12 }}
+                  menuStyle={isFnbOrderResponsiveFlow ? MOBILE_DROPDOWN_MENU_STYLE : undefined}
+                  optionStyle={isFnbOrderResponsiveFlow ? MOBILE_DROPDOWN_OPTION_STYLE : undefined}
+                  selectedLabelStyle={isFnbOrderResponsiveFlow ? { fontSize: 15, fontWeight: 700 } : undefined}
+                  showCashInfo={fnbPaymentType === 'cash'}
+                  cashInfoAccent={fnbOrderBrand}
+                  bodyFont={servicesBodyFont}
+                />
+                {fnbPaymentType === 'qrph' ? (
+                  <FnbQrphPaymentPanel
+                    onConfirmTestPayment={import.meta.env.DEV ? handleConfirmQrphTestPayment : null}
+                    onRefresh={handleRefreshQrphPaymentSession}
+                    onUseCash={() => {
+                      resetQrphPaymentSession();
+                      handlePaymentTypeChange('cash');
+                    }}
+                    paymentSession={qrphPaymentSession}
+                    refreshing={qrphPaymentStatusLoading}
+                  />
+                ) : null}
+              </div>
             )}
             processing={checkoutLoading}
             quoteError={quoteError}
+            submitLabel={fnbPaymentType === 'qrph' ? 'Generate QR Ph' : 'Place Order'}
           />
           <FnbCheckoutDesktopSummary isDesktop={isDesktopCheckout}>
             <FnbCheckoutSummaryContent
@@ -720,6 +741,8 @@ export function FnbCheckoutRouteContainer({
           cartImageErrors={cartImageErrors}
           checkoutAllowed={checkoutAllowed}
           checkoutLoading={checkoutLoading}
+          checkoutPrimaryLabel={fnbPaymentType === 'qrph' ? 'Generate QR Ph' : 'Place Order'}
+          checkoutPrimaryLocked={Boolean(qrphPaymentSession)}
           fnbCustomerStepComplete={fnbCustomerStepComplete}
           fnbFulfillmentStepComplete={fnbFulfillmentStepComplete}
           itemCountLabel={fnbMobileSummaryItemCountLabel}

@@ -16,6 +16,7 @@ import {
   ClipboardList,
   Clock,
   Compass,
+  Copy,
   Barcode,
   FileText,
   Ghost,
@@ -55,7 +56,7 @@ import {
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import StorefrontItemQrCard from '@/components/items/StorefrontItemQrCard.jsx';
-import { resolveStorefrontItemUrl } from '@/src/features/dgfyRouteHelpers.js';
+import { resolveStorefrontItemUrl, resolveStorefrontTenantUrl } from '@/src/features/dgfyRouteHelpers.js';
 import { isShiftOwnedByUserId, resolvePosUserId } from '../utils/shiftOwnership.js';
 import ConfirmActionDialog from '@/components/ui/ConfirmActionDialog';
 import {
@@ -97,7 +98,15 @@ import {
 } from '@/services/storefrontCatalogService.js';
 import StorefrontImageCarousel from '@/components/items/StorefrontImageCarousel';
 import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarousel';
-import { deleteStorefrontAsset, getCompanyInfo, getAllSettings, updateSettingByKey, updateSettings, uploadStorefrontAsset } from '@/services/settingsService.js';
+import {
+  deleteStorefrontAsset,
+  generateStorefrontSlug,
+  getCompanyInfo,
+  getAllSettings,
+  updateSettingByKey,
+  updateSettings,
+  uploadStorefrontAsset
+} from '@/services/settingsService.js';
 import { getAllUsers, updatePosApprovalPin, updateProfile } from '@/services/userService.js';
 import * as tenantLocationService from '@/services/tenantLocationService.js';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
@@ -118,6 +127,8 @@ import {
   fetchTerminalTodayDashboard
 } from '../services/posService.js';
 import PosReportsAnalyticsWorkspace from './PosReportsAnalyticsWorkspace.jsx';
+import EmployeeCreditManagementPanel from './EmployeeCreditManagementPanel.jsx';
+import EmployeeManagementPanel from './EmployeeManagementPanel.jsx';
 import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 
@@ -178,7 +189,7 @@ const MODE_META = {
   items: {
     icon: ClipboardList,
     title: 'Items',
-    subtitle: 'Review SKUpervisor items and update the item name, price, and cost from POS.'
+    subtitle: 'Manage POS items and the categories used to organize the catalog.'
   },
   terminal_setup: {
     icon: Settings2,
@@ -1886,6 +1897,7 @@ function ItemsWorkspace({
   const { deleteItem, loading: deletingItem } = useDeleteItem();
   const [editingItemId, setEditingItemId] = useState(null);
   const [persistingEditAssets, setPersistingEditAssets] = useState(false);
+  const [selectedEditImageFile, setSelectedEditImageFile] = useState(null);
   const [editForm, setEditForm] = useState({
     name: '',
     current_stock: '0',
@@ -2141,6 +2153,15 @@ function ItemsWorkspace({
     slug: storefrontSlug,
     itemId: activeEditItem?.item_id
   }), [activeEditItem?.item_id, storefrontSlug]);
+  const selectedEditImagePreviewUrl = useMemo(() => (
+    selectedEditImageFile && typeof URL !== 'undefined'
+      ? URL.createObjectURL(selectedEditImageFile)
+      : ''
+  ), [selectedEditImageFile]);
+
+  useEffect(() => () => {
+    if (selectedEditImagePreviewUrl) URL.revokeObjectURL(selectedEditImagePreviewUrl);
+  }, [selectedEditImagePreviewUrl]);
 
   const openEdit = (item) => {
     const savedFolderId = Number(item?.folder_id || 0);
@@ -2167,6 +2188,7 @@ function ItemsWorkspace({
         : '')
     });
     setEditCategoryInput(String(item?.folder?.name || item?.product_folder || ''));
+    setSelectedEditImageFile(null);
   };
 
   const closeEdit = ({ force = false } = {}) => {
@@ -2174,6 +2196,7 @@ function ItemsWorkspace({
     setEditingItemId(null);
     setFocusedEditMoneyField('');
     setPersistingEditAssets(false);
+    setSelectedEditImageFile(null);
     setEditCategoryInput('');
     setEditForm({
       name: '',
@@ -2230,6 +2253,8 @@ function ItemsWorkspace({
   const handleSave = async () => {
     if (!activeEditItem) return;
 
+    const editItemId = activeEditItem.item_id;
+    const editImageFile = selectedEditImageFile;
     const name = String(editForm.name || '').trim();
     const description = String(editForm.description || '').trim();
     const category = 'product';
@@ -2286,7 +2311,7 @@ function ItemsWorkspace({
         : isTypingNewCategory
           ? { create_category_name: typedCategoryName }
           : { product_folder: currentFolderName, folder_id: currentFolderId };
-      await updateItem(activeEditItem.item_id, {
+      await updateItem(editItemId, {
         name,
         category,
         description,
@@ -2305,16 +2330,21 @@ function ItemsWorkspace({
         cost_per_unit: cost,
         senior_pwd_discount_eligible: editForm.senior_pwd_discount_eligible === true
       });
-      await updatePosCatalogOverride(activeEditItem.item_id, {
+      await updatePosCatalogOverride(editItemId, {
         pos_always_available: editForm.pos_always_available === true,
         pos_best_seller_mode: editForm.pos_best_seller_mode
       });
+      if (editImageFile) {
+        await uploadStorefrontCatalogImage(editItemId, editImageFile);
+      }
       closeEdit({ force: true });
       await Promise.all([loadItems(), loadPosFolders()]);
       notifyPosCatalogUpdated();
-      setSavedMessage({ name, barcode: primaryBarcodes[String(activeEditItem.item_id)]?.code || '', action: 'updated' });
+      setSavedMessage({ name, barcode: primaryBarcodes[String(editItemId)]?.code || '', action: 'updated' });
     } catch (updateError) {
-      toast.error(updateError?.response?.data?.message || 'Failed to update item.');
+      toast.error(editImageFile
+        ? (updateError?.response?.data?.message || 'Item details may be saved, but the product image could not upload. Try Save Item again.')
+        : (updateError?.response?.data?.message || 'Failed to update item.'));
     } finally {
       setPersistingEditAssets(false);
       setItemSaveInFlight(false);
@@ -2428,26 +2458,15 @@ function ItemsWorkspace({
     setCreateForm((current) => ({ ...current, default_sale_price: String(amount.toFixed(2)) }));
   };
 
-  const handleUploadStorefrontImage = async (item, files) => {
-    const itemId = item?.item_id;
+  const handleSelectEditImageFile = (files) => {
     const normalizedFiles = Array.isArray(files) ? files.filter(Boolean) : (files ? [files] : []);
-    if (!itemId || normalizedFiles.length === 0) return;
-    const fileToUpload = normalizedFiles[0];
-    if (fileToUpload.size > STOREFRONT_ITEM_IMAGE_MAX_BYTES) {
-      toast.error(`Cannot upload ${fileToUpload.name || 'item image'}: image size must be 10 MB or smaller.`);
+    if (normalizedFiles.length === 0) return;
+    const selectedFile = normalizedFiles[0];
+    if (selectedFile.size > STOREFRONT_ITEM_IMAGE_MAX_BYTES) {
+      toast.error(`Cannot select ${selectedFile.name || 'item image'}: image size must be 10 MB or smaller.`);
       return;
     }
-
-    try {
-      setPersistingEditAssets(true);
-      await uploadStorefrontCatalogImage(itemId, fileToUpload);
-      await loadItems();
-      toast.success(`Item image updated for ${item.name}`);
-    } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to upload item image');
-    } finally {
-      setPersistingEditAssets(false);
-    }
+    setSelectedEditImageFile(selectedFile);
   };
 
   const handleSetPrimaryStorefrontImage = async (item, imageIndex) => {
@@ -3821,15 +3840,31 @@ function ItemsWorkspace({
                               disabled={savingItem || persistingEditAssets}
                               onChange={(event) => {
                                 const files = Array.from(event.target.files || []);
-                                if (files.length && activeEditItem) {
-                                  handleUploadStorefrontImage(activeEditItem, files);
-                                }
+                                handleSelectEditImageFile(files);
                                 event.target.value = '';
                               }}
                             />
                           </label>
 
-                          {editGallery.length > 0 && (
+                          {selectedEditImagePreviewUrl ? (
+                            <div className="relative overflow-hidden rounded-2xl border border-blue-200 bg-blue-50 p-1">
+                              <img
+                                src={selectedEditImagePreviewUrl}
+                                alt="Selected product preview"
+                                className="h-36 w-full rounded-xl object-contain"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setSelectedEditImageFile(null)}
+                                disabled={savingItem || persistingEditAssets}
+                                className="absolute right-3 top-3 flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/80 text-white hover:bg-slate-900 transition-colors"
+                                aria-label="Discard selected product image"
+                              >
+                                <X className="h-4 w-4" />
+                              </button>
+                              <p className="px-2 py-1.5 text-center text-[10px] font-semibold text-blue-700">Selected locally. Save Item to upload.</p>
+                            </div>
+                          ) : editGallery.length > 0 && (
                             <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-1">
                               <img
                                 src={editGallery[0].url}
@@ -4551,14 +4586,96 @@ function CategoryManagementWorkspace() {
   );
 }
 
+function ItemsCatalogWorkspace({
+  canViewPos = false,
+  canManageCategories = false,
+  isOnline = true,
+  sectionId,
+  ...itemsWorkspaceProps
+}) {
+  const availableTabs = useMemo(() => [
+    ...(canViewPos ? [{ id: 'items', label: 'Items', icon: ClipboardList }] : []),
+    ...(canManageCategories ? [{ id: 'categories', label: 'Categories', icon: Tags }] : [])
+  ], [canManageCategories, canViewPos]);
+  const defaultTab = canViewPos ? 'items' : 'categories';
+  const [selectedTab, setSelectedTab] = useState(defaultTab);
+  const activeTab = availableTabs.some((tab) => tab.id === selectedTab)
+    ? selectedTab
+    : (availableTabs[0]?.id || '');
+
+  if (availableTabs.length === 0) {
+    return (
+      <p id={sectionId} className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+        You need POS view or category-management permission to access Items.
+      </p>
+    );
+  }
+
+  return (
+    <div id={sectionId} className="space-y-4">
+      {availableTabs.length > 1 ? (
+        <div
+          role="tablist"
+          aria-label="Items workspace navigation"
+          className="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm shadow-slate-200/70"
+        >
+          {availableTabs.map((tab) => {
+            const Icon = tab.icon;
+            const active = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={active}
+                aria-controls={active ? `pos-items-${tab.id}-panel` : undefined}
+                onClick={() => setSelectedTab(tab.id)}
+                className={`flex min-h-11 items-center justify-center gap-2 rounded-lg border px-4 py-2.5 text-sm font-extrabold transition ${
+                  active
+                    ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-sm shadow-blue-900/20'
+                    : 'border-slate-200 bg-slate-50 text-[#0F172A] hover:border-blue-200 hover:bg-white'
+                }`}
+              >
+                <Icon className="h-4 w-4" aria-hidden="true" />
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
+      <div
+        id={`pos-items-${activeTab || 'unavailable'}-panel`}
+        role="tabpanel"
+      >
+        {activeTab === 'categories' ? (
+          isOnline ? (
+            <CategoryManagementWorkspace />
+          ) : (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+              <p className="font-bold">Category management is available online only.</p>
+              <p className="mt-1">Reconnect to create, edit, activate, deactivate, delete, or reassign categories.</p>
+            </div>
+          )
+        ) : (
+          <ItemsWorkspace
+            {...itemsWorkspaceProps}
+            canViewPos={canViewPos}
+            canManageCategories={canManageCategories}
+            isOnline={isOnline}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
 function SettingsWorkspace({
   terminalUser,
   terminalMeta,
   locationsState,
   queueLocationScopeId,
-  setQueueLocationScopeId,
   incomingOrdersState,
-  refreshIncomingOrders,
   onlineOrderSoundEnabled = true,
   setOnlineOrderSoundEnabled = () => {},
   locked,
@@ -4574,8 +4691,10 @@ function SettingsWorkspace({
   const canManageCashiers = terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('users:manage');
   const canManageDiscountApprovalPins = terminalUser?.is_master_admin === true;
-  const canManageCategories = terminalUser?.is_master_admin === true
-    || resolveUserPermissionList(terminalUser).includes('categories:manage');
+  const canManageEmployeeCredit = terminalUser?.is_master_admin === true
+    || resolveUserPermissionList(terminalUser).includes('pos:employee_credit:manage');
+  const canManageEmployees = terminalUser?.is_master_admin === true
+    || resolveUserPermissionList(terminalUser).includes('pos:employees:manage');
   const [activeTab, setActiveTab] = useState(initialTab);
   const [renderedTab, setRenderedTab] = useState(initialTab);
   const [paneInlineStyle, setPaneInlineStyle] = useState({
@@ -4595,6 +4714,7 @@ function SettingsWorkspace({
   const [approvalPinUser, setApprovalPinUser] = useState(null);
   const [approvalPin, setApprovalPin] = useState('');
   const [savingApprovalPin, setSavingApprovalPin] = useState(false);
+  const [employeeDirectoryRevision, setEmployeeDirectoryRevision] = useState(0);
   const [storefrontPromoItemOptions, setStorefrontPromoItemOptions] = useState([]);
   const [storefrontPromoItemsLoading, setStorefrontPromoItemsLoading] = useState(false);
   const [storefrontPromoCandidateItemId, setStorefrontPromoCandidateItemId] = useState('');
@@ -4633,6 +4753,7 @@ function SettingsWorkspace({
     dailyTopBestSellerEnabled: false
   });
   const [storefrontForm, setStorefrontForm] = useState({
+    storeTenantSlug: '',
     storeIsVisible: false,
     storeHasNoLocation: false,
     customerAccessMode: 'catalog',
@@ -4705,6 +4826,9 @@ function SettingsWorkspace({
   const animationTimersRef = useRef([]);
   const previousInitialTabRef = useRef(initialTab);
   const readiness = terminalMeta?.locationBindingReadiness || null;
+  const storefrontPublicUrl = useMemo(() => resolveStorefrontTenantUrl({
+    slug: storefrontForm.storeTenantSlug
+  }), [storefrontForm.storeTenantSlug]);
   const hasActivePrimaryStorefrontLocation = storefrontLocations.some((location) => location?.is_active === true && location?.is_primary_storefront === true);
   const storefrontLocationRequired = storefrontForm.storeIsVisible === true && storefrontForm.storeHasNoLocation !== true;
   const requestedCustomerAccessMode = normalizeCustomerAccessMode(storefrontForm.customerAccessMode);
@@ -4788,7 +4912,9 @@ function SettingsWorkspace({
     { id: 'profile', label: 'Profile Setting', icon: UserRound },
     { id: 'pos_setup', label: 'POS Setup', icon: Settings2 },
     { id: 'storefront', label: 'Storefront', icon: Store },
-    ...(canManageCategories ? [{ id: 'categories', label: 'Categories', icon: Tags }] : [])
+    ...(canManageEmployees || canManageEmployeeCredit
+      ? [{ id: 'employees', label: 'Employees', icon: Users }]
+      : [])
   ];
   const resolveTabIndex = (tabId) => {
     const index = SETTINGS_TABS.findIndex((tab) => tab.id === tabId);
@@ -5004,6 +5130,7 @@ function SettingsWorkspace({
         dailyTopBestSellerEnabled: settingsPayload?.pos_best_seller_settings?.value?.daily_top_enabled === true
       });
       setStorefrontForm({
+        storeTenantSlug: String(settingsPayload?.store_tenant_slug?.value || '').trim().toLowerCase(),
         storeIsVisible: settingsPayload?.store_is_visible?.value === true,
         storeHasNoLocation: settingsPayload?.store_has_no_location?.value === true,
         ...customerAccessRuntime,
@@ -5652,6 +5779,36 @@ function SettingsWorkspace({
       setSavingTab('');
     }
   }, [hasActivePrimaryStorefrontLocation, hydrateSettingsWorkspace, mergeCurrentStorefrontPromoList, onStorefrontSetupSaved, openValidationModal, storefrontForm, storefrontLocationRequired]);
+
+  const handleGenerateStorefrontSlug = useCallback(async () => {
+    if (savingTab) return;
+    setSavingTab('storefront_slug');
+    try {
+      const generated = await generateStorefrontSlug();
+      const slug = String(generated?.store_tenant_slug || '').trim().toLowerCase();
+      if (!slug) throw new Error('The server did not return a Storefront ID.');
+      setStorefrontForm((current) => ({ ...current, storeTenantSlug: slug }));
+      await hydrateSettingsWorkspace({ silent: true });
+      await onStorefrontSetupSaved?.();
+      toast.success(generated?.generated === false
+        ? 'Storefront ID is already configured.'
+        : 'Storefront ID generated. Item QR codes are now available.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to generate Storefront ID.');
+    } finally {
+      setSavingTab('');
+    }
+  }, [hydrateSettingsWorkspace, onStorefrontSetupSaved, savingTab]);
+
+  const handleCopyStorefrontUrl = useCallback(async () => {
+    if (!storefrontPublicUrl) return;
+    try {
+      await navigator.clipboard.writeText(storefrontPublicUrl);
+      toast.success('Storefront URL copied.');
+    } catch {
+      toast.error('Unable to copy the Storefront URL.');
+    }
+  }, [storefrontPublicUrl]);
 
   const handleCustomerAccessModeChange = useCallback(async (nextMode) => {
     const normalizedMode = normalizeCustomerAccessMode(nextMode);
@@ -6948,6 +7105,23 @@ function SettingsWorkspace({
     </div>
   );
 
+  const renderEmployeesPane = () => (
+    <div className="grid gap-3">
+      {canManageEmployees ? (
+        <EmployeeManagementPanel
+          disabled={locked || loading}
+          onEmployeesChanged={() => setEmployeeDirectoryRevision((revision) => revision + 1)}
+        />
+      ) : null}
+      {canManageEmployeeCredit ? (
+        <EmployeeCreditManagementPanel
+          disabled={locked || loading}
+          refreshKey={employeeDirectoryRevision}
+        />
+      ) : null}
+    </div>
+  );
+
   const renderStorefrontPane = () => (
     <div className="grid gap-3">
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
@@ -6988,6 +7162,56 @@ function SettingsWorkspace({
             Public Storefront currently requires one active primary storefront location. Add a location below and mark it as <span className="font-bold">Primary</span>, or enable <span className="font-bold">Searchable without map pin</span>.
           </div>
         ) : null}
+        <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-[12px] font-black text-[#0F172A]">Storefront ID and item QR links</p>
+              {storefrontForm.storeTenantSlug ? (
+                <>
+                  <p className="mt-1 text-[11px] text-[#64748B]">
+                    This stable ID is used by Storefront item links and generated POS QR codes.
+                  </p>
+                  <code className="mt-2 block break-all rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] font-bold text-[#1A4E8D]">
+                    {storefrontForm.storeTenantSlug}
+                  </code>
+                </>
+              ) : (
+                <p className="mt-1 text-[11px] text-amber-700">
+                  No Storefront ID is saved yet. Generate one to enable customer-facing item QR codes.
+                </p>
+              )}
+            </div>
+            {storefrontForm.storeTenantSlug ? (
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void handleCopyStorefrontUrl()}
+                  disabled={!storefrontPublicUrl}
+                >
+                  <Copy className="mr-1.5 h-4 w-4" aria-hidden="true" />
+                  Copy URL
+                </Button>
+                <Button
+                  type="button"
+                  onClick={() => window.open(storefrontPublicUrl, '_blank', 'noopener,noreferrer')}
+                  disabled={!storefrontPublicUrl}
+                >
+                  Open Storefront
+                </Button>
+              </div>
+            ) : (
+              <Button
+                type="button"
+                className="shrink-0"
+                onClick={() => void handleGenerateStorefrontSlug()}
+                disabled={locked || loading || Boolean(savingTab)}
+              >
+                {savingTab === 'storefront_slug' ? 'Generating...' : 'Generate Storefront ID'}
+              </Button>
+            )}
+          </div>
+        </div>
         <div className="mt-3 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm shadow-slate-200/60 sm:p-6">
           <div className="flex items-start gap-4">
             <div className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl border border-blue-100 bg-blue-50 text-blue-600">
@@ -7598,10 +7822,22 @@ function SettingsWorkspace({
                           <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${location.is_open ? 'bg-teal-50 text-teal-700 border border-teal-200' : 'bg-amber-50 text-amber-700 border border-amber-200'}`}>
                             {location.is_open ? 'Open' : 'Closed'}
                           </span>
-                          {location.is_primary_storefront === true && (
+                          {location.is_primary_storefront === true ? (
                             <span className="px-2 py-0.5 text-[10px] font-bold rounded-full bg-blue-50 text-blue-700 border border-blue-200">
                               Primary
                             </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleSetPrimaryLocation(location);
+                              }}
+                              disabled={locationSaving || location.is_active !== true}
+                              className="px-2 py-0.5 text-[10px] font-bold rounded-full border border-slate-200 text-slate-600 hover:bg-slate-100 disabled:opacity-50 transition-colors"
+                            >
+                              Set Primary
+                            </button>
                           )}
                         </div>
                       </div>
@@ -7640,94 +7876,6 @@ function SettingsWorkspace({
 
           {/* Right Column: Main Form & Settings Area (lg:col-span-8) */}
           <div className="lg:col-span-8 space-y-5">
-            {/* Selected Location Action Header Card */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-600 border border-blue-100">
-                  <Store className="h-5 w-5" aria-hidden="true" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h3 className="text-base font-bold text-[#0F172A]">
-                      {locationForm?.location_id ? (locationForm.name || 'Edit Location') : (locationForm.name || 'New Location')}
-                    </h3>
-                    <span className={`px-2 py-0.5 text-[11px] font-bold rounded-full ${locationForm.is_active !== false ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-slate-100 text-slate-600'}`}>
-                      {locationForm.is_active !== false ? 'Active' : 'Inactive'}
-                    </span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Buttons Header Bar */}
-              <div className="flex flex-wrap items-center gap-2">
-                {locationForm?.location_id && (
-                  <>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        const loc = storefrontLocations.find(l => l.location_id === locationForm.location_id);
-                        if (loc) handleEditLocation(loc);
-                      }}
-                      className="h-9 px-3 text-xs font-semibold rounded-xl"
-                    >
-                      <Pencil className="mr-1.5 h-3.5 w-3.5 text-slate-500" />
-                      Edit
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="outline"
-                      onClick={() => {
-                        const loc = storefrontLocations.find(l => l.location_id === locationForm.location_id);
-                        if (loc) handleSetPrimaryLocation(loc);
-                      }}
-                      disabled={locationSaving || locationForm.is_active === false || locationForm.is_primary_storefront === true}
-                      className="h-9 px-3 text-xs font-semibold rounded-xl"
-                    >
-                      {locationForm.is_primary_storefront === true ? 'Primary' : 'Set Primary'}
-                    </Button>
-                    {locationForm.is_active !== false ? (
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="outline"
-                        onClick={() => handleDeactivateLocation(locationForm.location_id)}
-                        disabled={locationSaving}
-                        className="h-9 px-3 text-xs font-semibold rounded-xl text-rose-600 border-rose-200 hover:bg-rose-50"
-                      >
-                        Deactivate
-                      </Button>
-                    ) : (
-                      <>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleReactivateLocation(locationForm.location_id)}
-                          disabled={locationSaving}
-                          className="h-9 px-3 text-xs font-semibold rounded-xl text-emerald-600 border-emerald-200 hover:bg-emerald-50"
-                        >
-                          Reactivate
-                        </Button>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="outline"
-                          onClick={() => handleDeleteLocation(locationForm.location_id)}
-                          disabled={locationSaving}
-                          className="h-9 px-3 text-xs font-semibold rounded-xl text-red-700 border-red-200 hover:bg-red-50"
-                        >
-                          Delete Pin
-                        </Button>
-                      </>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-
             {/* 2x2 Section Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Card 1: Basic Details */}
@@ -7940,14 +8088,19 @@ function SettingsWorkspace({
     }
     if (renderedTab === 'profile') return renderProfilePane();
     if (renderedTab === 'storefront') return renderStorefrontPane();
-    if (renderedTab === 'categories' && canManageCategories) return <CategoryManagementWorkspace />;
+    if (renderedTab === 'employees' && (canManageEmployees || canManageEmployeeCredit)) {
+      return renderEmployeesPane();
+    }
     return renderPosSetupPane();
   };
 
   return (
     <div id={sectionId} className="space-y-3">
       <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/70">
-        <div className={`hidden gap-2 sm:grid ${canManageCategories ? 'md:grid-cols-4' : 'md:grid-cols-3'}`}>
+        <div
+          className="hidden gap-2 sm:grid"
+          style={{ gridTemplateColumns: `repeat(${SETTINGS_TABS.length}, minmax(0, 1fr))` }}
+        >
           {SETTINGS_TABS.map((tab) => {
             const Icon = tab.icon;
             const active = activeTab === tab.id;
@@ -8125,6 +8278,7 @@ export default function TerminalOperationsWorkspace({
   shiftState,
   todayDashboard,
   reportRefreshKey = 0,
+  employeeCreditReportRefreshKey = 0,
   isOnline = true,
   offlineSnapshotScope = {},
   onQueueOfflineItemDraft = async () => '',
@@ -8134,6 +8288,7 @@ export default function TerminalOperationsWorkspace({
   canCreateItems = false,
   canEditItems = false,
   canDeleteItems = false,
+  canManageCategories = false,
   itemsStockFilterPreset = '',
   onItemsStockFilterPresetApplied = () => {},
   canTransactPos,
@@ -8157,7 +8312,6 @@ export default function TerminalOperationsWorkspace({
   operatingLocationId = null,
   setOperatingLocationId = () => {},
   queueLocationScopeId = null,
-  setQueueLocationScopeId = () => {},
   incomingOrdersState = { loading: false, orders: [] },
   adminLocationMonitorState = { loading: false, orders: [], terminalShifts: [], errorMessage: '' },
   adminTerminalSwitching = false,
@@ -8224,9 +8378,7 @@ export default function TerminalOperationsWorkspace({
           terminalMeta={terminalMeta}
           locationsState={locationsState}
           queueLocationScopeId={queueLocationScopeId}
-          setQueueLocationScopeId={setQueueLocationScopeId}
           incomingOrdersState={incomingOrdersState}
-          refreshIncomingOrders={refreshIncomingOrders}
           locked={locked}
           sectionId={sectionIds.terminalSetup}
           initialTab={
@@ -8331,6 +8483,7 @@ export default function TerminalOperationsWorkspace({
           activeTerminalId={activeTerminalId}
           operatingLocationId={operatingLocationId}
           reportRefreshKey={reportRefreshKey}
+          employeeCreditReportRefreshKey={employeeCreditReportRefreshKey}
           isOnline={isOnline}
           offlineSnapshotScope={offlineSnapshotScope}
           sectionId={sectionIds.reports}
@@ -8347,19 +8500,18 @@ export default function TerminalOperationsWorkspace({
       );
     case 'items':
       return (
-        <ItemsWorkspace
+        <ItemsCatalogWorkspace
           canViewPos={canViewPos}
           canCreateItems={canCreateItems}
           canEditItems={canEditItems}
           canDeleteItems={canDeleteItems}
-          canManageCategories={
-            terminalUser?.is_master_admin === true
-            || resolveUserPermissionList(terminalUser).includes('categories:manage')
-          }
+          canManageCategories={canManageCategories}
           stockFilterPreset={itemsStockFilterPreset}
           onStockFilterPresetApplied={onItemsStockFilterPresetApplied}
           workflowMode={workflowMode}
           locked={locked}
+          isOnline={isOnline}
+          onQueueOfflineItemDraft={onQueueOfflineItemDraft}
           operatingLocationId={operatingLocationId}
           storefrontSlug={terminalMeta?.storefrontSlug || ''}
           sectionId={sectionIds.items}
@@ -8379,6 +8531,7 @@ export default function TerminalOperationsWorkspace({
     canCreateItems,
     canDeleteItems,
     canEditItems,
+    canManageCategories,
     canRecoverStaleShifts,
     adminLocationMonitorState,
     adminTerminalSwitching,
@@ -8423,6 +8576,7 @@ export default function TerminalOperationsWorkspace({
     refreshAdminLocationMonitor,
     refreshOperationalContext,
     reportRefreshKey,
+    employeeCreditReportRefreshKey,
     isOnline,
     offlineSnapshotScope,
     onQueueOfflineItemDraft,
@@ -8440,7 +8594,6 @@ export default function TerminalOperationsWorkspace({
     refreshTerminalMeta,
     refreshTerminalUser,
     setOperatingLocationId,
-    setQueueLocationScopeId,
     setCashEventForm,
     setCloseShiftForm,
     setOpenShiftForm,

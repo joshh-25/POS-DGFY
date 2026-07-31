@@ -8,7 +8,7 @@ import { StoreCatalogEmptyStates } from '../../../features/shared-storefront/com
 import { getStorefrontContactFooterLinks, getStorefrontSocialFooterLinks } from '../../../features/shared-storefront/utils/storefrontDisplayUtils.jsx';
 import { isItemAvailable } from '../../model/storefrontCatalogModel.js';
 import { money } from '../../utils/storefrontFormatters.js';
-import { withAssetOrigin } from '../../../app/runtime/storefrontRuntime.js';
+import { resolveStorefrontImageSources } from '../../utils/storefrontImageSources.js';
 import { FNB_CATEGORY_ICON_MAP } from '../../../modes/fnb/storefront/model/fnbStorefrontPresentation.js';
 import { FnbCatalogToolbar } from '../../../modes/fnb/storefront/components/FnbCatalogToolbar.jsx';
 import { FnbProductCard } from '../../../modes/fnb/storefront/components/FnbProductCard.jsx';
@@ -343,7 +343,7 @@ export function StorefrontClassicCatalog({
             } : undefined}>
               <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : viewportWidth < 1200 ? 'repeat(2, minmax(0, 1fr))' : 'repeat(4, minmax(0, 1fr))', gap: isMobileViewport ? 12 : 24, width: isMobileViewport ? fnbMobileMenuInnerWidth : '100%', maxWidth: '100%', justifyItems: isMobileViewport ? 'center' : 'stretch', margin: isMobileViewport ? '0 auto' : 0 }}>
                 {catalogItemsToRender.map((item) => {
-                  const imageUrl = withAssetOrigin(item.image_url);
+                  const imageSources = resolveStorefrontImageSources(item, { preferred: 'thumbnail' });
                   const available = isItemAvailable(item);
                   const ServiceCategoryIcon = SERVICE_CATEGORY_ICON_MAP[item.categoryMeta?.iconToken] || Sparkles;
                   return (
@@ -351,7 +351,7 @@ export function StorefrontClassicCatalog({
                       <FnbProductCard
                         key={item.item_id + '-' + fnbViewMode}
                         item={item}
-                        imageUrl={imageUrl}
+                        imageSources={imageSources}
                         available={available}
                         FNB_CATEGORY_ICON_MAP={FNB_CATEGORY_ICON_MAP}
                         addToCart={addToCart}
@@ -372,19 +372,19 @@ export function StorefrontClassicCatalog({
                         accentDark={(modeAdapter.heroTheme || {}).accentDark || '#134e4a'}
                         accentSoft={(modeAdapter.heroTheme || {}).accentSoft || '#ecfeff'}
                         item={item}
-                        imageUrl={imageUrl}
                         available={available}
                         addToCart={addToCart}
                         bodyFont={(modeAdapter.heroTheme || {}).bodyFont || "'Avenir Next', 'Segoe UI', sans-serif"}
                         displayFont={(modeAdapter.heroTheme || {}).displayFont || ((modeAdapter.heroTheme || {}).bodyFont || "'Avenir Next', 'Segoe UI', sans-serif")}
                         money={money}
                         onViewDetails={openFnbDetail}
+                        imageSources={imageSources}
                       />
                     ) : (
                       <ServiceProductCard
                         key={item.item_id}
                         item={item}
-                        imageUrl={imageUrl}
+                        imageSources={imageSources}
                         available={available}
                         money={money}
                         styles={STYLES}

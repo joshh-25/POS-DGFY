@@ -30,7 +30,9 @@ describe('POS terminal pairing contract', () => {
     expect(terminalPageSource).toContain('Terminal password is not required.');
     expect(terminalPageSource).toContain('Only the cashier who owns this open shift can continue it.');
     expect(terminalPageSource).toContain('authenticatedCashierId !== expectedCashierId');
-    expect(terminalPageSource).toContain("!cashierResumeUnlock && terminalUnlockMode !== 'relock'");
+    expect(terminalPageSource).toContain("!cashierResumeUnlock && terminalUnlockMode === 'shift_start'");
+    expect(terminalPageSource).toContain("const signedInShiftResume = terminalUnlockMode === 'resume_shift'");
+    expect(terminalPageSource).toContain("? 'Resume Shift'");
   });
 
   it('keeps the terminal session open after a successful close shift', () => {

@@ -1,4 +1,5 @@
 import React from 'react';
+import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 
 const SimpleProductCard = ({
   Badge,
@@ -10,11 +11,12 @@ const SimpleProductCard = ({
   available,
   bodyFont,
   displayFont,
-  imageUrl,
+  imageSources,
   item,
   money,
   onViewDetails
 }) => {
+  const imageUrl = imageSources?.src || '';
   const categoryLabel = item.folder_name || item.category || 'Product';
   const availabilityLabel = item?.inventory_display?.label || (available ? 'Available' : 'Not available');
 
@@ -33,7 +35,16 @@ const SimpleProductCard = ({
         onClick={() => onViewDetails?.(item)}
       >
         {imageUrl ? (
-          <img src={imageUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          <StorefrontResponsiveImage
+            imageSources={imageSources}
+            sizes="(max-width: 1199px) 50vw, 330px"
+            alt={item.name}
+            loading="lazy"
+            decoding="async"
+            width={400}
+            height={300}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
         ) : (
           <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: '#64748b', fontSize: 13, fontWeight: 700 }}>
             No image yet

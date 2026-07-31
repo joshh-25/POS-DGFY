@@ -1,8 +1,9 @@
 import React from 'react';
+import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 
 export function ServiceProductCard({
   item,
-  imageUrl,
+  imageSources,
   available,
   money,
   styles,
@@ -16,6 +17,7 @@ export function ServiceProductCard({
   getCartFlySourceRect,
   onViewDetails
 }) {
+  const imageUrl = imageSources?.src || '';
   return (
     <div style={{
       background: '#fff', borderRadius: 20, border: `1px solid ${styles.colors.border}`,
@@ -24,7 +26,16 @@ export function ServiceProductCard({
     }} onClick={() => onViewDetails(item)} data-cart-fly-origin="true">
       <div style={{ width: '100%', height: 184, minHeight: 184, maxHeight: 184, background: styles.colors.bg, position: 'relative', overflow: 'hidden' }}>
         {imageUrl ? (
-          <img src={imageUrl} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          <StorefrontResponsiveImage
+            imageSources={imageSources}
+            sizes="(max-width: 1199px) 50vw, 330px"
+            alt={item.name}
+            loading="lazy"
+            decoding="async"
+            width={400}
+            height={300}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
         ) : (
           <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: styles.colors.muted }}>No image</div>
         )}

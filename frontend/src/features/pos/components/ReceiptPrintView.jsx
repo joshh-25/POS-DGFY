@@ -306,6 +306,16 @@ export function LegacyReceiptPrintView({ transaction, businessSettings = {}, rec
                 {transaction.payment_reference && <p className="flex justify-between gap-2"><span>Payment Reference:</span><span className="text-right">{transaction.payment_reference}</span></p>}
                 {transaction.payment_type === 'cash' && <p className="flex justify-between gap-2"><span>Cash Received:</span><span>{money(transaction.cash_received)}</span></p>}
                 {transaction.payment_type === 'cash' && <p className="flex justify-between gap-2"><span>Change:</span><span>{money(transaction.change_amount)}</span></p>}
+                {transaction.payment_type === 'employee_credit' && (
+                    <div className="mt-2 space-y-0.5">
+                        <p className="flex justify-between gap-2"><span>Employee:</span><span className="text-right">{transaction.employee_credit_employee_name_snapshot || '-'}</span></p>
+                        <p className="flex justify-between gap-2"><span>Credit Account:</span><span>{transaction.employee_credit_account_code_snapshot || '-'}</span></p>
+                        <p className="flex justify-between gap-2"><span>Credit Amount:</span><span>{money(transaction.employee_credit_amount)}</span></p>
+                        <p className="flex justify-between gap-2"><span>Remaining Credit:</span><span>{money(transaction.employee_credit_balance_after)}</span></p>
+                        <p className="flex justify-between gap-2"><span>Authorization:</span><span className="text-right">{transaction.employee_credit_authorization_reference || '-'}</span></p>
+                        <p className="pt-2">Employee Signature: ____________________</p>
+                    </div>
+                )}
                 {showSeniorPwdReceiptFields && (
                     <div className="mt-2">
                         <p>SC/PWD/NAAC/MOV/Solo Parent ID No.: {governedDiscount?.senior_pwd_id_number || '____________'}</p>

@@ -520,10 +520,29 @@ export const switchDgfyCompanyForTenantSession = async ({
   return data;
 };
 
+export const activateDgfyTenantSession = (data, { emitAuthEvent = true } = {}) => {
+  const tenantToken = String(data?.token || '').trim();
+  const resolvedCompanyToken = String(data?.company?.token || '').trim();
+  if (!tenantToken || !resolvedCompanyToken) {
+    throw new Error('The selected company did not return a valid POS session. Sign in again.');
+  }
+  setBrowserSession({
+    token: tenantToken,
+    companyToken: resolvedCompanyToken
+  });
+  if (emitAuthEvent && typeof window !== 'undefined') {
+    const event = typeof CustomEvent === 'function'
+      ? new CustomEvent('auth:login')
+      : new Event('auth:login');
+    window.dispatchEvent(event);
+  }
+  return data;
+};
+
 export const startDgfyTenantSession = async ({
   tenantId,
   companyToken
-} = {}, token = getStoredDgfyToken()) => {
+} = {}, token = getStoredDgfyToken(), { activate = true } = {}) => {
   const response = await api.post('/dgfy/auth/tenant-session', {
     tenant_id: tenantId,
     company_token: companyToken
@@ -534,38 +553,25 @@ export const startDgfyTenantSession = async ({
   if (!tenantToken || !resolvedCompanyToken) {
     throw new Error('The selected company did not return a valid POS session. Sign in again.');
   }
-  setBrowserSession({
-    token: tenantToken,
-    companyToken: resolvedCompanyToken
-  });
-  if (typeof window !== 'undefined') {
-    const event = typeof CustomEvent === 'function'
-      ? new CustomEvent('auth:login')
-      : new Event('auth:login');
-    window.dispatchEvent(event);
-  }
-  return data;
+  const normalizedSession = {
+    ...data,
+    company: {
+      ...(data?.company || {}),
+      token: resolvedCompanyToken
+    }
+  };
+  return activate ? activateDgfyTenantSession(normalizedSession) : normalizedSession;
 };
 
 export const startDgfyPosSession = async ({
   tenantId,
   terminalId
-} = {}, token = getStoredDgfyToken()) => {
+} = {}, token = getStoredDgfyToken(), { activate = true } = {}) => {
   const response = await api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/pos-session`, {
     terminal_id: terminalId
   }, dgfyRequestConfig(token));
   const data = response.data.data;
-  setBrowserSession({
-    token: data?.token,
-    companyToken: data?.company?.token
-  });
-  if (typeof window !== 'undefined') {
-    const event = typeof CustomEvent === 'function'
-      ? new CustomEvent('auth:login')
-      : new Event('auth:login');
-    window.dispatchEvent(event);
-  }
-  return data;
+  return activate ? activateDgfyTenantSession(data) : data;
 };
 
 export const dgfyAuthHeader = () => {

@@ -567,6 +567,189 @@ export const retryCommercePaymentFinalization = async (paymentSessionId) => {
     return response.data;
 };
 
+export const getTenantRevenueDashboard = async (params = {}) => {
+    const response = await adminApi.get('/tenant-revenue/admin/dashboard', {
+        ...requireAdminAuthConfig(),
+        params
+    });
+    return response.data;
+};
+
+export const listTenantRevenueTransactions = async (params = {}) => {
+    const response = await adminApi.get('/tenant-revenue/admin/transactions', {
+        ...requireAdminAuthConfig(),
+        params
+    });
+    return response.data;
+};
+
+export const listTenantRevenueFeePolicies = async (tenantId) => {
+    const response = await adminApi.get(
+        `/tenant-revenue/admin/tenants/${tenantId}/fee-policies`,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const createTenantRevenueFeePolicy = async (tenantId, payload = {}) => {
+    const response = await adminApi.post(
+        `/tenant-revenue/admin/tenants/${tenantId}/fee-policies`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const listTenantSettlementBatches = async (params = {}) => {
+    const response = await adminApi.get('/tenant-revenue/admin/settlement-batches', {
+        ...requireAdminAuthConfig(),
+        params
+    });
+    return response.data;
+};
+
+export const createTenantSettlementBatch = async (payload = {}) => {
+    const response = await adminApi.post(
+        '/tenant-revenue/admin/settlement-batches',
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const approveTenantSettlementBatch = async (settlementBatchId, payload = {}) => {
+    const response = await adminApi.post(
+        `/tenant-revenue/admin/settlement-batches/${settlementBatchId}/approve`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const cancelTenantSettlementBatch = async (settlementBatchId, payload = {}) => {
+    const response = await adminApi.post(
+        `/tenant-revenue/admin/settlement-batches/${settlementBatchId}/cancel`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const scheduleTenantSettlementBatch = async (settlementBatchId, payload = {}) => {
+    const response = await adminApi.post(
+        `/tenant-revenue/admin/settlement-batches/${settlementBatchId}/schedule`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const createTenantManualPayout = async (settlementBatchId, payload = {}) => {
+    const response = await adminApi.post(
+        `/tenant-revenue/admin/settlement-batches/${settlementBatchId}/payouts`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const confirmTenantManualPayout = async (payoutId, payload = {}) => {
+    const response = await adminApi.post(
+        `/tenant-revenue/admin/payouts/${payoutId}/confirm`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const failTenantManualPayout = async (payoutId, payload = {}) => {
+    const response = await adminApi.post(
+        `/tenant-revenue/admin/payouts/${payoutId}/fail`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const retryTenantManualPayout = async (payoutId, payload = {}) => {
+    const response = await adminApi.post(
+        `/tenant-revenue/admin/payouts/${payoutId}/retry`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const listTenantRevenueReconciliation = async (params = {}) => {
+    const response = await adminApi.get('/tenant-revenue/admin/reconciliation', {
+        ...requireAdminAuthConfig(),
+        params
+    });
+    return response.data;
+};
+
+export const runTenantRevenueInternalReconciliation = async (params = {}) => {
+    const response = await adminApi.post(
+        '/tenant-revenue/admin/reconciliation/run-internal',
+        null,
+        { ...requireAdminAuthConfig(), params }
+    );
+    return response.data;
+};
+
+export const resolveTenantRevenueReconciliation = async (reconciliationId, payload = {}) => {
+    const response = await adminApi.post(
+        `/tenant-revenue/admin/reconciliation/${reconciliationId}/resolve`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const listTenantRevenueAdjustments = async (params = {}) => {
+    const response = await adminApi.get('/tenant-revenue/admin/adjustments', {
+        ...requireAdminAuthConfig(),
+        params
+    });
+    return response.data;
+};
+
+export const requestTenantRevenueAdjustment = async (payload = {}) => {
+    const response = await adminApi.post(
+        '/tenant-revenue/admin/adjustments',
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const approveTenantRevenueAdjustment = async (adjustmentId, payload = {}) => {
+    const response = await adminApi.post(
+        `/tenant-revenue/admin/adjustments/${adjustmentId}/approve`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const reconcileTenantRevenueProviderFinancials = async (payload = {}) => {
+    const response = await adminApi.post(
+        '/tenant-revenue/admin/reconciliation/provider-financials',
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const downloadTenantRevenueCsv = async (params = {}) => {
+    const response = await adminApi.get('/tenant-revenue/admin/transactions.csv', {
+        ...requireAdminAuthConfig(),
+        params,
+        responseType: 'blob'
+    });
+    return response;
+};
+
 /**
  * Get pricing settings
  */

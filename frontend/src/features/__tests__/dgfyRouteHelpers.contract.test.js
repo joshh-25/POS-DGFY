@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveStorefrontItemUrl } from '../dgfyRouteHelpers.js';
+import { resolveStorefrontItemUrl, resolveStorefrontTenantUrl } from '../dgfyRouteHelpers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const routeHelperPath = resolve(__dirname, '../dgfyRouteHelpers.js');
@@ -34,6 +34,18 @@ describe('DGFY route helper contracts', () => {
     expect(resolveStorefrontItemUrl({
       slug: '',
       itemId: 54,
+      storefrontHomeUrl: 'https://dgfy.ph/'
+    })).toBe('');
+  });
+
+  it('builds the public Storefront URL from the saved tenant slug', () => {
+    expect(resolveStorefrontTenantUrl({
+      slug: 'masu-cafe-ed841f',
+      storefrontHomeUrl: 'https://dgfy.ph/'
+    })).toBe('https://dgfy.ph/tenant-store/masu-cafe-ed841f');
+
+    expect(resolveStorefrontTenantUrl({
+      slug: '',
       storefrontHomeUrl: 'https://dgfy.ph/'
     })).toBe('');
   });

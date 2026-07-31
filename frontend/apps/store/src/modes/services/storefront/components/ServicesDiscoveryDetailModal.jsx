@@ -7,6 +7,8 @@ import {
   MousePointer2,
   X
 } from 'lucide-react';
+import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
+import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 
 export function ServicesDiscoveryDetailModal({
   Badge,
@@ -35,10 +37,11 @@ export function ServicesDiscoveryDetailModal({
   setServiceDraftQuantity,
   setServiceIntakeResponses,
   setServicePaymentTiming,
-  storefrontClosedByHours,
-  withAssetOrigin
+  storefrontClosedByHours
 }) {
   if (!selectedServiceDetail || isBookingSubpage || isServiceDetailsSubpage) return null;
+
+  const imageSources = resolveStorefrontImageSources(selectedServiceDetail, { preferred: 'large' });
 
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 2200, display: 'grid', placeItems: isMobileViewport ? 'end stretch' : 'center', padding: isMobileViewport ? 0 : 24 }}>
@@ -68,11 +71,15 @@ export function ServicesDiscoveryDetailModal({
         }}
       >
         <div style={{ position: 'relative', minHeight: isMobileViewport ? 220 : '100%', background: '#f8fafc' }}>
-          {withAssetOrigin(selectedServiceDetail.image_url) ? (
-            <img
-              src={withAssetOrigin(selectedServiceDetail.image_url)}
+          {imageSources.src ? (
+            <StorefrontResponsiveImage
               alt={selectedServiceDetail.variantName || selectedServiceDetail.name}
+              imageSources={imageSources}
+              loading="eager"
+              sizes={isMobileViewport ? '100vw' : '360px'}
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+              width={360}
+              height={isMobileViewport ? 220 : 540}
             />
           ) : (
             <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: STYLES.colors.muted, fontSize: 14 }}>

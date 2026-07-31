@@ -1,5 +1,6 @@
 import React from 'react';
 import { ArrowUpRight, BadgeCheck, ChefHat, ShieldAlert } from 'lucide-react';
+import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 
 const FNB_BODY_FONT = '"Source Sans 3", "Segoe UI", sans-serif';
 
@@ -22,6 +23,7 @@ const detailBadgeStyle = (background, color, border) => ({
 export function FnbProductMediaGallery({
   available,
   availabilityLabel,
+  imageSources,
   imageUrl,
   itemName,
   sectionLabel,
@@ -117,9 +119,14 @@ export function FnbProductMediaGallery({
       )}
 
       {imageUrl ? (
-        <img
-          src={imageUrl}
+        <StorefrontResponsiveImage
+          imageSources={{ ...imageSources, src: imageSources?.largeUrl || imageUrl }}
+          sizes="(max-width: 640px) calc(100vw - 32px), 720px"
           alt={itemName}
+          decoding="async"
+          fetchPriority="high"
+          width={1024}
+          height={768}
           style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
         />
       ) : (
@@ -162,7 +169,16 @@ export function FnbProductMediaGallery({
             background: '#fff',
             cursor: 'pointer'
           }}>
-            <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <StorefrontResponsiveImage
+              imageSources={{ ...imageSources, src: imageSources?.thumbnailUrl || imageUrl }}
+              sizes="48px"
+              alt=""
+              loading="lazy"
+              decoding="async"
+              width={48}
+              height={48}
+              style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+            />
           </div>
         </div>
       )}

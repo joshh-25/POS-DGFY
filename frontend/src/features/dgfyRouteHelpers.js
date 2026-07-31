@@ -150,6 +150,24 @@ export const resolveStorefrontHomeUrl = () => {
   }
 };
 
+export const resolveStorefrontTenantUrl = ({
+  slug = '',
+  storefrontHomeUrl = resolveStorefrontHomeUrl()
+} = {}) => {
+  const normalizedSlug = String(slug || '').trim().toLowerCase();
+  if (!normalizedSlug) return '';
+
+  try {
+    const target = new URL(storefrontHomeUrl);
+    target.pathname = `/tenant-store/${encodeURIComponent(normalizedSlug)}`;
+    target.search = '';
+    target.hash = '';
+    return target.toString();
+  } catch {
+    return '';
+  }
+};
+
 export const resolveStorefrontItemUrl = ({
   slug = '',
   itemId = null,
@@ -160,8 +178,8 @@ export const resolveStorefrontItemUrl = ({
   if (!normalizedSlug || !Number.isInteger(normalizedItemId) || normalizedItemId <= 0) return '';
 
   try {
-    const target = new URL(storefrontHomeUrl);
-    target.pathname = `/tenant-store/${encodeURIComponent(normalizedSlug)}/item`;
+    const target = new URL(resolveStorefrontTenantUrl({ slug: normalizedSlug, storefrontHomeUrl }));
+    target.pathname = `${target.pathname.replace(/\/+$/, '')}/item`;
     target.search = new URLSearchParams({ item: String(normalizedItemId) }).toString();
     target.hash = '';
     return target.toString();

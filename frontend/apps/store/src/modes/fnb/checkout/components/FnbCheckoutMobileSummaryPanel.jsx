@@ -1,6 +1,8 @@
 import { ChevronDown, ChevronLeft, ChevronRight, Lock, Plus, ShoppingBag, X } from 'lucide-react';
 
 import { FnbCheckoutMobileSummary } from './FnbCheckoutMobileSummary.jsx';
+import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
+import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 
 /**
  * F&B mobile checkout summary sheet and persistent action footer.
@@ -15,6 +17,8 @@ export function FnbCheckoutMobileSummaryPanel({
   cartImageErrors,
   checkoutAllowed,
   checkoutLoading,
+  checkoutPrimaryLabel = 'Place Order',
+  checkoutPrimaryLocked = false,
   fnbCustomerStepComplete,
   fnbFulfillmentStepComplete,
   itemCountLabel,
@@ -31,12 +35,11 @@ export function FnbCheckoutMobileSummaryPanel({
   showSummary,
   totalFeeAndTaxes,
   totals,
-  withAssetOrigin,
 }) {
   const isPrimaryDisabled = orderStep === 3
     ? !fnbCustomerStepComplete
     : orderStep === 4
-      ? !checkoutAllowed
+      ? !checkoutAllowed || checkoutPrimaryLocked
       : !fnbFulfillmentStepComplete;
 
   const handleBack = () => {
@@ -80,8 +83,8 @@ export function FnbCheckoutMobileSummaryPanel({
                 {cart.map((line) => (
                   <div key={`fnb-mobile-order-summary-${line.cart_line_id || line.item_id}`} style={{ display: 'grid', gridTemplateColumns: '64px minmax(0, 1fr) auto', gap: 12, alignItems: 'start', border: '1px solid #e2e8f0', borderRadius: 18, padding: 12 }}>
                     <div style={{ width: 64, height: 64, borderRadius: 16, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center' }}>
-                      {line.image_url && !cartImageErrors.has(Number(line.item_id)) ? (
-                        <img src={withAssetOrigin(line.image_url)} alt={line.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => onImageError(line.item_id)} />
+                      {(line.thumbnail_url || line.image_url) && !cartImageErrors.has(Number(line.item_id)) ? (
+                        <StorefrontResponsiveImage imageSources={resolveStorefrontImageSources(line, { preferred: 'thumbnail' })} alt={line.name} sizes="64px" width={64} height={64} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => onImageError(line.item_id)} />
                       ) : (
                         <span style={{ fontSize: 11, fontWeight: 700, color: '#64748b' }}>{String(line.name || '').slice(0, 1) || 'I'}</span>
                       )}
@@ -138,7 +141,7 @@ export function FnbCheckoutMobileSummaryPanel({
               </button>
             )}
             <button type="button" onClick={handlePrimary} disabled={isPrimaryDisabled} style={{ ...primaryButtonStyle, background: `linear-gradient(180deg, ${brandColor} 0%, ${brandColorDark} 100%)`, boxShadow: `0 12px 24px ${brandShadowStrong}`, opacity: isPrimaryDisabled ? 0.6 : 1 }}>
-              {orderStep === 4 ? <><Lock size={18} />{checkoutLoading ? 'Processing...' : 'Place Order'}</> : <>Continue<ChevronRight size={20} /></>}
+              {orderStep === 4 ? <><Lock size={18} />{checkoutLoading ? 'Processing...' : checkoutPrimaryLabel}</> : <>Continue<ChevronRight size={20} /></>}
             </button>
           </div>
         </div>
