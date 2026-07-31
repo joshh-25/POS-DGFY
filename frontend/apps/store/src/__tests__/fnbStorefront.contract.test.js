@@ -114,7 +114,7 @@ describe('Food & Beverage storefront contract', () => {
     const cartMutations = cartMutationsHookSource();
 
     expect(detailActions).toContain('openCart: true');
-    expect(cartMutations).toContain('Boolean(options?.openCart) || !isFnbMode');
+    expect(cartMutations).toContain('Boolean(options?.openCart) || (!isFnbMode && !isSimpleMode)');
     expect(productCard).toContain('sourceRect: getCartFlySourceRect(event)');
     expect(productCard).not.toContain('openCart: true');
   });
