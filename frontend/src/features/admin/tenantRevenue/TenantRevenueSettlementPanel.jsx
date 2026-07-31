@@ -451,7 +451,23 @@ export default function TenantRevenueSettlementPanel({ tenants = [] }) {
                 {error ? (
                     <div className="mb-4 flex items-start gap-3 rounded-lg border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
                         <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0" />
-                        <div><strong>Revenue workspace unavailable.</strong><div>{error}</div></div>
+                        <div className="flex-1">
+                            <strong>Revenue workspace unavailable.</strong>
+                            <div>{error}</div>
+                            {/Admin authentication required|expired|token/i.test(String(error || '')) ? (
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        if (typeof window !== 'undefined') {
+                                            window.location.href = '/admin';
+                                        }
+                                    }}
+                                    className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg bg-rose-700 px-3.5 py-1.5 text-xs font-bold text-white shadow-sm hover:bg-rose-800 transition-colors"
+                                >
+                                    Sign in as Platform Admin
+                                </button>
+                            ) : null}
+                        </div>
                     </div>
                 ) : null}
                 {!dashboard.feature?.enabled ? (

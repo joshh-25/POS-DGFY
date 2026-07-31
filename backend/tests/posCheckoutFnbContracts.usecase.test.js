@@ -350,7 +350,7 @@ describe('POS checkout F&B contracts', () => {
                 address: 'Quezon City'
             }),
             totals: expect.objectContaining({
-                total_amount: 101,
+                total_amount: 100,
                 payment_type: 'cash'
             }),
             lines: [expect.objectContaining({
@@ -627,10 +627,10 @@ describe('POS checkout F&B contracts', () => {
 
         expect(result.success).toBe(true);
         expect(createdTransaction.subtotal_amount).toBe(240);
-        expect(createdTransaction.service_fee_amount).toBe(2.4);
+        expect(createdTransaction.service_fee_amount).toBe(0);
         expect(createdTransaction.restaurant_service_charge_amount).toBe(24);
         expect(createdTransaction.restaurant_service_charge_taxable).toBe(true);
-        expect(createdTransaction.total_amount).toBe(266.4);
+        expect(createdTransaction.total_amount).toBe(264);
         expect(createdTransaction).toEqual(expect.objectContaining({
             document_type: 'non_fiscal_slip',
             document_context: 'non_fiscal',

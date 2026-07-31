@@ -131,4 +131,21 @@ describe('terminal unlock diagnostics', () => {
       'The receipt printer/cash drawer bridge is unavailable. Login can continue, but hardware controls stay disabled until the bridge is running.'
     );
   });
+
+  it('preserves actionable backend errors for shift operations', () => {
+    expect(resolveTerminalLoginErrorMessage(apiError({
+      status: 500,
+      url: '/pos/terminal/shifts/open',
+      data: { message: 'This terminal already has an active shift.' }
+    }))).toBe('This terminal already has an active shift.');
+  });
+
+  it('does not misclassify generic server failures as connection outages', () => {
+    expect(resolveTerminalLoginErrorMessage(apiError({
+      status: 500,
+      url: '/pos/terminal/shifts/open'
+    }))).toBe(
+      'The POS backend could not complete the request. Try again or contact an administrator if the problem continues.'
+    );
+  });
 });

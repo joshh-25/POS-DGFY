@@ -252,6 +252,11 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("reason: 'terminal_lock'");
   });
 
+  it('finishes restoration and clears stale company identity on full cashier logout', () => {
+    expect(terminalPageContent).toMatch(/const onSessionExpired = \(\) => \{[\s\S]*?setLoadingUser\(false\);[\s\S]*?setTerminalStartupReady\(true\);[\s\S]*?setLocked\(true\);/);
+    expect(terminalPageContent).toMatch(/setStoredTerminalLockReason\('full_auth'\);[\s\S]*?setDgfyPosState\(\{[\s\S]*?authenticated: false,[\s\S]*?companies: \[\],[\s\S]*?setFormData\(\{[\s\S]*?email: '',[\s\S]*?dgfyTenantId: '',[\s\S]*?setTerminalStartupReady\(true\);[\s\S]*?clearDgfySession\(\);[\s\S]*?reason: 'logout'/);
+  });
+
   it('checks current shift before requiring a loaded operating location', () => {
     expect(terminalPageContent).toContain('const currentShiftParams = scopedOperatingLocationId');
     expect(terminalPageContent).toContain(': { terminal_id: terminalId };');
@@ -471,6 +476,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsPanelsContent).not.toContain('history_receipt');
     expect(terminalSidebarPanelContent).not.toContain('history_receipt');
     expect(posCheckoutTerminalContent).toContain('setHistorySearch(query);');
+    expect(posCheckoutTerminalContent).toContain('location_id: selectedLocationId || undefined');
   });
 
   it('persists offline checkout intents and exposes the manual universal sync policy', () => {

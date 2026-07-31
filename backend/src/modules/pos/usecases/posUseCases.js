@@ -13,10 +13,6 @@ import logger from '../../../config/logger.js';
 import dbStore from '../../../utils/dbStore.js';
 import { resolveMovementLocation } from '../../inventory/index.js';
 import {
-    computeDgfyConvenienceFee,
-    getDgfyConvenienceFeeLabel
-} from '../../shared/utils/dgfyConvenienceFee.js';
-import {
     accrueEarnedForInStoreSale,
     resolveActiveAffiliateEnrollment,
     reverseAffiliateCommissionForOrder,
@@ -1563,24 +1559,13 @@ const parseDiscountProfiles = (settings = {}) => {
         .filter((profile) => profile.active && profile.name.length > 0);
 };
 
-const resolveCheckoutServiceFee = ({ payload, grossSubtotal }) => {
-    const orderMethod = ORDER_METHODS.includes(payload?.order_method)
-        ? payload.order_method
-        : 'dine_in';
-    const serviceFeeAmount = computeDgfyConvenienceFee(grossSubtotal);
-    if (serviceFeeAmount <= 0) {
-        return {
-            serviceFeeAmount: 0,
-            serviceFeeLabelSnapshot: null,
-            serviceFeeMethodSnapshot: null,
-            serviceFeeOverridden: false
-        };
-    }
-
+const resolveCheckoutServiceFee = () => {
+    // POS checkout is always in-store. DGFY convenience fees are calculated only
+    // by the Storefront online-order flow, never from a cashier transaction.
     return {
-        serviceFeeAmount,
-        serviceFeeLabelSnapshot: getDgfyConvenienceFeeLabel(),
-        serviceFeeMethodSnapshot: orderMethod,
+        serviceFeeAmount: 0,
+        serviceFeeLabelSnapshot: null,
+        serviceFeeMethodSnapshot: null,
         serviceFeeOverridden: false
     };
 };

@@ -690,7 +690,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         expect(available).toBeCloseTo(1, 6);
     });
 
-    it('applies fixed DGFY convenience fee correctly and ignores caller override snapshot', async () => {
+    it('does not charge a DGFY convenience fee for an in-store POS checkout', async () => {
         const cashier = await createCashier();
         const vatableItem = await createFinishedGood({
             vat_type: 'vatable',
@@ -719,11 +719,11 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
             include: [{ model: models.PosTransactionLine, as: 'lines' }]
         });
         expect(Number(persistedTx.subtotal_amount)).toBeCloseTo(112, 4);
-        expect(Number(persistedTx.service_fee_amount)).toBeCloseTo(1.12, 4);
-        expect(persistedTx.service_fee_label_snapshot).toBe('DGFY convenience fee');
-        expect(persistedTx.service_fee_method_snapshot).toBe('delivery');
+        expect(Number(persistedTx.service_fee_amount)).toBe(0);
+        expect(persistedTx.service_fee_label_snapshot).toBeNull();
+        expect(persistedTx.service_fee_method_snapshot).toBeNull();
         expect(Boolean(persistedTx.service_fee_overridden)).toBe(false);
-        expect(Number(persistedTx.total_amount)).toBeCloseTo(113.12, 4);
+        expect(Number(persistedTx.total_amount)).toBeCloseTo(112, 4);
 
         // Fee is non-VAT, so VAT buckets remain item-only.
         expect(Number(persistedTx.vatable_sales)).toBeCloseTo(100, 4);

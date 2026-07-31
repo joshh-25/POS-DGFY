@@ -232,7 +232,7 @@ const money = (value) => Number(value || 0).toFixed(2);
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 
 const STOREFRONT_ITEM_IMAGE_MAX_COUNT = 5;
-const STOREFRONT_ITEM_IMAGE_MAX_BYTES = 10 * 1024 * 1024;
+const STOREFRONT_ITEM_IMAGE_MAX_BYTES = 100 * 1024 * 1024;
 
 const resolveStoredItemImageUrl = (urlOrPath) => {
   const raw = String(urlOrPath || '').trim();
@@ -2470,7 +2470,7 @@ function ItemsWorkspace({
     if (normalizedFiles.length === 0) return;
     const selectedFile = normalizedFiles[0];
     if (selectedFile.size > STOREFRONT_ITEM_IMAGE_MAX_BYTES) {
-      toast.error(`Cannot select ${selectedFile.name || 'item image'}: image size must be 10 MB or smaller.`);
+      toast.error(`Cannot select ${selectedFile.name || 'item image'}: image size must be 100 MB or smaller.`);
       return;
     }
     setSelectedEditImageFile(selectedFile);
@@ -3841,9 +3841,9 @@ function ItemsWorkspace({
                           >
                             <Upload className="mx-auto h-9 w-9 text-blue-500" aria-hidden="true" />
                             <p className="mt-2.5 text-xs sm:text-sm font-semibold text-[#0F172A]">Click to upload product image</p>
-                            <p className="mt-0.5 text-[11px] font-medium text-[#64748B]">JPG, PNG or WEBP (Max 10MB)</p>
+                            <p className="mt-0.5 text-[11px] font-medium text-[#64748B]">JPG, PNG or WEBP (Max 100MB, auto-compressed to WebP)</p>
                             <p className="mt-2 text-[10px] leading-normal text-[#94A3B8]">
-                              Only 1 image per item. The same image will be used for POS and storefront visibility.
+                              HD photos are automatically downscaled to fast WebP thumbnails when saved.
                             </p>
                             <input
                               id="pos-item-edit-image"

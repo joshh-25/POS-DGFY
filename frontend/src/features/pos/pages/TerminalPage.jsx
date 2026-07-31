@@ -2003,6 +2003,8 @@ export default function TerminalPage() {
   useEffect(() => {
     const onSessionExpired = () => {
       resetSettingsAccessPinState();
+      setLoadingUser(false);
+      setTerminalStartupReady(true);
       setLocked(true);
       setDrawerOpen(true);
       setTerminalUser(null);
@@ -3104,7 +3106,7 @@ export default function TerminalPage() {
           opening_float_amount: openingFloatAmount,
           opening_note: String(terminalUnlockForm.openingNote || '').trim() || undefined,
           idempotency_key: createIdempotencyKey('pos-shift-open')
-        });
+        }, SUPPRESS_GLOBAL_ERROR_TOAST);
       }
 
       await completeTerminalUnlock(selectedTerminalId, {
@@ -3303,6 +3305,26 @@ export default function TerminalPage() {
     setCashierResumeForm({ identifier: '', password: '' });
     setAdminReauthContext(null);
     setAdminReauthForm({ identifier: '', password: '' });
+    setDgfyPosState({
+      authenticated: false,
+      account: null,
+      companies: [],
+      loadingCompanies: false
+    });
+    setFormData({
+      email: '',
+      password: '',
+      rememberDevice: false,
+      dgfyTenantId: '',
+      terminalId: selectedTerminalId
+    });
+    setLoadingUser(false);
+    setTerminalStartupReady(true);
+    void Promise.allSettled([
+      api.post('/auth/logout'),
+      logoutDgfyAccount(activeDgfyToken)
+    ]);
+    clearDgfySession();
     clearClientSession({
       reason: 'logout',
       broadcast: true,
@@ -3389,7 +3411,7 @@ export default function TerminalPage() {
     };
     setShiftActionLoading((prev) => ({ ...prev, open: true }));
     try {
-      await openTerminalShift(payload);
+      await openTerminalShift(payload, SUPPRESS_GLOBAL_ERROR_TOAST);
       toast.success('Shift opened successfully.');
       setAdminShiftPromptSkipped(false);
       setOpenShiftForm({ openingFloatAmount: '', openingNote: '' });
@@ -3400,12 +3422,7 @@ export default function TerminalPage() {
       setPosViewMode('checkout');
       setMobileNavOpen(false);
     } catch (error) {
-      if (isRetryableTerminalOperationError(error)) {
-        toast.error('The shift was not opened because the server could not confirm it. Reconnect and try again.');
-      } else {
-        const message = String(error?.response?.data?.message || 'Failed to open terminal shift.');
-        toast.error(message);
-      }
+      toast.error(resolveTerminalLoginErrorMessage(error));
     } finally {
       setShiftActionLoading((prev) => ({ ...prev, open: false }));
     }
