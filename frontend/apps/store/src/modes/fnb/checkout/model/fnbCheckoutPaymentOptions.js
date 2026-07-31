@@ -4,8 +4,7 @@ const ALL_STOREFRONT_CHECKOUT_PAYMENT_OPTIONS = Object.freeze([
 ]);
 
 export const STOREFRONT_SANDBOX_QRPH_ENABLED = (
-  import.meta.env.DEV
-  && import.meta.env.VITE_STOREFRONT_SANDBOX_QRPH_ENABLED === 'true'
+  import.meta.env.VITE_STOREFRONT_SANDBOX_QRPH_ENABLED === 'true'
 );
 
 export const isEnabledStorefrontCheckoutPaymentType = (paymentType) => (

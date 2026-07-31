@@ -2973,11 +2973,7 @@ export const buildConfirmStoreCheckoutSandboxPaymentUseCase = ({
 }) => {
     return async ({ paymentSessionId, remoteAddress }) => {
         try {
-            if (
-                process.env.PAYMONGO_MODE === 'live'
-                || process.env.NODE_ENV === 'production'
-                || !isLoopbackAddress(remoteAddress)
-            ) {
+            if (process.env.PAYMONGO_MODE !== 'test' || !isLoopbackAddress(remoteAddress)) {
                 throw new DomainError(
                     DomainErrorCode.RESOURCE_NOT_FOUND,
                     'Sandbox payment confirmation is not available.',

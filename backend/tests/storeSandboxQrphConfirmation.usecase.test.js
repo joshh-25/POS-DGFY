@@ -79,7 +79,6 @@ describe('local PayMongo sandbox QR Ph confirmation', () => {
 
   it.each([
     ['live PayMongo mode', { nodeEnv: 'development', paymongoMode: 'live', remoteAddress: '::1' }],
-    ['production runtime', { nodeEnv: 'production', paymongoMode: 'test', remoteAddress: '::1' }],
     ['non-loopback request', { nodeEnv: 'development', paymongoMode: 'test', remoteAddress: '192.168.1.50' }]
   ])('hides the confirmation endpoint in %s', async (_label, setup) => {
     process.env.NODE_ENV = setup.nodeEnv;
@@ -90,6 +89,16 @@ describe('local PayMongo sandbox QR Ph confirmation', () => {
     expect(result.success).toBe(false);
     expect(result.error.statusCode).toBe(404);
     expect(paymongoService.confirmSandboxQrphPayment).not.toHaveBeenCalled();
+  });
+
+  it('allows a controlled loopback confirmation in a production runtime when PayMongo is in test mode', async () => {
+    process.env.NODE_ENV = 'production';
+    process.env.PAYMONGO_MODE = 'test';
+
+    const { result, paymongoService } = await execute({ remoteAddress: '127.0.0.1' });
+
+    expect(result.success).toBe(true);
+    expect(paymongoService.confirmSandboxQrphPayment).toHaveBeenCalledTimes(1);
   });
 
   it('rejects a provider amount mismatch without changing local payment state', async () => {

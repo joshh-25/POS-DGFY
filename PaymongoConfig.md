@@ -7,6 +7,41 @@ DGFY revenue recording, and tenant settlement in production.
 > Git, source code, frontend environment files, chat messages, or screenshots.
 > Configure secrets only in the production backend environment.
 
+## Sandbox Configuration (Dev And Stage)
+
+Do not copy the production block below to `/opt/dgfy-dev` or
+`/opt/dgfy-stage`. Each non-production Compose deployment must use PayMongo
+test-mode credentials and a distinct test-mode webhook signing secret:
+
+```dotenv
+PAYMONGO_MODE=test
+PAYMONGO_API_BASE_URL=https://api.paymongo.com/v1
+PAYMONGO_TEST_PUBLIC_KEY=pk_test_REPLACE_ON_SERVER
+PAYMONGO_TEST_SECRET_KEY=sk_test_REPLACE_ON_SERVER
+PAYMONGO_TEST_WEBHOOK_SECRET=whsk_test_REPLACE_PER_ENVIRONMENT
+PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS=false
+PAYMONGO_WEBHOOK_TIMESTAMP_TOLERANCE_SECONDS=300
+
+COMMERCE_PAYMENTS_ENABLED=true
+COMMERCE_PAYMONGO_SPLIT_ENABLED=false
+TENANT_REVENUE_SHARING_ENABLED=true
+TENANT_AUTOMATIC_PAYOUT_ENABLED=false
+TENANT_EXTERNAL_PAYOUT_APPROVED=false
+TENANT_PAYOUT_ENCRYPTION_KEY=REPLACE_WITH_A_UNIQUE_32_BYTE_NON_PRODUCTION_SECRET
+```
+
+Set `PAYMONGO_WEBHOOK_ENDPOINT_URL` per deployment:
+
+- Dev: `https://dev.dgfy.ph/api/v1/commerce-payments/paymongo/webhook`
+- Stage: `https://stage.dgfy.ph/api/v1/commerce-payments/paymongo/webhook`
+
+Create a separate PayMongo **test-mode** webhook for each URL and enable
+`payment.paid`, `payment.failed`, `qrph.expired`, `payment.refund.updated`,
+and `payment.refunded`. Set the GitHub environment build variable
+`VITE_STOREFRONT_SANDBOX_QRPH_ENABLED=true` only for DEV and STAGING; leave it
+unset or `false` for PROD. Sandbox confirmation remains loopback-only even
+when the deployed backend runs with `NODE_ENV=production`.
+
 ## 1. Production Backend Environment
 
 Add the following values to the production backend environment on Linode:
@@ -182,4 +217,3 @@ If webhook verification, refunds, revenue recording, or reconciliation fails:
 - [ ] Duplicate webhook protection verified
 - [ ] Rejection and refund behavior verified
 - [ ] Project Manager recorded production evidence
-

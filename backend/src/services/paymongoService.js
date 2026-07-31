@@ -304,7 +304,7 @@ export class PayMongoService {
         expectedAmount,
         expectedCurrency = 'PHP'
     }) {
-        if (PAYMONGO_MODE === 'live' || process.env.NODE_ENV === 'production') {
+        if (PAYMONGO_MODE !== 'test') {
             throw new Error('PayMongo sandbox confirmation is unavailable outside test mode');
         }
 
