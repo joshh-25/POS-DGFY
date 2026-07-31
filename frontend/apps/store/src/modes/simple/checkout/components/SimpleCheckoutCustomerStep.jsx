@@ -45,10 +45,12 @@ export function SimpleCheckoutCustomerStep({
         addressPlaceholder: 'House no., street, barangay, landmark',
         addressRequired: isDeliveryOrder
       })}
-      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
-        <button type="button" onClick={onBackToCatalog} style={{ minHeight: 46, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><ChevronLeft size={18} /> Back to Catalog</button>
-        <button type="button" onClick={onContinue} disabled={!simpleCustomerStepComplete} style={{ minHeight: 46, borderRadius: 12, border: 'none', background: simpleCustomerStepComplete ? `linear-gradient(180deg, ${SIMPLE_BRAND} 0%, ${SIMPLE_BRAND_DARK} 100%)` : '#cbd5e1', color: '#fff', fontWeight: 700, cursor: simpleCustomerStepComplete ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>Continue <ChevronRight size={18} /></button>
-      </div>
+      {!isMobileViewport && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <button type="button" onClick={onBackToCatalog} style={{ minHeight: 46, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><ChevronLeft size={18} /> Back to Catalog</button>
+          <button type="button" onClick={onContinue} disabled={!simpleCustomerStepComplete} style={{ minHeight: 46, borderRadius: 12, border: 'none', background: simpleCustomerStepComplete ? `linear-gradient(180deg, ${SIMPLE_BRAND} 0%, ${SIMPLE_BRAND_DARK} 100%)` : '#cbd5e1', color: '#fff', fontWeight: 700, cursor: simpleCustomerStepComplete ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>Continue <ChevronRight size={18} /></button>
+        </div>
+      )}
       {!simpleCustomerStepComplete && (
         <div style={{ fontSize: 12, color: '#b45309' }}>
           Add customer name, one contact method, and a delivery address when delivery is selected.

@@ -650,6 +650,8 @@ export default function StorefrontApp() {
     showMobileAddressModal,
   } = useFnbCheckoutRouteState();
   const [simpleOrderStep, setSimpleOrderStep] = useState(1);
+  const [showSimpleMobileOrderSummary, setShowSimpleMobileOrderSummary] = useState(false);
+  const [showSimpleMobileAddressModal, setShowSimpleMobileAddressModal] = useState(false);
   const isOnlinePaymentModalOpen = useStorefrontStore(selectIsOnlinePaymentModalOpen);
   const uiOpenOnlinePaymentModal = useStorefrontStore((s) => s.uiOpenOnlinePaymentModal);
   const uiCloseOnlinePaymentModal = useStorefrontStore((s) => s.uiCloseOnlinePaymentModal);
@@ -1465,6 +1467,7 @@ export default function StorefrontApp() {
     cart,
     isFnbMode,
     isServicesMode,
+    isSimpleMode,
     productCartPermitted,
     serviceCartFabRef,
     servicePaymentTiming,
@@ -2400,7 +2403,6 @@ export default function StorefrontApp() {
   });
 
   const {
-    renderCheckoutPromoStack,
     renderPromoCodePanel
   } = useFnbCheckoutPromoRenderers({
     appliedPromoDiscountText,
@@ -2939,6 +2941,7 @@ export default function StorefrontApp() {
     canUseGuestCheckoutFlow,
     cart,
     cartCount,
+    cartImageErrors,
     checkoutError,
     checkoutLoading,
     checkoutResult,
@@ -2973,9 +2976,9 @@ export default function StorefrontApp() {
     quoteError,
     quoteResult,
     renderAccountOwnedIdentitySummary,
-    renderCheckoutPromoStack,
     renderGuestCheckoutEntry,
     renderGuestIdentityFields,
+    renderPromoCodePanel,
     renderStorefrontClosedNotice,
     requireQuoteForCheckout,
     selectedLocation,
@@ -2984,6 +2987,7 @@ export default function StorefrontApp() {
     selectedStore,
     servicesBodyFont,
     servicesDisplayFont,
+    setCartImageErrors,
     setCheckoutResult,
     setCustomerAddress,
     setCustomerPin,
@@ -3003,6 +3007,10 @@ export default function StorefrontApp() {
     simpleCustomerStepComplete,
     simpleHasCustomerIdentity,
     simpleHasPrimaryIdentityContact,
+    setShowSimpleMobileAddressModal,
+    setShowSimpleMobileOrderSummary,
+    showSimpleMobileAddressModal,
+    showSimpleMobileOrderSummary,
     simpleOrderMethodOptions,
     simpleOrderStep,
     simpleStepOneReady,

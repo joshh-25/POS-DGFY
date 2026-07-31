@@ -21,10 +21,8 @@ export function SimpleCheckoutFulfillmentChoices({
   orderMethod,
   simpleOrderMethodOptions = []
 }) {
-  const choiceGridColumns = isMobileViewport ? '1fr' : '1fr 1fr';
-
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: choiceGridColumns, gap: 20, alignItems: 'start' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20, alignItems: 'start' }}>
       <div style={{ display: 'grid', gap: 12 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>1. How would you like to receive your order?</div>
         <SimpleOrderMethodSelector
@@ -37,7 +35,7 @@ export function SimpleCheckoutFulfillmentChoices({
 
       <div style={{ display: 'grid', gap: 12 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>2. When would you like your order?</div>
-        <div style={{ display: 'grid', gridTemplateColumns: choiceGridColumns, gap: 16 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
           <SelectableOptionCard
             onClick={() => onScheduleModeChange('asap')}
             label="NOW"
@@ -58,7 +56,6 @@ export function SimpleCheckoutFulfillmentChoices({
             fontWeight={700}
             iconBoxSize={isMobileViewport ? 34 : 40}
             iconSize={isMobileViewport ? 18 : 20}
-            showCheck={false}
           />
           <SelectableOptionCard
             onClick={() => onScheduleModeChange('schedule')}
@@ -80,7 +77,6 @@ export function SimpleCheckoutFulfillmentChoices({
             fontWeight={700}
             iconBoxSize={isMobileViewport ? 34 : 40}
             iconSize={isMobileViewport ? 18 : 20}
-            showCheck={false}
           />
         </div>
         {fnbScheduleMode === 'asap' ? (
