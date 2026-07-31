@@ -1,3 +1,116 @@
+# Implementation — POS Catalog & Current Sale Layout Redesign (Matching Picture 2)
+
+## Proposed Changes
+
+### Layout & Header Components
+
+#### [MODIFY] [TerminalPageLayout.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalPageLayout.jsx)
+- Redesign top header bar to render compact "POS Catalog" title, subtitle ("Browse and add items to current sale"), notification bell with badge, and terminal status card/badge ("Terminal: COUNTER-01 • Online").
+
+### POS Terminal Components
+
+#### [MODIFY] [POSCheckoutTerminal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/POSCheckoutTerminal.jsx)
+- Add horizontal scrollable Category Tab pill bar (`All Items`, `Beverages`, `Food`, `Snacks`, `Desserts`, `Combo`, etc.) below Search/Scan/Filter row.
+- Redesign catalog product card grid to match Picture 2 (`grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3`), featuring rounded cards, image container with `ALWAYS AVAILABLE` overlay badge, item code badge, title, price, and blue circular `+` button.
+- Redesign Current Sale right panel: compact order method/payment selectors, cart item card with 36x36px thumbnail, quantity steppers, trash icon remove button, dashed `+ Add Note` button, subtotal/tax/total breakdown, and prominent primary `Checkout` button.
+- Ensure independent scrolling for catalog grid and cart panel with optimized responsive layout.
+
+#### [MODIFY] [SkupervisorPOSCheckoutTerminal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx)
+- Add horizontal scrollable Category Tab pill bar below Search/Scan/Filter row.
+- Redesign catalog product card grid to match Picture 2.
+- Redesign Current Sale right panel to match Picture 2.
+
+## Verification Plan
+
+### Automated Tests
+- Run Vitest POS contract tests:
+  `cmd /c npx vitest run src/features/pos/__tests__/storefrontItemQr.contract.test.js`
+  `cmd /c npx vitest run src/features/pos/__tests__/posAlwaysAvailable.contract.test.js`
+  `cmd /c npx vitest run src/features/pos/__tests__/terminalViewModeContracts.test.js`
+- Run linter:
+  `cmd /c npm run lint` in `frontend` directory.
+
+### Manual Verification
+- Verify POS Catalog workspace layout on desktop, tablet, and mobile.
+- Verify Search, Scan Barcode, Filter, and Category Tab pills filter items accurately.
+- Verify product card images, availability badges, prices, and circular `+` add buttons.
+- Verify Current Sale panel renders compact item cards with thumbnails, trash icon remove button, totals breakdown, and primary Checkout button.
+- Verify cart calculations, item additions, removals, quantity controls, and checkout flow remain 100% functional.
+
+---
+
+# Implementation — Current Sale Item Thumbnail Indicator
+
+## Proposed Changes
+
+### POS Terminal Components
+
+#### [MODIFY] [POSCheckoutTerminal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/POSCheckoutTerminal.jsx)
+- Add `CartItemThumbnail` component using `Utensils` fallback icon, downscaled thumbnail asset resolution, `object-cover`, `loading="lazy"`, and `decoding="async"`.
+- Render `CartItemThumbnail` beside `line.item_name` in `safeCart.map()` list.
+
+#### [MODIFY] [SkupervisorPOSCheckoutTerminal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx)
+- Add `CartItemThumbnail` component using `Utensils` fallback icon, downscaled thumbnail asset resolution, `object-cover`, `loading="lazy"`, and `decoding="async"`.
+- Render `CartItemThumbnail` beside `line.item_name` in `cart.map()` list.
+
+## Verification Plan
+
+### Automated Tests
+- Run Vitest POS contract tests:
+  `cmd /c npx vitest run src/features/pos/__tests__/storefrontItemQr.contract.test.js`
+  `cmd /c npx vitest run src/features/pos/__tests__/posAlwaysAvailable.contract.test.js`
+  `cmd /c npx vitest run src/features/pos/__tests__/terminalViewModeContracts.test.js`
+- Run linter:
+  `cmd /c npm run lint` in `frontend` directory.
+
+### Manual Verification
+- Open POS Terminal catalog view.
+- Add products (e.g. *Butter*, *Chai Tea*, *Brewed Coffee*) to Current Sale.
+- Verify each item card in the Current Sale panel shows a small 36x36px thumbnail beside the item name.
+- Verify items without images or failing URLs gracefully render the lightweight fallback icon.
+- Verify quantities, prices, remove buttons, and checkout function cleanly without lag.
+
+---
+
+# Implementation — POS Catalog Item Add-to-Cart Toast Notification Overlay
+
+## Proposed Changes
+
+### POS Terminal Components
+
+#### [NEW] [PosAddToCartToastContainer.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/PosAddToCartToastContainer.jsx)
+- Build non-blocking top-right portal overlay component (`pointer-events-none z-[9999]`).
+- Render toast notifications with item thumbnail, item name, quantity badge (`Qty: X`), "Added to current sale." message, emerald checkmark badge, and close button.
+
+#### [MODIFY] [POSCheckoutTerminal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/POSCheckoutTerminal.jsx)
+- Add `addToCartToasts` state and deduplicated `triggerAddToCartToast` handler.
+- Trigger toast notification inside `addToCart()` when a product is added to Current Sale.
+- Render `<PosAddToCartToastContainer toasts={addToCartToasts} onDismiss={handleDismissToast} />`.
+
+#### [MODIFY] [SkupervisorPOSCheckoutTerminal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx)
+- Add `addToCartToasts` state and deduplicated `triggerAddToCartToast` handler.
+- Trigger toast notification inside `addToCart()` when a product is added to Current Sale.
+- Render `<PosAddToCartToastContainer toasts={addToCartToasts} onDismiss={handleDismissToast} />`.
+
+## Verification Plan
+
+### Automated Tests
+- Run Vitest POS contract tests:
+  `cmd /c npx vitest run src/features/pos/__tests__/storefrontItemQr.contract.test.js`
+  `cmd /c npx vitest run src/features/pos/__tests__/posAlwaysAvailable.contract.test.js`
+  `cmd /c npx vitest run src/features/pos/__tests__/terminalViewModeContracts.test.js`
+- Run linter:
+  `cmd /c npm run lint` in `frontend` directory.
+
+### Manual Verification
+- Open POS Terminal catalog view.
+- Click a product (e.g. *Beef Meal*, *Chai Tea*).
+- Verify a top-right toast slides in showing product image, item name, quantity, and "Added to current sale."
+- Tap the same item again and verify quantity updates to `Qty: 2` without creating overlapping duplicate toasts.
+- Verify toast auto-dismisses after 2.5 seconds and cart logic remains untouched.
+
+---
+
 # Implementation — Remove Redundant Storefront Location Header Banner
 
 ## Proposed Changes
@@ -3126,3 +3239,143 @@ Reduce the layout size of the "Apply Discount" modal dialog further to make it e
 - Preserved onboarding completion in the tenant setup snapshot loaded during company selection.
 - Reused the same restoration screen for startup and lazy POS module loading.
 - Verified the focused POS contracts, targeted lint, and the POS production build.
+
+# 2026-07-28 - Storefront responsive image delivery
+
+- Preserved original uploaded catalog images while exposing the existing 400px thumbnail, 1024px medium, and 1920px large optimized variants in the Storefront catalog contract.
+- Added responsive `srcset` and `sizes` selection so product cards, galleries, recommendations, and item details download an image appropriate for their rendered size instead of always loading the largest asset.
+- Persisted the optimized thumbnail URL in new cart snapshots and retained a fallback to the legacy primary image for older carts.
+- Updated cart and checkout item images to prefer thumbnails and use lazy, asynchronous decoding where appropriate.
+- Replaced the two bundled images larger than 1 MB with 1200px WebP assets: the auth background dropped from about 1.39 MB to 42 KB and the Storefront business-owner image dropped from about 1.69 MB to 44 KB.
+- Added a tenant-scoped legacy catalog optimizer that is audit-only by default and writes only when `--apply` is explicitly provided. Originals remain under the existing originals storage tree.
+- Kept `/uploads/` outside service-worker runtime caching as required by ADR 0014; optimization uses immutable generated assets rather than stale browser caching.
+
+### Legacy image audit and apply
+
+```bash
+cd backend
+npm run backfill:optimized-catalog-images -- --tenant-id <tenant-uuid>
+npm run backfill:optimized-catalog-images -- --tenant-id <tenant-uuid> --apply
+```
+
+The first command is a dry run. Review its candidate, skipped, and failed counts before running the second command.
+
+# 2026-07-28 - Storefront ID recovery for POS item QR codes
+
+- Added an authenticated Settings action that generates and persists a stable, tenant-scoped `store_tenant_slug` when a company does not already have one.
+- Reused the existing public Storefront handle reservation and compliance checks so generated IDs remain unique and existing valid IDs are never replaced.
+- Added a Settings > Storefront card that displays the saved Storefront ID and public URL, supports copying or opening the URL, and exposes `Generate Storefront ID` only when the value is missing.
+- Refreshed terminal metadata after Storefront saves and ID generation so saved-item QR codes become available without reloading the POS.
+- Unified automatic Storefront discovery slug derivation with the same shared normalization utility used by explicit generation.
+- Added backend generation/idempotency/collision tests and frontend URL/QR integration contract coverage.
+- No database migration is required because `store_tenant_slug` is an existing governed setting.
+
+# 2026-07-29 - POS Employee Credit tender
+
+- Added optional, POS-only Employee Credit as a non-cash payment tender separate from Employee Discount.
+- Added tenant-local employee credit accounts and an immutable debit, grant, adjustment, reversal, and expiration ledger.
+- Added dedicated permissions for using Employee Credit, managing eligible accounts and authorization PINs, and viewing the separate credit report.
+- Required an eligible active employee, dedicated bcrypt-protected credit PIN, sufficient balance, active shift, terminal, location, and online checkout.
+- Made checkout and void operations atomic and idempotent so retries cannot double-debit or double-restore credit.
+- Added manager/admin account controls for eligibility, PIN setup, credit limits, and reasoned balance adjustments.
+- Added receipt and iMin evidence for employee name, masked account, credit amount, remaining balance, authorization reference, and creditor signature.
+- Excluded Employee Credit from cash received, cash drawer opening, and cashflow reporting while exposing a dedicated ledger report.
+- Registered the migration in tenant schema synchronization and runtime schema audits to prevent unknown-table or unknown-column failures after deployment.
+- Added focused backend use-case and migration contracts plus a frontend checkout, receipt, and drawer-isolation contract.
+
+# 2026-07-29 - POS Employee Directory
+
+- Added a tenant-owned Employee Directory for workmates who do not need a DGFY or POS login account.
+- Added employee code, full name, optional contact details, optional branch assignment, and active/inactive status.
+- Added audited, permission-protected employee create and update endpoints following the route, controller, use-case, repository, and model boundaries.
+- Linked Employee Credit accounts and POS transaction snapshots to directory employees while retaining existing user-linked Employee Credit accounts.
+- Added a Settings > Employees workspace for employee maintenance and Employee Credit configuration.
+- Refreshed Employee Credit options immediately after employee directory changes.
+- Added and applied migration `20260729000002-create-employee-directory.cjs` to the landlord and all active local tenant schemas.
+- Prevented destructive rollback when employee-only credit accounts exist.
+- Verified focused lint and tests, architecture/controller boundaries, documentation, tenant schema health, and the POS production build.
+
+# 2026-07-30 - Simplified POS Employee Credit authorization
+
+- Removed the Employee Credit PIN field from checkout and account management.
+- Kept employee account lookup, active and eligible status checks, available-balance validation, shift, terminal, location, permission, idempotency, audit, and immutable ledger controls.
+- Kept Employee Credit online-only, non-cash, and excluded from cash drawer and cashflow totals.
+- Updated receipt and iMin output to show the employee identity, credit evidence, and an `Employee Signature` acknowledgment line.
+- Retained the unused authorization hash column for backward-compatible tenant schemas; no database migration is required for this change.
+- Updated ADR 0039 and focused backend/frontend contracts to prevent the PIN requirement from being reintroduced.
+
+# 2026-07-30 - Confirm Checkout Modal & Employee Credit Redesign
+
+- Restructured checkout confirmation dialog (`DialogContent` in `POSCheckoutTerminal.jsx`) with fixed header, scrollable body area, item thumbnail icons, and fixed action footer.
+- Refactored `EmployeeCreditPaymentPanel.jsx` into a clean card layout with top icon badge, title/description, searchable employee dropdown combobox, eligibility/balance evidence, loading and retry states, and unavailable credit alert card.
+- Ensured zero overlap for combobox popover menu and preserved responsive vertical scrolling for item lists.
+- Removed redundant "ITEMS / X items in this sale / PHP XXX" sub-header inside the checkout items box per user request.
+- Preserved 100% of existing checkout logic, text, validation contracts, props, APIs, and button handlers.
+
+# 2026-07-30 - Sidebar Company Name & Branch Name Display
+
+- Updated `TerminalWorkspaceSidebar.jsx` header to render dynamic Company Name (bold primary) and Branch Name (smaller secondary) centered directly below the DGFY logo with CSS truncation (`truncate`) and tooltip titles.
+- Added dynamic resolution logic deriving company from `companyName` prop -> `accessibleCompanies` current tenant -> `terminalUser` (`company_name`, `company.name`, `business_name`).
+- Added dynamic resolution logic deriving branch from `branchName` prop -> `locationsState` active location -> `shiftState.shift.branch_name` -> `terminalMeta.branch_name`.
+- Passed `operatingLocationId`, `accessibleCompanies`, and `terminalMeta` down from `TerminalPageLayout.jsx` to `<TerminalWorkspaceSidebar>`.
+- Preserved 100% of existing navigation links, authentication handlers, routing, and compact sidebar dimensions.
+
+# 2026-07-30 - Optimized Item List Thumbnails in Confirm Checkout Modal
+
+- Updated `safeCart.map` in `POSCheckoutTerminal.jsx` to resolve downscaled/compressed thumbnail variant URLs using `resolveAssetVariantUrl(rawImage, 'thumbnail')`.
+- Rendered 40x40px fixed thumbnail container (`h-10 w-10 shrink-0 rounded-lg border border-blue-100 overflow-hidden`) with `object-cover`, `loading="lazy"`, `decoding="async"`, and automatic fallback to a lightweight `Utensils` icon container if image loading fails.
+- Displayed thumbnail on the left, followed by item name (bold dark text), `quantity × unit price` subtext, and line total (`PHP XXX.XX`) on the right.
+- Preserved 100% of existing checkout calculation logic, payment validation, APIs, and modal behavior.
+
+# 2026-07-30 - Fix Confirm Checkout Item Thumbnail Image Resolution
+
+- Updated `resolveMappedPosItemImage` helper in `POSCheckoutTerminal.jsx` to inspect `item?.name || item?.item_name || item?.itemName`.
+- Enhanced checkout modal `safeCart.map` item rendering to look up corresponding catalog metadata from `safeCatalog` by `line.item_id`.
+- Resolved downscaled thumbnail URL using `resolveAssetVariantUrl` across catalog item / line image properties (`storefront_image_url`, `pos_image_url`, `image_url`, and mapped image variants).
+- Preserved fixed 40x40px rounded container, `object-fit: cover`, `loading="lazy"`, `decoding="async"`, and fallback placeholder behavior.
+
+# 2026-07-30 - POS Employee Credit open-tab outstanding balance
+
+- Converted Employee Credit from a prepaid available-balance model into an employee open-tab tender that records the amount owed by each eligible employee.
+- Allowed eligible active employees to use Employee Credit even when the legacy funded balance is zero or lower than the sale total.
+- Added tenant migration `20260730000001-convert-employee-credit-to-outstanding-balance.cjs` for account outstanding balance, charge and repayment ledger entries, and transaction outstanding-balance snapshots.
+- Made checkout create one positive, idempotent `charge` ledger entry and increase outstanding balance in the same database transaction as the POS sale.
+- Made transaction void create one negative, idempotent reversal and reduce outstanding balance without deleting financial history.
+- Added permissioned repayment and administrative outstanding-correction endpoints with required reasons, idempotency keys, audit logs, and negative-balance protection.
+- Updated Employee Credit checkout, management, report, and receipt evidence to display current/projected outstanding balances while keeping legacy funded fields backward compatible.
+- Preserved Employee Credit as a non-cash, online-only POS tender excluded from cash drawer and cashflow totals.
+- Updated ADR 0039 and focused backend/frontend contracts for open-tab charging, duplicate replay, repayment, correction, void reversal, and migration coverage.
+
+### Focused validation
+
+- Backend: `npm test -- --runInBand tests/employeeCredit.usecases.test.js tests/employeeCreditMigration.contract.test.js` (12 tests passed).
+- Frontend: `npm test -- --run src/features/pos/__tests__/employeeCredit.contract.test.js src/features/pos/__tests__/employeeCreditPaymentPanel.behavior.test.jsx` (6 tests passed).
+
+# 2026-07-30 - Employee Credit report tenant schema repair
+
+- Added `employee_credit_outstanding_after` and `outstanding_balance` to tenant schema repair and runtime audit contracts.
+- Added `charge` and `repayment` to the Employee Credit ledger enum contract for existing and newly provisioned tenants.
+- Kept the additive migration backward compatible so existing funded balances, outstanding balances, transactions, and ledger history are preserved.
+- Applied the outstanding-balance migration to the local landlord and active tenant databases to remove the Report `Unknown column` failure.
+
+# 2026-07-30 - Re-align Header Notification Box with Bell Icon
+
+- Updated `renderNotificationButton` in `TerminalPageLayout.jsx` to anchor the notification popover directly underneath the Bell icon button.
+- Aligned popover panel with `right-1/2 translate-x-1/2` (centered horizontally below Bell button) and set top pointer arrow to `left-1/2 -translate-x-1/2`, pointing directly into the Bell icon instead of the User Profile menu.
+- Applied `max-w-[calc(100vw-2rem)]` to prevent popover overflow on narrow viewports.
+- Retained backdrop click overlay for closing popover and preserved all notification click handlers and empty state views.
+
+# 2026-07-30 - Fix Notification Dropdown Duplicate Rendering & Add Escape Key Listener
+
+- Updated `renderNotificationButton` in `TerminalPageLayout.jsx` to pass `compactBellClassName` and `desktopBellClassName` directly to the outer wrapper `<div className={className}>`.
+- Hidden bell instances (`lg:hidden` or `hidden`) now hide their entire outer wrapper and child popover, ensuring only one notification popover is present in the DOM at any viewport breakpoint.
+- Added `useEffect` keydown listeners for `Escape` key to close `notificationsOpen` and `companyMenuOpen` automatically.
+- Preserved all existing notification items, badge counters, click actions, and APIs.
+
+# 2026-07-30 - Remove "Discount / No discount applied" Card UI from Current Sale Panel
+
+- Removed the `<div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-2">` UI card displaying `Discount / No discount applied` / `Remove Discount` from `POSCheckoutTerminal.jsx`.
+- Preserved 100% of underlying discount state (`appliedDiscount`), discount calculations, totals deductions, `Apply Discount` button/modal, and backend payload parameters.
+
+
+

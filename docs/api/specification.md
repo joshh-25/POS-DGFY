@@ -3569,9 +3569,9 @@ Create a PayMongo QR Ph payment session for Storefront online checkout. This is 
 
 **Settlement Contract**
 - The Storefront quote remains authoritative for totals.
-- The mandatory DGFY 1% is stored as `service_fee_amount` and sent to PayMongo as a fixed split amount in centavos.
-- The tenant PayMongo child merchant receives the remaining net settlement through `transfer_to`.
-- PayMongo/provider processing, payout, bank, dispute, and related fees are not added to the DGFY 1%; they are shouldered by the tenant company and reduce company net settlement unless a signed provider contract says otherwise.
+- With `TENANT_REVENUE_SHARING_ENABLED=true`, `service_fee_amount=0`, no PayMongo split payload is sent, and DGFY records the tenant platform fee after verified payment using the effective tenant fee policy.
+- The legacy child-merchant `transfer_to` path is disabled compatibility behavior and must not be enabled with tenant revenue sharing.
+- PayMongo/provider processing, payout, bank, dispute, and related fees are captured from provider data or reconciliation and allocated according to the versioned tenant policy.
 - QR Ph sessions finalize the Storefront order only after PayMongo sends `payment.paid`.
 
 ### GET /store/checkout/payment-sessions/:payment_session_id
@@ -3610,7 +3610,7 @@ https://skupervisor.surebizcorp.com/api/v1/commerce-payments/paymongo/webhook
 
 The production server must use `PAYMONGO_MODE=live` and `PAYMONGO_LIVE_WEBHOOK_SECRET`. If an unsigned probe returns `404`, the backend route is not deployed there yet and live PayMongo delivery will fail.
 
-Live split checkout also requires explicit external PayMongo platform evidence. API-created tenant child merchant IDs are tenant readiness inputs only; they are not the DGFY parent/platform merchant ID used as the fixed 1% split recipient. When `COMMERCE_PAYMONGO_SPLIT_ENABLED=true` and `PAYMONGO_MODE=live`, production configuration is incomplete until PayMongo confirms the parent merchant ID plus live `split_payment.transfer_to` and fixed-recipient capability, and the operator sets `PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED=true` or `PAYMONGO_PLATFORM_SPLIT_CONFIRMED=true`. Current provider status as of June 25, 2026 is externally blocked: PayMongo support confirmed Linked Accounts is not configured for the account and self-service onboarding is still under development.
+The split checkout described by the older commerce-admin endpoints is deprecated by ADR 0040. `COMMERCE_PAYMONGO_SPLIT_ENABLED` must remain false when `TENANT_REVENUE_SHARING_ENABLED` is true.
 
 **Auth**: Admin JWT (`/admin/login`)
 **Base Path**: `/api/v1/commerce-payments/admin`
@@ -3689,6 +3689,44 @@ Live split checkout also requires explicit external PayMongo platform evidence. 
 - `platform_fee_centavos` is the stored fixed DGFY 1% split from ADR 0012/ADR 0027.
 - `estimated_tenant_gross_centavos` is `total_amount_centavos - platform_fee_centavos`; it is not PayMongo payout truth.
 - Provider fees, payout IDs, and final payout status require PayMongo reporting/payout data and must not be inferred from local records alone.
+
+### Tenant Revenue and Settlement
+
+**Platform Admin Base Path**: `/api/v1/tenant-revenue/admin`
+
+All routes require platform Admin authentication, no-store response caching, and
+the tenant-financial rate limiter.
+
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/dashboard` | Filtered financial summary, schedule, counts, recent records, and open exceptions. |
+| `GET` | `/transactions` | Filtered immutable transaction snapshots and settlement reference. |
+| `GET` | `/transactions.csv` | Export every row matching the same filters. |
+| `GET/POST` | `/tenants/:tenant_id/fee-policies` | Read history or create a new effective policy version. |
+| `GET/POST` | `/settlement-batches` | List or prepare reconciled eligible tenant-period batches. |
+| `POST` | `/settlement-batches/:id/approve` | Independent maker-checker approval. |
+| `POST` | `/settlement-batches/:id/cancel` | Release a prepared or safely held batch with reason. |
+| `POST` | `/settlement-batches/:id/schedule` | Authorized custom payout-date override with reason. |
+| `POST` | `/settlement-batches/:id/payouts` | Record a manual bank/PayMongo transfer attempt. |
+| `POST` | `/payouts/:id/confirm` | Batch approver confirms transfer reference and proof. |
+| `POST` | `/payouts/:id/fail` | Record a failed transfer and hold included transactions. |
+| `POST` | `/payouts/:id/retry` | Batch approver authorizes a controlled idempotent retry. |
+| `GET` | `/reconciliation` | List filtered exceptions. |
+| `POST` | `/reconciliation/run-internal` | Audit payment, fee, ledger, batch, and payout consistency. |
+| `POST` | `/reconciliation/provider-financials` | Import PayMongo API/statement gross, fee, VAT, and net values. |
+| `POST` | `/reconciliation/:id/resolve` | Resolve or explicitly waive an exception with reason. |
+| `GET/POST` | `/adjustments` | List or request immutable manual adjustments. |
+| `POST` | `/adjustments/:id/approve` | Independent adjustment approval and ledger posting. |
+
+Transaction filters: `tenant_id`, `company_id`, `branch_id`, `payment_method`,
+`payment_status`, `reconciliation_status`, `settlement_status`, `period_start`,
+`period_end`, `provider_payment_id`, and `settlement_reference`.
+
+**Tenant read-only base path**: `/api/v1/tenant-revenue/tenant`
+
+Routes: `/summary`, `/transactions`, `/settlements`, and `/fee-history`. Tenant
+identity is taken from the authenticated server context. Any tenant ID supplied by
+the browser is overwritten.
 
 ### GET /store/track/:tracking_pin
 Track online-store order status for public users.

@@ -34,7 +34,7 @@ feature PR -> staging CI -> reviewed batch document -> isolated QA
 2. `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 3. `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
 4. `docs/architecture/adr/0030-free-tier-signed-release-authorization.md`
-5. `docs/architecture/adr/0027-paymongo-commerce-qrph-platform-split-settlement.md` for payment-sensitive releases
+5. `docs/architecture/adr/0040-tenant-revenue-collection-ledger-and-settlement.md` for payment-sensitive releases
 6. `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
 7. `docs/ops/DEPLOYMENT_GUIDE.md`
 8. `docs/testing/release-go-no-go-checklist.md`
