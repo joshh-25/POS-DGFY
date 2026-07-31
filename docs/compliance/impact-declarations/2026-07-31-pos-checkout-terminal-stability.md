@@ -31,6 +31,8 @@ Storefront online-order calculations.
 2. POS history requests are scoped to the selected operating location.
 3. Full cashier logout clears stale company authority and completes terminal restoration.
 4. Shift-open failures preserve actionable backend conflict messages instead of reporting a false network outage.
+5. POS Edit Item modal (`TerminalOperationsWorkspace.jsx`) allows high-res HD item images up to 100MB and automatically triggers WebP downscaling to 400px thumbnails on save.
+
 
 ## Compliance Preconditions
 

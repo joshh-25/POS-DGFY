@@ -3377,5 +3377,21 @@ The first command is a dry run. Review its candidate, skipped, and failed counts
 - Removed the `<div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-2">` UI card displaying `Discount / No discount applied` / `Remove Discount` from `POSCheckoutTerminal.jsx`.
 - Preserved 100% of underlying discount state (`appliedDiscount`), discount calculations, totals deductions, `Apply Discount` button/modal, and backend payload parameters.
 
+# 2026-07-31 - Automatic Image Compression for POS Item Save & POS Bulk Optimizer
+
+### Implemented solution
+- Updated POS Edit Item modal (`TerminalOperationsWorkspace.jsx`) to accept high-res HD item images up to 100MB, displaying explicit notice that HD images are automatically downscaled and WebP-compressed when saved.
+- Verified that POS item saving triggers `uploadStorefrontCatalogImage(...)` on the backend, executing `Sharp` image compression down to 400px `thumb.webp` thumbnails for zero-lag POS card rendering.
+- Provided and verified the 1-step backend bulk optimizer command for your POS catalog:
+  ```bash
+  cd backend
+  npm run backfill:optimized-catalog-images -- --apply
+  ```
+  This batch-processes all 100+ existing POS item pictures on disk into 400px WebP thumbnails without requiring SKUpervisor.
+
+### Files modified
+- `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `Plan.md`
+- `Implementation.md`
 
 

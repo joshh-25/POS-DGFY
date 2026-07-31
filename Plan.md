@@ -406,16 +406,22 @@ Key requirements:
 - [x] 1. **Remove UI Card (`POSCheckoutTerminal.jsx`)**: Remove the "Discount / No discount applied" container card from the Current Sale sidebar layout.
 - [x] 2. **Verification**: Run Vitest test suite to confirm zero regressions in contract tests and build.
 
+---
 
+# Plan — Automatic Legacy Image Compression for POS Item Save & POS Bulk Optimizer
 
+## High-Level Strategy
+Add automatic, self-healing image compression directly for the POS terminal when items are updated in POS, plus a 1-command backend bulk optimizer for all 100+ existing POS items. **Zero SKUpervisor usage required.**
 
+Key requirements:
+1. **POS Terminal Self-Healing Image Compression**: When an item is edited and saved directly inside the POS terminal (`TerminalOperationsWorkspace.jsx` / `saveEdit`), if its image is an uncompressed legacy raw file, the backend will automatically generate 400px `thumb.webp` variants.
+2. **POS Bulk 1-Command Server Optimizer**: Run a single server command to batch-process all 100+ existing POS item images into `thumb.webp` (400px) on disk, updating the POS catalog immediately.
+3. **Pure POS Focus**: Everything is integrated into the POS terminal runtime. No SKUpervisor interaction needed.
 
-
-
-
-
-
-
+## Goals
+- [x] 1. **POS Item Save Compression**: Ensure POS Edit Item modal (`TerminalOperationsWorkspace.jsx`) triggers backend WebP thumbnail generation on item save.
+- [x] 2. **POS Bulk Optimizer**: Batch optimize all 100+ existing POS catalog images into 400px WebP thumbnails on disk so POS catalog cards scroll smoothly without lag.
+- [x] 3. **Verification**: Verify POS catalog cards load downscaled thumbnails in `POSCheckoutTerminal.jsx` with 0 network lag.
 
 
 
