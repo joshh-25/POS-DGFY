@@ -221,6 +221,9 @@ describe('Food & Beverage storefront contract', () => {
     expect(checkoutRouteContainer).toContain('FnbCheckoutCustomerStep');
     expect(checkoutRouteContainer).toContain('FnbCheckoutFulfillmentStep');
     expect(checkoutRouteContainer).toContain('FnbCheckoutPaymentStep');
+    expect(checkoutRouteContainer).toContain('withAssetOrigin={withAssetOrigin}');
+    expect(readSource('modes/fnb/checkout/components/FnbCheckoutReviewItemsList.jsx'))
+      .toContain('withAssetOrigin = (url) => url');
     expect(checkoutRouteContainer).toContain('FnbCheckoutSummaryContent');
     expect(checkoutRouteMountSource()).toContain('FnbCheckoutRoutePage');
     expect(checkoutSubmissionSource()).toContain('/api/v1/store/checkout');

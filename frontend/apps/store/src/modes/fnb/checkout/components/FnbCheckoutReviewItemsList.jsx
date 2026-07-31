@@ -8,7 +8,7 @@ export function FnbCheckoutReviewItemsList({
   isMobileViewport = false,
   money,
   onImageError,
-  withAssetOrigin
+  withAssetOrigin = (url) => url
 }) {
   if (cart.length === 0) return null;
 
