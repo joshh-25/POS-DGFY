@@ -114,7 +114,7 @@ describe('Food & Beverage storefront contract', () => {
     const cartMutations = cartMutationsHookSource();
 
     expect(detailActions).toContain('openCart: true');
-    expect(cartMutations).toContain('Boolean(options?.openCart) || !isFnbMode');
+    expect(cartMutations).toContain('Boolean(options?.openCart) || (!isFnbMode && !isSimpleMode)');
     expect(productCard).toContain('sourceRect: getCartFlySourceRect(event)');
     expect(productCard).not.toContain('openCart: true');
   });
@@ -222,6 +222,9 @@ describe('Food & Beverage storefront contract', () => {
     expect(checkoutRouteContainer).toContain('FnbCheckoutCustomerStep');
     expect(checkoutRouteContainer).toContain('FnbCheckoutFulfillmentStep');
     expect(checkoutRouteContainer).toContain('FnbCheckoutPaymentStep');
+    expect(checkoutRouteContainer).toContain('withAssetOrigin={withAssetOrigin}');
+    expect(readSource('modes/fnb/checkout/components/FnbCheckoutReviewItemsList.jsx'))
+      .toContain('withAssetOrigin = (url) => url');
     expect(checkoutRouteContainer).toContain('FnbCheckoutSummaryContent');
     expect(checkoutRouteMountSource()).toContain('FnbCheckoutRoutePage');
     expect(checkoutSubmissionSource()).toContain('/api/v1/store/checkout');

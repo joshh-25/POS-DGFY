@@ -1433,7 +1433,8 @@ export default function POSCheckoutTerminal({
                 order_source: historyOrderSource === 'all' ? undefined : historyOrderSource,
                 cashier_id: historyCashierId || undefined,
                 date_from: historyDateFrom || undefined,
-                date_to: historyDateTo || undefined
+                date_to: historyDateTo || undefined,
+                location_id: selectedLocationId || undefined
             });
             const rows = Array.isArray(result?.transactions) ? result.transactions : [];
             setHistoryRows(rows);
@@ -1464,6 +1465,7 @@ export default function POSCheckoutTerminal({
         historyPaymentType,
         historySearch,
         historyStatus,
+        selectedLocationId,
         sessionLocked
     ]);
 

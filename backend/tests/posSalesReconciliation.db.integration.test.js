@@ -813,7 +813,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
 
     expect(checkout.success).toBe(true);
     expect(money4(checkout.data.transaction.discount_amount)).toBe(10);
-    expect(money4(checkout.data.transaction.service_fee_amount)).toBe(1);
+    expect(money4(checkout.data.transaction.service_fee_amount)).toBe(0);
 
     const repairedDiscountSetting = await models.SystemSetting.findOne({ where: { setting_key: 'pos_discount_profiles' } });
 
@@ -870,7 +870,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     expect(salesResult.data.transactions.some((row) => row.reference_no === checkout.data.transaction.invoice_number)).toBe(true);
   });
 
-  itRuntimeReady('aggregates POS service fees in z-reading and unified sales summary', async () => {
+  itRuntimeReady('does not aggregate a convenience fee for in-store POS sales', async () => {
     const cashier = await createCashier();
     const product = await createFinishedGood({ vat_type: 'vatable', default_sale_price: 56, cost_per_unit: 20 });
 
@@ -886,14 +886,14 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       })
     }));
     expect(checkout.success).toBe(true);
-    expect(money4(checkout.data.transaction.service_fee_amount)).toBe(0.56);
+    expect(money4(checkout.data.transaction.service_fee_amount)).toBe(0);
 
     const businessDate = todayInManila();
     const zResult = await runInTenantContext(() => getDailyZReadingUseCase({
       businessDateInput: businessDate
     }));
     expect(zResult.success).toBe(true);
-    expect(money4(zResult.data.summary.service_fee_total)).toBeGreaterThanOrEqual(0.56);
+    expect(money4(zResult.data.summary.service_fee_total)).toBe(0);
 
     const salesResult = await runInTenantContext(() => listSalesTransactionsUseCase({
       query: {
@@ -905,7 +905,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       userPermissions: ['reports:view']
     }));
     expect(salesResult.success).toBe(true);
-    expect(money4(salesResult.data.summary.service_fee_total)).toBeGreaterThanOrEqual(0.56);
+    expect(money4(salesResult.data.summary.service_fee_total)).toBe(0);
   });
 
   itRuntimeReady('counts only financially recognized online orders in z-reading and unified sales', async () => {

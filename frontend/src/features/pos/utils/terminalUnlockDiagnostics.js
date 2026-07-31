@@ -160,8 +160,10 @@ export const resolveTerminalLoginErrorMessage = (error) => {
   if (status === 404) return 'No company is registered for this POS login email. Check the email or sign in from SKUpervisor first.';
   if (status === 429) return `Too many terminal login attempts.${formatRetryAfter(getRetryAfterSeconds(error)) || ' Wait a moment, then try again.'}`;
 
-  if (responseMessage && status < 500) return responseMessage;
-  if (status >= 500) return 'Unable to reach the POS backend. Check the server connection and try again.';
+  if (responseMessage && responseMessage.toLowerCase() !== 'request failed') {
+    return responseMessage;
+  }
+  if (status >= 500) return 'The POS backend could not complete the request. Try again or contact an administrator if the problem continues.';
 
   return 'Unable to sign in to terminal.';
 };

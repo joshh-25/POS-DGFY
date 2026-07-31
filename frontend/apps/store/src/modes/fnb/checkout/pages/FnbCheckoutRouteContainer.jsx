@@ -713,6 +713,7 @@ export function FnbCheckoutRouteContainer({
             processing={checkoutLoading}
             quoteError={quoteError}
             submitLabel={fnbPaymentType === 'qrph' ? 'Generate QR Ph' : 'Place Order'}
+            withAssetOrigin={withAssetOrigin}
           />
           <FnbCheckoutDesktopSummary isDesktop={isDesktopCheckout}>
             <FnbCheckoutSummaryContent
