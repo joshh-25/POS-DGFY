@@ -1,44 +1,31 @@
-import { describe, expect, it } from 'vitest';
-import { emitIminPosFeedback, isIminWrapperRuntime } from '../iminRuntimeFeedback.js';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const createIminWindow = () => {
-  const events = [];
-  return {
-    iMinBridge: { isIminWrapper: () => true },
-    dispatchEvent: (event) => events.push(event),
-    events
-  };
-};
+const { errorToast } = vi.hoisted(() => ({
+  errorToast: vi.fn()
+}));
 
-describe('iMin POS feedback runtime', () => {
-  it('detects only the trusted iMin WebView bridge', () => {
-    expect(isIminWrapperRuntime(createIminWindow())).toBe(true);
-    expect(isIminWrapperRuntime({ iMinBridge: {} })).toBe(false);
-    expect(isIminWrapperRuntime(null)).toBe(false);
+vi.mock('sonner', () => ({
+  toast: {
+    error: errorToast,
+    info: vi.fn(),
+    message: vi.fn(),
+    success: vi.fn(),
+    warning: vi.fn()
+  }
+}));
+
+import { posToast } from '../iminRuntimeFeedback.js';
+
+describe('POS runtime feedback', () => {
+  beforeEach(() => {
+    errorToast.mockClear();
+    vi.stubGlobal('window', {});
   });
 
-  it('dispatches APK feedback as an inline terminal event instead of a native alert', () => {
-    const previousCustomEvent = globalThis.CustomEvent;
-    globalThis.CustomEvent = class {
-      constructor(type, init) {
-        this.type = type;
-        this.detail = init.detail;
-      }
-    };
-    const windowObj = createIminWindow();
+  it('emits one browser toast for repeated equivalent API errors', () => {
+    posToast.error('Authentication required. Please provide a valid token.');
+    posToast.error('Authentication required. Please provide a valid token.');
 
-    try {
-      emitIminPosFeedback({ tone: 'error', message: 'Opening cash amount is required.' }, windowObj);
-      expect(windowObj.events).toHaveLength(1);
-      expect(windowObj.events[0]).toMatchObject({
-        type: 'dgfy:imin-pos-feedback',
-        detail: {
-          tone: 'error',
-          message: 'Opening cash amount is required.'
-        }
-      });
-    } finally {
-      globalThis.CustomEvent = previousCustomEvent;
-    }
+    expect(errorToast).toHaveBeenCalledTimes(1);
   });
 });

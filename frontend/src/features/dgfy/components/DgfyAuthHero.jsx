@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { resolveStorefrontHomeUrl } from '../../dgfyRouteHelpers.js';
-import bgModals from '../../../assets/dgfy/bg-modals.png';
+import bgModals from '../../../assets/dgfy/bg-modals.webp';
 import dgfyLogo from '../../../assets/dgfy/dgfy-logo.png';
 
 const BUSINESS_REGISTRATION_ENTRY = '/register-company?source=dgfy&auth=login#business-registration';

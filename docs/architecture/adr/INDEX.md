@@ -73,6 +73,8 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0048 | [QA Landlord Invoicing Boundary](0048-qa-landlord-invoicing-boundary.md) | `accepted` | qa_landlord_invoicing | 2027-01-28 | 0 |
 | 0049 | [Batch Menu Import via Asynchronous Extraction](0049-batch-menu-import-async-extraction.md) | `accepted` | batch_menu_import | 2027-01-29 | 0 |
 | 0050 | [Affiliate Buyer-Facing Pricing Rule Engine (Phase 1)](0050-affiliate-buyer-facing-pricing-rule-engine.md) | `accepted` | affiliate_buyer_facing_pricing_rule_engine | 2027-01-29 | 3 |
+| 0051 | [POS Employee Credit Tender and Ledger](0051-pos-employee-credit-tender-and-ledger.md) | `accepted` | pos_employee_credit_tender_and_ledger | 2027-01-30 | 0 |
+| 0052 | [DGFY Collection, Tenant Revenue Ledger, and Controlled Settlement](0052-tenant-revenue-collection-ledger-and-settlement.md) | `accepted` | tenant_revenue_collection_ledger_settlement | 2027-01-31 | 0 |
 
 ## Renumbered (collision stubs)
 

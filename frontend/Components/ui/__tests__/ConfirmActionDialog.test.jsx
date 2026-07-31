@@ -50,6 +50,35 @@ describe('ConfirmActionDialog', () => {
     expect(onOpenChange).not.toHaveBeenCalledWith(false);
   });
 
+  it('requires and forwards a governed action reason', async () => {
+    const onConfirm = vi.fn().mockResolvedValue(true);
+    render(
+      <ConfirmActionDialog
+        open
+        onOpenChange={vi.fn()}
+        title="Reject order"
+        description="A refund will be requested."
+        reasonLabel="Rejection reason"
+        reasonRequired
+        reasonMinLength={3}
+        onConfirm={onConfirm}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+    expect((await screen.findByRole('alert')).textContent).toContain(
+      'Rejection reason must be at least 3 characters.'
+    );
+    expect(onConfirm).not.toHaveBeenCalled();
+
+    fireEvent.change(screen.getByLabelText(/Rejection reason/), {
+      target: { value: 'Item unavailable' }
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Confirm' }));
+
+    await waitFor(() => expect(onConfirm).toHaveBeenCalledWith('Item unavailable'));
+  });
+
   it('removes browser-native confirms from the governed flows', () => {
     [
       'Pages/Settings.jsx',

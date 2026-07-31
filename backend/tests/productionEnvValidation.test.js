@@ -200,4 +200,43 @@ describe('production environment validation', () => {
 
     expect(configured.ok).toBe(true);
   });
+
+  it('requires separate finance maker-checker identities for tenant revenue collection', () => {
+    const paymentConfig = {
+      ...baseEnv,
+      TENANT_REVENUE_SHARING_ENABLED: 'true',
+      TENANT_PAYOUT_ENCRYPTION_KEY: strongSecret('payout'),
+      PAYMONGO_MODE: 'test',
+      PAYMONGO_TEST_PUBLIC_KEY: 'pk_test_fixture',
+      PAYMONGO_TEST_SECRET_KEY: 'sk_test_fixture',
+      PAYMONGO_TEST_WEBHOOK_SECRET: 'whsec_test_fixture'
+    };
+    const missingRoster = validateProductionEnv({ env: paymentConfig });
+
+    expect(missingRoster.ok).toBe(false);
+    expect(missingRoster.errors).toContain(
+      'TENANT_REVENUE_SHARING_ENABLED requires valid ADMIN_ACCOUNTS_JSON maker-checker identities'
+    );
+
+    const bcryptFixture = `$2b$12$${'a'.repeat(53)}`;
+    const configured = validateProductionEnv({
+      env: {
+        ...paymentConfig,
+        ADMIN_ACCOUNTS_JSON: JSON.stringify([
+          {
+            username: 'finance.preparer',
+            password_hash: bcryptFixture,
+            financial_role: 'finance_preparer'
+          },
+          {
+            username: 'finance.approver',
+            password_hash: bcryptFixture,
+            financial_role: 'finance_approver'
+          }
+        ])
+      }
+    });
+
+    expect(configured.ok).toBe(true);
+  });
 });

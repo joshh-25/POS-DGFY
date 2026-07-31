@@ -40,6 +40,7 @@ export default function TerminalPageLayout({
     canCreateItems = false,
     canEditItems = false,
     canDeleteItems = false,
+    canManageCategories = false,
     canAdminBypassShiftPrompt = false,
     itemsStockFilterPreset = '',
     onItemsStockFilterPresetApplied = () => {},
@@ -79,6 +80,7 @@ export default function TerminalPageLayout({
     terminalMeta,
     todayDashboard,
     reportRefreshKey = 0,
+    employeeCreditReportRefreshKey = 0,
     openShiftForm,
     setOpenShiftForm,
     cashEventForm,
@@ -272,14 +274,14 @@ export default function TerminalPageLayout({
     : 'fixed inset-0 z-50 xl:hidden';
   const lockedSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80 blur-[2px]' : '';
   const lockedHeaderSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80' : '';
-  const workspaceDesktopOverflowClassName = isCheckoutWorkspaceMode
-    ? 'xl:flex xl:flex-col xl:overflow-hidden'
-    : 'xl:overflow-y-auto xl:overscroll-contain xl:overscroll-y-contain xl:touch-pan-y';
+  const workspacePaneClassName = isCheckoutWorkspaceMode
+    ? 'flex min-h-0 flex-1 flex-col overflow-hidden'
+    : 'dgfy-pos-scroll-region min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y';
   const workspaceContentClassName = isCheckoutWorkspaceMode
-    ? 'grid min-w-0 max-w-full grid-cols-1 gap-2 p-2 xl:flex-1 xl:min-h-0 xl:grid-rows-[minmax(0,1fr)]'
+    ? 'grid min-h-0 min-w-0 max-w-full flex-1 grid-cols-1 grid-rows-[minmax(0,1fr)] gap-2 overflow-hidden p-2'
     : 'grid min-w-0 max-w-full grid-cols-1 gap-2 p-2';
   const workspaceSectionClassName = isCheckoutWorkspaceMode
-    ? 'min-h-0 min-w-0 max-w-full transition xl:h-full'
+    ? 'h-full min-h-0 min-w-0 max-w-full overflow-hidden transition'
     : 'min-h-0 min-w-0 max-w-full transition';
 
   useEffect(() => {
@@ -314,70 +316,25 @@ export default function TerminalPageLayout({
     return () => window.removeEventListener('tenant:capability-blocked', handleCapabilityBlocked);
   }, []);
 
-  const notificationPanel = notificationsOpen ? createPortal(
-    <div className="fixed inset-0 z-[120]" onClick={() => setNotificationsOpen(false)}>
-      <div
-        className="absolute right-2 top-[3.85rem] w-[21rem] max-w-[calc(100vw-1rem)] lg:right-5 lg:top-[4.1rem]"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="absolute right-4 top-0 z-10 h-5 w-5 -translate-y-[62%] rotate-45 border-l border-t border-blue-200 bg-[#1A4E8D]" />
-        <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/15">
-          <div className="bg-gradient-to-r from-[#1A4E8D] to-[#2563EB] px-4 py-3 text-white">
-            <p className="text-lg font-black">Notifications</p>
-            <p className="mt-0.5 text-xs text-blue-100">Review alerts without leaving the current screen.</p>
-          </div>
-          <div className="max-h-[22rem] overflow-y-auto bg-[#f8fbff]">
-            {notifications.length > 0 ? notifications.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={item.onClick}
-                className="flex w-full items-start gap-3 border-b border-slate-200 px-4 py-4 text-left transition hover:bg-white"
-              >
-                <span className="mt-2 h-3 w-3 shrink-0 rounded-full bg-[#2563EB]" />
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-extrabold text-[#0F172A]">{item.title}</p>
-                  <p className="mt-1 text-xs leading-5 text-[#64748B]">{item.description}</p>
-                  {item.actionLabel ? (
-                    <span className="mt-2 inline-flex text-[11px] font-bold uppercase tracking-wide text-[#1A4E8D]">
-                      {item.actionLabel}
-                    </span>
-                  ) : null}
-                </div>
-              </button>
-            )) : (
-              <div className="px-4 py-5 text-center">
-                <p className="text-sm font-semibold text-[#0F172A]">No notifications</p>
-                <p className="mt-1 text-xs text-[#64748B]">New orders and terminal alerts will appear here.</p>
-              </div>
-            )}
-          </div>
-          {notifications.length > 0 && (
-            <button
-              type="button"
-              onClick={() => {
-                if (typeof primaryNotificationAction === 'function') {
-                  primaryNotificationAction();
-                } else {
-                  setNotificationsOpen(false);
-                }
-              }}
-              className="block w-full bg-gradient-to-r from-[#1A4E8D] to-[#2563EB] px-4 py-3 text-center text-sm font-black text-white transition hover:from-[#143F73] hover:to-[#1D4ED8]"
-            >
-              Show all notifications
-            </button>
-          )}
-        </div>
-      </div>
-    </div>,
-    document.body
-  ) : null;
+  useEffect(() => {
+    if (!notificationsOpen && !companyMenuOpen) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') {
+        setNotificationsOpen(false);
+        setCompanyMenuOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [notificationsOpen, companyMenuOpen]);
+
+  const notificationPanel = null;
 
   const renderNotificationButton = (className, size) => (
-    <div className="relative">
+    <div className={className}>
       <button
         type="button"
-        className={className}
+        className="relative flex h-full w-full items-center justify-center"
         onClick={() => setNotificationsOpen((open) => !open)}
         aria-label="Open notifications"
         aria-expanded={notificationsOpen}
@@ -392,6 +349,68 @@ export default function TerminalPageLayout({
           </span>
         )}
       </button>
+      {notificationsOpen && (
+        <>
+          <div className="fixed inset-0 z-[120]" onClick={() => setNotificationsOpen(false)} />
+          <div
+            className="absolute left-1/2 top-full z-[121] mt-3.5 w-[21rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 text-left"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="absolute left-1/2 top-0 z-10 h-5 w-5 -translate-x-1/2 -translate-y-[62%] rotate-45 border-l border-t border-blue-200 bg-[#1A4E8D]" />
+            <div className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-2xl shadow-slate-950/15">
+              <div className="bg-gradient-to-r from-[#1A4E8D] to-[#2563EB] px-4 py-3 text-white">
+                <p className="text-lg font-black">Notifications</p>
+                <p className="mt-0.5 text-xs text-blue-100">Review alerts without leaving the current screen.</p>
+              </div>
+              <div className="max-h-[22rem] overflow-y-auto bg-[#f8fbff]">
+                {notifications.length > 0 ? notifications.map((item) => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => {
+                      setNotificationsOpen(false);
+                      if (typeof item.onClick === 'function') {
+                        item.onClick();
+                      }
+                    }}
+                    className="flex w-full items-start gap-3 border-b border-slate-200 px-4 py-4 text-left transition hover:bg-white"
+                  >
+                    <span className="mt-2 h-3 w-3 shrink-0 rounded-full bg-[#2563EB]" />
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-extrabold text-[#0F172A]">{item.title}</p>
+                      <p className="mt-1 text-xs leading-5 text-[#64748B]">{item.description}</p>
+                      {item.actionLabel ? (
+                        <span className="mt-2 inline-flex text-[11px] font-bold uppercase tracking-wide text-[#1A4E8D]">
+                          {item.actionLabel}
+                        </span>
+                      ) : null}
+                    </div>
+                  </button>
+                )) : (
+                  <div className="px-4 py-5 text-center">
+                    <p className="text-sm font-semibold text-[#0F172A]">No notifications</p>
+                    <p className="mt-1 text-xs text-[#64748B]">New orders and terminal alerts will appear here.</p>
+                  </div>
+                )}
+              </div>
+              {notifications.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNotificationsOpen(false);
+                    if (typeof primaryNotificationAction === 'function') {
+                      primaryNotificationAction();
+                    }
+                  }}
+                  className="block w-full bg-gradient-to-r from-[#1A4E8D] to-[#2563EB] px-4 py-3 text-center text-sm font-black text-white transition hover:from-[#143F73] hover:to-[#1D4ED8]"
+                >
+                  Show all notifications
+                </button>
+              )}
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 
@@ -468,6 +487,7 @@ export default function TerminalPageLayout({
               terminalUser={terminalUser}
               currentViewMode={posViewMode}
               canViewPos={canViewPos}
+              canManageCategories={canManageCategories}
               onboardingRestricted={onboardingRestricted}
               allowAdminNavigationWithoutShift={canAdminBypassShiftPrompt}
               canAdjustCashDrawer={canAdjustCashDrawer}
@@ -475,6 +495,9 @@ export default function TerminalPageLayout({
               shiftState={shiftState}
               incomingOrdersState={incomingOrdersState}
               locationsState={locationsState}
+              operatingLocationId={operatingLocationId}
+              accessibleCompanies={accessibleCompanies}
+              terminalMeta={terminalMeta}
               queueLocationScopeId={queueLocationScopeId}
               queueSummary={queueSummary}
               settingsTargetViewMode={settingsEntryViewMode}
@@ -521,6 +544,15 @@ export default function TerminalPageLayout({
             {renderNotificationButton(compactBellClassName, 20)}
           </div>
           <div className="flex min-w-0 items-center justify-between gap-3 sm:gap-4 lg:justify-end">
+          <div className="hidden sm:flex items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-1.5 shadow-xs">
+            <div className={`h-2 w-2 rounded-full ${isOnline ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
+            <span className="text-[11px] font-extrabold text-slate-800">
+              Terminal: {normalizedActiveTerminalId || 'COUNTER-01'}
+            </span>
+            <span className={`text-[10px] font-black uppercase tracking-wide ${isOnline ? 'text-emerald-600' : 'text-amber-600'}`}>
+              • {isOnline ? 'Online' : 'Offline'}
+            </span>
+          </div>
           {renderNotificationButton(desktopBellClassName, 24)}
           {renderCompanyProfileMenu(desktopIdentityClassName, 'text-[#64748B]')}
           </div>
@@ -531,7 +563,8 @@ export default function TerminalPageLayout({
 
       <div
         ref={workspacePaneRef}
-        className={`dgfy-pos-scrollbar-hidden flex-1 min-h-0 overflow-y-auto overscroll-contain touch-pan-y ${workspaceDesktopOverflowClassName} ${lockedSurfaceClassName}`}
+        data-testid="pos-workspace-scroll-container"
+        className={`${workspacePaneClassName} ${lockedSurfaceClassName}`}
       >
       {modeChangeNotice && (
         <div className="mx-4 mt-3 rounded-2xl border border-sky-200 bg-sky-50 px-4 py-3">
@@ -610,12 +643,16 @@ export default function TerminalPageLayout({
                 terminalUser={terminalUser}
                 currentViewMode={posViewMode}
                 canViewPos={canViewPos}
+                canManageCategories={canManageCategories}
                 allowAdminNavigationWithoutShift={canAdminBypassShiftPrompt}
                 canAdjustCashDrawer={canAdjustCashDrawer}
                 canCloseDay={canCloseDay}
                 shiftState={shiftState}
                 incomingOrdersState={incomingOrdersState}
                 locationsState={locationsState}
+                operatingLocationId={operatingLocationId}
+                accessibleCompanies={accessibleCompanies}
+                terminalMeta={terminalMeta}
                 queueLocationScopeId={queueLocationScopeId}
                 queueSummary={queueSummary}
                 settingsTargetViewMode={settingsEntryViewMode}
@@ -641,7 +678,7 @@ export default function TerminalPageLayout({
           className={workspaceSectionClassName}
         >
           {(isCheckoutWorkspaceMode || receiptRequestId !== null || receiptReturnViewMode !== null) && (
-            <div key="checkout-workspace" className="min-h-0 catalog-slide-enter xl:h-full">
+            <div key="checkout-workspace" data-testid="pos-checkout-workspace" className="h-full min-h-0 overflow-hidden catalog-slide-enter">
             <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
               <POSCheckoutTerminal
                 sessionLocked={locked}
@@ -700,10 +737,12 @@ export default function TerminalPageLayout({
                 shiftState={shiftState}
                 todayDashboard={todayDashboard}
                 reportRefreshKey={reportRefreshKey}
+                employeeCreditReportRefreshKey={employeeCreditReportRefreshKey}
                 canViewPos={canViewPos}
                 canCreateItems={canCreateItems}
                 canEditItems={canEditItems}
                 canDeleteItems={canDeleteItems}
+                canManageCategories={canManageCategories}
                 itemsStockFilterPreset={itemsStockFilterPreset}
                 onItemsStockFilterPresetApplied={onItemsStockFilterPresetApplied}
                 canTransactPos={canTransactPos}
@@ -751,6 +790,7 @@ export default function TerminalPageLayout({
                 handleResolveQueuedOperation={handleResolveQueuedOperation}
                 isOnline={isOnline}
                 offlineSnapshotScope={offlineSnapshotScope}
+                onQueueOfflineItemDraft={onQueueOfflineItemDraft}
                 handleLock={handleLock}
                 setDrawerOpen={setDrawerOpen}
                 refreshTerminalUser={refreshTerminalUser}

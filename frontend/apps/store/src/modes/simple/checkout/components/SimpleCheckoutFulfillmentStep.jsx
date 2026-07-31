@@ -2,6 +2,7 @@ import { ChevronLeft, ChevronRight, Info, Maximize, MapPin, Navigation } from 'l
 import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMap.jsx';
 import { SimpleCheckoutExpandedMapModal } from './SimpleCheckoutExpandedMapModal.jsx';
 import { SimpleCheckoutFulfillmentChoices } from './SimpleCheckoutFulfillmentChoices.jsx';
+import { SimpleCheckoutSavedAddressesModal } from './SimpleCheckoutSavedAddressesModal.jsx';
 import { SimpleCheckoutSavedAddressSelector } from './SimpleCheckoutSavedAddressSelector.jsx';
 import { SimpleSpecialInstructionsField } from './SimpleSpecialInstructionsField.jsx';
 
@@ -30,14 +31,17 @@ export function SimpleCheckoutFulfillmentStep({
   servicesBodyFont,
   servicesDisplayFont,
   showExpandedDeliveryMap = false,
+  showSimpleMobileAddressModal = false,
   simpleOrderMethodOptions = [],
   simpleStepOneReady = false,
   specialInstructions = '',
   onAddPinnedLocation,
   onBack,
   onCloseExpandedMap,
+  onCloseMobileAddressModal,
   onContinue,
   onOpenExpandedMap,
+  onOpenMobileAddressList,
   onOrderMethodChange,
   onPinChange,
   onPinMyLocation,
@@ -84,13 +88,16 @@ export function SimpleCheckoutFulfillmentStep({
         <div style={{ display: 'grid', gap: 16 }}>
           <div style={{ display: 'grid', gap: 4 }}>
             <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>3. Where should we deliver your order?</div>
-            <div style={{ fontSize: 12, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Saved locations</div>
+            <div style={{ fontSize: 12, color: '#64748b', textTransform: isMobileViewport ? 'none' : 'uppercase', letterSpacing: isMobileViewport ? 'normal' : '0.04em' }}>
+              {isMobileViewport ? 'Select or pin your location on the map.' : 'Saved locations'}
+            </div>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '280px minmax(0, 1fr)', gap: 16, alignItems: 'start', width: '100%', maxWidth: '100%', minWidth: 0 }}>
             <SimpleCheckoutSavedAddressSelector
               addresses={deliverySavedLocations}
               deliveryLocationAction={deliveryLocationAction}
               isMobileViewport={isMobileViewport}
+              onOpenMobileAddressList={onOpenMobileAddressList}
               onSelectAddress={onSelectAddress}
               onStartMapPin={onStartMapPin}
               selectedAddressId={selectedSavedLocationId}
@@ -214,6 +221,21 @@ export function SimpleCheckoutFulfillmentStep({
               )}
             />
           </SimpleCheckoutExpandedMapModal>
+          <SimpleCheckoutSavedAddressesModal
+            addresses={deliverySavedLocations}
+            deliveryLocationAction={deliveryLocationAction}
+            isOpen={showSimpleMobileAddressModal}
+            onAddNewLocation={() => {
+              onStartMapPin();
+              onCloseMobileAddressModal();
+            }}
+            onClose={onCloseMobileAddressModal}
+            onSelectAddress={(location) => {
+              onSelectAddress(location);
+              onCloseMobileAddressModal();
+            }}
+            selectedAddressId={selectedSavedLocationId}
+          />
         </div>
       )}
 
@@ -225,10 +247,12 @@ export function SimpleCheckoutFulfillmentStep({
         />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
-        <button type="button" onClick={onBack} style={{ minHeight: 46, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><ChevronLeft size={18} /> Back</button>
-        <button type="button" onClick={onContinue} disabled={!simpleStepOneReady} style={{ minHeight: 46, borderRadius: 12, border: 'none', background: simpleStepOneReady ? `linear-gradient(180deg, ${SIMPLE_BRAND} 0%, ${SIMPLE_BRAND_DARK} 100%)` : '#cbd5e1', color: '#fff', fontWeight: 700, cursor: simpleStepOneReady ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>Continue <ChevronRight size={18} /></button>
-      </div>
+      {!isMobileViewport && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          <button type="button" onClick={onBack} style={{ minHeight: 46, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><ChevronLeft size={18} /> Back</button>
+          <button type="button" onClick={onContinue} disabled={!simpleStepOneReady} style={{ minHeight: 46, borderRadius: 12, border: 'none', background: simpleStepOneReady ? `linear-gradient(180deg, ${SIMPLE_BRAND} 0%, ${SIMPLE_BRAND_DARK} 100%)` : '#cbd5e1', color: '#fff', fontWeight: 700, cursor: simpleStepOneReady ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>Continue <ChevronRight size={18} /></button>
+        </div>
+      )}
       {selectedLocation?.is_open === false && (
         <div style={{ fontSize: 12, color: '#b45309', fontWeight: 700, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 12px' }}>
           Selected location is closed and cannot accept orders right now.

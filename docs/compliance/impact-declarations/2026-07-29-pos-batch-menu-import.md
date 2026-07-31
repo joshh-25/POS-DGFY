@@ -4,8 +4,8 @@ owner: engineering
 last_reviewed: 2026-07-29
 related_adr: docs/architecture/adr/0049-batch-menu-import-async-extraction.md
 declaration_id: 2026-07-29-pos-batch-menu-import
-classification: major
-surfaces: pos,terminal
+classification: regulatory
+surfaces: pos,terminal,settings,compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.07.29
 verification_evidence: npx vitest run src/services/__tests__/menuImportService.contract.test.js src/hooks/__tests__/useMenuImportJob.test.js Components/items/__tests__/MenuImportBatchModal.behavior.test.jsx src/features/pos/__tests__/menuImportBatchEntry.contract.test.js (15 passed),npx vitest run src/features/pos/__tests__/terminalViewModeContracts.test.js src/features/pos/__tests__/itemsPagination.contract.test.js src/features/pos/__tests__/posPageShell.contract.test.js Components/items (69 passed),backend jest menu-import suites - menuExtractionService/menuImportJobRepository/menuImportWorker/mergeMenuImportItems/previewMenuImportJobUseCase/menuImportBatchHandlers/menuPdfRasterService (75 passed),npm --prefix frontend run build (succeeded),npm --prefix backend run check:architecture-guardrails,npm --prefix backend run check:controller-boundaries

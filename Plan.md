@@ -1,12 +1,64 @@
+# Plan — POS Catalog & Current Sale Layout Redesign (Matching Picture 2)
+
+## High-Level Strategy
+Redesign the POS Catalog workspace layout and styling in `POSCheckoutTerminal.jsx`, `SkupervisorPOSCheckoutTerminal.jsx`, and `TerminalPageLayout.jsx` to closely match the clean, compact POS layout of Picture 2.
+
+Key design updates:
+1. **Compact Top Header Bar**: Streamline top header with title ("POS Catalog"), subtitle ("Browse and add items to current sale"), notification bell with badge, and terminal status badge ("Terminal: JOHN-01 • Online").
+2. **Search, Scan, Filter & Category Pills**: Compact search bar with search icon, dedicated `Scan Barcode` button with scan icon, `Filter` dropdown button with filter icon, plus a horizontal scrollable category tab pill bar (`All Items`, `Beverages`, `Food`, `Snacks`, `Desserts`, `Combo`).
+3. **High-Density Product Card Grid**: Responsive grid (`grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3`) with rounded cards (`rounded-2xl border border-slate-200/80 bg-white shadow-sm overflow-hidden flex flex-col justify-between hover:shadow-md transition-all`), image container (`h-28 sm:h-32`), top-left `ALWAYS AVAILABLE` status badge, item code pill overlay, product title, price, and blue circular `+` add button.
+4. **Compact Current Sale Panel**: Right-side panel (`w-80 lg:w-96`) featuring order method & payment selectors, independently scrollable item list with small thumbnails, quantity steppers, red trash icon remove button, dashed `+ Add Note` trigger, clear totals breakdown (Subtotal, Tax, Total), and prominent `Checkout` primary action button.
+5. **Responsive & Independent Scrolling**: Let catalog grid and Current Sale cart panel scroll independently without full page jumps, optimizing for mobile, tablet, and desktop viewports.
+
+Strictly UI-only change: Preserve all backend logic, APIs, cart math, prices, taxes, permissions, field bindings, labels, and existing functionality.
+
+## Goals
+- [x] 1. **Header & Navigation Polish**: Update top header bar in `TerminalPageLayout.jsx` to match Picture 2 with compact title, notification badge, and terminal status indicator.
+- [x] 2. **Controls & Category Pills**: Implement compact Search, Scan, Filter control row and horizontal Category Tab pill bar in `POSCheckoutTerminal.jsx` and `SkupervisorPOSCheckoutTerminal.jsx`.
+- [x] 3. **Product Card Grid Redesign**: Upgrade product cards in `POSCheckoutTerminal.jsx` and `SkupervisorPOSCheckoutTerminal.jsx` with image container, stock overlay badge, item code badge, price, and circular blue `+` button in a responsive multi-column grid.
+- [x] 4. **Current Sale Panel Redesign**: Streamline the right panel with compact selectors, item cards with thumbnails & trash icons, totals breakdown, and prominent `Checkout` button.
+- [x] 5. **Contract Test & Build Verification**: Run ESLint and Vitest contract tests to verify zero regressions.
+
+---
+
+# Plan — Current Sale Item Thumbnail Indicator
+
+## High-Level Strategy
+Add a small, performance-optimized item thumbnail (36x36px) directly beside each product title in the "Current Sale" cart list across `POSCheckoutTerminal.jsx` and `SkupervisorPOSCheckoutTerminal.jsx`. The thumbnail uses downscaled thumbnail assets, fixed container dimensions, `object-fit: cover`, `loading="lazy"`, `decoding="async"`, and a lightweight fallback icon (`Utensils`) to guarantee zero performance lag during busy sales.
+
+All cart calculations, quantity controls, price inputs, remove buttons, backend APIs, and checkout flows will remain 100% unchanged.
+
+## Goals
+- [x] 1. **Cart Item Thumbnail Component**: Implement `CartItemThumbnail` using downscaled asset URLs with `object-cover`, `loading="lazy"`, `decoding="async"`, and an icon fallback (`Utensils` in a `bg-slate-100` container).
+- [x] 2. **Current Sale List Integration**: Render the thumbnail beside `line.item_name` in each cart item card in `POSCheckoutTerminal.jsx` and `SkupervisorPOSCheckoutTerminal.jsx`.
+- [x] 3. **Contract Test & Build Verification**: Ensure ESLint, Vitest contract tests, and frontend build compile cleanly without regression.
+
+---
+
+# Plan — POS Catalog Item Add-to-Cart Toast Notification Overlay
+
+## High-Level Strategy
+Implement a modern, non-blocking top-right toast notification overlay in POS Checkout Terminal (`POSCheckoutTerminal.jsx` and `SkupervisorPOSCheckoutTerminal.jsx`) that triggers whenever a product is added from the POS Catalog to Current Sale. The toast displays the product thumbnail, item name, quantity pill, and the message "Added to current sale." Toasts stack neatly at the top-right, animate with smooth slide/fade effects, auto-dismiss after 2.5 seconds, and deduplicate consecutive additions of the same product to prevent overlapping notifications.
+
+All existing cart logic, pricing, quantity controls, stock checks, barcode scans, backend APIs, and checkout flows will be 100% preserved.
+
+## Goals
+- [x] 1. **Toast Overlay Component (`PosAddToCartToastContainer.jsx`)**: Build a dedicated fixed overlay component (`pointer-events-none z-[9999]`) rendering top-right stacked toasts with product thumbnail, item name, quantity badge, "Added to current sale." message, and smooth enter/exit animation.
+- [x] 2. **Deduplication & Auto-Dismiss State**: Maintain `addToCartToasts` state with a 2.5-second auto-dismiss lifecycle and deduplication logic (updating quantity and resetting timer when the same item is re-tapped).
+- [x] 3. **Catalog Integration**: Hook `triggerAddToCartToast` inside `addToCart` and stepper additions in `POSCheckoutTerminal.jsx` and `SkupervisorPOSCheckoutTerminal.jsx`.
+- [x] 4. **Contract Test & Build Verification**: Ensure ESLint, Vitest contract tests, and frontend build compile cleanly without regression.
+
+---
+
 # Plan — Remove Redundant Storefront Location Header Banner
 
 ## High-Level Strategy
 Perform a UI-only deletion of the redundant location header card banner (displaying the store icon, "New Location", and "Active" status badge) situated right above the 2x2 settings grid in `TerminalOperationsWorkspace.jsx` (lines 7643–7729). No backend logic, routing, APIs, form bindings, or other UI components will be modified.
 
 ## Goals
-- [ ] 1. **UI Removal**: Delete the top banner card element (`Selected Location Action Header Card`) sitting above the 2x2 form section grid in the Storefront Locations tab.
-- [ ] 2. **Preserve Existing Behavior**: Keep all location sidebar cards, 2x2 form input cards (Basic Details, Coordinates, Map & Coverage, Operational Settings), Action Bar buttons (`Clear`, `Add Location`/`Update Location`), and map functionality 100% intact.
-- [ ] 3. **Contract Test & Build Verification**: Ensure ESLint, Vitest contract tests, and frontend build compile cleanly without regression.
+- [x] 1. **UI Removal**: Delete the top banner card element (`Selected Location Action Header Card`) sitting above the 2x2 form section grid in the Storefront Locations tab.
+- [x] 2. **Preserve Existing Behavior**: Keep all location sidebar cards, 2x2 form input cards (Basic Details, Coordinates, Map & Coverage, Operational Settings), Action Bar buttons (`Clear`, `Add Location`/`Update Location`), and map functionality 100% intact.
+- [x] 3. **Contract Test & Build Verification**: Ensure ESLint, Vitest contract tests, and frontend build compile cleanly without regression.
 
 ---
 
@@ -203,3 +255,167 @@ Redesign the "Apply Discount" modal to make it ultra-compact and visually neat. 
 Pure layout and design refinement:
 - Component: `POSCheckoutTerminal.jsx` -> Dialog open state `discountModalOpen`
 - Render: DialogContent -> shrink grid options, inputs, labels, eligible items list, and totals table.
+
+---
+
+# Plan — Confirm Checkout Modal & Employee Credit Redesign (Matching Image 2)
+
+## High-Level Strategy
+Redesign the "Confirm Checkout" modal layout in `POSCheckoutTerminal.jsx` and `EmployeeCreditPaymentPanel.jsx` to match the clean, professional, high-density layout of Image 2.
+
+Key UI changes:
+1. **Fixed Header & Footer with Scrollable Content**: Keep `DialogHeader` and `DialogFooter` fixed at top and bottom (`shrink-0`), ensuring the middle modal body handles scrolling cleanly without double scrollbars or truncated content.
+2. **Compact Item Cards with Thumbnails**: Display each item in the sale with a 40x40px rounded thumbnail container (showing image or category SVG icon fallback), item name, quantity x unit price, and right-aligned line total in bold blue.
+3. **Card-Style Employee Credit Section**: Transform `EmployeeCreditPaymentPanel.jsx` into a clean card layout with a header icon badge, title/description, compact "Select Employee" combobox trigger with search icon, clear eligibility/balance details, error state with Retry button, and red alert notification box when employee credit is unavailable.
+4. **Prevent Dropdown Overlap**: Ensure `PopoverContent` / `Command` dropdown overlays cleanly with high z-index and auto positioning, avoiding content clipping or layout shifts.
+5. **Strict UI-Only Preservation**: Preserve all existing text, checkout logic, contract strings, state bindings, APIs, and button behaviors.
+
+## Goals
+- [x] 1. **Fixed Modal Layout & Item List Redesign**: Update `DialogContent` in `POSCheckoutTerminal.jsx` with fixed header, scrollable body/items list, item thumbnails, and fixed footer.
+- [x] 2. **Employee Credit Card Redesign**: Update `EmployeeCreditPaymentPanel.jsx` with header icon badge, searchable employee combobox, loading/error states with Retry button, balance evidence, and error alert overlay.
+- [x] 3. **Remove Redundant Items Header**: Remove the redundant "ITEMS / X items in this sale / PHP XXX" sub-header inside the checkout items box per user request.
+- [x] 4. **Contract Test & Build Verification**: Run ESLint and Vitest contract tests (`employeeCredit.contract.test.js`, `employeeCreditPaymentPanel.behavior.test.jsx`) to confirm zero regressions.
+
+---
+
+# Plan — Sidebar Company Name & Branch Name Display
+
+## High-Level Strategy
+Add dynamic Company Name (primary text, bold) and Branch Name (secondary text, smaller, muted) directly below the DGFY logo in `TerminalWorkspaceSidebar.jsx`.
+
+Key requirements:
+1. **Logo Header Section**: Update the `showBrand` header in `TerminalWorkspaceSidebar.jsx` to render the DGFY logo, followed directly by a centered text container.
+2. **Text Formatting**:
+   - Primary text: Company Name (`text-[13px] font-extrabold text-[#0F172A] truncate text-center`).
+   - Secondary text: Branch Name (`text-[11px] font-semibold text-[#64748B] truncate text-center`).
+   - Both texts include `title` attributes and CSS truncation (`truncate`) so long names display an ellipsis without wrapping or pushing navigation buttons down.
+3. **Dynamic Resolution**:
+   - Company Name resolved from props (`companyName`), `accessibleCompanies` (`is_current` or matching current tenant), or `terminalUser` (`company_name`, `company.name`, `business_name`).
+   - Branch Name resolved from props (`branchName`), `locationsState` (matching `operatingLocationId` or `queueLocationScopeId`), `shiftState` (`shift.branch_name`), or `terminalMeta` (`branch_name` / `location_name`).
+4. **Prop Wiring**: Ensure `TerminalPageLayout.jsx` passes `operatingLocationId`, `accessibleCompanies`, and `terminalMeta` down to `TerminalWorkspaceSidebar`.
+5. **Preservation**: Preserve all existing navigation buttons, auth states, routing, and sidebar width.
+
+## Goals
+- [x] 1. **Sidebar Header Component Update (`TerminalWorkspaceSidebar.jsx`)**: Add company and branch resolution logic and render centered truncated text below the DGFY logo.
+- [x] 2. **Prop Wiring in Layout (`TerminalPageLayout.jsx`)**: Pass `operatingLocationId`, `accessibleCompanies`, and `terminalMeta` into `TerminalWorkspaceSidebar`.
+- [x] 3. **Verification**: Verify visual rendering and run contract tests.
+
+---
+
+# Plan — Optimized Item List Thumbnails in Confirm Checkout Modal
+
+## High-Level Strategy
+Upgrade the item list in `POSCheckoutTerminal.jsx` checkout confirmation modal to render downscaled/compressed 40x40px thumbnail variants for every product line.
+
+Key implementation details:
+1. **Downscaled & Compressed Thumbnail Resolution**:
+   - Extract raw image URL from `line.thumbnail_url`, `line.thumbnail`, `line.storefront_image_url`, `line.image_url`, `line.imageUrl`, or `line.image`.
+   - Pass raw image URL through `resolveAssetVariantUrl(rawUrl, 'thumbnail')` to fetch the compressed `/thumb` asset variant instead of full-sized images.
+   - Fall back to mapped catalog thumbnail or lightweight vector placeholder icon (`Utensils` in `bg-blue-50/60` container) if image is missing or errors during load.
+2. **Fixed Container & Performance Optimization**:
+   - Fixed 40x40px container (`h-10 w-10 shrink-0 rounded-lg border border-blue-100 overflow-hidden`).
+   - `object-fit: cover` (`object-cover`).
+   - `loading="lazy"` and `decoding="async"` for maximum scrolling performance without lag.
+3. **Compact Row Formatting**:
+   - Left: 40x40px thumbnail container.
+   - Middle: Item name (bold, truncated) and `quantity × unit price` subtext.
+   - Right: Line total (`PHP XXX.XX` in bold blue).
+4. **Preservation**:
+   - Keep 100% of existing checkout calculation math, payment validation, APIs, and modal logic intact.
+
+## Goals
+- [x] 1. **Thumbnail Resolution & Render Update (`POSCheckoutTerminal.jsx`)**: Use `resolveAssetVariantUrl(..., 'thumbnail')` with `object-cover`, `loading="lazy"`, `decoding="async"`, and vector icon fallbacks.
+- [x] 2. **Verification**: Run contract and unit test suites to confirm zero regressions.
+
+---
+
+# Plan — Fix Confirm Checkout Item Thumbnail Image Resolution
+
+## High-Level Strategy
+Fix item thumbnail image resolution in `POSCheckoutTerminal.jsx` so product images load correctly in the Confirm Checkout modal instead of falling back to the default knife & fork icon.
+
+Root cause analysis:
+1. `resolveMappedPosItemImage` only checked `item?.name`, whereas cart line objects use `line.item_name`.
+2. Checkout modal cart items were not cross-referencing `safeCatalog` by `line.item_id`, missing `storefront_image_url`, `pos_image_url`, and variant mappings defined on catalog items.
+
+Key fixes:
+1. **Catalog Lookup & Property Normalization**: In the checkout modal `safeCart.map((line) => ...)`, look up the corresponding `catalogItem` from `safeCatalog` (`safeCatalog.find(item => item.item_id === line.item_id)`).
+2. **Item Name Support in Image Mapper**: Update `resolveMappedPosItemImage` helper to inspect `item?.name || item?.item_name || item?.itemName`.
+3. **Comprehensive Image Variant Resolution**: Resolve downscaled thumbnail URL using `resolveAssetVariantUrl` on `line` or `catalogItem` image properties (`storefront_image_url`, `pos_image_url`, `image_url`, mapped image).
+4. **Preservation**: Keep fixed 40x40px rounded container, `object-fit: cover`, `loading="lazy"`, `decoding="async"`, and fallback placeholder behavior.
+
+## Goals
+- [x] 1. **Update Image Resolution Helper (`POSCheckoutTerminal.jsx`)**: Support `item_name` property in `resolveMappedPosItemImage`.
+- [x] 2. **Catalog Lookup in Checkout Modal (`POSCheckoutTerminal.jsx`)**: Cross-reference `safeCatalog` for cart lines and pass image sources through `resolveAssetVariantUrl(..., 'thumbnail')`.
+- [x] 3. **Verification**: Run Vitest contract and behavior tests to verify 100% pass rate.
+
+---
+
+# Plan — Re-align Header Notification Box with Bell Icon
+
+## High-Level Strategy
+Fix the positioning of the notification popover panel in `TerminalPageLayout.jsx` so it anchors directly beneath the Bell icon button (`<Bell />`) with its top blue diamond pointer arrow pointing straight into the Bell button instead of pointing at the User Profile menu.
+
+Key changes:
+1. **Anchor Notification Panel to Bell Icon**: Update `renderNotificationButton` in `TerminalPageLayout.jsx` to host or anchor the notification dropdown relative to the Bell button container (`relative`).
+2. **Centered Popover Alignment**:
+   - Align the notification box horizontally (`right-1/2 translate-x-1/2` or `left-1/2 -translate-x-1/2`).
+   - Position the blue diamond pointer arrow (`h-5 w-5 rotate-45 bg-[#1A4E8D]`) at the top center of the popover card (`left-1/2 -translate-x-1/2`), pointing directly up into the Bell button.
+3. **Screen Boundary Safety**: Use `max-w-[calc(100vw-2rem)]` so the notification box never overflows on smaller viewports.
+4. **Preservation**: Retain all notification item click handlers, primary actions, empty states, and dismiss behavior.
+
+## Goals
+- [x] 1. **Re-align Popover & Pointer Arrow (`TerminalPageLayout.jsx`)**: Position notification popover and arrow directly under the Bell button.
+- [x] 2. **Verification**: Run Vitest tests to confirm zero regressions.
+
+---
+
+# Plan — Fix Notification Dropdown Duplicate Rendering & Add Escape Key Listener
+
+## High-Level Strategy
+Eliminate duplicate notification popover rendering in `TerminalPageLayout.jsx` by passing responsive display classes (`compactBellClassName` / `desktopBellClassName`) directly to the outer wrapper `<div>` of `renderNotificationButton`, ensuring only ONE popover is rendered in the DOM at any given viewport breakpoint. Add a global `Escape` key listener to close popovers on keypress.
+
+Root cause of duplicate rendering:
+- `renderNotificationButton` used an outer `<div className="relative">` without responsive display classes (`lg:hidden` or `hidden`).
+- As a result, both the compact (mobile) and desktop bell wrappers remained active in the DOM simultaneously, rendering two overlapping popover boxes when `notificationsOpen` was set to `true`.
+
+Key fixes:
+1. **Apply Responsive Classes to Outer Wrapper**: Pass `className` (`compactBellClassName` / `desktopBellClassName`) to the outer `<div className={className}>` in `renderNotificationButton`, so CSS display rules (`lg:hidden` vs `lg:grid` / `hidden`) hide the hidden bell's container and popover completely.
+2. **Escape Key Listener**: Add `useEffect` listener for `Escape` key (`event.key === 'Escape'`) to close the notification popover and company menu automatically when pressed.
+3. **Outside Click Handling**: Retain backdrop click overlay (`fixed inset-0 z-[120]`) and `stopPropagation` on popover click.
+4. **Preservation**: Retain 100% of notification data, titles, descriptions, badge counts, item actions, and APIs.
+
+## Goals
+- [x] 1. **Eliminate Duplicate Popover Rendering (`TerminalPageLayout.jsx`)**: Apply responsive classes to outer wrapper div in `renderNotificationButton`.
+- [x] 2. **Add Escape Key Listener (`TerminalPageLayout.jsx`)**: Close popover on `Escape` key press.
+- [x] 3. **Verification**: Run Vitest test suite to confirm zero regressions.
+
+---
+
+# Plan — Remove "Discount / No discount applied" Card UI from Current Sale Panel
+
+## High-Level Strategy
+Remove the `Discount / No discount applied` card UI from the right-hand Current Sale panel in `POSCheckoutTerminal.jsx` as requested by the user.
+
+Key requirements:
+1. **UI Removal Only**: Remove the `<div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-2">...</div>` container displaying "Discount" and "No discount applied" / "Remove Discount".
+2. **Logic Preservation**: Preserve 100% of existing discount state (`appliedDiscount`), discount calculations, totals deduction, discount approval logic, `Apply Discount` modal/button, and backend payload bindings.
+3. **Layout Stability**: Ensure the `Affiliate Code` input and Current Sale totals breakdown transition seamlessly without visual gaps or broken grid styles.
+
+## Goals
+- [x] 1. **Remove UI Card (`POSCheckoutTerminal.jsx`)**: Remove the "Discount / No discount applied" container card from the Current Sale sidebar layout.
+- [x] 2. **Verification**: Run Vitest test suite to confirm zero regressions in contract tests and build.
+
+
+
+
+
+
+
+
+
+
+
+
+
+

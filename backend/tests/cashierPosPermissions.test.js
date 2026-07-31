@@ -9,6 +9,7 @@ describe('cashier POS least-privilege defaults', () => {
       PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,
       PERMISSIONS.POS.actions.VIEW_POS,
       PERMISSIONS.POS.actions.TRANSACT_POS,
+      PERMISSIONS.POS.actions.USE_EMPLOYEE_CREDIT,
       PERMISSIONS.POS.actions.CLOSE_SHIFT_POS,
       PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT
     ]));

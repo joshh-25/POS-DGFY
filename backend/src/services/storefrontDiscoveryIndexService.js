@@ -25,6 +25,7 @@ import {
 } from '../modules/shared/utils/customerAccessPolicy.js';
 import { parsePublicCommercialPromos } from '../modules/shared/utils/commercialPromoPolicy.js';
 import { syncTenantGeoCatalog } from '../modules/geoSearch/services/geoCatalogSyncService.js';
+import { deriveStorefrontSlug, normalizeStorefrontSlug } from '../modules/shared/utils/storefrontSlug.js';
 
 const STOREFRONT_SETTING_KEYS = Object.freeze([
     'ops_workflow_mode',
@@ -71,25 +72,17 @@ const toNumber = (value, fallback = 0) => {
     return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+// External-listing lookups preserve their existing contract: normalize case
+// without silently rewriting a caller-supplied slug.
 const normalizeSlug = (value) => String(value || '').trim().toLowerCase();
-const slugify = (value) => normalizeSlug(value)
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .replace(/-{2,}/g, '-');
 
 const deriveStoreSlug = (tenant, configuredSlug) => {
-    const explicit = slugify(configuredSlug);
+    const explicit = normalizeStorefrontSlug(configuredSlug);
     if (explicit) return explicit.slice(0, 80);
-
-    const fromName = slugify(tenant?.name || '');
-    const idSuffix = String(tenant?.id || '')
-        .replace(/[^a-z0-9]/gi, '')
-        .toLowerCase()
-        .slice(0, 6);
-
-    const base = fromName || 'store';
-    const composed = idSuffix ? `${base}-${idSuffix}` : base;
-    return composed.slice(0, 80);
+    return deriveStorefrontSlug({
+        tenantName: tenant?.name,
+        tenantId: tenant?.id
+    });
 };
 
 // A short, consistently-sized slug for affiliate share links/QR codes: the store's
@@ -97,7 +90,7 @@ const deriveStoreSlug = (tenant, configuredSlug) => {
 // encoded QR bulky and inconsistent. This truncates the name portion to 5 chars and
 // keeps the same tenant-id suffix, so the QR payload stays compact and predictable.
 const deriveAffiliateSlug = (tenant) => {
-    const fromName = slugify(tenant?.name || '').slice(0, 5).replace(/-+$/, '');
+    const fromName = normalizeStorefrontSlug(tenant?.name || '').slice(0, 5).replace(/-+$/, '');
     const idSuffix = String(tenant?.id || '')
         .replace(/[^a-z0-9]/gi, '')
         .toLowerCase()

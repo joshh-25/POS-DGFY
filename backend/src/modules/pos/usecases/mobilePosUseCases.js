@@ -204,6 +204,22 @@ export const buildSyncMobilePosCheckoutsUseCase = ({ checkoutPosUseCase }) => {
         for (const entry of entries) {
             const localTransactionId = safeTrimmedText(entry?.local_transaction_id, null);
             const syncPayload = safeObject(entry?.payload);
+            if (String(syncPayload.payment_type || '').trim().toLowerCase() === 'employee_credit') {
+                rejectedEntries += 1;
+                results.push({
+                    local_transaction_id: localTransactionId,
+                    status: 'rejected',
+                    error: toFailurePayload(new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        'Employee Credit is available only during an online POS checkout',
+                        {
+                            statusCode: 422,
+                            details: { reason_code: 'EMPLOYEE_CREDIT_ONLINE_ONLY' }
+                        }
+                    ))
+                });
+                continue;
+            }
             const checkoutResult = await checkoutPosUseCase({
                 payload: syncPayload,
                 userId: user?.user_id,

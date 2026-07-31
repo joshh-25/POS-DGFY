@@ -72,6 +72,10 @@ item targets, time window, and usage limit.
     Storefront scheduled orders evaluate promo date/time windows at `scheduled_for`
     in the tenant storefront timezone. The accepted transaction retains its saved
     promo allocation; it is not repriced after acceptance.
+14. Governed POS discount audit evidence records the applying cashier, the selected
+    employee identity for employee discounts, and the manager/admin approver when
+    approval applies. These audit fields supplement, rather than replace, the saved
+    transaction and `pos_transaction_discounts` snapshots.
 
 ## Boundary Consequences
 

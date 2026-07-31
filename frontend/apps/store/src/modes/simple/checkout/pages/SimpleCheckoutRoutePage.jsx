@@ -1,17 +1,18 @@
-import { OrderSummaryCard } from '../../../../shared/components/checkout/OrderSummaryCard.jsx';
 import { SimpleCheckoutCustomerStep } from '../components/SimpleCheckoutCustomerStep.jsx';
 import { SimpleCheckoutFulfillmentStep } from '../components/SimpleCheckoutFulfillmentStep.jsx';
 import { SimpleCheckoutJourneyHeader } from '../components/SimpleCheckoutJourneyHeader.jsx';
+import { SimpleCheckoutMobileSummaryPanel } from '../components/SimpleCheckoutMobileSummaryPanel.jsx';
 import { SimpleCheckoutPaymentStep } from '../components/SimpleCheckoutPaymentStep.jsx';
 import { SimpleCheckoutStoreHeader } from '../components/SimpleCheckoutStoreHeader.jsx';
 import { SimpleCheckoutSuccessStep } from '../components/SimpleCheckoutSuccessStep.jsx';
-import { SimpleCheckoutSummaryCard } from '../components/SimpleCheckoutSummaryCard.jsx';
+import { SimpleCheckoutSummaryContent } from '../components/SimpleCheckoutSummaryContent.jsx';
 
 export function SimpleCheckoutRoutePage({
   canAddPinnedLocation = false,
   canUseGuestCheckoutFlow = false,
   cart = [],
   cartCount = 0,
+  cartImageErrors,
   checkoutError = '',
   checkoutLoading = false,
   checkoutResult = null,
@@ -36,9 +37,9 @@ export function SimpleCheckoutRoutePage({
   quoteError = '',
   quoteResult = null,
   renderAccountOwnedIdentitySummary,
-  renderCheckoutPromoStack,
   renderGuestCheckoutEntry,
   renderGuestIdentityFields,
+  renderPromoCodePanel,
   renderStorefrontClosedNotice,
   requireQuoteForCheckout = false,
   selectedLocation = null,
@@ -47,10 +48,10 @@ export function SimpleCheckoutRoutePage({
   servicesBodyFont,
   servicesDisplayFont,
   showExpandedDeliveryMap = false,
+  showSimpleMobileAddressModal = false,
+  showSimpleMobileOrderSummary = false,
   simpleCheckoutAllowed = false,
   simpleCustomerStepComplete = false,
-  simpleHasCustomerIdentity = false,
-  simpleHasPrimaryIdentityContact = false,
   simpleOrderMethodOptions = [],
   simpleOrderStep = 1,
   simpleStepOneReady = false,
@@ -62,6 +63,7 @@ export function SimpleCheckoutRoutePage({
   onCheckout,
   onCloseExpandedMap,
   onDownloadCheckoutImage,
+  onImageError,
   onOpenExpandedMap,
   onOrderMethodChange,
   onPaymentTypeChange,
@@ -74,7 +76,9 @@ export function SimpleCheckoutRoutePage({
   onSetCheckoutResult,
   onSetSimpleOrderStep,
   onSpecialInstructionsChange,
-  onStartMapPin
+  onStartMapPin,
+  setShowSimpleMobileAddressModal,
+  setShowSimpleMobileOrderSummary
 }) {
   const totals = totalsForDisplay || {};
   const stepGridStyle = {
@@ -83,21 +87,23 @@ export function SimpleCheckoutRoutePage({
     gap: 14,
     alignItems: 'start'
   };
-  const promoStackOptions = {
-    accentColor: '#0f766e',
-    bodyFont: servicesBodyFont
-  };
+  const scheduleLabel = fnbScheduleMode === 'schedule' && fnbScheduledFor
+    ? new Date(fnbScheduledFor).toLocaleString()
+    : 'NOW';
 
   return (
-    <div style={{ display: 'grid', gap: 18, maxWidth: 1240, margin: '0 auto', width: '100%', padding: isMobileViewport ? '8px 16px 18px' : '18px 24px 28px' }}>
+    <div style={{ display: 'grid', gap: 18, maxWidth: '100%', width: '100%', padding: isMobileViewport ? '0px 0px 18px' : '0px 0px 28px' }}>
       <SimpleCheckoutStoreHeader
+        isDeliveryOrder={isDeliveryOrder}
         isMobileViewport={isMobileViewport}
         onBackToCatalog={onBackToCatalog}
         selectedStore={selectedStore}
+        servicesBodyFont={servicesBodyFont}
         servicesDisplayFont={servicesDisplayFont}
         withAssetOrigin={withAssetOrigin}
       />
 
+      <div style={{ display: 'grid', gap: 18, maxWidth: 1240, margin: '0 auto', width: '100%', padding: isMobileViewport ? (checkoutResult ? '0 16px' : '0 16px calc(env(safe-area-inset-bottom, 0px) + 196px)') : '0 40px', boxSizing: 'border-box' }}>
       <SimpleCheckoutJourneyHeader
         activeStep={simpleOrderStep}
         cartCount={cartCount}
@@ -124,22 +130,23 @@ export function SimpleCheckoutRoutePage({
             onBackToCatalog={onBackToCatalog}
             onContinue={() => onSetSimpleOrderStep(2)}
           />
-          {renderCheckoutPromoStack(
-            <OrderSummaryCard
-              accentColor="#0f766e"
-              totalLabel="Order Summary"
-              totalAmount={totals.total_amount}
-              money={money}
-              sticky={isDesktopCheckout}
-              statusRows={[
-                { label: 'Customer', value: simpleHasCustomerIdentity ? 'Ready' : 'Needed' },
-                { label: 'Contact', value: simpleHasPrimaryIdentityContact ? 'Ready' : 'Needed' },
-                { label: 'Status', value: simpleCustomerStepComplete ? 'Ready for fulfillment' : 'Waiting for details' }
-              ]}
+          {!isMobileViewport && (
+            <SimpleCheckoutSummaryContent
               bodyFont={servicesBodyFont}
+              cart={cart}
+              cartCount={cartCount}
+              cartImageErrors={cartImageErrors}
               displayFont={servicesDisplayFont}
-            />,
-            promoStackOptions
+              isDeliveryOrder={isDeliveryOrder}
+              isSticky={isDesktopCheckout}
+              money={money}
+              onImageError={onImageError}
+              promoDiscountSummaryRow={promoDiscountSummaryRow}
+              promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#0f766e', bodyFont: servicesBodyFont })}
+              scheduleLabel={scheduleLabel}
+              totals={totals}
+              withAssetOrigin={withAssetOrigin}
+            />
           )}
         </div>
       )}
@@ -167,14 +174,17 @@ export function SimpleCheckoutRoutePage({
             servicesBodyFont={servicesBodyFont}
             servicesDisplayFont={servicesDisplayFont}
             showExpandedDeliveryMap={showExpandedDeliveryMap}
+            showSimpleMobileAddressModal={showSimpleMobileAddressModal}
             simpleOrderMethodOptions={simpleOrderMethodOptions}
             simpleStepOneReady={simpleStepOneReady}
             specialInstructions={fnbSpecialInstructions}
             onAddPinnedLocation={onAddPinnedLocation}
             onBack={() => onSetSimpleOrderStep(1)}
             onCloseExpandedMap={onCloseExpandedMap}
+            onCloseMobileAddressModal={() => setShowSimpleMobileAddressModal(false)}
             onContinue={() => onSetSimpleOrderStep(3)}
             onOpenExpandedMap={onOpenExpandedMap}
+            onOpenMobileAddressList={() => setShowSimpleMobileAddressModal(true)}
             onOrderMethodChange={onOrderMethodChange}
             onPinChange={onPinChange}
             onPinMyLocation={onPinMyLocation}
@@ -184,17 +194,23 @@ export function SimpleCheckoutRoutePage({
             onSpecialInstructionsChange={onSpecialInstructionsChange}
             onStartMapPin={onStartMapPin}
           />
-          {renderCheckoutPromoStack(
-            <SimpleCheckoutSummaryCard
-              amount={money(totals.total_amount)}
+          {!isMobileViewport && (
+            <SimpleCheckoutSummaryContent
+              bodyFont={servicesBodyFont}
+              cart={cart}
+              cartCount={cartCount}
+              cartImageErrors={cartImageErrors}
+              displayFont={servicesDisplayFont}
+              isDeliveryOrder={isDeliveryOrder}
               isSticky={isDesktopCheckout}
-              statusRows={[
-                { label: 'Fulfillment', value: isDeliveryOrder ? 'Delivery' : 'Pickup' },
-                { label: 'Schedule', value: fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'NOW' },
-                { label: 'Status', value: 'Ready for review' }
-              ]}
-            />,
-            promoStackOptions
+              money={money}
+              onImageError={onImageError}
+              promoDiscountSummaryRow={promoDiscountSummaryRow}
+              promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#0f766e', bodyFont: servicesBodyFont })}
+              scheduleLabel={scheduleLabel}
+              totals={totals}
+              withAssetOrigin={withAssetOrigin}
+            />
           )}
         </div>
       )}
@@ -204,18 +220,16 @@ export function SimpleCheckoutRoutePage({
           <SimpleCheckoutPaymentStep
             bodyFont={servicesBodyFont}
             cart={cart}
+            cartImageErrors={cartImageErrors}
             checkoutError={checkoutError}
             checkoutLoading={checkoutLoading}
             DropdownComponent={DropdownComponent}
             isMobileViewport={isMobileViewport}
             money={money}
+            onImageError={onImageError}
             paymentType={fnbPaymentType}
             paymentOptions={[
-              { value: 'cash', label: 'Cash on delivery/pickup' },
-              { value: 'gcash', label: 'GCash' },
-              { value: 'maya', label: 'Maya' },
-              { value: 'card', label: 'Card' },
-              { value: 'bank_transfer', label: 'Bank transfer' }
+              { value: 'cash', label: 'Cash on delivery/pickup' }
             ]}
             quoteError={quoteError}
             quoteResult={quoteResult}
@@ -223,29 +237,29 @@ export function SimpleCheckoutRoutePage({
             selectedStore={selectedStore}
             simpleCheckoutAllowed={simpleCheckoutAllowed}
             storefrontClosedNotice={storefrontClosedByHours ? renderStorefrontClosedNotice({ accent: '#9a3412', background: '#fff7ed', border: '#fdba74' }) : null}
+            withAssetOrigin={withAssetOrigin}
             onBack={() => onSetSimpleOrderStep(2)}
             onCheckout={onCheckout}
             onPaymentTypeChange={onPaymentTypeChange}
             onQuote={onQuote}
           />
-          {renderCheckoutPromoStack(
-            <SimpleCheckoutSummaryCard
-              amount={money(totals.total_amount)}
+          {!isMobileViewport && (
+            <SimpleCheckoutSummaryContent
+              bodyFont={servicesBodyFont}
+              cart={cart}
+              cartCount={cartCount}
+              cartImageErrors={cartImageErrors}
+              displayFont={servicesDisplayFont}
+              isDeliveryOrder={isDeliveryOrder}
               isSticky={isDesktopCheckout}
-              statusRows={[
-                { label: 'Fulfillment', value: isDeliveryOrder ? 'Delivery' : 'Pickup' },
-                { label: 'Schedule', value: fnbScheduledFor ? new Date(fnbScheduledFor).toLocaleString() : 'NOW' },
-                { label: 'Payment', value: String(fnbPaymentType || 'cash').replace('_', ' ').toUpperCase() },
-                { label: 'Status', value: simpleCheckoutAllowed ? 'Ready to submit' : (requireQuoteForCheckout ? 'Quote required' : 'Complete required fields') }
-              ]}
-              totalRows={[
-                { label: 'Subtotal', value: money(totals.subtotal_amount) },
-                ...(promoDiscountSummaryRow ? [promoDiscountSummaryRow] : []),
-                { label: totals.service_fee_label, value: money(totals.service_fee_amount) },
-                { label: 'Delivery Fee', value: money(totals.delivery_fee) }
-              ]}
-            />,
-            promoStackOptions
+              money={money}
+              onImageError={onImageError}
+              promoDiscountSummaryRow={promoDiscountSummaryRow}
+              promoPanel={null}
+              scheduleLabel={scheduleLabel}
+              totals={totals}
+              withAssetOrigin={withAssetOrigin}
+            />
           )}
         </div>
       )}
@@ -268,6 +282,33 @@ export function SimpleCheckoutRoutePage({
           onDownload={onDownloadCheckoutImage}
         />
       )}
+
+      {isMobileViewport && !checkoutResult && (
+        <SimpleCheckoutMobileSummaryPanel
+          cart={cart}
+          cartCount={cartCount}
+          cartImageErrors={cartImageErrors}
+          checkoutAllowed={simpleCheckoutAllowed}
+          checkoutLoading={checkoutLoading}
+          customerStepComplete={simpleCustomerStepComplete}
+          fulfillmentStepComplete={simpleStepOneReady}
+          isDeliveryOrder={isDeliveryOrder}
+          money={money}
+          onBackToCatalog={onBackToCatalog}
+          onCheckout={onCheckout}
+          onImageError={onImageError}
+          onStepChange={onSetSimpleOrderStep}
+          orderStep={simpleOrderStep}
+          promoDiscountSummaryRow={promoDiscountSummaryRow}
+          promoPanel={simpleOrderStep === 3 ? null : renderPromoCodePanel({ compact: true, accentColor: '#0f766e', bodyFont: servicesBodyFont, isMobile: true })}
+          scheduleLabel={scheduleLabel}
+          setSummaryOpen={setShowSimpleMobileOrderSummary}
+          showSummary={showSimpleMobileOrderSummary}
+          totals={totals}
+          withAssetOrigin={withAssetOrigin}
+        />
+      )}
+      </div>
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import React from 'react';
 import { Package } from 'lucide-react';
+import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
+import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 
-export function FnbTrackingDrawerOrderLines({ entryPin, items, money, withAssetOrigin }) {
+export function FnbTrackingDrawerOrderLines({ entryPin, items, money }) {
   return (
     <>
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 56px 80px', gap: 8, padding: '10px 0 8px', borderBottom: '1px solid #e2e8f0', marginBottom: 4 }}>
@@ -11,6 +13,10 @@ export function FnbTrackingDrawerOrderLines({ entryPin, items, money, withAssetO
       </div>
       {items.length > 0 ? items.map((item, index) => {
         const itemLogo = item.image_url || item.thumbnail;
+        const imageSources = resolveStorefrontImageSources({
+          ...item,
+          image_url: itemLogo,
+        }, { preferred: 'thumbnail' });
         const variantLabel = String(item.variant || item.size || item.variant_name || item.subtitle || '').trim();
         const quantity = item.qty || item.quantity || 1;
         const amount = item.amount != null ? money(item.amount) : null;
@@ -18,7 +24,7 @@ export function FnbTrackingDrawerOrderLines({ entryPin, items, money, withAssetO
           <div key={`${entryPin}-item-${index}`} style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) 56px 80px', gap: 8, alignItems: 'center', padding: '10px 0', borderBottom: index < items.length - 1 ? '1px dashed #f1f5f9' : 'none' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
               <div style={{ width: 40, height: 40, borderRadius: 10, background: '#f1f5f9', overflow: 'hidden', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {itemLogo ? <img src={withAssetOrigin(itemLogo)} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Package size={16} color="#94a3b8" />}
+                {itemLogo ? <StorefrontResponsiveImage imageSources={imageSources} alt={item.name} sizes="40px" width={40} height={40} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <Package size={16} color="#94a3b8" />}
               </div>
               <div style={{ minWidth: 0 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', lineHeight: 1.3, wordBreak: 'break-word' }}>{item.name}</div>

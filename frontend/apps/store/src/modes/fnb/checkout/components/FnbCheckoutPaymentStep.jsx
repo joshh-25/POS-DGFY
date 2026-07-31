@@ -33,11 +33,13 @@ export function FnbCheckoutPaymentStep({
   paymentControl,
   processing,
   quoteError,
+  submitLabel = 'Place Order',
   withAssetOrigin
 }) {
   return (
     <section style={{ border: '1px solid #e2e8f0', borderRadius: isResponsive ? 20 : 16, background: '#fff', padding: isResponsive ? 16 : isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
-      {!isResponsive ? <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>Payment and Submit</div> : null}
+      <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>Step 3: Review &amp; Payment</div>
+      <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Review the cart, refresh the quote when needed, then choose payment and submit the order.</div>
       {paymentControl}
       <FnbOnlinePaymentPlaceholder />
       <FnbCheckoutReviewItemsList
@@ -52,7 +54,7 @@ export function FnbCheckoutPaymentStep({
       {!isResponsive ? (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
           <button type="button" onClick={onBack} style={{ minHeight: 44, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 800, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><ChevronLeft size={18} /> Back</button>
-          <button type="button" onClick={onSubmit} disabled={!canSubmit} style={{ minHeight: 44, borderRadius: 12, border: 'none', background: canSubmit ? brandColor : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: canSubmit ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{processing ? 'Processing...' : 'Place Order'}</button>
+          <button type="button" onClick={onSubmit} disabled={!canSubmit} style={{ minHeight: 44, borderRadius: 12, border: 'none', background: canSubmit ? brandColor : '#cbd5e1', color: '#fff', fontWeight: 800, cursor: canSubmit ? 'pointer' : 'not-allowed', display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>{processing ? 'Processing...' : submitLabel}</button>
         </div>
       ) : null}
       {closedNotice}

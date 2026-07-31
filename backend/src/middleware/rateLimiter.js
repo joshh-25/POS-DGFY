@@ -49,6 +49,8 @@ const inventoryPushWindowMs = parseInt(process.env.RATE_LIMIT_INVENTORY_PUSH_WIN
 const inventoryPushMaxRequests = parseInt(process.env.RATE_LIMIT_INVENTORY_PUSH_MAX_REQUESTS) || (isDevelopment ? 120 : 20);
 const itemOperationsWindowMs = parseInt(process.env.RATE_LIMIT_ITEM_OPERATIONS_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes default
 const itemOperationsMaxRequests = parseInt(process.env.RATE_LIMIT_ITEM_OPERATIONS_MAX_REQUESTS) || (isDevelopment ? 3000 : 1500);
+const tenantFinancialWindowMs = parseInt(process.env.RATE_LIMIT_TENANT_FINANCIAL_WINDOW_MS) || 15 * 60 * 1000;
+const tenantFinancialMaxRequests = parseInt(process.env.RATE_LIMIT_TENANT_FINANCIAL_MAX_REQUESTS) || (isDevelopment ? 1000 : 240);
 const mobilePosFreeSyncWindowMs = parseInt(process.env.RATE_LIMIT_MOBILE_POS_FREE_SYNC_WINDOW_MS) || 24 * 60 * 60 * 1000; // 24 hours
 // Defaults to the same MOBILE_SYNC_LIMIT_PER_DAY already advertised to
 // clients in sync_policy/sync_limit_policy (mobilePosUseCases.js), so the
@@ -92,6 +94,7 @@ const rateLimitCounters = {
   inventory_push: 0,
   mobile_pos_free_sync: 0,
   item_operations: 0,
+  tenant_financial: 0,
   other: 0,
 };
 const rateLimitAlertThreshold = parseInt(process.env.RATE_LIMIT_ALERT_THRESHOLD) || 50;
@@ -1051,6 +1054,38 @@ export const itemOperationsLimiter = rateLimit({
       'tenant_user'
     );
     logRateLimitEvent(req, 'item_operations', response.retryAfterSeconds, 'tenant_user');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
+export const tenantFinancialLimiter = rateLimit({
+  windowMs: tenantFinancialWindowMs,
+  max: tenantFinancialMaxRequests,
+  message: createRateLimitError('Financial request limit reached. Please wait before retrying.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('tenant_financial'),
+  keyGenerator: (req) => {
+    const tenantKey = req.tenant?.id || req.query?.tenant_id || req.body?.tenant_id || 'platform';
+    const actorKey = req.admin?.username || req.user?.user_id || req.user?.email || 'unknown-actor';
+    return `tenant_financial:${tenantKey}:${actorKey}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Financial request limit reached. Please wait before retrying.',
+      'tenant_financial',
+      'tenant_actor'
+    );
+    logRateLimitEvent(req, 'tenant_financial', response.retryAfterSeconds, 'tenant_actor');
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },

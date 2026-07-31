@@ -6,8 +6,8 @@ import {
   isItemAvailable,
   isServiceCatalogItem
 } from '../model/storefrontCatalogModel.js';
-import { withAssetOrigin } from '../../app/runtime/storefrontRuntime.js';
 import { createStorefrontIdempotencyKey } from '../utils/idempotency.js';
+import { resolveStorefrontImageSources } from '../utils/storefrontImageSources.js';
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../src/observability/analyticsEvents.js';
 
 /**
@@ -31,6 +31,7 @@ export function useCartMutations({
   cart,
   isFnbMode,
   isServicesMode,
+  isSimpleMode,
   productCartPermitted,
   serviceCartFabRef,
   servicePaymentTiming,
@@ -157,6 +158,7 @@ export function useCartMutations({
     }
     const price = Number(item.default_sale_price ?? 0);
     const maxStock = isItemAvailable(item) ? Number.POSITIVE_INFINITY : 0;
+    const imageSources = resolveStorefrontImageSources(item, { preferred: 'thumbnail' });
     const baseLine = {
       item_id: item.item_id,
       cart_line_id: options?.cart_line_id || `${item.item_id}:${modifierKey || 'default'}`,
@@ -166,7 +168,11 @@ export function useCartMutations({
       service_detail: item.service_detail || null,
       quantity: requestedQuantity,
       price,
-      image_url: withAssetOrigin(item.image_url) || null,
+      image_url: imageSources.largeUrl || imageSources.src || null,
+      thumbnail_url: imageSources.thumbnailUrl || imageSources.src || null,
+      image_variants: item?.image_variants && typeof item.image_variants === 'object'
+        ? item.image_variants
+        : null,
       unit_of_measure: item.unit_of_measure || '',
       max_stock: maxStock,
       serviceAreaLabel: item.serviceAreaLabel || '',
@@ -225,9 +231,9 @@ export function useCartMutations({
       animateCartCardToFab(options?.sourceRect || null);
     } else {
       setCheckoutTab(isFnbMode ? 'cart' : 'review');
-      const shouldOpenCartDrawer = Boolean(options?.openCart) || !isFnbMode;
+      const shouldOpenCartDrawer = Boolean(options?.openCart) || (!isFnbMode && !isSimpleMode);
       setIsCheckoutOpen(shouldOpenCartDrawer);
-      if (isFnbMode && !shouldOpenCartDrawer) {
+      if (!shouldOpenCartDrawer) {
         animateCartCardToFab(options?.sourceRect || null);
       }
     }
