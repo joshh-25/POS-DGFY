@@ -18,12 +18,16 @@ export function SimpleCheckoutSavedAddressSelector({
   addresses,
   deliveryLocationAction,
   isMobileViewport,
+  onOpenMobileAddressList,
   onSelectAddress,
   onStartMapPin,
   selectedAddressId
 }) {
   const locations = Array.isArray(addresses) ? addresses : [];
   const isMapOrCurrent = deliveryLocationAction === 'map' || deliveryLocationAction === 'current';
+  const activeAddress = locations.find((location) => String(location.id) === String(selectedAddressId))
+    || locations.find((location) => location.isDefault)
+    || locations[0];
 
   const renderAddress = (location) => (
     <SavedAddressCard
@@ -41,6 +45,27 @@ export function SimpleCheckoutSavedAddressSelector({
       themeShadowColorSoft="rgba(15,118,110,0.08)"
     />
   );
+
+  if (isMobileViewport) {
+    return (
+      <div style={{ display: 'grid', gap: 12 }}>
+        <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+          Delivery address
+        </div>
+        {activeAddress ? renderAddress(activeAddress) : (
+          <button type="button" aria-label="Add New Location" onClick={onOpenMobileAddressList} style={{ minHeight: 44, borderRadius: 14, border: `1.5px solid ${SIMPLE_BRAND_BORDER}`, background: SIMPLE_BRAND_TINT, padding: '0 16px', display: 'flex', alignItems: 'center', gap: 12, fontWeight: 700, color: SIMPLE_BRAND, cursor: 'pointer', flexShrink: 0, boxShadow: `0 10px 20px ${SIMPLE_BRAND_SHADOW}`, transition: 'all 200ms ease', fontSize: 13 }}>
+            <span style={{ width: 24, height: 24, borderRadius: 999, display: 'inline-grid', placeItems: 'center', color: SIMPLE_BRAND, background: SIMPLE_BRAND_TINT, transition: 'all 200ms ease' }}><Plus size={18} /></span>
+            Add New Location
+          </button>
+        )}
+        {activeAddress ? (
+          <button type="button" onClick={onOpenMobileAddressList} style={{ minHeight: 44, borderRadius: 14, background: SIMPLE_BRAND_TINT, border: `1.5px solid ${SIMPLE_BRAND_BORDER}`, color: SIMPLE_BRAND, fontWeight: 800, fontSize: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+            View All Saved Addresses
+          </button>
+        ) : null}
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'grid', gap: 12 }}>

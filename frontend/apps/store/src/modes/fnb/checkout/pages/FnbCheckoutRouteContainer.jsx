@@ -56,7 +56,6 @@ import { FnbCheckoutRouteMount } from './FnbCheckoutRouteMount.jsx';
  * per-render.
  */
 export function FnbCheckoutRouteContainer({
-  activeFnbOrderStepMeta,
   applySavedDeliveryLocation,
   canAddPinnedLocation,
   canUseGuestCheckoutFlow,
@@ -192,18 +191,17 @@ export function FnbCheckoutRouteContainer({
       <FnbCheckoutRouteBody
         journeyHeaderProps={{
           activeStep: fnbOrderStep,
-          activeStepMeta: activeFnbOrderStepMeta,
           accentBorder: dgfyIceBlueBorder,
           accentColor: fnbOrderBrand,
           accentSoft: dgfyIceBlue,
+          cartCount,
           cartHasItems: cart.length > 0,
           completeColor: dgfyProgressComplete,
-          completeTextColor: fnbOrderBrandDark,
           displayFont: servicesDisplayFont,
           isCustomerStepComplete: fnbCustomerStepComplete,
+          isDeliveryOrder,
           isFulfillmentStepComplete: fnbFulfillmentStepComplete,
           isMobileViewport,
-          isResponsive: isFnbOrderResponsiveFlow,
           onStepChange: setFnbOrderStep,
           signedIn: isDgfyCustomerSignedIn
         }}
@@ -530,11 +528,14 @@ export function FnbCheckoutRouteContainer({
                     )}
                   />
             </FnbCheckoutExpandedMapModal>
-            <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
-              Special Instructions (optional)
-              <textarea value={fnbSpecialInstructions} onChange={(event) => setFnbSpecialInstructions(event.target.value.slice(0, 250))} placeholder="Ex. Less ice, no onions, gate color and unit number." rows={3} style={{ minHeight: 96, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical', boxSizing: 'border-box' }} />
-              <span style={{ justifySelf: 'end', fontSize: 12, color: '#94a3b8' }}>{Math.min(String(fnbSpecialInstructions || '').length, 250)}/250</span>
-            </label>
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{isDeliveryOrder ? '4.' : '3.'} Anything else we should know?</div>
+              <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                Special Instructions (optional)
+                <textarea value={fnbSpecialInstructions} onChange={(event) => setFnbSpecialInstructions(event.target.value.slice(0, 250))} placeholder="Ex. Less ice, no onions, gate color and unit number." rows={3} style={{ minHeight: 96, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical', boxSizing: 'border-box' }} />
+                <span style={{ justifySelf: 'end', fontSize: 12, color: '#94a3b8' }}>{Math.min(String(fnbSpecialInstructions || '').length, 250)}/250</span>
+              </label>
+            </div>
             {!isFnbOrderResponsiveFlow && (
               <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12, marginTop: 4 }}>
                 <button type="button" onClick={() => setFnbOrderStep(3)} style={{ minHeight: 50, borderRadius: 14, border: '1px solid #dbe5ee', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15, fontFamily: servicesBodyFont }}><ArrowLeft size={17} strokeWidth={2.5} />Back</button>
@@ -749,11 +750,13 @@ export function FnbCheckoutRouteContainer({
           brandColorDark={fnbOrderBrandDark}
           brandShadowStrong={fnbOrderBrandShadowStrong}
           cart={cart}
+          cartCount={cartCount}
           cartImageErrors={cartImageErrors}
           checkoutAllowed={checkoutAllowed}
           checkoutLoading={checkoutLoading}
           fnbCustomerStepComplete={fnbCustomerStepComplete}
           fnbFulfillmentStepComplete={fnbFulfillmentStepComplete}
+          isDeliveryOrder={isDeliveryOrder}
           itemCountLabel={fnbMobileSummaryItemCountLabel}
           money={money}
           onBackToCart={() => {
@@ -772,6 +775,8 @@ export function FnbCheckoutRouteContainer({
           onToggleSummary={() => setShowFnbMobileOrderSummary((previous) => !previous)}
           orderStep={fnbOrderStep}
           promoDiscountSummaryRow={promoDiscountSummaryRow}
+          promoPanel={fnbOrderStep === 4 ? null : renderPromoCodePanel({ compact: true, accentColor: fnbOrderBrand, bodyFont: servicesBodyFont, isMobile: true })}
+          scheduleLabel={fnbScheduleSummaryLabel}
           setSummaryOpen={setShowFnbMobileOrderSummary}
           showSummary={showFnbMobileOrderSummary}
           totalFeeAndTaxes={fnbSummaryFeeAndTaxes}

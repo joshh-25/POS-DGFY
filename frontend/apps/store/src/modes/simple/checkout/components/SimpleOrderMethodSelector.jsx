@@ -13,7 +13,7 @@ export function SimpleOrderMethodSelector({
   onOrderMethodChange
 }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 16 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
       {options.map((option) => {
         const isActive = orderMethod === option.value;
         return (
@@ -38,7 +38,6 @@ export function SimpleOrderMethodSelector({
             fontWeight={700}
             iconBoxSize={isMobileViewport ? 34 : 40}
             iconSize={isMobileViewport ? 18 : 20}
-            showCheck={false}
           />
         );
       })}

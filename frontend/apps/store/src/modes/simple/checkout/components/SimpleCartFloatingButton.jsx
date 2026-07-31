@@ -15,7 +15,7 @@ export function SimpleCartFloatingButton({
         position: 'fixed',
         right: isMobileViewport ? 16 : 24,
         bottom: isMobileViewport ? 16 : 24,
-        zIndex: 2100,
+        zIndex: 2090,
         width: isMobileViewport ? 62 : 68,
         height: isMobileViewport ? 62 : 68,
         borderRadius: '50%',
