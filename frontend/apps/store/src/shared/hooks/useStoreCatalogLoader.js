@@ -179,8 +179,11 @@ export function useStoreCatalogLoader({
       if (requestSequence !== storeLoadRequestSequenceRef.current) return;
       const accessPatch = buildAccessPolicyStorePatch(catalogData?.access_policy);
       const capabilityPatch = buildWorkflowCapabilityStorePatch(catalogData);
-      if (accessPatch || capabilityPatch) {
-        setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch, ...capabilityPatch } : prev));
+      const paymentCapabilitiesPatch = catalogData?.payment_capabilities
+        ? { payment_capabilities: catalogData.payment_capabilities }
+        : null;
+      if (accessPatch || capabilityPatch || paymentCapabilitiesPatch) {
+        setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch, ...capabilityPatch, ...paymentCapabilitiesPatch } : prev));
       }
       setCatalog(Array.isArray(catalogData?.items) ? catalogData.items : []);
     } catch (error) {
@@ -222,8 +225,11 @@ export function useStoreCatalogLoader({
         if (cancelled || requestSequence !== locationCatalogRequestSequenceRef.current) return;
         const accessPatch = buildAccessPolicyStorePatch(catalogData?.access_policy);
         const capabilityPatch = buildWorkflowCapabilityStorePatch(catalogData);
-        if (accessPatch || capabilityPatch) {
-          setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch, ...capabilityPatch } : prev));
+        const paymentCapabilitiesPatch = catalogData?.payment_capabilities
+          ? { payment_capabilities: catalogData.payment_capabilities }
+          : null;
+        if (accessPatch || capabilityPatch || paymentCapabilitiesPatch) {
+          setSelectedStore((prev) => (prev ? { ...prev, ...accessPatch, ...capabilityPatch, ...paymentCapabilitiesPatch } : prev));
         }
         setCatalog(Array.isArray(catalogData?.items) ? catalogData.items : []);
       } catch (error) {

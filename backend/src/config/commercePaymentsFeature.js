@@ -9,6 +9,8 @@ export const isCommercePaymongoSplitEnabled = () => process.env.COMMERCE_PAYMONG
 
 export const isPayMongoLiveMode = () => process.env.PAYMONGO_MODE === 'live';
 
+export const getPayMongoMode = () => (isPayMongoLiveMode() ? 'live' : 'test');
+
 export const isPayMongoPlatformSplitConfirmed = () => {
   const globalConfirmation = process.env.PAYMONGO_PLATFORM_SPLIT_CONFIRMED === 'true';
   const liveConfirmation = process.env.PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED === 'true';
@@ -17,14 +19,20 @@ export const isPayMongoPlatformSplitConfirmed = () => {
 
 export const requireCommerceQrphConfig = () => {
   const missing = [];
-  if (!process.env.PAYMONGO_SECRET_KEY && !process.env.PAYMONGO_TEST_SECRET_KEY && !process.env.PAYMONGO_LIVE_SECRET_KEY) {
-    missing.push('PAYMONGO_SECRET_KEY');
+  const modeSpecificSecretKey = isPayMongoLiveMode()
+    ? process.env.PAYMONGO_LIVE_SECRET_KEY
+    : process.env.PAYMONGO_TEST_SECRET_KEY;
+  const modeSpecificWebhookSecret = isPayMongoLiveMode()
+    ? process.env.PAYMONGO_LIVE_WEBHOOK_SECRET
+    : process.env.PAYMONGO_TEST_WEBHOOK_SECRET;
+  if (!modeSpecificSecretKey && !process.env.PAYMONGO_SECRET_KEY) {
+    missing.push(isPayMongoLiveMode() ? 'PAYMONGO_LIVE_SECRET_KEY' : 'PAYMONGO_TEST_SECRET_KEY');
   }
   if (!tenantRevenueSharingEnabled && !process.env.PAYMONGO_DGFY_MERCHANT_ID) {
     missing.push('PAYMONGO_DGFY_MERCHANT_ID');
   }
-  if (!process.env.PAYMONGO_WEBHOOK_SECRET && !process.env.PAYMONGO_TEST_WEBHOOK_SECRET && !process.env.PAYMONGO_LIVE_WEBHOOK_SECRET) {
-    missing.push('PAYMONGO_WEBHOOK_SECRET');
+  if (!modeSpecificWebhookSecret && !process.env.PAYMONGO_WEBHOOK_SECRET) {
+    missing.push(isPayMongoLiveMode() ? 'PAYMONGO_LIVE_WEBHOOK_SECRET' : 'PAYMONGO_TEST_WEBHOOK_SECRET');
   }
   if (isCommercePaymongoSplitEnabled() && isPayMongoLiveMode() && !isPayMongoPlatformSplitConfirmed()) {
     missing.push('PAYMONGO_LIVE_PLATFORM_SPLIT_CONFIRMED');
