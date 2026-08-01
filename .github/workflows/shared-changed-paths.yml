@@ -10,6 +10,11 @@ name: Shared Changed Paths
 # paths-filter action -- the same `git merge-base`/`git diff --name-only`
 # approach scripts/check-compliance-impact.js already uses, which is also why
 # the checkout below needs full history.
+#
+# Also optionally runs the PR title/body + pos-receipt-version-bump checks
+# (validate_pr_metadata: true, PR mode only) -- folded in here rather than
+# kept as their own workflows/jobs so they don't each pay a separate per-job
+# 1-minute GitHub Actions billing floor for a few seconds of git/bash work.
 
 on:
   workflow_call:
@@ -27,6 +32,19 @@ on:
         required: false
         type: string
         default: '["self-hosted"]'
+      validate_pr_metadata:
+        description: >-
+          Also validate PR title/body format and check for a missing
+          packages/pos-receipt version bump (PR mode only). Folded in here
+          rather than kept as separate jobs to avoid paying a second/third
+          per-job 1-minute billing floor for checks that each run in single-
+          digit seconds. Advisory only (continue-on-error per step) -- never
+          fails this job, matching the behavior of the workflows this
+          replaces (pr-conventional-commits.yml, and the pos-receipt-version
+          step formerly in pr-code-checks.yml).
+        required: false
+        type: boolean
+        default: false
     outputs:
       frontend:
         description: '"true" when this range touches anything the frontend image is built from'
@@ -88,8 +106,8 @@ jobs:
             # conventional-commits check shouldn't force both Docker builds.
             FRONTEND=false
             BACKEND=false
-            matches '^(frontend/|packages/pos-receipt/|packages/shared-constants/|infrastructure/docker/frontend/|\.github/workflows/(changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|build-develop|build-staging|build-main)\.yml)' && FRONTEND=true || true
-            matches '^(backend/|packages/shared-constants/|infrastructure/docker/backend/|\.github/workflows/(changed-paths|deploy-backend|deployment-orchestrator|pr-backend-build-checks|build-develop|build-staging|build-main)\.yml)' && BACKEND=true || true
+            matches '^(frontend/|packages/pos-receipt/|packages/shared-constants/|infrastructure/docker/frontend/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|build-develop|build-staging|build-main)\.yml)' && FRONTEND=true || true
+            matches '^(backend/|packages/shared-constants/|infrastructure/docker/backend/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-backend|deployment-orchestrator|pr-backend-build-checks|build-develop|build-staging|build-main)\.yml)' && BACKEND=true || true
           fi
 
           {
@@ -117,3 +135,40 @@ jobs:
             echo ""
             echo "</details>"
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Validate PR title format
+        if: inputs.validate_pr_metadata
+        continue-on-error: true
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          if ! echo "$TITLE" | grep -qE '^(feat|fix|docs|style|refactor|perf|test|chore|build|ci|revert)(\([^)]+\))?(!)?: .+'; then
+            echo "::warning::PR title must follow conventional commits format"
+            echo "Expected format: feat(scope)!: description"
+            echo "Allowed types: feat, fix, docs, style, refactor, perf, test, chore, build, ci, revert"
+            exit 1
+          fi
+
+      - name: Validate PR body sections
+        if: inputs.validate_pr_metadata
+        continue-on-error: true
+        env:
+          BODY: ${{ github.event.pull_request.body }}
+        run: |
+          # Required sections mirror .github/pull_request_template.md verbatim -
+          # keep these two in sync any time that template's headers change.
+          if ! echo "$BODY" | grep -q "## Summary"; then
+            echo "::warning::PR body must contain '## Summary' section"
+            exit 1
+          fi
+          if ! echo "$BODY" | grep -q "## Testing Evidence"; then
+            echo "::warning::PR body must contain '## Testing Evidence' section"
+            exit 1
+          fi
+
+      - name: Enforce pos-receipt package version bump on source changes
+        if: inputs.validate_pr_metadata
+        continue-on-error: true
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+        run: node scripts/check-pos-receipt-version-bump.js
