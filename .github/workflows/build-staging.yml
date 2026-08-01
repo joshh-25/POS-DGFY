@@ -20,6 +20,10 @@ jobs:
       image_tags: "staging"
       publish: true
       vpn_required: true
+      # Switch back to the free self-hosted runners if Actions minutes run
+      # out. Pin the label so jobs avoid vm-sieitzstaging (AVX-less CPU ->
+      # exit 132 on native addons like @napi-rs/canvas).
+      # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
       runner_labels_json: '["ubuntu-latest"]'
     secrets: inherit
     permissions:

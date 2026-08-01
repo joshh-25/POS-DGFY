@@ -36,16 +36,6 @@ on:
         required: false
         type: string
         default: '["ubuntu-latest"]'
-      build_backend:
-        description: Whether to build/push the backend image. Defaults true so staging/main/manual callers are unaffected; only build-develop.yml gates this on changed paths.
-        required: false
-        type: boolean
-        default: true
-      build_frontend:
-        description: Whether to build/push the frontend image. Defaults true so staging/main/manual callers are unaffected; only build-develop.yml gates this on changed paths.
-        required: false
-        type: boolean
-        default: true
     outputs:
       backend_sha_tag:
         value: ${{ jobs.backend.outputs.sha_tag }}

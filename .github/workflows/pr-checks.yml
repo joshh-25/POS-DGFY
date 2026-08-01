@@ -19,52 +19,36 @@ concurrency:
 env:
   # Light jobs: git/bash only, well under ubuntu-slim's 15-minute cap.
   RUNNER_LIGHT_JSON: &runner_light '["ubuntu-slim"]'
-  # Heavy jobs: ubuntu-slim runs unprivileged (no Docker-in-Docker) and caps
-  # jobs at 15 minutes, so buildx and the 3x `npm ci` code-quality job need a
-  # full VM.
+  # Heavy jobs: ubuntu-slim runs unprivileged (no Docker-in-Docker), so buildx
+  # needs a full VM.
   RUNNER_HEAVY_JSON: &runner_heavy '["ubuntu-latest"]'
 
+# Deliberately just 3 billable jobs. PR title/body validation and the
+# pos-receipt version-bump check used to be their own jobs (conventional-
+# commits, and a step inside code-quality); each extra job pays its own
+# per-job 1-minute GitHub Actions billing floor regardless of how many
+# seconds of actual work it does, so they're now folded into `changes`
+# (validate_pr_metadata: true) instead. code-quality (lint/architecture/
+# compliance/docs) was `continue-on-error: true` -- it could never block a
+# merge -- and has been removed outright; that coverage now lives in local
+# pre-commit hooks (see .husky/pre-commit) instead of CI.
 jobs:
   changes:
     uses: ./.github/workflows/shared-changed-paths.yml
     with:
       runner_labels_json: *runner_light
+      validate_pr_metadata: true
 
-  conventional-commits:
-    uses: ./.github/workflows/pr-conventional-commits.yml
-    with:
-      runner_labels_json: *runner_light
-
-  code-quality:
-    uses: ./.github/workflows/pr-code-checks.yml
-    with:
-      runner_labels_json: *runner_heavy
-
-  # The build checks deliberately do NOT wait on code-quality. That job takes
-  # ~1m45s and is `continue-on-error: true`, so it can never block a merge --
-  # gating on it only delayed the builds by its full runtime. conventional-
-  # commits (~10s) stays as a cheap fail-fast.
   backend-build-check:
-    needs: [changes, conventional-commits]
+    needs: changes
     if: needs.changes.outputs.backend == 'true'
     uses: ./.github/workflows/pr-backend-build-checks.yml
     with:
       runner_labels_json: *runner_heavy
 
   frontend-build-check:
-    needs: [changes, conventional-commits]
+    needs: changes
     if: needs.changes.outputs.frontend == 'true'
     uses: ./.github/workflows/pr-frontend-build-checks.yml
     with:
       runner_labels_json: *runner_heavy
-
-  summary:
-    needs: [conventional-commits, code-quality, backend-build-check, frontend-build-check]
-    if: always()
-    uses: ./.github/workflows/pr-checks-summary.yml
-    with:
-      runner_labels_json: *runner_light
-      conventional_commits_result: ${{ needs.conventional-commits.result }}
-      code_quality_result: ${{ needs.code-quality.result }}
-      backend_build_result: ${{ needs.backend-build-check.result }}
-      frontend_build_result: ${{ needs.frontend-build-check.result }}

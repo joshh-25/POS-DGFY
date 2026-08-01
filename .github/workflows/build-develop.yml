@@ -24,6 +24,10 @@ jobs:
     uses: ./.github/workflows/publish-pos-receipt.yml
     with:
       before_sha: ${{ github.event.before }}
+      # Switch back to the free self-hosted runners if Actions minutes run
+      # out. Pin the label so jobs avoid vm-sieitzstaging (AVX-less CPU ->
+      # exit 132 on native addons like @napi-rs/canvas).
+      # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
       runner_labels_json: '["ubuntu-slim"]'
     secrets: inherit
     permissions:
@@ -34,6 +38,7 @@ jobs:
     uses: ./.github/workflows/shared-changed-paths.yml
     with:
       base_sha: ${{ github.event.before }}
+      # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
       runner_labels_json: '["ubuntu-slim"]'
 
   build-and-push:
@@ -47,6 +52,7 @@ jobs:
       vpn_required: true
       build_backend: ${{ needs.changes.outputs.backend == 'true' }}
       build_frontend: ${{ needs.changes.outputs.frontend == 'true' }}
+      # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
       runner_labels_json: '["ubuntu-latest"]'
     secrets: inherit
     permissions:

@@ -4,16 +4,39 @@ Context for whoever (human or AI) picks this branch back up. Delete this file
 when PR #118 finally merges — it exists only to survive context loss across
 sessions while the PR sits open.
 
-## Status as of 2026-07-28
+## Status as of 2026-08-01
 
-**Blocked on GitHub Actions billing, not on the code.** The branch
-`ci/optimize-pr-and-build-workflows` (PR #118, base `develop`) is complete and
-verified statically, but is being kept open/unmerged intentionally until the
-team's GHA billing issue is resolved. Until then, self-hosted runners remain
-in use for real work on `develop`/`staging`/`main` (those workflows are
-untouched outside this branch). Do not merge this PR just because it looks
-finished — confirm with the user first that GHA billing has actually been
-resolved.
+**No longer blocked on billing — the user decided to fully retire
+self-hosted and accept the GitHub-hosted minute cost.** A measured cost
+analysis (see the PR description / conversation this session) found the
+original assumption backwards: the *push/deploy* builds run on self-hosted
+today at $0, and moving them to `ubuntu-latest` alone would add ~1,450
+billed min/month against the org's 2,000-minute free allowance. The
+resolution: retire self-hosted everywhere (this PR's original scope), but
+every `runner_labels_json` site now carries a **commented self-hosted
+fallback** right above the active hosted-runner line, e.g.:
+
+```yaml
+      # Switch back to the free self-hosted runners if Actions minutes run
+      # out. Pin the label so jobs avoid vm-sieitzstaging (AVX-less CPU ->
+      # exit 132 on native addons like @napi-rs/canvas).
+      # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
+      runner_labels_json: '["ubuntu-latest"]'
+```
+
+Uncommenting that line (and commenting the active one) is the whole
+switch-back — no other changes needed. `sieitz-ubuntu-runner` is a label
+unique to `vm-openproject`, routing switch-back builds off the AVX-less
+`vm-sieitzstaging` box.
+
+On top of the original runner migration, this session also collapsed the PR
+Checks fan-out from 6 billable jobs to 3 (see "What this branch does,
+continued" below) — measured billing is per-job, rounded up to the nearest
+minute, so trivial sub-60s jobs (conventional-commits, summary) were pure
+rounding waste, and `code-quality` (`continue-on-error: true`, so it could
+never block a merge) was 22% of the entire PR Checks bill for zero
+enforcement. Do not merge this PR just because it looks finished — confirm
+with the user first.
 
 This branch will keep getting `origin/develop` merged into it (merge, not
 rebase) as part of the ongoing process while it sits open. Resolve conflicts
@@ -40,8 +63,10 @@ from `develop` in the history rather than a rebased/linear log.
 - Replaces the self-hosted-only retained `dgfy-builder` buildx setup with
   ephemeral builders + `type=gha` cache (canonical scope in `deploy-*`,
   PR-scoped write-only cache in `pr-*-build-checks`).
-- Adds a `cancelled`-result check to `pr-checks-summary.yml`'s gate (it
-  previously only checked for `failure`).
+- Added a `cancelled`-result check to `pr-checks-summary.yml`'s gate (it
+  previously only checked for `failure`). **Superseded 2026-08-01** —
+  `pr-checks-summary.yml` was deleted in this session's fan-out collapse
+  (see below); that gate no longer exists.
 - Archives 7 workflows outside the user's stated maintained set
   (`build-*`/`deploy-*`/`deployment-orchestrator`/`pr-*`/`publish-platform`/
   `publish-pos-receipt`) into `.github/workflows-archive/`, with its own
@@ -53,6 +78,55 @@ description; the plan this was built from also covered rejected alternatives
 (e.g. keeping the retained buildx builder, leaving `.github/workflows/` broad
 in the path filter) if you need to understand *why* something is shaped the
 way it is rather than just *what* it does.
+
+## What this session added (2026-08-01) — measured cost pass
+
+Merged `origin/develop` in (resolving conflicts from develop's own
+`shared-changed-paths.yml` rename), then applied a plan built from *measured*
+billing data (`gh api .../actions/runs/<id>/jobs`, `gh api
+/orgs/Sieitzz/settings/billing/actions`), not estimates:
+
+- **Self-hosted switch-back comments** on every `runner_labels_json` site in
+  `build-develop.yml`, `build-staging.yml`, `build-main.yml`,
+  `build-manual.yml` (see "Status" above).
+- **Fixed the stale changed-paths regex**: `shared-changed-paths.yml`'s two
+  filters still matched `\.github/workflows/(changed-paths|...)`, a filename
+  that no longer exists post-rename — self-edits to the filter workflow
+  triggered neither image build. Also added `\.dockerignore` to both filters
+  (it directly determines Docker build context content, `context: .`).
+- **Fixed `build-main.yml`'s `publish` job condition** — it required all
+  three image builds `== 'success'`; a `skipped` build (e.g. once a
+  changed-paths gate is added there, still TODO) would have silently blocked
+  publish forever. Now mirrors `deployment-orchestrator.yml`'s existing gate
+  shape (`!cancelled() && != 'failure' && (...any succeeded...)`).
+- **Collapsed the PR Checks fan-out from 6 billable jobs to 3.** Deleted
+  `pr-code-checks.yml` (`code-quality` job) outright — it was
+  `continue-on-error: true`, so with no branch protection available on this
+  repo's free org plan (confirmed via `gh api .../branches/develop/protection`
+  → 403 "Upgrade to GitHub Pro"), it could never have blocked a merge, yet
+  cost ~22% of the entire PR Checks bill. Folded `pr-conventional-commits.yml`
+  (PR title/body format) and the `check:pos-receipt-version` step formerly in
+  `pr-code-checks.yml` into `shared-changed-paths.yml`'s `changes` job behind
+  a new `validate_pr_metadata` input (PR-mode only; each new step keeps
+  `continue-on-error: true` at the step level, same advisory behavior as
+  before). Deleted `pr-checks-summary.yml` — with no branch protection to
+  feed, it just aggregated already-advisory checks into another advisory
+  check.
+- **Coverage gap opened by deleting `code-quality`**: `npm --prefix backend
+  run lint` / `npm --prefix frontend run lint` (eslint) are no longer run in
+  CI at all. The pre-commit hook (`.husky/pre-commit`) already covers
+  architecture guardrails, tenant-schema coverage, compat-seams, compliance,
+  and doc lint, but not eslint. The plan calls for adding `lint-staged` to
+  the pre-commit hook to close this — **deliberately not done in this
+  session** (a new devDependency + lockfile change felt like it needed its
+  own confirmation rather than riding along). Flagged for the user as a
+  fast-follow.
+- Not yet done from the full plan (deferred, see the plan file
+  `are-we-using-ubuntu-slim-vectorized-mountain.md` if still on disk, or the
+  conversation this session): dropping the `edited` PR trigger, skipping
+  draft PRs, gating `build-staging.yml`/`build-main.yml` on changed paths,
+  and untracking the ~528 MB of committed `Standalone POS/app/build` +
+  `backups/` (incl. a committed `.sql` dump — separate security finding).
 
 ## What's verified vs. not
 
