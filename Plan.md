@@ -1,3 +1,26 @@
+# Plan — Image Lifecycle, Metadata & POS Optimization (Phases 1–7)
+
+## High-Level Strategy
+Implement an authoritative image lifecycle and metadata management framework for POS-DGFY across 7 phases:
+1. **Phase 1: Lifecycle Contract And Tests (P0)**: Define state resolution rules (`legacy`, `optimized`, `unchanged`, `replaced`, `missing`, `external`) and semantic variants (`thumbnail`, `catalog_card`, `checkout`, `preview`). Add contract test suite for Save Item gaps.
+2. **Phase 2: Image Metadata (P0)**: Add repeatable migrations for `storefront_catalog_overrides` table adding `image_fingerprint`, `optimization_version`, `processing_status`, `variant_metadata`. Register in schema syncer and Sequelize model.
+3. **Phase 3: Backend Image Lifecycle (P0)**: Implement authoritative `ensureOptimizedItemImage` operation. Convert legacy images once, compute SHA-256 fingerprints, reuse unchanged assets without recompression, and handle failure rollbacks safely.
+4. **Phase 4: Save Item Integration (P0)**: Invoke image lifecycle processing on Save Item/update item. Remove early-return guards bypassing legacy image repair. Return updated item with optimized URLs.
+5. **Phase 5: POS Consumers (P1)**: Update POS Catalog, Checkout, and Item Preview surfaces to consume specific semantic image variants (`catalog_card`, `checkout`, `preview`) with safe fallback hierarchy.
+6. **Phase 6: Replacement And Cleanup (P0)**: Generate and validate new versioned replacement assets before updating DB references. Clean up old files post-commit only after verifying zero shared references.
+7. **Phase 7: Full Validation (P0 release gate)**: Execute full test suite (migrations, backend lifecycle, frontend build, contract tests, image 200 HTTP responses, cache header rules).
+
+## Goals
+- [x] 1. **Phase 1**: Define lifecycle contracts, semantic variants, and add Save Item gap tests.
+- [x] 2. **Phase 2**: Create additive DB migration, update `sync-tenant-schemas.js` and `StorefrontCatalogOverride` model.
+- [x] 3. **Phase 3**: Implement `ensureOptimizedItemImage` operation with SHA-256 fingerprinting and Sharp multi-format responsive output.
+- [x] 4. **Phase 4**: Wire `ensureOptimizedItemImage` into `updateItem` / `upsertStorefrontCatalogOverride` and remove legacy early-return bypass.
+- [x] 5. **Phase 5**: Update POS UI components (`POSCheckoutTerminal`, `SkupervisorPOSCheckoutTerminal`, `CartItemThumbnail`, `ItemPreviewModal`) to request semantic variants.
+- [x] 6. **Phase 6**: Implement safe post-commit file garbage collection with shared-reference checks and async error handling.
+- [x] 7. **Phase 7**: Run full validation suite (migrations, backend tests, frontend build/tests, 200 asset status).
+
+---
+
 # Plan — POS Catalog & Current Sale Layout Redesign (Matching Picture 2)
 
 ## High-Level Strategy
@@ -432,4 +455,151 @@ Add an actionable `Sign in as Platform Admin` button to the error banner in `Ten
 ## Goals
 - [x] 1. **Add Platform Admin Login Action**: Enhance the error banner in `TenantRevenueSettlementPanel.jsx` to render a primary `Sign in as Platform Admin` button when `error` contains `Admin authentication required` or session expiration.
 - [x] 2. **Verification**: Run frontend tests and verify clean rendering.
+---
+
+# Plan — Services Mode Variations & Add-ons (Phased Implementation)
+
+## High-Level Strategy
+Implement service variations (single-select alternative configurations e.g. 30/60/90 min) and add-ons (optional extras e.g. service treatments or physical inventory products) as an independent domain within Services Mode without coupling to F&B modifiers or violating catalog/inventory boundaries.
+
+## Architecture Governance & Decision Citations
+- **ADR Amendment**: Amend [ADR 0016](file:///c:/xampp/htdocs/POS-DGFY/docs/architecture/adr/0016-services-mode-independent-booking-and-ticketing.md) with Services option semantics.
+- **Boundaries**: Follow [ARCHITECTURE_BOUNDARIES.md](file:///c:/xampp/htdocs/POS-DGFY/docs/architecture/ARCHITECTURE_BOUNDARIES.md) and [ADR 0029](file:///c:/xampp/htdocs/POS-DGFY/docs/architecture/adr/0029-catalog-inventory-pos-storefront-ownership-boundaries.md).
+
+## Phased Execution Roadmap
+
+### Phase 0: Contract And Architecture (P0)
+- [x] Amend ADR 0016 with service option semantics: variation groups (single-select), add-on groups (single/multi-select), service add-ons (price/duration adjustment, no stock effect), physical add-ons (linked to `item_id`, FIFO stock deduction at fulfillment location).
+- [x] Define immutable price, duration, tax, and name snapshot rules for booking lines.
+
+### Phase 1: Additive Database Foundation (P0)
+- [x] Create tenant tables via additive migrations: `service_option_groups`, `service_options`, `service_item_option_groups`, `service_booking_line_options`.
+- [x] Store group type, selection limits, display order, active state, price/duration adjustments, linked physical `item_id`, tax snapshot, and display names.
+
+### Phase 2: Service Domain & Management APIs (P0)
+- [x] Implement backend repositories and use cases in `backend/src/modules/services/`.
+- [x] CRUD for option groups/options with validation (duplicate prevention, tenant isolation, linked-item eligibility). Prevent deletion of options referenced by historical bookings (deactivate instead).
+
+### Phase 3: Authoritative Pricing & Availability (P0)
+- [x] Server-side quote and duration recalculation: `final_price = base_price + option_adjustments`, `final_duration = base_duration + duration_adjustments`.
+- [x] Include selected options in resource/provider availability checks and hold request hashes. Reject tampered client-provided adjustments.
+
+### Phase 4: Booking Persistence & Idempotency (P0)
+- [x] Extend single/batch booking contracts to accept option IDs. Normalize and include option IDs in idempotency hashes.
+- [x] Persist immutable option snapshots and separate stock-bearing lines for physical add-ons in an all-or-nothing database transaction.
+
+### Phase 5: Services Management UI (IMS) (P1)
+- [x] Add "Variations and Add-ons" tab/section to IMS Service create/edit form.
+- [x] Support option group creation (type, selection limits, required flag, price/duration adjustments).
+- [x] Support assigning/unassigning option groups to service catalog items. on active bookings.
+
+### Phase 6: Storefront Booking UI (P1)
+- [ ] Display variations before time-slot selection (since duration affects availability).
+- [ ] Render add-ons with dynamic price/duration adjustments and server-authoritative quote refresh.
+
+### Phase 7: POS, Settlement, Receipt, And Reports (P1)
+- [ ] Display selected options in POS booking detail drawer.
+- [ ] Include option snapshots in settlement transaction lines. Deduct physical add-ons via location-scoped FIFO.
+- [ ] Print option names and price breakdown on tickets and receipts. Separate service, variation, add-on, and physical cost reporting.
+
+### Phase 8: Security, Performance, & Release Hardening (P0)
+- [ ] Tenant/permission guards on every endpoint, bounded query limits, and N+1 query elimination via batched option loading.
+- [ ] Feature flag gating (`SERVICES_VARIATIONS_ENABLED`) and end-to-end Playwright, Vitest, and migration validation.
+
+---
+
+# Plan — Responsive 3×2 Current Sale Action Buttons Grid
+
+## High-Level Strategy
+Redesign the "Current Sale" action buttons panel in `POSCheckoutTerminal.jsx` and `index.css` into a balanced, responsive 3×2 grid layout (3 columns on standard/desktop screens, switching automatically to 2 columns on smaller screens).
+
+All 6 action buttons:
+1. **Checkout** (Primary blue button, `ShoppingCart` icon)
+2. **Print Order** (`Printer` icon)
+3. **Close Day / Z-Reading** (`Gauge` icon)
+4. **Print Last Receipt** (`Printer` icon)
+5. **Open Cash Drawer** (Drawer icon/text)
+6. **Apply Discount** (`Apply Discount` text)
+
+Will occupy equal-width and equal-height grid slots with consistent spacing (`gap-2`), centered icons and text, multi-line label wrapping up to 2 lines (`line-clamp-2`), and zero clipping or overflow.
+
+All backend logic, click handlers, disabled states, labels, icons, and button colors remain 100% unchanged.
+
+## Goals
+- [x] 1. **Responsive 3×2 Grid Layout**: Update `.dgfy-pos-current-sale-actions` in `POSCheckoutTerminal.jsx` to render a 3×2 grid (`grid-cols-2 sm:grid-cols-3 gap-2`) with equal slot sizing.
+- [x] 2. **Equal Sizing & Multi-Line Centered Content**: Ensure all 6 buttons share identical dimensions (`h-11`/`h-12` or equal height), centered flex contents, up to two-line label text, and zero overlapping or clipping inside the Current Sale panel.
+- [x] 3. **CSS & Contract Test Updates**: Adjust media queries in `index.css` and contract test assertions in `terminalResponsiveScroll.contract.test.js` to match the 3×2 grid layout.
+- [x] 4. **Verification**: Run ESLint, contract tests, and verify production build.
+
+---
+
+# Plan — Fluid Responsive Auto-Scaling Current Sale Action Buttons
+
+## High-Level Strategy
+Refine the Current Sale action buttons in `POSCheckoutTerminal.jsx` to dynamically auto-scale typography, spacing, icon alignment, and button heights across narrow, medium, and wide sidebars.
+
+Key refinements:
+1. **Vertical Icon-Over-Text Stacking (`flex-col items-center justify-center`)**: Stack icons cleanly above label text (`size={14}` icon with `mb-0.5`) to eliminate horizontal crowding in narrow grid columns (~80-90px width).
+2. **Fluid Typography & Line Height**: Use fluid text sizes (`text-[10px] sm:text-[11px] xl:text-xs leading-[1.15] text-center`) with `break-words` and `min-w-0` to ensure labels like "Close Day / Z-Reading" and "Print Last Receipt" wrap cleanly into 2 lines without clipping icons or text.
+3. **Dynamic Height Container (`min-h-[46px] h-full py-1.5 px-1`)**: Replace rigid `h-11` (44px) fixed heights with flexible `min-h-[46px]` so buttons expand or scale fluidly to prevent vertical clipping on any panel width.
+4. **Preserve All Behavior**: Keep all 6 buttons, colors, icons, click handlers, disabled states, and backend logic 100% intact.
+
+## Goals
+- [ ] 1. **Vertical Stacking & Responsive Spacing**: Refactor action buttons to use vertical icon/text stacking (`flex-col items-center justify-center py-1.5 px-1`) with `min-h-[46px]`.
+- [ ] 2. **Fluid Multi-Line Typography**: Apply `text-[10px] sm:text-[11px] xl:text-xs leading-[1.15] text-center break-words` to eliminate text clipping, 3-line overflow, or icon displacement.
+- [ ] 3. **Contract Test & Build Verification**: Update Vitest contract tests and run production build to verify zero regressions.
+
+
+
+---
+
+# Plan — Services and F&B Workflow Separation
+
+## High-Level Strategy
+Split the Current Sale workflow into distinct Food & Beverage (F&B) and Services modes, using a centralized workflow resolver to define authoritative POS behavior. Ensure no cross-contamination of mode-specific fields or statuses.
+
+## Goals
+
+### Phase 0 — Define the Workflow Contract
+- [x] Define authoritative contract for F&B (Order, Dine In/Takeout/Pickup/Delivery) and Services (Booking, Walk-in/Appointment).
+- [x] Establish that Walk-in behavior maps to a current-time booking.
+- [x] Ensure no Services workflow depends on restaurant order_method.
+
+### Phase 1 — Add a Central Workflow Resolver
+- [x] Create resolvePosWorkflow(workflowMode) providing mode, transactionRecord, allowedMethods, and capabilities.
+- [x] Pass workflowMode into both checkout terminals.
+- [x] Remove hardcoded dine_in default and use the resolver.
+
+### Phase 2 — Split the Current Sale Controls
+- [x] Maintain shared cart items, discounts, taxes, and totals in the Current Sale card.
+- [x] Build FnbWorkflowPanel displaying Order Methods, Table, Guest Count, Kitchen Notes, and Order Status.
+- [x] Build ServicesWorkflowPanel displaying Walk-in/Appointment, Client, Provider, Resource, Date/Time, Duration, and Booking Status.
+- [x] Isolate mode-specific controls completely.
+
+### Phase 3 — Connect Service Variations and Add-ons
+- [x] Allow selection of service variations (single-select) and add-ons (multi-select).
+- [x] Send selected option IDs to backend to calculate final price and duration (Server Authority).
+- [x] Ensure physical add-ons check and deduct inventory.
+
+### Phase 4 — Implement Booking and Payment Flow
+- [x] Create Walk-in and Appointment booking flows.
+- [x] Enforce backend validation for provider/resource availability and conflict rejection.
+- [x] Handle booking, payment, options, and physical add-ons transactionally with idempotency.
+
+### Phase 5 — Add Mode-Specific Navigation
+- [x] Restrict navigation to mode-relevant pages using capability configuration or route guards.
+- [x] F&B hides Services pages; Services hides F&B pages.
+
+### Phase 6 — Update Tickets, Receipts, History, and Reports
+- [x] Separate operational service tickets from financial payment receipts.
+- [x] Update Services history to show booking references and providers.
+- [x] Add Service-specific metrics (revenue by provider, utilization) to Reports.
+
+### Phase 7 — Responsive UI Validation
+- [x] Ensure side-by-side layout on desktop.
+- [x] Adjust form rows and Current Sale panels for tablet and mobile viewports.
+
+### Phase 8 — Testing and Release Gate
+- [x] Write tests for Workflow Resolver, F&B flow, Services flow, and integrations.
+- [x] Ensure all playwright, frontend, and backend tests pass before completion.
 
