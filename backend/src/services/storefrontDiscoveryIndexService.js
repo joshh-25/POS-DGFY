@@ -490,7 +490,7 @@ const buildTenantSnapshot = async (tenant) => {
         ? [{
             model: ServiceItemDetail,
             as: 'serviceDetail',
-            attributes: ['bookable', 'visible_in_storefront', 'service_category', 'service_area_type'],
+            attributes: ['bookable', 'visible_in_storefront', 'service_category', 'service_area_type', 'addons_enabled'],
             required: false
         }]
         : [];
