@@ -4,6 +4,7 @@ import {
   getAccessToken,
   getCompanyToken,
   getAuthHeaders,
+  getBrowserSessionSnapshot,
   ensureCsrfToken,
   refreshBrowserSession,
   setBrowserSession
@@ -126,6 +127,19 @@ const setRequestHeader = (headers, name, value) => {
   headers[name] = value;
 };
 
+const getRequestHeader = (headers, name) => {
+  if (!headers) return '';
+  if (typeof headers.get === 'function') {
+    return String(headers.get(name) || '').trim();
+  }
+  return String(headers[name] || headers[name.toLowerCase()] || '').trim();
+};
+
+const readBearerToken = (headers) => {
+  const authorization = getRequestHeader(headers, 'Authorization');
+  return authorization.startsWith('Bearer ') ? authorization.slice(7).trim() : '';
+};
+
 const getResponseReasonCode = (error) => String(
   error?.response?.data?.errors?.reason_code
   || error?.response?.data?.error_code
@@ -228,8 +242,8 @@ const processQueue = (error, token = null) => {
 //   - Tab A gets 401, broadcasts 'token-refresh-started', starts the refresh.
 //   - Tab B gets 401, receives the broadcast, sets isRefreshing=true locally,
 //     queues its request — it does NOT start a competing refresh.
-//   - Tab A completes, broadcasts 'token-refresh-success' with the new token.
-//   - Tab B adopts the new token and drains its local queue.
+//   - Tab A completes and broadcasts 'token-refresh-success' without credentials.
+//   - Tab B rehydrates through the HttpOnly refresh cookie and drains its queue.
 // Without this, Tab B would fire its own refresh with the already-blacklisted
 // token (RTR), get a 401, and force-logout the user.
 const authChannel = (() => {
@@ -243,17 +257,13 @@ if (authChannel) {
       isRefreshing = true;
     }
     if (data.type === 'token-refresh-success') {
-      // Another tab completed the refresh — adopt the new tokens and drain our queue.
+      // Another tab completed refresh. Tokens never cross BroadcastChannel;
+      // rehydrate this tab through the authoritative HttpOnly cookie instead.
       const finishCrossTabRefresh = async () => {
-        const nextToken = data.token || await refreshBrowserSession().catch(() => '');
-        if (nextToken) {
-          setBrowserSession({
-            token: nextToken,
-            companyToken: data.companyToken
-          });
-        }
+        const nextToken = await refreshBrowserSession().catch(() => '');
         if (isRefreshing) {
-          processQueue(null, nextToken || null);
+          if (nextToken) processQueue(null, nextToken);
+          else processQueue(new Error('Session refresh failed'), null);
           isRefreshing = false;
         }
       };
@@ -301,8 +311,10 @@ if (typeof window !== 'undefined') {
 api.interceptors.request.use(
   async (config) => {
     config.headers = config.headers || {};
-    let token = getAccessToken();
-    let companyToken = getCompanyToken();
+    const explicitToken = readBearerToken(config.headers);
+    const explicitCompanyToken = getRequestHeader(config.headers, 'x-company-token');
+    let token = explicitToken || getAccessToken();
+    let companyToken = explicitCompanyToken || getCompanyToken();
 
     if (
       (!token && shouldPreflightBrowserSession(config)) ||
@@ -332,8 +344,8 @@ api.interceptors.request.use(
     }
     // Only add stored companyToken if request doesn't already have one set
     // This allows login/register to use a different token than what's stored
-    if (companyToken && !config.skipTenantAuthHeaders && !config.headers['x-company-token']) {
-      config.headers['x-company-token'] = companyToken;
+    if (companyToken && !config.skipTenantAuthHeaders && !explicitCompanyToken) {
+      setRequestHeader(config.headers, 'x-company-token', companyToken);
     }
     if (authHeaders['x-csrf-token']) {
       // Refresh rotates the CSRF cookie. Always replace a header carried by a
@@ -343,6 +355,11 @@ api.interceptors.request.use(
     if (config.data instanceof FormData) {
       delete config.headers['Content-Type'];
     }
+
+    const requestSession = getBrowserSessionSnapshot();
+    config._authSessionGeneration = requestSession.generation;
+    config._authTokenAtDispatch = readBearerToken(config.headers);
+    config._authCompanyTokenAtDispatch = getRequestHeader(config.headers, 'x-company-token');
 
     return config;
   },
@@ -354,6 +371,36 @@ api.interceptors.response.use(
   (response) => response,
   async (error) => {
     const originalRequest = error.config;
+
+    if (
+      error.response?.status === 401
+      && originalRequest
+      && !originalRequest._staleAuthRetry
+      && !originalRequest.skipAuthRefresh
+      && !isPublicOrAuthRequest(originalRequest.url)
+      && !NON_REFRESHABLE_401_REASONS.has(getResponseReasonCode(error))
+    ) {
+      const currentSession = getBrowserSessionSnapshot();
+      const requestGeneration = Number(originalRequest._authSessionGeneration);
+      const requestToken = String(originalRequest._authTokenAtDispatch || '').trim();
+      const staleGeneration = Number.isFinite(requestGeneration)
+        && requestGeneration !== currentSession.generation;
+      const staleToken = Boolean(
+        requestToken
+        && currentSession.token
+        && requestToken !== currentSession.token
+      );
+
+      if ((staleGeneration || staleToken) && currentSession.token) {
+        originalRequest._staleAuthRetry = true;
+        originalRequest.headers = originalRequest.headers || {};
+        setRequestHeader(originalRequest.headers, 'Authorization', `Bearer ${currentSession.token}`);
+        if (currentSession.companyToken) {
+          setRequestHeader(originalRequest.headers, 'x-company-token', currentSession.companyToken);
+        }
+        return api(originalRequest);
+      }
+    }
 
     if (
       error.response?.status === 403
@@ -393,11 +440,10 @@ api.interceptors.response.use(
           failedQueue.push({ resolve, reject });
         }).then(token => {
           originalRequest._retry = true; // prevent double-refresh if this retry also gets a 401
-          originalRequest.headers.Authorization = `Bearer ${token}`;
-          if (!originalRequest.headers['x-company-token']) {
-            const ct = getCompanyToken();
-            if (ct) originalRequest.headers['x-company-token'] = ct;
-          }
+          originalRequest.headers = originalRequest.headers || {};
+          setRequestHeader(originalRequest.headers, 'Authorization', `Bearer ${token}`);
+          const ct = getCompanyToken();
+          if (ct) setRequestHeader(originalRequest.headers, 'x-company-token', ct);
           return api(originalRequest);
         });
       }
@@ -406,6 +452,7 @@ api.interceptors.response.use(
       originalRequest._retry = true;
       isRefreshing = true;
       iAmRefreshLeader = true;
+      const refreshSession = getBrowserSessionSnapshot();
       authChannel?.postMessage({ type: 'token-refresh-started' }); // tell other tabs to queue
 
       return new Promise((resolve, reject) => {
@@ -427,6 +474,20 @@ api.interceptors.response.use(
             const session = data?.data || {};
             const token = session.token || '';
             const resolvedCompanyToken = session.company?.token || getCompanyToken();
+            const currentSession = getBrowserSessionSnapshot();
+            const refreshWasSuperseded = currentSession.generation !== refreshSession.generation
+              || currentSession.token !== refreshSession.token;
+
+            if (refreshWasSuperseded && currentSession.token) {
+              setRequestHeader(originalRequest.headers, 'Authorization', `Bearer ${currentSession.token}`);
+              if (currentSession.companyToken) {
+                setRequestHeader(originalRequest.headers, 'x-company-token', currentSession.companyToken);
+              }
+              processQueue(null, currentSession.token);
+              resolve(api(originalRequest));
+              return;
+            }
+
             setBrowserSession({
               token,
               companyToken: resolvedCompanyToken
@@ -435,20 +496,31 @@ api.interceptors.response.use(
             // Broadcast success BEFORE draining the local queue so that other tabs
             // adopt the new token and drain their own queues concurrently.
             authChannel?.postMessage({
-              type: 'token-refresh-success',
-              token,
-              companyToken: resolvedCompanyToken
+              type: 'token-refresh-success'
             });
 
-            originalRequest.headers.Authorization = `Bearer ${token}`;
-            if (resolvedCompanyToken && !originalRequest.headers['x-company-token']) {
-              originalRequest.headers['x-company-token'] = resolvedCompanyToken;
+            setRequestHeader(originalRequest.headers, 'Authorization', `Bearer ${token}`);
+            if (resolvedCompanyToken) {
+              setRequestHeader(originalRequest.headers, 'x-company-token', resolvedCompanyToken);
             }
 
             processQueue(null, token); // unblock all queued requests with new token
             resolve(api(originalRequest));
           })
           .catch(err => {
+            const currentSession = getBrowserSessionSnapshot();
+            const refreshWasSuperseded = currentSession.generation !== refreshSession.generation
+              || currentSession.token !== refreshSession.token;
+            if (refreshWasSuperseded && currentSession.token) {
+              setRequestHeader(originalRequest.headers, 'Authorization', `Bearer ${currentSession.token}`);
+              if (currentSession.companyToken) {
+                setRequestHeader(originalRequest.headers, 'x-company-token', currentSession.companyToken);
+              }
+              processQueue(null, currentSession.token);
+              resolve(api(originalRequest));
+              return;
+            }
+
             logError('❌ [Auth] Token refresh failed:', err);
             processQueue(err, null); // fail all queued requests in this tab
             authChannel?.postMessage({ type: 'session-expired' }); // lock other tabs as well

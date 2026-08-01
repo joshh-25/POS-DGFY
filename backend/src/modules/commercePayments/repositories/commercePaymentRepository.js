@@ -124,6 +124,17 @@ export const commercePaymentRepository = {
     }).then(toPlain);
   },
 
+  findSessionByTenantAndPosTransaction({ tenantId, posTransactionId } = {}, options = {}) {
+    return db.CommercePaymentSession.findOne({
+      where: {
+        tenant_id: tenantId,
+        pos_transaction_id: posTransactionId
+      },
+      transaction: options.transaction,
+      lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+    }).then(toPlain);
+  },
+
   async createSession(payload = {}, options = {}) {
     const row = await db.CommercePaymentSession.create(payload, { transaction: options.transaction });
     return toPlain(row);

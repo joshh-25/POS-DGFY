@@ -1,7 +1,12 @@
 # Archived workflows
 
-Archived 2026-07-28 as part of the self-hosted-runner retirement / PR-check
-optimization pass. GitHub only executes YAML directly under
+Archived 2026-07-30: all seven of these were confirmed dead before the move,
+not deprecated speculatively. `staging-qualification.yml` and
+`cleanup-merged-branches.yml` were failing on every recent run;
+`promote-staging-to-master.yml` was permanently skipped as a result;
+`exact-master-sha-qualification.yml` and the `workflow_run` trigger it fed on
+`deploy-production.yml` targeted a `master` branch that does not exist in
+this repository. GitHub only executes YAML directly under
 `.github/workflows/`, so moving a file here stops it from running while
 keeping it reviewable and trivially restorable (`git mv` back into
 `.github/workflows/`).
@@ -29,11 +34,12 @@ These are not being maintained going forward. The actively maintained set is
 - Retiring `staging-qualification.yml` and `exact-master-sha-qualification.yml`
   removes the check runs that `release-controller/config/controller.example.json`
   lists as required (`staging-qualification`, `exact-master-sha-qualification`).
-  That config, plus `docs/architecture/adr/0030-free-tier-signed-release-authorization.md`
-  and the ops docs under `docs/ops/` that reference these workflows by path,
-  now describe a governance flow that is no longer enforced by CI. Updating
-  them is a separate documentation/governance decision, not folded into this
-  change.
+  That config still references them; reconciling the release-controller config
+  itself is a separate decision, not folded into this change.
+  `docs/architecture/adr/0030-free-tier-signed-release-authorization.md` and
+  `docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md` are marked superseded in
+  this same change (see `docs/ops/RELEASE_CANDIDATE_POLICY.md`) precisely
+  because they described this now-archived flow as still enforced.
 - `deploy-production.yml` is kept (still in `.github/workflows/`), but its
   `workflow_run` trigger keyed on "Exact Master SHA Qualification" is now
   unreachable and was removed in the same change that created this archive --

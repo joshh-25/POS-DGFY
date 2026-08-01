@@ -143,7 +143,7 @@ const PosTransaction = sequelize.define('PosTransaction', {
         allowNull: true
     },
     payment_type: {
-        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph'),
+        type: DataTypes.ENUM('cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit'),
         allowNull: false,
         defaultValue: 'cash'
     },
@@ -174,6 +174,15 @@ const PosTransaction = sequelize.define('PosTransaction', {
         type: DataTypes.STRING(40),
         allowNull: true
     },
+    employee_credit_account_id: { type: DataTypes.INTEGER, allowNull: true },
+    employee_credit_user_id: { type: DataTypes.INTEGER, allowNull: true },
+    employee_credit_employee_id: { type: DataTypes.INTEGER, allowNull: true },
+    employee_credit_employee_name_snapshot: { type: DataTypes.STRING(255), allowNull: true },
+    employee_credit_account_code_snapshot: { type: DataTypes.STRING(40), allowNull: true },
+    employee_credit_amount: { type: DataTypes.DECIMAL(14, 4), allowNull: true },
+    employee_credit_balance_after: { type: DataTypes.DECIMAL(14, 4), allowNull: true },
+    employee_credit_outstanding_after: { type: DataTypes.DECIMAL(14, 4), allowNull: true },
+    employee_credit_authorization_reference: { type: DataTypes.STRING(80), allowNull: true },
     subtotal_amount: {
         type: DataTypes.DECIMAL(14, 4),
         allowNull: false,

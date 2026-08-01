@@ -1,5 +1,10 @@
 import api from './api.js';
-import { getAccessToken, refreshBrowserSession, setBrowserSession } from './browserSession.js';
+import {
+  getAccessToken,
+  getCompanyToken,
+  refreshBrowserSession,
+  setBrowserSession
+} from './browserSession.js';
 import { clearClientSession } from './sessionCleanup.js';
 
 export const register = async (userData, companyToken) => {
@@ -123,15 +128,40 @@ export const refreshToken = async () => {
   return refreshBrowserSession();
 };
 
-export const getCurrentUser = async (requestConfig = {}) => {
-  let token = getAccessToken();
+export const getCurrentUser = async (requestConfig = {}, sessionOverride = {}) => {
+  const explicitToken = String(sessionOverride?.token || '').trim();
+  const explicitCompanyToken = String(sessionOverride?.companyToken || '').trim();
+  const installSession = sessionOverride?.installSession !== false;
+
+  // The DGFY-to-tenant handoff is the only point where the browser changes
+  // authentication domains. Install the returned tenant credentials before
+  // the first protected request and also bind that request explicitly to the
+  // same credentials. This avoids a missing-header race during concurrent
+  // auth-listener updates while keeping later requests on the shared client.
+  if (explicitToken && installSession) {
+    setBrowserSession({
+      token: explicitToken,
+      ...(explicitCompanyToken ? { companyToken: explicitCompanyToken } : {})
+    });
+  }
+
+  let token = explicitToken || getAccessToken();
   if (!token) {
     token = await refreshBrowserSession().catch(() => '');
   }
   if (!token) return null;
 
   try {
-    const response = await api.get('/users/me', requestConfig);
+    const companyToken = explicitCompanyToken || getCompanyToken();
+    const response = await api.get('/users/me', {
+      ...requestConfig,
+      ...(!installSession ? { skipAuthRefresh: true } : {}),
+      headers: {
+        ...(requestConfig?.headers || {}),
+        Authorization: `Bearer ${token}`,
+        ...(companyToken ? { 'x-company-token': companyToken } : {})
+      }
+    });
     return response.data.data;
   } catch (error) {
     if (error.response?.status === 401) {

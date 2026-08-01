@@ -1,4 +1,6 @@
 import { Trash2 } from 'lucide-react';
+import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
+import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 
 export function SimpleCartLineItem({
   activeOrderMethodLabel,
@@ -9,7 +11,6 @@ export function SimpleCartLineItem({
   onImageError,
   onRemoveItem,
   onUpdateQuantity,
-  withAssetOrigin
 }) {
   const quantity = Math.max(1, Number(line.quantity || 1));
   const lineTotal = (Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0);
@@ -18,10 +19,15 @@ export function SimpleCartLineItem({
     <div style={{ border: '1px solid #e2e8f0', borderRadius: 22, background: '#fff', boxShadow: '0 12px 28px rgba(15,23,42,.06)', padding: isMobileViewport ? 14 : 16, display: 'grid', gap: 12 }}>
       <div style={{ display: 'grid', gridTemplateColumns: '72px minmax(0, 1fr)', gap: 14, alignItems: 'start' }}>
         <div style={{ width: 72, height: 72, borderRadius: 14, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-          {line.image_url && !cartImageErrors.has(Number(line.item_id)) ? (
-            <img
-              src={withAssetOrigin(line.image_url)}
+          {(line.thumbnail_url || line.image_url) && !cartImageErrors.has(Number(line.item_id)) ? (
+            <StorefrontResponsiveImage
+              imageSources={resolveStorefrontImageSources(line, { preferred: 'thumbnail' })}
               alt={line.name}
+              sizes="72px"
+              width={72}
+              height={72}
+              loading="lazy"
+              decoding="async"
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               onError={() => onImageError(line.item_id)}
             />

@@ -174,7 +174,8 @@ export function StorefrontCatalogRouteContainer(props) {
     setIsFnbCategoryDropdownOpen,
     simpleCheckoutRouteProps,
     simpleStorefrontModel,
-    defaultStorefrontModel
+    defaultStorefrontModel,
+    defaultOrderRouteProps
   } = props;
 
   // --- Service Tab logic ---
@@ -418,6 +419,7 @@ export function StorefrontCatalogRouteContainer(props) {
       simpleCheckoutRouteProps={simpleCheckoutRouteProps}
       simpleStorefrontModel={simpleStorefrontModel}
       defaultStorefrontModel={defaultStorefrontModel}
+      defaultOrderRouteProps={defaultOrderRouteProps}
       submitFnbItemReview={submitFnbItemReview}
       totalFnbPages={totalFnbPages}
       viewportWidth={viewportWidth}

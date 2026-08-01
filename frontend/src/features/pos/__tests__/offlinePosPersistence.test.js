@@ -8,6 +8,12 @@ import {
   saveOfflinePosSnapshot
 } from '../services/offlinePosSnapshotStore.js';
 import {
+  buildPosCartDraftKey,
+  clearPosCartDraft,
+  loadPosCartDraft,
+  savePosCartDraft
+} from '../services/posCartDraftStore.js';
+import {
   consumeManualPosSyncAttempt,
   getManualPosSyncPolicy
 } from '../services/manualPosSyncPolicyStore.js';
@@ -61,6 +67,37 @@ describe('offline POS persistence boundaries', () => {
     expect(saveOfflinePosSnapshot(scopeA, { catalog: [{ item_id: 1 }] })).toBe(true);
     expect(loadOfflinePosSnapshot(scopeA)?.catalog).toEqual([{ item_id: 1 }]);
     expect(loadOfflinePosSnapshot(scopeB)).toBeNull();
+  });
+
+  it('restores cart drafts only for the same tenant, operator, terminal, and shift', () => {
+    const shiftId = 81;
+    const catalog = [{ item_id: 4, name: 'Beef Meal', vat_type: 'vatable', senior_pwd_discount_eligible: true }];
+    expect(savePosCartDraft(scopeA, shiftId, [{
+      line_key: 'line-4',
+      item_id: 4,
+      item_name: 'Old name',
+      quantity: 2,
+      sale_price: 150,
+      password: 'must-not-persist',
+      token: 'must-not-persist'
+    }])).toBe(true);
+
+    expect(buildPosCartDraftKey(scopeA, shiftId)).not.toBe(buildPosCartDraftKey(scopeB, shiftId));
+    expect(loadPosCartDraft(scopeA, shiftId, catalog)).toEqual([
+      expect.objectContaining({
+        item_id: 4,
+        item_name: 'Beef Meal',
+        quantity: 2,
+        sale_price: 150,
+        senior_pwd_discount_eligible: true
+      })
+    ]);
+    expect(loadPosCartDraft(scopeA, shiftId, catalog)[0]).not.toHaveProperty('password');
+    expect(loadPosCartDraft(scopeA, shiftId, catalog)[0]).not.toHaveProperty('token');
+    expect(loadPosCartDraft(scopeA, 82, catalog)).toEqual([]);
+    expect(loadPosCartDraft(scopeB, shiftId, catalog)).toEqual([]);
+    expect(clearPosCartDraft(scopeA, shiftId)).toBe(true);
+    expect(loadPosCartDraft(scopeA, shiftId, catalog)).toEqual([]);
   });
 
   it('quarantines unscoped queue records and exposes only the active tenant scope', async () => {

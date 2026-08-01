@@ -21,13 +21,18 @@ import {
     Percent,
     Printer,
     Search,
+    ShieldCheck,
     Tag,
     UserRound,
     X,
     Eye,
     EyeOff,
     Receipt,
-    ArrowLeft
+    ArrowLeft,
+    Utensils,
+    Trash2,
+    LayoutGrid,
+    ShoppingCart
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -53,6 +58,7 @@ import {
     fetchPosDiscountApprovers,
     verifyPosDiscountApproval
 } from '../services/posService';
+import { fetchEmployeeCreditAccount } from '../services/employeeCreditService.js';
 import {
     TERMINAL_QUEUE_STATUS,
     enqueueTerminalOperationIntent,
@@ -65,6 +71,8 @@ import {
     markTerminalOperationRetryScheduled
 } from '../services/terminalOperationQueueStore.js';
 import { loadOfflinePosSnapshot, saveOfflinePosSnapshot } from '../services/offlinePosSnapshotStore.js';
+import { usePosCartDraft } from '../hooks/usePosCartDraft.js';
+import EmployeeCreditPaymentPanel from './EmployeeCreditPaymentPanel.jsx';
 import {
     DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD,
     getCatalogStockColorClassName,
@@ -89,9 +97,18 @@ import {
     printOrderWithIminBridge,
     printReceiptWithIminBridge
 } from '../utils/iminHardwareBridge.js';
+import { PosAddToCartToastContainer } from './PosAddToCartToastContainer.jsx';
+import { calculateCatalogGridCapacity } from '../utils/catalogGridCapacity.js';
 
 const ReceiptPrintView = lazy(() => import('./ReceiptPrintView'));
 const OrderPreviewView = lazy(() => import('./OrderPreviewView.jsx'));
+
+const CATALOG_GRID_GAP_PX = 8;
+const CATALOG_DESKTOP_CARD_HEIGHT_PX = 176;
+const CATALOG_DESKTOP_CARD_MIN_WIDTH_PX = 176;
+const CATALOG_MOBILE_CARD_HEIGHT_PX = 120;
+const CATALOG_TABLET_CARD_HEIGHT_PX = 112;
+const CATALOG_TABLET_CARD_MIN_WIDTH_PX = 160;
 const POSBarcodeScanner = lazy(() => import('./POSBarcodeScanner.jsx'));
 const POSTransactionHistoryPanel = lazy(() => import('./POSTransactionHistoryPanel.jsx'));
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
@@ -631,7 +648,7 @@ const createIdempotencyKey = () => {
 };
 
 const resolveMappedPosItemImage = (item = {}) => {
-    const itemName = String(item?.name || '').trim().toLowerCase();
+    const itemName = String(item?.name || item?.item_name || item?.itemName || item?.title || '').trim().toLowerCase();
     if (!itemName) return '';
     const mapped = POS_ITEM_IMAGE_MAP.find((entry) => (
         Array.isArray(entry.match) && entry.match.some((token) => itemName.includes(String(token).toLowerCase()))
@@ -640,18 +657,81 @@ const resolveMappedPosItemImage = (item = {}) => {
 };
 
 const resolvePosCatalogImageSources = (item = {}, settings = {}) => {
+    const variants = item?.storefront_image_variants || item?.pos_image_variants || {};
+    const resolveVariantSet = (variantSet = {}) => {
+        const thumbnailUrl = resolveAssetUrl(variantSet?.thumbnail_url || '');
+        const mediumUrl = resolveAssetUrl(variantSet?.medium_url || '');
+        const largeUrl = resolveAssetUrl(variantSet?.large_url || '');
+        const candidates = new Map();
+
+        [
+            [thumbnailUrl, 400],
+            [mediumUrl, 1024],
+            [largeUrl, 1920]
+        ].forEach(([url, width]) => {
+            if (url && !candidates.has(url)) candidates.set(url, width);
+        });
+
+        return {
+            thumbnailUrl,
+            mediumUrl,
+            largeUrl,
+            srcSet: candidates.size > 1
+                ? Array.from(candidates, ([url, width]) => `${url} ${width}w`).join(', ')
+                : undefined
+        };
+    };
     const configuredSrc = resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail');
     const configuredLargeSrc = resolveAssetVariantUrl(item?.storefront_image_url, 'large');
     const mappedSrc = resolveAssetVariantUrl(resolveAppAssetUrl(resolveMappedPosItemImage(item)), 'thumbnail');
     const fallbackSrc = resolveCompanyIconFallbackUrl(settings);
+    const fallbackVariants = resolveVariantSet(variants);
+    const avifVariants = resolveVariantSet(variants?.avif);
+    const webpVariants = resolveVariantSet(variants?.webp);
     return {
         configuredSrc,
         configuredLargeSrc,
         mappedSrc,
         fallbackSrc,
-        src: configuredSrc || mappedSrc || fallbackSrc
+        src: fallbackVariants.thumbnailUrl || configuredSrc || mappedSrc || fallbackSrc,
+        srcSet: fallbackVariants.srcSet,
+        avifSrcSet: avifVariants.srcSet,
+        webpSrcSet: webpVariants.srcSet,
+        placeholderSrc: resolveAssetUrl(variants?.placeholder_url || '')
     };
 };
+
+const PosResponsiveImage = React.memo(({
+    sources = {},
+    style,
+    onError,
+    ...imageProps
+}) => (
+    <picture style={{ display: 'contents' }}>
+        {sources.avifSrcSet ? <source type="image/avif" srcSet={sources.avifSrcSet} sizes={imageProps.sizes} /> : null}
+        {sources.webpSrcSet ? <source type="image/webp" srcSet={sources.webpSrcSet} sizes={imageProps.sizes} /> : null}
+        <img
+            {...imageProps}
+            src={sources.src}
+            srcSet={sources.srcSet}
+            style={{
+                backgroundColor: '#F1F5F9',
+                backgroundImage: sources.placeholderSrc ? `url(${sources.placeholderSrc})` : undefined,
+                backgroundPosition: 'center',
+                backgroundRepeat: 'no-repeat',
+                backgroundSize: 'cover',
+                ...style
+            }}
+            onError={(event) => {
+                event.currentTarget.parentElement
+                    ?.querySelectorAll('source')
+                    .forEach((source) => source.remove());
+                onError?.(event);
+            }}
+        />
+    </picture>
+));
+PosResponsiveImage.displayName = 'PosResponsiveImage';
 
 const inferReceiptContract = (transaction, fallbackContract = null) => {
     if (fallbackContract?.document_type) {
@@ -688,6 +768,37 @@ const inferReceiptContract = (transaction, fallbackContract = null) => {
 
     return null;
 };
+
+const CartItemThumbnail = React.memo(({ catalog, line, receiptSettings }) => {
+    const item = (Array.isArray(catalog) ? catalog.find((i) => i.item_id === line.item_id) : null) || line;
+    const imageSources = resolvePosCatalogImageSources(item, receiptSettings);
+    const [imageFailed, setImageFailed] = useState(false);
+
+    if (imageSources.src && !imageFailed) {
+        return (
+            <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-slate-100 border border-slate-200/80 shadow-xs flex items-center justify-center">
+                <PosResponsiveImage
+                    sources={imageSources}
+                    alt={line.item_name || 'Item'}
+                    loading="lazy"
+                    decoding="async"
+                    width={36}
+                    height={36}
+                    sizes="36px"
+                    className="h-full w-full object-cover object-center"
+                    onError={() => setImageFailed(true)}
+                />
+            </div>
+        );
+    }
+
+    return (
+        <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-slate-100 border border-slate-200/60 flex items-center justify-center text-slate-400">
+            <Utensils className="h-4 w-4" aria-hidden="true" />
+        </div>
+    );
+});
+CartItemThumbnail.displayName = 'CartItemThumbnail';
 
 export default function POSCheckoutTerminal({
     sessionLocked = false,
@@ -728,6 +839,51 @@ export default function POSCheckoutTerminal({
     const [catalogError, setCatalogError] = useState('');
     const [editingQuantityItemId, setEditingQuantityItemId] = useState(null);
     const [quantityInputValue, setQuantityInputValue] = useState('');
+    const [addToCartToasts, setAddToCartToasts] = useState([]);
+    const [receiptSettings, setReceiptSettings] = useState({});
+
+    const triggerAddToCartToast = useCallback((item, addedQty = 1) => {
+        if (!item) return;
+        const itemId = item.item_id;
+        const itemName = item.name || 'Item';
+        const { src: imageSrc } = resolvePosCatalogImageSources(item, receiptSettings);
+
+        setAddToCartToasts((prev) => {
+            const existingIndex = prev.findIndex((t) => t.itemId === itemId);
+            if (existingIndex !== -1) {
+                const updated = [...prev];
+                const existing = updated[existingIndex];
+                updated[existingIndex] = {
+                    ...existing,
+                    quantity: existing.quantity + addedQty,
+                    timestamp: Date.now()
+                };
+                return updated;
+            }
+            const newToast = {
+                id: `toast-${itemId}-${Date.now()}`,
+                itemId,
+                itemName,
+                imageSrc: imageSrc || null,
+                quantity: addedQty,
+                timestamp: Date.now()
+            };
+            return [newToast, ...prev].slice(0, 4);
+        });
+    }, [receiptSettings]);
+
+    const handleDismissToast = useCallback((toastId) => {
+        setAddToCartToasts((prev) => prev.filter((t) => t.id !== toastId));
+    }, []);
+
+    useEffect(() => {
+        if (addToCartToasts.length === 0) return;
+        const timer = setInterval(() => {
+            const now = Date.now();
+            setAddToCartToasts((prev) => prev.filter((t) => now - t.timestamp < 2500));
+        }, 250);
+        return () => clearInterval(timer);
+    }, [addToCartToasts.length]);
     // "+" button long-press quantity meter (mobile only): qtyMeterState drives the visible
     // overlay; qtyMeterGestureRef holds the live, synchronously-updated gesture data so
     // pointerup always reads the exact latest quantity regardless of render timing.
@@ -745,6 +901,11 @@ export default function POSCheckoutTerminal({
     const [search, setSearch] = useState('');
     const [orderMethod, setOrderMethod] = useState('dine_in');
     const [paymentType, setPaymentType] = useState('cash');
+    const [employeeCreditAccountCode, setEmployeeCreditAccountCode] = useState('');
+    const [employeeCreditAccount, setEmployeeCreditAccount] = useState(null);
+    const [selectedEmployeeCreditOption, setSelectedEmployeeCreditOption] = useState(null);
+    const [employeeCreditLookupLoading, setEmployeeCreditLookupLoading] = useState(false);
+    const employeeCreditValidationSequenceRef = useRef(0);
     const [discountProfiles, setDiscountProfiles] = useState([]);
     const [selectedDiscountProfile, setSelectedDiscountProfile] = useState('');
     const [manualDiscountMode, setManualDiscountMode] = useState('none');
@@ -777,7 +938,6 @@ export default function POSCheckoutTerminal({
     const [historyDateTo, setHistoryDateTo] = useState('');
     const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
     const [voidingTransactionId, setVoidingTransactionId] = useState(null);
-    const [receiptSettings, setReceiptSettings] = useState({});
     const [lowStockDisplayThreshold, setLowStockDisplayThreshold] = useState(DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD);
     const [commercialPromoConfig, setCommercialPromoConfig] = useState([]);
     const [discountApprovers, setDiscountApprovers] = useState([]);
@@ -848,32 +1008,29 @@ export default function POSCheckoutTerminal({
     const [currentSaleHelpOpen, setCurrentSaleHelpOpen] = useState(false);
     const [isTabletViewport, setIsTabletViewport] = useState(false);
     const [catalogPage, setCatalogPage] = useState(1);
+    const [catalogGridLayout, setCatalogGridLayout] = useState({
+        columns: 1,
+        rows: 1,
+        pageSize: 1,
+        minimumCardWidth: CATALOG_DESKTOP_CARD_MIN_WIDTH_PX,
+        cardHeight: CATALOG_DESKTOP_CARD_HEIGHT_PX
+    });
     const catalogSectionRef = useRef(null);
     const catalogViewportRef = useRef(null);
+    const catalogCapacityViewportRef = useRef(null);
     const catalogGridRef = useRef(null);
-    const previousCatalogPageRef = useRef(1);
     const searchBackspaceTimeoutRef = useRef(null);
     const searchBackspaceIntervalRef = useRef(null);
     const catalogSwipeStartXRef = useRef(null);
     const catalogSwipePointerIdRef = useRef(null);
-    const shellClassName = 'h-auto min-h-0 space-y-5 xl:h-full';
-    const checkoutGridClassName = 'grid min-h-0 grid-cols-1 gap-4 pb-24 md:grid-cols-[minmax(0,1fr)_325px] md:pb-0 xl:h-full xl:overflow-hidden 2xl:gap-6';
-    const catalogGridClassName = useMemo(() => {
-        if (isTabletViewport) {
-            return IS_DGFY_POS_SURFACE
-                ? 'mt-4 grid grid-cols-2 auto-rows-[7rem] gap-2 sm:grid-cols-3'
-                : 'mt-4 grid grid-cols-3 auto-rows-[11rem] gap-1.5';
-        }
-        return sidebarCollapsed
-            ? 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[7.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-5'
-            : 'mt-4 grid grid-cols-1 auto-rows-[15rem] gap-2 max-sm:auto-rows-[7.5rem] md:grid-cols-3 md:auto-rows-[11rem] xl:grid-cols-4';
-    }, [isTabletViewport, sidebarCollapsed]);
-    const catalogViewportClassName = 'flex min-h-0 flex-1 flex-col overflow-visible pr-0 pb-3 xl:overflow-hidden';
-    const tabletAlignedPaneClassName = isTabletViewport ? 'md:max-xl:min-h-[78rem]' : '';
-    const currentSaleBodyClassName = 'min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 touch-pan-y';
-    const currentSaleItemsListClassName = 'pr-1';
-    const checkoutPaneClassName = 'h-full max-h-full';
-    const catalogPaneHeightClassName = 'h-auto max-h-none xl:h-full xl:max-h-full';
+    const shellClassName = 'h-full min-h-0 overflow-hidden';
+    const checkoutGridClassName = 'grid h-full min-h-0 grid-cols-1 gap-4 overflow-hidden pb-20 md:grid-cols-[minmax(0,1fr)_325px] md:pb-0 2xl:gap-6';
+    const catalogGridClassName = 'grid';
+    const catalogViewportClassName = 'flex min-h-0 flex-1 flex-col overflow-hidden';
+    const currentSaleBodyClassName = 'dgfy-pos-current-sale-panel-scroll grid min-h-0 flex-1 grid-cols-2 grid-rows-[minmax(0,1fr)_auto_auto] gap-2 overflow-hidden md:grid-rows-[auto_auto_auto] md:overflow-y-auto md:overscroll-contain md:pr-1 md:touch-pan-y';
+    const currentSaleItemsListClassName = 'dgfy-pos-scroll-region h-full min-h-0 overflow-y-auto overscroll-contain pr-1 touch-pan-y';
+    const checkoutPaneClassName = 'flex h-full min-h-0 max-h-full flex-col overflow-hidden';
+    const catalogPaneHeightClassName = 'h-full max-h-full';
     const currentSalePaneHeightClassName = 'h-full max-h-full';
     const safeCatalog = toArray(catalog);
     const safePosFolders = toArray(posFolders);
@@ -923,10 +1080,10 @@ export default function POSCheckoutTerminal({
         ? { ...appliedDiscount, eligible_item_ids: toArray(appliedDiscount.eligible_item_ids), eligible_items: toArray(appliedDiscount.eligible_items) }
         : null;
     const catalogCardClassName = IS_DGFY_POS_SURFACE && isTabletViewport
-        ? 'group flex h-[7rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
+        ? 'group flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
         : isTabletViewport
-            ? 'group flex h-[11rem] min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
-            : 'group flex h-[15rem] min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:h-[7.5rem] max-sm:w-full max-sm:flex-row max-sm:p-0 md:h-[11rem] md:p-1.5 xl:h-full';
+            ? 'group flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-1.5 text-left transition-all shadow-sm shadow-slate-200/70'
+            : 'group flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-lg border bg-white p-2 text-left transition-all shadow-sm shadow-slate-200/70 max-sm:w-full max-sm:flex-row max-sm:p-0 md:p-1.5';
     const catalogCardImageWrapClassName = IS_DGFY_POS_SURFACE && isTabletViewport
         ? 'flex h-16 w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
         : isTabletViewport
@@ -938,8 +1095,9 @@ export default function POSCheckoutTerminal({
     const terminalIdentityLabel = normalizedTerminalId
         ? `Terminal ${normalizedTerminalId}`
         : 'No terminal selected';
-    const CATALOG_PAGE_SIZE = 12;
-    const catalogPageSize = CATALOG_PAGE_SIZE;
+    // Keep pagination for predictable loading while rendering two measured viewports per page.
+    // That guarantees the product-card region remains the catalog's only scroll owner.
+    const catalogPageSize = Math.max(1, catalogGridLayout.pageSize * 2);
     const selectedFolder = useMemo(() => (
         safePosFolders.find((folder) => Number(folder.folder_id) === Number(selectedFolderId)) || null
     ), [safePosFolders, selectedFolderId]);
@@ -1150,6 +1308,16 @@ export default function POSCheckoutTerminal({
         terminalUser?.user_id
     ]);
 
+    usePosCartDraft({
+        activeShiftId,
+        cart,
+        catalog,
+        catalogReady: !catalogLoading,
+        enabled: !sessionLocked && Boolean(activeShiftId),
+        scope: offlineSnapshotScope,
+        setCart
+    });
+
     const syncQueuedCheckoutsState = useCallback(async () => {
         const rows = await listTerminalOperationQueueEntries({
             includeResolved: false,
@@ -1265,7 +1433,8 @@ export default function POSCheckoutTerminal({
                 order_source: historyOrderSource === 'all' ? undefined : historyOrderSource,
                 cashier_id: historyCashierId || undefined,
                 date_from: historyDateFrom || undefined,
-                date_to: historyDateTo || undefined
+                date_to: historyDateTo || undefined,
+                location_id: selectedLocationId || undefined
             });
             const rows = Array.isArray(result?.transactions) ? result.transactions : [];
             setHistoryRows(rows);
@@ -1296,6 +1465,7 @@ export default function POSCheckoutTerminal({
         historyPaymentType,
         historySearch,
         historyStatus,
+        selectedLocationId,
         sessionLocked
     ]);
 
@@ -1716,6 +1886,76 @@ export default function POSCheckoutTerminal({
     }, []);
 
     useEffect(() => {
+        if (typeof window === 'undefined' || currentViewMode !== 'checkout') return undefined;
+        const viewport = catalogCapacityViewportRef.current;
+        if (!viewport) return undefined;
+
+        let animationFrameId = null;
+        const measureCapacity = () => {
+            animationFrameId = null;
+            const width = viewport.clientWidth;
+            const height = viewport.clientHeight;
+            if (width <= 0 || height <= 0) return;
+
+            const isMobileViewport = window.matchMedia?.('(max-width: 639px)')?.matches === true;
+            const usesCompactTabletCards = IS_DGFY_POS_SURFACE && isTabletViewport;
+            const minimumCardWidth = isMobileViewport
+                ? width
+                : isTabletViewport
+                    ? CATALOG_TABLET_CARD_MIN_WIDTH_PX
+                    : CATALOG_DESKTOP_CARD_MIN_WIDTH_PX;
+            const cardHeight = isMobileViewport
+                ? CATALOG_MOBILE_CARD_HEIGHT_PX
+                : usesCompactTabletCards
+                    ? CATALOG_TABLET_CARD_HEIGHT_PX
+                    : CATALOG_DESKTOP_CARD_HEIGHT_PX;
+            const capacity = calculateCatalogGridCapacity({
+                width,
+                height,
+                minimumCardWidth,
+                cardHeight,
+                gap: CATALOG_GRID_GAP_PX
+            });
+
+            setCatalogGridLayout((previous) => {
+                if (
+                    previous.columns === capacity.columns
+                    && previous.rows === capacity.rows
+                    && previous.pageSize === capacity.pageSize
+                    && previous.minimumCardWidth === minimumCardWidth
+                    && previous.cardHeight === cardHeight
+                ) {
+                    return previous;
+                }
+                return { ...capacity, minimumCardWidth, cardHeight };
+            });
+        };
+        const scheduleCapacityMeasurement = () => {
+            if (animationFrameId !== null) return;
+            animationFrameId = window.requestAnimationFrame(measureCapacity);
+        };
+        const resizeObserver = typeof window.ResizeObserver === 'function'
+            ? new window.ResizeObserver(scheduleCapacityMeasurement)
+            : null;
+
+        resizeObserver?.observe(viewport);
+        window.addEventListener('resize', scheduleCapacityMeasurement);
+        scheduleCapacityMeasurement();
+
+        return () => {
+            resizeObserver?.disconnect();
+            window.removeEventListener('resize', scheduleCapacityMeasurement);
+            if (animationFrameId !== null) {
+                window.cancelAnimationFrame(animationFrameId);
+            }
+        };
+    }, [catalogFiltersOpen, currentViewMode, isTabletViewport, sidebarCollapsed]);
+
+    useEffect(() => {
+        setCatalogPage(1);
+    }, [catalogGridLayout.columns, catalogGridLayout.rows, catalogPageSize]);
+
+    useEffect(() => {
         setCatalogPage(1);
     }, [search, selectedFolderId, selectedLocationId]);
 
@@ -1726,13 +1966,10 @@ export default function POSCheckoutTerminal({
     }, [catalogPage, totalCatalogPages]);
 
     useEffect(() => {
-        if (previousCatalogPageRef.current === catalogPage) return;
-        previousCatalogPageRef.current = catalogPage;
-
-        const viewport = catalogViewportRef.current;
+        const viewport = catalogCapacityViewportRef.current;
         if (!viewport) return;
-        viewport.scrollTop = 0;
-    }, [catalogPage]);
+        viewport.scrollTo({ top: 0, behavior: 'smooth' });
+    }, [catalogPage, search, selectedFolderId, selectedLocationId]);
 
     useEffect(() => {
         if (sessionLocked) return undefined;
@@ -1904,6 +2141,7 @@ export default function POSCheckoutTerminal({
         [safeCart]
     );
     const isCashPayment = paymentType === 'cash';
+    const isEmployeeCreditPayment = paymentType === 'employee_credit';
     const customerPaymentAmount = useMemo(() => {
         const parsed = Number(customerPaymentAmountInput);
         if (!Number.isFinite(parsed) || parsed < 0) return 0;
@@ -1918,7 +2156,14 @@ export default function POSCheckoutTerminal({
         () => round4(Math.max(0, customerPaymentAmount - cartTotal)),
         [cartTotal, customerPaymentAmount]
     );
-    const isCustomerPaymentSufficient = customerPaymentAmount >= cartTotal;
+    const employeeCreditReady = Boolean(
+        employeeCreditAccount
+        && selectedEmployeeCreditOption?.account_configured
+        && selectedEmployeeCreditOption?.is_eligible
+    );
+    const isCustomerPaymentSufficient = isEmployeeCreditPayment
+        ? employeeCreditReady
+        : customerPaymentAmount >= cartTotal;
     const posActionsBlocked = Boolean(checkoutBlockedReason);
     const notifyPosActionBlocked = () => {
         toast.error(checkoutBlockedReason || 'You cannot use the POS because the shift is closed.');
@@ -2031,6 +2276,7 @@ export default function POSCheckoutTerminal({
         if (stockWarning) {
             toast.error(stockWarning);
         }
+        triggerAddToCartToast(item, requestedAddQty);
     };
 
     const updateCartLine = (lineKey, patch) => {
@@ -2333,10 +2579,69 @@ export default function POSCheckoutTerminal({
             toast.error('Add at least one item before checkout.');
             return;
         }
+        if (
+            paymentType === 'employee_credit'
+            && typeof navigator !== 'undefined'
+            && navigator.onLine === false
+        ) {
+            toast.error('Employee Credit requires an online connection.');
+            return;
+        }
         setCustomerPaymentAmountInput('0');
         setCheckoutConfirmModalOpen(true);
         setMobileCheckoutPanelOpen(false);
-    }, [safeCart.length, checkoutBlockedReason, normalizedTerminalId]);
+    }, [safeCart.length, checkoutBlockedReason, normalizedTerminalId, paymentType]);
+
+    const handleSelectEmployeeCredit = async (employeeOption) => {
+        const accountCode = String(employeeOption?.account_code || '').trim().toUpperCase();
+        const sameSelectedAccount = Boolean(
+            accountCode
+            && accountCode === employeeCreditAccountCode
+            && (employeeCreditLookupLoading || employeeCreditAccount)
+        );
+
+        // The combobox can emit the current option again while it re-renders. Keep a
+        // verified account visible instead of briefly resetting the credit evidence card.
+        if (sameSelectedAccount) {
+            setSelectedEmployeeCreditOption(employeeOption || null);
+            return;
+        }
+
+        const requestId = employeeCreditValidationSequenceRef.current + 1;
+        employeeCreditValidationSequenceRef.current = requestId;
+        setSelectedEmployeeCreditOption(employeeOption || null);
+        setEmployeeCreditAccountCode(accountCode);
+        setEmployeeCreditAccount(null);
+        setEmployeeCreditLookupLoading(false);
+        if (!employeeOption?.account_configured || !accountCode) {
+            toast.error('Employee Credit is not configured for this employee.');
+            return;
+        }
+        if (!employeeOption?.is_eligible) {
+            toast.error('This employee is not eligible for Employee Credit.');
+            return;
+        }
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            toast.error('Employee Credit requires an online connection.');
+            return;
+        }
+        setEmployeeCreditLookupLoading(true);
+        try {
+            const account = await fetchEmployeeCreditAccount(accountCode);
+            if (employeeCreditValidationSequenceRef.current === requestId) {
+                setEmployeeCreditAccount(account);
+                toast.success(`Employee Credit account verified for ${account?.employee_name || 'employee'}.`);
+            }
+        } catch (error) {
+            if (employeeCreditValidationSequenceRef.current === requestId) {
+                toast.error(error?.response?.data?.message || 'Eligible Employee Credit account was not found.');
+            }
+        } finally {
+            if (employeeCreditValidationSequenceRef.current === requestId) {
+                setEmployeeCreditLookupLoading(false);
+            }
+        }
+    };
 
     const openDiscountModal = async () => {
         setDiscountDraft(appliedDiscount ? { ...EMPTY_DISCOUNT_DRAFT, ...appliedDiscount, manager_pin: '' } : {
@@ -2482,7 +2787,9 @@ export default function POSCheckoutTerminal({
             return;
         }
         if (!isCustomerPaymentSufficient) {
-            toast.error(`${customerPaymentFieldLabel} must cover the total due.`);
+            toast.error(isEmployeeCreditPayment
+                ? 'Verify an active, eligible employee account with enough available balance.'
+                : `${customerPaymentFieldLabel} must cover the total due.`);
             setCheckoutConfirmModalOpen(true);
             return;
         }
@@ -2498,9 +2805,12 @@ export default function POSCheckoutTerminal({
             location_id: selectedLocationId || undefined,
             order_method: orderMethod,
             payment_type: paymentType,
-            payment_handoff_mode: paymentType === 'cash' ? 'internal' : 'external',
-            cash_received: Number(customerPaymentAmount || 0),
-            change_amount: Number(customerPaymentChange || 0),
+            payment_handoff_mode: ['cash', 'employee_credit'].includes(paymentType) ? 'internal' : 'external',
+            cash_received: isCashPayment ? Number(customerPaymentAmount || 0) : undefined,
+            change_amount: isCashPayment ? Number(customerPaymentChange || 0) : undefined,
+            employee_credit: isEmployeeCreditPayment ? {
+                account_code: employeeCreditAccountCode.trim().toUpperCase()
+            } : undefined,
             discount_mode: appliedDiscount ? 'amount' : (selectedDiscount ? 'preset' : (manualDiscountAmount > 0 ? manualDiscountMode : 'none')),
             discount_amount: Number(calculatedDiscountAmount || 0),
             discount_profile_name: appliedDiscount ? undefined : (selectedDiscount?.name || null),
@@ -2623,6 +2933,11 @@ export default function POSCheckoutTerminal({
             setManualDiscountAmountInput('');
             setAppliedDiscount(null);
             setAffiliateCodeInput('');
+            setEmployeeCreditAccountCode('');
+            setEmployeeCreditAccount(null);
+            setSelectedEmployeeCreditOption(null);
+            setEmployeeCreditLookupLoading(false);
+            employeeCreditValidationSequenceRef.current += 1;
             setCustomerPaymentAmountInput('');
             setCheckoutConfirmModalOpen(false);
             const refreshedQueue = await listTerminalOperationQueueEntries({
@@ -2663,7 +2978,7 @@ export default function POSCheckoutTerminal({
             setCheckoutConfirmModalOpen(false);
             setReceiptPreviewSource('order_preview');
             setReceiptPreviewModalOpen(true);
-            if (typeof onCheckoutCompleted === 'function') {
+        if (typeof onCheckoutCompleted === 'function') {
                 onCheckoutCompleted(data?.transaction || null);
             }
             try {
@@ -2673,11 +2988,11 @@ export default function POSCheckoutTerminal({
                     transaction: completedTransaction,
                     businessSettings: receiptSettings,
                     receiptContract,
-                    openDrawerAfterPrint: true
+                    openDrawerAfterPrint: isCashPayment
                 });
                 if (iminPrintResult.handled) {
-                    toast.success('Receipt printed and cash drawer opened.');
-                } else {
+                    toast.success(isCashPayment ? 'Receipt printed and cash drawer opened.' : 'Receipt printed.');
+                } else if (isCashPayment) {
                     const iminDrawerResult = openDrawerWithIminBridge();
                     if (iminDrawerResult.handled) {
                         toast.success('Cash drawer opened.');
@@ -2750,14 +3065,15 @@ export default function POSCheckoutTerminal({
 
         setReceiptPrinting(true);
         try {
+            const shouldOpenDrawer = String(transaction?.payment_type || '').trim().toLowerCase() === 'cash';
             const iminPrintResult = printReceiptWithIminBridge({
                 transaction,
                 businessSettings: receiptSettings,
                 receiptContract: inferReceiptContract(transaction),
-                openDrawerAfterPrint: true
+                openDrawerAfterPrint: shouldOpenDrawer
             });
             if (iminPrintResult.handled) {
-                toast.success('Receipt printed and cash drawer opened.');
+                toast.success(shouldOpenDrawer ? 'Receipt printed and cash drawer opened.' : 'Receipt printed.');
                 return;
             }
 
@@ -2931,13 +3247,13 @@ export default function POSCheckoutTerminal({
             )}
 
             {currentViewMode === 'checkout' && (
-                <div key="view-checkout" className="h-auto min-h-0 xl:h-full catalog-slide-enter">
+                <div key="view-checkout" className="h-full min-h-0 overflow-hidden catalog-slide-enter">
                 <>
                 <div className={checkoutGridClassName}>
-            <section ref={catalogSectionRef} className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 ${tabletAlignedPaneClassName} ${catalogPaneHeightClassName} flex min-h-0 flex-col`}>
+            <section ref={catalogSectionRef} className={`rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 ${catalogPaneHeightClassName} flex min-h-0 flex-col`}>
                     {isTabletViewport && renderViewModeControls()}
                     <div ref={catalogViewportRef} className={catalogViewportClassName} role="region" aria-label="POS catalog contents">
-                <div className={`${isTabletViewport ? 'mb-3 gap-2.5' : 'mb-5 gap-4'} flex min-w-0 flex-col ${IS_DGFY_POS_SURFACE ? 'xl:flex-row xl:items-start' : 'lg:flex-row lg:items-start'}`}>
+                <div data-testid="pos-catalog-controls" className={`${isTabletViewport ? 'mb-3 gap-2.5' : 'mb-5 gap-4'} flex min-w-0 shrink-0 flex-col ${IS_DGFY_POS_SURFACE ? 'xl:flex-row xl:items-start' : 'lg:flex-row lg:items-start'}`}>
                     <div className={`${isTabletViewport ? 'flex-col items-stretch sm:flex-col' : 'flex-wrap items-center sm:flex-nowrap'} flex min-w-0 flex-1 gap-3 max-sm:relative`}>
                         {/* Mobile: collapsed search icon button */}
                         {!isTabletViewport && !(mobileSearchExpanded || search) && (
@@ -3086,6 +3402,38 @@ export default function POSCheckoutTerminal({
                         )}
                 </div>
                 </div>
+                <div className="mb-4 flex items-center gap-2 overflow-x-auto pb-1 pt-0.5 dgfy-pos-scrollbar-hidden">
+                    <button
+                        type="button"
+                        onClick={() => setSelectedFolderId(null)}
+                        className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-[12px] font-extrabold transition-all shadow-xs ${
+                            !selectedFolderId
+                                ? 'border border-[#0B449C] bg-[#0B449C] text-white shadow-blue-900/15'
+                                : 'border border-slate-200/80 bg-white text-slate-700 hover:bg-slate-50'
+                        }`}
+                    >
+                        <LayoutGrid className="h-3.5 w-3.5" />
+                        <span>All Items</span>
+                    </button>
+                    {availableCategories.map((folder) => {
+                        const active = Number(selectedFolderId) === Number(folder.folder_id);
+                        return (
+                            <button
+                                key={folder.folder_id}
+                                type="button"
+                                onClick={() => toggleFolderFilter(folder.folder_id)}
+                                className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-[12px] font-extrabold transition-all shadow-xs ${
+                                    active
+                                        ? 'border border-[#0B449C] bg-[#0B449C] text-white shadow-blue-900/15'
+                                        : 'border border-slate-200/80 bg-white text-slate-700 hover:bg-slate-50'
+                                }`}
+                            >
+                                <Folder className="h-3.5 w-3.5" />
+                                <span>{folder.name}</span>
+                            </button>
+                        );
+                    })}
+                </div>
                 {catalogFiltersOpen && (
                 <div id="pos-catalog-category-filters" className="mb-4">
                     <div className="flex items-center justify-between gap-2">
@@ -3171,8 +3519,9 @@ export default function POSCheckoutTerminal({
                 </div>
                 )}
                 <div
+                    ref={catalogCapacityViewportRef}
                     data-testid="pos-catalog-scroll"
-                    className="overflow-visible pr-1 pb-3 touch-pan-y select-none xl:min-h-0 xl:flex-1 xl:overflow-y-auto xl:overscroll-contain"
+                    className="dgfy-pos-scroll-region relative mt-2 min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1 touch-pan-y select-none"
                     onTouchStart={(event) => {
                         const touch = event.touches?.[0];
                         if (!touch) return;
@@ -3201,13 +3550,21 @@ export default function POSCheckoutTerminal({
                 ) : (
                     <>
                     {catalogRefreshing && (
-                        <p role="status" className="mb-2 text-xs font-semibold text-blue-700">
+                        <p role="status" className="absolute right-2 top-2 z-20 rounded-md bg-blue-50/95 px-2 py-1 text-xs font-semibold text-blue-700 shadow-sm">
                             Refreshing catalog...
                         </p>
                     )}
                     <div
                         ref={catalogGridRef}
                         className={`${catalogGridClassName} ${catalogRefreshing ? 'pointer-events-none opacity-70' : ''}`}
+                        data-catalog-columns={catalogGridLayout.columns}
+                        data-catalog-rows={catalogGridLayout.rows}
+                        data-catalog-page-size={catalogPageSize}
+                        style={{
+                            gridTemplateColumns: `repeat(auto-fill, minmax(min(100%, ${catalogGridLayout.minimumCardWidth}px), 1fr))`,
+                            gridAutoRows: `${catalogGridLayout.cardHeight}px`,
+                            gap: `${CATALOG_GRID_GAP_PX}px`
+                        }}
                         aria-busy={catalogRefreshing}
                     >
                         {visibleCatalogItems.map((item, itemIndex) => {
@@ -3215,11 +3572,12 @@ export default function POSCheckoutTerminal({
                             const isAlwaysAvailable = item?.pos_always_available === true;
                             const isBestSeller = item?.is_best_seller === true;
                             const isOutOfStock = !isServiceItem && !isAlwaysAvailable && Number(item.current_stock || 0) <= 0;
+                            const imageSources = resolvePosCatalogImageSources(item, receiptSettings);
                             const {
                                 configuredLargeSrc: largePosImageSrc,
                                 fallbackSrc: fallbackPosImageSrc,
                                 src: posImageSrc
-                            } = resolvePosCatalogImageSources(item, receiptSettings);
+                            } = imageSources;
                             const hasImage = Boolean(posImageSrc) && !catalogImageErrors.has(item.item_id);
                             const cartLineForItem = safeCart.find((line) => line.item_id === item.item_id);
                             const cartQuantityForItem = cartLineForItem ? Number(cartLineForItem.quantity) || 0 : 0;
@@ -3260,14 +3618,15 @@ export default function POSCheckoutTerminal({
                                         aria-hidden="true"
                                     >
                                         {hasImage ? (
-                                            <img
-                                                src={posImageSrc}
+                                            <PosResponsiveImage
+                                                sources={imageSources}
                                                 alt={`${item.name} menu`}
                                                 loading={itemIndex < 4 ? 'eager' : 'lazy'}
                                                 decoding="async"
-                                                fetchPriority={itemIndex < 4 ? 'high' : 'auto'}
+                                                fetchpriority={itemIndex < 4 ? 'high' : 'auto'}
                                                 width={400}
                                                 height={400}
+                                                sizes="(max-width: 640px) 118px, (max-width: 1024px) 33vw, 25vw"
                                                 className="product-image h-full w-full object-cover object-center"
                                                 onError={(event) => {
                                                     if (advanceAssetImageFallback(event, [largePosImageSrc, fallbackPosImageSrc])) return;
@@ -3523,14 +3882,15 @@ export default function POSCheckoutTerminal({
             )}
 
             <aside
-                className={`space-y-4 ${checkoutPaneClassName} ${mobileCheckoutPanelOpen
-                    ? 'fixed inset-x-0 bottom-0 z-50 max-h-[88vh] translate-y-0 overflow-y-auto pointer-events-auto'
-                    : 'fixed inset-x-0 bottom-0 z-50 max-h-[88vh] translate-y-full overflow-y-auto pointer-events-none'
+                data-testid="pos-current-sale-panel"
+                className={`${checkoutPaneClassName} ${mobileCheckoutPanelOpen
+                    ? 'fixed inset-x-0 bottom-0 z-50 h-[calc(100dvh-0.5rem)] max-h-[calc(100dvh-0.5rem)] translate-y-0 pointer-events-auto'
+                    : 'fixed inset-x-0 bottom-0 z-50 h-[calc(100dvh-0.5rem)] max-h-[calc(100dvh-0.5rem)] translate-y-full pointer-events-none'
                 } transition-transform duration-300 ease-out md:static md:z-auto md:max-h-none md:translate-y-0 md:overflow-hidden md:pointer-events-auto md:transition-none`}
             >
-            <section className={`relative flex min-h-0 flex-col overflow-hidden rounded-t-2xl rounded-b-none border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 sm:p-6 md:rounded-xl ${currentSalePaneHeightClassName}`}>
+            <section className={`relative flex min-h-0 flex-col overflow-hidden rounded-t-2xl rounded-b-none border border-slate-200 bg-white p-3 shadow-sm shadow-slate-200/70 sm:p-4 md:rounded-xl ${currentSalePaneHeightClassName}`}>
                     <div role="region" aria-label="Current sale contents" className="flex h-full min-h-0 flex-col">
-                <div data-testid="pos-current-sale-header" className="relative mb-4 shrink-0">
+                <div data-testid="pos-current-sale-header" className="relative mb-2 shrink-0">
                     <div className="flex items-center justify-between gap-2">
                         <h2 className="text-[21px] font-black tracking-tight text-[#0F172A]">Current Sale</h2>
                         <div className="flex items-center gap-1">
@@ -3562,14 +3922,14 @@ export default function POSCheckoutTerminal({
                     )}
                 </div>
                 <div data-testid="pos-current-sale-scroll" className={currentSaleBodyClassName}>
-                <div className="flex flex-col">
-                <div className="order-2 md:order-1 space-y-3 mb-4">
+                <div className="col-span-2 flex min-h-0 flex-col overflow-hidden md:h-[clamp(18rem,46vh,26rem)] md:flex-none">
+                <div data-testid="pos-current-sale-settings" className="mb-2 grid shrink-0 grid-cols-2 gap-2">
                     <label className="text-[11px] text-slate-500 block">
                         Order Method
                         <select
                             value={orderMethod}
                             onChange={(event) => setOrderMethod(event.target.value)}
-                            className={`w-full mt-1 border border-slate-200 rounded-lg px-2 py-2 text-[13px] ${POS_FORM_SELECT_CLASS}`}
+                            className={`mt-1 h-8 w-full rounded-lg border border-slate-200 px-2 py-1 text-[12px] ${POS_FORM_SELECT_CLASS}`}
                         >
                             <option value="dine_in">Dine In</option>
                             <option value="takeout">Takeout</option>
@@ -3583,35 +3943,46 @@ export default function POSCheckoutTerminal({
                         Payment Type
                         <select
                             value={paymentType}
-                            onChange={(event) => setPaymentType(event.target.value)}
-                            className={`w-full mt-1 border border-slate-200 rounded-lg px-2 py-2 text-[13px] ${POS_FORM_SELECT_CLASS}`}
+                            onChange={(event) => {
+                                setPaymentType(event.target.value);
+                                setEmployeeCreditAccountCode('');
+                                setEmployeeCreditAccount(null);
+                                setSelectedEmployeeCreditOption(null);
+                                setEmployeeCreditLookupLoading(false);
+                                employeeCreditValidationSequenceRef.current += 1;
+                            }}
+                            className={`mt-1 h-8 w-full rounded-lg border border-slate-200 px-2 py-1 text-[12px] ${POS_FORM_SELECT_CLASS}`}
                         >
                             <option value="cash">Cash</option>
                             <option value="gcash">{isMsmeMode ? 'GCash (Manual)' : 'GCash'}</option>
                             <option value="maya">{isMsmeMode ? 'Maya (Manual)' : 'Maya'}</option>
                             <option value="card">{isMsmeMode ? 'Card (Manual)' : 'Card'}</option>
                             <option value="bank_transfer">{isMsmeMode ? 'Bank Transfer (Manual)' : 'Bank Transfer'}</option>
+                            <option value="employee_credit">Employee Credit</option>
                         </select>
                     </label>
                 </div>
-                <div className="order-1 md:order-2 mb-4 border-b border-slate-200 pb-4">
-                    <div className={`space-y-2.5 ${currentSaleItemsListClassName}`}>
+                <div className="min-h-0 flex-1 overflow-hidden border-b border-slate-200 pb-2">
+                    <div data-testid="pos-current-sale-items" className={`space-y-2.5 ${currentSaleItemsListClassName}`}>
                         {safeCart.length > 0 ? safeCart.map((line) => {
                             const lineKey = getLineKey(line);
                             return (
                                 <div key={lineKey} className="rounded-lg border border-slate-200 p-2.5">
-                                    <div className="flex items-start justify-between gap-2">
-                                        <p className="text-[13px] font-extrabold text-[#0F172A]">{line.item_name}</p>
-                                        <Button
+                                    <div className="flex items-center justify-between gap-2">
+                                        <div className="flex items-center gap-2.5 min-w-0">
+                                            <CartItemThumbnail catalog={catalog} line={line} receiptSettings={receiptSettings} />
+                                            <p className="text-[13px] font-extrabold text-[#0F172A] truncate">{line.item_name}</p>
+                                        </div>
+                                        <button
                                             type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            className="h-7 px-2 text-[11px]"
                                             onClick={() => removeCartLine(lineKey)}
                                             disabled={posActionsBlocked}
+                                            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
+                                            aria-label={`Remove ${line.item_name}`}
+                                            title="Remove item"
                                         >
-                                            Remove
-                                        </Button>
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
                                     </div>
                                     <div className="mt-2 grid grid-cols-2 gap-2">
                                         <label className="text-[11px] text-slate-500">
@@ -3691,7 +4062,7 @@ export default function POSCheckoutTerminal({
                                         Empty
                                     </span>
                                 </div>
-                                <div className="flex h-24 items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50">
+                                <div className="flex h-14 items-center justify-center rounded-md border border-dashed border-slate-300 bg-slate-50">
                                     <span className="px-2 text-center text-[12px] font-semibold text-slate-500">
                                         No items in cart yet.
                                     </span>
@@ -3701,25 +4072,13 @@ export default function POSCheckoutTerminal({
                                 </p>
                             </div>
                         )}
-                    </div>
                 </div>
                 </div>
-                <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <div className="flex items-center justify-between gap-3">
-                        <div>
-                            <p className="text-[12px] font-extrabold text-[#0F172A]">Discount</p>
-                            <p className="mt-0.5 text-[11px] text-slate-500">{appliedDiscount?.label || 'No discount applied'}</p>
-                        </div>
-                    </div>
-                    {appliedDiscount && (
-                        <button type="button" className="mt-2 text-[11px] font-bold text-rose-600" onClick={() => setAppliedDiscount(null)}>
-                            Remove Discount
-                        </button>
-                    )}
                 </div>
-                <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                    <label className="text-[12px] font-extrabold text-[#0F172A]" htmlFor="pos-affiliate-code-input">Affiliate Code (optional)</label>
-                    <div className="relative mt-1.5">
+
+                <div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-2">
+                    <label className="block truncate text-[11px] font-extrabold text-[#0F172A]" htmlFor="pos-affiliate-code-input" title="Affiliate Code (optional)">Affiliate Code (optional)</label>
+                    <div className="relative mt-1">
                         <Percent className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                         <Input
                             id="pos-affiliate-code-input"
@@ -3729,78 +4088,129 @@ export default function POSCheckoutTerminal({
                             onChange={(e) => setAffiliateCodeInput(e.target.value)}
                         />
                     </div>
-                    <p className="mt-1 text-[10.5px] text-slate-500">Credits an affiliate&apos;s commission for this sale. Validated at checkout.</p>
+                    <p className="mt-1 truncate text-[10px] text-slate-500" title="Credits an affiliate's commission for this sale. Validated at checkout.">Validated at checkout.</p>
                 </div>
 
-                <div className="mb-3 space-y-3 border-b border-slate-200 pb-4 text-[13px]">
-                    <div className="flex justify-between">
-                        <span className="text-[#334155]">Items Subtotal</span>
-                        <span className="font-extrabold text-[#0F172A]">PHP {money(cartSubtotal)}</span>
+                <div data-testid="pos-current-sale-totals" className="col-span-2 border-b border-slate-200 pb-2 text-[11px]">
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 md:hidden">
+                        <div className="flex justify-between">
+                            <span className="text-[#334155]">Items Subtotal</span>
+                            <span className="font-extrabold text-[#0F172A]">PHP {money(cartSubtotal)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-[#334155]">
+                                Discount{appliedDiscount ? ` (${appliedDiscount.label})` : (selectedDiscount ? ` (${selectedDiscount.name})` : '')}
+                            </span>
+                            <span className="font-extrabold text-rose-600">- PHP {money(calculatedDiscountAmount)}</span>
+                        </div>
+                        {governedDiscountTotals.vatRemoved > 0 && <div className="flex justify-between"><span className="text-[#334155]">VAT Removed</span><span className="font-extrabold text-rose-600">- PHP {money(governedDiscountTotals.vatRemoved)}</span></div>}
+                        {governedDiscountTotals.vatExemptAmount > 0 && <div className="flex justify-between"><span className="text-[#334155]">VAT-Exempt Amount</span><span className="font-extrabold text-[#0F172A]">PHP {money(governedDiscountTotals.vatExemptAmount)}</span></div>}
+                        <div className="flex justify-between">
+                            <span className="text-[#334155]">Net Items</span>
+                            <span className="font-extrabold text-[#0F172A]">PHP {money(netItemsTotal)}</span>
+                        </div>
+                        <div className="col-span-2 my-1 border-t border-dashed border-slate-200" />
+                        <div className="flex justify-between">
+                            <span className="text-slate-600">Vatable Sales</span>
+                            <span className="font-medium">PHP {money(vatBreakdown.vatableSales)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-slate-600">VAT Amount</span>
+                            <span className="font-medium">PHP {money(vatBreakdown.vatAmount)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-slate-600">VAT Exempt Sales</span>
+                            <span className="font-medium">PHP {money(vatBreakdown.vatExemptSales)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                            <span className="text-slate-600">Zero Rated Sales</span>
+                            <span className="font-medium">PHP {money(vatBreakdown.zeroRatedSales)}</span>
+                        </div>
+                        <div className="col-span-2 mt-1 flex items-baseline justify-between border-t border-slate-200 pt-1">
+                            <span className="text-[15px] font-black text-[#0F172A]">Total</span>
+                            <span className="text-[18px] font-black text-[#1A4E8D]">PHP {money(cartTotal)}</span>
+                        </div>
                     </div>
-                    <div className="flex justify-between">
-                        <span className="text-[#334155]">
-                            Discount{appliedDiscount ? ` (${appliedDiscount.label})` : (selectedDiscount ? ` (${selectedDiscount.name})` : '')}
-                        </span>
-                        <span className="font-extrabold text-rose-600">- PHP {money(calculatedDiscountAmount)}</span>
-                    </div>
-                    {governedDiscountTotals.vatRemoved > 0 && <div className="flex justify-between"><span className="text-[#334155]">VAT Removed</span><span className="font-extrabold text-rose-600">- PHP {money(governedDiscountTotals.vatRemoved)}</span></div>}
-                    {governedDiscountTotals.vatExemptAmount > 0 && <div className="flex justify-between"><span className="text-[#334155]">VAT-Exempt Amount</span><span className="font-extrabold text-[#0F172A]">PHP {money(governedDiscountTotals.vatExemptAmount)}</span></div>}
-                    <div className="flex justify-between">
-                        <span className="text-[#334155]">Net Items</span>
-                        <span className="font-extrabold text-[#0F172A]">PHP {money(netItemsTotal)}</span>
-                    </div>
-                    <div className="border-t border-dashed border-slate-200 my-2" />
-                    <div className="flex justify-between">
-                        <span className="text-slate-600">Vatable Sales</span>
-                        <span className="font-medium">PHP {money(vatBreakdown.vatableSales)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span className="text-slate-600">VAT Amount</span>
-                        <span className="font-medium">PHP {money(vatBreakdown.vatAmount)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span className="text-slate-600">VAT Exempt Sales</span>
-                        <span className="font-medium">PHP {money(vatBreakdown.vatExemptSales)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span className="text-slate-600">Zero Rated Sales</span>
-                        <span className="font-medium">PHP {money(vatBreakdown.zeroRatedSales)}</span>
-                    </div>
-                    <div className="flex justify-between">
-                        <span className="text-[18px] font-black text-[#0F172A]">Total</span>
-                        <span className="text-[22px] font-black text-[#1A4E8D]">PHP {money(cartTotal)}</span>
+
+                    <div data-testid="pos-current-sale-desktop-summary" className="hidden gap-y-0.5 md:grid">
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
+                            <span className="min-w-0 text-[#334155]">Items Subtotal</span>
+                            <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-[#0F172A]">PHP {money(cartSubtotal)}</span>
+                        </div>
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
+                            <span className="min-w-0 text-[#334155]">Net Items</span>
+                            <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-[#0F172A]">PHP {money(netItemsTotal)}</span>
+                        </div>
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
+                            <span className="min-w-0 text-[#334155]">Discount</span>
+                            <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-rose-600">-PHP {money(calculatedDiscountAmount)}</span>
+                        </div>
+                        {governedDiscountTotals.vatRemoved > 0 && (
+                            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
+                                <span className="min-w-0 text-[#334155]">VAT Removed</span>
+                                <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-rose-600">-PHP {money(governedDiscountTotals.vatRemoved)}</span>
+                            </div>
+                        )}
+                        {governedDiscountTotals.vatExemptAmount > 0 && (
+                            <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
+                                <span className="min-w-0 text-[#334155]">VAT-Exempt Amount</span>
+                                <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-[#0F172A]">PHP {money(governedDiscountTotals.vatExemptAmount)}</span>
+                            </div>
+                        )}
+                        <div className="my-1 border-t border-dashed border-slate-200" />
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
+                            <span className="min-w-0 text-slate-600">VATable Sales</span>
+                            <span className="whitespace-nowrap text-right font-medium tabular-nums">PHP {money(vatBreakdown.vatableSales)}</span>
+                        </div>
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
+                            <span className="min-w-0 text-slate-600">VAT Exempt Sales</span>
+                            <span className="whitespace-nowrap text-right font-medium tabular-nums">PHP {money(vatBreakdown.vatExemptSales)}</span>
+                        </div>
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
+                            <span className="min-w-0 text-slate-600">VAT Amount</span>
+                            <span className="whitespace-nowrap text-right font-medium tabular-nums">PHP {money(vatBreakdown.vatAmount)}</span>
+                        </div>
+                        <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
+                            <span className="min-w-0 text-slate-600">Zero Rated Sales</span>
+                            <span className="whitespace-nowrap text-right font-medium tabular-nums">PHP {money(vatBreakdown.zeroRatedSales)}</span>
+                        </div>
+                        <div className="mt-1 flex items-baseline justify-between border-t border-slate-200 pt-1">
+                            <span className="text-[15px] font-black text-[#0F172A]">Total</span>
+                            <span className="whitespace-nowrap text-[18px] font-black tabular-nums text-[#1A4E8D]">PHP {money(cartTotal)}</span>
+                        </div>
                     </div>
                 </div>
                 </div>
 
                 {(checkoutBlockedReason || safeCart.length === 0) && (
-                    <div className="border-t border-slate-200 pt-3">
+                    <div className="shrink-0 border-t border-slate-200 pt-2">
                         <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] font-semibold text-amber-800">
                             {checkoutBlockedReason || 'Add at least one item before checkout.'}
                         </div>
                     </div>
                 )}
 
-                <div className="grid grid-cols-2 gap-2 border-t border-slate-200 pt-3">
-                    <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handlePrintOrder}
-                        disabled={posActionsBlocked || safeCart.length === 0}
-                        className="flex h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg border border-[#1A4E8D] bg-white px-2 text-center text-[12px] font-extrabold leading-tight text-[#1A4E8D] hover:bg-blue-50 sm:text-[13px] disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                        <Printer size={18} />
-                        Print Order
-                    </Button>
+                <div data-testid="pos-current-sale-actions" className="dgfy-pos-current-sale-actions grid shrink-0 grid-cols-2 gap-2 border-t border-slate-200 pt-2">
                     <Button
                         type="button"
                         onClick={openCheckoutConfirmModal}
-                        disabled={posActionsBlocked || checkoutLoading}
-                        className="flex h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg bg-[#1A4E8D] px-2 text-center text-[12px] font-extrabold leading-tight text-white shadow-lg shadow-blue-900/20 transition hover:bg-[#143F73] sm:text-[13px] disabled:cursor-not-allowed disabled:opacity-95"
+                        disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0}
+                        className="col-span-2 flex h-12 w-full min-w-0 items-center justify-center gap-2 rounded-xl bg-[#0B449C] px-4 text-center text-sm font-extrabold text-white shadow-md shadow-blue-900/15 transition hover:bg-blue-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                        <Lock size={17} />
-                        {checkoutLoading ? 'Processing...' : 'Checkout'}
+                        <ShoppingCart size={18} />
+                        {checkoutLoading ? 'Processing...' : `Checkout (${safeCart.length} ${safeCart.length === 1 ? 'Item' : 'Items'})`}
                     </Button>
+                    <div className="contents">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handlePrintOrder}
+                            disabled={posActionsBlocked || safeCart.length === 0}
+                            className="flex h-9 w-full min-w-0 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 text-center text-[12px] font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            <Printer size={15} />
+                            Print Order
+                        </Button>
                     <Button
                         type="button"
                         variant="outline"
@@ -3842,6 +4252,7 @@ export default function POSCheckoutTerminal({
                     >
                         Apply Discount
                     </Button>
+                    </div>
                 </div>
                     </div>
             </section>
@@ -4294,15 +4705,20 @@ export default function POSCheckoutTerminal({
 
             <Dialog open={checkoutConfirmModalOpen} onOpenChange={setCheckoutConfirmModalOpen}>
                 <DialogContent className="pos-checkout-confirm-dialog flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-1.5rem)] max-w-md flex-col overflow-hidden rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:w-full">
-                    <DialogHeader className="border-b border-slate-200 px-4 py-3">
+                    <DialogHeader className="shrink-0 border-b border-slate-200 px-4 py-3">
                         <div className="flex items-start justify-between gap-3">
-                            <div>
-                                <DialogTitle id="pos-checkout-confirm-modal-title" className="text-[17px] font-black text-[#0F172A]">
-                                    Confirm Checkout
-                                </DialogTitle>
-                                <DialogDescription className="mt-1 text-[12px] font-medium text-[#475569]">
-                                    Review the items and enter the customer payment before finalizing this sale.
-                                </DialogDescription>
+                            <div className="flex items-center gap-3">
+                                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-blue-100 bg-blue-50 text-blue-600">
+                                    <ShieldCheck className="h-5 w-5" />
+                                </div>
+                                <div>
+                                    <DialogTitle id="pos-checkout-confirm-modal-title" className="text-[17px] font-black text-[#0F172A]">
+                                        Confirm Checkout
+                                    </DialogTitle>
+                                    <DialogDescription className="mt-0.5 text-[12px] font-medium text-[#475569]">
+                                        Review the items and enter the customer payment before finalizing this sale.
+                                    </DialogDescription>
+                                </div>
                             </div>
                             <button
                                 type="button"
@@ -4317,7 +4733,7 @@ export default function POSCheckoutTerminal({
                     </DialogHeader>
 
                     <div className="pos-modal-scroll-content min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
-                        <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px]">
+                        {!isEmployeeCreditPayment && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px]">
                             <div className="flex justify-between gap-2">
                                 <span className="font-semibold text-[#334155]">Total Due</span>
                                 <span className="font-black text-[#1A4E8D]">PHP {money(cartTotal)}</span>
@@ -4326,28 +4742,59 @@ export default function POSCheckoutTerminal({
                                 <span className="font-semibold text-[#334155]">Payment Type</span>
                                 <span className="font-bold capitalize text-[#0F172A]">{paymentType.replace('_', ' ')}</span>
                             </div>
-                        </div>
+                        </div>}
 
-                        <div className="rounded-lg border border-slate-200 bg-white p-3">
-                            <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-2">
-                                <div>
-                                    <p className="text-[11px] font-bold uppercase tracking-wide text-[#64748B]">Items</p>
-                                    <p className="mt-1 text-[12px] font-medium text-[#475569]">
-                                        {safeCart.length} item{safeCart.length === 1 ? '' : 's'} in this sale
-                                    </p>
-                                </div>
-                                <span className="text-[12px] font-black text-[#0F172A]">PHP {money(cartTotal)}</span>
-                            </div>
-                            <div className="mt-3 space-y-2">
+                        <div className="rounded-xl border border-slate-200 bg-white p-3">
+                            <div className="max-h-[220px] space-y-2 overflow-y-auto pr-1">
                                 {safeCart.map((line) => {
                                     const lineTotal = round4(Number(line.quantity || 0) * Number(line.sale_price || 0));
+                                    const catalogItem = safeCatalog.find((ci) => (
+                                        (ci?.item_id && line?.item_id && Number(ci.item_id) === Number(line.item_id)) ||
+                                        (ci?.id && line?.id && Number(ci.id) === Number(line.id))
+                                    )) || null;
+
+                                    const imageSources = catalogItem ? resolvePosCatalogImageSources(catalogItem, receiptSettings) : null;
+                                    const rawImage = line.thumbnail_url || line.thumbnail || line.storefront_image_url || line.image_url || line.imageUrl || line.image
+                                        || catalogItem?.storefront_image_url || catalogItem?.pos_image_url || catalogItem?.image_url || catalogItem?.imageUrl || catalogItem?.image
+                                        || imageSources?.src || '';
+
+                                    const mappedAsset = resolveMappedPosItemImage(line) || resolveMappedPosItemImage(catalogItem);
+                                    const mappedSrc = mappedAsset ? resolveAssetVariantUrl(resolveAppAssetUrl(mappedAsset), 'thumbnail') : '';
+
+                                    const thumbnailSrc = rawImage ? resolveAssetVariantUrl(rawImage, 'thumbnail') : mappedSrc;
                                     return (
-                                        <div key={getLineKey(line)} className="flex items-start justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                                            <div className="min-w-0">
-                                                <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{line.item_name}</p>
-                                                <p className="mt-0.5 text-[11px] font-medium text-[#64748B]">
-                                                    {formatQuantity(line.quantity)} x PHP {money(line.sale_price)}
-                                                </p>
+                                        <div key={getLineKey(line)} className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2">
+                                            <div className="flex items-center gap-3 min-w-0">
+                                                <div className="relative flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-blue-100 bg-blue-50/60">
+                                                    {thumbnailSrc ? (
+                                                        <>
+                                                            <img
+                                                                src={thumbnailSrc}
+                                                                alt={line.item_name || 'Item'}
+                                                                loading="lazy"
+                                                                decoding="async"
+                                                                className="h-full w-full object-cover rounded-lg"
+                                                                onError={(event) => {
+                                                                    event.currentTarget.style.display = 'none';
+                                                                    if (event.currentTarget.nextElementSibling) {
+                                                                        event.currentTarget.nextElementSibling.style.display = 'flex';
+                                                                    }
+                                                                }}
+                                                            />
+                                                            <div className="hidden h-full w-full items-center justify-center bg-blue-50/60">
+                                                                <Utensils className="h-4 w-4 text-blue-600" />
+                                                            </div>
+                                                        </>
+                                                    ) : (
+                                                        <Utensils className="h-4 w-4 text-blue-600" />
+                                                    )}
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{line.item_name}</p>
+                                                    <p className="mt-0.5 text-[11px] font-medium text-[#64748B]">
+                                                        {formatQuantity(line.quantity)} x PHP {money(line.sale_price)}
+                                                    </p>
+                                                </div>
                                             </div>
                                             <span className="shrink-0 text-[13px] font-black text-[#1A4E8D]">PHP {money(lineTotal)}</span>
                                         </div>
@@ -4356,6 +4803,17 @@ export default function POSCheckoutTerminal({
                             </div>
                         </div>
 
+                        {isEmployeeCreditPayment && (
+                            <EmployeeCreditPaymentPanel
+                                selectedEmployee={selectedEmployeeCreditOption}
+                                onSelectEmployee={handleSelectEmployeeCredit}
+                                lookupLoading={employeeCreditLookupLoading}
+                                account={employeeCreditAccount}
+                                totalDue={cartTotal}
+                                locationId={selectedLocationId}
+                            />
+                        )}
+                        {!isEmployeeCreditPayment && (
                         <label className="block text-[11px] font-bold uppercase tracking-wide text-[#64748B]">
                             {customerPaymentFieldLabel}
                             <Input
@@ -4369,7 +4827,9 @@ export default function POSCheckoutTerminal({
                                 autoFocus
                             />
                         </label>
+                        )}
 
+                        {!isEmployeeCreditPayment && (
                         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px]">
                             <div className="flex justify-between gap-2">
                                 <span className="text-[#334155]">{isCashPayment ? 'Change' : 'Excess Payment'}</span>
@@ -4382,15 +4842,18 @@ export default function POSCheckoutTerminal({
                                 </span>
                             </div>
                         </div>
+                        )}
 
                         {!isCustomerPaymentSufficient && (
                             <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
-                                {customerPaymentFieldLabel} must be at least PHP {money(cartTotal)}.
+                                {isEmployeeCreditPayment
+                                    ? 'Verify an active, eligible employee account with enough available balance.'
+                                    : `${customerPaymentFieldLabel} must be at least PHP ${money(cartTotal)}.`}
                             </p>
                         )}
                     </div>
 
-                    <DialogFooter className="grid grid-cols-2 gap-2 border-t border-slate-200 px-4 py-3">
+                    <DialogFooter className="shrink-0 grid grid-cols-2 gap-2 border-t border-slate-200 px-4 py-3 bg-white">
                         <Button
                             type="button"
                             variant="outline"
@@ -4626,7 +5089,7 @@ export default function POSCheckoutTerminal({
                     </div>
                 </div>
             )}
-            {qtyMeterState && typeof document !== 'undefined' && createPortal((
+            {qtyMeterState && createPortal((
                 <div
                     className="qty-meter"
                     style={{ left: `${qtyMeterState.x}px`, top: `${qtyMeterState.y - 24}px` }}
@@ -4641,6 +5104,7 @@ export default function POSCheckoutTerminal({
                     </div>
                 </div>
             ), document.body)}
+            <PosAddToCartToastContainer toasts={addToCartToasts} onDismiss={handleDismissToast} />
         </div>
     );
 }

@@ -129,10 +129,18 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('waits for session and onboarding hydration before rendering the POS workspace', () => {
+    const initialHydrationBlock = terminalPageContent.match(
+      /const hydrateUser = useCallback\(async \(\) => \{[\s\S]*?setLocked\(false\);/
+    )?.[0] || '';
+
     expect(terminalPageContent).toContain('const [loadingUser, setLoadingUser] = useState(true);');
     expect(terminalPageContent).toContain('const [terminalStartupReady, setTerminalStartupReady] = useState(false);');
+    expect(terminalPageContent).toContain('const initialUserHydrationStartedRef = useRef(false);');
     expect(terminalPageContent).toContain('const terminalStartupLoading = !terminalStartupReady');
-    expect(terminalPageContent).toContain('setTerminalStartupReady(false);\n      setLocked(false);');
+    expect(terminalPageContent).toContain('if (initialUserHydrationStartedRef.current) return;');
+    expect(terminalPageContent).toContain('initialUserHydrationStartedRef.current = true;');
+    expect(terminalPageContent).toContain('if (loadingUser) return;');
+    expect(initialHydrationBlock).not.toContain('setTerminalStartupReady(false);');
     expect(terminalPageContent).not.toContain("if (locked || terminalUser?.is_master_admin !== true) {\n      setSetupFlowState({");
     expect(terminalPageContent).toContain('useLayoutEffect(() => {');
     expect(terminalPageContent).toContain('Restoring POS workspace...');
@@ -175,8 +183,13 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("toast.message('Confirm the company, then continue to POS.');");
     expect(terminalPageContent).toContain('if (!continuingAfterCompanyPicker) {');
     expect(terminalPageContent).toContain('const selectedTenantSession = await startDgfyTenantSession({');
+    expect(terminalPageContent).toContain('}, token, { activate: false });');
     expect(terminalPageContent).toContain("if (!String(selectedTenantSession?.token || '').trim()) {");
-    expect(terminalPageContent).toContain('const selectedTenantUser = await fetchCurrentUser(SUPPRESS_GLOBAL_ERROR_TOAST);');
+    expect(terminalPageContent).toContain('const selectedTenantUser = await fetchCurrentUser(');
+    expect(terminalPageContent).toContain('token: selectedTenantSession.token');
+    expect(terminalPageContent).toContain('companyToken: selectedTenantSession?.company?.token');
+    expect(terminalPageContent).toContain('installSession: false');
+    expect(terminalPageContent).toContain('activateDgfyTenantSession(selectedTenantSession);');
     expect(terminalPageContent).toContain('The selected company session could not be verified. Sign in again.');
     expect(terminalPageContent).toContain('const effectiveSelectedTenantUser = selectedTenantUser;');
     expect(terminalPageContent).toContain('const selectedPermissionList = parseUserPermissions(effectiveSelectedTenantUser);');
@@ -212,7 +225,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageLayoutContent).toContain("const lockedHeaderSurfaceClassName = locked ? 'pointer-events-none select-none opacity-80' : '';");
     expect(terminalPageLayoutContent).toContain('dgfy-pos-panel dgfy-pos-panel-strong sticky top-0');
     expect(terminalPageLayoutContent).not.toContain('sticky top-0 z-40 shrink-0 border-b border-pos px-4 py-2 backdrop-blur');
-    expect(terminalPageLayoutContent).toContain('touch-pan-y ${workspaceDesktopOverflowClassName} ${lockedSurfaceClassName}');
+    expect(terminalPageLayoutContent).toContain('className={`${workspacePaneClassName} ${lockedSurfaceClassName}`}');
   });
 
   it('remounts the POS layout after terminal unlock for Safari and PWA rendering', () => {
@@ -237,6 +250,11 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("api.post('/auth/logout')");
     expect(terminalPageContent).toContain('logoutDgfyAccount(activeDgfyToken)');
     expect(terminalPageContent).toContain("reason: 'terminal_lock'");
+  });
+
+  it('finishes restoration and clears stale company identity on full cashier logout', () => {
+    expect(terminalPageContent).toMatch(/const onSessionExpired = \(\) => \{[\s\S]*?setLoadingUser\(false\);[\s\S]*?setTerminalStartupReady\(true\);[\s\S]*?setLocked\(true\);/);
+    expect(terminalPageContent).toMatch(/setStoredTerminalLockReason\('full_auth'\);[\s\S]*?setDgfyPosState\(\{[\s\S]*?authenticated: false,[\s\S]*?companies: \[\],[\s\S]*?setFormData\(\{[\s\S]*?email: '',[\s\S]*?dgfyTenantId: '',[\s\S]*?setTerminalStartupReady\(true\);[\s\S]*?clearDgfySession\(\);[\s\S]*?reason: 'logout'/);
   });
 
   it('checks current shift before requiring a loaded operating location', () => {
@@ -458,6 +476,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsPanelsContent).not.toContain('history_receipt');
     expect(terminalSidebarPanelContent).not.toContain('history_receipt');
     expect(posCheckoutTerminalContent).toContain('setHistorySearch(query);');
+    expect(posCheckoutTerminalContent).toContain('location_id: selectedLocationId || undefined');
   });
 
   it('persists offline checkout intents and exposes the manual universal sync policy', () => {

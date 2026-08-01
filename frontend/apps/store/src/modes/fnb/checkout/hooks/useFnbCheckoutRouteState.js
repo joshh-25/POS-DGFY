@@ -6,6 +6,11 @@ import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../src/obs
 export function useFnbCheckoutRouteState() {
   const [fnbOrderStep, setFnbOrderStep] = useState(2);
   const [fnbPaymentType, setFnbPaymentType] = useState('cash');
+  const [qrphPaymentSession, setQrphPaymentSession] = useState(null);
+  const [qrphPaymentStatusLoading, setQrphPaymentStatusLoading] = useState(false);
+  const [qrphIdempotencyKey, setQrphIdempotencyKey] = useState(() => (
+    globalThis.crypto?.randomUUID?.() || `store-qrph-${Date.now()}`
+  ));
   const [fnbScheduledFor, setFnbScheduledFor] = useState('');
   const [fnbScheduleMode, setFnbScheduleMode] = useState('asap');
   const [fnbSpecialInstructions, setFnbSpecialInstructions] = useState('');
@@ -29,11 +34,17 @@ export function useFnbCheckoutRouteState() {
   return {
     fnbOrderStep,
     fnbPaymentType,
+    qrphIdempotencyKey,
+    qrphPaymentSession,
+    qrphPaymentStatusLoading,
     fnbScheduledFor,
     fnbScheduleMode,
     fnbSpecialInstructions,
     setFnbOrderStep,
     setFnbPaymentType,
+    setQrphIdempotencyKey,
+    setQrphPaymentSession,
+    setQrphPaymentStatusLoading,
     setFnbScheduledFor,
     setFnbScheduleMode,
     setFnbSpecialInstructions,

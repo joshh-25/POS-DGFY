@@ -14,6 +14,7 @@ import { Badge, GhostButton, PrimaryButton } from '../../../../shared/components
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import { CheckoutStepProgressHeader } from '../../../../shared/components/checkout/CheckoutStepProgressHeader.jsx';
 import { StorefrontReviewModal } from '../../../../shared/components/storefront/StorefrontReviewModal.jsx';
+import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 import { StorefrontPromoSection as SharedStorefrontPromoSection } from '../../../../shared/components/storefront/sections/StorefrontPromoSection.jsx';
 import { StorefrontReviewsSection as SharedStorefrontReviewsSection } from '../../../../shared/components/storefront/sections/StorefrontReviewsSection.jsx';
 import { StorefrontFooterSection as SharedStorefrontFooterSection } from '../../../../shared/components/storefront/sections/StorefrontFooterSection.jsx';
@@ -22,7 +23,7 @@ import { isItemAvailable } from '../../../../shared/model/storefrontCatalogModel
 import { STOREFRONT_CLOSED_TITLE } from '../../../../shared/model/storefrontClosedState.js';
 import { openStorefrontActionLink } from '../../../../shared/utils/externalLinks.js';
 import { money } from '../../../../shared/utils/storefrontFormatters.js';
-import { withAssetOrigin } from '../../../../app/runtime/storefrontRuntime.js';
+import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 import { SERVICE_CATEGORY_ICON_MAP } from '../model/serviceCategoryIconMap.jsx';
 import {
   BOOKING_FIELD_STYLE,
@@ -350,8 +351,16 @@ export function StorefrontServicesCatalog({
                 <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(340px, 400px) minmax(0, 1fr)', gap: isMobileViewport ? 18 : 28, alignItems: 'start' }}>
                   <section style={{ border: '1px solid #dbe5ee', borderRadius: 24, background: '#fff', overflow: 'hidden', boxShadow: '0 18px 42px rgba(15, 23, 42, 0.08)', display: 'grid', gap: 0, position: isMobileViewport ? 'static' : 'sticky', top: isMobileViewport ? 'auto' : 96 }}>
                     <div style={{ width: '100%', height: isMobileViewport ? 260 : 240, background: '#f8fafc' }}>
-                      {withAssetOrigin(detailPageServiceItem.image_url) ? (
-                        <img src={withAssetOrigin(detailPageServiceItem.image_url)} alt={detailPageServiceItem.variantName || detailPageServiceItem.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      {resolveStorefrontImageSources(detailPageServiceItem, { preferred: 'large' }).src ? (
+                        <StorefrontResponsiveImage
+                          alt={detailPageServiceItem.variantName || detailPageServiceItem.name}
+                          imageSources={resolveStorefrontImageSources(detailPageServiceItem, { preferred: 'large' })}
+                          loading="eager"
+                          sizes={isMobileViewport ? '100vw' : '400px'}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          width={400}
+                          height={isMobileViewport ? 260 : 240}
+                        />
                       ) : (
                         <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: STYLES.colors.muted, fontSize: 14 }}>
                           No image
@@ -993,7 +1002,7 @@ export function StorefrontServicesCatalog({
 
           <div style={{ display: 'grid', gridTemplateColumns: servicesGridColumns, gap: 22 }}>
             {paginatedServices.map((item) => {
-              const imageUrl = withAssetOrigin(item.image_url);
+              const imageSources = resolveStorefrontImageSources(item, { preferred: 'medium' });
               const available = isItemAvailable(item);
               const ServiceCategoryIcon = SERVICE_CATEGORY_ICON_MAP[item.categoryMeta?.iconToken] || Sparkles;
               return (
@@ -1012,8 +1021,15 @@ export function StorefrontServicesCatalog({
                   onClick={() => openServiceDetail(item)}
                 >
                   <div style={{ width: '100%', height: 184, minHeight: 184, maxHeight: 184, background: '#f3f4f6', position: 'relative', overflow: 'hidden' }}>
-                    {imageUrl ? (
-                      <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+                    {imageSources.src ? (
+                      <StorefrontResponsiveImage
+                        alt=""
+                        imageSources={imageSources}
+                        sizes="(max-width: 720px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                        style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                        width={400}
+                        height={184}
+                      />
                     ) : (
                       <div
                         style={{

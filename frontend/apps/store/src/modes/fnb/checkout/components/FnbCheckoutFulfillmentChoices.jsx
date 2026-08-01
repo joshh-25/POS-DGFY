@@ -53,7 +53,6 @@ export function FnbCheckoutFulfillmentChoices({
   fnbScheduleMode,
   fnbScheduledFor,
   isDeliveryOrder,
-  isMobileViewport,
   isResponsive,
   mobileOptionHeight,
   mobileOptionIconBox,
@@ -64,7 +63,7 @@ export function FnbCheckoutFulfillmentChoices({
   orderMethod,
   scheduleHoursLabel
 }) {
-  const choiceGridColumns = (isResponsive || !isMobileViewport) ? '1fr 1fr' : '1fr';
+  const choiceGridColumns = 'repeat(auto-fit, minmax(150px, 1fr))';
   const choiceProps = {
     brand: fnbOrderBrand,
     brandBorder: fnbOrderBrandBorder,
@@ -76,7 +75,7 @@ export function FnbCheckoutFulfillmentChoices({
   };
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: isResponsive ? '1fr' : '1fr 1fr', gap: 20, alignItems: 'start' }}>
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 20, alignItems: 'start' }}>
       <div style={{ display: 'grid', gap: 16 }}>
         <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>1. How would you like to receive your order?</div>
         <div style={{ display: 'grid', gridTemplateColumns: choiceGridColumns, gap: 16 }}>

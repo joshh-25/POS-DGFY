@@ -1,13 +1,27 @@
 ---
-status: authoritative
-authority_level: authoritative
+status: deprecated
+superseded_by: RELEASE_CANDIDATE_POLICY.md
+authority_level: historical
 owner: release
-last_reviewed: 2026-06-30
+last_reviewed: 2026-07-30
 applies_to: development_to_production_release_flow
 topic: development_to_production_workflow
 ---
 
 # Development To Production Workflow
+
+**Superseded 2026-07-30 — see `docs/ops/RELEASE_CANDIDATE_POLICY.md`.** This
+document describes a `master` branch and a root-owned external release
+controller. Neither exists in this repository (`Sieitz/dgfy-platform` uses
+`main`, and no controller was ever installed); it also references
+`scripts/promote-staging-to-master.js` and workflows
+(`staging-qualification.yml`, `exact-master-sha-qualification.yml`,
+`promote-staging-to-master.yml`) that were failing or permanently skipped on
+every recent run before being archived to `.github/workflows-archive/`. Kept
+here as historical context for the reviewed-batch-inventory and
+regression-risk tooling this repo still has scripts for but does not
+currently run as a live gate. Do not treat anything below as the current
+policy.
 
 ## Purpose
 
@@ -34,7 +48,7 @@ feature PR -> staging CI -> reviewed batch document -> isolated QA
 2. `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 3. `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
 4. `docs/architecture/adr/0030-free-tier-signed-release-authorization.md`
-5. `docs/architecture/adr/0027-paymongo-commerce-qrph-platform-split-settlement.md` for payment-sensitive releases
+5. `docs/architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md` for payment-sensitive releases
 6. `docs/ops/NO_STAGING_RELEASE_STANDARD.md`
 7. `docs/ops/DEPLOYMENT_GUIDE.md`
 8. `docs/testing/release-go-no-go-checklist.md`

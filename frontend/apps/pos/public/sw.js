@@ -78,7 +78,7 @@ const staleWhileRevalidateRuntime = async (request) => {
 
   const networkResponse = await networkPromise;
   if (networkResponse) return networkResponse;
-  throw new Error('offline');
+  return new Response(null, { status: 503, statusText: 'Offline' });
 };
 
 const networkFirstNavigation = async (request) => {

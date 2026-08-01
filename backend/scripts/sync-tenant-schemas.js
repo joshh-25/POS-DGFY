@@ -104,6 +104,33 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         payment_collected_terminal_id: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_collected_terminal_id` VARCHAR(100) NULL AFTER `payment_collected_shift_id`"
+        }),
+        employee_credit_account_id: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `employee_credit_account_id` INTEGER NULL"
+        }),
+        employee_credit_user_id: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `employee_credit_user_id` INTEGER NULL"
+        }),
+        employee_credit_employee_id: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `employee_credit_employee_id` INTEGER NULL"
+        }),
+        employee_credit_employee_name_snapshot: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `employee_credit_employee_name_snapshot` VARCHAR(255) NULL"
+        }),
+        employee_credit_account_code_snapshot: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `employee_credit_account_code_snapshot` VARCHAR(40) NULL"
+        }),
+        employee_credit_amount: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `employee_credit_amount` DECIMAL(14,4) NULL"
+        }),
+        employee_credit_balance_after: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `employee_credit_balance_after` DECIMAL(14,4) NULL"
+        }),
+        employee_credit_outstanding_after: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `employee_credit_outstanding_after` DECIMAL(14,4) NULL AFTER `employee_credit_balance_after`"
+        }),
+        employee_credit_authorization_reference: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `employee_credit_authorization_reference` VARCHAR(80) NULL"
         })
     }),
     pos_terminal_shifts: Object.freeze({
@@ -127,6 +154,76 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
 // (column types, defaults, keys, FK constraints) — declaration order matters, since later tables
 // have foreign keys pointing at earlier ones.
 export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
+    employees: Object.freeze({
+        sql: "CREATE TABLE `employees` (\n"
+            + "  `employee_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `employee_code` varchar(40) NOT NULL,\n"
+            + "  `full_name` varchar(255) NOT NULL,\n"
+            + "  `email` varchar(255) DEFAULT NULL,\n"
+            + "  `phone` varchar(40) DEFAULT NULL,\n"
+            + "  `location_id` int DEFAULT NULL,\n"
+            + "  `is_active` tinyint(1) NOT NULL DEFAULT '1',\n"
+            + "  `created_by` int DEFAULT NULL,\n"
+            + "  `updated_by` int DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL,\n"
+            + "  `updated_at` datetime NOT NULL,\n"
+            + "  PRIMARY KEY (`employee_id`),\n"
+            + "  UNIQUE KEY `uq_employees_code` (`employee_code`),\n"
+            + "  KEY `idx_employees_name` (`full_name`),\n"
+            + "  KEY `idx_employees_location_active` (`location_id`,`is_active`),\n"
+            + "  CONSTRAINT `fk_employees_location` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_employees_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_employees_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    }),
+    employee_credit_accounts: Object.freeze({
+        sql: "CREATE TABLE `employee_credit_accounts` (\n"
+            + "  `account_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `user_id` int DEFAULT NULL,\n"
+            + "  `employee_id` int DEFAULT NULL,\n"
+            + "  `account_code` varchar(40) NOT NULL,\n"
+            + "  `is_eligible` tinyint(1) NOT NULL DEFAULT '0',\n"
+            + "  `balance` decimal(14,4) NOT NULL DEFAULT '0.0000',\n"
+            + "  `outstanding_balance` decimal(14,4) NOT NULL DEFAULT '0.0000',\n"
+            + "  `credit_limit` decimal(14,4) DEFAULT NULL,\n"
+            + "  `authorization_pin_hash` varchar(255) DEFAULT NULL,\n"
+            + "  `version` int NOT NULL DEFAULT '0',\n"
+            + "  `created_at` datetime NOT NULL,\n"
+            + "  `updated_at` datetime NOT NULL,\n"
+            + "  PRIMARY KEY (`account_id`),\n"
+            + "  UNIQUE KEY `uq_employee_credit_accounts_user` (`user_id`),\n"
+            + "  UNIQUE KEY `uq_employee_credit_accounts_employee` (`employee_id`),\n"
+            + "  UNIQUE KEY `uq_employee_credit_accounts_code` (`account_code`),\n"
+            + "  CONSTRAINT `fk_employee_credit_accounts_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`user_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_employee_credit_accounts_employee` FOREIGN KEY (`employee_id`) REFERENCES `employees` (`employee_id`) ON DELETE RESTRICT ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    }),
+    employee_credit_ledger_entries: Object.freeze({
+        sql: "CREATE TABLE `employee_credit_ledger_entries` (\n"
+            + "  `ledger_entry_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `account_id` int NOT NULL,\n"
+            + "  `pos_transaction_id` int DEFAULT NULL,\n"
+            + "  `entry_type` enum('grant','debit','charge','repayment','reversal','adjustment','expiration') NOT NULL,\n"
+            + "  `amount` decimal(14,4) NOT NULL,\n"
+            + "  `balance_before` decimal(14,4) NOT NULL,\n"
+            + "  `balance_after` decimal(14,4) NOT NULL,\n"
+            + "  `actor_user_id` int DEFAULT NULL,\n"
+            + "  `shift_id` int DEFAULT NULL,\n"
+            + "  `terminal_id` varchar(100) DEFAULT NULL,\n"
+            + "  `location_id` int DEFAULT NULL,\n"
+            + "  `authorization_reference` varchar(80) DEFAULT NULL,\n"
+            + "  `idempotency_key` varchar(160) NOT NULL,\n"
+            + "  `reason` varchar(500) DEFAULT NULL,\n"
+            + "  `metadata` json DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL,\n"
+            + "  PRIMARY KEY (`ledger_entry_id`),\n"
+            + "  UNIQUE KEY `uq_employee_credit_ledger_idempotency` (`idempotency_key`),\n"
+            + "  KEY `idx_employee_credit_ledger_account_created` (`account_id`,`created_at`),\n"
+            + "  KEY `idx_employee_credit_ledger_transaction` (`pos_transaction_id`),\n"
+            + "  CONSTRAINT `fk_employee_credit_ledger_account` FOREIGN KEY (`account_id`) REFERENCES `employee_credit_accounts` (`account_id`) ON DELETE RESTRICT ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `fk_employee_credit_ledger_transaction` FOREIGN KEY (`pos_transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE RESTRICT ON UPDATE RESTRICT\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    }),
     pos_discount_rules: Object.freeze({
         sql: "CREATE TABLE `pos_discount_rules` (\n"
             + "  `id` int NOT NULL AUTO_INCREMENT,\n"
@@ -553,6 +650,10 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     // pos_transactions.order_method = 'appointment'. Presence checks miss this the same way
     // they missed items.category above.
     pos_transactions: Object.freeze({
+        payment_type: Object.freeze({
+            enumValues: Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph', 'employee_credit']),
+            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `payment_type` ENUM('cash','gcash','maya','card','bank_transfer','qrph','employee_credit') NOT NULL DEFAULT 'cash'"
+        }),
         order_method: Object.freeze({
             enumValues: Object.freeze(['dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment']),
             sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `order_method` ENUM('dine_in','takeout','pickup','delivery','online','appointment') NOT NULL DEFAULT 'dine_in'"
@@ -560,6 +661,12 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
         service_fee_method_snapshot: Object.freeze({
             enumValues: Object.freeze(['dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment']),
             sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `service_fee_method_snapshot` ENUM('dine_in','takeout','pickup','delivery','online','appointment') NULL"
+        })
+    }),
+    employee_credit_ledger_entries: Object.freeze({
+        entry_type: Object.freeze({
+            enumValues: Object.freeze(['grant', 'debit', 'charge', 'repayment', 'reversal', 'adjustment', 'expiration']),
+            sql: "ALTER TABLE `employee_credit_ledger_entries` MODIFY COLUMN `entry_type` ENUM('grant','debit','charge','repayment','reversal','adjustment','expiration') NOT NULL"
         })
     })
 });

@@ -13,6 +13,7 @@ dotenv.config({ path: join(__dirname, '..', '.env') });
 
 import paymentRoutes from './routes/payments.js';
 import commercePaymentRoutes from './routes/commercePayments.js';
+import tenantRevenueRoutes from './routes/tenantRevenue.js';
 import cors from 'cors';
 import helmet from 'helmet';
 import compression from 'compression';
@@ -801,6 +802,7 @@ app.use('/api/v1/analytics', analyticsRoutes);
 app.use('/api/v1/feedback', feedbackRoutes);
 app.use('/api/v1/payments', paymentRoutes);
 app.use('/api/v1/commerce-payments', commercePaymentRoutes);
+app.use('/api/v1/tenant-revenue', tenantRevenueRoutes);
 // Mount specific admin routes first to avoid catching issues
 app.use('/api/v1/admin/tenants', adminTenantRoutes);
 app.use('/api/v1/admin/platform-admins', platformAdminRoutes);

@@ -52,7 +52,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0027 | [PayMongo QR Ph Commerce Payment Sessions and Platform Split Settlement](0027-paymongo-commerce-qrph-platform-split-settlement.md) | `accepted` | paymongo_qrph_platform_split_settlement | 2026-11-19 | 0 |
 | 0028 | [DGFY-Only Company Access And Switching](0028-dgfy-account-company-switching.md) | `accepted` | dgfy_account_company_switching | 2027-01-08 | 0 |
 | 0029 | [Catalog, Inventory, POS, and Storefront Ownership Boundaries](0029-catalog-inventory-pos-storefront-ownership-boundaries.md) | `accepted` | catalog_inventory_pos_storefront_ownership_boundaries | 2026-12-26 | 5 |
-| 0030 | [Free-Tier Signed Release Authorization](0030-free-tier-signed-release-authorization.md) | `accepted` | free_tier_signed_release_authorization | 2026-12-28 | 0 |
+| 0030 | [Free-Tier Signed Release Authorization](0030-free-tier-signed-release-authorization.md) | `superseded` | free_tier_signed_release_authorization | 2026-12-28 | 0 |
 | 0031 | [POS Terminal Pairing and Shift-Safe Navigation](0031-pos-terminal-pairing-and-shift-safe-navigation.md) | `accepted` | pos_terminal_pairing_and_shift_safe_navigation | 2026-12-28 | 0 |
 | 0032 | [Standalone DGFY API Service (`apps/dgfy-api`)](0032-standalone-dgfy-api-service.md) | `accepted` | standalone_dgfy_api_service | 2027-01-08 | 0 |
 | 0033 | [Commercial Promo and Statutory POS Discount Boundaries](0033-commercial-promo-and-statutory-pos-discount-boundaries.md) | `accepted` | commercial_promo_and_statutory_pos_discount_boundaries | 2027-01-07 | 0 |
@@ -73,6 +73,8 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0048 | [QA Landlord Invoicing Boundary](0048-qa-landlord-invoicing-boundary.md) | `accepted` | qa_landlord_invoicing | 2027-01-28 | 0 |
 | 0049 | [Batch Menu Import via Asynchronous Extraction](0049-batch-menu-import-async-extraction.md) | `accepted` | batch_menu_import | 2027-01-29 | 0 |
 | 0050 | [Affiliate Buyer-Facing Pricing Rule Engine (Phase 1)](0050-affiliate-buyer-facing-pricing-rule-engine.md) | `accepted` | affiliate_buyer_facing_pricing_rule_engine | 2027-01-29 | 3 |
+| 0051 | [POS Employee Credit Tender and Ledger](0051-pos-employee-credit-tender-and-ledger.md) | `accepted` | pos_employee_credit_tender_and_ledger | 2027-01-30 | 0 |
+| 0052 | [DGFY Collection, Tenant Revenue Ledger, and Controlled Settlement](0052-tenant-revenue-collection-ledger-and-settlement.md) | `accepted` | tenant_revenue_collection_ledger_settlement | 2027-01-31 | 0 |
 
 ## Renumbered (collision stubs)
 

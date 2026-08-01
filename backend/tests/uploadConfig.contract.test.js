@@ -7,8 +7,10 @@ import {
     posCatalogImageUpload,
     storefrontCatalogBulkImageUpload,
     storefrontCatalogGalleryImageUpload,
-    storefrontCatalogImageUpload
+    storefrontCatalogImageUpload,
+    preserveTenantContext
 } from '../src/config/uploadConfig.js';
+import dbStore from '../src/utils/dbStore.js';
 
 const runFileFilter = (upload, file) => new Promise((resolve) => {
     upload.fileFilter({}, file, (error, accepted) => {
@@ -17,6 +19,19 @@ const runFileFilter = (upload, file) => new Promise((resolve) => {
 });
 
 describe('uploadConfig catalog image transport contracts', () => {
+    it('keeps the request tenant context after multipart parsing completes', async () => {
+        const observedContext = await new Promise((resolve) => {
+            dbStore.run({ tenantId: 'tenant-image-upload' }, () => {
+                const middleware = preserveTenantContext((req, res, next) => {
+                    setImmediate(() => dbStore.run({ tenantId: 'default' }, next));
+                });
+                middleware({}, {}, () => resolve(dbStore.getStore()));
+            });
+        });
+
+        expect(observedContext).toEqual({ tenantId: 'tenant-image-upload' });
+    });
+
     it('keeps single-image and gallery uploads strict at transport', async () => {
         await expect(runFileFilter(posCatalogImageUpload, {
             fieldname: 'image',

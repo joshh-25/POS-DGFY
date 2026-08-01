@@ -1,5 +1,7 @@
 import { ShieldCheck } from 'lucide-react';
 import { OrderSummaryCard } from '../../../../shared/components/checkout/OrderSummaryCard.jsx';
+import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
+import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 
 function FnbCheckoutTrustCard({ accentColor, accentSoft, accentTint, displayFont, headingWeight }) {
   return (
@@ -18,7 +20,7 @@ export function FnbCheckoutSummaryContent({
   accentColor, accentSoft, accentTint, bodyFont, cart, cartImageErrors, cartCount,
   checkoutAllowed, displayFont, isDeliveryOrder, money, onImageError,
   paymentStep = false, promoDiscountSummaryRow, promoPanel, scheduleLabel, totals,
-  variant = 'detailed', withAssetOrigin
+  variant = 'detailed'
 }) {
   const statusRows = [
     { label: 'Fulfillment', value: isDeliveryOrder ? 'Delivery' : 'Pickup' },
@@ -32,8 +34,8 @@ export function FnbCheckoutSummaryContent({
     value: money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0)),
     image: (
       <div style={{ width: 48, height: 48, borderRadius: 12, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center' }}>
-        {line.image_url && !cartImageErrors.has(Number(line.item_id))
-          ? <img src={withAssetOrigin(line.image_url)} alt={line.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => onImageError(line.item_id)} />
+        {(line.thumbnail_url || line.image_url) && !cartImageErrors.has(Number(line.item_id))
+          ? <StorefrontResponsiveImage imageSources={resolveStorefrontImageSources(line, { preferred: 'thumbnail' })} alt={line.name} sizes="48px" width={48} height={48} loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} onError={() => onImageError(line.item_id)} />
           : <span style={{ fontSize: 10, fontWeight: 700, color: '#64748b' }}>{String(line.name || '').slice(0, 1) || 'I'}</span>}
       </div>
     )

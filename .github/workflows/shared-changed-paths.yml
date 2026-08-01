@@ -1,4 +1,4 @@
-name: Changed Paths
+name: Shared Changed Paths
 
 # Tells callers which image builds a given range of commits actually needs, so
 # a backend-only change doesn't spend a runner rebuilding the frontend image
@@ -26,7 +26,7 @@ on:
         description: JSON array passed to runs-on for this job
         required: false
         type: string
-        default: '["ubuntu-slim"]'
+        default: '["self-hosted"]'
     outputs:
       frontend:
         description: '"true" when this range touches anything the frontend image is built from'

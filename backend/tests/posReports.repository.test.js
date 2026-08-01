@@ -329,7 +329,7 @@ describe('posRepository reports analytics', () => {
                 status: 'voided',
                 payment_status: 'paid',
                 subtotal_amount: 60,
-                discount_amount: 0,
+                discount_amount: 10,
                 service_fee_amount: 0,
                 restaurant_service_charge_amount: 0,
                 vat_amount: 7.2,
@@ -364,11 +364,13 @@ describe('posRepository reports analytics', () => {
         expect(result.daily_report.summary).toEqual(expect.objectContaining({
             gross_sales: 60,
             net_sales: 0,
+            discounts: 0,
             refunds_voids: 60,
             cogs: 20,
             pos_profit_loss: -20,
             is_loss: true
         }));
+        expect(result.daily_report.discount_breakdown).toEqual([]);
     });
 
     it('excludes transactions dated the day after date_to (off-by-one boundary regression)', async () => {

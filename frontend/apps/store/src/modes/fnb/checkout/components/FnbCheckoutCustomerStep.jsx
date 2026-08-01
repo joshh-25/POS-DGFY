@@ -17,7 +17,8 @@ export function FnbCheckoutCustomerStep({
 }) {
   return (
     <section style={{ border: '1px solid #e2e8f0', borderRadius: isResponsive ? 20 : 16, background: '#fff', padding: isResponsive ? 16 : isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
-      {!isResponsive ? <><div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>Step 1: Customer Details</div><div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>{customerNotice}</div></> : null}
+      <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>Step 1: Customer Details</div>
+      <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>{customerNotice}</div>
       {identityContent}
       {guestEmailVerificationContent}
       {!isResponsive ? (

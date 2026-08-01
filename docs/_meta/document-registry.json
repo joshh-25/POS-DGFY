@@ -48,8 +48,8 @@
     {
       "path": "docs/architecture/adr/0030-free-tier-signed-release-authorization.md",
       "topic": "free_tier_signed_release_authorization",
-      "expected_status": "accepted",
-      "expected_authority_level": "authoritative"
+      "expected_status": "superseded",
+      "expected_authority_level": "historical"
     },
     {
       "path": "docs/templates/IMPLEMENTATION_PLAN_TEMPLATE.md",
@@ -66,6 +66,12 @@
     {
       "path": "docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md",
       "topic": "development_to_production_workflow",
+      "expected_status": "deprecated",
+      "expected_authority_level": "historical"
+    },
+    {
+      "path": "docs/ops/RELEASE_CANDIDATE_POLICY.md",
+      "topic": "release_candidate_policy",
       "expected_status": "authoritative",
       "expected_authority_level": "authoritative"
     },

@@ -26,7 +26,7 @@ env:
 
 jobs:
   changes:
-    uses: ./.github/workflows/changed-paths.yml
+    uses: ./.github/workflows/shared-changed-paths.yml
     with:
       runner_labels_json: *runner_light
 

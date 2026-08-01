@@ -44,10 +44,44 @@ describe('buildAdminLoginUseCase', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.data.admin).toEqual({ username: 'skupervisor' });
+    expect(result.data.admin).toEqual({
+      username: 'skupervisor',
+      financial_role: 'platform_admin'
+    });
     const decoded = jwt.verify(result.data.token, 'test-secret');
     expect(decoded.username).toBe('skupervisor');
     expect(decoded.type).toBe('admin');
+    expect(decoded.financial_role).toBe('platform_admin');
+  });
+
+  it('authenticates the matching account from a multi-admin finance roster', async () => {
+    const preparerHash = bcrypt.hashSync('prepare-secret', 10);
+    const approverHash = bcrypt.hashSync('approve-secret', 10);
+    const useCase = buildUseCase({
+      adminCredentialsProvider: () => ([
+        {
+          username: 'finance.preparer',
+          passwordHash: preparerHash,
+          financialRole: 'finance_preparer'
+        },
+        {
+          username: 'finance.approver',
+          passwordHash: approverHash,
+          financialRole: 'finance_approver'
+        }
+      ])
+    });
+
+    const result = await useCase({
+      username: 'finance.approver',
+      password: 'approve-secret'
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.data.admin.financial_role).toBe('finance_approver');
+    const decoded = jwt.verify(result.data.token, 'test-secret');
+    expect(decoded.username).toBe('finance.approver');
+    expect(decoded.financial_role).toBe('finance_approver');
   });
 
   it('does not reconcile the bootstrap database identity for an invalid password', async () => {

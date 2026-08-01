@@ -56,6 +56,60 @@ describe('storefront cart storage', () => {
     expect(normalizeStorefrontCartLine({ item_id: 12, quantity: 0 })).toBeNull();
   });
 
+  it('preserves optimized cart thumbnails while remaining compatible with legacy image URLs', () => {
+    expect(normalizeStorefrontCartLine({
+      item_id: 12,
+      quantity: 1,
+      image_url: '/uploads/optimized/catalog/item-large.webp',
+      thumbnail_url: '/uploads/optimized/catalog/item-thumbnail.webp',
+      image_variants: {
+        thumbnail_url: '/uploads/optimized/catalog/item-thumbnail.webp',
+        medium_url: '/uploads/optimized/catalog/item-medium.webp',
+        large_url: '/uploads/optimized/catalog/item-large.webp',
+        placeholder_url: '/uploads/optimized/catalog/placeholder.webp',
+        avif: {
+          thumbnail_url: '/uploads/optimized/catalog/item-thumbnail.avif',
+          medium_url: '/uploads/optimized/catalog/item-medium.avif',
+          large_url: '/uploads/optimized/catalog/item-large.avif'
+        },
+        webp: {
+          thumbnail_url: '/uploads/optimized/catalog/item-thumbnail.webp',
+          medium_url: '/uploads/optimized/catalog/item-medium.webp',
+          large_url: '/uploads/optimized/catalog/item-large.webp'
+        },
+        version: 2
+      }
+    })).toMatchObject({
+      image_url: '/uploads/optimized/catalog/item-large.webp',
+      thumbnail_url: '/uploads/optimized/catalog/item-thumbnail.webp',
+      image_variants: {
+        placeholder_url: '/uploads/optimized/catalog/placeholder.webp',
+        avif: {
+          thumbnail_url: '/uploads/optimized/catalog/item-thumbnail.avif'
+        },
+        webp: {
+          thumbnail_url: '/uploads/optimized/catalog/item-thumbnail.webp'
+        },
+        version: 2
+      }
+    });
+
+    expect(normalizeStorefrontCartLine({
+      item_id: 13,
+      quantity: 1,
+      image_url: '/uploads/catalog/legacy-item.png'
+    })).toMatchObject({
+      image_url: '/uploads/catalog/legacy-item.png',
+      thumbnail_url: '/uploads/catalog/legacy-item.png'
+    });
+
+    expect(normalizeStorefrontCartLine({
+      item_id: 14,
+      quantity: 1,
+      image_variants: { avif: 'invalid', arbitrary_payload: { ignored: true } }
+    })).toMatchObject({ image_variants: null });
+  });
+
   it('rejects expired, cross-store, and cross-mode snapshots', () => {
     const now = Date.now();
     expect(normalizeStorefrontCartSnapshot({

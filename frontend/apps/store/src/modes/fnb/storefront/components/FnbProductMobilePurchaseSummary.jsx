@@ -1,12 +1,13 @@
 import React from 'react';
 import { ChefHat, ShoppingCart, X } from 'lucide-react';
+import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 
 export function FnbProductMobilePurchaseSummary({
   actionButtonBase,
   available,
   displayFont,
   formatMoney,
-  imageUrl,
+  imageSources,
   isOpen,
   itemName,
   onAddToCart,
@@ -127,7 +128,16 @@ export function FnbProductMobilePurchaseSummary({
             <div style={{ borderTop: '1px solid rgba(226,232,240,0.8)', paddingTop: spacing(2), display: 'grid', gap: spacing(2) }}>
               <div style={{ display: 'grid', gridTemplateColumns: '64px minmax(0, 1fr) auto', gap: 12, alignItems: 'center' }}>
                 <div style={{ width: 64, height: 64, borderRadius: 14, overflow: 'hidden', background: '#f8fafc', border: '1px solid rgba(226,232,240,0.8)', display: 'grid', placeItems: 'center' }}>
-                  {imageUrl ? <img src={imageUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <ChefHat size={22} color="#94a3b8" />}
+                  {imageSources?.src ? (
+                    <StorefrontResponsiveImage
+                      alt=""
+                      imageSources={imageSources}
+                      sizes="64px"
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      width={64}
+                      height={64}
+                    />
+                  ) : <ChefHat size={22} color="#94a3b8" />}
                 </div>
                 <div style={{ minWidth: 0, display: 'grid', gap: 4 }}>
                   <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{itemName}</div>

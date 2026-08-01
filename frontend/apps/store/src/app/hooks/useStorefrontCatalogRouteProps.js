@@ -164,7 +164,8 @@ export function useStorefrontCatalogRouteProps({
   setIsFnbCategoryDropdownOpen,
   simpleCheckoutRouteProps,
   simpleStorefrontModel,
-  defaultStorefrontModel
+  defaultStorefrontModel,
+  defaultOrderRouteProps
 }) {
   return {
     isServicesMode,
@@ -329,6 +330,7 @@ export function useStorefrontCatalogRouteProps({
     setIsFnbCategoryDropdownOpen,
     simpleCheckoutRouteProps,
     simpleStorefrontModel,
-    defaultStorefrontModel
+    defaultStorefrontModel,
+    defaultOrderRouteProps
   };
 }
