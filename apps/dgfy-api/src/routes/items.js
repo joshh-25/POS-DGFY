@@ -34,7 +34,9 @@ import {
   storefrontCatalogBulkImageUpload,
   storefrontCatalogGalleryImageUpload,
   storefrontCatalogImageUpload,
-  menuImportFileUpload
+  preserveTenantContext,
+  menuImportFileUpload,
+  menuImportBatchUpload
 } from '../config/uploadConfig.js';
 
 const router = express.Router();
@@ -70,7 +72,7 @@ router.post(
   '/import/pdf/preview',
   requireMenuImportEnabled,
   checkPermission(PERMISSIONS.INVENTORY.actions.IMPORT_ITEMS),
-  menuImportFileUpload.single('file'),
+  preserveTenantContext(menuImportFileUpload.single('file')),
   menuImportController.previewPdfImport
 );
 router.post(
@@ -92,11 +94,11 @@ router.get('/supplier-coverage', itemController.getItemSupplierCoverage);
 // Storefront catalog controls - must be before :item_id routes to avoid conflicts
 router.get('/storefront-overrides', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateStorefrontCatalogOverridesQuery, itemController.listStorefrontCatalogOverrides);
 router.patch('/storefront-overrides/bulk', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), itemController.updateBulkStorefrontCatalogOverrides);
-router.post('/storefront-images/bulk', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), storefrontCatalogBulkImageUpload.array('images', 50), itemController.uploadBulkStorefrontCatalogImages);
+router.post('/storefront-images/bulk', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), preserveTenantContext(storefrontCatalogBulkImageUpload.array('images', 50)), itemController.uploadBulkStorefrontCatalogImages);
 router.patch('/:item_id/storefront-override', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, validateUpdateStorefrontCatalogOverride, itemController.updateStorefrontCatalogOverride);
 router.post('/:item_id/storefront-image/external', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, validateExternalProductImageImport, itemController.importExternalStorefrontCatalogImage);
-router.post('/:item_id/storefront-image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, storefrontCatalogImageUpload.single('image'), itemController.uploadStorefrontCatalogImage);
-router.post('/:item_id/storefront-images', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, storefrontCatalogGalleryImageUpload.array('images', 5), itemController.uploadStorefrontCatalogGalleryImages);
+router.post('/:item_id/storefront-image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, preserveTenantContext(storefrontCatalogImageUpload.single('image')), itemController.uploadStorefrontCatalogImage);
+router.post('/:item_id/storefront-images', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, preserveTenantContext(storefrontCatalogGalleryImageUpload.array('images', 5)), itemController.uploadStorefrontCatalogGalleryImages);
 router.patch('/:item_id/storefront-images/gallery', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, itemController.updateStorefrontCatalogGallery);
 router.delete('/:item_id/storefront-images/:image_index', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, itemController.deleteStorefrontCatalogGalleryImage);
 router.delete('/:item_id/storefront-image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, itemController.deleteStorefrontCatalogImage);

@@ -1,10 +1,10 @@
 name: Production Candidate Bundle
 
 on:
-  workflow_run:
-    workflows: [ "Exact Master SHA Qualification" ]
-    types: [ completed ]
-    branches: [ master ]
+  # The workflow_run trigger that used to fire this automatically on "Exact
+  # Master SHA Qualification" completion was removed when that qualification
+  # workflow was archived (see .github/workflows-archive/README.md). This now
+  # runs by manual dispatch only.
   workflow_dispatch:
     inputs:
       release_target_sha:
@@ -26,7 +26,6 @@ jobs:
   candidate-bundle:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -44,11 +43,7 @@ jobs:
         shell: bash
         run: |
           git fetch origin master --tags
-          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
-            TARGET_SHA="${{ inputs.release_target_sha }}"
-          else
-            TARGET_SHA="${{ github.event.workflow_run.head_sha }}"
-          fi
+          TARGET_SHA="${{ inputs.release_target_sha }}"
           test "$(git rev-parse origin/master)" = "$TARGET_SHA"
           echo "sha=$TARGET_SHA" >> "$GITHUB_OUTPUT"
 

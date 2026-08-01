@@ -57,23 +57,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # See pr-frontend-build-checks.yml for why this builder is named and
-      # retained rather than created-and-destroyed per run. Both PR checks and
-      # this deploy build share the one `dgfy-builder` per runner, which is
-      # what `cache-from: type=gha,scope=frontend` was trying (and failing) to
-      # achieve -- GitHub's Actions cache is isolated per branch, so a cache
-      # written from a PR ref was never readable from develop anyway.
+      # Ephemeral runners get a fresh builder every run, so the layer cache has
+      # to travel through the GitHub Actions cache instead of living on a
+      # retained local builder (that only worked on the old persistent
+      # self-hosted runners; see git history for that approach). This is the
+      # canonical `frontend` cache scope -- deploy-frontend.yml is the only
+      # writer, so PR builds (pr-frontend-build-checks.yml) read from it via
+      # cache-from without ever writing back to it.
       - uses: docker/setup-buildx-action@v3
-        with:
-          name: dgfy-builder
-          keep-state: true
-          cleanup: false
-          buildkitd-config-inline: |
-            [worker.oci]
-              gc = true
-              # Lowered from 20GB to 8GB — see pr-frontend-build-checks.yml for why
-              # (these runners' ~39GB root disks started filling up, 2026-07-26).
-              gckeepstorage = "8GB"
 
       # Single image builds all 3 SPAs (skupervisor/pos/storefront) via
       # `npm run build:all` -- one nginx serves them on 3 internal ports.
@@ -99,13 +90,17 @@ jobs:
           file: infrastructure/docker/frontend/Dockerfile
           push: true
           tags: ${{ steps.meta.outputs.tags }}
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
           build-args: |
             VITE_API_URL=${{ vars.VITE_API_URL }}
             VITE_STORE_BASE_PATH=${{ vars.VITE_STORE_BASE_PATH }}
             VITE_TENANT_STORE_BASE_PATH=${{ vars.VITE_TENANT_STORE_BASE_PATH }}
             VITE_ROOT_TENANT_SLUGS=${{ vars.VITE_ROOT_TENANT_SLUGS }}
             VITE_PAYMENTS_ENABLED=${{ vars.VITE_PAYMENTS_ENABLED }}
+            VITE_STOREFRONT_SANDBOX_QRPH_ENABLED=${{ vars.VITE_STOREFRONT_SANDBOX_QRPH_ENABLED }}
             VITE_MENU_PDF_IMPORT_ENABLED=${{ vars.VITE_MENU_PDF_IMPORT_ENABLED }}
+            VITE_MENU_IMPORT_BATCH_ENABLED=${{ vars.VITE_MENU_IMPORT_BATCH_ENABLED }}
             VITE_BUILD_STAMP=${{ github.sha }}
             VITE_DGFY_AUTH_URL=${{ vars.VITE_DGFY_AUTH_URL }}
             VITE_SKUPERVISOR_REGISTRATION_URL=${{ vars.VITE_SKUPERVISOR_REGISTRATION_URL }}

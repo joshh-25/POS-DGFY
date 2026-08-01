@@ -36,7 +36,11 @@ import {
 } from '@/src/features/settings/modeItemTaxonomy.js';
 import { resolveItemFinancialPolicy } from '@/src/features/inventory/itemFinancialPolicy.js';
 import { lookupExternalProduct } from '@/src/services/itemService.js';
-import { getGtinValidationMessage } from '@/src/utils/barcodePolicy.js';
+import {
+  getGtinValidationMessage,
+  getInternalBarcodeValidationMessage,
+  normalizeBarcodeEntry
+} from '@/src/utils/barcodePolicy.js';
 import ProductQrScannerModal from '@/src/features/inventory/components/ProductQrScannerModal.jsx';
 import { toast } from 'sonner';
 
@@ -370,6 +374,7 @@ export default function ItemFormModal({
   const [externalLookupLoading, setExternalLookupLoading] = useState(false);
   const [externalLookupError, setExternalLookupError] = useState('');
   const [externalQrScannerOpen, setExternalQrScannerOpen] = useState(false);
+  const [useInternalBarcode, setUseInternalBarcode] = useState(false);
   const isEditingDraft = item?.status === 'draft';
   const isSaving = Boolean(savingAction);
   const folderSuggestionsListId = `item-folder-suggestions-${item?.item_id || item?.id || 'new'}`;
@@ -552,6 +557,7 @@ export default function ItemFormModal({
       setExternalLookupError('');
       setExternalLookupLoading(false);
       setExternalQrScannerOpen(false);
+      setUseInternalBarcode(false);
       setTrackServiceCost(initialCategory === 'service' && Number(item.cost_per_unit || 0) > 0);
       if (msmeMode) {
         setMsmeOriginalCategory(item.category || null);
@@ -631,6 +637,7 @@ export default function ItemFormModal({
       setExternalLookupError('');
       setExternalLookupLoading(false);
       setExternalQrScannerOpen(false);
+      setUseInternalBarcode(false);
       setTrackServiceCost(false);
       setMsmeOriginalCategory(null);
       setMsmeCategoryTouched(false);
@@ -743,8 +750,9 @@ export default function ItemFormModal({
   };
 
   const handleExternalBarcodeChange = (value) => {
-    const normalized = String(value || '').replace(/\D/g, '').slice(0, 14);
+    const normalized = normalizeBarcodeEntry(value);
     setExternalBarcode(normalized);
+    setUseInternalBarcode(false);
     if (normalized !== externalProductLookup?.code) {
       setExternalProductLookup(null);
       setAcceptedExternalProduct(null);
@@ -765,16 +773,17 @@ export default function ItemFormModal({
     setExternalLookupError('');
     setExternalProductLookup(null);
     setAcceptedExternalProduct(null);
+    setUseInternalBarcode(false);
     try {
       const result = await lookupExternalProduct(lookupCode);
       setExternalProductLookup(result);
       if (!result?.found) {
-        setExternalLookupError('No registry match was found. You can still enter the item manually.');
+        setExternalLookupError('Barcode captured. No registry details were found. Complete the remaining item details; this barcode will still be saved.');
       }
     } catch (error) {
       setExternalLookupError(
         error?.response?.data?.message
-        || 'The product registry is unavailable. Enter the item manually or try again.'
+        || 'The product registry is unavailable. Complete the item manually; this valid barcode will still be saved.'
       );
     } finally {
       setExternalLookupLoading(false);
@@ -785,6 +794,20 @@ export default function ItemFormModal({
     setExternalQrScannerOpen(false);
     handleExternalBarcodeChange(code);
     void handleExternalProductLookup(code);
+  };
+
+  const handleUseInternalBarcode = () => {
+    const validationMessage = getInternalBarcodeValidationMessage(externalBarcode);
+    if (validationMessage) {
+      setExternalLookupError(validationMessage);
+      toast.error(validationMessage);
+      return;
+    }
+
+    setUseInternalBarcode(true);
+    setExternalLookupError('');
+    setExternalProductLookup(null);
+    setAcceptedExternalProduct(null);
   };
 
   const applyExternalProductDetails = () => {
@@ -971,12 +994,23 @@ export default function ItemFormModal({
   };
 
   const handleSaveDraft = async () => {
+    const barcodeValidationMessage = !item && externalBarcode
+      ? getGtinValidationMessage(externalBarcode)
+      : '';
+    if (barcodeValidationMessage && !useInternalBarcode) {
+      setExternalLookupError(barcodeValidationMessage);
+      toast.error(barcodeValidationMessage);
+      return;
+    }
+
     const draftData = {
       ...formData,
       status: 'draft',
-      ...(!item && acceptedExternalProduct?.found ? {
-        manufacturer_barcode: { code: acceptedExternalProduct.code }
-      } : {})
+      ...(!item && externalBarcode
+        ? useInternalBarcode
+          ? { internal_barcode: { code: externalBarcode } }
+          : { manufacturer_barcode: { code: externalBarcode } }
+        : {})
     };
     if (onSaveDraft) {
       try {
@@ -995,6 +1029,15 @@ export default function ItemFormModal({
   };
 
   const handleSubmit = async (isDraft = false) => {
+    const barcodeValidationMessage = !item && externalBarcode
+      ? getGtinValidationMessage(externalBarcode)
+      : '';
+    if (barcodeValidationMessage && !useInternalBarcode) {
+      setExternalLookupError(barcodeValidationMessage);
+      toast.error(barcodeValidationMessage);
+      return;
+    }
+
     // Convert empty strings to null for financial fields so hidden service cost stays unset.
     const cleanedData = {
       ...formData,
@@ -1071,9 +1114,11 @@ export default function ItemFormModal({
       shelf_life_days: cleanedData.fifo_enabled ? toNumberOrNull(cleanedData.shelf_life_days) : null,
       opened_shelf_life_days: cleanedData.fifo_enabled ? toNumberOrNull(cleanedData.opened_shelf_life_days) : null,
       status: isDraft ? 'draft' : 'active',
-      ...(!item && acceptedExternalProduct?.found ? {
-        manufacturer_barcode: { code: acceptedExternalProduct.code }
-      } : {}),
+      ...(!item && externalBarcode
+        ? useInternalBarcode
+          ? { internal_barcode: { code: externalBarcode } }
+          : { manufacturer_barcode: { code: externalBarcode } }
+        : {}),
       ...(categoryForSave === 'packaging' ? {
         packaging_specs: cleanedData.packaging_specs ? (() => {
 
@@ -1245,8 +1290,8 @@ export default function ItemFormModal({
                     <Barcode className="h-5 w-5" />
                   </div>
                   <div>
-                    <h3 id="external-barcode-heading" className="text-sm font-semibold text-slate-900">Scan UPC / EAN</h3>
-                    <p className="text-xs text-slate-600">Look up packaged-product details before creating the item. Manual entry remains available.</p>
+                    <h3 id="external-barcode-heading" className="text-sm font-semibold text-slate-900">Scan Product Barcode</h3>
+                    <p className="text-xs text-slate-600">Look up valid UPC/EAN details, or explicitly save a private code as an internal POS barcode.</p>
                   </div>
                 </div>
                 <div className="flex flex-col gap-2 sm:flex-row">
@@ -1259,9 +1304,11 @@ export default function ItemFormModal({
                         handleExternalProductLookup();
                       }
                     }}
-                    inputMode="numeric"
+                    inputMode="text"
+                    autoCapitalize="characters"
+                    spellCheck={false}
                     autoComplete="off"
-                    placeholder="Scan or enter GTIN / UPC / EAN"
+                    placeholder="Scan or enter GTIN / UPC / EAN / internal code"
                     aria-label="Product barcode"
                     disabled={externalLookupLoading || isSaving}
                   />
@@ -1273,7 +1320,7 @@ export default function ItemFormModal({
                     disabled={externalLookupLoading || isSaving}
                   >
                     <ScanLine className="mr-2 h-4 w-4" aria-hidden="true" />
-                    Scan QR
+                    Scan
                   </Button>
                   <Button
                     type="button"
@@ -1289,6 +1336,22 @@ export default function ItemFormModal({
                 {externalLookupError && (
                   <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" role="status">
                     {externalLookupError}
+                  </p>
+                )}
+                {externalBarcode && getGtinValidationMessage(externalBarcode) && !useInternalBarcode && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="w-full border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 sm:w-fit"
+                    onClick={handleUseInternalBarcode}
+                    disabled={externalLookupLoading || isSaving}
+                  >
+                    Use as Internal Barcode
+                  </Button>
+                )}
+                {useInternalBarcode && (
+                  <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900" role="status">
+                    Internal barcode selected. It will be saved for this company and can be used by the POS scanner. Registry details will not be imported.
                   </p>
                 )}
                 {externalProductLookup?.found && (

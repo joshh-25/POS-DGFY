@@ -9,10 +9,14 @@ import {
     computeDgfyConvenienceFee,
     getDgfyConvenienceFeeLabel
 } from '../../shared/utils/dgfyConvenienceFee.js';
+import { tenantRevenueSharingEnabled } from '../../../config/tenantRevenueFeature.js';
 import {
     accruePendingForOnlineOrder,
-    resolveActiveAffiliateEnrollmentById
+    resolveActiveAffiliateEnrollmentById,
+    resolveCommissionRateBps
 } from '../../dgfy/utils/affiliateCommissionAccrual.js';
+import { dgfyAffiliateRepository } from '../../dgfy/repositories/dgfyAffiliateRepository.js';
+import { resolveAffiliateUnitPriceCentavos } from '../../shared/utils/affiliatePricingPolicy.js';
 import {
     generateStoreCancelProof,
     generateStoreClaimToken,
@@ -44,7 +48,8 @@ import {
 import { resolveWorkflowCapabilitySettings as resolveWorkflowCapabilitySettingsDefault } from '../../shared/utils/workflowCapabilitySettingsCache.js';
 import {
     hasExplicitSalePrice,
-    requireExplicitSalePrice
+    requireExplicitSalePrice,
+    getExplicitSalePrice
 } from '../../shared/utils/itemFinancialPolicy.js';
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
@@ -174,6 +179,20 @@ const hashPayload = (payload) => crypto.createHash('sha256').update(stableString
 const isStorefrontGuestOtpRequired = () => String(process.env.STOREFRONT_GUEST_OTP_REQUIRED || 'true').trim().toLowerCase() !== 'false';
 
 const isDgfyStoreCustomer = (storeCustomer) => Boolean(String(storeCustomer?.dgfy_account_id || '').trim());
+
+const snapshotVerifiedStoreCustomer = (storeCustomer) => {
+    if (!storeCustomer || typeof storeCustomer !== 'object') return null;
+    const customerId = parsePositiveInt(storeCustomer.customer_id);
+    const dgfyAccountId = String(storeCustomer.dgfy_account_id || '').trim() || null;
+    if (!customerId && !dgfyAccountId) return null;
+    return {
+        customer_id: customerId,
+        dgfy_account_id: dgfyAccountId,
+        name: String(storeCustomer.name || '').trim(),
+        email: String(storeCustomer.email || '').trim().toLowerCase(),
+        phone: String(storeCustomer.phone || '').trim()
+    };
+};
 
 export const assertGuestCheckoutProof = ({ tenantId, email, idempotencyKey, proof, storeCustomer }) => {
     if (!isStorefrontGuestOtpRequired() || isDgfyStoreCustomer(storeCustomer)) return;
@@ -690,7 +709,16 @@ const resolveStorefrontLineModifiers = ({ item, line }) => {
     return { priceDelta, snapshot };
 };
 
-const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false, recipeItemIds = new Set() }) => {
+const prepareCheckoutLines = ({
+    rawLines,
+    itemMap,
+    allowOutOfStockSales = false,
+    recipeItemIds = new Set(),
+    // Phase 1 affiliate pricing rule engine (see
+    // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md). Null means no active
+    // attribution - every line then prices exactly as it did before this parameter existed.
+    affiliateSellingPriceRule = null
+}) => {
     if (!Array.isArray(rawLines) || rawLines.length === 0) {
         throw new DomainError(
             DomainErrorCode.VALIDATION_FAILED,
@@ -701,6 +729,10 @@ const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false,
 
     const preparedLines = [];
     let subtotalAmount = 0;
+    // Catalog-price subtotal, pre-affiliate-rule - identical to subtotalAmount when no rule is
+    // active. This is what decision A3's commission_base_mode = 'base_price_subtotal' accrues
+    // against, kept alongside the buyer-facing subtotalAmount rather than replacing it (§7.3).
+    let baseSubtotalAmount = 0;
     const requestedQuantityByItemId = new Map();
 
     for (const line of rawLines) {
@@ -764,10 +796,67 @@ const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false,
 
         const resolvedPrice = requireExplicitSalePrice(item, 'Storefront checkout');
 
+        // Affiliate selling-price rule applies to the item's base price only - a modifier add-on
+        // (e.g. "extra cheese +PHP20") costs the same regardless of any affiliate markup/discount,
+        // so modifierResolution.priceDelta is added to both the affiliate-adjusted price and the
+        // plain base price below, symmetrically.
+        let affiliateUnitPrice = resolvedPrice;
+        if (affiliateSellingPriceRule) {
+            let affiliateUnitPriceCentavos;
+            try {
+                affiliateUnitPriceCentavos = resolveAffiliateUnitPriceCentavos({
+                    basePriceCentavos: toCentavos(resolvedPrice),
+                    rule: affiliateSellingPriceRule
+                });
+            } catch (error) {
+                // A13: pricing is pre-commit and blocking - an unresolvable affiliate rule fails
+                // checkout rather than silently falling back to the catalog price.
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    `Unable to resolve the affiliate price for "${item.name}"`,
+                    {
+                        statusCode: 422,
+                        details: { reason_code: 'AFFILIATE_PRICE_UNRESOLVED', item_id: item.item_id }
+                    }
+                );
+            }
+            if (affiliateUnitPriceCentavos < 0) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    `The affiliate price for "${item.name}" would be negative`,
+                    {
+                        statusCode: 422,
+                        details: { reason_code: 'AFFILIATE_NEGATIVE_PRICE', item_id: item.item_id }
+                    }
+                );
+            }
+            // Decision A9: refuse a sale that would go below the item's own cost. Enforced here
+            // (per real item, at resolution time) rather than at rule-save time, because a Phase 1
+            // rule is tenant/enrollment-wide and applies across every product a tenant sells - there
+            // is no single representative cost to validate against when the owner configures it.
+            if (descriptor.carries_cost && item.cost_per_unit != null) {
+                const costPerUnitCentavos = toCentavos(item.cost_per_unit);
+                if (affiliateUnitPriceCentavos < costPerUnitCentavos) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        `The affiliate price for "${item.name}" would sell below its cost`,
+                        {
+                            statusCode: 422,
+                            details: { reason_code: 'AFFILIATE_BELOW_COST_FLOOR', item_id: item.item_id }
+                        }
+                    );
+                }
+            }
+            affiliateUnitPrice = affiliateUnitPriceCentavos / 100;
+        }
+
         const modifierResolution = resolveStorefrontLineModifiers({ item, line });
-        const effectiveUnitPrice = round4(resolvedPrice + modifierResolution.priceDelta);
+        const effectiveUnitPrice = round4(affiliateUnitPrice + modifierResolution.priceDelta);
+        const baseEffectiveUnitPrice = round4(resolvedPrice + modifierResolution.priceDelta);
         const lineSubtotal = round4(quantity * effectiveUnitPrice);
+        const baseLineSubtotal = round4(quantity * baseEffectiveUnitPrice);
         subtotalAmount = round4(subtotalAmount + lineSubtotal);
+        baseSubtotalAmount = round4(baseSubtotalAmount + baseLineSubtotal);
 
         preparedLines.push({
             item_id: item.item_id,
@@ -778,8 +867,8 @@ const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false,
             stock_effect_type: isStockExemptLine ? 'stock_exempt' : 'inventory_issue',
             stock_exempt_reason: resolveStockExemptReason(item, descriptor),
             sale_price: effectiveUnitPrice,
-            sale_price_overridden: false,
-            price_override_reason: null,
+            sale_price_overridden: Boolean(affiliateSellingPriceRule),
+            price_override_reason: affiliateSellingPriceRule ? 'affiliate_program' : null,
             line_subtotal: lineSubtotal,
             vat_type_snapshot: item.vat_type || 'vatable',
             vat_rate_snapshot: round4(VAT_RATE),
@@ -807,6 +896,7 @@ const prepareCheckoutLines = ({ rawLines, itemMap, allowOutOfStockSales = false,
     return {
         preparedLines,
         subtotalAmount,
+        baseSubtotalAmount,
         vatableSales,
         vatAmount,
         vatExemptSales,
@@ -891,15 +981,67 @@ const serializeStorefrontModifierGroups = (value) => (
         : []
 );
 
-const serializeStoreCatalogItem = (item = {}, accessPolicy = {}) => {
+// Phase 1 affiliate pricing rule engine: applies affiliateSellingPriceRule (resolved once per
+// request by the caller, see resolveAffiliateSellingPriceRuleForDisplay above) to the catalog price
+// shown to a browsing buyer. Unlike checkout (decision A13, fails closed on an unresolvable rule),
+// catalog display is best-effort - a misconfigured or unresolvable rule falls back to the plain
+// catalog price rather than taking the whole listing offline, since browsing has not committed to
+// anything yet and checkout re-validates and fails closed at the point that actually matters.
+const applyAffiliateDisplayPrice = (item, affiliateSellingPriceRule) => {
+    if (!affiliateSellingPriceRule) {
+        return { price: item.default_sale_price, applied: false };
+    }
+    try {
+        const catalogPrice = getExplicitSalePrice(item);
+        if (catalogPrice === null) return { price: item.default_sale_price, applied: false };
+
+        const affiliateUnitPriceCentavos = resolveAffiliateUnitPriceCentavos({
+            basePriceCentavos: Math.round(catalogPrice * 100),
+            rule: affiliateSellingPriceRule
+        });
+        if (affiliateUnitPriceCentavos < 0) {
+            logger.warn('[StorefrontCatalog] Affiliate price rule resolved negative, showing catalog price instead', {
+                item_id: item.item_id,
+                rule_type: affiliateSellingPriceRule.type
+            });
+            return { price: item.default_sale_price, applied: false };
+        }
+        // Decision A9, display-time twin of the checkout floor guard: same reasoning, same
+        // fail-open convention as the rest of this function.
+        if (item.cost_per_unit != null) {
+            const costPerUnitCentavos = Math.round(Number(item.cost_per_unit) * 100);
+            if (affiliateUnitPriceCentavos < costPerUnitCentavos) {
+                logger.warn('[StorefrontCatalog] Affiliate price rule would sell below cost, showing catalog price instead', {
+                    item_id: item.item_id,
+                    rule_type: affiliateSellingPriceRule.type
+                });
+                return { price: item.default_sale_price, applied: false };
+            }
+        }
+        return { price: affiliateUnitPriceCentavos / 100, applied: true };
+    } catch (error) {
+        logger.warn('[StorefrontCatalog] Failed to resolve affiliate display price, showing catalog price instead', {
+            item_id: item.item_id,
+            error: error?.message
+        });
+        return { price: item.default_sale_price, applied: false };
+    }
+};
+
+const serializeStoreCatalogItem = (item = {}, accessPolicy = {}, affiliateSellingPriceRule = null) => {
     const availabilityStatus = normalizeAvailabilityStatus(item);
     const isAvailable = availabilityStatus === 'in_stock' || availabilityStatus === 'bookable';
+    const imageUrl = item.image_url || null;
+    const imageVariants = item.image_variants && typeof item.image_variants === 'object'
+        ? item.image_variants
+        : {};
     const serviceDetail = item.service_detail
         ? {
             ...item.service_detail,
             intake_form_schema: normalizeIntakeFormSchema(item.service_detail.intake_form_schema)
         }
         : null;
+    const { price: displaySalePrice, applied: affiliatePriceApplied } = applyAffiliateDisplayPrice(item, affiliateSellingPriceRule);
     return {
         item_id: item.item_id,
         name: item.name,
@@ -908,9 +1050,16 @@ const serializeStoreCatalogItem = (item = {}, accessPolicy = {}) => {
         product_type: item.product_type || null,
         folder_name: item.folder_name || item.product_folder || item?.folder?.name || null,
         unit_of_measure: item.unit_of_measure || null,
-        default_sale_price: item.default_sale_price,
+        default_sale_price: displaySalePrice,
+        affiliate_price_applied: affiliatePriceApplied,
         vat_type: item.vat_type || 'vatable',
-        image_url: item.image_url || null,
+        image_url: imageUrl,
+        image_variants: {
+            ...imageVariants,
+            thumbnail_url: imageVariants.thumbnail_url || imageUrl,
+            medium_url: imageVariants.medium_url || imageUrl,
+            large_url: imageVariants.large_url || imageUrl
+        },
         image_gallery: Array.isArray(item.image_gallery) ? item.image_gallery : [],
         service_detail: serviceDetail,
         allergens: serializeStorefrontAllergens(item.allergens),
@@ -1064,12 +1213,88 @@ const buildOrderAccountAction = async ({ storeRepository, order, tenantId, store
     }
 };
 
+// Resolves everything needed to price and account for an affiliate-attributed storefront checkout:
+// the enrollment itself, the selling-price rule to apply (or BASE_PRICE when none is configured),
+// and the commission configuration to accrue against (including decision A3's commission_base_mode
+// flag). Returns null when there is no active attribution at all - the caller then prices and
+// accrues exactly as it did before Phase 1 of the affiliate pricing rule engine existed.
+//
+// Unlike the post-commit accrual write elsewhere in this file, this is NOT wrapped in try/catch by
+// its caller (decision A13: pricing is pre-commit and blocking - if resolution genuinely errors,
+// checkout must fail rather than risk silently charging the wrong price). A missing/invalid/revoked
+// enrollment is not an error here, though: resolveActiveAffiliateEnrollmentById's established
+// null-means-no-attribution contract just means no affiliate pricing applies, and this function
+// returns null in that case too, same as if attribution_enrollment_id had never been sent.
+const resolveAffiliatePricingForCheckout = async ({ tenantId, enrollmentId }) => {
+    if (!tenantId || !enrollmentId) return null;
+
+    const enrollment = await resolveActiveAffiliateEnrollmentById({ tenantId, enrollmentId });
+    if (!enrollment) return null;
+
+    const [settings, priceRule] = await Promise.all([
+        dgfyAffiliateRepository.getSettings(tenantId),
+        dgfyAffiliateRepository.resolveActivePriceRule({
+            tenantId,
+            enrollmentId: enrollment.enrollment_id,
+            itemId: 0
+        })
+    ]);
+
+    const sellingPriceRule = priceRule
+        ? { type: priceRule.rule_type, rateBps: priceRule.rate_bps, amountCentavos: priceRule.amount_centavos }
+        : { type: 'BASE_PRICE' };
+
+    // Same override-falls-back-to-tenant-default pattern already established for
+    // commission_rate_bps.
+    const commissionType = enrollment.commission_type || settings?.commission_type || 'PERCENTAGE_OF_BASE';
+    const commissionRateBps = resolveCommissionRateBps(enrollment, settings);
+
+    return {
+        enrollment,
+        priceRule,
+        sellingPriceRule,
+        commissionRule: { type: commissionType, rateBps: commissionRateBps },
+        settlementPolicy: settings?.settlement_policy || null,
+        commissionBaseMode: settings?.commission_base_mode || 'discounted_subtotal'
+    };
+};
+
+// Cheaper, display-only twin of resolveAffiliatePricingForCheckout used by the two buyer-facing
+// catalog display sites (§6: serializeStoreCatalogItem's callers). Skips the settings/commission
+// fetch entirely - a browsing page never needs to know how commission is computed, only what price
+// to show - so it's one fewer query per catalog list/QR-resolve request than the checkout path.
+// Returns null on no/invalid attribution, same null-means-no-attribution contract as the rest of
+// this file.
+const resolveAffiliateSellingPriceRuleForDisplay = async ({ tenantId, enrollmentId }) => {
+    if (!tenantId || !enrollmentId) return null;
+
+    const enrollment = await resolveActiveAffiliateEnrollmentById({ tenantId, enrollmentId });
+    if (!enrollment) return null;
+
+    const priceRule = await dgfyAffiliateRepository.resolveActivePriceRule({
+        tenantId,
+        enrollmentId: enrollment.enrollment_id,
+        itemId: 0
+    });
+
+    return priceRule
+        ? { type: priceRule.rule_type, rateBps: priceRule.rate_bps, amountCentavos: priceRule.amount_centavos }
+        : null;
+};
+
 const resolveCheckoutContext = async ({
     storeRepository,
     payload,
     storeCustomer = null,
     options = {},
-    validateRecipeAvailability = true
+    validateRecipeAvailability = true,
+    // Explicit tenantId for the Phase 1 affiliate pricing rule engine lookup only. Optional and
+    // falls back to the ambient dbStore context (currentTenantAccessContext()) when omitted, to
+    // preserve today's behavior for the two callers (cart quote, QRPh payment session) that don't
+    // have an explicit tenantId in scope. buildStoreCheckoutUseCase - the money-writing path - does
+    // have one and passes it explicitly, so affiliate pricing there never depends on ambient context
+    // being populated the same way the rest of that function already trusts its own tenantId param.
+    tenantId = null
 }) => {
     const normalized = buildNormalizedCheckoutRequest(payload, storeCustomer);
     const orderMethod = normalized.order_method || 'delivery';
@@ -1178,11 +1403,25 @@ const resolveCheckoutContext = async ({
         locationId: normalized.location_id,
         validateAvailability: validateRecipeAvailability
     });
+    // Phase 1 affiliate pricing rule engine. Sourced from the raw payload (not `normalized`) and
+    // the ambient tenant context, mirroring the checkout controller's existing cookie bridge
+    // (getAffiliateAttributionCookie / storeHandlers.js) - this function has no tenantId parameter
+    // of its own, consistent with the rest of this shared context resolver relying on dbStore's
+    // request-scoped tenant context (see currentTenantAccessContext() above).
+    const attributionEnrollmentId = payload?.attribution_enrollment_id || null;
+    const affiliatePricing = attributionEnrollmentId
+        ? await resolveAffiliatePricingForCheckout({
+            tenantId: tenantId || currentTenantAccessContext().tenantId,
+            enrollmentId: attributionEnrollmentId
+        })
+        : null;
+
     const prepared = prepareCheckoutLines({
         rawLines: normalized.lines,
         itemMap,
         allowOutOfStockSales,
-        recipeItemIds: recipePlan.recipeItemIds
+        recipeItemIds: recipePlan.recipeItemIds,
+        affiliateSellingPriceRule: affiliatePricing?.sellingPriceRule || null
     });
     const promoApplication = resolveStorefrontPromoApplication({
         settings,
@@ -1194,7 +1433,9 @@ const resolveCheckoutContext = async ({
     });
 
     const deliveryFee = resolveStoreDeliveryFee(settings, orderMethod);
-    const serviceFeeAmount = computeDgfyConvenienceFee(prepared.subtotalAmount);
+    const serviceFeeAmount = tenantRevenueSharingEnabled
+        ? 0
+        : computeDgfyConvenienceFee(prepared.subtotalAmount);
     const serviceFeeLabel = getDgfyConvenienceFeeLabel();
     const totalAmount = round4(prepared.subtotalAmount - promoApplication.discountAmount + deliveryFee + serviceFeeAmount);
     const outsideRadiusFlag = resolveDeliveryRadiusFlag({
@@ -1218,7 +1459,8 @@ const resolveCheckoutContext = async ({
         serviceFeeLabel,
         totalAmount,
         outsideRadiusFlag,
-        scheduledFor
+        scheduledFor,
+        affiliatePricing
     };
 };
 
@@ -1294,7 +1536,11 @@ export const buildListStoreCatalogUseCase = ({
     storeRepository,
     resolveWorkflowCapabilitySettings = resolveWorkflowCapabilitySettingsDefault
 }) => {
-    return async ({ query = {} } = {}) => {
+    // tenantId/attributionEnrollmentId are optional and additive - a caller that omits them (or the
+    // cookie/tenant simply isn't present) gets exactly today's catalog, unaffected. See
+    // storeHandlers.js's listStoreCatalog controller for where these come from (mirrors the existing
+    // checkout cookie bridge).
+    return async ({ query = {}, tenantId = null, attributionEnrollmentId = null } = {}) => {
         if (!isPlainObject(query)) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -1337,15 +1583,20 @@ export const buildListStoreCatalogUseCase = ({
                 });
             }
 
-            const items = await storeRepository.listStoreCatalog({
-                search: query.search,
-                limit: query.limit,
-                location_id: requestedLocationId
-            });
+            const [items, affiliateSellingPriceRule] = await Promise.all([
+                storeRepository.listStoreCatalog({
+                    search: query.search,
+                    limit: query.limit,
+                    location_id: requestedLocationId
+                }),
+                attributionEnrollmentId
+                    ? resolveAffiliateSellingPriceRuleForDisplay({ tenantId, enrollmentId: attributionEnrollmentId })
+                    : Promise.resolve(null)
+            ]);
             const serializedItems = (Array.isArray(items) ? items : [])
                 .filter((item) => hasExplicitSalePrice(item))
                 .map((item) => (
-                    serializeStoreCatalogItem(item, accessPolicy)
+                    serializeStoreCatalogItem(item, accessPolicy, affiliateSellingPriceRule)
                 ));
 
             return ok({
@@ -1379,7 +1630,8 @@ export const buildListStoreCatalogUseCase = ({
 };
 
 export const buildResolveStoreQrUseCase = ({ storeRepository }) => {
-    return async ({ query = {} } = {}) => {
+    // Same additive tenantId/attributionEnrollmentId contract as buildListStoreCatalogUseCase above.
+    return async ({ query = {}, tenantId = null, attributionEnrollmentId = null } = {}) => {
         if (!isPlainObject(query)) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -1491,7 +1743,10 @@ export const buildResolveStoreQrUseCase = ({ storeRepository }) => {
                 }));
             }
 
-            const item = serializeStoreCatalogItem(result.item, accessPolicy);
+            const affiliateSellingPriceRule = attributionEnrollmentId
+                ? await resolveAffiliateSellingPriceRuleForDisplay({ tenantId, enrollmentId: attributionEnrollmentId })
+                : null;
+            const item = serializeStoreCatalogItem(result.item, accessPolicy, affiliateSellingPriceRule);
             return ok({
                 status: 'resolved',
                 reason_code: null,
@@ -2044,7 +2299,8 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
                 payload,
                 storeCustomer: normalizedStoreCustomer,
                 options: { transaction, lock: true },
-                validateRecipeAvailability: !existing
+                validateRecipeAvailability: !existing,
+                tenantId: normalizedTenantId
             });
             const { normalized } = resolved;
 
@@ -2254,27 +2510,88 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
                 tracking_pin: created?.tracking_pin
             }));
 
-            // Best-effort, post-commit: dormant until a storefront visit sets the attribution
-            // cookie (no caller sends attribution_enrollment_id yet). Writes a `pending` commission
-            // - unlike the in-store sale, which is earned immediately - because the online order's
-            // real outcome (completed vs cancelled/rejected) isn't known until the fulfillment
-            // lifecycle hook settles it later. Must never fail the checkout that already succeeded,
-            // mirroring recordDgfyOrderActivity's convention above.
+            // Best-effort, post-commit: was dormant until a storefront visit set the attribution
+            // cookie, now live via the Phase 1 affiliate pricing rule engine (see
+            // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md). Writes a `pending`
+            // commission - unlike the in-store sale, which is earned immediately - because the
+            // online order's real outcome (completed vs cancelled/rejected) isn't known until the
+            // fulfillment lifecycle hook settles it later. Must never fail the checkout that already
+            // succeeded, mirroring recordDgfyOrderActivity's convention above.
             if (payload?.attribution_enrollment_id) {
                 try {
-                    const affiliateEnrollment = await resolveActiveAffiliateEnrollmentById({
-                        tenantId: normalizedTenantId,
-                        enrollmentId: payload.attribution_enrollment_id
-                    });
+                    // Reuse whatever resolveCheckoutContext already resolved (same enrollment/rule
+                    // that priced this exact order) rather than re-querying - falls back to a fresh
+                    // lookup only if that resolution is unexpectedly missing, so a transient gap
+                    // there still degrades to pre-Phase-1 behavior instead of skipping accrual.
+                    const affiliatePricing = resolved.affiliatePricing;
+                    const affiliateEnrollment = affiliatePricing?.enrollment
+                        || await resolveActiveAffiliateEnrollmentById({
+                            tenantId: normalizedTenantId,
+                            enrollmentId: payload.attribution_enrollment_id
+                        });
                     if (affiliateEnrollment) {
+                        // baseSubtotalAmount is the catalog-price subtotal, pre-affiliate-rule;
+                        // subtotalAmount is what the buyer actually paid. The two are identical
+                        // when no selling-price rule is active (e.g. commission-only attribution).
+                        const baseSubtotalCentavos = toCentavos(
+                            resolved.prepared.baseSubtotalAmount ?? resolved.prepared.subtotalAmount
+                        );
+                        const buyerSubtotalCentavos = toCentavos(resolved.prepared.subtotalAmount);
+                        const discountCentavos = toCentavos(resolved.promoApplication.discountAmount);
+
+                        const commissionBaseMode = affiliatePricing?.commissionBaseMode || 'discounted_subtotal';
+                        const commissionType = affiliatePricing?.commissionRule?.type || 'PERCENTAGE_OF_BASE';
+
+                        // Decision A3, gated behind commission_base_mode: 'discounted_subtotal' (the
+                        // default) is today's formula, generalized - it subtracts the promo discount
+                        // from the buyer-paid subtotal, which is byte-identical to pre-Phase-1
+                        // behavior whenever no affiliate price rule is active (buyerSubtotalCentavos
+                        // === baseSubtotalCentavos in that case). 'base_price_subtotal' ignores any
+                        // discount entirely - the commission is always computed on the catalog
+                        // subtotal, per the recording's "affiliate earns the same whether or not a
+                        // discount is running" example.
+                        const commissionableBaseCentavos = commissionBaseMode === 'base_price_subtotal'
+                            ? Math.max(0, baseSubtotalCentavos)
+                            : Math.max(0, buyerSubtotalCentavos - discountCentavos);
+
+                        // NONE and RESELLER_MARGIN don't fit the bps-of-base formula
+                        // accruePendingForOnlineOrder falls back to internally, so both are resolved
+                        // here using the real, already-computed line-level subtotals rather than a
+                        // parallel single-item recalculation (which could drift from what the buyer
+                        // was actually charged across a multi-line cart). PERCENTAGE_OF_BASE is
+                        // resolved here too, using the exact rate already loaded onto
+                        // affiliatePricing, so the same rate is guaranteed to be reflected in any
+                        // buyer/owner-facing preview and in the accrued commission.
+                        let resolvedCommission;
+                        let resellerMarginCentavos = null;
+                        if (commissionType === 'NONE') {
+                            resolvedCommission = { rateBps: 0, amountCentavos: 0 };
+                        } else if (commissionType === 'RESELLER_MARGIN') {
+                            resellerMarginCentavos = Math.max(0, buyerSubtotalCentavos - baseSubtotalCentavos);
+                            resolvedCommission = { rateBps: 0, amountCentavos: resellerMarginCentavos };
+                        } else {
+                            const rateBps = Number.isInteger(affiliatePricing?.commissionRule?.rateBps)
+                                ? affiliatePricing.commissionRule.rateBps
+                                : 500;
+                            resolvedCommission = {
+                                rateBps,
+                                amountCentavos: Math.round(commissionableBaseCentavos * rateBps / 10000)
+                            };
+                        }
+
                         await accruePendingForOnlineOrder({
                             tenantId: normalizedTenantId,
                             enrollment: affiliateEnrollment,
                             orderReference: String(orderId),
-                            commissionableBaseCentavos: Math.max(
-                                0,
-                                toCentavos(resolved.prepared.subtotalAmount) - toCentavos(resolved.promoApplication.discountAmount)
-                            ),
+                            commissionableBaseCentavos,
+                            resolvedCommission,
+                            snapshot: {
+                                baseSubtotalCentavos,
+                                buyerSubtotalCentavos,
+                                resellerMarginCentavos,
+                                priceRuleTypeSnapshot: affiliatePricing?.priceRule?.rule_type || null,
+                                settlementPolicySnapshot: affiliatePricing?.settlementPolicy || null
+                            },
                             buyerDgfyAccountId: normalizedStoreCustomer?.dgfy_account_id || null,
                             storeSlug: String(payload.store_slug || '').trim().toLowerCase() || null
                         });
@@ -2366,6 +2683,7 @@ const serializePaymentSession = (session = {}) => ({
 export const buildStoreCheckoutPaymentSessionUseCase = ({
     storeRepository,
     commercePaymentRepository,
+    tenantRevenueRepository,
     paymongoService,
     commercePaymentsEnabled = false,
     commerceQrphEnabled = false,
@@ -2407,8 +2725,31 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                 throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'idempotency_key is required', { statusCode: 422 });
             }
 
-            const account = await commercePaymentRepository.findTenantPaymentAccount({ tenantId, provider: 'paymongo' });
-            if (!account || account.onboarding_status !== 'active' || !account.qrph_enabled || !account.split_enabled || !account.charges_enabled) {
+            const account = tenantRevenueSharingEnabled
+                ? null
+                : await commercePaymentRepository.findTenantPaymentAccount({ tenantId, provider: 'paymongo' });
+            const revenuePolicy = tenantRevenueSharingEnabled
+                ? await tenantRevenueRepository?.findEffectiveFeePolicy?.(tenantId, new Date())
+                : null;
+            if (tenantRevenueSharingEnabled && (
+                !revenuePolicy
+                || revenuePolicy.settlement_status !== 'active'
+                || !revenuePolicy.payout_destination_masked
+            )) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This storefront does not have an active tenant revenue and payout policy.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            code: 'TENANT_REVENUE_POLICY_NOT_READY',
+                            policy_status: revenuePolicy?.settlement_status || 'missing',
+                            payout_destination_configured: Boolean(revenuePolicy?.payout_destination_masked)
+                        }
+                    }
+                );
+            }
+            if (!tenantRevenueSharingEnabled && (!account || account.onboarding_status !== 'active' || !account.qrph_enabled || !account.split_enabled || !account.charges_enabled)) {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
                     'This storefront is not ready for PayMongo QR Ph split payments.',
@@ -2425,7 +2766,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                     }
                 );
             }
-            if (account.wallet_status !== 'enabled' || !account.wallet_verified_at) {
+            if (!tenantRevenueSharingEnabled && (account.wallet_status !== 'enabled' || !account.wallet_verified_at)) {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
                     'This storefront does not have verified PayMongo enabled-wallet evidence.',
@@ -2442,7 +2783,8 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
 
             const normalizedPayload = {
                 ...payload,
-                payment_type: 'qrph'
+                payment_type: 'qrph',
+                _verified_store_customer: snapshotVerifiedStoreCustomer(storeCustomer)
             };
             const requestHash = crypto.createHash('sha256').update(stableStringify(normalizedPayload)).digest('hex');
             const existing = await commercePaymentRepository.findSessionByIdempotency({
@@ -2464,17 +2806,26 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             });
 
             const totalAmountCentavos = toCentavos(resolved.totalAmount);
-            const platformFeeCentavos = toCentavos(resolved.serviceFeeAmount);
-            if (totalAmountCentavos <= 0 || platformFeeCentavos <= 0 || platformFeeCentavos >= totalAmountCentavos) {
+            const platformFeeCentavos = tenantRevenueSharingEnabled
+                ? Math.round((totalAmountCentavos * Number(revenuePolicy.dgfy_rate_bps || 0)) / 10000)
+                : toCentavos(resolved.serviceFeeAmount);
+            if (
+                totalAmountCentavos <= 0
+                || platformFeeCentavos < 0
+                || platformFeeCentavos >= totalAmountCentavos
+                || (!tenantRevenueSharingEnabled && platformFeeCentavos <= 0)
+            ) {
                 throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                    'QR Ph checkout amount is too low for fixed DGFY split settlement.',
+                    tenantRevenueSharingEnabled
+                        ? 'QR Ph checkout amount is invalid for tenant revenue settlement.'
+                        : 'QR Ph checkout amount is too low for fixed DGFY split settlement.',
                     { statusCode: 422 }
                 );
             }
 
             const publicReference = `CPS-${randomAlphaNumeric(10)}`;
-            if (account.provider_merchant_id === process.env.PAYMONGO_DGFY_MERCHANT_ID) {
+            if (!tenantRevenueSharingEnabled && account.provider_merchant_id === process.env.PAYMONGO_DGFY_MERCHANT_ID) {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
                     'Tenant PayMongo merchant ID must be different from the DGFY platform merchant ID.',
@@ -2484,7 +2835,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                     }
                 );
             }
-            const splitPayload = commercePaymongoSplitEnabled ? {
+            const splitPayload = !tenantRevenueSharingEnabled && commercePaymongoSplitEnabled ? {
                 transfer_to: account.provider_merchant_id,
                 recipients: [{
                     merchant_id: process.env.PAYMONGO_DGFY_MERCHANT_ID,
@@ -2492,15 +2843,28 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                     value: platformFeeCentavos
                 }]
             } : null;
-            const feePolicy = {
-                dgfy_fee_basis: 'subtotal',
-                dgfy_fee_rate: '0.01',
-                dgfy_fee_charged_to: 'customer',
-                provider_fee_shoulder: 'tenant_company',
-                provider_fee_customer_passthrough: false,
-                refund_policy: 'full_refund_reverses_dgfy_and_tenant_shares',
-                gross_sales_visibility: ['gross_sales', 'net_sales']
-            };
+            const feePolicy = tenantRevenueSharingEnabled
+                ? {
+                    collection_model: 'dgfy_collects_then_settles_tenant',
+                    split_payment_used: false,
+                    tenant_revenue_policy_id: revenuePolicy.policy_id,
+                    tenant_revenue_policy_version: revenuePolicy.version,
+                    dgfy_fee_basis: 'provider_gross',
+                    dgfy_fee_rate_bps: revenuePolicy.dgfy_rate_bps,
+                    dgfy_fee_charged_to: 'tenant',
+                    provider_fee_shoulder: revenuePolicy.provider_fee_payer,
+                    provider_fee_customer_passthrough: false,
+                    settlement_cycle_days: Number(revenuePolicy.settlement_cycle_days)
+                }
+                : {
+                    dgfy_fee_basis: 'subtotal',
+                    dgfy_fee_rate: '0.01',
+                    dgfy_fee_charged_to: 'customer',
+                    provider_fee_shoulder: 'tenant_company',
+                    provider_fee_customer_passthrough: false,
+                    refund_policy: 'full_refund_reverses_dgfy_and_tenant_shares',
+                    gross_sales_visibility: ['gross_sales', 'net_sales']
+                };
 
             const session = await commercePaymentRepository.createSession({
                 public_reference: publicReference,
@@ -2520,7 +2884,7 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                 total_amount_centavos: totalAmountCentavos,
                 platform_fee_centavos: platformFeeCentavos,
                 fee_policy: feePolicy,
-                tenant_transfer_merchant_id: account.provider_merchant_id,
+                tenant_transfer_merchant_id: tenantRevenueSharingEnabled ? null : account.provider_merchant_id,
                 split_payload: splitPayload
             });
 
@@ -2542,7 +2906,9 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
                         platform_fee_centavos: String(platformFeeCentavos),
                         dgfy_fee_basis: feePolicy.dgfy_fee_basis,
                         dgfy_fee_charged_to: feePolicy.dgfy_fee_charged_to,
-                        provider_fee_shoulder: feePolicy.provider_fee_shoulder
+                        provider_fee_shoulder: feePolicy.provider_fee_shoulder,
+                        collection_model: feePolicy.collection_model || 'paymongo_split',
+                        tenant_revenue_policy_version: String(feePolicy.tenant_revenue_policy_version || '')
                     },
                     splitPayment: splitPayload,
                     returnUrl: trustedReturnUrl || process.env.STOREFRONT_PAYMENT_RETURN_URL || null
@@ -2590,6 +2956,87 @@ export const buildGetStoreCheckoutPaymentSessionUseCase = ({ commercePaymentRepo
             return ok({ payment_session: serializePaymentSession(session) });
         } catch (error) {
             return fail(mapStoreUseCaseError(error, 'Failed to load QR Ph payment session'));
+        }
+    };
+};
+
+const isLoopbackAddress = (value) => {
+    const address = String(value || '').trim().toLowerCase();
+    return address === '127.0.0.1'
+        || address === '::1'
+        || address === '::ffff:127.0.0.1';
+};
+
+export const buildConfirmStoreCheckoutSandboxPaymentUseCase = ({
+    commercePaymentRepository,
+    paymongoService
+}) => {
+    return async ({ paymentSessionId, remoteAddress }) => {
+        try {
+            if (process.env.PAYMONGO_MODE !== 'test' || !isLoopbackAddress(remoteAddress)) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'Sandbox payment confirmation is not available.',
+                    { statusCode: 404 }
+                );
+            }
+
+            const reference = String(paymentSessionId || '').trim().toUpperCase();
+            if (!/^CPS-[A-Z0-9]{10}$/.test(reference)) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Invalid payment session reference', { statusCode: 422 });
+            }
+
+            const tenantContext = dbStore.getStore() || {};
+            const tenantId = normalizeTenantIdentifier(tenantContext.tenantId);
+            const session = await commercePaymentRepository.findSessionByPublicReference(reference);
+            if (!session || normalizeTenantIdentifier(session.tenant_id) !== tenantId) {
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
+            }
+            if (session.status === 'finalized') {
+                return ok({
+                    confirmation_requested: false,
+                    idempotent_replay: true,
+                    payment_session: serializePaymentSession(session)
+                });
+            }
+            if (session.status !== 'awaiting_payment') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    `Payment session cannot be confirmed while ${String(session.status || 'unknown').replaceAll('_', ' ')}.`,
+                    { statusCode: 409 }
+                );
+            }
+            if (!session.provider_payment_intent_id) {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'Payment session has no PayMongo payment intent.', { statusCode: 409 });
+            }
+            if (session.expires_at && new Date(session.expires_at).getTime() <= Date.now()) {
+                throw new DomainError(DomainErrorCode.CONFLICT, 'The PayMongo QR Ph payment has expired.', { statusCode: 409 });
+            }
+
+            const providerResult = await paymongoService.confirmSandboxQrphPayment({
+                paymentIntentId: session.provider_payment_intent_id,
+                expectedAmount: session.total_amount_centavos,
+                expectedCurrency: session.currency || 'PHP'
+            });
+            const providerAttributes = providerResult.paymentIntent?.attributes || {};
+            if (
+                Number(providerAttributes.amount) !== Number(session.total_amount_centavos)
+                || String(providerAttributes.currency || '').toUpperCase() !== String(session.currency || 'PHP').toUpperCase()
+            ) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'PayMongo sandbox payment amount or currency does not match this checkout.',
+                    { statusCode: 409 }
+                );
+            }
+
+            return ok({
+                confirmation_requested: true,
+                idempotent_replay: false,
+                payment_session: serializePaymentSession(session)
+            });
+        } catch (error) {
+            return fail(mapStoreUseCaseError(error, 'Failed to confirm PayMongo sandbox payment'));
         }
     };
 };

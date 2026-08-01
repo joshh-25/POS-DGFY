@@ -1,9 +1,18 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
+import { resolveCompanyRegistrationStatusUrl } from '../entities/companyRegistrationStatusUrl.js';
 
-export const buildRejectTenantUseCase = ({ tenantAdminRepository, emailService, logger }) => {
-    return async ({ id, reason }) => {
+export const buildRejectTenantUseCase = ({ tenantAdminRepository, companyRegistrationRepository, emailService, logger }) => {
+    return async ({ id, reason, actor }) => {
         try {
+            const safeReason = String(reason || '').trim().slice(0, 500);
+            if (!safeReason) {
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'A short applicant-visible rejection reason is required.',
+                    { statusCode: 422 }
+                ));
+            }
             const tenant = await tenantAdminRepository.findTenantById(id);
             if (!tenant) {
                 return fail(new DomainError(
@@ -21,11 +30,23 @@ export const buildRejectTenantUseCase = ({ tenantAdminRepository, emailService, 
                 ));
             }
 
-            await tenantAdminRepository.updateTenant(tenant, {
-                status: 'rejected',
-                rejection_reason: reason || null,
-                settings: { ...tenant.settings, rejection_reason: reason }
+            let application;
+            await tenantAdminRepository.transaction(async (transaction) => {
+                application = await companyRegistrationRepository.markRejected({ tenantId: tenant.id, actor, reason: safeReason, transaction });
+                if (!application) return;
+                await tenantAdminRepository.updateTenant(tenant, {
+                    status: 'rejected',
+                    rejection_reason: safeReason,
+                    settings: { ...tenant.settings, rejection_reason: safeReason }
+                }, { transaction });
             });
+            if (!application) {
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'This tenant is not a public registration application.',
+                    { statusCode: 422 }
+                ));
+            }
 
             let emailSent = false;
             if (emailService?.isEmailConfigured?.()) {
@@ -33,7 +54,8 @@ export const buildRejectTenantUseCase = ({ tenantAdminRepository, emailService, 
                     await emailService.sendCompanyRejectedEmail({
                         email: tenant.admin_email,
                         companyName: tenant.name,
-                        rejectionReason: reason
+                        rejectionReason: safeReason,
+                        statusUrl: resolveCompanyRegistrationStatusUrl(application.id)
                     });
                     emailSent = true;
                     logger?.info?.(`[TenantRejection] Rejection email sent to ${tenant.admin_email}`);

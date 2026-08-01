@@ -1,5 +1,7 @@
 import React from 'react';
 import { Trash2 } from 'lucide-react';
+import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
+import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the "Review Your Booking" summary
@@ -25,7 +27,6 @@ export function ServiceBookingReviewContainer({
   servicePaymentTiming,
   setCartImageErrors,
   setCheckoutTab,
-  withAssetOrigin
 }) {
   return (
     <div style={{ display: 'grid', gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.25fr) minmax(280px, 360px)' : '1fr', gap: 16, alignItems: 'start' }}>
@@ -48,10 +49,15 @@ export function ServiceBookingReviewContainer({
           <div style={{ marginTop: 16, border: '1px solid #e2e8f0', borderRadius: 18, padding: 16, background: '#fcfdff', display: 'grid', gap: 14 }}>
             <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '88px 1fr auto', gap: 14, alignItems: 'center' }}>
               <div style={{ width: 88, height: 88, borderRadius: 18, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center' }}>
-                {firstServiceLine?.image_url && !cartImageErrors.has(Number(firstServiceLine.item_id)) ? (
-                  <img
-                    src={withAssetOrigin(firstServiceLine.image_url)}
+                {(firstServiceLine?.thumbnail_url || firstServiceLine?.image_url) && !cartImageErrors.has(Number(firstServiceLine.item_id)) ? (
+                  <StorefrontResponsiveImage
+                    imageSources={resolveStorefrontImageSources(firstServiceLine, { preferred: 'thumbnail' })}
                     alt={firstServiceLine.name}
+                    sizes="88px"
+                    width={88}
+                    height={88}
+                    loading="lazy"
+                    decoding="async"
                     style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                     onError={() => {
                       const normalizedLineItemId = Number(firstServiceLine.item_id);

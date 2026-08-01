@@ -1,10 +1,9 @@
 export const TENANT_REGISTRATION_APPROVAL_MODES = Object.freeze({
-    MANUAL: 'manual',
-    AUTO_STANDARD: 'auto_standard'
+    MANUAL: 'manual'
 });
 
 const ALLOWED_MODES = new Set(Object.values(TENANT_REGISTRATION_APPROVAL_MODES));
-const DEFAULT_APPROVAL_MODE = TENANT_REGISTRATION_APPROVAL_MODES.AUTO_STANDARD;
+const DEFAULT_APPROVAL_MODE = TENANT_REGISTRATION_APPROVAL_MODES.MANUAL;
 
 export const normalizeTenantRegistrationApprovalMode = (value, logger = null) => {
     const normalized = String(value || '').trim().toLowerCase();
@@ -17,7 +16,7 @@ export const normalizeTenantRegistrationApprovalMode = (value, logger = null) =>
         return normalized;
     }
 
-    logger?.warn?.('[TenantRegistration] Invalid TENANT_REGISTRATION_APPROVAL_MODE; using default auto-standard approval', {
+    logger?.warn?.('[TenantRegistration] Invalid TENANT_REGISTRATION_APPROVAL_MODE; using mandatory manual approval', {
         providedValue: value,
         allowedModes: [...ALLOWED_MODES]
     });

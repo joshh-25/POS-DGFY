@@ -15,6 +15,7 @@ import {
     verifyStoreGuestCheckoutOtpUseCase,
     storeCheckoutPaymentSessionUseCase,
     getStoreCheckoutPaymentSessionUseCase,
+    confirmStoreCheckoutSandboxPaymentUseCase,
     storeCheckoutUseCase,
     trackStoreOrderUseCase,
     claimStoreOrderUseCase,
@@ -75,8 +76,16 @@ export const registerStoreCustomer = async (req, res, next) => {
 
 export const listStoreCatalog = async (req, res, next) => {
     try {
+        const tenantId = resolveTenantId(req);
         const result = await listStoreCatalogUseCase({
-            query: req.validatedQuery || req.query
+            query: req.validatedQuery || req.query,
+            tenantId,
+            // Phase 1 affiliate pricing rule engine: same cookie bridge already used by the
+            // checkout handler below, extended to catalog browsing so a buyer sees the same price
+            // in the product list as they will at checkout (see
+            // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md section 6 - "both
+            // in-scope sites must change together"). A no-op when the cookie is absent.
+            attributionEnrollmentId: getAffiliateAttributionCookie(req, tenantId)
         });
 
         return sendUseCaseResult(res, result, {
@@ -95,8 +104,11 @@ export const listStoreCatalog = async (req, res, next) => {
 
 export const resolveStoreQr = async (req, res, next) => {
     try {
+        const tenantId = resolveTenantId(req);
         const result = await resolveStoreQrUseCase({
-            query: req.validatedQuery || req.query
+            query: req.validatedQuery || req.query,
+            tenantId,
+            attributionEnrollmentId: getAffiliateAttributionCookie(req, tenantId)
         });
 
         return sendUseCaseResult(res, result, {
@@ -412,6 +424,28 @@ export const getCheckoutPaymentSession = async (req, res, next) => {
             successPayloadResolver: () => ({
                 success: true,
                 data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const confirmCheckoutSandboxPayment = async (req, res, next) => {
+    try {
+        const result = await confirmStoreCheckoutSandboxPaymentUseCase({
+            paymentSessionId: req.validatedParams?.payment_session_id || req.params.payment_session_id,
+            remoteAddress: req.socket?.remoteAddress || req.connection?.remoteAddress || null
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 202,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'PayMongo sandbox confirmation requested',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)

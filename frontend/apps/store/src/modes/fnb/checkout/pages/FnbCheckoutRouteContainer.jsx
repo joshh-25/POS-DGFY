@@ -30,6 +30,7 @@ import { FnbCheckoutFulfillmentStepView } from '../components/FnbCheckoutFulfill
 import { FnbCheckoutMobileSummaryPanel } from '../components/FnbCheckoutMobileSummaryPanel.jsx';
 import { FnbCheckoutPaymentStep } from '../components/FnbCheckoutPaymentStep.jsx';
 import { FnbCheckoutPaymentStepView } from '../components/FnbCheckoutPaymentStepView.jsx';
+import { FnbQrphPaymentPanel } from '../components/FnbQrphPaymentPanel.jsx';
 import { FnbCheckoutRouteBody } from '../components/FnbCheckoutRouteBody.jsx';
 import { FnbCheckoutSavedAddressSelector } from '../components/FnbCheckoutSavedAddressSelector.jsx';
 import { FnbCheckoutSummaryContent } from '../components/FnbCheckoutSummaryContent.jsx';
@@ -55,7 +56,6 @@ import { FnbCheckoutRouteMount } from './FnbCheckoutRouteMount.jsx';
  * per-render.
  */
 export function FnbCheckoutRouteContainer({
-  activeFnbOrderStepMeta,
   applySavedDeliveryLocation,
   canAddPinnedLocation,
   canUseGuestCheckoutFlow,
@@ -112,6 +112,8 @@ export function FnbCheckoutRouteContainer({
   handleGuestCheckoutOtpCodeChange,
   handlePaymentTypeChange,
   handlePinMyLocation,
+  handleConfirmQrphTestPayment,
+  handleRefreshQrphPaymentSession,
   handleRemoveDeliveryAddress,
   handleRequestGuestCheckoutOtp,
   handleSetDefaultDeliveryAddress,
@@ -129,12 +131,15 @@ export function FnbCheckoutRouteContainer({
   pinLocationError,
   pinLocationLoading,
   promoDiscountSummaryRow,
+  qrphPaymentSession,
+  qrphPaymentStatusLoading,
   quoteError,
   renderAccountOwnedIdentitySummary,
   renderGuestCheckoutEntry,
   renderGuestIdentityFields,
   renderPromoCodePanel,
   renderStorefrontClosedNotice,
+  resetQrphPaymentSession,
   resolvingPinnedDeliveryAddress,
   selectedSavedLocationId,
   selectedStore,
@@ -186,18 +191,17 @@ export function FnbCheckoutRouteContainer({
       <FnbCheckoutRouteBody
         journeyHeaderProps={{
           activeStep: fnbOrderStep,
-          activeStepMeta: activeFnbOrderStepMeta,
           accentBorder: dgfyIceBlueBorder,
           accentColor: fnbOrderBrand,
           accentSoft: dgfyIceBlue,
+          cartCount,
           cartHasItems: cart.length > 0,
           completeColor: dgfyProgressComplete,
-          completeTextColor: fnbOrderBrandDark,
           displayFont: servicesDisplayFont,
           isCustomerStepComplete: fnbCustomerStepComplete,
+          isDeliveryOrder,
           isFulfillmentStepComplete: fnbFulfillmentStepComplete,
           isMobileViewport,
-          isResponsive: isFnbOrderResponsiveFlow,
           onStepChange: setFnbOrderStep,
           signedIn: isDgfyCustomerSignedIn
         }}
@@ -524,6 +528,14 @@ export function FnbCheckoutRouteContainer({
                     )}
                   />
             </FnbCheckoutExpandedMapModal>
+            <div style={{ display: 'grid', gap: 12 }}>
+              <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>{isDeliveryOrder ? '4.' : '3.'} Anything else we should know?</div>
+              <label style={{ display: 'grid', gap: 6, fontSize: 12, color: '#475569' }}>
+                Special Instructions (optional)
+                <textarea value={fnbSpecialInstructions} onChange={(event) => setFnbSpecialInstructions(event.target.value.slice(0, 250))} placeholder="Ex. Less ice, no onions, gate color and unit number." rows={3} style={{ minHeight: 96, border: '1px solid #cbd5e1', borderRadius: 12, padding: '11px 12px', background: '#fff', resize: 'vertical', boxSizing: 'border-box' }} />
+                <span style={{ justifySelf: 'end', fontSize: 12, color: '#94a3b8' }}>{Math.min(String(fnbSpecialInstructions || '').length, 250)}/250</span>
+              </label>
+            </div>
             {!isFnbOrderResponsiveFlow && (
               <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12, marginTop: 4 }}>
                 <button type="button" onClick={() => setFnbOrderStep(3)} style={{ minHeight: 50, borderRadius: 14, border: '1px solid #dbe5ee', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, fontSize: 15, fontFamily: servicesBodyFont }}><ArrowLeft size={17} strokeWidth={2.5} />Back</button>
@@ -607,8 +619,6 @@ export function FnbCheckoutRouteContainer({
             mutedTextColor={fnbOrderMutedBlueText}
             onBack={goStoreCatalogPage}
             onContinue={() => setFnbOrderStep(2)}
-            onSpecialInstructionsChange={setFnbSpecialInstructions}
-            specialInstructions={fnbSpecialInstructions}
           />
           ) : renderGuestCheckoutEntry({
             title: 'Continue to your order',
@@ -655,31 +665,55 @@ export function FnbCheckoutRouteContainer({
         >
           <FnbCheckoutPaymentStep
             brandColor={fnbOrderBrand}
-            canSubmit={checkoutAllowed}
+            canSubmit={checkoutAllowed && !qrphPaymentSession}
+            cart={cart}
+            cartImageErrors={cartImageErrors}
             checkoutError={checkoutError}
             closedNotice={storefrontClosedByHours ? renderStorefrontClosedNotice({ accent: fnbOrderBrand, background: '#fff7ed', border: '#fdba74' }) : null}
             isMobileViewport={isMobileViewport}
             isResponsive={isFnbOrderResponsiveFlow}
+            money={money}
             onBack={() => setFnbOrderStep(2)}
+            onImageError={(itemId) => {
+              const normalizedLineItemId = Number(itemId);
+              if (!Number.isFinite(normalizedLineItemId)) return;
+              setCartImageErrors((previous) => new Set([...previous, normalizedLineItemId]));
+            }}
             onSubmit={handleCheckout}
             paymentControl={(
-              <PaymentMethodSelectorBlock
-                label="Payment Type"
-                value={fnbPaymentType}
-                onChange={handlePaymentTypeChange}
-                options={STOREFRONT_CHECKOUT_PAYMENT_OPTIONS.filter((option) => isEnabledStorefrontCheckoutPaymentType(option.value))}
-                DropdownComponent={StorefrontDropdown}
-                triggerStyle={isFnbOrderResponsiveFlow ? { ...MOBILE_NATIVE_SELECT_STYLE, minHeight: 50, fontSize: 15, borderRadius: 16, padding: '0 44px 0 14px', boxSizing: 'border-box' } : { minHeight: 44, borderRadius: 12 }}
-                menuStyle={isFnbOrderResponsiveFlow ? MOBILE_DROPDOWN_MENU_STYLE : undefined}
-                optionStyle={isFnbOrderResponsiveFlow ? MOBILE_DROPDOWN_OPTION_STYLE : undefined}
-                selectedLabelStyle={isFnbOrderResponsiveFlow ? { fontSize: 15, fontWeight: 700 } : undefined}
-                showCashInfo={fnbPaymentType === 'cash'}
-                cashInfoAccent={fnbOrderBrand}
-                bodyFont={servicesBodyFont}
-              />
+              <div style={{ display: 'grid', gap: 12 }}>
+                <PaymentMethodSelectorBlock
+                  label="Payment Type"
+                  value={fnbPaymentType}
+                  onChange={handlePaymentTypeChange}
+                  options={STOREFRONT_CHECKOUT_PAYMENT_OPTIONS.filter((option) => isEnabledStorefrontCheckoutPaymentType(option.value))}
+                  DropdownComponent={StorefrontDropdown}
+                  triggerStyle={isFnbOrderResponsiveFlow ? { ...MOBILE_NATIVE_SELECT_STYLE, minHeight: 50, fontSize: 15, borderRadius: 16, padding: '0 44px 0 14px', boxSizing: 'border-box' } : { minHeight: 44, borderRadius: 12 }}
+                  menuStyle={isFnbOrderResponsiveFlow ? MOBILE_DROPDOWN_MENU_STYLE : undefined}
+                  optionStyle={isFnbOrderResponsiveFlow ? MOBILE_DROPDOWN_OPTION_STYLE : undefined}
+                  selectedLabelStyle={isFnbOrderResponsiveFlow ? { fontSize: 15, fontWeight: 700 } : undefined}
+                  showCashInfo={fnbPaymentType === 'cash'}
+                  cashInfoAccent={fnbOrderBrand}
+                  bodyFont={servicesBodyFont}
+                />
+                {fnbPaymentType === 'qrph' ? (
+                  <FnbQrphPaymentPanel
+                    onConfirmTestPayment={import.meta.env.DEV ? handleConfirmQrphTestPayment : null}
+                    onRefresh={handleRefreshQrphPaymentSession}
+                    onUseCash={() => {
+                      resetQrphPaymentSession();
+                      handlePaymentTypeChange('cash');
+                    }}
+                    paymentSession={qrphPaymentSession}
+                    refreshing={qrphPaymentStatusLoading}
+                  />
+                ) : null}
+              </div>
             )}
             processing={checkoutLoading}
             quoteError={quoteError}
+            submitLabel={fnbPaymentType === 'qrph' ? 'Generate QR Ph' : 'Place Order'}
+            withAssetOrigin={withAssetOrigin}
           />
           <FnbCheckoutDesktopSummary isDesktop={isDesktopCheckout}>
             <FnbCheckoutSummaryContent
@@ -717,11 +751,13 @@ export function FnbCheckoutRouteContainer({
           brandColorDark={fnbOrderBrandDark}
           brandShadowStrong={fnbOrderBrandShadowStrong}
           cart={cart}
+          cartCount={cartCount}
           cartImageErrors={cartImageErrors}
           checkoutAllowed={checkoutAllowed}
           checkoutLoading={checkoutLoading}
           fnbCustomerStepComplete={fnbCustomerStepComplete}
           fnbFulfillmentStepComplete={fnbFulfillmentStepComplete}
+          isDeliveryOrder={isDeliveryOrder}
           itemCountLabel={fnbMobileSummaryItemCountLabel}
           money={money}
           onBackToCart={() => {
@@ -740,6 +776,8 @@ export function FnbCheckoutRouteContainer({
           onToggleSummary={() => setShowFnbMobileOrderSummary((previous) => !previous)}
           orderStep={fnbOrderStep}
           promoDiscountSummaryRow={promoDiscountSummaryRow}
+          promoPanel={fnbOrderStep === 4 ? null : renderPromoCodePanel({ compact: true, accentColor: fnbOrderBrand, bodyFont: servicesBodyFont, isMobile: true })}
+          scheduleLabel={fnbScheduleSummaryLabel}
           setSummaryOpen={setShowFnbMobileOrderSummary}
           showSummary={showFnbMobileOrderSummary}
           totalFeeAndTaxes={fnbSummaryFeeAndTaxes}

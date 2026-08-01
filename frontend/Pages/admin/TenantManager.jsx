@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     Building2,
     Building,
@@ -12,7 +13,6 @@ import {
     Filter,
     Mail,
     Calendar,
-    Key,
     Edit2,
     Trash2,
     AlertTriangle,
@@ -38,6 +38,7 @@ import {
 } from '../../src/utils/tenantCapabilityMessages.js';
 import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_SELECT_VALUES } from '../../src/features/settings/workflowMode.js';
 import StorefrontCustomDomainsModal from '../../src/features/admin/components/StorefrontCustomDomainsModal.jsx';
+import TenantRevenueSettlementPanel from '../../src/features/admin/tenantRevenue/TenantRevenueSettlementPanel.jsx';
 
 const STATUS_CONFIG = {
     pending: { label: 'Pending', color: 'text-amber-600 bg-amber-50 border-amber-200', icon: Clock },
@@ -451,6 +452,7 @@ const categorizeAuditEvent = (eventType) => {
 };
 
 export default function TenantManager() {
+    const navigate = useNavigate();
     const [tenants, setTenants] = useState([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -546,7 +548,7 @@ export default function TenantManager() {
         loadTenants();
     }, [statusFilter]);
 
-    const loadTenants = async () => {
+    async function loadTenants() {
         setLoading(true);
         setError('');
         try {
@@ -558,7 +560,7 @@ export default function TenantManager() {
         } finally {
             setLoading(false);
         }
-    };
+    }
 
     const updateAssistForm = (key, value) => {
         setAssistForm((current) => ({ ...current, [key]: value }));
@@ -798,6 +800,9 @@ export default function TenantManager() {
         try {
             await adminService.approveTenant(tenantId);
             loadTenants();
+            if (confirm('Company approved. Create its QA landlord invoice now? Choosing No keeps invoice creation available later.')) {
+                navigate('/admin/invoices');
+            }
             toast.success('Tenant approved successfully');
         } catch (err) {
             const normalized = normalizeApiError(err);
@@ -809,9 +814,26 @@ export default function TenantManager() {
         }
     };
 
+    const handleRetryProvisioning = async (tenantId) => {
+        if (!confirm('Retry this approved company setup? The system will reuse the existing registration and avoid duplicate memberships.')) return;
+        setActionLoading(tenantId);
+        try {
+            await adminService.retryTenantProvisioning(tenantId);
+            loadTenants();
+            toast.success('Company setup retry completed.');
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) toast.error(`Failed to retry setup: ${normalized.message}`);
+        } finally { setActionLoading(null); }
+    };
+
     const handleReject = async (tenantId) => {
-        const reason = prompt('Rejection reason (optional):');
+        const reason = prompt('Rejection reason (required, visible to the applicant):');
         if (reason === null) return; // cancelled
+        if (reason.trim().length < 3) {
+            toast.error('Enter a short applicant-visible rejection reason.');
+            return;
+        }
 
         setActionLoading(tenantId);
         try {
@@ -1208,7 +1230,6 @@ export default function TenantManager() {
             return [
                 tenant.name,
                 tenant.admin_email,
-                tenant.company_token,
                 tenant.status,
                 getTenantEffectivePlan(tenant),
                 modeLabel,
@@ -1365,6 +1386,8 @@ export default function TenantManager() {
                     Subscription plan-change and billing setup actions are disabled in the admin portal.
                 </div>
             </div>
+
+            <TenantRevenueSettlementPanel tenants={tenants} />
 
             <form onSubmit={submitAssistedProvisioning} className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1568,15 +1591,6 @@ export default function TenantManager() {
                                                 <span className="truncate" title={tenant.admin_email || 'N/A'}>
                                                     {tenant.admin_email || 'N/A'}
                                                 </span>
-                                                </div>
-                                            </div>
-                                            <div className="min-w-0 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
-                                                <div className="mb-1 text-[11px] font-medium uppercase tracking-wide text-slate-400">Company token</div>
-                                                <div className="flex min-w-0 items-center gap-2 text-slate-700">
-                                                <Key className="w-4 h-4 text-slate-400" />
-                                                <code className="block min-w-0 truncate rounded bg-white px-2 py-0.5 text-xs" title={tenant.company_token}>
-                                                    {tenant.company_token}
-                                                </code>
                                                 </div>
                                             </div>
                                             <div className="min-w-0 rounded-lg border border-slate-100 bg-slate-50 px-3 py-2">
@@ -1820,8 +1834,8 @@ export default function TenantManager() {
                                     <div className="w-full xl:w-auto xl:min-w-[320px] xl:max-w-[380px]">
                                         {tenant.status === 'pending' ? (
                                             <div className="flex items-center gap-2">
-                                                <Button
-                                                    onClick={() => handleApprove(tenant.id)}
+                                                {tenant.registrationApplication?.review_status === 'approved' && tenant.registrationApplication?.provisioning_status === 'failed' ? <Button
+                                                    onClick={() => handleRetryProvisioning(tenant.id)}
                                                     disabled={isProcessing}
                                                     className="bg-green-600 hover:bg-green-700"
                                                     size="sm"
@@ -1831,11 +1845,18 @@ export default function TenantManager() {
                                                     ) : (
                                                         <>
                                                             <Check className="w-4 h-4 mr-1" />
-                                                            Approve
+                                                            Retry setup
                                                         </>
                                                     )}
-                                                </Button>
-                                                <Button
+                                                </Button> : <Button
+                                                    onClick={() => handleApprove(tenant.id)}
+                                                    disabled={isProcessing}
+                                                    className="bg-green-600 hover:bg-green-700"
+                                                    size="sm"
+                                                >
+                                                    {isProcessing ? <RefreshCw className="w-4 h-4 animate-spin" /> : <><Check className="w-4 h-4 mr-1" />Approve</>}
+                                                </Button>}
+                                                {!(tenant.registrationApplication?.review_status === 'approved' && tenant.registrationApplication?.provisioning_status === 'failed') && <Button
                                                     onClick={() => handleReject(tenant.id)}
                                                     disabled={isProcessing}
                                                     variant="outline"
@@ -1844,17 +1865,7 @@ export default function TenantManager() {
                                                 >
                                                     <X className="w-4 h-4 mr-1" />
                                                     Reject
-                                                </Button>
-                                                <Button
-                                                    onClick={() => openComplianceModal(tenant)}
-                                                    disabled={isProcessing}
-                                                    variant="outline"
-                                                    className="border-indigo-300 text-indigo-700 hover:bg-indigo-50"
-                                                    size="sm"
-                                                >
-                                                    <ShieldCheck className="w-4 h-4 mr-1" />
-                                                    Compliance
-                                                </Button>
+                                                </Button>}
                                             </div>
                                         ) : (
                                             <div className="space-y-2">

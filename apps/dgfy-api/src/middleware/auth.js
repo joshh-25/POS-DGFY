@@ -3,8 +3,22 @@ import dbStore from '../utils/dbStore.js';
 import { getCookie, SESSION_COOKIE_NAMES } from '../utils/browserSessionCookies.js';
 import { isPremiumActiveTenant } from '../utils/tenantPlan.js';
 import { paymentsEnabled } from '../config/paymentsFeature.js';
-import { PERMISSIONS, DEFAULT_ROLE_PERMISSIONS } from '../config/permissions.js';
+import { PERMISSIONS } from '../config/permissions.js';
 import { isPhoneCompletionEnforcedForTenant } from '../config/phoneCompletionRollout.js';
+import { resolveEffectivePermissions } from '../utils/userPermissions.js';
+import {
+  ADMIN_FINANCIAL_ROLES,
+  getAdminAccounts
+} from '../config/adminAuthConfig.js';
+
+const resolveAdminFinancialRole = (username, isMaster = false) => {
+  const normalizedUsername = String(username || '').trim().toLowerCase();
+  const configuredAccount = getAdminAccounts().find(
+    (account) => String(account.username || '').trim().toLowerCase() === normalizedUsername
+  );
+  return configuredAccount?.financialRole
+    || (isMaster ? ADMIN_FINANCIAL_ROLES.PLATFORM_ADMIN : ADMIN_FINANCIAL_ROLES.FINANCE_VIEWER);
+};
 
 // Short-lived in-memory cache to avoid a DB round-trip on every authenticated request.
 // The JWT is cryptographically verified before the cache is consulted, so this is safe.
@@ -36,48 +50,6 @@ const shouldBypassPhoneCompletionGate = (req) => {
   const requestPath = String(req.originalUrl || '').split('?')[0];
   const routeKey = `${(req.method || '').toUpperCase()} ${requestPath}`;
   return PHONE_COMPLETION_BYPASS_ROUTES.has(routeKey);
-};
-
-const normalizePermissionArray = (rawPermissions) => {
-  let normalized = rawPermissions;
-
-  if (typeof normalized === 'string') {
-    try {
-      normalized = JSON.parse(normalized);
-    } catch {
-      normalized = [];
-    }
-  }
-
-  if (!Array.isArray(normalized)) {
-    return [];
-  }
-
-  return Array.from(
-    new Set(
-      normalized
-        .map((entry) => (typeof entry === 'string' ? entry.trim() : ''))
-        .filter(Boolean)
-    )
-  );
-};
-
-const resolveEffectivePermissions = (user) => {
-  const parsedPermissions = normalizePermissionArray(user?.permissions);
-  const normalizedRole = String(user?.role || '').trim().toLowerCase();
-  const defaults = DEFAULT_ROLE_PERMISSIONS[normalizedRole];
-
-  // Admin is defined as a full-access role. Preserve any custom entries while
-  // preventing a stale partial permission array from removing core access.
-  if (normalizedRole === 'admin' && Array.isArray(defaults)) {
-    return Array.from(new Set([...defaults, ...parsedPermissions]));
-  }
-
-  if (parsedPermissions.length > 0) {
-    return parsedPermissions;
-  }
-
-  return Array.isArray(defaults) ? [...defaults] : [];
 };
 
 export const invalidateUserAuthCache = ({ companyToken, tenantId, userId } = {}) => {
@@ -214,6 +186,27 @@ export const authenticate = async (req, res, next) => {
         data: null,
         message: 'Token tenant binding does not match request tenant context.',
         error_code: 'TENANT_BINDING_MISMATCH',
+        timestamp: new Date().toISOString()
+      });
+    }
+
+    const activeBrowserCompanyToken = String(
+      getCookie(req, SESSION_COOKIE_NAMES.tenantContext) || ''
+    ).trim();
+    const requestCompanyToken = String(
+      req?.tenant?.company_token || req.headers['x-company-token'] || ''
+    ).trim();
+
+    if (
+      activeBrowserCompanyToken
+      && requestCompanyToken
+      && activeBrowserCompanyToken !== requestCompanyToken
+    ) {
+      return res.status(409).json({
+        success: false,
+        data: null,
+        message: 'The active company changed. Refresh the POS and retry.',
+        error_code: 'TENANT_SESSION_CONTEXT_MISMATCH',
         timestamp: new Date().toISOString()
       });
     }
@@ -367,9 +360,8 @@ export const checkPermission = (requiredPermission) => {
 };
 
 /**
- * Category lifecycle is a tenant administration concern, not a general
- * inventory-edit permission. Keep the role check on the API boundary so the
- * POS UI cannot be bypassed by a direct request.
+ * Category lifecycle uses a company-local permission so a DGFY identity can
+ * manage categories in one company without inheriting that access elsewhere.
  */
 export const requireTenantAdmin = (req, res, next) => {
   if (!req.user) {
@@ -379,14 +371,18 @@ export const requireTenantAdmin = (req, res, next) => {
     });
   }
 
-  const role = String(req.user.role || '').trim().toLowerCase();
-  if (req.user.is_master_admin || role === 'admin') {
+  const userPermissions = Array.isArray(req.user.permissions) ? req.user.permissions : [];
+  if (
+    req.user.is_master_admin
+    || userPermissions.includes(PERMISSIONS.SYSTEM.actions.MANAGE_CATEGORIES)
+  ) {
     return next();
   }
 
   return res.status(403).json({
     success: false,
-    message: 'Admin access is required to manage categories.'
+    message: 'Category management permission is required.',
+    required: PERMISSIONS.SYSTEM.actions.MANAGE_CATEGORIES
   });
 };
 
@@ -454,7 +450,6 @@ export const checkAnyPermission = (requiredPermissions) => {
  * Storefront branding mutation guard.
  * Allowed when request user is:
  * - master admin, or
- * - admin role, or
  * - explicitly granted the storefront branding micropermission.
  */
 export const checkStorefrontBrandingEditPermission = (req, res, next) => {
@@ -466,11 +461,6 @@ export const checkStorefrontBrandingEditPermission = (req, res, next) => {
   }
 
   if (req.user.is_master_admin) {
-    return next();
-  }
-
-  const normalizedRole = String(req.user.role || '').trim().toLowerCase();
-  if (normalizedRole === 'admin') {
     return next();
   }
 
@@ -488,7 +478,7 @@ export const checkStorefrontBrandingEditPermission = (req, res, next) => {
 
 /**
  * Admin authentication middleware
- * Verifies admin JWT token without checking database
+ * Verifies the JWT and resolves live, revocable Platform Admin session authority.
  */
 export const authenticateAdmin = async (req, res, next) => {
   try {
@@ -533,7 +523,33 @@ export const authenticateAdmin = async (req, res, next) => {
       throw error;
     }
 
-    // Verify this is an admin token
+    if (decoded.type === 'platform_admin') {
+      const { createPlatformAdminRepository } = await import('../modules/platformAdmin/repositories/platformAdminRepository.js');
+      const authority = await createPlatformAdminRepository().resolveSessionAuthority({
+        adminId: decoded.admin_id,
+        sessionId: decoded.session_id,
+        authVersion: decoded.auth_version
+      });
+      if (!authority) {
+        return res.status(401).json({ success: false, message: 'Admin session is expired or revoked' });
+      }
+      req.admin = {
+        id: authority.user.id,
+        username: authority.user.username,
+        is_master: Boolean(authority.user.is_master),
+        permissions: authority.permissions,
+        financial_role: resolveAdminFinancialRole(
+          authority.user.username,
+          Boolean(authority.user.is_master)
+        ),
+        temporary_password_active: Boolean(authority.user.temporary_password_active),
+        session_id: authority.session.id
+      };
+      return enforcePlatformAdminRouteAuthority(req, res, next);
+    }
+
+    // Legacy tokens are intentionally no longer accepted once DB-backed platform
+    // admin sessions are enabled. They have no revocable session or live authority.
     if (decoded.type !== 'admin' || decoded.role !== 'admin') {
       return res.status(403).json({
         success: false,
@@ -541,16 +557,78 @@ export const authenticateAdmin = async (req, res, next) => {
       });
     }
 
-    // Attach admin info to request
-    req.admin = {
-      username: decoded.username,
-      role: decoded.role
-    };
-
-    next();
+    return res.status(401).json({ success: false, message: 'Please sign in again to establish a secure admin session' });
   } catch (error) {
     next(error);
   }
+};
+
+export const resolvePlatformAdminRoutePolicy = (req) => {
+  const path = String(req.originalUrl || req.url || '').split('?')[0];
+  if (/^\/api\/v1\/admin\/(me|logout|change-password)$/.test(path)) return { permissions: [] };
+  if (/^\/api\/v1\/admin\/platform-admins(?:\/|$)/.test(path)) return { masterOnly: true };
+  if (/^\/api\/v1\/admin\/invoices(?:\/|$)/.test(path)) return { permissions: ['admin.invoices'] };
+  if (/^\/api\/v1\/admin\/feedback(?:\/|$)/.test(path)) return { permissions: ['admin.feedback'] };
+  if (/^\/api\/v1\/admin\/tenants\/pricing(?:\/|$)/.test(path)) return { permissions: ['admin.pricing'] };
+  if (/^\/api\/v1\/admin\/tenants\/(admin-provision-with-account|[^/]+\/owner)(?:\/|$)/.test(path)) return { permissions: ['admin.tenants', 'admin.dgfy_accounts'] };
+  if (/^\/api\/v1\/admin\/tenants(?:\/|$)/.test(path)) return { permissions: ['admin.tenants'] };
+  if (/^\/api\/v1\/dgfy\/admin\/accounts(?:\/|$)/.test(path)) return { permissions: ['admin.dgfy_accounts'] };
+  if (/^\/api\/v1\/commerce-payments\/admin(?:\/|$)/.test(path)) return { permissions: ['admin.payments'] };
+  // Protected legacy admin endpoints without a visible page are deliberately
+  // master-only until they are added to the checked-in permission matrix.
+  return { masterOnly: true };
+};
+
+const enforcePlatformAdminRouteAuthority = (req, res, next) => {
+  const policy = resolvePlatformAdminRoutePolicy(req);
+  if (policy.masterOnly) {
+    if (req.admin.is_master) return next();
+    return res.status(403).json({ success: false, message: 'Platform Master Admin access required' });
+  }
+  const missing = (policy.permissions || []).filter((permission) => !req.admin.is_master && !req.admin.permissions.includes(permission));
+  if (!missing.length) return next();
+  return res.status(403).json({ success: false, message: 'Access denied for this Platform Admin page', required_permissions: policy.permissions });
+};
+
+export const requireAdminPermission = (permissionKey) => (req, res, next) => {
+  if (!req.admin) return res.status(401).json({ success: false, message: 'Admin authentication required' });
+  if (req.admin.is_master || req.admin.permissions?.includes(permissionKey)) return next();
+  return res.status(403).json({ success: false, message: 'Access denied for this Platform Admin page', required_permission: permissionKey });
+};
+
+export const requirePlatformMaster = (req, res, next) => {
+  if (!req.admin) return res.status(401).json({ success: false, message: 'Admin authentication required' });
+  if (req.admin.is_master) return next();
+  return res.status(403).json({ success: false, message: 'Platform Master Admin access required' });
+};
+
+export const authorizeAdminFinancialRoles = (...allowedRoles) => {
+  const allowed = new Set(allowedRoles.flat().filter(Boolean));
+  return (req, res, next) => {
+    if (!req.admin) {
+      return res.status(401).json({
+        success: false,
+        message: 'Admin authentication required'
+      });
+    }
+
+    const financialRole = String(
+      req.admin.financial_role
+      || resolveAdminFinancialRole(req.admin.username, req.admin.is_master)
+    ).trim().toLowerCase();
+    if (
+      financialRole === ADMIN_FINANCIAL_ROLES.PLATFORM_ADMIN
+      || allowed.has(financialRole)
+    ) {
+      return next();
+    }
+
+    return res.status(403).json({
+      success: false,
+      message: 'This financial action requires an authorized finance role.',
+      required_financial_roles: [...allowed]
+    });
+  };
 };
 
 /**

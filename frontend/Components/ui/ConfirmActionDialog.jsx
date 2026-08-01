@@ -22,13 +22,21 @@ export default function ConfirmActionDialog({
   confirmLabel = 'Confirm',
   cancelLabel = 'Cancel',
   variant = 'default',
+  reasonLabel = '',
+  reasonPlaceholder = '',
+  reasonRequired = false,
+  reasonMinLength = 3,
   onConfirm
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [reason, setReason] = useState('');
 
   useEffect(() => {
-    if (open) setError('');
+    if (open) {
+      setError('');
+      setReason('');
+    }
   }, [open]);
 
   const handleOpenChange = (nextOpen) => {
@@ -38,10 +46,15 @@ export default function ConfirmActionDialog({
 
   const handleConfirm = async () => {
     if (submitting) return;
+    const normalizedReason = reason.trim();
+    if (reasonRequired && normalizedReason.length < reasonMinLength) {
+      setError(`${reasonLabel || 'Reason'} must be at least ${reasonMinLength} characters.`);
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
-      const result = await onConfirm?.();
+      const result = await onConfirm?.(normalizedReason);
       if (result === false || result?.success === false) {
         setError(result?.message || 'The action could not be completed. Please try again.');
         return;
@@ -70,6 +83,20 @@ export default function ConfirmActionDialog({
           <div role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
             {error}
           </div>
+        ) : null}
+        {reasonLabel ? (
+          <label className="space-y-1 text-sm font-medium text-slate-700">
+            <span>{reasonLabel}{reasonRequired ? ' *' : ''}</span>
+            <textarea
+              value={reason}
+              onChange={(event) => setReason(event.target.value)}
+              placeholder={reasonPlaceholder}
+              rows={3}
+              maxLength={255}
+              disabled={submitting}
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 font-normal outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            />
+          </label>
         ) : null}
         <DialogFooter className="gap-2 sm:gap-0">
           <Button type="button" variant="outline" onClick={() => handleOpenChange(false)} disabled={submitting}>

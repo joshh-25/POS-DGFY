@@ -1,8 +1,10 @@
 ---
-status: authoritative
+status: accepted
 authority_level: authoritative
 owner: architecture
+date: 2026-04-30
 last_reviewed: 2026-04-30
+review_by: 2026-10-28
 applies_to: tenant_user_invitations
 topic: tenant_user_invitation_registry
 ---

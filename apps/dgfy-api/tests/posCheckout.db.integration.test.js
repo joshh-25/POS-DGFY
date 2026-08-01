@@ -390,11 +390,25 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         const discount = await models.PosTransactionDiscount.findOne({
             where: { transaction_id: checkoutResult.data.transaction.pos_transaction_id }
         });
+        const audit = await models.AuditLog.findOne({
+            where: {
+                entity_type: 'pos_discount',
+                entity_id: checkoutResult.data.transaction.pos_transaction_id
+            }
+        });
         expect(discount.manager_approval_id).toBe(approver.user_id);
         expect(discount.manager_approved_at).toBeInstanceOf(Date);
         expect(discount.employee_id).toBe(String(cashier.user_id));
         expect(discount.employee_name).toBe(cashier.username);
         expect(discount.self_approved).toBe(false);
+        expect(audit.user_id).toBe(cashier.user_id);
+        expect(typeof audit.changes === 'string' ? JSON.parse(audit.changes) : audit.changes).toEqual(expect.objectContaining({
+            selected_employee_id: String(cashier.user_id),
+            selected_employee_name: cashier.username,
+            applied_by_user_id: cashier.user_id,
+            approved_by_user_id: approver.user_id,
+            self_approved: false
+        }));
     });
 
     it('allows admin operators to apply employee discounts without approver PIN and without employee identity fields', async () => {
@@ -418,11 +432,25 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         const discount = await models.PosTransactionDiscount.findOne({
             where: { transaction_id: checkoutResult.data.transaction.pos_transaction_id }
         });
+        const audit = await models.AuditLog.findOne({
+            where: {
+                entity_type: 'pos_discount',
+                entity_id: checkoutResult.data.transaction.pos_transaction_id
+            }
+        });
         expect(discount.manager_approval_id).toBe(adminOperator.user_id);
         expect(discount.manager_approved_at).toBeInstanceOf(Date);
         expect(discount.employee_id).toBeNull();
         expect(discount.employee_name).toBeNull();
         expect(discount.self_approved).toBe(true);
+        expect(audit.user_id).toBe(adminOperator.user_id);
+        expect(typeof audit.changes === 'string' ? JSON.parse(audit.changes) : audit.changes).toEqual(expect.objectContaining({
+            selected_employee_id: null,
+            selected_employee_name: null,
+            applied_by_user_id: adminOperator.user_id,
+            approved_by_user_id: adminOperator.user_id,
+            self_approved: true
+        }));
     });
 
     it('sells an always-available POS item at zero stock without creating a stock movement', async () => {
@@ -662,7 +690,7 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
         expect(available).toBeCloseTo(1, 6);
     });
 
-    it('applies fixed DGFY convenience fee correctly and ignores caller override snapshot', async () => {
+    it('does not charge a DGFY convenience fee for an in-store POS checkout', async () => {
         const cashier = await createCashier();
         const vatableItem = await createFinishedGood({
             vat_type: 'vatable',
@@ -691,11 +719,11 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
             include: [{ model: models.PosTransactionLine, as: 'lines' }]
         });
         expect(Number(persistedTx.subtotal_amount)).toBeCloseTo(112, 4);
-        expect(Number(persistedTx.service_fee_amount)).toBeCloseTo(1.12, 4);
-        expect(persistedTx.service_fee_label_snapshot).toBe('DGFY convenience fee');
-        expect(persistedTx.service_fee_method_snapshot).toBe('delivery');
+        expect(Number(persistedTx.service_fee_amount)).toBe(0);
+        expect(persistedTx.service_fee_label_snapshot).toBeNull();
+        expect(persistedTx.service_fee_method_snapshot).toBeNull();
         expect(Boolean(persistedTx.service_fee_overridden)).toBe(false);
-        expect(Number(persistedTx.total_amount)).toBeCloseTo(113.12, 4);
+        expect(Number(persistedTx.total_amount)).toBeCloseTo(112, 4);
 
         // Fee is non-VAT, so VAT buckets remain item-only.
         expect(Number(persistedTx.vatable_sales)).toBeCloseTo(100, 4);

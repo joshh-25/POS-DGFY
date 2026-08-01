@@ -13,10 +13,6 @@ import logger from '../../../config/logger.js';
 import dbStore from '../../../utils/dbStore.js';
 import { resolveMovementLocation } from '../../inventory/index.js';
 import {
-    computeDgfyConvenienceFee,
-    getDgfyConvenienceFeeLabel
-} from '../../shared/utils/dgfyConvenienceFee.js';
-import {
     accrueEarnedForInStoreSale,
     resolveActiveAffiliateEnrollment,
     reverseAffiliateCommissionForOrder,
@@ -41,6 +37,7 @@ import { requireExplicitSalePrice } from '../../shared/utils/itemFinancialPolicy
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
 import { getDgfyLegacyLinkStatus } from '../../dgfy/index.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
+import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 import { calculatePosDiscount } from '../domain/posDiscountCalculator.js';
 import { resolvePosGovernedDiscount } from '../domain/posDiscountPolicy.js';
 import { verifyPosDiscountApprover } from '../domain/posDiscountApprovalPolicy.js';
@@ -1562,24 +1559,13 @@ const parseDiscountProfiles = (settings = {}) => {
         .filter((profile) => profile.active && profile.name.length > 0);
 };
 
-const resolveCheckoutServiceFee = ({ payload, grossSubtotal }) => {
-    const orderMethod = ORDER_METHODS.includes(payload?.order_method)
-        ? payload.order_method
-        : 'dine_in';
-    const serviceFeeAmount = computeDgfyConvenienceFee(grossSubtotal);
-    if (serviceFeeAmount <= 0) {
-        return {
-            serviceFeeAmount: 0,
-            serviceFeeLabelSnapshot: null,
-            serviceFeeMethodSnapshot: null,
-            serviceFeeOverridden: false
-        };
-    }
-
+const resolveCheckoutServiceFee = () => {
+    // POS checkout is always in-store. DGFY convenience fees are calculated only
+    // by the Storefront online-order flow, never from a cashier transaction.
     return {
-        serviceFeeAmount,
-        serviceFeeLabelSnapshot: getDgfyConvenienceFeeLabel(),
-        serviceFeeMethodSnapshot: orderMethod,
+        serviceFeeAmount: 0,
+        serviceFeeLabelSnapshot: null,
+        serviceFeeMethodSnapshot: null,
         serviceFeeOverridden: false
     };
 };
@@ -2104,6 +2090,7 @@ const buildFiscalDocumentSnapshot = ({
 export const buildCheckoutPosUseCase = ({
     posRepository,
     inventoryCommandService,
+    employeeCreditService,
     resolveIdentityStatus = resolvePosOperatorIdentityStatus,
     resolveLocationScope = resolvePosOperationalLocationScope
 }) => {
@@ -2196,6 +2183,13 @@ export const buildCheckoutPosUseCase = ({
             location_id: requestedLocationId,
             order_method: normalizedOrderMethod,
             payment_type: payload.payment_type || 'cash',
+            ...(String(payload.payment_type || 'cash').trim().toLowerCase() === 'employee_credit'
+                ? {
+                    employee_credit: {
+                        account_code: String(payload.employee_credit?.account_code || '').trim().toUpperCase()
+                    }
+                }
+                : {}),
             service_fee_amount: null,
             fnb_check_id: fnbCheckId,
             fnb_table_id: fnbTableId,
@@ -2392,7 +2386,13 @@ export const buildCheckoutPosUseCase = ({
                     throw new DomainError(
                         DomainErrorCode.CONFLICT,
                         'idempotency_key was already used with a different payload',
-                        { statusCode: 409 }
+                        {
+                            statusCode: 409,
+                            details: {
+                                existing_request_hash: existing.request_hash,
+                                received_request_hash: requestHash
+                            }
+                        }
                     );
                 }
 
@@ -2713,6 +2713,22 @@ export const buildCheckoutPosUseCase = ({
             });
             const restaurantServiceChargeAmount = round4(restaurantServiceChargeResolution.restaurantServiceChargeAmount);
             const totalAmount = round4(netItemsTotal + serviceFeeAmount + restaurantServiceChargeAmount);
+            const normalizedPaymentType = String(payload.payment_type || 'cash').trim().toLowerCase();
+            let preparedEmployeeCreditDebit = null;
+            if (normalizedPaymentType === 'employee_credit') {
+                if (!employeeCreditService) {
+                    throw new DomainError(
+                        DomainErrorCode.INTERNAL_ERROR,
+                        'Employee Credit service is not configured',
+                        { statusCode: 500 }
+                    );
+                }
+                preparedEmployeeCreditDebit = await employeeCreditService.prepareDebit({
+                    accountCode: payload.employee_credit?.account_code,
+                    amount: totalAmount,
+                    transaction
+                });
+            }
             const adjustmentFactor = subtotalAmount > 0 ? (netItemsTotal / subtotalAmount) : 1;
 
             for (const [index, line] of preparedLines.entries()) {
@@ -2845,9 +2861,28 @@ export const buildCheckoutPosUseCase = ({
                     buyer_business_style: isFiscalReceipt ? buyerFiscalDetails.business_style : null,
                     buyer_address: isFiscalReceipt ? buyerFiscalDetails.address : null,
                     special_instructions: transactionSpecialInstructions,
-                    payment_type: payload.payment_type || 'cash',
-                    cash_received: payload.cash_received == null ? null : round4(payload.cash_received),
-                    change_amount: payload.change_amount == null ? null : round4(payload.change_amount),
+                    payment_type: normalizedPaymentType,
+                    payment_status: 'paid',
+                    payment_collected_at: preparedEmployeeCreditDebit ? new Date() : null,
+                    payment_collected_by: preparedEmployeeCreditDebit ? normalizedUserId : null,
+                    payment_collected_shift_id: preparedEmployeeCreditDebit ? (normalizedShiftId || null) : null,
+                    payment_collected_terminal_id: preparedEmployeeCreditDebit ? (normalizedTerminalId || null) : null,
+                    cash_received: normalizedPaymentType === 'cash' && payload.cash_received != null
+                        ? round4(payload.cash_received)
+                        : null,
+                    change_amount: normalizedPaymentType === 'cash' && payload.change_amount != null
+                        ? round4(payload.change_amount)
+                        : null,
+                    employee_credit_account_id: preparedEmployeeCreditDebit?.accountId || null,
+                    employee_credit_user_id: preparedEmployeeCreditDebit?.userId || null,
+                    employee_credit_employee_id: preparedEmployeeCreditDebit?.employeeId || null,
+                    employee_credit_employee_name_snapshot: preparedEmployeeCreditDebit?.employeeName || null,
+                    employee_credit_account_code_snapshot: preparedEmployeeCreditDebit?.maskedAccountCode || null,
+                    employee_credit_amount: preparedEmployeeCreditDebit?.amount || null,
+                    // Legacy funded balance remains nullable for historical records.
+                    employee_credit_balance_after: null,
+                    employee_credit_outstanding_after: preparedEmployeeCreditDebit?.outstandingAfter ?? null,
+                    employee_credit_authorization_reference: preparedEmployeeCreditDebit?.authorizationReference || null,
                     subtotal_amount: subtotalAmount,
                     vatable_sales: vatableSales,
                     vat_amount: vatAmount,
@@ -2894,11 +2929,44 @@ export const buildCheckoutPosUseCase = ({
                 },
                 lines: preparedLines
             }, { transaction });
+            if (preparedEmployeeCreditDebit) {
+                await employeeCreditService.finalizeDebit({
+                    prepared: preparedEmployeeCreditDebit,
+                    posTransactionId,
+                    actorUserId: normalizedUserId,
+                    shiftId: normalizedShiftId,
+                    terminalId: normalizedTerminalId,
+                    locationId: enforcedCheckoutLocationId,
+                    idempotencyKey,
+                    transaction
+                });
+            }
             if (governedCalculation && typeof posRepository.createGovernedTransactionDiscount === 'function') {
                 await posRepository.createGovernedTransactionDiscount({
                     transactionId: posTransactionId,
                     application: governedApplication,
                     calculation: governedCalculation
+                }, { transaction });
+                await posRepository.createAuditLog({
+                    user_id: normalizedUserId,
+                    entity_type: 'pos_discount',
+                    entity_id: posTransactionId,
+                    action: 'CREATE',
+                    changes: {
+                        transaction_id: posTransactionId,
+                        discount_type: governedApplication.type,
+                        discount_amount: governedCalculation.discount_amount,
+                        selected_employee_id: governedApplication.type === 'employee'
+                            ? governedApplication.employee_id || null
+                            : null,
+                        selected_employee_name: governedApplication.type === 'employee'
+                            ? governedApplication.employee_name || null
+                            : null,
+                        applied_by_user_id: normalizedUserId,
+                        approved_by_user_id: governedApplication.manager_approval_id || null,
+                        approved_at: governedApplication.manager_approved_at || null,
+                        self_approved: governedApplication.self_approved === true
+                    }
                 }, { transaction });
             }
             if (governedResolution?.promo?.applied) {
@@ -3170,7 +3238,7 @@ export const buildRecordFiscalPrintEventUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommandService }) => {
+export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommandService, employeeCreditService }) => {
     // Phase 9: see buildCheckoutPosUseCase's comment above - no
     // `|| stockMovementService` silent fallback.
     const stockCommands = inventoryCommandService;
@@ -3266,6 +3334,21 @@ export const buildVoidPosTransactionUseCase = ({ posRepository, inventoryCommand
                     actor_user_id: actorUserId
                 }, { transaction })
                 : null;
+            if (String(existing.payment_type || '').trim().toLowerCase() === 'employee_credit') {
+                if (!employeeCreditService) {
+                    throw new DomainError(
+                        DomainErrorCode.INTERNAL_ERROR,
+                        'Employee Credit service is not configured',
+                        { statusCode: 500 }
+                    );
+                }
+                await employeeCreditService.reverseForVoid({
+                    posTransaction: existing,
+                    actorUserId,
+                    reason,
+                    transaction
+                });
+            }
             const updated = await posRepository.updateTransactionLifecycle(normalizedTransactionId, {
                 status: 'voided',
                 voided_at: new Date(),
@@ -5452,7 +5535,10 @@ export const buildSwitchTerminalShiftLocationUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildGetCurrentTerminalShiftUseCase = ({ posRepository }) => {
+export const buildGetCurrentTerminalShiftUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosReadLocationScope
+}) => {
     return async ({ query, user }) => {
         const normalizedUserId = parsePositiveInt(user?.user_id);
         if (!normalizedUserId) {
@@ -5467,11 +5553,12 @@ export const buildGetCurrentTerminalShiftUseCase = ({ posRepository }) => {
             const readinessSummary = typeof posRepository?.getShiftLocationBindingReadinessSummary === 'function'
                 ? await posRepository.getShiftLocationBindingReadinessSummary()
                 : null;
+            const requestedTerminalId = String(query?.terminal_id || '').trim() || null;
             const requestedLocationId = query?.location_id == null
                 ? null
                 : parsePositiveInt(query.location_id);
             const shift = await posRepository.findOpenTerminalShift({
-                terminalId: String(query?.terminal_id || '').trim() || null,
+                terminalId: requestedTerminalId,
                 // Terminal context never grants ownership of another cashier's
                 // drawer. Admin monitoring is exposed through a separate
                 // read-only endpoint below.
@@ -5479,10 +5566,47 @@ export const buildGetCurrentTerminalShiftUseCase = ({ posRepository }) => {
                 locationId: requestedLocationId
             });
 
+            let terminalOccupancy = null;
+            if (requestedTerminalId && requestedLocationId) {
+                const locationScope = await resolveLocationScope({
+                    requestedLocationId,
+                    userId: normalizedUserId,
+                    operationLabel: 'POS terminal availability'
+                });
+                const authorizedLocationId = parsePositiveInt(locationScope?.location_id);
+                if (shift) {
+                    terminalOccupancy = {
+                        status: 'owned_by_current_user',
+                        terminal_id: requestedTerminalId,
+                        location_id: authorizedLocationId,
+                        requires_supervisor: false
+                    };
+                } else {
+                    const occupiedShift = await posRepository.findOpenTerminalShift({
+                        terminalId: requestedTerminalId,
+                        locationId: authorizedLocationId
+                    });
+                    terminalOccupancy = occupiedShift
+                        ? {
+                            status: 'occupied_by_other',
+                            terminal_id: requestedTerminalId,
+                            location_id: authorizedLocationId,
+                            requires_supervisor: true
+                        }
+                        : {
+                            status: 'available',
+                            terminal_id: requestedTerminalId,
+                            location_id: authorizedLocationId,
+                            requires_supervisor: false
+                        };
+                }
+            }
+
             if (!shift) {
                 return ok({
                     shift: null,
                     cash_summary: null,
+                    terminal_occupancy: terminalOccupancy,
                     location_binding_readiness: readinessSummary
                 });
             }
@@ -5491,6 +5615,7 @@ export const buildGetCurrentTerminalShiftUseCase = ({ posRepository }) => {
             return ok({
                 shift: toSerializable(shift),
                 cash_summary: buildShiftCashSummary({ shift: toSerializable(shift), cashSalesAmount: cashSales }),
+                terminal_occupancy: terminalOccupancy,
                 location_binding_readiness: readinessSummary
             });
         } catch (error) {
@@ -6173,10 +6298,10 @@ export const buildGetAdminLocationMonitorUseCase = ({
                 { statusCode: 401 }
             ));
         }
-        if (!isAdminLikeUser(user)) {
+        if (!hasEffectivePermission(user, PERMISSION_SWITCH_LOCATION)) {
             return fail(new DomainError(
                 DomainErrorCode.AUTHORIZATION_FAILED,
-                'Only POS administrators can monitor another branch without an active shift.',
+                'POS location switching permission is required to monitor another branch without an active shift.',
                 { statusCode: 403 }
             ));
         }
@@ -6378,6 +6503,7 @@ export const buildCollectCashPickupOrderUseCase = ({ posRepository }) => {
 export const buildUpdateOnlineOrderStatusUseCase = ({
     posRepository,
     inventoryCommandService,
+    commerceOrderLifecycleUseCase = null,
     activityRecorder = recordDgfyOrderActivity
 }) => {
     // Phase 9: see buildCheckoutPosUseCase's comment above - no
@@ -6550,6 +6676,40 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                 });
             });
 
+            let paymentLifecycle = {
+                tracked: false,
+                payment_action: 'not_applicable'
+            };
+            if (
+                commerceOrderLifecycleUseCase
+                && ['completed', 'rejected', 'cancelled'].includes(targetStatus)
+                && currentTenantId
+            ) {
+                const lifecycleResult = await commerceOrderLifecycleUseCase({
+                    tenantId: currentTenantId,
+                    posTransactionId: normalizedTransactionId,
+                    fulfillmentStatus: targetStatus,
+                    actor: `pos_user:${actingUserId}`,
+                    rejectionReason: payload?.reason || null
+                });
+                paymentLifecycle = lifecycleResult.success
+                    ? lifecycleResult.data
+                    : {
+                        tracked: true,
+                        payment_action: 'refund_failed',
+                        failure_reason: lifecycleResult.error?.message
+                            || 'The payment lifecycle action requires administrator review.'
+                    };
+                if (!lifecycleResult.success) {
+                    logger.error('[PosUseCases] Commerce payment lifecycle failed after order status commit', {
+                        tenant_id: currentTenantId,
+                        pos_transaction_id: normalizedTransactionId,
+                        target_status: targetStatus,
+                        error: lifecycleResult.error?.message
+                    });
+                }
+            }
+
             // Best-effort, post-commit settlement of any pending online-order affiliate commission
             // tied to this order - must never fail the status update that already succeeded. Dormant
             // until online attribution capture is wired up on the storefront (no pending rows exist
@@ -6581,6 +6741,7 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                     applied_by: actingUserId,
                     applied_at: mutationTimestamp.toISOString()
                 },
+                payment_lifecycle: paymentLifecycle,
                 idempotency: {
                     key: idempotencyKey || null,
                     request_fingerprint: replayRequestHash,

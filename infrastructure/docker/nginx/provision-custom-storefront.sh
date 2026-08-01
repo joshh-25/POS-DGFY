@@ -96,8 +96,8 @@ server {
     client_max_body_size 8m;
     ssl_certificate /etc/letsencrypt/live/$DOMAIN/fullchain.pem;
     ssl_certificate_key /etc/letsencrypt/live/$DOMAIN/privkey.pem;
-    location /api { set \$backend_upstream backend:5000; proxy_pass http://\$backend_upstream; proxy_http_version 1.1; proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto \$scheme; }
-    location /uploads { set \$backend_upstream backend:5000; proxy_pass http://\$backend_upstream; proxy_http_version 1.1; proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto \$scheme; }
+    location /api { set \$dgfy_api_upstream dgfy-api:5100; proxy_pass http://\$dgfy_api_upstream; proxy_http_version 1.1; proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto \$scheme; }
+    location /uploads { set \$dgfy_api_upstream dgfy-api:5100; proxy_pass http://\$dgfy_api_upstream; proxy_http_version 1.1; proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto \$scheme; }
     location /openfreemap/ { rewrite ^/openfreemap/(.*)$ /\$1 break; proxy_pass https://tiles.openfreemap.org; proxy_ssl_server_name on; proxy_set_header Host tiles.openfreemap.org; }
     location / { set \$frontend_upstream frontend:8083; proxy_pass http://\$frontend_upstream; proxy_http_version 1.1; proxy_set_header Host \$host; proxy_set_header X-Real-IP \$remote_addr; proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for; proxy_set_header X-Forwarded-Proto \$scheme; }
 }

@@ -14,7 +14,10 @@ import {
     provisionAffiliate,
     rejectAffiliateCashout,
     updateAffiliateEnrollment,
-    updateAffiliateSettings
+    updateAffiliateSettings,
+    listAffiliatePriceRules,
+    upsertAffiliatePriceRule,
+    deactivateAffiliatePriceRule
 } from '../modules/dgfy/controllers/dgfyAffiliateHandlers.js';
 
 const router = express.Router();
@@ -72,6 +75,27 @@ router.get(
     authenticate,
     checkPermission(PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES),
     getAffiliateQrPayload
+);
+// Phase 1 affiliate pricing rule engine (see
+// docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md). Selling-price rule only -
+// commission configuration is part of /settings and /affiliates/:enrollment_id above.
+router.get(
+    '/price-rules',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.VIEW_AFFILIATES),
+    listAffiliatePriceRules
+);
+router.put(
+    '/price-rules',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.MANAGE_AFFILIATE_SETTINGS),
+    upsertAffiliatePriceRule
+);
+router.delete(
+    '/price-rules/:price_rule_id',
+    authenticate,
+    checkPermission(PERMISSIONS.AFFILIATES.actions.MANAGE_AFFILIATE_SETTINGS),
+    deactivateAffiliatePriceRule
 );
 router.get(
     '/cashouts',

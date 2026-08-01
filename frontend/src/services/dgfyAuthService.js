@@ -1,11 +1,13 @@
 import api from './api.js';
-import { setBrowserSession } from './browserSession.js';
+import { getAccessToken, setBrowserSession } from './browserSession.js';
 import { clearClientSession } from './sessionCleanup.js';
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../observability/analyticsEvents.js';
 
 let dgfyToken = '';
 let dgfyAccount = null;
 const DGFY_EXPLICIT_SIGN_OUT_KEY = 'dgfy_customer_explicit_sign_out';
+// Mirrors SESSION_COOKIE_NAMES.csrf in backend/src/utils/browserSessionCookies.js.
+const DGFY_SESSION_HINT_COOKIE = 'sku_csrf_token';
 
 const dgfyRequestConfig = (token = getStoredDgfyToken()) => {
   const normalizedToken = String(token || '').trim();
@@ -31,6 +33,19 @@ const dgfyBusinessRequestConfig = (token = getStoredDgfyToken()) => {
   return {
     withCredentials: true,
     skipGlobalErrorToast: true
+  };
+};
+
+const withPreviousTenantAccessToken = (config = {}) => {
+  const previousTenantAccessToken = String(getAccessToken() || '').trim();
+  if (!previousTenantAccessToken) return config;
+
+  return {
+    ...config,
+    headers: {
+      ...(config.headers || {}),
+      'x-previous-tenant-access-token': previousTenantAccessToken
+    }
   };
 };
 
@@ -145,6 +160,35 @@ export const hasDgfyExplicitSignOut = () => {
     return Boolean(window.sessionStorage.getItem(DGFY_EXPLICIT_SIGN_OUT_KEY));
   } catch {
     return false;
+  }
+};
+
+// Cheap client-side "is a session plausibly present?" probe.
+//
+// The session cookies themselves are httpOnly and unreadable here, but the
+// backend issues `sku_csrf_token` with httpOnly:false alongside every one of
+// them (see backend/src/utils/browserSessionCookies.js issueCsrfToken), and
+// clears it in clearAllSessionCookies. So its presence is a reliable-enough
+// signal to decide whether an auth probe is worth sending at all.
+//
+// This is deliberately a HINT, not proof: it can be present without a valid
+// session (cookie outlived the session) or absent with one (cleared
+// separately). Callers must still handle a failing probe normally -- the only
+// thing this buys is skipping a request that would otherwise return 401 and
+// print an unsuppressable "Failed to load resource: 401" in the browser
+// console on every anonymous page load. That console line is emitted by the
+// network layer before any JS runs, so it cannot be caught or silenced; not
+// sending the request is the only way to avoid it.
+export const hasDgfyBrowserSessionHint = () => {
+  if (typeof document === 'undefined') return false;
+  try {
+    return document.cookie
+      .split(';')
+      .some((entry) => entry.trim().startsWith(`${DGFY_SESSION_HINT_COOKIE}=`));
+  } catch {
+    // Treat an unreadable cookie jar as "might have a session" so the probe
+    // still runs -- failing open keeps real sessions working.
+    return true;
   }
 };
 
@@ -309,7 +353,20 @@ export const listDgfyAccountCompanies = async (token = getStoredDgfyToken()) => 
 };
 
 export const listDgfyAccountCompaniesForTenantSession = async () => {
-  const response = await api.get('/dgfy/account/companies', dgfyTenantBridgeRequestConfig());
+  // skipAuthRefresh: a DGFY-only storefront visitor (no tenant/IMS session) will
+  // legitimately 401 here -- authenticateDgfyAccountOrTenantMembership forces the
+  // tenant-membership path via x-dgfy-auth-mode and that path requires a tenant
+  // Bearer token the visitor never has. Without this flag, api.js's response
+  // interceptor treats that 401 as an expired *tenant* session, attempts
+  // /auth/refresh-token, fails, and hard-redirects the whole page to
+  // /login?reason=session_expired -- destroying a perfectly valid DGFY session
+  // just because the "other stores" switcher lookup wasn't authorized. Letting
+  // the 401 propagate here instead lands it in fetchStorefrontAccountBranches's
+  // existing catch { return []; }, which just hides the switcher as intended.
+  const response = await api.get('/dgfy/account/companies', {
+    ...dgfyTenantBridgeRequestConfig(),
+    skipAuthRefresh: true
+  });
   return response.data.data;
 };
 
@@ -377,7 +434,7 @@ export const switchDgfyCompany = async ({
   const response = await callDgfyBusinessEndpoint(
     (config) => api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/switch`, {
       email_otp_code: emailOtpCode
-    }, config),
+    }, withPreviousTenantAccessToken(config)),
     token
   );
   const data = response.data.data;
@@ -457,7 +514,7 @@ export const switchDgfyCompanyForTenantSession = async ({
 } = {}) => {
   const response = await api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/switch`, {
     email_otp_code: emailOtpCode
-  }, dgfyTenantBridgeRequestConfig());
+  }, withPreviousTenantAccessToken(dgfyTenantBridgeRequestConfig()));
   const data = response.data.data;
   clearClientSession({
     reason: 'company_switch',
@@ -494,10 +551,29 @@ export const switchDgfyCompanyForTenantSession = async ({
   return data;
 };
 
+export const activateDgfyTenantSession = (data, { emitAuthEvent = true } = {}) => {
+  const tenantToken = String(data?.token || '').trim();
+  const resolvedCompanyToken = String(data?.company?.token || '').trim();
+  if (!tenantToken || !resolvedCompanyToken) {
+    throw new Error('The selected company did not return a valid POS session. Sign in again.');
+  }
+  setBrowserSession({
+    token: tenantToken,
+    companyToken: resolvedCompanyToken
+  });
+  if (emitAuthEvent && typeof window !== 'undefined') {
+    const event = typeof CustomEvent === 'function'
+      ? new CustomEvent('auth:login')
+      : new Event('auth:login');
+    window.dispatchEvent(event);
+  }
+  return data;
+};
+
 export const startDgfyTenantSession = async ({
   tenantId,
   companyToken
-} = {}, token = getStoredDgfyToken()) => {
+} = {}, token = getStoredDgfyToken(), { activate = true } = {}) => {
   const response = await api.post('/dgfy/auth/tenant-session', {
     tenant_id: tenantId,
     company_token: companyToken
@@ -508,38 +584,25 @@ export const startDgfyTenantSession = async ({
   if (!tenantToken || !resolvedCompanyToken) {
     throw new Error('The selected company did not return a valid POS session. Sign in again.');
   }
-  setBrowserSession({
-    token: tenantToken,
-    companyToken: resolvedCompanyToken
-  });
-  if (typeof window !== 'undefined') {
-    const event = typeof CustomEvent === 'function'
-      ? new CustomEvent('auth:login')
-      : new Event('auth:login');
-    window.dispatchEvent(event);
-  }
-  return data;
+  const normalizedSession = {
+    ...data,
+    company: {
+      ...(data?.company || {}),
+      token: resolvedCompanyToken
+    }
+  };
+  return activate ? activateDgfyTenantSession(normalizedSession) : normalizedSession;
 };
 
 export const startDgfyPosSession = async ({
   tenantId,
   terminalId
-} = {}, token = getStoredDgfyToken()) => {
+} = {}, token = getStoredDgfyToken(), { activate = true } = {}) => {
   const response = await api.post(`/dgfy/account/companies/${encodeURIComponent(String(tenantId || ''))}/pos-session`, {
     terminal_id: terminalId
   }, dgfyRequestConfig(token));
   const data = response.data.data;
-  setBrowserSession({
-    token: data?.token,
-    companyToken: data?.company?.token
-  });
-  if (typeof window !== 'undefined') {
-    const event = typeof CustomEvent === 'function'
-      ? new CustomEvent('auth:login')
-      : new Event('auth:login');
-    window.dispatchEvent(event);
-  }
-  return data;
+  return activate ? activateDgfyTenantSession(data) : data;
 };
 
 export const dgfyAuthHeader = () => {

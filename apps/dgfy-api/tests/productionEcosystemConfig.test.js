@@ -7,22 +7,22 @@ const ecosystem = require('../../../ecosystem.config.cjs');
 const findApp = (name) => ecosystem.apps.find((app) => app.name === name);
 
 describe('production ecosystem registration policy', () => {
-  it('keeps production DGFY company registration on auto-standard activation', () => {
+  it('keeps production DGFY company registration on mandatory manual review', () => {
     const backend = findApp('sku-backend');
 
     expect(backend?.env_production).toEqual(expect.objectContaining({
-      TENANT_REGISTRATION_APPROVAL_MODE: 'auto_standard'
+      TENANT_REGISTRATION_APPROVAL_MODE: 'manual'
     }));
   });
 
-  it('does not leave staging registration in manual-review drift by default', () => {
+  it('keeps staging registration on mandatory manual review', () => {
     const stagingBackend = findApp('sku-staging-backend');
 
     expect(stagingBackend?.env).toEqual(expect.objectContaining({
-      TENANT_REGISTRATION_APPROVAL_MODE: 'auto_standard'
+      TENANT_REGISTRATION_APPROVAL_MODE: 'manual'
     }));
     expect(stagingBackend?.env_staging).toEqual(expect.objectContaining({
-      TENANT_REGISTRATION_APPROVAL_MODE: 'auto_standard'
+      TENANT_REGISTRATION_APPROVAL_MODE: 'manual'
     }));
   });
 });

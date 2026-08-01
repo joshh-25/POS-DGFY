@@ -59,11 +59,11 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
+  dgfy-api:
     build:
       context: ../../..
       dockerfile: infrastructure/docker/dgfy-api/Dockerfile
-    image: dgfy-local-test-backend:latest
+    image: dgfy-local-test-api:latest
     restart: unless-stopped
     # .env.compose is .env with literal `$` doubled to `$$` — compose
     # interpolates `$VAR` syntax found inside env_file contents, and
@@ -184,7 +184,7 @@ services:
       - "5174:5174"
       - "5175:5175"
     depends_on:
-      backend:
+      dgfy-api:
         condition: service_healthy
       frontend:
         condition: service_healthy

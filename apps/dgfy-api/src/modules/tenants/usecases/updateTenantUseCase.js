@@ -1,29 +1,13 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
-import { normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 import {
     isValidTenantPlan,
     normalizeRequestedTenantPlan,
-    resolveRegisteredTenantPlan,
     resolveTenantPlanForUpdate
 } from './tenantPlanPolicy.js';
 
-const extractWorkflowModeFromTenant = (tenant) => {
-    let settings = tenant?.settings || {};
-    if (typeof settings === 'string') {
-        try {
-            settings = JSON.parse(settings);
-        } catch {
-            settings = {};
-        }
-    }
-    return normalizeWorkflowMode(settings?.workflow_mode);
-};
-
 export const buildUpdateTenantUseCase = ({
     tenantAdminRepository,
-    provisionTenant,
-    emailService,
     logger
 }) => {
     return async ({ id, body }) => {
@@ -41,43 +25,11 @@ export const buildUpdateTenantUseCase = ({
             }
 
             if (tenant.status === 'pending' && status === 'active') {
-                const result = await provisionTenant({
-                    tenantId: tenant.id,
-                    name: tenant.name,
-                    dbName: tenant.db_name,
-                    companyToken: tenant.company_token,
-                    adminEmail: tenant.admin_email,
-                    adminPhone: tenant.admin_phone,
-                    adminPasswordHash: tenant.admin_password_hash,
-                    workflowMode: extractWorkflowModeFromTenant(tenant)
-                });
-
-                if (emailService?.isEmailConfigured?.()) {
-                    try {
-                        await emailService.sendCompanyApprovedEmail({
-                            email: tenant.admin_email,
-                            companyName: tenant.name,
-                            companyToken: tenant.company_token
-                        });
-                    } catch (emailError) {
-                        logger?.warn?.('[UpdateTenant] Failed to send approval email:', emailError.message);
-                    }
-                }
-
-                const nextPlan = resolveRegisteredTenantPlan();
-                if (nextPlan !== tenant.plan) {
-                    const refreshed = await tenantAdminRepository.findTenantById(tenant.id);
-                    await tenantAdminRepository.updateTenant(refreshed, { plan: nextPlan });
-                }
-
-                return ok({
-                    statusCode: 200,
-                    payload: {
-                        success: true,
-                        message: 'Tenant approved and provisioned successfully.',
-                        data: { ...result, plan: nextPlan }
-                    }
-                });
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Pending public registrations may only be activated by the dedicated approval workflow.',
+                    { statusCode: 422 }
+                ));
             }
 
             if (requestedPlan && !isValidTenantPlan(requestedPlan)) {

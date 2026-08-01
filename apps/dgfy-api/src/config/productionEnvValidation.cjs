@@ -215,9 +215,10 @@ const validatePaymentConfig = (env, errors, warnings) => {
   const commercePaymentsEnabled = isTruthy(env.COMMERCE_PAYMENTS_ENABLED)
     || isTruthy(env.COMMERCE_QRPH_ENABLED)
     || isTruthy(env.COMMERCE_PAYMONGO_SPLIT_ENABLED);
+  const tenantRevenueSharingEnabled = isTruthy(env.TENANT_REVENUE_SHARING_ENABLED);
   const paymongoLiveMode = String(env.PAYMONGO_MODE || '').trim().toLowerCase() === 'live';
 
-  if (!paymentsEnabled && !commercePaymentsEnabled && !paymongoLiveMode) return;
+  if (!paymentsEnabled && !commercePaymentsEnabled && !tenantRevenueSharingEnabled && !paymongoLiveMode) return;
 
   const provider = detectPaymentProvider(env);
   if (!provider) {
@@ -232,8 +233,75 @@ const validatePaymentConfig = (env, errors, warnings) => {
     validatePayPalConfig(env, errors);
   }
 
-  if (commercePaymentsEnabled && !hasValue(env, 'PAYMONGO_DGFY_MERCHANT_ID')) {
+  if (commercePaymentsEnabled && !tenantRevenueSharingEnabled && !hasValue(env, 'PAYMONGO_DGFY_MERCHANT_ID')) {
     addMissing(errors, 'PAYMONGO_DGFY_MERCHANT_ID');
+  }
+  if (tenantRevenueSharingEnabled) {
+    if (isTruthy(env.COMMERCE_PAYMONGO_SPLIT_ENABLED)) {
+      errors.push('TENANT_REVENUE_SHARING_ENABLED and COMMERCE_PAYMONGO_SPLIT_ENABLED cannot both be true');
+    }
+    if (!hasValue(env, 'TENANT_PAYOUT_ENCRYPTION_KEY') || String(env.TENANT_PAYOUT_ENCRYPTION_KEY).trim().length < 32) {
+      errors.push('TENANT_PAYOUT_ENCRYPTION_KEY must contain at least 32 characters');
+    }
+    if (isTruthy(env.TENANT_AUTOMATIC_PAYOUT_ENABLED) && !isTruthy(env.TENANT_EXTERNAL_PAYOUT_APPROVED)) {
+      errors.push('TENANT_AUTOMATIC_PAYOUT_ENABLED requires TENANT_EXTERNAL_PAYOUT_APPROVED=true');
+    }
+    try {
+      const accounts = JSON.parse(String(env.ADMIN_ACCOUNTS_JSON || ''));
+      if (!Array.isArray(accounts) || accounts.length < 2) {
+        errors.push('TENANT_REVENUE_SHARING_ENABLED requires at least two ADMIN_ACCOUNTS_JSON identities');
+      } else {
+        const normalizedAccounts = accounts.map((account) => ({
+          username: String(account?.username || '').trim().toLowerCase(),
+          passwordHash: String(
+            account?.password_hash || account?.passwordHash || ''
+          ).trim(),
+          financialRole: String(
+            account?.financial_role || account?.financialRole || ''
+          ).trim().toLowerCase()
+        }));
+        const allowedFinancialRoles = new Set([
+          'platform_admin',
+          'finance_viewer',
+          'finance_preparer',
+          'finance_approver'
+        ]);
+        const bcryptHashPattern = /^\$2[aby]\$\d{2}\$[./A-Za-z0-9]{53}$/;
+        if (normalizedAccounts.some((account) => (
+          !account.username
+          || !bcryptHashPattern.test(account.passwordHash)
+          || !allowedFinancialRoles.has(account.financialRole)
+        ))) {
+          errors.push(
+            'ADMIN_ACCOUNTS_JSON entries require username, bcrypt password_hash, and a valid financial_role'
+          );
+        }
+        const distinctUsernames = new Set(
+          normalizedAccounts.map((account) => account.username).filter(Boolean)
+        );
+        const preparers = normalizedAccounts.filter((account) => [
+          'platform_admin',
+          'finance_preparer',
+          'finance_approver'
+        ].includes(account.financialRole));
+        const approvers = normalizedAccounts.filter((account) => [
+          'platform_admin',
+          'finance_approver'
+        ].includes(account.financialRole));
+        const hasMakerCheckerPair = preparers.some((preparer) => (
+          approvers.some((approver) => approver.username !== preparer.username)
+        ));
+        if (distinctUsernames.size < 2 || !hasMakerCheckerPair) {
+          errors.push(
+            'ADMIN_ACCOUNTS_JSON requires distinct finance preparer and finance approver identities'
+          );
+        }
+      }
+    } catch {
+      errors.push(
+        'TENANT_REVENUE_SHARING_ENABLED requires valid ADMIN_ACCOUNTS_JSON maker-checker identities'
+      );
+    }
   }
 
   if (isTruthy(env.PAYMONGO_ALLOW_UNSIGNED_WEBHOOKS)) {

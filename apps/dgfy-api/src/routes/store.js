@@ -105,6 +105,7 @@ router.post('/checkout/guest-otp/request', setNoStoreCacheControl, storeGuestChe
 router.post('/checkout/guest-otp/verify', setNoStoreCacheControl, storeGuestCheckoutOtpVerifyLimiter, validateStoreGuestCheckoutOtpVerify, storeController.verifyGuestCheckoutOtp);
 router.post('/checkout/payment-sessions', setNoStoreCacheControl, optionalStoreCustomer, validateStoreCheckoutPaymentSession, storeController.createCheckoutPaymentSession);
 router.get('/checkout/payment-sessions/:payment_session_id', setNoStoreCacheControl, optionalStoreCustomer, validateStorePaymentSessionParam, storeController.getCheckoutPaymentSession);
+router.post('/checkout/payment-sessions/:payment_session_id/confirm-test', setNoStoreCacheControl, optionalStoreCustomer, validateStorePaymentSessionParam, storeController.confirmCheckoutSandboxPayment);
 router.post('/checkout', setNoStoreCacheControl, optionalStoreCustomer, validateStoreCheckout, storeController.checkout);
 router.get('/services/availability', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, validateServiceAvailabilityQuery, getPublicServiceAvailability);
 router.get('/services/bookings', requireWorkflowCapability('services', 'Services'), setNoStoreCacheControl, authenticateStoreCustomer, validateServiceBookingQuery, listPublicServiceBookings);

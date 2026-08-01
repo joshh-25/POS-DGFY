@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-05-18
+last_reviewed: 2026-07-28
 applies_to: tenant_onboarding_and_storefront_bootstrap
 topic: dgfy_unified_onboarding_plan
 ---
@@ -26,9 +26,9 @@ topic: dgfy_unified_onboarding_plan
 - **Overall closeness: 98%**
 
 ### Layman Evidence (What Exists Today)
-1. Registration defaults to immediate activation.
-- Evidence: public company registration defaults to `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`, provisions the tenant database, activates the tenant, and lets the frontend sign the founder in through normal login (`backend/src/modules/tenants/usecases/registerCompanyRequestUseCase.js`, `docs/features/TENANT_MANAGEMENT.md`).
-- Evidence: `TENANT_REGISTRATION_APPROVAL_MODE=manual` remains an explicit rollback path for pending platform-admin review.
+1. Registration requires Platform Admin review.
+- Evidence: public company registration creates a pending landlord application and status route without provisioning, activation, company-token disclosure, or POS handoff (`backend/src/modules/tenants/usecases/registerCompanyRequestUseCase.js`, `docs/features/TENANT_MANAGEMENT.md`).
+- Evidence: only the approved-registration path provisions the tenant and completes the active founder membership.
 
 2. First-login onboarding wizard is implemented for tenant master admin.
 - Evidence: onboarding routes exist (`GET /onboarding/status`, `PUT /onboarding/step`, `POST /onboarding/items/bulk`, `POST /onboarding/complete`, `POST /onboarding/events`) (`backend/src/routes/onboarding.js`).
@@ -182,3 +182,9 @@ topic: dgfy_unified_onboarding_plan
 - Authoritative doc freshness checked (`last_reviewed`): `yes`
 - Deprecated/historical docs used for planning decisions: `no`
 - Cross-boundary ADR requirement identified: `yes`
+
+## Addendum (2026-07-28): Mandatory Manual Review
+
+1. ADR 0022 makes manual Platform Admin review mandatory for public company registration.
+2. Submission creates pending application/attempt state and opens the applicant status page; it does not provision, activate, disclose a company token, or offer POS access.
+3. First-login onboarding begins only after approved provisioning succeeds and remains a soft-reminder workflow.

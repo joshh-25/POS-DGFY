@@ -201,6 +201,46 @@ After June 17, 2027, unlinked legacy users cannot use IMS/POS until they create 
   - `20260422000001-add-compliance-downgrade-override-controls.cjs` adds governed downgrade columns, audit event types, and controlled downgrade trigger support.
   - `20260422000002-harden-compliance-downgrade-controls.cjs` tightens trigger invariants (same-update marker mutation, no mixed override+revert mutation, and tenant one-per-cycle enforcement parity).
 
+## Platform Admin, Manual Registration Review, And QA Invoicing Addendum (2026-07-28)
+
+Primary landlord migrations:
+
+1. `20260728000001-create-platform-admin-identity.cjs`
+2. `20260728000002-create-company-registration-applications.cjs`
+3. `20260728000003-create-platform-invoices.cjs`
+4. `20260728000004-create-platform-invoice-payments-and-sequences.cjs`
+5. `20260728000005-create-platform-invoice-artifacts-and-deliveries.cjs`
+6. `20260728000006-create-platform-invoice-adjustments.cjs`
+7. `20260728000007-create-platform-invoice-events.cjs`
+8. `20260728000008-add-platform-invoice-replacements.cjs`
+9. `20260728000009-remove-platform-invoice-original-unique-index.cjs`
+
+Platform Admin tables:
+
+1. `platform_admin_users` stores delegated/master identity state and password hashes.
+2. `platform_admin_permissions` stores live page grants; API middleware resolves these rows on every protected request.
+3. `platform_admin_sessions` stores revocable, expiring HttpOnly admin sessions.
+4. `platform_admin_audit_logs` stores reasoned privileged identity and grant changes without password values.
+
+Company-registration review tables:
+
+1. `company_registration_applications` stores the submitting DGFY account, tenant, review state, provisioning state, current attempt, and optimistic version.
+2. `company_registration_attempts` stores immutable submission/legal snapshots and review decisions.
+3. `company_registration_events` stores the append-only review/provisioning lifecycle.
+4. `company_registration_email_deliveries` stores durable applicant notification attempts.
+
+QA landlord-invoice tables:
+
+1. `platform_invoices` stores immutable seller, buyer, service, VAT, status, numbering, and replacement-parent snapshots.
+2. `platform_invoice_sequences` allocates non-reused TEST invoice numbers atomically.
+3. `platform_invoice_payments` stores append-only cash tender, applied amount, and confirmed change.
+4. `platform_invoice_artifacts` stores private PDF metadata, storage keys, and SHA-256 digests.
+5. `platform_invoice_deliveries` stores rate-limited provider delivery attempts and actual QA recipients.
+6. `platform_invoice_adjustments` stores full-credit records.
+7. `platform_invoice_events` stores the append-only invoice lifecycle.
+
+These are landlord-only tables. They must not be cloned into tenant databases or joined to tenant POS invoice/payment/inventory ledgers. Live fiscal issuance remains disabled while the seller snapshot contains TEST mode or unresolved fiscal authority placeholders.
+
 ## DGFY Legal Acknowledgement Addendum (2026-06-08)
 
 DGFY account registration and public company registration require versioned ToS/T&C acknowledgement before the mutation proceeds.
@@ -1335,6 +1375,7 @@ Landlord-level payment routing tables support PayMongo QR Ph Storefront payments
 - `commerce_payment_sessions`: one row per Storefront online payment attempt with UUID `tenant_id`, immutable checkout payload, DGFY fee snapshot, `fee_policy` snapshot (`dgfy_fee_basis=subtotal`, `dgfy_fee_charged_to=customer`, `provider_fee_shoulder=tenant_company`), total amount in pesos and centavos, PayMongo Payment Intent/Payment Method/Payment IDs, QR image URL, expiration, webhook state, split payload, final `pos_transaction_id`, and manual-resolution failure fields.
 - `commerce_payment_refunds`: one row per PayMongo refund attempt with UUID `tenant_id`, public refund reference, linked commerce session, provider payment/refund IDs, amount in centavos, reason, notes, refund strategy, split-refund payload, provider payload, status, failure fields, and requester.
 - Admin settlement reporting is derived from `commerce_payment_sessions` plus `commerce_payment_refunds`; it is a reconciliation view over stored local payment evidence, not a PayMongo payout ledger.
+- ADR 0040 adds the landlord-owned tenant financial ledger: `tenant_revenue_fee_policies`, `tenant_revenue_transactions`, `tenant_revenue_ledger_entries`, `tenant_settlement_batches`, `tenant_settlement_batch_items`, `tenant_settlement_batch_ledger_items`, `tenant_payouts`, `tenant_revenue_adjustments`, and `tenant_revenue_reconciliation_records`. Amounts are integer centavos. Fee versions and ledger entries are append-only; later paid-transaction corrections are allocated once to a future settlement through `tenant_settlement_batch_ledger_items`.
 
 ### 19. POS Catalog Overrides Table
 

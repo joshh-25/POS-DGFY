@@ -1,16 +1,20 @@
 ---
-status: authoritative
-authority_level: authoritative
+status: superseded
+authority_level: historical
 owner: architecture
-last_reviewed: 2026-06-08
+date: 2026-05-19
+last_reviewed: 2026-07-30
+review_by: 2026-07-30
 applies_to: storefront_commerce_payments
 topic: paymongo_qrph_platform_split_settlement
+superseded_by: 0052-tenant-revenue-collection-ledger-and-settlement.md
 ---
 
 # ADR 0027: PayMongo QR Ph Commerce Payment Sessions and Platform Split Settlement
 
 ## Status
-Accepted (2026-05-19)
+Superseded on 2026-07-30 by ADR 0040. Do not use the split-payment, customer-paid
+platform-fee, or child-wallet settlement decisions in this document for new work.
 
 ## Context
 ADR 0012 defines a mandatory `DGFY convenience fee` equal to `round4(gross_subtotal * 0.01)` for POS and Storefront checkout. Storefront online checkout now needs an online payment handoff that collects the full customer total and automatically routes that 1% platform fee to the DGFY PayMongo account while routing the remaining net amount to the tenant merchant wallet.

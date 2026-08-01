@@ -1,3 +1,14 @@
+---
+status: accepted
+authority_level: authoritative
+owner: architecture
+date: 2026-03-04
+last_reviewed: 2026-03-04
+review_by: 2026-09-04
+applies_to: architecture_decision
+topic: error_contract_unification
+---
+
 # ADR 0002: Error Contract Unification
 
 ## Status

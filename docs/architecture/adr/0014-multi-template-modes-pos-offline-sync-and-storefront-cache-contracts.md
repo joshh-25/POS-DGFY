@@ -1,3 +1,14 @@
+---
+status: accepted
+authority_level: authoritative
+owner: architecture
+date: 2026-04-27
+last_reviewed: 2026-04-27
+review_by: 2026-10-27
+applies_to: architecture_decision
+topic: multi_template_modes_pos_offline_sync_and_storefront_cache_contracts
+---
+
 # ADR 0014: Multi-Template Modes, POS Offline Replay Hardening, and Storefront Cache Contracts
 
 ## Status

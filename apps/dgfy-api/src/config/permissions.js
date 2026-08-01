@@ -70,7 +70,11 @@ export const PERMISSIONS = {
             VOID_POS_TRANSACTION: "pos:void", // Void completed POS transactions with governed fiscal evidence
             MANAGE_FISCAL_TERMINALS: "pos:fiscal_terminals:manage", // Register and verify fiscal terminals
             MANAGE_ESALES_REPORTS: "pos:esales:manage", // Generate and update eSales reporting packages
-            SWITCH_LOCATION_POS: "pos:switch_location" // Switch terminal shift location using governed flow
+            SWITCH_LOCATION_POS: "pos:switch_location", // Switch terminal shift location using governed flow
+            MANAGE_EMPLOYEES: "pos:employees:manage", // Manage non-login employee directory records
+            USE_EMPLOYEE_CREDIT: "pos:employee_credit:use", // Accept Employee Credit as a governed POS tender
+            MANAGE_EMPLOYEE_CREDIT: "pos:employee_credit:manage", // Configure eligibility, limits, and balances
+            VIEW_EMPLOYEE_CREDIT_REPORT: "pos:employee_credit:report" // View the non-cash Employee Credit ledger
         }
     },
 
@@ -188,6 +192,7 @@ export const PERMISSIONS = {
             VIEW_SETTINGS: "settings:view",  // View system settings
             EDIT_SETTINGS: "settings:edit",  // Change system settings
             EDIT_STOREFRONT_BRANDING: "settings:storefront_branding_edit", // Upload/remove storefront cover + profile assets
+            MANAGE_CATEGORIES: "categories:manage", // Create, update, deactivate, delete, and reassign categories
             MANAGE_USERS: "users:manage",    // Manage other users (Master Admin/Admin)
             VIEW_USERS: "users:view",        // View other users (Admin/Manager)
             DELETE_USERS: "users:delete",    // Remove/Deactivate users (Admin/Manager)
@@ -242,6 +247,7 @@ export const DEFAULT_ROLE_PERMISSIONS = {
         PERMISSIONS.INVENTORY.actions.VIEW_ITEMS,
         PERMISSIONS.POS.actions.VIEW_POS,
         PERMISSIONS.POS.actions.TRANSACT_POS,
+        PERMISSIONS.POS.actions.USE_EMPLOYEE_CREDIT,
         PERMISSIONS.POS.actions.CLOSE_SHIFT_POS,
         PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT,
     ],

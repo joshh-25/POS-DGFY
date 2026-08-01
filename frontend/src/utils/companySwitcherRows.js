@@ -1,3 +1,33 @@
+const COMPANY_ROLE_LABELS = {
+  owner: 'Business Owner',
+  business_owner: 'Business Owner',
+  admin: 'Admin',
+  manager: 'Manager',
+  cashier: 'Cashier',
+  staff: 'Staff',
+  member: 'Member',
+  msme_admin: 'Admin',
+  fnb_admin: 'Admin',
+  msme_manager: 'Manager',
+  fnb_manager: 'Manager',
+  msme_cashier: 'Cashier',
+  fnb_cashier: 'Cashier'
+};
+
+export const getCompanyRoleLabel = (company = {}) => {
+  if (company?.is_owner === true || String(company?.ownership || '').trim().toLowerCase() === 'owner') {
+    return 'Business Owner';
+  }
+
+  const role = String(company?.role || '').trim().toLowerCase();
+  if (!role) return 'Member';
+  if (COMPANY_ROLE_LABELS[role]) return COMPANY_ROLE_LABELS[role];
+
+  return role
+    .replace(/[_-]+/g, ' ')
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+};
+
 export const buildCurrentCompanyFromUser = (user) => {
   const company = user?.company || {};
   const name = String(company.name || '').trim();

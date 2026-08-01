@@ -35,8 +35,8 @@ function deriveServicesHeroContent({
   const hasAboutOrGallerySection = hasAboutSection || hasGallerySection;
   const hasAboutToggle = aboutText.length > 180;
   const hasAddress = Boolean(addressText);
-  const hasMapData = Number.isFinite(Number(selectedLocation?.latitude ?? selectedStore?.latitude))
-    && Number.isFinite(Number(selectedLocation?.longitude ?? selectedStore?.longitude));
+  const hasMapData = Array.isArray(serviceHeroModel.mapStores)
+    && serviceHeroModel.mapStores.length > 0;
   const visibleWhyChooseUs = Array.isArray(serviceHeroModel.whyChooseUs)
     ? serviceHeroModel.whyChooseUs.slice(0, maxWhyChooseUs)
     : [];

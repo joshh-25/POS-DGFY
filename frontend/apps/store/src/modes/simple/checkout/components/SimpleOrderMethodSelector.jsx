@@ -1,4 +1,10 @@
+import { ShoppingBag, Truck } from 'lucide-react';
 import { SelectableOptionCard } from '../../../../shared/components/checkout/SelectableOptionCard.jsx';
+
+const SIMPLE_ORDER_METHOD_ICONS = {
+  delivery: ({ size }) => <Truck size={size} />,
+  pickup: ({ size }) => <ShoppingBag size={size} />
+};
 
 export function SimpleOrderMethodSelector({
   isMobileViewport = false,
@@ -7,7 +13,7 @@ export function SimpleOrderMethodSelector({
   onOrderMethodChange
 }) {
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 10 }}>
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 16 }}>
       {options.map((option) => {
         const isActive = orderMethod === option.value;
         return (
@@ -15,19 +21,23 @@ export function SimpleOrderMethodSelector({
             key={`simple-order-method-${option.value}`}
             onClick={() => onOrderMethodChange?.(option.value)}
             label={option.label}
+            icon={SIMPLE_ORDER_METHOD_ICONS[option.value] || null}
             active={isActive}
             activeBorderColor="#0f766e"
             activeBackground="#ecfeff"
             activeTextColor="#0f766e"
+            activeIconBackground="#ccfbf1"
+            activeIconColor="#0f766e"
             inactiveBorderColor="#dbe5ee"
             inactiveTextColor="#334155"
-            minHeight={48}
-            padding="0 16px"
-            gap={10}
-            borderRadius={12}
+            minHeight={isMobileViewport ? 52 : 64}
+            padding={isMobileViewport ? '10px 12px' : '12px 14px'}
+            gap={isMobileViewport ? 10 : 12}
+            borderRadius={14}
             fontSize={14}
-            fontWeight={800}
-            showCheck={false}
+            fontWeight={700}
+            iconBoxSize={isMobileViewport ? 34 : 40}
+            iconSize={isMobileViewport ? 18 : 20}
           />
         );
       })}

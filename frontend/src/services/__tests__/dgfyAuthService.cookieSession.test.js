@@ -1,8 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { apiGet, apiPost, setBrowserSessionMock, clearClientSessionMock } = vi.hoisted(() => ({
+const {
+  apiGet,
+  apiPost,
+  getAccessTokenMock,
+  setBrowserSessionMock,
+  clearClientSessionMock
+} = vi.hoisted(() => ({
   apiGet: vi.fn(),
   apiPost: vi.fn(),
+  getAccessTokenMock: vi.fn(),
   setBrowserSessionMock: vi.fn(),
   clearClientSessionMock: vi.fn()
 }));
@@ -33,6 +40,7 @@ vi.mock('../api.js', () => ({
 }));
 
 vi.mock('../browserSession.js', () => ({
+  getAccessToken: getAccessTokenMock,
   setBrowserSession: setBrowserSessionMock
 }));
 
@@ -44,6 +52,8 @@ describe('dgfyAuthService cookie session rehydration', () => {
   beforeEach(async () => {
     apiGet.mockReset();
     apiPost.mockReset();
+    getAccessTokenMock.mockReset();
+    getAccessTokenMock.mockReturnValue('');
     setBrowserSessionMock.mockReset();
     clearClientSessionMock.mockReset();
     const service = await import('../dgfyAuthService.js');
@@ -99,11 +109,16 @@ describe('dgfyAuthService cookie session rehydration', () => {
     });
 
     const service = await import('../dgfyAuthService.js');
-    await service.loginDgfyAccount({ email: 'owner@example.test', password: 'password123' });
+    await service.loginDgfyAccount({
+      email: 'owner@example.test',
+      password: 'password123',
+      remember_device: true
+    });
 
     expect(apiPost).toHaveBeenCalledWith('/dgfy/auth/login', {
       email: 'owner@example.test',
-      password: 'password123'
+      password: 'password123',
+      remember_device: true
     }, dgfyCookieConfig);
   });
 
@@ -222,6 +237,68 @@ describe('dgfyAuthService cookie session rehydration', () => {
     }));
   });
 
+  it('defers tenant-session activation until the caller verifies the selected company', async () => {
+    const dispatchEvent = vi.fn();
+    vi.stubGlobal('CustomEvent', class TestCustomEvent {
+      constructor(type) {
+        this.type = type;
+      }
+    });
+    vi.stubGlobal('window', { dispatchEvent });
+    apiPost.mockResolvedValueOnce({
+      data: {
+        data: {
+          token: 'candidate-tenant-token',
+          company: { token: 'candidate-company-token' }
+        }
+      }
+    });
+
+    const service = await import('../dgfyAuthService.js');
+    const candidate = await service.startDgfyTenantSession({
+      tenantId: 'tenant-cookie',
+      companyToken: 'candidate-company-token'
+    }, '', { activate: false });
+
+    expect(setBrowserSessionMock).not.toHaveBeenCalled();
+    expect(dispatchEvent).not.toHaveBeenCalled();
+
+    service.activateDgfyTenantSession(candidate);
+
+    expect(setBrowserSessionMock).toHaveBeenCalledWith({
+      token: 'candidate-tenant-token',
+      companyToken: 'candidate-company-token'
+    });
+    expect(dispatchEvent).toHaveBeenCalledTimes(1);
+    expect(dispatchEvent).toHaveBeenCalledWith(expect.objectContaining({ type: 'auth:login' }));
+  });
+
+  it('defers POS-session activation until terminal and shift state are ready', async () => {
+    apiPost.mockResolvedValueOnce({
+      data: {
+        data: {
+          token: 'candidate-pos-token',
+          company: { token: 'candidate-pos-company-token' },
+          user_id: 7
+        }
+      }
+    });
+
+    const service = await import('../dgfyAuthService.js');
+    const candidate = await service.startDgfyPosSession({
+      tenantId: 'tenant-cookie',
+      terminalId: 'JOHN-01'
+    }, '', { activate: false });
+
+    expect(apiPost).toHaveBeenCalledWith(
+      '/dgfy/account/companies/tenant-cookie/pos-session',
+      { terminal_id: 'JOHN-01' },
+      dgfyCookieConfig
+    );
+    expect(candidate.token).toBe('candidate-pos-token');
+    expect(setBrowserSessionMock).not.toHaveBeenCalled();
+  });
+
   it('rejects incomplete tenant-session responses without replacing the active browser session', async () => {
     apiPost.mockResolvedValueOnce({
       data: {
@@ -313,7 +390,10 @@ describe('dgfyAuthService cookie session rehydration', () => {
     const result = await service.listDgfyAccountCompaniesForTenantSession();
 
     expect(apiGet).toHaveBeenCalledTimes(1);
-    expect(apiGet).toHaveBeenCalledWith('/dgfy/account/companies', dgfyTenantBridgeOnlyConfig);
+    expect(apiGet).toHaveBeenCalledWith('/dgfy/account/companies', {
+      ...dgfyTenantBridgeOnlyConfig,
+      skipAuthRefresh: true
+    });
     expect(result.companies[0].company_name).toBe('Current User Company');
   });
 
@@ -430,6 +510,7 @@ describe('dgfyAuthService cookie session rehydration', () => {
   });
 
   it('switches DGFY companies with cookie credentials and resets tenant client state', async () => {
+    getAccessTokenMock.mockReturnValue('previous-tenant-access-token');
     apiPost.mockResolvedValueOnce({
       data: {
         data: {
@@ -451,7 +532,12 @@ describe('dgfyAuthService cookie session rehydration', () => {
 
     expect(apiPost).toHaveBeenCalledWith('/dgfy/account/companies/tenant-1/switch', {
       email_otp_code: '123456'
-    }, dgfyCookieConfig);
+    }, {
+      ...dgfyCookieConfig,
+      headers: {
+        'x-previous-tenant-access-token': 'previous-tenant-access-token'
+      }
+    });
     expect(clearClientSessionMock).toHaveBeenCalledWith(expect.objectContaining({
       reason: 'company_switch',
       broadcast: false,
@@ -464,6 +550,7 @@ describe('dgfyAuthService cookie session rehydration', () => {
   });
 
   it('switches IMS companies through the tenant auth bridge so stale DGFY cookies cannot choose companies', async () => {
+    getAccessTokenMock.mockReturnValue('previous-tenant-access-token');
     apiPost.mockResolvedValueOnce({
       data: {
         data: {
@@ -485,7 +572,13 @@ describe('dgfyAuthService cookie session rehydration', () => {
 
     expect(apiPost).toHaveBeenCalledWith('/dgfy/account/companies/tenant-current-user/switch', {
       email_otp_code: '654321'
-    }, dgfyTenantBridgeOnlyConfig);
+    }, {
+      ...dgfyTenantBridgeOnlyConfig,
+      headers: {
+        ...dgfyTenantBridgeOnlyConfig.headers,
+        'x-previous-tenant-access-token': 'previous-tenant-access-token'
+      }
+    });
     expect(clearClientSessionMock).toHaveBeenCalledWith(expect.objectContaining({
       reason: 'company_switch',
       broadcast: false,

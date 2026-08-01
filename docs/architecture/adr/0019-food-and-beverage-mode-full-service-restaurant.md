@@ -1,8 +1,12 @@
 ---
 status: accepted
+authority_level: authoritative
+owner: architecture
 date: 2026-05-05
 last_reviewed: 2026-06-26
-classification: authoritative
+review_by: 2026-11-05
+applies_to: architecture_decision
+topic: food_and_beverage_mode_full_service_restaurant
 ---
 
 # ADR 0019: Food & Beverage Mode Full-Service Restaurant Workflow

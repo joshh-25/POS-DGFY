@@ -38,6 +38,8 @@ import { useCartMutations } from './shared/hooks/useCartMutations.js';
 import { useCheckoutAuthResumeRestore } from './shared/hooks/useCheckoutAuthResumeRestore.js';
 import { useCheckoutSubmission } from './shared/hooks/useCheckoutSubmission.js';
 import { useCustomerAuthNavigation } from './shared/hooks/useCustomerAuthNavigation.js';
+import { useDefaultOrderPageProps } from './shared/hooks/useDefaultOrderPageProps.js';
+import { useDefaultProductCartDrawerProps } from './shared/hooks/useDefaultProductCartDrawerProps.js';
 import { useDeliveryPinResolution } from './shared/hooks/useDeliveryPinResolution.js';
 import { useServiceBookingViewModel } from './shared/hooks/useServiceBookingViewModel.js';
 import { useStorefrontCartPersistence } from './shared/hooks/useStorefrontCartPersistence.js';
@@ -205,6 +207,7 @@ import { useServiceBookingFieldFocus } from './modes/services/booking/hooks/useS
 import { useServiceBookingReviewProps } from './modes/services/booking/hooks/useServiceBookingReviewProps.js';
 import { useServiceCartDrawerProps } from './modes/services/booking/hooks/useServiceCartDrawerProps.js';
 import { useSimpleCartDrawerProps } from './modes/simple/checkout/hooks/useSimpleCartDrawerProps.js';
+import { useSimpleCheckoutGating } from './modes/simple/checkout/hooks/useSimpleCheckoutGating.js';
 import { useSimpleCheckoutRouteProps } from './modes/simple/checkout/hooks/useSimpleCheckoutRouteProps.js';
 import { StoresMap } from './discovery/components/StoresMap.jsx';
 import {
@@ -285,6 +288,7 @@ import {
   writeStoreAuthToken
 } from './auth/storefrontSessionStorage.js';
 import { requestJson } from './services/requestJson.js';
+import { isKnownDgfyPlatformHost } from './shared/utils/storefrontPlatformHost.js';
 import { hasCustomerName, hasPrimaryContact, isCustomerStepComplete } from './checkout/checkoutValidation.js';
 import { buildFnbTrackingRouteProps } from './modes/fnb/tracking/model/buildFnbTrackingRouteProps.js';
 import {
@@ -328,10 +332,11 @@ export const __storefrontTrackingTestUtils = {
 
 const dgfyHeaderLogo = '/dgfy-logo.png';
 const dgfySymbolLogo = '/dgfy-symbologo.png';
-const dgfyBusinessOwnerPhoto = '/man.png';
+const dgfyBusinessOwnerPhoto = '/man.webp';
 const DGFY_HEADER_LOGO_URL = dgfyHeaderLogo;
 const DGFY_LOGO_ICON_URL = dgfySymbolLogo;
 const DISCOVERY_LOCATION_PERMISSION_KEY = 'dgfy_storefront_discovery_location_permission_v1';
+const QRPH_PAYMENT_POLL_INTERVAL_MS = 4000;
 
 export default function StorefrontApp() {
   const [routeSlug, setRouteSlug] = useState(() => readRouteSlug());
@@ -345,6 +350,13 @@ export default function StorefrontApp() {
 
   useEffect(() => {
     if (routeSlug || typeof window === 'undefined') return undefined;
+    // This probe only ever resolves a context on an actual customer custom
+    // domain -- the backend's own hostname policy guarantees a 404 on
+    // dgfy.ph and its subdomains (see hostnamePolicy.js), which the frontend
+    // then discards anyway (see the `.then` chain below). Skipping it here
+    // avoids a false-positive 404 in the console/error dashboards on every
+    // anonymous root landing on the platform's own domain.
+    if (isKnownDgfyPlatformHost(window.location.hostname)) return undefined;
     let cancelled = false;
 
     fetch('/api/v1/store/domain-context', { credentials: 'include', cache: 'no-store' })
@@ -620,11 +632,17 @@ export default function StorefrontApp() {
   const {
     fnbOrderStep,
     fnbPaymentType,
+    qrphIdempotencyKey,
+    qrphPaymentSession,
+    qrphPaymentStatusLoading,
     fnbScheduledFor,
     fnbScheduleMode,
     fnbSpecialInstructions,
     setFnbOrderStep,
     setFnbPaymentType,
+    setQrphIdempotencyKey,
+    setQrphPaymentSession,
+    setQrphPaymentStatusLoading,
     setFnbScheduledFor,
     setFnbScheduleMode,
     setFnbSpecialInstructions,
@@ -632,18 +650,26 @@ export default function StorefrontApp() {
     showMobileAddressModal,
   } = useFnbCheckoutRouteState();
   const [simpleOrderStep, setSimpleOrderStep] = useState(1);
+  const [showSimpleMobileOrderSummary, setShowSimpleMobileOrderSummary] = useState(false);
+  const [showSimpleMobileAddressModal, setShowSimpleMobileAddressModal] = useState(false);
   const isOnlinePaymentModalOpen = useStorefrontStore(selectIsOnlinePaymentModalOpen);
   const uiOpenOnlinePaymentModal = useStorefrontStore((s) => s.uiOpenOnlinePaymentModal);
   const uiCloseOnlinePaymentModal = useStorefrontStore((s) => s.uiCloseOnlinePaymentModal);
+
+  const resetQrphPaymentSession = useCallback(() => {
+    setQrphPaymentSession(null);
+    setQrphIdempotencyKey(globalThis.crypto?.randomUUID?.() || `store-qrph-${Date.now()}`);
+  }, [setQrphIdempotencyKey, setQrphPaymentSession]);
 
   const handlePaymentTypeChange = useCallback((val) => {
     if (val === 'online') {
       uiOpenOnlinePaymentModal();
       setFnbPaymentType('cash');
     } else {
+      if (val !== 'qrph') resetQrphPaymentSession();
       setFnbPaymentType(val);
     }
-  }, []);
+  }, [resetQrphPaymentSession, setFnbPaymentType, uiOpenOnlinePaymentModal]);
   const [checkoutPromoCode, setCheckoutPromoCode] = useState('');
 
   const [preferredStoreLocationSelection, setPreferredStoreLocationSelection] = useState(() => {
@@ -1441,6 +1467,7 @@ export default function StorefrontApp() {
     cart,
     isFnbMode,
     isServicesMode,
+    isSimpleMode,
     productCartPermitted,
     serviceCartFabRef,
     servicePaymentTiming,
@@ -2149,6 +2176,8 @@ export default function StorefrontApp() {
     normalizeErrorMessage: normalizeStorefrontErrorMessage,
     orderMethod,
     orderSuccessAnimationTimerRef,
+    qrphIdempotencyKey,
+    qrphPaymentSession,
     readDgfyAuthToken,
     readStoreAuthToken,
     rememberCustomerDetails,
@@ -2165,6 +2194,7 @@ export default function StorefrontApp() {
     setFnbOrderStep,
     setQuoteNeedsRefresh,
     setQuoteResult,
+    setQrphPaymentSession,
     setSavedCustomerDetails,
     setSelectedTrackingPin,
     setShowOrderSuccessAnimation,
@@ -2176,6 +2206,147 @@ export default function StorefrontApp() {
     totalsForDisplay,
     writeSavedCustomerDetails,
   });
+  const handleRefreshQrphPaymentSession = useCallback(async ({ silent = false } = {}) => {
+    const paymentSessionId = String(qrphPaymentSession?.payment_session_id || '').trim();
+    if (!paymentSessionId || !selectedStore?.slug || qrphPaymentStatusLoading) return;
+
+    setQrphPaymentStatusLoading(true);
+    if (!silent) setCheckoutError('');
+    try {
+      const data = await requestJson(
+        `/api/v1/store/checkout/payment-sessions/${encodeURIComponent(paymentSessionId)}`,
+        {
+          storeSlug: selectedStore.slug,
+          authToken: isDgfyCustomerSignedIn
+            ? (readDgfyAuthToken() || readStoreAuthToken())
+            : readStoreAuthToken(),
+          cache: 'no-store'
+        }
+      );
+      const paymentSession = data?.payment_session || null;
+      setQrphPaymentSession(paymentSession);
+
+      if (paymentSession?.status === 'finalized' && paymentSession?.tracking_pin) {
+        const trackingPin = String(paymentSession.tracking_pin).trim().toUpperCase();
+        setTrackingPinInput(trackingPin);
+        setSelectedTrackingPin(trackingPin);
+        syncTrackedOrderSnapshot({
+          tracking_pin: trackingPin,
+          status: 'placed',
+          status_label: 'Order placed',
+          order_method: orderMethod,
+          order: null,
+          order_name: cart[0]?.name || '',
+          total_amount: totalsForDisplay?.total_amount ?? 0
+        }, trackingPin);
+        setCart([]);
+        setQuoteResult(null);
+        setQuoteNeedsRefresh(true);
+        setCheckoutPromoCode('');
+        resetQrphPaymentSession();
+        goStoreTrackPage({ pin: trackingPin });
+        toast.success('Payment confirmed. Your order has been placed.');
+        return;
+      }
+
+      if (paymentSession?.status === 'paid') {
+        if (!silent) toast.success('Payment received. Your order is being finalized.');
+      } else if (paymentSession?.status === 'paid_manual_resolution_required') {
+        const message = paymentSession?.failure_reason || 'Payment was received but requires review before the order can be completed.';
+        setCheckoutError(message);
+        if (!silent) toast.error(message);
+      } else if (['failed', 'expired', 'cancelled'].includes(paymentSession?.status)) {
+        const message = paymentSession?.failure_reason || 'This QR Ph payment can no longer be completed.';
+        setCheckoutError(message);
+        if (!silent) toast.error(message);
+      } else if (!silent) {
+        toast.info('Payment is still awaiting confirmation.');
+      }
+    } catch (error) {
+      const message = normalizeStorefrontErrorMessage(error, 'Unable to refresh PayMongo payment status.');
+      if (!silent) {
+        setCheckoutError(message);
+        toast.error(message);
+      }
+    } finally {
+      setQrphPaymentStatusLoading(false);
+    }
+  }, [
+    cart,
+    goStoreTrackPage,
+    isDgfyCustomerSignedIn,
+    normalizeStorefrontErrorMessage,
+    orderMethod,
+    qrphPaymentSession,
+    qrphPaymentStatusLoading,
+    readDgfyAuthToken,
+    readStoreAuthToken,
+    requestJson,
+    resetQrphPaymentSession,
+    selectedStore,
+    setCart,
+    setCheckoutError,
+    setCheckoutPromoCode,
+    setQrphPaymentSession,
+    setQrphPaymentStatusLoading,
+    setQuoteNeedsRefresh,
+    setQuoteResult,
+    setSelectedTrackingPin,
+    setTrackingPinInput,
+    syncTrackedOrderSnapshot,
+    toast,
+    totalsForDisplay
+  ]);
+  const handleConfirmQrphTestPayment = useCallback(async () => {
+    const paymentSessionId = String(qrphPaymentSession?.payment_session_id || '').trim();
+    if (!paymentSessionId || !selectedStore?.slug) return;
+
+    setCheckoutError('');
+    try {
+      await requestJson(
+        `/api/v1/store/checkout/payment-sessions/${encodeURIComponent(paymentSessionId)}/confirm-test`,
+        {
+          method: 'POST',
+          storeSlug: selectedStore.slug,
+          authToken: isDgfyCustomerSignedIn
+            ? (readDgfyAuthToken() || readStoreAuthToken())
+            : readStoreAuthToken(),
+          body: {},
+          cache: 'no-store'
+        }
+      );
+      toast.success('PayMongo test payment approved. Waiting for webhook confirmation.');
+    } catch (error) {
+      const message = normalizeStorefrontErrorMessage(error, 'Unable to confirm the PayMongo test payment.');
+      setCheckoutError(message);
+      toast.error(message);
+      throw error;
+    }
+  }, [
+    isDgfyCustomerSignedIn,
+    normalizeStorefrontErrorMessage,
+    qrphPaymentSession,
+    readDgfyAuthToken,
+    readStoreAuthToken,
+    requestJson,
+    selectedStore,
+    setCheckoutError,
+    toast
+  ]);
+  useEffect(() => {
+    if (!['awaiting_payment', 'paid'].includes(qrphPaymentSession?.status)) return undefined;
+    const pollPaymentStatus = () => {
+      if (
+        typeof document !== 'undefined'
+        && document.visibilityState === 'visible'
+        && (typeof navigator === 'undefined' || navigator.onLine !== false)
+      ) {
+        handleRefreshQrphPaymentSession({ silent: true });
+      }
+    };
+    const timer = window.setInterval(pollPaymentStatus, QRPH_PAYMENT_POLL_INTERVAL_MS);
+    return () => window.clearInterval(timer);
+  }, [handleRefreshQrphPaymentSession, qrphPaymentSession?.status]);
   const {
     activePinnedDeliveryAddress,
     applySavedDeliveryLocation,
@@ -2232,7 +2403,6 @@ export default function StorefrontApp() {
   });
 
   const {
-    renderCheckoutPromoStack,
     renderPromoCodePanel
   } = useFnbCheckoutPromoRenderers({
     appliedPromoDiscountText,
@@ -2511,6 +2681,33 @@ export default function StorefrontApp() {
     updateQty,
     withAssetOrigin
   });
+  const defaultProductCartDrawerProps = useDefaultProductCartDrawerProps({
+    activeOrderMethodLabel,
+    cart,
+    cartCount,
+    cartImageErrors,
+    cartTotal,
+    goStoreOrderPage,
+    isCheckoutOpen,
+    isMobileViewport,
+    money,
+    removeCartItem,
+    setCartImageErrors,
+    setIsCheckoutOpen,
+    updateQty,
+    withAssetOrigin
+  });
+  const defaultOrderRouteProps = useDefaultOrderPageProps({
+    cart,
+    cartCount,
+    isMobileViewport,
+    money,
+    selectedStore,
+    servicesBodyFont,
+    servicesDisplayFont,
+    goStoreCatalogPage,
+    withAssetOrigin
+  });
   const isFnbCartDrawerSurfaceOpen = Boolean(fnbCartDrawerRouteProps.isActive);
   const fnbCustomerStepComplete = fnbCustomerIdentityStepComplete && guestCheckoutOtpVerified;
   const fnbCheckoutRouteProps = useFnbCheckoutRouteProps({
@@ -2571,6 +2768,8 @@ export default function StorefrontApp() {
     handleGuestCheckoutOtpCodeChange,
     handlePaymentTypeChange,
     handlePinMyLocation,
+    handleConfirmQrphTestPayment,
+    handleRefreshQrphPaymentSession,
     handleRemoveDeliveryAddress,
     handleRequestGuestCheckoutOtp,
     handleSetDefaultDeliveryAddress,
@@ -2588,12 +2787,15 @@ export default function StorefrontApp() {
     pinLocationError,
     pinLocationLoading,
     promoDiscountSummaryRow,
+    qrphPaymentSession,
+    qrphPaymentStatusLoading,
     quoteError,
     renderAccountOwnedIdentitySummary,
     renderGuestCheckoutEntry,
     renderGuestIdentityFields,
     renderPromoCodePanel,
     renderStorefrontClosedNotice,
+    resetQrphPaymentSession,
     resolvingPinnedDeliveryAddress,
     selectedSavedLocationId,
     selectedStore,
@@ -2716,37 +2918,52 @@ export default function StorefrontApp() {
     setQuoteError,
     storefrontClosedByHours,
   ]);
-  const simpleCustomerStepComplete = isCustomerStepComplete({
+  const {
+    simpleCheckoutAllowed,
+    simpleCustomerStepComplete,
+    simpleHasCustomerIdentity,
+    simpleHasPrimaryIdentityContact,
+    simpleStepOneReady
+  } = useSimpleCheckoutGating({
+    cart,
+    checkoutAllowed,
+    customerAddress,
+    customerEmail,
     customerName,
     customerPhone,
-    customerEmail,
-    isDeliveryOrder,
-    customerAddress,
-    usePinnedAddress: false
+    fnbScheduleMode,
+    fnbScheduledFor,
+    isDeliveryOrder
   });
-  const simpleHasCustomerIdentity = hasCustomerName(customerName);
-  const simpleHasPrimaryIdentityContact = hasPrimaryContact({ phone: customerPhone, email: customerEmail });
-  const simpleStepOneReady = cart.length > 0;
-  const simpleCheckoutAllowed = checkoutAllowed && simpleCustomerStepComplete;
   const simpleCheckoutRouteProps = useSimpleCheckoutRouteProps({
+    applySavedDeliveryLocation,
+    canAddPinnedLocation,
     canUseGuestCheckoutFlow,
     cart,
     cartCount,
+    cartImageErrors,
     checkoutError,
     checkoutLoading,
     checkoutResult,
     customerAddress,
     customerPin,
+    deliveryLocationAction,
+    deliveryLocationDisplayAddress,
+    deliverySavedLocations,
     DropdownComponent: StorefrontDropdown,
     fnbPaymentType,
+    fnbScheduleMode,
     fnbScheduledFor,
     fnbSpecialInstructions,
     goStoreCatalogPage,
+    handleAddPinnedLocation,
     handleCheckout,
     handleDownloadCheckoutImage,
     handlePaymentTypeChange,
     handlePinMyLocation,
     handleQuote,
+    handleRemoveDeliveryAddress,
+    handleSetDefaultDeliveryAddress,
     isDeliveryOrder,
     isDesktopCheckout,
     isDgfyCustomerSignedIn,
@@ -2759,29 +2976,41 @@ export default function StorefrontApp() {
     quoteError,
     quoteResult,
     renderAccountOwnedIdentitySummary,
-    renderCheckoutPromoStack,
     renderGuestCheckoutEntry,
     renderGuestIdentityFields,
+    renderPromoCodePanel,
     renderStorefrontClosedNotice,
     requireQuoteForCheckout,
     selectedLocation,
     selectedLocationId,
+    selectedSavedLocationId,
     selectedStore,
     servicesBodyFont,
     servicesDisplayFont,
+    setCartImageErrors,
     setCheckoutResult,
     setCustomerAddress,
     setCustomerPin,
+    setDeliveryLocationAction,
     setFnbScheduledFor,
+    setFnbScheduleMode,
     setFnbSpecialInstructions,
     setOrderMethod,
     setPinLocationError,
+    setResolvedDeliveryAddress,
     setSelectedLocationId,
+    setSelectedSavedLocationId,
+    setShowExpandedDeliveryMap,
     setSimpleOrderStep,
+    showExpandedDeliveryMap,
     simpleCheckoutAllowed,
     simpleCustomerStepComplete,
     simpleHasCustomerIdentity,
     simpleHasPrimaryIdentityContact,
+    setShowSimpleMobileAddressModal,
+    setShowSimpleMobileOrderSummary,
+    showSimpleMobileAddressModal,
+    showSimpleMobileOrderSummary,
     simpleOrderMethodOptions,
     simpleOrderStep,
     simpleStepOneReady,
@@ -3196,7 +3425,8 @@ export default function StorefrontApp() {
     setIsFnbCategoryDropdownOpen,
     simpleCheckoutRouteProps,
     simpleStorefrontModel,
-    defaultStorefrontModel
+    defaultStorefrontModel,
+    defaultOrderRouteProps
   });
   const storefrontHeroBandProps = useStorefrontHeroBandProps({
     selectedStore,
@@ -3271,6 +3501,7 @@ export default function StorefrontApp() {
     serviceCartFlyAnimations,
     isSimpleCartSurfaceMode,
     simpleCartDrawerProps,
+    defaultProductCartDrawerProps,
     serviceCartFabRef,
     isDesktopViewport,
     hasServiceCart,
@@ -3314,7 +3545,7 @@ export default function StorefrontApp() {
         width: '100%',
         boxSizing: 'border-box',
         margin: '0 auto',
-        paddingTop: isStorePage && (isServicesMode || isFnbMode || isSimpleMode) ? 0 : (isMobileViewport ? 6 : 10),
+        paddingTop: isStorePage && (isServicesMode || isFnbMode || isSimpleMode || (isResolvedOrderSubpage && !isServicesMode && !isFnbMode && !isSimpleMode)) ? 0 : (isMobileViewport ? 6 : 10),
         paddingRight: isStorePage && (isServicesMode || isFnbMode || isSimpleMode) ? 0 : (isMobileViewport ? 12 : 20),
         paddingLeft: isStorePage && (isServicesMode || isFnbMode || isSimpleMode) ? 0 : (isMobileViewport ? 12 : 20),
         paddingBottom: isStorePage ? ((isServicesMode || isFnbMode || isSimpleMode || !hasDiscoverySearch) ? 0 : (isMobileViewport ? 96 : 120)) : 0
@@ -3439,11 +3670,13 @@ export default function StorefrontApp() {
 
         {isStorePage && (
           <>
-            <StorefrontHeroBandContainer {...storefrontHeroBandProps} />
+            {!isFnbDetailsSubpage && (
+              <StorefrontHeroBandContainer {...storefrontHeroBandProps} />
+            )}
 
 
             {/* ZONE 4: Catalog Grid with Sidebar */}
-            {catalogPermitted && selectedStore && (
+            {(isFnbDetailsSubpage || (catalogPermitted && selectedStore)) && (
               <StorefrontCatalogRouteContainer {...storefrontCatalogRouteProps} />
             )}
           </>

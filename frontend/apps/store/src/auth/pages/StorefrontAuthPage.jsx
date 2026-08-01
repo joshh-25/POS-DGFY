@@ -588,6 +588,16 @@ export default function StorefrontAuthPage({ initialMode }) {
         if (cancelled) return;
         if (session?.token) writeDgfyAuthToken(session.token);
         markDgfySessionActive();
+        if (routeParams.reason === 'session_expired') {
+          // We were bounced here by api.js's interceptor treating some other
+          // (tenant/staff-scoped) request failure as an expired session -- but the
+          // DGFY customer session checked above is still valid. That's a false
+          // alarm, not a real sign-out, so don't silently whisk the customer off to
+          // /map-dgfy/account; show them they're still signed in instead.
+          setNotice("You're still signed in. Continue browsing, or go to your account.");
+          setSessionResolved(true);
+          return;
+        }
         navigate(returnPath, { replace: true });
       })
       .catch(() => {

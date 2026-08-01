@@ -9,6 +9,8 @@ import {
 } from '../inventory/index.js';
 import { posDeviceBridgeService } from '../../services/posDeviceBridgeService.js';
 import posTerminalPairingService from './services/posTerminalPairingService.js';
+import { employeeCreditService } from '../employeeCredit/index.js';
+import { handleCommerceOrderLifecycleUseCase } from '../commercePayments/index.js';
 import * as userService from '../../services/userService.js';
 import * as authService from '../../services/authService.js';
 import {
@@ -74,7 +76,11 @@ import {
 
 export const listPosCatalogUseCase = buildListPosCatalogUseCase({ posRepository });
 export const scanPosBarcodeUseCase = buildScanPosBarcodeUseCase({ posRepository });
-export const checkoutPosUseCase = buildCheckoutPosUseCase({ posRepository, inventoryCommandService: inventoryStockCommandService });
+export const checkoutPosUseCase = buildCheckoutPosUseCase({
+    posRepository,
+    inventoryCommandService: inventoryStockCommandService,
+    employeeCreditService
+});
 export const listPosDiscountApproversUseCase = buildListPosDiscountApproversUseCase({ posRepository });
 export const verifyPosDiscountApprovalUseCase = buildVerifyPosDiscountApprovalUseCase({ posRepository });
 export const listPosTransactionsUseCase = buildListPosTransactionsUseCase({ posRepository });
@@ -82,7 +88,11 @@ export const getPosReportsOverviewUseCase = buildGetPosReportsOverviewUseCase({ 
 export const exportPosReportsUseCase = buildExportPosReportsUseCase({ posRepository });
 export const getPosTransactionByIdUseCase = buildGetPosTransactionByIdUseCase({ posRepository });
 export const recordFiscalPrintEventUseCase = buildRecordFiscalPrintEventUseCase({ posRepository });
-export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({ posRepository, inventoryCommandService: inventoryStockCommandService });
+export const voidPosTransactionUseCase = buildVoidPosTransactionUseCase({
+    posRepository,
+    inventoryCommandService: inventoryStockCommandService,
+    employeeCreditService
+});
 export const generateESalesReportUseCase = buildGenerateESalesReportUseCase({ posRepository });
 export const listESalesReportsUseCase = buildListESalesReportsUseCase({ posRepository });
 export const verifyFiscalEventLedgerUseCase = buildVerifyFiscalEventLedgerUseCase({ posRepository });
@@ -123,7 +133,8 @@ export const getAdminLocationMonitorUseCase = buildGetAdminLocationMonitorUseCas
 export const collectCashPickupOrderUseCase = buildCollectCashPickupOrderUseCase({ posRepository });
 export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
     posRepository,
-    inventoryCommandService: inventoryStockCommandService
+    inventoryCommandService: inventoryStockCommandService,
+    commerceOrderLifecycleUseCase: handleCommerceOrderLifecycleUseCase
 });
 export const verifyPosTerminalUseCase = buildVerifyPosTerminalUseCase({
     posRepository,

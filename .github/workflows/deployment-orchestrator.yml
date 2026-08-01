@@ -21,6 +21,16 @@ on:
         required: false
         type: boolean
         default: false
+      build_api:
+        description: Whether to build/push the dgfy-api and dgfy-migration-runner images. Defaults true so staging/main/manual callers are unaffected; only build-develop.yml gates this on changed paths.
+        required: false
+        type: boolean
+        default: true
+      build_frontend:
+        description: Whether to build/push the frontend image. Defaults true so staging/main/manual callers are unaffected; only build-develop.yml gates this on changed paths.
+        required: false
+        type: boolean
+        default: true
       runner_labels_json:
         description: JSON array passed to runs-on for build/publish jobs
         required: false
@@ -42,6 +52,7 @@ jobs:
   dgfy-api:
     # The backend, refactored into apps/dgfy-api -- now the source of truth
     # (backend/ removed). See infrastructure/docker/dgfy-api/Dockerfile.
+    if: inputs.build_api
     uses: ./.github/workflows/deploy-api.yml
     with:
       environment: ${{ inputs.environment }}
@@ -56,6 +67,7 @@ jobs:
     # One-shot migration image the dgfy-api service depends on at compose-up
     # (applies Sequelize migrations, then exits). Must be published alongside
     # dgfy-api -- see infrastructure/docker/dgfy-migration-runner/Dockerfile.
+    if: inputs.build_api
     uses: ./.github/workflows/deploy-migration-runner.yml
     with:
       environment: ${{ inputs.environment }}
@@ -70,6 +82,7 @@ jobs:
     # Builds/pushes the single combined `frontend` image (skupervisor + pos
     # + storefront, all 3 SPAs, one nginx serving them on 3 internal ports)
     # -- see infrastructure/docker/frontend/Dockerfile.
+    if: inputs.build_frontend
     uses: ./.github/workflows/deploy-frontend.yml
     with:
       environment: ${{ inputs.environment }}
@@ -82,7 +95,19 @@ jobs:
 
   publish:
     needs: [ dgfy-api, dgfy-migration-runner, frontend ]
-    if: inputs.publish && needs.dgfy-api.result == 'success' && needs.dgfy-migration-runner.result == 'success' && needs.frontend.result == 'success'
+    # dgfy-api/dgfy-migration-runner/frontend are conditionally skipped
+    # (build_api/build_frontend above), and `needs.<job>.result` on a skipped
+    # job is 'skipped', not 'success' -- so this can't require all three to be
+    # 'success' like it used to. `!cancelled()` is required too: without a
+    # status-check function here, a skipped need would skip this job as well.
+    # Publish goes ahead as long as none of the built jobs actually failed and
+    # at least one of them ran.
+    if: >-
+      inputs.publish && !cancelled() &&
+      needs.dgfy-api.result != 'failure' &&
+      needs.dgfy-migration-runner.result != 'failure' &&
+      needs.frontend.result != 'failure' &&
+      (needs.dgfy-api.result == 'success' || needs.dgfy-migration-runner.result == 'success' || needs.frontend.result == 'success')
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: ${{ inputs.environment }}

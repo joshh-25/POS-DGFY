@@ -1,8 +1,11 @@
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { fileURLToPath } from 'url';
 import { SAFE_IMAGE_MIME_TYPES } from '../modules/shared/utils/imageUploadValidation.js';
+import { MENU_IMPORT_MAX_FILES_PER_BATCH } from './menuImportFeature.js';
+import dbStore from '../utils/dbStore.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,6 +23,21 @@ export const IMAGE_UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
 export const CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES = 100 * 1024 * 1024;
 export const BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES = 10 * 1024 * 1024;
 export const BULK_CATALOG_IMAGE_TRANSPORT_MAX_FILES = 50;
+
+// Multipart parsers may finish their stream callbacks on a different async
+// resource. Re-enter the request's tenant store before continuing so the
+// handler cannot fall back to the default database after a valid tenant-auth
+// request has already passed authentication.
+export const preserveTenantContext = (multipartMiddleware) => (req, res, next) => {
+    const tenantContext = dbStore.getStore();
+    if (!tenantContext) {
+        return multipartMiddleware(req, res, next);
+    }
+
+    return dbStore.run(tenantContext, () => multipartMiddleware(req, res, (error) => (
+        dbStore.run(tenantContext, () => next(error))
+    )));
+};
 
 // Configure storage
 const storage = multer.diskStorage({
@@ -112,6 +130,46 @@ export const menuImportFileUpload = multer({
             return;
         }
         cb(new multer.MulterError('LIMIT_UNEXPECTED_FILE', file?.fieldname || 'file'), false);
+    }
+});
+
+const MENU_IMPORT_MIME_EXTENSIONS = Object.freeze({
+    'application/pdf': 'pdf',
+    'image/jpeg': 'jpg',
+    'image/png': 'png'
+});
+
+// Batch menu import intentionally uses its own diskStorage rather than the
+// shared `storage` above. The shared storage's filename callback interpolates
+// `file.originalname` straight into the on-disk path, which is a directory-
+// traversal primitive if a crafted name ever slips past multer's own
+// sanitization — not a risk worth broadening on an endpoint that now accepts
+// up to MENU_IMPORT_MAX_FILES_PER_BATCH files per request. The original name is
+// kept in the job manifest for display only; it never reaches the filesystem.
+const menuImportBatchStorage = multer.diskStorage({
+    destination: (req, file, cb) => {
+        cb(null, uploadDir);
+    },
+    filename: (req, file, cb) => {
+        const mime = String(file?.mimetype || '').trim().toLowerCase();
+        const ext = MENU_IMPORT_MIME_EXTENSIONS[mime] || 'bin';
+        cb(null, `menu-${crypto.randomUUID()}.${ext}`);
+    }
+});
+
+// Batch menu import (multi-file: several PDFs/photos in one job) — same mime
+// allowlist as menuImportFileUpload, but accepts up to
+// MENU_IMPORT_MAX_FILES_PER_BATCH files per request instead of one.
+export const menuImportBatchUpload = multer({
+    storage: menuImportBatchStorage,
+    limits: { fileSize: IMAGE_UPLOAD_MAX_BYTES, files: MENU_IMPORT_MAX_FILES_PER_BATCH },
+    fileFilter: (req, file, cb) => {
+        const mime = String(file?.mimetype || '').trim().toLowerCase();
+        if (['application/pdf', 'image/jpeg', 'image/png'].includes(mime)) {
+            cb(null, true);
+            return;
+        }
+        cb(new multer.MulterError('LIMIT_UNEXPECTED_FILE', file?.fieldname || 'files'), false);
     }
 });
 

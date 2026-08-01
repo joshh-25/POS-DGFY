@@ -20,9 +20,15 @@ ARG VITE_STORE_BASE_PATH=/
 ARG VITE_TENANT_STORE_BASE_PATH=/tenant-store
 ARG VITE_ROOT_TENANT_SLUGS=false
 ARG VITE_PAYMENTS_ENABLED=false
+# QR Ph sandbox checkout is deliberately opt-in per image build. It is used
+# only by the DEV and STAGING GitHub environments; production leaves it false.
+ARG VITE_STOREFRONT_SANDBOX_QRPH_ENABLED=false
 # PDF menu import (quick/temporary feature, default off — see
 # docs/compliance/impact-declarations/2026-07-25-pos-pdf-menu-import.md).
 ARG VITE_MENU_PDF_IMPORT_ENABLED=false
+# Batch menu import (multi-file: several PDFs/photos in one job), default off
+# — a second capability tier on top of the single-file flag above.
+ARG VITE_MENU_IMPORT_BATCH_ENABLED=false
 # Consumed by frontend/apps/store/vite.config.js as a cache-busting/build
 # marker; falls back to the build timestamp if unset, so a stable value
 # (e.g. the git SHA) is preferable for reproducible CI builds.
@@ -78,7 +84,9 @@ ENV VITE_API_URL=${VITE_API_URL} \
     VITE_TENANT_STORE_BASE_PATH=${VITE_TENANT_STORE_BASE_PATH} \
     VITE_ROOT_TENANT_SLUGS=${VITE_ROOT_TENANT_SLUGS} \
     VITE_PAYMENTS_ENABLED=${VITE_PAYMENTS_ENABLED} \
+    VITE_STOREFRONT_SANDBOX_QRPH_ENABLED=${VITE_STOREFRONT_SANDBOX_QRPH_ENABLED} \
     VITE_MENU_PDF_IMPORT_ENABLED=${VITE_MENU_PDF_IMPORT_ENABLED} \
+    VITE_MENU_IMPORT_BATCH_ENABLED=${VITE_MENU_IMPORT_BATCH_ENABLED} \
     VITE_BUILD_STAMP=${VITE_BUILD_STAMP} \
     VITE_DGFY_AUTH_URL=${VITE_DGFY_AUTH_URL} \
     VITE_SKUPERVISOR_REGISTRATION_URL=${VITE_SKUPERVISOR_REGISTRATION_URL} \

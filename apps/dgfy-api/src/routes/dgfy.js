@@ -86,6 +86,7 @@ import {
     setDefaultAffiliatePayoutMethod,
     updateAffiliatePayoutMethod
 } from '../modules/dgfy/controllers/dgfyAffiliateHandlers.js';
+import { getCompanyRegistrationStatus, resubmitCompanyRegistration } from '../modules/tenants/controllers/companyRegistrationHandlers.js';
 
 const router = express.Router();
 
@@ -104,6 +105,8 @@ router.post('/auth/email-verification/request', authLimiter, authenticateDgfyAcc
 router.post('/auth/email-verification/verify', authLimiter, authenticateDgfyAccount, verifyDgfyEmail);
 router.post('/auth/handoff', authenticateDgfyAccount, createDgfyHandoff);
 router.post('/auth/tenant-session', authenticateDgfyAccount, dgfyTenantSessionLimiter, startDgfyTenantSession);
+router.get('/company-registration/:applicationId', authenticateDgfyAccount, getCompanyRegistrationStatus);
+router.post('/company-registration/:applicationId/resubmit', authenticateDgfyAccount, resubmitCompanyRegistration);
 router.get('/account/companies', authenticateDgfyAccountOrTenantMembership, listDgfyAccountCompanies);
 router.post('/account/business-step-up/request', authLimiter, authenticateDgfyAccountOrTenantMembership, requestDgfyBusinessStepUp);
 router.post('/account/companies/:tenant_id/switch', authLimiter, authenticateDgfyAccountOrTenantMembership, switchDgfyCompany);

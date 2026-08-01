@@ -89,10 +89,18 @@ export const previewPdfImport = async (req, res) => {
         }
 
         const previewData = result.data || {};
+        // pages/pages_total/truncated only apply to PDFs that fell back to
+        // rasterization (Phase 3) — extraction.pages is undefined for the
+        // image and fast-text-path cases, so this stays absent for those.
+        const extractionMeta = extraction.truncated
+            ? { pages: extraction.pages, pages_total: extraction.pages_total, truncated: true }
+            : {};
         return res.status(200).json({
             success: true,
-            data: previewData,
-            message: `Extracted ${extraction.itemCount} menu item(s): ${previewData.validRows} valid, ${previewData.invalidRows} with errors`
+            data: { ...previewData, ...extractionMeta },
+            message: extraction.truncated
+                ? `Extracted ${extraction.itemCount} menu item(s) from ${extraction.pages} of ${extraction.pages_total} page(s) — the rest weren't processed (see pages_total). ${previewData.validRows} valid, ${previewData.invalidRows} with errors`
+                : `Extracted ${extraction.itemCount} menu item(s): ${previewData.validRows} valid, ${previewData.invalidRows} with errors`
         });
     } catch (error) {
         logger.error('PDF menu import preview error:', error);

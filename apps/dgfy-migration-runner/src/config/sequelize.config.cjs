@@ -10,7 +10,7 @@ module.exports = {
         host: process.env.DB_HOST || 'localhost',
         port: process.env.DB_PORT || 3306,
         dialect: 'mysql',
-        logging: console.log
+        logging: process.env.SEQUELIZE_LOG_SQL === 'true' ? console.log : false
     },
     test: {
         username: process.env.DB_USER || 'root',

@@ -50,6 +50,10 @@ describe('backend Sentry config', () => {
         },
         data: {
           password: 'secret',
+          employee_credit: {
+            pin: '4321',
+            account_code: 'EC-1001'
+          },
           nested: {
             otp: '123456',
             safe: 'kept'
@@ -68,6 +72,8 @@ describe('backend Sentry config', () => {
     expect(event.request.headers.cookie).toBe('[Filtered]');
     expect(event.request.headers['x-request-id']).toBe('req-123');
     expect(event.request.data.password).toBe('[Filtered]');
+    expect(event.request.data.employee_credit.pin).toBe('[Filtered]');
+    expect(event.request.data.employee_credit.account_code).toBe('EC-1001');
     expect(event.request.data.nested.otp).toBe('[Filtered]');
     expect(event.request.data.nested.safe).toBe('kept');
     expect(event.request.cookies).toBeUndefined();

@@ -115,7 +115,6 @@ export default function TerminalSidebarPanel({
   operatingLocationId = null,
   setOperatingLocationId = () => {},
   queueLocationScopeId = null,
-  setQueueLocationScopeId = () => {},
   incomingOrdersState = { loading: false, orders: [] },
   incomingOrderActionState = {},
   handleIncomingOrderStatusChange = () => {},

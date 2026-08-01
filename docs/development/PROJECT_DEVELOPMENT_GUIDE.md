@@ -58,8 +58,8 @@ This guide is a general bootstrap reference plus project-specific guardrails. Fo
 Current project-specific development notes:
 - Hosting profiles are env-selected from one codebase: `shared` and `vps` are documented in `docs/ops/HOSTING_PROFILES.md`.
 - Use `backend/.env.example` for local development, `backend/.env.shared.example` for shared hosting, and `backend/.env.vps.example` for Redis-capable hosting. Frontend hosting templates live beside them as `frontend/.env.shared.example` and `frontend/.env.vps.example`.
-- Standard company registration defaults to `TENANT_REGISTRATION_APPROVAL_MODE=auto_standard`, which provisions standard non-subscription tenants from a signed-in DGFY account and then lets the frontend exchange the accepted founder membership for a normal tenant session. Use `manual` only as an explicit rollback/admin-review mode.
-- Keep `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS` strict because public registration provisions tenant databases by default.
+- Public company registration is mandatory manual review. Submission creates a pending application and applicant status route; only Platform Admin approval may provision and activate the tenant.
+- Keep `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` and `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS` strict because public registration writes landlord review state and queues later provisioning.
 - Payments remain disabled by default with `PAYMENTS_ENABLED=false`; premium/subscription registration and payment routes must keep returning the disabled contract unless payments are intentionally re-enabled.
 
 ### 1.1 Context Discovery Questionnaire
@@ -750,7 +750,7 @@ This project's current env templates:
 Current registration and hosting controls to keep synchronized with docs:
 ```bash
 PAYMENTS_ENABLED=false
-TENANT_REGISTRATION_APPROVAL_MODE=auto_standard
+TENANT_REGISTRATION_APPROVAL_MODE=manual
 RATE_LIMIT_DGFY_TENANT_SESSION_WINDOW_MS=900000
 RATE_LIMIT_DGFY_TENANT_SESSION_MAX_REQUESTS=10
 RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS=3600000

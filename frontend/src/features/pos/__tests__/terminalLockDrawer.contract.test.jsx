@@ -9,6 +9,7 @@ const buildProps = (overrides = {}) => ({
   formData: {
     email: 'cashier@example.com',
     password: '',
+    rememberDevice: false,
     terminalId: ''
   },
   setFormData: vi.fn(),
@@ -39,6 +40,8 @@ describe('TerminalLockDrawer contract', () => {
     expect(screen.getByText('Terminal Login Required')).toBeTruthy();
     expect(screen.getByLabelText('DGFY or Cashier Email')).toBeTruthy();
     expect(screen.getByLabelText('Password')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Show password' })).toBeTruthy();
+    expect(screen.getByLabelText(/Remember this device for 30 days/i)).toBeTruthy();
     expect(screen.getByText(/Assigned cashiers continue directly/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeTruthy();
     expect(screen.queryByText(/Terminal ID/i)).toBeNull();

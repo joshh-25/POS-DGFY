@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Plus, ShoppingCart, Sparkles } from 'lucide-react';
+import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 
 const FnbProductCard = ({
   FNB_CATEGORY_ICON_MAP,
@@ -9,7 +10,7 @@ const FnbProductCard = ({
   fnbViewMode,
   getCartFlySourceRect,
   heroTheme,
-  imageUrl,
+  imageSources,
   isMobileViewport,
   item,
   money,
@@ -17,7 +18,6 @@ const FnbProductCard = ({
 }) => {
   const sectionVisualMeta = item.sectionVisualMeta || {};
   const accent = heroTheme.accent || '#c96a2b';
-  const accentSoft = sectionVisualMeta.accentSoft || heroTheme.accentSoft || '#fff7ed';
   const accentDeep = heroTheme.accentDark || '#7c2d12';
   const cardSurface = '#ffffff';
   const cardBorder = heroTheme.borderSoft || '#edd4bc';
@@ -30,6 +30,7 @@ const FnbProductCard = ({
   const detailsCopy = item.descriptionPreview || 'Menu item available in this storefront.';
   const cardUiFont = heroTheme.bodyFont || "'Trebuchet MS', 'Segoe UI', sans-serif";
   const cardTitleFont = heroTheme.displayFont || cardUiFont;
+  const imageUrl = imageSources?.src || '';
   const canRenderImage = Boolean(imageUrl) && failedImageUrl !== imageUrl;
   const availabilityTone = item.availabilityMeta?.tone || (available ? 'ready' : 'sold_out');
   const availabilityColor = availabilityTone === 'sold_out' ? '#be123c' : availabilityTone === 'limited' ? '#b45309' : '#047857';
@@ -62,10 +63,28 @@ const FnbProductCard = ({
           onClick={() => onViewDetails?.(item)}
         >
           {canRenderImage ? (
-            <img src={imageUrl} alt={item.name} onError={() => setFailedImageUrl(imageUrl)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+            <StorefrontResponsiveImage
+              imageSources={imageSources}
+              sizes="118px"
+              alt={item.name}
+              loading="lazy"
+              decoding="async"
+              width={118}
+              height={118}
+              onError={() => setFailedImageUrl(imageUrl)}
+              style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+            />
           ) : (
             <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1' }}>
               <CategoryIcon size={32} />
+            </div>
+          )}
+          {item.affiliate_price_applied && (
+            // Phase 1 affiliate pricing rule engine: labels a price that differs from the public
+            // catalog because of the affiliate this buyer arrived through (see
+            // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md).
+            <div style={{ position: 'absolute', top: 6, left: 6, background: '#7c3aed', color: '#fff', fontSize: 9, fontWeight: 800, borderRadius: 999, padding: '2px 6px', lineHeight: 1 }}>
+              Affiliate price
             </div>
           )}
 
@@ -189,7 +208,17 @@ const FnbProductCard = ({
         onClick={() => onViewDetails?.(item)}
       >
         {canRenderImage ? (
-          <img src={imageUrl} alt={item.name} onError={() => setFailedImageUrl(imageUrl)} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          <StorefrontResponsiveImage
+            imageSources={imageSources}
+            sizes={isMobileViewport ? 'calc(100vw - 40px)' : '(max-width: 1199px) 50vw, 330px'}
+            alt={item.name}
+            loading="lazy"
+            decoding="async"
+            width={400}
+            height={300}
+            onError={() => setFailedImageUrl(imageUrl)}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
         ) : (
           <div style={{
             width: '100%',
@@ -221,6 +250,12 @@ const FnbProductCard = ({
         )}
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(35,23,18,0.02) 0%, rgba(35,23,18,0.08) 100%)', pointerEvents: 'none' }} />
         <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(255,255,255,0) 44%, rgba(32,20,15,0.22) 100%)', pointerEvents: 'none' }} />
+        {item.affiliate_price_applied && (
+          // Phase 1 affiliate pricing rule engine - see the mobile-list variant above for context.
+          <div style={{ position: 'absolute', top: isMobileViewport ? 10 : 16, left: isMobileViewport ? 10 : 16, background: '#7c3aed', color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 999, padding: '3px 8px', lineHeight: 1 }}>
+            Affiliate price
+          </div>
+        )}
         <div style={{
           position: 'absolute',
           right: isMobileViewport ? 10 : 16,

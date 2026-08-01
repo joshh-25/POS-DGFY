@@ -1,3 +1,343 @@
+# Implementation — POS Catalog & Current Sale Layout Redesign (Matching Picture 2)
+
+## Proposed Changes
+
+### Layout & Header Components
+
+#### [MODIFY] [TerminalPageLayout.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalPageLayout.jsx)
+- Redesign top header bar to render compact "POS Catalog" title, subtitle ("Browse and add items to current sale"), notification bell with badge, and terminal status card/badge ("Terminal: COUNTER-01 • Online").
+
+### POS Terminal Components
+
+#### [MODIFY] [POSCheckoutTerminal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/POSCheckoutTerminal.jsx)
+- Add horizontal scrollable Category Tab pill bar (`All Items`, `Beverages`, `Food`, `Snacks`, `Desserts`, `Combo`, etc.) below Search/Scan/Filter row.
+- Redesign catalog product card grid to match Picture 2 (`grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 xl:grid-cols-4 gap-3`), featuring rounded cards, image container with `ALWAYS AVAILABLE` overlay badge, item code badge, title, price, and blue circular `+` button.
+- Redesign Current Sale right panel: compact order method/payment selectors, cart item card with 36x36px thumbnail, quantity steppers, trash icon remove button, dashed `+ Add Note` button, subtotal/tax/total breakdown, and prominent primary `Checkout` button.
+- Ensure independent scrolling for catalog grid and cart panel with optimized responsive layout.
+
+#### [MODIFY] [SkupervisorPOSCheckoutTerminal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx)
+- Add horizontal scrollable Category Tab pill bar below Search/Scan/Filter row.
+- Redesign catalog product card grid to match Picture 2.
+- Redesign Current Sale right panel to match Picture 2.
+
+## Verification Plan
+
+### Automated Tests
+- Run Vitest POS contract tests:
+  `cmd /c npx vitest run src/features/pos/__tests__/storefrontItemQr.contract.test.js`
+  `cmd /c npx vitest run src/features/pos/__tests__/posAlwaysAvailable.contract.test.js`
+  `cmd /c npx vitest run src/features/pos/__tests__/terminalViewModeContracts.test.js`
+- Run linter:
+  `cmd /c npm run lint` in `frontend` directory.
+
+### Manual Verification
+- Verify POS Catalog workspace layout on desktop, tablet, and mobile.
+- Verify Search, Scan Barcode, Filter, and Category Tab pills filter items accurately.
+- Verify product card images, availability badges, prices, and circular `+` add buttons.
+- Verify Current Sale panel renders compact item cards with thumbnails, trash icon remove button, totals breakdown, and primary Checkout button.
+- Verify cart calculations, item additions, removals, quantity controls, and checkout flow remain 100% functional.
+
+---
+
+# Implementation — Current Sale Item Thumbnail Indicator
+
+## Proposed Changes
+
+### POS Terminal Components
+
+#### [MODIFY] [POSCheckoutTerminal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/POSCheckoutTerminal.jsx)
+- Add `CartItemThumbnail` component using `Utensils` fallback icon, downscaled thumbnail asset resolution, `object-cover`, `loading="lazy"`, and `decoding="async"`.
+- Render `CartItemThumbnail` beside `line.item_name` in `safeCart.map()` list.
+
+#### [MODIFY] [SkupervisorPOSCheckoutTerminal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx)
+- Add `CartItemThumbnail` component using `Utensils` fallback icon, downscaled thumbnail asset resolution, `object-cover`, `loading="lazy"`, and `decoding="async"`.
+- Render `CartItemThumbnail` beside `line.item_name` in `cart.map()` list.
+
+## Verification Plan
+
+### Automated Tests
+- Run Vitest POS contract tests:
+  `cmd /c npx vitest run src/features/pos/__tests__/storefrontItemQr.contract.test.js`
+  `cmd /c npx vitest run src/features/pos/__tests__/posAlwaysAvailable.contract.test.js`
+  `cmd /c npx vitest run src/features/pos/__tests__/terminalViewModeContracts.test.js`
+- Run linter:
+  `cmd /c npm run lint` in `frontend` directory.
+
+### Manual Verification
+- Open POS Terminal catalog view.
+- Add products (e.g. *Butter*, *Chai Tea*, *Brewed Coffee*) to Current Sale.
+- Verify each item card in the Current Sale panel shows a small 36x36px thumbnail beside the item name.
+- Verify items without images or failing URLs gracefully render the lightweight fallback icon.
+- Verify quantities, prices, remove buttons, and checkout function cleanly without lag.
+
+---
+
+# Implementation — POS Catalog Item Add-to-Cart Toast Notification Overlay
+
+## Proposed Changes
+
+### POS Terminal Components
+
+#### [NEW] [PosAddToCartToastContainer.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/PosAddToCartToastContainer.jsx)
+- Build non-blocking top-right portal overlay component (`pointer-events-none z-[9999]`).
+- Render toast notifications with item thumbnail, item name, quantity badge (`Qty: X`), "Added to current sale." message, emerald checkmark badge, and close button.
+
+#### [MODIFY] [POSCheckoutTerminal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/POSCheckoutTerminal.jsx)
+- Add `addToCartToasts` state and deduplicated `triggerAddToCartToast` handler.
+- Trigger toast notification inside `addToCart()` when a product is added to Current Sale.
+- Render `<PosAddToCartToastContainer toasts={addToCartToasts} onDismiss={handleDismissToast} />`.
+
+#### [MODIFY] [SkupervisorPOSCheckoutTerminal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx)
+- Add `addToCartToasts` state and deduplicated `triggerAddToCartToast` handler.
+- Trigger toast notification inside `addToCart()` when a product is added to Current Sale.
+- Render `<PosAddToCartToastContainer toasts={addToCartToasts} onDismiss={handleDismissToast} />`.
+
+## Verification Plan
+
+### Automated Tests
+- Run Vitest POS contract tests:
+  `cmd /c npx vitest run src/features/pos/__tests__/storefrontItemQr.contract.test.js`
+  `cmd /c npx vitest run src/features/pos/__tests__/posAlwaysAvailable.contract.test.js`
+  `cmd /c npx vitest run src/features/pos/__tests__/terminalViewModeContracts.test.js`
+- Run linter:
+  `cmd /c npm run lint` in `frontend` directory.
+
+### Manual Verification
+- Open POS Terminal catalog view.
+- Click a product (e.g. *Beef Meal*, *Chai Tea*).
+- Verify a top-right toast slides in showing product image, item name, quantity, and "Added to current sale."
+- Tap the same item again and verify quantity updates to `Qty: 2` without creating overlapping duplicate toasts.
+- Verify toast auto-dismisses after 2.5 seconds and cart logic remains untouched.
+
+---
+
+# Implementation — Remove Redundant Storefront Location Header Banner
+
+## Proposed Changes
+
+### POS Terminal Components
+
+#### [MODIFY] [TerminalOperationsWorkspace.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx)
+- Delete the `Selected Location Action Header Card` block (lines ~7643–7729) rendering the banner with store icon, "New Location", and "Active" badge above the 2x2 section grid.
+
+## Verification Plan
+
+### Automated Tests
+- Run Vitest POS contract tests:
+  `cmd /c npx vitest run src/features/pos/__tests__/storefrontItemQr.contract.test.js`
+  `cmd /c npx vitest run src/features/pos/__tests__/posAlwaysAvailable.contract.test.js`
+- Run linter:
+  `cmd /c npm run lint` in `frontend` directory.
+
+### Manual Verification
+- Open POS Terminal Operations workspace → Storefront tab → Locations section.
+- Confirm the "New Location Active" header card banner above the 2x2 grid is removed.
+
+---
+
+# Implementation — POS Storefront Locations UI & Layout Redesign
+
+## Proposed Changes
+
+### POS Terminal Components
+
+#### [MODIFY] [TerminalOperationsWorkspace.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx)
+
+- **Refactor Storefront Locations Section (Lines ~7507–7608)**:
+  - Header: Render icon badge (`MapPin` in blue circular badge), title (**Storefront Locations**), subtitle (*Manage your public storefront locations, delivery coverage, and operational settings.*), and top-right Refresh button.
+  - Left Sidebar Panel (`w-full lg:w-80 xl:w-96`):
+    - Top header with badge `Locations 2` and `+` button.
+    - Search input `Search locations...` (with client-side location name/address filter).
+    - Location list cards with radio selection indicators (`●` / `○`), location name, address, status badges (`Active`, `Open`, `Primary`), radius, wait time, and coordinates.
+    - Bottom count indicator (`Showing X of Y locations`).
+  - Right Content Area:
+    - Active Location Action Header: Selected location name, status badge (`Active`), and quick action buttons (`Edit`, `Set Primary`, `Deactivate` / `Reactivate` / `Delete`).
+    - 2x2 Grid of Grouped Settings Cards:
+      - **Basic Details**: Location Name *, Address *.
+      - **Coordinates**: Latitude *, Longitude *, and blue info callout pill (*Pinned coordinates: These coordinates are used for delivery coverage and ETA calculations.*).
+      - **Map & Coverage**: Map pin toolbar (`Reset View`, `Pin Current Location`, `Adjust Pin`), MapLibre canvas box (`MapPinPicker` component untouched), and delivery coverage preview info pill.
+      - **Operational Settings**: Delivery Radius (km) *, Wait Time (min) *, and checkboxes with subtext descriptions (*Open*, *Primary*, *Allow OOS Sales*).
+    - Bottom Action Bar Card: Title, subtext (*Add a new location or clear the form to start over.*), `Clear` outline button, and `Add Location` / `Update Location` primary button.
+
+## Verification Plan
+
+### Automated Tests
+- Run Vitest POS contract tests:
+  `cmd /c npx vitest run src/features/pos/__tests__/storefrontItemQr.contract.test.js`
+  `cmd /c npx vitest run src/features/pos/__tests__/posAlwaysAvailable.contract.test.js`
+  `cmd /c npx vitest run src/features/pos/__tests__/categoryManagement.contract.test.js`
+- Run linter:
+  `cmd /c npm run lint` in `frontend` directory.
+
+### Manual Verification
+- Open POS Terminal Operations workspace → Storefront tab → Locations section.
+- Verify 2-column layout matches Picture 2.
+- Verify location sidebar selection, editing, map rendering, and saving location functionality.
+
+---
+
+# Implementation — POS Item Saved Confirmation Modal Redesign
+
+## Proposed Changes
+
+### POS Terminal Components
+
+#### [MODIFY] [TerminalOperationsWorkspace.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx)
+
+- **Import Lucide Icons**:
+  - Add/ensure `UtensilsCrossed` or food cloche SVG icon from `lucide-react`.
+
+- **Refactor Saved Success Modal Overlay (Lines ~4116–4159)**:
+  - Center modal card container (`max-w-md w-full rounded-3xl border border-slate-100 bg-white p-7 sm:p-8 text-center shadow-2xl shadow-slate-900/10`).
+  - Render top centered glowing checkmark badge:
+    `<div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-50 border border-emerald-200/80 shadow-[0_0_20px_rgba(16,185,129,0.18)] text-emerald-600"><Check className="h-8 w-8 stroke-[2.5]" /></div>`.
+  - Render main title `<p id="pos-items-saved-modal-title" className="mt-4 text-xl font-bold tracking-tight text-[#0F172A]">Item {savedMessage.action === 'created' ? 'created' : 'saved'} successfully</p>`.
+  - Render description subtext `<p className="mt-1.5 text-xs sm:text-sm font-medium text-[#64748B]"><span className="font-semibold text-slate-800">{savedMessage.name}</span> was {savedMessage.action === 'created' ? 'created in IMS and added to POS.' : 'updated in POS and IMS.'}</p>`.
+  - Render inner detail summary card box:
+    - `<div className="my-5 flex items-center gap-3.5 rounded-2xl border border-slate-200/70 bg-[#F8FAFC] p-4 text-left">`
+    - Left food cloche icon badge: `<div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-blue-50 text-blue-600">` with dish cloche icon.
+    - Vertical divider: `<div className="h-9 w-px bg-slate-200/80 shrink-0"></div>`
+    - Right details: `<p className="text-sm font-bold text-[#0F172A] truncate">{savedMessage.name}</p>`
+      and status dot line `<div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-slate-600"><span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shrink-0"></span><span>{savedMessage.action === 'created' ? 'Created in IMS and added to POS' : 'Updated in POS and IMS'}</span></div>`.
+  - Render centered navy action button:
+    `<Button type="button" onClick={() => setSavedMessage({ name: '', barcode: '', action: 'updated' })} className="mx-auto h-11 w-full max-w-[200px] rounded-xl bg-[#0B3067] px-6 text-sm font-bold text-white hover:bg-[#072047] transition-colors shadow-sm">Got it</Button>`.
+
+## Verification Plan
+
+### Automated Tests
+- Run Vitest POS contract tests:
+  `cmd /c npx vitest run src/features/pos/__tests__/storefrontItemQr.contract.test.js`
+  `cmd /c npx vitest run src/features/pos/__tests__/posAlwaysAvailable.contract.test.js`
+- Run linter:
+  `cmd /c npm run lint` in `frontend` directory.
+
+### Manual Verification
+- Open POS Terminal Operations workspace.
+- Edit or create any item and click "Save Item".
+- Verify the success confirmation modal renders with centered checkmark badge, item details inner card, green status dot, and centered "Got it" button.
+
+---
+
+# Implementation — POS Restoration Loading Screen Redesign
+
+## Proposed Changes
+
+### Styles & Keyframes
+
+#### [MODIFY] [index.css](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/index.css)
+- Add keyframe animations for the POS loading screen:
+  - `@keyframes pos-overlay-fade-in`: Opacity transition from `0` to `1`.
+  - `@keyframes pos-card-scale-up`: Scale transition from `0.94` to `1` with cubic-bezier easing.
+  - `@keyframes pos-illustration-float`: Floating vertical bobbing motion over `3.2s`.
+
+### POS Pages & Components
+
+#### [MODIFY] [TerminalPage.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/pages/TerminalPage.jsx)
+- Create `PosRestorationLoadingScreen` component:
+  - Render full-screen overlay backdrop (`bg-[#F3F5F8]`).
+  - Render centered card (`max-w-[410px] rounded-[28px] bg-white p-8 sm:p-10 shadow-[0_20px_50px_rgba(0,0,0,0.06)]`).
+  - Render vector POS illustration SVG matching reference image (monitor, stand, cash drawer, and keypad calculator) inside a circular blue container (`bg-[#EFF6FF]`).
+  - Render title `Restoring POS workspace...`.
+  - Render dynamic status message subtext (`Preparing your workspace...`, `Syncing terminal catalog & settings...`, `Finalizing workspace layout...`, `Workspace restored!`).
+  - Render horizontal progress bar track with blue animated progress line (`bg-[#2563EB]`).
+  - Render circular blue spinner (`h-6 w-6 border-2 border-[#2563EB] border-t-transparent animate-spin`).
+  - Manage smooth exit fade-out transition when workspace hydration finishes.
+
+## Verification Plan
+
+### Automated Tests
+- Run Vitest view mode contract tests:
+  `cmd /c npx vitest run src/features/pos/__tests__/terminalViewModeContracts.test.js`
+- Run linter:
+  `cmd /c npm run lint` in `frontend` folder.
+
+### Manual Verification
+- Launch POS Terminal application.
+- Observe startup loading screen:
+  - Verify smooth backdrop fade-in & card scale-up.
+  - Verify vector POS illustration floating animation.
+  - Verify progress bar smooth 0–100% animation.
+  - Verify dynamic status subtext transition.
+  - Verify rotating blue spinner below progress bar.
+  - Verify clean fade-out transition upon workspace restoration.
+
+---
+
+# Implementation — POS Edit Item Modal UI Layout & Styling Redesign
+
+## Proposed Changes
+
+### POS Terminal Components
+
+#### [MODIFY] [TerminalOperationsWorkspace.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx)
+
+- **Import Lucide Icons**:
+  - Add/ensure `Package`, `Star`, `Percent`, `Info`, `ShieldCheck` icons from `lucide-react`.
+
+- **Refactor Modal Shell & Top Row (Lines ~3685–3710)**:
+  - Increase modal wrapper max width to `max-w-5xl` for 3-column spatial comfort (`max-w-5xl w-full`).
+  - Add top horizontal row containing 3 toggle cards in a `grid grid-cols-1 md:grid-cols-3 gap-3.5 mb-5`:
+    1. **Always Available Card**:
+       - Container: `rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm flex items-center justify-between gap-3`.
+       - Icon badge: `h-9 w-9 shrink-0 grid place-items-center rounded-xl bg-blue-50 text-blue-600` containing `<Package className="h-4.5 w-4.5" />`.
+       - Text: `Always Available` + `Allow POS sales at zero stock.`.
+       - Control: `<Switch id="pos-items-edit-always-available" checked={editForm.pos_always_available === true} ... />`.
+    2. **Best Seller Card**:
+       - Container: `rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm flex items-center justify-between gap-3`.
+       - Icon badge: `h-9 w-9 shrink-0 grid place-items-center rounded-xl bg-emerald-50 text-emerald-600` containing `<Star className="h-4.5 w-4.5" />`.
+       - Text: `Best Seller` + `Manually tag this item as a Best Seller.`.
+       - Control: `<Switch id="pos-items-edit-best-seller-mode" checked={editForm.pos_best_seller_mode === 'force'} ... />`.
+    3. **Senior/PWD Eligible Card**:
+       - Container: `rounded-2xl border border-slate-200 bg-white p-3.5 shadow-sm flex items-center justify-between gap-3`.
+       - Icon badge: `h-9 w-9 shrink-0 grid place-items-center rounded-xl bg-purple-50 text-purple-600` containing `<Percent className="h-4.5 w-4.5" />`.
+       - Text: `Senior/PWD Eligible` + `Allow statutory discount selection.`.
+       - Control: `<Switch id="pos-items-edit-senior-pwd" checked={editForm.senior_pwd_discount_eligible === true} ... />`.
+
+- **Refactor Main Content Body into 3 Columns (Lines ~3711–3995)**:
+  - Change layout container grid from 2 columns to `grid grid-cols-1 lg:grid-cols-3 gap-5 items-start`.
+  - **Column 1 (Product Image)**:
+    - Card container: `rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm space-y-4 flex flex-col justify-between h-full`.
+    - Upload box (`pos-item-edit-image`), preview image thumbnail, and bottom notice:
+      `<div className="rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2 flex items-center gap-2 text-xs font-medium text-slate-600 mt-auto"><Info className="h-4 w-4 shrink-0 text-blue-500" /><span>Image will be visible in POS and storefront.</span></div>`.
+  - **Column 2 (Item Details)**:
+    - Card container: `rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm space-y-3.5`.
+    - Item Name * (`Input`).
+    - Stock Quantity * (`Input` with left package icon badge prefix: `<span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 flex h-6 w-6 items-center justify-center rounded-md bg-blue-50 text-blue-600"><Package className="h-3.5 w-3.5" /></span>`).
+    - Selling Price * (`Input` with `₱` prefix).
+    - Cost Price * (`Input` with `₱` prefix).
+    - Description / Notes (`textarea` with character counter `0 / 500`).
+  - **Column 3 (Category & QR Section)**:
+    - Card container: `rounded-2xl border border-slate-200 bg-white p-4 sm:p-5 shadow-sm space-y-4 flex flex-col`.
+    - Food Category * dropdown (`id="pos-items-edit-category"`, helper text below).
+    - QR Code Card: `StorefrontItemQrCard` inside a light gray rounded inner card (`rounded-2xl border border-slate-100 bg-slate-50/70 p-4 space-y-3 flex-1 flex flex-col items-center justify-center text-center`).
+
+- **Refactor Footer Bar (Lines ~3998–4020)**:
+  - Container: `shrink-0 bg-white border-t border-slate-100 px-5 py-3.5 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3.5`.
+  - Left Notice Box:
+    - `<div className="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 flex items-center gap-2.5 text-xs font-medium text-slate-600"><span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-blue-50 text-blue-600"><ShieldCheck className="h-4 w-4" /></span><span>Changes will update this item across POS and storefront immediately.</span></div>`.
+  - Right Action Buttons:
+    - Cancel button (`variant="outline"`, white background with light border).
+    - Save Item button (`bg-blue-600 hover:bg-blue-700 text-white font-bold`, `<Save className="h-4 w-4" /> Save Item`).
+
+## Verification Plan
+
+### Automated Tests
+- Run contract tests:
+  `npx vitest run src/features/pos/__tests__/storefrontItemQr.contract.test.js`
+  `npx vitest run src/features/pos/__tests__/posAlwaysAvailable.contract.test.js`
+- Run linter:
+  `npm run lint` in `frontend` directory.
+
+### Manual Verification
+- Open POS Terminal Operations workspace.
+- Click "Edit" on any menu item to launch the modal.
+- Verify the 3 toggle cards are positioned horizontally below the header.
+- Verify the main content is arranged into 3 clear cards/columns: Product Image, Item Details, and Category/QR Section.
+- Verify the Stock Quantity input has the box icon prefix.
+- Verify the footer has the bottom left notice box with shield icon and Cancel/Save buttons on the right.
+
+---
+
 # Implementation — Food & Beverage (F&B) Saving Menu Item Modal Redesign
 
 ## Proposed Changes
@@ -2861,4 +3201,201 @@ Reduce the layout size of the "Apply Discount" modal dialog further to make it e
 - `Implementation.md`
 - `Plan.md`
 
+# 2026-07-27 - Customer-facing item QR links
+
+- Added a customer-facing QR for saved POS items using the existing Storefront item-details route and immutable saved item ID.
+- Displayed the item name above the QR in POS Edit Item.
+- Kept inventory barcode scanning separate from customer-facing QR navigation.
+- Add Item does not show a QR before the item has been saved.
+- No database migration was required because the QR is derived from existing item and Storefront identity data.
+
+# 2026-07-27 - Compact Edit Item QR layout
+
+- Moved the saved item Storefront QR out of the product-image column.
+- Split the Edit Item notes area into equal desktop columns for Description / Notes and the QR card.
+- Reduced the Edit Item QR to 104 pixels while keeping the item name above it.
+- Removed the Edit Item QR helper sentence and its unused spacing while retaining the Storefront item link.
+- Kept the layout stacked on narrow mobile screens and left Add Item unchanged.
+
+# 2026-07-27 - Remove redundant Storefront item QR
+
+- Removed the QR card from the Storefront item-details page because the customer is already on its destination.
+- Kept the compact customer-facing QR in POS Edit Item for staff sharing and printing.
+- Removed the unused Storefront QR URL construction and `storeSlug` route prop.
+- Left item pricing, quantity selection, modifiers, recommendations, cart actions, and checkout behavior unchanged.
+
+# 2026-07-27 - Storefront item-detail loading states
+
+- Prevented the temporary `Item not available` screen from appearing before the Storefront catalog finishes loading.
+- Added distinct loading, retryable catalog-error, item-details, and confirmed not-found states.
+- Kept loaded out-of-stock items on their detail page so the existing sold-out behavior remains authoritative.
+- Reused the existing catalog refresh action for retries without adding a second item request or changing Storefront APIs.
+
+# 2026-07-28 - Stable POS startup hydration
+
+- Prevented Settings or another protected POS page from rendering before authentication and tenant setup hydration complete.
+- Reset the startup gate before every terminal unlock so startup follows a single loading-to-workspace transition.
+- Stopped locked-state setup hydration from incorrectly reporting that tenant setup loading had finished.
+- Preserved onboarding completion in the tenant setup snapshot loaded during company selection.
+- Reused the same restoration screen for startup and lazy POS module loading.
+- Verified the focused POS contracts, targeted lint, and the POS production build.
+
+# 2026-07-28 - Storefront responsive image delivery
+
+- Preserved original uploaded catalog images while exposing the existing 400px thumbnail, 1024px medium, and 1920px large optimized variants in the Storefront catalog contract.
+- Added responsive `srcset` and `sizes` selection so product cards, galleries, recommendations, and item details download an image appropriate for their rendered size instead of always loading the largest asset.
+- Persisted the optimized thumbnail URL in new cart snapshots and retained a fallback to the legacy primary image for older carts.
+- Updated cart and checkout item images to prefer thumbnails and use lazy, asynchronous decoding where appropriate.
+- Replaced the two bundled images larger than 1 MB with 1200px WebP assets: the auth background dropped from about 1.39 MB to 42 KB and the Storefront business-owner image dropped from about 1.69 MB to 44 KB.
+- Added a tenant-scoped legacy catalog optimizer that is audit-only by default and writes only when `--apply` is explicitly provided. Originals remain under the existing originals storage tree.
+- Kept `/uploads/` outside service-worker runtime caching as required by ADR 0014; optimization uses immutable generated assets rather than stale browser caching.
+
+### Legacy image audit and apply
+
+```bash
+cd backend
+npm run backfill:optimized-catalog-images -- --tenant-id <tenant-uuid>
+npm run backfill:optimized-catalog-images -- --tenant-id <tenant-uuid> --apply
+```
+
+The first command is a dry run. Review its candidate, skipped, and failed counts before running the second command.
+
+# 2026-07-28 - Storefront ID recovery for POS item QR codes
+
+- Added an authenticated Settings action that generates and persists a stable, tenant-scoped `store_tenant_slug` when a company does not already have one.
+- Reused the existing public Storefront handle reservation and compliance checks so generated IDs remain unique and existing valid IDs are never replaced.
+- Added a Settings > Storefront card that displays the saved Storefront ID and public URL, supports copying or opening the URL, and exposes `Generate Storefront ID` only when the value is missing.
+- Refreshed terminal metadata after Storefront saves and ID generation so saved-item QR codes become available without reloading the POS.
+- Unified automatic Storefront discovery slug derivation with the same shared normalization utility used by explicit generation.
+- Added backend generation/idempotency/collision tests and frontend URL/QR integration contract coverage.
+- No database migration is required because `store_tenant_slug` is an existing governed setting.
+
+# 2026-07-29 - POS Employee Credit tender
+
+- Added optional, POS-only Employee Credit as a non-cash payment tender separate from Employee Discount.
+- Added tenant-local employee credit accounts and an immutable debit, grant, adjustment, reversal, and expiration ledger.
+- Added dedicated permissions for using Employee Credit, managing eligible accounts and authorization PINs, and viewing the separate credit report.
+- Required an eligible active employee, dedicated bcrypt-protected credit PIN, sufficient balance, active shift, terminal, location, and online checkout.
+- Made checkout and void operations atomic and idempotent so retries cannot double-debit or double-restore credit.
+- Added manager/admin account controls for eligibility, PIN setup, credit limits, and reasoned balance adjustments.
+- Added receipt and iMin evidence for employee name, masked account, credit amount, remaining balance, authorization reference, and creditor signature.
+- Excluded Employee Credit from cash received, cash drawer opening, and cashflow reporting while exposing a dedicated ledger report.
+- Registered the migration in tenant schema synchronization and runtime schema audits to prevent unknown-table or unknown-column failures after deployment.
+- Added focused backend use-case and migration contracts plus a frontend checkout, receipt, and drawer-isolation contract.
+
+# 2026-07-29 - POS Employee Directory
+
+- Added a tenant-owned Employee Directory for workmates who do not need a DGFY or POS login account.
+- Added employee code, full name, optional contact details, optional branch assignment, and active/inactive status.
+- Added audited, permission-protected employee create and update endpoints following the route, controller, use-case, repository, and model boundaries.
+- Linked Employee Credit accounts and POS transaction snapshots to directory employees while retaining existing user-linked Employee Credit accounts.
+- Added a Settings > Employees workspace for employee maintenance and Employee Credit configuration.
+- Refreshed Employee Credit options immediately after employee directory changes.
+- Added and applied migration `20260729000002-create-employee-directory.cjs` to the landlord and all active local tenant schemas.
+- Prevented destructive rollback when employee-only credit accounts exist.
+- Verified focused lint and tests, architecture/controller boundaries, documentation, tenant schema health, and the POS production build.
+
+# 2026-07-30 - Simplified POS Employee Credit authorization
+
+- Removed the Employee Credit PIN field from checkout and account management.
+- Kept employee account lookup, active and eligible status checks, available-balance validation, shift, terminal, location, permission, idempotency, audit, and immutable ledger controls.
+- Kept Employee Credit online-only, non-cash, and excluded from cash drawer and cashflow totals.
+- Updated receipt and iMin output to show the employee identity, credit evidence, and an `Employee Signature` acknowledgment line.
+- Retained the unused authorization hash column for backward-compatible tenant schemas; no database migration is required for this change.
+- Updated ADR 0039 and focused backend/frontend contracts to prevent the PIN requirement from being reintroduced.
+
+# 2026-07-30 - Confirm Checkout Modal & Employee Credit Redesign
+
+- Restructured checkout confirmation dialog (`DialogContent` in `POSCheckoutTerminal.jsx`) with fixed header, scrollable body area, item thumbnail icons, and fixed action footer.
+- Refactored `EmployeeCreditPaymentPanel.jsx` into a clean card layout with top icon badge, title/description, searchable employee dropdown combobox, eligibility/balance evidence, loading and retry states, and unavailable credit alert card.
+- Ensured zero overlap for combobox popover menu and preserved responsive vertical scrolling for item lists.
+- Removed redundant "ITEMS / X items in this sale / PHP XXX" sub-header inside the checkout items box per user request.
+- Preserved 100% of existing checkout logic, text, validation contracts, props, APIs, and button handlers.
+
+# 2026-07-30 - Sidebar Company Name & Branch Name Display
+
+- Updated `TerminalWorkspaceSidebar.jsx` header to render dynamic Company Name (bold primary) and Branch Name (smaller secondary) centered directly below the DGFY logo with CSS truncation (`truncate`) and tooltip titles.
+- Added dynamic resolution logic deriving company from `companyName` prop -> `accessibleCompanies` current tenant -> `terminalUser` (`company_name`, `company.name`, `business_name`).
+- Added dynamic resolution logic deriving branch from `branchName` prop -> `locationsState` active location -> `shiftState.shift.branch_name` -> `terminalMeta.branch_name`.
+- Passed `operatingLocationId`, `accessibleCompanies`, and `terminalMeta` down from `TerminalPageLayout.jsx` to `<TerminalWorkspaceSidebar>`.
+- Preserved 100% of existing navigation links, authentication handlers, routing, and compact sidebar dimensions.
+
+# 2026-07-30 - Optimized Item List Thumbnails in Confirm Checkout Modal
+
+- Updated `safeCart.map` in `POSCheckoutTerminal.jsx` to resolve downscaled/compressed thumbnail variant URLs using `resolveAssetVariantUrl(rawImage, 'thumbnail')`.
+- Rendered 40x40px fixed thumbnail container (`h-10 w-10 shrink-0 rounded-lg border border-blue-100 overflow-hidden`) with `object-cover`, `loading="lazy"`, `decoding="async"`, and automatic fallback to a lightweight `Utensils` icon container if image loading fails.
+- Displayed thumbnail on the left, followed by item name (bold dark text), `quantity × unit price` subtext, and line total (`PHP XXX.XX`) on the right.
+- Preserved 100% of existing checkout calculation logic, payment validation, APIs, and modal behavior.
+
+# 2026-07-30 - Fix Confirm Checkout Item Thumbnail Image Resolution
+
+- Updated `resolveMappedPosItemImage` helper in `POSCheckoutTerminal.jsx` to inspect `item?.name || item?.item_name || item?.itemName`.
+- Enhanced checkout modal `safeCart.map` item rendering to look up corresponding catalog metadata from `safeCatalog` by `line.item_id`.
+- Resolved downscaled thumbnail URL using `resolveAssetVariantUrl` across catalog item / line image properties (`storefront_image_url`, `pos_image_url`, `image_url`, and mapped image variants).
+- Preserved fixed 40x40px rounded container, `object-fit: cover`, `loading="lazy"`, `decoding="async"`, and fallback placeholder behavior.
+
+# 2026-07-30 - POS Employee Credit open-tab outstanding balance
+
+- Converted Employee Credit from a prepaid available-balance model into an employee open-tab tender that records the amount owed by each eligible employee.
+- Allowed eligible active employees to use Employee Credit even when the legacy funded balance is zero or lower than the sale total.
+- Added tenant migration `20260730000001-convert-employee-credit-to-outstanding-balance.cjs` for account outstanding balance, charge and repayment ledger entries, and transaction outstanding-balance snapshots.
+- Made checkout create one positive, idempotent `charge` ledger entry and increase outstanding balance in the same database transaction as the POS sale.
+- Made transaction void create one negative, idempotent reversal and reduce outstanding balance without deleting financial history.
+- Added permissioned repayment and administrative outstanding-correction endpoints with required reasons, idempotency keys, audit logs, and negative-balance protection.
+- Updated Employee Credit checkout, management, report, and receipt evidence to display current/projected outstanding balances while keeping legacy funded fields backward compatible.
+- Preserved Employee Credit as a non-cash, online-only POS tender excluded from cash drawer and cashflow totals.
+- Updated ADR 0039 and focused backend/frontend contracts for open-tab charging, duplicate replay, repayment, correction, void reversal, and migration coverage.
+
+### Focused validation
+
+- Backend: `npm test -- --runInBand tests/employeeCredit.usecases.test.js tests/employeeCreditMigration.contract.test.js` (12 tests passed).
+- Frontend: `npm test -- --run src/features/pos/__tests__/employeeCredit.contract.test.js src/features/pos/__tests__/employeeCreditPaymentPanel.behavior.test.jsx` (6 tests passed).
+
+# 2026-07-30 - Employee Credit report tenant schema repair
+
+- Added `employee_credit_outstanding_after` and `outstanding_balance` to tenant schema repair and runtime audit contracts.
+- Added `charge` and `repayment` to the Employee Credit ledger enum contract for existing and newly provisioned tenants.
+- Kept the additive migration backward compatible so existing funded balances, outstanding balances, transactions, and ledger history are preserved.
+- Applied the outstanding-balance migration to the local landlord and active tenant databases to remove the Report `Unknown column` failure.
+
+# 2026-07-30 - Re-align Header Notification Box with Bell Icon
+
+- Updated `renderNotificationButton` in `TerminalPageLayout.jsx` to anchor the notification popover directly underneath the Bell icon button.
+- Aligned popover panel with `right-1/2 translate-x-1/2` (centered horizontally below Bell button) and set top pointer arrow to `left-1/2 -translate-x-1/2`, pointing directly into the Bell icon instead of the User Profile menu.
+- Applied `max-w-[calc(100vw-2rem)]` to prevent popover overflow on narrow viewports.
+- Retained backdrop click overlay for closing popover and preserved all notification click handlers and empty state views.
+
+# 2026-07-30 - Fix Notification Dropdown Duplicate Rendering & Add Escape Key Listener
+
+- Updated `renderNotificationButton` in `TerminalPageLayout.jsx` to pass `compactBellClassName` and `desktopBellClassName` directly to the outer wrapper `<div className={className}>`.
+- Hidden bell instances (`lg:hidden` or `hidden`) now hide their entire outer wrapper and child popover, ensuring only one notification popover is present in the DOM at any viewport breakpoint.
+- Added `useEffect` keydown listeners for `Escape` key to close `notificationsOpen` and `companyMenuOpen` automatically.
+- Preserved all existing notification items, badge counters, click actions, and APIs.
+
+# 2026-07-30 - Remove "Discount / No discount applied" Card UI from Current Sale Panel
+
+- Removed the `<div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-2">` UI card displaying `Discount / No discount applied` / `Remove Discount` from `POSCheckoutTerminal.jsx`.
+- Preserved 100% of underlying discount state (`appliedDiscount`), discount calculations, totals deductions, `Apply Discount` button/modal, and backend payload parameters.
+
+# 2026-07-31 - Automatic Image Compression for POS Item Save & POS Bulk Optimizer
+
+### Implemented solution
+- Updated POS Edit Item modal (`TerminalOperationsWorkspace.jsx`) to accept high-res HD item images up to 100MB, displaying explicit notice that HD images are automatically downscaled and WebP-compressed when saved.
+- Verified that POS item saving triggers `uploadStorefrontCatalogImage(...)` on the backend, executing `Sharp` image compression down to 400px `thumb.webp` thumbnails for zero-lag POS card rendering.
+- Provided and verified the 1-step backend bulk optimizer command for your POS catalog:
+  ```bash
+  cd backend
+  npm run backfill:optimized-catalog-images -- --apply
+  ```
+  This batch-processes all 100+ existing POS item pictures on disk into 400px WebP thumbnails without requiring SKUpervisor.
+
+# 2026-07-31 - Revenue Workspace Admin Authentication Action Button
+
+### Implemented solution
+- Enhanced error alert in `TenantRevenueSettlementPanel.jsx` to render an explicit `Sign in as Platform Admin` button when `error` contains `Admin authentication required` or session expiration, directing admins to `/admin`.
+
+### Files modified
+- `frontend/src/features/admin/tenantRevenue/TenantRevenueSettlementPanel.jsx`
+- `Plan.md`
+- `Implementation.md`
 

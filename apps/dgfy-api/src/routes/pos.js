@@ -1,9 +1,11 @@
 import express from 'express';
 import * as posController from '../controllers/posController.js';
-import { authenticate, checkPermission, requirePremium, requireTenantCapability } from '../middleware/auth.js';
+import * as employeeCreditController from '../modules/employeeCredit/controllers/employeeCreditHandlers.js';
+import * as employeeController from '../modules/employees/controllers/employeeHandlers.js';
+import { authenticate, checkAnyPermission, checkPermission, requirePremium, requireTenantCapability } from '../middleware/auth.js';
 import { posLimiter } from '../middleware/rateLimiter.js';
 import { PERMISSIONS } from '../config/permissions.js';
-import { posCatalogBulkImageUpload, posCatalogImageUpload } from '../config/uploadConfig.js';
+import { posCatalogBulkImageUpload, posCatalogImageUpload, preserveTenantContext } from '../config/uploadConfig.js';
 import {
     validatePosCheckout,
     validatePosCatalogQuery,
@@ -41,10 +43,27 @@ import {
     validateVerifyTerminal,
     validatePosCashierLogin,
     validateSetupCashier,
-    validatePosDiscountApproval
+    validatePosDiscountApproval,
+    validateEmployeeCreditAccountParam,
+    validateEmployeeCreditUserParam,
+    validateEmployeeParam,
+    validateEmployeeListQuery,
+    validateEmployeeCreate,
+    validateEmployeeUpdate,
+    validateEmployeeCreditAccountUpdate,
+    validateEmployeeCreditOutstandingAdjustment,
+    validateEmployeeCreditRepayment,
+    validateEmployeeCreditCheckoutOptionsQuery,
+    validateEmployeeCreditLookupQuery,
+    validateEmployeeCreditReportQuery
 } from '../validators/posValidator.js';
 
 const router = express.Router();
+const employeeCreditCheckoutPermission = checkPermission(PERMISSIONS.POS.actions.USE_EMPLOYEE_CREDIT);
+const requireEmployeeCreditCheckoutPermission = (req, res, next) => {
+    if (req.validatedData?.payment_type !== 'employee_credit') return next();
+    return employeeCreditCheckoutPermission(req, res, next);
+};
 
 // Cashiers have no tenant access token before their first POS login. Tenant
 // context, premium/capability checks, rate limiting, and payload validation
@@ -73,11 +92,30 @@ router.get('/catalog', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), valida
 router.post('/scan', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosScan, posController.scanBarcode);
 router.get('/catalog-overrides', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosCatalogOverridesQuery, posController.listCatalogOverrides);
 router.patch('/catalog-overrides/bulk', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), posController.updateBulkCatalogOverrides);
-router.post('/catalog-overrides/images/bulk', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), posCatalogBulkImageUpload.array('images', 50), posController.uploadBulkCatalogImages);
+router.post('/catalog-overrides/images/bulk', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), preserveTenantContext(posCatalogBulkImageUpload.array('images', 50)), posController.uploadBulkCatalogImages);
 router.patch('/catalog-overrides/:item_id', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validatePosCatalogOverrideParam, validateUpdatePosCatalogOverride, posController.updateCatalogOverride);
-router.post('/catalog-overrides/:item_id/image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validatePosCatalogOverrideParam, posCatalogImageUpload.single('image'), posController.uploadCatalogImage);
+router.post('/catalog-overrides/:item_id/image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validatePosCatalogOverrideParam, preserveTenantContext(posCatalogImageUpload.single('image')), posController.uploadCatalogImage);
 router.delete('/catalog-overrides/:item_id/image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validatePosCatalogOverrideParam, posController.deleteCatalogImage);
-router.post('/checkouts', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosCheckout, posController.checkout);
+router.post('/checkouts', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosCheckout, requireEmployeeCreditCheckoutPermission, posController.checkout);
+router.get(
+    '/employees',
+    checkAnyPermission([
+        PERMISSIONS.POS.actions.MANAGE_EMPLOYEES,
+        PERMISSIONS.POS.actions.MANAGE_EMPLOYEE_CREDIT
+    ]),
+    validateEmployeeListQuery,
+    employeeController.listEmployees
+);
+router.post('/employees', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEES), validateEmployeeCreate, employeeController.createEmployee);
+router.patch('/employees/:employeeId', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEES), validateEmployeeParam, validateEmployeeUpdate, employeeController.updateEmployee);
+router.get('/employee-credit/accounts', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEE_CREDIT), employeeCreditController.listEmployeeCreditAccounts);
+router.patch('/employee-credit/accounts/:userId', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEE_CREDIT), validateEmployeeCreditUserParam, validateEmployeeCreditAccountUpdate, employeeCreditController.updateEmployeeCreditAccount);
+router.patch('/employee-credit/employee-accounts/:employeeId', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEE_CREDIT), validateEmployeeParam, validateEmployeeCreditAccountUpdate, employeeCreditController.updateEmployeeCreditEmployeeAccount);
+router.post('/employee-credit/accounts/:accountId/repay', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEE_CREDIT), validateEmployeeCreditAccountParam, validateEmployeeCreditRepayment, employeeCreditController.recordEmployeeCreditRepayment);
+router.post('/employee-credit/accounts/:accountId/adjust-outstanding', checkPermission(PERMISSIONS.POS.actions.MANAGE_EMPLOYEE_CREDIT), validateEmployeeCreditAccountParam, validateEmployeeCreditOutstandingAdjustment, employeeCreditController.adjustEmployeeCreditOutstanding);
+router.get('/employee-credit/checkout-options', checkPermission(PERMISSIONS.POS.actions.USE_EMPLOYEE_CREDIT), validateEmployeeCreditCheckoutOptionsQuery, employeeCreditController.listEmployeeCreditCheckoutOptions);
+router.get('/employee-credit/lookup', checkPermission(PERMISSIONS.POS.actions.USE_EMPLOYEE_CREDIT), validateEmployeeCreditLookupQuery, employeeCreditController.lookupEmployeeCreditAccount);
+router.get('/employee-credit/report', checkPermission(PERMISSIONS.POS.actions.VIEW_EMPLOYEE_CREDIT_REPORT), validateEmployeeCreditReportQuery, employeeCreditController.getEmployeeCreditReport);
 router.get('/discount-approvers', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.listDiscountApprovers);
 router.post('/discount-approvals/verify', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosDiscountApproval, posController.verifyDiscountApproval);
 router.get('/transactions', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosTransactionsQuery, posController.listTransactions);
@@ -106,7 +144,7 @@ router.post('/esales-reports/generate', checkPermission(PERMISSIONS.POS.actions.
 router.patch('/esales-reports/:id/status', checkPermission(PERMISSIONS.POS.actions.MANAGE_ESALES_REPORTS), validatePosTransactionIdParam, validateUpdateESalesReportStatus, posController.updateESalesReportStatus);
 router.get('/fiscal-ledger/integrity', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.verifyFiscalEventLedger);
 router.get('/incoming-orders', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateIncomingOnlineOrdersQuery, posController.listIncomingOnlineOrders);
-router.get('/admin/location-monitor', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateAdminLocationMonitorQuery, posController.getAdminLocationMonitor);
+router.get('/admin/location-monitor', checkPermission(PERMISSIONS.POS.actions.SWITCH_LOCATION_POS), validateAdminLocationMonitorQuery, posController.getAdminLocationMonitor);
 router.post('/orders/:id/collect-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashPickupOrder, posController.collectCashPickupOrder);
 // ADR 0031: online order lifecycle uses logical terminal/open-shift checks; physical pairing must not block.
 router.patch('/orders/:id/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateOnlineOrderStatus, posController.updateOnlineOrderStatus);

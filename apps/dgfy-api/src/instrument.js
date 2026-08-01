@@ -1,5 +1,5 @@
 // Loaded via `node --import ./src/instrument.js src/server.js` (see
-// package.json start/dev scripts and infrastructure/docker/backend/Dockerfile).
+// package.json start/dev scripts and infrastructure/docker/dgfy-api/Dockerfile).
 //
 // This file exists because `initSentry()` in server.js used to run after
 // ~65 application imports (express, sequelize/mysql2, every route module).

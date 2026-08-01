@@ -11,14 +11,14 @@ on:
         description: JSON array passed to runs-on for the publish job.
         required: false
         type: string
-        default: '["self-hosted"]'
+        default: '["ubuntu-slim"]'
   workflow_dispatch:
     inputs:
       runner_labels_json:
         description: JSON array passed to runs-on for the manual publish job.
         required: false
         type: string
-        default: '["self-hosted"]'
+        default: '["ubuntu-slim"]'
 
 permissions:
   contents: read
@@ -42,10 +42,19 @@ jobs:
       - name: Check whether the receipt package changed
         id: changes
         shell: bash
+        env:
+          BEFORE_SHA: ${{ inputs.before_sha }}
         run: |
+          NULL_SHA="0000000000000000000000000000000000000000"
+
           if [ "${{ github.event_name }}" = 'workflow_dispatch' ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
-          elif git diff --quiet "${{ inputs.before_sha }}" "$GITHUB_SHA" -- packages/pos-receipt; then
+          elif [ "${BEFORE_SHA}" = "${NULL_SHA}" ] || ! git cat-file -e "${BEFORE_SHA}^{commit}" 2>/dev/null; then
+            # New branch (null before_sha) or force-push/rewritten history
+            # (before_sha no longer reachable) -- no diff is computable, so
+            # assume changed rather than silently skip a publish.
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          elif git diff --quiet "${BEFORE_SHA}" "$GITHUB_SHA" -- packages/pos-receipt; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
           else
             echo "changed=true" >> "$GITHUB_OUTPUT"

@@ -1,4 +1,5 @@
 import React from 'react';
+import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 
 const SimpleProductCard = ({
   Badge,
@@ -10,11 +11,12 @@ const SimpleProductCard = ({
   available,
   bodyFont,
   displayFont,
-  imageUrl,
+  imageSources,
   item,
   money,
   onViewDetails
 }) => {
+  const imageUrl = imageSources?.src || '';
   const categoryLabel = item.folder_name || item.category || 'Product';
   const availabilityLabel = item?.inventory_display?.label || (available ? 'Available' : 'Not available');
 
@@ -33,7 +35,16 @@ const SimpleProductCard = ({
         onClick={() => onViewDetails?.(item)}
       >
         {imageUrl ? (
-          <img src={imageUrl} alt={item.name} style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+          <StorefrontResponsiveImage
+            imageSources={imageSources}
+            sizes="(max-width: 1199px) 50vw, 330px"
+            alt={item.name}
+            loading="lazy"
+            decoding="async"
+            width={400}
+            height={300}
+            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          />
         ) : (
           <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: '#64748b', fontSize: 13, fontWeight: 700 }}>
             No image yet
@@ -63,7 +74,18 @@ const SimpleProductCard = ({
         </div>
         <div style={{ marginTop: 'auto', display: 'grid', gap: 10 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
-            <strong style={{ fontSize: 19, fontWeight: 800, color: accentDark, fontFamily: displayFont }}>{money(item.default_sale_price ?? 0)}</strong>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 6 }}>
+              <strong style={{ fontSize: 19, fontWeight: 800, color: accentDark, fontFamily: displayFont }}>{money(item.default_sale_price ?? 0)}</strong>
+              {item.affiliate_price_applied && (
+                // Phase 1 affiliate pricing rule engine: a buyer arriving through an affiliate
+                // link sees a price that differs from the public catalog - this label is what
+                // stops that from reading as a bug (see
+                // docs/proposals/2026-07-29-affiliate-pricing-rule-engine-scope.md).
+                <span style={{ fontSize: 10, fontWeight: 800, color: '#7c3aed', background: '#f3e8ff', borderRadius: 999, padding: '2px 7px' }}>
+                  Affiliate price
+                </span>
+              )}
+            </div>
             <span style={{ fontSize: 12, fontWeight: 700, color: available ? '#047857' : '#be123c' }}>{availabilityLabel}</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>

@@ -1,8 +1,9 @@
 import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Folder, X } from 'lucide-react';
+import { Folder, LayoutGrid, Plus, ShoppingCart, Trash2, Utensils, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
+import { usePosCartDraft } from '../hooks/usePosCartDraft.js';
 import { useNavigate } from 'react-router-dom';
 import {
     fetchPosCatalog,
@@ -44,6 +45,7 @@ import {
     printOrderWithIminBridge,
     printReceiptWithIminBridge
 } from '../utils/iminHardwareBridge.js';
+import { PosAddToCartToastContainer } from './PosAddToCartToastContainer.jsx';
 
 const ReceiptPrintView = lazy(() => import('./ReceiptPrintView'));
 const OrderPreviewView = lazy(() => import('./OrderPreviewView.jsx'));
@@ -323,6 +325,36 @@ const inferReceiptContract = (transaction, fallbackContract = null) => {
     return null;
 };
 
+const CartItemThumbnail = React.memo(({ catalog, line }) => {
+    const item = (Array.isArray(catalog) ? catalog.find((i) => i.item_id === line.item_id) : null) || line;
+    const thumbnailSrc = resolveAssetVariantUrl(item.storefront_image_url, 'thumbnail') || resolveMappedPosItemImage(item) || null;
+    const [imageFailed, setImageFailed] = useState(false);
+
+    if (thumbnailSrc && !imageFailed) {
+        return (
+            <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-slate-100 border border-slate-200/80 shadow-xs flex items-center justify-center">
+                <img
+                    src={thumbnailSrc}
+                    alt={line.item_name || 'Item'}
+                    loading="lazy"
+                    decoding="async"
+                    width={36}
+                    height={36}
+                    className="h-full w-full object-cover object-center"
+                    onError={() => setImageFailed(true)}
+                />
+            </div>
+        );
+    }
+
+    return (
+        <div className="h-9 w-9 shrink-0 overflow-hidden rounded-lg bg-slate-100 border border-slate-200/60 flex items-center justify-center text-slate-400">
+            <Utensils className="h-4 w-4" aria-hidden="true" />
+        </div>
+    );
+});
+CartItemThumbnail.displayName = 'CartItemThumbnail';
+
 export default function POSCheckoutTerminal({
     sessionLocked = false,
     isMsmeMode = false,
@@ -357,6 +389,50 @@ export default function POSCheckoutTerminal({
     const [catalog, setCatalog] = useState([]);
     const [catalogImageErrors, setCatalogImageErrors] = useState(() => new Set());
     const [catalogError, setCatalogError] = useState('');
+    const [addToCartToasts, setAddToCartToasts] = useState([]);
+
+    const triggerAddToCartToast = useCallback((item, addedQty = 1) => {
+        if (!item) return;
+        const itemId = item.item_id;
+        const itemName = item.name || 'Item';
+        const imageSrc = resolveAssetVariantUrl(item.storefront_image_url, 'thumbnail') || resolveMappedPosItemImage(item) || null;
+
+        setAddToCartToasts((prev) => {
+            const existingIndex = prev.findIndex((t) => t.itemId === itemId);
+            if (existingIndex !== -1) {
+                const updated = [...prev];
+                const existing = updated[existingIndex];
+                updated[existingIndex] = {
+                    ...existing,
+                    quantity: existing.quantity + addedQty,
+                    timestamp: Date.now()
+                };
+                return updated;
+            }
+            const newToast = {
+                id: `toast-${itemId}-${Date.now()}`,
+                itemId,
+                itemName,
+                imageSrc,
+                quantity: addedQty,
+                timestamp: Date.now()
+            };
+            return [newToast, ...prev].slice(0, 4);
+        });
+    }, []);
+
+    const handleDismissToast = useCallback((toastId) => {
+        setAddToCartToasts((prev) => prev.filter((t) => t.id !== toastId));
+    }, []);
+
+    useEffect(() => {
+        if (addToCartToasts.length === 0) return;
+        const timer = setInterval(() => {
+            const now = Date.now();
+            setAddToCartToasts((prev) => prev.filter((t) => now - t.timestamp < 2500));
+        }, 250);
+        return () => clearInterval(timer);
+    }, [addToCartToasts.length]);
     const [posFolders, setPosFolders] = useState([]);
     const [selectedFolderId, setSelectedFolderId] = useState(null);
     const [posFoldersLoading, setPosFoldersLoading] = useState(true);
@@ -425,6 +501,15 @@ export default function POSCheckoutTerminal({
     const currentViewMode = isViewModeControlled ? controlledViewMode : viewMode;
     const normalizedTerminalId = String(terminalId || '').trim();
     const hasOfflineSnapshotScope = isOfflinePosScopeReady(offlineSnapshotScope);
+    usePosCartDraft({
+        activeShiftId,
+        cart,
+        catalog,
+        catalogReady: !catalogLoading,
+        enabled: !sessionLocked && Boolean(activeShiftId),
+        scope: offlineSnapshotScope,
+        setCart
+    });
     const terminalIdentityLabel = normalizedTerminalId
         ? `Terminal ${normalizedTerminalId}`
         : 'No terminal selected';
@@ -1246,6 +1331,7 @@ export default function POSCheckoutTerminal({
         if (stockWarning) {
             toast.error(stockWarning);
         }
+        triggerAddToCartToast(item, requestedAddQty);
     };
 
     const updateCartLine = (lineKey, patch) => {
@@ -2054,7 +2140,10 @@ export default function POSCheckoutTerminal({
                         return (
                         <div key={lineKey} className="border border-slate-200 rounded-lg p-3">
                             <div className="flex items-center justify-between gap-2">
-                                <p className="text-sm font-medium text-slate-900">{line.item_name}</p>
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                    <CartItemThumbnail catalog={catalog} line={line} />
+                                    <p className="text-sm font-bold text-slate-900 truncate">{line.item_name}</p>
+                                </div>
                                 <div className="flex flex-wrap items-center justify-end gap-1">
                                     {line.scan_metadata && (
                                         <span className="text-[11px] px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 border border-teal-100">
@@ -2226,9 +2315,16 @@ export default function POSCheckoutTerminal({
                                 <span className="text-xs text-slate-500">
                                     Subtotal: PHP {money(Number(line.quantity) * Number(line.sale_price))}
                                 </span>
-                                <Button type="button" variant="outline" size="sm" onClick={() => removeCartLine(lineKey)} disabled={posActionsBlocked}>
-                                    Remove
-                                </Button>
+                                <button
+                                    type="button"
+                                    onClick={() => removeCartLine(lineKey)}
+                                    disabled={posActionsBlocked}
+                                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-40"
+                                    aria-label={`Remove ${line.item_name}`}
+                                    title="Remove item"
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                </button>
                             </div>
                         </div>
                         );
@@ -2525,6 +2621,7 @@ export default function POSCheckoutTerminal({
                     </div>
                 </div>
             )}
+            <PosAddToCartToastContainer toasts={addToCartToasts} onDismiss={handleDismissToast} />
         </div>
     );
 }

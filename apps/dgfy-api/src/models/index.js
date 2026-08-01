@@ -46,6 +46,9 @@ import PosFiscalTerminalRegistration from './PosFiscalTerminalRegistration.js';
 import PosFiscalEvent from './PosFiscalEvent.js';
 import PosFiscalPrintEvent from './PosFiscalPrintEvent.js';
 import PosESalesReport from './PosESalesReport.js';
+import Employee from './Employee.js';
+import EmployeeCreditAccount from './EmployeeCreditAccount.js';
+import EmployeeCreditLedgerEntry from './EmployeeCreditLedgerEntry.js';
 import StorefrontCatalogOverride from './StorefrontCatalogOverride.js';
 import StorefrontLocationItemOverride from './StorefrontLocationItemOverride.js';
 import PosTerminalShift from './PosTerminalShift.js';
@@ -139,13 +142,38 @@ import TenantAdminAuditLogFactory from './Landlord/TenantAdminAuditLog.js';
 import TenantPaymentAccountFactory from './Landlord/TenantPaymentAccount.js';
 import CommercePaymentSessionFactory from './Landlord/CommercePaymentSession.js';
 import CommercePaymentRefundFactory from './Landlord/CommercePaymentRefund.js';
+import TenantRevenueFeePolicyFactory from './Landlord/TenantRevenueFeePolicy.js';
+import TenantRevenueTransactionFactory from './Landlord/TenantRevenueTransaction.js';
+import TenantRevenueLedgerEntryFactory from './Landlord/TenantRevenueLedgerEntry.js';
+import TenantSettlementBatchFactory from './Landlord/TenantSettlementBatch.js';
+import TenantSettlementBatchItemFactory from './Landlord/TenantSettlementBatchItem.js';
+import TenantSettlementBatchLedgerItemFactory from './Landlord/TenantSettlementBatchLedgerItem.js';
+import TenantPayoutFactory from './Landlord/TenantPayout.js';
+import TenantRevenueAdjustmentFactory from './Landlord/TenantRevenueAdjustment.js';
+import TenantRevenueReconciliationRecordFactory from './Landlord/TenantRevenueReconciliationRecord.js';
 import DgfyAffiliateEnrollmentFactory from './Landlord/DgfyAffiliateEnrollment.js';
 import DgfyAffiliateAttributionFactory from './Landlord/DgfyAffiliateAttribution.js';
 import DgfyAffiliateCommissionFactory from './Landlord/DgfyAffiliateCommission.js';
 import DgfyAffiliatePayoutMethodFactory from './Landlord/DgfyAffiliatePayoutMethod.js';
 import DgfyAffiliateCashoutFactory from './Landlord/DgfyAffiliateCashout.js';
 import DgfyAffiliateInviteFactory from './Landlord/DgfyAffiliateInvite.js';
+import DgfyAffiliatePriceRuleFactory from './Landlord/DgfyAffiliatePriceRule.js';
 import TenantAffiliateSettingsFactory from './Landlord/TenantAffiliateSettings.js';
+import PlatformAdminUserFactory from './Landlord/PlatformAdminUser.js';
+import PlatformAdminPermissionFactory from './Landlord/PlatformAdminPermission.js';
+import PlatformAdminSessionFactory from './Landlord/PlatformAdminSession.js';
+import PlatformAdminAuditLogFactory from './Landlord/PlatformAdminAuditLog.js';
+import CompanyRegistrationApplicationFactory from './Landlord/CompanyRegistrationApplication.js';
+import CompanyRegistrationAttemptFactory from './Landlord/CompanyRegistrationAttempt.js';
+import CompanyRegistrationEventFactory from './Landlord/CompanyRegistrationEvent.js';
+import CompanyRegistrationEmailDeliveryFactory from './Landlord/CompanyRegistrationEmailDelivery.js';
+import PlatformInvoiceFactory from './Landlord/PlatformInvoice.js';
+import PlatformInvoicePaymentFactory from './Landlord/PlatformInvoicePayment.js';
+import PlatformInvoiceSequenceFactory from './Landlord/PlatformInvoiceSequence.js';
+import PlatformInvoiceArtifactFactory from './Landlord/PlatformInvoiceArtifact.js';
+import PlatformInvoiceDeliveryFactory from './Landlord/PlatformInvoiceDelivery.js';
+import PlatformInvoiceAdjustmentFactory from './Landlord/PlatformInvoiceAdjustment.js';
+import PlatformInvoiceEventFactory from './Landlord/PlatformInvoiceEvent.js';
 const Tenant = TenantFactory(sequelize);
 const UserTenantMapping = UserTenantMappingFactory(sequelize);
 const UserInvitation = UserInvitationFactory(sequelize);
@@ -182,13 +210,38 @@ const TenantAdminAuditLog = TenantAdminAuditLogFactory(sequelize);
 const TenantPaymentAccount = TenantPaymentAccountFactory(sequelize);
 const CommercePaymentSession = CommercePaymentSessionFactory(sequelize);
 const CommercePaymentRefund = CommercePaymentRefundFactory(sequelize);
+const TenantRevenueFeePolicy = TenantRevenueFeePolicyFactory(sequelize);
+const TenantRevenueTransaction = TenantRevenueTransactionFactory(sequelize);
+const TenantRevenueLedgerEntry = TenantRevenueLedgerEntryFactory(sequelize);
+const TenantSettlementBatch = TenantSettlementBatchFactory(sequelize);
+const TenantSettlementBatchItem = TenantSettlementBatchItemFactory(sequelize);
+const TenantSettlementBatchLedgerItem = TenantSettlementBatchLedgerItemFactory(sequelize);
+const TenantPayout = TenantPayoutFactory(sequelize);
+const TenantRevenueAdjustment = TenantRevenueAdjustmentFactory(sequelize);
+const TenantRevenueReconciliationRecord = TenantRevenueReconciliationRecordFactory(sequelize);
 const DgfyAffiliateEnrollment = DgfyAffiliateEnrollmentFactory(sequelize);
 const DgfyAffiliateAttribution = DgfyAffiliateAttributionFactory(sequelize);
 const DgfyAffiliateCommission = DgfyAffiliateCommissionFactory(sequelize);
 const DgfyAffiliatePayoutMethod = DgfyAffiliatePayoutMethodFactory(sequelize);
 const DgfyAffiliateCashout = DgfyAffiliateCashoutFactory(sequelize);
 const DgfyAffiliateInvite = DgfyAffiliateInviteFactory(sequelize);
+const DgfyAffiliatePriceRule = DgfyAffiliatePriceRuleFactory(sequelize);
 const TenantAffiliateSettings = TenantAffiliateSettingsFactory(sequelize);
+const PlatformAdminUser = PlatformAdminUserFactory(sequelize);
+const PlatformAdminPermission = PlatformAdminPermissionFactory(sequelize);
+const PlatformAdminSession = PlatformAdminSessionFactory(sequelize);
+const PlatformAdminAuditLog = PlatformAdminAuditLogFactory(sequelize);
+const CompanyRegistrationApplication = CompanyRegistrationApplicationFactory(sequelize);
+const CompanyRegistrationAttempt = CompanyRegistrationAttemptFactory(sequelize);
+const CompanyRegistrationEvent = CompanyRegistrationEventFactory(sequelize);
+const CompanyRegistrationEmailDelivery = CompanyRegistrationEmailDeliveryFactory(sequelize);
+const PlatformInvoice = PlatformInvoiceFactory(sequelize);
+const PlatformInvoicePayment = PlatformInvoicePaymentFactory(sequelize);
+const PlatformInvoiceSequence = PlatformInvoiceSequenceFactory(sequelize);
+const PlatformInvoiceArtifact = PlatformInvoiceArtifactFactory(sequelize);
+const PlatformInvoiceDelivery = PlatformInvoiceDeliveryFactory(sequelize);
+const PlatformInvoiceAdjustment = PlatformInvoiceAdjustmentFactory(sequelize);
+const PlatformInvoiceEvent = PlatformInvoiceEventFactory(sequelize);
 
 // Landlord Models
 import AiUsageLogFactory from './Landlord/AiUsageLog.js';
@@ -236,6 +289,34 @@ DgfyAccount.hasMany(DgfyLegalAcknowledgement, { foreignKey: 'dgfy_account_id', a
 DgfyLegalAcknowledgement.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
 Tenant.hasMany(DgfyAccountTenantMembership, { foreignKey: 'tenant_id', as: 'dgfyAccountMemberships' });
 DgfyAccountTenantMembership.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+PlatformAdminUser.hasMany(PlatformAdminPermission, { foreignKey: 'admin_user_id', as: 'permissions', onDelete: 'RESTRICT' });
+PlatformAdminPermission.belongsTo(PlatformAdminUser, { foreignKey: 'admin_user_id', as: 'adminUser', onDelete: 'RESTRICT' });
+PlatformAdminUser.hasMany(PlatformAdminSession, { foreignKey: 'admin_user_id', as: 'sessions', onDelete: 'RESTRICT' });
+PlatformAdminSession.belongsTo(PlatformAdminUser, { foreignKey: 'admin_user_id', as: 'adminUser', onDelete: 'RESTRICT' });
+Tenant.hasOne(CompanyRegistrationApplication, { foreignKey: 'tenant_id', as: 'registrationApplication' });
+CompanyRegistrationApplication.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+DgfyAccount.hasMany(CompanyRegistrationApplication, { foreignKey: 'dgfy_account_id', as: 'companyRegistrationApplications' });
+CompanyRegistrationApplication.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
+CompanyRegistrationApplication.hasMany(CompanyRegistrationAttempt, { foreignKey: 'application_id', as: 'attempts' });
+CompanyRegistrationAttempt.belongsTo(CompanyRegistrationApplication, { foreignKey: 'application_id', as: 'application' });
+CompanyRegistrationApplication.hasMany(CompanyRegistrationEvent, { foreignKey: 'application_id', as: 'events' });
+CompanyRegistrationApplication.hasMany(CompanyRegistrationEmailDelivery, { foreignKey: 'application_id', as: 'emailDeliveries' });
+CompanyRegistrationApplication.hasMany(PlatformInvoice, { foreignKey: 'registration_application_id', as: 'platformInvoices' });
+PlatformInvoice.belongsTo(CompanyRegistrationApplication, { foreignKey: 'registration_application_id', as: 'registrationApplication' });
+PlatformInvoice.belongsTo(PlatformInvoice, { foreignKey: 'parent_invoice_id', as: 'parentInvoice' });
+PlatformInvoice.hasMany(PlatformInvoice, { foreignKey: 'parent_invoice_id', as: 'replacementInvoices' });
+PlatformInvoice.hasMany(PlatformInvoicePayment, { foreignKey: 'invoice_id', as: 'payments' });
+PlatformInvoicePayment.belongsTo(PlatformInvoice, { foreignKey: 'invoice_id', as: 'invoice' });
+PlatformInvoice.hasMany(PlatformInvoiceArtifact, { foreignKey: 'invoice_id', as: 'artifacts' });
+PlatformInvoiceArtifact.belongsTo(PlatformInvoice, { foreignKey: 'invoice_id', as: 'invoice' });
+PlatformInvoice.hasMany(PlatformInvoiceDelivery, { foreignKey: 'invoice_id', as: 'deliveries' });
+PlatformInvoiceDelivery.belongsTo(PlatformInvoice, { foreignKey: 'invoice_id', as: 'invoice' });
+PlatformInvoiceArtifact.hasMany(PlatformInvoiceDelivery, { foreignKey: 'artifact_id', as: 'deliveries' });
+PlatformInvoiceDelivery.belongsTo(PlatformInvoiceArtifact, { foreignKey: 'artifact_id', as: 'artifact' });
+PlatformInvoice.hasMany(PlatformInvoiceAdjustment, { foreignKey: 'invoice_id', as: 'adjustments' });
+PlatformInvoiceAdjustment.belongsTo(PlatformInvoice, { foreignKey: 'invoice_id', as: 'invoice' });
+PlatformInvoice.hasMany(PlatformInvoiceEvent, { foreignKey: 'invoice_id', as: 'events' });
+PlatformInvoiceEvent.belongsTo(PlatformInvoice, { foreignKey: 'invoice_id', as: 'invoice' });
 Tenant.hasMany(TenantComplianceArtifact, { foreignKey: 'tenant_id', as: 'complianceArtifacts' });
 TenantComplianceArtifact.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(TenantCompliancePeripheral, { foreignKey: 'tenant_id', as: 'compliancePeripherals' });
@@ -256,6 +337,32 @@ Tenant.hasMany(CommercePaymentRefund, { foreignKey: 'tenant_id', as: 'commercePa
 CommercePaymentRefund.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 CommercePaymentSession.hasMany(CommercePaymentRefund, { foreignKey: 'payment_session_id', as: 'refunds' });
 CommercePaymentRefund.belongsTo(CommercePaymentSession, { foreignKey: 'payment_session_id', as: 'paymentSession' });
+Tenant.hasMany(TenantRevenueFeePolicy, { foreignKey: 'tenant_id', as: 'revenueFeePolicies' });
+TenantRevenueFeePolicy.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+Tenant.hasMany(TenantRevenueTransaction, { foreignKey: 'tenant_id', as: 'revenueTransactions' });
+TenantRevenueTransaction.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+TenantRevenueFeePolicy.hasMany(TenantRevenueTransaction, { foreignKey: 'policy_id', as: 'revenueTransactions' });
+TenantRevenueTransaction.belongsTo(TenantRevenueFeePolicy, { foreignKey: 'policy_id', as: 'feePolicy' });
+CommercePaymentSession.hasOne(TenantRevenueTransaction, { foreignKey: 'payment_session_id', as: 'revenueTransaction' });
+TenantRevenueTransaction.belongsTo(CommercePaymentSession, { foreignKey: 'payment_session_id', as: 'paymentSession' });
+TenantRevenueTransaction.hasMany(TenantRevenueLedgerEntry, { foreignKey: 'revenue_transaction_id', as: 'ledgerEntries' });
+TenantRevenueLedgerEntry.belongsTo(TenantRevenueTransaction, { foreignKey: 'revenue_transaction_id', as: 'revenueTransaction' });
+Tenant.hasMany(TenantRevenueReconciliationRecord, { foreignKey: 'tenant_id', as: 'revenueReconciliationRecords' });
+TenantRevenueReconciliationRecord.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+TenantRevenueTransaction.hasMany(TenantRevenueReconciliationRecord, { foreignKey: 'revenue_transaction_id', as: 'reconciliationRecords' });
+TenantRevenueReconciliationRecord.belongsTo(TenantRevenueTransaction, { foreignKey: 'revenue_transaction_id', as: 'revenueTransaction' });
+Tenant.hasMany(TenantSettlementBatch, { foreignKey: 'tenant_id', as: 'settlementBatches' });
+TenantSettlementBatch.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+TenantSettlementBatch.hasMany(TenantSettlementBatchItem, { foreignKey: 'settlement_batch_id', as: 'items' });
+TenantSettlementBatchItem.belongsTo(TenantSettlementBatch, { foreignKey: 'settlement_batch_id', as: 'batch' });
+TenantSettlementBatch.hasMany(TenantSettlementBatchLedgerItem, { foreignKey: 'settlement_batch_id', as: 'carryforwardItems' });
+TenantSettlementBatchLedgerItem.belongsTo(TenantSettlementBatch, { foreignKey: 'settlement_batch_id', as: 'batch' });
+TenantRevenueLedgerEntry.hasOne(TenantSettlementBatchLedgerItem, { foreignKey: 'ledger_entry_id', as: 'settlementAllocation' });
+TenantSettlementBatchLedgerItem.belongsTo(TenantRevenueLedgerEntry, { foreignKey: 'ledger_entry_id', as: 'ledgerEntry' });
+TenantRevenueTransaction.hasOne(TenantSettlementBatchItem, { foreignKey: 'revenue_transaction_id', as: 'settlementItem' });
+TenantSettlementBatchItem.belongsTo(TenantRevenueTransaction, { foreignKey: 'revenue_transaction_id', as: 'revenueTransaction' });
+TenantSettlementBatch.hasMany(TenantPayout, { foreignKey: 'settlement_batch_id', as: 'payouts' });
+TenantPayout.belongsTo(TenantSettlementBatch, { foreignKey: 'settlement_batch_id', as: 'batch' });
 
 // Affiliates Program associations (landlord DB only - order linkage to tenant-DB
 // pos_transactions stays value-only via tenant_id + order_reference, no FK possible there).
@@ -279,6 +386,13 @@ Tenant.hasOne(TenantAffiliateSettings, { foreignKey: 'tenant_id', as: 'affiliate
 TenantAffiliateSettings.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 Tenant.hasMany(DgfyAffiliateInvite, { foreignKey: 'tenant_id', as: 'affiliateInvites' });
 DgfyAffiliateInvite.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
+// dgfy_affiliate_price_rules only associates on tenant_id: enrollment_id and item_id use the
+// sentinel-0 "applies to all" convention (see the migration), so a strict belongsTo association on
+// either would misrepresent template rows as referencing a real enrollment/item that doesn't exist.
+// Resolution queries (Stage D) filter directly on tenant_id/enrollment_id/item_id instead of a
+// Sequelize include.
+Tenant.hasMany(DgfyAffiliatePriceRule, { foreignKey: 'tenant_id', as: 'affiliatePriceRules' });
+DgfyAffiliatePriceRule.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'tenant' });
 
 // User associations
 User.hasMany(AuditLog, { foreignKey: 'user_id', as: 'auditLogs' });
@@ -428,6 +542,8 @@ PosTransaction.belongsTo(PosTerminalShift, { foreignKey: 'shift_id', as: 'shift'
 PosTransaction.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 PosTransaction.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
 PosTransaction.belongsTo(User, { foreignKey: 'fnb_server_id', as: 'fnbServer' });
+PosTransaction.belongsTo(EmployeeCreditAccount, { foreignKey: 'employee_credit_account_id', as: 'employeeCreditAccount' });
+PosTransaction.belongsTo(User, { foreignKey: 'employee_credit_user_id', as: 'employeeCreditEmployee' });
 PosTransaction.hasMany(PosTransactionLine, { foreignKey: 'pos_transaction_id', as: 'lines' });
 PosTransaction.hasOne(DeliveryJob, { foreignKey: 'pos_transaction_id', as: 'deliveryJob' });
 DeliveryJob.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
@@ -485,6 +601,22 @@ PosShiftLocationBackfillAudit.belongsTo(TenantLocation, { foreignKey: 'resolved_
 PosTerminalShift.hasMany(PosShiftLocationBackfillAudit, { foreignKey: 'shift_id', as: 'locationBackfillAudits' });
 User.hasMany(PosTerminalShift, { foreignKey: 'cashier_id', as: 'posTerminalShifts' });
 User.hasMany(PosCashDrawerEvent, { foreignKey: 'recorded_by', as: 'posCashDrawerEvents' });
+User.hasOne(EmployeeCreditAccount, { foreignKey: 'user_id', as: 'employeeCreditAccount' });
+EmployeeCreditAccount.belongsTo(User, { foreignKey: 'user_id', as: 'employee' });
+Employee.hasOne(EmployeeCreditAccount, { foreignKey: 'employee_id', as: 'employeeCreditAccount' });
+EmployeeCreditAccount.belongsTo(Employee, { foreignKey: 'employee_id', as: 'employeeProfile' });
+Employee.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+TenantLocation.hasMany(Employee, { foreignKey: 'location_id', as: 'employees' });
+Employee.belongsTo(User, { foreignKey: 'created_by', as: 'createdBy' });
+Employee.belongsTo(User, { foreignKey: 'updated_by', as: 'updatedBy' });
+EmployeeCreditAccount.hasMany(EmployeeCreditLedgerEntry, { foreignKey: 'account_id', as: 'ledgerEntries' });
+EmployeeCreditLedgerEntry.belongsTo(EmployeeCreditAccount, { foreignKey: 'account_id', as: 'account' });
+EmployeeCreditLedgerEntry.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'posTransaction' });
+EmployeeCreditLedgerEntry.belongsTo(User, { foreignKey: 'actor_user_id', as: 'actor' });
+EmployeeCreditLedgerEntry.belongsTo(PosTerminalShift, { foreignKey: 'shift_id', as: 'shift' });
+EmployeeCreditLedgerEntry.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+PosTransaction.hasMany(EmployeeCreditLedgerEntry, { foreignKey: 'pos_transaction_id', as: 'employeeCreditLedgerEntries' });
+PosTransaction.belongsTo(Employee, { foreignKey: 'employee_credit_employee_id', as: 'employeeCreditEmployeeProfile' });
 User.hasMany(PosShiftLocationTransition, { foreignKey: 'actor_user_id', as: 'posShiftLocationTransitions' });
 TenantLocation.hasMany(PosTransaction, { foreignKey: 'location_id', as: 'posTransactions' });
 TenantLocation.hasMany(PosTerminalShift, { foreignKey: 'location_id', as: 'posTerminalShifts' });
@@ -730,6 +862,9 @@ const db = {
   PosFiscalEvent,
   PosFiscalPrintEvent,
   PosESalesReport,
+  Employee,
+  EmployeeCreditAccount,
+  EmployeeCreditLedgerEntry,
   StorefrontCatalogOverride,
   StorefrontLocationItemOverride,
   StorefrontHandleReservation,
@@ -822,13 +957,38 @@ const db = {
   TenantPaymentAccount,
   CommercePaymentSession,
   CommercePaymentRefund,
+  TenantRevenueFeePolicy,
+  TenantRevenueTransaction,
+  TenantRevenueLedgerEntry,
+  TenantSettlementBatch,
+  TenantSettlementBatchItem,
+  TenantSettlementBatchLedgerItem,
+  TenantPayout,
+  TenantRevenueAdjustment,
+  TenantRevenueReconciliationRecord,
   DgfyAffiliateEnrollment,
   DgfyAffiliateAttribution,
   DgfyAffiliateCommission,
   DgfyAffiliatePayoutMethod,
   DgfyAffiliateCashout,
   DgfyAffiliateInvite,
+  DgfyAffiliatePriceRule,
   TenantAffiliateSettings
+  ,PlatformAdminUser
+  ,PlatformAdminPermission
+  ,PlatformAdminSession
+  ,PlatformAdminAuditLog
+  ,CompanyRegistrationApplication
+  ,CompanyRegistrationAttempt
+  ,CompanyRegistrationEvent
+  ,CompanyRegistrationEmailDelivery
+  ,PlatformInvoice
+  ,PlatformInvoicePayment
+  ,PlatformInvoiceSequence
+  ,PlatformInvoiceArtifact
+  ,PlatformInvoiceDelivery
+  ,PlatformInvoiceAdjustment
+  ,PlatformInvoiceEvent
 };
 
 export default db;
@@ -880,6 +1040,9 @@ export {
   PosFiscalEvent,
   PosFiscalPrintEvent,
   PosESalesReport,
+  Employee,
+  EmployeeCreditAccount,
+  EmployeeCreditLedgerEntry,
   StorefrontCatalogOverride,
   StorefrontLocationItemOverride,
   StorefrontHandleReservation,
@@ -972,13 +1135,38 @@ export {
   TenantPaymentAccount,
   CommercePaymentSession,
   CommercePaymentRefund,
+  TenantRevenueFeePolicy,
+  TenantRevenueTransaction,
+  TenantRevenueLedgerEntry,
+  TenantSettlementBatch,
+  TenantSettlementBatchItem,
+  TenantSettlementBatchLedgerItem,
+  TenantPayout,
+  TenantRevenueAdjustment,
+  TenantRevenueReconciliationRecord,
   DgfyAffiliateEnrollment,
   DgfyAffiliateAttribution,
   DgfyAffiliateCommission,
   DgfyAffiliatePayoutMethod,
   DgfyAffiliateCashout,
   DgfyAffiliateInvite,
+  DgfyAffiliatePriceRule,
   TenantAffiliateSettings,
+  PlatformAdminUser,
+  PlatformAdminPermission,
+  PlatformAdminSession,
+  PlatformAdminAuditLog,
+  CompanyRegistrationApplication,
+  CompanyRegistrationAttempt,
+  CompanyRegistrationEvent,
+  CompanyRegistrationEmailDelivery,
+  PlatformInvoice,
+  PlatformInvoicePayment,
+  PlatformInvoiceSequence,
+  PlatformInvoiceArtifact,
+  PlatformInvoiceDelivery,
+  PlatformInvoiceAdjustment,
+  PlatformInvoiceEvent,
   GeoItem,
   GeoStoreItem,
   GeoItemAlias
