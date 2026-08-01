@@ -95,7 +95,8 @@ describe('commerce payment refund use-cases', () => {
     const useCase = buildHandlePayMongoCommerceWebhookUseCase({
       commercePaymentRepository,
       paymongoService,
-      logger: { warn: jest.fn() }
+      logger: { warn: jest.fn() },
+      recordSucceededRevenueRefund: jest.fn().mockResolvedValue({ success: true, data: null })
     });
 
     const result = await useCase({
@@ -128,7 +129,7 @@ describe('commerce payment refund use-cases', () => {
     });
   });
 
-  it('rejects custom split refunds whose sources do not equal the refund amount', async () => {
+  it('normalizes legacy custom split requests to proportional refunds in collect-and-settle mode', async () => {
     const commercePaymentRepository = buildRepository();
     const paymongoService = {
       createRefund: jest.fn()
@@ -145,8 +146,14 @@ describe('commerce payment refund use-cases', () => {
       actor: 'admin'
     });
 
-    expect(result.success).toBe(false);
-    expect(result.error.message).toBe('split_refund source values must equal the requested refund amount');
-    expect(paymongoService.createRefund).not.toHaveBeenCalled();
+    expect(result.success).toBe(true);
+    expect(commercePaymentRepository.createRefund).toHaveBeenCalledWith(expect.objectContaining({
+      refund_strategy: 'proportional',
+      split_refund_payload: null
+    }));
+    expect(paymongoService.createRefund).toHaveBeenCalledWith(expect.objectContaining({
+      amount: 5000,
+      splitRefund: null
+    }));
   });
 });

@@ -60,12 +60,22 @@ const createBulkPosRepository = ({ items = [], existing = null, readiness = null
 const editableUser = { is_master_admin: false, permissions: ['items:edit'] };
 const posOperator = { user_id: 15, is_active: true, permissions: ['pos:view', 'pos:transact'] };
 
-const runWithTenantComplianceContext = (callback) => dbStore.run({
-    tenantId: 'tenant-1',
-    tenantComplianceId: 'tenant-1',
-    tenantComplianceModeState: 'non_compliant_active',
-    tenantCompliancePolicyVersion: 'test'
-}, callback);
+const runWithTenantComplianceContext = (callback) => {
+    const transaction = {
+        commit: jest.fn().mockResolvedValue(undefined),
+        rollback: jest.fn().mockResolvedValue(undefined),
+        finished: null
+    };
+    return dbStore.run({
+        tenantId: 'tenant-1',
+        tenantComplianceId: 'tenant-1',
+        tenantComplianceModeState: 'non_compliant_active',
+        tenantCompliancePolicyVersion: 'test',
+        sequelize: {
+            transaction: jest.fn().mockResolvedValue(transaction)
+        }
+    }, callback);
+};
 
 const createShiftOpenRepository = ({ registryEntry = { terminal_id: 'COUNTER-01', location_id: 3 } } = {}) => ({
     getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({
@@ -75,6 +85,7 @@ const createShiftOpenRepository = ({ registryEntry = { terminal_id: 'COUNTER-01'
     }),
     findOperationReplayByKey: jest.fn().mockResolvedValue(null),
     createOperationReplay: jest.fn().mockResolvedValue(null),
+    createAuditLog: jest.fn().mockResolvedValue(null),
     findOpenTerminalShift: jest.fn().mockResolvedValue(null),
     createTerminalShift: jest.fn().mockResolvedValue({
         pos_terminal_shift_id: 101,
@@ -132,12 +143,15 @@ describe('pos use-cases application result contract', () => {
             userId: 15,
             operationLabel: 'POS shift open'
         }));
-        expect(posRepository.createTerminalShift).toHaveBeenCalledWith(expect.objectContaining({
-            terminal_id: 'COUNTER-01',
-            location_id: 3,
-            cashier_id: 15,
-            status: 'open'
-        }));
+        expect(posRepository.createTerminalShift).toHaveBeenCalledWith(
+            expect.objectContaining({
+                terminal_id: 'COUNTER-01',
+                location_id: 3,
+                cashier_id: 15,
+                status: 'open'
+            }),
+            expect.objectContaining({ transaction: expect.any(Object) })
+        );
     });
 
     it('blocks shift open for inactive or unknown logical terminals', async () => {

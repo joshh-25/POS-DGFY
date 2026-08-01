@@ -19,7 +19,15 @@ import {
     listClients,
     listReminders,
     queueDueReminders,
-    sendDueReminders
+    sendDueReminders,
+    listOptionGroups,
+    getOptionGroupById,
+    createOptionGroup,
+    updateOptionGroup,
+    deactivateOption,
+    assignItemOptionGroups,
+    getItemOptionGroups,
+    calculateServiceQuote
 } from '../modules/services/controllers/serviceHandlers.js';
 import { authenticate, checkAnyPermission } from '../middleware/auth.js';
 import { PERMISSIONS } from '../config/permissions.js';
@@ -84,5 +92,14 @@ router.get('/clients', modePermission(PERMISSIONS.SERVICES.actions.VIEW_CLIENTS,
 router.get('/reminders', modePermission(PERMISSIONS.SERVICES.actions.VIEW_REMINDERS, PERMISSIONS.POS.actions.VIEW_POS), validateServiceReminderQuery, listReminders);
 router.post('/reminders/queue-due', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_REMINDERS, PERMISSIONS.POS.actions.TRANSACT_POS), validateQueueServiceReminders, queueDueReminders);
 router.post('/reminders/send-due', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_REMINDERS, PERMISSIONS.POS.actions.TRANSACT_POS), validateServiceReminderQuery, sendDueReminders);
+
+router.post('/quote', calculateServiceQuote);
+router.get('/option-groups', modePermission(PERMISSIONS.SERVICES.actions.VIEW_SERVICES, PERMISSIONS.INVENTORY.actions.VIEW_ITEMS), listOptionGroups);
+router.post('/option-groups', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_SERVICES, PERMISSIONS.INVENTORY.actions.CREATE_ITEMS), createOptionGroup);
+router.get('/option-groups/:groupId', modePermission(PERMISSIONS.SERVICES.actions.VIEW_SERVICES, PERMISSIONS.INVENTORY.actions.VIEW_ITEMS), getOptionGroupById);
+router.patch('/option-groups/:groupId', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_SERVICES, PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), updateOptionGroup);
+router.post('/options/:optionId/deactivate', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_SERVICES, PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), deactivateOption);
+router.get('/catalog/:itemId/option-groups', modePermission(PERMISSIONS.SERVICES.actions.VIEW_SERVICES, PERMISSIONS.INVENTORY.actions.VIEW_ITEMS), getItemOptionGroups);
+router.put('/catalog/:itemId/option-groups', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_SERVICES, PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), assignItemOptionGroups);
 
 export default router;

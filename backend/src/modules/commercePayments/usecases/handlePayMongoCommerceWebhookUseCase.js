@@ -127,7 +127,8 @@ const getSessionReference = (resource = {}) => {
 export const buildHandlePayMongoCommerceWebhookUseCase = ({
   commercePaymentRepository,
   paymongoService,
-  logger
+  logger,
+  recordSucceededRevenueRefund = recordSucceededTenantRevenueRefundUseCase
 }) => {
   const handleRefundEvent = async ({ resource, providerEventId }) => {
     const refundId = getRefundId(resource);
@@ -163,7 +164,7 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
     });
     const updatedSession = await reconcileRefundedPaymentState({ commercePaymentRepository, session });
     if (status === 'succeeded') {
-      const revenueResult = await recordSucceededTenantRevenueRefundUseCase({
+      const revenueResult = await recordSucceededRevenueRefund({
         session: updatedSession,
         refund: updatedRefund,
         actor: 'paymongo_webhook'
