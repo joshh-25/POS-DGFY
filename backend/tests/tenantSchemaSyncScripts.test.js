@@ -3,9 +3,11 @@ import { compareTenantSyncFailures } from '../scripts/check-tenant-schema-sync-r
 import {
   assertTenantSchemaMutationModeAllowed,
   buildTenantSchemaRepairSql,
+  buildTenantSchemaTableRepairSql,
   createSyncFailureRecord,
   getTenantSchemaCapabilityChecksum,
   normalizeErrorSignature,
+  REQUIRED_TENANT_SCHEMA_TABLES,
   repairItemFolderCategoryLifecycleSchema
 } from '../scripts/sync-tenant-schemas.js';
 
@@ -122,6 +124,22 @@ describe('tenant schema sync script contracts', () => {
     expect(repairs[2].sql).toContain("ENUM('inventory_issue','stock_exempt')");
     expect(repairs[3].sql).toContain('ADD COLUMN `stock_exempt_reason`');
     expect(repairs[4].sql).toContain('ADD COLUMN `addons_enabled`');
+  });
+
+  it('registers storefront_catalog_overrides as a whole-table backfill target', () => {
+    // Regression test: this table (created 2026-05-03) was missing from
+    // REQUIRED_TENANT_SCHEMA_TABLES, so tenants that predate it had no way to get the whole
+    // table created -- only ALTER TABLE column repairs, which fail outright when the table
+    // itself doesn't exist. That failure trips the tenant schema preflight and crash-loops
+    // the whole backend for every tenant (2026-08-02 staging incident).
+    expect(REQUIRED_TENANT_SCHEMA_TABLES).toHaveProperty('storefront_catalog_overrides');
+
+    const [repair] = buildTenantSchemaTableRepairSql(['storefront_catalog_overrides']);
+    expect(repair.sql).toContain('CREATE TABLE `storefront_catalog_overrides`');
+    expect(repair.sql).toContain('`image_fingerprint` varchar(64)');
+    expect(repair.sql).toContain(
+      'CONSTRAINT `storefront_catalog_overrides_ibfk_1` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`)'
+    );
   });
 
   it('preserves missing-column evidence in tenant sync failure records', () => {

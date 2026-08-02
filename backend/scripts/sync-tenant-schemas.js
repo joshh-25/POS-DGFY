@@ -173,6 +173,34 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
 // (column types, defaults, keys, FK constraints) — declaration order matters, since later tables
 // have foreign keys pointing at earlier ones.
 export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
+    // Created by migration 20260503000002-create-storefront-catalog-overrides.cjs but never
+    // added to this registry at the time — that drift sat harmless (no repair-apply ever needed
+    // to touch a tenant missing the whole table) until 20260801000001-add-image-lifecycle-metadata
+    // added REQUIRED_TENANT_SCHEMA_COLUMNS entries assuming the table already exists everywhere.
+    // On a tenant DB missing it entirely, the column-level ALTER TABLE fails with "table doesn't
+    // exist", which fails the tenant schema preflight and crash-loops the whole backend for every
+    // tenant, not just the ones missing this table. Same shape as the service_item_details /
+    // service_booking_lines gap below — see that comment for the general failure mode.
+    storefront_catalog_overrides: Object.freeze({
+        sql: "CREATE TABLE `storefront_catalog_overrides` (\n"
+            + "  `storefront_catalog_override_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `item_id` int NOT NULL,\n"
+            + "  `storefront_visible` tinyint(1) NOT NULL DEFAULT '1',\n"
+            + "  `storefront_image_path` varchar(500) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+            + "  `storefront_image_url` varchar(500) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+            + "  `storefront_image_gallery` longtext CHARACTER SET utf8mb4 COLLATE utf8mb4_bin,\n"
+            + "  `created_at` datetime NOT NULL,\n"
+            + "  `updated_at` datetime NOT NULL,\n"
+            + "  `image_fingerprint` varchar(64) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT 'SHA-256 fingerprint of the source catalog image asset',\n"
+            + "  `optimization_version` int DEFAULT NULL COMMENT 'Image optimization version (2 for responsive v2)',\n"
+            + "  `processing_status` varchar(20) COLLATE utf8mb4_general_ci DEFAULT NULL COMMENT 'Image optimization status (optimized|legacy|pending|failed)',\n"
+            + "  `variant_metadata` json DEFAULT NULL COMMENT 'Semantic image variant paths and metadata',\n"
+            + "  PRIMARY KEY (`storefront_catalog_override_id`),\n"
+            + "  UNIQUE KEY `item_id` (`item_id`),\n"
+            + "  UNIQUE KEY `storefront_catalog_overrides_item_id` (`item_id`),\n"
+            + "  CONSTRAINT `storefront_catalog_overrides_ibfk_1` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`) ON DELETE CASCADE ON UPDATE CASCADE\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
     employees: Object.freeze({
         sql: "CREATE TABLE `employees` (\n"
             + "  `employee_id` int NOT NULL AUTO_INCREMENT,\n"
