@@ -60,6 +60,12 @@ ARG VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE=0
 # same-origin + VITE_API_URL when unset -- see
 # resolveTracePropagationTargets() in src/observability/sentryClient.js.
 ARG VITE_SENTRY_TRACE_PROPAGATION_TARGETS=""
+# Emergency kill switch for distributed tracing. Defaults ON (empty is
+# treated as true) -- deliberately the opposite polarity to
+# VITE_SENTRY_ENABLED above, so that a mis-threaded build arg fails towards
+# "tracing works" rather than "tracing silently dead". Set to false plus a
+# frontend rebuild for a complete rollback of trace-header propagation.
+ARG VITE_SENTRY_TRACE_PROPAGATION_ENABLED=""
 # Single shared PostHog project across all 3 surfaces (store/pos/skupervisor),
 # distinguished by the `surface` event property set in analyticsClient.js --
 # unlike Sentry's per-surface DSNs, there's no per-project quota reason to
@@ -104,6 +110,7 @@ ENV VITE_API_URL=${VITE_API_URL} \
     VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE=${VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE} \
     VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE=${VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE} \
     VITE_SENTRY_TRACE_PROPAGATION_TARGETS=${VITE_SENTRY_TRACE_PROPAGATION_TARGETS} \
+    VITE_SENTRY_TRACE_PROPAGATION_ENABLED=${VITE_SENTRY_TRACE_PROPAGATION_ENABLED} \
     VITE_POSTHOG_ENABLED=${VITE_POSTHOG_ENABLED} \
     VITE_POSTHOG_HOST=${VITE_POSTHOG_HOST} \
     VITE_POSTHOG_KEY=${VITE_POSTHOG_KEY} \
