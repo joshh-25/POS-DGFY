@@ -2,17 +2,24 @@ const normalizeScopeValue = (value) => String(value ?? '').trim();
 
 const normalizeTerminalId = (value) => normalizeScopeValue(value).toUpperCase();
 
-export const normalizeOfflinePosScope = (scope = {}) => ({
-  tenantId: normalizeScopeValue(
-    scope.tenantId
-    ?? scope.tenant_id
-    ?? scope.companyId
-    ?? scope.company_id
-  ),
-  terminalId: normalizeTerminalId(scope.terminalId ?? scope.terminal_id),
-  locationId: normalizeScopeValue(scope.locationId ?? scope.location_id),
-  userId: normalizeScopeValue(scope.userId ?? scope.user_id)
-});
+// `scope = {}` only defaults an `undefined` argument -- callers that pass
+// `null` (e.g. a component prop whose default is `null`) skip that default
+// and reach the property reads below directly, so `null` is normalized
+// explicitly here too.
+export const normalizeOfflinePosScope = (scope = {}) => {
+  const source = scope || {};
+  return {
+    tenantId: normalizeScopeValue(
+      source.tenantId
+      ?? source.tenant_id
+      ?? source.companyId
+      ?? source.company_id
+    ),
+    terminalId: normalizeTerminalId(source.terminalId ?? source.terminal_id),
+    locationId: normalizeScopeValue(source.locationId ?? source.location_id),
+    userId: normalizeScopeValue(source.userId ?? source.user_id)
+  };
+};
 
 export const isOfflinePosScopeReady = (scope = {}) => {
   const normalized = normalizeOfflinePosScope(scope);
