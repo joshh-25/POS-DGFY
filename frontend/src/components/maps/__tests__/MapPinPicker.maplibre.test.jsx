@@ -204,6 +204,48 @@ describe('MapPinPicker MapLibre behavior', () => {
     delete globalThis.ResizeObserver;
   });
 
+  it('searches for an address and moves the business pin to the selected result', async () => {
+    const onChange = vi.fn();
+    globalThis.fetch = vi.fn().mockImplementation((url) => {
+      if (String(url).includes('/address-search?')) {
+        return Promise.resolve({
+          ok: true,
+          json: vi.fn().mockResolvedValue({
+            data: {
+              results: [{
+                address_line: 'Jaro, Iloilo City, Iloilo, Philippines',
+                latitude: 10.7202,
+                longitude: 122.5621,
+                precision: 'city',
+                provider: 'dgfy-ph-local',
+                psgc_code: '0631000000'
+              }]
+            }
+          })
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ data: {} })
+      });
+    });
+
+    render(<MapPinPicker latitude="" longitude="" addressLine="" deliveryRadiusKm={5} onChange={onChange} />);
+    await userEvent.type(screen.getByRole('searchbox', { name: 'Search business address' }), 'Jaro Iloilo');
+    await userEvent.click(screen.getByRole('button', { name: 'Search' }));
+    await userEvent.click(await screen.findByRole('option', { name: 'Jaro, Iloilo City, Iloilo, Philippines' }));
+
+    expect(globalThis.fetch).toHaveBeenCalledWith(
+      expect.stringContaining('/api/v1/geo/address-search?'),
+      expect.objectContaining({ credentials: 'include' })
+    );
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      address_line: 'Jaro, Iloilo City, Iloilo, Philippines',
+      latitude: 10.7202,
+      longitude: 122.5621
+    }));
+  });
+
   it('initializes MapLibre with the Storefront basemap over Iloilo City', async () => {
     render(<MapPinPicker latitude="" longitude="" deliveryRadiusKm={5} onChange={vi.fn()} />);
 
