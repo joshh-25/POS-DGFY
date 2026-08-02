@@ -175,21 +175,25 @@ describe('Food & Beverage storefront contract', () => {
     expect(source).toContain('line_modifiers');
   });
 
-  it('offers sandbox QR Ph only behind the explicit deployment PayMongo flag', () => {
+  it('offers QR Ph from the backend capability contract with a sandbox-only fallback', () => {
     const source = checkoutPaymentOptionsSource();
     const checkoutRouteContainer = checkoutRouteContainerSource();
     const submission = checkoutSubmissionSource();
 
     expect(source).toContain("{ value: 'cash', label: 'Cash on delivery/pickup' }");
-    expect(source).toContain("{ value: 'qrph', label: 'Pay via QR Ph (PayMongo test)' }");
+    expect(source).toContain("{ value: 'qrph', label: 'Pay via QR Ph' }");
     expect(source).toContain("import.meta.env.VITE_STOREFRONT_SANDBOX_QRPH_ENABLED === 'true'");
     expect(source).not.toContain('import.meta.env.DEV');
     expect(source).toContain('isEnabledStorefrontCheckoutPaymentType');
+    expect(source).toContain('buildStorefrontCheckoutPaymentOptions');
+    expect(source).toContain("paymentCapabilities?.qrph?.enabled === true");
+    expect(source).toContain("paymentCapabilities?.qrph?.environment === 'test'");
     expect(source).not.toContain("value: 'gcash'");
     expect(source).not.toContain("value: 'maya'");
     expect(source).not.toContain("value: 'card'");
     expect(cartDrawerShellContainerSource()).toContain('FnbCheckoutRouteContainer');
-    expect(checkoutRouteContainer).toContain('isEnabledStorefrontCheckoutPaymentType');
+    expect(checkoutRouteContainer).toContain('buildStorefrontCheckoutPaymentOptions');
+    expect(checkoutRouteContainer).toContain('selectedStore?.payment_capabilities');
     expect(checkoutRouteContainer).toContain('FnbQrphPaymentPanel');
     expect(submission).toContain('/api/v1/store/checkout/payment-sessions');
     expect(submission).toContain("payment_type: 'qrph'");

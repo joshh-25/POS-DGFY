@@ -13,7 +13,8 @@ Types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, `bui
 ## PR body format
 
 The PR body must use `.github/pull_request_template.md` as its base, and at minimum
-must include the two headers `pr-conventional-commits.yml` checks for:
+must include the two headers the `changes` job in `.github/workflows/shared-changed-paths.yml`
+(PR mode, `validate_pr_metadata`) checks for:
 
 - `## Summary` — what changed and why (the template's own bullets are "What changed" / "Why this change is needed" — there is no separate Motivation header)
 - `## Testing Evidence` — how the change was tested

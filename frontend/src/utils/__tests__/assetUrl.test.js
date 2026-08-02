@@ -54,6 +54,10 @@ describe('assetUrl utilities', () => {
       assetOrigin: 'https://api.surebizcorp.com'
     });
     expect(url).toBe('https://api.surebizcorp.com/uploads/storefront-catalog/t1/item-1-abcd1234/thumb.webp');
+
+    expect(resolveAssetVariantUrl('/uploads/storefront-catalog/t1/item-1-abcd1234/large.webp', 'checkout')).toBe('/uploads/storefront-catalog/t1/item-1-abcd1234/thumb.webp');
+    expect(resolveAssetVariantUrl('/uploads/storefront-catalog/t1/item-1-abcd1234/large.webp', 'catalog_card')).toBe('/uploads/storefront-catalog/t1/item-1-abcd1234/medium.webp');
+    expect(resolveAssetVariantUrl('/uploads/storefront-catalog/t1/item-1-abcd1234/large.webp', 'preview')).toBe('/uploads/storefront-catalog/t1/item-1-abcd1234/large.webp');
   });
 
   it('returns aligned variant urls for optimized assets', () => {

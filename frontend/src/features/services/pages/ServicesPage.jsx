@@ -12,6 +12,7 @@ import {
   Plus,
   RefreshCw,
   Send,
+  SlidersHorizontal,
   UserRound,
   UsersRound
 } from 'lucide-react';
@@ -33,8 +34,10 @@ import {
   sendDueServiceReminders,
   updateServiceAssignment,
   updateServiceBookingStatus,
+  updateServiceCatalogEntry,
   updateServiceWaitlistStatus
 } from '../api/servicesApi.js';
+import ServiceOptionGroupManager from '../components/ServiceOptionGroupManager.jsx';
 import { getAllUsers } from '../../../services/userService.js';
 
 const STATUS_FLOW = ['requested', 'confirmed', 'checked_in', 'in_service', 'completed', 'cancelled', 'no_show'];
@@ -53,6 +56,7 @@ const tabs = [
   { id: 'today', label: 'Today', icon: CalendarCheck },
   { id: 'calendar', label: 'Calendar', icon: Clock },
   { id: 'services', label: 'Services', icon: ClipboardList },
+  { id: 'options', label: 'Variations & Add-ons', icon: SlidersHorizontal },
   { id: 'team', label: 'Team & Resources', icon: UserRound },
   { id: 'waitlist', label: 'Waitlist', icon: ListChecks },
   { id: 'reminders', label: 'Reminders', icon: Bell },
@@ -104,7 +108,8 @@ const blankCatalogForm = {
   intake_question_required: false,
   bookable: true,
   visible_in_pos: true,
-  visible_in_storefront: true
+  visible_in_storefront: true,
+  addons_enabled: false
 };
 const blankResourceForm = { name: '', resource_type: 'provider', capacity: 1 };
 const blankAssignmentForm = { item_id: '', resource_id: '', user_id: '', location_id: '' };
@@ -324,6 +329,25 @@ export default function ServicesPage() {
       toast.success('Service created.');
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Unable to create service.');
+    } finally {
+      setSaving('');
+    }
+  };
+
+  const handleAddonsToggle = async (service, enabled) => {
+    const itemId = Number(service?.item_id);
+    if (!itemId) return;
+    setSaving(`addons-${itemId}`);
+    try {
+      await updateServiceCatalogEntry(itemId, { addons_enabled: enabled });
+      setCatalog((previous) => previous.map((entry) => (
+        Number(entry.item_id) === itemId
+          ? { ...entry, service_detail: { ...entry.service_detail, addons_enabled: enabled } }
+          : entry
+      )));
+      toast.success(enabled ? 'Service add-ons enabled.' : 'Service add-ons disabled.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Unable to update service add-ons.');
     } finally {
       setSaving('');
     }
@@ -580,6 +604,28 @@ export default function ServicesPage() {
                   Required
                 </label>
               </div>
+              <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <span className="pr-3">
+                  <strong className="block text-sm text-slate-800">Allow Add-ons</strong>
+                  <small className="text-xs text-slate-500">Show assigned add-on groups when this service is selected.</small>
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-label="Allow add-ons for this service"
+                  aria-checked={catalogForm.addons_enabled === true}
+                  onClick={() => setCatalogForm((previous) => ({ ...previous, addons_enabled: !previous.addons_enabled }))}
+                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
+                    catalogForm.addons_enabled === true ? 'bg-blue-600' : 'bg-slate-200'
+                  }`}
+                >
+                  <span
+                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                      catalogForm.addons_enabled === true ? 'translate-x-5' : 'translate-x-0'
+                    }`}
+                  />
+                </button>
+              </div>
               <button type="submit" disabled={saving === 'catalog'} className={primaryButtonClass}>{saving === 'catalog' ? 'Saving...' : 'Create Service'}</button>
             </div>
           </form>
@@ -601,10 +647,36 @@ export default function ServicesPage() {
                   <span>{service.service_detail?.visible_in_storefront === false ? 'IMS/POS only' : 'Storefront visible'}</span>
                   <span>{Array.isArray(service.service_detail?.intake_form_schema?.fields) && service.service_detail.intake_form_schema.fields.length > 0 ? 'Intake form' : 'No intake form'}</span>
                 </div>
+                <div className="mt-3 flex items-center justify-between gap-3 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">
+                  <span>Allow Add-ons</span>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-label={`Allow add-ons for ${service.name}`}
+                    aria-checked={service.service_detail?.addons_enabled === true}
+                    disabled={saving === `addons-${service.item_id}`}
+                    onClick={() => handleAddonsToggle(service, service.service_detail?.addons_enabled !== true)}
+                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:cursor-not-allowed disabled:opacity-60 ${
+                      service.service_detail?.addons_enabled === true ? 'bg-blue-600' : 'bg-slate-200'
+                    }`}
+                  >
+                    <span
+                      className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
+                        service.service_detail?.addons_enabled === true ? 'translate-x-5' : 'translate-x-0'
+                      }`}
+                    />
+                  </button>
+                </div>
               </article>
             ))}
             {!loading && catalog.length === 0 && <p className="text-sm text-slate-500">No service catalog entries yet.</p>}
           </div>
+        </section>
+      )}
+
+      {activeTab === 'options' && (
+        <section className="rounded-lg border border-slate-200 bg-white p-4">
+          <ServiceOptionGroupManager />
         </section>
       )}
 

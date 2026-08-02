@@ -40,7 +40,12 @@ export const WORKFLOW_PAGE_CAPABILITIES = Object.freeze({
   DispatchOrders: 'productionWorkflows',
   StockMovements: 'inventory',
   Services: 'services',
+  Bookings: 'services',
+  Calendar: 'services',
+  Providers: 'services',
   Fnb: 'fnbDining',
+  Kitchen: 'fnbDining',
+  Tables: 'fnbDining',
   Hospitality: 'hospitalityReservations'
 });
 
@@ -49,20 +54,26 @@ export const WORKFLOW_ROUTE_CAPABILITIES = Object.freeze({
   '/dispatch-orders': 'productionWorkflows',
   '/stock-movements': 'inventory',
   '/services': 'services',
+  '/services/calendar': 'services',
+  '/services/bookings': 'services',
+  '/services/providers': 'services',
   '/fnb': 'fnbDining',
+  '/fnb/kitchen': 'fnbDining',
+  '/fnb/tables': 'fnbDining',
   '/hospitality': 'hospitalityReservations'
 });
 
-// Pages hidden for a mode for product reasons rather than capability. AI Chat
-// has no workflow capability at all — backend/src/routes/ai.js gates on
-// premium subscription, not workflow mode — so hiding it in MSME stays a UI
-// preference and is deliberately not modelled as a (dead) capability.
+// Pages hidden for a mode for product reasons rather than capability.
 export const MODE_HIDDEN_NAV_PAGES = Object.freeze({
-  msme: Object.freeze(['AiChat'])
+  msme: Object.freeze(['AiChat']),
+  fnb: Object.freeze(['Services', 'Bookings', 'Calendar', 'Providers']),
+  services: Object.freeze(['Fnb', 'Kitchen', 'Tables'])
 });
 
 export const MODE_HIDDEN_ROUTE_PREFIXES = Object.freeze({
-  msme: Object.freeze(['/ai-chat'])
+  msme: Object.freeze(['/ai-chat']),
+  fnb: Object.freeze(['/services']),
+  services: Object.freeze(['/fnb'])
 });
 
 export const MODE_SENSITIVE_NAV_PAGES = Object.freeze(Array.from(new Set([

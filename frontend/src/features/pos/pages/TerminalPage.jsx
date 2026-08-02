@@ -3643,7 +3643,7 @@ export default function TerminalPage() {
         setPosViewMode('shift_controls');
         return;
       }
-      toast.success('Shift closed successfully. Open a new shift manually when you are ready.');
+      toast.success('Shift closed successfully. Sign in to start the next shift.');
       setCloseShiftConfirmOpen(false);
       setCloseShiftForm({ closingCashAmount: '', closingNote: '' });
       setShiftState({
@@ -3651,27 +3651,33 @@ export default function TerminalPage() {
         shift: null,
         cashSummary: null
       });
+      setCashierUnlockSession(null);
       setCashierResumeContext(null);
       setCashierResumeForm({ identifier: '', password: '' });
+      clearClientSession({
+        reason: 'shift_closed',
+        broadcast: true,
+        emitAuthEvents: true,
+        redirectTo: null
+      });
       setTerminalUnlockRequired(false);
       setTerminalUnlockMode('shift_start');
-      setStoredTerminalLock(false);
-      setStoredTerminalLockReason('');
-      setTerminalStartupReady(false);
-      setLocked(false);
-      setTerminalUnlockForm((prev) => ({
-        ...prev,
-        terminalId: sanitizeTerminalId(activeTerminalId) || resolveSelectedLoginTerminalId() || prev.terminalId,
+      setStoredTerminalLock(true);
+      setStoredTerminalLockReason('shift_closed');
+      setLocked(true);
+      setDgfyAdminBypassActive(false);
+      setTerminalUnlockForm({
+        terminalId: sanitizeTerminalId(activeTerminalId) || resolveSelectedLoginTerminalId(),
         terminalPassword: '',
+        cashierEmail: '',
         cashierPassword: '',
         openingFloatAmount: '',
         openingNote: ''
-      }));
+      });
       setTerminalUnlockModalOpen(false);
-      setDrawerOpen(false);
+      setDrawerOpen(true);
       setMobileNavOpen(false);
       setPosViewMode('checkout');
-      await refreshOperationalContext();
     } catch (error) {
       if (isRetryableTerminalOperationError(error)) {
         await enqueueTerminalOperationIntent(queueEntry, 'network_failure');

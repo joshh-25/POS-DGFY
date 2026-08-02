@@ -274,10 +274,6 @@ body {
   .dgfy-pos-current-sale-actions {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
-
-  .dgfy-pos-current-sale-actions > :first-child {
-    grid-column: auto;
-  }
 }
 
 .dgfy-pos-y-auto {

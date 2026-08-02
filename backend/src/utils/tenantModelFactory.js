@@ -66,7 +66,16 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     'PlatformInvoiceArtifact',
     'PlatformInvoiceDelivery',
     'PlatformInvoiceAdjustment',
-    'PlatformInvoiceEvent'
+    'PlatformInvoiceEvent',
+    'TenantPayout',
+    'TenantRevenueAdjustment',
+    'TenantRevenueFeePolicy',
+    'TenantRevenueLedgerEntry',
+    'TenantRevenueReconciliationRecord',
+    'TenantRevenueTransaction',
+    'TenantSettlementBatch',
+    'TenantSettlementBatchItem',
+    'TenantSettlementBatchLedgerItem'
 ]);
 
 const isSequelizeModel = (candidate) => (
@@ -204,6 +213,8 @@ export const getTenantModels = (sequelize) => {
             // Preserve optional constraint options when present
             if (assoc.options?.onDelete) assocOptions.onDelete = assoc.options.onDelete;
             if (assoc.options?.onUpdate) assocOptions.onUpdate = assoc.options.onUpdate;
+            if (assoc.options?.uniqueKey !== undefined) assocOptions.uniqueKey = assoc.options.uniqueKey;
+            if (assoc.options?.unique !== undefined) assocOptions.unique = assoc.options.unique;
 
             switch (assoc.associationType) {
                 case 'HasMany':

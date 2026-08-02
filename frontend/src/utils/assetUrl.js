@@ -25,9 +25,12 @@ export const resolveAssetUrl = (value, options = {}) => {
 };
 
 const rewriteOptimizedVariantPath = (pathname, variant) => {
-  const normalizedVariant = ['thumbnail', 'medium', 'large'].includes(String(variant || '').trim())
-    ? String(variant || '').trim()
-    : 'large';
+  const rawVariant = String(variant || '').trim().toLowerCase();
+  let normalizedVariant = 'large';
+  if (['thumbnail', 'checkout'].includes(rawVariant)) normalizedVariant = 'thumbnail';
+  else if (['medium', 'catalog_card'].includes(rawVariant)) normalizedVariant = 'medium';
+  else if (['large', 'preview'].includes(rawVariant)) normalizedVariant = 'large';
+
   const normalized = String(pathname || '').trim();
   if (!normalized) return normalized;
   return normalized.replace(/\/large(\.[a-z0-9]+)$/i, (_, ext) => {

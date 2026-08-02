@@ -108,7 +108,12 @@ const bookingInclude = () => ([
     {
         model: dbStore.get('ServiceBookingLine'),
         as: 'lines',
-        required: false
+        required: false,
+        include: [{
+            model: dbStore.get('ServiceBookingLineOption'),
+            as: 'options',
+            required: false
+        }]
     }
 ]);
 
@@ -884,6 +889,15 @@ export const serviceRepository = {
         const created = await ServiceBookingLine.bulkCreate(rows, {
             transaction: options.transaction,
             individualHooks: true
+        });
+        return created.map(toPlain);
+    },
+
+    async createBookingLineOptions(rows = [], options = {}) {
+        const ServiceBookingLineOption = dbStore.get('ServiceBookingLineOption');
+        if (!ServiceBookingLineOption?.bulkCreate || !Array.isArray(rows) || rows.length === 0) return [];
+        const created = await ServiceBookingLineOption.bulkCreate(rows, {
+            transaction: options.transaction
         });
         return created.map(toPlain);
     },

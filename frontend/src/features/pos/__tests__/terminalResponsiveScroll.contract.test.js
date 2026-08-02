@@ -90,19 +90,42 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(posCheckoutContent).toContain("const currentSaleBodyClassName = 'dgfy-pos-current-sale-panel-scroll grid min-h-0 flex-1 grid-cols-2 grid-rows-[minmax(0,1fr)_auto_auto] gap-2 overflow-hidden md:grid-rows-[auto_auto_auto] md:overflow-y-auto md:overscroll-contain md:pr-1 md:touch-pan-y';");
     expect(posCheckoutContent).toContain("const currentSaleItemsListClassName = 'dgfy-pos-scroll-region h-full min-h-0 overflow-y-auto overscroll-contain pr-1 touch-pan-y';");
     expect(posCheckoutContent).toContain('data-testid="pos-current-sale-panel"');
-    expect(posCheckoutContent).toContain('data-testid="pos-current-sale-settings"');
     expect(posCheckoutContent).toContain('data-testid="pos-current-sale-items"');
     expect(posCheckoutContent).toContain('data-testid="pos-current-sale-totals"');
     expect(posCheckoutContent).toContain('md:h-[clamp(18rem,46vh,26rem)] md:flex-none');
     expect(posCheckoutContent).toContain('data-testid="pos-current-sale-actions"');
-    expect(posCheckoutContent).toContain('dgfy-pos-current-sale-actions grid shrink-0 grid-cols-2');
-    expect(posCheckoutContent).toContain('className="col-span-2 flex h-12');
-    expect(posCheckoutContent).toContain('<div className="contents">');
+    expect(posCheckoutContent).toContain('dgfy-pos-current-sale-actions grid shrink-0 grid-cols-2 sm:grid-cols-3');
+    expect(posCheckoutContent).toContain('flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center');
     expect(posCheckoutContent).not.toContain('max-h-[25rem] overflow-y-auto');
     expect(posCheckoutContent).toContain('Checkout');
     expect(posCheckoutContent).toContain('Close Day / Z-Reading');
     expect(posCheckoutContent).toContain('Print Last Receipt');
     expect(posCheckoutContent).toContain('Open Cash Drawer');
+  });
+
+  it('collects workflow and payment settings inside checkout confirmation', () => {
+    const currentSaleIndex = posCheckoutContent.indexOf('data-testid="pos-current-sale-panel"');
+    const checkoutDialogIndex = posCheckoutContent.indexOf('<Dialog open={checkoutConfirmModalOpen}');
+    const confirmationSettingsIndex = posCheckoutContent.indexOf('data-testid="pos-checkout-order-settings"');
+    const fnbWorkflowIndex = posCheckoutContent.indexOf('<FnbWorkflowPanel', confirmationSettingsIndex);
+    const servicesWorkflowIndex = posCheckoutContent.indexOf('<ServicesWorkflowPanel', confirmationSettingsIndex);
+    const currentSaleSection = posCheckoutContent.slice(currentSaleIndex, checkoutDialogIndex);
+    const checkoutDialogSection = posCheckoutContent.slice(checkoutDialogIndex);
+
+    expect(currentSaleIndex).toBeGreaterThan(-1);
+    expect(checkoutDialogIndex).toBeGreaterThan(currentSaleIndex);
+    expect(confirmationSettingsIndex).toBeGreaterThan(checkoutDialogIndex);
+    expect(fnbWorkflowIndex).toBeGreaterThan(confirmationSettingsIndex);
+    expect(servicesWorkflowIndex).toBeGreaterThan(confirmationSettingsIndex);
+    expect(currentSaleSection).not.toContain('<FnbWorkflowPanel');
+    expect(currentSaleSection).not.toContain('<ServicesWorkflowPanel');
+    expect(currentSaleSection).not.toContain('Payment Type');
+    expect(checkoutDialogSection).toContain("posWorkflow.mode === 'services'");
+    expect(checkoutDialogSection).toContain('clientName={servicesClientName}');
+    expect(checkoutDialogSection).toContain('onClick={handlePrintOrder}');
+    expect(checkoutDialogSection).toContain('Print Order');
+    expect(checkoutDialogSection).toContain('grid grid-cols-3 gap-2');
+    expect(posCheckoutContent).toContain('!isCheckoutWorkflowValid || !isCustomerPaymentSufficient');
   });
 
   it('keeps the compact desktop summary separate from the unchanged mobile summary', () => {
@@ -140,8 +163,6 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(appStylesContent).toContain('@media (max-height: 720px)');
     expect(appStylesContent).toContain('.dgfy-pos-current-sale-actions {');
     expect(appStylesContent).toContain('grid-template-columns: repeat(3, minmax(0, 1fr));');
-    expect(appStylesContent).toContain('.dgfy-pos-current-sale-actions > :first-child {');
-    expect(appStylesContent).toContain('grid-column: auto;');
   });
 
   it('keeps history filters and table scrolling inside the history panel', () => {
