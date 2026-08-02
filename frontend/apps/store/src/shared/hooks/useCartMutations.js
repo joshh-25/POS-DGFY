@@ -30,6 +30,7 @@ export function useCartMutations({
   bookingPermitted,
   cart,
   isFnbMode,
+  isRetailMode,
   isServicesMode,
   isSimpleMode,
   productCartPermitted,
@@ -231,7 +232,7 @@ export function useCartMutations({
       animateCartCardToFab(options?.sourceRect || null);
     } else {
       setCheckoutTab(isFnbMode ? 'cart' : 'review');
-      const shouldOpenCartDrawer = Boolean(options?.openCart) || (!isFnbMode && !isSimpleMode);
+      const shouldOpenCartDrawer = Boolean(options?.openCart) || (!isFnbMode && !isSimpleMode && !isRetailMode);
       setIsCheckoutOpen(shouldOpenCartDrawer);
       if (!shouldOpenCartDrawer) {
         animateCartCardToFab(options?.sourceRect || null);

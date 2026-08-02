@@ -17,6 +17,7 @@ import { FnbCommunitySection } from '../../../modes/fnb/storefront/components/Fn
 import { SimpleProductCard } from '../../../modes/simple/storefront/components/SimpleProductCard.jsx';
 import { SimpleCheckoutRoutePage } from '../../../modes/simple/checkout/pages/SimpleCheckoutRoutePage.jsx';
 import { DefaultOrderPage } from './DefaultOrderPage.jsx';
+import { RetailOrderPage } from '../../../modes/retail/checkout/pages/RetailOrderPage.jsx';
 import { SERVICE_CATEGORY_ICON_MAP } from '../../../modes/services/storefront/model/serviceCategoryIconMap.jsx';
 import { ServiceProductCard } from '../../../modes/services/storefront/components/ServiceProductCard.jsx';
 import { ServicesPerformanceSidebar } from '../../../modes/services/storefront/components/ServicesPerformanceSidebar.jsx';
@@ -102,6 +103,8 @@ export function StorefrontClassicCatalog({
   simpleStorefrontModel,
   defaultStorefrontModel,
   defaultOrderRouteProps,
+  isRetailMode,
+  retailOrderRouteProps,
   submitFnbItemReview,
   totalFnbPages,
   viewportWidth
@@ -611,7 +614,9 @@ export function StorefrontClassicCatalog({
           <SimpleCheckoutRoutePage {...simpleCheckoutRouteProps} />
         )}
         {isDefaultLikeMode && isResolvedOrderSubpage && defaultStorefrontModel && (
-          <DefaultOrderPage {...defaultOrderRouteProps} />
+          isRetailMode
+            ? <RetailOrderPage {...retailOrderRouteProps} />
+            : <DefaultOrderPage {...defaultOrderRouteProps} />
         )}
         {isSimpleMode && !isResolvedOrderSubpage && simpleStorefrontModel && (
           <>

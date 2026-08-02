@@ -1,14 +1,14 @@
 import { ShieldCheck } from 'lucide-react';
 import { OrderSummaryCard } from '../../../../shared/components/checkout/OrderSummaryCard.jsx';
 
-const SIMPLE_ACCENT = '#0f766e';
-const SIMPLE_ACCENT_SOFT = '#99f6e4';
-const SIMPLE_ACCENT_TINT = '#f0fdfa';
+const RETAIL_ACCENT = '#1a4e8d';
+const RETAIL_ACCENT_SOFT = '#b9cfe8';
+const RETAIL_ACCENT_TINT = '#eef4fb';
 
-function SimpleCheckoutTrustCard({ displayFont }) {
+function RetailOrderTrustCard({ displayFont }) {
   return (
-    <div style={{ border: `1px solid ${SIMPLE_ACCENT_SOFT}`, borderRadius: 18, padding: 16, background: SIMPLE_ACCENT_TINT, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
-      <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#fff', color: SIMPLE_ACCENT, display: 'grid', placeItems: 'center', flexShrink: 0 }}><ShieldCheck size={22} /></div>
+    <div style={{ border: `1px solid ${RETAIL_ACCENT_SOFT}`, borderRadius: 18, padding: 16, background: RETAIL_ACCENT_TINT, display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+      <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#fff', color: RETAIL_ACCENT, display: 'grid', placeItems: 'center', flexShrink: 0 }}><ShieldCheck size={22} /></div>
       <div style={{ display: 'grid', gap: 4 }}>
         <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', fontFamily: displayFont }}>Secure &amp; Private</div>
         <div style={{ fontSize: 13, color: '#64748b', lineHeight: 1.6 }}>Your information is safe and will only be used for this order.</div>
@@ -17,9 +17,12 @@ function SimpleCheckoutTrustCard({ displayFont }) {
   );
 }
 
-/** MSME (Simple) checkout order summary. Structurally mirrors FnbCheckoutSummaryContent
- * (shared OrderSummaryCard + trust card) while keeping MSME's own teal accent. */
-export function SimpleCheckoutSummaryContent({
+/** Retail checkout order summary. Structurally mirrors
+ * modes/simple/checkout/components/SimpleCheckoutSummaryContent.jsx (shared OrderSummaryCard +
+ * trust card) while keeping this mode's own blue accent, kept as its own file per the
+ * "independent trees" pattern. Delivery Fee / Fees & Taxes are shown as 0 — Retail's checkout
+ * isn't connected to a fee/quote backend yet, so only the real cart subtotal/total are computed. */
+export function RetailOrderSummaryContent({
   bodyFont,
   cart = [],
   cartCount = 0,
@@ -29,8 +32,6 @@ export function SimpleCheckoutSummaryContent({
   isSticky = false,
   money,
   onImageError,
-  promoDiscountSummaryRow = null,
-  promoPanel = null,
   scheduleLabel = 'NOW',
   totals = {},
   withAssetOrigin
@@ -41,7 +42,7 @@ export function SimpleCheckoutSummaryContent({
     { label: 'Items', value: `${cartCount} item${cartCount === 1 ? '' : 's'}` }
   ];
   const lineItems = cart.map((line) => ({
-    key: `simple-checkout-summary-${line.cart_line_id || line.item_id}`,
+    key: `retail-checkout-summary-${line.cart_line_id || line.item_id}`,
     name: line.name,
     meta: `x ${Math.max(1, Number(line.quantity || 1))}`,
     value: money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0)),
@@ -55,28 +56,26 @@ export function SimpleCheckoutSummaryContent({
   }));
   const totalsRows = [
     { label: 'Subtotal', value: money(totals.subtotal_amount) },
-    ...(promoDiscountSummaryRow ? [promoDiscountSummaryRow] : []),
     { label: 'Delivery Fee', value: money(totals.delivery_fee) },
-    { label: 'Fees & Taxes', value: money((totals.service_fee_amount || 0) + (totals.vat_amount || 0)) },
+    { label: 'Fees & Taxes', value: money(totals.service_fee_amount) },
     { label: 'Total', value: money(totals.total_amount), emphasis: true, borderTop: true }
   ];
 
   return (
     <div style={{ display: 'grid', gap: 18 }}>
       <OrderSummaryCard
-        accentColor={SIMPLE_ACCENT}
+        accentColor={RETAIL_ACCENT}
         totalLabel="Order Summary"
         totalAmount={totals.total_amount}
         money={money}
         sticky={isSticky}
-        promoPanel={promoPanel}
         statusRows={statusRows}
         lineItems={lineItems}
         totalsRows={totalsRows}
         bodyFont={bodyFont}
         displayFont={displayFont}
       />
-      <SimpleCheckoutTrustCard displayFont={displayFont} />
+      <RetailOrderTrustCard displayFont={displayFont} />
     </div>
   );
 }
