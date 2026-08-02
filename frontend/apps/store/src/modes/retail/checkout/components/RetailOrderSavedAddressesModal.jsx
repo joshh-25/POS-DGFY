@@ -10,8 +10,9 @@ const RETAIL_ACCENT_TINT = '#eef4fb';
  * Retail mobile "Saved Addresses" bottom sheet, shown when tapping "View All Saved Addresses"
  * on the compact fulfillment card. Mirrors
  * modes/simple/checkout/components/SimpleCheckoutSavedAddressesModal.jsx, kept as its own file
- * per the "independent trees" pattern. Addresses are placeholder data — not connected to the
- * DGFY account addresses backend yet, per RetailOrderPage.jsx's doc comment.
+ * per the "independent trees" pattern. Addresses are real, backend-connected saved locations
+ * (see RetailOrderFulfillmentStep.jsx) — signed-in users' entries come from the DGFY account
+ * address book, guests get session-local pinned locations.
  */
 export function RetailOrderSavedAddressesModal({
   addresses = [],
@@ -51,7 +52,7 @@ export function RetailOrderSavedAddressesModal({
               address={address}
               isSelected={String(selectedAddressId) === String(address.id)}
               isBusy={false}
-              onSelect={() => onSelectAddress(address.id)}
+              onSelect={() => onSelectAddress(address)}
               showActions={false}
               themeColor={RETAIL_ACCENT}
               themeBg={RETAIL_ACCENT_TINT}
