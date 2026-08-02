@@ -81,6 +81,7 @@ VITE_SENTRY_TRACES_SAMPLE_RATE=0
 VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE=0
 VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE=0
 VITE_SENTRY_TRACE_PROPAGATION_TARGETS=
+VITE_SENTRY_DEBUG=false
 ```
 
 Behavior:
@@ -90,6 +91,33 @@ Behavior:
 - Frontend values are build-time values because the app is served as static nginx assets. Changing frontend Sentry values requires rebuilding the frontend image.
 - `VITE_SENTRY_TRACES_SAMPLE_RATE` / `VITE_SENTRY_REPLAYS_*_SAMPLE_RATE` being `>0` is what actually registers `browserTracingIntegration()` / `replayIntegration()` in `src/observability/sentryClient.js` -- a `0` rate means the integration isn't added at all, not just sampled out.
 - `VITE_SENTRY_TRACE_PROPAGATION_TARGETS` is a comma-separated list of origins/URL patterns that get `sentry-trace`/`baggage` headers attached to outgoing requests, joining a frontend error to the backend trace that caused it. Leave unset to fall back to same-origin + `VITE_API_URL` (see `resolveTracePropagationTargets()`); set explicitly for the POS Electron shell, whose `backendOrigin` isn't `window.location.origin`.
+
+### User, tenant, and route context
+
+Every surface now attaches, on top of the base error capture:
+
+- **User identity** -- `identifySentryUser({id, role})` in `src/observability/sentryClient.js` sets `Sentry.setUser({id})` plus a `user_role` tag on sign-in, called from the same identity-sync flow that already feeds PostHog (`ObservabilityIdentitySync` in each app's `main.jsx`; `useStorefrontSession.js` for the storefront's customer accounts). `resetSentryIdentity()` clears it on sign-out. `sanitizeSentryEvent`'s `beforeSend` still strips `email`/`username`/`ip_address` from the `user` object -- only the opaque `id` and tags ever leave the browser.
+- **Tenant/store context** -- `setSentryContext({tenantId, storeSlug, businessMode, locationId})` registers those as tags on every subsequent event, mirroring `setAnalyticsContext`'s PostHog super properties.
+- **Route context** -- `setSentryRoute(pathname)` tags the current `route` and adds a navigation breadcrumb on every route change, called from the same pathname effect that already calls `capturePageview()`. This does **not** require `VITE_SENTRY_TRACES_SAMPLE_RATE > 0`.
+- **Deliberately not implemented:** route-pattern-named transactions (`Sentry.reactRouterBrowserTracingIntegration`). That integration only produces navigation spans when `<Routes>` is also wrapped with `Sentry.wrapReactRouterRouting()`, which needs the lazily-imported SDK synchronously at render time -- conflicting with this module's zero-cost-when-disabled lazy-import design. Registering the integration without the wrapper silently drops all navigation transactions, which is worse than the current plain `browserTracingIntegration()`. Revisit if/when a surface turns tracing on for real and route-pattern transaction names become worth the added mount-time complexity.
+
+### Failed API requests as Sentry events
+
+`captureRequestFailure` in `src/observability/sentryClient.js` promotes a request failure to a Sentry *event* (not just the breadcrumb `tagRequestFailureContext` already added), called from the trailing axios interceptor in `src/services/api.js` and from the storefront's `apps/store/src/services/requestJson.js`:
+
+- Captures **5xx responses and network/no-response failures only**. 4xx is never captured -- those are expected validation/permission/auth outcomes (401 has its own refresh-and-retry path upstream, 422 is validation), not bugs.
+- URLs are normalized before fingerprinting (`normalizeRequestUrl`) so `/api/v1/items/123` and `/api/v1/items/456` group into one issue instead of one per row.
+- Throttled to 1 event per endpoint-group per 60 seconds, capped at 20 events per tab session, so a backend outage produces one grouped issue instead of burning the project's event quota.
+
+### Verifying a DSN end to end
+
+In a dev build (`import.meta.env.DEV`), `initBrowserSentry` registers `window.__sentryTestError()` on the page. Run it from the browser console after setting a real DSN to confirm the DSN is valid without shipping a trigger to production:
+
+```js
+window.__sentryTestError()
+```
+
+If Sentry isn't active (disabled or no DSN), it logs a warning explaining why instead of silently no-oping.
 
 ## PostHog
 
