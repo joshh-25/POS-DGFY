@@ -32,7 +32,15 @@ const runtimeConfig = getRuntimeConfig(import.meta.env, typeof window !== 'undef
 const RootRouter = runtimeConfig.isDesktopShell ? HashRouter : BrowserRouter
 const devAutoLoginEnabled = String(import.meta.env.VITE_DEV_AUTO_LOGIN_ENABLED || '').trim().toLowerCase() === 'true'
 
-initBrowserSentry({ surface: runtimeConfig.appSurface || 'skupervisor' })
+// backendOrigin is resolved at runtime from the desktop preload bridge, so
+// it is invisible to the build-time-only trace-propagation resolver. Without
+// passing it explicitly, the Electron shell would never attach
+// sentry-trace/baggage to its API calls and its errors could not be
+// correlated with the backend's.
+initBrowserSentry({
+  surface: runtimeConfig.appSurface || 'skupervisor',
+  extraTracePropagationTargets: [runtimeConfig.backendOrigin].filter(Boolean)
+})
 // SKUpervisor previously had no PostHog init at all -- it's staff-facing
 // (same consent basis as POS: employment relationship, not the storefront's
 // anonymous-visitor consent banner), so behavioral analytics apply here too.
