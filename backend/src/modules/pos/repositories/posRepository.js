@@ -243,7 +243,7 @@ const buildServiceDetailInclude = () => {
         ? [{
             model: ServiceItemDetail,
             as: 'serviceDetail',
-            attributes: ['bookable', 'visible_in_pos', 'visible_in_storefront'],
+            attributes: ['bookable', 'visible_in_pos', 'visible_in_storefront', 'addons_enabled'],
             required: false
         }]
         : [];

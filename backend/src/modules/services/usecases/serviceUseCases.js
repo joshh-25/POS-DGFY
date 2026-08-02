@@ -15,10 +15,8 @@ import {
     isDateWithinStorefrontBusinessHours,
     normalizeStorefrontBusinessHours
 } from '../../shared/utils/storefrontBusinessHours.js';
-import {
-    resolveStockBearingDescriptor,
-    resolveStockExemptReason
-} from '../../shared/utils/stockBearingPolicy.js';
+import { resolveStockBearingDescriptor, resolveStockExemptReason } from '../../shared/utils/stockBearingPolicy.js';
+import { buildCalculateServiceQuoteUseCase } from './calculateServiceQuoteUseCase.js';
 
 const VAT_RATE = 0.12;
 const POS_PAYMENT_TYPES = Object.freeze(['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph']);
@@ -196,6 +194,7 @@ const serviceDetailsPayload = (payload = {}, { includeDefaults = true } = {}) =>
     setIfProvided(details, payload, 'bookable', (value) => value !== false, includeDefaults);
     setIfProvided(details, payload, 'visible_in_storefront', (value) => value !== false, includeDefaults);
     setIfProvided(details, payload, 'visible_in_pos', (value) => value !== false, includeDefaults);
+    setIfProvided(details, payload, 'addons_enabled', (value) => value === true, includeDefaults);
     setIfProvided(details, payload, 'payment_policy', (value) => (
         PAYMENT_POLICIES.includes(String(value || '').trim()) ? String(value).trim() : 'customer_choice'
     ), includeDefaults);
@@ -242,6 +241,7 @@ const serializeCatalogItem = (row = {}, options = {}) => {
             bookable: detail.bookable !== false,
             visible_in_storefront: detail.visible_in_storefront !== false,
             visible_in_pos: detail.visible_in_pos !== false,
+            addons_enabled: detail.addons_enabled === true,
             payment_policy: detail.payment_policy || 'customer_choice',
             service_area_type: detail.service_area_type || 'in_store',
             intake_form_schema: normalizeIntakeFormSchema(detail.intake_form_schema),
@@ -657,6 +657,10 @@ const batchPaymentResponse = (bookings = [], payments = []) => {
 const bookingRequestHashPayload = ({ payload = {}, source = 'storefront', storeCustomer = null } = {}) => {
     const payloadWithoutIdempotency = { ...(payload || {}) };
     delete payloadWithoutIdempotency.idempotency_key;
+    const optionIds = payloadWithoutIdempotency.selected_option_ids || payloadWithoutIdempotency.selected_options;
+    if (Array.isArray(optionIds)) {
+        payloadWithoutIdempotency.selected_option_ids = [...optionIds].map(Number).filter(Boolean).sort((a, b) => a - b);
+    }
     return {
         source,
         store_customer_id: storeCustomer?.customer_id || null,
@@ -667,6 +671,10 @@ const bookingRequestHashPayload = ({ payload = {}, source = 'storefront', storeC
 const holdRequestHashPayload = ({ payload = {}, source = 'storefront', storeCustomer = null } = {}) => {
     const payloadWithoutIdempotency = { ...(payload || {}) };
     delete payloadWithoutIdempotency.idempotency_key;
+    const optionIds = payloadWithoutIdempotency.selected_option_ids || payloadWithoutIdempotency.selected_options;
+    if (Array.isArray(optionIds)) {
+        payloadWithoutIdempotency.selected_option_ids = [...optionIds].map(Number).filter(Boolean).sort((a, b) => a - b);
+    }
     return {
         source,
         store_customer_id: storeCustomer?.customer_id || null,
@@ -1354,6 +1362,7 @@ export const buildGetServiceAvailabilityUseCase = ({ serviceRepository }) => asy
 
 const createServiceBookingRecord = async ({
     serviceRepository,
+    serviceOptionRepository = null,
     payload = {},
     source = 'admin',
     storeCustomer = null,
@@ -1389,6 +1398,26 @@ const createServiceBookingRecord = async ({
                 { statusCode: 422 }
             );
         }
+        const quantity = toPositiveInt(payload.quantity, 1);
+        const selectedOptionIds = [...new Set((Array.isArray(payload.selected_option_ids) ? payload.selected_option_ids : (Array.isArray(payload.selected_options) ? payload.selected_options : []))
+            .map(Number)
+            .filter(Boolean))];
+
+        let quoteResult = null;
+        if (serviceOptionRepository && (selectedOptionIds.length > 0 || typeof serviceOptionRepository.getItemOptionGroups === 'function')) {
+            const calculateQuoteUseCase = buildCalculateServiceQuoteUseCase({ serviceRepository, serviceOptionRepository });
+            const quoteRes = await calculateQuoteUseCase.calculateQuote({
+                serviceItemId: service.item_id,
+                selectedOptionIds,
+                quantity,
+                tenantId: payload.tenant_id
+            });
+            if (!quoteRes.success) {
+                throw quoteRes.error;
+            }
+            quoteResult = quoteRes.data?.quote || null;
+        }
+
         const startAt = parseDate(payload.start_at || payload.scheduled_for, 'start_at');
         const leadTimeMs = toNonNegativeInt(detail.lead_time_minutes, 0) * 60 * 1000;
         if (leadTimeMs > 0 && startAt.getTime() < Date.now() + leadTimeMs) {
@@ -1398,7 +1427,10 @@ const createServiceBookingRecord = async ({
                 { statusCode: 409 }
             );
         }
-        const durationMinutes = toPositiveInt(payload.duration_minutes, toPositiveInt(detail.duration_minutes, 60));
+        const durationMinutes = quoteResult
+            ? quoteResult.final_duration_minutes
+            : toPositiveInt(payload.duration_minutes, toPositiveInt(detail.duration_minutes, 60));
+
         const endAt = payload.end_at
             ? parseDate(payload.end_at, 'end_at')
             : new Date(startAt.getTime() + durationMinutes * 60 * 1000);
@@ -1409,7 +1441,6 @@ const createServiceBookingRecord = async ({
         const bufferEndAt = new Date(endAt.getTime() + toNonNegativeInt(detail.buffer_after_minutes, 0) * 60 * 1000);
         let providerUserId = toPositiveInt(payload.provider_user_id);
         let resourceId = toPositiveInt(payload.resource_id);
-        const quantity = toPositiveInt(payload.quantity, 1);
         const holdToken = normalizeHoldToken(payload.hold_token);
         let activeHold = null;
         let replacementHold = null;
@@ -1712,21 +1743,54 @@ const createServiceBookingRecord = async ({
             intake_responses: isPlainObject(payload.intake_responses) ? payload.intake_responses : null,
             ...(accountResolution.claimTokenPayload || {})
         }, { transaction });
-        // A price snapshot taken now, not read live off the item at serialization
-        // time, so a later price change never rewrites a historical booking's amount.
+        const unitPrice = quoteResult ? Number(quoteResult.unit_price_pesos) : salePrice;
+        const lineAmount = quoteResult ? Number(quoteResult.total_price_pesos) : round4(salePrice * quantity);
+
         if (typeof serviceRepository.createBookingLines === 'function') {
-            await serviceRepository.createBookingLines([{
+            const primaryLines = await serviceRepository.createBookingLines([{
                 booking_id: booking.booking_id,
                 line_type: 'service',
                 item_id: service.item_id,
                 name_snapshot: trim(service.name, 255) || 'Service',
                 quantity,
-                unit_price: salePrice,
-                line_amount: round4(salePrice * quantity),
+                unit_price: unitPrice,
+                line_amount: lineAmount,
                 vat_type_snapshot: service.vat_type || 'vatable',
                 stock_effect_type: 'stock_exempt',
                 stock_exempt_reason: 'service_item'
             }], { transaction });
+
+            const primaryLineId = primaryLines[0]?.booking_line_id;
+            if (primaryLineId && quoteResult?.selected_options?.length > 0 && typeof serviceRepository.createBookingLineOptions === 'function') {
+                const optionSnapshots = quoteResult.selected_options.map((opt) => ({
+                    booking_line_id: primaryLineId,
+                    option_group_id: opt.group_id || null,
+                    option_id: opt.option_id || null,
+                    group_name_snapshot: trim(opt.group_name, 160) || 'Options',
+                    option_name_snapshot: trim(opt.name, 160) || 'Option',
+                    group_type_snapshot: opt.group_type || 'addon',
+                    price_adjustment_snapshot_centavos: Number(opt.price_adjustment_centavos) || 0,
+                    duration_adjustment_snapshot_minutes: Number(opt.duration_adjustment_minutes) || 0,
+                    linked_physical_item_id_snapshot: opt.linked_physical_item_id || null
+                }));
+                await serviceRepository.createBookingLineOptions(optionSnapshots, { transaction });
+            }
+
+            if (quoteResult?.physical_addons?.length > 0) {
+                const partLines = quoteResult.physical_addons.map((addon) => ({
+                    booking_id: booking.booking_id,
+                    line_type: 'part',
+                    item_id: addon.linked_physical_item_id,
+                    name_snapshot: trim(addon.name, 255) || 'Add-on Item',
+                    quantity: addon.quantity || quantity,
+                    unit_price: 0,
+                    line_amount: 0,
+                    vat_type_snapshot: 'vatable',
+                    stock_effect_type: 'inventory_issue',
+                    stock_exempt_reason: null
+                }));
+                await serviceRepository.createBookingLines(partLines, { transaction });
+            }
         }
         const hydrated = await serviceRepository.getBookingById(booking.booking_id, { transaction });
         if (activeHold && typeof serviceRepository.updateHoldById === 'function') {
@@ -1748,7 +1812,7 @@ const createServiceBookingRecord = async ({
         };
 };
 
-export const buildCreateServiceBookingUseCase = ({ serviceRepository }) => async ({
+export const buildCreateServiceBookingUseCase = ({ serviceRepository, serviceOptionRepository }) => async ({
     payload = {},
     source = 'admin',
     storeCustomer = null
@@ -1800,6 +1864,7 @@ export const buildCreateServiceBookingUseCase = ({ serviceRepository }) => async
         }
         const created = await createServiceBookingRecord({
             serviceRepository,
+            serviceOptionRepository,
             payload,
             source,
             storeCustomer,
@@ -1826,7 +1891,7 @@ export const buildCreateServiceBookingUseCase = ({ serviceRepository }) => async
     }
 };
 
-export const buildCreateServiceBookingHoldUseCase = ({ serviceRepository }) => async ({
+export const buildCreateServiceBookingHoldUseCase = ({ serviceRepository, serviceOptionRepository }) => async ({
     payload = {},
     source = 'storefront',
     storeCustomer = null
@@ -1874,6 +1939,7 @@ export const buildCreateServiceBookingHoldUseCase = ({ serviceRepository }) => a
         }
         const validated = await createServiceBookingRecord({
             serviceRepository,
+            serviceOptionRepository,
             payload,
             source,
             storeCustomer,
@@ -1910,7 +1976,7 @@ export const buildCreateServiceBookingHoldUseCase = ({ serviceRepository }) => a
     }
 };
 
-export const buildCreateServiceBookingBatchUseCase = ({ serviceRepository }) => async ({
+export const buildCreateServiceBookingBatchUseCase = ({ serviceRepository, serviceOptionRepository }) => async ({
     payload = {},
     source = 'storefront',
     storeCustomer = null
@@ -1976,6 +2042,7 @@ export const buildCreateServiceBookingBatchUseCase = ({ serviceRepository }) => 
             try {
                 const created = await createServiceBookingRecord({
                     serviceRepository,
+                    serviceOptionRepository,
                     payload: {
                         customer_name: payload.customer_name,
                         customer_email: payload.customer_email,

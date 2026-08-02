@@ -32,6 +32,22 @@ const StorefrontCatalogOverride = sequelize.define('StorefrontCatalogOverride', 
   storefront_image_gallery: {
     type: DataTypes.JSON,
     allowNull: true
+  },
+  image_fingerprint: {
+    type: DataTypes.STRING(64),
+    allowNull: true
+  },
+  optimization_version: {
+    type: DataTypes.INTEGER,
+    allowNull: true
+  },
+  processing_status: {
+    type: DataTypes.STRING(20),
+    allowNull: true
+  },
+  variant_metadata: {
+    type: DataTypes.JSON,
+    allowNull: true
   }
 }, {
   tableName: 'storefront_catalog_overrides',

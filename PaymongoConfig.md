@@ -110,14 +110,21 @@ After creating the webhook:
 
 ## 3. Deployment Procedure
 
-1. Back up the production landlord database.
+Follow `docs/ops/RELEASE_CANDIDATE_POLICY.md`. A merge to `main` deploys
+production, so the database backup and migration window must be ready before
+the release PR is merged.
+
+1. Record the exact release commit and back up the landlord database plus every
+   active tenant database.
 2. Deploy the approved backend and frontend from the same tested commit.
 3. Install the backend dependencies.
 4. Run the landlord database migrations.
-5. Verify tenant schema health.
-6. Restart the backend process.
-7. Verify the backend health endpoint.
-8. Enable controlled live payment traffic.
+5. Run the tenant repair dry-run and review every proposed additive change.
+6. Apply the additive tenant repairs only after the dry-run is approved.
+7. Run the final tenant schema checksum gate. Do not start payment traffic if
+   any active tenant fails or reports a different capability checksum.
+8. Restart the single backend process and verify its health endpoint.
+9. Enable controlled live payment traffic.
 
 Run from the deployed project:
 
@@ -125,6 +132,8 @@ Run from the deployed project:
 cd backend
 npm install
 npm run migrate
+npm run plan:tenant-schema-repair
+npm run repair:tenant-schema
 npm run check:tenant-schema
 ```
 
@@ -135,6 +144,11 @@ The required landlord migrations include:
 
 Do not manually create, delete, or edit financial rows as a replacement for
 running the migrations.
+
+The expected tenant capability report must include the version and checksum
+emitted by `sync-tenant-schemas.js`. Store the complete report with the release
+evidence. A missing table/column, failed tenant, or checksum mismatch is a hard
+deployment stop—not a warning to bypass.
 
 ## 4. Controlled Live QR Ph Test
 
@@ -201,7 +215,9 @@ If webhook verification, refunds, revenue recording, or reconciliation fails:
 - [ ] Approved release deployed
 - [ ] Backend and frontend use the same release
 - [ ] Landlord migrations completed
-- [ ] Tenant schema check passed
+- [ ] Tenant repair dry-run reviewed
+- [ ] Additive tenant repair completed for every active tenant
+- [ ] Tenant schema version/checksum gate passed for every active tenant
 - [ ] Live PayMongo keys configured on the backend
 - [ ] Live webhook signing secret configured
 - [ ] Webhook events enabled

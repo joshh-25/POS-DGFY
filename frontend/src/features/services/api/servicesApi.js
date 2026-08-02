@@ -47,3 +47,23 @@ export const queueDueServiceReminders = (payload = {}) => (
 export const sendDueServiceReminders = (params = {}) => (
   api.post('/services/reminders/send-due', null, { params }).then((response) => response.data?.data ?? response.data)
 );
+
+export const listServiceOptionGroups = (params = {}) => api.get('/services/option-groups', { params }).then((response) => response.data?.data ?? response.data);
+
+export const createServiceOptionGroup = (payload) => api.post('/services/option-groups', payload).then((response) => response.data?.data ?? response.data);
+
+export const updateServiceOptionGroup = (groupId, payload) => (
+  api.patch(`/services/option-groups/${groupId}`, payload).then((response) => response.data?.data ?? response.data)
+);
+
+export const deactivateServiceOption = (optionId) => (
+  api.post(`/services/options/${optionId}/deactivate`).then((response) => response.data?.data ?? response.data)
+);
+
+export const getItemOptionGroups = (itemId) => api.get(`/services/catalog/${itemId}/option-groups`).then((response) => response.data?.data ?? response.data);
+
+export const assignItemOptionGroups = (itemId, groupIds) => (
+  api.put(`/services/catalog/${itemId}/option-groups`, { group_ids: groupIds }).then((response) => response.data?.data ?? response.data)
+);
+
+export const calculateServiceQuote = (payload) => api.post('/services/quote', payload).then((response) => response.data?.data ?? response.data);

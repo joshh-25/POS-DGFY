@@ -4,11 +4,17 @@ import {
   assertTenantSchemaMutationModeAllowed,
   buildTenantSchemaRepairSql,
   createSyncFailureRecord,
+  getTenantSchemaCapabilityChecksum,
   normalizeErrorSignature,
   repairItemFolderCategoryLifecycleSchema
 } from '../scripts/sync-tenant-schemas.js';
 
 describe('tenant schema sync script contracts', () => {
+  it('publishes a stable checksum for the complete tenant capability registry', () => {
+    expect(getTenantSchemaCapabilityChecksum()).toMatch(/^[a-f0-9]{64}$/);
+    expect(getTenantSchemaCapabilityChecksum()).toBe(getTenantSchemaCapabilityChecksum());
+  });
+
   it('normalizes known too-many-keys failures with stable fingerprint', () => {
     const signature = normalizeErrorSignature('Too many keys specified; max 64 keys allowed');
 
@@ -106,14 +112,16 @@ describe('tenant schema sync script contracts', () => {
       { table: 'pos_catalog_overrides', column: 'pos_always_available' },
       { table: 'pos_catalog_overrides', column: 'pos_best_seller_mode' },
       { table: 'pos_transaction_lines', column: 'stock_effect_type' },
-      { table: 'pos_transaction_lines', column: 'stock_exempt_reason' }
+      { table: 'pos_transaction_lines', column: 'stock_exempt_reason' },
+      { table: 'service_item_details', column: 'addons_enabled' }
     ]);
 
-    expect(repairs).toHaveLength(4);
+    expect(repairs).toHaveLength(5);
     expect(repairs[0].sql).toContain('ADD COLUMN `pos_always_available`');
     expect(repairs[1].sql).toContain('ADD COLUMN `pos_best_seller_mode`');
     expect(repairs[2].sql).toContain("ENUM('inventory_issue','stock_exempt')");
     expect(repairs[3].sql).toContain('ADD COLUMN `stock_exempt_reason`');
+    expect(repairs[4].sql).toContain('ADD COLUMN `addons_enabled`');
   });
 
   it('preserves missing-column evidence in tenant sync failure records', () => {

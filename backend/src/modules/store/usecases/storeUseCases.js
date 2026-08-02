@@ -808,7 +808,7 @@ const prepareCheckoutLines = ({
                     basePriceCentavos: toCentavos(resolvedPrice),
                     rule: affiliateSellingPriceRule
                 });
-            } catch (error) {
+            } catch {
                 // A13: pricing is pre-commit and blocking - an unresolvable affiliate rule fails
                 // checkout rather than silently falling back to the catalog price.
                 throw new DomainError(
@@ -1532,8 +1532,74 @@ export const buildRegisterStoreCustomerUseCase = ({ storeRepository }) => {
     };
 };
 
+const resolveStorefrontPaymentCapabilities = async ({
+    commercePaymentRepository,
+    tenantRevenueRepository,
+    commercePaymentsEnabled,
+    commerceQrphEnabled,
+    requireCommerceQrphConfig,
+    paymongoMode,
+    revenueSharingEnabled
+}) => {
+    const disabled = (reasonCode) => ({
+        qrph: {
+            enabled: false,
+            environment: paymongoMode,
+            reason_code: reasonCode
+        }
+    });
+
+    try {
+        if (!commercePaymentsEnabled || !commerceQrphEnabled) return disabled('FEATURE_DISABLED');
+        if (requireCommerceQrphConfig().length > 0) return disabled('SERVER_CONFIGURATION_INCOMPLETE');
+
+        const tenantId = normalizeTenantIdentifier((dbStore.getStore() || {}).tenantId);
+        if (!tenantId || tenantId === 'default') return disabled('TENANT_CONTEXT_MISSING');
+
+        if (revenueSharingEnabled) {
+            const policy = await tenantRevenueRepository?.findEffectiveFeePolicy?.(tenantId, new Date());
+            if (!policy || policy.settlement_status !== 'active' || !policy.payout_destination_masked) {
+                return disabled('TENANT_REVENUE_POLICY_NOT_READY');
+            }
+        } else {
+            const account = await commercePaymentRepository?.findTenantPaymentAccount?.({ tenantId, provider: 'paymongo' });
+            if (
+                !account
+                || account.onboarding_status !== 'active'
+                || !account.qrph_enabled
+                || !account.split_enabled
+                || !account.charges_enabled
+                || account.wallet_status !== 'enabled'
+                || !account.wallet_verified_at
+            ) {
+                return disabled('PAYMONGO_ACCOUNT_NOT_READY');
+            }
+        }
+    } catch (error) {
+        logger.warn('Storefront payment capability readiness check failed', {
+            error: error?.message || String(error)
+        });
+        return disabled('READINESS_CHECK_FAILED');
+    }
+
+    return {
+        qrph: {
+            enabled: true,
+            environment: paymongoMode,
+            reason_code: null
+        }
+    };
+};
+
 export const buildListStoreCatalogUseCase = ({
     storeRepository,
+    commercePaymentRepository = null,
+    tenantRevenueRepository = null,
+    commercePaymentsEnabled = false,
+    commerceQrphEnabled = false,
+    requireCommerceQrphConfig = () => [],
+    paymongoMode = 'test',
+    revenueSharingEnabled = tenantRevenueSharingEnabled,
     resolveWorkflowCapabilitySettings = resolveWorkflowCapabilitySettingsDefault
 }) => {
     // tenantId/attributionEnrollmentId are optional and additive - a caller that omits them (or the
@@ -1561,7 +1627,18 @@ export const buildListStoreCatalogUseCase = ({
                 );
             }
 
-            const accessPolicy = await resolveStorefrontAccessPolicy({ storeRepository });
+            const [accessPolicy, paymentCapabilities] = await Promise.all([
+                resolveStorefrontAccessPolicy({ storeRepository }),
+                resolveStorefrontPaymentCapabilities({
+                    commercePaymentRepository,
+                    tenantRevenueRepository,
+                    commercePaymentsEnabled,
+                    commerceQrphEnabled,
+                    requireCommerceQrphConfig,
+                    paymongoMode,
+                    revenueSharingEnabled
+                })
+            ]);
             // Live (15s-cached) workflow mode + composed-capability overlay, so a
             // retail/fnb tenant with `services` enabled via ops_enabled_capabilities
             // can be recognized by the storefront even though its scalar
@@ -1579,7 +1656,8 @@ export const buildListStoreCatalogUseCase = ({
                     },
                     access_policy: accessPolicy,
                     workflow_mode: workflowMode,
-                    enabled_capabilities: enabledCapabilities
+                    enabled_capabilities: enabledCapabilities,
+                    payment_capabilities: paymentCapabilities
                 });
             }
 
@@ -1609,7 +1687,8 @@ export const buildListStoreCatalogUseCase = ({
                 },
                 access_policy: accessPolicy,
                 workflow_mode: workflowMode,
-                enabled_capabilities: enabledCapabilities
+                enabled_capabilities: enabledCapabilities,
+                payment_capabilities: paymentCapabilities
             });
         } catch (error) {
             if (error instanceof DomainError) {

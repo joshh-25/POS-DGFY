@@ -40,6 +40,20 @@ export function assertTenantSchemaMutationModeAllowed(mode, environment = proces
 }
 
 export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
+    storefront_catalog_overrides: Object.freeze({
+        image_fingerprint: Object.freeze({
+            sql: "ALTER TABLE `storefront_catalog_overrides` ADD COLUMN `image_fingerprint` VARCHAR(64) NULL COMMENT 'SHA-256 fingerprint of the source catalog image asset'"
+        }),
+        optimization_version: Object.freeze({
+            sql: "ALTER TABLE `storefront_catalog_overrides` ADD COLUMN `optimization_version` INT NULL COMMENT 'Image optimization version (2 for responsive v2)'"
+        }),
+        processing_status: Object.freeze({
+            sql: "ALTER TABLE `storefront_catalog_overrides` ADD COLUMN `processing_status` VARCHAR(20) NULL COMMENT 'Image optimization status (optimized|legacy|pending|failed)'"
+        }),
+        variant_metadata: Object.freeze({
+            sql: "ALTER TABLE `storefront_catalog_overrides` ADD COLUMN `variant_metadata` JSON NULL COMMENT 'Semantic image variant paths and metadata'"
+        })
+    }),
     pos_catalog_overrides: Object.freeze({
         pos_always_available: Object.freeze({
             sql: "ALTER TABLE `pos_catalog_overrides` ADD COLUMN `pos_always_available` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'POS-only stock exemption; never changes Storefront visibility or Inventory stock truth'"
@@ -139,6 +153,11 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         active_operator_user_id: Object.freeze({
             sql: "ALTER TABLE `pos_terminal_shifts` ADD COLUMN `active_operator_user_id` INTEGER GENERATED ALWAYS AS (CASE WHEN `status` = 'open' THEN `cashier_id` ELSE NULL END) STORED"
+        })
+    }),
+    service_item_details: Object.freeze({
+        addons_enabled: Object.freeze({
+            sql: "ALTER TABLE `service_item_details` ADD COLUMN `addons_enabled` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Per-service switch controlling add-on option availability'"
         })
     }),
     pos_transaction_discounts: Object.freeze({
@@ -343,6 +362,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `bookable` tinyint(1) NOT NULL DEFAULT '1',\n"
             + "  `visible_in_storefront` tinyint(1) NOT NULL DEFAULT '1',\n"
             + "  `visible_in_pos` tinyint(1) NOT NULL DEFAULT '1',\n"
+            + "  `addons_enabled` tinyint(1) NOT NULL DEFAULT '0',\n"
             + "  `payment_policy` enum('customer_choice','prepaid_required','postpaid_only','deposit_allowed') NOT NULL DEFAULT 'customer_choice',\n"
             + "  `service_area_type` enum('in_store','customer_location','online','hybrid') NOT NULL DEFAULT 'in_store',\n"
             + "  `intake_form_schema` json DEFAULT NULL,\n"
@@ -671,6 +691,21 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-01.1';
+
+export function getTenantSchemaCapabilityChecksum() {
+    const manifest = {
+        version: TENANT_SCHEMA_CAPABILITY_VERSION,
+        tables: REQUIRED_TENANT_SCHEMA_TABLES,
+        columns: REQUIRED_TENANT_SCHEMA_COLUMNS,
+        indexes: REQUIRED_TENANT_SCHEMA_INDEXES,
+        seeds: REQUIRED_TENANT_SCHEMA_SEEDS,
+        enum_contracts: REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS
+    };
+
+    return crypto.createHash('sha256').update(JSON.stringify(manifest)).digest('hex');
+}
+
 export function normalizeErrorSignature(message) {
     const raw = String(message || '').trim();
     if (!raw) {
@@ -932,11 +967,14 @@ export async function runTenantSchemaSync({ reportFile = '', failOnError = false
     assertTenantSchemaMutationModeAllowed(normalizedMode);
 
     console.log(`[TenantSchemaSync] starting mode=${normalizedMode}`);
+    const capabilityChecksum = getTenantSchemaCapabilityChecksum();
     const report = {
         generated_at: new Date().toISOString(),
         landlord_db: MAIN_DB,
         host: DB_HOST,
         mode: normalizedMode,
+        schema_capability_version: TENANT_SCHEMA_CAPABILITY_VERSION,
+        schema_capability_checksum: capabilityChecksum,
         summary: {
             tenants_total: 0,
             succeeded: 0,
@@ -1096,12 +1134,16 @@ export async function runTenantSchemaSync({ reportFile = '', failOnError = false
                     tenant_name: tenant.name,
                     tenant_db: tenant.db_name,
                     status: 'ok',
-                    mode: normalizedMode
+                    mode: normalizedMode,
+                    schema_capability_version: TENANT_SCHEMA_CAPABILITY_VERSION,
+                    schema_capability_checksum: capabilityChecksum
                 });
                 console.log(`[TenantSchemaSync] ok tenant=${tenant.db_name}`);
             } catch (error) {
                 report.summary.failed += 1;
                 const failure = createSyncFailureRecord(tenant, error);
+                failure.schema_capability_version = TENANT_SCHEMA_CAPABILITY_VERSION;
+                failure.schema_capability_checksum = capabilityChecksum;
                 report.results.push(failure);
                 console.error(
                     `[TenantSchemaSync] failed tenant=${tenant.db_name} code=${failure.error_code} fingerprint=${failure.fingerprint} message=${failure.error_message}`

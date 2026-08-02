@@ -1,3 +1,76 @@
+# Implementation — Image Lifecycle, Metadata & POS Optimization (Phases 1–7)
+
+## Proposed Changes
+
+### Phase 1: Lifecycle Contract And Tests
+#### [NEW] [imageLifecycleContract.js](file:///c:/xampp/htdocs/POS-DGFY/backend/src/modules/inventory/contracts/imageLifecycleContract.js)
+- Export constants for image states (`LEGACY`, `OPTIMIZED`, `UNCHANGED`, `REPLACED`, `MISSING`, `EXTERNAL`).
+- Export semantic variant resolution map (`thumbnail`, `catalog_card`, `checkout`, `preview`).
+- Export state inspector functions `inspectImageLifecycleState({ storedPath, storedUrl, metadata, file })`.
+
+#### [NEW] [imageLifecycleGaps.test.js](file:///c:/xampp/htdocs/POS-DGFY/backend/tests/imageLifecycleGaps.test.js)
+- Test gaps in legacy save handling, non-recompression on unchanged saves, and missing variant fallbacks.
+
+### Phase 2: Image Metadata & Database Migration
+#### [NEW] [20260801000001-add-image-lifecycle-metadata.cjs](file:///c:/xampp/htdocs/POS-DGFY/backend/migrations/20260801000001-add-image-lifecycle-metadata.cjs)
+- Create migration script adding nullable columns `image_fingerprint`, `optimization_version`, `processing_status`, `variant_metadata` to `storefront_catalog_overrides`.
+
+#### [MODIFY] [sync-tenant-schemas.js](file:///c:/xampp/htdocs/POS-DGFY/backend/scripts/sync-tenant-schemas.js)
+- Register `image_fingerprint`, `optimization_version`, `processing_status`, `variant_metadata` in `REQUIRED_TENANT_SCHEMA_COLUMNS.storefront_catalog_overrides`.
+
+#### [MODIFY] [StorefrontCatalogOverride.js](file:///c:/xampp/htdocs/POS-DGFY/backend/src/models/StorefrontCatalogOverride.js)
+- Add new model attributes: `image_fingerprint`, `optimization_version`, `processing_status`, `variant_metadata`.
+
+### Phase 3: Backend Image Lifecycle Operations
+#### [NEW] [imageLifecycleUseCases.js](file:///c:/xampp/htdocs/POS-DGFY/backend/src/modules/inventory/usecases/imageLifecycleUseCases.js)
+- Build `ensureOptimizedItemImage` operation.
+- Compute SHA-256 fingerprint for source image bytes.
+- Skip Sharp processing if `optimization_version === 2` and fingerprint matches existing asset.
+- Generate versioned responsive assets (`thumbnail`, `medium`, `large`, `avif`, `webp`, `placeholder`).
+- Roll back temporary files safely on error.
+
+### Phase 4: Save Item Integration
+#### [MODIFY] [itemRepository.js](file:///c:/xampp/htdocs/POS-DGFY/backend/src/modules/inventory/repositories/itemRepository.js)
+- Invoke `ensureOptimizedItemImage` from `upsertStorefrontCatalogOverride` and `updateItem`.
+- Remove early-return behavior that skips legacy image repair.
+- Return updated item payload with optimized URLs and `variant_metadata`.
+
+### Phase 5: POS Consumer Integration
+#### [MODIFY] [POSCheckoutTerminal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/POSCheckoutTerminal.jsx)
+- Update Catalog product cards to request `catalog_card` variant.
+- Update Current Sale cart items to request `checkout` variant.
+
+#### [MODIFY] [SkupervisorPOSCheckoutTerminal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/SkupervisorPOSCheckoutTerminal.jsx)
+- Update Catalog product cards and cart items to request semantic image variants.
+
+#### [MODIFY] [ItemPreviewModal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/ItemPreviewModal.jsx)
+- Update preview modal to request `preview` variant.
+
+### Phase 6: Replacement And Cleanup
+#### [NEW] [imageCleanupService.js](file:///c:/xampp/htdocs/POS-DGFY/backend/src/modules/shared/utils/imageCleanupService.js)
+- Validate and commit new DB references before deleting old image files.
+- Verify zero shared references across items and gallery arrays before file unlinking.
+- Provide async cleanup error handling so file locks do not break DB transactions.
+
+### Phase 7: Full Validation Suite
+#### [NEW] [imageLifecycleFullValidation.test.js](file:///c:/xampp/htdocs/POS-DGFY/backend/tests/imageLifecycleFullValidation.test.js)
+- Run end-to-end contract validation covering migration, backend conversion, unchanged reuse, replacement, POS rendering, cache control headers, and HTTP 200 responses.
+
+## Verification Plan
+
+### Automated Tests
+- `npm run check:architecture`
+- `npm run check:tenant-schema`
+- `npm run test -- tests/imageLifecycleGaps.test.js tests/imageLifecycleFullValidation.test.js`
+- `npm run test` in `frontend`
+
+### Manual Verification
+- Save item with legacy image and confirm responsive v2 auto-repair.
+- Re-save unchanged item and confirm zero recompression.
+- Upload replacement image and confirm new URL displays instantly in POS Catalog.
+
+---
+
 # Implementation — POS Catalog & Current Sale Layout Redesign (Matching Picture 2)
 
 ## Proposed Changes
@@ -3398,4 +3471,252 @@ The first command is a dry run. Review its candidate, skipped, and failed counts
 - `frontend/src/features/admin/tenantRevenue/TenantRevenueSettlementPanel.jsx`
 - `Plan.md`
 - `Implementation.md`
+# 2026-07-31 - Services Mode Variations & Add-ons (Phase 0-5 Implemented)
+
+### Implemented Solution (Phases 0-5)
+
+1. **Phase 0 (Completed)**:
+   - Amended [ADR 0016](file:///c:/xampp/htdocs/POS-DGFY/docs/architecture/adr/0016-services-mode-independent-booking-and-ticketing.md) with `## Amendments (2026-07-31)`. Passed `npm run check:docs`.
+
+2. **Phase 1 (Completed)**:
+   - Created additive migration `20260731000002-create-service-option-tables.cjs` and Sequelize models (`ServiceOptionGroup.js`, `ServiceOption.js`, `ServiceItemOptionGroup.js`, `ServiceBookingLineOption.js`) with explicit index names. Passed `npm run check:tenant-schema` (11/11 OK).
+
+3. **Phase 2 (Completed)**:
+   - Created repository `backend/src/modules/services/repositories/serviceOptionRepository.js` and use case `manageServiceOptionGroupsUseCase.js`.
+
+4. **Phase 3 (Completed)**:
+   - Created use case `calculateServiceQuoteUseCase.js` for server-authoritative pricing & duration. Passed unit tests (3/3).
+
+5. **Phase 4 (Completed)**:
+   - Updated `bookingRequestHashPayload` and `holdRequestHashPayload` to sort `selected_option_ids` for idempotent retries.
+   - Updated `createServiceBookingRecord` in `serviceUseCases.js` to calculate authoritative quotes, persist option snapshots to `service_booking_line_options`, and insert separate stock-bearing part lines for physical add-ons.
+   - Included `ServiceBookingLineOption` in `serviceRepository.js` `bookingInclude()`. Passed `npm run check:architecture`.
+
+6. **Phase 5 (Completed)**:
+   - Added HTTP API endpoints for option group CRUD and quote calculation in `backend/src/routes/services.js` and `serviceHandlers.js`.
+   - Added API functions in `frontend/src/features/services/api/servicesApi.js`.
+   - Created `ServiceOptionGroupManager.jsx` component and added the **Variations & Add-ons** tab to `ServicesPage.jsx`.
+
+### Files Modified / Created
+- `docs/architecture/adr/0016-services-mode-independent-booking-and-ticketing.md`
+- `backend/migrations/20260731000002-create-service-option-tables.cjs`
+- `backend/src/models/ServiceOptionGroup.js`
+- `backend/src/models/ServiceOption.js`
+- `backend/src/models/ServiceItemOptionGroup.js`
+- `backend/src/models/ServiceBookingLineOption.js`
+- `backend/src/models/index.js`
+- `backend/src/modules/services/repositories/serviceOptionRepository.js`
+- `backend/src/modules/services/usecases/manageServiceOptionGroupsUseCase.js`
+- `backend/src/modules/services/usecases/calculateServiceQuoteUseCase.js`
+- `backend/src/modules/services/index.js`
+- `backend/tests/serviceOptions.usecases.test.js`
+- `Plan.md`
+- `Implementation.md`
+
+---
+
+# Implementation — Responsive 3×2 Current Sale Action Buttons Grid
+
+## Proposed Changes
+
+### POS Terminal Components
+
+#### [MODIFY] [POSCheckoutTerminal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/POSCheckoutTerminal.jsx)
+- Update `.dgfy-pos-current-sale-actions` container to `grid grid-cols-2 sm:grid-cols-3 gap-2`.
+- Remove `col-span-2` from `Checkout` button so it sits as a primary equal-width 1-cell slot in the 3×2 / 2×3 grid.
+- Style all 6 action buttons with equal height (`h-11`), centered flex contents (`flex items-center justify-center text-center gap-1.5 px-2 py-1`), multi-line text wrapping (`text-xs font-bold leading-tight text-center line-clamp-2`), and zero clipping.
+- Keep all click handlers (`openCheckoutConfirmModal`, `handlePrintOrder`, `handleCloseDay`, `handlePrintReceipt`, `handleOpenDrawer`, `openDiscountModal`), icons, and disabled states unchanged.
+
+#### [MODIFY] [index.css](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/index.css)
+- Update `.dgfy-pos-current-sale-actions` CSS rules for responsive 3-column / 2-column grid behavior.
+
+#### [MODIFY] [terminalResponsiveScroll.contract.test.js](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js)
+- Update contract test expectations for `.dgfy-pos-current-sale-actions` grid layout.
+
+## Verification Plan
+
+### Automated Tests
+- Run Vitest POS contract tests:
+  `cmd /c npx vitest run src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js`
+- Run frontend build:
+  `cmd /c npm run build` in `frontend` directory.
+
+### Manual Verification
+- Verify Current Sale action buttons in desktop viewport (3 columns × 2 rows).
+- Verify Current Sale action buttons on mobile/small viewport (2 columns × 3 rows).
+- Verify Checkout button is primary blue and all 6 buttons are equal size with centered labels & icons.
+- Verify all 6 buttons trigger their respective actions cleanly.
+
+---
+
+# Implementation — Fluid Responsive Auto-Scaling Current Sale Action Buttons
+
+## Proposed Changes
+
+### POS Terminal Components
+
+#### [MODIFY] [POSCheckoutTerminal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/POSCheckoutTerminal.jsx)
+- Refactor action buttons in `.dgfy-pos-current-sale-actions` to `flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center p-1.5 text-center`.
+- Set icon sizes to `14` with `shrink-0 mb-0.5`.
+- Wrap label text in a `span` with `text-[10px] sm:text-[11px] xl:text-xs font-extrabold leading-[1.15] text-center break-words w-full min-w-0 line-clamp-2`.
+- Remove fixed `h-11` height constraint so buttons grow dynamically when necessary without clipping icons or text.
+
+#### [MODIFY] [terminalResponsiveScroll.contract.test.js](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js)
+- Update contract test expectations for `min-h-[46px]` and fluid button classes.
+
+## Verification Plan
+
+### Automated Tests
+- Run Vitest contract tests:
+  `cmd /c npx vitest run src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js`
+- Run frontend build:
+  `cmd /c npm run build` in `frontend` directory.
+
+### Manual Verification
+- Verify action buttons in narrow, medium, and wide panel viewports.
+- Confirm icons sit cleanly above text without clipping.
+- Confirm "Close Day / Z-Reading" and "Print Last Receipt" wrap into 2 clean lines without clipping the top icon.
+
+
+
+
+---
+
+# Implementation — Services and F&B Workflow Separation (Batch 1)
+
+## Proposed Changes
+
+### Phase 1: Central Workflow Resolver
+#### [NEW] [frontend/src/features/pos/utils/posWorkflowResolver.js](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/utils/posWorkflowResolver.js)
+- Create `resolvePosWorkflow(workflowMode)` that returns configuration based on the tenant's mode.
+- For `services`: `{ mode: 'services', transactionRecord: 'booking', allowedMethods: ['walk_in', 'appointment'], capabilities: { tables: false, kitchen: false, bookings: true, providers: true, resources: true, serviceOptions: true } }`.
+- For `fnb`: `{ mode: 'fnb', transactionRecord: 'order', allowedMethods: ['dine_in', 'takeout', 'pickup', 'delivery'], capabilities: { tables: true, kitchen: true, bookings: false, providers: false, resources: false, serviceOptions: false } }`.
+- Export resolver to be used across POS components.
+
+### Phase 2: Split the Current Sale Controls
+#### [MODIFY] [frontend/src/features/pos/components/POSCheckoutTerminal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/POSCheckoutTerminal.jsx)
+- Import `useWorkflowMode` and `resolvePosWorkflow`.
+- Retrieve the active workflow configuration.
+- Set the default order method using the workflow resolver (`allowedMethods[0]`).
+- Extract F&B-specific fields (Dine In/Takeout/Pickup/Delivery selectors, Table, Guest Count, Kitchen Notes) into a new `<FnbWorkflowPanel />`.
+- Introduce `<ServicesWorkflowPanel />` to display Walk-in/Appointment selectors, Client, Date/Time, Provider, Resource, Duration, and Notes when `mode === 'services'`.
+- Render the correct panel conditionally based on the resolved `mode` while retaining the shared Cart, Payment, and Receipt components.
+
+#### [NEW] [frontend/src/features/pos/components/FnbWorkflowPanel.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/FnbWorkflowPanel.jsx)
+- Extract existing restaurant-specific controls (Order Method: Dine In/Takeout/Pickup/Delivery, Table selector, Guest count, Kitchen notes, Restaurant service charge).
+
+#### [NEW] [frontend/src/features/pos/components/ServicesWorkflowPanel.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/ServicesWorkflowPanel.jsx)
+- Create a new component for Walk-in or Appointment methods.
+- Add Client selector.
+- Add Appointment date and time selector (default to now for Walk-in).
+- Add Provider and Resource selectors.
+- Display total duration and service notes.
+
+## Verification Plan
+
+### Automated Tests
+- Create `resolvePosWorkflow.test.js` to ensure configurations map correctly.
+- Ensure all POS contract tests still pass for F&B modes.
+- `cmd /c npm run test` and `cmd /c npm run lint`.
+
+### Manual Verification
+- Test POS Terminal under a Services tenant and verify it defaults to Walk-in/Appointment, with Services controls visible and no restaurant terminology.
+- Test POS Terminal under an F&B tenant and verify it defaults to Dine In/Takeout, with restaurant controls visible and no Services terminology.
+- Confirm cart items, totals, and payment controls function correctly in both modes.
+
+
+---
+
+# Implementation — Services and F&B Workflow Separation (Batch 2: Service Options & Booking Flow)
+
+## Proposed Changes
+
+### Phase 3: Connect Service Variations and Add-ons
+#### [MODIFY] [frontend/src/features/pos/components/POSCheckoutTerminal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/POSCheckoutTerminal.jsx)
+- Display service variation and add-on selectors when a service item is added or configured in cart.
+- Include selected option IDs (`selectedOptionIds`) in cart line payload and pass to server quote recalculation.
+- Ensure pure service options adjust duration and price without inventory deduction, and physical add-ons check location stock.
+
+#### [NEW] [frontend/src/features/pos/components/ServiceOptionsModal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/ServiceOptionsModal.jsx)
+- Modal allowing cashier/client to select variation (single-select) and add-ons (multi-select) when adding a Service item to Current Sale.
+
+### Phase 4: Implement Booking and Payment Flow
+#### [MODIFY] [backend/src/modules/pos/repositories/posRepository.js](file:///c:/xampp/htdocs/POS-DGFY/backend/src/modules/pos/repositories/posRepository.js)
+- Update checkout transaction handler to check provider and resource availability for Services mode bookings (`transactionRecord === 'booking'`).
+- Validate final server-calculated price and duration.
+- Save booking record, line items, option snapshots, and payment records in a single database transaction.
+
+## Verification Plan
+
+### Automated Tests
+- Add `serviceOptionsBooking.contract.test.js` to test option selection, quote calculation, and booking creation.
+- Run `cmd /c npx vitest run src/features/pos/__tests__/posWorkflowPanel.contract.test.jsx`.
+
+### Manual Verification
+- Test adding a Service item to cart, opening Service Options modal, selecting variations (e.g. 60 min) and add-ons.
+- Confirm price and duration recalculation.
+- Complete Walk-in and Appointment bookings and verify transactional database persistence.
+
+
+---
+
+# Implementation — Services and F&B Workflow Separation (Batch 3: Operations & Navigation)
+
+## Proposed Changes
+
+### Phase 5: Add Mode-Specific Navigation
+#### [MODIFY] [frontend/src/features/settings/workflowMode.js](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/settings/workflowMode.js)
+- Update `WORKFLOW_PAGE_CAPABILITIES` and `WORKFLOW_ROUTE_CAPABILITIES` to enforce capability-based route guards and menu visibility.
+- Ensure Services tenants hide Kitchen (`/fnb/kitchen`), Tables (`/fnb/tables`), and Restaurant Orders (`/fnb/orders`) while exposing Today, Calendar, Bookings, Waitlist, Clients, and Team & Resources.
+- Ensure F&B tenants hide Calendar, Providers, and Bookings.
+
+#### [MODIFY] [frontend/src/features/pos/components/TerminalWorkspaceSidebar.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/TerminalWorkspaceSidebar.jsx)
+- Dynamically filter sidebar navigation items using `isWorkflowPageVisible(pageName, workflowMode, enabledCapabilities)` to prevent rendering unsupported links for the tenant mode.
+
+### Phase 6: Operational Service Tickets, Receipts, History, and Reports
+#### [NEW] [frontend/src/features/pos/components/ServiceTicketPrintView.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/ServiceTicketPrintView.jsx)
+- Separate operational service tickets (Booking #, Client, Service, Variation, Add-ons, Provider, Resource, Date/Time, Duration, Notes) from fiscal payment receipts.
+
+#### [MODIFY] [frontend/src/features/pos/components/POSTransactionHistoryPanel.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/POSTransactionHistoryPanel.jsx)
+- Render Services history details (Booking reference, Client, Provider, Scheduled time, Booking & Payment status) when in Services mode.
+
+#### [MODIFY] [frontend/src/features/pos/components/PosReportsAnalyticsWorkspace.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/PosReportsAnalyticsWorkspace.jsx)
+- Add Services-specific reporting metrics (Service revenue, Variation revenue, Add-on revenue, Provider utilization, Walk-in vs Appointment breakdown) when in Services mode.
+
+## Verification Plan
+
+### Automated Tests
+- Create `modeNavigationGuards.contract.test.js` to verify routing guards and navigation filtering.
+- Run `cmd /c npx vitest run src/features/pos/__tests__/serviceOptionsModal.contract.test.jsx`.
+
+### Manual Verification
+- Test navigation as a Services user and confirm Kitchen/Tables links are completely hidden and direct URL access redirects safely.
+- Print a Service Ticket and verify operational details are rendered separately from financial receipts.
+
+
+---
+
+# Implementation — Services and F&B Workflow Separation (Batch 4: Responsive UI Validation & Release Gate)
+
+## Proposed Changes
+
+### Phase 7: Responsive UI Validation
+#### [MODIFY] [frontend/src/features/pos/components/POSCheckoutTerminal.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/components/POSCheckoutTerminal.jsx)
+- Validate fluid stacking and scroll containers for `<FnbWorkflowPanel />` and `<ServicesWorkflowPanel />` across desktop (`lg`), tablet (`md`), and mobile viewports.
+- Ensure form inputs, date/time pickers, and provider/resource selectors occupy full-width grid slots on mobile and compact side-by-side rows on tablet/desktop.
+
+### Phase 8: Testing and Release Gate
+#### [MODIFY] [frontend/src/features/pos/__tests__/posWorkflowPanel.contract.test.jsx](file:///c:/xampp/htdocs/POS-DGFY/frontend/src/features/pos/__tests__/posWorkflowPanel.contract.test.jsx)
+- Execute complete Vitest test suite for resolver, panels, options modal, navigation guards, and tickets.
+- Build frontend production bundle with `npm run build` in `frontend` directory.
+
+## Verification Plan
+
+### Automated Tests
+- Run `cmd /c npx vitest run src/features/pos/__tests__/modeNavigationAndServiceTicket.contract.test.jsx src/features/pos/__tests__/serviceOptionsModal.contract.test.jsx src/features/pos/__tests__/posWorkflowPanel.contract.test.jsx src/features/pos/__tests__/posWorkflowResolver.test.js src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js`.
+- Run production build `cmd /c npm run build` in `frontend` directory.
+
+### Manual Verification
+- Test POS under Desktop, Tablet, and Mobile viewport dimensions.
+- Confirm zero clipped labels, overlapping controls, or cross-mode terminology leaks.
 

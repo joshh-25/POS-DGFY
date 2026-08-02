@@ -69,6 +69,10 @@ import ServiceBookingHold from './ServiceBookingHold.js';
 import ServiceBookingLine from './ServiceBookingLine.js';
 import ServiceWaitlistEntry from './ServiceWaitlistEntry.js';
 import ServiceReminderOutbox from './ServiceReminderOutbox.js';
+import ServiceOptionGroup from './ServiceOptionGroup.js';
+import ServiceOption from './ServiceOption.js';
+import ServiceItemOptionGroup from './ServiceItemOptionGroup.js';
+import ServiceBookingLineOption from './ServiceBookingLineOption.js';
 import FnbModifierGroup from './FnbModifierGroup.js';
 import FnbModifierOption from './FnbModifierOption.js';
 import FnbItemModifierGroup from './FnbItemModifierGroup.js';
@@ -680,6 +684,13 @@ ServiceBookingLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 ServiceBookingLine.belongsTo(PosTransactionLine, { foreignKey: 'pos_transaction_line_id', as: 'posTransactionLine' });
 ServiceWaitlistEntry.belongsTo(Item, { foreignKey: 'service_item_id', as: 'serviceItem' });
 ServiceWaitlistEntry.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
+ServiceOptionGroup.hasMany(ServiceOption, { foreignKey: 'group_id', as: 'options' });
+ServiceOption.belongsTo(ServiceOptionGroup, { foreignKey: 'group_id', as: 'group' });
+ServiceOption.belongsTo(Item, { foreignKey: 'linked_physical_item_id', as: 'linkedPhysicalItem' });
+Item.belongsToMany(ServiceOptionGroup, { through: ServiceItemOptionGroup, foreignKey: 'service_item_id', otherKey: 'option_group_id', as: 'serviceOptionGroups', uniqueKey: 'unique_svc_item_opt_grp' });
+ServiceOptionGroup.belongsToMany(Item, { through: ServiceItemOptionGroup, foreignKey: 'option_group_id', otherKey: 'service_item_id', as: 'serviceItems', uniqueKey: 'unique_svc_item_opt_grp' });
+ServiceBookingLine.hasMany(ServiceBookingLineOption, { foreignKey: 'booking_line_id', as: 'options' });
+ServiceBookingLineOption.belongsTo(ServiceBookingLine, { foreignKey: 'booking_line_id', as: 'line' });
 
 // Food & Beverage associations
 FnbModifierGroup.hasMany(FnbModifierOption, { foreignKey: 'modifier_group_id', as: 'options' });
@@ -886,6 +897,10 @@ const db = {
   ServiceBookingLine,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
+  ServiceOptionGroup,
+  ServiceOption,
+  ServiceItemOptionGroup,
+  ServiceBookingLineOption,
   FnbModifierGroup,
   FnbModifierOption,
   FnbItemModifierGroup,
@@ -1064,6 +1079,10 @@ export {
   ServiceBookingLine,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
+  ServiceOptionGroup,
+  ServiceOption,
+  ServiceItemOptionGroup,
+  ServiceBookingLineOption,
   FnbModifierGroup,
   FnbModifierOption,
   FnbItemModifierGroup,

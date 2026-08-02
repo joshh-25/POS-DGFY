@@ -22,6 +22,7 @@ import {
     buildStorefrontReadiness
 } from '../../shared/utils/catalogSetupPolicy.js';
 import { deriveImageAssetVariantUrls } from '../../shared/utils/imageAssetStorage.js';
+import { ensureOptimizedItemImage } from '../usecases/imageLifecycleUseCases.js';
 import {
     buildBarcodeConflictPayload,
     detectBarcodeSymbology,
@@ -2372,7 +2373,7 @@ export const itemRepository = {
                 ServiceItemDetail ? {
                     model: ServiceItemDetail,
                     as: 'serviceDetail',
-                    attributes: ['bookable', 'visible_in_pos', 'visible_in_storefront'],
+                    attributes: ['bookable', 'visible_in_pos', 'visible_in_storefront', 'addons_enabled'],
                     required: false
                 } : null,
                 StorefrontCatalogOverride ? {
@@ -2595,22 +2596,51 @@ export const itemRepository = {
             ? null
             : await this.getStorefrontCatalogReadinessByItemId(itemId);
 
+        const candidatePath = payload.storefront_image_path ?? (existing?.storefront_image_path ?? null);
+        const candidateUrl = payload.storefront_image_url ?? (existing?.storefront_image_url ?? null);
+
+        let imageLifecycleResult = null;
+        if (candidatePath || candidateUrl || payload.image_file) {
+            try {
+                imageLifecycleResult = await ensureOptimizedItemImage({
+                    itemId,
+                    storedPath: candidatePath,
+                    storedUrl: candidateUrl,
+                    file: payload.image_file || null,
+                    existingOverride: existing ? (typeof existing.get === 'function' ? existing.get({ plain: true }) : existing) : null,
+                    tenantId: dbStore.getStore?.()?.tenantId || 'default'
+                });
+            } catch (lifecycleError) {
+                logger.warn('[ItemRepository] ensureOptimizedItemImage failed during upsert; proceeding with candidate image payload', {
+                    item_id: itemId,
+                    reason: lifecycleError?.message
+                });
+            }
+        }
+
+        const finalImagePath = imageLifecycleResult?.path ?? candidatePath;
+        const finalImageUrl = imageLifecycleResult?.url ?? candidateUrl;
+
         const nextPayload = {
             item_id: itemId,
             storefront_visible: hasOwn(payload, 'storefront_visible')
                 ? payload.storefront_visible !== false
                 : (existing?.storefront_visible ?? defaultEnvelope?.storefront_visible ?? true),
-            storefront_image_path: payload.storefront_image_path ?? (existing?.storefront_image_path ?? null),
-            storefront_image_url: payload.storefront_image_url ?? (existing?.storefront_image_url ?? null),
+            storefront_image_path: finalImagePath,
+            storefront_image_url: finalImageUrl,
+            image_fingerprint: imageLifecycleResult?.image_fingerprint ?? (existing?.image_fingerprint ?? null),
+            optimization_version: imageLifecycleResult?.optimization_version ?? (existing?.optimization_version ?? null),
+            processing_status: imageLifecycleResult?.processing_status ?? (existing?.processing_status ?? null),
+            variant_metadata: imageLifecycleResult?.variant_metadata ?? (existing?.variant_metadata ?? null),
             storefront_image_gallery: hasOwn(payload, 'storefront_image_gallery')
                 ? buildStorefrontImageGallery({
-                    primaryPath: payload.storefront_image_path ?? existing?.storefront_image_path ?? null,
-                    primaryUrl: payload.storefront_image_url ?? existing?.storefront_image_url ?? null,
+                    primaryPath: finalImagePath,
+                    primaryUrl: finalImageUrl,
                     gallery: payload.storefront_image_gallery
                 })
                 : buildStorefrontImageGallery({
-                    primaryPath: payload.storefront_image_path ?? existing?.storefront_image_path ?? null,
-                    primaryUrl: payload.storefront_image_url ?? existing?.storefront_image_url ?? null,
+                    primaryPath: finalImagePath,
+                    primaryUrl: finalImageUrl,
                     gallery: existing?.storefront_image_gallery || null
                 })
         };

@@ -124,25 +124,27 @@ class ErrorBoundary extends React.Component {
                         the page will restore normal operation.
                     </p>
 
-                    {/* Error detail — visible in dev only (helps diagnose) */}
-                    {import.meta.env.DEV && this.state.error && (
-                        <pre
-                            style={{
-                                background: '#fef2f2',
-                                border: '1px solid #fecaca',
-                                borderRadius: '0.5rem',
-                                padding: '0.75rem',
-                                fontSize: '0.75rem',
-                                color: '#b91c1c',
-                                textAlign: 'left',
-                                overflowX: 'auto',
-                                marginBottom: '1.5rem',
-                                whiteSpace: 'pre-wrap',
-                                wordBreak: 'break-word',
-                            }}
-                        >
-                            {this.state.error.message}
-                        </pre>
+                    {this.state.error && (
+                        <details style={{ textAlign: 'left', marginBottom: '1.5rem', width: '100%' }}>
+                            <summary style={{ fontSize: '0.75rem', color: '#64748b', cursor: 'pointer', marginBottom: '0.5rem' }}>
+                                View technical error details
+                            </summary>
+                            <pre
+                                style={{
+                                    background: '#fef2f2',
+                                    border: '1px solid #fecaca',
+                                    borderRadius: '0.5rem',
+                                    padding: '0.75rem',
+                                    fontSize: '0.75rem',
+                                    color: '#b91c1c',
+                                    overflowX: 'auto',
+                                    whiteSpace: 'pre-wrap',
+                                    wordBreak: 'break-word',
+                                }}
+                            >
+                                {this.state.error.stack || this.state.error.message || String(this.state.error)}
+                            </pre>
+                        </details>
                     )}
 
                     <button

@@ -32,6 +32,7 @@ const serviceCatalogItemSchema = Joi.object({
     bookable: Joi.boolean().default(true),
     visible_in_storefront: Joi.boolean().default(true),
     visible_in_pos: Joi.boolean().default(true),
+    addons_enabled: Joi.boolean().optional(),
     payment_policy: Joi.string().valid(...PAYMENT_POLICIES).default('customer_choice'),
     service_area_type: Joi.string().valid(...SERVICE_AREA_TYPES).default('in_store'),
     intake_form_schema: Joi.object().allow(null).optional(),
@@ -130,6 +131,7 @@ const serviceBookingCoreSchema = {
     notes: Joi.string().trim().max(4000).allow('', null).optional(),
     intake_responses: Joi.object().allow(null).optional(),
     quantity: Joi.number().integer().min(1).max(10000).optional(),
+    selected_option_ids: Joi.array().items(Joi.number().integer().positive()).max(100).optional(),
     idempotency_key: Joi.string().trim().min(1).max(200).optional(),
     hold_token: Joi.string().trim().min(1).max(200).optional()
 };
@@ -164,6 +166,7 @@ const serviceBookingHoldSchema = Joi.object({
     resource_id: Joi.number().integer().positive().allow(null).optional(),
     location_id: Joi.number().integer().positive().allow(null).optional(),
     quantity: Joi.number().integer().min(1).max(10000).optional(),
+    selected_option_ids: Joi.array().items(Joi.number().integer().positive()).max(100).optional(),
     hold_token: Joi.string().trim().min(1).max(200).optional(),
     replace_hold_token: Joi.string().trim().min(1).max(200).optional(),
     idempotency_key: Joi.string().trim().min(1).max(200).optional()
@@ -181,6 +184,7 @@ const serviceBookingDraftSchema = Joi.object({
     resource_id: Joi.number().integer().positive().allow(null).optional(),
     location_id: Joi.number().integer().positive().allow(null).optional(),
     quantity: Joi.number().integer().min(1).max(10000).optional(),
+    selected_option_ids: Joi.array().items(Joi.number().integer().positive()).max(100).optional(),
     hold_token: Joi.string().trim().min(1).max(200).optional(),
     notes: Joi.string().trim().max(4000).allow('', null).optional(),
     intake_responses: Joi.object().allow(null).optional(),
