@@ -89,6 +89,38 @@ const resolveLocalAddress = ({ latitude, longitude }) => {
     };
 };
 
+export const buildAddressSearchUseCase = () => {
+    return async ({ query, limit = 8 }) => {
+        const normalizedQuery = String(query || '').trim().toLowerCase();
+        if (normalizedQuery.length < 2) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Enter at least 2 characters to search for an address.',
+                { statusCode: 422 }
+            ));
+        }
+
+        const tokens = normalizedQuery.split(/\s+/).filter(Boolean);
+        const matches = PH_LOCAL_ADDRESS_DATASET
+            .filter((place) => {
+                const searchableLabel = String(place.label || '').toLowerCase();
+                return tokens.every((token) => searchableLabel.includes(token));
+            })
+            .slice(0, Math.max(1, Math.min(Number(limit) || 8, 20)))
+            .map((place) => ({
+                address_line: place.label,
+                latitude: place.latitude,
+                longitude: place.longitude,
+                precision: place.precision,
+                provider: PH_LOCAL_ADDRESS_PROVIDER,
+                psgc_code: place.psgcCode,
+                parent_psgc_code: place.parentPsgcCode
+            }));
+
+        return ok({ results: matches });
+    };
+};
+
 export const buildReverseGeocodeUseCase = () => {
     return async ({ latitude, longitude }) => {
         const lat = Number(latitude);
