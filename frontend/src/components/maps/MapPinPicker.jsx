@@ -3,6 +3,7 @@ import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 import { cn } from '../../lib/utils.js';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import {
   DEFAULT_CENTER,
   TILING_SERVER,
@@ -123,6 +124,7 @@ export default function MapPinPicker({
   latitude,
   longitude,
   deliveryRadiusKm,
+  addressLine = '',
   onChange,
   defaultAdjustMode = false,
   className
@@ -144,6 +146,10 @@ export default function MapPinPicker({
   const [isPinDragMode, setIsPinDragMode] = useState(defaultAdjustMode === true);
   const [draftPin, setDraftPin] = useState(null);
   const [accuracyMessage, setAccuracyMessage] = useState('');
+  const [addressQuery, setAddressQuery] = useState(String(addressLine || ''));
+  const [addressResults, setAddressResults] = useState([]);
+  const [isSearchingAddress, setIsSearchingAddress] = useState(false);
+  const [addressSearchError, setAddressSearchError] = useState('');
   const effectivePositionRef = useRef(null);
 
   const rawPosition = useMemo(() => {
@@ -170,6 +176,7 @@ export default function MapPinPicker({
   useEffect(() => { onChangeRef.current = onChange; }, [onChange]);
   useEffect(() => { isPinDragModeRef.current = isPinDragMode; }, [isPinDragMode]);
   useEffect(() => { effectivePositionRef.current = effectivePosition; }, [effectivePosition]);
+  useEffect(() => { setAddressQuery(String(addressLine || '')); }, [addressLine]);
   useEffect(() => {
     if (selectedPosition) {
       // eslint-disable-next-line react-hooks/set-state-in-effect -- Prop synchronization must discard an obsolete draft pin.
@@ -235,6 +242,49 @@ export default function MapPinPicker({
       center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
       zoom: DEFAULT_ZOOM
     });
+  };
+
+  const searchAddress = async () => {
+    const query = addressQuery.trim();
+    if (query.length < 2) {
+      setAddressSearchError('Enter at least 2 characters to search.');
+      setAddressResults([]);
+      return;
+    }
+    setIsSearchingAddress(true);
+    setAddressSearchError('');
+    try {
+      const params = new URLSearchParams({ query, limit: '8' });
+      const response = await fetch(`/api/v1/geo/address-search?${params.toString()}`, {
+        headers: { Accept: 'application/json' },
+        credentials: 'include'
+      });
+      if (!response.ok) throw new Error('Address search is temporarily unavailable.');
+      const payload = await response.json();
+      const results = Array.isArray(payload?.data?.results) ? payload.data.results : [];
+      setAddressResults(results);
+      if (results.length === 0) setAddressSearchError('No matching address found. Try a barangay, city, or municipality.');
+    } catch (error) {
+      setAddressResults([]);
+      setAddressSearchError(error?.message || 'Address search is temporarily unavailable.');
+    } finally {
+      setIsSearchingAddress(false);
+    }
+  };
+
+  const selectAddress = (result) => {
+    const pin = {
+      latitude: Number(result.latitude),
+      longitude: Number(result.longitude),
+      address_line: String(result.address_line || '').trim(),
+      address_precision: result.precision,
+      address_provider: result.provider
+    };
+    if (!emitPinChange(pin)) return;
+    setAddressQuery(pin.address_line);
+    setAddressResults([]);
+    setAddressSearchError('');
+    mapRef.current?.flyTo({ center: [pin.longitude, pin.latitude], zoom: PIN_ZOOM });
   };
 
   const centerToCurrentLocation = () => {
@@ -562,6 +612,43 @@ export default function MapPinPicker({
 
   return (
     <div className={cn('space-y-2', className)}>
+      <div className="space-y-2">
+        <div className="flex gap-2">
+          <Input
+            type="search"
+            value={addressQuery}
+            onChange={(event) => setAddressQuery(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter') {
+                event.preventDefault();
+                searchAddress();
+              }
+            }}
+            placeholder="Search barangay, city, municipality, or address"
+            aria-label="Search business address"
+          />
+          <Button type="button" onClick={searchAddress} disabled={isSearchingAddress}>
+            {isSearchingAddress ? 'Searching...' : 'Search'}
+          </Button>
+        </div>
+        {addressResults.length > 0 ? (
+          <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-sm" role="listbox" aria-label="Address search results">
+            {addressResults.map((result) => (
+              <button
+                key={`${result.psgc_code || result.address_line}-${result.latitude}-${result.longitude}`}
+                type="button"
+                role="option"
+                aria-selected="false"
+                className="block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-teal-50 hover:text-teal-900"
+                onClick={() => selectAddress(result)}
+              >
+                {result.address_line}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {addressSearchError ? <p className="text-xs text-red-600">{addressSearchError}</p> : null}
+      </div>
       <div className="flex flex-wrap items-center gap-2 rounded-xl border border-amber-200/60 bg-gradient-to-r from-amber-50 to-teal-50 p-2">
         <Button
           type="button"

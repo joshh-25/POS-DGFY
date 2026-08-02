@@ -110,10 +110,14 @@ export const getCompanyInfo = async () => {
   return response.data.data;
 };
 
-export const uploadStorefrontAsset = async (assetType, file) => {
+export const uploadStorefrontAsset = async (assetType, file, { onUploadProgress } = {}) => {
   const formData = new FormData();
   formData.append('image', file);
-  const response = await api.post(`/settings/storefront-assets/${encodeURIComponent(assetType)}`, formData);
+  const response = await api.post(
+    `/settings/storefront-assets/${encodeURIComponent(assetType)}`,
+    formData,
+    { onUploadProgress }
+  );
   invalidateSettingsCache();
   return response.data.data;
 };

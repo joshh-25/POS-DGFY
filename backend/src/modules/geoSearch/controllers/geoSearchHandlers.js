@@ -1,4 +1,4 @@
-import { geoSearchUseCase, reverseGeocodeUseCase } from '../index.js';
+import { addressSearchUseCase, geoSearchUseCase, reverseGeocodeUseCase } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 
 const timestamp = () => new Date().toISOString();
@@ -64,4 +64,22 @@ export const reverseGeocode = async (req, res, next) => {
     }
 };
 
-export default { searchNearbyStores, reverseGeocode };
+export const searchAddresses = async (req, res, next) => {
+    try {
+        const q = req.validatedQuery || req.query;
+        const result = await addressSearchUseCase({ query: q.query, limit: q.limit });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export default { searchNearbyStores, reverseGeocode, searchAddresses };

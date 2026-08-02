@@ -7,6 +7,7 @@ import {
     SAFE_IMAGE_MIME_TYPES,
     validateImageUploadFile
 } from '../../shared/utils/imageUploadValidation.js';
+import { STOREFRONT_ASSET_SOURCE_MAX_BYTES } from '../../../config/uploadConfig.js';
 
 const STOREFRONT_ASSET_TYPES = Object.freeze(['cover', 'profile', 'gallery']);
 const PERSISTED_STOREFRONT_ASSET_TYPES = Object.freeze(['cover', 'profile']);
@@ -20,15 +21,13 @@ const STORE_ASSET_TYPE_TO_SETTING_KEYS = Object.freeze({
         path: 'storefront_profile_image_path'
     }
 });
-const STOREFRONT_ASSET_MAX_BYTES = 10 * 1024 * 1024;
-
 const normalizeAssetType = (assetType) => String(assetType || '').trim().toLowerCase();
 const getAssetKeys = (assetType) => STORE_ASSET_TYPE_TO_SETTING_KEYS[normalizeAssetType(assetType)] || null;
 const isSupportedAssetType = (assetType) => STOREFRONT_ASSET_TYPES.includes(normalizeAssetType(assetType));
 const getImageValidationMessage = (validation = {}) => {
     switch (validation.reason) {
         case 'file_too_large':
-                return 'Storefront images must be 10 MB or smaller.';
+            return 'Storefront source images must be 100 MB or smaller.';
         case 'unsupported_reported_mime':
             return 'Only PNG, JPEG, GIF, WebP, BMP, or AVIF images are allowed for storefront assets.';
         case 'unsupported_file_signature':
@@ -68,7 +67,7 @@ export const buildUploadStorefrontAssetUseCase = ({
             const fileValidation = await imageFileValidator({
                 file,
                 allowedMimeTypes: SAFE_IMAGE_MIME_TYPES,
-                maxBytes: STOREFRONT_ASSET_MAX_BYTES
+                maxBytes: STOREFRONT_ASSET_SOURCE_MAX_BYTES
             });
             if (!fileValidation.ok) {
                 logger.warn('[SettingsStorefrontAsset] Rejected upload due to image validation failure', {

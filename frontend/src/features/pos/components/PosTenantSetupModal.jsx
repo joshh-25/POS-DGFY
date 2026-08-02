@@ -54,6 +54,9 @@ const STEP_CONFIG = {
 };
 
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
+const STOREFRONT_ASSET_ACCEPT = 'image/png,image/jpeg,image/gif,image/webp,image/bmp,image/avif';
+const STOREFRONT_ASSET_MIME_TYPES = new Set(STOREFRONT_ASSET_ACCEPT.split(','));
+const STOREFRONT_ASSET_SOURCE_MAX_BYTES = 100 * 1024 * 1024;
 let terminalDraftKeySequence = 0;
 
 const toPositiveInt = (value) => {
@@ -149,7 +152,9 @@ export default function PosTenantSetupModal({
   const [terminalSaveFeedback, setTerminalSaveFeedback] = useState({ type: '', message: '' });
   const [terminalFieldErrors, setTerminalFieldErrors] = useState({});
   const [assetUploadingType, setAssetUploadingType] = useState('');
+  const [assetUploadProgress, setAssetUploadProgress] = useState(0);
   const [localStorefrontAssets, setLocalStorefrontAssets] = useState({ profile: '', cover: '' });
+  const [storefrontAssetPreviewErrors, setStorefrontAssetPreviewErrors] = useState({ profile: false, cover: false });
   const [locationSaving, setLocationSaving] = useState(false);
   const [storefrontContinueAttempted, setStorefrontContinueAttempted] = useState(false);
   const [starterItemSaving, setStarterItemSaving] = useState(false);
@@ -189,6 +194,7 @@ export default function PosTenantSetupModal({
       profile: storefrontRequirements.profileImageUrl || '',
       cover: storefrontRequirements.coverImageUrl || ''
     });
+    setStorefrontAssetPreviewErrors({ profile: false, cover: false });
     setStorefrontContinueAttempted(false);
   }, [open, storefrontRequirements.coverImageUrl, storefrontRequirements.profileImageUrl]);
 
@@ -262,8 +268,8 @@ export default function PosTenantSetupModal({
 
   const effectiveStorefrontProfileImageUrl = localStorefrontAssets.profile || storefrontRequirements.profileImageUrl || '';
   const effectiveStorefrontCoverImageUrl = localStorefrontAssets.cover || storefrontRequirements.coverImageUrl || '';
-  const effectiveProfileImageReady = Boolean(effectiveStorefrontProfileImageUrl) || storefrontRequirements.profileImageReady === true;
-  const effectiveCoverImageReady = Boolean(effectiveStorefrontCoverImageUrl) || storefrontRequirements.coverImageReady === true;
+  const effectiveProfileImageReady = !storefrontAssetPreviewErrors.profile && (Boolean(effectiveStorefrontProfileImageUrl) || storefrontRequirements.profileImageReady === true);
+  const effectiveCoverImageReady = !storefrontAssetPreviewErrors.cover && (Boolean(effectiveStorefrontCoverImageUrl) || storefrontRequirements.coverImageReady === true);
   const effectivePrimaryLocationReady = Boolean(toPositiveInt(locationDraft.location_id) || primaryLocationId);
   const effectiveStorefrontSetupReady = effectiveProfileImageReady && effectiveCoverImageReady && effectivePrimaryLocationReady;
   const highlightMissingStorefrontProfile = storefrontContinueAttempted && !effectiveProfileImageReady;
@@ -508,6 +514,14 @@ export default function PosTenantSetupModal({
 
   const handleUploadAsset = async (assetType, file) => {
     if (!file) return;
+    if (!STOREFRONT_ASSET_MIME_TYPES.has(String(file.type || '').toLowerCase())) {
+      toast.error('Choose a PNG, JPEG, GIF, WebP, BMP, or AVIF image.');
+      return;
+    }
+    if (file.size > STOREFRONT_ASSET_SOURCE_MAX_BYTES) {
+      toast.error('Storefront source images must be 100 MB or smaller.');
+      return;
+    }
     const previewUrl = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function'
       ? URL.createObjectURL(file)
       : '';
@@ -519,10 +533,18 @@ export default function PosTenantSetupModal({
       }));
     }
     setAssetUploadingType(assetType);
+    setAssetUploadProgress(0);
     try {
-      const result = await uploadStorefrontAsset(assetType, file);
+      const result = await uploadStorefrontAsset(assetType, file, {
+        onUploadProgress: ({ loaded = 0, total = 0 }) => {
+          if (total > 0) {
+            setAssetUploadProgress(Math.min(100, Math.round((loaded / total) * 100)));
+          }
+        }
+      });
       const uploadedUrl = result?.image_url || result?.url || result?.path || '';
       if (uploadedUrl) {
+        setStorefrontAssetPreviewErrors((current) => ({ ...current, [assetType]: false }));
         setLocalStorefrontAssets((current) => ({
           ...current,
           [assetType]: uploadedUrl
@@ -534,13 +556,14 @@ export default function PosTenantSetupModal({
         ...current,
         [assetType]: storefrontRequirements[assetType === 'profile' ? 'profileImageUrl' : 'coverImageUrl'] || ''
       }));
-      toast.error(error?.response?.data?.message || 'Failed to upload storefront asset.');
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to upload storefront asset.');
     } finally {
       if (previewUrl && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function') {
         URL.revokeObjectURL(previewUrl);
         localPreviewUrlsRef.current.delete(previewUrl);
       }
       setAssetUploadingType('');
+      setAssetUploadProgress(0);
     }
   };
 
@@ -577,7 +600,7 @@ export default function PosTenantSetupModal({
       return;
     }
     if (addressLine.length < 3 || !Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-      toast.error('Search for an address or place the map pin before saving.');
+      toast.error('Search for an address or place the map pin before saving. If the pin is selected, wait for its address to finish loading.');
       return;
     }
 
@@ -1195,60 +1218,72 @@ export default function PosTenantSetupModal({
                     <div className={`rounded-2xl border p-4 ${highlightMissingStorefrontProfile ? 'border-red-500 bg-red-50/60' : 'border-slate-200'}`}>
                       <p className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Company Icon <span className="text-red-600">*</span></p>
                       <div className="mt-3 flex h-28 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                        {effectiveStorefrontProfileImageUrl ? (
+                        {effectiveStorefrontProfileImageUrl && !storefrontAssetPreviewErrors.profile ? (
                           <img
                             src={resolveAssetUrl(effectiveStorefrontProfileImageUrl)}
                             alt="Company icon preview"
                             className="h-full w-full object-cover"
+                            onError={() => setStorefrontAssetPreviewErrors((current) => ({ ...current, profile: true }))}
                           />
                         ) : (
                           <div className="flex items-center gap-2 text-sm text-slate-500">
                             <ImagePlus className="h-4 w-4" />
-                            No icon uploaded
+                            {storefrontAssetPreviewErrors.profile ? 'Icon unavailable — upload a replacement' : 'No icon uploaded'}
                           </div>
                         )}
                       </div>
                       <div className="mt-3 flex items-center gap-3">
                         <Input
                           type="file"
-                          accept="image/*"
+                          accept={STOREFRONT_ASSET_ACCEPT}
                           className="h-11 rounded-lg border-slate-200 text-[13px]"
-                          disabled={assetUploadingType === 'profile'}
+                          disabled={Boolean(assetUploadingType)}
                           onChange={(event) => {
                             handleUploadAsset('profile', event.target.files?.[0]);
                             event.target.value = '';
                           }}
                         />
                       </div>
+                      {assetUploadingType === 'profile' ? (
+                        <p className="mt-2 text-xs font-semibold text-blue-700" role="status">
+                          Uploading and optimizing company icon{assetUploadProgress > 0 ? ` (${assetUploadProgress}%)` : '...'}
+                        </p>
+                      ) : null}
                     </div>
                     <div className={`rounded-2xl border p-4 ${highlightMissingStorefrontCover ? 'border-red-500 bg-red-50/60' : 'border-slate-200'}`}>
                       <p className="text-[12px] font-black uppercase tracking-[0.18em] text-slate-500">Company Cover Image <span className="text-red-600">*</span></p>
                       <div className="mt-3 flex h-28 items-center justify-center overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
-                        {effectiveStorefrontCoverImageUrl ? (
+                        {effectiveStorefrontCoverImageUrl && !storefrontAssetPreviewErrors.cover ? (
                           <img
                             src={resolveAssetUrl(effectiveStorefrontCoverImageUrl)}
                             alt="Company cover preview"
                             className="h-full w-full object-cover"
+                            onError={() => setStorefrontAssetPreviewErrors((current) => ({ ...current, cover: true }))}
                           />
                         ) : (
                           <div className="flex items-center gap-2 text-sm text-slate-500">
                             <ImagePlus className="h-4 w-4" />
-                            No cover uploaded
+                            {storefrontAssetPreviewErrors.cover ? 'Cover unavailable — upload a replacement' : 'No cover uploaded'}
                           </div>
                         )}
                       </div>
                       <div className="mt-3 flex items-center gap-3">
                         <Input
                           type="file"
-                          accept="image/*"
+                          accept={STOREFRONT_ASSET_ACCEPT}
                           className="h-11 rounded-lg border-slate-200 text-[13px]"
-                          disabled={assetUploadingType === 'cover'}
+                          disabled={Boolean(assetUploadingType)}
                           onChange={(event) => {
                             handleUploadAsset('cover', event.target.files?.[0]);
                             event.target.value = '';
                           }}
                         />
                       </div>
+                      {assetUploadingType === 'cover' ? (
+                        <p className="mt-2 text-xs font-semibold text-blue-700" role="status">
+                          Uploading and optimizing cover image{assetUploadProgress > 0 ? ` (${assetUploadProgress}%)` : '...'}
+                        </p>
+                      ) : null}
                     </div>
                   </div>
                   <div className={`rounded-2xl border p-4 ${highlightMissingStorefrontLocation ? 'border-red-500 bg-red-50/60' : 'border-slate-200'}`}>
