@@ -273,10 +273,10 @@ import {
 } from './shared/utils/businessRegistrationUrl.js';
 import { resolveStorefrontAccountUrl } from '../../../src/features/dgfyRouteHelpers.js';
 import {
-  startDgfyPosSession,
-  startDgfyTenantSession
+  createDgfyHandoff,
+  startDgfyPosSession
 } from '../../../src/services/dgfyAuthService.js';
-import { buildSkupervisorPath } from '../../../src/features/pos/utils/skupervisorHandoff.js';
+import { buildSkupervisorHandoffUrl } from '../../../src/features/pos/utils/skupervisorHandoff.js';
 import {
   clearDgfyAuthToken,
   clearStoreAuthToken,
@@ -1059,9 +1059,9 @@ export default function StorefrontApp() {
     rememberDgfySignedOutEmail,
     markDgfyExplicitSignOut,
     clearCheckoutAuthResumeDraft,
-    buildSkupervisorPath,
+    buildSkupervisorHandoffUrl,
+    createDgfyHandoff,
     buildPosAppUrl,
-    startDgfyTenantSession,
     startDgfyPosSession,
     getGoStoreTrackPage: () => goStoreTrackPage,
     onTrackedActivityUpdated: (activity) => {

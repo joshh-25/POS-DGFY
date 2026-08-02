@@ -88,3 +88,22 @@ export const openSkupervisorPath = (path = '/', query = '') => {
   return target;
 };
 
+// Carries a DGFY session over to SKUpervisor for the one deliberate
+// click-through from dgfy.ph (e.g. "Open business inventory" on the account
+// dashboard) - reusing the same single-use handoff token mechanism that
+// already carries sessions SKUpervisor -> dgfy.ph
+// (frontend/src/features/dgfyRouteHelpers.js appendDgfyHandoffToken).
+// Lands on SKUpervisor's /dgfy/companies (DgfyCompanySelect.jsx), which
+// exchanges the token, starts a tenant session, and continues to `next`.
+// The origin is always derived from the current host via
+// getSkupervisorOrigin() above - callers never supply one.
+export const buildSkupervisorHandoffUrl = ({ tenantId = '', next = '/', handoffToken = '' } = {}) => {
+  const params = new URLSearchParams();
+  const normalizedTenantId = String(tenantId || '').trim();
+  const normalizedHandoffToken = String(handoffToken || '').trim();
+  if (normalizedTenantId) params.set('tenant_id', normalizedTenantId);
+  params.set('next', normalizePath(next));
+  if (normalizedHandoffToken) params.set('handoff_token', normalizedHandoffToken);
+  return buildSkupervisorPath('/dgfy/companies', `?${params.toString()}`);
+};
+
