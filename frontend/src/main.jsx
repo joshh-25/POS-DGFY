@@ -16,7 +16,7 @@ import NotFoundPage from './components/common/NotFoundPage.jsx'
 import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.jsx'
 import { Toaster } from '@/components/ui/sonner'
 import { getRuntimeConfig } from './utils/runtimeConfig.js'
-import { initBrowserSentry } from './observability/sentryClient.js'
+import { initBrowserSentry, identifySentryUser, resetSentryIdentity, setSentryContext, setSentryRoute } from './observability/sentryClient.js'
 import {
   capturePageview,
   identifyAnalyticsUser,
@@ -139,6 +139,7 @@ function App() {
 
   useEffect(() => {
     capturePageview({ path: location.pathname });
+    setSentryRoute(location.pathname);
   }, [location.pathname]);
 
   return (
@@ -309,11 +310,12 @@ function App() {
   )
 }
 
-// Mirrors apps/pos/src/main.jsx's AnalyticsIdentitySync: resolves the
-// signed-in staff member via getCurrentUser() (same call PermissionContext
-// makes) on mount and on auth state changes, without expanding
-// PermissionContext's public API just for analytics.
-function AnalyticsIdentitySync() {
+// Mirrors apps/pos/src/main.jsx's identity sync: resolves the signed-in
+// staff member via getCurrentUser() (same call PermissionContext makes) on
+// mount and on auth state changes, without expanding PermissionContext's
+// public API. Feeds both PostHog and Sentry from this single lookup rather
+// than polling getCurrentUser() twice.
+function ObservabilityIdentitySync() {
   useEffect(() => {
     let cancelled = false;
 
@@ -324,8 +326,11 @@ function AnalyticsIdentitySync() {
         if (user?.id) {
           identifyAnalyticsUser({ id: user.id, role: user.role });
           setAnalyticsContext({ tenantId: user.company?.id, businessMode: user.company?.business_mode });
+          identifySentryUser({ id: user.id, role: user.role });
+          setSentryContext({ tenantId: user.company?.id, businessMode: user.company?.business_mode });
         } else {
           resetAnalyticsIdentity();
+          resetSentryIdentity();
         }
       } catch {
         // Identity sync is best-effort; a failed lookup just leaves the
@@ -359,7 +364,7 @@ const mountApp = () => {
             v7_relativeSplatPath: true,
           }}
         >
-          <AnalyticsIdentitySync />
+          <ObservabilityIdentitySync />
           <PermissionProvider>
             <WorkflowModeProvider>
               <GlobalApiErrorListener />
