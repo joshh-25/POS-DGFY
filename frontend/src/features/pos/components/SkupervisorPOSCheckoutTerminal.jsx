@@ -360,7 +360,12 @@ export default function POSCheckoutTerminal({
     isMsmeMode = false,
     canViewHistory = true,
     queueReplayManagedExternally = false,
-    offlineSnapshotScope = null,
+    // `{}`, not `null`: PosPageShell.jsx renders this terminal without an
+    // offline scope at all (no tenant/terminal/location/user flow into it),
+    // and getManualPosSyncPolicy/isOfflinePosScopeReady below run
+    // synchronously during the first render (a useState initializer) -
+    // before any effect could guard against a null scope.
+    offlineSnapshotScope = {},
     selectedLocationId = null,
     activeShiftId = null,
     terminalId = '',

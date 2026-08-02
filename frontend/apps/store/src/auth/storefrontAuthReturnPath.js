@@ -4,6 +4,8 @@
 // URL; now that auth lives inside the storefront itself, we only need the
 // path/search/hash portion to call `navigate()` with.
 
+import { sanitizeInternalReturnPath } from '../../../../src/features/dgfyRouteHelpers.js';
+
 export const toInternalReturnPath = (target = '', fallback = '/') => {
   const raw = String(target || '').trim();
   if (!raw) return fallback;
@@ -17,10 +19,9 @@ export const toInternalReturnPath = (target = '', fallback = '/') => {
 };
 
 // Guards against open-redirect-style return_to values and against bouncing
-// straight back into the auth pages themselves (which would loop).
-export const sanitizeStorefrontReturnPath = (path = '', fallback = '/') => {
-  const raw = String(path || '').trim();
-  if (!raw.startsWith('/') || raw.startsWith('//')) return fallback;
-  if (/^\/(login|register|reset-password)(?:[/?#]|$)/i.test(raw)) return fallback;
-  return raw;
-};
+// straight back into the auth pages themselves (which would loop). Delegates
+// to the shared guard (also used by SKUpervisor's DgfyCompanySelect.jsx) with
+// the storefront's own default block list.
+export const sanitizeStorefrontReturnPath = (path = '', fallback = '/') => (
+  sanitizeInternalReturnPath(path, { fallback })
+);

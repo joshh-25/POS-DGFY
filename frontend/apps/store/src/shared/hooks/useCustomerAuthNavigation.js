@@ -147,38 +147,30 @@ export function useCustomerAuthNavigation({
     simpleOrderStep,
     writeCheckoutAuthResumeDraft
   ]);
+  // `intent` is kept in the signature for call-site compatibility, but
+  // every caller passes 'customer' - business registration is a separate
+  // in-app flow (openBusinessRegistrationFlow below -> /business/grow) and
+  // never routes through here.
   const openCanonicalDgfyAuth = useCallback((intent = 'customer', mode = 'sign-in', { returnTarget = 'account', reason = '', email = '' } = {}) => {
     if (typeof window === 'undefined') return;
-    const normalizedIntent = String(intent || '').trim() === 'register-business' ? 'register-business' : 'customer';
     const normalizedMode = String(mode || '').trim() === 'create-account' ? 'create-account' : 'sign-in';
     const signedOutEmail = readDgfySignedOutEmail();
-    const explicitSignedOutLogin = normalizedIntent === 'customer'
-      && normalizedMode === 'sign-in'
-      && hasDgfyExplicitSignOut();
+    const explicitSignedOutLogin = normalizedMode === 'sign-in' && hasDgfyExplicitSignOut();
     const authUrl = buildDgfyAuthUrl({
-      intent: normalizedIntent,
+      intent: 'customer',
       mode: normalizedMode,
-      returnTo: normalizedIntent === 'customer'
-        ? (returnTarget === 'current' ? buildContextualCustomerReturnUrl() : buildCustomerDashboardReturnUrl())
-        : '/register-company#business-registration'
-        ,
+      returnTo: returnTarget === 'current' ? buildContextualCustomerReturnUrl() : buildCustomerDashboardReturnUrl(),
       reason: reason || (explicitSignedOutLogin ? 'signed-out' : ''),
       email: email || (explicitSignedOutLogin ? signedOutEmail : '')
     });
-    if (normalizedIntent === 'customer') {
-      // Customer sign-in/create-account now lives in-app (dgfy.ph/login,
-      // dgfy.ph/register) instead of redirecting out to skupervisor.
-      // buildDgfyAuthUrl is reused purely for its query-string shape
-      // (intent, mode, return_to, reason, email); we navigate to the
-      // equivalent in-store route carrying the same query.
-      const parsedAuthUrl = new URL(authUrl);
-      const path = normalizedMode === 'create-account' ? '/register' : '/login';
-      navigate(`${path}${parsedAuthUrl.search}`);
-      return;
-    }
-    // Business registration still redirects out to skupervisor until Phase 2
-    // (dgfy.ph/business/grow) ports RegisterCompany.jsx into the storefront.
-    window.location.href = authUrl;
+    // Customer sign-in/create-account lives in-app (dgfy.ph/login,
+    // dgfy.ph/register) instead of redirecting out to skupervisor.
+    // buildDgfyAuthUrl is reused purely for its query-string shape (intent,
+    // mode, return_to, reason, email); we navigate to the equivalent
+    // in-store route carrying the same query.
+    const parsedAuthUrl = new URL(authUrl);
+    const path = normalizedMode === 'create-account' ? '/register' : '/login';
+    navigate(`${path}${parsedAuthUrl.search}`);
   }, [buildContextualCustomerReturnUrl, buildCustomerDashboardReturnUrl, buildDgfyAuthUrl, hasDgfyExplicitSignOut, navigate, readDgfySignedOutEmail]);
   const openStorefrontHeaderAccount = useCallback(() => {
     setIsCheckoutOpen(false);
