@@ -53,6 +53,7 @@ import { useStorefrontUiChrome } from './shared/hooks/useStorefrontUiChrome.js';
 import { useStorefrontTrackingIntent } from './shared/hooks/useStorefrontTrackingIntent.js';
 import { useAffiliateAttributionCapture } from './shared/hooks/useAffiliateAttributionCapture.js';
 import { setAnalyticsContext } from '../../../src/observability/analyticsClient.js';
+import { setSentryContext } from '../../../src/observability/sentryClient.js';
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../src/observability/analyticsEvents.js';
 import {
   buildCustomerFullName,
@@ -1536,22 +1537,30 @@ export default function StorefrontApp() {
     setHasSelectedBranchFromMenu(false);
   }, [selectedStore?.slug]);
   // Registers store/tenant/business-mode as PostHog super properties + groups
-  // once a store resolves, so every event fired afterwards (funnel events,
-  // autocapture, pageviews) can be sliced by "which store" / "which tenant"
-  // without a join -- this is what answers "which stores do visitors most
-  // often come from" in the PostHog UI.
+  // (and the Sentry equivalent as tags) once a store resolves, so every
+  // event fired afterwards (funnel events, autocapture, pageviews, and now
+  // Sentry issues) can be sliced by "which store" / "which tenant" without a
+  // join -- this is what answers "which stores do visitors most often come
+  // from" in the PostHog UI, and groups Sentry issues by tenant.
   useEffect(() => {
     if (!selectedStore?.slug) return;
+    const businessMode = selectedStore.workflow_mode || selectedStore.ops_workflow_mode || selectedStore.business_mode;
     setAnalyticsContext({
       storeSlug: selectedStore.slug,
       storeName: selectedStore.tenant_name,
       tenantId: selectedStore.tenant_id,
-      businessMode: selectedStore.workflow_mode || selectedStore.ops_workflow_mode || selectedStore.business_mode,
+      businessMode,
+      locationId: selectedLocationId
+    });
+    setSentryContext({
+      storeSlug: selectedStore.slug,
+      tenantId: selectedStore.tenant_id,
+      businessMode,
       locationId: selectedLocationId
     });
     trackFunnelEvent(ANALYTICS_EVENTS.STORE_VIEWED, {
       store_slug: selectedStore.slug,
-      business_mode: selectedStore.workflow_mode || selectedStore.ops_workflow_mode || selectedStore.business_mode,
+      business_mode: businessMode,
       location_id: selectedLocationId
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps

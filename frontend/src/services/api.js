@@ -12,7 +12,7 @@ import {
 import { clearClientSession } from './sessionCleanup.js';
 import { emitGlobalApiError } from '../utils/errorHandler.js';
 import { resolveApiBaseUrl, getRuntimeConfig } from '../utils/runtimeConfig.js';
-import { tagRequestFailureContext } from '../observability/sentryClient.js';
+import { tagRequestFailureContext, captureRequestFailure } from '../observability/sentryClient.js';
 
 const isTestEnvironment = (() => {
   try {
@@ -619,6 +619,16 @@ api.interceptors.response.use(
       requestId,
       url: error.config?.url,
       status: error.response?.status
+    });
+    // Promotes genuine final failures (5xx, or no response at all) to a
+    // Sentry event -- see captureRequestFailure's own doc comment for why
+    // 4xx is excluded and how throttling protects the event quota.
+    captureRequestFailure({
+      error,
+      method: error.config?.method,
+      url: error.config?.url,
+      status: error.response?.status,
+      requestId
     });
     return Promise.reject(error);
   }
