@@ -90,12 +90,22 @@ export const processFileTask = async ({ tenantId, jobId, fileId }) => {
         });
     } catch (error) {
         const isKnownExtractionError = error instanceof MenuExtractionError;
-        logger.warn('[MenuImportWorker] File extraction failed', {
+        // error, not warn: a failed file is the only durable record of *which*
+        // import broke, and error.log is where that gets reviewed. The
+        // provider-level cause (e.g. an OpenAI 401) is logged separately by
+        // menuExtractionService at error level — keeping both at the same
+        // level is what lets one file explain a failure end to end.
+        //
+        // `reason`, not `message`: winston lets a meta `message` key overwrite
+        // the log message, which silently erased this entry's '[MenuImportWorker]
+        // File extraction failed' tag and left an unattributable line behind.
+        logger.error('[MenuImportWorker] File extraction failed', {
             tenantId,
             jobId,
             fileId,
+            originalName: fileRecord.original_name,
             code: isKnownExtractionError ? error.code : 'UNEXPECTED_ERROR',
-            message: error.message
+            reason: error.message
         });
         await menuImportJobRepository.setFileResult({
             tenantId,

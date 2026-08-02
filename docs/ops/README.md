@@ -17,6 +17,7 @@ Key runbooks:
 9. `docs/ops/QA_ISOLATION_PROFILE.md`
 10. `docs/ops/BETA_TENANT_PROVISIONING_INCIDENT_2026-07-04.md`
 11. `docs/ops/STOREFRONT_TRACKING_POLL_RATE_LIMIT_INVESTIGATION.md`
+12. `docs/ops/MENU_IMPORT_BATCH_ENABLEMENT.md`
 
 Merging into `main` deploys production directly (`build-main.yml` on push);
 see `docs/ops/RELEASE_CANDIDATE_POLICY.md` for the actual `develop -> staging
