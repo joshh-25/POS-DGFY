@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { hasCustomerName, hasPrimaryContact } from '../../../../checkout/checkoutValidation.js';
 import { buildCartTotals } from '../../../../shared/model/storefrontCartModel.js';
 import { RetailOrderAccountStep } from '../components/RetailOrderAccountStep.jsx';
 import { RetailOrderFulfillmentStep } from '../components/RetailOrderFulfillmentStep.jsx';
@@ -23,42 +24,89 @@ const RETAIL_ACCENT_SHADOW = 'rgba(26,78,141,.28)';
  * continue to use shared/components/storefront/DefaultOrderPage.jsx, unmodified, since this
  * refined layout was built specifically for retail and hasn't been requested for the others.
  *
- * Account, Fulfillment (order method / schedule / saved addresses / special instructions), and
- * Payment are all local placeholder state owned by this page — none of it is wired to the
- * backend yet, per explicit instruction. Only the cart/product list (passed in via
- * useRetailOrderPageProps.js) is real: it's the same frontend cart state the rest of the app
- * already uses, not a new backend connection. The map in the Fulfillment step is
- * real/interactive (MapLibre pin drop) — only the saved-address *list* backing it is
- * placeholder data. Order totals (subtotal/total) are computed for real from the cart via the
- * shared buildCartTotals model; Delivery Fee and Fees & Taxes show as 0 since there's no
- * fee/quote backend yet.
+ * Account (Step 1) and the Fulfillment step's location/address section (Step 2, §3) are both
+ * real: signed-in/guest identity, guest email OTP verification, saved addresses, the pin-drop +
+ * reverse-geocode flow, and "Add Address"/"Add Location" all consume the same shared,
+ * mode-agnostic infrastructure F&B/MSME already use (`useGuestCustomerIdentity`,
+ * `useFnbGuestCheckoutOtp`, `useSignedInCheckoutAddresses`, `useDeliveryPinResolution` — all
+ * instantiated once in StorefrontApp.jsx and threaded down via useRetailOrderPageProps.js).
+ * Order method, schedule, and the map pin/address-selection state are therefore *shared* global
+ * state (not local to this page) since the address hooks operate on that shared state — the
+ * same state F&B/MSME already read and write. Schedule mode/time and special instructions
+ * remain local placeholder state, not wired to the backend yet. The cart/product list is real:
+ * it's the same frontend cart state the rest of the app already uses. Order totals
+ * (subtotal/total) are computed for real from the cart via the shared buildCartTotals model;
+ * Delivery Fee and Fees & Taxes show as 0 since there's no fee/quote backend yet.
  */
 export function RetailOrderPage({
+  canAddPinnedLocation = false,
+  canUseGuestCheckoutFlow = false,
   cart = [],
   cartCount = 0,
   cartImageErrors,
+  customerEmail = '',
+  customerName = '',
+  customerPhone = '',
+  customerPin = null,
+  deliveryLocationAction = 'saved',
+  deliveryLocationDisplayAddress = '',
+  deliverySavedLocations = [],
+  guestCheckoutOtpCode = '',
+  guestCheckoutOtpCooldownLabel = '',
+  guestCheckoutOtpError = '',
+  guestCheckoutOtpLoading = false,
+  guestCheckoutOtpVerified = false,
+  handleAddPinnedLocation,
+  handleApplyGuestDetailsAndRequestOtp,
+  handleGuestCheckoutOtpCodeChange,
+  handlePinMyLocation,
+  handleRequestGuestCheckoutOtp,
+  handleVerifyGuestCheckoutOtp,
   isDesktopCheckout = false,
+  isDgfyCustomerSignedIn = false,
+  isGuestCheckoutOtpCooldownActive = false,
   isMobileViewport = false,
   money,
   onBackToCatalog,
   onImageError,
+  onSelectAddress,
+  orderMethod = 'delivery',
+  pinLocationError = '',
+  pinLocationLoading = false,
+  renderAccountOwnedIdentitySummary,
+  renderGuestCheckoutEntry,
+  renderGuestIdentityFields,
+  renderStorefrontClosedNotice,
   servicesBodyFont,
   servicesDisplayFont,
   selectedStore,
+  selectedSavedLocationId = '',
+  setCustomerPin,
+  storefrontClosedByHours = false,
+  setDeliveryLocationAction,
+  setOrderMethod,
+  setPinLocationError,
+  setResolvedDeliveryAddress,
+  setSelectedSavedLocationId,
+  setShowExpandedDeliveryMap,
+  showExpandedDeliveryMap = false,
   withAssetOrigin
 }) {
   const [step, setStep] = useState(1);
-  const [orderMethod, setOrderMethod] = useState('delivery');
   const [scheduleMode, setScheduleMode] = useState('asap');
   const [scheduledFor, setScheduledFor] = useState('');
-  const [customerPin, setCustomerPin] = useState(null);
-  const [selectedAddressId, setSelectedAddressId] = useState('placeholder-home');
   const [specialInstructions, setSpecialInstructions] = useState('');
   const [paymentType, setPaymentType] = useState('cash');
   const [showMobileSummary, setShowMobileSummary] = useState(false);
   const [showMobileAddressModal, setShowMobileAddressModal] = useState(false);
 
   const isDeliveryOrder = orderMethod === 'delivery';
+  const storefrontClosedNotice = storefrontClosedByHours
+    ? renderStorefrontClosedNotice({ accent: '#9a3412', background: '#fff7ed', border: '#fdba74' })
+    : null;
+  const retailCustomerStepComplete = hasCustomerName(customerName)
+    && hasPrimaryContact({ phone: customerPhone, email: customerEmail })
+    && guestCheckoutOtpVerified;
   const cartTotals = buildCartTotals(cart);
   const totals = {
     subtotal_amount: cartTotals.subtotal,
@@ -69,11 +117,23 @@ export function RetailOrderPage({
   const scheduleLabel = scheduleMode === 'schedule' && scheduledFor
     ? new Date(scheduledFor).toLocaleString()
     : 'NOW';
+  // useSignedInCheckoutAddresses (shared with F&B) always folds in its own branch-location
+  // fallback when the customer has no real saved addresses yet, regardless of mode. That
+  // fallback is F&B-specific and meaningless for a retail tenant, so it's filtered out here
+  // rather than in the shared hook, to avoid touching F&B's own behavior.
+  const retailSavedLocations = deliverySavedLocations.filter((location) => location.source !== 'recommended');
   const stepGridStyle = {
     display: 'grid',
     gridTemplateColumns: isDesktopCheckout ? 'minmax(0, 1.45fr) minmax(300px, 380px)' : '1fr',
     gap: 14,
     alignItems: 'start'
+  };
+  const handleStartMapPin = () => {
+    setDeliveryLocationAction('map');
+    setSelectedSavedLocationId('');
+    setPinLocationError('');
+    setResolvedDeliveryAddress('');
+    setCustomerPin(null);
   };
 
   return (
@@ -105,11 +165,26 @@ export function RetailOrderPage({
         {step === 1 && (
           <div style={stepGridStyle}>
             <RetailOrderAccountStep
+              canUseGuestCheckoutFlow={canUseGuestCheckoutFlow}
+              guestCheckoutOtpCode={guestCheckoutOtpCode}
+              guestCheckoutOtpCooldownLabel={guestCheckoutOtpCooldownLabel}
+              guestCheckoutOtpError={guestCheckoutOtpError}
+              guestCheckoutOtpLoading={guestCheckoutOtpLoading}
+              guestCheckoutOtpVerified={guestCheckoutOtpVerified}
+              isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
+              isGuestCheckoutOtpCooldownActive={isGuestCheckoutOtpCooldownActive}
               isMobileViewport={isMobileViewport}
+              retailCustomerStepComplete={retailCustomerStepComplete}
               servicesBodyFont={servicesBodyFont}
-              servicesDisplayFont={servicesDisplayFont}
+              renderAccountOwnedIdentitySummary={renderAccountOwnedIdentitySummary}
+              renderGuestCheckoutEntry={renderGuestCheckoutEntry}
+              renderGuestIdentityFields={renderGuestIdentityFields}
               onBackToCatalog={onBackToCatalog}
               onContinue={() => setStep(2)}
+              onApplyGuestDetailsAndRequestOtp={handleApplyGuestDetailsAndRequestOtp}
+              onGuestCheckoutOtpCodeChange={handleGuestCheckoutOtpCodeChange}
+              onRequestGuestCheckoutOtp={handleRequestGuestCheckoutOtp}
+              onVerifyGuestCheckoutOtp={handleVerifyGuestCheckoutOtp}
             />
             {!isMobileViewport && (
               <RetailOrderSummaryContent
@@ -133,30 +208,44 @@ export function RetailOrderPage({
         {step === 2 && (
           <div style={stepGridStyle}>
             <RetailOrderFulfillmentStep
+              canAddPinnedLocation={canAddPinnedLocation}
               customerPin={customerPin}
+              deliveryLocationAction={deliveryLocationAction}
+              deliveryLocationDisplayAddress={deliveryLocationDisplayAddress}
+              deliverySavedLocations={retailSavedLocations}
+              isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
               isMobileViewport={isMobileViewport}
-              onAddNewLocation={() => {
-                setCustomerPin(null);
-                setSelectedAddressId('');
-                setShowMobileAddressModal(false);
-              }}
+              onAddPinnedLocation={handleAddPinnedLocation}
               onBack={() => setStep(1)}
+              onCloseExpandedMap={() => setShowExpandedDeliveryMap(false)}
               onCloseMobileAddressModal={() => setShowMobileAddressModal(false)}
               onContinue={() => setStep(3)}
+              onOpenExpandedMap={() => setShowExpandedDeliveryMap(true)}
               onOpenMobileAddressList={() => setShowMobileAddressModal(true)}
               onOrderMethodChange={setOrderMethod}
-              onPinChange={setCustomerPin}
+              onPinChange={(nextPin) => {
+                setDeliveryLocationAction('map');
+                setSelectedSavedLocationId('');
+                setCustomerPin(nextPin);
+              }}
+              onPinMyLocation={handlePinMyLocation}
               onScheduleModeChange={(nextMode) => {
                 setScheduleMode(nextMode);
                 if (nextMode === 'asap') setScheduledFor('');
               }}
               onScheduledForChange={setScheduledFor}
-              onSelectAddress={setSelectedAddressId}
+              onSelectAddress={onSelectAddress}
               onSpecialInstructionsChange={setSpecialInstructions}
+              onStartMapPin={handleStartMapPin}
               orderMethod={orderMethod}
+              pinLocationError={pinLocationError}
+              pinLocationLoading={pinLocationLoading}
               scheduleMode={scheduleMode}
               scheduledFor={scheduledFor}
-              selectedAddressId={selectedAddressId}
+              selectedSavedLocationId={selectedSavedLocationId}
+              servicesBodyFont={servicesBodyFont}
+              servicesDisplayFont={servicesDisplayFont}
+              showExpandedDeliveryMap={showExpandedDeliveryMap}
               showMobileAddressModal={showMobileAddressModal}
               specialInstructions={specialInstructions}
             />
@@ -191,6 +280,7 @@ export function RetailOrderPage({
               onPaymentTypeChange={setPaymentType}
               paymentType={paymentType}
               servicesBodyFont={servicesBodyFont}
+              storefrontClosedNotice={storefrontClosedNotice}
               withAssetOrigin={withAssetOrigin}
             />
             {!isMobileViewport && (

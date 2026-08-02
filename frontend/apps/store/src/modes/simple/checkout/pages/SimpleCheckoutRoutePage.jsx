@@ -25,9 +25,15 @@ export function SimpleCheckoutRoutePage({
   fnbScheduleMode = 'asap',
   fnbScheduledFor = '',
   fnbSpecialInstructions = '',
+  guestCheckoutOtpCode = '',
+  guestCheckoutOtpCooldownLabel = '',
+  guestCheckoutOtpError = '',
+  guestCheckoutOtpLoading = false,
+  guestCheckoutOtpVerified = false,
   isDeliveryOrder = false,
   isDesktopCheckout = false,
   isDgfyCustomerSignedIn = false,
+  isGuestCheckoutOtpCooldownActive = false,
   isMobileViewport = false,
   money,
   orderMethod = 'delivery',
@@ -59,10 +65,12 @@ export function SimpleCheckoutRoutePage({
   totalsForDisplay,
   withAssetOrigin,
   onAddPinnedLocation,
+  onApplyGuestDetailsAndRequestOtp,
   onBackToCatalog,
   onCheckout,
   onCloseExpandedMap,
   onDownloadCheckoutImage,
+  onGuestCheckoutOtpCodeChange,
   onImageError,
   onOpenExpandedMap,
   onOrderMethodChange,
@@ -70,6 +78,7 @@ export function SimpleCheckoutRoutePage({
   onPinChange,
   onPinMyLocation,
   onQuote,
+  onRequestGuestCheckoutOtp,
   onScheduleModeChange,
   onScheduledForChange,
   onSelectAddress,
@@ -77,6 +86,7 @@ export function SimpleCheckoutRoutePage({
   onSetSimpleOrderStep,
   onSpecialInstructionsChange,
   onStartMapPin,
+  onVerifyGuestCheckoutOtp,
   setShowSimpleMobileAddressModal,
   setShowSimpleMobileOrderSummary
 }) {
@@ -120,15 +130,25 @@ export function SimpleCheckoutRoutePage({
         <div style={stepGridStyle}>
           <SimpleCheckoutCustomerStep
             canUseGuestCheckoutFlow={canUseGuestCheckoutFlow}
-            isDeliveryOrder={isDeliveryOrder}
+            guestCheckoutOtpCode={guestCheckoutOtpCode}
+            guestCheckoutOtpCooldownLabel={guestCheckoutOtpCooldownLabel}
+            guestCheckoutOtpError={guestCheckoutOtpError}
+            guestCheckoutOtpLoading={guestCheckoutOtpLoading}
+            guestCheckoutOtpVerified={guestCheckoutOtpVerified}
             isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
+            isGuestCheckoutOtpCooldownActive={isGuestCheckoutOtpCooldownActive}
             isMobileViewport={isMobileViewport}
             renderAccountOwnedIdentitySummary={renderAccountOwnedIdentitySummary}
             renderGuestCheckoutEntry={renderGuestCheckoutEntry}
             renderGuestIdentityFields={renderGuestIdentityFields}
+            servicesBodyFont={servicesBodyFont}
             simpleCustomerStepComplete={simpleCustomerStepComplete}
+            onApplyGuestDetailsAndRequestOtp={onApplyGuestDetailsAndRequestOtp}
             onBackToCatalog={onBackToCatalog}
             onContinue={() => onSetSimpleOrderStep(2)}
+            onGuestCheckoutOtpCodeChange={onGuestCheckoutOtpCodeChange}
+            onRequestGuestCheckoutOtp={onRequestGuestCheckoutOtp}
+            onVerifyGuestCheckoutOtp={onVerifyGuestCheckoutOtp}
           />
           {!isMobileViewport && (
             <SimpleCheckoutSummaryContent
