@@ -41,6 +41,7 @@ export function RetailOrderPaymentStep({
   onPaymentTypeChange,
   paymentType = 'cash',
   servicesBodyFont,
+  storefrontClosedNotice = null,
   withAssetOrigin
 }) {
   return (
@@ -67,9 +68,6 @@ export function RetailOrderPaymentStep({
         onImageError={onImageError}
         withAssetOrigin={withAssetOrigin}
       />
-      <div style={{ fontSize: 12, color: '#b45309', fontWeight: 700, background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 12, padding: '10px 12px' }}>
-        This step is a preview only — placing an order isn&apos;t connected to checkout yet.
-      </div>
       {!isMobileViewport && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <button type="button" onClick={onBack} style={{ minHeight: 46, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><ChevronLeft size={18} /> Back</button>
@@ -78,6 +76,7 @@ export function RetailOrderPaymentStep({
           </button>
         </div>
       )}
+      {storefrontClosedNotice}
     </section>
   );
 }

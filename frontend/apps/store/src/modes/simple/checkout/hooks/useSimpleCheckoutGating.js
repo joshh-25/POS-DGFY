@@ -12,6 +12,7 @@ export function useSimpleCheckoutGating({
   customerPhone = '',
   fnbScheduleMode = 'asap',
   fnbScheduledFor = '',
+  guestCheckoutOtpVerified = false,
   isDeliveryOrder = false
 }) {
   const simpleCustomerStepComplete = isCustomerStepComplete({
@@ -21,7 +22,7 @@ export function useSimpleCheckoutGating({
     isDeliveryOrder,
     customerAddress,
     usePinnedAddress: false
-  });
+  }) && guestCheckoutOtpVerified;
   const simpleHasCustomerIdentity = hasCustomerName(customerName);
   const simpleHasPrimaryIdentityContact = hasPrimaryContact({ phone: customerPhone, email: customerEmail });
   const simpleStepOneReady = cart.length > 0 && (fnbScheduleMode !== 'schedule' || Boolean(fnbScheduledFor));
