@@ -79,9 +79,14 @@ export const buildBusinessRegistrationUrl = (handoffToken = '') => {
   return `${BUSINESS_REGISTRATION_PATH}${search.toString() ? `?${search.toString()}` : ''}`;
 };
 
+// SKUpervisor keeps its own login (business owners/developers sign in with
+// their DGFY account there, same as dgfy.ph/login does here) - so "Business
+// Login" must land on SKUpervisor's DGFY sign-in (/dgfy/auth), not its
+// staff-only IMS form (/login), which expects a company token this visitor
+// doesn't have yet.
 export const buildBusinessLoginUrl = () => {
   const target = new URL(normalizeDgfyAuthBaseUrl());
-  target.pathname = '/login';
+  target.pathname = '/dgfy/auth';
   target.search = '';
   target.hash = '';
   return target.toString();

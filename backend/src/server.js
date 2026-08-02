@@ -56,7 +56,7 @@ import {
   startMenuImportWorker,
   stopMenuImportWorker
 } from './workers/menuImportWorker.js';
-import { MENU_IMPORT_BATCH_ENABLED } from './config/menuImportFeature.js';
+import { MENU_IMPORT_BATCH_ENABLED, requireMenuBatchImportConfig } from './config/menuImportFeature.js';
 import * as aiController from './controllers/aiController.js';
 import { paymentsEnabled } from './config/paymentsFeature.js';
 import productionEnvValidation from './config/productionEnvValidation.cjs';
@@ -910,6 +910,14 @@ const startServer = async () => {
     // to start unconditionally once the flag says the feature is wanted).
     if (MENU_IMPORT_BATCH_ENABLED) {
       startMenuImportWorker();
+      const { configured, missing } = requireMenuBatchImportConfig();
+      if (configured) {
+        logger.info('Batch menu import ready (MENU_IMPORT_BATCH_ENABLED=true, all dependencies configured).');
+      } else {
+        logger.warn(`Batch menu import enabled but not fully configured — missing: ${missing.join(', ')}. Uploads will fail with 503 until these are set.`);
+      }
+    } else {
+      logger.info('Batch menu import disabled because MENU_IMPORT_BATCH_ENABLED is not true.');
     }
 
     // Initialize Redis (non-blocking - server will start even if Redis fails)

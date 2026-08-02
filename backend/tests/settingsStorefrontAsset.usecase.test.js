@@ -32,11 +32,14 @@ describe('settings storefront asset use-cases', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.data).toEqual({
+    expect(result.data).toEqual(expect.objectContaining({
       asset_type: 'cover',
       image_url: '/uploads/storefront-assets/t-1/cover-1.png',
       path: 'storefront-assets/t-1/cover-1.png'
-    });
+    }));
+    expect(imageFileValidator).toHaveBeenCalledWith(expect.objectContaining({
+      maxBytes: 100 * 1024 * 1024
+    }));
     expect(storefrontAssetStorage.remove).toHaveBeenCalledWith({ path: 'storefront-assets/t-1/old-cover.png' });
     expect(settingsRepository.updateSettings).toHaveBeenCalledWith({
       storefront_cover_image_path: 'storefront-assets/t-1/cover-1.png',
@@ -75,11 +78,11 @@ describe('settings storefront asset use-cases', () => {
     });
 
     expect(result.success).toBe(true);
-    expect(result.data).toEqual({
+    expect(result.data).toEqual(expect.objectContaining({
       asset_type: 'gallery',
       image_url: '/uploads/storefront-assets/t-1/gallery-1.png',
       path: 'storefront-assets/t-1/gallery-1.png'
-    });
+    }));
     expect(settingsRepository.getSettingsByKeys).not.toHaveBeenCalled();
     expect(settingsRepository.updateSettings).not.toHaveBeenCalled();
     expect(storefrontAssetStorage.remove).not.toHaveBeenCalled();
@@ -139,7 +142,7 @@ describe('settings storefront asset use-cases', () => {
 
     expect(result.success).toBe(false);
     expect(result.error.statusCode).toBe(422);
-    expect(result.error.message).toBe('Storefront images must be 5 MB or smaller.');
+    expect(result.error.message).toBe('Storefront source images must be 100 MB or smaller.');
   });
 
   it('upload use-case returns a clear message for binary signature mismatches', async () => {

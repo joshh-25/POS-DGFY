@@ -19,17 +19,27 @@ export function useSimpleCheckoutRouteProps({
   fnbScheduledFor = '',
   fnbSpecialInstructions = '',
   goStoreCatalogPage,
+  guestCheckoutOtpCode = '',
+  guestCheckoutOtpCooldownLabel = '',
+  guestCheckoutOtpError = '',
+  guestCheckoutOtpLoading = false,
+  guestCheckoutOtpVerified = false,
   handleAddPinnedLocation,
+  handleApplyGuestDetailsAndRequestOtp,
   handleCheckout,
   handleDownloadCheckoutImage,
+  handleGuestCheckoutOtpCodeChange,
   handlePaymentTypeChange,
   handlePinMyLocation,
   handleQuote,
   handleRemoveDeliveryAddress,
+  handleRequestGuestCheckoutOtp,
   handleSetDefaultDeliveryAddress,
+  handleVerifyGuestCheckoutOtp,
   isDeliveryOrder = false,
   isDesktopCheckout = false,
   isDgfyCustomerSignedIn = false,
+  isGuestCheckoutOtpCooldownActive = false,
   isMobileViewport = false,
   money,
   orderMethod = 'delivery',
@@ -101,9 +111,15 @@ export function useSimpleCheckoutRouteProps({
     fnbScheduleMode,
     fnbScheduledFor,
     fnbSpecialInstructions,
+    guestCheckoutOtpCode,
+    guestCheckoutOtpCooldownLabel,
+    guestCheckoutOtpError,
+    guestCheckoutOtpLoading,
+    guestCheckoutOtpVerified,
     isDeliveryOrder,
     isDesktopCheckout,
     isDgfyCustomerSignedIn,
+    isGuestCheckoutOtpCooldownActive,
     isMobileViewport,
     money,
     orderMethod,
@@ -143,10 +159,12 @@ export function useSimpleCheckoutRouteProps({
     storeLocations,
     totalsForDisplay,
     withAssetOrigin,
+    onApplyGuestDetailsAndRequestOtp: handleApplyGuestDetailsAndRequestOtp,
     onBackToCatalog: goStoreCatalogPage,
     onCheckout: handleCheckout,
     onCustomerAddressChange: setCustomerAddress,
     onDownloadCheckoutImage: handleDownloadCheckoutImage,
+    onGuestCheckoutOtpCodeChange: handleGuestCheckoutOtpCodeChange,
     onOrderMethodChange: (nextOrderMethod) => {
       setOrderMethod(nextOrderMethod);
       setPinLocationError('');
@@ -169,6 +187,7 @@ export function useSimpleCheckoutRouteProps({
     onPinMyLocation: handlePinMyLocation,
     onQuote: handleQuote,
     onRemoveDeliveryAddress: handleRemoveDeliveryAddress,
+    onRequestGuestCheckoutOtp: handleRequestGuestCheckoutOtp,
     onScheduleModeChange: (nextMode) => {
       setFnbScheduleMode(nextMode);
       if (nextMode === 'asap') setFnbScheduledFor('');
@@ -195,6 +214,7 @@ export function useSimpleCheckoutRouteProps({
       setResolvedDeliveryAddress('');
       setCustomerAddress('');
       setCustomerPin(null);
-    }
+    },
+    onVerifyGuestCheckoutOtp: handleVerifyGuestCheckoutOtp
   };
 }

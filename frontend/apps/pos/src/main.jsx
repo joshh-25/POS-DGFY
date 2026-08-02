@@ -10,7 +10,7 @@ import { Toaster } from '@/components/ui/sonner';
 import { buildSkupervisorPath } from '../../../src/features/pos/utils/skupervisorHandoff.js';
 import { login as loginTenantSession } from '../../../src/services/authService.js';
 import { getCurrentUser } from '../../../src/services/authService.js';
-import { initBrowserSentry } from '../../../src/observability/sentryClient.js';
+import { initBrowserSentry, identifySentryUser, resetSentryIdentity, setSentryContext, setSentryRoute } from '../../../src/observability/sentryClient.js';
 import {
   capturePageview,
   identifyAnalyticsUser,
@@ -75,6 +75,7 @@ function AnalyticsRouteTracker() {
 
   useEffect(() => {
     capturePageview({ path: location.pathname });
+    setSentryRoute(location.pathname);
   }, [location.pathname]);
 
   return null;
@@ -83,8 +84,9 @@ function AnalyticsRouteTracker() {
 // Cashier identity isn't known at mount (TerminalPage.jsx owns the login
 // flow); resolve it the same way PermissionContext does -- via
 // getCurrentUser() -- on mount and whenever auth state changes, rather than
-// reaching into the 4,892-line TerminalPage component.
-function AnalyticsIdentitySync() {
+// reaching into the 4,892-line TerminalPage component. Feeds both PostHog
+// and Sentry from this single lookup.
+function ObservabilityIdentitySync() {
   useEffect(() => {
     let cancelled = false;
 
@@ -95,8 +97,11 @@ function AnalyticsIdentitySync() {
         if (user?.id) {
           identifyAnalyticsUser({ id: user.id, role: user.role });
           setAnalyticsContext({ tenantId: user.company?.id, businessMode: user.company?.business_mode });
+          identifySentryUser({ id: user.id, role: user.role });
+          setSentryContext({ tenantId: user.company?.id, businessMode: user.company?.business_mode });
         } else {
           resetAnalyticsIdentity();
+          resetSentryIdentity();
         }
       } catch {
         // Identity sync is best-effort; a failed lookup just leaves the
@@ -178,7 +183,7 @@ const mountApp = () => {
       <ErrorBoundary>
         <HashRouter>
           <AnalyticsRouteTracker />
-          <AnalyticsIdentitySync />
+          <ObservabilityIdentitySync />
           <PermissionProvider>
             <WorkflowModeProvider>
               <GlobalApiErrorListener />

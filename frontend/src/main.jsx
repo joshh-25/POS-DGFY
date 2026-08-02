@@ -16,7 +16,7 @@ import NotFoundPage from './components/common/NotFoundPage.jsx'
 import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.jsx'
 import { Toaster } from '@/components/ui/sonner'
 import { getRuntimeConfig } from './utils/runtimeConfig.js'
-import { initBrowserSentry } from './observability/sentryClient.js'
+import { initBrowserSentry, identifySentryUser, resetSentryIdentity, setSentryContext, setSentryRoute } from './observability/sentryClient.js'
 import {
   capturePageview,
   identifyAnalyticsUser,
@@ -103,6 +103,7 @@ const Register = lazy(() => import('../Pages/Register.jsx'))
 const RegisterCompany = lazy(() => import('../Pages/RegisterCompany.jsx'))
 const CompanyRegistrationStatus = lazy(() => import('../Pages/CompanyRegistrationStatus.jsx'))
 const DgfyAuthPage = lazy(() => import('../Pages/DgfyAuthPage.jsx'))
+const DgfyCompanySelect = lazy(() => import('../Pages/DgfyCompanySelect.jsx'))
 const DgfyResetPasswordPage = lazy(() => import('../Pages/DgfyResetPasswordPage.jsx'))
 const LegalDocument = lazy(() => import('../Pages/LegalDocument.jsx'))
 const AcceptInvite = lazy(() => import('../Pages/AcceptInvite.jsx'))
@@ -138,6 +139,7 @@ function App() {
 
   useEffect(() => {
     capturePageview({ path: location.pathname });
+    setSentryRoute(location.pathname);
   }, [location.pathname]);
 
   return (
@@ -149,6 +151,7 @@ function App() {
         <Route path="/register-company" element={<RegisterCompany />} />
         <Route path="/register-company/status/:applicationId" element={<CompanyRegistrationStatus />} />
         <Route path="/dgfy/auth" element={<DgfyAuthPage />} />
+        <Route path="/dgfy/companies" element={<DgfyCompanySelect />} />
         <Route path="/dgfy/reset-password" element={<DgfyResetPasswordPage />} />
         <Route path="/legal/:slug" element={<LegalDocument />} />
         <Route path="/privacy" element={<LegalDocument />} />
@@ -307,11 +310,12 @@ function App() {
   )
 }
 
-// Mirrors apps/pos/src/main.jsx's AnalyticsIdentitySync: resolves the
-// signed-in staff member via getCurrentUser() (same call PermissionContext
-// makes) on mount and on auth state changes, without expanding
-// PermissionContext's public API just for analytics.
-function AnalyticsIdentitySync() {
+// Mirrors apps/pos/src/main.jsx's identity sync: resolves the signed-in
+// staff member via getCurrentUser() (same call PermissionContext makes) on
+// mount and on auth state changes, without expanding PermissionContext's
+// public API. Feeds both PostHog and Sentry from this single lookup rather
+// than polling getCurrentUser() twice.
+function ObservabilityIdentitySync() {
   useEffect(() => {
     let cancelled = false;
 
@@ -322,8 +326,11 @@ function AnalyticsIdentitySync() {
         if (user?.id) {
           identifyAnalyticsUser({ id: user.id, role: user.role });
           setAnalyticsContext({ tenantId: user.company?.id, businessMode: user.company?.business_mode });
+          identifySentryUser({ id: user.id, role: user.role });
+          setSentryContext({ tenantId: user.company?.id, businessMode: user.company?.business_mode });
         } else {
           resetAnalyticsIdentity();
+          resetSentryIdentity();
         }
       } catch {
         // Identity sync is best-effort; a failed lookup just leaves the
@@ -357,7 +364,7 @@ const mountApp = () => {
             v7_relativeSplatPath: true,
           }}
         >
-          <AnalyticsIdentitySync />
+          <ObservabilityIdentitySync />
           <PermissionProvider>
             <WorkflowModeProvider>
               <GlobalApiErrorListener />

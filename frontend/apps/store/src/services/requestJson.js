@@ -1,5 +1,5 @@
 import { getCsrfToken } from '../../../../src/services/browserSession.js';
-import { tagRequestFailureContext } from '../../../../src/observability/sentryClient.js';
+import { tagRequestFailureContext, captureRequestFailure } from '../../../../src/observability/sentryClient.js';
 
 const buildRequestError = (message, meta = {}) => {
   const error = new Error(String(message || 'Request failed'));
@@ -37,10 +37,10 @@ export const requestJson = async (url, {
   cache = 'default',
   credentials = 'include'
 } = {}) => {
+  const normalizedMethod = String(method || 'GET').toUpperCase();
   let response;
   try {
     const token = String(authToken || '').trim();
-    const normalizedMethod = String(method || 'GET').toUpperCase();
     const csrfToken = ['GET', 'HEAD', 'OPTIONS'].includes(normalizedMethod) ? '' : getCsrfToken();
     response = await fetch(withApiOrigin(url), {
       method: normalizedMethod,
@@ -55,6 +55,11 @@ export const requestJson = async (url, {
       body: body ? JSON.stringify(body) : undefined
     });
   } catch (networkError) {
+    // No response at all (offline, CORS, DNS) -- tagRequestFailureContext
+    // below never runs for this path since it requires a requestId that
+    // only a response payload carries, so this is the only place a
+    // storefront network failure reaches Sentry.
+    captureRequestFailure({ error: networkError, method: normalizedMethod, url });
     throw buildRequestError('Request failed before reaching API. Check server/proxy/CORS connectivity.', {
       isNetworkError: true,
       cause: networkError
@@ -70,6 +75,12 @@ export const requestJson = async (url, {
       requestId: payload?.request_id || null,
       url: response.url,
       status: response.status
+    });
+    captureRequestFailure({
+      method: normalizedMethod,
+      url: response.url,
+      status: response.status,
+      requestId: payload?.request_id || null
     });
     throw buildRequestError(payload?.message || `Request failed (${response.status})`, {
       status: response.status,
