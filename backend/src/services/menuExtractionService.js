@@ -210,7 +210,11 @@ const extractMenuItemsFromText = async (menuText, user) => {
             max_tokens: 4096
         });
     } catch (error) {
-        logger.error('Menu PDF extraction: OpenAI request failed', error);
+        // tenant/model included so this line can be tied back to the
+        // '[MenuImportWorker] File extraction failed' entry for the same import.
+        // error.message is deliberately not interpolated — winston's splat
+        // already appends it to the message when an Error is passed as meta.
+        logger.error(`Menu PDF extraction: OpenAI request failed (tenant=${user?.tenant_id ?? 'unknown'}, model=${MODEL}):`, error);
         throw new MenuExtractionError('Failed to extract menu items from this PDF.', 'EXTRACTION_REQUEST_FAILED');
     }
 
@@ -249,7 +253,7 @@ const extractMenuItemsFromImage = async (imageBuffer, mimeType, user) => {
             max_tokens: 4096
         });
     } catch (error) {
-        logger.error('Menu image extraction: OpenAI request failed', error);
+        logger.error(`Menu image extraction: OpenAI request failed (tenant=${user?.tenant_id ?? 'unknown'}, model=${MODEL}):`, error);
         throw new MenuExtractionError('Failed to extract menu items from this image.', 'EXTRACTION_REQUEST_FAILED');
     }
 
