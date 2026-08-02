@@ -62,7 +62,7 @@ export function SimpleCheckoutSummaryContent({
   ];
 
   return (
-    <>
+    <div style={{ display: 'grid', gap: 18 }}>
       <OrderSummaryCard
         accentColor={SIMPLE_ACCENT}
         totalLabel="Order Summary"
@@ -77,6 +77,6 @@ export function SimpleCheckoutSummaryContent({
         displayFont={displayFont}
       />
       <SimpleCheckoutTrustCard displayFont={displayFont} />
-    </>
+    </div>
   );
 }

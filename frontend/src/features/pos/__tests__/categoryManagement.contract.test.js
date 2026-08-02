@@ -17,6 +17,7 @@ describe('POS category management contract', () => {
     expect(source).toContain("is_active: folder?.is_active !== false");
     expect(source).toContain('create_category_name: typedCategoryName');
     expect(source).toContain('Select or create a category');
+    expect(source).toContain('autoComplete="off"');
     expect(source).toContain('Only an administrator can create categories.');
     expect(source).not.toContain('POS_FOOD_CATEGORY_LABELS');
     expect(source).not.toContain('ensureFoodCategoryFolder');

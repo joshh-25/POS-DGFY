@@ -175,7 +175,9 @@ export function StorefrontCatalogRouteContainer(props) {
     simpleCheckoutRouteProps,
     simpleStorefrontModel,
     defaultStorefrontModel,
-    defaultOrderRouteProps
+    defaultOrderRouteProps,
+    isRetailMode,
+    retailOrderRouteProps
   } = props;
 
   // --- Service Tab logic ---
@@ -420,6 +422,8 @@ export function StorefrontCatalogRouteContainer(props) {
       simpleStorefrontModel={simpleStorefrontModel}
       defaultStorefrontModel={defaultStorefrontModel}
       defaultOrderRouteProps={defaultOrderRouteProps}
+      isRetailMode={isRetailMode}
+      retailOrderRouteProps={retailOrderRouteProps}
       submitFnbItemReview={submitFnbItemReview}
       totalFnbPages={totalFnbPages}
       viewportWidth={viewportWidth}

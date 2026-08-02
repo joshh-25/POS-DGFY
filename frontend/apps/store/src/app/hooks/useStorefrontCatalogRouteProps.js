@@ -165,7 +165,9 @@ export function useStorefrontCatalogRouteProps({
   simpleCheckoutRouteProps,
   simpleStorefrontModel,
   defaultStorefrontModel,
-  defaultOrderRouteProps
+  defaultOrderRouteProps,
+  isRetailMode,
+  retailOrderRouteProps
 }) {
   return {
     isServicesMode,
@@ -331,6 +333,8 @@ export function useStorefrontCatalogRouteProps({
     simpleCheckoutRouteProps,
     simpleStorefrontModel,
     defaultStorefrontModel,
-    defaultOrderRouteProps
+    defaultOrderRouteProps,
+    isRetailMode,
+    retailOrderRouteProps
   };
 }

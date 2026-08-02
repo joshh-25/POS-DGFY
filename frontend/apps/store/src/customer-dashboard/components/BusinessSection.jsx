@@ -25,7 +25,7 @@ export function BusinessSection({
   const normalizedCompanies = businessCompanies.length > 0
     ? businessCompanies
     : businessMemberships.map((membership) => ({ ...membership.company, ...membership, company_name: membership.company?.name }));
-  const pending = normalizedCompanies.filter((company) => company.requires_action === 'accept_invitation' || company.status === 'pending');
+  const pending = normalizedCompanies.filter((company) => company.requires_action === 'accept_invitation');
   const accepted = normalizedCompanies.filter((company) => !pending.includes(company));
 
   return (

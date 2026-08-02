@@ -39,6 +39,7 @@ import { useCheckoutAuthResumeRestore } from './shared/hooks/useCheckoutAuthResu
 import { useCheckoutSubmission } from './shared/hooks/useCheckoutSubmission.js';
 import { useCustomerAuthNavigation } from './shared/hooks/useCustomerAuthNavigation.js';
 import { useDefaultOrderPageProps } from './shared/hooks/useDefaultOrderPageProps.js';
+import { useRetailOrderPageProps } from './modes/retail/checkout/hooks/useRetailOrderPageProps.js';
 import { useDefaultProductCartDrawerProps } from './shared/hooks/useDefaultProductCartDrawerProps.js';
 import { useDeliveryPinResolution } from './shared/hooks/useDeliveryPinResolution.js';
 import { useServiceBookingViewModel } from './shared/hooks/useServiceBookingViewModel.js';
@@ -272,10 +273,10 @@ import {
 } from './shared/utils/businessRegistrationUrl.js';
 import { resolveStorefrontAccountUrl } from '../../../src/features/dgfyRouteHelpers.js';
 import {
-  startDgfyPosSession,
-  startDgfyTenantSession
+  createDgfyHandoff,
+  startDgfyPosSession
 } from '../../../src/services/dgfyAuthService.js';
-import { buildSkupervisorPath } from '../../../src/features/pos/utils/skupervisorHandoff.js';
+import { buildSkupervisorHandoffUrl } from '../../../src/features/pos/utils/skupervisorHandoff.js';
 import {
   clearDgfyAuthToken,
   clearStoreAuthToken,
@@ -805,6 +806,7 @@ export default function StorefrontApp() {
     isFnbMode,
     isSimpleMode,
     isHospitalityMode,
+    isRetailMode,
     modeAdapter,
     servicesViewModel,
     fnbViewModel,
@@ -1057,9 +1059,9 @@ export default function StorefrontApp() {
     rememberDgfySignedOutEmail,
     markDgfyExplicitSignOut,
     clearCheckoutAuthResumeDraft,
-    buildSkupervisorPath,
+    buildSkupervisorHandoffUrl,
+    createDgfyHandoff,
     buildPosAppUrl,
-    startDgfyTenantSession,
     startDgfyPosSession,
     getGoStoreTrackPage: () => goStoreTrackPage,
     onTrackedActivityUpdated: (activity) => {
@@ -1466,6 +1468,7 @@ export default function StorefrontApp() {
     bookingPermitted,
     cart,
     isFnbMode,
+    isRetailMode,
     isServicesMode,
     isSimpleMode,
     productCartPermitted,
@@ -2708,6 +2711,20 @@ export default function StorefrontApp() {
     goStoreCatalogPage,
     withAssetOrigin
   });
+  const retailOrderRouteProps = useRetailOrderPageProps({
+    cart,
+    cartCount,
+    cartImageErrors,
+    isDesktopCheckout,
+    isMobileViewport,
+    money,
+    selectedStore,
+    servicesBodyFont,
+    servicesDisplayFont,
+    goStoreCatalogPage,
+    setCartImageErrors,
+    withAssetOrigin
+  });
   const isFnbCartDrawerSurfaceOpen = Boolean(fnbCartDrawerRouteProps.isActive);
   const fnbCustomerStepComplete = fnbCustomerIdentityStepComplete && guestCheckoutOtpVerified;
   const fnbCheckoutRouteProps = useFnbCheckoutRouteProps({
@@ -3426,7 +3443,9 @@ export default function StorefrontApp() {
     simpleCheckoutRouteProps,
     simpleStorefrontModel,
     defaultStorefrontModel,
-    defaultOrderRouteProps
+    defaultOrderRouteProps,
+    isRetailMode,
+    retailOrderRouteProps
   });
   const storefrontHeroBandProps = useStorefrontHeroBandProps({
     selectedStore,
@@ -3546,8 +3565,8 @@ export default function StorefrontApp() {
         boxSizing: 'border-box',
         margin: '0 auto',
         paddingTop: isStorePage && (isServicesMode || isFnbMode || isSimpleMode || (isResolvedOrderSubpage && !isServicesMode && !isFnbMode && !isSimpleMode)) ? 0 : (isMobileViewport ? 6 : 10),
-        paddingRight: isStorePage && (isServicesMode || isFnbMode || isSimpleMode) ? 0 : (isMobileViewport ? 12 : 20),
-        paddingLeft: isStorePage && (isServicesMode || isFnbMode || isSimpleMode) ? 0 : (isMobileViewport ? 12 : 20),
+        paddingRight: isStorePage && (isServicesMode || isFnbMode || isSimpleMode || (isResolvedOrderSubpage && isRetailMode)) ? 0 : (isMobileViewport ? 12 : 20),
+        paddingLeft: isStorePage && (isServicesMode || isFnbMode || isSimpleMode || (isResolvedOrderSubpage && isRetailMode)) ? 0 : (isMobileViewport ? 12 : 20),
         paddingBottom: isStorePage ? ((isServicesMode || isFnbMode || isSimpleMode || !hasDiscoverySearch) ? 0 : (isMobileViewport ? 96 : 120)) : 0
       }}>
         {!isStorePage && (
