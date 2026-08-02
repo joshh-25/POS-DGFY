@@ -51,7 +51,11 @@ jobs:
     with:
       environment: BETA
       image_tags: "beta"
-      runner_labels_json: '["self-hosted"]'
+      # Switch back to the free self-hosted runners if Actions minutes run
+      # out. Pin the label so jobs avoid vm-sieitzstaging (AVX-less CPU ->
+      # exit 132 on native addons like @napi-rs/canvas).
+      # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
+      runner_labels_json: '["ubuntu-latest"]'
     secrets: inherit
     permissions:
       contents: read
@@ -63,7 +67,8 @@ jobs:
     with:
       environment: BETA
       image_tags: "beta"
-      runner_labels_json: '["self-hosted"]'
+      # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
+      runner_labels_json: '["ubuntu-latest"]'
     secrets: inherit
     permissions:
       contents: read
@@ -75,24 +80,31 @@ jobs:
     with:
       environment: PROD
       image_tags: "latest"
-      runner_labels_json: '["self-hosted"]'
+      # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
+      runner_labels_json: '["ubuntu-latest"]'
     secrets: inherit
     permissions:
       contents: read
       packages: write
 
   # Single SSH deploy that refreshes all three images on the server in one
-  # `docker compose pull && up -d`. Only runs if every image built.
+  # `docker compose pull && up -d`. Runs unless any image build actually
+  # failed or was cancelled - a `skipped` result (e.g. once a changed-paths
+  # gate is added here) must still allow publish to proceed with whichever
+  # images did build, matching deployment-orchestrator.yml's publish gate.
   publish:
     needs: [ backend, frontend-beta, frontend-prod ]
     if: >-
-      needs.backend.result == 'success' &&
-      needs.frontend-beta.result == 'success' &&
-      needs.frontend-prod.result == 'success'
+      !cancelled() &&
+      needs.backend.result != 'failure' &&
+      needs.frontend-beta.result != 'failure' &&
+      needs.frontend-prod.result != 'failure' &&
+      (needs.backend.result == 'success' || needs.frontend-beta.result == 'success' || needs.frontend-prod.result == 'success')
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: PROD
-      runner_labels_json: '["self-hosted"]'
+      # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
+      runner_labels_json: '["ubuntu-latest"]'
     secrets: inherit
     permissions:
       contents: read

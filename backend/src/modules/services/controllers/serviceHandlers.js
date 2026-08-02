@@ -23,7 +23,9 @@ import {
     listServiceClientsUseCase,
     listServiceRemindersUseCase,
     queueDueServiceRemindersUseCase,
-    sendDueServiceRemindersUseCase
+    sendDueServiceRemindersUseCase,
+    manageServiceOptionGroupsUseCase,
+    calculateServiceQuoteUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 
@@ -386,6 +388,107 @@ export const claimPublicBooking = async (req, res, next) => {
             storeCustomer: req.storeCustomer || null
         });
         return sendResult(req, res, result, { message: 'Service booking linked successfully' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const listOptionGroups = async (req, res, next) => {
+    try {
+        const result = await manageServiceOptionGroupsUseCase.listOptionGroups({
+            tenantId: req.tenantId,
+            status: req.query.status
+        });
+        return sendResult(req, res, result);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getOptionGroupById = async (req, res, next) => {
+    try {
+        const result = await manageServiceOptionGroupsUseCase.getOptionGroupById({
+            groupId: req.params.groupId,
+            tenantId: req.tenantId
+        });
+        return sendResult(req, res, result);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const createOptionGroup = async (req, res, next) => {
+    try {
+        const result = await manageServiceOptionGroupsUseCase.createOptionGroup({
+            tenantId: req.tenantId,
+            ...(req.body || {})
+        });
+        return sendResult(req, res, result, { statusCode: 201, message: 'Service option group created successfully' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateOptionGroup = async (req, res, next) => {
+    try {
+        const result = await manageServiceOptionGroupsUseCase.updateOptionGroup({
+            groupId: req.params.groupId,
+            tenantId: req.tenantId,
+            ...(req.body || {})
+        });
+        return sendResult(req, res, result, { message: 'Service option group updated successfully' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const deactivateOption = async (req, res, next) => {
+    try {
+        const result = await manageServiceOptionGroupsUseCase.deactivateOption({
+            optionId: req.params.optionId,
+            tenantId: req.tenantId
+        });
+        return sendResult(req, res, result, { message: 'Service option deactivated successfully' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const assignItemOptionGroups = async (req, res, next) => {
+    try {
+        const result = await manageServiceOptionGroupsUseCase.assignItemOptionGroups({
+            itemId: req.params.itemId,
+            groupIds: req.body?.group_ids || [],
+            tenantId: req.tenantId
+        });
+        return sendResult(req, res, result, { message: 'Service item option groups assigned successfully' });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getItemOptionGroups = async (req, res, next) => {
+    try {
+        const result = await manageServiceOptionGroupsUseCase.getItemOptionGroups({
+            itemId: req.params.itemId,
+            tenantId: req.tenantId,
+            activeOnly: req.query.active_only !== 'false'
+        });
+        return sendResult(req, res, result);
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const calculateServiceQuote = async (req, res, next) => {
+    try {
+        const result = await calculateServiceQuoteUseCase.calculateQuote({
+            serviceItemId: req.body?.service_item_id || req.query?.service_item_id,
+            selectedOptionIds: req.body?.selected_option_ids || req.body?.selected_options || [],
+            quantity: req.body?.quantity || req.query?.quantity || 1,
+            tenantId: req.tenantId
+        });
+        return sendResult(req, res, result);
     } catch (error) {
         next(error);
     }

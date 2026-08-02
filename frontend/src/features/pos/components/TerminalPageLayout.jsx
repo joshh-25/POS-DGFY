@@ -681,6 +681,7 @@ export default function TerminalPageLayout({
             <div key="checkout-workspace" data-testid="pos-checkout-workspace" className="h-full min-h-0 overflow-hidden catalog-slide-enter">
             <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
               <POSCheckoutTerminal
+                workflowMode={workflowMode}
                 sessionLocked={locked}
                 isMsmeMode={isMsmeMode}
                 sidebarCollapsed={effectiveSidebarCollapsed}

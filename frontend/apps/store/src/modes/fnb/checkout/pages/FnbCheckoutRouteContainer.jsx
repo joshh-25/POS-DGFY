@@ -36,8 +36,7 @@ import { FnbCheckoutSavedAddressSelector } from '../components/FnbCheckoutSavedA
 import { FnbCheckoutSummaryContent } from '../components/FnbCheckoutSummaryContent.jsx';
 import { FnbGuestEmailVerification } from '../components/FnbGuestEmailVerification.jsx';
 import {
-  isEnabledStorefrontCheckoutPaymentType,
-  STOREFRONT_CHECKOUT_PAYMENT_OPTIONS
+  buildStorefrontCheckoutPaymentOptions
 } from '../model/fnbCheckoutPaymentOptions.js';
 import { FnbCheckoutRouteMount } from './FnbCheckoutRouteMount.jsx';
 
@@ -686,7 +685,7 @@ export function FnbCheckoutRouteContainer({
                   label="Payment Type"
                   value={fnbPaymentType}
                   onChange={handlePaymentTypeChange}
-                  options={STOREFRONT_CHECKOUT_PAYMENT_OPTIONS.filter((option) => isEnabledStorefrontCheckoutPaymentType(option.value))}
+                  options={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities)}
                   DropdownComponent={StorefrontDropdown}
                   triggerStyle={isFnbOrderResponsiveFlow ? { ...MOBILE_NATIVE_SELECT_STYLE, minHeight: 50, fontSize: 15, borderRadius: 16, padding: '0 44px 0 14px', boxSizing: 'border-box' } : { minHeight: 44, borderRadius: 12 }}
                   menuStyle={isFnbOrderResponsiveFlow ? MOBILE_DROPDOWN_MENU_STYLE : undefined}

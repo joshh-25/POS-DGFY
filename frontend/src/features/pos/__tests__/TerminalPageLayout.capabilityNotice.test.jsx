@@ -5,7 +5,8 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import TerminalPageLayout from '../components/TerminalPageLayout.jsx';
 
-const { playOrderAlertWithIminBridge } = vi.hoisted(() => ({
+const { checkoutTerminalPropsSpy, playOrderAlertWithIminBridge } = vi.hoisted(() => ({
+  checkoutTerminalPropsSpy: vi.fn(),
   playOrderAlertWithIminBridge: vi.fn()
 }));
 
@@ -14,7 +15,10 @@ vi.mock('../utils/iminHardwareBridge.js', () => ({
 }));
 
 vi.mock('../components/POSCheckoutTerminal.jsx', () => ({
-  default: () => <div>POSCheckoutTerminal</div>
+  default: (props) => {
+    checkoutTerminalPropsSpy(props);
+    return <div>POSCheckoutTerminal</div>;
+  }
 }));
 
 vi.mock('../components/TerminalLockDrawer.jsx', () => ({
@@ -151,6 +155,20 @@ describe('TerminalPageLayout capability notice', () => {
 
     expect(baseProps.setMobileNavOpen).toHaveBeenCalledWith(true);
     expect(baseProps.setSidebarCollapsed).not.toHaveBeenCalled();
+  });
+
+  it('passes the selected business workflow into checkout', async () => {
+    renderLayoutWithProps({
+      workflowMode: 'services',
+      isCheckoutWorkspaceMode: true
+    });
+
+    await waitFor(() => {
+      expect(checkoutTerminalPropsSpy).toHaveBeenCalled();
+    });
+
+    const latestProps = checkoutTerminalPropsSpy.mock.calls.at(-1)?.[0];
+    expect(latestProps?.workflowMode).toBe('services');
   });
 
   it('remounts an opaque sticky header when the terminal unlocks', () => {

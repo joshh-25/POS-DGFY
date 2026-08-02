@@ -108,3 +108,26 @@ Storefront booking and checkout multiplicity is mode-wide:
 - Public service booking batch checkout is all-or-nothing: if one draft fails validation, no booking in the batch is created and the response identifies the failed draft index.
 - Batch booking responses return per-booking payment handoffs. The legacy singular `payment` field is only a summary; customers must be shown every `payments[]` checkout URL when multiple prepaid or deposit bookings are created.
 - Future modes may restrict quantity or repeated checkout only through an accepted ADR that explains the mode-native reason and the replacement customer flow.
+
+## Amendments (2026-07-31)
+
+### Service Variations And Add-ons Semantics
+
+Services Mode supports optional variations and add-ons as a mode-native capability owned by Catalog (definitions) and Services (booking selections/snapshots):
+
+1. **Variations**:
+   - A Variation represents one alternative configuration of the primary service (e.g., 30 min / 60 min / 90 min).
+   - Variation option groups are single-select (`selection_type = 'single'`) and mandatory when required.
+2. **Add-ons**:
+   - An Add-on represents an optional extra attached to a service (e.g., specialized hair treatment or a physical care product).
+   - Add-on option groups may be single-select or multi-select (`selection_type = 'single' | 'multi'`) and optional or required (`is_required`).
+3. **Service Add-ons vs Physical Add-ons**:
+   - **Service Add-ons**: Adjust customer price (`price_adjustment_centavos`) and appointment duration (`duration_adjustment_minutes`). They are non-stock and stock-exempt.
+   - **Physical Add-ons**: Reference an inventory product (`linked_physical_item_id`). They adjust price and duration, and also generate separate stock-draining transaction lines governed by location-scoped FIFO inventory rules upon fulfillment.
+4. **Authoritative Pricing & Duration**:
+   - Final price = `base_price + sum(option_price_adjustments)`.
+   - Final duration = `base_duration + sum(option_duration_adjustments)`.
+   - Server-side availability and holds evaluate slot capacity using the final duration. Client-submitted prices or durations must never be trusted.
+5. **Immutable Booking Snapshots**:
+   - Booking selections are persisted in `service_booking_line_options` with immutable snapshots (`group_name`, `option_name`, `price_adjustment`, `duration_adjustment`, `tax`).
+   - Changing or deactivating an option in Catalog does not alter historical booking records, receipts, or settlement lines. Options referenced by historical bookings cannot be deleted; they may only be deactivated.

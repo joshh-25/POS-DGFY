@@ -33,7 +33,7 @@ describe('Employee Credit POS contract', () => {
     expect(checkoutContent).toContain('selectedEmployeeCreditOption?.account_configured');
     expect(checkoutContent).toContain('selectedEmployeeCreditOption?.is_eligible');
     expect(checkoutContent).not.toContain('employeeCreditBalance >= cartTotal');
-    expect(checkoutContent).toContain('disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isCustomerPaymentSufficient}');
+    expect(checkoutContent).toContain('disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isCheckoutWorkflowValid || !isCustomerPaymentSufficient}');
     expect(checkoutContent).not.toContain('employeeCreditPin');
     expect(employeeCreditPaymentContent).not.toMatch(/\bPIN\b/i);
     expect(employeeCreditPaymentContent).toContain('Select Employee');

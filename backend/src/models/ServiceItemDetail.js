@@ -56,6 +56,11 @@ const ServiceItemDetail = sequelize.define('ServiceItemDetail', {
     allowNull: false,
     defaultValue: true
   },
+  addons_enabled: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
   payment_policy: {
     type: DataTypes.ENUM('customer_choice', 'prepaid_required', 'postpaid_only', 'deposit_allowed'),
     allowNull: false,
