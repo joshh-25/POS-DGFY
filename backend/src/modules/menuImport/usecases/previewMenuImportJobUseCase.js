@@ -2,6 +2,7 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { mergeMenuImportItems } from '../support/mergeMenuImportItems.js';
 import { MENU_IMPORT_MAX_MERGED_ITEMS } from '../../../config/menuImportFeature.js';
+import { normalizeCategoryName, categoryMatchKey } from '../../../utils/menuCategoryName.js';
 
 const TERMINAL_STATUSES = new Set(['completed', 'completed_with_errors', 'failed']);
 
@@ -16,6 +17,36 @@ const failWithCode = (message, { statusCode = 400, code = DomainErrorCode.VALIDA
 );
 
 const buildBatchToken = (jobId) => jobId.replace(/-/g, '').slice(0, 8).toUpperCase();
+
+/**
+ * Distinct menu categories across the merged items, with how many items each
+ * covers and whether the model inferred it. Lets the wizard tell the user what
+ * confirming will create before they confirm it, rather than discovering new
+ * categories after the fact.
+ *
+ * Deliberately does NOT check which categories already exist as ItemFolders —
+ * that is a tenant DB read, and this use case runs off Redis job state only.
+ * services/menuImportCategoryService.js resolves existing-vs-new at confirm
+ * time, where it holds the tenant context.
+ *
+ * @param {Array<{section: string|null, section_inferred: boolean}>} mergedItems
+ * @returns {Array<{name: string, item_count: number, inferred: boolean}>}
+ */
+const summarizeCategories = (mergedItems) => {
+    const byKey = new Map();
+    for (const item of mergedItems) {
+        const name = normalizeCategoryName(item?.section);
+        if (!name) continue;
+        const key = categoryMatchKey(name);
+        const entry = byKey.get(key) || { name, item_count: 0, inferred: true };
+        entry.item_count += 1;
+        // A category counts as printed as soon as any one of its items had it
+        // printed on the menu.
+        if (!item.section_inferred) entry.inferred = false;
+        byKey.set(key, entry);
+    }
+    return [...byKey.values()];
+};
 
 /**
  * Merges a completed batch job's per-file extracted items (D4: dedup by
@@ -85,13 +116,21 @@ export const buildPreviewMenuImportJobUseCase = ({ menuImportJobRepository, prev
         // needing to know anything about merge/dedup.
         const rows = (previewResult.data.rows || []).map((row, index) => {
             const mergedItem = mergedItems[index];
-            if (!mergedItem?.price_conflict) return row;
-            return { ...row, price_conflict: true, observed_prices: mergedItem.observed_prices };
+            if (!mergedItem) return row;
+            const decorated = mergedItem.price_conflict
+                ? { ...row, price_conflict: true, observed_prices: mergedItem.observed_prices }
+                : { ...row };
+            // Flag categories the model guessed rather than read off the menu, so
+            // the wizard can mark them for review instead of presenting a guess
+            // with the same confidence as a printed heading.
+            if (mergedItem.section_inferred) decorated.category_inferred = true;
+            return decorated;
         });
 
         return ok({
             ...previewResult.data,
             rows,
+            categories: summarizeCategories(mergedItems),
             merge: {
                 files_considered: completedFiles.length,
                 files_excluded: job.files.length - completedFiles.length,

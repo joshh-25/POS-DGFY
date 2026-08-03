@@ -3,7 +3,7 @@ status: accepted
 authority_level: authoritative
 owner: architecture
 date: 2026-07-29
-last_reviewed: 2026-07-29
+last_reviewed: 2026-08-03
 review_by: 2027-01-29
 topic: batch_menu_import
 ---
@@ -85,6 +85,33 @@ This change crosses the Inventory/POS and external-integration boundary. It foll
   Joi validation, SKU de-duplication, and mode-taxonomy checks. Batch-wide SKU uniqueness comes from
   a `batchToken` derived from the job id plus a timestamp hoisted out of the per-row map.
 
+### Menu categories
+
+*Amended 2026-08-03 — extends this decision, does not supersede it.*
+
+- The extractor assigns every item a `section` (its menu category), carrying the most recent
+  printed heading forward to the items beneath it. Where a menu prints no applicable heading, the
+  model infers one and the item carries `section_inferred: true`; an inferred category is always
+  outranked by a printed one and is flagged for review in the preview rather than presented with
+  equal confidence.
+- `section` is deliberately **not** part of the dedup key. A dish printed under two headings is one
+  item; the merged row takes the first *non-null* section in the group, preferring printed over
+  inferred.
+- On confirm, categories are resolved to **`ItemFolder` rows and stamped onto `items.folder_id`**,
+  not merely written to the legacy `product_folder` string. This is the load-bearing part:
+  `items.category` is a fixed inventory ENUM and can never hold "Mains", and POS catalog filtering
+  keys off `folder_id`. Writing only `product_folder` left imported items displaying their category
+  in reports while being unselectable under it in the POS.
+- Matching against existing folders is case-insensitive and whitespace-collapsed, mirroring the
+  `create_category_name` resolution in `modules/inventory/repositories/itemRepository.js`, so a
+  category created through the item form and one created through a menu import converge on one
+  folder rather than two near-identical ones.
+- **Permission rule:** creating a category requires `categories:manage`, but the menu-import confirm
+  route only requires `items:import`. Rather than widening what `items:import` grants, an importer
+  without `categories:manage` gets link-to-existing-only — unmatched categories keep their
+  `product_folder` text with a NULL `folder_id` and are returned in `categories_skipped` for the UI
+  to surface. The import is never blocked and nothing is silently dropped.
+
 ### Scanned PDFs
 
 - When a PDF yields no text layer, its pages are rendered to PNG buffers
@@ -130,6 +157,16 @@ Six server-side caps live in `backend/src/config/menuImportFeature.js`, all env-
 calls, also the per-file page-render concurrency; raising it must be weighed against PM2's 512MB
 `max_memory_restart`), and `MENU_IMPORT_MAX_MERGED_ITEMS` (200 post-dedup, rejecting an over-large
 batch outright rather than truncating it silently).
+
+*Amended 2026-08-03:* the extraction model resolves through `menuImportModel()`
+(`MENU_IMPORT_MODEL` → `OPENAI_MODEL` → default), read at call time so it can be retuned without a
+redeploy. The default is `gpt-5-mini` rather than the original `gpt-4o`: menu photos are the primary
+input, so vision/OCR accuracy is the wrong axis to economise on, and `gpt-5-mini` beats `gpt-4o` on
+multimodal quality at roughly a twentieth of the input cost. GPT-5-family models reject `max_tokens`
+and restrict `temperature`, so `menuExtractionService.js` branches the request shape on the model
+family — a bare default swap would 400 every extraction. Per-token rates moved to
+`config/aiModelRates.js` so the daily-budget meter prices GPT-5 usage correctly instead of falling
+back to the `gpt-4o` rate.
 
 ### Feature gating and endpoints
 

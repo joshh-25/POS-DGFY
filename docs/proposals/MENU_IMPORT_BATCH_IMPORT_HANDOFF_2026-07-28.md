@@ -555,6 +555,36 @@ Phase 1 and Phase 2/3 sessions were each blocked by a directory-level permission
 updated** — `MENU_IMPORT_BATCH_ENABLED` plus all six caps are documented there. Nothing left to
 append manually.
 
+## Phase 8 — menu categories and the model default (added 2026-08-03)
+
+Tracked as issue #190. Two changes on top of Phases 1–7:
+
+**Categories are now real categories.** Extraction always assigned each item a `section`, and the
+signed CSV always wrote it into `product_folder` — but nothing ever created an `ItemFolder` or set
+`items.folder_id`. Since POS catalog filtering keys off `folder_id` and not the legacy string,
+imported items displayed their category in reports while being unselectable under it in the POS.
+`services/menuImportCategoryService.js` now resolves categories to folders at confirm time (shared
+by the batch and single-file paths, which both route through `confirmPdfImport`). Matching is
+case-insensitive and whitespace-collapsed, mirroring `itemRepository.js`'s `create_category_name`
+resolution so both entry points converge on one folder. Creating a *new* category requires
+`categories:manage`; an importer without it links to existing categories only and gets the rest back
+in `categories_skipped` rather than a blocked import. The extractor also infers a category when a
+menu prints no heading, flagged `section_inferred` so the wizard marks it as a guess. A merge bug was
+fixed alongside: the merged row took the *first-seen* section, so a dish whose heading appeared only
+in the second file came out uncategorized — it now takes the first non-null section, preferring
+printed over inferred. See ADR 0049 § Menu categories.
+
+**Default model is `gpt-5-mini`,** resolved through the new call-time `menuImportModel()`. Not a
+bare string swap: GPT-5-family models reject `max_tokens` and restrict `temperature`, so
+`buildExtractionRequestParams()` branches the request shape on the model family — without it every
+extraction would 400. Per-token rates moved out of `modules/ai/aiCore.js` into
+`config/aiModelRates.js` (shared, GPT-5 entries added) so the daily-budget meter no longer prices
+GPT-5 usage at the `gpt-4o` rate. See ADR 0049 § Cost control.
+
+**Still unverified against a live environment,** same as Phases 1–7 — in particular the criterion
+that actually proves this feature: that imported items appear under their category in the **POS
+category filter**, not merely in reports. No unit test can cover that.
+
 ## What's NOT done yet — nothing to build
 
 All seven phases are built. Two things remain, neither of which is a coding task:

@@ -120,4 +120,39 @@ describe('mergeMenuImportItems', () => {
         ]);
         expect(result.mergedItems[0]).toMatchObject({ section: 'Mains', description: 'From file A' });
     });
+
+    it('takes the first NON-NULL section, not merely the first-seen occurrence', () => {
+        // A dish photographed on two pages may only carry its heading on one of
+        // them — seeding from the first-seen copy left it uncategorized.
+        const result = mergeMenuImportItems([
+            item({ name: 'Chicken Adobo', price: 180, section: null, description: null }),
+            item({ name: 'Chicken Adobo', price: 180, section: 'Mains', description: 'From file B' })
+        ]);
+        expect(result.mergedItems[0]).toMatchObject({ section: 'Mains', description: 'From file B' });
+    });
+
+    it('prefers a printed section over one the model inferred, regardless of file order', () => {
+        const result = mergeMenuImportItems([
+            item({ name: 'Chicken Adobo', price: 180, section: 'Guessed', section_inferred: true }),
+            item({ name: 'Chicken Adobo', price: 180, section: 'Mains', section_inferred: false })
+        ]);
+        expect(result.mergedItems[0]).toMatchObject({ section: 'Mains', section_inferred: false });
+    });
+
+    it('keeps an inferred section when no printed one exists anywhere in the group', () => {
+        const result = mergeMenuImportItems([
+            item({ name: 'Chicken Adobo', price: 180, section: null }),
+            item({ name: 'Chicken Adobo', price: 180, section: 'Mains', section_inferred: true })
+        ]);
+        expect(result.mergedItems[0]).toMatchObject({ section: 'Mains', section_inferred: true });
+    });
+
+    it('does not split one dish into two rows just because it appeared under two headings', () => {
+        const result = mergeMenuImportItems([
+            item({ name: 'Chicken Adobo', price: 180, section: 'Mains' }),
+            item({ name: 'Chicken Adobo', price: 180, section: 'House Specials' })
+        ]);
+        expect(result.mergedItems).toHaveLength(1);
+        expect(result.itemsAfterDedup).toBe(1);
+    });
 });

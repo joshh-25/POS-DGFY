@@ -81,8 +81,13 @@ const previewPayload = {
         {
             rowNumber: 2,
             valid: true,
-            data: { name: 'Halo-Halo', default_sale_price: '120.00', product_folder: 'Desserts' }
+            data: { name: 'Halo-Halo', default_sale_price: '120.00', product_folder: 'Desserts' },
+            category_inferred: true
         }
+    ],
+    categories: [
+        { name: 'Mains', item_count: 1, inferred: false },
+        { name: 'Desserts', item_count: 1, inferred: true }
     ],
     merge: {
         files_considered: 2,
@@ -177,6 +182,51 @@ describe('MenuImportBatchModal', () => {
 
         // Failed file, with the server's reason
         expect(screen.getByText(/blurry\.png — No menu items were found\./)).toBeTruthy();
+    });
+
+    it('presents the extracted menu categories and flags the guessed ones', async () => {
+        await runToReviewStep();
+
+        // The column is a Category, not an opaque "Section" — it is what the
+        // item will be filed under in the POS.
+        expect(screen.getByText('Category')).toBeTruthy();
+
+        // Summary of what confirming will apply, counted off the live rows.
+        expect(screen.getByText(/2 categories will be applied/)).toBeTruthy();
+        expect(screen.getByText(/Mains \(1\) · Desserts \(1\)/)).toBeTruthy();
+
+        // A category the model guessed is marked as such rather than presented
+        // with the same confidence as a printed heading.
+        expect(screen.getByText('Guessed — not printed on the menu')).toBeTruthy();
+    });
+
+    it('recounts the category summary when a row is deselected', async () => {
+        await runToReviewStep();
+
+        fireEvent.click(screen.getByLabelText('Import Halo-Halo'));
+
+        expect(screen.getByText(/1 category will be applied/)).toBeTruthy();
+        expect(screen.getByText(/^Mains \(1\)$/)).toBeTruthy();
+    });
+
+    it('reports created categories and explains the ones an admin must create', async () => {
+        confirmMenuImport.mockResolvedValue({
+            createdCount: 2,
+            failedCount: 0,
+            results: { failed: [] },
+            categories_created: ['Mains'],
+            categories_linked: [],
+            categories_skipped: ['Desserts']
+        });
+        await runToReviewStep();
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: /Confirm Import \(2 items\)/ }));
+        });
+
+        expect(screen.getByText('1 new category created')).toBeTruthy();
+        expect(screen.getByText('1 category not created')).toBeTruthy();
+        expect(screen.getByText(/creating a category needs admin access/)).toBeTruthy();
     });
 
     it('confirms only the rows still selected', async () => {
