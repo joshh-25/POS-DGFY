@@ -90,6 +90,23 @@ export const resolveTracingMode = (env = import.meta.env) => {
   return resolveTracesSampleRate(env.VITE_SENTRY_TRACES_SAMPLE_RATE) == null ? 'propagate' : 'spans';
 };
 
+// Mirrors backend/src/config/sentry.js's resolveSentryEnvironment: `MODE` is
+// "production" for every `vite build` regardless of which real environment
+// (DEV/STAGING/BETA/PROD) produced it, so falling back to it here would
+// silently file an unconfigured environment's errors under "production" the
+// moment VITE_SENTRY_ENABLED flips on without VITE_SENTRY_ENVIRONMENT also
+// being set (this is exactly how BETA is configured today). Only fall back
+// to MODE when it is NOT "production"; otherwise resolve to a value that is
+// obviously wrong in the Sentry UI and prompts a fix, rather than quietly
+// polluting the real PROD environment's data.
+export const resolveSentryEnvironment = (env) => {
+  const explicit = String(env.VITE_SENTRY_ENVIRONMENT || '').trim();
+  if (explicit) return explicit;
+  const mode = String(env.MODE || '').trim();
+  if (mode && mode !== 'production') return mode;
+  return mode === 'production' ? 'unknown' : 'development';
+};
+
 export const resolveSentryBrowserConfig = (env = import.meta.env, surfaceOverride = '', extraTracePropagationTargets = []) => {
   const surface = String(surfaceOverride || env.VITE_APP_SURFACE || 'skupervisor').trim().toLowerCase();
   const enabled = parseBooleanFlag(env.VITE_SENTRY_ENABLED, false);
@@ -100,7 +117,7 @@ export const resolveSentryBrowserConfig = (env = import.meta.env, surfaceOverrid
     dsn,
     active: enabled && Boolean(dsn),
     surface,
-    environment: String(env.VITE_SENTRY_ENVIRONMENT || env.MODE || 'development').trim(),
+    environment: resolveSentryEnvironment(env),
     release: String(env.VITE_SENTRY_RELEASE || env.VITE_BUILD_STAMP || '').trim(),
     tracingMode: resolveTracingMode(env),
     tracesSampleRate: resolveTracesSampleRate(env.VITE_SENTRY_TRACES_SAMPLE_RATE),
