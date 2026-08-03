@@ -15,6 +15,9 @@ import { previewItemsImportUseCase, confirmItemsImportUseCase } from '../modules
 import { extractMenuCsvFromFile, MenuExtractionError } from '../services/menuExtractionService.js';
 import { sendUseCaseResult } from '../modules/shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../services/productUsageTelemetryService.js';
+import { resolveMenuImportCategories } from '../services/menuImportCategoryService.js';
+import { hasEffectivePermission } from '../utils/userPermissions.js';
+import { PERMISSIONS } from '../config/permissions.js';
 import logger from '../config/logger.js';
 
 const timestamp = () => new Date().toISOString();
@@ -117,7 +120,19 @@ export const previewPdfImport = async (req, res) => {
 export const confirmPdfImport = async (req, res) => {
     try {
         const userId = req.user?.user_id;
-        const result = await confirmItemsImportUseCase({ rows: req.body.rows, userId });
+        const rows = req.body.rows;
+
+        // Resolve the extracted menu categories to real ItemFolders and stamp
+        // folder_id onto the rows BEFORE persisting, so imported items are
+        // selectable under their category in the POS rather than only carrying
+        // the legacy product_folder string. Shared by the batch and single-file
+        // paths, which both route through this handler.
+        const categories = await resolveMenuImportCategories({
+            rows,
+            canManageCategories: hasEffectivePermission(req.user, PERMISSIONS.SYSTEM.actions.MANAGE_CATEGORIES)
+        });
+
+        const result = await confirmItemsImportUseCase({ rows, userId });
         await trackProductUsageFromResult({
             req,
             user: req.user,
@@ -139,10 +154,18 @@ export const confirmPdfImport = async (req, res) => {
         }
 
         const importData = result.data || {};
+        const categoryNotice = categories.skipped.length > 0
+            ? ` ${categories.skipped.length} categor${categories.skipped.length === 1 ? 'y' : 'ies'} could not be created (admin access required): ${categories.skipped.join(', ')}.`
+            : '';
         return res.status(200).json({
             success: true,
-            data: importData,
-            message: `Import complete: ${importData.createdCount} created, ${importData.updatedCount} updated, ${importData.failedCount} failed`
+            data: {
+                ...importData,
+                categories_created: categories.created,
+                categories_linked: categories.linked,
+                categories_skipped: categories.skipped
+            },
+            message: `Import complete: ${importData.createdCount} created, ${importData.updatedCount} updated, ${importData.failedCount} failed.${categoryNotice}`
         });
     } catch (error) {
         logger.error('PDF menu import confirm error:', error);

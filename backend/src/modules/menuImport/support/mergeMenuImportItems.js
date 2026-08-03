@@ -5,6 +5,10 @@
  * surfaced on the merged row (never silently resolved), and near-duplicates
  * (Levenshtein <=2, matching price) are flagged for review only — never
  * auto-merged. Pure function, no I/O.
+ *
+ * Section (the item's menu category) is deliberately NOT part of the dedup key:
+ * a dish printed under two headings is still one item. The merged row takes the
+ * best available section across the group — see the loop below.
  */
 
 const roundPrice = (value) => Math.round(Number(value) * 100) / 100;
@@ -44,13 +48,31 @@ export const mergeMenuImportItems = (items = []) => {
         if (!groups.has(normalized)) {
             groups.set(normalized, {
                 name: item.name,
-                section: item.section ?? null,
-                description: item.description ?? null,
+                section: null,
+                section_inferred: false,
+                description: null,
                 prices: []
             });
             groupOrder.push(normalized);
         }
-        groups.get(normalized).prices.push(roundPrice(item?.price));
+        const group = groups.get(normalized);
+        group.prices.push(roundPrice(item?.price));
+
+        // Section/description are filled from the first occurrence that actually
+        // HAS one, not simply the first occurrence. A dish photographed on two
+        // pages may only carry its heading on one of them; seeding from the
+        // first-seen copy left such items uncategorized for no good reason.
+        // Among candidates, a section printed on the menu outranks one the model
+        // inferred from the item name, whichever file it came from.
+        const itemSection = item?.section ?? null;
+        const itemInferred = item?.section_inferred === true;
+        if (itemSection && (!group.section || (group.section_inferred && !itemInferred))) {
+            group.section = itemSection;
+            group.section_inferred = itemInferred;
+        }
+        if (!group.description && item?.description) {
+            group.description = item.description;
+        }
     }
 
     const mergedItems = [];
@@ -66,6 +88,7 @@ export const mergeMenuImportItems = (items = []) => {
             name: group.name,
             price: chosenPrice,
             section: group.section,
+            section_inferred: group.section_inferred,
             description: group.description,
             price_conflict: priceConflict
         };
