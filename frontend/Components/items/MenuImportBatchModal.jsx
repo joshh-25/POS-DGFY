@@ -121,6 +121,12 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
     const [editableRows, setEditableRows] = useState([]);
     const [importResult, setImportResult] = useState(null);
     const [capturing, setCapturing] = useState(false);
+    // Defaults ON, unlike generate_image: marking an item Always Available
+    // costs nothing, and without it every batch-imported item lands out of
+    // stock and unsellable until someone opens it and flips the toggle by
+    // hand, one item at a time — the path of least resistance should be the
+    // fix, not the problem.
+    const [markAlwaysAvailable, setMarkAlwaysAvailable] = useState(true);
     const fileInputRef = useRef(null);
 
     const {
@@ -169,6 +175,7 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
         setEditableRows([]);
         setImportResult(null);
         setCapturing(false);
+        setMarkAlwaysAvailable(true);
         reset();
     };
 
@@ -273,7 +280,7 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
             return;
         }
 
-        const result = await confirmImport(includedRows);
+        const result = await confirmImport(includedRows, { markAlwaysAvailable });
         if (result.success) {
             setImportResult(result.data);
             setStep(3);
@@ -505,6 +512,21 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
                 </div>
             </div>
 
+            <div className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <input
+                    type="checkbox"
+                    id="mark-always-available"
+                    checked={markAlwaysAvailable}
+                    onChange={(e) => setMarkAlwaysAvailable(e.target.checked)}
+                    className="mt-0.5"
+                />
+                <label htmlFor="mark-always-available" className="text-sm text-slate-700">
+                    <span className="font-medium text-slate-900">Mark all imported items as Always Available.</span>
+                    {' '}Skips stock tracking so they&rsquo;re sellable in the POS right away, instead of landing
+                    out of stock until you set each one individually.
+                </label>
+            </div>
+
             {renderMergeSummary()}
             {renderCategorySummary()}
 
@@ -734,6 +756,14 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
                         {importResult.categories_skipped.join(', ')} — creating a category needs admin
                         access. These items imported with the category name saved, but won’t appear
                         under it in the POS until an admin creates it.
+                    </p>
+                </div>
+            )}
+
+            {importResult?.always_available_marked_count > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-left max-w-md mx-auto text-sm text-green-800">
+                    <p className="font-medium">
+                        {importResult.always_available_marked_count} item{importResult.always_available_marked_count === 1 ? '' : 's'} marked Always Available — ready to sell in the POS now.
                     </p>
                 </div>
             )}
