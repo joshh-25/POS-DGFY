@@ -31,6 +31,18 @@ Behavior:
 - `SENTRY_ENABLED=true` plus a DSN enables server-side error capture.
 - If `SENTRY_ENABLED=true` but the DSN is missing, the service logs a warning and continues without Sentry.
 
+**`SENTRY_ENVIRONMENT` fallback — set it explicitly, do not rely on the default.** The
+backend Docker image hard-sets `NODE_ENV=production` on every environment (dev,
+staging, beta and prod alike — see `infrastructure/docker/backend/Dockerfile`), so an
+unset `SENTRY_ENVIRONMENT` does **not** fall back to a meaningful per-box value. The
+resolver (`resolveSentryEnvironment` in `backend/src/config/sentry.js`) is:
+
+1. `SENTRY_ENVIRONMENT` if set.
+2. Otherwise `NODE_ENV`, but only when it is not `"production"`.
+3. Otherwise `"unknown"` — deliberately not `"production"`, so a server that forgot to
+   set this variable reports somewhere obviously wrong in the Sentry UI instead of
+   silently polluting the real `PROD` environment's data.
+
 ### Why the backend loads Sentry via `--import`, not a plain import
 
 The backend is ESM (`"type": "module"` in `backend/package.json`, Node 22).
@@ -233,6 +245,30 @@ VITE_SENTRY_RELEASE=local-test
 Leave `SENTRY_UPLOAD_SOURCEMAPS=false` for ordinary local-test runs.
 
 ## GitHub Environment Checklist
+
+Four GitHub Environments exist and build/deploy on every push to their branch:
+`DEV` (`develop` → `dev.dgfy.ph`), `STAGING` (`staging` → `stage.dgfy.ph`), `BETA`
+(`main` → `beta.dgfy.ph`), `PROD` (`main` → `dgfy.ph`). The `VITE_SENTRY_ENVIRONMENT`
+value each one actually uses is the environment name itself, uppercase — `DEV`,
+`STAGING`, `BETA`, `PROD` — matching what STAGING and PROD already have configured
+live. (Earlier revisions of this doc suggested lowercase names like `beta` or
+`local-test` for GitHub Environment builds; those don't match what's actually set.
+`local-test` is still correct for the local-test compose file below, which is a
+separate, unrelated environment name.)
+
+As of this writing, only **STAGING** and **PROD** have `VITE_SENTRY_*`/`SENTRY_*` vars
+configured. **BETA has none set** — it currently reports nothing from any surface.
+**DEV has none set either** — wiring it up is inexpensive (Sentry environments are
+free-form tags, no extra cost or provisioning) but do these two things first:
+
+1. **Scope each project's default alert rule to `PROD`** (Settings → Alerts) before
+   DEV starts reporting — the out-of-the-box "high priority issues" rule has no
+   environment filter and fires on every environment, so an unscoped rule means every
+   DEV error pages the same as a PROD one.
+2. Also set `SENTRY_ENVIRONMENT` (uppercase `DEV`) in the dev box's own
+   `infrastructure/docker/.env` when enabling backend Sentry there — see the
+   `SENTRY_ENVIRONMENT` fallback note above; without it, the backend's `NODE_ENV=production`
+   default would file dev-box errors under `PROD`.
 
 For beta/prod image builds, set:
 

@@ -4,6 +4,7 @@ import {
   makeTracesSampler,
   redactSensitiveData,
   resolveSentryConfig,
+  resolveSentryEnvironment,
   resolveTracesSampleRate,
   sanitizeSentryEvent,
   sentryRequestContext
@@ -41,6 +42,34 @@ describe('backend Sentry config', () => {
     });
 
     expect(config.active).toBe(false);
+  });
+
+  describe('resolveSentryEnvironment', () => {
+    test('uses SENTRY_ENVIRONMENT when explicitly set, even under NODE_ENV=production', () => {
+      expect(resolveSentryEnvironment({ SENTRY_ENVIRONMENT: 'DEV', NODE_ENV: 'production' })).toBe('DEV');
+    });
+
+    test('falls back to NODE_ENV when it is not "production"', () => {
+      expect(resolveSentryEnvironment({ NODE_ENV: 'staging' })).toBe('staging');
+      expect(resolveSentryEnvironment({ NODE_ENV: 'development' })).toBe('development');
+    });
+
+    // The backend image hard-sets NODE_ENV=production on every box -- dev,
+    // staging, beta and prod alike -- so falling back to it here would
+    // silently file a non-prod server's errors under "production" the
+    // moment SENTRY_ENABLED is flipped on without SENTRY_ENVIRONMENT.
+    test('resolves to "unknown", NOT "production", when only NODE_ENV=production is set', () => {
+      expect(resolveSentryEnvironment({ NODE_ENV: 'production' })).toBe('unknown');
+    });
+
+    test('defaults to "development" when neither variable is set', () => {
+      expect(resolveSentryEnvironment({})).toBe('development');
+    });
+
+    test('resolveSentryConfig never resolves environment to "production" via the NODE_ENV fallback alone', () => {
+      const config = resolveSentryConfig({ SENTRY_ENABLED: 'true', SENTRY_BACKEND_DSN: 'https://example@sentry.test/1', NODE_ENV: 'production' });
+      expect(config.environment).toBe('unknown');
+    });
   });
 
   test('redacts sensitive request details before sending events', () => {
