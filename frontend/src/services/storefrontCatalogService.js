@@ -59,3 +59,20 @@ export const deleteStorefrontCatalogImage = async (itemId) => {
   const response = await api.delete(`/items/${itemId}/storefront-image`);
   return response.data.data;
 };
+
+// AI image generation (#197) — reuses the shared generation service built
+// for menu-import (#176). Both calls are fire-and-forget from the client's
+// perspective: the response only confirms the item was queued, not that a
+// photo exists yet.
+export const generateStorefrontCatalogImage = async (itemId) => {
+  const response = await api.post(`/items/${itemId}/storefront-image/generate`);
+  return response.data.data;
+};
+
+export const bulkGenerateStorefrontCatalogImages = async ({ itemIds, overwriteExisting = false } = {}) => {
+  const response = await api.post('/items/storefront-images/generate/bulk', {
+    item_ids: itemIds,
+    overwrite_existing: overwriteExisting
+  });
+  return response.data.data;
+};
