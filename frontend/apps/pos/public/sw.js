@@ -30,10 +30,29 @@ const isBypassPath = (pathname = '/') => (
   ))
 );
 
-const isCacheableResponse = (response) => {
+// A deploy deletes the previous build's hashed chunks. If any layer between
+// the browser and the build output answers a missing chunk with the SPA
+// shell instead of a 404 -- a captive portal, or (before the nginx fix
+// alongside this) an /assets/ location without try_files ... =404 -- the
+// response is a 200 text/html document. Caching that as the script makes
+// the failure survive every subsequent reload, so the content type is
+// verified before a script response is ever stored or replayed.
+const SCRIPT_CONTENT_TYPE_PATTERN = /(?:java|ecma)script|text\/jsx?/i;
+
+const isScriptLikeResponse = (response) => (
+  SCRIPT_CONTENT_TYPE_PATTERN.test(String(response?.headers?.get('Content-Type') || ''))
+);
+
+const isUsableCachedResponse = (response, request) => (
+  request?.destination !== 'script' || isScriptLikeResponse(response)
+);
+
+const isCacheableResponse = (response, request) => {
   if (!response || !response.ok) return false;
   const cacheControl = String(response.headers?.get('Cache-Control') || '').toLowerCase();
-  return !cacheControl.includes('no-store');
+  if (cacheControl.includes('no-store')) return false;
+  if (request?.destination === 'script' && !isScriptLikeResponse(response)) return false;
+  return true;
 };
 
 const pruneRuntimeCache = async () => {
@@ -58,13 +77,21 @@ const staleWhileRevalidateRuntime = async (request) => {
   // the worker without the page's Origin header, so exact Vary matching would miss the
   // same URL during an offline module/style request.
   const precached = await shellCache.match(request, { ignoreVary: true });
-  if (precached) return precached;
+  if (precached && isUsableCachedResponse(precached, request)) return precached;
+  // A precached entry that fails the content-type check is exactly the
+  // poisoned-cache case above -- delete it so this and every future request
+  // for it falls through to the network instead of replaying the failure.
+  if (precached) await shellCache.delete(request, { ignoreVary: true });
 
   const cache = await caches.open(RUNTIME_CACHE_NAME);
-  const cached = await cache.match(request);
+  let cached = await cache.match(request);
+  if (cached && !isUsableCachedResponse(cached, request)) {
+    await cache.delete(request);
+    cached = null;
+  }
 
   const networkPromise = fetch(request).then(async (response) => {
-    if (isCacheableResponse(response)) {
+    if (isCacheableResponse(response, request)) {
       await cache.put(request, response.clone());
       await pruneRuntimeCache();
     }

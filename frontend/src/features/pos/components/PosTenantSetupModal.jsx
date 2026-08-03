@@ -23,8 +23,9 @@ import UserInvitationModal from '@/Components/users/UserInvitationModal.jsx';
 import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '../utils/terminalIdentity.js';
 import { POS_TERMINAL_SETUP_ORDER, POS_TERMINAL_SETUP_STEPS } from '../utils/setupFlow.js';
 import { filterCustomerFacingPresets, resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
+import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 
-const MapPinPicker = React.lazy(() => import('@/src/components/maps/MapPinPicker.jsx'));
+const MapPinPicker = lazyWithChunkRetry(() => import('@/src/components/maps/MapPinPicker.jsx'));
 
 const STEP_CONFIG = {
   [POS_TERMINAL_SETUP_STEPS.PROFILE]: {

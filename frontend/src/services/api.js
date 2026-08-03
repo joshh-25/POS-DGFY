@@ -13,6 +13,14 @@ import { clearClientSession } from './sessionCleanup.js';
 import { emitGlobalApiError } from '../utils/errorHandler.js';
 import { resolveApiBaseUrl, getRuntimeConfig } from '../utils/runtimeConfig.js';
 import { tagRequestFailureContext, captureRequestFailure } from '../observability/sentryClient.js';
+import {
+  isRetryableTransientFailure,
+  computeTransientRetryDelayMs,
+  readRetryAfterSeconds,
+  MAX_TRANSIENT_RETRIES,
+  TRANSIENT_RETRY_TOTAL_BUDGET_MS,
+  sleep
+} from './transientRetry.js';
 
 const isTestEnvironment = (() => {
   try {
@@ -372,6 +380,14 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
+    // A canceled request (component unmount, a superseded request aborting
+    // its predecessor) is a caller decision, not a failure. Without this it
+    // falls all the way through to emitGlobalApiError as a "network" error
+    // (axios.isCancel errors carry no response but DO carry error.request,
+    // which is indistinguishable from a real network failure downstream)
+    // and into captureRequestFailure as a Sentry event.
+    if (axios.isCancel(error)) return Promise.reject(error);
+
     if (
       error.response?.status === 401
       && originalRequest
@@ -567,15 +583,43 @@ api.interceptors.response.use(
     // so callers can back off instead of retrying at their normal cadence into
     // a limiter that's already rejecting them.
     if (error.response?.status === 429) {
-      const headers = error.response?.headers || {};
-      const retryAfterHeader = headers['retry-after'] ?? headers['Retry-After'];
-      const retryAfterSeconds = Number(
-        error.response?.data?.retryAfterSeconds
-        ?? retryAfterHeader
-      );
-      error.retryAfterSeconds = Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0
-        ? retryAfterSeconds
-        : null;
+      error.retryAfterSeconds = readRetryAfterSeconds(error);
+    }
+
+    // Retry transient upstream failures (502/503/504, or a bare network
+    // failure) once or twice on idempotent requests before giving up. This
+    // must sit here -- after the 401/403/429 recovery paths above, before
+    // the 422 logging and the emitGlobalApiError/Sentry paths below -- so
+    // that a request which recovers on retry never reaches either of those:
+    // `return api(originalRequest)` re-enters this whole interceptor chain
+    // from the top, and only the attempt that exhausts the retry budget
+    // falls through to the rest of this function. Net effect: at most one
+    // toast and at most one Sentry event per logical request, fired only
+    // after retries are spent.
+    if (
+      originalRequest
+      && !axios.isCancel(error)
+      && !isSessionRefreshRequest(originalRequest.url)
+      && !originalRequest.skipTransientRetry
+      && (originalRequest._transientRetryCount || 0) < MAX_TRANSIENT_RETRIES
+      && isRetryableTransientFailure(error, originalRequest)
+      && !(typeof window !== 'undefined' && window.navigator?.onLine === false)
+    ) {
+      const attempt = (originalRequest._transientRetryCount || 0) + 1;
+      // 502/503/504 rarely carry Retry-After, but honour it when a gateway
+      // does send one -- isRetryableTransientFailure already excludes 429,
+      // so this can't accidentally reintroduce the rate-limit auto-retry.
+      const retryAfterSeconds = readRetryAfterSeconds(error);
+      const delayMs = computeTransientRetryDelayMs({ attempt, retryAfterSeconds });
+
+      originalRequest._transientRetryDeadlineAt = originalRequest._transientRetryDeadlineAt
+        || (Date.now() + TRANSIENT_RETRY_TOTAL_BUDGET_MS);
+
+      if (delayMs != null && Date.now() + delayMs < originalRequest._transientRetryDeadlineAt) {
+        originalRequest._transientRetryCount = attempt;
+        await sleep(isTestEnvironment ? 0 : delayMs);
+        return api(originalRequest);
+      }
     }
 
     // Log detailed validation errors for 422 responses
@@ -606,14 +650,25 @@ api.interceptors.response.use(
 
 // Separate, trailing interceptor rather than folding into the block above:
 // that block retries/refreshes/queues extensively (CSRF retry, 401 refresh
-// with a request queue), and most of those paths resolve successfully on
-// retry. Registering this one after it means axios only reaches it once an
-// error has propagated past every retry above with nothing left to recover
-// it -- a genuine, final failure -- without this needing to know about any
-// of that retry logic itself.
+// with a request queue, transient 502/503/504 retry), and most of those
+// paths resolve successfully on retry. Registering this one after it means
+// axios only reaches it once an error has propagated past every retry above
+// with nothing left to recover it -- a genuine, final failure -- without
+// this needing to know about any of that retry logic itself.
 api.interceptors.response.use(
   (response) => response,
   (error) => {
+    // Every `return api(originalRequest)` retry above is a recursive axios
+    // dispatch, and this interceptor is a genuinely separate .then() link --
+    // so when a retried request still fails, axios re-invokes THIS handler
+    // once per level of that recursion, each time with the SAME final error
+    // object bubbling back up. Without this guard, a request retried twice
+    // and still failing would report to Sentry three times for one logical
+    // failure. The flag lives on the error object because that object
+    // reference is exactly what's shared across every level.
+    if (error.__requestFailureReported) return Promise.reject(error);
+    error.__requestFailureReported = true;
+
     const requestId = error.response?.headers?.['x-request-id'] || error.response?.data?.request_id;
     tagRequestFailureContext({
       requestId,

@@ -1,5 +1,11 @@
 import React from 'react';
 import { captureRenderError } from '../../observability/sentryClient.js';
+import {
+    isChunkLoadError,
+    reloadOnceForChunkFailure,
+    clearChunkReloadMarker,
+    clearAppRuntimeCaches
+} from '../../utils/chunkLoadRecovery.js';
 
 /**
  * ErrorBoundary — Fix 10.3: Inconsistent API Error Handling
@@ -20,32 +26,71 @@ import { captureRenderError } from '../../observability/sentryClient.js';
 class ErrorBoundary extends React.Component {
     constructor(props) {
         super(props);
-        this.state = { hasError: false, error: null };
+        this.state = { hasError: false, error: null, isChunkError: false, reloadScheduled: false };
         this.handleReload = this.handleReload.bind(this);
     }
 
     static getDerivedStateFromError(error) {
         // Update state so the fallback UI renders on the next render cycle
-        return { hasError: true, error };
+        return { hasError: true, error, isChunkError: isChunkLoadError(error) };
     }
 
     componentDidCatch(error, info) {
+        if (isChunkLoadError(error)) {
+            // A tab left open across a deploy references chunks that no
+            // longer exist. Recover automatically -- but only the FIRST
+            // time within the cooldown window; reporting every occurrence
+            // would file one event per open terminal per deploy. Once the
+            // automatic budget is spent, this really is a genuinely broken
+            // deploy and is worth reporting.
+            const reloading = reloadOnceForChunkFailure();
+            this.setState({ reloadScheduled: reloading });
+            if (!reloading) {
+                console.error('[ErrorBoundary] Persistent chunk-load failure:', error, info.componentStack);
+                captureRenderError(error, info);
+            }
+            return;
+        }
         // Log to console in all environments. In production this could be
         // forwarded to a monitoring service (Sentry, etc.)
         console.error('[ErrorBoundary] Uncaught render error:', error, info.componentStack);
         captureRenderError(error, info);
     }
 
-    handleReload() {
-        // Clear error state first, then reload. The reload gives a clean slate
-        // to the entire React tree which is the safest recovery path.
-        this.setState({ hasError: false, error: null });
+    async handleReload() {
+        // A manual click always gets a fresh one-shot budget and a full
+        // cache purge -- acceptable to pay the offline-mode cost here
+        // (unlike the automatic path above) because a human explicitly
+        // asked for it.
+        this.setState({ hasError: false, error: null, isChunkError: false, reloadScheduled: false });
+        clearChunkReloadMarker();
+        await clearAppRuntimeCaches();
         window.location.reload();
     }
 
     render() {
         if (!this.state.hasError) {
             return this.props.children;
+        }
+
+        if (this.state.isChunkError && this.state.reloadScheduled) {
+            return (
+                <div
+                    style={{
+                        minHeight: '100vh',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        background: '#f8fafc',
+                        fontFamily: 'Inter, system-ui, sans-serif',
+                        padding: '1rem',
+                        color: '#64748b',
+                        fontSize: '0.875rem'
+                    }}
+                >
+                    Finishing an update&hellip;
+                </div>
+            );
         }
 
         return (
@@ -109,7 +154,7 @@ class ErrorBoundary extends React.Component {
                             marginBottom: '0.5rem',
                         }}
                     >
-                        Something went wrong
+                        {this.state.isChunkError ? "Couldn't load the latest update" : 'Something went wrong'}
                     </h1>
 
                     <p
@@ -120,8 +165,9 @@ class ErrorBoundary extends React.Component {
                             marginBottom: '1.5rem',
                         }}
                     >
-                        An unexpected error occurred. Your data is safe — refreshing
-                        the page will restore normal operation.
+                        {this.state.isChunkError
+                            ? "A new version was deployed but this device couldn't load part of it. Your data is safe — reloading will restore normal operation."
+                            : 'An unexpected error occurred. Your data is safe — refreshing the page will restore normal operation.'}
                     </p>
 
                     {this.state.error && (

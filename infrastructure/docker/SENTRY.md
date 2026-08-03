@@ -81,6 +81,7 @@ VITE_SENTRY_TRACES_SAMPLE_RATE=0
 VITE_SENTRY_REPLAYS_SESSION_SAMPLE_RATE=0
 VITE_SENTRY_REPLAYS_ON_ERROR_SAMPLE_RATE=0
 VITE_SENTRY_TRACE_PROPAGATION_TARGETS=
+VITE_SENTRY_TRACE_PROPAGATION_ENABLED=
 VITE_SENTRY_DEBUG=false
 ```
 
@@ -89,8 +90,46 @@ Behavior:
 - `VITE_SENTRY_ENABLED=false` hard-disables browser Sentry.
 - `VITE_SENTRY_ENABLED=true` plus each app DSN enables browser error capture for that built app.
 - Frontend values are build-time values because the app is served as static nginx assets. Changing frontend Sentry values requires rebuilding the frontend image.
-- `VITE_SENTRY_TRACES_SAMPLE_RATE` / `VITE_SENTRY_REPLAYS_*_SAMPLE_RATE` being `>0` is what actually registers `browserTracingIntegration()` / `replayIntegration()` in `src/observability/sentryClient.js` -- a `0` rate means the integration isn't added at all, not just sampled out.
-- `VITE_SENTRY_TRACE_PROPAGATION_TARGETS` is a comma-separated list of origins/URL patterns that get `sentry-trace`/`baggage` headers attached to outgoing requests, joining a frontend error to the backend trace that caused it. Leave unset to fall back to same-origin + `VITE_API_URL` (see `resolveTracePropagationTargets()`); set explicitly for the POS Electron shell, whose `backendOrigin` isn't `window.location.origin`.
+- `VITE_SENTRY_REPLAYS_*_SAMPLE_RATE` being `>0` is what registers `replayIntegration()` in `src/observability/sentryClient.js` -- a `0` rate means that integration isn't added at all, not just sampled out.
+- `VITE_SENTRY_TRACE_PROPAGATION_TARGETS` is a comma-separated list of origins/URL patterns that get `sentry-trace`/`baggage` headers attached to outgoing requests, joining a frontend error to the backend trace that caused it. Leave unset to fall back to same-origin + `VITE_API_URL` (see `resolveTracePropagationTargets()`). The POS Electron shell's `backendOrigin` is resolved at runtime and passed to `initBrowserSentry({extraTracePropagationTargets})` from `src/main.jsx`, so it no longer needs this set explicitly -- set it anyway for any surface that doesn't read `runtimeConfig`.
+
+### Distributed tracing: three modes, and the `0` trap
+
+Tracing is **tri-state**, not a boolean. `resolveTracingMode()` picks the mode:
+
+| Mode | When | `browserTracingIntegration` | Transactions billed |
+|---|---|---|---|
+| `off` | `VITE_SENTRY_TRACE_PROPAGATION_ENABLED` explicitly falsy | not registered | 0 |
+| `propagate` | default (rate unset or `0`) | registered, PerformanceObservers disabled | **0** |
+| `spans` | `VITE_SENTRY_TRACES_SAMPLE_RATE > 0` | registered with full options | sampled |
+
+Two non-obvious facts drive this design, both verified against the installed SDK:
+
+1. **`tracesSampleRate: 0` is not "tracing off".** Sentry's `hasSpansEnabled()` is `tracesSampleRate != null || !!tracesSampler`, so a literal `0` *enables* span support and then forces a negative sampling decision -- which the browser propagates outward as `sentry-trace: <id>-<id>-0`. Any backend that inherits that decision can then never sample, silently. So `sentryClient.js` **omits the key entirely** unless the mode is `spans`. `backend/src/config/sentry.js` does the same with `SENTRY_TRACES_SAMPLE_RATE`. Never "just set it to 0" in either place.
+2. **Header propagation does not need sampling.** `instrumentOutgoingRequests()` is called unconditionally inside `browserTracingIntegration`'s `afterAllSetup()`, outside any `hasSpansEnabled()` guard. Registering the integration is what attaches `sentry-trace`/`baggage`; sampling only decides whether *transactions* are also sent. This is why `propagate` mode delivers full frontend-to-backend error correlation at zero quota cost -- errors are never sampled out, only spans are.
+
+`instrumentPageLoad` / `instrumentNavigation` stay enabled in `propagate` mode on purpose: they are what rotate the trace id per navigation. Disabling them would pin a single trace id to an entire tab lifetime, so a POS terminal open for a 10-hour shift would hang thousands of requests off one unusable trace.
+
+**Backend sampling.** When `SENTRY_TRACES_SAMPLE_RATE` is set `>0`, `makeTracesSampler()` applies per-route overrides rather than a flat rate:
+
+| Route | Rate | Why |
+|---|---|---|
+| `/health`, `/healthz`, `/ready`, `/metrics` | `0` | container healthcheck + Prometheus scrape; constant rate, no diagnostic value |
+| `GET /api/v1/pos/incoming-orders` | `0.01` | polled every 12s per open terminal (~72k req/day across 20 terminals) |
+| `OPTIONS` preflights | `0` | no diagnostic value |
+| everything else | `inheritOrSampleWith(base)` | honours the browser's decision when it made one |
+
+**Correlating a support ticket to a trace.** `requestContext` adopts an inbound `sentry-trace` id as `req.traceId`, so the `x-trace-id` response header (already CORS-exposed) equals the Sentry trace id and can be pasted straight into Sentry as `trace:<id>`. Requests with no `sentry-trace` header (cron, internal callers, curl) keep a generated UUID, so the format is deliberately mixed -- do not assume UUID shape when parsing it.
+
+Note there is **no `trace_id` tag** on backend events. Sentry already carries the real trace id at `contexts.trace.trace_id` and indexes it as the `trace:` search; a same-named custom tag previously shadowed it in the UI with an unrelated per-request UUID. Use the `request_id` tag or `trace:<id>` search instead.
+
+### Secret scrubbing in error text
+
+`sanitizeSentryEvent`'s existing `redactSensitiveData` is **key-name based** -- it can only redact a secret sitting under a recognisable key. A secret pasted *inside* a message string is invisible to it, which is how an OpenAI API key once reached Sentry as an issue *title* (the `openai` SDK embeds the key it tried to use in its own 401 error text).
+
+`redactSecretsInText` (duplicated in `backend/src/config/sentry.js` and `frontend/src/observability/sentryClient.js`) now scrubs `exception.values[].value`, `message`, `logentry`, and `breadcrumbs[].message` for OpenAI keys, JWTs, bearer tokens, AWS/GitHub tokens, credentialed connection-string URLs, Sentry DSNs, and explicit `api_key=`/`secret:` assignments. `exception.type`, `.stacktrace`, `.mechanism` and `event.fingerprint` are never touched, so grouping is unaffected.
+
+This is a backstop, not a fix: a `[redacted:*]` placeholder appearing in Sentry means a secret is reaching an error path and should be rotated. It also only prevents *future* leaks -- already-stored events must be deleted in Sentry, and an Advanced Data Scrubbing rule on `$exception.value` is worth adding server-side to catch other SDKs.
 
 ### User, tenant, and route context
 
@@ -99,6 +138,7 @@ Every surface now attaches, on top of the base error capture:
 - **User identity** -- `identifySentryUser({id, role})` in `src/observability/sentryClient.js` sets `Sentry.setUser({id})` plus a `user_role` tag on sign-in, called from the same identity-sync flow that already feeds PostHog (`ObservabilityIdentitySync` in each app's `main.jsx`; `useStorefrontSession.js` for the storefront's customer accounts). `resetSentryIdentity()` clears it on sign-out. `sanitizeSentryEvent`'s `beforeSend` still strips `email`/`username`/`ip_address` from the `user` object -- only the opaque `id` and tags ever leave the browser.
 - **Tenant/store context** -- `setSentryContext({tenantId, storeSlug, businessMode, locationId})` registers those as tags on every subsequent event, mirroring `setAnalyticsContext`'s PostHog super properties.
 - **Route context** -- `setSentryRoute(pathname)` tags the current `route` and adds a navigation breadcrumb on every route change, called from the same pathname effect that already calls `capturePageview()`. This does **not** require `VITE_SENTRY_TRACES_SAMPLE_RATE > 0`.
+- **Trace context** -- in `propagate` mode (the default) every event also carries `contexts.trace.trace_id`, shared with the backend event for the same request. See the distributed-tracing section above.
 - **Deliberately not implemented:** route-pattern-named transactions (`Sentry.reactRouterBrowserTracingIntegration`). That integration only produces navigation spans when `<Routes>` is also wrapped with `Sentry.wrapReactRouterRouting()`, which needs the lazily-imported SDK synchronously at render time -- conflicting with this module's zero-cost-when-disabled lazy-import design. Registering the integration without the wrapper silently drops all navigation transactions, which is worse than the current plain `browserTracingIntegration()`. Revisit if/when a surface turns tracing on for real and route-pattern transaction names become worth the added mount-time complexity.
 
 ### Failed API requests as Sentry events
