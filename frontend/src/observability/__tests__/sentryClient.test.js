@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  classifyRequestFailure,
   normalizeRequestUrl,
   resolveSentryBrowserConfig,
   resolveTracePropagationTargets,
@@ -443,6 +444,20 @@ describe('Sentry identity, context, and route helpers', () => {
   });
 });
 
+describe('classifyRequestFailure', () => {
+  it('classifies 502/503/504 and no-response as transient', () => {
+    expect(classifyRequestFailure({ status: 502 })).toBe('transient');
+    expect(classifyRequestFailure({ status: 503 })).toBe('transient');
+    expect(classifyRequestFailure({ status: 504 })).toBe('transient');
+    expect(classifyRequestFailure({})).toBe('transient');
+  });
+
+  it('classifies 500 and other 5xx as server', () => {
+    expect(classifyRequestFailure({ status: 500 })).toBe('server');
+    expect(classifyRequestFailure({ status: 599 })).toBe('server');
+  });
+});
+
 describe('captureRequestFailure', () => {
   const importInitializedSentryClient = async () => {
     const scope = { setLevel: vi.fn(), setFingerprint: vi.fn(), setTag: vi.fn(), setContext: vi.fn() };
@@ -470,6 +485,54 @@ describe('captureRequestFailure', () => {
     expect(Sentry.captureException).toHaveBeenCalledTimes(1);
     const [, options] = Sentry.captureException.mock.calls[0];
     expect(options.fingerprint).toEqual(['api', 'GET', '/api/v1/items/:id', '500']);
+    expect(options.level).toBe('error');
+    expect(options.tags.request_failure_class).toBe('server');
+    vi.doUnmock('@sentry/react');
+  });
+
+  it('classifies 502/503/504 as transient (warning level) without changing the fingerprint', async () => {
+    const { freshModule, Sentry } = await importInitializedSentryClient();
+
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items/1', status: 502 });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items/2', status: 503 });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items/3', status: 504 });
+
+    expect(Sentry.captureException).toHaveBeenCalledTimes(3);
+    Sentry.captureException.mock.calls.forEach(([, options], index) => {
+      const status = [502, 503, 504][index];
+      // Fingerprint's 4th element is already the status code -- this is the
+      // regression guard proving classification never touches grouping.
+      expect(options.fingerprint).toEqual(['api', 'GET', `/api/v1/items/:id`, String(status)]);
+      expect(options.level).toBe('warning');
+      expect(options.tags.request_failure_class).toBe('transient');
+    });
+    vi.doUnmock('@sentry/react');
+  });
+
+  it('classifies a network/no-response failure as transient (warning level)', async () => {
+    const { freshModule, Sentry } = await importInitializedSentryClient();
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items' });
+
+    const [, options] = Sentry.captureException.mock.calls[0];
+    expect(options.fingerprint).toEqual(['api', 'GET', '/api/v1/items', 'network']);
+    expect(options.level).toBe('warning');
+    expect(options.tags.request_failure_class).toBe('transient');
+    vi.doUnmock('@sentry/react');
+  });
+
+  it('does not capture a canceled/aborted request', async () => {
+    const { freshModule, Sentry } = await importInitializedSentryClient();
+
+    const canceled = new Error('canceled');
+    canceled.name = 'CanceledError';
+    canceled.code = 'ERR_CANCELED';
+    freshModule.captureRequestFailure({ error: canceled, method: 'get', url: '/api/v1/items' });
+
+    const aborted = new Error('The operation was aborted');
+    aborted.name = 'AbortError';
+    freshModule.captureRequestFailure({ error: aborted, method: 'get', url: '/api/v1/items/2' });
+
+    expect(Sentry.captureException).not.toHaveBeenCalled();
     vi.doUnmock('@sentry/react');
   });
 

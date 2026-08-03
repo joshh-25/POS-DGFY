@@ -505,6 +505,20 @@ const MAX_REQUEST_FAILURE_EVENTS_PER_SESSION = 20;
 const requestFailureLastSentAt = new Map();
 let requestFailureEventCount = 0;
 
+// 502/503/504 (and a bare no-response failure) are treated as "transient":
+// symptomatic of a deploy window or a single gateway/worker restart rather
+// than a bug. A 500 or any other 5xx is classified "server" -- a genuine
+// application error. This only affects the `level` and a searchable tag on
+// the emitted event, never the fingerprint (see the comment on `fingerprint`
+// below for why grouping must not change).
+const TRANSIENT_REQUEST_STATUSES = new Set([502, 503, 504]);
+
+export const classifyRequestFailure = ({ status } = {}) => (
+  (status === undefined || status === null || TRANSIENT_REQUEST_STATUSES.has(Number(status)))
+    ? 'transient'
+    : 'server'
+);
+
 /**
  * Captures a genuine final API failure (5xx, or a network/no-response
  * error) as a Sentry event, complementing tagRequestFailureContext's
@@ -515,10 +529,27 @@ let requestFailureEventCount = 0;
  * tagRequestFailureContext, once a request has failed past every retry.
  */
 export const captureRequestFailure = ({ error, method, url, status, requestId } = {}) => {
+  // A canceled/aborted request is a caller decision (component unmount, a
+  // superseded request), not a failure -- covers all three call sites
+  // (api.js's trailing interceptor, requestJson.js's two paths) in one
+  // place rather than requiring every caller to filter it out first.
+  const errorName = String(error?.name || '');
+  if (errorName === 'CanceledError' || errorName === 'AbortError' || error?.code === 'ERR_CANCELED') return;
+
   const hasResponse = status !== undefined && status !== null;
   if (hasResponse && Number(status) < 500) return;
 
   const normalizedUrl = normalizeRequestUrl(url);
+  // Fingerprint is intentionally UNCHANGED by the transient/server
+  // classification below. Sentry groups solely on this array; the status
+  // code is already its 4th element, so 502/503/504/network already group
+  // separately from 500 today. Adding a classification token here would
+  // orphan every existing issue built on the current fingerprint (a new
+  // hash starts a new issue, losing assignees/ignore-state/history) and
+  // would reset the cooldown Map below, which is keyed off this same
+  // fingerprint -- the first minute after such a change would emit MORE
+  // events, not fewer. `level` and the tag are how classification is
+  // surfaced instead.
   const fingerprint = ['api', String(method || 'GET').toUpperCase(), normalizedUrl, hasResponse ? String(status) : 'network'];
   const fingerprintKey = fingerprint.join('|');
 
@@ -530,15 +561,19 @@ export const captureRequestFailure = ({ error, method, url, status, requestId } 
   requestFailureLastSentAt.set(fingerprintKey, now);
   requestFailureEventCount += 1;
 
+  const failureClass = classifyRequestFailure({ status });
+
   withSentry((Sentry) => {
     Sentry.captureException(error || new Error(`Request failed: ${method || 'GET'} ${normalizedUrl}`), {
       fingerprint,
+      level: failureClass === 'transient' ? 'warning' : 'error',
       contexts: {
         failed_request: { request_id: requestId, url, status }
       },
       tags: {
         request_method: method ? String(method).toUpperCase() : undefined,
-        request_status: hasResponse ? String(status) : 'network'
+        request_status: hasResponse ? String(status) : 'network',
+        request_failure_class: failureClass
       }
     });
   });
