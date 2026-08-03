@@ -1,4 +1,5 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { createPortal } from 'react-dom';
 import {
     Accessibility,
@@ -103,8 +104,8 @@ import { resolvePosWorkflow } from '../utils/posWorkflowResolver.js';
 import { FnbWorkflowPanel } from './FnbWorkflowPanel.jsx';
 import { ServicesWorkflowPanel } from './ServicesWorkflowPanel.jsx';
 
-const ReceiptPrintView = lazy(() => import('./ReceiptPrintView'));
-const OrderPreviewView = lazy(() => import('./OrderPreviewView.jsx'));
+const ReceiptPrintView = lazyWithChunkRetry(() => import('./ReceiptPrintView'));
+const OrderPreviewView = lazyWithChunkRetry(() => import('./OrderPreviewView.jsx'));
 
 const CATALOG_GRID_GAP_PX = 8;
 const CATALOG_DESKTOP_CARD_HEIGHT_PX = 176;
@@ -112,8 +113,8 @@ const CATALOG_DESKTOP_CARD_MIN_WIDTH_PX = 176;
 const CATALOG_MOBILE_CARD_HEIGHT_PX = 120;
 const CATALOG_TABLET_CARD_HEIGHT_PX = 112;
 const CATALOG_TABLET_CARD_MIN_WIDTH_PX = 160;
-const POSBarcodeScanner = lazy(() => import('./POSBarcodeScanner.jsx'));
-const POSTransactionHistoryPanel = lazy(() => import('./POSTransactionHistoryPanel.jsx'));
+const POSBarcodeScanner = lazyWithChunkRetry(() => import('./POSBarcodeScanner.jsx'));
+const POSTransactionHistoryPanel = lazyWithChunkRetry(() => import('./POSTransactionHistoryPanel.jsx'));
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const POS_ITEM_FALLBACK_IMAGE = '/dgfy-horizontal_logo-removebg-preview.png';
 const POS_ITEM_IMAGE_MAP = [

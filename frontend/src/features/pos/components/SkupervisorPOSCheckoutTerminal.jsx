@@ -1,4 +1,5 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { Folder, LayoutGrid, Plus, ShoppingCart, Trash2, Utensils, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -47,10 +48,10 @@ import {
 } from '../utils/iminHardwareBridge.js';
 import { PosAddToCartToastContainer } from './PosAddToCartToastContainer.jsx';
 
-const ReceiptPrintView = lazy(() => import('./ReceiptPrintView'));
-const OrderPreviewView = lazy(() => import('./OrderPreviewView.jsx'));
-const POSBarcodeScanner = lazy(() => import('./SkupervisorPOSBarcodeScanner.jsx'));
-const POSTransactionHistoryPanel = lazy(() => import('./SkupervisorPOSTransactionHistoryPanel.jsx'));
+const ReceiptPrintView = lazyWithChunkRetry(() => import('./ReceiptPrintView'));
+const OrderPreviewView = lazyWithChunkRetry(() => import('./OrderPreviewView.jsx'));
+const POSBarcodeScanner = lazyWithChunkRetry(() => import('./SkupervisorPOSBarcodeScanner.jsx'));
+const POSTransactionHistoryPanel = lazyWithChunkRetry(() => import('./SkupervisorPOSTransactionHistoryPanel.jsx'));
 const POS_ITEM_FALLBACK_IMAGE = '/dgfy-horizontal_logo-removebg-preview.png';
 const POS_ITEM_IMAGE_MAP = [
     { match: ['coffee'], src: '/pos-items/coffee.jpg' },
@@ -360,7 +361,12 @@ export default function POSCheckoutTerminal({
     isMsmeMode = false,
     canViewHistory = true,
     queueReplayManagedExternally = false,
-    offlineSnapshotScope = null,
+    // `{}`, not `null`: PosPageShell.jsx renders this terminal without an
+    // offline scope at all (no tenant/terminal/location/user flow into it),
+    // and getManualPosSyncPolicy/isOfflinePosScopeReady below run
+    // synchronously during the first render (a useState initializer) -
+    // before any effect could guard against a null scope.
+    offlineSnapshotScope = {},
     selectedLocationId = null,
     activeShiftId = null,
     terminalId = '',

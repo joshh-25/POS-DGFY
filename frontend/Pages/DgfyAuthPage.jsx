@@ -28,6 +28,7 @@ import caFlag from '../src/assets/flags/ca.svg';
 import {
   buildDgfyAuthPath,
   buildDgfyResetPath,
+  DGFY_COMPANY_SELECT_ROUTE,
   normalizeDgfyMode,
   readDgfyRouteParams,
   resolveDgfyPostAuthTarget,
@@ -559,7 +560,16 @@ export default function DgfyAuthPage() {
     fetchDgfyMe(getStoredDgfyToken())
       .then(async (session) => {
         if (cancelled) return;
-        const target = resolveDgfyPostAuthTarget({ intent: routeParams.intent, returnTo: routeParams.returnTo });
+        // Unlike the storefront's copy of this page, SKUpervisor's own
+        // /dgfy/auth must not eject an already-signed-in user out to
+        // dgfy.ph - a DGFY session alone isn't a SKUpervisor tenant
+        // session yet, so the default landing spot is the company picker,
+        // not the storefront account dashboard.
+        const target = resolveDgfyPostAuthTarget({
+          intent: routeParams.intent,
+          returnTo: routeParams.returnTo,
+          fallbackTarget: DGFY_COMPANY_SELECT_ROUTE
+        });
         const finalTarget = await resolveHandoffNavigationTarget(target, session?.token || getStoredDgfyToken());
         if (!cancelled) navigateToTarget(navigate, finalTarget);
       })
@@ -591,7 +601,14 @@ export default function DgfyAuthPage() {
     || (!hasAccountLegalVersions(accountLegalSnapshot) ? 'Current DGFY account terms are incomplete. Registration is disabled until the current terms are published.' : '');
 
   const handleAuthSuccess = useCallback(async (session) => {
-    const target = resolveDgfyPostAuthTarget({ intent: routeParams.intent, returnTo: routeParams.returnTo });
+    // See the sign-in-detection effect above for why this passes
+    // fallbackTarget: staying on SKUpervisor (the company picker) rather
+    // than defaulting out to the storefront account dashboard.
+    const target = resolveDgfyPostAuthTarget({
+      intent: routeParams.intent,
+      returnTo: routeParams.returnTo,
+      fallbackTarget: DGFY_COMPANY_SELECT_ROUTE
+    });
     setNotice(routeParams.intent === 'register-business' ? 'DGFY account connected. Continuing to business registration...' : 'DGFY account connected. Returning to your account...');
     try { await fetchDgfyMe(session?.token || getStoredDgfyToken()).catch(() => null); }
     finally {

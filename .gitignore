@@ -97,6 +97,11 @@ bun.lock
 # Ignore .env files, which may contain secrets. See
 .env
 
+# Scratch dir for local secrets/backups/DB dumps -- not just .env files (see
+# do-not-commit/local-test/, which also holds .env.compose and production
+# data snapshots that don't match the generic .env pattern above).
+/do-not-commit/
+
 # Built Android release artifacts (scripts/build-android-beta-release.sh)
 /releases/android/
 

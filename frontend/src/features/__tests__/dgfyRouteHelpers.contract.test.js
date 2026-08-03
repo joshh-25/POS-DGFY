@@ -2,7 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { resolveStorefrontItemUrl, resolveStorefrontTenantUrl } from '../dgfyRouteHelpers.js';
+import {
+  resolveDgfyPostAuthTarget,
+  resolveStorefrontAccountUrl,
+  resolveStorefrontItemUrl,
+  resolveStorefrontTenantUrl,
+  sanitizeInternalReturnPath
+} from '../dgfyRouteHelpers.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const routeHelperPath = resolve(__dirname, '../dgfyRouteHelpers.js');
@@ -48,5 +54,49 @@ describe('DGFY route helper contracts', () => {
       slug: '',
       storefrontHomeUrl: 'https://dgfy.ph/'
     })).toBe('');
+  });
+
+  describe('resolveDgfyPostAuthTarget fallbackTarget', () => {
+    it('defaults to the storefront account dashboard when no fallbackTarget is supplied - existing (storefront) callers must be unaffected', () => {
+      expect(resolveDgfyPostAuthTarget({})).toBe(resolveStorefrontAccountUrl());
+    });
+
+    it('lets SKUpervisor land an already-signed-in user on its own company picker instead of ejecting to dgfy.ph', () => {
+      expect(resolveDgfyPostAuthTarget({ fallbackTarget: '/dgfy/companies' })).toBe('/dgfy/companies');
+    });
+
+    it('still prefers an explicit same-origin return_to over the fallback', () => {
+      expect(resolveDgfyPostAuthTarget({ returnTo: '/items', fallbackTarget: '/dgfy/companies' })).toBe('/items');
+    });
+
+    it('falls back (not to the storefront) when return_to is an open-redirect attempt', () => {
+      expect(resolveDgfyPostAuthTarget({ returnTo: '//evil.test', fallbackTarget: '/dgfy/companies' })).toBe('/dgfy/companies');
+    });
+  });
+
+  describe('sanitizeInternalReturnPath', () => {
+    it('rejects protocol-relative and absolute targets', () => {
+      expect(sanitizeInternalReturnPath('//evil.test/x')).toBe('/');
+      expect(sanitizeInternalReturnPath('https://evil.test/x')).toBe('/');
+    });
+
+    it('uses the storefront default block list (login/register/reset-password) when none is supplied', () => {
+      expect(sanitizeInternalReturnPath('/login')).toBe('/');
+      expect(sanitizeInternalReturnPath('/register/step-2')).toBe('/');
+    });
+
+    it('honors a caller-supplied block list, e.g. SKUpervisor guarding its own auth routes', () => {
+      const skupervisorPattern = /^\/(login|dgfy\/auth|dgfy\/companies|dgfy\/reset-password)(?:[/?#]|$)/i;
+      expect(sanitizeInternalReturnPath('/dgfy/companies', { blockedPattern: skupervisorPattern })).toBe('/');
+      expect(sanitizeInternalReturnPath('/dgfy/auth?x=1', { blockedPattern: skupervisorPattern })).toBe('/');
+      // '/register' is on the storefront's default block list but not on
+      // SKUpervisor's - proves the caller's own pattern is what's actually
+      // consulted, not the module-level default.
+      expect(sanitizeInternalReturnPath('/register', { blockedPattern: skupervisorPattern })).toBe('/register');
+    });
+
+    it('accepts a same-origin path with query and hash', () => {
+      expect(sanitizeInternalReturnPath('/items?x=1#y')).toBe('/items?x=1#y');
+    });
   });
 });

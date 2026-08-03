@@ -18,6 +18,10 @@ import {
   identifyAnalyticsUser,
   resetAnalyticsIdentity
 } from '../../../../../src/observability/analyticsClient.js';
+import {
+  identifySentryUser,
+  resetSentryIdentity
+} from '../../../../../src/observability/sentryClient.js';
 
 /**
  * Stateful hook that owns the DGFY customer session bootstrap.
@@ -150,19 +154,21 @@ export function useStorefrontSession({ setIsAccountDrawerOpen }) {
   const isDgfyCustomerSignedIn = Boolean(dgfyAuthToken || dgfySessionAccount?.id);
   const isStorefrontAccountAuthenticated = Boolean(storeAuthToken || dgfyAuthToken || dgfySessionAccount?.id);
 
-  // Keep PostHog identity in step with the resolved session, wherever it
-  // came from (handoff exchange, cookie session, or legacy token). This
-  // covers every sign-in path through one place rather than patching each
-  // of the setDgfySessionAccount() call sites above.
+  // Keep PostHog and Sentry identity in step with the resolved session,
+  // wherever it came from (handoff exchange, cookie session, or legacy
+  // token). This covers every sign-in path through one place rather than
+  // patching each of the setDgfySessionAccount() call sites above.
   const identifiedAccountIdRef = useRef(null);
   useEffect(() => {
     const accountId = dgfySessionAccount?.id || null;
     if (accountId && identifiedAccountIdRef.current !== accountId) {
       identifiedAccountIdRef.current = accountId;
       identifyAnalyticsUser({ id: accountId, account_type: dgfySessionAccount?.account_type });
+      identifySentryUser({ id: accountId, role: dgfySessionAccount?.account_type });
     } else if (!accountId && !dgfyAuthToken && identifiedAccountIdRef.current) {
       identifiedAccountIdRef.current = null;
       resetAnalyticsIdentity();
+      resetSentryIdentity();
     }
   }, [dgfySessionAccount, dgfyAuthToken]);
 

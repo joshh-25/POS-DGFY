@@ -299,6 +299,7 @@ export const normalizeStorefrontPageModel = ({
   const isFnbMode = modeAdapter.isFnbMode === true;
   const isSimpleMode = modeAdapter.isSimpleMode === true;
   const isHospitalityMode = modeAdapter.isHospitalityMode === true;
+  const isRetailMode = modeAdapter.isRetailMode === true;
   const socialLinks = normalizeLinkMap(selectedStore?.storefront_social_links);
   const legacyPromo = normalizeLinkMap(selectedStore?.storefront_promo);
   const promoTimeZone = String(normalizeStorefrontBusinessHours(selectedStore?.storefront_hours)?.timezone || 'Asia/Manila').trim() || 'Asia/Manila';
@@ -375,6 +376,7 @@ export const normalizeStorefrontPageModel = ({
     isFnbMode,
     isSimpleMode,
     isHospitalityMode,
+    isRetailMode,
     servicesViewModel,
     fnbViewModel,
     servicesLayoutMode: servicesViewModel?.servicesLayoutMode || 'directory',
