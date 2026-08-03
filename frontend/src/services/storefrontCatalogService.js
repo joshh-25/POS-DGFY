@@ -76,3 +76,13 @@ export const bulkGenerateStorefrontCatalogImages = async ({ itemIds, overwriteEx
   });
   return response.data.data;
 };
+
+// The completion/failure signal generateStorefrontCatalogImage's own comment
+// above says doesn't exist yet — it does now. Returns
+// {status: 'queued'|'processing'|'completed'|'failed'|'unknown', error_code,
+// error_message, updated_at}; 'unknown' means nothing was ever queued for
+// this item, or the status record's TTL expired.
+export const getStorefrontImageGenerationStatus = async (itemId) => {
+  const response = await api.get(`/items/${itemId}/storefront-image/generation-status`);
+  return response.data.data;
+};

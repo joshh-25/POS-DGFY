@@ -8,6 +8,7 @@ const mockGetTenantModels = jest.fn();
 const mockDbStoreRun = jest.fn();
 const mockAiUsageLogCreate = jest.fn();
 const mockUnlink = jest.fn();
+const mockSetItemImageStatus = jest.fn();
 const mockLogger = { info: jest.fn(), warn: jest.fn(), error: jest.fn() };
 
 class ItemImageGenerationError extends Error {
@@ -49,6 +50,9 @@ jest.unstable_mockModule('fs/promises', () => ({
     default: { unlink: mockUnlink },
     unlink: mockUnlink
 }));
+jest.unstable_mockModule('../src/workers/itemImageStatusStore.js', () => ({
+    setItemImageStatus: mockSetItemImageStatus
+}));
 
 let processImageTask;
 
@@ -73,6 +77,8 @@ describe('processImageTask', () => {
         await processImageTask({ user: { tenant_id: 'tenant-1' } }); // missing user_id/itemId/name
         expect(mockGenerateItemImage).not.toHaveBeenCalled();
         expect(mockLogger.error).toHaveBeenCalled();
+        // No itemId to key a status record on — nothing to write, same as today.
+        expect(mockSetItemImageStatus).not.toHaveBeenCalled();
     });
 
     it('generates, resolves tenant context, attaches the image, and logs usage on success', async () => {
@@ -114,17 +120,27 @@ describe('processImageTask', () => {
             cost_usd: '0.030000'
         }));
         expect(mockUnlink).not.toHaveBeenCalled();
+
+        expect(mockSetItemImageStatus).toHaveBeenNthCalledWith(1, 'tenant-1', 42, { status: 'processing' });
+        expect(mockSetItemImageStatus).toHaveBeenNthCalledWith(2, 'tenant-1', 42, { status: 'completed' });
     });
 
-    it('logs and returns without throwing when generation itself fails', async () => {
+    it('logs, records a failed status, and returns without throwing when generation itself fails', async () => {
         mockGenerateItemImage.mockRejectedValue(new ItemImageGenerationError('boom', 'GENERATION_REQUEST_FAILED'));
 
         await expect(processImageTask({ user: baseUser, itemId: 42, name: 'Sisig' })).resolves.toBeUndefined();
         expect(mockFindTenantById).not.toHaveBeenCalled();
         expect(mockLogger.error).toHaveBeenCalled();
+
+        expect(mockSetItemImageStatus).toHaveBeenNthCalledWith(1, 'tenant-1', 42, { status: 'processing' });
+        expect(mockSetItemImageStatus).toHaveBeenNthCalledWith(2, 'tenant-1', 42, {
+            status: 'failed',
+            error_code: 'GENERATION_REQUEST_FAILED',
+            error_message: 'boom'
+        });
     });
 
-    it('cleans up the generated temp file when the tenant cannot be resolved', async () => {
+    it('cleans up the generated temp file and records a failed status when the tenant cannot be resolved', async () => {
         mockGenerateItemImage.mockResolvedValue({
             path: '/tmp/orphan.png',
             originalname: 'ai-generated-orphan.png',
@@ -139,9 +155,16 @@ describe('processImageTask', () => {
 
         expect(mockUploadStorefrontCatalogImageUseCase).not.toHaveBeenCalled();
         expect(mockUnlink).toHaveBeenCalledWith('/tmp/orphan.png');
+
+        expect(mockSetItemImageStatus).toHaveBeenNthCalledWith(1, 'tenant-1', 42, { status: 'processing' });
+        expect(mockSetItemImageStatus).toHaveBeenNthCalledWith(2, 'tenant-1', 42, {
+            status: 'failed',
+            error_code: 'TENANT_NOT_FOUND',
+            error_message: 'Tenant not found'
+        });
     });
 
-    it('logs and does not throw when attaching the generated image fails', async () => {
+    it('logs, records a failed status, and does not throw when attaching the generated image fails', async () => {
         mockGenerateItemImage.mockResolvedValue({
             path: '/tmp/fake.png',
             originalname: 'ai-generated-abc.png',
@@ -157,5 +180,12 @@ describe('processImageTask', () => {
         await expect(processImageTask({ user: baseUser, itemId: 42, name: 'Sisig' })).resolves.toBeUndefined();
         expect(mockAiUsageLogCreate).not.toHaveBeenCalled();
         expect(mockLogger.error).toHaveBeenCalled();
+
+        expect(mockSetItemImageStatus).toHaveBeenNthCalledWith(1, 'tenant-1', 42, { status: 'processing' });
+        expect(mockSetItemImageStatus).toHaveBeenNthCalledWith(2, 'tenant-1', 42, {
+            status: 'failed',
+            error_code: 'ATTACH_FAILED',
+            error_message: 'item not found'
+        });
     });
 });
