@@ -24,7 +24,9 @@ import {
   buildUploadBulkStorefrontCatalogImagesUseCase,
   buildUpdateStorefrontCatalogGalleryUseCase,
   buildDeleteStorefrontCatalogGalleryImageUseCase,
-  buildDeleteStorefrontCatalogImageUseCase
+  buildDeleteStorefrontCatalogImageUseCase,
+  buildGenerateItemImageUseCase,
+  buildBulkGenerateItemImageUseCase
 } from './usecases/storefrontCatalogUseCases.js';
 import {
   buildAttachItemBarcodeUseCase,
@@ -109,6 +111,8 @@ export const deleteStorefrontCatalogImageUseCase = buildDeleteStorefrontCatalogI
   itemRepository,
   imageStorage: storefrontCatalogImageStorage
 });
+export const generateItemImageUseCase = buildGenerateItemImageUseCase({ itemRepository });
+export const bulkGenerateItemImageUseCase = buildBulkGenerateItemImageUseCase({ itemRepository });
 export const listItemBarcodesUseCase = buildListItemBarcodesUseCase({ itemRepository });
 export const attachItemBarcodeUseCase = buildAttachItemBarcodeUseCase({ itemRepository });
 export const generateItemBarcodeUseCase = buildGenerateItemBarcodeUseCase({ itemRepository });

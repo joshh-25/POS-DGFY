@@ -1,5 +1,5 @@
 import React, { useDeferredValue, useState, useMemo, useEffect, useCallback } from 'react';
-import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2, Clock, Check, X, ArrowUpDown, ArrowLeft, Folder, ListChecks, Info } from 'lucide-react';
+import { Plus, Search, Filter, LayoutGrid, List, Package, Loader2, Clock, Check, X, ArrowUpDown, ArrowLeft, Folder, ListChecks, Info, Sparkles } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
@@ -70,7 +70,9 @@ import {
   uploadStorefrontCatalogImages,
   updateStorefrontCatalogGallery,
   uploadBulkStorefrontCatalogImages,
-  deleteStorefrontCatalogImage
+  deleteStorefrontCatalogImage,
+  generateStorefrontCatalogImage,
+  bulkGenerateStorefrontCatalogImages
 } from '@/services/storefrontCatalogService.js';
 import { replaceItemSuppliers } from '@/src/services/itemService.js';
 import { useWorkflowMode } from '@/src/features/settings/WorkflowModeContext.jsx';
@@ -597,6 +599,35 @@ export default function Items() {
       toast.success(filesToUpload.length > 1 ? `Item gallery updated for ${item.name}` : `Item image updated for ${item.name}`);
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to upload item image');
+    }
+  };
+
+  // AI image generation (#197) — fire-and-forget: the request only confirms
+  // the item was queued. There's no local gallery state to update yet, so
+  // this doesn't touch storefrontCatalogOverrides the way upload/delete do.
+  const handleGenerateStorefrontImage = async (item) => {
+    const itemId = item?.item_id || item?.id;
+    if (!itemId || !canConfigureStorefrontCatalog) return;
+    try {
+      await generateStorefrontCatalogImage(itemId);
+      toast.success(`Image generation queued for ${item.name} — check back shortly.`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to queue AI image generation');
+    }
+  };
+
+  const handleBulkGenerateStorefrontImages = async (itemIds) => {
+    if (!Array.isArray(itemIds) || itemIds.length === 0 || !canConfigureStorefrontCatalog) return;
+    try {
+      const result = await bulkGenerateStorefrontCatalogImages({ itemIds });
+      const summary = result?.summary || {};
+      const parts = [`${summary.queued || 0} image(s) queued for AI generation.`];
+      if (summary.skipped) parts.push(`${summary.skipped} skipped (already have a photo).`);
+      if (summary.not_found) parts.push(`${summary.not_found} not found.`);
+      if (summary.failed) parts.push(`${summary.failed} failed to queue.`);
+      toast.success(parts.join(' '));
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to queue AI image generation');
     }
   };
 
@@ -1326,6 +1357,7 @@ export default function Items() {
 
   // Item Selection Hook
   const { selectedIds, toggleSelection, clearSelection, count: selectedCount } = useItemSelection(filteredItems);
+  const [generatingBulkImages, setGeneratingBulkImages] = useState(false);
 
   // Clear selection when filters or folder changes
   useEffect(() => {
@@ -2848,6 +2880,7 @@ export default function Items() {
           onUploadStorefrontImage={handleUploadStorefrontImage}
           onSetPrimaryStorefrontImage={handleSetPrimaryStorefrontImage}
           onDeleteStorefrontImage={handleDeleteStorefrontImage}
+          onGenerateStorefrontImage={handleGenerateStorefrontImage}
           onOpenBulkPosSetup={() => {
             openBulkPosSetupFromItemWizard(editingItem);
           }}
@@ -2885,6 +2918,7 @@ export default function Items() {
             onUploadStorefrontImage={handleUploadStorefrontImage}
             onSetPrimaryStorefrontImage={handleSetPrimaryStorefrontImage}
             onDeleteStorefrontImage={handleDeleteStorefrontImage}
+            onGenerateStorefrontImage={handleGenerateStorefrontImage}
             onOpenBulkPosSetup={() => {
               openBulkPosSetupFromProductWizard(editingProduct);
             }}
@@ -2969,6 +3003,24 @@ export default function Items() {
               >
                 <Folder className="w-4 h-4 mr-2 text-amber-600" />
                 Move to Folder
+              </Button>
+              <Button
+                size="sm"
+                variant="secondary"
+                className="bg-white text-slate-900 hover:bg-slate-100 border-0"
+                disabled={generatingBulkImages}
+                title="Generates an AI photo for each selected item that doesn't already have one."
+                onClick={async () => {
+                  setGeneratingBulkImages(true);
+                  try {
+                    await handleBulkGenerateStorefrontImages(Array.from(selectedIds));
+                  } finally {
+                    setGeneratingBulkImages(false);
+                  }
+                }}
+              >
+                <Sparkles className="w-4 h-4 mr-2 text-purple-600" />
+                {generatingBulkImages ? 'Queuing…' : 'Generate Images (AI)'}
               </Button>
               <Button
                 size="icon"
