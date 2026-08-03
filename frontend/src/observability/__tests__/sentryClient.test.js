@@ -3,11 +3,31 @@ import {
   classifyRequestFailure,
   normalizeRequestUrl,
   resolveSentryBrowserConfig,
+  resolveSentryEnvironment,
   resolveTracePropagationTargets,
   resolveTracesSampleRate,
   resolveTracingMode,
   sanitizeSentryEvent
 } from '../sentryClient.js';
+
+describe('resolveSentryEnvironment', () => {
+  it('prefers an explicit VITE_SENTRY_ENVIRONMENT even when MODE is production', () => {
+    expect(resolveSentryEnvironment({ VITE_SENTRY_ENVIRONMENT: 'DEV', MODE: 'production' })).toBe('DEV');
+  });
+
+  it('falls back to MODE when it is not production', () => {
+    expect(resolveSentryEnvironment({ MODE: 'staging' })).toBe('staging');
+    expect(resolveSentryEnvironment({ MODE: 'development' })).toBe('development');
+  });
+
+  it('never falls back to a MODE of production -- resolves to "unknown" instead', () => {
+    expect(resolveSentryEnvironment({ MODE: 'production' })).toBe('unknown');
+  });
+
+  it('defaults to development when nothing is set', () => {
+    expect(resolveSentryEnvironment({})).toBe('development');
+  });
+});
 
 describe('browser Sentry config', () => {
   it('is inactive by default even when a surface DSN exists', () => {
