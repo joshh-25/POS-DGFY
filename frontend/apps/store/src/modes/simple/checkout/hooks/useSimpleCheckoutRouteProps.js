@@ -28,6 +28,7 @@ export function useSimpleCheckoutRouteProps({
   handleApplyGuestDetailsAndRequestOtp,
   handleCheckout,
   handleDownloadCheckoutImage,
+  handleGuestCheckoutOtpCodeChange,
   handlePaymentTypeChange,
   handlePinMyLocation,
   handleQuote,
