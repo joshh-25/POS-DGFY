@@ -25,6 +25,7 @@ import { AiUsageLog } from '../models/index.js';
 import { rasterizePdfPages, MenuRasterUnsupportedError } from './menuPdfRasterService.js';
 import { MENU_IMPORT_MAX_PDF_PAGES, MENU_IMPORT_WORKER_CONCURRENCY, menuImportModel } from '../config/menuImportFeature.js';
 import { resolveModelRate } from '../config/aiModelRates.js';
+import { AI_USAGE_FEATURES } from '../config/aiUsageFeatures.js';
 import { normalizeCategoryName } from '../utils/menuCategoryName.js';
 
 const require = createRequire(import.meta.url);
@@ -192,6 +193,7 @@ const mapExtractionResponseToItems = async (response, user) => {
             await AiUsageLog.create({
                 tenant_id: user?.tenant_id,
                 user_id: user?.user_id,
+                feature: AI_USAGE_FEATURES.MENU_IMPORT,
                 model: response.model,
                 input_tokens: response.usage.prompt_tokens || 0,
                 output_tokens: response.usage.completion_tokens || 0,
