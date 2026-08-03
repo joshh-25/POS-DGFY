@@ -2911,6 +2911,28 @@ export const itemRepository = {
         }
     },
     async generateItemBarcode(itemId, payload = {}, userId = null) {
+        const ItemBarcode = dbStore.get('ItemBarcode');
+        const normalizedItemId = Number.parseInt(itemId, 10);
+        if (!Number.isInteger(normalizedItemId) || normalizedItemId <= 0) {
+            const error = new Error('item_id must be a positive integer');
+            error.statusCode = 400;
+            throw error;
+        }
+        const existingBarcode = await ItemBarcode.findOne({
+            where: {
+                item_id: normalizedItemId,
+                is_active: true
+            },
+            include: barcodeIncludeItem(),
+            order: [
+                ['is_primary', 'DESC'],
+                ['updated_at', 'DESC']
+            ]
+        });
+        if (existingBarcode) {
+            return serializeBarcodeRow(existingBarcode);
+        }
+
         const store = dbStore.getStore?.() || {};
         const generatedCode = generateInternalBarcodeValue({
             tenantToken: store.tenantToken || store.tenantName || store.tenantId,

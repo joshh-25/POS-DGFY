@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   getGtinValidationMessage,
   hasValidGtinCheckDigit,
-  parseProductQrPayload
+  parseProductQrPayload,
+  resolveProductBarcodeInput
 } from '../barcodePolicy.js';
 
 describe('barcodePolicy', () => {
@@ -41,6 +42,36 @@ describe('barcodePolicy', () => {
     expect(parseProductQrPayload('https://id.gs1.org/01/04006381333932')).toEqual({
       code: '',
       error: 'Invalid GTIN check digit. Scan a real package barcode or enter item details manually.'
+    });
+  });
+
+  it('uses a manual barcode before a GTIN', () => {
+    expect(resolveProductBarcodeInput({
+      manualBarcode: ' supplier-001 ',
+      gtin: '4006381333931'
+    })).toEqual({
+      code: 'SUPPLIER-001',
+      kind: 'manual',
+      shouldGenerate: false,
+      validationMessage: ''
+    });
+  });
+
+  it('uses a valid GTIN when no manual barcode exists', () => {
+    expect(resolveProductBarcodeInput({ gtin: '4006381333931' })).toEqual({
+      code: '4006381333931',
+      kind: 'gtin',
+      shouldGenerate: false,
+      validationMessage: ''
+    });
+  });
+
+  it('generates only when both barcode fields are empty', () => {
+    expect(resolveProductBarcodeInput()).toEqual({
+      code: '',
+      kind: 'generated',
+      shouldGenerate: true,
+      validationMessage: ''
     });
   });
 });

@@ -73,6 +73,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { useCreateItem, useDeleteItem, useUpdateItem } from '@/hooks/useItems.js';
 import {
+  attachItemBarcode,
   createFolder,
   deleteFolder,
   generateItemBarcode,
@@ -84,8 +85,8 @@ import {
 import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
 import {
   getGtinValidationMessage,
-  getInternalBarcodeValidationMessage,
-  normalizeBarcodeEntry
+  normalizeBarcodeEntry,
+  resolveProductBarcodeInput
 } from '@/src/utils/barcodePolicy.js';
 import ProductQrScannerModal from '@/src/features/inventory/components/ProductQrScannerModal.jsx';
 import { notifyPosCatalogUpdated } from '../utils/posCatalogRefresh.js';
@@ -1955,7 +1956,9 @@ function ItemsWorkspace({
     pos_best_seller_mode: 'auto',
     senior_pwd_discount_eligible: false,
     description: '',
-    pos_category: ''
+    pos_category: '',
+    manual_barcode: '',
+    gtin: ''
   });
   const [focusedEditMoneyField, setFocusedEditMoneyField] = useState('');
   const [savedMessage, setSavedMessage] = useState({ name: '', barcode: '', action: 'updated' });
@@ -1974,13 +1977,13 @@ function ItemsWorkspace({
   const [posFolders, setPosFolders] = useState([]);
   const [skuSeedItems, setSkuSeedItems] = useState([]);
   const [selectedImageFiles, setSelectedImageFiles] = useState([]);
+  const [manualBarcode, setManualBarcode] = useState('');
   const [externalBarcode, setExternalBarcode] = useState('');
   const [externalLookupLoading, setExternalLookupLoading] = useState(false);
   const [externalLookupError, setExternalLookupError] = useState('');
   const [externalProductLookup, setExternalProductLookup] = useState(null);
   const [acceptedExternalProduct, setAcceptedExternalProduct] = useState(null);
   const [externalQrScannerOpen, setExternalQrScannerOpen] = useState(false);
-  const [useInternalBarcode, setUseInternalBarcode] = useState(false);
   const [pendingCreateRecovery, setPendingCreateRecovery] = useState(null);
   const [postCreateSaving, setPostCreateSaving] = useState(false);
   const posItemPreset = useMemo(() => resolveSellablePosItemPreset(workflowMode), [workflowMode]);
@@ -2225,6 +2228,9 @@ function ItemsWorkspace({
       : foodCategoryOptions.find((option) => normalizeFolderNameKey(option?.name) === normalizeFolderNameKey(savedFolderName));
     setEditingItemId(item?.item_id || null);
     setFocusedEditMoneyField('');
+    const savedBarcode = primaryBarcodes[String(item?.item_id)] || item?.primary_barcode || null;
+    const savedBarcodeCode = String(savedBarcode?.code || '').trim();
+    const savedBarcodeIsGtin = String(savedBarcode?.source || '').toLowerCase() === 'manufacturer';
     setEditForm({
       name: String(item?.name || ''),
       current_stock: String(item?.current_stock ?? '0'),
@@ -2239,7 +2245,9 @@ function ItemsWorkspace({
       // Item lists do not always hydrate the nested folder name. Resolve by saved ID first.
       pos_category: matchedActiveCategory?.value || (savedFolderId
         ? createFolderFilterValue({ folder_id: savedFolderId, name: item?.folder?.name || item?.product_folder })
-        : '')
+        : ''),
+      manual_barcode: savedBarcodeIsGtin ? '' : savedBarcodeCode,
+      gtin: savedBarcodeIsGtin ? savedBarcodeCode : ''
     });
     setEditCategoryInput(String(item?.folder?.name || item?.product_folder || ''));
     setSelectedEditImageFile(null);
@@ -2261,7 +2269,9 @@ function ItemsWorkspace({
       pos_best_seller_mode: 'auto',
       senior_pwd_discount_eligible: false,
       description: '',
-      pos_category: ''
+      pos_category: '',
+      manual_barcode: '',
+      gtin: ''
     });
   };
 
@@ -2269,13 +2279,13 @@ function ItemsWorkspace({
     setCreateForm(createEmptyPosItemForm());
     setCreateCategoryInput('');
     setSelectedImageFiles([]);
+    setManualBarcode('');
     setExternalBarcode('');
     setExternalLookupLoading(false);
     setExternalLookupError('');
     setExternalProductLookup(null);
     setAcceptedExternalProduct(null);
     setExternalQrScannerOpen(false);
-    setUseInternalBarcode(false);
     setPendingCreateRecovery(null);
     setShowCreateModal(true);
   };
@@ -2286,12 +2296,12 @@ function ItemsWorkspace({
     setCreateForm(createEmptyPosItemForm());
     setCreateCategoryInput('');
     setSelectedImageFiles([]);
+    setManualBarcode('');
     setExternalBarcode('');
     setExternalLookupLoading(false);
     setExternalLookupError('');
     setExternalProductLookup(null);
     setAcceptedExternalProduct(null);
-    setUseInternalBarcode(false);
     setExternalQrScannerOpen(false);
     if (force) setPendingCreateRecovery(null);
   };
@@ -2315,6 +2325,10 @@ function ItemsWorkspace({
     const stock = Number(String(editForm.current_stock || '0').trim());
     const price = parseMoneyValue(editForm.default_sale_price);
     const cost = parseMoneyValue(editForm.cost_per_unit);
+    const barcodeSelection = resolveProductBarcodeInput({
+      manualBarcode: editForm.manual_barcode,
+      gtin: editForm.gtin
+    });
 
     if (!name) {
       toast.error('Item name is required.');
@@ -2334,6 +2348,10 @@ function ItemsWorkspace({
     }
     if (!Number.isFinite(stock) || stock < 0) {
       toast.error('Stock quantity cannot be negative.');
+      return;
+    }
+    if (barcodeSelection.validationMessage) {
+      toast.error(barcodeSelection.validationMessage);
       return;
     }
 
@@ -2388,13 +2406,30 @@ function ItemsWorkspace({
         pos_always_available: editForm.pos_always_available === true,
         pos_best_seller_mode: editForm.pos_best_seller_mode
       });
+      const existingPrimaryBarcode = primaryBarcodes[String(editItemId)] || activeEditItem?.primary_barcode || null;
+      const existingPrimaryCode = normalizeBarcodeEntry(existingPrimaryBarcode?.code || '');
+      if (!barcodeSelection.shouldGenerate && barcodeSelection.code !== existingPrimaryCode) {
+        await attachItemBarcode(editItemId, {
+          code: barcodeSelection.code,
+          source: barcodeSelection.kind === 'gtin' ? 'manufacturer' : 'supplier',
+          scope: barcodeSelection.kind === 'gtin' ? 'inventory' : 'pos',
+          packaging_level: 'unit',
+          quantity_multiplier: 1,
+          is_primary: true,
+          metadata: { attached_via: 'pos_item_edit' }
+        });
+      }
       if (editImageFile) {
         await uploadStorefrontCatalogImage(editItemId, editImageFile);
       }
       closeEdit({ force: true });
       await Promise.all([loadItems(), loadPosFolders()]);
       notifyPosCatalogUpdated();
-      setSavedMessage({ name, barcode: primaryBarcodes[String(editItemId)]?.code || '', action: 'updated' });
+      setSavedMessage({
+        name,
+        barcode: barcodeSelection.shouldGenerate ? existingPrimaryCode : barcodeSelection.code,
+        action: 'updated'
+      });
     } catch (updateError) {
       toast.error(editImageFile
         ? (updateError?.response?.data?.message || 'Item details may be saved, but the product image could not upload. Try Save Item again.')
@@ -2423,7 +2458,6 @@ function ItemsWorkspace({
   const handleExternalBarcodeChange = (value) => {
     const normalized = normalizeBarcodeEntry(value);
     setExternalBarcode(normalized);
-    setUseInternalBarcode(false);
     if (normalized !== externalProductLookup?.code) {
       setExternalLookupError('');
       setExternalProductLookup(null);
@@ -2444,7 +2478,6 @@ function ItemsWorkspace({
     setExternalLookupError('');
     setExternalProductLookup(null);
     setAcceptedExternalProduct(null);
-    setUseInternalBarcode(false);
     try {
       const result = await lookupExternalProduct(lookupCode);
       setExternalProductLookup(result);
@@ -2465,20 +2498,6 @@ function ItemsWorkspace({
     setExternalQrScannerOpen(false);
     handleExternalBarcodeChange(code);
     void handleExternalProductLookup(code);
-  };
-
-  const handleUseInternalBarcode = () => {
-    const validationMessage = getInternalBarcodeValidationMessage(externalBarcode);
-    if (validationMessage) {
-      setExternalLookupError(validationMessage);
-      toast.error(validationMessage);
-      return;
-    }
-
-    setUseInternalBarcode(true);
-    setExternalLookupError('');
-    setExternalProductLookup(null);
-    setAcceptedExternalProduct(null);
   };
 
   const applyExternalProductDetails = () => {
@@ -2575,12 +2594,13 @@ function ItemsWorkspace({
     itemName,
     imageFiles,
     externalProductCode = '',
+    requestedBarcodeCode = '',
     posAlwaysAvailable,
     posBestSellerMode = 'auto'
   }) => {
 
     const failedStages = [];
-    let barcodeCode = '';
+    let barcodeCode = String(requestedBarcodeCode || '').trim();
 
     const runStage = async (key, label, action) => {
       try {
@@ -2612,11 +2632,13 @@ function ItemsWorkspace({
       );
     }
 
-    const generatedBarcode = await runStage('barcode', 'barcode generation', () => generateItemBarcode(itemId, {
-      scope: 'pos',
-      packaging_level: 'unit'
-    }));
-    barcodeCode = String(generatedBarcode?.code || generatedBarcode?.barcode?.code || '').trim();
+    if (!barcodeCode) {
+      const generatedBarcode = await runStage('barcode', 'barcode generation', () => generateItemBarcode(itemId, {
+        scope: 'pos',
+        packaging_level: 'unit'
+      }));
+      barcodeCode = String(generatedBarcode?.code || generatedBarcode?.barcode?.code || '').trim();
+    }
 
     await runStage('storefront_visibility', 'Storefront visibility', () => updateStorefrontCatalogOverride(itemId, { storefront_visible: true }));
     await runStage('always_available', 'Always Available', () => updatePosCatalogOverride(itemId, {
@@ -2637,6 +2659,7 @@ function ItemsWorkspace({
         name: itemName,
         imageFiles,
         externalProductCode,
+        requestedBarcodeCode: barcodeCode,
         posAlwaysAvailable,
         posBestSellerMode,
         failedStages
@@ -2695,12 +2718,10 @@ function ItemsWorkspace({
       return;
     }
 
-    const barcodeValidationMessage = externalBarcode
-      ? getGtinValidationMessage(externalBarcode)
-      : '';
-    if (barcodeValidationMessage && !useInternalBarcode) {
-      setExternalLookupError(barcodeValidationMessage);
-      toast.error(barcodeValidationMessage);
+    const barcodeSelection = resolveProductBarcodeInput({ manualBarcode, gtin: externalBarcode });
+    if (barcodeSelection.validationMessage) {
+      setExternalLookupError(barcodeSelection.validationMessage);
+      toast.error(barcodeSelection.validationMessage);
       return;
     }
 
@@ -2728,10 +2749,10 @@ function ItemsWorkspace({
       fifo_enabled: category === 'product' ? posItemPreset.fifo_enabled !== false : true,
       vat_type: 'vatable',
       senior_pwd_discount_eligible: createForm.senior_pwd_discount_eligible === true,
-      ...(externalBarcode
-        ? useInternalBarcode
-          ? { internal_barcode: { code: externalBarcode } }
-          : { manufacturer_barcode: { code: externalBarcode } }
+      ...(barcodeSelection.code
+        ? barcodeSelection.kind === 'manual'
+          ? { internal_barcode: { code: barcodeSelection.code } }
+          : { manufacturer_barcode: { code: barcodeSelection.code } }
         : {}),
       status: 'active'
     };
@@ -2773,6 +2794,7 @@ function ItemsWorkspace({
           itemName: recoveryName,
           imageFiles: pendingCreateRecovery.imageFiles || selectedImageFiles,
           externalProductCode: pendingCreateRecovery.externalProductCode || '',
+          requestedBarcodeCode: pendingCreateRecovery.requestedBarcodeCode || '',
           posAlwaysAvailable: pendingCreateRecovery.posAlwaysAvailable,
           posBestSellerMode: pendingCreateRecovery.posBestSellerMode,
         });
@@ -2805,6 +2827,7 @@ function ItemsWorkspace({
         externalProductCode: selectedImageFiles.length === 0 && acceptedExternalProduct?.product?.image_url
           ? acceptedExternalProduct.code
           : '',
+        requestedBarcodeCode: barcodeSelection.code,
         posAlwaysAvailable: createForm.pos_always_available === true,
         posBestSellerMode: createForm.pos_best_seller_mode,
       });
@@ -3311,13 +3334,31 @@ function ItemsWorkspace({
                     <Barcode className="h-5 w-5" aria-hidden="true" />
                   </div>
                   <div>
-                    <h3 id="pos-external-barcode-heading" className="text-sm font-semibold text-slate-900">Scan Product Barcode</h3>
-                    <p className="text-xs text-slate-600">Look up valid UPC/EAN details, or explicitly save a private code as an internal POS barcode.</p>
+                    <h3 id="pos-external-barcode-heading" className="text-sm font-semibold text-slate-900">Product Barcode</h3>
+                    <p className="text-xs text-slate-600">Manual barcode takes priority. Otherwise a valid GTIN is used; a code is generated only when both fields are empty.</p>
                   </div>
                 </div>
 
+                <div className="space-y-1.5">
+                  <Label htmlFor="pos-create-manual-barcode" className="text-xs font-semibold text-slate-800">Manual Barcode (optional)</Label>
+                  <Input
+                    id="pos-create-manual-barcode"
+                    value={manualBarcode}
+                    onChange={(event) => setManualBarcode(normalizeBarcodeEntry(event.target.value))}
+                    inputMode="text"
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    autoComplete="off"
+                    placeholder="Enter supplier or company barcode"
+                    disabled={externalLookupLoading || creatingItem || postCreateSaving}
+                  />
+                </div>
+
+                <div className="space-y-1.5">
+                  <Label htmlFor="pos-create-gtin" className="text-xs font-semibold text-slate-800">GTIN / UPC / EAN (optional)</Label>
                 <div className="flex flex-col gap-2 sm:flex-row">
                   <Input
+                    id="pos-create-gtin"
                     value={externalBarcode}
                     onChange={(event) => handleExternalBarcodeChange(event.target.value)}
                     onKeyDown={(event) => {
@@ -3330,8 +3371,8 @@ function ItemsWorkspace({
                     autoCapitalize="characters"
                     spellCheck={false}
                     autoComplete="off"
-                    placeholder="Scan or enter GTIN / UPC / EAN / internal code"
-                    aria-label="Product barcode"
+                    placeholder="Scan or enter GTIN / UPC / EAN"
+                    aria-label="Product GTIN"
                     disabled={externalLookupLoading || creatingItem || postCreateSaving}
                   />
                   <Button
@@ -3355,6 +3396,7 @@ function ItemsWorkspace({
                     {externalLookupLoading ? 'Looking up...' : 'Look up'}
                   </Button>
                 </div>
+                </div>
 
                 {externalLookupError ? (
                   <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800" role="status">
@@ -3362,21 +3404,9 @@ function ItemsWorkspace({
                   </p>
                 ) : null}
 
-                {externalBarcode && getGtinValidationMessage(externalBarcode) && !useInternalBarcode ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="w-full border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100 sm:w-fit"
-                    onClick={handleUseInternalBarcode}
-                    disabled={externalLookupLoading || creatingItem || postCreateSaving}
-                  >
-                    Use as Internal Barcode
-                  </Button>
-                ) : null}
-
-                {useInternalBarcode ? (
+                {manualBarcode ? (
                   <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900" role="status">
-                    Internal barcode selected. It will be saved for this company and can be used by the POS scanner. Registry details will not be imported.
+                    Manual barcode selected. The GTIN remains available for product lookup, but the manual code will be saved as the primary POS barcode.
                   </p>
                 ) : null}
 
@@ -4033,6 +4063,35 @@ function ItemsWorkspace({
                         disabled={savingItem || persistingEditAssets}
                       />
                     </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">Manual Barcode (priority)</label>
+                    <Input
+                      value={editForm.manual_barcode}
+                      onChange={(event) => setEditForm((current) => ({
+                        ...current,
+                        manual_barcode: normalizeBarcodeEntry(event.target.value)
+                      }))}
+                      className="h-11 rounded-xl border-slate-200 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
+                      placeholder="Supplier or company barcode"
+                      disabled={savingItem || persistingEditAssets}
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">GTIN / UPC / EAN</label>
+                    <Input
+                      value={editForm.gtin}
+                      onChange={(event) => setEditForm((current) => ({
+                        ...current,
+                        gtin: normalizeBarcodeEntry(event.target.value)
+                      }))}
+                      className="h-11 rounded-xl border-slate-200 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
+                      placeholder="8, 12, 13, or 14 digit GTIN"
+                      disabled={savingItem || persistingEditAssets}
+                    />
+                    <p className="text-[11px] leading-normal text-slate-500">Manual barcode wins when both fields are filled. Leaving both empty preserves the current barcode.</p>
                   </div>
 
                   <div className="space-y-1.5">
