@@ -89,6 +89,7 @@ import {
 } from '@/src/utils/barcodePolicy.js';
 import ProductQrScannerModal from '@/src/features/inventory/components/ProductQrScannerModal.jsx';
 import { notifyPosCatalogUpdated } from '../utils/posCatalogRefresh.js';
+import { useItemImageGenerationPoll } from '../hooks/useItemImageGenerationPoll.js';
 import {
   updateStorefrontCatalogOverride,
   importExternalStorefrontCatalogImage,
@@ -1947,7 +1948,12 @@ function ItemsWorkspace({
   const [editingItemId, setEditingItemId] = useState(null);
   const [persistingEditAssets, setPersistingEditAssets] = useState(false);
   const [selectedEditImageFile, setSelectedEditImageFile] = useState(null);
+  // generatingEditImage covers the POST that queues the job; pollingEditImage
+  // covers the wait for a terminal status afterwards — split so the button
+  // label can tell the operator which stage it's actually in.
   const [generatingEditImage, setGeneratingEditImage] = useState(false);
+  const [pollingEditImage, setPollingEditImage] = useState(false);
+  const { pollItemImageGeneration, cancel: cancelImageGenerationPoll } = useItemImageGenerationPoll();
   const [editForm, setEditForm] = useState({
     name: '',
     current_stock: '0',
@@ -2248,12 +2254,14 @@ function ItemsWorkspace({
   };
 
   const closeEdit = ({ force = false } = {}) => {
-    if (!force && (savingItem || persistingEditAssets)) return;
+    if (!force && (savingItem || persistingEditAssets || generatingEditImage || pollingEditImage)) return;
+    cancelImageGenerationPoll();
     setEditingItemId(null);
     setFocusedEditMoneyField('');
     setPersistingEditAssets(false);
     setSelectedEditImageFile(null);
     setGeneratingEditImage(false);
+    setPollingEditImage(false);
     setEditCategoryInput('');
     setEditForm({
       name: '',
@@ -2573,11 +2581,13 @@ function ItemsWorkspace({
     }
   };
 
-  // Fire-and-forget from the client's perspective (#199/#200): the response
-  // only confirms the item was queued for the item-image worker, not that a
-  // photo exists yet, so the success toast must say "queued", never "done" —
-  // loadItems() here just refreshes stock/price/etc., the photo itself won't
-  // show up until a later reload once the worker has actually run.
+  // The POST only confirms the item was queued, not that a photo exists yet
+  // (#199/#200) — generation happens minutes later in itemImageWorker.js.
+  // What used to be a fire-and-forget "queued" toast with no way to learn
+  // the outcome now polls the status endpoint (itemImageStatusStore.js)
+  // until the worker records a terminal result, so the operator actually
+  // finds out whether the photo landed — no manual save step either way,
+  // the worker attaches it directly.
   const handleGenerateEditImage = async (item) => {
     const itemId = item?.item_id;
     if (!itemId) return;
@@ -2585,12 +2595,25 @@ function ItemsWorkspace({
     setGeneratingEditImage(true);
     try {
       await generateStorefrontCatalogImage(itemId);
-      await loadItems();
-      toast.success(`Image generation queued for ${item.name} — it'll appear here once it's ready.`);
+      setGeneratingEditImage(false);
+      setPollingEditImage(true);
+
+      const result = await pollItemImageGeneration(itemId);
+      if (result.status === 'cancelled') return; // modal closed mid-poll — no toast for an item no longer in view
+      if (result.status === 'completed') {
+        await loadItems();
+        notifyPosCatalogUpdated();
+        toast.success(`Image generated for ${item.name}.`);
+      } else if (result.status === 'failed') {
+        toast.error(`Image generation failed for ${item.name}${result.error_message ? `: ${result.error_message}` : '.'}`);
+      } else {
+        toast.error(`Still working on ${item.name}'s image — check back in a bit.`);
+      }
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to queue image generation');
     } finally {
       setGeneratingEditImage(false);
+      setPollingEditImage(false);
     }
   };
 
@@ -3971,7 +3994,7 @@ function ItemsWorkspace({
                               type="button"
                               variant="outline"
                               onClick={() => handleGenerateEditImage(activeEditItem)}
-                              disabled={savingItem || persistingEditAssets || generatingEditImage}
+                              disabled={savingItem || persistingEditAssets || generatingEditImage || pollingEditImage}
                               className="w-full rounded-xl"
                               title={
                                 editGallery.length > 0
@@ -3982,7 +4005,9 @@ function ItemsWorkspace({
                               <ImagePlus className="mr-2 h-4 w-4" />
                               {generatingEditImage
                                 ? 'Queuing…'
-                                : editGallery.length > 0 ? 'Regenerate Image (AI)' : 'Generate Image (AI)'}
+                                : pollingEditImage
+                                  ? 'Generating…'
+                                  : editGallery.length > 0 ? 'Regenerate Image (AI)' : 'Generate Image (AI)'}
                             </Button>
                           )}
                         </div>
