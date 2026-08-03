@@ -59,7 +59,10 @@ export function useRetailOrderPageProps({
   setShowExpandedDeliveryMap,
   showExpandedDeliveryMap,
   storefrontClosedByHours,
-  withAssetOrigin
+  withAssetOrigin,
+  handleCheckout,
+  checkoutLoading,
+  checkoutError
 }) {
   return {
     canAddPinnedLocation,
@@ -112,7 +115,10 @@ export function useRetailOrderPageProps({
     showExpandedDeliveryMap,
     storefrontClosedByHours,
     withAssetOrigin,
+    checkoutLoading,
+    checkoutError,
     onBackToCatalog: goStoreCatalogPage,
+    onCheckout: handleCheckout,
     onImageError: (itemId) => {
       const normalizedLineItemId = Number(itemId);
       if (!Number.isFinite(normalizedLineItemId)) return;
