@@ -95,7 +95,8 @@ import {
   uploadStorefrontCatalogImage,
   uploadStorefrontCatalogImages,
   updateStorefrontCatalogGallery,
-  deleteStorefrontCatalogImage
+  deleteStorefrontCatalogImage,
+  generateStorefrontCatalogImage
 } from '@/services/storefrontCatalogService.js';
 import StorefrontImageCarousel from '@/components/items/StorefrontImageCarousel';
 import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarousel';
@@ -1946,6 +1947,7 @@ function ItemsWorkspace({
   const [editingItemId, setEditingItemId] = useState(null);
   const [persistingEditAssets, setPersistingEditAssets] = useState(false);
   const [selectedEditImageFile, setSelectedEditImageFile] = useState(null);
+  const [generatingEditImage, setGeneratingEditImage] = useState(false);
   const [editForm, setEditForm] = useState({
     name: '',
     current_stock: '0',
@@ -2251,6 +2253,7 @@ function ItemsWorkspace({
     setFocusedEditMoneyField('');
     setPersistingEditAssets(false);
     setSelectedEditImageFile(null);
+    setGeneratingEditImage(false);
     setEditCategoryInput('');
     setEditForm({
       name: '',
@@ -2567,6 +2570,27 @@ function ItemsWorkspace({
       toast.success(isSingleImageDelete ? `Item gallery image removed for ${item.name}` : `Item image removed for ${item.name}`);
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to remove item image');
+    }
+  };
+
+  // Fire-and-forget from the client's perspective (#199/#200): the response
+  // only confirms the item was queued for the item-image worker, not that a
+  // photo exists yet, so the success toast must say "queued", never "done" —
+  // loadItems() here just refreshes stock/price/etc., the photo itself won't
+  // show up until a later reload once the worker has actually run.
+  const handleGenerateEditImage = async (item) => {
+    const itemId = item?.item_id;
+    if (!itemId) return;
+
+    setGeneratingEditImage(true);
+    try {
+      await generateStorefrontCatalogImage(itemId);
+      await loadItems();
+      toast.success(`Image generation queued for ${item.name} — it'll appear here once it's ready.`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to queue image generation');
+    } finally {
+      setGeneratingEditImage(false);
     }
   };
 
@@ -3940,6 +3964,26 @@ function ItemsWorkspace({
                                 <X className="h-4 w-4" />
                               </button>
                             </div>
+                          )}
+
+                          {canEditItems && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => handleGenerateEditImage(activeEditItem)}
+                              disabled={savingItem || persistingEditAssets || generatingEditImage}
+                              className="w-full rounded-xl"
+                              title={
+                                editGallery.length > 0
+                                  ? 'Generate a new AI photo, replacing the current one.'
+                                  : 'Generate an AI photo for this item (watermarked).'
+                              }
+                            >
+                              <ImagePlus className="mr-2 h-4 w-4" />
+                              {generatingEditImage
+                                ? 'Queuing…'
+                                : editGallery.length > 0 ? 'Regenerate Image (AI)' : 'Generate Image (AI)'}
+                            </Button>
                           )}
                         </div>
                       );
