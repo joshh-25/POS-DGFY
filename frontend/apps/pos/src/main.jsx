@@ -18,7 +18,22 @@ import {
   resetAnalyticsIdentity,
   setAnalyticsContext
 } from '../../../src/observability/analyticsClient.js';
+import { reloadOnceForChunkFailure } from '../../../src/utils/chunkLoadRecovery.js';
 import '../../../src/index.css';
+
+// Vite's own dynamic-import helper (__vitePreload) fires this event on a
+// chunk-load failure -- it's the only thing that catches the idle-time
+// preloadWorkspaces() prefetch in TerminalPageLayout, which sits outside
+// any Suspense boundary and would otherwise surface as an unhandled
+// promise rejection. React.lazy failures inside Suspense are handled by
+// ErrorBoundary instead; this and that share the same one-shot reload
+// budget (see chunkLoadRecovery.js).
+if (typeof window !== 'undefined') {
+  window.addEventListener('vite:preloadError', (event) => {
+    event.preventDefault();
+    reloadOnceForChunkFailure();
+  });
+}
 
 function PosRouteNotFound() {
   return (

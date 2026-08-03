@@ -29,6 +29,8 @@ import {
   resolveItemBarcodeUseCase,
   lookupExternalProductUseCase,
   importExternalProductImageUseCase,
+  generateItemImageUseCase,
+  bulkGenerateItemImageUseCase,
   resolveItemBarcodeConflictUseCase,
   renderItemBarcodeLabelUseCase,
   getFoldersUseCase,
@@ -42,6 +44,9 @@ import { DomainError, DomainErrorCode, isDomainError } from '../../shared/contra
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
 import { PERMISSIONS } from '../../../config/permissions.js';
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
+import { enqueueItemImageGeneration } from '../../../workers/itemImageWorker.js';
+import { setItemImageStatus, getItemImageStatus } from '../../../workers/itemImageStatusStore.js';
+import logger from '../../../config/logger.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
@@ -754,6 +759,138 @@ export const importExternalStorefrontCatalogImage = async (req, res, next) => {
         timestamp: timestamp()
       }),
       errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Enqueueing happens here, not inside a use case — generateItemImageUseCase /
+// bulkGenerateItemImageUseCase deliberately resolve/validate only, to avoid
+// importing workers/itemImageWorker.js from modules/inventory (that worker
+// itself imports uploadStorefrontCatalogImageUseCase from this module's
+// index.js, so the reverse import would be circular). Mirrors how
+// menuImportController.js enqueues item-image generation directly rather
+// than through a use case, for the same reason.
+export const generateItemImage = async (req, res, next) => {
+  try {
+    const result = await runInventoryUseCase(
+      () => generateItemImageUseCase({
+        itemId: req.validatedParams?.item_id || req.params.item_id,
+        user: req.user
+      }),
+      'Failed to queue AI image generation'
+    );
+
+    if (result?.success) {
+      try {
+        await enqueueItemImageGeneration({
+          user: result.data.generation_user,
+          itemId: result.data.item_id,
+          name: result.data.name,
+          description: result.data.description,
+          category: result.data.category
+        });
+        await setItemImageStatus(req.user.tenant_id, result.data.item_id, { status: 'queued' });
+      } catch (error) {
+        logger.error('[ItemHandlers] Failed to enqueue item image generation', {
+          itemId: result.data.item_id,
+          reason: error?.message
+        });
+        return res.status(503).json({
+          success: false,
+          message: 'Image generation queue is temporarily unavailable. Please try again shortly.',
+          error_code: 'QUEUE_UNAVAILABLE',
+          request_id: requestId(req, res),
+          timestamp: timestamp()
+        });
+      }
+    }
+
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 202,
+      successPayloadResolver: () => ({
+        success: true,
+        data: { item_id: result.data.item_id, queued: true },
+        message: 'Image generation queued — this item will get a photo shortly.',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// A thin Redis read, not a use case: itemImageStatusStore.js has no model
+// access and no business rule to validate beyond "does a record exist" —
+// the same reasoning that already puts enqueueItemImageGeneration's import
+// directly in this controller rather than behind a use case.
+export const getItemImageGenerationStatus = async (req, res, next) => {
+  try {
+    const itemId = req.validatedParams?.item_id || req.params.item_id;
+    const record = await getItemImageStatus(req.user.tenant_id, itemId);
+    return res.status(200).json({
+      success: true,
+      data: record || { status: 'unknown', error_code: null, error_message: null, updated_at: null },
+      timestamp: timestamp()
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const bulkGenerateItemImages = async (req, res, next) => {
+  try {
+    const result = await runInventoryUseCase(
+      () => bulkGenerateItemImageUseCase({
+        itemIds: req.body?.item_ids,
+        overwriteExisting: req.body?.overwrite_existing === true,
+        user: req.user
+      }),
+      'Failed to queue AI image generation'
+    );
+
+    if (!result?.success) {
+      return sendUseCaseResult(res, result, {
+        errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+      });
+    }
+
+    const { generation_user: generationUser, candidates } = result.data;
+    const results = await Promise.all(candidates.map(async (candidate) => {
+      if (candidate.status !== 'eligible') return candidate;
+      try {
+        await enqueueItemImageGeneration({
+          user: generationUser,
+          itemId: candidate.item_id,
+          name: candidate.name,
+          description: candidate.description,
+          category: candidate.category
+        });
+        await setItemImageStatus(req.user.tenant_id, candidate.item_id, { status: 'queued' });
+        return { item_id: candidate.item_id, status: 'queued' };
+      } catch (error) {
+        logger.error('[ItemHandlers] Failed to enqueue bulk item image generation', {
+          itemId: candidate.item_id,
+          reason: error?.message
+        });
+        return { item_id: candidate.item_id, status: 'failed', reason: 'queue_unavailable' };
+      }
+    }));
+
+    const summary = {
+      queued: results.filter((entry) => entry.status === 'queued').length,
+      skipped: results.filter((entry) => entry.status === 'skipped').length,
+      not_found: results.filter((entry) => entry.status === 'not_found').length,
+      failed: results.filter((entry) => entry.status === 'failed').length
+    };
+
+    return res.status(202).json({
+      success: true,
+      data: { summary, results },
+      message: `${summary.queued} image(s) queued for AI generation.${summary.skipped ? ` ${summary.skipped} skipped (already have a photo).` : ''}`,
+      timestamp: timestamp()
     });
   } catch (error) {
     next(error);

@@ -18,14 +18,18 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(validatorSource).toContain('guest_checkout_proof');
   });
 
-  it('owns guest OTP frontend behavior inside the F&B checkout feature boundary', () => {
+  it('shares guest OTP enforcement across transaction-capable checkout modes', () => {
     const appSource = readAppSource('StorefrontApp.jsx');
     const modelSource = readAppSource('modes/fnb/checkout/model/fnbGuestCheckoutOtp.js');
     const hookSource = readAppSource('modes/fnb/checkout/hooks/useFnbGuestCheckoutOtp.js');
-    const componentSource = readAppSource('modes/fnb/checkout/components/FnbGuestEmailVerification.jsx');
+    const componentSource = readAppSource('shared/components/checkout/GuestEmailVerification.jsx');
     const customerValidationSource = readAppSource('modes/fnb/checkout/model/fnbCheckoutCustomerValidation.js');
     const submissionSource = readAppSource('modes/fnb/checkout/hooks/useFnbCheckoutSubmission.js');
+    const sharedSubmissionSource = readAppSource('shared/hooks/useCheckoutSubmission.js');
     const checkoutRouteContainerSource = readAppSource('modes/fnb/checkout/pages/FnbCheckoutRouteContainer.jsx');
+    const simpleCheckoutSource = readAppSource('modes/simple/checkout/pages/SimpleCheckoutRoutePage.jsx');
+    const serviceValidatorSource = readRepoSource('backend/src/validators/serviceValidator.js');
+    const serviceUseCaseSource = readRepoSource('backend/src/modules/services/usecases/serviceUseCases.js');
 
     expect(modelSource).toContain("/api/v1/store/checkout/guest-otp/request");
     expect(modelSource).toContain("/api/v1/store/checkout/guest-otp/verify");
@@ -34,12 +38,18 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(hookSource).toContain('RESEND_COOLDOWN_SECONDS');
     expect(hookSource).toContain('guestCheckoutProof');
     expect(componentSource).toContain('Verify your email');
-    expect(componentSource).toContain('Send code again');
+    expect(componentSource).toContain('Send verification code');
+    expect(componentSource).toContain('Send again in');
     expect(customerValidationSource).toContain('isValidFnbCheckoutEmail');
     expect(customerValidationSource).toContain('isValidPhilippineMobileNumber');
     expect(submissionSource).toContain('guest_checkout_proof');
     expect(submissionSource).toContain('guestCheckoutIntentId');
     expect(appSource).toContain('useFnbGuestCheckoutOtp');
     expect(checkoutRouteContainerSource).toContain('FnbGuestEmailVerification');
+    expect(sharedSubmissionSource).toContain('guest_checkout_proof');
+    expect(sharedSubmissionSource).toContain('Verify your email before placing this order.');
+    expect(simpleCheckoutSource).toContain('GuestEmailVerification');
+    expect(serviceValidatorSource).toContain('guest_checkout_proof');
+    expect(serviceUseCaseSource).toContain('assertGuestCheckoutProof');
   });
 });

@@ -91,6 +91,7 @@ export function createDiscoveryResultsRenderer(ctx) {
   setViewMode,
   showDiscoveryResetButton,
   handleNearMe,
+  retryLoadStores,
   StoresMap,
   storesError,
   storesWithNearestBranch,
@@ -617,8 +618,32 @@ const resultsSubtitle = isClusterResultsActive
               onSelectCluster={handleDiscoveryClusterSelect}
             />
           ) : (
-            <div style={{ height: '100%', background: '#f8fafc', display: 'grid', placeItems: 'center', color: '#94a3b8' }}>
-              {loadingStores ? 'Loading map...' : storesError || 'No storefront pins available right now.'}
+            <div style={{ height: '100%', background: '#f8fafc', display: 'grid', placeItems: 'center', padding: 16 }}>
+              {loadingStores ? (
+                <span style={{ color: '#94a3b8' }}>Loading map...</span>
+              ) : storesError ? (
+                <div style={{ display: 'grid', gap: 12, justifyItems: 'center', textAlign: 'center', maxWidth: 320 }}>
+                  <p style={{ color: '#475569', fontSize: 14, margin: 0 }}>{storesError}</p>
+                  <button
+                    type="button"
+                    onClick={() => retryLoadStores?.()}
+                    style={{
+                      border: '1px solid #cbd5e1',
+                      background: '#ffffff',
+                      color: '#1e293b',
+                      borderRadius: 8,
+                      padding: '8px 16px',
+                      fontSize: 14,
+                      fontWeight: 600,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    Try again
+                  </button>
+                </div>
+              ) : (
+                <span style={{ color: '#94a3b8' }}>No storefront pins available right now.</span>
+              )}
                 </div>
           )}
           {isDiscoveryMobileViewport && (

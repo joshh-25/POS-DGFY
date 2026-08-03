@@ -1,4 +1,5 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { createPortal } from 'react-dom';
 import {
   AlertCircle,
@@ -88,13 +89,15 @@ import {
 } from '@/src/utils/barcodePolicy.js';
 import ProductQrScannerModal from '@/src/features/inventory/components/ProductQrScannerModal.jsx';
 import { notifyPosCatalogUpdated } from '../utils/posCatalogRefresh.js';
+import { useItemImageGenerationPoll } from '../hooks/useItemImageGenerationPoll.js';
 import {
   updateStorefrontCatalogOverride,
   importExternalStorefrontCatalogImage,
   uploadStorefrontCatalogImage,
   uploadStorefrontCatalogImages,
   updateStorefrontCatalogGallery,
-  deleteStorefrontCatalogImage
+  deleteStorefrontCatalogImage,
+  generateStorefrontCatalogImage
 } from '@/services/storefrontCatalogService.js';
 import StorefrontImageCarousel from '@/components/items/StorefrontImageCarousel';
 import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarousel';
@@ -135,7 +138,7 @@ import EmployeeManagementPanel from './EmployeeManagementPanel.jsx';
 import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 
-const MapPinPicker = lazy(() => import('@/src/components/maps/MapPinPicker.jsx'));
+const MapPinPicker = lazyWithChunkRetry(() => import('@/src/components/maps/MapPinPicker.jsx'));
 const POS_ITEMS_PAGE_SIZE = 15;
 
 const MODE_META = {
@@ -1945,6 +1948,12 @@ function ItemsWorkspace({
   const [editingItemId, setEditingItemId] = useState(null);
   const [persistingEditAssets, setPersistingEditAssets] = useState(false);
   const [selectedEditImageFile, setSelectedEditImageFile] = useState(null);
+  // generatingEditImage covers the POST that queues the job; pollingEditImage
+  // covers the wait for a terminal status afterwards — split so the button
+  // label can tell the operator which stage it's actually in.
+  const [generatingEditImage, setGeneratingEditImage] = useState(false);
+  const [pollingEditImage, setPollingEditImage] = useState(false);
+  const { pollItemImageGeneration, cancel: cancelImageGenerationPoll } = useItemImageGenerationPoll();
   const [editForm, setEditForm] = useState({
     name: '',
     current_stock: '0',
@@ -2245,11 +2254,14 @@ function ItemsWorkspace({
   };
 
   const closeEdit = ({ force = false } = {}) => {
-    if (!force && (savingItem || persistingEditAssets)) return;
+    if (!force && (savingItem || persistingEditAssets || generatingEditImage || pollingEditImage)) return;
+    cancelImageGenerationPoll();
     setEditingItemId(null);
     setFocusedEditMoneyField('');
     setPersistingEditAssets(false);
     setSelectedEditImageFile(null);
+    setGeneratingEditImage(false);
+    setPollingEditImage(false);
     setEditCategoryInput('');
     setEditForm({
       name: '',
@@ -2566,6 +2578,42 @@ function ItemsWorkspace({
       toast.success(isSingleImageDelete ? `Item gallery image removed for ${item.name}` : `Item image removed for ${item.name}`);
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to remove item image');
+    }
+  };
+
+  // The POST only confirms the item was queued, not that a photo exists yet
+  // (#199/#200) — generation happens minutes later in itemImageWorker.js.
+  // What used to be a fire-and-forget "queued" toast with no way to learn
+  // the outcome now polls the status endpoint (itemImageStatusStore.js)
+  // until the worker records a terminal result, so the operator actually
+  // finds out whether the photo landed — no manual save step either way,
+  // the worker attaches it directly.
+  const handleGenerateEditImage = async (item) => {
+    const itemId = item?.item_id;
+    if (!itemId) return;
+
+    setGeneratingEditImage(true);
+    try {
+      await generateStorefrontCatalogImage(itemId);
+      setGeneratingEditImage(false);
+      setPollingEditImage(true);
+
+      const result = await pollItemImageGeneration(itemId);
+      if (result.status === 'cancelled') return; // modal closed mid-poll — no toast for an item no longer in view
+      if (result.status === 'completed') {
+        await loadItems();
+        notifyPosCatalogUpdated();
+        toast.success(`Image generated for ${item.name}.`);
+      } else if (result.status === 'failed') {
+        toast.error(`Image generation failed for ${item.name}${result.error_message ? `: ${result.error_message}` : '.'}`);
+      } else {
+        toast.error(`Still working on ${item.name}'s image — check back in a bit.`);
+      }
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to queue image generation');
+    } finally {
+      setGeneratingEditImage(false);
+      setPollingEditImage(false);
     }
   };
 
@@ -3939,6 +3987,28 @@ function ItemsWorkspace({
                                 <X className="h-4 w-4" />
                               </button>
                             </div>
+                          )}
+
+                          {canEditItems && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => handleGenerateEditImage(activeEditItem)}
+                              disabled={savingItem || persistingEditAssets || generatingEditImage || pollingEditImage}
+                              className="w-full rounded-xl"
+                              title={
+                                editGallery.length > 0
+                                  ? 'Generate a new AI photo, replacing the current one.'
+                                  : 'Generate an AI photo for this item (watermarked).'
+                              }
+                            >
+                              <ImagePlus className="mr-2 h-4 w-4" />
+                              {generatingEditImage
+                                ? 'Queuing…'
+                                : pollingEditImage
+                                  ? 'Generating…'
+                                  : editGallery.length > 0 ? 'Regenerate Image (AI)' : 'Generate Image (AI)'}
+                            </Button>
                           )}
                         </div>
                       );

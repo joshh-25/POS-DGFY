@@ -6,7 +6,18 @@ on:
 
 concurrency:
   group: build-develop-${{ github.ref }}
-  cancel-in-progress: true
+  # false, not true: `changes` diffs each run against github.event.before (that
+  # push's immediately-preceding commit), not "the last commit this pipeline
+  # actually finished building". Cancelling an in-flight run on the next push
+  # loses that run's diff outright, so a burst of quick pushes to develop can
+  # silently skip a real backend/frontend change if only the last push's run
+  # survives to completion. false makes bursts queue instead: every push still
+  # diffs its own correct range and gets built, at the cost of the queue
+  # taking longer to drain during a burst -- correctness over saved minutes
+  # for what's the actual deploy pipeline (unlike pr-checks.yml, which stays
+  # cancel-in-progress since a superseded/closed PR's check has no cost of
+  # being wrong to skip).
+  cancel-in-progress: false
 
 permissions:
   contents: read

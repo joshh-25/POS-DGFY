@@ -26,6 +26,14 @@ vi.mock('sonner', () => ({
     toast: { error: vi.fn(), success: vi.fn() }
 }));
 
+// canEdit defaults to true (a fully-permissioned test user) — the one test
+// that cares about the permission-denied path overrides this per-test via
+// mockReturnValueOnce.
+const canEdit = vi.fn(() => true);
+vi.mock('../../../src/hooks/usePermission.js', () => ({
+    usePermission: () => ({ canEdit: (...args) => canEdit(...args) })
+}));
+
 // The capture sheet's camera behavior is covered by its own test; here we only
 // care that a captured frame joins the same staged-file list the picker feeds.
 vi.mock('../MenuPhotoCaptureSheet.jsx', () => ({
@@ -81,8 +89,13 @@ const previewPayload = {
         {
             rowNumber: 2,
             valid: true,
-            data: { name: 'Halo-Halo', default_sale_price: '120.00', product_folder: 'Desserts' }
+            data: { name: 'Halo-Halo', default_sale_price: '120.00', product_folder: 'Desserts' },
+            category_inferred: true
         }
+    ],
+    categories: [
+        { name: 'Mains', item_count: 1, inferred: false },
+        { name: 'Desserts', item_count: 1, inferred: true }
     ],
     merge: {
         files_considered: 2,
@@ -101,6 +114,8 @@ describe('MenuImportBatchModal', () => {
         getMenuImportJob.mockReset();
         previewMenuImportJob.mockReset();
         confirmMenuImport.mockReset();
+        canEdit.mockReset();
+        canEdit.mockImplementation(() => true);
     });
 
     afterEach(() => {
@@ -179,6 +194,51 @@ describe('MenuImportBatchModal', () => {
         expect(screen.getByText(/blurry\.png — No menu items were found\./)).toBeTruthy();
     });
 
+    it('presents the extracted menu categories and flags the guessed ones', async () => {
+        await runToReviewStep();
+
+        // The column is a Category, not an opaque "Section" — it is what the
+        // item will be filed under in the POS.
+        expect(screen.getByText('Category')).toBeTruthy();
+
+        // Summary of what confirming will apply, counted off the live rows.
+        expect(screen.getByText(/2 categories will be applied/)).toBeTruthy();
+        expect(screen.getByText(/Mains \(1\) · Desserts \(1\)/)).toBeTruthy();
+
+        // A category the model guessed is marked as such rather than presented
+        // with the same confidence as a printed heading.
+        expect(screen.getByText('Guessed — not printed on the menu')).toBeTruthy();
+    });
+
+    it('recounts the category summary when a row is deselected', async () => {
+        await runToReviewStep();
+
+        fireEvent.click(screen.getByLabelText('Import Halo-Halo'));
+
+        expect(screen.getByText(/1 category will be applied/)).toBeTruthy();
+        expect(screen.getByText(/^Mains \(1\)$/)).toBeTruthy();
+    });
+
+    it('reports created categories and explains the ones an admin must create', async () => {
+        confirmMenuImport.mockResolvedValue({
+            createdCount: 2,
+            failedCount: 0,
+            results: { failed: [] },
+            categories_created: ['Mains'],
+            categories_linked: [],
+            categories_skipped: ['Desserts']
+        });
+        await runToReviewStep();
+
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: /Confirm Import \(2 items\)/ }));
+        });
+
+        expect(screen.getByText('1 new category created')).toBeTruthy();
+        expect(screen.getByText('1 category not created')).toBeTruthy();
+        expect(screen.getByText(/creating a category needs admin access/)).toBeTruthy();
+    });
+
     it('confirms only the rows still selected', async () => {
         confirmMenuImport.mockResolvedValue({ createdCount: 1, failedCount: 0, results: { failed: [] } });
         await runToReviewStep();
@@ -194,5 +254,137 @@ describe('MenuImportBatchModal', () => {
         expect(submittedRows).toHaveLength(1);
         expect(submittedRows[0].data.name).toBe('Adobo');
         expect(screen.getByText('Import Complete!')).toBeTruthy();
+    });
+
+    describe('AI image generation opt-in (#176)', () => {
+        it('defaults every row\'s image checkbox to unchecked', async () => {
+            await runToReviewStep();
+
+            expect(screen.getByLabelText('Generate an AI image for Adobo').checked).toBe(false);
+            expect(screen.getByLabelText('Generate an AI image for Halo-Halo').checked).toBe(false);
+        });
+
+        it('shows a running cost estimate once rows are opted in, and sends generate_image on confirm', async () => {
+            confirmMenuImport.mockResolvedValue({ createdCount: 2, failedCount: 0, results: { failed: [] } });
+            await runToReviewStep();
+
+            expect(screen.queryByText(/estimated/)).toBeNull();
+
+            fireEvent.click(screen.getByLabelText('Generate an AI image for Adobo'));
+            expect(screen.getByText(/1 image × ~\$0\.03 ≈ \$0\.03 estimated/)).toBeTruthy();
+
+            fireEvent.click(screen.getByLabelText('Generate an AI image for Halo-Halo'));
+            expect(screen.getByText(/2 images × ~\$0\.03 ≈ \$0\.06 estimated/)).toBeTruthy();
+
+            await act(async () => {
+                fireEvent.click(screen.getByRole('button', { name: /Confirm Import \(2 items\)/ }));
+            });
+
+            const submittedRows = confirmMenuImport.mock.calls[0][0];
+            expect(submittedRows.every((row) => row.generate_image === true)).toBe(true);
+        });
+
+        it('excludes a deselected row\'s image request from both the estimate and the confirm payload', async () => {
+            confirmMenuImport.mockResolvedValue({ createdCount: 1, failedCount: 0, results: { failed: [] } });
+            await runToReviewStep();
+
+            fireEvent.click(screen.getByLabelText('Generate an AI image for Adobo'));
+            fireEvent.click(screen.getByLabelText('Generate an AI image for Halo-Halo'));
+            // Deselecting the row for import should drop it out of the image count too.
+            fireEvent.click(screen.getByLabelText('Import Halo-Halo'));
+
+            expect(screen.getByText(/1 image × ~\$0\.03 ≈ \$0\.03 estimated/)).toBeTruthy();
+
+            await act(async () => {
+                fireEvent.click(screen.getByRole('button', { name: /Confirm Import \(1 items\)/ }));
+            });
+
+            const submittedRows = confirmMenuImport.mock.calls[0][0];
+            expect(submittedRows).toHaveLength(1);
+            expect(submittedRows[0].data.name).toBe('Adobo');
+            expect(submittedRows[0].generate_image).toBe(true);
+        });
+
+        it('disables the image checkbox and explains why when the user lacks items:edit', async () => {
+            canEdit.mockImplementation(() => false);
+            await runToReviewStep();
+
+            const checkbox = screen.getByLabelText('Generate an AI image for Adobo');
+            expect(checkbox.disabled).toBe(true);
+            expect(checkbox.title).toMatch(/Edit Items permission/);
+        });
+
+        it('surfaces images_queued and images_skipped after confirming', async () => {
+            confirmMenuImport.mockResolvedValue({
+                createdCount: 2,
+                failedCount: 0,
+                results: { failed: [] },
+                images_queued: 1,
+                images_skipped: [{ rowNumber: 2, reason: 'budget_exceeded' }]
+            });
+            await runToReviewStep();
+
+            fireEvent.click(screen.getByLabelText('Generate an AI image for Adobo'));
+            fireEvent.click(screen.getByLabelText('Generate an AI image for Halo-Halo'));
+
+            await act(async () => {
+                fireEvent.click(screen.getByRole('button', { name: /Confirm Import \(2 items\)/ }));
+            });
+
+            expect(screen.getByText('1 image queued for AI generation')).toBeTruthy();
+            expect(screen.getByText('1 requested image not queued')).toBeTruthy();
+            expect(screen.getByText(/daily AI image budget was already reached/)).toBeTruthy();
+        });
+    });
+
+    describe('Mark Always Available toggle (stock-availability fix)', () => {
+        it('defaults checked, and sends markAlwaysAvailable: true on confirm', async () => {
+            confirmMenuImport.mockResolvedValue({ createdCount: 2, failedCount: 0, results: { failed: [] } });
+            await runToReviewStep();
+
+            const checkbox = document.getElementById('mark-always-available');
+            expect(checkbox.checked).toBe(true);
+
+            await act(async () => {
+                fireEvent.click(screen.getByRole('button', { name: /Confirm Import \(2 items\)/ }));
+            });
+
+            expect(confirmMenuImport).toHaveBeenCalledWith(
+                expect.any(Array),
+                { markAlwaysAvailable: true }
+            );
+        });
+
+        it('sends markAlwaysAvailable: false once unchecked', async () => {
+            confirmMenuImport.mockResolvedValue({ createdCount: 2, failedCount: 0, results: { failed: [] } });
+            await runToReviewStep();
+
+            fireEvent.click(document.getElementById('mark-always-available'));
+
+            await act(async () => {
+                fireEvent.click(screen.getByRole('button', { name: /Confirm Import \(2 items\)/ }));
+            });
+
+            expect(confirmMenuImport).toHaveBeenCalledWith(
+                expect.any(Array),
+                { markAlwaysAvailable: false }
+            );
+        });
+
+        it('surfaces always_available_marked_count on the result step', async () => {
+            confirmMenuImport.mockResolvedValue({
+                createdCount: 2,
+                failedCount: 0,
+                results: { failed: [] },
+                always_available_marked_count: 2
+            });
+            await runToReviewStep();
+
+            await act(async () => {
+                fireEvent.click(screen.getByRole('button', { name: /Confirm Import \(2 items\)/ }));
+            });
+
+            expect(screen.getByText(/2 items marked Always Available/)).toBeTruthy();
+        });
     });
 });

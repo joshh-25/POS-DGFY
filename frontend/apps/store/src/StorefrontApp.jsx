@@ -481,7 +481,7 @@ export default function StorefrontApp() {
   const { discoveryFilterToolbarRef } = useDiscoveryFilterDropdown({
     setActiveDiscoveryFilterDropdown
   });
-  const { loadStores } = useDiscoveryStoreLoader({
+  const { loadStores, retryLoadStores } = useDiscoveryStoreLoader({
     debouncedDiscoverySearch,
     discoveryCoordsRef,
     discoveryIncludeMatchMeta,
@@ -903,6 +903,14 @@ export default function StorefrontApp() {
     toSlug
   });
   const isFnbOrderSubpage = isFnbMode && (isOrderSubpage || isTrackSubpage);
+  // checkoutTab only gets set to 'track' as a side effect of goStoreTrackPage() (e.g. after a
+  // successful checkout). A direct/cold load of the track route (a refresh, or a bookmarked
+  // tracking link) never calls that function, so checkoutTab would stay at its 'checkout'
+  // default and the tracking polling effect below would never activate. Sync it here instead,
+  // for every mode that can reach the track subpage.
+  useEffect(() => {
+    if (isTrackSubpage && checkoutTab !== 'track') setCheckoutTab('track');
+  }, [isTrackSubpage, checkoutTab]);
   useStorefrontCartPersistence({
     cart,
     enabled: isFnbMode || isServicesMode,
@@ -948,7 +956,11 @@ export default function StorefrontApp() {
     trackingResult
   } = useFnbTrackingRuntime({
     checkoutTab,
-    isFnbOrderSubpage,
+    // useFnbTrackingRuntime's fetch/poll effect only runs when this is true. F&B reaches the
+    // tracking view through its checkout drawer (isFnbOrderSubpage), while retail and MSME reach
+    // it through their own dedicated /order routes (isTrackSubpage, no drawer involved the same
+    // way F&B's is) -- all three need to activate the same shared polling effect.
+    isFnbOrderSubpage: isFnbOrderSubpage || ((isRetailMode || isSimpleMode) && isTrackSubpage),
     normalizeErrorMessage: normalizeStorefrontErrorMessage,
     requestJson,
     routeSlug,
@@ -1727,6 +1739,7 @@ export default function StorefrontApp() {
     hasMixedServiceCart,
     hasServiceCart,
     isFnbMode,
+    isRetailMode,
     isSimpleMode,
     money,
     orderMethod,
@@ -2182,6 +2195,7 @@ export default function StorefrontApp() {
     fnbPaymentType,
     goStoreTrackPage,
     guestCheckoutIntentId,
+    guestCheckoutOtpVerified,
     guestCheckoutProof,
     handleLoadAccountPanel,
     isDgfyCustomerSignedIn,
@@ -2772,7 +2786,10 @@ export default function StorefrontApp() {
     storefrontClosedByHours,
     goStoreCatalogPage,
     setCartImageErrors,
-    withAssetOrigin
+    withAssetOrigin,
+    handleCheckout,
+    checkoutLoading,
+    checkoutError
   });
   const isFnbCartDrawerSurfaceOpen = Boolean(fnbCartDrawerRouteProps.isActive);
   const fnbCustomerStepComplete = fnbCustomerIdentityStepComplete && guestCheckoutOtpVerified;
@@ -2835,7 +2852,6 @@ export default function StorefrontApp() {
     handlePaymentTypeChange,
     handlePinMyLocation,
     handleConfirmQrphTestPayment,
-    handleRefreshQrphPaymentSession,
     handleRemoveDeliveryAddress,
     handleRequestGuestCheckoutOtp,
     handleSetDefaultDeliveryAddress,
@@ -3022,12 +3038,13 @@ export default function StorefrontApp() {
     fnbScheduleMode,
     fnbScheduledFor,
     fnbSpecialInstructions,
-    goStoreCatalogPage,
     guestCheckoutOtpCode,
+    guestCheckoutOtpCooldownActive: isGuestCheckoutOtpCooldownActive,
     guestCheckoutOtpCooldownLabel,
     guestCheckoutOtpError,
     guestCheckoutOtpLoading,
     guestCheckoutOtpVerified,
+    goStoreCatalogPage,
     handleAddPinnedLocation,
     handleApplyGuestDetailsAndRequestOtp,
     handleCheckout,
@@ -3036,10 +3053,10 @@ export default function StorefrontApp() {
     handlePaymentTypeChange,
     handlePinMyLocation,
     handleQuote,
-    handleRemoveDeliveryAddress,
     handleRequestGuestCheckoutOtp,
-    handleSetDefaultDeliveryAddress,
     handleVerifyGuestCheckoutOtp,
+    handleRemoveDeliveryAddress,
+    handleSetDefaultDeliveryAddress,
     isDeliveryOrder,
     isDesktopCheckout,
     isDgfyCustomerSignedIn,
@@ -3080,8 +3097,8 @@ export default function StorefrontApp() {
     setShowExpandedDeliveryMap,
     setSimpleOrderStep,
     showExpandedDeliveryMap,
-    simpleCheckoutAllowed,
-    simpleCustomerStepComplete,
+    simpleCheckoutAllowed: simpleCheckoutAllowed && (isDgfyCustomerSignedIn || guestCheckoutOtpVerified),
+    simpleCustomerStepComplete: simpleCustomerStepComplete && (isDgfyCustomerSignedIn || guestCheckoutOtpVerified),
     simpleHasCustomerIdentity,
     simpleHasPrimaryIdentityContact,
     setShowSimpleMobileAddressModal,
@@ -3139,6 +3156,7 @@ export default function StorefrontApp() {
     normalizeStorefrontCategories,
     normalizeStorefrontReviewSummary,
     renderDiscoveryResetButton,
+    retryLoadStores,
     search,
     searchedDiscoveryMapPins,
     setActiveDiscoveryFilterDropdown,
@@ -3505,7 +3523,9 @@ export default function StorefrontApp() {
     defaultStorefrontModel,
     defaultOrderRouteProps,
     isRetailMode,
-    retailOrderRouteProps
+    retailOrderRouteProps,
+    isTrackSubpage,
+    fnbTrackingRouteProps
   });
   const storefrontHeroBandProps = useStorefrontHeroBandProps({
     selectedStore,
@@ -3555,6 +3575,7 @@ export default function StorefrontApp() {
     handleFollowAction,
     isFnbMode,
     isSimpleMode,
+    isRetailMode,
     isOrderSubpage,
     isFnbDetailsSubpage,
     heroSectionModel,
@@ -3625,9 +3646,9 @@ export default function StorefrontApp() {
         width: '100%',
         boxSizing: 'border-box',
         margin: '0 auto',
-        paddingTop: isStorePage && (isServicesMode || isFnbMode || isSimpleMode || (isResolvedOrderSubpage && !isServicesMode && !isFnbMode && !isSimpleMode)) ? 0 : (isMobileViewport ? 6 : 10),
-        paddingRight: isStorePage && (isServicesMode || isFnbMode || isSimpleMode || (isResolvedOrderSubpage && isRetailMode)) ? 0 : (isMobileViewport ? 12 : 20),
-        paddingLeft: isStorePage && (isServicesMode || isFnbMode || isSimpleMode || (isResolvedOrderSubpage && isRetailMode)) ? 0 : (isMobileViewport ? 12 : 20),
+        paddingTop: isStorePage && (isServicesMode || isFnbMode || isSimpleMode || isRetailMode || (isResolvedOrderSubpage && !isServicesMode && !isFnbMode && !isSimpleMode)) ? 0 : (isMobileViewport ? 6 : 10),
+        paddingRight: isStorePage && (isServicesMode || isFnbMode || isSimpleMode || isRetailMode) ? 0 : (isMobileViewport ? 12 : 20),
+        paddingLeft: isStorePage && (isServicesMode || isFnbMode || isSimpleMode || isRetailMode) ? 0 : (isMobileViewport ? 12 : 20),
         paddingBottom: isStorePage ? ((isServicesMode || isFnbMode || isSimpleMode || !hasDiscoverySearch) ? 0 : (isMobileViewport ? 96 : 120)) : 0
       }}>
         {!isStorePage && (

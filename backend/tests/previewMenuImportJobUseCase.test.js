@@ -120,4 +120,80 @@ describe('buildPreviewMenuImportJobUseCase', () => {
             near_duplicates: []
         });
     });
+
+    it('summarizes the distinct categories and how many items each covers', async () => {
+        menuImportJobRepository.readJob.mockResolvedValue(job({
+            files: [file({
+                items: [
+                    { name: 'Chicken Adobo', price: 180, section: 'Mains', section_inferred: false },
+                    { name: 'Beef Caldereta', price: 220, section: 'mains', section_inferred: false },
+                    { name: 'Iced Tea', price: 60, section: 'Beverages', section_inferred: true },
+                    { name: 'Mystery Dish', price: 90, section: null }
+                ]
+            })]
+        }));
+        previewItemsImportUseCase.mockResolvedValue({
+            success: true,
+            data: { totalRows: 4, validRows: 4, invalidRows: 0, rows: [{ rowNumber: 1 }, { rowNumber: 2 }, { rowNumber: 3 }, { rowNumber: 4 }] },
+            error: null,
+            message: null
+        });
+
+        const result = await useCase({ tenantId: 'tenant-1', jobId: 'job-123' });
+
+        // 'Mains' and 'mains' are one category; an item with no section
+        // contributes to none.
+        expect(result.data.categories).toEqual([
+            { name: 'Mains', item_count: 2, inferred: false },
+            { name: 'Beverages', item_count: 1, inferred: true }
+        ]);
+    });
+
+    it('flags only the rows whose category the model inferred', async () => {
+        menuImportJobRepository.readJob.mockResolvedValue(job({
+            files: [file({
+                items: [
+                    { name: 'Chicken Adobo', price: 180, section: 'Mains', section_inferred: false },
+                    { name: 'Iced Tea', price: 60, section: 'Beverages', section_inferred: true }
+                ]
+            })]
+        }));
+        previewItemsImportUseCase.mockResolvedValue({
+            success: true,
+            data: { totalRows: 2, validRows: 2, invalidRows: 0, rows: [{ rowNumber: 1 }, { rowNumber: 2 }] },
+            error: null,
+            message: null
+        });
+
+        const result = await useCase({ tenantId: 'tenant-1', jobId: 'job-123' });
+
+        expect(result.data.rows[0].category_inferred).toBeUndefined();
+        expect(result.data.rows[1].category_inferred).toBe(true);
+    });
+
+    it('carries the extracted section all the way into the CSV builder', async () => {
+        // Closes a real coverage gap: the merge suite proves section survives
+        // dedup and the extraction suite proves section becomes product_folder,
+        // but until now nothing asserted the two halves connect through this
+        // use case.
+        menuImportJobRepository.readJob.mockResolvedValue(job({
+            files: [
+                file({ file_id: 'a', items: [{ name: 'Chicken Adobo', price: 180, section: null }] }),
+                file({ file_id: 'b', items: [{ name: 'Chicken Adobo', price: 180, section: 'Mains' }] })
+            ]
+        }));
+        previewItemsImportUseCase.mockResolvedValue({
+            success: true,
+            data: { totalRows: 1, validRows: 1, invalidRows: 0, rows: [{ rowNumber: 1 }] },
+            error: null,
+            message: null
+        });
+
+        await useCase({ tenantId: 'tenant-1', jobId: 'job-123' });
+
+        expect(buildSignedCsv).toHaveBeenCalledWith(
+            [expect.objectContaining({ name: 'Chicken Adobo', section: 'Mains' })],
+            { batchToken: 'JOB123' }
+        );
+    });
 });

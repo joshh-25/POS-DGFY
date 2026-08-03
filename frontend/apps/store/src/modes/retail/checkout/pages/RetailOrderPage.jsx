@@ -44,6 +44,8 @@ export function RetailOrderPage({
   cart = [],
   cartCount = 0,
   cartImageErrors,
+  checkoutError = '',
+  checkoutLoading = false,
   customerEmail = '',
   customerName = '',
   customerPhone = '',
@@ -68,6 +70,7 @@ export function RetailOrderPage({
   isMobileViewport = false,
   money,
   onBackToCatalog,
+  onCheckout,
   onImageError,
   onSelectAddress,
   orderMethod = 'delivery',
@@ -273,9 +276,12 @@ export function RetailOrderPage({
             <RetailOrderPaymentStep
               cart={cart}
               cartImageErrors={cartImageErrors}
+              checkoutError={checkoutError}
+              checkoutLoading={checkoutLoading}
               isMobileViewport={isMobileViewport}
               money={money}
               onBack={() => setStep(2)}
+              onCheckout={onCheckout}
               onImageError={onImageError}
               onPaymentTypeChange={setPaymentType}
               paymentType={paymentType}
@@ -307,9 +313,11 @@ export function RetailOrderPage({
             cart={cart}
             cartCount={cartCount}
             cartImageErrors={cartImageErrors}
+            checkoutLoading={checkoutLoading}
             isDeliveryOrder={isDeliveryOrder}
             money={money}
             onBackToCatalog={onBackToCatalog}
+            onCheckout={onCheckout}
             onImageError={onImageError}
             onStepChange={setStep}
             orderStep={step}

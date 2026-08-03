@@ -23,7 +23,10 @@ import { DEFAULT_WORKFLOW_MODE, normalizeWorkflowMode, isFnbWorkflowMode } from 
 import { resolveItemPreset } from '../modules/shared/constants/modeItemTaxonomy.js';
 import { AiUsageLog } from '../models/index.js';
 import { rasterizePdfPages, MenuRasterUnsupportedError } from './menuPdfRasterService.js';
-import { MENU_IMPORT_MAX_PDF_PAGES, MENU_IMPORT_WORKER_CONCURRENCY } from '../config/menuImportFeature.js';
+import { MENU_IMPORT_MAX_PDF_PAGES, MENU_IMPORT_WORKER_CONCURRENCY, menuImportModel } from '../config/menuImportFeature.js';
+import { resolveModelRate } from '../config/aiModelRates.js';
+import { AI_USAGE_FEATURES } from '../config/aiUsageFeatures.js';
+import { normalizeCategoryName } from '../utils/menuCategoryName.js';
 
 const require = createRequire(import.meta.url);
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
@@ -50,7 +53,26 @@ const getOpenAI = () => {
     return _openai;
 };
 
-const MODEL = process.env.MENU_IMPORT_MODEL || process.env.OPENAI_MODEL || 'gpt-4o';
+// Resolved per call (menuImportModel() reads process.env at call time) rather
+// than captured once at import — see config/menuImportFeature.js.
+const resolveModel = () => menuImportModel();
+
+// GPT-5-family chat completions reject `max_tokens` (they require
+// `max_completion_tokens`) and restrict `temperature` to its default, so sending
+// the GPT-4-era parameter shape to one fails the whole request with a 400
+// unsupported-parameter error rather than degrading. Branch on the model family
+// instead of hardcoding either shape.
+const isGpt5Family = (model) => /^gpt-5/i.test(String(model || ''));
+
+/**
+ * @param {string} model
+ * @returns {{max_tokens: number}|{max_completion_tokens: number}} plus temperature for legacy models
+ */
+const buildExtractionRequestParams = (model) => (
+    isGpt5Family(model)
+        ? { max_completion_tokens: 4096 }
+        : { temperature: 0.2, max_tokens: 4096 }
+);
 
 /**
  * Wraps raw extracted PDF text in an XML data-context block, separating
@@ -122,18 +144,26 @@ const extractPdfText = async (pdfBuffer) => {
     }
 };
 
-const EXTRACTION_SYSTEM_PROMPT = `You extract a sellable menu's items from a restaurant/store menu document.
-Return ONLY a JSON object of the shape {"items": [...]}. Each entry in "items" must be:
+const EXTRACTION_SYSTEM_PROMPT = `You extract a sellable menu's items AND its categories from a restaurant/store menu document.
+Return ONLY a JSON object of the shape {"categories": [...], "items": [...]}.
+
+"categories" is an array of strings: the section/category headings actually printed on the menu, in the order they appear (e.g. ["Appetizers", "Mains", "Beverages"]). Use [] if the menu prints no headings.
+
+Each entry in "items" must be:
 {
   "name": string (required, the item name as printed),
   "price": number (required, the numeric sale price only — no currency symbols; use the base/single-serving price if multiple sizes are listed),
-  "section": string (optional, the menu section/category heading this item appeared under, e.g. "Appetizers", "Beverages"),
+  "section": string (required, the category this item belongs to),
+  "section_inferred": boolean (required, see below),
   "description": string (optional, any descriptive text printed under the item)
 }
 Rules:
 - Only include items that have a legible name AND a legible numeric price. Skip section headers, addresses, hours, and other non-item text.
 - Do not invent prices or names that are not present in the document.
-- If the document contains no menu items you can confidently extract, return {"items": []}.`;
+- Assign every item a "section". Carry the most recent printed heading forward to every item listed beneath it, until the next heading.
+- If the menu prints no heading that applies to an item, infer a concise, conventional category from the item itself (e.g. "Mains", "Soup", "Beverages", "Desserts", "Add-Ons") and set "section_inferred": true. A heading printed on the menu always wins over an inferred one — set "section_inferred": false whenever the section came from the document.
+- Keep category names short and reusable across items. Do not invent a distinct category per item.
+- If the document contains no menu items you can confidently extract, return {"categories": [], "items": []}.`;
 
 /**
  * Calls OpenAI to extract structured menu items from raw (already-extracted)
@@ -141,7 +171,7 @@ Rules:
  * the AI chat file-upload path uses, since it is untrusted document content.
  * @param {string} menuText
  * @param {Object} user - { user_id, tenant_id } for usage logging (best-effort)
- * @returns {Promise<Array<{name: string, price: number, section: string|null, description: string|null}>>}
+ * @returns {Promise<Array<{name: string, price: number, section: string|null, section_inferred: boolean, description: string|null}>>}
  */
 /**
  * Logs OpenAI token usage/cost for a completion response (best-effort, never
@@ -150,16 +180,20 @@ Rules:
  * whether the source document was PDF text or an image.
  * @param {Object} response - OpenAI chat.completions.create() response
  * @param {Object} user - { user_id, tenant_id } for usage logging (best-effort)
- * @returns {Promise<Array<{name: string, price: number, section: string|null, description: string|null}>>}
+ * @returns {Promise<Array<{name: string, price: number, section: string|null, section_inferred: boolean, description: string|null}>>}
  */
 const mapExtractionResponseToItems = async (response, user) => {
     if (response.usage) {
         try {
-            const rate = MODEL === 'gpt-4o-mini' ? { input: 0.150 / 1000000, output: 0.600 / 1000000 } : { input: 5.00 / 1000000, output: 15.00 / 1000000 };
+            // Rate keyed off the model the API actually answered with, not the
+            // one requested — a snapshot alias resolves server-side, and the
+            // logged spend meters the tenant's daily menu-import budget.
+            const rate = resolveModelRate(response.model || resolveModel());
             const cost = (response.usage.prompt_tokens || 0) * rate.input + (response.usage.completion_tokens || 0) * rate.output;
             await AiUsageLog.create({
                 tenant_id: user?.tenant_id,
                 user_id: user?.user_id,
+                feature: AI_USAGE_FEATURES.MENU_IMPORT,
                 model: response.model,
                 input_tokens: response.usage.prompt_tokens || 0,
                 output_tokens: response.usage.completion_tokens || 0,
@@ -186,16 +220,25 @@ const mapExtractionResponseToItems = async (response, user) => {
         // an exact 0 to null. Filtering price <= 0 here avoids feeding that edge case.
         .filter((item) => item && typeof item.name === 'string' && item.name.trim() && Number.isFinite(Number(item.price)) && Number(item.price) > 0)
         .slice(0, MAX_MENU_ITEMS_PER_IMPORT)
-        .map((item) => ({
-            name: item.name.trim().slice(0, 255),
-            price: Math.round(Number(item.price) * 100) / 100,
-            section: typeof item.section === 'string' ? item.section.trim().slice(0, 100) || null : null,
-            description: typeof item.description === 'string' ? item.description.trim().slice(0, 1000) || null : null
-        }));
+        .map((item) => {
+            const section = normalizeCategoryName(item.section);
+            return {
+                name: item.name.trim().slice(0, 255),
+                price: Math.round(Number(item.price) * 100) / 100,
+                section,
+                // Only meaningful when a section exists. Defaulting to false for a
+                // model that omits the flag keeps the conservative reading: an
+                // unflagged category is treated as printed, not as a guess we'd
+                // otherwise nag the user about on every row.
+                section_inferred: Boolean(section) && item.section_inferred === true,
+                description: typeof item.description === 'string' ? item.description.trim().slice(0, 1000) || null : null
+            };
+        });
 };
 
 const extractMenuItemsFromText = async (menuText, user) => {
     const encapsulated = encapsulateFileContent('menu.pdf', 'PDF', menuText.slice(0, MAX_PDF_TEXT_CHARS));
+    const MODEL = resolveModel();
 
     let response;
     try {
@@ -203,11 +246,10 @@ const extractMenuItemsFromText = async (menuText, user) => {
             model: MODEL,
             messages: [
                 { role: 'system', content: EXTRACTION_SYSTEM_PROMPT },
-                { role: 'user', content: `Extract the menu items from the following document.${encapsulated}` }
+                { role: 'user', content: `Extract the menu items and their categories from the following document.${encapsulated}` }
             ],
             response_format: { type: 'json_object' },
-            temperature: 0.2,
-            max_tokens: 4096
+            ...buildExtractionRequestParams(MODEL)
         });
     } catch (error) {
         // tenant/model included so this line can be tied back to the
@@ -229,10 +271,11 @@ const extractMenuItemsFromText = async (menuText, user) => {
  * @param {Buffer} imageBuffer
  * @param {string} mimeType - 'image/jpeg' or 'image/png'
  * @param {Object} user - { user_id, tenant_id } for usage logging (best-effort)
- * @returns {Promise<Array<{name: string, price: number, section: string|null, description: string|null}>>}
+ * @returns {Promise<Array<{name: string, price: number, section: string|null, section_inferred: boolean, description: string|null}>>}
  */
 const extractMenuItemsFromImage = async (imageBuffer, mimeType, user) => {
     const dataUrl = `data:${mimeType};base64,${imageBuffer.toString('base64')}`;
+    const MODEL = resolveModel();
 
     let response;
     try {
@@ -243,14 +286,13 @@ const extractMenuItemsFromImage = async (imageBuffer, mimeType, user) => {
                 {
                     role: 'user',
                     content: [
-                        { type: 'text', text: 'Extract the menu items from the following menu image.' },
+                        { type: 'text', text: 'Extract the menu items and their categories from the following menu image.' },
                         { type: 'image_url', image_url: { url: dataUrl } }
                     ]
                 }
             ],
             response_format: { type: 'json_object' },
-            temperature: 0.2,
-            max_tokens: 4096
+            ...buildExtractionRequestParams(MODEL)
         });
     } catch (error) {
         logger.error(`Menu image extraction: OpenAI request failed (tenant=${user?.tenant_id ?? 'unknown'}, model=${MODEL}):`, error);
@@ -349,7 +391,7 @@ const buildSignedCsv = (extractedItems, { skuPrefix = 'PDFMENU', batchToken = ''
 // does, run in request context before a batch job is ever enqueued (the
 // worker that drains the batch queue has no tenant DB access — see
 // modules/menuImport/README.md).
-export { extractMenuItemsFromText, extractMenuItemsFromImage, buildSignedCsv, resolveTenantWorkflowMode };
+export { extractMenuItemsFromText, extractMenuItemsFromImage, buildSignedCsv, resolveTenantWorkflowMode, buildExtractionRequestParams };
 
 const IMAGE_MIME_TYPES = ['image/jpeg', 'image/png'];
 

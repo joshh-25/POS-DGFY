@@ -158,8 +158,16 @@ router.get('/supplier-coverage', itemController.getItemSupplierCoverage);
 router.get('/storefront-overrides', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateStorefrontCatalogOverridesQuery, itemController.listStorefrontCatalogOverrides);
 router.patch('/storefront-overrides/bulk', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), itemController.updateBulkStorefrontCatalogOverrides);
 router.post('/storefront-images/bulk', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), preserveTenantContext(storefrontCatalogBulkImageUpload.array('images', 50)), itemController.uploadBulkStorefrontCatalogImages);
+// "Generate an Image" for existing items (#197) — reuses the shared
+// itemImageGenerationService.js built for menu-import (#176); this is its
+// second caller, not a second implementation. Bulk skips items that already
+// have a photo by default (overwrite_existing: true opts back in) since a
+// multi-select can easily include items never meant to be touched.
+router.post('/storefront-images/generate/bulk', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), itemController.bulkGenerateItemImages);
 router.patch('/:item_id/storefront-override', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, validateUpdateStorefrontCatalogOverride, itemController.updateStorefrontCatalogOverride);
 router.post('/:item_id/storefront-image/external', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, validateExternalProductImageImport, itemController.importExternalStorefrontCatalogImage);
+router.post('/:item_id/storefront-image/generate', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, itemController.generateItemImage);
+router.get('/:item_id/storefront-image/generation-status', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, itemController.getItemImageGenerationStatus);
 router.post('/:item_id/storefront-image', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, preserveTenantContext(storefrontCatalogImageUpload.single('image')), itemController.uploadStorefrontCatalogImage);
 router.post('/:item_id/storefront-images', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, preserveTenantContext(storefrontCatalogGalleryImageUpload.array('images', 5)), itemController.uploadStorefrontCatalogGalleryImages);
 router.patch('/:item_id/storefront-images/gallery', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateItemIdParam, itemController.updateStorefrontCatalogGallery);

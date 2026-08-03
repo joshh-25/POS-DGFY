@@ -42,21 +42,17 @@ function PromoCard({
   const [isFlipped, setIsFlipped] = useState(false);
   const [didCopy, setDidCopy] = useState(false);
   const promoCode = cleanPromoText(promoEntry.promoCode || promoEntry.promo_code).toUpperCase();
-  const title = cleanPromoText(promoEntry.title) || cleanPromoText(promoEntry.badge) || 'Storefront Promo';
-  const badge = cleanPromoText(promoEntry.badge);
+  const title = cleanPromoText(promoEntry.title) || 'Storefront Promo';
   const offer = cleanPromoText(promoEntry.discountLabel) || cleanPromoText(promoEntry.headline) || title;
   const description = cleanPromoText(promoEntry.subtitle) || cleanPromoText(promoEntry.supportingText) || 'Limited-time offer available in this storefront.';
   const validity = cleanPromoText(promoEntry.validityText) || 'Limited time';
   const discount = resolveDiscountParts(promoEntry, offer);
-  const discountLabel = `${discount.top || ''}${discount.bottom ? ` ${discount.bottom}` : ''}`.trim().toUpperCase();
-  const promoLabel = title.toUpperCase() === discountLabel
-    ? (badge || 'Store offer')
-    : title;
+  const promoLabel = title;
   const availabilityStatus = cleanPromoText(promoEntry.availabilityStatus || promoEntry.availability_status || 'available') || 'available';
   const isUnavailable = availabilityStatus !== 'available';
   const availabilityMessage = cleanPromoText(promoEntry.availabilityMessage) || 'Unavailable outside the scheduled promo window.';
   const isApplied = Boolean(promoCode) && promoCode === cleanPromoText(activePromoCode).toUpperCase();
-  const cardMinHeight = isMobileViewport ? 156 : 178;
+  const cardMinHeight = isMobileViewport ? 184 : 178;
 
   const copyCode = async (event) => {
     event.stopPropagation();
@@ -151,11 +147,6 @@ function PromoCard({
                   <span style={{ display: 'grid', placeItems: 'center', width: 30, height: 30, borderRadius: '50%', background: accentTint }}><Tag size={14} /></span>
                   <span>{promoLabel}</span>
                 </span>
-                {badge && badge !== promoLabel ? (
-                  <span style={{ display: 'inline-flex', alignItems: 'center', minHeight: 24, padding: '0 9px', borderRadius: 999, background: '#fff7ed', border: '1px solid #fed7aa', color: accentDark, fontSize: 11, fontWeight: 900, fontFamily: bodyFontFamily, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
-                    {badge}
-                  </span>
-                ) : null}
               </div>
               {isApplied ? (
                 <span style={{ flexShrink: 0, display: 'inline-flex', alignItems: 'center', minHeight: 34, padding: '0 14px', borderRadius: 999, border: `1px solid ${accentColor}`, color: accentColor, background: '#ffffff', fontSize: 12, fontWeight: 900, fontFamily: bodyFontFamily }}>
