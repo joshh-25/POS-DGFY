@@ -5,6 +5,12 @@ import {
     MENU_IMPORT_MAX_FILES_PER_BATCH,
     MENU_IMPORT_DAILY_USD_BUDGET
 } from '../../../config/menuImportFeature.js';
+import { AI_USAGE_FEATURES } from '../../../config/aiUsageFeatures.js';
+
+// Menu import's daily budget should count menu-import spend (and its
+// item-image-generation sibling, once #176 ships) — not unrelated AI
+// assistant chat from the same tenant (see #195).
+const MENU_IMPORT_BUDGET_FEATURES = [AI_USAGE_FEATURES.MENU_IMPORT, AI_USAGE_FEATURES.ITEM_IMAGE_GENERATION];
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -80,7 +86,7 @@ export const buildCreateMenuImportJobUseCase = ({ menuImportJobRepository, menuI
         }
 
         const since = new Date(Date.now() - ONE_DAY_MS);
-        const spentToday = await menuImportBudgetRepository.getTenantAiSpendSince(tenantId, since);
+        const spentToday = await menuImportBudgetRepository.getTenantAiSpendSince(tenantId, since, { features: MENU_IMPORT_BUDGET_FEATURES });
         if (spentToday >= MENU_IMPORT_DAILY_USD_BUDGET) {
             return failWithCode(
                 'This store has reached its daily AI menu-import budget. Try again tomorrow.',
