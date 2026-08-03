@@ -11,6 +11,7 @@ export function SimpleCheckoutCustomerStep({
   renderAccountOwnedIdentitySummary,
   renderGuestCheckoutEntry,
   renderGuestIdentityFields,
+  guestEmailVerificationContent = null,
   simpleCustomerStepComplete = false,
   onBackToCatalog,
   onContinue
@@ -45,6 +46,7 @@ export function SimpleCheckoutCustomerStep({
         addressPlaceholder: 'House no., street, barangay, landmark',
         addressRequired: isDeliveryOrder
       })}
+      {guestEmailVerificationContent}
       {!isMobileViewport && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <button type="button" onClick={onBackToCatalog} style={{ minHeight: 46, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><ChevronLeft size={18} /> Back to Catalog</button>
@@ -53,7 +55,7 @@ export function SimpleCheckoutCustomerStep({
       )}
       {!simpleCustomerStepComplete && (
         <div style={{ fontSize: 12, color: '#b45309' }}>
-          Add customer name, one contact method, and a delivery address when delivery is selected.
+          Add the required customer details and verify the guest email before continuing.
         </div>
       )}
     </section>

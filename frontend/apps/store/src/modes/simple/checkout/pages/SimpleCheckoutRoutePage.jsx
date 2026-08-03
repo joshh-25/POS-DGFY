@@ -6,6 +6,7 @@ import { SimpleCheckoutPaymentStep } from '../components/SimpleCheckoutPaymentSt
 import { SimpleCheckoutStoreHeader } from '../components/SimpleCheckoutStoreHeader.jsx';
 import { SimpleCheckoutSuccessStep } from '../components/SimpleCheckoutSuccessStep.jsx';
 import { SimpleCheckoutSummaryContent } from '../components/SimpleCheckoutSummaryContent.jsx';
+import { GuestEmailVerification } from '../../../../shared/components/checkout/GuestEmailVerification.jsx';
 
 export function SimpleCheckoutRoutePage({
   canAddPinnedLocation = false,
@@ -25,6 +26,12 @@ export function SimpleCheckoutRoutePage({
   fnbScheduleMode = 'asap',
   fnbScheduledFor = '',
   fnbSpecialInstructions = '',
+  guestCheckoutOtpCode = '',
+  guestCheckoutOtpCooldownActive = false,
+  guestCheckoutOtpCooldownLabel = '',
+  guestCheckoutOtpError = '',
+  guestCheckoutOtpLoading = false,
+  guestCheckoutOtpVerified = false,
   isDeliveryOrder = false,
   isDesktopCheckout = false,
   isDgfyCustomerSignedIn = false,
@@ -70,6 +77,9 @@ export function SimpleCheckoutRoutePage({
   onPinChange,
   onPinMyLocation,
   onQuote,
+  onGuestCheckoutOtpCodeChange,
+  onRequestGuestCheckoutOtp,
+  onVerifyGuestCheckoutOtp,
   onScheduleModeChange,
   onScheduledForChange,
   onSelectAddress,
@@ -126,6 +136,21 @@ export function SimpleCheckoutRoutePage({
             renderAccountOwnedIdentitySummary={renderAccountOwnedIdentitySummary}
             renderGuestCheckoutEntry={renderGuestCheckoutEntry}
             renderGuestIdentityFields={renderGuestIdentityFields}
+            guestEmailVerificationContent={!isDgfyCustomerSignedIn ? (
+              <GuestEmailVerification
+                bodyFont={servicesBodyFont}
+                code={guestCheckoutOtpCode}
+                cooldownActive={guestCheckoutOtpCooldownActive}
+                cooldownLabel={guestCheckoutOtpCooldownLabel}
+                error={guestCheckoutOtpError}
+                isMobileViewport={isMobileViewport}
+                loading={guestCheckoutOtpLoading}
+                onCodeChange={onGuestCheckoutOtpCodeChange}
+                onRequestCode={onRequestGuestCheckoutOtp}
+                onVerifyCode={onVerifyGuestCheckoutOtp}
+                verified={guestCheckoutOtpVerified}
+              />
+            ) : null}
             simpleCustomerStepComplete={simpleCustomerStepComplete}
             onBackToCatalog={onBackToCatalog}
             onContinue={() => onSetSimpleOrderStep(2)}

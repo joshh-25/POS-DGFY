@@ -112,7 +112,6 @@ export function FnbCheckoutRouteContainer({
   handlePaymentTypeChange,
   handlePinMyLocation,
   handleConfirmQrphTestPayment,
-  handleRefreshQrphPaymentSession,
   handleRemoveDeliveryAddress,
   handleRequestGuestCheckoutOtp,
   handleSetDefaultDeliveryAddress,
@@ -698,7 +697,6 @@ export function FnbCheckoutRouteContainer({
                 {fnbPaymentType === 'qrph' ? (
                   <FnbQrphPaymentPanel
                     onConfirmTestPayment={import.meta.env.DEV ? handleConfirmQrphTestPayment : null}
-                    onRefresh={handleRefreshQrphPaymentSession}
                     onUseCash={() => {
                       resetQrphPaymentSession();
                       handlePaymentTypeChange('cash');
