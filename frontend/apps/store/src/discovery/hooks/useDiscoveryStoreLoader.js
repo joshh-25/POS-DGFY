@@ -76,7 +76,7 @@ export function useDiscoveryStoreLoader({
       query.set('limit', '100');
       const data = await requestJson(
         `/api/v1/storefront/discovery?${query.toString()}`,
-        discoveryController ? { signal: discoveryController.signal } : undefined
+        { retry: true, ...(discoveryController ? { signal: discoveryController.signal } : {}) }
       );
 
       if (requestSequence === discoveryRequestSequenceRef.current) {
@@ -112,6 +112,15 @@ export function useDiscoveryStoreLoader({
     setStores,
     setStoresError
   ]);
+
+  // Zero-arg wrapper for a manual "Try again" affordance. loadStores takes
+  // `coords` positionally, so `onClick={loadStores}` would hand it a
+  // PointerEvent as coords -- this exists so a retry button can never do
+  // that by accident.
+  const retryLoadStores = useCallback(
+    () => loadStores(undefined, { useImmediateSearch: true }),
+    [loadStores]
+  );
 
   useEffect(() => {
     const lastImmediate = lastImmediateDiscoveryRequestRef.current;
@@ -163,5 +172,5 @@ export function useDiscoveryStoreLoader({
     };
   }, [requestJson, setDiscoveryLocationMap, setLoadingDiscoveryLocations, stores, toSlug]);
 
-  return { loadStores };
+  return { loadStores, retryLoadStores };
 }
