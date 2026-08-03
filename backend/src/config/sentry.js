@@ -32,6 +32,24 @@ export const resolveTracesSampleRate = (rawValue) => {
   return Math.min(parsed, 1);
 };
 
+// The backend image hard-sets NODE_ENV=production (see
+// infrastructure/docker/backend/Dockerfile) on every environment -- dev,
+// staging, beta and prod alike -- because that's what npm/Express expect for
+// runtime behavior, not because the box is actually production. Falling back
+// to NODE_ENV here would silently file a dev or staging server's errors
+// under `environment: "production"` the moment SENTRY_ENABLED is flipped on
+// without also setting SENTRY_ENVIRONMENT. Only fall back to NODE_ENV when
+// it is NOT "production"; otherwise resolve to a value ("unknown") that is
+// obviously wrong in the Sentry UI and prompts an operator to set the real
+// one, rather than quietly polluting the production environment's data.
+export const resolveSentryEnvironment = (env = process.env) => {
+  const explicit = String(env.SENTRY_ENVIRONMENT || '').trim();
+  if (explicit) return explicit;
+  const nodeEnv = String(env.NODE_ENV || '').trim();
+  if (nodeEnv && nodeEnv !== 'production') return nodeEnv;
+  return nodeEnv === 'production' ? 'unknown' : 'development';
+};
+
 export const resolveSentryConfig = (env = process.env) => {
   const enabled = parseBooleanFlag(env.SENTRY_ENABLED, false);
   const dsn = String(env.SENTRY_BACKEND_DSN || env.SENTRY_DSN || '').trim();
@@ -40,7 +58,7 @@ export const resolveSentryConfig = (env = process.env) => {
     enabled,
     dsn,
     active: enabled && Boolean(dsn),
-    environment: String(env.SENTRY_ENVIRONMENT || env.NODE_ENV || 'development').trim(),
+    environment: resolveSentryEnvironment(env),
     release: String(env.SENTRY_RELEASE || env.RELEASE_TARGET_SHA || env.GITHUB_SHA || '').trim(),
     tracesSampleRate: resolveTracesSampleRate(env.SENTRY_TRACES_SAMPLE_RATE),
     sendDefaultPii: parseBooleanFlag(env.SENTRY_SEND_DEFAULT_PII, false),
