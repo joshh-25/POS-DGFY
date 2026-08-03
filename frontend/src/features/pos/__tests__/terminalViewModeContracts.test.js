@@ -73,6 +73,21 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("'reports'");
   });
 
+  it('keeps MSME configuration views accessible instead of redirecting them to Shift', () => {
+    const restrictedModes = terminalOperationsWorkspaceContent.match(
+      /const restrictedMsmeModes = new Set\(\[([^\]]*)\]\);/
+    )?.[1] || '';
+
+    expect(restrictedModes).not.toContain('settings_profile');
+    expect(restrictedModes).not.toContain('settings_pos');
+    expect(restrictedModes).not.toContain('settings_storefront');
+    expect(terminalPageContent).toContain("'settings_affiliates'");
+    expect(terminalOperationsWorkspaceContent).toContain("case 'settings_profile':");
+    expect(terminalOperationsWorkspaceContent).toContain("case 'settings_pos':");
+    expect(terminalOperationsWorkspaceContent).toContain("case 'settings_storefront':");
+    expect(terminalOperationsWorkspaceContent).toContain("case 'settings_affiliates':");
+  });
+
   it('keeps always-available items sellable across both POS checkout surfaces', () => {
     expect(terminalOperationsWorkspaceContent).toContain('pos_always_available');
     expect(terminalOperationsWorkspaceContent).toContain('Always Available');
@@ -105,7 +120,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("settingsPayload?.tenant_onboarding_state?.value || 'not_started'");
     expect(terminalPageContent).toContain("onboardingCompleted: onboardingState === 'completed'");
     expect(terminalPageContent).toContain('const setupFlowActive = tenantSetupRequestedOrRequired');
-    expect(terminalPageContent).toContain("const PosTenantSetupModal = lazy(() => import('../components/PosTenantSetupModal.jsx'));");
+    expect(terminalPageContent).toContain("const PosTenantSetupModal = lazyWithChunkRetry(() => import('../components/PosTenantSetupModal.jsx'));");
     expect(terminalPageContent).toContain('if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.COMPLETE) {');
     expect(terminalPageContent).toContain('clearTenantSetupQueryState();');
     expect(terminalPageContent).not.toContain('shouldForceSelectedTenantOnboarding');

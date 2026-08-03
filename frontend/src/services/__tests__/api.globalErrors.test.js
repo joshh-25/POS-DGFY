@@ -112,6 +112,26 @@ describe('api.js global error events', () => {
     expect(onLegacy).not.toHaveBeenCalled();
   });
 
+  it('does not emit api:error for a canceled request', async () => {
+    // Regression guard for EmployeeCreditReportPanel.jsx, which aborts its
+    // in-flight report request on every dateFrom/dateTo/refreshKey change --
+    // before the cancel guard, a CanceledError has no response but DOES
+    // carry error.request, so errorHandler.js's `isNetwork` check classified
+    // it as a network failure and fired this exact toast on every keystroke.
+    const onApiError = vi.fn();
+    window.addEventListener('api:error', onApiError);
+    const controller = new AbortController();
+    mockApi.onGet('/reports/employee-credit').reply(() => new Promise((resolve) => {
+      setTimeout(() => resolve([200, { data: {} }]), 50);
+    }));
+
+    const pending = api.get('/reports/employee-credit', { signal: controller.signal }).catch((err) => err);
+    controller.abort();
+    await pending;
+
+    expect(onApiError).not.toHaveBeenCalled();
+  });
+
   it('respects skipGlobalErrorToast request flag', async () => {
     const onApiError = vi.fn();
     window.addEventListener('api:error', onApiError);

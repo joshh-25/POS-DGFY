@@ -1,4 +1,5 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { createPortal } from 'react-dom';
 import {
     Accessibility,
@@ -99,9 +100,12 @@ import {
 } from '../utils/iminHardwareBridge.js';
 import { PosAddToCartToastContainer } from './PosAddToCartToastContainer.jsx';
 import { calculateCatalogGridCapacity } from '../utils/catalogGridCapacity.js';
+import { resolvePosWorkflow } from '../utils/posWorkflowResolver.js';
+import { FnbWorkflowPanel } from './FnbWorkflowPanel.jsx';
+import { ServicesWorkflowPanel } from './ServicesWorkflowPanel.jsx';
 
-const ReceiptPrintView = lazy(() => import('./ReceiptPrintView'));
-const OrderPreviewView = lazy(() => import('./OrderPreviewView.jsx'));
+const ReceiptPrintView = lazyWithChunkRetry(() => import('./ReceiptPrintView'));
+const OrderPreviewView = lazyWithChunkRetry(() => import('./OrderPreviewView.jsx'));
 
 const CATALOG_GRID_GAP_PX = 8;
 const CATALOG_DESKTOP_CARD_HEIGHT_PX = 176;
@@ -109,8 +113,8 @@ const CATALOG_DESKTOP_CARD_MIN_WIDTH_PX = 176;
 const CATALOG_MOBILE_CARD_HEIGHT_PX = 120;
 const CATALOG_TABLET_CARD_HEIGHT_PX = 112;
 const CATALOG_TABLET_CARD_MIN_WIDTH_PX = 160;
-const POSBarcodeScanner = lazy(() => import('./POSBarcodeScanner.jsx'));
-const POSTransactionHistoryPanel = lazy(() => import('./POSTransactionHistoryPanel.jsx'));
+const POSBarcodeScanner = lazyWithChunkRetry(() => import('./POSBarcodeScanner.jsx'));
+const POSTransactionHistoryPanel = lazyWithChunkRetry(() => import('./POSTransactionHistoryPanel.jsx'));
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const POS_ITEM_FALLBACK_IMAGE = '/dgfy-horizontal_logo-removebg-preview.png';
 const POS_ITEM_IMAGE_MAP = [
@@ -827,7 +831,8 @@ export default function POSCheckoutTerminal({
     onExternalHistoryHydrated = null,
     externalCatalogSearch = '',
     onExternalCatalogHydrated = null,
-    fnbContext = null
+    fnbContext = null,
+    workflowMode = null
 }) {
     useEffect(() => {
         notifyIminWebPosReady();
@@ -898,8 +903,25 @@ export default function POSCheckoutTerminal({
     const [posFoldersError, setPosFoldersError] = useState('');
     const [catalogLoading, setCatalogLoading] = useState(true);
     const [catalogRefreshing, setCatalogRefreshing] = useState(false);
+    const posWorkflow = useMemo(() => resolvePosWorkflow(workflowMode), [workflowMode]);
     const [search, setSearch] = useState('');
-    const [orderMethod, setOrderMethod] = useState('dine_in');
+    const [orderMethod, setOrderMethod] = useState(() => posWorkflow.allowedMethods[0] || 'dine_in');
+    const [tableNumber, setTableNumber] = useState('');
+    const [kitchenNotes, setKitchenNotes] = useState('');
+    const [servicesClientName, setServicesClientName] = useState('');
+    const [servicesDateTime, setServicesDateTime] = useState('');
+    const [servicesProvider, setServicesProvider] = useState('');
+    const [servicesResource, setServicesResource] = useState('');
+    const [servicesNotes, setServicesNotes] = useState('');
+
+    useEffect(() => {
+        if (posWorkflow && !posWorkflow.allowedMethods.includes(orderMethod)) {
+            setOrderMethod(posWorkflow.allowedMethods[0] || (posWorkflow.mode === 'services' ? 'walk_in' : 'dine_in'));
+        }
+    }, [posWorkflow, orderMethod]);
+    const isCheckoutWorkflowValid = posWorkflow.allowedMethods.includes(orderMethod)
+        && (posWorkflow.mode !== 'services' || servicesClientName.trim().length > 0)
+        && (orderMethod !== 'appointment' || Boolean(servicesDateTime));
     const [paymentType, setPaymentType] = useState('cash');
     const [employeeCreditAccountCode, setEmployeeCreditAccountCode] = useState('');
     const [employeeCreditAccount, setEmployeeCreditAccount] = useState(null);
@@ -2579,6 +2601,13 @@ export default function POSCheckoutTerminal({
             toast.error('Add at least one item before checkout.');
             return;
         }
+        if (!isCheckoutWorkflowValid) {
+            toast.error(orderMethod === 'appointment'
+                ? 'Enter the client name and appointment time before checkout.'
+                : 'Enter the client name before checkout.');
+            setCheckoutConfirmModalOpen(true);
+            return;
+        }
         if (
             paymentType === 'employee_credit'
             && typeof navigator !== 'undefined'
@@ -3923,45 +3952,6 @@ export default function POSCheckoutTerminal({
                 </div>
                 <div data-testid="pos-current-sale-scroll" className={currentSaleBodyClassName}>
                 <div className="col-span-2 flex min-h-0 flex-col overflow-hidden md:h-[clamp(18rem,46vh,26rem)] md:flex-none">
-                <div data-testid="pos-current-sale-settings" className="mb-2 grid shrink-0 grid-cols-2 gap-2">
-                    <label className="text-[11px] text-slate-500 block">
-                        Order Method
-                        <select
-                            value={orderMethod}
-                            onChange={(event) => setOrderMethod(event.target.value)}
-                            className={`mt-1 h-8 w-full rounded-lg border border-slate-200 px-2 py-1 text-[12px] ${POS_FORM_SELECT_CLASS}`}
-                        >
-                            <option value="dine_in">Dine In</option>
-                            <option value="takeout">Takeout</option>
-                            <option value="pickup">Pickup</option>
-                            <option value="delivery">Delivery</option>
-                            <option value="appointment">Appointment</option>
-                        </select>
-                    </label>
-
-                    <label className="text-[11px] text-slate-500 block">
-                        Payment Type
-                        <select
-                            value={paymentType}
-                            onChange={(event) => {
-                                setPaymentType(event.target.value);
-                                setEmployeeCreditAccountCode('');
-                                setEmployeeCreditAccount(null);
-                                setSelectedEmployeeCreditOption(null);
-                                setEmployeeCreditLookupLoading(false);
-                                employeeCreditValidationSequenceRef.current += 1;
-                            }}
-                            className={`mt-1 h-8 w-full rounded-lg border border-slate-200 px-2 py-1 text-[12px] ${POS_FORM_SELECT_CLASS}`}
-                        >
-                            <option value="cash">Cash</option>
-                            <option value="gcash">{isMsmeMode ? 'GCash (Manual)' : 'GCash'}</option>
-                            <option value="maya">{isMsmeMode ? 'Maya (Manual)' : 'Maya'}</option>
-                            <option value="card">{isMsmeMode ? 'Card (Manual)' : 'Card'}</option>
-                            <option value="bank_transfer">{isMsmeMode ? 'Bank Transfer (Manual)' : 'Bank Transfer'}</option>
-                            <option value="employee_credit">Employee Credit</option>
-                        </select>
-                    </label>
-                </div>
                 <div className="min-h-0 flex-1 overflow-hidden border-b border-slate-200 pb-2">
                     <div data-testid="pos-current-sale-items" className={`space-y-2.5 ${currentSaleItemsListClassName}`}>
                         {safeCart.length > 0 ? safeCart.map((line) => {
@@ -4076,8 +4066,8 @@ export default function POSCheckoutTerminal({
                 </div>
                 </div>
 
-                <div className="min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-2">
-                    <label className="block truncate text-[11px] font-extrabold text-[#0F172A]" htmlFor="pos-affiliate-code-input" title="Affiliate Code (optional)">Affiliate Code (optional)</label>
+                <div className="col-span-2 min-w-0 rounded-lg border border-slate-200 bg-slate-50 p-2">
+                    <label className="block text-[11px] font-extrabold text-[#0F172A]" htmlFor="pos-affiliate-code-input">Affiliate Code (optional)</label>
                     <div className="relative mt-1">
                         <Percent className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                         <Input
@@ -4088,7 +4078,7 @@ export default function POSCheckoutTerminal({
                             onChange={(e) => setAffiliateCodeInput(e.target.value)}
                         />
                     </div>
-                    <p className="mt-1 truncate text-[10px] text-slate-500" title="Credits an affiliate's commission for this sale. Validated at checkout.">Validated at checkout.</p>
+                    <p className="mt-1 text-[10px] leading-4 text-slate-500">Validated at checkout.</p>
                 </div>
 
                 <div data-testid="pos-current-sale-totals" className="col-span-2 border-b border-slate-200 pb-2 text-[11px]">
@@ -4190,46 +4180,47 @@ export default function POSCheckoutTerminal({
                     </div>
                 )}
 
-                <div data-testid="pos-current-sale-actions" className="dgfy-pos-current-sale-actions grid shrink-0 grid-cols-2 gap-2 border-t border-slate-200 pt-2">
+                <div data-testid="pos-current-sale-actions" className="dgfy-pos-current-sale-actions grid shrink-0 grid-cols-2 sm:grid-cols-3 gap-2 border-t border-slate-200 pt-2">
                     <Button
                         type="button"
                         onClick={openCheckoutConfirmModal}
                         disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0}
-                        className="col-span-2 flex h-12 w-full min-w-0 items-center justify-center gap-2 rounded-xl bg-[#0B449C] px-4 text-center text-sm font-extrabold text-white shadow-md shadow-blue-900/15 transition hover:bg-blue-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+                        className="flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-xl bg-[#0B449C] p-1.5 text-center text-white shadow-md shadow-blue-900/15 transition hover:bg-blue-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                        <ShoppingCart size={18} />
-                        {checkoutLoading ? 'Processing...' : `Checkout (${safeCart.length} ${safeCart.length === 1 ? 'Item' : 'Items'})`}
+                        <ShoppingCart size={14} className="mb-0.5 shrink-0" />
+                        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">
+                            {checkoutLoading ? 'Processing...' : `Checkout (${safeCart.length} ${safeCart.length === 1 ? 'Item' : 'Items'})`}
+                        </span>
                     </Button>
-                    <div className="contents">
-                        <Button
-                            type="button"
-                            variant="outline"
-                            onClick={handlePrintOrder}
-                            disabled={posActionsBlocked || safeCart.length === 0}
-                            className="flex h-9 w-full min-w-0 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2 text-center text-[12px] font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        >
-                            <Printer size={15} />
-                            Print Order
-                        </Button>
+                    <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handlePrintOrder}
+                        disabled={posActionsBlocked || safeCart.length === 0}
+                        className="flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-center text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                        <Printer size={14} className="mb-0.5 shrink-0" />
+                        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">Print Order</span>
+                    </Button>
                     <Button
                         type="button"
                         variant="outline"
                         onClick={handleCloseDay}
                         disabled={closingDay}
-                        className="flex h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg border border-[#1A4E8D] bg-white px-2 text-center text-[12px] font-extrabold leading-tight text-[#1A4E8D] hover:bg-blue-50 sm:text-[13px]"
+                        className="flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border border-[#1A4E8D] bg-white p-1.5 text-center text-[#1A4E8D] hover:bg-blue-50"
                     >
-                        <Gauge size={18} />
-                        {closingDay ? 'Generating...' : 'Close Day / Z-Reading'}
+                        <Gauge size={14} className="mb-0.5 shrink-0" />
+                        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">{closingDay ? 'Generating...' : 'Close Day / Z-Reading'}</span>
                     </Button>
                     <Button
                         type="button"
                         variant="outline"
                         onClick={() => handlePrintReceipt(lastReceipt, 'last_receipt_panel')}
                         disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync}
-                        className="flex h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg border px-2 text-center text-[12px] font-extrabold leading-tight sm:text-[13px]"
+                        className="flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border p-1.5 text-center"
                     >
-                        <Printer size={18} />
-                        {receiptPrinting ? 'Printing...' : 'Print Last Receipt'}
+                        <Printer size={14} className="mb-0.5 shrink-0" />
+                        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">{receiptPrinting ? 'Printing...' : 'Print Last Receipt'}</span>
                     </Button>
                     <Button
                         type="button"
@@ -4239,20 +4230,19 @@ export default function POSCheckoutTerminal({
                             reason: 'manual_drawer_panel'
                         })}
                         disabled={!activeShiftId || drawerOpening}
-                        className="flex h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg border px-2 text-center text-[12px] font-extrabold leading-tight sm:text-[13px]"
+                        className="flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border p-1.5 text-center"
                     >
-                        {drawerOpening ? 'Opening...' : 'Open Cash Drawer'}
+                        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">{drawerOpening ? 'Opening...' : 'Open Cash Drawer'}</span>
                     </Button>
                     <Button
                         type="button"
                         variant="outline"
-                        className="flex h-10 w-full min-w-0 items-center justify-center gap-2 rounded-lg border border-[#1A4E8D] bg-white px-2 text-center text-[12px] font-extrabold leading-tight text-[#1A4E8D] hover:bg-blue-50 sm:text-[13px]"
+                        className="flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border border-[#1A4E8D] bg-white p-1.5 text-center text-[#1A4E8D] hover:bg-blue-50"
                         onClick={openDiscountModal}
                         disabled={posActionsBlocked || safeCart.length === 0}
                     >
-                        Apply Discount
+                        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">Apply Discount</span>
                     </Button>
-                    </div>
                 </div>
                     </div>
             </section>
@@ -4733,14 +4723,67 @@ export default function POSCheckoutTerminal({
                     </DialogHeader>
 
                     <div className="pos-modal-scroll-content min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
+                        <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-3" data-testid="pos-checkout-order-settings">
+                            <p className="text-[11px] font-black uppercase tracking-wide text-[#64748B]">
+                                {posWorkflow.mode === 'services' ? 'Service details' : 'Order details'}
+                            </p>
+                            {posWorkflow.mode === 'fnb' && (
+                                <FnbWorkflowPanel
+                                    orderMethod={orderMethod}
+                                    setOrderMethod={setOrderMethod}
+                                    tableNumber={tableNumber}
+                                    setTableNumber={setTableNumber}
+                                    kitchenNotes={kitchenNotes}
+                                    setKitchenNotes={setKitchenNotes}
+                                    disabled={posActionsBlocked || checkoutLoading}
+                                />
+                            )}
+                            {posWorkflow.mode === 'services' && (
+                                <ServicesWorkflowPanel
+                                    visitType={orderMethod}
+                                    setVisitType={setOrderMethod}
+                                    clientName={servicesClientName}
+                                    setClientName={setServicesClientName}
+                                    appointmentDateTime={servicesDateTime}
+                                    setAppointmentDateTime={setServicesDateTime}
+                                    provider={servicesProvider}
+                                    setProvider={setServicesProvider}
+                                    resource={servicesResource}
+                                    setResource={setServicesResource}
+                                    serviceNotes={servicesNotes}
+                                    setServiceNotes={setServicesNotes}
+                                    disabled={posActionsBlocked || checkoutLoading}
+                                />
+                            )}
+                            <label className="block text-[11px] font-medium text-slate-500">
+                                Payment Type
+                                <select
+                                    value={paymentType}
+                                    onChange={(event) => {
+                                        setPaymentType(event.target.value);
+                                        setEmployeeCreditAccountCode('');
+                                        setEmployeeCreditAccount(null);
+                                        setSelectedEmployeeCreditOption(null);
+                                        setEmployeeCreditLookupLoading(false);
+                                        employeeCreditValidationSequenceRef.current += 1;
+                                    }}
+                                    disabled={posActionsBlocked || checkoutLoading}
+                                    className={`mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 py-1 text-[12px] ${POS_FORM_SELECT_CLASS}`}
+                                >
+                                    <option value="cash">Cash</option>
+                                    <option value="gcash">{isMsmeMode ? 'GCash (Manual)' : 'GCash'}</option>
+                                    <option value="maya">{isMsmeMode ? 'Maya (Manual)' : 'Maya'}</option>
+                                    <option value="card">{isMsmeMode ? 'Card (Manual)' : 'Card'}</option>
+                                    <option value="bank_transfer">{isMsmeMode ? 'Bank Transfer (Manual)' : 'Bank Transfer'}</option>
+                                    <option value="employee_credit">Employee Credit</option>
+                                </select>
+                            </label>
+                        </div>
+
                         {!isEmployeeCreditPayment && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px]">
                             <div className="flex justify-between gap-2">
                                 <span className="font-semibold text-[#334155]">Total Due</span>
                                 <span className="font-black text-[#1A4E8D]">PHP {money(cartTotal)}</span>
-                            </div>
-                            <div className="mt-2 flex justify-between gap-2">
-                                <span className="font-semibold text-[#334155]">Payment Type</span>
-                                <span className="font-bold capitalize text-[#0F172A]">{paymentType.replace('_', ' ')}</span>
                             </div>
                         </div>}
 
@@ -4853,7 +4896,7 @@ export default function POSCheckoutTerminal({
                         )}
                     </div>
 
-                    <DialogFooter className="shrink-0 grid grid-cols-2 gap-2 border-t border-slate-200 px-4 py-3 bg-white">
+                    <DialogFooter className="shrink-0 grid grid-cols-3 gap-2 border-t border-slate-200 px-4 py-3 bg-white">
                         <Button
                             type="button"
                             variant="outline"
@@ -4865,8 +4908,18 @@ export default function POSCheckoutTerminal({
                         </Button>
                         <Button
                             type="button"
+                            variant="outline"
+                            onClick={handlePrintOrder}
+                            disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0}
+                            className="h-10 rounded-lg border border-[#1A4E8D] bg-white px-2 text-[12px] font-extrabold text-[#1A4E8D] hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                            <Printer className="mr-1.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                            Print Order
+                        </Button>
+                        <Button
+                            type="button"
                             onClick={handleCheckout}
-                            disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isCustomerPaymentSufficient}
+                            disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isCheckoutWorkflowValid || !isCustomerPaymentSufficient}
                             className="h-10 rounded-lg bg-[#1A4E8D] px-3 text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 transition hover:bg-[#143F73] disabled:cursor-not-allowed disabled:bg-[#1A4E8D] disabled:opacity-60"
                         >
                             {checkoutLoading ? 'Processing...' : 'Confirm'}

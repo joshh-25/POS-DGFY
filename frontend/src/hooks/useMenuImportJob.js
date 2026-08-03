@@ -196,13 +196,13 @@ export const useMenuImportJob = () => {
         return { success: true, data: created };
     };
 
-    const confirmImport = async (rows) => {
+    const confirmImport = async (rows, options) => {
         const runId = runIdRef.current;
         setPhase('confirming');
         setError(null);
         setErrorCode(null);
         try {
-            const data = await confirmMenuImport(rows);
+            const data = await confirmMenuImport(rows, options);
             if (!isCurrentRun(runId)) return { success: false, cancelled: true };
             setPhase('done');
             return { success: true, data };

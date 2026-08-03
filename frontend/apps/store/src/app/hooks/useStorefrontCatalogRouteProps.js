@@ -165,7 +165,11 @@ export function useStorefrontCatalogRouteProps({
   simpleCheckoutRouteProps,
   simpleStorefrontModel,
   defaultStorefrontModel,
-  defaultOrderRouteProps
+  defaultOrderRouteProps,
+  isRetailMode,
+  retailOrderRouteProps,
+  isTrackSubpage,
+  fnbTrackingRouteProps
 }) {
   return {
     isServicesMode,
@@ -331,6 +335,10 @@ export function useStorefrontCatalogRouteProps({
     simpleCheckoutRouteProps,
     simpleStorefrontModel,
     defaultStorefrontModel,
-    defaultOrderRouteProps
+    defaultOrderRouteProps,
+    isRetailMode,
+    retailOrderRouteProps,
+    isTrackSubpage,
+    fnbTrackingRouteProps
   };
 }

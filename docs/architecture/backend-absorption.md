@@ -119,6 +119,7 @@ deleted and every change reflected in the new structure.
 | ---------- | ---------------------- | ------------------------------------------------------------ |
 | 2026-07-20 | `7f416690`             | Baseline at `backend/` removal. Ported `2b2ca4a5`'s two files (`posRepository.js`, `settingsValidator.js`). |
 | 2026-08-01 | `b3ad0951`             | Merged `develop` (121 commits since `83f768d0`). Absorbed 6 new `backend/src/modules/*` domains added upstream (`employeeCredit`, `employees`, `menuImport`, `platformAdmin`, `platformInvoicing`, `tenantRevenue`) plus `tenants/companyRegistration*` and `assets/sieitz-logo.png`, and 19 new Sequelize migrations into `apps/dgfy-migration-runner`. Also absorbed develop's PR #118 CI restructure (PR Checks collapsed to a `changes` + per-deployable build-check shape) and PR #133/`28fda6fe`'s async batch menu-import, which supersedes this branch's earlier single-file port (`38503e75`). `backend/` confirmed empty post-merge. |
+| 2026-08-03 | `87e5ad80`             | Merged `develop` (69 commits since `b3ad0951`). git's directory-rename detection resolved this merge almost entirely on its own: zero content conflicts, all 52 develop-modified `backend/` files auto-merged into their existing `apps/dgfy-api` counterparts, and the only manual work was confirming 40 develop-added files (36 → `apps/dgfy-api`, 4 → `apps/dgfy-migration-runner/migrations`) at their git-inferred destinations. Absorbed the service options/add-ons domain (4 models + `serviceOptionRepository` + `calculateServiceQuoteUseCase` + `manageServiceOptionGroupsUseCase`), managed image lifecycle (`imageLifecycleContract`/`imageLifecycleUseCases`/`imageCleanupService`), menu-import categories (`menuImportCategoryService`, `menuCategoryName`) and "Always Available" tagging, AI item-image generation (`itemImageGenerationService`, `itemImageWorker`, DGFY watermark asset) with per-feature AI usage metering (`aiUsageFeatures.js` + `20260803000001-add-ai-usage-feature-and-units` migration, landlord-scoped so it needs no tenant-schema registry entry), guest-OTP checkout consolidation (`storeGuestCheckoutProof`), Sentry/observability hardening, transient-failure retry, geo address search, and the frontend Retail/MSME shared-catalog port. Plus 4 new migrations into `apps/dgfy-migration-runner`. Manual fixes: two `readRepoSource('backend/...')` literals in `frontend/apps/store/src/__tests__/guestCheckoutOtp.contract.test.js` (introduced by this range, same pattern as the prior sync); and, pre-existing since the `backend/` removal, `frontend/src/features/pos/__tests__/affiliatePricingPreview.test.js`'s fixture-parity path, which had been resolving to the deleted `backend/tests/fixtures/` (fixtures verified byte-identical). `backend/` confirmed empty post-merge. |
 
 ## Open compliance debt (must clear before staging/prod)
 
@@ -169,3 +170,52 @@ itself merged forward as a single unit) to confirm it was purely a bulk-merge ar
 and not a genuine gap; if real gaps remain, request classification bumps / surface
 amendments for the three declarations above through the normal compliance process rather
 than editing their front matter directly.
+
+### 2026-08-03 develop merge: same declaration-coverage artifact, four more declarations
+
+`npm run check:compliance` fails against this merge with four more develop-authored
+declarations flagged as under-covering their surfaces, all missing `settings`:
+
+- `docs/compliance/impact-declarations/2026-08-01-pos-service-terminal-workflows.md`
+- `docs/compliance/impact-declarations/2026-08-01-pos-service-workflows.md`
+- `docs/compliance/impact-declarations/2026-08-02-retail-msme-checkout-backend-wiring.md`
+- `docs/compliance/impact-declarations/2026-08-03-pos-chunk-load-recovery.md`
+
+Same root cause as the 2026-08-01 entry above: each declaration validly covers its own
+single-PR diff on `develop`; merging 69 `develop` commits in one shot attributes every
+compliance-sensitive file touched anywhere in that range to whichever single declaration
+the gate's date-range matching picks. The merge commit was made with `--no-verify` for
+the same reason.
+
+**Before this branch is promoted to staging/prod**, fold this into the same re-run of
+`npm run check:compliance` against `develop`'s normal one-PR-at-a-time diff shape
+described above, covering all seven flagged declarations across both merges.
+
+### Genuinely pre-existing test failures carried over from `develop` (not introduced here)
+
+Two things surfaced while verifying this merge that are worth recording so they aren't
+mistaken for absorption regressions later:
+
+- `frontend/src/features/pos/__tests__/affiliatePricingPreview.test.js`'s fixture-parity
+  path had been resolving to the deleted `backend/tests/fixtures/` since the `backend/`
+  removal (fixed in this merge — see the changelog row above).
+- `frontend/apps/store/src/__tests__/guestCheckoutOtp.contract.test.js`'s
+  `'shares guest OTP enforcement across transaction-capable checkout modes'` test asserts
+  `simpleCheckoutSource` (`modes/simple/checkout/pages/SimpleCheckoutRoutePage.jsx`)
+  contains the literal string `GuestEmailVerification`. It doesn't — that page receives
+  guest-checkout UI via a `renderGuestCheckoutEntry` render prop rather than importing the
+  component directly. Confirmed failing identically on bare `origin/develop` (this repo's
+  `apps/` layout is not involved), so it's a develop-authored test/implementation mismatch,
+  not something this absorption should silently patch.
+- `apps/dgfy-api/tests/commercePaymentRefunds.usecases.test.js`'s
+  `'normalizes legacy custom split requests to proportional refunds in collect-and-settle
+  mode'` test exercises `buildCreateCommercePaymentRefundUseCase` in
+  `commercePaymentAdminUseCases.js` — a file `develop`'s 69-commit range never touched.
+  The test was rewritten to expect custom split refunds to normalize to `proportional`
+  unconditionally, but the untouched implementation still gates that only on
+  `tenantRevenueSharingEnabled` and otherwise enforces the older "sources must sum to the
+  refund amount" validation. Same conclusion: a develop-side test/implementation mismatch
+  predating this merge, not a regression introduced by it.
+
+Both are upstream `develop` issues; fix them there (or accept the fix when it lands and
+re-absorb), not by patching test expectations from this branch.

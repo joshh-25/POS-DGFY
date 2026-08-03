@@ -16,7 +16,7 @@ import NotFoundPage from './components/common/NotFoundPage.jsx'
 import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.jsx'
 import { Toaster } from '@/components/ui/sonner'
 import { getRuntimeConfig } from './utils/runtimeConfig.js'
-import { initBrowserSentry } from './observability/sentryClient.js'
+import { initBrowserSentry, identifySentryUser, resetSentryIdentity, setSentryContext, setSentryRoute } from './observability/sentryClient.js'
 import {
   capturePageview,
   identifyAnalyticsUser,
@@ -32,7 +32,15 @@ const runtimeConfig = getRuntimeConfig(import.meta.env, typeof window !== 'undef
 const RootRouter = runtimeConfig.isDesktopShell ? HashRouter : BrowserRouter
 const devAutoLoginEnabled = String(import.meta.env.VITE_DEV_AUTO_LOGIN_ENABLED || '').trim().toLowerCase() === 'true'
 
-initBrowserSentry({ surface: runtimeConfig.appSurface || 'skupervisor' })
+// backendOrigin is resolved at runtime from the desktop preload bridge, so
+// it is invisible to the build-time-only trace-propagation resolver. Without
+// passing it explicitly, the Electron shell would never attach
+// sentry-trace/baggage to its API calls and its errors could not be
+// correlated with the backend's.
+initBrowserSentry({
+  surface: runtimeConfig.appSurface || 'skupervisor',
+  extraTracePropagationTargets: [runtimeConfig.backendOrigin].filter(Boolean)
+})
 // SKUpervisor previously had no PostHog init at all -- it's staff-facing
 // (same consent basis as POS: employment relationship, not the storefront's
 // anonymous-visitor consent banner), so behavioral analytics apply here too.
@@ -103,6 +111,7 @@ const Register = lazy(() => import('../Pages/Register.jsx'))
 const RegisterCompany = lazy(() => import('../Pages/RegisterCompany.jsx'))
 const CompanyRegistrationStatus = lazy(() => import('../Pages/CompanyRegistrationStatus.jsx'))
 const DgfyAuthPage = lazy(() => import('../Pages/DgfyAuthPage.jsx'))
+const DgfyCompanySelect = lazy(() => import('../Pages/DgfyCompanySelect.jsx'))
 const DgfyResetPasswordPage = lazy(() => import('../Pages/DgfyResetPasswordPage.jsx'))
 const LegalDocument = lazy(() => import('../Pages/LegalDocument.jsx'))
 const AcceptInvite = lazy(() => import('../Pages/AcceptInvite.jsx'))
@@ -138,6 +147,7 @@ function App() {
 
   useEffect(() => {
     capturePageview({ path: location.pathname });
+    setSentryRoute(location.pathname);
   }, [location.pathname]);
 
   return (
@@ -149,6 +159,7 @@ function App() {
         <Route path="/register-company" element={<RegisterCompany />} />
         <Route path="/register-company/status/:applicationId" element={<CompanyRegistrationStatus />} />
         <Route path="/dgfy/auth" element={<DgfyAuthPage />} />
+        <Route path="/dgfy/companies" element={<DgfyCompanySelect />} />
         <Route path="/dgfy/reset-password" element={<DgfyResetPasswordPage />} />
         <Route path="/legal/:slug" element={<LegalDocument />} />
         <Route path="/privacy" element={<LegalDocument />} />
@@ -307,11 +318,12 @@ function App() {
   )
 }
 
-// Mirrors apps/pos/src/main.jsx's AnalyticsIdentitySync: resolves the
-// signed-in staff member via getCurrentUser() (same call PermissionContext
-// makes) on mount and on auth state changes, without expanding
-// PermissionContext's public API just for analytics.
-function AnalyticsIdentitySync() {
+// Mirrors apps/pos/src/main.jsx's identity sync: resolves the signed-in
+// staff member via getCurrentUser() (same call PermissionContext makes) on
+// mount and on auth state changes, without expanding PermissionContext's
+// public API. Feeds both PostHog and Sentry from this single lookup rather
+// than polling getCurrentUser() twice.
+function ObservabilityIdentitySync() {
   useEffect(() => {
     let cancelled = false;
 
@@ -322,8 +334,11 @@ function AnalyticsIdentitySync() {
         if (user?.id) {
           identifyAnalyticsUser({ id: user.id, role: user.role });
           setAnalyticsContext({ tenantId: user.company?.id, businessMode: user.company?.business_mode });
+          identifySentryUser({ id: user.id, role: user.role });
+          setSentryContext({ tenantId: user.company?.id, businessMode: user.company?.business_mode });
         } else {
           resetAnalyticsIdentity();
+          resetSentryIdentity();
         }
       } catch {
         // Identity sync is best-effort; a failed lookup just leaves the
@@ -357,7 +372,7 @@ const mountApp = () => {
             v7_relativeSplatPath: true,
           }}
         >
-          <AnalyticsIdentitySync />
+          <ObservabilityIdentitySync />
           <PermissionProvider>
             <WorkflowModeProvider>
               <GlobalApiErrorListener />

@@ -35,14 +35,26 @@ describe('POS terminal pairing contract', () => {
     expect(terminalPageSource).toContain("? 'Resume Shift'");
   });
 
-  it('keeps the terminal session open after a successful close shift', () => {
-    expect(terminalPageSource).toContain("toast.success('Shift closed successfully. Open a new shift manually when you are ready.')");
-    expect(terminalPageSource).toContain('setStoredTerminalLock(false);');
-    expect(terminalPageSource).toContain("setStoredTerminalLockReason('');");
-    expect(terminalPageSource).toContain('setLocked(false);');
-    expect(terminalPageSource).toContain('setTerminalUnlockModalOpen(false)');
-    expect(terminalPageSource).toContain('setDrawerOpen(false)');
-    expect(terminalPageSource).toContain('await refreshOperationalContext();');
+  it('returns cashiers to login after a successful close shift while preserving admin navigation', () => {
+    const closeShiftStart = terminalPageSource.indexOf('const handleConfirmCloseShift = async () => {');
+    const closeShiftEnd = terminalPageSource.indexOf('const dismissStockAlertSummary', closeShiftStart);
+    const closeShiftHandler = terminalPageSource.slice(closeShiftStart, closeShiftEnd);
+    const cashierCloseStart = closeShiftHandler.indexOf("toast.success('Shift closed successfully. Sign in to start the next shift.')");
+    const cashierCloseEnd = closeShiftHandler.indexOf('} catch (error) {', cashierCloseStart);
+    const cashierCloseFlow = closeShiftHandler.slice(cashierCloseStart, cashierCloseEnd);
+
+    expect(closeShiftHandler).toContain("if (preserveAdminNavigation) {");
+    expect(closeShiftHandler).toContain("toast.success('Shift closed successfully.');");
+    expect(closeShiftHandler).toContain('await refreshOperationalContext();');
+    expect(cashierCloseFlow).toContain('setCashierUnlockSession(null);');
+    expect(cashierCloseFlow).toContain("reason: 'shift_closed'");
+    expect(cashierCloseFlow).toContain('setStoredTerminalLock(true);');
+    expect(cashierCloseFlow).toContain("setStoredTerminalLockReason('shift_closed');");
+    expect(cashierCloseFlow).toContain('setLocked(true);');
+    expect(cashierCloseFlow).toContain('setTerminalUnlockModalOpen(false);');
+    expect(cashierCloseFlow).toContain('setDrawerOpen(true);');
+    expect(cashierCloseFlow).not.toContain('await refreshOperationalContext();');
+    expect(closeShiftHandler).not.toContain('setTerminalStartupReady(false);');
   });
 
   it('restores an open shift on refresh while queued close still returns to login', () => {

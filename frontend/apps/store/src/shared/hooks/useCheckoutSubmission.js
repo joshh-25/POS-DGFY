@@ -38,6 +38,9 @@ export function useCheckoutSubmission({
   fnbPaymentType,
   formatServicesBookingFailureMessage,
   goStoreTrackPage,
+  guestCheckoutIntentId,
+  guestCheckoutOtpVerified,
+  guestCheckoutProof,
   handleFnbCheckout,
   handleLoadAccountPanel,
   hasServiceCart,
@@ -200,6 +203,12 @@ export function useCheckoutSubmission({
       toast.error(message);
       return;
     }
+    if (!isDgfyCustomerSignedIn && (!guestCheckoutOtpVerified || !guestCheckoutProof?.proof)) {
+      const message = 'Verify your email before placing this order.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
     const cartSnapshot = cart.map((line) => ({ ...line }));
     const hasMixedCart = hasServiceCart && Array.isArray(productCartLines) && productCartLines.length > 0;
     setCheckoutLoading(true);
@@ -217,6 +226,12 @@ export function useCheckoutSubmission({
         ? (readDgfyAuthToken() || readStoreAuthToken())
         : readStoreAuthToken();
       const wantsServicesSubmission = hasServiceCart || (isServicesMode && serviceBookingLine);
+      const guestIdempotencyKey = isDgfyCustomerSignedIn
+        ? null
+        : String(guestCheckoutIntentId || '').trim();
+      const guestCheckoutProofValue = isDgfyCustomerSignedIn
+        ? null
+        : guestCheckoutProof?.proof || null;
       let servicesSubmitContract = null;
       if (wantsServicesSubmission) {
         servicesSubmitContract = resolveServicesBookingSubmitContract({
@@ -240,6 +255,14 @@ export function useCheckoutSubmission({
           toast.error(servicesSubmitContract.message);
           return;
         }
+        servicesSubmitContract = {
+          ...servicesSubmitContract,
+          body: {
+            ...servicesSubmitContract.body,
+            idempotency_key: guestIdempotencyKey || servicesSubmitContract.body?.idempotency_key,
+            guest_checkout_proof: guestCheckoutProofValue
+          }
+        };
       }
       const submitProductCheckout = () => requestJson('/api/v1/store/checkout', {
         method: 'POST',
@@ -247,7 +270,8 @@ export function useCheckoutSubmission({
         authToken,
         body: {
           ...checkoutPayload(undefined, hasMixedCart ? productCartLines : undefined),
-          idempotency_key: window.crypto?.randomUUID?.() || `store-${Date.now()}`,
+          idempotency_key: guestIdempotencyKey || window.crypto?.randomUUID?.() || `store-${Date.now()}`,
+          guest_checkout_proof: guestCheckoutProofValue,
           payment_type: fnbPaymentType
         }
       });

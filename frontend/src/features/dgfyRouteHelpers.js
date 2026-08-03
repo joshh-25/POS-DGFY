@@ -2,6 +2,11 @@ export const DGFY_AUTH_ROUTE = '/dgfy/auth';
 export const DGFY_RESET_ROUTE = '/dgfy/reset-password';
 export const DGFY_REGISTER_COMPANY_ROUTE = '/register-company';
 export const DGFY_REGISTER_COMPANY_ENTRY = '/register-company?source=dgfy&auth=login#business-registration';
+// SKUpervisor's post-sign-in landing spot once a DGFY session exists but no
+// tenant session has been selected yet - see DgfyCompanySelect.jsx. Declared
+// here (not in that page) so DgfyAuthPage.jsx can reference it as the
+// fallbackTarget for resolveDgfyPostAuthTarget without a cross-app import.
+export const DGFY_COMPANY_SELECT_ROUTE = '/dgfy/companies';
 
 export const normalizeDgfyIntent = (value) => (
   String(value || '').trim().toLowerCase() === 'register-business' ? 'register-business' : 'customer'
@@ -242,13 +247,18 @@ const isApprovedAbsoluteStorefrontTarget = (url) => {
   return resolveApprovedDgfyAccountOrigins().has(url.origin);
 };
 
-export const normalizeDgfyReturnTarget = (target = '') => {
+// fallbackTarget defaults to the storefront account dashboard, which is the
+// only caller (StorefrontAuthPage.jsx) prior to this option existing.
+// DgfyAuthPage.jsx (SKUpervisor's own DGFY sign-in) passes
+// DGFY_COMPANY_SELECT_ROUTE instead, so an invalid/absent return_to keeps
+// the user on SKUpervisor rather than bouncing them out to dgfy.ph.
+export const normalizeDgfyReturnTarget = (target = '', { fallbackTarget = resolveStorefrontAccountUrl() } = {}) => {
   const normalizedTarget = String(target || '').trim();
   if (!normalizedTarget) return '';
 
   // A protocol-relative URL can leave the current origin and must never be
   // treated as an internal route.
-  if (normalizedTarget.startsWith('//')) return resolveStorefrontAccountUrl();
+  if (normalizedTarget.startsWith('//')) return fallbackTarget;
 
   // Single-slash paths stay on the current origin. The router remains
   // responsible for deciding whether the local route exists.
@@ -258,23 +268,49 @@ export const normalizeDgfyReturnTarget = (target = '') => {
     try {
       const url = new URL(normalizedTarget);
       if (!isApprovedAbsoluteStorefrontTarget(url)) {
-        return resolveStorefrontAccountUrl();
+        return fallbackTarget;
       }
       return url.toString();
     } catch {
-      return resolveStorefrontAccountUrl();
+      return fallbackTarget;
     }
   }
 
-  return resolveStorefrontAccountUrl();
+  return fallbackTarget;
 };
 
-export const resolveDgfyPostAuthTarget = ({ intent = 'customer', returnTo = '' } = {}) => {
-  if (returnTo) return normalizeDgfyReturnTarget(returnTo);
+export const resolveDgfyPostAuthTarget = ({
+  intent = 'customer',
+  returnTo = '',
+  fallbackTarget = resolveStorefrontAccountUrl()
+} = {}) => {
+  if (returnTo) return normalizeDgfyReturnTarget(returnTo, { fallbackTarget });
   if (normalizeDgfyIntent(intent) === 'register-business') {
     return DGFY_REGISTER_COMPANY_ENTRY;
   }
-  return resolveStorefrontAccountUrl();
+  return fallbackTarget;
+};
+
+// Storefront's default block list (matches its own /login, /register,
+// /reset-password routes). Callers landing users somewhere else - e.g.
+// SKUpervisor's DgfyCompanySelect.jsx - pass their own blockedPattern so the
+// loop guard covers their own auth routes instead.
+const DEFAULT_BLOCKED_RETURN_PATH_PATTERN = /^\/(login|register|reset-password)(?:[/?#]|$)/i;
+
+// Guards a same-origin "return to this path after auth" value against
+// open-redirect-style input (absolute/protocol-relative URLs) and against
+// looping straight back into an auth route. Shared by the storefront
+// (frontend/apps/store/src/auth/storefrontAuthReturnPath.js) and by
+// SKUpervisor's DgfyCompanySelect.jsx, which is why the block list is
+// pluggable rather than hardcoded to either app's route names.
+export const sanitizeInternalReturnPath = (path = '', {
+  fallback = '/',
+  blockedPattern = DEFAULT_BLOCKED_RETURN_PATH_PATTERN
+} = {}) => {
+  const raw = String(path || '').trim();
+  if (!raw.startsWith('/') || raw.startsWith('//')) return fallback;
+  if (blockedPattern.test(raw)) return fallback;
+  return raw;
 };
 
 export const hasAbsoluteNavigationTarget = (target = '') => /^https?:\/\//i.test(String(target || '').trim());

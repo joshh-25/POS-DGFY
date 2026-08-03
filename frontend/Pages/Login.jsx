@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChevronDown, ChevronUp, Loader2, AlertTriangle, ArrowRight, Eye, EyeOff } from 'lucide-react';
 import dgfyLogo from '../src/assets/dgfy/dgfy-logo.png';
+import { buildDgfyAuthPath, DGFY_COMPANY_SELECT_ROUTE } from '../src/features/dgfyRouteHelpers.js';
 
 const handleDgfyLogoError = (event) => {
   const image = event.currentTarget;
@@ -22,6 +23,17 @@ export default function Login() {
   const registrationLoginState = location.state?.registration || null;
   const initialRegistrationEmail = (registrationLoginState?.email || '').trim();
   const initialRegistrationToken = (registrationLoginState?.companyToken || '').trim();
+  const sessionExpired = new URLSearchParams(location.search).get('reason') === 'session_expired';
+  // Owners/developers with a DGFY account sign in there instead of the staff
+  // form below - see DgfyCompanySelect.jsx for what happens after. This
+  // routes through the company picker (not straight to the target path) so a
+  // tenant session gets started even when the account owns more than one
+  // company. ProtectedRoute.jsx stashes the attempted URL in localStorage
+  // before bouncing here; the staff form below still reads/clears that same
+  // key on its own successful login.
+  const dgfySignInHref = buildDgfyAuthPath({
+    returnTo: `${DGFY_COMPANY_SELECT_ROUTE}?next=${encodeURIComponent(localStorage.getItem('redirectAfterLogin') || '/')}`
+  });
   const [formData, setFormData] = useState({
     email: initialRegistrationEmail,
     password: '',
@@ -245,6 +257,32 @@ export default function Login() {
               </span>
             </div>
             <p className="text-slate-600 mt-2">Sign in to your account</p>
+          </div>
+
+          {/* Session-expired notice - api.js hard-redirects here on an
+              unrecoverable 401 with this reason. Named after both sign-in
+              paths below since either one could have been the expired
+              session. */}
+          {sessionExpired && (
+            <div className="mb-6 p-3 bg-amber-50 border border-amber-200 rounded-lg text-amber-800 text-sm flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 mt-0.5 shrink-0" />
+              <span>Your session expired. Sign in again with your DGFY account or your staff credentials below.</span>
+            </div>
+          )}
+
+          {/* DGFY account entry point - business owners/developers use their
+              DGFY account (the same one they use on dgfy.ph) instead of the
+              staff credential form below. */}
+          <a
+            href={dgfySignInHref}
+            onClick={() => localStorage.removeItem('redirectAfterLogin')}
+            className="mb-6 flex w-full items-center justify-center gap-2 rounded-lg border border-[#1A4E8D] bg-[#1A4E8D] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#163f73]"
+          >
+            Sign in with your DGFY account
+          </a>
+          <div className="relative mb-6 text-center">
+            <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-slate-200" /></div>
+            <span className="relative bg-white px-3 text-xs uppercase tracking-wide text-slate-400">Or sign in as staff</span>
           </div>
 
           {/* Error Message */}

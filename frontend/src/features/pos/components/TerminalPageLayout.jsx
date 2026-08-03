@@ -4,6 +4,7 @@ import { Bell, Menu, UserRound } from 'lucide-react';
 import { resolveAppAssetUrl } from '../../../utils/assetUrl.js';
 import { getCompanyRoleLabel } from '../../../utils/companySwitcherRows.js';
 import { playOrderAlertWithIminBridge } from '../utils/iminHardwareBridge.js';
+import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 
 import TerminalLockDrawer from './TerminalLockDrawer.jsx';
 import TerminalWorkspaceSidebar from './TerminalWorkspaceSidebar.jsx';
@@ -14,13 +15,16 @@ const DGFY_POS_LOGO = resolveAppAssetUrl('/dgfy-horizontal_logo-removebg-preview
 const MAX_NOTIFICATION_ITEMS = 5;
 const loadPOSCheckoutTerminal = () => import('./POSCheckoutTerminal.jsx');
 const loadTerminalOperationsWorkspace = () => import('./TerminalOperationsWorkspace.jsx');
-const POSCheckoutTerminal = React.lazy(loadPOSCheckoutTerminal);
-const TerminalOperationsWorkspace = React.lazy(loadTerminalOperationsWorkspace);
+const POSCheckoutTerminal = lazyWithChunkRetry(loadPOSCheckoutTerminal);
+const TerminalOperationsWorkspace = lazyWithChunkRetry(loadTerminalOperationsWorkspace);
 const CHECKOUT_WORKSPACE_MODES = new Set(['checkout', 'history', 'receipt']);
+// A prefetch failure must be silent -- this isn't a real load, it's an idle
+// or hover-intent warm-up, and Suspense/lazyWithChunkRetry handle the actual
+// load+retry when the workspace is really rendered.
 const preloadWorkspaceForViewMode = (viewMode) => (
   CHECKOUT_WORKSPACE_MODES.has(String(viewMode || '').trim())
-    ? loadPOSCheckoutTerminal()
-    : loadTerminalOperationsWorkspace()
+    ? loadPOSCheckoutTerminal().catch(() => {})
+    : loadTerminalOperationsWorkspace().catch(() => {})
 );
 
 export default function TerminalPageLayout({
@@ -288,8 +292,8 @@ export default function TerminalPageLayout({
     if (locked || typeof window === 'undefined') return undefined;
 
     const preloadWorkspaces = () => {
-      loadPOSCheckoutTerminal();
-      loadTerminalOperationsWorkspace();
+      loadPOSCheckoutTerminal().catch(() => {});
+      loadTerminalOperationsWorkspace().catch(() => {});
     };
 
     if (typeof window.requestIdleCallback === 'function') {
@@ -681,6 +685,7 @@ export default function TerminalPageLayout({
             <div key="checkout-workspace" data-testid="pos-checkout-workspace" className="h-full min-h-0 overflow-hidden catalog-slide-enter">
             <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
               <POSCheckoutTerminal
+                workflowMode={workflowMode}
                 sessionLocked={locked}
                 isMsmeMode={isMsmeMode}
                 sidebarCollapsed={effectiveSidebarCollapsed}

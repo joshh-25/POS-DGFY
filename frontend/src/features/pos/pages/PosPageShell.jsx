@@ -1,13 +1,14 @@
-import React, { Suspense, lazy, useCallback, useEffect, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { usePermission } from '@/hooks/usePermission';
 import { CalendarCheck, CheckCircle2, Clock, UserCheck, XCircle } from 'lucide-react';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import { useWorkflowMode } from '../../settings/WorkflowModeContext.jsx';
 import { listServiceBookings, updateServiceBookingStatus } from '../../services/api/servicesApi.js';
+import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 
-const FnbDiningPanel = lazy(() => import('../../fnb/components/FnbDiningPanel.jsx'));
-const HospitalityPosPanel = lazy(() => import('../components/HospitalityPosPanel.jsx'));
+const FnbDiningPanel = lazyWithChunkRetry(() => import('../../fnb/components/FnbDiningPanel.jsx'));
+const HospitalityPosPanel = lazyWithChunkRetry(() => import('../components/HospitalityPosPanel.jsx'));
 
 const servicePosActions = [
     { status: 'confirmed', label: 'Confirm', icon: CalendarCheck },

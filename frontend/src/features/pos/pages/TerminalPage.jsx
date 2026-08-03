@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
@@ -131,9 +131,10 @@ import {
   DialogTitle
 } from '@/components/ui/dialog';
 import { emitPosHardwareMessage, POS_HARDWARE_MESSAGE_EVENT_NAME } from '../utils/posHardwareMessageBus.js';
+import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
-const TerminalPageLayout = lazy(() => import('../components/TerminalPageLayout.jsx'));
-const PosTenantSetupModal = lazy(() => import('../components/PosTenantSetupModal.jsx'));
+const TerminalPageLayout = lazyWithChunkRetry(() => import('../components/TerminalPageLayout.jsx'));
+const PosTenantSetupModal = lazyWithChunkRetry(() => import('../components/PosTenantSetupModal.jsx'));
 
 const DEFAULT_CURRENCY = 'PHP';
 const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
@@ -3643,7 +3644,7 @@ export default function TerminalPage() {
         setPosViewMode('shift_controls');
         return;
       }
-      toast.success('Shift closed successfully. Open a new shift manually when you are ready.');
+      toast.success('Shift closed successfully. Sign in to start the next shift.');
       setCloseShiftConfirmOpen(false);
       setCloseShiftForm({ closingCashAmount: '', closingNote: '' });
       setShiftState({
@@ -3651,27 +3652,33 @@ export default function TerminalPage() {
         shift: null,
         cashSummary: null
       });
+      setCashierUnlockSession(null);
       setCashierResumeContext(null);
       setCashierResumeForm({ identifier: '', password: '' });
+      clearClientSession({
+        reason: 'shift_closed',
+        broadcast: true,
+        emitAuthEvents: true,
+        redirectTo: null
+      });
       setTerminalUnlockRequired(false);
       setTerminalUnlockMode('shift_start');
-      setStoredTerminalLock(false);
-      setStoredTerminalLockReason('');
-      setTerminalStartupReady(false);
-      setLocked(false);
-      setTerminalUnlockForm((prev) => ({
-        ...prev,
-        terminalId: sanitizeTerminalId(activeTerminalId) || resolveSelectedLoginTerminalId() || prev.terminalId,
+      setStoredTerminalLock(true);
+      setStoredTerminalLockReason('shift_closed');
+      setLocked(true);
+      setDgfyAdminBypassActive(false);
+      setTerminalUnlockForm({
+        terminalId: sanitizeTerminalId(activeTerminalId) || resolveSelectedLoginTerminalId(),
         terminalPassword: '',
+        cashierEmail: '',
         cashierPassword: '',
         openingFloatAmount: '',
         openingNote: ''
-      }));
+      });
       setTerminalUnlockModalOpen(false);
-      setDrawerOpen(false);
+      setDrawerOpen(true);
       setMobileNavOpen(false);
       setPosViewMode('checkout');
-      await refreshOperationalContext();
     } catch (error) {
       if (isRetryableTerminalOperationError(error)) {
         await enqueueTerminalOperationIntent(queueEntry, 'network_failure');

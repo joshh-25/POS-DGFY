@@ -81,4 +81,24 @@ describe('Items category placement', () => {
     expect(screen.queryByRole('tab', { name: 'Categories' })).toBeNull();
     expect(screen.queryByText('Category Management')).toBeNull();
   });
+
+  it('uses retail product terminology in the add-item form', () => {
+    render(<TerminalOperationsWorkspace {...buildProps({
+      workflowMode: 'retail',
+      canCreateItems: true
+    })} />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add Item' })[0]);
+
+    expect(screen.getByText('Product Category')).toBeTruthy();
+    expect(screen.queryByText('Food Category')).toBeNull();
+  });
+
+  it('preserves food category terminology for F&B', () => {
+    render(<TerminalOperationsWorkspace {...buildProps({ canCreateItems: true })} />);
+
+    fireEvent.click(screen.getAllByRole('button', { name: 'Add Item' })[0]);
+
+    expect(screen.getByText('Food Category')).toBeTruthy();
+  });
 });

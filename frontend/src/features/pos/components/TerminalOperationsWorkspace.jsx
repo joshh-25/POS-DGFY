@@ -1,4 +1,5 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { createPortal } from 'react-dom';
 import {
   AlertCircle,
@@ -94,7 +95,8 @@ import {
   uploadStorefrontCatalogImage,
   uploadStorefrontCatalogImages,
   updateStorefrontCatalogGallery,
-  deleteStorefrontCatalogImage
+  deleteStorefrontCatalogImage,
+  generateStorefrontCatalogImage
 } from '@/services/storefrontCatalogService.js';
 import StorefrontImageCarousel from '@/components/items/StorefrontImageCarousel';
 import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarousel';
@@ -113,6 +115,7 @@ import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js'
 import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '@/src/features/pos/utils/terminalIdentity.js';
 import { getStorefrontPromoScheduleValidationError } from '@/src/features/pos/utils/storefrontPromoSchedule.js';
 import { resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
+import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';
 import StorefrontBusinessHoursScheduler from '@/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
 import { normalizeStorefrontBusinessHours, serializeStorefrontBusinessHours } from '@/src/features/settings/storefrontBusinessHours.js';
 import resolveAssetUrl, { advanceAssetImageFallback, resolveAssetVariantUrl } from '@/src/utils/assetUrl.js';
@@ -134,7 +137,7 @@ import EmployeeManagementPanel from './EmployeeManagementPanel.jsx';
 import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 
-const MapPinPicker = lazy(() => import('@/src/components/maps/MapPinPicker.jsx'));
+const MapPinPicker = lazyWithChunkRetry(() => import('@/src/components/maps/MapPinPicker.jsx'));
 const POS_ITEMS_PAGE_SIZE = 15;
 
 const MODE_META = {
@@ -1759,6 +1762,7 @@ function EditableFoodCategoryCombobox({
     <div ref={containerRef} className="relative">
       <Input
         id={id}
+        autoComplete="off"
         role="combobox"
         aria-autocomplete="list"
         aria-controls={`${id}-listbox`}
@@ -1872,6 +1876,44 @@ const resolveSellablePosItemPreset = (workflowMode = '') => {
   };
 };
 
+const resolveItemWorkspacePresentation = (workflowMode = '') => {
+  const normalizedMode = normalizeWorkflowMode(workflowMode);
+
+  if (normalizedMode === 'fnb') {
+    return {
+      categoryLabel: 'Food Category',
+      savingAriaLabel: 'Saving menu item',
+      savingStatusLabel: 'F&B KITCHEN & MENU SYNC',
+      savingTitle: 'Saving Menu Item…',
+      savingDescription: 'Updating food & beverage details and syncing menu changes across POS terminals & Kitchen Displays.',
+      savingIcon: UtensilsCrossed,
+      accent: 'amber'
+    };
+  }
+
+  if (normalizedMode === 'retail') {
+    return {
+      categoryLabel: 'Product Category',
+      savingAriaLabel: 'Saving retail product',
+      savingStatusLabel: 'RETAIL CATALOG SYNC',
+      savingTitle: 'Saving Product…',
+      savingDescription: 'Updating product details and syncing catalog changes across POS terminals and Storefront.',
+      savingIcon: ShoppingBag,
+      accent: 'blue'
+    };
+  }
+
+  return {
+    categoryLabel: 'Item Category',
+    savingAriaLabel: 'Saving item',
+    savingStatusLabel: 'POS CATALOG SYNC',
+    savingTitle: 'Saving Item…',
+    savingDescription: 'Updating item details across POS terminals and Storefront.',
+    savingIcon: Package,
+    accent: 'blue'
+  };
+};
+
 function ItemsWorkspace({
   canViewPos,
   canCreateItems = false,
@@ -1905,6 +1947,7 @@ function ItemsWorkspace({
   const [editingItemId, setEditingItemId] = useState(null);
   const [persistingEditAssets, setPersistingEditAssets] = useState(false);
   const [selectedEditImageFile, setSelectedEditImageFile] = useState(null);
+  const [generatingEditImage, setGeneratingEditImage] = useState(false);
   const [editForm, setEditForm] = useState({
     name: '',
     current_stock: '0',
@@ -1943,6 +1986,12 @@ function ItemsWorkspace({
   const [pendingCreateRecovery, setPendingCreateRecovery] = useState(null);
   const [postCreateSaving, setPostCreateSaving] = useState(false);
   const posItemPreset = useMemo(() => resolveSellablePosItemPreset(workflowMode), [workflowMode]);
+  const itemWorkspacePresentation = useMemo(
+    () => resolveItemWorkspacePresentation(workflowMode),
+    [workflowMode]
+  );
+  const SavingItemIcon = itemWorkspacePresentation.savingIcon;
+  const usesWarmSavingAccent = itemWorkspacePresentation.accent === 'amber';
 
   useEffect(() => {
     const normalizedPreset = String(stockFilterPreset || '').trim();
@@ -2204,6 +2253,7 @@ function ItemsWorkspace({
     setFocusedEditMoneyField('');
     setPersistingEditAssets(false);
     setSelectedEditImageFile(null);
+    setGeneratingEditImage(false);
     setEditCategoryInput('');
     setEditForm({
       name: '',
@@ -2520,6 +2570,27 @@ function ItemsWorkspace({
       toast.success(isSingleImageDelete ? `Item gallery image removed for ${item.name}` : `Item image removed for ${item.name}`);
     } catch (error) {
       toast.error(error?.response?.data?.message || 'Failed to remove item image');
+    }
+  };
+
+  // Fire-and-forget from the client's perspective (#199/#200): the response
+  // only confirms the item was queued for the item-image worker, not that a
+  // photo exists yet, so the success toast must say "queued", never "done" —
+  // loadItems() here just refreshes stock/price/etc., the photo itself won't
+  // show up until a later reload once the worker has actually run.
+  const handleGenerateEditImage = async (item) => {
+    const itemId = item?.item_id;
+    if (!itemId) return;
+
+    setGeneratingEditImage(true);
+    try {
+      await generateStorefrontCatalogImage(itemId);
+      await loadItems();
+      toast.success(`Image generation queued for ${item.name} — it'll appear here once it's ready.`);
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to queue image generation');
+    } finally {
+      setGeneratingEditImage(false);
     }
   };
 
@@ -3481,10 +3552,10 @@ function ItemsWorkspace({
                       />
                     </div>
 
-                    {/* Food Category */}
+                    {/* Workflow-aware category */}
                     <div className="space-y-1.5">
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
-                        Food Category <span className="text-rose-500">*</span>
+                        {itemWorkspacePresentation.categoryLabel} <span className="text-rose-500">*</span>
                       </label>
                       {canManageCategories ? (
                         <>
@@ -3894,6 +3965,26 @@ function ItemsWorkspace({
                               </button>
                             </div>
                           )}
+
+                          {canEditItems && (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => handleGenerateEditImage(activeEditItem)}
+                              disabled={savingItem || persistingEditAssets || generatingEditImage}
+                              className="w-full rounded-xl"
+                              title={
+                                editGallery.length > 0
+                                  ? 'Generate a new AI photo, replacing the current one.'
+                                  : 'Generate an AI photo for this item (watermarked).'
+                              }
+                            >
+                              <ImagePlus className="mr-2 h-4 w-4" />
+                              {generatingEditImage
+                                ? 'Queuing…'
+                                : editGallery.length > 0 ? 'Regenerate Image (AI)' : 'Generate Image (AI)'}
+                            </Button>
+                          )}
                         </div>
                       );
                     })()}
@@ -4009,7 +4100,7 @@ function ItemsWorkspace({
                 <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-4 flex flex-col justify-between">
                   <div className="space-y-1.5">
                     <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
-                      Food Category <span className="text-rose-500">*</span>
+                      {itemWorkspacePresentation.categoryLabel} <span className="text-rose-500">*</span>
                     </label>
                     {canManageCategories ? (
                       <>
@@ -4109,53 +4200,53 @@ function ItemsWorkspace({
           className="fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/75 px-4 backdrop-blur-md transition-all duration-300"
           role="status"
           aria-live="assertive"
-          aria-label="Saving menu item"
+          aria-label={itemWorkspacePresentation.savingAriaLabel}
         >
-          <div className="relative w-full max-w-sm overflow-hidden rounded-3xl bg-white/95 p-8 text-center shadow-[0_25px_60px_-15px_rgba(245,158,11,0.25)] border border-amber-100/80 backdrop-blur-xl animate-float">
+          <div className={`relative w-full max-w-sm overflow-hidden rounded-3xl bg-white/95 p-8 text-center backdrop-blur-xl animate-float ${usesWarmSavingAccent ? 'border border-amber-100/80 shadow-[0_25px_60px_-15px_rgba(245,158,11,0.25)]' : 'border border-blue-100/80 shadow-[0_25px_60px_-15px_rgba(37,99,235,0.22)]'}`}>
 
             {/* Top Warm Accent Shimmer Bar */}
-            <div className="absolute top-0 left-0 right-0 h-1.5 bg-amber-50 overflow-hidden">
-              <div className="h-full w-1/2 bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600 rounded-full animate-shimmer" />
+            <div className={`absolute top-0 left-0 right-0 h-1.5 overflow-hidden ${usesWarmSavingAccent ? 'bg-amber-50' : 'bg-blue-50'}`}>
+              <div className={`h-full w-1/2 rounded-full animate-shimmer ${usesWarmSavingAccent ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-amber-600' : 'bg-gradient-to-r from-blue-500 via-indigo-500 to-blue-600'}`} />
             </div>
 
             {/* F&B Status Pill */}
-            <div className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-3 py-1 text-[11px] font-bold tracking-wide text-amber-700 border border-amber-200/60 mb-2">
-              <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-ping" />
-              F&B KITCHEN & MENU SYNC
+            <div className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold tracking-wide border mb-2 ${usesWarmSavingAccent ? 'bg-amber-50 text-amber-700 border-amber-200/60' : 'bg-blue-50 text-blue-700 border-blue-200/60'}`}>
+              <span className={`h-1.5 w-1.5 rounded-full animate-ping ${usesWarmSavingAccent ? 'bg-amber-500' : 'bg-blue-500'}`} />
+              {itemWorkspacePresentation.savingStatusLabel}
             </div>
 
             {/* Icon Container with Animated Orbital Rings */}
             <div className="relative mx-auto my-3 flex h-20 w-20 items-center justify-center">
               {/* Outer Glowing Pulse Ring */}
-              <div className="absolute inset-0 rounded-full bg-amber-500/10 animate-pulse-ring" />
+              <div className={`absolute inset-0 rounded-full animate-pulse-ring ${usesWarmSavingAccent ? 'bg-amber-500/10' : 'bg-blue-500/10'}`} />
 
               {/* Outer Rotating Gradient Ring */}
-              <div className="absolute inset-0 rounded-full border-2 border-dashed border-amber-400/50 animate-spin-slow" />
+              <div className={`absolute inset-0 rounded-full border-2 border-dashed animate-spin-slow ${usesWarmSavingAccent ? 'border-amber-400/50' : 'border-blue-400/50'}`} />
 
               {/* Inner Counter-rotating Gradient Ring */}
-              <div className="absolute inset-1 rounded-full border-2 border-orange-500/30 border-t-orange-500 animate-spin-reverse" />
+              <div className={`absolute inset-1 rounded-full border-2 animate-spin-reverse ${usesWarmSavingAccent ? 'border-orange-500/30 border-t-orange-500' : 'border-indigo-500/30 border-t-indigo-500'}`} />
 
               {/* Center F&B Emblem Container */}
-              <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 shadow-lg shadow-orange-500/35 text-white">
-                <UtensilsCrossed className="h-7 w-7 text-white drop-shadow" />
+              <div className={`relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br shadow-lg text-white ${usesWarmSavingAccent ? 'from-amber-500 via-orange-500 to-amber-600 shadow-orange-500/35' : 'from-blue-500 via-indigo-500 to-blue-600 shadow-blue-500/30'}`}>
+                <SavingItemIcon className="h-7 w-7 text-white drop-shadow" />
               </div>
             </div>
 
             {/* Title */}
             <h3 className="mt-3 text-xl font-extrabold tracking-tight text-slate-900">
-              Saving Menu Item…
+              {itemWorkspacePresentation.savingTitle}
             </h3>
 
             {/* Subtitle */}
             <p className="mt-2 text-xs font-medium leading-relaxed text-slate-500 px-1">
-              Updating food & beverage details and syncing menu changes across POS terminals & Kitchen Displays.
+              {itemWorkspacePresentation.savingDescription}
             </p>
 
             {/* Animated Dots Indicator */}
-            <div className="mt-5 flex items-center justify-center gap-1.5 text-amber-600">
-              <span className="h-2 w-2 rounded-full bg-amber-500 dot-1" />
-              <span className="h-2 w-2 rounded-full bg-amber-500 dot-2" />
-              <span className="h-2 w-2 rounded-full bg-amber-500 dot-3" />
+            <div className={`mt-5 flex items-center justify-center gap-1.5 ${usesWarmSavingAccent ? 'text-amber-600' : 'text-blue-600'}`}>
+              <span className={`h-2 w-2 rounded-full dot-1 ${usesWarmSavingAccent ? 'bg-amber-500' : 'bg-blue-500'}`} />
+              <span className={`h-2 w-2 rounded-full dot-2 ${usesWarmSavingAccent ? 'bg-amber-500' : 'bg-blue-500'}`} />
+              <span className={`h-2 w-2 rounded-full dot-3 ${usesWarmSavingAccent ? 'bg-amber-500' : 'bg-blue-500'}`} />
             </div>
 
           </div>
@@ -8350,7 +8441,7 @@ export default function TerminalOperationsWorkspace({
   handleResolveQueuedOperation = () => {},
   sectionIds = {}
 }) {
-  const restrictedMsmeModes = new Set(['incoming_queue', 'location_scope', 'settings_profile', 'settings_pos', 'settings_storefront', 'cash_drawer', 'terminal_setup']);
+  const restrictedMsmeModes = new Set(['incoming_queue', 'location_scope', 'cash_drawer', 'terminal_setup']);
   const effectiveViewMode = (isMsmeMode && restrictedMsmeModes.has(viewMode))
     ? 'shift_controls'
     : viewMode;

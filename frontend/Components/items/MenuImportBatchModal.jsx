@@ -24,11 +24,13 @@ import {
     RefreshCw,
     Trash2,
     Scissors,
-    Camera
+    Camera,
+    FolderTree
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import MenuPhotoCaptureSheet from './MenuPhotoCaptureSheet.jsx';
 import { useMenuImportJob } from '../../src/hooks/useMenuImportJob.js';
+import { usePermission } from '../../src/hooks/usePermission.js';
 import {
     MENU_IMPORT_ACCEPTED_FILE_PATTERN,
     MENU_IMPORT_FILE_ACCEPT_ATTRIBUTE,
@@ -62,13 +64,46 @@ const formatFileSize = (bytes) => {
 
 const formatPrice = (value) => `₱${Number(value).toFixed(2)}`;
 
+// Human-readable labels for images_skipped[].reason (see
+// menuImportController.js's enqueueGeneratedImages) — anything unrecognized
+// falls back to its raw reason string rather than being hidden.
+const IMAGE_SKIP_REASON_LABELS = Object.freeze({
+    row_not_created: 'the row wasn’t created',
+    feature_disabled: 'AI image generation is currently disabled',
+    permission_denied: 'you need the Edit Items permission',
+    budget_exceeded: 'the daily AI image budget was already reached',
+    batch_cap_exceeded: 'over the per-batch image limit',
+    queue_unavailable: 'the generation queue was unavailable'
+});
+
+const IMAGE_SKIP_REASON_SUMMARY = (skipped = []) => {
+    const counts = new Map();
+    for (const entry of skipped) {
+        const key = entry?.reason || 'unknown';
+        counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return Array.from(counts.entries())
+        .map(([reason, count]) => `${count} — ${IMAGE_SKIP_REASON_LABELS[reason] || reason}`)
+        .join('; ');
+};
+
+// Rough, non-billing per-image estimate shown before confirm so spend is
+// visible up front — matches the ~$0.03/image (1K tier) figure in #176.
+// The server prices the real charge at generation time
+// (config/aiModelRates.js's resolveImageModelRate); this is only ever an
+// indicative estimate, never what gets billed.
+const APPROX_ITEM_IMAGE_COST_USD = 0.03;
+
 // Deep-copies preview rows into an editable working set and normalizes an
 // `included` flag (valid rows default to included; invalid rows default to
-// excluded so a bad extraction never silently creates junk items).
+// excluded so a bad extraction never silently creates junk items) and a
+// `generate_image` opt-in flag, which always defaults off — image
+// generation is an extra cost the operator chooses per item, never assumed.
 const toEditableRows = (rows = []) => rows.map((row) => ({
     ...row,
     data: { ...row.data },
-    included: row.valid
+    included: row.valid,
+    generate_image: false
 }));
 
 const FILE_STATUS_BADGES = {
@@ -86,6 +121,12 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
     const [editableRows, setEditableRows] = useState([]);
     const [importResult, setImportResult] = useState(null);
     const [capturing, setCapturing] = useState(false);
+    // Defaults ON, unlike generate_image: marking an item Always Available
+    // costs nothing, and without it every batch-imported item lands out of
+    // stock and unsellable until someone opens it and flips the toggle by
+    // hand, one item at a time — the path of least resistance should be the
+    // fix, not the problem.
+    const [markAlwaysAvailable, setMarkAlwaysAvailable] = useState(true);
     const fileInputRef = useRef(null);
 
     const {
@@ -99,11 +140,18 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
         reset
     } = useMenuImportJob();
 
+    const { canEdit } = usePermission();
+    // Generating an image is an edit to the item, not an import action — an
+    // importer without items:edit gets the checkbox disabled up front rather
+    // than a silent skip discovered only after confirming (see #176).
+    const canGenerateImages = canEdit('items');
+
     const merge = previewData?.merge;
     const jobFiles = job?.files || [];
     const failedFiles = jobFiles.filter((file) => file.status === 'failed');
     const truncatedFiles = jobFiles.filter((file) => file.truncated);
     const includedCount = editableRows.filter((row) => row.included).length;
+    const imageCount = editableRows.filter((row) => row.included && row.generate_image).length;
     const conflictCount = merge?.conflicts?.length || 0;
 
     const isProcessing = phase === 'uploading' || phase === 'processing' || phase === 'previewing';
@@ -127,6 +175,7 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
         setEditableRows([]);
         setImportResult(null);
         setCapturing(false);
+        setMarkAlwaysAvailable(true);
         reset();
     };
 
@@ -231,7 +280,7 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
             return;
         }
 
-        const result = await confirmImport(includedRows);
+        const result = await confirmImport(includedRows, { markAlwaysAvailable });
         if (result.success) {
             setImportResult(result.data);
             setStep(3);
@@ -415,6 +464,37 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
         );
     };
 
+    // Categories come from the preview payload, but the row inputs above are
+    // editable — so this reads the live rows rather than previewData.categories,
+    // and stays accurate after the user retypes a category.
+    const renderCategorySummary = () => {
+        const counts = new Map();
+        for (const row of editableRows) {
+            if (!row.included) continue;
+            const name = String(row.data?.product_folder || '').replace(/\s+/g, ' ').trim();
+            if (!name) continue;
+            const key = name.toLowerCase();
+            counts.set(key, { name, count: (counts.get(key)?.count || 0) + 1 });
+        }
+        if (counts.size === 0) return null;
+        const categories = [...counts.values()];
+        return (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                <p className="font-medium flex items-center gap-2">
+                    <FolderTree className="w-4 h-4" />
+                    {categories.length} categor{categories.length === 1 ? 'y' : 'ies'} will be applied
+                </p>
+                <p className="mt-1 text-slate-600">
+                    {categories.map((category) => `${category.name} (${category.count})`).join(' · ')}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                    Categories that don’t exist yet are created on import — that needs admin access.
+                    Edit any Category cell below to change where an item lands.
+                </p>
+            </div>
+        );
+    };
+
     const renderPreviewStep = () => (
         <div className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
@@ -432,7 +512,23 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
                 </div>
             </div>
 
+            <div className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <input
+                    type="checkbox"
+                    id="mark-always-available"
+                    checked={markAlwaysAvailable}
+                    onChange={(e) => setMarkAlwaysAvailable(e.target.checked)}
+                    className="mt-0.5"
+                />
+                <label htmlFor="mark-always-available" className="text-sm text-slate-700">
+                    <span className="font-medium text-slate-900">Mark all imported items as Always Available.</span>
+                    {' '}Skips stock tracking so they&rsquo;re sellable in the POS right away, instead of landing
+                    out of stock until you set each one individually.
+                </label>
+            </div>
+
             {renderMergeSummary()}
+            {renderCategorySummary()}
 
             {conflictCount > 0 && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
@@ -500,9 +596,15 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
                     <thead className="bg-slate-50 sticky top-0">
                         <tr>
                             <th className="text-left p-3 font-medium text-slate-600">Import</th>
+                            <th className="text-left p-3 font-medium text-slate-600">
+                                <span className="inline-flex items-center gap-1">
+                                    <ImageIcon className="w-3.5 h-3.5" />
+                                    Image
+                                </span>
+                            </th>
                             <th className="text-left p-3 font-medium text-slate-600">Name</th>
                             <th className="text-left p-3 font-medium text-slate-600">Price (₱)</th>
-                            <th className="text-left p-3 font-medium text-slate-600">Section</th>
+                            <th className="text-left p-3 font-medium text-slate-600">Category</th>
                             <th className="text-left p-3 font-medium text-slate-600">Status</th>
                         </tr>
                     </thead>
@@ -521,6 +623,22 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
                                         checked={row.included}
                                         onChange={(e) => updateRow(row.rowNumber, { included: e.target.checked })}
                                         aria-label={`Import ${row.data?.name || 'row ' + row.rowNumber}`}
+                                    />
+                                </td>
+                                <td className="p-3">
+                                    <input
+                                        type="checkbox"
+                                        checked={row.generate_image}
+                                        disabled={!canGenerateImages || !row.included}
+                                        onChange={(e) => updateRow(row.rowNumber, { generate_image: e.target.checked })}
+                                        aria-label={`Generate an AI image for ${row.data?.name || 'row ' + row.rowNumber}`}
+                                        title={
+                                            !canGenerateImages
+                                                ? 'You need the Edit Items permission to generate AI images.'
+                                                : !row.included
+                                                    ? 'Only imported rows can get a generated image.'
+                                                    : `Generate an AI image for this item (~$${APPROX_ITEM_IMAGE_COST_USD.toFixed(2)}, watermarked).`
+                                        }
                                     />
                                 </td>
                                 <td className="p-3">
@@ -551,6 +669,9 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
                                         onChange={(e) => updateRowField(row.rowNumber, 'product_folder', e.target.value)}
                                         className="h-8 text-sm"
                                     />
+                                    {row.category_inferred && (
+                                        <p className="mt-1 text-xs text-blue-700">Guessed — not printed on the menu</p>
+                                    )}
                                 </td>
                                 <td className="p-3">
                                     <div className="space-y-1">
@@ -613,6 +734,63 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
                     <p className="text-sm text-red-600">Failed</p>
                 </div>
             </div>
+
+            {importResult?.categories_created?.length > 0 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-left max-w-md mx-auto text-sm text-slate-700">
+                    <p className="font-medium mb-1">
+                        {importResult.categories_created.length} new categor
+                        {importResult.categories_created.length === 1 ? 'y' : 'ies'} created
+                    </p>
+                    <p className="text-slate-600">{importResult.categories_created.join(', ')}</p>
+                </div>
+            )}
+
+            {importResult?.categories_skipped?.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-left max-w-md mx-auto text-sm text-amber-800">
+                    <p className="font-medium mb-1 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4" />
+                        {importResult.categories_skipped.length} categor
+                        {importResult.categories_skipped.length === 1 ? 'y' : 'ies'} not created
+                    </p>
+                    <p className="text-amber-700">
+                        {importResult.categories_skipped.join(', ')} — creating a category needs admin
+                        access. These items imported with the category name saved, but won’t appear
+                        under it in the POS until an admin creates it.
+                    </p>
+                </div>
+            )}
+
+            {importResult?.always_available_marked_count > 0 && (
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 text-left max-w-md mx-auto text-sm text-green-800">
+                    <p className="font-medium">
+                        {importResult.always_available_marked_count} item{importResult.always_available_marked_count === 1 ? '' : 's'} marked Always Available — ready to sell in the POS now.
+                    </p>
+                </div>
+            )}
+
+            {importResult?.images_queued > 0 && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-left max-w-md mx-auto text-sm text-blue-800">
+                    <p className="font-medium mb-1 flex items-center gap-2">
+                        <ImageIcon className="w-4 h-4" />
+                        {importResult.images_queued} image{importResult.images_queued === 1 ? '' : 's'} queued for AI generation
+                    </p>
+                    <p className="text-blue-700">
+                        Generation happens in the background — check back on these items shortly.
+                    </p>
+                </div>
+            )}
+
+            {importResult?.images_skipped?.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-left max-w-md mx-auto text-sm text-amber-800">
+                    <p className="font-medium mb-1 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4" />
+                        {importResult.images_skipped.length} requested image{importResult.images_skipped.length === 1 ? '' : 's'} not queued
+                    </p>
+                    <p className="text-amber-700">
+                        {IMAGE_SKIP_REASON_SUMMARY(importResult.images_skipped)}
+                    </p>
+                </div>
+            )}
 
             {importResult?.failedCount > 0 && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-left max-w-md mx-auto">
@@ -685,23 +863,32 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
                     )}
 
                     {step === 2 && (
-                        <>
-                            <Button variant="outline" onClick={handleStartOver} disabled={isConfirming}>
-                                <ArrowLeft className="w-4 h-4 mr-2" />
-                                Start Over
-                            </Button>
-                            <Button
-                                onClick={handleConfirm}
-                                disabled={isConfirming || includedCount === 0}
-                                className="bg-teal-600 hover:bg-teal-700"
-                            >
-                                {isConfirming ? (
-                                    <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Importing...</>
-                                ) : (
-                                    <><CheckCircle2 className="w-4 h-4 mr-2" /> Confirm Import ({includedCount} items)</>
-                                )}
-                            </Button>
-                        </>
+                        <div className="flex flex-1 items-center justify-between gap-2">
+                            {imageCount > 0 ? (
+                                <p className="text-xs text-slate-500 flex items-center gap-1">
+                                    <ImageIcon className="w-3.5 h-3.5" />
+                                    {imageCount} image{imageCount === 1 ? '' : 's'} × ~${APPROX_ITEM_IMAGE_COST_USD.toFixed(2)}
+                                    {' '}≈ ${(imageCount * APPROX_ITEM_IMAGE_COST_USD).toFixed(2)} estimated
+                                </p>
+                            ) : <span />}
+                            <div className="flex gap-2">
+                                <Button variant="outline" onClick={handleStartOver} disabled={isConfirming}>
+                                    <ArrowLeft className="w-4 h-4 mr-2" />
+                                    Start Over
+                                </Button>
+                                <Button
+                                    onClick={handleConfirm}
+                                    disabled={isConfirming || includedCount === 0}
+                                    className="bg-teal-600 hover:bg-teal-700"
+                                >
+                                    {isConfirming ? (
+                                        <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Importing...</>
+                                    ) : (
+                                        <><CheckCircle2 className="w-4 h-4 mr-2" /> Confirm Import ({includedCount} items)</>
+                                    )}
+                                </Button>
+                            </div>
+                        </div>
                     )}
 
                     {step === 3 && (

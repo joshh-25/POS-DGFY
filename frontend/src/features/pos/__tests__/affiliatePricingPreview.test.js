@@ -30,10 +30,10 @@ const NO_TIER_CALCULATION_CASES = fixtures.calculationCases.filter((testCase) =>
 ));
 
 describe('fixture parity — the frontend copy must never drift from the backend original', () => {
-    test('affiliatePricingCases.json is byte-identical to backend/tests/fixtures/affiliatePricingCases.json', () => {
+    test('affiliatePricingCases.json is byte-identical to apps/dgfy-api/tests/fixtures/affiliatePricingCases.json', () => {
         const backendFixturePath = path.resolve(
             __dirname,
-            '../../../../../backend/tests/fixtures/affiliatePricingCases.json'
+            '../../../../../apps/dgfy-api/tests/fixtures/affiliatePricingCases.json'
         );
         const backendFixtureRaw = readFileSync(backendFixturePath, 'utf8');
         const frontendFixtureRaw = readFileSync(path.join(__dirname, 'fixtures/affiliatePricingCases.json'), 'utf8');

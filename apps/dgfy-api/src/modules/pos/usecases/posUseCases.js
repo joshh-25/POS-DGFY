@@ -60,7 +60,7 @@ const FISCAL_LIFETIME_COUNTER_KEY = 'POS_FISCAL_LIFETIME_TOTAL_CENTS';
 const Z_READING_COUNTER_KEY = 'POS_Z_READING_COUNTER';
 const RESET_COUNTER_KEY = 'POS_RESET_COUNTER';
 const FISCAL_DOCUMENT_TEMPLATE_VERSION = 'rmo-24-2023-prep-v1';
-const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'appointment'];
+const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'appointment', 'walk_in'];
 const FNB_COURSES = new Set(['appetizer', 'main', 'dessert', 'drink', 'other']);
 const ONLINE_ORDER_SOURCE = 'online_store';
 const ONLINE_FULFILLMENT_STATUSES = [
@@ -4514,10 +4514,32 @@ export const buildUpdateBulkPosCatalogOverridesUseCase = ({ posRepository }) => 
                 { statusCode: 400 }
             ));
         }
-        if (typeof payload.pos_visible !== 'boolean') {
+
+        // Both fields are optional individually (a caller may only want to
+        // flip visibility, or only want to mark items always-available — the
+        // batch menu import "make everything sellable immediately" step is
+        // exactly the latter, with no opinion on pos_visible at all), but at
+        // least one must be present or the call is a no-op.
+        const hasPosVisible = Object.prototype.hasOwnProperty.call(payload, 'pos_visible');
+        const hasPosAlwaysAvailable = Object.prototype.hasOwnProperty.call(payload, 'pos_always_available');
+        if (hasPosVisible && typeof payload.pos_visible !== 'boolean') {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
                 'pos_visible must be a boolean',
+                { statusCode: 400 }
+            ));
+        }
+        if (hasPosAlwaysAvailable && typeof payload.pos_always_available !== 'boolean') {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'pos_always_available must be a boolean',
+                { statusCode: 400 }
+            ));
+        }
+        if (!hasPosVisible && !hasPosAlwaysAvailable) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'At least one of pos_visible or pos_always_available must be provided',
                 { statusCode: 400 }
             ));
         }
@@ -4553,7 +4575,8 @@ export const buildUpdateBulkPosCatalogOverridesUseCase = ({ posRepository }) => 
                     }
 
                     const updated = await posRepository.upsertCatalogOverride(itemId, {
-                        pos_visible: payload.pos_visible
+                        ...(hasPosVisible ? { pos_visible: payload.pos_visible } : {}),
+                        ...(hasPosAlwaysAvailable ? { pos_always_available: payload.pos_always_available } : {})
                     });
                     results.push({
                         item_id: itemId,

@@ -12,6 +12,44 @@ export const parseBooleanFlag = (value, fallback = false) => {
   return fallback;
 };
 
+// `tracesSampleRate` is deliberately tri-state, and the difference is not
+// cosmetic. Sentry's hasSpansEnabled() is `tracesSampleRate != null ||
+// !!tracesSampler`, so passing a literal 0 turns span support ON and then
+// forces a negative sampling decision on every trace -- which the SDK
+// propagates outward as `sentry-trace: <id>-<id>-0`. Anything downstream that
+// inherits that decision can then never sample, silently.
+//
+// Omitting the key entirely is a different mode: "Tracing without
+// Performance". Trace ids still propagate and still land on error events
+// (contexts.trace.trace_id), the sampling decision stays deferred, and zero
+// transactions are billed. That is the mode we want by default -- it is all
+// that FE->BE error correlation needs, because errors are never sampled out.
+//
+// So: null means TwP, a positive number means real span sampling. Never 0.
+export const resolveTracesSampleRate = (rawValue) => {
+  const parsed = Number.parseFloat(rawValue);
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return Math.min(parsed, 1);
+};
+
+// The backend image hard-sets NODE_ENV=production (see
+// infrastructure/docker/dgfy-api/Dockerfile) on every environment -- dev,
+// staging, beta and prod alike -- because that's what npm/Express expect for
+// runtime behavior, not because the box is actually production. Falling back
+// to NODE_ENV here would silently file a dev or staging server's errors
+// under `environment: "production"` the moment SENTRY_ENABLED is flipped on
+// without also setting SENTRY_ENVIRONMENT. Only fall back to NODE_ENV when
+// it is NOT "production"; otherwise resolve to a value ("unknown") that is
+// obviously wrong in the Sentry UI and prompts an operator to set the real
+// one, rather than quietly polluting the production environment's data.
+export const resolveSentryEnvironment = (env = process.env) => {
+  const explicit = String(env.SENTRY_ENVIRONMENT || '').trim();
+  if (explicit) return explicit;
+  const nodeEnv = String(env.NODE_ENV || '').trim();
+  if (nodeEnv && nodeEnv !== 'production') return nodeEnv;
+  return nodeEnv === 'production' ? 'unknown' : 'development';
+};
+
 export const resolveSentryConfig = (env = process.env) => {
   const enabled = parseBooleanFlag(env.SENTRY_ENABLED, false);
   const dsn = String(env.SENTRY_BACKEND_DSN || env.SENTRY_DSN || '').trim();
@@ -20,12 +58,43 @@ export const resolveSentryConfig = (env = process.env) => {
     enabled,
     dsn,
     active: enabled && Boolean(dsn),
-    environment: String(env.SENTRY_ENVIRONMENT || env.NODE_ENV || 'development').trim(),
+    environment: resolveSentryEnvironment(env),
     release: String(env.SENTRY_RELEASE || env.RELEASE_TARGET_SHA || env.GITHUB_SHA || '').trim(),
-    tracesSampleRate: Number.parseFloat(env.SENTRY_TRACES_SAMPLE_RATE || '0') || 0,
+    tracesSampleRate: resolveTracesSampleRate(env.SENTRY_TRACES_SAMPLE_RATE),
     sendDefaultPii: parseBooleanFlag(env.SENTRY_SEND_DEFAULT_PII, false),
     debug: parseBooleanFlag(env.SENTRY_DEBUG, false)
   };
+};
+
+// Endpoints whose transactions carry no diagnostic value but arrive at a
+// constant rate: container healthchecks and the Prometheus scrape.
+const ZERO_RATE_ROUTE_PATTERN = /(^|\/)(health|healthz|ready|metrics)$/i;
+// The POS terminal polls this every 12s per open terminal (see
+// ONLINE_ORDER_POLL_INTERVAL_MS in frontend/src/features/pos/pages/TerminalPage.jsx).
+// Twenty terminals over a 12h day is ~72k requests; at the base rate that
+// would swamp every other transaction in the project.
+const POLL_ROUTE_PATTERN = /(^|\/)pos\/incoming-orders$/i;
+const POLL_SAMPLE_RATE = 0.01;
+
+// Exported separately from initSentry so it can be unit-tested without
+// standing up the SDK. v10 hands the sampler a SamplingContext of
+// { name, attributes, parentSampled, parentSampleRate, inheritOrSampleWith }.
+export const makeTracesSampler = (baseRate) => (samplingContext = {}) => {
+  const { name, attributes, inheritOrSampleWith } = samplingContext;
+  // `http.route` is the parameterized path, so it survives ids in the URL.
+  const route = String(attributes?.['http.route'] || name || '');
+  const method = String(attributes?.['http.request.method'] || '').toUpperCase();
+  const path = route.replace(/^[A-Z]+\s+/, '').split('?')[0];
+
+  if (method === 'OPTIONS') return 0;
+  if (ZERO_RATE_ROUTE_PATTERN.test(path)) return 0;
+  if (POLL_ROUTE_PATTERN.test(path)) return POLL_SAMPLE_RATE;
+
+  // Honour an upstream decision when the browser made one; fall back to the
+  // configured base rate when it did not (the TwP case).
+  return typeof inheritOrSampleWith === 'function'
+    ? inheritOrSampleWith(baseRate)
+    : baseRate;
 };
 
 export const redactSensitiveData = (value) => {
@@ -44,8 +113,97 @@ export const redactSensitiveData = (value) => {
   );
 };
 
-export const sanitizeSentryEvent = (event) => {
+// redactSensitiveData above is key-name based: it can only redact a secret
+// that sits under a recognisable key. A secret pasted *inside* a message
+// string is invisible to it, which is exactly how an OpenAI API key ended up
+// as a Sentry issue *title* -- the openai SDK embeds the key it tried to use
+// in its own 401 error text, and nothing scrubbed exception values.
+//
+// Every pattern below is anchored on a distinctive prefix or an explicit
+// key=/secret: assignment. There is deliberately no generic "long
+// alphanumeric string" rule: that would eat order ids, SKUs, tenant slugs and
+// MySQL error text, which are the things that make an issue diagnosable.
+const SECRET_PATTERNS = [
+  [/\bsk-(?:proj-|svcacct-|admin-)?[A-Za-z0-9_-]{20,}/g, '[redacted:openai-key]'],
+  [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}/g, '[redacted:jwt]'],
+  [/\bBearer\s+[A-Za-z0-9._~+/=-]{12,}/gi, 'Bearer [redacted]'],
+  [/\bAKIA[0-9A-Z]{16}\b/g, '[redacted:aws-key]'],
+  [/\bgh[pousr]_[A-Za-z0-9]{20,}/g, '[redacted:github-token]'],
+  // Any scheme, not just http(s): mysql://, postgres://, redis:// and amqp://
+  // connection strings carry credentials and routinely appear verbatim in
+  // driver error messages.
+  [/\b([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+:[^\s/@]+@/gi, '$1[redacted]@'],
+  [/\bhttps?:\/\/[0-9a-f]{32}@[^\s]+/gi, '[redacted:sentry-dsn]'],
+  [
+    /((?:api[_-]?key|apikey|access[_-]?token|client[_-]?secret|password|secret)\s*[=:]\s*)(["']?)[^\s"',;)]{8,}\2/gi,
+    '$1[redacted]'
+  ]
+];
+
+// beforeSend runs synchronously on the request path, so a pathological
+// message must not turn this into a CPU stall.
+const MAX_SCRUBBED_TEXT_LENGTH = 50_000;
+
+export const redactSecretsInText = (value) => {
+  if (typeof value !== 'string' || !value) return value;
+  const input = value.length > MAX_SCRUBBED_TEXT_LENGTH
+    ? value.slice(0, MAX_SCRUBBED_TEXT_LENGTH)
+    : value;
+  return SECRET_PATTERNS.reduce(
+    (text, [pattern, replacement]) => text.replace(pattern, replacement),
+    input
+  );
+};
+
+// Only free-text fields are rewritten. exception.type, .stacktrace,
+// .mechanism, .module and event.fingerprint are left untouched, which is what
+// keeps grouping intact: Sentry groups by stacktrace whenever one exists. For
+// stackless events this actually groups *better* than before, because the
+// placeholder is a fixed literal -- a raw key made every occurrence a unique
+// title.
+export const scrubEventText = (event) => {
   if (!event || typeof event !== 'object') return event;
+  const scrubbed = { ...event };
+
+  if (typeof scrubbed.message === 'string') {
+    scrubbed.message = redactSecretsInText(scrubbed.message);
+  }
+
+  if (Array.isArray(scrubbed.exception?.values)) {
+    scrubbed.exception = {
+      ...scrubbed.exception,
+      values: scrubbed.exception.values.map((entry) => (
+        entry && typeof entry.value === 'string'
+          ? { ...entry, value: redactSecretsInText(entry.value) }
+          : entry
+      ))
+    };
+  }
+
+  if (scrubbed.logentry && typeof scrubbed.logentry === 'object') {
+    scrubbed.logentry = {
+      ...scrubbed.logentry,
+      message: redactSecretsInText(scrubbed.logentry.message),
+      params: Array.isArray(scrubbed.logentry.params)
+        ? scrubbed.logentry.params.map((param) => redactSecretsInText(param))
+        : scrubbed.logentry.params
+    };
+  }
+
+  if (Array.isArray(scrubbed.breadcrumbs)) {
+    scrubbed.breadcrumbs = scrubbed.breadcrumbs.map((crumb) => (
+      crumb && typeof crumb.message === 'string'
+        ? { ...crumb, message: redactSecretsInText(crumb.message) }
+        : crumb
+    ));
+  }
+
+  return scrubbed;
+};
+
+export const sanitizeSentryEvent = (rawEvent) => {
+  if (!rawEvent || typeof rawEvent !== 'object') return rawEvent;
+  const event = scrubEventText(rawEvent);
 
   return {
     ...event,
@@ -86,11 +244,10 @@ export const initSentry = ({ env = process.env, logger = console } = {}) => {
     return { active: true, reason: 'already_initialized' };
   }
 
-  Sentry.init({
+  const initOptions = {
     dsn: config.dsn,
     environment: config.environment,
     release: config.release || undefined,
-    tracesSampleRate: config.tracesSampleRate,
     sendDefaultPii: config.sendDefaultPii,
     debug: config.debug,
     // express/mysql2 integrations patch those modules' exports at import
@@ -111,7 +268,18 @@ export const initSentry = ({ env = process.env, logger = console } = {}) => {
         service: 'backend'
       }
     }
-  });
+  };
+
+  // Only install sampling when a positive base rate is configured. Never pass
+  // both tracesSampleRate and tracesSampler -- the sampler wins and the
+  // literal becomes dead config that misleads the next reader. With neither
+  // key present the SDK runs in tracing-without-performance mode: trace ids
+  // propagate, no transactions are emitted.
+  if (config.tracesSampleRate != null) {
+    initOptions.tracesSampler = makeTracesSampler(config.tracesSampleRate);
+  }
+
+  Sentry.init(initOptions);
 
   initialized = true;
   logger.info?.('[Sentry] backend error tracking enabled');
@@ -134,7 +302,14 @@ export const sentryRequestContext = (req, _res, next) => {
   return Sentry.withIsolationScope(() => {
     Sentry.setTag('service', 'backend');
     Sentry.setTag('request_id', req.requestId || null);
-    Sentry.setTag('trace_id', req.traceId || req.requestId || null);
+    // No `trace_id` tag is set here on purpose. Sentry already carries the
+    // real distributed trace id at event.contexts.trace.trace_id and indexes
+    // it as the `trace:<id>` search. A hand-set tag of the same name is an
+    // unrelated custom tag that shadows it in the UI -- events were shipping
+    // with tag trace_id=<uuid> next to contexts.trace.trace_id=<32-hex>, two
+    // different values under one name. requestContext now adopts the inbound
+    // sentry-trace id as req.traceId, so the x-trace-id response header
+    // carries the same id the `request_id` tag already exposes.
     Sentry.setTag('surface', req.headers?.['x-dgfy-surface'] || req.headers?.['x-app-surface'] || null);
     Sentry.setUser(req.user?.user_id || req.user?.id ? { id: String(req.user.user_id || req.user.id) } : null);
 

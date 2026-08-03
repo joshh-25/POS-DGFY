@@ -242,7 +242,7 @@ export default function PdfMenuImportModal({ open, onClose, onSuccess }) {
                             <th className="text-left p-3 font-medium text-slate-600">Import</th>
                             <th className="text-left p-3 font-medium text-slate-600">Name</th>
                             <th className="text-left p-3 font-medium text-slate-600">Price (₱)</th>
-                            <th className="text-left p-3 font-medium text-slate-600">Section</th>
+                            <th className="text-left p-3 font-medium text-slate-600">Category</th>
                             <th className="text-left p-3 font-medium text-slate-600">Status</th>
                         </tr>
                     </thead>

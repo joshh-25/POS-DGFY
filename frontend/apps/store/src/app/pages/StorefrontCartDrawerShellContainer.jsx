@@ -46,6 +46,7 @@ export function StorefrontCartDrawerShellContainer(props) {
     isFnbOrderSubpage,
     isFnbDetailsSubpage,
     isCheckoutOpen,
+    isRetailMode,
     isSimpleMode,
     isResolvedOrderSubpage,
     goStoreBookingPage,
@@ -78,6 +79,12 @@ export function StorefrontCartDrawerShellContainer(props) {
   // mode DefaultProductCartFab/DefaultProductCartDrawer serve, replacing StorefrontCartFab's
   // default branch for this mode only.
   const isDefaultCartSurfaceMode = !isFnbMode && !isServicesMode && !isSimpleMode;
+  // Retail's own /order page already shows cart contents/totals in its own summary panels
+  // (RetailOrderSummaryContent/RetailOrderMobileSummaryPanel), so the floating cart
+  // button+drawer are redundant there — hidden the same way isSimpleCartSurfaceMode already
+  // hides MSME's equivalent on its own order subpage. Scoped to retail only: the other
+  // default-like modes' DefaultOrderPage has no such summary of its own yet.
+  const shouldRenderDefaultCartSurface = isDefaultCartSurfaceMode && !(isRetailMode && isResolvedOrderSubpage);
 
   return (
     <>
@@ -100,7 +107,7 @@ export function StorefrontCartDrawerShellContainer(props) {
           <SimpleCartDrawerSurface {...simpleCartDrawerProps.drawerSurfaceProps} />
         </>
       )}
-      {!isAccountDrawerOpen && isDefaultCartSurfaceMode && (
+      {!isAccountDrawerOpen && shouldRenderDefaultCartSurface && (
         <>
           <DefaultProductCartFab {...defaultProductCartDrawerProps.floatingButtonProps} />
 

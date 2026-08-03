@@ -1,6 +1,6 @@
 import express from 'express';
-import { reverseGeocode, searchNearbyStores } from '../modules/geoSearch/controllers/geoSearchHandlers.js';
-import { validateGeoSearchQuery, validateReverseGeocodeQuery } from '../validators/geoSearchValidator.js';
+import { reverseGeocode, searchAddresses, searchNearbyStores } from '../modules/geoSearch/controllers/geoSearchHandlers.js';
+import { validateAddressSearchQuery, validateGeoSearchQuery, validateReverseGeocodeQuery } from '../validators/geoSearchValidator.js';
 import { geoSearchLimiter } from '../middleware/rateLimiter.js';
 import { setNoStoreCacheControl, setReadCacheControl } from '../middleware/cachePolicy.js';
 
@@ -23,6 +23,14 @@ router.get(
     geoSearchCacheControl,
     validateGeoSearchQuery,
     searchNearbyStores
+);
+
+router.get(
+    '/address-search',
+    geoSearchLimiter,
+    setNoStoreCacheControl,
+    validateAddressSearchQuery,
+    searchAddresses
 );
 
 router.get(

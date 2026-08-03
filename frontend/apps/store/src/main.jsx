@@ -10,7 +10,7 @@ import StorefrontRegisterPage from './auth/pages/StorefrontRegisterPage.jsx';
 import StorefrontAffiliateAcceptPage from './auth/pages/StorefrontAffiliateAcceptPage.jsx';
 import StorefrontResetPasswordPage from './auth/pages/StorefrontResetPasswordPage.jsx';
 import StorefrontBusinessGrowPage from './business/pages/StorefrontBusinessGrowPage.jsx';
-import { initBrowserSentry } from '../../../src/observability/sentryClient.js';
+import { initBrowserSentry, setSentryRoute } from '../../../src/observability/sentryClient.js';
 import {
   capturePageview,
   getStoredAnalyticsConsent,
@@ -50,6 +50,7 @@ function AnalyticsRouteTracker() {
       route_subpage: readStoreSubpage(),
       is_custom_domain: Boolean(getCustomStorefrontRouteContext())
     });
+    setSentryRoute(location.pathname);
   }, [location.pathname]);
 
   return null;

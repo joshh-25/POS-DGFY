@@ -18,6 +18,7 @@ import {
     generateStoreCancelProof,
     generateStoreGuestCheckoutProof
 } from '../src/modules/store/utils/storeJwtToken.js';
+import dbStore from '../src/utils/dbStore.js';
 
 const registeredTransactionSettings = () => [
     { setting_key: 'customer_access_mode', setting_value: 'transaction' },
@@ -120,6 +121,63 @@ describe('store use-cases application result contract', () => {
         expect(result.success).toBe(true);
         expect(result.data.workflow_mode).toBe('retail');
         expect(result.data.enabled_capabilities).toEqual(['services']);
+    });
+
+    it('listStoreCatalog advertises live QRPH only after backend and tenant readiness pass', async () => {
+        const findTenantPaymentAccount = jest.fn().mockResolvedValue({
+            onboarding_status: 'active',
+            qrph_enabled: true,
+            split_enabled: true,
+            charges_enabled: true,
+            wallet_status: 'enabled',
+            wallet_verified_at: new Date()
+        });
+        const useCase = buildListStoreCatalogUseCase({
+            storeRepository: { listStoreCatalog: jest.fn().mockResolvedValue([]) },
+            commercePaymentRepository: { findTenantPaymentAccount },
+            commercePaymentsEnabled: true,
+            commerceQrphEnabled: true,
+            requireCommerceQrphConfig: () => [],
+            paymongoMode: 'live',
+            revenueSharingEnabled: false,
+            resolveWorkflowCapabilitySettings: jest.fn().mockResolvedValue({ mode: 'retail', enabledCapabilities: [] })
+        });
+
+        const result = await dbStore.run({ tenantId: 42 }, () => useCase({ query: {} }));
+
+        expect(result.success).toBe(true);
+        expect(findTenantPaymentAccount).toHaveBeenCalledWith({ tenantId: '42', provider: 'paymongo' });
+        expect(result.data.payment_capabilities).toEqual({
+            qrph: {
+                enabled: true,
+                environment: 'live',
+                reason_code: null
+            }
+        });
+    });
+
+    it('listStoreCatalog keeps browsing available when payment readiness lookup fails', async () => {
+        const useCase = buildListStoreCatalogUseCase({
+            storeRepository: { listStoreCatalog: jest.fn().mockResolvedValue([]) },
+            commercePaymentRepository: {
+                findTenantPaymentAccount: jest.fn().mockRejectedValue(new Error('provider account lookup failed'))
+            },
+            commercePaymentsEnabled: true,
+            commerceQrphEnabled: true,
+            requireCommerceQrphConfig: () => [],
+            paymongoMode: 'live',
+            revenueSharingEnabled: false,
+            resolveWorkflowCapabilitySettings: jest.fn().mockResolvedValue({ mode: 'retail', enabledCapabilities: [] })
+        });
+
+        const result = await dbStore.run({ tenantId: 42 }, () => useCase({ query: {} }));
+
+        expect(result.success).toBe(true);
+        expect(result.data.payment_capabilities.qrph).toEqual({
+            enabled: false,
+            environment: 'live',
+            reason_code: 'READINESS_CHECK_FAILED'
+        });
     });
 
     it('listStoreCatalog suppresses customer-visible rows without explicit sale price', async () => {

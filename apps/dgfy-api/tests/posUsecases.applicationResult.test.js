@@ -60,12 +60,22 @@ const createBulkPosRepository = ({ items = [], existing = null, readiness = null
 const editableUser = { is_master_admin: false, permissions: ['items:edit'] };
 const posOperator = { user_id: 15, is_active: true, permissions: ['pos:view', 'pos:transact'] };
 
-const runWithTenantComplianceContext = (callback) => dbStore.run({
-    tenantId: 'tenant-1',
-    tenantComplianceId: 'tenant-1',
-    tenantComplianceModeState: 'non_compliant_active',
-    tenantCompliancePolicyVersion: 'test'
-}, callback);
+const runWithTenantComplianceContext = (callback) => {
+    const transaction = {
+        commit: jest.fn().mockResolvedValue(undefined),
+        rollback: jest.fn().mockResolvedValue(undefined),
+        finished: null
+    };
+    return dbStore.run({
+        tenantId: 'tenant-1',
+        tenantComplianceId: 'tenant-1',
+        tenantComplianceModeState: 'non_compliant_active',
+        tenantCompliancePolicyVersion: 'test',
+        sequelize: {
+            transaction: jest.fn().mockResolvedValue(transaction)
+        }
+    }, callback);
+};
 
 const createShiftOpenRepository = ({ registryEntry = { terminal_id: 'COUNTER-01', location_id: 3 } } = {}) => ({
     getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue({
@@ -75,6 +85,7 @@ const createShiftOpenRepository = ({ registryEntry = { terminal_id: 'COUNTER-01'
     }),
     findOperationReplayByKey: jest.fn().mockResolvedValue(null),
     createOperationReplay: jest.fn().mockResolvedValue(null),
+    createAuditLog: jest.fn().mockResolvedValue(null),
     findOpenTerminalShift: jest.fn().mockResolvedValue(null),
     createTerminalShift: jest.fn().mockResolvedValue({
         pos_terminal_shift_id: 101,
@@ -132,12 +143,15 @@ describe('pos use-cases application result contract', () => {
             userId: 15,
             operationLabel: 'POS shift open'
         }));
-        expect(posRepository.createTerminalShift).toHaveBeenCalledWith(expect.objectContaining({
-            terminal_id: 'COUNTER-01',
-            location_id: 3,
-            cashier_id: 15,
-            status: 'open'
-        }));
+        expect(posRepository.createTerminalShift).toHaveBeenCalledWith(
+            expect.objectContaining({
+                terminal_id: 'COUNTER-01',
+                location_id: 3,
+                cashier_id: 15,
+                status: 'open'
+            }),
+            expect.objectContaining({ transaction: expect.any(Object) })
+        );
     });
 
     it('blocks shift open for inactive or unknown logical terminals', async () => {
@@ -720,6 +734,83 @@ describe('pos use-cases application result contract', () => {
             expect.objectContaining({ item_id: 999, status: 'not_found' })
         ]));
         expect(upsertCatalogOverride).toHaveBeenCalledTimes(1);
+    });
+
+    it('updateBulkPosCatalogOverrides rejects when neither pos_visible nor pos_always_available is provided', async () => {
+        const useCase = buildUpdateBulkPosCatalogOverridesUseCase({
+            posRepository: { getCatalogReadinessByItemId: jest.fn(), upsertCatalogOverride: jest.fn() }
+        });
+
+        const result = await useCase({
+            payload: { item_ids: [401] },
+            user: { is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.message).toMatch(/pos_visible or pos_always_available/);
+    });
+
+    it('updateBulkPosCatalogOverrides applies pos_always_available alone, without requiring pos_visible', async () => {
+        const upsertCatalogOverride = jest.fn().mockResolvedValue({ item_id: 401, pos_always_available: true });
+        const getCatalogReadinessByItemId = jest.fn().mockResolvedValue({
+            item_id: 401,
+            pos_readiness: { ready: true, missing_requirements: [] }
+        });
+        const useCase = buildUpdateBulkPosCatalogOverridesUseCase({
+            posRepository: { getCatalogReadinessByItemId, upsertCatalogOverride }
+        });
+
+        const result = await useCase({
+            payload: { item_ids: [401], pos_always_available: true },
+            user: { is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.summary).toEqual({ updated: 1, blocked: 0, not_found: 0, failed: 0 });
+        // Readiness is never forced when pos_visible wasn't part of the call —
+        // marking an item always-available has no opinion on POS visibility.
+        expect(getCatalogReadinessByItemId).toHaveBeenCalledWith(401, { forcedPosVisible: null });
+        expect(upsertCatalogOverride).toHaveBeenCalledWith(401, { pos_always_available: true });
+    });
+
+    it('updateBulkPosCatalogOverrides applies both fields together when both are provided', async () => {
+        const upsertCatalogOverride = jest.fn().mockResolvedValue({ item_id: 401, pos_visible: true, pos_always_available: true });
+        const getCatalogReadinessByItemId = jest.fn().mockResolvedValue({
+            item_id: 401,
+            pos_readiness: { ready: true, missing_requirements: [] }
+        });
+        const useCase = buildUpdateBulkPosCatalogOverridesUseCase({
+            posRepository: { getCatalogReadinessByItemId, upsertCatalogOverride }
+        });
+
+        const result = await useCase({
+            payload: { item_ids: [401], pos_visible: true, pos_always_available: true },
+            user: { is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(true);
+        expect(upsertCatalogOverride).toHaveBeenCalledWith(401, { pos_visible: true, pos_always_available: true });
+    });
+
+    it('updateBulkPosCatalogOverrides isolates a per-item failure without sinking the rest of the batch', async () => {
+        const upsertCatalogOverride = jest.fn()
+            .mockResolvedValueOnce({ item_id: 401, pos_always_available: true })
+            .mockRejectedValueOnce(new Error('db write failed'));
+        const getCatalogReadinessByItemId = jest.fn().mockResolvedValue({
+            item_id: 401,
+            pos_readiness: { ready: true, missing_requirements: [] }
+        });
+        const useCase = buildUpdateBulkPosCatalogOverridesUseCase({
+            posRepository: { getCatalogReadinessByItemId, upsertCatalogOverride }
+        });
+
+        const result = await useCase({
+            payload: { item_ids: [401, 402], pos_always_available: true },
+            user: { is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.summary).toEqual({ updated: 1, blocked: 0, not_found: 0, failed: 1 });
     });
 
     it('uploadPosCatalogImage preserves an existing hidden POS visibility flag', async () => {

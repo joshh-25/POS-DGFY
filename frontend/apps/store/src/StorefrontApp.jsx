@@ -39,6 +39,7 @@ import { useCheckoutAuthResumeRestore } from './shared/hooks/useCheckoutAuthResu
 import { useCheckoutSubmission } from './shared/hooks/useCheckoutSubmission.js';
 import { useCustomerAuthNavigation } from './shared/hooks/useCustomerAuthNavigation.js';
 import { useDefaultOrderPageProps } from './shared/hooks/useDefaultOrderPageProps.js';
+import { useRetailOrderPageProps } from './modes/retail/checkout/hooks/useRetailOrderPageProps.js';
 import { useDefaultProductCartDrawerProps } from './shared/hooks/useDefaultProductCartDrawerProps.js';
 import { useDeliveryPinResolution } from './shared/hooks/useDeliveryPinResolution.js';
 import { useServiceBookingViewModel } from './shared/hooks/useServiceBookingViewModel.js';
@@ -52,6 +53,7 @@ import { useStorefrontUiChrome } from './shared/hooks/useStorefrontUiChrome.js';
 import { useStorefrontTrackingIntent } from './shared/hooks/useStorefrontTrackingIntent.js';
 import { useAffiliateAttributionCapture } from './shared/hooks/useAffiliateAttributionCapture.js';
 import { setAnalyticsContext } from '../../../src/observability/analyticsClient.js';
+import { setSentryContext } from '../../../src/observability/sentryClient.js';
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../src/observability/analyticsEvents.js';
 import {
   buildCustomerFullName,
@@ -272,10 +274,10 @@ import {
 } from './shared/utils/businessRegistrationUrl.js';
 import { resolveStorefrontAccountUrl } from '../../../src/features/dgfyRouteHelpers.js';
 import {
-  startDgfyPosSession,
-  startDgfyTenantSession
+  createDgfyHandoff,
+  startDgfyPosSession
 } from '../../../src/services/dgfyAuthService.js';
-import { buildSkupervisorPath } from '../../../src/features/pos/utils/skupervisorHandoff.js';
+import { buildSkupervisorHandoffUrl } from '../../../src/features/pos/utils/skupervisorHandoff.js';
 import {
   clearDgfyAuthToken,
   clearStoreAuthToken,
@@ -479,7 +481,7 @@ export default function StorefrontApp() {
   const { discoveryFilterToolbarRef } = useDiscoveryFilterDropdown({
     setActiveDiscoveryFilterDropdown
   });
-  const { loadStores } = useDiscoveryStoreLoader({
+  const { loadStores, retryLoadStores } = useDiscoveryStoreLoader({
     debouncedDiscoverySearch,
     discoveryCoordsRef,
     discoveryIncludeMatchMeta,
@@ -805,6 +807,7 @@ export default function StorefrontApp() {
     isFnbMode,
     isSimpleMode,
     isHospitalityMode,
+    isRetailMode,
     modeAdapter,
     servicesViewModel,
     fnbViewModel,
@@ -900,6 +903,14 @@ export default function StorefrontApp() {
     toSlug
   });
   const isFnbOrderSubpage = isFnbMode && (isOrderSubpage || isTrackSubpage);
+  // checkoutTab only gets set to 'track' as a side effect of goStoreTrackPage() (e.g. after a
+  // successful checkout). A direct/cold load of the track route (a refresh, or a bookmarked
+  // tracking link) never calls that function, so checkoutTab would stay at its 'checkout'
+  // default and the tracking polling effect below would never activate. Sync it here instead,
+  // for every mode that can reach the track subpage.
+  useEffect(() => {
+    if (isTrackSubpage && checkoutTab !== 'track') setCheckoutTab('track');
+  }, [isTrackSubpage, checkoutTab]);
   useStorefrontCartPersistence({
     cart,
     enabled: isFnbMode || isServicesMode,
@@ -945,7 +956,11 @@ export default function StorefrontApp() {
     trackingResult
   } = useFnbTrackingRuntime({
     checkoutTab,
-    isFnbOrderSubpage,
+    // useFnbTrackingRuntime's fetch/poll effect only runs when this is true. F&B reaches the
+    // tracking view through its checkout drawer (isFnbOrderSubpage), while retail and MSME reach
+    // it through their own dedicated /order routes (isTrackSubpage, no drawer involved the same
+    // way F&B's is) -- all three need to activate the same shared polling effect.
+    isFnbOrderSubpage: isFnbOrderSubpage || ((isRetailMode || isSimpleMode) && isTrackSubpage),
     normalizeErrorMessage: normalizeStorefrontErrorMessage,
     requestJson,
     routeSlug,
@@ -1057,9 +1072,9 @@ export default function StorefrontApp() {
     rememberDgfySignedOutEmail,
     markDgfyExplicitSignOut,
     clearCheckoutAuthResumeDraft,
-    buildSkupervisorPath,
+    buildSkupervisorHandoffUrl,
+    createDgfyHandoff,
     buildPosAppUrl,
-    startDgfyTenantSession,
     startDgfyPosSession,
     getGoStoreTrackPage: () => goStoreTrackPage,
     onTrackedActivityUpdated: (activity) => {
@@ -1466,6 +1481,7 @@ export default function StorefrontApp() {
     bookingPermitted,
     cart,
     isFnbMode,
+    isRetailMode,
     isServicesMode,
     isSimpleMode,
     productCartPermitted,
@@ -1533,22 +1549,30 @@ export default function StorefrontApp() {
     setHasSelectedBranchFromMenu(false);
   }, [selectedStore?.slug]);
   // Registers store/tenant/business-mode as PostHog super properties + groups
-  // once a store resolves, so every event fired afterwards (funnel events,
-  // autocapture, pageviews) can be sliced by "which store" / "which tenant"
-  // without a join -- this is what answers "which stores do visitors most
-  // often come from" in the PostHog UI.
+  // (and the Sentry equivalent as tags) once a store resolves, so every
+  // event fired afterwards (funnel events, autocapture, pageviews, and now
+  // Sentry issues) can be sliced by "which store" / "which tenant" without a
+  // join -- this is what answers "which stores do visitors most often come
+  // from" in the PostHog UI, and groups Sentry issues by tenant.
   useEffect(() => {
     if (!selectedStore?.slug) return;
+    const businessMode = selectedStore.workflow_mode || selectedStore.ops_workflow_mode || selectedStore.business_mode;
     setAnalyticsContext({
       storeSlug: selectedStore.slug,
       storeName: selectedStore.tenant_name,
       tenantId: selectedStore.tenant_id,
-      businessMode: selectedStore.workflow_mode || selectedStore.ops_workflow_mode || selectedStore.business_mode,
+      businessMode,
+      locationId: selectedLocationId
+    });
+    setSentryContext({
+      storeSlug: selectedStore.slug,
+      tenantId: selectedStore.tenant_id,
+      businessMode,
       locationId: selectedLocationId
     });
     trackFunnelEvent(ANALYTICS_EVENTS.STORE_VIEWED, {
       store_slug: selectedStore.slug,
-      business_mode: selectedStore.workflow_mode || selectedStore.ops_workflow_mode || selectedStore.business_mode,
+      business_mode: businessMode,
       location_id: selectedLocationId
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1715,6 +1739,7 @@ export default function StorefrontApp() {
     hasMixedServiceCart,
     hasServiceCart,
     isFnbMode,
+    isRetailMode,
     isSimpleMode,
     money,
     orderMethod,
@@ -2170,6 +2195,7 @@ export default function StorefrontApp() {
     fnbPaymentType,
     goStoreTrackPage,
     guestCheckoutIntentId,
+    guestCheckoutOtpVerified,
     guestCheckoutProof,
     handleLoadAccountPanel,
     isDgfyCustomerSignedIn,
@@ -2708,6 +2734,63 @@ export default function StorefrontApp() {
     goStoreCatalogPage,
     withAssetOrigin
   });
+  const retailOrderRouteProps = useRetailOrderPageProps({
+    canAddPinnedLocation,
+    canUseGuestCheckoutFlow,
+    cart,
+    cartCount,
+    cartImageErrors,
+    customerEmail,
+    customerName,
+    customerPhone,
+    customerPin,
+    deliveryLocationAction,
+    deliveryLocationDisplayAddress,
+    deliverySavedLocations,
+    guestCheckoutOtpCode,
+    guestCheckoutOtpCooldownLabel,
+    guestCheckoutOtpError,
+    guestCheckoutOtpLoading,
+    guestCheckoutOtpVerified,
+    handleAddPinnedLocation,
+    handleApplyGuestDetailsAndRequestOtp,
+    handleGuestCheckoutOtpCodeChange,
+    handlePinMyLocation,
+    handleRequestGuestCheckoutOtp,
+    handleVerifyGuestCheckoutOtp,
+    applySavedDeliveryLocation,
+    isDesktopCheckout,
+    isDgfyCustomerSignedIn,
+    isGuestCheckoutOtpCooldownActive,
+    isMobileViewport,
+    money,
+    orderMethod,
+    pinLocationError,
+    pinLocationLoading,
+    renderAccountOwnedIdentitySummary,
+    renderGuestCheckoutEntry,
+    renderGuestIdentityFields,
+    renderStorefrontClosedNotice,
+    selectedStore,
+    selectedSavedLocationId,
+    servicesBodyFont,
+    servicesDisplayFont,
+    setCustomerPin,
+    setDeliveryLocationAction,
+    setOrderMethod,
+    setPinLocationError,
+    setResolvedDeliveryAddress,
+    setSelectedSavedLocationId,
+    setShowExpandedDeliveryMap,
+    showExpandedDeliveryMap,
+    storefrontClosedByHours,
+    goStoreCatalogPage,
+    setCartImageErrors,
+    withAssetOrigin,
+    handleCheckout,
+    checkoutLoading,
+    checkoutError
+  });
   const isFnbCartDrawerSurfaceOpen = Boolean(fnbCartDrawerRouteProps.isActive);
   const fnbCustomerStepComplete = fnbCustomerIdentityStepComplete && guestCheckoutOtpVerified;
   const fnbCheckoutRouteProps = useFnbCheckoutRouteProps({
@@ -2769,7 +2852,6 @@ export default function StorefrontApp() {
     handlePaymentTypeChange,
     handlePinMyLocation,
     handleConfirmQrphTestPayment,
-    handleRefreshQrphPaymentSession,
     handleRemoveDeliveryAddress,
     handleRequestGuestCheckoutOtp,
     handleSetDefaultDeliveryAddress,
@@ -2933,6 +3015,7 @@ export default function StorefrontApp() {
     customerPhone,
     fnbScheduleMode,
     fnbScheduledFor,
+    guestCheckoutOtpVerified,
     isDeliveryOrder
   });
   const simpleCheckoutRouteProps = useSimpleCheckoutRouteProps({
@@ -2955,18 +3038,29 @@ export default function StorefrontApp() {
     fnbScheduleMode,
     fnbScheduledFor,
     fnbSpecialInstructions,
+    guestCheckoutOtpCode,
+    guestCheckoutOtpCooldownActive: isGuestCheckoutOtpCooldownActive,
+    guestCheckoutOtpCooldownLabel,
+    guestCheckoutOtpError,
+    guestCheckoutOtpLoading,
+    guestCheckoutOtpVerified,
     goStoreCatalogPage,
     handleAddPinnedLocation,
+    handleApplyGuestDetailsAndRequestOtp,
     handleCheckout,
     handleDownloadCheckoutImage,
+    handleGuestCheckoutOtpCodeChange,
     handlePaymentTypeChange,
     handlePinMyLocation,
     handleQuote,
+    handleRequestGuestCheckoutOtp,
+    handleVerifyGuestCheckoutOtp,
     handleRemoveDeliveryAddress,
     handleSetDefaultDeliveryAddress,
     isDeliveryOrder,
     isDesktopCheckout,
     isDgfyCustomerSignedIn,
+    isGuestCheckoutOtpCooldownActive,
     isMobileViewport,
     money,
     orderMethod,
@@ -3003,8 +3097,8 @@ export default function StorefrontApp() {
     setShowExpandedDeliveryMap,
     setSimpleOrderStep,
     showExpandedDeliveryMap,
-    simpleCheckoutAllowed,
-    simpleCustomerStepComplete,
+    simpleCheckoutAllowed: simpleCheckoutAllowed && (isDgfyCustomerSignedIn || guestCheckoutOtpVerified),
+    simpleCustomerStepComplete: simpleCustomerStepComplete && (isDgfyCustomerSignedIn || guestCheckoutOtpVerified),
     simpleHasCustomerIdentity,
     simpleHasPrimaryIdentityContact,
     setShowSimpleMobileAddressModal,
@@ -3062,6 +3156,7 @@ export default function StorefrontApp() {
     normalizeStorefrontCategories,
     normalizeStorefrontReviewSummary,
     renderDiscoveryResetButton,
+    retryLoadStores,
     search,
     searchedDiscoveryMapPins,
     setActiveDiscoveryFilterDropdown,
@@ -3426,7 +3521,11 @@ export default function StorefrontApp() {
     simpleCheckoutRouteProps,
     simpleStorefrontModel,
     defaultStorefrontModel,
-    defaultOrderRouteProps
+    defaultOrderRouteProps,
+    isRetailMode,
+    retailOrderRouteProps,
+    isTrackSubpage,
+    fnbTrackingRouteProps
   });
   const storefrontHeroBandProps = useStorefrontHeroBandProps({
     selectedStore,
@@ -3476,6 +3575,7 @@ export default function StorefrontApp() {
     handleFollowAction,
     isFnbMode,
     isSimpleMode,
+    isRetailMode,
     isOrderSubpage,
     isFnbDetailsSubpage,
     heroSectionModel,
@@ -3508,6 +3608,7 @@ export default function StorefrontApp() {
     isFnbOrderSubpage,
     isFnbDetailsSubpage,
     isCheckoutOpen,
+    isRetailMode,
     isSimpleMode,
     isResolvedOrderSubpage,
     goStoreBookingPage,
@@ -3545,9 +3646,9 @@ export default function StorefrontApp() {
         width: '100%',
         boxSizing: 'border-box',
         margin: '0 auto',
-        paddingTop: isStorePage && (isServicesMode || isFnbMode || isSimpleMode || (isResolvedOrderSubpage && !isServicesMode && !isFnbMode && !isSimpleMode)) ? 0 : (isMobileViewport ? 6 : 10),
-        paddingRight: isStorePage && (isServicesMode || isFnbMode || isSimpleMode) ? 0 : (isMobileViewport ? 12 : 20),
-        paddingLeft: isStorePage && (isServicesMode || isFnbMode || isSimpleMode) ? 0 : (isMobileViewport ? 12 : 20),
+        paddingTop: isStorePage && (isServicesMode || isFnbMode || isSimpleMode || isRetailMode || (isResolvedOrderSubpage && !isServicesMode && !isFnbMode && !isSimpleMode)) ? 0 : (isMobileViewport ? 6 : 10),
+        paddingRight: isStorePage && (isServicesMode || isFnbMode || isSimpleMode || isRetailMode) ? 0 : (isMobileViewport ? 12 : 20),
+        paddingLeft: isStorePage && (isServicesMode || isFnbMode || isSimpleMode || isRetailMode) ? 0 : (isMobileViewport ? 12 : 20),
         paddingBottom: isStorePage ? ((isServicesMode || isFnbMode || isSimpleMode || !hasDiscoverySearch) ? 0 : (isMobileViewport ? 96 : 120)) : 0
       }}>
         {!isStorePage && (

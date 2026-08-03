@@ -8,6 +8,7 @@ import {
     commercePaymentsEnabled,
     commerceQrphEnabled,
     commercePaymongoSplitEnabled,
+    getPayMongoMode,
     requireCommerceQrphConfig
 } from '../../config/commercePaymentsFeature.js';
 import {
@@ -38,7 +39,15 @@ import {
     buildUnfollowStorefrontUseCase
 } from './usecases/storeUseCases.js';
 
-export const listStoreCatalogUseCase = buildListStoreCatalogUseCase({ storeRepository });
+export const listStoreCatalogUseCase = buildListStoreCatalogUseCase({
+    storeRepository,
+    commercePaymentRepository,
+    tenantRevenueRepository,
+    commercePaymentsEnabled,
+    commerceQrphEnabled,
+    requireCommerceQrphConfig,
+    paymongoMode: getPayMongoMode()
+});
 export const resolveStoreQrUseCase = buildResolveStoreQrUseCase({ storeRepository });
 export const listStoreLocationsUseCase = buildListStoreLocationsUseCase({ storeRepository });
 export const registerStoreCustomerUseCase = buildRegisterStoreCustomerUseCase({ storeRepository });

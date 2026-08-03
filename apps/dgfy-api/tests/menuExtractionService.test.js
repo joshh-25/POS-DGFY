@@ -45,6 +45,7 @@ describe('menuExtractionService', () => {
     let resolveTenantWorkflowMode;
     let MenuExtractionError;
     let previewImport;
+    let buildExtractionRequestParams;
 
     beforeAll(async () => {
         process.env.OPENAI_API_KEY = process.env.OPENAI_API_KEY || 'test-key';
@@ -56,6 +57,7 @@ describe('menuExtractionService', () => {
         extractMenuCsvFromFile = mod.extractMenuCsvFromFile;
         resolveTenantWorkflowMode = mod.resolveTenantWorkflowMode;
         MenuExtractionError = mod.MenuExtractionError;
+        buildExtractionRequestParams = mod.buildExtractionRequestParams;
 
         const csvMod = await import('../src/services/csvImportService.js');
         previewImport = csvMod.previewImport;
@@ -81,6 +83,26 @@ describe('menuExtractionService', () => {
         });
     };
 
+    // GPT-5-family chat completions reject `max_tokens` and restrict `temperature`,
+    // so sending the GPT-4-era parameter shape to one fails the whole request with
+    // a 400 rather than degrading. These assertions are the guard against a model
+    // default change silently breaking every menu import.
+    describe('buildExtractionRequestParams', () => {
+        it.each(['gpt-5-mini', 'gpt-5', 'gpt-5-nano', 'gpt-5.4-mini', 'GPT-5-Mini'])(
+            'sends max_completion_tokens and no temperature for %s',
+            (model) => {
+                const params = buildExtractionRequestParams(model);
+                expect(params).toEqual({ max_completion_tokens: 4096 });
+                expect(params).not.toHaveProperty('temperature');
+                expect(params).not.toHaveProperty('max_tokens');
+            }
+        );
+
+        it.each(['gpt-4o', 'gpt-4o-mini'])('keeps the legacy temperature/max_tokens shape for %s', (model) => {
+            expect(buildExtractionRequestParams(model)).toEqual({ temperature: 0.2, max_tokens: 4096 });
+        });
+    });
+
     describe('extractMenuItemsFromText', () => {
         it('keeps items with a name and a positive numeric price', async () => {
             mockOpenAiJson({
@@ -93,9 +115,61 @@ describe('menuExtractionService', () => {
             const items = await extractMenuItemsFromText('some menu text', { user_id: 1, tenant_id: 1 });
 
             expect(items).toEqual([
-                { name: 'Chicken Rice Bowl', price: 149, section: 'Mains', description: 'Grilled chicken over rice' },
-                { name: 'Iced Tea', price: 60, section: null, description: null }
+                { name: 'Chicken Rice Bowl', price: 149, section: 'Mains', section_inferred: false, description: 'Grilled chicken over rice' },
+                { name: 'Iced Tea', price: 60, section: null, section_inferred: false, description: null }
             ]);
+        });
+
+        it('sends the resolved model and its matching parameter shape to OpenAI', async () => {
+            const previous = process.env.MENU_IMPORT_MODEL;
+            process.env.MENU_IMPORT_MODEL = 'gpt-5-mini';
+            try {
+                mockOpenAiJson({ items: [{ name: 'Kape', price: 80 }] });
+                await extractMenuItemsFromText('menu text', { user_id: 1, tenant_id: 1 });
+
+                const request = mockCreateCompletion.mock.calls[0][0];
+                expect(request.model).toBe('gpt-5-mini');
+                expect(request.max_completion_tokens).toBe(4096);
+                expect(request).not.toHaveProperty('max_tokens');
+                expect(request).not.toHaveProperty('temperature');
+            } finally {
+                if (previous === undefined) delete process.env.MENU_IMPORT_MODEL;
+                else process.env.MENU_IMPORT_MODEL = previous;
+            }
+        });
+
+        it('carries section_inferred through, and only when a section actually exists', async () => {
+            mockOpenAiJson({
+                items: [
+                    { name: 'Guessed Category', price: 100, section: 'Mains', section_inferred: true },
+                    { name: 'Printed Category', price: 110, section: 'Mains', section_inferred: false },
+                    // A flag with no section must not survive as a dangling "guess"
+                    // the UI would then nag the user about on a blank category.
+                    { name: 'No Category At All', price: 120, section_inferred: true }
+                ]
+            });
+
+            const items = await extractMenuItemsFromText('menu text', { user_id: 1, tenant_id: 1 });
+
+            expect(items.map((item) => [item.section, item.section_inferred])).toEqual([
+                ['Mains', true],
+                ['Mains', false],
+                [null, false]
+            ]);
+        });
+
+        it('collapses whitespace in a section so one category cannot arrive under two spellings', async () => {
+            mockOpenAiJson({
+                items: [
+                    { name: 'A', price: 10, section: '  Main   Course ' },
+                    { name: 'B', price: 20, section: 'Main Course' }
+                ]
+            });
+
+            const items = await extractMenuItemsFromText('menu text', { user_id: 1, tenant_id: 1 });
+
+            expect(items[0].section).toBe('Main Course');
+            expect(items[1].section).toBe('Main Course');
         });
 
         it('drops items missing a name, a price, or with a non-positive price', async () => {
@@ -247,7 +321,7 @@ describe('menuExtractionService', () => {
 
             const items = await extractMenuItemsFromImage(Buffer.from('fake-png-bytes'), 'image/png', { user_id: 1, tenant_id: 1 });
 
-            expect(items).toEqual([{ name: 'Iced Latte', price: 120, section: null, description: null }]);
+            expect(items).toEqual([{ name: 'Iced Latte', price: 120, section: null, section_inferred: false, description: null }]);
             const call = mockCreateCompletion.mock.calls[0][0];
             const userMessage = call.messages.find((m) => m.role === 'user');
             expect(Array.isArray(userMessage.content)).toBe(true);
@@ -305,7 +379,7 @@ describe('menuExtractionService', () => {
 
             expect(mockGetAllSettingsUseCase).not.toHaveBeenCalled();
             expect(result.kind).toBe('image');
-            expect(result.items).toEqual([{ name: 'From Image', price: 45, section: null, description: null }]);
+            expect(result.items).toEqual([{ name: 'From Image', price: 45, section: null, section_inferred: false, description: null }]);
         });
 
         it('throws UNSUPPORTED_FILE_TYPE for anything other than pdf/jpeg/png', async () => {
@@ -351,7 +425,7 @@ trailer
 
             expect(result.kind).toBe('pdf_text');
             expect(result.pages).toBe(1);
-            expect(result.items).toEqual([{ name: 'From Text', price: 33, section: null, description: null }]);
+            expect(result.items).toEqual([{ name: 'From Text', price: 33, section: null, section_inferred: false, description: null }]);
             expect(mockCreateCompletion).toHaveBeenCalledTimes(1);
         });
 
@@ -388,7 +462,7 @@ trailer
             expect(result.pages).toBe(1);
             expect(result.pages_total).toBe(1);
             expect(result.truncated).toBe(false);
-            expect(result.items).toEqual([{ name: 'From Rasterized Page', price: 88, section: null, description: null }]);
+            expect(result.items).toEqual([{ name: 'From Rasterized Page', price: 88, section: null, section_inferred: false, description: null }]);
         });
 
         it('concatenates items across every rendered page', async () => {
@@ -417,7 +491,7 @@ trailer
             expect(result.pages).toBe(1);
             expect(result.pages_total).toBe(2);
             expect(result.truncated).toBe(true);
-            expect(result.items).toEqual([{ name: 'Only Page Processed', price: 15, section: null, description: null }]);
+            expect(result.items).toEqual([{ name: 'Only Page Processed', price: 15, section: null, section_inferred: false, description: null }]);
             expect(mockCreateCompletion).toHaveBeenCalledTimes(1);
         });
 

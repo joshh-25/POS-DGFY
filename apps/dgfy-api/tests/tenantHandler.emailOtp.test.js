@@ -176,7 +176,7 @@ describe('tenantHandler email OTP invitation routing', () => {
     expect(req.headers['x-company-token']).toBeUndefined();
     expect(dbRun).toHaveBeenCalledWith(expect.objectContaining({
       tenantId: 'default',
-      tenantContextFailure: 'missing_token'
+      tenantContextFailure: 'dgfy_global_otp'
     }), next);
     expect(next).toHaveBeenCalled();
     expect(res.status).not.toHaveBeenCalled();

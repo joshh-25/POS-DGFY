@@ -54,4 +54,14 @@ describe('hosted POS catalog performance contracts', () => {
     expect(sidebarSource).toContain('onPointerEnter={onPrefetch}');
     expect(sidebarSource).toContain('onFocus={onPrefetch}');
   });
+
+  it('recovers from a chunk-load failure when mounting the lazy workspaces (issue #182)', () => {
+    const layoutSource = readSource(layoutPath);
+
+    expect(layoutSource).toContain("import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';");
+    expect(layoutSource).toContain('const POSCheckoutTerminal = lazyWithChunkRetry(loadPOSCheckoutTerminal);');
+    expect(layoutSource).toContain('const TerminalOperationsWorkspace = lazyWithChunkRetry(loadTerminalOperationsWorkspace);');
+    expect(layoutSource).not.toContain('React.lazy(loadPOSCheckoutTerminal)');
+    expect(layoutSource).not.toContain('React.lazy(loadTerminalOperationsWorkspace)');
+  });
 });

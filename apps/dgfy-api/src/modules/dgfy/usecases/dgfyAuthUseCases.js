@@ -177,6 +177,7 @@ const serializeCompanyMembership = (membership, { currentTenantToken = '', accou
     const isTenantActive = tenantStatus === 'active';
     const isOwner = isMembershipOwner(membership, accountId);
     const canSwitch = isAccepted && isTenantActive;
+    const isInviteSourced = String(membership?.source || '').trim().toLowerCase() === 'invite';
     return {
         membership_id: membership?.id,
         tenant_id: membership?.tenant_id || tenant?.id || null,
@@ -200,9 +201,14 @@ const serializeCompanyMembership = (membership, { currentTenantToken = '', accou
         can_leave: canSwitch && !isOwner,
         can_transfer_ownership: canSwitch && isOwner,
         group: isOwner ? 'owned' : (status === 'pending' ? 'pending' : 'invited'),
+        // Only source: 'invite' rows can actually be accepted/rejected (see
+        // acceptDgfyInvitationUseCase's matching source === 'invite' guard) -
+        // a founder's own still-provisioning company, or an admin handover/
+        // provisioned membership, is pending for reasons that have nothing to
+        // do with an invitation the account holder needs to act on.
         requires_action: canSwitch ? null : (
             status === 'pending'
-                ? 'accept_invitation'
+                ? (isInviteSourced ? 'accept_invitation' : 'unavailable')
                 : 'unavailable'
         )
     };
