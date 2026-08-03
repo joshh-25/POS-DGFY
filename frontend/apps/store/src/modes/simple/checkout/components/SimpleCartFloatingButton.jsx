@@ -13,8 +13,8 @@ export function SimpleCartFloatingButton({
       aria-label={isOpen ? 'Close product cart' : 'Open product cart'}
       style={{
         position: 'fixed',
-        right: isMobileViewport ? 16 : 24,
-        bottom: isMobileViewport ? 16 : 24,
+        right: isMobileViewport ? 20 : 36,
+        bottom: isMobileViewport ? 10 : 18,
         zIndex: 2090,
         width: isMobileViewport ? 62 : 68,
         height: isMobileViewport ? 62 : 68,

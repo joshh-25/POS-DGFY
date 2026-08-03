@@ -27,6 +27,7 @@ export function useCheckoutTotalsAndGating({
   checkoutResult,
   hasServiceCart,
   isFnbMode,
+  isRetailMode,
   isSimpleMode,
   money,
   orderMethod,
@@ -76,7 +77,7 @@ export function useCheckoutTotalsAndGating({
     : null;
   const activeOrderMethodLabel = ORDER_METHOD_OPTIONS.find((option) => option.value === orderMethod)?.label || 'Checkout';
   const simpleOrderMethodOptions = ORDER_METHOD_OPTIONS.filter((option) => option.value === 'pickup' || option.value === 'delivery');
-  const requireQuoteForCheckout = !hasServiceCart && !isFnbMode && !isSimpleMode;
+  const requireQuoteForCheckout = !hasServiceCart && !isFnbMode && !isSimpleMode && !isRetailMode;
   const checkoutBlockReason = getCheckoutBlockReason({
     selectedStore,
     cartCount,

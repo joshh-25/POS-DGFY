@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronLeft, ChevronRight, Lock, ShoppingBag, X } from 'lucide-react';
+import { ChevronDown, ChevronLeft, ChevronRight, ShoppingBag, X } from 'lucide-react';
 
 const RETAIL_ACCENT = '#1a4e8d';
 const RETAIL_ACCENT_DARK = '#1a4586';
@@ -7,17 +7,18 @@ const RETAIL_ACCENT_SHADOW = 'rgba(26,78,141,.28)';
 /**
  * Retail mobile checkout summary sheet and persistent action footer. Structurally mirrors
  * modes/simple/checkout/components/SimpleCheckoutMobileSummaryPanel.jsx (same bottom-sheet +
- * floating footer pattern), kept as its own file per the "independent trees" pattern. Step 3
- * (Payment/Place Order) stays disabled here since checkout submission isn't wired to the
- * backend yet.
+ * floating footer pattern), kept as its own file per the "independent trees" pattern. Step 3's
+ * primary action submits through the same shared handleCheckout used by F&B/MSME.
  */
 export function RetailOrderMobileSummaryPanel({
   cart,
   cartCount = 0,
   cartImageErrors,
+  checkoutLoading = false,
   isDeliveryOrder = false,
   money,
   onBackToCatalog,
+  onCheckout,
   onImageError,
   onStepChange,
   orderStep,
@@ -116,8 +117,13 @@ export function RetailOrderMobileSummaryPanel({
               Back
             </button>
             {orderStep === 3 ? (
-              <button type="button" disabled style={{ ...primaryButtonStyle, background: '#cbd5e1', cursor: 'not-allowed', opacity: 0.7 }}>
-                <Lock size={18} />Coming Soon
+              <button
+                type="button"
+                onClick={onCheckout}
+                disabled={checkoutLoading}
+                style={{ ...primaryButtonStyle, background: checkoutLoading ? '#93b4d6' : `linear-gradient(180deg, ${RETAIL_ACCENT} 0%, ${RETAIL_ACCENT_DARK} 100%)`, boxShadow: `0 12px 24px ${RETAIL_ACCENT_SHADOW}`, cursor: checkoutLoading ? 'wait' : 'pointer' }}
+              >
+                {checkoutLoading ? 'Placing...' : 'Place Order'}
               </button>
             ) : (
               <button type="button" onClick={handlePrimary} style={{ ...primaryButtonStyle, background: `linear-gradient(180deg, ${RETAIL_ACCENT} 0%, ${RETAIL_ACCENT_DARK} 100%)`, boxShadow: `0 12px 24px ${RETAIL_ACCENT_SHADOW}` }}>
