@@ -12,6 +12,7 @@ import OpenAI from 'openai';
 import logger from '../../config/logger.js';
 import { buildSystemPrompt, getCapabilitiesExplanation, getLimitationsExplanation } from '../../config/aiSystemPrompt.js';
 import { getOpenAITools, getToolByName, toolRequiresConfirmation } from '../../config/aiTools.js';
+import { resolveModelRate } from '../../config/aiModelRates.js';
 import { buildContext, hasPermission, getPermissionError, hasGranularPermission, getGranularPermissionError } from '../../services/aiContextService.js';
 import * as toolExecutor from '../../services/aiToolExecutor.js';
 import { AiUsageLog } from '../../models/index.js';
@@ -25,10 +26,8 @@ import { createLegacyConfirmedActionUiFormatter } from './usecases/legacyConfirm
 import { buildExecuteConfirmedActionUseCase } from './usecases/executeConfirmedActionUseCase.js';
 import { buildProcessMessageUseCase } from './usecases/processMessageUseCase.js';
 
-const RATES = {
-  'gpt-4o': { input: 5.00 / 1000000, output: 15.00 / 1000000 },
-  'gpt-4o-mini': { input: 0.150 / 1000000, output: 0.600 / 1000000 }
-};
+// Rates moved to config/aiModelRates.js so services/menuExtractionService.js can
+// share them without importing this module's entire usecase graph.
 
 /**
  * Log AI usage to database
@@ -44,7 +43,7 @@ const logAiUsage = async (usage, model, user) => {
     const outputTokens = usage.completion_tokens || 0;
 
     let cost = 0;
-    const rate = RATES[model] || RATES['gpt-4o']; // Default to gpt-4o if unknown
+    const rate = resolveModelRate(model); // Falls back to the gpt-4o rate if unknown
 
     cost = (inputTokens * rate.input) + (outputTokens * rate.output);
 

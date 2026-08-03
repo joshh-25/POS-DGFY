@@ -24,7 +24,8 @@ import {
     RefreshCw,
     Trash2,
     Scissors,
-    Camera
+    Camera,
+    FolderTree
 } from 'lucide-react';
 import { cn } from "../../src/lib/utils.js";
 import MenuPhotoCaptureSheet from './MenuPhotoCaptureSheet.jsx';
@@ -415,6 +416,37 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
         );
     };
 
+    // Categories come from the preview payload, but the row inputs above are
+    // editable — so this reads the live rows rather than previewData.categories,
+    // and stays accurate after the user retypes a category.
+    const renderCategorySummary = () => {
+        const counts = new Map();
+        for (const row of editableRows) {
+            if (!row.included) continue;
+            const name = String(row.data?.product_folder || '').replace(/\s+/g, ' ').trim();
+            if (!name) continue;
+            const key = name.toLowerCase();
+            counts.set(key, { name, count: (counts.get(key)?.count || 0) + 1 });
+        }
+        if (counts.size === 0) return null;
+        const categories = [...counts.values()];
+        return (
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                <p className="font-medium flex items-center gap-2">
+                    <FolderTree className="w-4 h-4" />
+                    {categories.length} categor{categories.length === 1 ? 'y' : 'ies'} will be applied
+                </p>
+                <p className="mt-1 text-slate-600">
+                    {categories.map((category) => `${category.name} (${category.count})`).join(' · ')}
+                </p>
+                <p className="mt-1 text-xs text-slate-500">
+                    Categories that don’t exist yet are created on import — that needs admin access.
+                    Edit any Category cell below to change where an item lands.
+                </p>
+            </div>
+        );
+    };
+
     const renderPreviewStep = () => (
         <div className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
@@ -433,6 +465,7 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
             </div>
 
             {renderMergeSummary()}
+            {renderCategorySummary()}
 
             {conflictCount > 0 && (
                 <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
@@ -502,7 +535,7 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
                             <th className="text-left p-3 font-medium text-slate-600">Import</th>
                             <th className="text-left p-3 font-medium text-slate-600">Name</th>
                             <th className="text-left p-3 font-medium text-slate-600">Price (₱)</th>
-                            <th className="text-left p-3 font-medium text-slate-600">Section</th>
+                            <th className="text-left p-3 font-medium text-slate-600">Category</th>
                             <th className="text-left p-3 font-medium text-slate-600">Status</th>
                         </tr>
                     </thead>
@@ -551,6 +584,9 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
                                         onChange={(e) => updateRowField(row.rowNumber, 'product_folder', e.target.value)}
                                         className="h-8 text-sm"
                                     />
+                                    {row.category_inferred && (
+                                        <p className="mt-1 text-xs text-blue-700">Guessed — not printed on the menu</p>
+                                    )}
                                 </td>
                                 <td className="p-3">
                                     <div className="space-y-1">
@@ -613,6 +649,31 @@ export default function MenuImportBatchModal({ open, onClose, onSuccess }) {
                     <p className="text-sm text-red-600">Failed</p>
                 </div>
             </div>
+
+            {importResult?.categories_created?.length > 0 && (
+                <div className="bg-slate-50 border border-slate-200 rounded-lg p-4 text-left max-w-md mx-auto text-sm text-slate-700">
+                    <p className="font-medium mb-1">
+                        {importResult.categories_created.length} new categor
+                        {importResult.categories_created.length === 1 ? 'y' : 'ies'} created
+                    </p>
+                    <p className="text-slate-600">{importResult.categories_created.join(', ')}</p>
+                </div>
+            )}
+
+            {importResult?.categories_skipped?.length > 0 && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-left max-w-md mx-auto text-sm text-amber-800">
+                    <p className="font-medium mb-1 flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4" />
+                        {importResult.categories_skipped.length} categor
+                        {importResult.categories_skipped.length === 1 ? 'y' : 'ies'} not created
+                    </p>
+                    <p className="text-amber-700">
+                        {importResult.categories_skipped.join(', ')} — creating a category needs admin
+                        access. These items imported with the category name saved, but won’t appear
+                        under it in the POS until an admin creates it.
+                    </p>
+                </div>
+            )}
 
             {importResult?.failedCount > 0 && (
                 <div className="bg-red-50 border border-red-200 rounded-lg p-4 text-left max-w-md mx-auto">

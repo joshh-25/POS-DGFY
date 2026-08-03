@@ -16,6 +16,7 @@ import {
     normalizeStorefrontBusinessHours
 } from '../../shared/utils/storefrontBusinessHours.js';
 import { resolveStockBearingDescriptor, resolveStockExemptReason } from '../../shared/utils/stockBearingPolicy.js';
+import { assertGuestCheckoutProof } from '../../store/utils/storeGuestCheckoutProof.js';
 import { buildCalculateServiceQuoteUseCase } from './calculateServiceQuoteUseCase.js';
 
 const VAT_RATE = 0.12;
@@ -1856,6 +1857,13 @@ export const buildCreateServiceBookingUseCase = ({ serviceRepository, serviceOpt
             });
         }
         if (source === 'storefront') {
+            assertGuestCheckoutProof({
+                tenantId: (dbStore.getStore() || {}).tenantId,
+                email: payload.customer_email || storeCustomer?.email,
+                idempotencyKey,
+                proof: payload.guest_checkout_proof,
+                storeCustomer
+            });
             assertServiceBookingWithinStorefrontHours({
                 startAt: parseDate(payload.start_at || payload.scheduled_for, 'start_at'),
                 settings: storefrontSettings,
@@ -2023,6 +2031,13 @@ export const buildCreateServiceBookingBatchUseCase = ({ serviceRepository, servi
             });
         }
         if (source === 'storefront') {
+            assertGuestCheckoutProof({
+                tenantId: (dbStore.getStore() || {}).tenantId,
+                email: payload.customer_email || storeCustomer?.email,
+                idempotencyKey,
+                proof: payload.guest_checkout_proof,
+                storeCustomer
+            });
             bookingDrafts.forEach((draft, index) => {
                 assertServiceBookingWithinStorefrontHours({
                     startAt: parseDate(draft?.start_at || draft?.scheduled_for, `bookings[${index}].start_at`),
