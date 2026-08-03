@@ -36,7 +36,10 @@ const mockGetFoldersUseCase = jest.fn();
 const mockCreateFolderUseCase = jest.fn();
 const mockUpdateFolderUseCase = jest.fn();
 const mockDeleteFolderUseCase = jest.fn();
+const mockGenerateItemImageUseCase = jest.fn();
+const mockBulkGenerateItemImageUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
+const mockEnqueueItemImageGeneration = jest.fn();
 
 jest.unstable_mockModule('../src/modules/inventory/index.js', () => ({
   getItemsUseCase: mockGetItemsUseCase,
@@ -74,11 +77,17 @@ jest.unstable_mockModule('../src/modules/inventory/index.js', () => ({
   getFoldersUseCase: mockGetFoldersUseCase,
   createFolderUseCase: mockCreateFolderUseCase,
   updateFolderUseCase: mockUpdateFolderUseCase,
-  deleteFolderUseCase: mockDeleteFolderUseCase
+  deleteFolderUseCase: mockDeleteFolderUseCase,
+  generateItemImageUseCase: mockGenerateItemImageUseCase,
+  bulkGenerateItemImageUseCase: mockBulkGenerateItemImageUseCase
 }));
 
 jest.unstable_mockModule('../src/services/productUsageTelemetryService.js', () => ({
   trackProductUsageFromResult: mockTrackProductUsageFromResult
+}));
+
+jest.unstable_mockModule('../src/workers/itemImageWorker.js', () => ({
+  enqueueItemImageGeneration: mockEnqueueItemImageGeneration
 }));
 
 let getItems;
@@ -89,6 +98,8 @@ let updateFolder;
 let replaceItemSuppliers;
 let resolveItemBarcode;
 let importExternalStorefrontCatalogImage;
+let generateItemImage;
+let bulkGenerateItemImages;
 
 beforeAll(async () => {
   const mod = await import('../src/modules/inventory/controllers/itemHandlers.js');
@@ -100,6 +111,8 @@ beforeAll(async () => {
   replaceItemSuppliers = mod.replaceItemSuppliers;
   resolveItemBarcode = mod.resolveItemBarcode;
   importExternalStorefrontCatalogImage = mod.importExternalStorefrontCatalogImage;
+  generateItemImage = mod.generateItemImage;
+  bulkGenerateItemImages = mod.bulkGenerateItemImages;
 });
 
 const createRes = () => {
@@ -410,5 +423,128 @@ describe('itemHandlers transport contracts', () => {
       timestamp: expect.any(String)
     });
     expect(next).not.toHaveBeenCalled();
+  });
+
+  describe('generateItemImage (#197)', () => {
+    it('resolves the item then enqueues generation with the use case-resolved fields', async () => {
+      const generationUser = { user_id: 9, tenant_id: 'tenant-1', is_master_admin: false, permissions: ['items:edit'] };
+      mockGenerateItemImageUseCase.mockResolvedValue({
+        item_id: 44,
+        name: 'Sisig',
+        description: 'Pork sisig',
+        category: 'Mains',
+        generation_user: generationUser
+      });
+      mockEnqueueItemImageGeneration.mockResolvedValue(undefined);
+
+      const req = {
+        params: { item_id: '44' },
+        validatedParams: { item_id: 44 },
+        user: { user_id: 9, tenant_id: 'tenant-1' },
+        requestId: 'req-generate-image'
+      };
+      const res = createRes();
+      const next = jest.fn();
+
+      await generateItemImage(req, res, next);
+
+      expect(mockGenerateItemImageUseCase).toHaveBeenCalledWith({ itemId: 44, user: req.user });
+      expect(mockEnqueueItemImageGeneration).toHaveBeenCalledWith({
+        user: generationUser,
+        itemId: 44,
+        name: 'Sisig',
+        description: 'Pork sisig',
+        category: 'Mains'
+      });
+      expect(res.status).toHaveBeenCalledWith(202);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        data: { item_id: 44, queued: true },
+        message: 'Image generation queued — this item will get a photo shortly.',
+        timestamp: expect.any(String)
+      });
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('responds 503 without crashing when the queue is unavailable', async () => {
+      mockGenerateItemImageUseCase.mockResolvedValue({
+        item_id: 44,
+        name: 'Sisig',
+        description: null,
+        category: null,
+        generation_user: { user_id: 9, tenant_id: 'tenant-1', is_master_admin: false, permissions: ['items:edit'] }
+      });
+      mockEnqueueItemImageGeneration.mockRejectedValue(new Error('Redis unavailable'));
+
+      const req = { params: { item_id: '44' }, validatedParams: { item_id: 44 }, user: { user_id: 9 }, requestId: 'req-generate-image-2' };
+      const res = createRes();
+      const next = jest.fn();
+
+      await generateItemImage(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+        success: false,
+        error_code: 'QUEUE_UNAVAILABLE'
+      }));
+      expect(next).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('bulkGenerateItemImages (#197)', () => {
+    it('enqueues only the eligible candidates and reports a summary', async () => {
+      const generationUser = { user_id: 9, tenant_id: 'tenant-1', is_master_admin: false, permissions: ['items:edit'] };
+      mockBulkGenerateItemImageUseCase.mockResolvedValue({
+        generation_user: generationUser,
+        candidates: [
+          { item_id: 1, status: 'eligible', name: 'Adobo', description: null, category: 'Mains' },
+          { item_id: 2, status: 'skipped', reason: 'has_existing_photo' },
+          { item_id: 3, status: 'not_found' }
+        ]
+      });
+      mockEnqueueItemImageGeneration.mockResolvedValue(undefined);
+
+      const req = { body: { item_ids: [1, 2, 3] }, user: { user_id: 9, tenant_id: 'tenant-1' }, requestId: 'req-bulk-generate' };
+      const res = createRes();
+      const next = jest.fn();
+
+      await bulkGenerateItemImages(req, res, next);
+
+      expect(mockEnqueueItemImageGeneration).toHaveBeenCalledTimes(1);
+      expect(mockEnqueueItemImageGeneration).toHaveBeenCalledWith({
+        user: generationUser,
+        itemId: 1,
+        name: 'Adobo',
+        description: null,
+        category: 'Mains'
+      });
+      expect(res.status).toHaveBeenCalledWith(202);
+      const [payload] = res.json.mock.calls[0];
+      expect(payload.data.summary).toEqual({ queued: 1, skipped: 1, not_found: 1, failed: 0 });
+      expect(payload.data.results).toEqual(expect.arrayContaining([
+        expect.objectContaining({ item_id: 1, status: 'queued' }),
+        expect.objectContaining({ item_id: 2, status: 'skipped' }),
+        expect.objectContaining({ item_id: 3, status: 'not_found' })
+      ]));
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('marks a candidate failed rather than crashing when enqueueing it throws', async () => {
+      mockBulkGenerateItemImageUseCase.mockResolvedValue({
+        generation_user: { user_id: 9, tenant_id: 'tenant-1', is_master_admin: false, permissions: ['items:edit'] },
+        candidates: [{ item_id: 1, status: 'eligible', name: 'Adobo', description: null, category: null }]
+      });
+      mockEnqueueItemImageGeneration.mockRejectedValue(new Error('Redis unavailable'));
+
+      const req = { body: { item_ids: [1] }, user: { user_id: 9 }, requestId: 'req-bulk-generate-2' };
+      const res = createRes();
+      const next = jest.fn();
+
+      await bulkGenerateItemImages(req, res, next);
+
+      const [payload] = res.json.mock.calls[0];
+      expect(payload.data.summary).toEqual({ queued: 0, skipped: 0, not_found: 0, failed: 1 });
+      expect(payload.data.results[0]).toEqual({ item_id: 1, status: 'failed', reason: 'queue_unavailable' });
+    });
   });
 });

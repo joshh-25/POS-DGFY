@@ -7,6 +7,8 @@ import {
 import { requireExplicitSalePrice } from '../../shared/utils/itemFinancialPolicy.js';
 import { resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
 import logger from '../../../config/logger.js';
+import { resolveEffectivePermissions } from '../../../utils/userPermissions.js';
+import { requireItemImageGenerationConfig } from '../../../config/itemImageFeature.js';
 
 const PERMISSION_EDIT_ITEMS = 'items:edit';
 export const STOREFRONT_CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES = 100 * 1024 * 1024;
@@ -31,6 +33,19 @@ const toSerializable = (value) => (
     ? value.toJSON()
     : value
 );
+
+// itemImageWorker.js runs minutes later with no request context, so it needs
+// an explicit permissions array rather than a role it could re-resolve
+// against defaults that may since have changed — same reasoning as
+// menuImportController.js's enqueueGeneratedImages(). Resolved once here so
+// every caller of the two generate-image use cases below builds the
+// enqueue payload identically.
+const buildGenerationUser = (user) => ({
+  user_id: user?.user_id,
+  tenant_id: user?.tenant_id,
+  is_master_admin: user?.is_master_admin === true,
+  permissions: resolveEffectivePermissions(user)
+});
 
 const normalizeBulkItemIds = (itemIds) => {
   if (!Array.isArray(itemIds)) return null;
@@ -833,5 +848,112 @@ export const buildDeleteStorefrontCatalogImageUseCase = ({ itemRepository, image
 
     const data = await itemRepository.clearStorefrontCatalogImage(normalizedItemId);
     return toSerializable(data);
+  };
+};
+
+/**
+ * Resolves and validates a single item for AI image generation (#197) — the
+ * "Generate an Image" action for existing items, reusing the shared
+ * generation service built for #176's menu-import review step. Deliberately
+ * does NOT enqueue the generation task itself: doing that here would import
+ * workers/itemImageWorker.js, which itself imports uploadStorefrontCatalogImageUseCase
+ * from this module's index.js — a circular import. Enqueueing happens in the
+ * controller layer instead (modules/inventory/controllers/itemHandlers.js),
+ * mirroring how menuImportController.js already enqueues directly rather
+ * than through a use case.
+ *
+ * No existing-photo guard here: this action is also how #176's "regenerate a
+ * bad AI image" question resolves (see that issue's own punt to this one) —
+ * an item with an unwanted photo is, at that point, just an item that needs
+ * a new one, so replacing an existing photo on a deliberate single-item
+ * request is expected, not a mistake to guard against. Bulk generation
+ * (below) is where an accidental mass-overwrite risk actually exists.
+ */
+export const buildGenerateItemImageUseCase = ({ itemRepository }) => {
+  return async ({ itemId, user }) => {
+    assertCanEditItems(user, 'generate an image for');
+    const normalizedItemId = parsePositiveInt(itemId);
+    if (!normalizedItemId) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'itemId must be a positive integer', { statusCode: 400 });
+    }
+    if (!requireItemImageGenerationConfig().configured) {
+      throw new DomainError(
+        DomainErrorCode.SERVICE_UNAVAILABLE,
+        'AI item image generation is not enabled for this environment.',
+        { statusCode: 503 }
+      );
+    }
+
+    const item = await itemRepository.getItemById(normalizedItemId);
+    if (!item) {
+      throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, `Item ${normalizedItemId} was not found`, { statusCode: 404 });
+    }
+    const plainItem = toSerializable(item);
+
+    return {
+      item_id: normalizedItemId,
+      name: plainItem.name,
+      description: plainItem.description || null,
+      category: plainItem.product_folder || null,
+      generation_user: buildGenerationUser(user)
+    };
+  };
+};
+
+/**
+ * Bulk sibling of buildGenerateItemImageUseCase — the items-list selection
+ * bar's "Generate Images" action (#197). Unlike the single-item action,
+ * this DOES guard against overwriting an existing photo by default: a bulk
+ * selection can easily include items the operator never meant to touch, and
+ * silently replacing a manually-uploaded photo would be a bad default (the
+ * single-item action's regeneration case is deliberate; a bulk selection
+ * usually isn't). `overwriteExisting: true` opts back in per call.
+ *
+ * Same enqueue-in-the-controller split as the single-item use case above,
+ * for the same circular-import reason.
+ */
+export const buildBulkGenerateItemImageUseCase = ({ itemRepository }) => {
+  return async ({ itemIds, overwriteExisting = false, user }) => {
+    assertCanEditItems(user, 'generate images for');
+    const normalizedIds = normalizeBulkItemIds(itemIds);
+    if (!normalizedIds || normalizedIds.length === 0) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'itemIds must be a non-empty array', { statusCode: 400 });
+    }
+    if (normalizedIds.length > BULK_CATALOG_MAX_ITEM_IDS) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `itemIds cannot exceed ${BULK_CATALOG_MAX_ITEM_IDS} entries`, { statusCode: 400 });
+    }
+    if (!requireItemImageGenerationConfig().configured) {
+      throw new DomainError(
+        DomainErrorCode.SERVICE_UNAVAILABLE,
+        'AI item image generation is not enabled for this environment.',
+        { statusCode: 503 }
+      );
+    }
+
+    const candidates = [];
+    for (const itemId of normalizedIds) {
+      const item = await itemRepository.getItemById(itemId);
+      if (!item) {
+        candidates.push({ item_id: itemId, status: 'not_found' });
+        continue;
+      }
+
+      const existing = await itemRepository.findStorefrontCatalogOverrideByItemId(itemId);
+      if (existing?.storefront_image_path && !overwriteExisting) {
+        candidates.push({ item_id: itemId, status: 'skipped', reason: 'has_existing_photo' });
+        continue;
+      }
+
+      const plainItem = toSerializable(item);
+      candidates.push({
+        item_id: itemId,
+        status: 'eligible',
+        name: plainItem.name,
+        description: plainItem.description || null,
+        category: plainItem.product_folder || null
+      });
+    }
+
+    return { generation_user: buildGenerationUser(user), candidates };
   };
 };

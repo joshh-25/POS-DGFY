@@ -152,8 +152,20 @@ describe('useMenuImportJob', () => {
             outcome = await result.current.confirmImport([{ rowNumber: 1, included: true }]);
         });
 
-        expect(confirmMenuImport).toHaveBeenCalledWith([{ rowNumber: 1, included: true }]);
+        expect(confirmMenuImport).toHaveBeenCalledWith([{ rowNumber: 1, included: true }], undefined);
         expect(outcome).toEqual({ success: true, data: { createdCount: 3, failedCount: 1 } });
         expect(result.current.phase).toBe('done');
+    });
+
+    it('passes confirmImport options (e.g. markAlwaysAvailable) through to the service call', async () => {
+        confirmMenuImport.mockResolvedValue({ createdCount: 1, failedCount: 0 });
+
+        const { result } = renderHook(() => useMenuImportJob());
+
+        await act(async () => {
+            await result.current.confirmImport([{ rowNumber: 1 }], { markAlwaysAvailable: true });
+        });
+
+        expect(confirmMenuImport).toHaveBeenCalledWith([{ rowNumber: 1 }], { markAlwaysAvailable: true });
     });
 });

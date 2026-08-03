@@ -10,14 +10,16 @@ import { isItemAvailable } from '../../model/storefrontCatalogModel.js';
 import { money } from '../../utils/storefrontFormatters.js';
 import { resolveStorefrontImageSources } from '../../utils/storefrontImageSources.js';
 import { FNB_CATEGORY_ICON_MAP } from '../../../modes/fnb/storefront/model/fnbStorefrontPresentation.js';
-import { FnbCatalogToolbar } from '../../../modes/fnb/storefront/components/FnbCatalogToolbar.jsx';
+import { StorefrontCatalogToolbar } from './StorefrontCatalogToolbar.jsx';
 import { FnbProductCard } from '../../../modes/fnb/storefront/components/FnbProductCard.jsx';
 import { FnbItemReviewModal } from '../../../modes/fnb/storefront/components/FnbItemReviewModal.jsx';
 import { FnbCommunitySection } from '../../../modes/fnb/storefront/components/FnbCommunitySection.jsx';
 import { SimpleProductCard } from '../../../modes/simple/storefront/components/SimpleProductCard.jsx';
+import { RetailProductCard } from '../../../modes/retail/storefront/components/RetailProductCard.jsx';
 import { SimpleCheckoutRoutePage } from '../../../modes/simple/checkout/pages/SimpleCheckoutRoutePage.jsx';
 import { DefaultOrderPage } from './DefaultOrderPage.jsx';
 import { RetailOrderPage } from '../../../modes/retail/checkout/pages/RetailOrderPage.jsx';
+import { FnbTrackingRouteContainer } from '../../../modes/fnb/tracking/pages/FnbTrackingRouteContainer.jsx';
 import { SERVICE_CATEGORY_ICON_MAP } from '../../../modes/services/storefront/model/serviceCategoryIconMap.jsx';
 import { ServiceProductCard } from '../../../modes/services/storefront/components/ServiceProductCard.jsx';
 import { ServicesPerformanceSidebar } from '../../../modes/services/storefront/components/ServicesPerformanceSidebar.jsx';
@@ -105,11 +107,14 @@ export function StorefrontClassicCatalog({
   defaultOrderRouteProps,
   isRetailMode,
   retailOrderRouteProps,
+  isTrackSubpage,
+  fnbTrackingRouteProps,
   submitFnbItemReview,
   totalFnbPages,
   viewportWidth
 }) {
   const isDefaultLikeMode = !isServicesMode && !isFnbMode && !isSimpleMode;
+  const showsCatalogToolbar = isFnbMode || isRetailMode || isSimpleMode;
   return (
     <>
       <style>{`
@@ -126,37 +131,37 @@ export function StorefrontClassicCatalog({
       `}</style>
     <div style={{
       display: 'grid',
-      gap: isFnbMode ? 0 : 24,
+      gap: showsCatalogToolbar ? 0 : 24,
       gridTemplateColumns: (isServicesMode && !isMobileViewport) ? '1fr 340px' : '1fr',
       width: '100%',
       maxWidth: '100%',
       minWidth: 0,
       boxSizing: 'border-box'
     }}>
-      <div style={{ display: 'grid', gap: isFnbMode ? 0 : 24, width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
+      <div style={{ display: 'grid', gap: showsCatalogToolbar ? 0 : 24, width: '100%', maxWidth: '100%', minWidth: 0, boxSizing: 'border-box' }}>
         {!((isSimpleMode || isDefaultLikeMode) && isResolvedOrderSubpage) && (
         <section id="storefront-catalog-section" style={{
           display: 'grid',
-          gap: isFnbMode ? (isMobileViewport ? 16 : 24) : (isSimpleMode ? 22 : undefined),
-          marginTop: isFnbMode
+          gap: showsCatalogToolbar ? (isMobileViewport ? 16 : 24) : undefined,
+          marginTop: showsCatalogToolbar
             ? (isMobileViewport ? 0 : 34)
-            : (isSimpleMode ? (isMobileViewport ? 28 : 36) : undefined),
-          background: isSimpleMode ? 'transparent' : '#fff',
-          border: isFnbMode ? 'none' : (isSimpleMode ? 'none' : `1px solid ${STYLES.colors.border}`),
-          borderRadius: isFnbMode ? 0 : (isSimpleMode ? 0 : STYLES.radius.card),
-          padding: isFnbMode
+            : undefined,
+          background: '#fff',
+          border: showsCatalogToolbar ? 'none' : `1px solid ${STYLES.colors.border}`,
+          borderRadius: showsCatalogToolbar ? 0 : STYLES.radius.card,
+          padding: showsCatalogToolbar
             ? (isMobileViewport ? '20px 0 24px' : '32px 0 52px')
-            : (isSimpleMode ? 0 : (isMobileViewport ? 16 : 32)),
-          boxShadow: isFnbMode ? 'none' : (isSimpleMode ? 'none' : STYLES.shadow.sm),
-          marginLeft: isFnbMode && !isMobileViewport ? 'calc(50% - 50vw)' : undefined,
-          width: isFnbMode ? (isMobileViewport ? '100%' : '100vw') : undefined,
-          maxWidth: isFnbMode && isMobileViewport ? '100%' : undefined,
-          minWidth: isFnbMode && isMobileViewport ? 0 : undefined,
+            : (isMobileViewport ? 16 : 32),
+          boxShadow: showsCatalogToolbar ? 'none' : STYLES.shadow.sm,
+          marginLeft: showsCatalogToolbar && !isMobileViewport ? 'calc(50% - 50vw)' : undefined,
+          width: showsCatalogToolbar ? (isMobileViewport ? '100%' : '100vw') : undefined,
+          maxWidth: showsCatalogToolbar && isMobileViewport ? '100%' : undefined,
+          minWidth: showsCatalogToolbar && isMobileViewport ? 0 : undefined,
           boxSizing: 'border-box'
         }}>
   
-          {isFnbMode && (
-            <FnbCatalogToolbar
+          {showsCatalogToolbar && (
+            <StorefrontCatalogToolbar
               FNB_CATEGORY_ICON_MAP={FNB_CATEGORY_ICON_MAP}
               STYLES={STYLES}
               catalogSearch={catalogSearch}
@@ -174,12 +179,13 @@ export function StorefrontClassicCatalog({
               setFnbSortOption={setFnbSortOption}
               setFnbViewMode={setFnbViewMode}
               setIsFnbCategoryDropdownOpen={setIsFnbCategoryDropdownOpen}
+              showViewToggle={showsCatalogToolbar}
             />
           )}
   
   
           {/* Section header */}
-          {((!isFnbMode && !isSimpleMode) || isMultiGroup) && (
+          {((!isFnbMode && !isSimpleMode && !isRetailMode) || isMultiGroup) && (
             <div style={{ marginBottom: isMultiGroup ? 20 : 32 }}>
               <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, fontWeight: 900, color: STYLES.colors.dark }}>{modeAdapter.catalogHeading}</h2>
               <p style={{ margin: '4px 0 0 0', color: STYLES.colors.muted, fontSize: 15 }}>{modeAdapter.catalogSubtitle}</p>
@@ -259,58 +265,8 @@ export function StorefrontClassicCatalog({
             </div>
           )}
   
-          {isSimpleMode && (
-            <div style={{ display: 'grid', gap: 16, padding: isMobileViewport ? '0 4px' : '0 2px 4px' }}>
-              <div style={{
-                display: 'flex',
-                alignItems: isMobileViewport ? 'flex-start' : 'center',
-                justifyContent: 'space-between',
-                gap: 14,
-                flexDirection: isMobileViewport ? 'column' : 'row'
-              }}>
-                <div style={{ display: 'grid', gap: 8 }}>
-                  <div style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    fontSize: 12,
-                    fontWeight: 800,
-                    color: modeAdapter.heroTheme?.accentDark || '#134e4a',
-                    textTransform: 'uppercase',
-                    letterSpacing: '0.1em'
-                  }}>
-                    <span style={{ width: 30, height: 1, background: modeAdapter.heroTheme?.accent || '#0f766e' }} />
-                    Product Section
-                  </div>
-                  <h2 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 34, fontWeight: 900, color: modeAdapter.heroTheme?.textPrimary || STYLES.colors.dark, letterSpacing: '-0.03em', fontFamily: modeAdapter.heroTheme?.displayFont }}>
-                    {modeAdapter.catalogHeading}
-                  </h2>
-                  <p style={{ margin: 0, color: modeAdapter.heroTheme?.textMuted || STYLES.colors.muted, fontSize: 15, maxWidth: 720, lineHeight: 1.6 }}>
-                    {modeAdapter.catalogSubtitle}
-                  </p>
-                </div>
-                <div style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: 10,
-                  padding: '10px 14px',
-                  borderRadius: 999,
-                  background: modeAdapter.heroTheme?.accentSoft || '#ecfeff',
-                  border: `1px solid ${modeAdapter.heroTheme?.borderSoft || '#bfe8e4'}`,
-                  color: modeAdapter.heroTheme?.textPrimary || STYLES.colors.dark,
-                  fontSize: 13,
-                  fontWeight: 800
-                }}>
-                  <span style={{ width: 8, height: 8, borderRadius: 999, background: modeAdapter.heroTheme?.accent || '#0f766e' }} />
-                  {filteredCatalog.length} product{Number(filteredCatalog.length) === 1 ? '' : 's'} in this storefront
-                </div>
-              </div>
-              <div style={{ height: 1, background: 'linear-gradient(90deg, rgba(15,118,110,0.18) 0%, rgba(15,23,42,0.06) 100%)' }} />
-            </div>
-          )}
-  
           {/* Catalog items grid */}
-          {!isFnbMode && !isSimpleMode && (
+          {!isFnbMode && !isSimpleMode && !isRetailMode && (
             <div style={{ maxWidth: 1320, margin: `${isMobileViewport ? 12 : 16}px auto 0`, width: '100%', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
               <input
                 value={catalogSearch}
@@ -340,7 +296,7 @@ export function StorefrontClassicCatalog({
           />
   
           {(catalogState === 'ready' || catalogState === 'empty_no_match') && (
-            <div style={isFnbMode ? {
+            <div style={showsCatalogToolbar ? {
               maxWidth: 1320,
               margin: `${isMobileViewport ? 20 : 28}px auto 0`,
               width: '100%',
@@ -371,20 +327,35 @@ export function StorefrontClassicCatalog({
                       />
                     ) : isSimpleMode ? (
                       <SimpleProductCard
-                        key={item.item_id}
-                        Badge={Badge}
-                        GhostButton={GhostButton}
-                        PrimaryButton={PrimaryButton}
-                        accentDark={(modeAdapter.heroTheme || {}).accentDark || '#134e4a'}
-                        accentSoft={(modeAdapter.heroTheme || {}).accentSoft || '#ecfeff'}
+                        key={item.item_id + '-' + fnbViewMode}
                         item={item}
+                        imageSources={imageSources}
                         available={available}
+                        FNB_CATEGORY_ICON_MAP={FNB_CATEGORY_ICON_MAP}
                         addToCart={addToCart}
-                        bodyFont={(modeAdapter.heroTheme || {}).bodyFont || "'Avenir Next', 'Segoe UI', sans-serif"}
-                        displayFont={(modeAdapter.heroTheme || {}).displayFont || ((modeAdapter.heroTheme || {}).bodyFont || "'Avenir Next', 'Segoe UI', sans-serif")}
+                        buttonTextOnAccent={(modeAdapter.heroTheme || {}).buttonTextOnAccent || '#ffffff'}
+                        fnbViewMode={fnbViewMode}
+                        getCartFlySourceRect={getCartFlySourceRect}
+                        heroTheme={modeAdapter.heroTheme || {}}
+                        isMobileViewport={isMobileViewport}
                         money={money}
                         onViewDetails={openFnbDetail}
+                      />
+                    ) : isRetailMode ? (
+                      <RetailProductCard
+                        key={item.item_id + '-' + fnbViewMode}
+                        item={item}
                         imageSources={imageSources}
+                        available={available}
+                        FNB_CATEGORY_ICON_MAP={FNB_CATEGORY_ICON_MAP}
+                        addToCart={addToCart}
+                        buttonTextOnAccent={(modeAdapter.heroTheme || {}).buttonTextOnAccent || '#ffffff'}
+                        fnbViewMode={fnbViewMode}
+                        getCartFlySourceRect={getCartFlySourceRect}
+                        heroTheme={modeAdapter.heroTheme || {}}
+                        isMobileViewport={isMobileViewport}
+                        money={money}
+                        onViewDetails={openFnbDetail}
                       />
                     ) : (
                       <ServiceProductCard
@@ -416,7 +387,7 @@ export function StorefrontClassicCatalog({
                 )}
               </div>
   
-              {isFnbMode && itemsToRender.length > 0 && totalFnbPages > 1 && (
+              {showsCatalogToolbar && itemsToRender.length > 0 && totalFnbPages > 1 && (
                 <div style={{
                   marginTop: isMobileViewport ? 20 : 36,
                   display: 'grid',
@@ -482,7 +453,7 @@ export function StorefrontClassicCatalog({
                             textAlign: 'left',
                             minWidth: 0
                           }}>
-                            Showing {fnbPageStart}-{fnbPageEnd} of {itemsToRender.length} {isCompactPaginationViewport ? 'items' : 'menu items'}
+                            Showing {fnbPageStart}-{fnbPageEnd} of {itemsToRender.length} {isCompactPaginationViewport ? 'items' : (modeAdapter.catalogItemNounPlural || 'items')}
                           </div>
   
                           {isDesktopViewport && (
@@ -611,11 +582,15 @@ export function StorefrontClassicCatalog({
         )}
   
         {isSimpleMode && isResolvedOrderSubpage && simpleStorefrontModel && (
-          <SimpleCheckoutRoutePage {...simpleCheckoutRouteProps} />
+          isTrackSubpage
+            ? <FnbTrackingRouteContainer {...fnbTrackingRouteProps} visible renderDrawer={false} />
+            : <SimpleCheckoutRoutePage {...simpleCheckoutRouteProps} />
         )}
         {isDefaultLikeMode && isResolvedOrderSubpage && defaultStorefrontModel && (
           isRetailMode
-            ? <RetailOrderPage {...retailOrderRouteProps} />
+            ? (isTrackSubpage
+              ? <FnbTrackingRouteContainer {...fnbTrackingRouteProps} visible renderDrawer={false} />
+              : <RetailOrderPage {...retailOrderRouteProps} />)
             : <DefaultOrderPage {...defaultOrderRouteProps} />
         )}
         {isSimpleMode && !isResolvedOrderSubpage && simpleStorefrontModel && (

@@ -13,6 +13,7 @@ import logger from '../../config/logger.js';
 import { buildSystemPrompt, getCapabilitiesExplanation, getLimitationsExplanation } from '../../config/aiSystemPrompt.js';
 import { getOpenAITools, getToolByName, toolRequiresConfirmation } from '../../config/aiTools.js';
 import { resolveModelRate } from '../../config/aiModelRates.js';
+import { AI_USAGE_FEATURES } from '../../config/aiUsageFeatures.js';
 import { buildContext, hasPermission, getPermissionError, hasGranularPermission, getGranularPermissionError } from '../../services/aiContextService.js';
 import * as toolExecutor from '../../services/aiToolExecutor.js';
 import { AiUsageLog } from '../../models/index.js';
@@ -50,6 +51,7 @@ const logAiUsage = async (usage, model, user) => {
     await AiUsageLog.create({
       tenant_id: user.tenant_id,
       user_id: user.user_id,
+      feature: AI_USAGE_FEATURES.AI_ASSISTANT,
       model: model,
       input_tokens: inputTokens,
       output_tokens: outputTokens,

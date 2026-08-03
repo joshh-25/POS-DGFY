@@ -3,18 +3,19 @@ import { Plus, ShoppingCart, Sparkles } from 'lucide-react';
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 
 /**
- * MSME's own item card — not shared with any other mode. Container sizing/layout
- * (corner radius, image height, price badge, name/description, availability banner, and the
- * mobile list-view variant) mirrors modes/fnb/storefront/components/FnbProductCard.jsx exactly,
- * since catalogItemsToRender for MSME is already shaped by the same getFoodBeverageStorefrontViewModel
- * transform F&B uses (sectionVisualMeta/sectionLabel/descriptionPreview/availabilityMeta all
- * present — see useFnbCatalogRuntime.js, which runs for every mode). Differences from F&B: no
- * "View Details" button anywhere (a single full-width "Add to Order" button replaces the split
- * View Details/cart-icon row in both the grid and list variants), and the fill colors (price
- * badge, cart button, category icon) read from MSME's own heroTheme instead of F&B's — the card
- * border/shadow tones stay F&B's literal values, matching the same treatment retail's card uses.
+ * Retail's own item card — not shared with any other mode. Container sizing/layout
+ * (corner radius, image height, price badge, name/description, availability banner, and
+ * the mobile list-view variant) mirrors modes/fnb/storefront/components/FnbProductCard.jsx
+ * exactly, since catalogItemsToRender for retail is already shaped by the same
+ * getFoodBeverageStorefrontViewModel transform F&B uses (sectionVisualMeta/sectionLabel/
+ * descriptionPreview/availabilityMeta all present — see useFnbCatalogRuntime.js, which
+ * runs for every mode). Differences from F&B: no "View Details" button anywhere (a single
+ * full-width "Add to Cart" button replaces the split View Details/cart-icon row in both
+ * the grid and list variants), and the fill colors (price badge, cart button, category
+ * icon) read from retail's own heroTheme instead of F&B's — the card border/shadow tones
+ * stay F&B's literal values per explicit instruction.
  */
-const SimpleProductCard = ({
+const RetailProductCard = ({
   FNB_CATEGORY_ICON_MAP,
   available,
   addToCart,
@@ -29,11 +30,11 @@ const SimpleProductCard = ({
   onViewDetails
 }) => {
   const sectionVisualMeta = item.sectionVisualMeta || {};
-  const accent = heroTheme.accent || '#0f766e';
-  const accentDeep = heroTheme.accentDark || '#134e4a';
+  const accent = heroTheme.accent || '#ea580c';
+  const accentDeep = heroTheme.accentDark || '#9a3412';
   const cardSurface = '#ffffff';
-  // Card border/shadow tones are F&B's own literal values (not MSME's heroTheme.borderSoft),
-  // matching the same treatment used for retail's product card.
+  // Card border/shadow tones are F&B's own literal values (not retail's heroTheme.borderSoft),
+  // per explicit instruction to carry those four specific treatments over unchanged.
   const cardBorder = '#edd4bc';
   const cardTextPrimary = heroTheme.textPrimary || '#0f172a';
   const CategoryIcon = FNB_CATEGORY_ICON_MAP[sectionVisualMeta.iconToken] || Sparkles;
@@ -159,7 +160,7 @@ const SimpleProductCard = ({
                   <Plus size={7} strokeWidth={4} />
                 </span>
               </span>
-              Add to Order
+              Add to Cart
             </button>
           </div>
         </div>
@@ -341,7 +342,7 @@ const SimpleProductCard = ({
                 <Plus size={isMobileViewport ? 8 : 9} strokeWidth={3} />
               </span>
             </span>
-            Add to Order
+            Add to Cart
           </button>
         </div>
         {!available && (
@@ -365,4 +366,4 @@ const SimpleProductCard = ({
   );
 };
 
-export { SimpleProductCard };
+export { RetailProductCard };

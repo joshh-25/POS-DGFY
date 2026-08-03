@@ -214,8 +214,10 @@ export default function ItemFormModal({
   onUploadStorefrontImage,
   onSetPrimaryStorefrontImage,
   onDeleteStorefrontImage,
+  onGenerateStorefrontImage,
   onOpenBulkPosSetup
 }) {
+  const [generatingImage, setGeneratingImage] = useState(false);
   const [formData, setFormData] = useState({
     sku_code: '',
     name: '',
@@ -1923,6 +1925,30 @@ export default function ItemFormModal({
                     >
                       Remove All Item Images
                     </Button>
+                    {onGenerateStorefrontImage && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={generatingImage}
+                        onClick={async () => {
+                          setGeneratingImage(true);
+                          try {
+                            await onGenerateStorefrontImage(item);
+                          } finally {
+                            setGeneratingImage(false);
+                          }
+                        }}
+                        title={
+                          storefrontGallery.length > 0
+                            ? 'Generate a new AI photo, replacing the current one.'
+                            : 'Generate an AI photo for this item (watermarked).'
+                        }
+                      >
+                        {generatingImage
+                          ? 'Queuing…'
+                          : storefrontGallery.length > 0 ? 'Regenerate Image (AI)' : 'Generate Image (AI)'}
+                      </Button>
+                    )}
                   </div>
                 </div>
               ) : (

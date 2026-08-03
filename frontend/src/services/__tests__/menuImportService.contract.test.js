@@ -60,7 +60,22 @@ describe('menuImportService batch contract', () => {
 
         apiMock.post.mockResolvedValue({ data: { data: { createdCount: 1 } } });
         await confirmMenuImport([{ rowNumber: 1 }]);
-        expect(apiMock.post).toHaveBeenCalledWith('/items/import/menu/confirm', { rows: [{ rowNumber: 1 }] });
+        expect(apiMock.post).toHaveBeenCalledWith('/items/import/menu/confirm', {
+            rows: [{ rowNumber: 1 }],
+            mark_always_available: false
+        });
+    });
+
+    it('sends mark_always_available: true only when explicitly opted in', async () => {
+        const { confirmMenuImport } = await loadService();
+        apiMock.post.mockResolvedValue({ data: { data: { createdCount: 1 } } });
+
+        await confirmMenuImport([{ rowNumber: 1 }], { markAlwaysAvailable: true });
+
+        expect(apiMock.post).toHaveBeenCalledWith('/items/import/menu/confirm', {
+            rows: [{ rowNumber: 1 }],
+            mark_always_available: true
+        });
     });
 
     it('treats only the three server-derived terminal statuses as done', async () => {

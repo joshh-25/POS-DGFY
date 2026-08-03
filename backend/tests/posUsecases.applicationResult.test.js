@@ -736,6 +736,83 @@ describe('pos use-cases application result contract', () => {
         expect(upsertCatalogOverride).toHaveBeenCalledTimes(1);
     });
 
+    it('updateBulkPosCatalogOverrides rejects when neither pos_visible nor pos_always_available is provided', async () => {
+        const useCase = buildUpdateBulkPosCatalogOverridesUseCase({
+            posRepository: { getCatalogReadinessByItemId: jest.fn(), upsertCatalogOverride: jest.fn() }
+        });
+
+        const result = await useCase({
+            payload: { item_ids: [401] },
+            user: { is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.message).toMatch(/pos_visible or pos_always_available/);
+    });
+
+    it('updateBulkPosCatalogOverrides applies pos_always_available alone, without requiring pos_visible', async () => {
+        const upsertCatalogOverride = jest.fn().mockResolvedValue({ item_id: 401, pos_always_available: true });
+        const getCatalogReadinessByItemId = jest.fn().mockResolvedValue({
+            item_id: 401,
+            pos_readiness: { ready: true, missing_requirements: [] }
+        });
+        const useCase = buildUpdateBulkPosCatalogOverridesUseCase({
+            posRepository: { getCatalogReadinessByItemId, upsertCatalogOverride }
+        });
+
+        const result = await useCase({
+            payload: { item_ids: [401], pos_always_available: true },
+            user: { is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.summary).toEqual({ updated: 1, blocked: 0, not_found: 0, failed: 0 });
+        // Readiness is never forced when pos_visible wasn't part of the call —
+        // marking an item always-available has no opinion on POS visibility.
+        expect(getCatalogReadinessByItemId).toHaveBeenCalledWith(401, { forcedPosVisible: null });
+        expect(upsertCatalogOverride).toHaveBeenCalledWith(401, { pos_always_available: true });
+    });
+
+    it('updateBulkPosCatalogOverrides applies both fields together when both are provided', async () => {
+        const upsertCatalogOverride = jest.fn().mockResolvedValue({ item_id: 401, pos_visible: true, pos_always_available: true });
+        const getCatalogReadinessByItemId = jest.fn().mockResolvedValue({
+            item_id: 401,
+            pos_readiness: { ready: true, missing_requirements: [] }
+        });
+        const useCase = buildUpdateBulkPosCatalogOverridesUseCase({
+            posRepository: { getCatalogReadinessByItemId, upsertCatalogOverride }
+        });
+
+        const result = await useCase({
+            payload: { item_ids: [401], pos_visible: true, pos_always_available: true },
+            user: { is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(true);
+        expect(upsertCatalogOverride).toHaveBeenCalledWith(401, { pos_visible: true, pos_always_available: true });
+    });
+
+    it('updateBulkPosCatalogOverrides isolates a per-item failure without sinking the rest of the batch', async () => {
+        const upsertCatalogOverride = jest.fn()
+            .mockResolvedValueOnce({ item_id: 401, pos_always_available: true })
+            .mockRejectedValueOnce(new Error('db write failed'));
+        const getCatalogReadinessByItemId = jest.fn().mockResolvedValue({
+            item_id: 401,
+            pos_readiness: { ready: true, missing_requirements: [] }
+        });
+        const useCase = buildUpdateBulkPosCatalogOverridesUseCase({
+            posRepository: { getCatalogReadinessByItemId, upsertCatalogOverride }
+        });
+
+        const result = await useCase({
+            payload: { item_ids: [401, 402], pos_always_available: true },
+            user: { is_master_admin: false, permissions: ['items:edit'] }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.summary).toEqual({ updated: 1, blocked: 0, not_found: 0, failed: 1 });
+    });
+
     it('uploadPosCatalogImage preserves an existing hidden POS visibility flag', async () => {
         const tempPath = path.join(os.tmpdir(), `pos-image-${Date.now()}.png`);
         await fs.writeFile(tempPath, Buffer.from([
