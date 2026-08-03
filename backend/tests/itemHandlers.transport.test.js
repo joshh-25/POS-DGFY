@@ -40,6 +40,8 @@ const mockGenerateItemImageUseCase = jest.fn();
 const mockBulkGenerateItemImageUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
 const mockEnqueueItemImageGeneration = jest.fn();
+const mockSetItemImageStatus = jest.fn();
+const mockGetItemImageStatus = jest.fn();
 
 jest.unstable_mockModule('../src/modules/inventory/index.js', () => ({
   getItemsUseCase: mockGetItemsUseCase,
@@ -90,6 +92,11 @@ jest.unstable_mockModule('../src/workers/itemImageWorker.js', () => ({
   enqueueItemImageGeneration: mockEnqueueItemImageGeneration
 }));
 
+jest.unstable_mockModule('../src/workers/itemImageStatusStore.js', () => ({
+  setItemImageStatus: mockSetItemImageStatus,
+  getItemImageStatus: mockGetItemImageStatus
+}));
+
 let getItems;
 let createItem;
 let deleteItem;
@@ -100,6 +107,7 @@ let resolveItemBarcode;
 let importExternalStorefrontCatalogImage;
 let generateItemImage;
 let bulkGenerateItemImages;
+let getItemImageGenerationStatus;
 
 beforeAll(async () => {
   const mod = await import('../src/modules/inventory/controllers/itemHandlers.js');
@@ -113,6 +121,7 @@ beforeAll(async () => {
   importExternalStorefrontCatalogImage = mod.importExternalStorefrontCatalogImage;
   generateItemImage = mod.generateItemImage;
   bulkGenerateItemImages = mod.bulkGenerateItemImages;
+  getItemImageGenerationStatus = mod.getItemImageGenerationStatus;
 });
 
 const createRes = () => {
@@ -456,6 +465,7 @@ describe('itemHandlers transport contracts', () => {
         description: 'Pork sisig',
         category: 'Mains'
       });
+      expect(mockSetItemImageStatus).toHaveBeenCalledWith('tenant-1', 44, { status: 'queued' });
       expect(res.status).toHaveBeenCalledWith(202);
       expect(res.json).toHaveBeenCalledWith({
         success: true,
@@ -518,6 +528,10 @@ describe('itemHandlers transport contracts', () => {
         description: null,
         category: 'Mains'
       });
+      // Only the eligible, successfully-enqueued candidate gets a status
+      // record — skipped/not_found candidates never reach the queue.
+      expect(mockSetItemImageStatus).toHaveBeenCalledTimes(1);
+      expect(mockSetItemImageStatus).toHaveBeenCalledWith('tenant-1', 1, { status: 'queued' });
       expect(res.status).toHaveBeenCalledWith(202);
       const [payload] = res.json.mock.calls[0];
       expect(payload.data.summary).toEqual({ queued: 1, skipped: 1, not_found: 1, failed: 0 });
@@ -545,6 +559,61 @@ describe('itemHandlers transport contracts', () => {
       const [payload] = res.json.mock.calls[0];
       expect(payload.data.summary).toEqual({ queued: 0, skipped: 0, not_found: 0, failed: 1 });
       expect(payload.data.results[0]).toEqual({ item_id: 1, status: 'failed', reason: 'queue_unavailable' });
+    });
+  });
+
+  describe('getItemImageGenerationStatus', () => {
+    it('returns the stored status record for the item', async () => {
+      mockGetItemImageStatus.mockResolvedValue({
+        status: 'completed',
+        error_code: null,
+        error_message: null,
+        updated_at: '2026-08-03T10:00:00.000Z'
+      });
+
+      const req = {
+        params: { item_id: '44' },
+        validatedParams: { item_id: 44 },
+        user: { user_id: 9, tenant_id: 'tenant-1' },
+        requestId: 'req-image-status'
+      };
+      const res = createRes();
+      const next = jest.fn();
+
+      await getItemImageGenerationStatus(req, res, next);
+
+      expect(mockGetItemImageStatus).toHaveBeenCalledWith('tenant-1', 44);
+      expect(res.status).toHaveBeenCalledWith(200);
+      expect(res.json).toHaveBeenCalledWith({
+        success: true,
+        data: {
+          status: 'completed',
+          error_code: null,
+          error_message: null,
+          updated_at: '2026-08-03T10:00:00.000Z'
+        },
+        timestamp: expect.any(String)
+      });
+      expect(next).not.toHaveBeenCalled();
+    });
+
+    it('reports status "unknown" when nothing was ever queued (or the record expired)', async () => {
+      mockGetItemImageStatus.mockResolvedValue(null);
+
+      const req = {
+        params: { item_id: '44' },
+        validatedParams: { item_id: 44 },
+        user: { user_id: 9, tenant_id: 'tenant-1' },
+        requestId: 'req-image-status-2'
+      };
+      const res = createRes();
+      const next = jest.fn();
+
+      await getItemImageGenerationStatus(req, res, next);
+
+      expect(res.status).toHaveBeenCalledWith(200);
+      const [payload] = res.json.mock.calls[0];
+      expect(payload.data.status).toBe('unknown');
     });
   });
 });
