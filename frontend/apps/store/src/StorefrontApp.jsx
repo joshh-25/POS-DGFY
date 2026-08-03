@@ -481,7 +481,7 @@ export default function StorefrontApp() {
   const { discoveryFilterToolbarRef } = useDiscoveryFilterDropdown({
     setActiveDiscoveryFilterDropdown
   });
-  const { loadStores } = useDiscoveryStoreLoader({
+  const { loadStores, retryLoadStores } = useDiscoveryStoreLoader({
     debouncedDiscoverySearch,
     discoveryCoordsRef,
     discoveryIncludeMatchMeta,
@@ -3139,6 +3139,7 @@ export default function StorefrontApp() {
     normalizeStorefrontCategories,
     normalizeStorefrontReviewSummary,
     renderDiscoveryResetButton,
+    retryLoadStores,
     search,
     searchedDiscoveryMapPins,
     setActiveDiscoveryFilterDropdown,

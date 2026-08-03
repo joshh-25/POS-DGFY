@@ -30,6 +30,14 @@ describe('service worker caching contracts', () => {
     expect(source).toContain("const PRECACHE_MANIFEST_URL = `${BASE_PATH}precache-manifest.json`;");
     expect(source).toContain("await shellCache.addAll([...REQUIRED_SHELL_ASSETS, PRECACHE_MANIFEST_URL, ...assetUrls]);");
     expect(source).toContain('const precached = await shellCache.match(request, { ignoreVary: true });');
+    // Chunk-load recovery (issue #182): a script response must be verified
+    // as script-like before it's ever served from cache or written to one,
+    // and a cached entry that fails that check is purged rather than
+    // replayed on every subsequent request.
+    expect(source).toContain('const SCRIPT_CONTENT_TYPE_PATTERN =');
+    expect(source).toContain("if (request?.destination === 'script' && !isScriptLikeResponse(response)) return false;");
+    expect(source).toContain('if (isCacheableResponse(response, request)) {');
+    expect(source).toContain('if (precached) await shellCache.delete(request, { ignoreVary: true });');
   });
 
   it('emits a deterministic POS build manifest for critical JavaScript, CSS, fonts, and the web manifest', () => {
@@ -60,6 +68,9 @@ describe('service worker caching contracts', () => {
     expect(source).toContain("if (request.mode === 'navigate')");
     expect(source).toContain("event.respondWith(staleWhileRevalidateRuntime(event.request));");
     expect(source).toContain('cacheControl.includes(\'no-store\')');
+    expect(source).toContain('const SCRIPT_CONTENT_TYPE_PATTERN =');
+    expect(source).toContain("if (request?.destination === 'script' && !isScriptLikeResponse(response)) return false;");
+    expect(source).toContain('if (isCacheableResponse(response, request)) {');
   });
 
   it('keeps Storefront service worker runtime caching bounded and API-safe', () => {
@@ -71,6 +82,9 @@ describe('service worker caching contracts', () => {
     expect(source).toContain("if (request.mode === 'navigate')");
     expect(source).toContain("event.respondWith(staleWhileRevalidateRuntime(event.request));");
     expect(source).toContain('cacheControl.includes(\'no-store\')');
+    expect(source).toContain('const SCRIPT_CONTENT_TYPE_PATTERN =');
+    expect(source).toContain("if (request?.destination === 'script' && !isScriptLikeResponse(response)) return false;");
+    expect(source).toContain('if (isCacheableResponse(response, request)) {');
   });
 
   it('registers POS service worker with BASE_URL-aware script URL and scope', () => {

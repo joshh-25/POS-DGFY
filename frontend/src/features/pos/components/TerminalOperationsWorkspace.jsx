@@ -1,4 +1,5 @@
-import React, { Suspense, lazy, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { createPortal } from 'react-dom';
 import {
   AlertCircle,
@@ -135,7 +136,7 @@ import EmployeeManagementPanel from './EmployeeManagementPanel.jsx';
 import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 
-const MapPinPicker = lazy(() => import('@/src/components/maps/MapPinPicker.jsx'));
+const MapPinPicker = lazyWithChunkRetry(() => import('@/src/components/maps/MapPinPicker.jsx'));
 const POS_ITEMS_PAGE_SIZE = 15;
 
 const MODE_META = {

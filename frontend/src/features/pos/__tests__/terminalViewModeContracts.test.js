@@ -120,7 +120,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("settingsPayload?.tenant_onboarding_state?.value || 'not_started'");
     expect(terminalPageContent).toContain("onboardingCompleted: onboardingState === 'completed'");
     expect(terminalPageContent).toContain('const setupFlowActive = tenantSetupRequestedOrRequired');
-    expect(terminalPageContent).toContain("const PosTenantSetupModal = lazy(() => import('../components/PosTenantSetupModal.jsx'));");
+    expect(terminalPageContent).toContain("const PosTenantSetupModal = lazyWithChunkRetry(() => import('../components/PosTenantSetupModal.jsx'));");
     expect(terminalPageContent).toContain('if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.COMPLETE) {');
     expect(terminalPageContent).toContain('clearTenantSetupQueryState();');
     expect(terminalPageContent).not.toContain('shouldForceSelectedTenantOnboarding');
