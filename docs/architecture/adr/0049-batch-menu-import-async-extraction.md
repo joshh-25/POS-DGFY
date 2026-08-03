@@ -213,6 +213,56 @@ back to the `gpt-4o` rate.
   the replacement has been verified against mocks. Removing it first would leave tenants with no
   working importer if the batch path fails in production.
 
+### Item image generation
+
+*Amended 2026-08-03 — extends this decision, does not supersede it. Tracked in #176; see #197 for
+the sibling "Generate an Image" action on existing items, which reuses everything below without
+adding a second worker or service.*
+
+- Confirmed items with no photo can be opted into AI image generation, per item, in the same review
+  step that already carries the `included` checkbox — a sibling `generate_image` flag on the same
+  row object, defaulting off. Generation is **async and post-confirm**: items are created immediately
+  at confirm time, unblocked by generation latency, and image generation is enqueued afterward keyed
+  on the `{rowNumber → item_id}` mapping `confirmItemsImportUseCase` already returns. A problem
+  enqueueing generation never fails the confirm response — items are already persisted by that point.
+- **Deliberate departure from this ADR's own "worker touches no tenant database" rule (Decision →
+  Request/worker split, above):** `backend/src/workers/itemImageWorker.js` *does* write to the
+  tenant database — attaching a generated image to a specific item is inherently a tenant-scoped
+  write, unlike `menuImportWorker.js`'s DB-free extraction. It establishes tenant context per task
+  (resolve the `Tenant` row, open its connection via `TenantConnector`, build the tenant model set,
+  run the attach step inside `dbStore.run(...)`) the same way
+  `modules/dgfy/usecases/dgfyCustomerUseCases.js`'s `withTenantContext()` already does elsewhere in
+  this codebase, outside any request. Without this, generated images would land under the `default`
+  tenant's folder for every tenant — this is a correctness requirement, not a convenience.
+- Generation itself (`backend/src/services/itemImageGenerationService.js`) is the opposite: no DB
+  access, no tenant context at all. It is a single shared entry point,
+  `generateItemImage({name, description, category})`, used by both this worker's confirm-time caller
+  and the standalone "Generate an Image" action on existing items (#197) — one service, two callers,
+  not two implementations.
+- Generated images are watermarked server-side (`sharp`, bottom-right corner composite at fixed
+  opacity) and carry a `provenance` object (`{type: 'ai_generated', model, source, watermarked,
+  generated_at}`) through the same `provenance` parameter `buildUploadStorefrontCatalogImageUseCase`
+  already accepts for a barcode-registry import — an AI-generated image is distinguishable from a
+  manual upload or a registry import forever after, the same way those already are from each other.
+- Cost control mirrors the pattern above: `ITEM_IMAGE_GENERATION_ENABLED` (default off),
+  `ITEM_IMAGE_MAX_PER_BATCH`, and `ITEM_IMAGE_DAILY_USD_BUDGET` live in
+  `backend/src/config/itemImageFeature.js`, read the same call-time-resolution way as
+  `menuImportModel()`. The per-image budget check is scoped to the `item_image_generation` +
+  `menu_import` `ai_usage_logs.feature` values (added for exactly this — see #195), not folded into
+  an unscoped daily total that would pool with unrelated AI-assistant spend.
+- **Permission boundary:** generating and attaching an image is gated on `items:edit`, not
+  `items:import` — the same reasoning as the menu-categories decision above (an importer without
+  edit rights should not gain a new write capability through the import path), but resolved
+  differently: rather than the categories' skip-and-report-after-confirm pattern, the review step's
+  checkbox is disabled up front for a user without `items:edit`, so a request that cannot succeed is
+  never made in the first place.
+- **What this amendment explicitly does not do:** it does not add PDF-embedded-image harvesting (the
+  "extract a real photo from the menu file, use it instead of generating one" option raised alongside
+  this feature). That path has its own unresolved question — matching a harvested image to the
+  correct menu item — and its own file-lifecycle interaction with this ADR's "the worker unlinks a
+  file the moment its extraction attempt settles" rule (Decision → Job state, above), and is deferred
+  to a later, separate amendment once that matching question has an answer.
+
 ## Consequences
 
 - Batch import has a hard Redis dependency the single-file path does not. With Redis down, the

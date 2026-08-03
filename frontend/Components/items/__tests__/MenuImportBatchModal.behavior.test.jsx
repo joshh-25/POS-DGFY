@@ -26,6 +26,14 @@ vi.mock('sonner', () => ({
     toast: { error: vi.fn(), success: vi.fn() }
 }));
 
+// canEdit defaults to true (a fully-permissioned test user) — the one test
+// that cares about the permission-denied path overrides this per-test via
+// mockReturnValueOnce.
+const canEdit = vi.fn(() => true);
+vi.mock('../../../src/hooks/usePermission.js', () => ({
+    usePermission: () => ({ canEdit: (...args) => canEdit(...args) })
+}));
+
 // The capture sheet's camera behavior is covered by its own test; here we only
 // care that a captured frame joins the same staged-file list the picker feeds.
 vi.mock('../MenuPhotoCaptureSheet.jsx', () => ({
@@ -106,6 +114,8 @@ describe('MenuImportBatchModal', () => {
         getMenuImportJob.mockReset();
         previewMenuImportJob.mockReset();
         confirmMenuImport.mockReset();
+        canEdit.mockReset();
+        canEdit.mockImplementation(() => true);
     });
 
     afterEach(() => {
@@ -244,5 +254,86 @@ describe('MenuImportBatchModal', () => {
         expect(submittedRows).toHaveLength(1);
         expect(submittedRows[0].data.name).toBe('Adobo');
         expect(screen.getByText('Import Complete!')).toBeTruthy();
+    });
+
+    describe('AI image generation opt-in (#176)', () => {
+        it('defaults every row\'s image checkbox to unchecked', async () => {
+            await runToReviewStep();
+
+            expect(screen.getByLabelText('Generate an AI image for Adobo').checked).toBe(false);
+            expect(screen.getByLabelText('Generate an AI image for Halo-Halo').checked).toBe(false);
+        });
+
+        it('shows a running cost estimate once rows are opted in, and sends generate_image on confirm', async () => {
+            confirmMenuImport.mockResolvedValue({ createdCount: 2, failedCount: 0, results: { failed: [] } });
+            await runToReviewStep();
+
+            expect(screen.queryByText(/estimated/)).toBeNull();
+
+            fireEvent.click(screen.getByLabelText('Generate an AI image for Adobo'));
+            expect(screen.getByText(/1 image × ~\$0\.03 ≈ \$0\.03 estimated/)).toBeTruthy();
+
+            fireEvent.click(screen.getByLabelText('Generate an AI image for Halo-Halo'));
+            expect(screen.getByText(/2 images × ~\$0\.03 ≈ \$0\.06 estimated/)).toBeTruthy();
+
+            await act(async () => {
+                fireEvent.click(screen.getByRole('button', { name: /Confirm Import \(2 items\)/ }));
+            });
+
+            const submittedRows = confirmMenuImport.mock.calls[0][0];
+            expect(submittedRows.every((row) => row.generate_image === true)).toBe(true);
+        });
+
+        it('excludes a deselected row\'s image request from both the estimate and the confirm payload', async () => {
+            confirmMenuImport.mockResolvedValue({ createdCount: 1, failedCount: 0, results: { failed: [] } });
+            await runToReviewStep();
+
+            fireEvent.click(screen.getByLabelText('Generate an AI image for Adobo'));
+            fireEvent.click(screen.getByLabelText('Generate an AI image for Halo-Halo'));
+            // Deselecting the row for import should drop it out of the image count too.
+            fireEvent.click(screen.getByLabelText('Import Halo-Halo'));
+
+            expect(screen.getByText(/1 image × ~\$0\.03 ≈ \$0\.03 estimated/)).toBeTruthy();
+
+            await act(async () => {
+                fireEvent.click(screen.getByRole('button', { name: /Confirm Import \(1 items\)/ }));
+            });
+
+            const submittedRows = confirmMenuImport.mock.calls[0][0];
+            expect(submittedRows).toHaveLength(1);
+            expect(submittedRows[0].data.name).toBe('Adobo');
+            expect(submittedRows[0].generate_image).toBe(true);
+        });
+
+        it('disables the image checkbox and explains why when the user lacks items:edit', async () => {
+            canEdit.mockImplementation(() => false);
+            await runToReviewStep();
+
+            const checkbox = screen.getByLabelText('Generate an AI image for Adobo');
+            expect(checkbox.disabled).toBe(true);
+            expect(checkbox.title).toMatch(/Edit Items permission/);
+        });
+
+        it('surfaces images_queued and images_skipped after confirming', async () => {
+            confirmMenuImport.mockResolvedValue({
+                createdCount: 2,
+                failedCount: 0,
+                results: { failed: [] },
+                images_queued: 1,
+                images_skipped: [{ rowNumber: 2, reason: 'budget_exceeded' }]
+            });
+            await runToReviewStep();
+
+            fireEvent.click(screen.getByLabelText('Generate an AI image for Adobo'));
+            fireEvent.click(screen.getByLabelText('Generate an AI image for Halo-Halo'));
+
+            await act(async () => {
+                fireEvent.click(screen.getByRole('button', { name: /Confirm Import \(2 items\)/ }));
+            });
+
+            expect(screen.getByText('1 image queued for AI generation')).toBeTruthy();
+            expect(screen.getByText('1 requested image not queued')).toBeTruthy();
+            expect(screen.getByText(/daily AI image budget was already reached/)).toBeTruthy();
+        });
     });
 });
