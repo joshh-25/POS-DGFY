@@ -46,6 +46,7 @@ import tenantConnector from '../utils/TenantConnector.js';
 import { getTenantModels } from '../utils/tenantModelFactory.js';
 import dbStore from '../utils/dbStore.js';
 import { AiUsageLog } from '../models/index.js';
+import { setItemImageStatus } from './itemImageStatusStore.js';
 
 const QUEUE_KEY = 'item_image:queue';
 const POLL_INTERVAL_MS = 500;   // tick when the queue likely has items
@@ -127,16 +128,24 @@ export const processImageTask = async (task) => {
         return;
     }
 
+    await setItemImageStatus(user.tenant_id, itemId, { status: 'processing' });
+
     let generated;
     try {
         generated = await generateItemImage({ name, description, category });
     } catch (error) {
         const isKnownError = error instanceof ItemImageGenerationError;
+        const code = isKnownError ? error.code : 'UNEXPECTED_ERROR';
         logger.error('[ItemImageWorker] Image generation failed', {
             tenantId: user.tenant_id,
             itemId,
-            code: isKnownError ? error.code : 'UNEXPECTED_ERROR',
+            code,
             reason: error.message
+        });
+        await setItemImageStatus(user.tenant_id, itemId, {
+            status: 'failed',
+            error_code: code,
+            error_message: error.message
         });
         return;
     }
@@ -149,6 +158,11 @@ export const processImageTask = async (task) => {
                 itemId
             });
             await unlinkQuietly(generated.path);
+            await setItemImageStatus(user.tenant_id, itemId, {
+                status: 'failed',
+                error_code: 'TENANT_NOT_FOUND',
+                error_message: 'Tenant not found'
+            });
             return;
         }
 
@@ -170,6 +184,7 @@ export const processImageTask = async (task) => {
         }));
 
         await logImageUsage({ user, usage: generated.usage });
+        await setItemImageStatus(user.tenant_id, itemId, { status: 'completed' });
     } catch (error) {
         // buildUploadStorefrontCatalogImageUseCase already unlinks
         // generated.path itself on failure (see its own catch block) — no
@@ -178,6 +193,11 @@ export const processImageTask = async (task) => {
             tenantId: user.tenant_id,
             itemId,
             reason: error?.message
+        });
+        await setItemImageStatus(user.tenant_id, itemId, {
+            status: 'failed',
+            error_code: 'ATTACH_FAILED',
+            error_message: error?.message || 'Failed to attach generated image'
         });
     }
 };
