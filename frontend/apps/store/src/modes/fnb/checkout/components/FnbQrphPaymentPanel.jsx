@@ -14,7 +14,6 @@ const formatStatus = (value) => String(value || 'awaiting_payment')
 
 export function FnbQrphPaymentPanel({
   onConfirmTestPayment,
-  onRefresh,
   onUseCash,
   paymentSession,
   refreshing = false
@@ -92,23 +91,6 @@ export function FnbQrphPaymentPanel({
             {confirming ? 'Confirming test payment...' : 'Confirm test payment'}
           </button>
         ) : null}
-        <button
-          type="button"
-          onClick={onRefresh}
-          disabled={refreshing}
-          style={{
-            minHeight: 38,
-            borderRadius: 10,
-            border: '1px solid #2563eb',
-            background: '#fff',
-            color: '#1d4ed8',
-            padding: '0 12px',
-            fontWeight: 800,
-            cursor: refreshing ? 'wait' : 'pointer'
-          }}
-        >
-          {refreshing ? 'Refreshing...' : 'Refresh payment status'}
-        </button>
         {paymentSession.checkout_url ? (
           <a
             href={paymentSession.checkout_url}

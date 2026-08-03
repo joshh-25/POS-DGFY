@@ -1,9 +1,9 @@
 import { describe, expect, it } from '@jest/globals';
 import {
   buildRequestStoreGuestCheckoutOtpUseCase,
-  buildVerifyStoreGuestCheckoutOtpUseCase,
-  assertGuestCheckoutProof
+  buildVerifyStoreGuestCheckoutOtpUseCase
 } from '../src/modules/store/usecases/storeUseCases.js';
+import { assertGuestCheckoutProof } from '../src/modules/store/utils/storeGuestCheckoutProof.js';
 import {
   generateStoreGuestCheckoutProof,
   verifyStoreGuestCheckoutProof

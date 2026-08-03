@@ -1,20 +1,5 @@
-import { ChevronLeft, Wallet } from 'lucide-react';
+import { ChevronLeft } from 'lucide-react';
 import { FnbCheckoutReviewItemsList } from './FnbCheckoutReviewItemsList.jsx';
-
-/** Structural placeholder for "Cash on Delivery/Online" copy — no gateway exists behind
- * gcash/maya/card/bank_transfer yet, so this is deliberately inert (no onClick, not a real
- * payment option). Remove once F&B gets a real online payment method. */
-function FnbOnlinePaymentPlaceholder() {
-  return (
-    <div style={{ border: '1px dashed #cbd5e1', borderRadius: 16, background: '#f8fafc', padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 10 }}>
-      <Wallet size={18} color="#94a3b8" style={{ flexShrink: 0 }} />
-      <div style={{ display: 'grid', gap: 2 }}>
-        <div style={{ fontSize: 13, fontWeight: 700, color: '#94a3b8' }}>Online payment</div>
-        <div style={{ fontSize: 12, color: '#94a3b8' }}>Coming soon &mdash; cash is the only option for now.</div>
-      </div>
-    </div>
-  );
-}
 
 /** F&B payment step view. The route ViewModel supplies payment controls and submit action. */
 export function FnbCheckoutPaymentStep({
@@ -41,7 +26,6 @@ export function FnbCheckoutPaymentStep({
       <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>Step 3: Review &amp; Payment</div>
       <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Review the cart, refresh the quote when needed, then choose payment and submit the order.</div>
       {paymentControl}
-      <FnbOnlinePaymentPlaceholder />
       <FnbCheckoutReviewItemsList
         accentColor={brandColor}
         cart={cart}

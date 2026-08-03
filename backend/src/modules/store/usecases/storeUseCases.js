@@ -25,9 +25,9 @@ import {
     normalizeTenantIdentifier,
     generateStoreGuestCheckoutProof,
     verifyStoreCancelProof,
-    verifyStoreGuestCheckoutProof,
     verifyStoreClaimToken
 } from '../utils/storeJwtToken.js';
+import { assertGuestCheckoutProof } from '../utils/storeGuestCheckoutProof.js';
 import { normalizeIntakeFormSchema } from '../../shared/utils/intakeFormSchema.js';
 import {
     CUSTOMER_ACCESS_SETTING_KEYS,
@@ -176,10 +176,6 @@ const stableStringify = (value) => {
 
 const hashPayload = (payload) => crypto.createHash('sha256').update(stableStringify(payload)).digest('hex');
 
-const isStorefrontGuestOtpRequired = () => String(process.env.STOREFRONT_GUEST_OTP_REQUIRED || 'true').trim().toLowerCase() !== 'false';
-
-const isDgfyStoreCustomer = (storeCustomer) => Boolean(String(storeCustomer?.dgfy_account_id || '').trim());
-
 const snapshotVerifiedStoreCustomer = (storeCustomer) => {
     if (!storeCustomer || typeof storeCustomer !== 'object') return null;
     const customerId = parsePositiveInt(storeCustomer.customer_id);
@@ -192,37 +188,6 @@ const snapshotVerifiedStoreCustomer = (storeCustomer) => {
         email: String(storeCustomer.email || '').trim().toLowerCase(),
         phone: String(storeCustomer.phone || '').trim()
     };
-};
-
-export const assertGuestCheckoutProof = ({ tenantId, email, idempotencyKey, proof, storeCustomer }) => {
-    if (!isStorefrontGuestOtpRequired() || isDgfyStoreCustomer(storeCustomer)) return;
-
-    const normalizedEmail = String(email || '').trim().toLowerCase();
-    if (!normalizedEmail) {
-        throw new DomainError(
-            DomainErrorCode.VALIDATION_FAILED,
-            'A verified Gmail address is required for guest checkout.',
-            { statusCode: 422 }
-        );
-    }
-
-    try {
-        const decoded = verifyStoreGuestCheckoutProof(proof);
-        if (
-            decoded?.type !== 'store_guest_checkout_proof'
-            || normalizeTenantIdentifier(decoded?.tenant_id) !== normalizeTenantIdentifier(tenantId)
-            || String(decoded?.email || '').trim().toLowerCase() !== normalizedEmail
-            || String(decoded?.idempotency_key || '').trim() !== String(idempotencyKey || '').trim()
-        ) {
-            throw new Error('Guest checkout proof does not match this order.');
-        }
-    } catch {
-        throw new DomainError(
-            DomainErrorCode.VALIDATION_FAILED,
-            'Verify the Gmail code before placing this guest order.',
-            { statusCode: 422 }
-        );
-    }
 };
 
 const randomAlphaNumeric = (length) => {
