@@ -1,5 +1,20 @@
 import { getCsrfToken } from '../../../../src/services/browserSession.js';
 import { tagRequestFailureContext, captureRequestFailure } from '../../../../src/observability/sentryClient.js';
+import {
+  isRetryableTransientFailure,
+  computeTransientRetryDelayMs,
+  MAX_TRANSIENT_RETRIES,
+  TRANSIENT_RETRY_TOTAL_BUDGET_MS,
+  sleep
+} from '../../../../src/services/transientRetry.js';
+
+const isTestEnvironment = (() => {
+  try {
+    return import.meta.env?.MODE === 'test';
+  } catch {
+    return false;
+  }
+})();
 
 const buildRequestError = (message, meta = {}) => {
   const error = new Error(String(message || 'Request failed'));
@@ -35,63 +50,124 @@ export const requestJson = async (url, {
   selectedLocationId = null,
   authToken = '',
   cache = 'default',
-  credentials = 'include'
+  credentials = 'include',
+  signal = undefined,
+  // Opt-in only -- requestJson fronts ~30 call sites including order
+  // creation and OTP sends, and a 200 response with `success: false` is a
+  // domain failure that must never be retried (it falls out naturally
+  // below: 200 is never in the retryable-status set, so no special-casing
+  // is needed for that, but retry must still default off so a global
+  // change here can't silently start retrying every POST-shaped call site).
+  retry = false
 } = {}) => {
   const normalizedMethod = String(method || 'GET').toUpperCase();
-  let response;
-  try {
-    const token = String(authToken || '').trim();
-    const csrfToken = ['GET', 'HEAD', 'OPTIONS'].includes(normalizedMethod) ? '' : getCsrfToken();
-    response = await fetch(withApiOrigin(url), {
-      method: normalizedMethod,
-      credentials,
-      cache,
-      headers: {
-        'Content-Type': 'application/json',
-        ...resolveStoreContextHeaders({ storeSlug, selectedStore, selectedLocationId }),
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        ...(csrfToken ? { 'x-csrf-token': csrfToken } : {})
-      },
-      body: body ? JSON.stringify(body) : undefined
-    });
-  } catch (networkError) {
-    // No response at all (offline, CORS, DNS) -- tagRequestFailureContext
-    // below never runs for this path since it requires a requestId that
-    // only a response payload carries, so this is the only place a
-    // storefront network failure reaches Sentry.
-    captureRequestFailure({ error: networkError, method: normalizedMethod, url });
-    throw buildRequestError('Request failed before reaching API. Check server/proxy/CORS connectivity.', {
-      isNetworkError: true,
-      cause: networkError
-    });
+  const token = String(authToken || '').trim();
+  const csrfToken = ['GET', 'HEAD', 'OPTIONS'].includes(normalizedMethod) ? '' : getCsrfToken();
+  const requestInit = {
+    method: normalizedMethod,
+    credentials,
+    cache,
+    headers: {
+      'Content-Type': 'application/json',
+      ...resolveStoreContextHeaders({ storeSlug, selectedStore, selectedLocationId }),
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(csrfToken ? { 'x-csrf-token': csrfToken } : {})
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    // Spread rather than a bare `signal` key so a call site that omits it
+    // sees no new key on the fetch init (kept for parity with existing
+    // `objectContaining` assertions in requestJson.csrfSession.test.js).
+    ...(signal ? { signal } : {})
+  };
+  // Shared shape isRetryableTransientFailure expects for both the
+  // network-failure and HTTP-failure retry decisions below.
+  const retryConfig = { method: normalizedMethod, data: body };
+
+  let attempt = 0;
+  let retryDeadlineAt = null;
+
+  for (;;) {
+    let response;
+    try {
+      response = await fetch(withApiOrigin(url), requestInit);
+    } catch (networkError) {
+      // The platform's own AbortError DOMException is re-thrown verbatim
+      // rather than wrapped: buildRequestError produces a plain Error (name
+      // "Error"), which would defeat every `error?.name === 'AbortError'`
+      // guard downstream. An abort is a caller decision, not a failure, so
+      // it is never retried and never reported to Sentry.
+      if (networkError?.name === 'AbortError' || signal?.aborted) throw networkError;
+
+      if (retry && attempt < MAX_TRANSIENT_RETRIES && isRetryableTransientFailure(networkError, retryConfig)) {
+        attempt += 1;
+        retryDeadlineAt = retryDeadlineAt || (Date.now() + TRANSIENT_RETRY_TOTAL_BUDGET_MS);
+        const delayMs = computeTransientRetryDelayMs({ attempt });
+        if (delayMs != null && Date.now() + delayMs < retryDeadlineAt) {
+          await sleep(isTestEnvironment ? 0 : delayMs);
+          continue;
+        }
+      }
+
+      // No response at all (offline, CORS, DNS) -- tagRequestFailureContext
+      // below never runs for this path since it requires a requestId that
+      // only a response payload carries, so this is the only place a
+      // storefront network failure reaches Sentry. Only reached once retry
+      // is exhausted or not applicable, so a recovered request never fires.
+      captureRequestFailure({ error: networkError, method: normalizedMethod, url });
+      throw buildRequestError('Request failed before reaching API. Check server/proxy/CORS connectivity.', {
+        isNetworkError: true,
+        cause: networkError
+      });
+    }
+
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.success === false) {
+      const rawRetryAfterSeconds = Number(
+        payload?.retryAfterSeconds
+        ?? response.headers?.get?.('Retry-After')
+      );
+      const retryAfterSeconds = Number.isFinite(rawRetryAfterSeconds) ? rawRetryAfterSeconds : null;
+
+      if (
+        retry
+        && attempt < MAX_TRANSIENT_RETRIES
+        && isRetryableTransientFailure({ status: response.status }, retryConfig)
+      ) {
+        attempt += 1;
+        retryDeadlineAt = retryDeadlineAt || (Date.now() + TRANSIENT_RETRY_TOTAL_BUDGET_MS);
+        const delayMs = computeTransientRetryDelayMs({ attempt, retryAfterSeconds });
+        if (delayMs != null && Date.now() + delayMs < retryDeadlineAt) {
+          await sleep(isTestEnvironment ? 0 : delayMs);
+          continue;
+        }
+      }
+
+      // Build the error object first so the real server message/status
+      // reaches Sentry instead of the generic message captureRequestFailure
+      // would otherwise synthesize when `error` is omitted.
+      const requestError = buildRequestError(payload?.message || `Request failed (${response.status})`, {
+        status: response.status,
+        errorCode: payload?.error_code || null,
+        details: payload?.errors || payload?.details || null,
+        requestId: payload?.request_id || null,
+        retryAfterSeconds,
+        payload
+      });
+      tagRequestFailureContext({
+        requestId: payload?.request_id || null,
+        url: response.url,
+        status: response.status
+      });
+      captureRequestFailure({
+        error: requestError,
+        method: normalizedMethod,
+        url: response.url,
+        status: response.status,
+        requestId: payload?.request_id || null
+      });
+      throw requestError;
+    }
+
+    return payload?.data ?? payload;
   }
-  const payload = await response.json().catch(() => ({}));
-  if (!response.ok || payload?.success === false) {
-    const retryAfterSeconds = Number(
-      payload?.retryAfterSeconds
-      ?? response.headers?.get?.('Retry-After')
-    );
-    tagRequestFailureContext({
-      requestId: payload?.request_id || null,
-      url: response.url,
-      status: response.status
-    });
-    captureRequestFailure({
-      method: normalizedMethod,
-      url: response.url,
-      status: response.status,
-      requestId: payload?.request_id || null
-    });
-    throw buildRequestError(payload?.message || `Request failed (${response.status})`, {
-      status: response.status,
-      errorCode: payload?.error_code || null,
-      details: payload?.errors || payload?.details || null,
-      requestId: payload?.request_id || null,
-      retryAfterSeconds: Number.isFinite(retryAfterSeconds)
-        ? retryAfterSeconds
-        : null,
-      payload
-    });
-  }
-  return payload?.data ?? payload;
 };

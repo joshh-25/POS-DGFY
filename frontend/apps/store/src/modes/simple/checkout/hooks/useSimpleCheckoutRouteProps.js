@@ -214,7 +214,6 @@ export function useSimpleCheckoutRouteProps({
       setResolvedDeliveryAddress('');
       setCustomerAddress('');
       setCustomerPin(null);
-    },
-    onVerifyGuestCheckoutOtp: handleVerifyGuestCheckoutOtp
+    }
   };
 }

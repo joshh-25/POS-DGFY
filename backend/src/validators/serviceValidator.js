@@ -133,6 +133,7 @@ const serviceBookingCoreSchema = {
     quantity: Joi.number().integer().min(1).max(10000).optional(),
     selected_option_ids: Joi.array().items(Joi.number().integer().positive()).max(100).optional(),
     idempotency_key: Joi.string().trim().min(1).max(200).optional(),
+    guest_checkout_proof: Joi.string().trim().min(16).max(2048).allow('', null).optional(),
     hold_token: Joi.string().trim().min(1).max(200).optional()
 };
 
@@ -201,6 +202,7 @@ const serviceBookingBatchSchema = Joi.object({
     payment_timing: Joi.string().valid(...PAYMENT_TIMINGS).optional(),
     location_id: Joi.number().integer().positive().allow(null).optional(),
     idempotency_key: Joi.string().trim().min(1).max(200).optional(),
+    guest_checkout_proof: Joi.string().trim().min(16).max(2048).allow('', null).optional(),
     bookings: Joi.array().items(serviceBookingDraftSchema).min(1).required()
 });
 

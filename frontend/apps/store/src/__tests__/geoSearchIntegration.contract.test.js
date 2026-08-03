@@ -14,6 +14,11 @@ describe('storefront geo-search integration contract', () => {
     expect(source).toContain('/api/v1/storefront/discovery?');
     expect(source).toContain('discoveryAbortControllerRef.current?.abort?.()');
     expect(source).toContain('requestSequence === discoveryRequestSequenceRef.current');
+    // Real AbortSignal support + opt-in retry (issue #181) -- the signal
+    // must still reach requestJson so aborting a superseded request is
+    // actually honoured, and retry is enabled for this one call site.
+    expect(source).toContain('retry: true');
+    expect(source).toContain('discoveryController ? { signal: discoveryController.signal } : {}');
     expect(source).not.toContain('searchNearbyGeoStores({');
     expect(source).not.toContain('/api/v1/storefront/geo-search');
   });

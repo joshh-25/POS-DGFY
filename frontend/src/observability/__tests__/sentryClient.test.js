@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  classifyRequestFailure,
   normalizeRequestUrl,
   resolveSentryBrowserConfig,
   resolveTracePropagationTargets,
+  resolveTracesSampleRate,
+  resolveTracingMode,
   sanitizeSentryEvent
 } from '../sentryClient.js';
 
@@ -91,6 +94,110 @@ describe('browser Sentry config', () => {
     expect(targets).toEqual(['https://store.dgfy.ph']);
     vi.unstubAllGlobals();
   });
+
+  it('merges runtime-resolved extra targets and drops duplicates', () => {
+    vi.stubGlobal('window', { location: { origin: 'https://pos.dgfy.ph' } });
+    const targets = resolveTracePropagationTargets(
+      {},
+      ['https://api.dgfy.ph', 'https://pos.dgfy.ph']
+    );
+
+    expect(targets).toEqual(['https://pos.dgfy.ph', 'https://api.dgfy.ph']);
+    vi.unstubAllGlobals();
+  });
+
+  it('merges extra targets into an explicit env var list too', () => {
+    const targets = resolveTracePropagationTargets(
+      { VITE_SENTRY_TRACE_PROPAGATION_TARGETS: 'https://api.dgfy.ph' },
+      ['https://desktop.internal']
+    );
+
+    expect(targets).toEqual(['https://api.dgfy.ph', 'https://desktop.internal']);
+  });
+
+  // A custom-protocol Electron window reports origin as the literal "null".
+  it('drops the literal "null" origin', () => {
+    vi.stubGlobal('window', { location: { origin: 'null' } });
+    const targets = resolveTracePropagationTargets({}, ['https://api.dgfy.ph']);
+
+    expect(targets).toEqual(['https://api.dgfy.ph']);
+    vi.unstubAllGlobals();
+  });
+
+  it('treats an unset or zero traces sample rate as propagation-only', () => {
+    expect(resolveTracesSampleRate(undefined)).toBeNull();
+    expect(resolveTracesSampleRate('')).toBeNull();
+    expect(resolveTracesSampleRate('0')).toBeNull();
+    expect(resolveTracesSampleRate('not-a-number')).toBeNull();
+    expect(resolveTracesSampleRate('0.25')).toBe(0.25);
+    expect(resolveTracesSampleRate('5')).toBe(1);
+
+    expect(resolveTracingMode({})).toBe('propagate');
+    expect(resolveTracingMode({ VITE_SENTRY_TRACES_SAMPLE_RATE: '0' })).toBe('propagate');
+    expect(resolveTracingMode({ VITE_SENTRY_TRACES_SAMPLE_RATE: '0.1' })).toBe('spans');
+    expect(resolveTracingMode({ VITE_SENTRY_TRACE_PROPAGATION_ENABLED: 'false' })).toBe('off');
+  });
+});
+
+describe('secret scrubbing', () => {
+  it('redacts an API key embedded in an exception message', () => {
+    const event = sanitizeSentryEvent({
+      exception: {
+        values: [{
+          type: 'Error',
+          value: '401 Incorrect API key provided: sk-proj-abcdefghijklmnopqrstuvwxyz012345.',
+          stacktrace: { frames: [{ filename: 'embeddingService.js' }] },
+          mechanism: { handled: false }
+        }]
+      }
+    });
+
+    const scrubbed = event.exception.values[0];
+    expect(scrubbed.value).toBe('401 Incorrect API key provided: [redacted:openai-key].');
+    expect(scrubbed.value).not.toContain('sk-proj-');
+    // Grouping inputs must survive untouched.
+    expect(scrubbed.type).toBe('Error');
+    expect(scrubbed.stacktrace).toEqual({ frames: [{ filename: 'embeddingService.js' }] });
+    expect(scrubbed.mechanism).toEqual({ handled: false });
+  });
+
+  it('redacts bearer tokens and JWTs in messages and breadcrumbs', () => {
+    const event = sanitizeSentryEvent({
+      message: 'Authorization: Bearer abcdefghijklmnopqrstuvwxyz',
+      breadcrumbs: [
+        { message: 'token eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N' },
+        { message: 'harmless breadcrumb' }
+      ]
+    });
+
+    expect(event.message).toBe('Authorization: Bearer [redacted]');
+    expect(event.breadcrumbs[0].message).toBe('token [redacted:jwt]');
+    expect(event.breadcrumbs[1].message).toBe('harmless breadcrumb');
+  });
+
+  it('leaves diagnostic identifiers alone', () => {
+    const event = sanitizeSentryEvent({
+      exception: {
+        values: [{
+          type: 'AxiosError',
+          value: 'Request failed: GET /api/v1/orders/ORD-2026-000184 for tenant tenant_premium (status 502)'
+        }]
+      }
+    });
+
+    expect(event.exception.values[0].value).toBe(
+      'Request failed: GET /api/v1/orders/ORD-2026-000184 for tenant tenant_premium (status 502)'
+    );
+  });
+
+  it('preserves an explicit fingerprint', () => {
+    const event = sanitizeSentryEvent({
+      fingerprint: ['api', 'GET', '/api/v1/items/:id', '502'],
+      exception: { values: [{ type: 'Error', value: 'boom' }] }
+    });
+
+    expect(event.fingerprint).toEqual(['api', 'GET', '/api/v1/items/:id', '502']);
+  });
 });
 
 describe('initBrowserSentry integrations', () => {
@@ -99,7 +206,7 @@ describe('initBrowserSentry integrations', () => {
     return import('../sentryClient.js');
   };
 
-  it('registers browserTracingIntegration and replayIntegration only when their sample rates are > 0', async () => {
+  it('registers browserTracingIntegration with full options and replayIntegration when their sample rates are > 0', async () => {
     const browserTracingIntegration = vi.fn(() => ({ name: 'BrowserTracing' }));
     const replayIntegration = vi.fn(() => ({ name: 'Replay' }));
     const init = vi.fn();
@@ -117,14 +224,19 @@ describe('initBrowserSentry integrations', () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(browserTracingIntegration).toHaveBeenCalled();
+    expect(browserTracingIntegration).toHaveBeenCalledWith({});
     expect(replayIntegration).toHaveBeenCalled();
     const initOptions = init.mock.calls[0][0];
     expect(initOptions.integrations).toHaveLength(2);
+    expect(initOptions.tracesSampleRate).toBe(0.5);
     vi.doUnmock('@sentry/react');
   });
 
-  it('registers neither integration when both sample rates are 0', async () => {
+  // Regression guard for the bug this replaced: registration used to be gated
+  // on tracesSampleRate > 0, so the default config attached no
+  // sentry-trace/baggage headers and browser errors could never be correlated
+  // with backend errors.
+  it('still registers browserTracingIntegration for propagation when no sample rate is set', async () => {
     const browserTracingIntegration = vi.fn(() => ({ name: 'BrowserTracing' }));
     const replayIntegration = vi.fn(() => ({ name: 'Replay' }));
     const init = vi.fn();
@@ -140,10 +252,50 @@ describe('initBrowserSentry integrations', () => {
     });
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(browserTracingIntegration).not.toHaveBeenCalled();
     expect(replayIntegration).not.toHaveBeenCalled();
+    const propagationOptions = browserTracingIntegration.mock.calls[0][0];
+    expect(propagationOptions).toMatchObject({
+      enableInp: false,
+      enableLongTask: false,
+      enableLongAnimationFrame: false,
+      markBackgroundSpan: false
+    });
+    // These must NOT be disabled -- they are what rotate the trace id per
+    // navigation. Pinning one trace id to a whole tab lifetime would make a
+    // long POS shift unusable in the trace view.
+    expect(propagationOptions.instrumentPageLoad).toBeUndefined();
+    expect(propagationOptions.instrumentNavigation).toBeUndefined();
+
     const initOptions = init.mock.calls[0][0];
-    expect(initOptions.integrations).toHaveLength(0);
+    expect(initOptions.integrations).toHaveLength(1);
+    // The key must be ABSENT, not 0. Sentry's hasSpansEnabled() is
+    // `tracesSampleRate != null`, so a literal 0 would enable spans and force
+    // a negative sampling decision that propagates as `-0` and permanently
+    // poisons the backend sampler. `in` is used rather than toBeUndefined()
+    // because the latter passes vacuously for a present-but-undefined key.
+    expect('tracesSampleRate' in initOptions).toBe(false);
+    vi.doUnmock('@sentry/react');
+  });
+
+  it('registers no tracing integration when the propagation kill switch is off', async () => {
+    const browserTracingIntegration = vi.fn(() => ({ name: 'BrowserTracing' }));
+    const replayIntegration = vi.fn(() => ({ name: 'Replay' }));
+    const init = vi.fn();
+    vi.doMock('@sentry/react', () => ({ init, browserTracingIntegration, replayIntegration }));
+
+    const freshModule = await importFreshSentryClient();
+    freshModule.initBrowserSentry({
+      env: {
+        VITE_SENTRY_ENABLED: 'true',
+        VITE_SENTRY_DSN_STORE: 'https://test@sentry.test/1',
+        VITE_SENTRY_TRACE_PROPAGATION_ENABLED: 'false'
+      },
+      surface: 'store'
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(browserTracingIntegration).not.toHaveBeenCalled();
+    expect(init.mock.calls[0][0].integrations).toHaveLength(0);
     vi.doUnmock('@sentry/react');
   });
 });
@@ -292,6 +444,20 @@ describe('Sentry identity, context, and route helpers', () => {
   });
 });
 
+describe('classifyRequestFailure', () => {
+  it('classifies 502/503/504 and no-response as transient', () => {
+    expect(classifyRequestFailure({ status: 502 })).toBe('transient');
+    expect(classifyRequestFailure({ status: 503 })).toBe('transient');
+    expect(classifyRequestFailure({ status: 504 })).toBe('transient');
+    expect(classifyRequestFailure({})).toBe('transient');
+  });
+
+  it('classifies 500 and other 5xx as server', () => {
+    expect(classifyRequestFailure({ status: 500 })).toBe('server');
+    expect(classifyRequestFailure({ status: 599 })).toBe('server');
+  });
+});
+
 describe('captureRequestFailure', () => {
   const importInitializedSentryClient = async () => {
     const scope = { setLevel: vi.fn(), setFingerprint: vi.fn(), setTag: vi.fn(), setContext: vi.fn() };
@@ -319,6 +485,54 @@ describe('captureRequestFailure', () => {
     expect(Sentry.captureException).toHaveBeenCalledTimes(1);
     const [, options] = Sentry.captureException.mock.calls[0];
     expect(options.fingerprint).toEqual(['api', 'GET', '/api/v1/items/:id', '500']);
+    expect(options.level).toBe('error');
+    expect(options.tags.request_failure_class).toBe('server');
+    vi.doUnmock('@sentry/react');
+  });
+
+  it('classifies 502/503/504 as transient (warning level) without changing the fingerprint', async () => {
+    const { freshModule, Sentry } = await importInitializedSentryClient();
+
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items/1', status: 502 });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items/2', status: 503 });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items/3', status: 504 });
+
+    expect(Sentry.captureException).toHaveBeenCalledTimes(3);
+    Sentry.captureException.mock.calls.forEach(([, options], index) => {
+      const status = [502, 503, 504][index];
+      // Fingerprint's 4th element is already the status code -- this is the
+      // regression guard proving classification never touches grouping.
+      expect(options.fingerprint).toEqual(['api', 'GET', `/api/v1/items/:id`, String(status)]);
+      expect(options.level).toBe('warning');
+      expect(options.tags.request_failure_class).toBe('transient');
+    });
+    vi.doUnmock('@sentry/react');
+  });
+
+  it('classifies a network/no-response failure as transient (warning level)', async () => {
+    const { freshModule, Sentry } = await importInitializedSentryClient();
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items' });
+
+    const [, options] = Sentry.captureException.mock.calls[0];
+    expect(options.fingerprint).toEqual(['api', 'GET', '/api/v1/items', 'network']);
+    expect(options.level).toBe('warning');
+    expect(options.tags.request_failure_class).toBe('transient');
+    vi.doUnmock('@sentry/react');
+  });
+
+  it('does not capture a canceled/aborted request', async () => {
+    const { freshModule, Sentry } = await importInitializedSentryClient();
+
+    const canceled = new Error('canceled');
+    canceled.name = 'CanceledError';
+    canceled.code = 'ERR_CANCELED';
+    freshModule.captureRequestFailure({ error: canceled, method: 'get', url: '/api/v1/items' });
+
+    const aborted = new Error('The operation was aborted');
+    aborted.name = 'AbortError';
+    freshModule.captureRequestFailure({ error: aborted, method: 'get', url: '/api/v1/items/2' });
+
+    expect(Sentry.captureException).not.toHaveBeenCalled();
     vi.doUnmock('@sentry/react');
   });
 

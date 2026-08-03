@@ -107,4 +107,19 @@ describe('buildDiscoveryResultsRendererProps', () => {
     expect(props.clearDiscoveryClusterResults).toBe(clearDiscoveryClusterResults);
     expect(props.isMobileResultsCollapsed).toBe(true);
   });
+
+  it('forwards retryLoadStores for the results panel error state', () => {
+    const retryLoadStores = () => {};
+    const props = buildDiscoveryResultsRendererProps({
+      clearDiscoveryClusterResults: () => {},
+      clusterResultStores: [],
+      getDiscoveryMarkerKey: () => '',
+      isClusterResultsActive: false,
+      isMobileResultsCollapsed: true,
+      retryLoadStores,
+      searchedDiscoveryMapPins: []
+    });
+
+    expect(props.retryLoadStores).toBe(retryLoadStores);
+  });
 });

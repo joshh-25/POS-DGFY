@@ -3,19 +3,23 @@ status: reference
 owner: engineering
 last_reviewed: 2026-08-02
 declaration_id: 2026-08-02-retail-msme-checkout-backend-wiring
-classification: minor
-surfaces: none (storefront checkout UI; not a pos/terminal/settings/payments/compliance module change)
-reason_codes_impacted: none
+classification: major
+surfaces: pos,terminal,storefront
+reason_codes_impacted: ALLOWED
 policy_version: 2026.07.20
 verification_evidence: manual-live-verification-390x844-viewport,zero-page-errors,pixel-match-vs-fnb-reference
 rollback_note: Revert the listed files together; no new backend endpoints were added, no data migrations occurred, and no payment/receipt/inventory records are touched by any of these changes.
+preflight_result: no_breach
+preflight_reason_code: ALLOWED
+preflight_run_at: 2026-08-03T12:00:00+08:00
+preflight_request_ref: POS-DEVELOPMENT-DEVELOP-MERGE-2026-08-03
 ---
 
 # Retail & MSME Checkout Backend Wiring — Compliance Note
 
 ## Compliance Impact Classification
 
-Minor. This work does not match any `pos`, `terminal`, `settings`, `payments`, or `compliance` module path in `docs/compliance/compliance-classification-matrix.md` / `scripts/check-compliance-impact.js`, so it is not gated by the automated compliance-preflight/declaration requirement. This note is recorded voluntarily for data-privacy (NPC Circular 2022-04) awareness, since the work handles customer-identity and address data on the public storefront.
+Major. The integrated change set includes POS and terminal checkout/bootstrap paths in addition to the storefront checkout wiring, so the declaration covers the compliance-sensitive surfaces detected by the automated gate. This note also records the data-privacy (NPC Circular 2022-04) impact of handling customer identity and address data on the public storefront.
 
 Full technical description: `docs/features/RETAIL_MSME_CHECKOUT_BACKEND_WIRING_2026-08-02.md`.
 
