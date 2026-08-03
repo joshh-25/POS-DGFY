@@ -26,6 +26,7 @@ import {
 } from '../config/itemImageFeature.js';
 import { AI_USAGE_FEATURES } from '../config/aiUsageFeatures.js';
 import { getTenantAiSpendSince } from '../modules/menuImport/repositories/menuImportBudgetRepository.js';
+import { updateBulkPosCatalogOverridesUseCase } from '../modules/pos/index.js';
 import logger from '../config/logger.js';
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -241,6 +242,57 @@ const enqueueGeneratedImages = async ({ rows, importData, req }) => {
     return { queued, skipped: [...notCreatedSkips, ...overCap, ...queueFailures] };
 };
 
+/**
+ * Marks every item created by this confirm as "Always Available" in the POS
+ * catalog (pos_always_available: true on its PosCatalogOverride row) when
+ * the operator opted in via `mark_always_available` on the confirm request.
+ *
+ * Why this exists: Item.bulkCreate (csvImportService.js) never creates a
+ * PosCatalogOverride row, so a freshly-imported item resolves to
+ * pos_always_available: false + current_stock: 0 — out of stock in the POS
+ * until someone opens it and flips the same toggle by hand, one item at a
+ * time. This reuses the exact mechanism the single-item form already uses
+ * (buildUpdatePosCatalogOverrideUseCase, ItemFormModal.jsx's "Always
+ * Available" toggle) via its bulk sibling, applied to the whole confirmed
+ * batch rather than per-row opt-in — unlike image generation, marking an
+ * item always-available costs nothing, so there's no reason to make the
+ * operator tick every row individually.
+ *
+ * Same fire-and-forget contract as enqueueGeneratedImages: items are
+ * already persisted, so a failure here must never fail the confirm response.
+ * @returns {Promise<{marked: number, skipped: number}>}
+ */
+const markCreatedItemsAlwaysAvailable = async ({ importData, req }) => {
+    const createdItemIds = (importData?.results?.created || [])
+        .map((entry) => entry.item_id)
+        .filter((itemId) => Number.isInteger(itemId));
+    if (createdItemIds.length === 0) {
+        return { marked: 0, skipped: 0 };
+    }
+
+    try {
+        const result = await updateBulkPosCatalogOverridesUseCase({
+            payload: { item_ids: createdItemIds, pos_always_available: true },
+            user: req.user
+        });
+        if (!result?.success) {
+            logger.error('[MenuImportController] Failed to mark imported items Always Available', {
+                tenantId: req.user?.tenant_id,
+                reason: result?.error?.message
+            });
+            return { marked: 0, skipped: createdItemIds.length };
+        }
+        const marked = result.data?.summary?.updated || 0;
+        return { marked, skipped: createdItemIds.length - marked };
+    } catch (error) {
+        logger.error('[MenuImportController] Failed to mark imported items Always Available', {
+            tenantId: req.user?.tenant_id,
+            reason: error?.message
+        });
+        return { marked: 0, skipped: createdItemIds.length };
+    }
+};
+
 export const confirmPdfImport = async (req, res) => {
     try {
         const userId = req.user?.user_id;
@@ -290,6 +342,13 @@ export const confirmPdfImport = async (req, res) => {
             ? ` ${images.queued} image${images.queued === 1 ? '' : 's'} queued for AI generation.`
             : '';
 
+        const alwaysAvailable = req.body.mark_always_available === true
+            ? await markCreatedItemsAlwaysAvailable({ importData, req })
+            : { marked: 0, skipped: 0 };
+        const alwaysAvailableNotice = alwaysAvailable.marked > 0
+            ? ` ${alwaysAvailable.marked} item${alwaysAvailable.marked === 1 ? '' : 's'} marked Always Available.`
+            : '';
+
         return res.status(200).json({
             success: true,
             data: {
@@ -298,9 +357,10 @@ export const confirmPdfImport = async (req, res) => {
                 categories_linked: categories.linked,
                 categories_skipped: categories.skipped,
                 images_queued: images.queued,
-                images_skipped: images.skipped
+                images_skipped: images.skipped,
+                always_available_marked_count: alwaysAvailable.marked
             },
-            message: `Import complete: ${importData.createdCount} created, ${importData.updatedCount} updated, ${importData.failedCount} failed.${categoryNotice}${imageNotice}`
+            message: `Import complete: ${importData.createdCount} created, ${importData.updatedCount} updated, ${importData.failedCount} failed.${categoryNotice}${imageNotice}${alwaysAvailableNotice}`
         });
     } catch (error) {
         logger.error('PDF menu import confirm error:', error);

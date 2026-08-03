@@ -336,4 +336,55 @@ describe('MenuImportBatchModal', () => {
             expect(screen.getByText(/daily AI image budget was already reached/)).toBeTruthy();
         });
     });
+
+    describe('Mark Always Available toggle (stock-availability fix)', () => {
+        it('defaults checked, and sends markAlwaysAvailable: true on confirm', async () => {
+            confirmMenuImport.mockResolvedValue({ createdCount: 2, failedCount: 0, results: { failed: [] } });
+            await runToReviewStep();
+
+            const checkbox = document.getElementById('mark-always-available');
+            expect(checkbox.checked).toBe(true);
+
+            await act(async () => {
+                fireEvent.click(screen.getByRole('button', { name: /Confirm Import \(2 items\)/ }));
+            });
+
+            expect(confirmMenuImport).toHaveBeenCalledWith(
+                expect.any(Array),
+                { markAlwaysAvailable: true }
+            );
+        });
+
+        it('sends markAlwaysAvailable: false once unchecked', async () => {
+            confirmMenuImport.mockResolvedValue({ createdCount: 2, failedCount: 0, results: { failed: [] } });
+            await runToReviewStep();
+
+            fireEvent.click(document.getElementById('mark-always-available'));
+
+            await act(async () => {
+                fireEvent.click(screen.getByRole('button', { name: /Confirm Import \(2 items\)/ }));
+            });
+
+            expect(confirmMenuImport).toHaveBeenCalledWith(
+                expect.any(Array),
+                { markAlwaysAvailable: false }
+            );
+        });
+
+        it('surfaces always_available_marked_count on the result step', async () => {
+            confirmMenuImport.mockResolvedValue({
+                createdCount: 2,
+                failedCount: 0,
+                results: { failed: [] },
+                always_available_marked_count: 2
+            });
+            await runToReviewStep();
+
+            await act(async () => {
+                fireEvent.click(screen.getByRole('button', { name: /Confirm Import \(2 items\)/ }));
+            });
+
+            expect(screen.getByText(/2 items marked Always Available/)).toBeTruthy();
+        });
+    });
 });
