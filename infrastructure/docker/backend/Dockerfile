@@ -24,6 +24,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY packages/shared-constants /packages/shared-constants
 COPY backend/package*.json ./
 COPY backend/src ./src
+COPY backend/assets ./assets
 COPY backend/migrations ./migrations
 COPY backend/scripts ./scripts
 COPY backend/.sequelizerc ./.sequelizerc

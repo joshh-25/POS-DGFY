@@ -59,6 +59,12 @@ describe('generateItemImage', () => {
         expect(result.originalname).toMatch(/^ai-generated-.*\.png$/);
         expect(result.size).toBeGreaterThan(0);
 
+        // Must land under backend/uploads/temp/, NOT os.tmpdir() -- every
+        // deployed environment mounts uploads/ as its own volume, so a temp
+        // file outside that tree fails with EXDEV when
+        // storeOptimizedImageAsset later renames it into uploads/originals/.
+        expect(result.path).toMatch(/[/\\]uploads[/\\]temp[/\\]dgfy-item-image-/);
+
         expect(result.provenance).toEqual({
             type: 'ai_generated',
             model: 'gpt-image-2',
