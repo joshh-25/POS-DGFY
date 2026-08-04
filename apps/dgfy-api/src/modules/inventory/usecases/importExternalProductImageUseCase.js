@@ -1,10 +1,15 @@
 import fs from 'fs/promises';
-import os from 'os';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { SAFE_IMAGE_MIME_TYPES } from '../../shared/utils/imageUploadValidation.js';
 import { STOREFRONT_CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES } from './storefrontCatalogUseCases.js';
+
+// Same volume as uploads/originals/... (see itemImageGenerationService.js's
+// identical UPLOAD_TEMP_DIR for why this can't be os.tmpdir()) so the later
+// rename() in storeOptimizedImageAsset is a same-device move.
+const UPLOAD_TEMP_DIR = fileURLToPath(new URL('../../../../uploads/temp/', import.meta.url));
 
 const DEFAULT_TIMEOUT_MS = 10000;
 const DEFAULT_ALLOWED_IMAGE_HOSTS = Object.freeze(['images.openfoodfacts.org']);
@@ -108,7 +113,8 @@ export const buildImportExternalProductImageUseCase = ({
       }
 
       const body = await readLimitedBody(response, maxBytes);
-      tempPath = path.join(os.tmpdir(), `dgfy-registry-image-${randomUUID()}${MIME_EXTENSION[mime] || ''}`);
+      tempPath = path.join(UPLOAD_TEMP_DIR, `dgfy-registry-image-${randomUUID()}${MIME_EXTENSION[mime] || ''}`);
+      await fs.mkdir(UPLOAD_TEMP_DIR, { recursive: true });
       await fs.writeFile(tempPath, body, { flag: 'wx' });
 
       const importedAt = new Date().toISOString();

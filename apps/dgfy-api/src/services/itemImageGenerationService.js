@@ -15,15 +15,19 @@
  *   -> sharp watermark composite (DGFY logo, fixed corner, fixed opacity —
  *      not the model drawing it into the scene, which is unreliable for
  *      legibility/placement)
- *   -> written to a temp file, same os.tmpdir() convention as
+ *   -> written to a temp file under uploads/temp/ (NOT os.tmpdir() — that's a
+ *      separate filesystem/mount from the uploads volume in every deployed
+ *      environment, so storeOptimizedImageAsset's rename() into
+ *      uploads/originals/... would fail with EXDEV; uploads/temp/ is the
+ *      same convention uploadConfig.js's multer storage and
  *      importExternalProductImageUseCase.js's barcode-registry photo import
+ *      already use for exactly this reason)
  *   -> { path, originalname, mimetype, size, provenance, usage }
  *
  * Mirrors menuExtractionService.js's MenuExtractionError shape with its own
  * ItemImageGenerationError, and its lazy-singleton OpenAI client pattern.
  */
 import fs from 'fs/promises';
-import os from 'os';
 import path from 'path';
 import { randomUUID } from 'crypto';
 import { fileURLToPath } from 'url';
@@ -43,6 +47,13 @@ export class ItemImageGenerationError extends Error {
 }
 
 const WATERMARK_PATH = fileURLToPath(new URL('../../assets/dgfy-watermark.png', import.meta.url));
+// Same volume as uploads/originals/... (both live under backend/uploads/,
+// a single bind-mounted directory in every deployed environment) so the
+// later rename() in storeOptimizedImageAsset is a same-device move, not a
+// cross-device one. cleanupService.js already sweeps this directory for
+// files older than an hour, so an orphan here (e.g. a crash mid-request)
+// still gets reclaimed with no extra bookkeeping.
+const UPLOAD_TEMP_DIR = fileURLToPath(new URL('../../uploads/temp/', import.meta.url));
 
 // OpenAI's gpt-image family prices by (size, quality), not by a "1K/2K/4K"
 // resolution label — the size tier this service and config/aiModelRates.js
@@ -172,7 +183,8 @@ export const generateItemImage = async ({ name, description = null, category = n
     const rawImageBuffer = Buffer.from(b64, 'base64');
     const watermarkedBuffer = await applyWatermark(rawImageBuffer);
 
-    const tempPath = path.join(os.tmpdir(), `dgfy-item-image-${randomUUID()}.png`);
+    const tempPath = path.join(UPLOAD_TEMP_DIR, `dgfy-item-image-${randomUUID()}.png`);
+    await fs.mkdir(UPLOAD_TEMP_DIR, { recursive: true });
     await fs.writeFile(tempPath, watermarkedBuffer, { flag: 'wx' });
 
     const { usd: costUsd, estimated } = resolveImageModelRate(model, sizeTier);

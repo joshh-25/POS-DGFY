@@ -29,6 +29,7 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY packages/shared-constants /packages/shared-constants
 COPY apps/dgfy-api/package*.json ./
 COPY apps/dgfy-api/src ./src
+COPY apps/dgfy-api/assets ./assets
 COPY apps/dgfy-api/scripts ./scripts
 
 RUN mkdir -p uploads/temp storage/temp-ai-exports logs \

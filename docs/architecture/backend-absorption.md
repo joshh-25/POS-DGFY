@@ -120,6 +120,7 @@ deleted and every change reflected in the new structure.
 | 2026-07-20 | `7f416690`             | Baseline at `backend/` removal. Ported `2b2ca4a5`'s two files (`posRepository.js`, `settingsValidator.js`). |
 | 2026-08-01 | `b3ad0951`             | Merged `develop` (121 commits since `83f768d0`). Absorbed 6 new `backend/src/modules/*` domains added upstream (`employeeCredit`, `employees`, `menuImport`, `platformAdmin`, `platformInvoicing`, `tenantRevenue`) plus `tenants/companyRegistration*` and `assets/sieitz-logo.png`, and 19 new Sequelize migrations into `apps/dgfy-migration-runner`. Also absorbed develop's PR #118 CI restructure (PR Checks collapsed to a `changes` + per-deployable build-check shape) and PR #133/`28fda6fe`'s async batch menu-import, which supersedes this branch's earlier single-file port (`38503e75`). `backend/` confirmed empty post-merge. |
 | 2026-08-03 | `87e5ad80`             | Merged `develop` (69 commits since `b3ad0951`). git's directory-rename detection resolved this merge almost entirely on its own: zero content conflicts, all 52 develop-modified `backend/` files auto-merged into their existing `apps/dgfy-api` counterparts, and the only manual work was confirming 40 develop-added files (36 → `apps/dgfy-api`, 4 → `apps/dgfy-migration-runner/migrations`) at their git-inferred destinations. Absorbed the service options/add-ons domain (4 models + `serviceOptionRepository` + `calculateServiceQuoteUseCase` + `manageServiceOptionGroupsUseCase`), managed image lifecycle (`imageLifecycleContract`/`imageLifecycleUseCases`/`imageCleanupService`), menu-import categories (`menuImportCategoryService`, `menuCategoryName`) and "Always Available" tagging, AI item-image generation (`itemImageGenerationService`, `itemImageWorker`, DGFY watermark asset) with per-feature AI usage metering (`aiUsageFeatures.js` + `20260803000001-add-ai-usage-feature-and-units` migration, landlord-scoped so it needs no tenant-schema registry entry), guest-OTP checkout consolidation (`storeGuestCheckoutProof`), Sentry/observability hardening, transient-failure retry, geo address search, and the frontend Retail/MSME shared-catalog port. Plus 4 new migrations into `apps/dgfy-migration-runner`. Manual fixes: two `readRepoSource('backend/...')` literals in `frontend/apps/store/src/__tests__/guestCheckoutOtp.contract.test.js` (introduced by this range, same pattern as the prior sync); and, pre-existing since the `backend/` removal, `frontend/src/features/pos/__tests__/affiliatePricingPreview.test.js`'s fixture-parity path, which had been resolving to the deleted `backend/tests/fixtures/` (fixtures verified byte-identical). `backend/` confirmed empty post-merge. |
+| 2026-08-04 | `16322155`             | Merged `develop` (6 commits since `87e5ad80`, PRs #212/#214/#215). Small scope: AI item-image generation completion/failure status reporting (`itemImageStatusStore.js`, new), a temp-file `EXDEV` cross-device-link fix (write under `uploads/temp/` instead of `os.tmpdir()`), and shipping `backend/assets` in the Docker image (it was omitted, silently breaking the watermark at runtime — see `#212`/`#176`). git's directory-rename detection auto-merged all 6 develop-modified `backend/` files; the only manual work was confirming 3 develop-added files (`itemImageStatusStore.js` + its test, `backendDockerfile.test.js`) at their git-inferred `apps/dgfy-api` destinations, plus one real content conflict in the Dockerfile (this branch's copy has already diverged too far from `backend/Dockerfile` — different `FROM`/`COPY` shape, no migration-CLI layer — for git to line-merge automatically; resolved by hand-porting the single new line as `COPY apps/dgfy-api/assets ./assets`) and repointing `backendDockerfile.test.js`'s path assertions from `backend/` to `apps/dgfy-api/`/`infrastructure/docker/dgfy-api/`. Frontend: new `useItemImageGenerationPoll` hook (polls `itemImageStatusStore` via `storefrontCatalogService`) wired into `TerminalOperationsWorkspace.jsx`. `backend/` confirmed empty post-merge. |
 
 ## Open compliance debt (must clear before staging/prod)
 
@@ -219,3 +220,21 @@ mistaken for absorption regressions later:
 
 Both are upstream `develop` issues; fix them there (or accept the fix when it lands and
 re-absorb), not by patching test expectations from this branch.
+
+### 2026-08-04 develop merge: no declaration at all, not a diff-scope artifact
+
+`npm run check:compliance -- --staged` fails against this merge with a different shape than the
+two entries above — not an existing declaration under-covering a bulk diff, but **no declaration
+file in the diff at all** for four compliance-sensitive `frontend/src/features/pos/` files
+(`TerminalOperationsWorkspace.jsx`, `useItemImageGenerationPoll.js` + its test,
+`posGenerateItemImage.contract.test.js`). Checked `git diff --name-status
+87e5ad80..origin/develop -- docs/compliance/impact-declarations/`: it's empty — PRs #212, #214,
+and #215 on `develop` never added or touched a declaration file, so this is inherited
+upstream debt, not something this absorption introduced. Per this doc's existing note that CI's
+compliance check is `continue-on-error`, this evidently didn't block those PRs on `develop`
+either. The merge commit was made with `--no-verify` for this reason.
+
+**Before this branch is promoted to staging/prod**, add the missing declaration for the AI
+item-image generation status-reporting feature (classification at least `major`, surfaces `pos`,
+`terminal`), covering PRs #212/#214/#215, alongside the seven-declaration compliance re-run
+described above.
