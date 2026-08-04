@@ -160,3 +160,10 @@ npm run smoke:pos-local
   bridge process is actually running.
 - Storefront images or uploads fail: ensure Vite proxies both `/api` and
   `/uploads` to `http://127.0.0.1:5000`.
+- Testing a POS/hardware change on a real iMin device before merging: build a
+  `dev` or `staging`-flavored APK off your branch via the **Build Android
+  Release (manual)** GitHub Actions workflow (or
+  `bash scripts/build-android-release.sh dev`), which installs alongside the
+  production app without overwriting it. See
+  `android/imin-wrapper/README.md` for the full flavor table and rollback
+  steps.
