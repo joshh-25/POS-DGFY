@@ -152,6 +152,11 @@ npm run smoke:pos-local
 - Backend cannot connect to MySQL: start XAMPP MySQL and verify `DB_*` values.
 - Frontend cannot reach API: verify backend health and `VITE_PROXY_TARGET`.
 - POS device bridge unavailable: verify port `5101`, `DEVICE_BRIDGE_BASE_URL`,
-  and optional `DEVICE_BRIDGE_API_KEY` alignment.
+  and optional `DEVICE_BRIDGE_API_KEY` alignment. The bridge is optional
+  (ADR 0053) — `GET /pos/device/status` returns `200` when
+  `DEVICE_BRIDGE_ENABLED` is unset/`false`, and only returns `503` when the
+  bridge is enabled but unreachable. Set `DEVICE_BRIDGE_ENABLED=true` (and
+  optionally `POS_DEVICE_DRIVER=lan_escpos_bridge` to force it) once the
+  bridge process is actually running.
 - Storefront images or uploads fail: ensure Vite proxies both `/api` and
   `/uploads` to `http://127.0.0.1:5000`.
