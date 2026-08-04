@@ -41,6 +41,11 @@ describe('external product image import', () => {
     const upload = jest.fn(async ({ file, provenance }) => {
       expect(await fs.readFile(file.path)).toEqual(PNG_BYTES);
       expect(file.mimetype).toBe('image/png');
+      // Must land under backend/uploads/temp/, NOT os.tmpdir() -- every
+      // deployed environment mounts uploads/ as its own volume, so a temp
+      // file outside that tree fails with EXDEV when the downstream
+      // storeOptimizedImageAsset rename crosses filesystems.
+      expect(file.path).toMatch(/[/\\]uploads[/\\]temp[/\\]dgfy-registry-image-/);
       expect(provenance).toEqual(expect.objectContaining({
         type: 'external_registry',
         provider: 'open_food_facts',
