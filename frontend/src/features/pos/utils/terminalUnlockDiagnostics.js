@@ -108,7 +108,12 @@ export const resolveTerminalLoginErrorMessage = (error) => {
   }
 
   if (requestPath.endsWith('/pos/device/status') && status === 503) {
-    return 'The receipt printer/cash drawer bridge is unavailable. Login can continue, but hardware controls stay disabled until the bridge is running.';
+    // A terminal with no hardware configured is a normal 200 response — see
+    // ADR 0053 — so reaching this branch means a driver IS configured
+    // (POS_DEVICE_DRIVER) but the backend could not reach it. Print/drawer
+    // controls stay clickable either way; they just report the failure
+    // honestly when pressed instead of silently disabling.
+    return 'The configured receipt printer/cash drawer bridge is unavailable. Login can continue; printing will report the failure when attempted.';
   }
 
   if (!status) {

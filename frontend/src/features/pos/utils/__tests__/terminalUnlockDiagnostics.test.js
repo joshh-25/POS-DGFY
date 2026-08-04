@@ -124,11 +124,14 @@ describe('terminal unlock diagnostics', () => {
   });
 
   it('classifies the optional device bridge separately from login failure', () => {
+    // A terminal with no hardware configured never reaches this branch — it's
+    // a normal 200 from /pos/device/status (ADR 0053). This 503 only fires
+    // when a driver IS configured but genuinely unreachable.
     expect(resolveTerminalLoginErrorMessage(apiError({
       status: 503,
       url: '/pos/device/status'
     }))).toBe(
-      'The receipt printer/cash drawer bridge is unavailable. Login can continue, but hardware controls stay disabled until the bridge is running.'
+      'The configured receipt printer/cash drawer bridge is unavailable. Login can continue; printing will report the failure when attempted.'
     );
   });
 
