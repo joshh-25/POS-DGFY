@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { isDocumentVisibleAndOnline } from '../../shared/utils/browserAvailability.js';
 
 export function useCustomerDashboardLiveSync({ isDgfyCustomerSignedIn, isAccountDrawerOpen, isStandaloneAccountPage, isGuestTrackingDrawerOpen, activeCustomerOrderCount, accountPanelRefreshInFlightRef, loadAccountPanelRef, mergeLiveAccountActivityRef, setAccountPanel, withApiOrigin }) {
   useEffect(() => {
@@ -6,8 +7,14 @@ export function useCustomerDashboardLiveSync({ isDgfyCustomerSignedIn, isAccount
     const enabled = isAccountDrawerOpen || isStandaloneAccountPage || isGuestTrackingDrawerOpen || activeCustomerOrderCount > 0;
     if (!enabled) return undefined;
     let cancelled = false;
+    // Skip the fetch (not the timer) when the tab is hidden or the browser
+    // reports offline -- a backgrounded tab on a dead connection would
+    // otherwise keep firing this poll's 11-request loadDgfyPanel fan-out
+    // every tick indefinitely, each rejection burning a Sentry event.
+    // Skipping the work still lets schedule() re-arm on its own once the
+    // tab returns, rather than requiring a separate resume path.
     const refresh = async () => {
-      if (cancelled || accountPanelRefreshInFlightRef.current) return;
+      if (cancelled || accountPanelRefreshInFlightRef.current || !isDocumentVisibleAndOnline()) return;
       accountPanelRefreshInFlightRef.current = true;
       try { await loadAccountPanelRef.current?.({ silent: true }); } finally { accountPanelRefreshInFlightRef.current = false; }
     };
@@ -60,7 +67,7 @@ export function useCustomerDashboardLiveSync({ isDgfyCustomerSignedIn, isAccount
         });
       } catch { /* polling repairs malformed events */ }
     });
-    source.onerror = () => { if (!closed && !accountPanelRefreshInFlightRef.current) void loadAccountPanelRef.current?.({ silent: true }); };
+    source.onerror = () => { if (!closed && !accountPanelRefreshInFlightRef.current && isDocumentVisibleAndOnline()) void loadAccountPanelRef.current?.({ silent: true }); };
     return () => { closed = true; source.close(); };
   }, [activeCustomerOrderCount, accountPanelRefreshInFlightRef, isAccountDrawerOpen, isDgfyCustomerSignedIn, isGuestTrackingDrawerOpen, isStandaloneAccountPage, loadAccountPanelRef, mergeLiveAccountActivityRef, setAccountPanel, withApiOrigin]);
 }
