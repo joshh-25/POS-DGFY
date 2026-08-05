@@ -678,13 +678,22 @@ api.interceptors.response.use(
     // Promotes genuine final failures (5xx, or no response at all) to a
     // Sentry event -- see captureRequestFailure's own doc comment for why
     // 4xx is excluded and how throttling protects the event quota.
-    captureRequestFailure({
-      error,
-      method: error.config?.method,
-      url: error.config?.url,
-      status: error.response?.status,
-      requestId
-    });
+    // `skipRequestFailureCapture` is the per-request escape hatch for calls
+    // that are optional-capability probes rather than user-facing requests
+    // (e.g. fetchPosDeviceStatus's /pos/device/status) -- an endpoint that
+    // is *expected* to be unavailable in a given deployment shouldn't burn
+    // the Sentry event quota every time it's polled. Distinct from
+    // skipGlobalErrorToast (UI notification) and skipTransientRetry (retry
+    // policy): a call can opt out of any subset of the three independently.
+    if (!error.config?.skipRequestFailureCapture) {
+      captureRequestFailure({
+        error,
+        method: error.config?.method,
+        url: error.config?.url,
+        status: error.response?.status,
+        requestId
+      });
+    }
     return Promise.reject(error);
   }
 );
