@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Staging-flavor only. See the dev flavor's twin of this file
-  (app/src/dev/res/xml/network_security_config.xml) for the full rationale
-  -- same shape, scoped to stage.dgfy.ph instead of dev.dgfy.ph.
+  (app/src/dev/res/xml/network_security_config.xml) for the full rationale;
+  same shape, scoped to stage.dgfy.ph instead of dev.dgfy.ph.
   stage.dgfy.ph is confirmed to terminate TLS upstream (openresty; see
   infrastructure/nginx-host/stage.dgfy.ph.conf), so this is a defensive
   fallback, not an expected path.

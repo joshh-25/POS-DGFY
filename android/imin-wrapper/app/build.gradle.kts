@@ -1,3 +1,9 @@
+// AGP's java-base plugin registers a `java` extension (JavaPluginExtension) on
+// this script's implicit Project receiver, which shadows the root `java`
+// package -- so `java.net.URI` below would not resolve. Import the bare name
+// instead of qualifying it inline.
+import java.net.URI
+
 plugins {
     alias(libs.plugins.android.application)
 }
@@ -42,7 +48,7 @@ val skupervisorHosts = mapOf(
 // (AppConfig.allowedHosts) reads LIVE_POS_HOST, so if it were a separate
 // literal a typo would silently block the very origin the app loads.
 val posHosts = posOrigins.mapValues { (flavor, origin) ->
-    requireNotNull(java.net.URI(origin).host) {
+    requireNotNull(runCatching { URI(origin).host }.getOrNull()) {
         "dgfy.$flavor.posOrigin is not a valid absolute URL: $origin"
     }
 }
