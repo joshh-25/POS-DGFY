@@ -10,6 +10,7 @@ import android.media.RingtoneManager
 import android.media.ToneGenerator
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
@@ -69,7 +70,7 @@ class WebPosActivity : AppCompatActivity() {
             allowFileAccess = false
             allowContentAccess = false
             databaseEnabled = true
-            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             mediaPlaybackRequiresUserGesture = false
             userAgentString = "$userAgentString DGFY-iMin-WebView"
             builtInZoomControls = false
@@ -94,20 +95,23 @@ class WebPosActivity : AppCompatActivity() {
         webView.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
                 val message = consoleMessage?.message().orEmpty()
-                if (isNonFatalWebPosConsoleError(message)) {
-                    return super.onConsoleMessage(consoleMessage)
-                }
-                if (
-                    consoleMessage?.messageLevel() == ConsoleMessage.MessageLevel.ERROR ||
-                    message.contains("error", ignoreCase = true) ||
-                    message.contains("failed", ignoreCase = true)
+                val isErrorLevel =
+                    consoleMessage?.messageLevel() == ConsoleMessage.MessageLevel.ERROR
+                when (
+                    WebPosConsoleErrorPolicy.classify(isErrorLevel, message, webPosReadyReceived)
                 ) {
-                    showStatus(
+                    ConsoleAction.BLOCK -> showStatus(
                         title = "Web POS script error",
                         message = message.ifBlank { "Unknown WebView JavaScript error" },
                         showRetry = true,
                         showSpinner = false
                     )
+                    ConsoleAction.LOG_ONLY -> Log.w(
+                        TAG,
+                        "WebView console error: $message " +
+                            "(${consoleMessage?.sourceId()}:${consoleMessage?.lineNumber()})"
+                    )
+                    ConsoleAction.IGNORE -> Unit
                 }
                 return super.onConsoleMessage(consoleMessage)
             }
@@ -137,7 +141,7 @@ class WebPosActivity : AppCompatActivity() {
                 request: WebResourceRequest?
             ): Boolean {
                 val targetUrl = request?.url ?: return false
-                return if (isAllowedHost(targetUrl.host)) {
+                return if (isAllowedNavigation(targetUrl.host, targetUrl.scheme)) {
                     false
                 } else {
                     startActivity(Intent(Intent.ACTION_VIEW, targetUrl))
@@ -164,11 +168,6 @@ class WebPosActivity : AppCompatActivity() {
         webView.loadUrl(AppConfig.hostedWebPosUrl())
     }
 
-    private fun isNonFatalWebPosConsoleError(message: String): Boolean {
-        return message.contains("API 422 Validation Error", ignoreCase = true) ||
-            message.contains("Validation failed", ignoreCase = true)
-    }
-
     override fun onDestroy() {
         activeMessageDialog?.dismiss()
         activeMessageDialog = null
@@ -189,8 +188,13 @@ class WebPosActivity : AppCompatActivity() {
         }
     }
 
-    private fun isAllowedHost(host: String?): Boolean {
-        return host != null && AppConfig.allowedHosts().contains(host)
+    private fun isAllowedNavigation(host: String?, scheme: String?): Boolean {
+        return WebPosNavigationPolicy.isPermitted(
+            host,
+            scheme,
+            AppConfig.allowedHosts(),
+            AppConfig.cleartextAllowedHosts()
+        )
     }
 
     private fun showStatus(
@@ -358,6 +362,7 @@ class WebPosActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val TAG = "WebPosActivity"
         private const val BLUETOOTH_PERMISSION_REQUEST_CODE = 7001
         private const val READY_SIGNAL_FALLBACK_MS = 10_000L
     }

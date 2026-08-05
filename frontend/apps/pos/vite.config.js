@@ -93,6 +93,8 @@ export default defineConfig({
     outDir: path.resolve(__dirname, '../../../dist-apps/pos'),
     emptyOutDir: true,
     sourcemap: sentrySourcemapBuildValue(appSurface),
+    // iMin POS WebView is Chrome 80-84 (no String.replaceAll, ES2021). See DGFY-POS-B.
+    target: ['chrome80', 'edge88', 'firefox78', 'safari14'],
     // Keep optional map rendering separate from the terminal's primary startup path.
     chunkSizeWarningLimit: 1100,
     rollupOptions: {

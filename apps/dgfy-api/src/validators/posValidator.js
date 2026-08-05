@@ -415,13 +415,24 @@ const collectCashPickupOrderSchema = Joi.object({
     cash_received: Joi.number().positive().precision(4).required()
 });
 
+// A client-side driver (iMin native bridge, a future Web Bluetooth ESC/POS
+// driver) reports its own outcome here instead of asking the backend to
+// dispatch physically. See ADR 0053 and posDeviceUseCases.js.
+const deviceClientResultSchema = Joi.object({
+    success: Joi.boolean().required(),
+    message: Joi.string().trim().max(500).allow('', null).optional(),
+    reason_code: Joi.string().trim().max(100).allow('', null).optional()
+});
+
 const devicePrintReceiptSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
     transaction_id: Joi.number().integer().positive().required(),
     copies: Joi.number().integer().min(1).max(5).default(1),
     paper_width: Joi.string().valid('80mm', '57mm').default('80mm'),
     reason: Joi.string().trim().max(255).allow('', null).optional(),
-    terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
+    client_driver_id: Joi.string().trim().max(60).optional(),
+    client_result: deviceClientResultSchema.optional()
 });
 
 const deviceOpenDrawerSchema = Joi.object({
@@ -429,7 +440,9 @@ const deviceOpenDrawerSchema = Joi.object({
     shift_id: Joi.number().integer().positive().required(),
     transaction_id: Joi.number().integer().positive().allow(null).optional(),
     reason: Joi.string().trim().min(3).max(255).required(),
-    terminal_id: Joi.string().trim().max(100).allow(null, '').optional()
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
+    client_driver_id: Joi.string().trim().max(60).optional(),
+    client_result: deviceClientResultSchema.optional()
 });
 
 const fiscalPrintEventSchema = Joi.object({

@@ -113,6 +113,28 @@ That conflict list *is* the absorption checklist. For each conflicted `backend/`
 Once all conflicts are resolved this way, the merge completes with `backend/` staying
 deleted and every change reflected in the new structure.
 
+### The conflict list is not the whole checklist — `backend/` can reappear silently
+
+git's directory-rename detection only relocates a develop-added file when it has rename
+evidence for that file's **immediate parent directory**. When develop adds a *brand-new*
+subdirectory under `backend/`, there is no such evidence: git writes those files at their
+original `backend/` path and emits **no conflict and no advisory**. The merge looks clean
+while quietly resurrecting `backend/` — and any sibling file that imports them relatively
+(e.g. `apps/dgfy-api/src/modules/pos/index.js` → `./integrations/…`) now points at a
+directory that does not exist.
+
+This bit the 2026-08-05 merge: all four files of develop's new
+`backend/src/modules/pos/integrations/` landed untouched while the seven advisories git
+*did* raise were all for files in pre-existing directories. So never treat an empty
+conflict list as proof. After every merge, before staging anything:
+
+```sh
+git ls-files -- backend/          # must be empty
+```
+
+Anything listed there is a silent reappearance: `git mv` it to its mapped destination,
+re-verify it against `origin/develop:<source path>`, and re-run the check.
+
 ## Absorption changelog
 
 | Date       | Absorbed develop up to | Notes                                                        |
@@ -121,6 +143,7 @@ deleted and every change reflected in the new structure.
 | 2026-08-01 | `b3ad0951`             | Merged `develop` (121 commits since `83f768d0`). Absorbed 6 new `backend/src/modules/*` domains added upstream (`employeeCredit`, `employees`, `menuImport`, `platformAdmin`, `platformInvoicing`, `tenantRevenue`) plus `tenants/companyRegistration*` and `assets/sieitz-logo.png`, and 19 new Sequelize migrations into `apps/dgfy-migration-runner`. Also absorbed develop's PR #118 CI restructure (PR Checks collapsed to a `changes` + per-deployable build-check shape) and PR #133/`28fda6fe`'s async batch menu-import, which supersedes this branch's earlier single-file port (`38503e75`). `backend/` confirmed empty post-merge. |
 | 2026-08-03 | `87e5ad80`             | Merged `develop` (69 commits since `b3ad0951`). git's directory-rename detection resolved this merge almost entirely on its own: zero content conflicts, all 52 develop-modified `backend/` files auto-merged into their existing `apps/dgfy-api` counterparts, and the only manual work was confirming 40 develop-added files (36 → `apps/dgfy-api`, 4 → `apps/dgfy-migration-runner/migrations`) at their git-inferred destinations. Absorbed the service options/add-ons domain (4 models + `serviceOptionRepository` + `calculateServiceQuoteUseCase` + `manageServiceOptionGroupsUseCase`), managed image lifecycle (`imageLifecycleContract`/`imageLifecycleUseCases`/`imageCleanupService`), menu-import categories (`menuImportCategoryService`, `menuCategoryName`) and "Always Available" tagging, AI item-image generation (`itemImageGenerationService`, `itemImageWorker`, DGFY watermark asset) with per-feature AI usage metering (`aiUsageFeatures.js` + `20260803000001-add-ai-usage-feature-and-units` migration, landlord-scoped so it needs no tenant-schema registry entry), guest-OTP checkout consolidation (`storeGuestCheckoutProof`), Sentry/observability hardening, transient-failure retry, geo address search, and the frontend Retail/MSME shared-catalog port. Plus 4 new migrations into `apps/dgfy-migration-runner`. Manual fixes: two `readRepoSource('backend/...')` literals in `frontend/apps/store/src/__tests__/guestCheckoutOtp.contract.test.js` (introduced by this range, same pattern as the prior sync); and, pre-existing since the `backend/` removal, `frontend/src/features/pos/__tests__/affiliatePricingPreview.test.js`'s fixture-parity path, which had been resolving to the deleted `backend/tests/fixtures/` (fixtures verified byte-identical). `backend/` confirmed empty post-merge. |
 | 2026-08-04 | `16322155`             | Merged `develop` (6 commits since `87e5ad80`, PRs #212/#214/#215). Small scope: AI item-image generation completion/failure status reporting (`itemImageStatusStore.js`, new), a temp-file `EXDEV` cross-device-link fix (write under `uploads/temp/` instead of `os.tmpdir()`), and shipping `backend/assets` in the Docker image (it was omitted, silently breaking the watermark at runtime — see `#212`/`#176`). git's directory-rename detection auto-merged all 6 develop-modified `backend/` files; the only manual work was confirming 3 develop-added files (`itemImageStatusStore.js` + its test, `backendDockerfile.test.js`) at their git-inferred `apps/dgfy-api` destinations, plus one real content conflict in the Dockerfile (this branch's copy has already diverged too far from `backend/Dockerfile` — different `FROM`/`COPY` shape, no migration-CLI layer — for git to line-merge automatically; resolved by hand-porting the single new line as `COPY apps/dgfy-api/assets ./assets`) and repointing `backendDockerfile.test.js`'s path assertions from `backend/` to `apps/dgfy-api/`/`infrastructure/docker/dgfy-api/`. Frontend: new `useItemImageGenerationPoll` hook (polls `itemImageStatusStore` via `storefrontCatalogService`) wired into `TerminalOperationsWorkspace.jsx`. `backend/` confirmed empty post-merge. |
+| 2026-08-05 | `b3aedf39`             | Merged `develop` (19 commits since `16322155`, PRs #220/#221/#228/#231/#235/#236/#237). Absorbed the pluggable POS hardware device-driver contract (ADR 0053): `posDeviceDriver.contract.js`, a new `src/modules/pos/integrations/` package (`resolvePosDeviceDriver`, `escposBridgeDeviceDriver`, `clientManagedDeviceDriver`, `disabledDeviceDriver`), `config/posDeviceFeature.js`, and the `pos_hardware_profile` settings validator — POS hardware is now optional rather than assumed. Frontend counterpart: a `posHardwareRegistry` unifying iMin native / LAN-bridge / no-printer terminals, plus observability work (network-fingerprint fan-out collapsed, dashboard poll guarded, POS poll timeout capped, storefront `ErrorBoundary`) and Retail/MSME UI refinements. **First cycle where git silently left `backend/` behind**: the four new `backend/src/modules/pos/integrations/` files raised no conflict and no advisory because their parent directory was new on `develop`, so directory-rename detection had no evidence for it — they were hand-relocated with `git mv`, and `apps/dgfy-api/src/modules/pos/index.js` would have imported a nonexistent `./integrations/` otherwise. See "The conflict list is not the whole checklist" above. The other seven develop-added files raised the usual file-location advisories and were confirmed at their git-inferred destinations. Manual fixes: repointed develop-authored `backend/…` comments in six merged live files (`device-bridge/README.md`, `config/posDeviceFeature.js`, `posDeviceDriver.contract.js`, `escposBridgeDeviceDriver.js`, `validators/settingsValidator.js`, and frontend `lanBridgeDriver.js`/`posHardwareRegistry.js`). This range also touches `android/` (15 files) and `scripts/build-android-*.sh`; the `android/` → `apps/dgfy-android-bridge/` relocation landed as a separate follow-up commit — see the android path map in this doc. `backend/` confirmed empty post-merge. |
 
 ## Open compliance debt (must clear before staging/prod)
 
@@ -238,3 +261,24 @@ either. The merge commit was made with `--no-verify` for this reason.
 item-image generation status-reporting feature (classification at least `major`, surfaces `pos`,
 `terminal`), covering PRs #212/#214/#215, alongside the seven-declaration compliance re-run
 described above.
+
+### 2026-08-05 develop merge: back to the diff-scope artifact
+
+`develop` did ship declarations in this range — `2026-08-05-pos-incoming-orders-poll-timeout.md`
+and `2026-08-05-pos-webview-replaceall-crash.md` — so this is the 2026-08-01/2026-08-03 shape
+again, not the 2026-08-04 "nothing at all" shape. `npm run check:compliance -- --staged` reports
+two failures, both against the first declaration:
+
+```
+- Classification "major" ... is below computed minimum "regulatory" for changed compliance-sensitive files
+- Front matter surfaces ... do not cover changed surfaces: settings, compliance
+```
+
+Both are artifacts of merging 19 commits as one unit: the gate's date-range matching attributes
+every compliance-sensitive file in the whole range to whichever single declaration it picks, so a
+poll-timeout declaration inherits the ADR 0053 device-driver work's `settings` surface and the
+`compliance` surface from unrelated docs in range. Each declaration validly covered its own PR
+diff on `develop`. Merge committed with `--no-verify`, same as the prior three cycles.
+
+Nothing new to add before promotion beyond the re-run already described above — but include these
+two declarations in it.

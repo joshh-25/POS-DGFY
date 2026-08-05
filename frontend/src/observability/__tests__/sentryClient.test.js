@@ -7,6 +7,7 @@ import {
   resolveTracePropagationTargets,
   resolveTracesSampleRate,
   resolveTracingMode,
+  resolveWebviewChromeMajor,
   sanitizeSentryEvent
 } from '../sentryClient.js';
 
@@ -26,6 +27,37 @@ describe('resolveSentryEnvironment', () => {
 
   it('defaults to development when nothing is set', () => {
     expect(resolveSentryEnvironment({})).toBe('development');
+  });
+});
+
+// DGFY-POS-B: the iMin POS WebView (Chrome 80-84) crashed on
+// String.prototype.replaceAll, and sanitizeSentryEvent's header scrubbing
+// meant the issue carried no browser/OS info to confirm that from Sentry
+// alone -- it had to be inferred from what syntax the shipped bundle
+// happened to contain. This tag makes the next WebView-version-gated
+// compat bug diagnosable directly from the issue.
+describe('resolveWebviewChromeMajor', () => {
+  it('extracts the Chrome major version from an Android WebView user agent', () => {
+    const userAgent = 'Mozilla/5.0 (Linux; Android 10; iMin D1) AppleWebKit/537.36 (KHTML, like Gecko) '
+      + 'Version/4.0 Chrome/83.0.4103.106 Mobile Safari/537.36 DGFY-iMin-WebView';
+    expect(resolveWebviewChromeMajor(userAgent)).toBe(83);
+  });
+
+  it('extracts the Chrome major version from a desktop user agent', () => {
+    const userAgent = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) '
+      + 'Chrome/127.0.0.0 Safari/537.36';
+    expect(resolveWebviewChromeMajor(userAgent)).toBe(127);
+  });
+
+  it('returns null for a non-Chrome user agent', () => {
+    const userAgent = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) AppleWebKit/605.1.15 (KHTML, like Gecko) '
+      + 'Version/17.0 Safari/605.1.15';
+    expect(resolveWebviewChromeMajor(userAgent)).toBeNull();
+  });
+
+  it('returns null for missing/empty input', () => {
+    expect(resolveWebviewChromeMajor(undefined)).toBeNull();
+    expect(resolveWebviewChromeMajor('')).toBeNull();
   });
 });
 
@@ -318,6 +350,58 @@ describe('initBrowserSentry integrations', () => {
     expect(init.mock.calls[0][0].integrations).toHaveLength(0);
     vi.doUnmock('@sentry/react');
   });
+
+  it('tags webview_chrome_major from navigator.userAgent on init', async () => {
+    const init = vi.fn();
+    vi.doMock('@sentry/react', () => ({
+      init,
+      browserTracingIntegration: vi.fn(() => ({ name: 'BrowserTracing' })),
+      replayIntegration: vi.fn(() => ({ name: 'Replay' }))
+    }));
+    vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Linux; Android 10) Chrome/83.0.4103.106 Mobile Safari/537.36 DGFY-iMin-WebView' });
+
+    const freshModule = await importFreshSentryClient();
+    freshModule.initBrowserSentry({
+      env: {
+        VITE_SENTRY_ENABLED: 'true',
+        VITE_SENTRY_DSN_POS: 'https://test@sentry.test/1'
+      },
+      surface: 'pos'
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const initOptions = init.mock.calls[0][0];
+    expect(initOptions.initialScope.tags).toMatchObject({ surface: 'pos', webview_chrome_major: '83' });
+
+    vi.doUnmock('@sentry/react');
+    vi.unstubAllGlobals();
+  });
+
+  it('omits webview_chrome_major when the user agent has no Chrome token', async () => {
+    const init = vi.fn();
+    vi.doMock('@sentry/react', () => ({
+      init,
+      browserTracingIntegration: vi.fn(() => ({ name: 'BrowserTracing' })),
+      replayIntegration: vi.fn(() => ({ name: 'Replay' }))
+    }));
+    vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15) Version/17.0 Safari/605.1.15' });
+
+    const freshModule = await importFreshSentryClient();
+    freshModule.initBrowserSentry({
+      env: {
+        VITE_SENTRY_ENABLED: 'true',
+        VITE_SENTRY_DSN_STORE: 'https://test@sentry.test/1'
+      },
+      surface: 'store'
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const initOptions = init.mock.calls[0][0];
+    expect(initOptions.initialScope.tags).toEqual({ surface: 'store' });
+
+    vi.doUnmock('@sentry/react');
+    vi.unstubAllGlobals();
+  });
 });
 
 describe('normalizeRequestUrl', () => {
@@ -534,7 +618,7 @@ describe('captureRequestFailure', () => {
     freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items' });
 
     const [, options] = Sentry.captureException.mock.calls[0];
-    expect(options.fingerprint).toEqual(['api', 'GET', '/api/v1/items', 'network']);
+    expect(options.fingerprint).toEqual(['api', 'GET', 'network']);
     expect(options.level).toBe('warning');
     expect(options.tags.request_failure_class).toBe('transient');
     vi.doUnmock('@sentry/react');
@@ -573,7 +657,32 @@ describe('captureRequestFailure', () => {
 
     expect(Sentry.captureException).toHaveBeenCalledTimes(1);
     const [, options] = Sentry.captureException.mock.calls[0];
-    expect(options.fingerprint).toEqual(['api', 'GET', '/api/v1/items', 'network']);
+    expect(options.fingerprint).toEqual(['api', 'GET', 'network']);
+    vi.doUnmock('@sentry/react');
+  });
+
+  it('collapses network-class failures across different URLs into one fingerprint, unlike server-class', async () => {
+    const { freshModule, Sentry } = await importInitializedSentryClient();
+
+    // Simulates loadDgfyPanel's Promise.all fan-out: one connectivity blip
+    // rejects several endpoints at once. Before the fix, each endpoint's
+    // distinct URL produced its own fingerprint (and its own independent
+    // cooldown), so a single blip minted one Sentry issue per endpoint.
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/dgfy/auth/me' });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/dgfy/customer/dashboard' });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/dgfy/account/companies' });
+
+    // Only the first call gets through the fingerprint's own cooldown; the
+    // other two collapse into the same key and are throttled immediately.
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+    const [, options] = Sentry.captureException.mock.calls[0];
+    expect(options.fingerprint).toEqual(['api', 'GET', 'network']);
+
+    // A real 5xx from two distinct endpoints must NOT collapse -- each stays
+    // its own actionable issue.
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/store/a', status: 500 });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/store/b', status: 500 });
+    expect(Sentry.captureException).toHaveBeenCalledTimes(3);
     vi.doUnmock('@sentry/react');
   });
 

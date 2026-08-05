@@ -89,6 +89,8 @@ export default defineConfig({
     },
   },
   build: {
+    // iMin POS WebView is Chrome 80-84 (no String.replaceAll, ES2021). See DGFY-POS-B.
+    target: ['chrome80', 'edge88', 'firefox78', 'safari14'],
     // MapLibre is lazy-loaded by location-picker surfaces; keep warnings focused on initial app/vendor regressions.
     chunkSizeWarningLimit: 1100,
     rollupOptions: {

@@ -7,6 +7,7 @@ import {
   Star
 } from 'lucide-react';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
+import { formatFollowersLabel } from '../../../../features/shared-storefront/utils/storefrontDisplayUtils.jsx';
 import { StorefrontExpandedMapModal } from '../../../../discovery/components/StorefrontExpandedMapModal.jsx';
 import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from '../../../../shared/components/storefront/hero/StorefrontHeaderNav.jsx';
 import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from '../../../../shared/components/storefront/hero/StorefrontHeroNameCluster.jsx';
@@ -76,7 +77,34 @@ const SimpleHero = ({
   } = heroStyles;
   const [isExpandedMapOpen, setIsExpandedMapOpen] = useState(false);
   const heroTheme = modeAdapter.heroTheme || {};
+  const followersLabel = followEnabled ? formatFollowersLabel(followState?.followersCount) : '';
   const selectedBranchLabel = String(selectedLocation?.name || simpleHeroModel.locationLabel || '').trim();
+  const desktopHeroMetaItems = [
+    simpleHeroModel.ratingLabel ? (
+      <span key="rating" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        <Star size={16} fill="#5eead4" color="#5eead4" />
+        {simpleHeroModel.ratingLabel}
+      </span>
+    ) : null,
+    followEnabled && followersLabel ? <span key="followers" style={{ flexShrink: 0 }}>{followersLabel}</span> : null,
+    simpleHeroModel.modeLabel ? <span key="mode" style={{ flexShrink: 0 }}>{simpleHeroModel.modeLabel}</span> : null,
+    selectedBranchLabel ? (
+      <span key="location" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        <MapPin size={16} />
+        {selectedBranchLabel}
+      </span>
+    ) : null
+  ].filter(Boolean);
+  const mobileHeroMetaItems = [
+    simpleHeroModel.ratingLabel ? (
+      <span key="rating" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+        <Star size={14} fill="#5eead4" color="#5eead4" />
+        {simpleHeroModel.ratingLabel}
+      </span>
+    ) : null,
+    followEnabled && followersLabel ? <span key="followers" style={{ flexShrink: 0 }}>{followersLabel}</span> : null,
+    simpleHeroModel.modeLabel ? <span key="mode" style={{ flexShrink: 0 }}>{simpleHeroModel.modeLabel}</span> : null
+  ].filter(Boolean);
   const storefrontCityLabel = String(selectedLocation?.city || selectedStore?.city || '').trim();
   const addressText = String(simpleHeroModel.addressLine || simpleHeroModel.locationLabel || '').trim();
   const aboutText = String(simpleHeroModel.sectionAboutText || '').trim();
@@ -235,20 +263,31 @@ const SimpleHero = ({
                 )}
               </div>
               <div style={{ display: 'grid', gap: 8, maxWidth: 760 }}>
-                <h1 style={{ margin: 0, color: '#fff', fontSize: 50, fontWeight: 900, lineHeight: 1.05, letterSpacing: '-0.03em', fontFamily: heroTheme.displayFont }}>{simpleHeroModel.name}</h1>
+                <SharedStorefrontHeroNameCluster
+                  name={simpleHeroModel.name}
+                  textColor="#fff"
+                  fontSize={50}
+                  fontFamily={heroTheme.displayFont}
+                  followEnabled={followEnabled}
+                  followState={followState}
+                  handleFollowAction={handleFollowAction}
+                />
                 {simpleHeroModel.tagline ? (
                   <p style={{ margin: 0, color: '#ccfbf1', fontSize: 20, fontWeight: 700, lineHeight: 1.3, fontFamily: heroTheme.bodyFont }}>{simpleHeroModel.tagline}</p>
                 ) : (
                   <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: 16, maxWidth: 620, lineHeight: 1.6, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
                 )}
               </div>
-              <div className="no-scrollbar" style={{ display: 'flex', flexWrap: 'nowrap', gap: 12, color: '#fff', fontSize: 14, fontWeight: 600, opacity: 0.95, marginBottom: 6, fontFamily: heroTheme.bodyFont, overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}><Star size={16} fill="#5eead4" color="#5eead4" />{simpleHeroModel.ratingLabel}</span>
-                <span style={{ opacity: 0.5, flexShrink: 0 }}>|</span>
-                <span style={{ flexShrink: 0 }}>{simpleHeroModel.modeLabel}</span>
-                <span style={{ opacity: 0.5, flexShrink: 0 }}>|</span>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}><MapPin size={16} />{simpleHeroModel.locationLabel}</span>
-              </div>
+              {desktopHeroMetaItems.length > 0 && (
+                <div className="no-scrollbar" style={{ display: 'flex', flexWrap: 'nowrap', gap: 12, color: '#fff', fontSize: 14, fontWeight: 400, opacity: 0.95, marginBottom: 6, fontFamily: heroTheme.bodyFont, overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
+                  {desktopHeroMetaItems.map((item, index) => (
+                    <React.Fragment key={`simple-desktop-hero-meta-${index}`}>
+                      {index > 0 ? <span style={{ opacity: 0.5, flexShrink: 0 }}>|</span> : null}
+                      {item}
+                    </React.Fragment>
+                  ))}
+                </div>
+              )}
             </div>
 
             <div style={{
@@ -344,11 +383,16 @@ const SimpleHero = ({
                 <p style={{ margin: 0, color: '#475569', fontSize: 13, lineHeight: 1.5, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
               )}
 
-              <div className="no-scrollbar" style={{ display: 'flex', flexWrap: 'nowrap', gap: 12, color: '#475569', fontSize: 12, fontWeight: 600, marginTop: 4, fontFamily: heroTheme.bodyFont, overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}><Star size={14} fill="#5eead4" color="#5eead4" />{simpleHeroModel.ratingLabel}</span>
-                <span style={{ opacity: 0.3, flexShrink: 0 }}>|</span>
-                <span style={{ flexShrink: 0 }}>{simpleHeroModel.modeLabel}</span>
-              </div>
+              {mobileHeroMetaItems.length > 0 && (
+                <div className="no-scrollbar" style={{ display: 'flex', flexWrap: 'nowrap', gap: 12, color: '#475569', fontSize: 12, fontWeight: 400, marginTop: 4, fontFamily: heroTheme.bodyFont, overflowX: 'auto', WebkitOverflowScrolling: 'touch', width: '100%' }}>
+                  {mobileHeroMetaItems.map((item, index) => (
+                    <React.Fragment key={`simple-mobile-hero-meta-${index}`}>
+                      {index > 0 ? <span style={{ opacity: 0.3, flexShrink: 0 }}>|</span> : null}
+                      {item}
+                    </React.Fragment>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>

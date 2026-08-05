@@ -7,7 +7,7 @@ import {
     updateItemUseCase,
     deleteItemUseCase
 } from '../inventory/index.js';
-import { posDeviceBridgeService } from '../../services/posDeviceBridgeService.js';
+import { resolvePosDeviceDriver } from './integrations/resolvePosDeviceDriver.js';
 import posTerminalPairingService from './services/posTerminalPairingService.js';
 import { employeeCreditService } from '../employeeCredit/index.js';
 import { handleCommerceOrderLifecycleUseCase } from '../commercePayments/index.js';
@@ -141,17 +141,21 @@ export const verifyPosTerminalUseCase = buildVerifyPosTerminalUseCase({
     terminalPairingService: posTerminalPairingService
 });
 export const getPairedPosTerminalUseCase = buildGetPairedPosTerminalUseCase({ posRepository });
+// Resolved once at module load per ADR 0053: which driver handles backend-
+// dispatched hardware (LAN bridge, client-managed, or disabled) is a deployment
+// setting (POS_DEVICE_DRIVER / DEVICE_BRIDGE_ENABLED), not a per-request choice.
+const posDeviceDriver = resolvePosDeviceDriver();
 export const getPosDeviceStatusUseCase = buildGetPosDeviceStatusUseCase({
     posRepository,
-    deviceBridgeService: posDeviceBridgeService
+    deviceDriver: posDeviceDriver
 });
 export const printPosReceiptUseCase = buildPrintPosReceiptUseCase({
     posRepository,
-    deviceBridgeService: posDeviceBridgeService
+    deviceDriver: posDeviceDriver
 });
 export const openPosDrawerUseCase = buildOpenPosDrawerUseCase({
     posRepository,
-    deviceBridgeService: posDeviceBridgeService
+    deviceDriver: posDeviceDriver
 });
 export const getMobilePosCatalogBootstrapUseCase = buildGetMobilePosCatalogBootstrapUseCase({ listPosCatalogUseCase });
 export const getMobilePosSettingsBootstrapUseCase = buildGetMobilePosSettingsBootstrapUseCase();

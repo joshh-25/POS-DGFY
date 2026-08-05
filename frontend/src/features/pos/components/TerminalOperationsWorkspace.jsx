@@ -1178,12 +1178,12 @@ function ShiftControlsWorkspace({
                       </p>
                     </div>
                     <span className="rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[10px] font-extrabold text-[#1A4E8D]">
-                      {String(order.fulfillment_status || 'placed').replaceAll('_', ' ')}
+                      {String(order.fulfillment_status || 'placed').replace(/_/g, ' ')}
                     </span>
                   </div>
                   <div className="mt-2 grid grid-cols-2 gap-2 text-[11px] text-slate-600">
-                    <span>{String(order.order_method || '-').replaceAll('_', ' ')}</span>
-                    <span className="text-right">{String(order.payment_status || 'unpaid').replaceAll('_', ' ')}</span>
+                    <span>{String(order.order_method || '-').replace(/_/g, ' ')}</span>
+                    <span className="text-right">{String(order.payment_status || 'unpaid').replace(/_/g, ' ')}</span>
                     <span className="col-span-2">{parseIsoDateTime(order.created_at)}</span>
                   </div>
                 </div>

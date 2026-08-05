@@ -100,16 +100,23 @@ export const fetchPosDeviceStatus = async () => {
     return response.data?.data;
 };
 
-export const printPosReceipt = async (payload = {}) => {
+// `silent` is used when a client-side driver (iMin native, a future Web
+// Bluetooth driver) already printed/opened the drawer itself and is only
+// reporting the outcome back for the backend audit trail (payload carries
+// client_driver_id/client_result — see posDeviceUseCases.js). The physical
+// action already happened and was already surfaced to the cashier, so this
+// call must not raise a second toast or a second failed-print analytics event.
+export const printPosReceipt = async (payload = {}, { silent = false } = {}) => {
     try {
         const response = await api.post('/pos/device/print-receipt', payload, {
             headers: payload?.terminal_id
                 ? { 'x-pos-terminal-id': payload.terminal_id }
-                : undefined
+                : undefined,
+            skipGlobalErrorToast: silent || undefined
         });
         const responsePayload = response.data?.data;
         const message = String(response.data?.message || responsePayload?.message || '').trim();
-        if (message) {
+        if (message && !silent) {
             emitPosHardwareMessage({
                 title: 'POS receipt printer',
                 message,
@@ -119,30 +126,33 @@ export const printPosReceipt = async (payload = {}) => {
         }
         return responsePayload;
     } catch (error) {
-        emitPosHardwareMessage({
-            title: 'POS receipt printer error',
-            message: String(error?.response?.data?.message || error?.message || 'Failed to send receipt to printer.').trim(),
-            tone: 'error',
-            source: 'POS hardware',
-            details: error?.response?.data?.errors || null
-        });
-        trackFunnelEvent(ANALYTICS_EVENTS.POS_PRINT_FAILED, {
-            reason: error?.response?.data?.message || error?.message
-        });
+        if (!silent) {
+            emitPosHardwareMessage({
+                title: 'POS receipt printer error',
+                message: String(error?.response?.data?.message || error?.message || 'Failed to send receipt to printer.').trim(),
+                tone: 'error',
+                source: 'POS hardware',
+                details: error?.response?.data?.errors || null
+            });
+            trackFunnelEvent(ANALYTICS_EVENTS.POS_PRINT_FAILED, {
+                reason: error?.response?.data?.message || error?.message
+            });
+        }
         throw error;
     }
 };
 
-export const openPosDeviceDrawer = async (payload = {}) => {
+export const openPosDeviceDrawer = async (payload = {}, { silent = false } = {}) => {
     try {
         const response = await api.post('/pos/device/open-drawer', payload, {
             headers: payload?.terminal_id
                 ? { 'x-pos-terminal-id': payload.terminal_id }
-                : undefined
+                : undefined,
+            skipGlobalErrorToast: silent || undefined
         });
         const responsePayload = response.data?.data;
         const message = String(response.data?.message || responsePayload?.message || '').trim();
-        if (message) {
+        if (message && !silent) {
             emitPosHardwareMessage({
                 title: 'POS cash drawer',
                 message,
@@ -152,14 +162,59 @@ export const openPosDeviceDrawer = async (payload = {}) => {
         }
         return responsePayload;
     } catch (error) {
-        emitPosHardwareMessage({
-            title: 'POS cash drawer error',
-            message: String(error?.response?.data?.message || error?.message || 'Failed to open the cash drawer.').trim(),
-            tone: 'error',
-            source: 'POS hardware',
-            details: error?.response?.data?.errors || null
-        });
+        if (!silent) {
+            emitPosHardwareMessage({
+                title: 'POS cash drawer error',
+                message: String(error?.response?.data?.message || error?.message || 'Failed to open the cash drawer.').trim(),
+                tone: 'error',
+                source: 'POS hardware',
+                details: error?.response?.data?.errors || null
+            });
+        }
         throw error;
+    }
+};
+
+// Reports a client-driver-executed hardware outcome to the backend for audit,
+// without surfacing any UI feedback (the physical action's own driver already
+// did that) and without letting an audit-call failure look like a print/drawer
+// failure to the cashier. Fire-and-forget by design.
+export const reportPosDeviceClientResult = async ({
+    operation,
+    transactionId,
+    shiftId,
+    terminalId,
+    reason,
+    idempotencyKey,
+    driverId,
+    result
+}) => {
+    try {
+        if (operation === 'open_drawer') {
+            await openPosDeviceDrawer({
+                idempotency_key: idempotencyKey,
+                shift_id: shiftId,
+                transaction_id: transactionId || undefined,
+                terminal_id: terminalId || undefined,
+                reason: reason || 'client_driver_report',
+                client_driver_id: driverId,
+                client_result: result
+            }, { silent: true });
+            return;
+        }
+
+        await printPosReceipt({
+            idempotency_key: idempotencyKey,
+            transaction_id: transactionId,
+            terminal_id: terminalId || undefined,
+            reason: reason || 'client_driver_report',
+            client_driver_id: driverId,
+            client_result: result
+        }, { silent: true });
+    } catch {
+        // Best-effort audit trail. The physical action already happened (or
+        // didn't) and was already reported to the cashier by its own driver;
+        // losing the backend audit row here must not surface as a failure.
     }
 };
 
@@ -424,6 +479,7 @@ export default {
     fetchPosDeviceStatus,
     printPosReceipt,
     openPosDeviceDrawer,
+    reportPosDeviceClientResult,
     closePosDay,
     fetchDailyZReading,
     fetchCurrentXReading,
