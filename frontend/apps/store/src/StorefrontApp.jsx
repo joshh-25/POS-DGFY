@@ -3585,13 +3585,10 @@ export default function StorefrontApp() {
     isHospitalityMode
   });
   const storefrontCartDrawerShellProps = useStorefrontCartDrawerShellProps({
-    isStorefrontV2,
     selectedStore,
     isFnbMode,
     isServicesMode,
-    followState,
     isMobileViewport,
-    handleFollowAction,
     isAccountDrawerOpen,
     isServicesCartDrawerMode,
     serviceCartDrawerProps,
