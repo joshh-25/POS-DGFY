@@ -12,7 +12,7 @@ import {
   getAccessCapabilities
 } from '../model/customerAccess.js';
 import { buildGoogleMapsDirectionsUrl } from '../utils/storefrontContactPresentation.js';
-import { normalizeStorefrontPageModel } from '../../app/runtime/normalizeStorefrontPageModel.js';
+import { normalizeStorefrontPageModel, formatRatingLabel } from '../../app/runtime/normalizeStorefrontPageModel.js';
 import { withAssetOrigin } from '../../app/runtime/storefrontRuntime.js';
 import { getFoodBeverageStorefrontViewModel } from '../../modes/fnb/storefront/model/fnbStorefrontViewModel.js';
 import { buildFnbCommunityModel } from '../../modes/fnb/storefront/model/fnbCommunityModel.js';
@@ -310,7 +310,7 @@ export function useStorefrontCatalog({
       name: heroSectionModel?.storeName || selectedStore?.tenant_name || 'Storefront',
       tagline: heroSectionModel?.tagline || '',
       statusLabel: heroSectionModel?.statusLabel || (selectedStore?.storefront_open ? 'Open' : 'Closed'),
-      ratingLabel: formatRatingSummary(reviewSummary),
+      ratingLabel: formatRatingLabel(reviewSummary),
       modeLabel: heroSectionModel?.primaryCategoryLabel || modeAdapter.heroEyebrow,
       locationLabel: addressLine || locationName || 'Location details coming soon',
       addressLine,

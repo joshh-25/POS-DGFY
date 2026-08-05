@@ -11,6 +11,7 @@ import StorefrontAffiliateAcceptPage from './auth/pages/StorefrontAffiliateAccep
 import StorefrontResetPasswordPage from './auth/pages/StorefrontResetPasswordPage.jsx';
 import StorefrontBusinessGrowPage from './business/pages/StorefrontBusinessGrowPage.jsx';
 import { initBrowserSentry, setSentryRoute } from '../../../src/observability/sentryClient.js';
+import ErrorBoundary from '../../../src/components/common/ErrorBoundary.jsx';
 import {
   capturePageview,
   getStoredAnalyticsConsent,
@@ -133,7 +134,9 @@ function StoreRoot() {
 if (rootElement) {
   ReactDOM.createRoot(rootElement).render(
     <React.StrictMode>
-      <StoreRoot />
+      <ErrorBoundary>
+        <StoreRoot />
+      </ErrorBoundary>
     </React.StrictMode>
   );
 }

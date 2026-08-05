@@ -256,21 +256,33 @@ live. (Earlier revisions of this doc suggested lowercase names like `beta` or
 `local-test` is still correct for the local-test compose file below, which is a
 separate, unrelated environment name.)
 
-As of this writing, only **STAGING** and **PROD** have `VITE_SENTRY_*`/`SENTRY_*` vars
-configured. **BETA has none set** — it currently reports nothing from any surface.
-**DEV has none set either** — wiring it up is inexpensive (Sentry environments are
-free-form tags, no extra cost or provisioning) but do these two things first:
+As of 2026-08-03, **DEV**, **STAGING** and **PROD** all have `VITE_SENTRY_*`/`SENTRY_*`
+vars configured and are reporting. **`dgfy-skupervisor` is wired on all three** —
+`VITE_SENTRY_DSN_SKUPERVISOR`/`SENTRY_PROJECT_SKUPERVISOR` were previously unset
+everywhere (#168); the SPA now uploads sourcemaps and reports on every environment
+that builds. **BETA has none set** — it still reports nothing from any surface.
 
-1. **Scope each project's default alert rule to `PROD`** (Settings → Alerts) before
-   DEV starts reporting — the out-of-the-box "high priority issues" rule has no
-   environment filter and fires on every environment, so an unscoped rule means every
-   DEV error pages the same as a PROD one.
-2. Also set `SENTRY_ENVIRONMENT` (uppercase `DEV`) in the dev box's own
-   `infrastructure/docker/.env` when enabling backend Sentry there — see the
-   `SENTRY_ENVIRONMENT` fallback note above; without it, the backend's `NODE_ENV=production`
-   default would file dev-box errors under `PROD`.
+Before DEV was turned on, each project's default "high priority issues" alert rule
+(Settings → Alerts) was scoped from `environment: null` (fires on every environment)
+to `environment: PROD` — otherwise every DEV error would notify the same as a PROD
+one. Do this **before** enabling Sentry on any new non-PROD environment:
 
-For beta/prod image builds, set:
+| Project | Rule |
+|---|---|
+| `dgfy-backend` | https://ch-temp.sentry.io/monitors/alerts/679720/ |
+| `dgfy-pos` | https://ch-temp.sentry.io/monitors/alerts/722360/ |
+| `dgfy-store` | https://ch-temp.sentry.io/monitors/alerts/722361/ |
+| `dgfy-skupervisor` | https://ch-temp.sentry.io/monitors/alerts/736596/ |
+
+The dev box's own `.env` also has `SENTRY_ENVIRONMENT=DEV` set explicitly. Note this
+is no longer strictly required to avoid PROD pollution — after the
+`resolveSentryEnvironment` fix above, an omitted value resolves to `"unknown"`, not
+`"production"` — but an explicit value is still correct so DEV events are actually
+filterable as DEV rather than landing under a visibly-wrong placeholder.
+
+For any environment's frontend image build (DEV/STAGING/BETA/PROD share the same
+`deploy-frontend.yml` build-args block — see workflow source, not per-environment
+duplication), set:
 
 - `VITE_SENTRY_ENABLED`
 - `VITE_SENTRY_DSN_SKUPERVISOR`

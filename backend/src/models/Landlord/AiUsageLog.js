@@ -18,6 +18,15 @@ export default (sequelize) => {
             type: DataTypes.INTEGER,
             allowNull: false
         },
+        // Which product surface generated this row (e.g. 'ai_assistant',
+        // 'menu_import', 'item_image_generation') — lets spend be attributed
+        // and budgeted per-feature instead of pooling across all AI usage
+        // (see #195 and migration 20260803000001).
+        feature: {
+            type: DataTypes.STRING(64),
+            allowNull: false,
+            defaultValue: 'ai_assistant'
+        },
         model: {
             type: DataTypes.STRING,
             allowNull: false
@@ -28,6 +37,14 @@ export default (sequelize) => {
             defaultValue: 0
         },
         output_tokens: {
+            type: DataTypes.INTEGER,
+            allowNull: false,
+            defaultValue: 0
+        },
+        // Non-token usage count for unit-priced features (e.g. images
+        // generated) — see config/aiModelRates.js's resolveImageModelRate().
+        // Token-priced rows leave this at 0.
+        units: {
             type: DataTypes.INTEGER,
             allowNull: false,
             defaultValue: 0

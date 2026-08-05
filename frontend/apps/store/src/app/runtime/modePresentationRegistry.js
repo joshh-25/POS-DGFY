@@ -106,10 +106,11 @@ export const ModePresentationRegistry = Object.freeze({
   msme: Object.freeze({
     heroEyebrow: 'Simple storefront',
     heroDescription: 'Browse ready products, add what you need, and checkout in a straightforward order flow.',
+    catalogEyebrow: 'Product Section',
     catalogHeading: 'Everyday Products',
     catalogSubtitle: 'Fast product browsing for simple operations with stock-aware ordering.',
     catalogSearchPlaceholder: 'Search products, essentials, or supplies...',
-    primaryActionLabel: 'Start Ordering',
+    primaryActionLabel: 'Browse Products',
     trackHeading: 'Track Order',
     trackDescription: 'Enter a tracking PIN to check your latest order status.',
     supportsServiceGrouping: false,
@@ -151,16 +152,21 @@ export const ModePresentationRegistry = Object.freeze({
       accent: '#0f766e',
       accentDark: '#134e4a',
       accentSoft: '#ecfeff',
-      surface: '#0f172a'
+      surface: '#0f172a',
+      surfaceInset: '#ecfeff',
+      borderSoft: '#bfe8e4',
+      textPrimary: '#0f172a',
+      textMuted: '#64748b'
     })
   }),
   retail: Object.freeze({
     heroEyebrow: 'Retail storefront',
     heroDescription: 'Browse shelf items, weighed goods, and refills, then check out or reserve for pickup.',
-    catalogHeading: 'Shop the Store',
-    catalogSubtitle: 'Browse general merchandise, per-kilo goods, and refill products currently in stock.',
+    catalogEyebrow: 'Item Catalog',
+    catalogHeading: 'What are you looking for?',
+    catalogSubtitle: 'Browse items, compare options, and add ready-to-order items to the cart.',
     catalogSearchPlaceholder: 'Search products, brands, or categories...',
-    primaryActionLabel: 'Add to Cart',
+    primaryActionLabel: 'Browse Products',
     trackHeading: 'Track Order',
     trackDescription: 'Enter a tracking PIN to check your latest order status.',
     supportsServiceGrouping: false,
@@ -202,15 +208,22 @@ export const ModePresentationRegistry = Object.freeze({
       accent: '#ea580c',
       accentDark: '#9a3412',
       accentSoft: '#fff7ed',
-      surface: '#0f172a'
+      surface: '#0f172a',
+      surfaceInset: '#fff7ed',
+      borderSoft: '#fed7aa',
+      textPrimary: '#0f172a',
+      textMuted: '#64748b'
     })
   }),
   fnb: Object.freeze({
     heroEyebrow: 'Food and beverage storefront',
     heroDescription: 'Browse the live menu, compare food and drink sections, and build an order from product cards designed for ready-to-serve items.',
+    catalogEyebrow: 'Curated Menu',
     catalogHeading: 'Menu Highlights',
     catalogSubtitle: 'Browse food and beverage sections, compare serving options, and add ready-to-order menu items to the cart.',
     catalogSearchPlaceholder: 'Search meals, drinks, desserts, or combo items...',
+    catalogItemNounSingular: 'menu item',
+    catalogItemNounPlural: 'menu items',
     primaryActionLabel: 'Browse Menu',
     trackHeading: 'Track Order',
     trackDescription: 'Enter a tracking PIN to check the latest order status without leaving the sheet.',

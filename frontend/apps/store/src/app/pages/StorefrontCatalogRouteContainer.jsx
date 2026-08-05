@@ -177,7 +177,9 @@ export function StorefrontCatalogRouteContainer(props) {
     defaultStorefrontModel,
     defaultOrderRouteProps,
     isRetailMode,
-    retailOrderRouteProps
+    retailOrderRouteProps,
+    isTrackSubpage,
+    fnbTrackingRouteProps
   } = props;
 
   // --- Service Tab logic ---
@@ -190,20 +192,31 @@ export function StorefrontCatalogRouteContainer(props) {
   const activeGroup = resolvedTab
     ? (servicesViewModel.serviceGroups.find((g) => g.categoryKey === resolvedTab) || null)
     : null;
+  // F&B and Retail both consume the shared, mode-agnostic sectioned/sorted/
+  // paginated view model (useFnbCatalogRuntime.js runs for every mode; the
+  // "Fnb" naming predates it being reused outside F&B). Other modes still
+  // render the raw filtered catalog with no sort/section/pagination applied.
+  const usesSectionedCatalogPresentation = isFnbMode || isRetailMode;
   const fnbSections = fnbCatalogPresentation.menuSections;
   const resolvedFnbSection = fnbCatalogPresentation.resolvedSection;
   const activeFnbSection = fnbCatalogPresentation.activeSectionModel;
   const rawItemsToRender = isServicesMode
     ? (resolvedTab ? (activeGroup?.items || []) : servicesViewModel.allServices)
-    : isFnbMode
+    : usesSectionedCatalogPresentation
       ? (resolvedFnbSection ? (activeFnbSection?.items || []) : filteredFnbViewModel.menuItems)
-      : filteredCatalog;
-  const itemsToRender = isFnbMode ? fnbCatalogPresentation.sortedItems : rawItemsToRender;
-  const totalFnbPages = isFnbMode ? fnbCatalogPresentation.totalPages : 1;
-  const resolvedFnbPage = isFnbMode ? fnbCatalogPresentation.resolvedPage : 1;
-  const catalogItemsToRender = isFnbMode ? fnbCatalogPresentation.visibleItems : itemsToRender;
-  const fnbPageStart = !isFnbMode || itemsToRender.length === 0 ? 0 : ((resolvedFnbPage - 1) * fnbPageSize) + 1;
-  const fnbPageEnd = !isFnbMode ? itemsToRender.length : Math.min(itemsToRender.length, resolvedFnbPage * fnbPageSize);
+      // MSME's product card reads item.descriptionPreview (falls back to a generic
+      // "Item available in this storefront." string when absent) — that field is only
+      // populated by getFoodBeverageStorefrontViewModel's per-item enrichment, so MSME
+      // must consume the same enriched list F&B/Retail use, not the raw filteredCatalog.
+      : isSimpleMode
+        ? filteredFnbViewModel.menuItems
+        : filteredCatalog;
+  const itemsToRender = usesSectionedCatalogPresentation ? fnbCatalogPresentation.sortedItems : rawItemsToRender;
+  const totalFnbPages = usesSectionedCatalogPresentation ? fnbCatalogPresentation.totalPages : 1;
+  const resolvedFnbPage = usesSectionedCatalogPresentation ? fnbCatalogPresentation.resolvedPage : 1;
+  const catalogItemsToRender = usesSectionedCatalogPresentation ? fnbCatalogPresentation.visibleItems : itemsToRender;
+  const fnbPageStart = !usesSectionedCatalogPresentation || itemsToRender.length === 0 ? 0 : ((resolvedFnbPage - 1) * fnbPageSize) + 1;
+  const fnbPageEnd = !usesSectionedCatalogPresentation ? itemsToRender.length : Math.min(itemsToRender.length, resolvedFnbPage * fnbPageSize);
   const activeGroupMeta = activeGroup?.categoryMeta;
   const ActiveServiceGroupIcon = activeGroupMeta?.iconToken ? (SERVICE_CATEGORY_ICON_MAP[activeGroupMeta.iconToken] || Sparkles) : Sparkles;
 
@@ -424,6 +437,8 @@ export function StorefrontCatalogRouteContainer(props) {
       defaultOrderRouteProps={defaultOrderRouteProps}
       isRetailMode={isRetailMode}
       retailOrderRouteProps={retailOrderRouteProps}
+      isTrackSubpage={isTrackSubpage}
+      fnbTrackingRouteProps={fnbTrackingRouteProps}
       submitFnbItemReview={submitFnbItemReview}
       totalFnbPages={totalFnbPages}
       viewportWidth={viewportWidth}

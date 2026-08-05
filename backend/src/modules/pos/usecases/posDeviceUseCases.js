@@ -209,7 +209,7 @@ const buildReceiptPayload = ({ transaction, settings }) => {
     };
 };
 
-export const buildGetPosDeviceStatusUseCase = ({ posRepository, deviceBridgeService }) => {
+export const buildGetPosDeviceStatusUseCase = ({ posRepository, deviceDriver }) => {
     return async ({ user, auditContext = {} }) => {
         const userId = parsePositiveInt(user?.user_id);
         if (!userId) {
@@ -221,7 +221,7 @@ export const buildGetPosDeviceStatusUseCase = ({ posRepository, deviceBridgeServ
         }
 
         try {
-            const bridge = await deviceBridgeService.getStatus();
+            const bridge = await deviceDriver.getStatus();
             await posRepository.createAuditLog({
                 user_id: userId,
                 entity_type: 'pos_device_bridge',
@@ -229,14 +229,23 @@ export const buildGetPosDeviceStatusUseCase = ({ posRepository, deviceBridgeServ
                 action: 'VIEW',
                 changes: {
                     operation: 'status',
+                    driver_id: deviceDriver.id,
                     printers_detected: bridge?.printersDetected ?? null,
                     auth_required: bridge?.authRequired ?? null
                 },
                 ...buildAuditMetadata(auditContext)
             });
 
+            // Absence of hardware is a successful, informational answer, not a
+            // service failure — see ADR 0053. A 503 only ever comes from the
+            // catch block below, when a driver IS configured but unreachable.
             return ok({
-                bridge
+                bridge,
+                driver: {
+                    id: deviceDriver.id,
+                    available: deviceDriver.id === 'lan_escpos_bridge'
+                },
+                hardware_required: false
             });
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to retrieve POS device bridge status'));
@@ -244,7 +253,7 @@ export const buildGetPosDeviceStatusUseCase = ({ posRepository, deviceBridgeServ
     };
 };
 
-export const buildPrintPosReceiptUseCase = ({ posRepository, deviceBridgeService }) => {
+export const buildPrintPosReceiptUseCase = ({ posRepository, deviceDriver }) => {
     return async ({ payload, user, auditContext = {} }) => {
         const userId = parsePositiveInt(user?.user_id);
         const transactionId = parsePositiveInt(payload?.transaction_id);
@@ -252,6 +261,15 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceBridgeService
         const paperWidth = payload?.paper_width === '57mm' ? '57mm' : '80mm';
         const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
         const reason = String(payload?.reason || '').trim() || 'manual_reprint';
+        // Set when a client-side driver (iMin native bridge, a future Web
+        // Bluetooth ESC/POS driver) already printed the receipt itself. The
+        // backend then skips dispatching to its own driver and only records the
+        // audit/idempotency trail — closing the gap where client-executed prints
+        // were previously never audited at all. See ADR 0053.
+        const clientDriverId = String(payload?.client_driver_id || '').trim() || null;
+        const clientResult = (clientDriverId && payload?.client_result && typeof payload.client_result === 'object')
+            ? payload.client_result
+            : null;
 
         if (!userId) {
             return fail(new DomainError(
@@ -272,7 +290,8 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceBridgeService
             transaction_id: transactionId,
             copies,
             paper_width: paperWidth,
-            reason
+            reason,
+            client_driver_id: clientDriverId
         });
 
         try {
@@ -308,11 +327,18 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceBridgeService
 
             const allSettings = unwrapApplicationResultOrThrow(await getAllSettingsUseCase());
             const receipt = { ...buildReceiptPayload({ transaction, settings: allSettings }), paper_width: paperWidth };
-            const bridgeResponse = await deviceBridgeService.printReceipt({
-                receipt,
-                copies,
-                paper_width: paperWidth
-            });
+            const bridgeResponse = clientDriverId
+                ? {
+                    ok: clientResult?.success !== false,
+                    delegated: true,
+                    driver: clientDriverId,
+                    client_result: clientResult
+                }
+                : await deviceDriver.printReceipt({
+                    receipt,
+                    copies,
+                    paper_width: paperWidth
+                });
 
             await posRepository.createAuditLog({
                 user_id: userId,
@@ -325,7 +351,8 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceBridgeService
                     copies,
                     paper_width: paperWidth,
                     invoice_number: transaction.invoice_number || null,
-                    bridge_result: bridgeResponse?.result || null
+                    driver_id: clientDriverId || deviceDriver.id,
+                    bridge_result: bridgeResponse?.result || bridgeResponse?.client_result || null
                 },
                 ...buildAuditMetadata(auditContext)
             });
@@ -373,7 +400,7 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceBridgeService
     };
 };
 
-export const buildOpenPosDrawerUseCase = ({ posRepository, deviceBridgeService }) => {
+export const buildOpenPosDrawerUseCase = ({ posRepository, deviceDriver }) => {
     return async ({ payload, user, auditContext = {} }) => {
         const userId = parsePositiveInt(user?.user_id);
         const shiftId = parsePositiveInt(payload?.shift_id);
@@ -381,6 +408,11 @@ export const buildOpenPosDrawerUseCase = ({ posRepository, deviceBridgeService }
         const terminalId = String(payload?.terminal_id || '').trim() || null;
         const reason = String(payload?.reason || '').trim();
         const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        // See buildPrintPosReceiptUseCase above — same client-delegation contract.
+        const clientDriverId = String(payload?.client_driver_id || '').trim() || null;
+        const clientResult = (clientDriverId && payload?.client_result && typeof payload.client_result === 'object')
+            ? payload.client_result
+            : null;
 
         if (!userId) {
             return fail(new DomainError(
@@ -415,7 +447,8 @@ export const buildOpenPosDrawerUseCase = ({ posRepository, deviceBridgeService }
             shift_id: shiftId,
             transaction_id: transactionId,
             terminal_id: terminalId,
-            reason
+            reason,
+            client_driver_id: clientDriverId
         });
 
         try {
@@ -455,12 +488,19 @@ export const buildOpenPosDrawerUseCase = ({ posRepository, deviceBridgeService }
                 }
             }
 
-            const bridgeResponse = await deviceBridgeService.openDrawer({
-                shift_id: shiftId,
-                terminal_id: shift.terminal_id || terminalId,
-                transaction_id: transactionId,
-                reason
-            });
+            const bridgeResponse = clientDriverId
+                ? {
+                    ok: clientResult?.success !== false,
+                    delegated: true,
+                    driver: clientDriverId,
+                    client_result: clientResult
+                }
+                : await deviceDriver.openDrawer({
+                    shift_id: shiftId,
+                    terminal_id: shift.terminal_id || terminalId,
+                    transaction_id: transactionId,
+                    reason
+                });
 
             await posRepository.createAuditLog({
                 user_id: userId,
@@ -472,7 +512,8 @@ export const buildOpenPosDrawerUseCase = ({ posRepository, deviceBridgeService }
                     reason,
                     terminal_id: shift.terminal_id || terminalId,
                     transaction_id: transactionId,
-                    bridge_result: bridgeResponse?.result || null
+                    driver_id: clientDriverId || deviceDriver.id,
+                    bridge_result: bridgeResponse?.result || bridgeResponse?.client_result || null
                 },
                 ...buildAuditMetadata(auditContext)
             });

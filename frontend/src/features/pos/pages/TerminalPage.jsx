@@ -145,6 +145,15 @@ const TERMINAL_LOCK_STORAGE_KEY = 'pos_terminal_locked_v1';
 const TERMINAL_LOCK_REASON_STORAGE_KEY = 'pos_terminal_lock_reason_v1';
 const TERMINAL_ADMIN_LOCK_CONTEXT_STORAGE_KEY = 'pos_terminal_admin_lock_context_v1';
 const ONLINE_ORDER_POLL_INTERVAL_MS = 12000;
+// Below both the poll cadence's tolerance and nginx's 60s proxy_read_timeout
+// (which matches api.js's global 60s axios default). Without this override,
+// a slow backend response races the client timeout against the proxy's, so
+// the same underlying slowness surfaces nondeterministically as an axios
+// timeout, a "Network Error", or a 504 -- three different Sentry issues for
+// one condition. Capping here keeps the failure deterministic (a clean
+// ECONNABORTED) without touching the global default other call sites rely on
+// (uploads, report generation).
+const ONLINE_ORDER_POLL_TIMEOUT_MS = 20000;
 const QUEUE_HISTORY_LIMIT = 250;
 const TERMINAL_OPERATION_MAX_RETRIES = 5;
 const TERMINAL_OPERATION_REPLAY_BATCH_SIZE = 25;
@@ -1279,7 +1288,8 @@ export default function TerminalPage() {
         location_id: activeQueueLocationId
       };
       const payload = await fetchIncomingOnlineOrders(params, {
-        skipGlobalErrorToast: silent === true
+        skipGlobalErrorToast: silent === true,
+        timeout: ONLINE_ORDER_POLL_TIMEOUT_MS
       });
       setIncomingOrdersState({
         loading: false,
@@ -4141,7 +4151,7 @@ export default function TerminalPage() {
       const missingRequirements = error?.response?.data?.errors?.missing_requirements;
       if (Array.isArray(missingRequirements) && missingRequirements.length > 0) {
         const labels = missingRequirements.map((requirement) => (
-          String(requirement || '').replaceAll('_', ' ')
+          String(requirement || '').replace(/_/g, ' ')
         ));
         toast.error(`Missing requirements: ${labels.join(', ')}`);
       } else {

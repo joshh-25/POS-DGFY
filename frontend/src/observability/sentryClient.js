@@ -90,6 +90,39 @@ export const resolveTracingMode = (env = import.meta.env) => {
   return resolveTracesSampleRate(env.VITE_SENTRY_TRACES_SAMPLE_RATE) == null ? 'propagate' : 'spans';
 };
 
+// DGFY-POS-B: sanitizeSentryEvent strips event.request.headers for PII
+// reasons (see below), which also erased the only signal that would have
+// told us the iMin POS WebView is Chrome 80-84 -- old enough to lack
+// String.prototype.replaceAll (Chrome 85+, ES2021) and crash rendering
+// every incoming order. That had to be inferred after the fact from what
+// syntax the shipped bundle happened to contain. Tagging the Chrome major
+// version (never the full UA string, which can carry device model/build
+// fingerprint) up front makes the next WebView-version-gated compat bug
+// diagnosable directly from the issue instead of re-derived from evidence.
+export const resolveWebviewChromeMajor = (userAgent) => {
+  const match = /Chrome\/(\d+)/.exec(String(userAgent || ''));
+  if (!match) return null;
+  const major = Number.parseInt(match[1], 10);
+  return Number.isFinite(major) ? major : null;
+};
+
+// Mirrors backend/src/config/sentry.js's resolveSentryEnvironment: `MODE` is
+// "production" for every `vite build` regardless of which real environment
+// (DEV/STAGING/BETA/PROD) produced it, so falling back to it here would
+// silently file an unconfigured environment's errors under "production" the
+// moment VITE_SENTRY_ENABLED flips on without VITE_SENTRY_ENVIRONMENT also
+// being set (this is exactly how BETA is configured today). Only fall back
+// to MODE when it is NOT "production"; otherwise resolve to a value that is
+// obviously wrong in the Sentry UI and prompts a fix, rather than quietly
+// polluting the real PROD environment's data.
+export const resolveSentryEnvironment = (env) => {
+  const explicit = String(env.VITE_SENTRY_ENVIRONMENT || '').trim();
+  if (explicit) return explicit;
+  const mode = String(env.MODE || '').trim();
+  if (mode && mode !== 'production') return mode;
+  return mode === 'production' ? 'unknown' : 'development';
+};
+
 export const resolveSentryBrowserConfig = (env = import.meta.env, surfaceOverride = '', extraTracePropagationTargets = []) => {
   const surface = String(surfaceOverride || env.VITE_APP_SURFACE || 'skupervisor').trim().toLowerCase();
   const enabled = parseBooleanFlag(env.VITE_SENTRY_ENABLED, false);
@@ -100,7 +133,7 @@ export const resolveSentryBrowserConfig = (env = import.meta.env, surfaceOverrid
     dsn,
     active: enabled && Boolean(dsn),
     surface,
-    environment: String(env.VITE_SENTRY_ENVIRONMENT || env.MODE || 'development').trim(),
+    environment: resolveSentryEnvironment(env),
     release: String(env.VITE_SENTRY_RELEASE || env.VITE_BUILD_STAMP || '').trim(),
     tracingMode: resolveTracingMode(env),
     tracesSampleRate: resolveTracesSampleRate(env.VITE_SENTRY_TRACES_SAMPLE_RATE),
@@ -323,6 +356,10 @@ export const initBrowserSentry = ({
         }));
       }
 
+      const webviewChromeMajor = typeof navigator !== 'undefined'
+        ? resolveWebviewChromeMajor(navigator.userAgent)
+        : null;
+
       const initOptions = {
         dsn: config.dsn,
         environment: config.environment,
@@ -335,7 +372,8 @@ export const initBrowserSentry = ({
         beforeSend: sanitizeSentryEvent,
         initialScope: {
           tags: {
-            surface: config.surface
+            surface: config.surface,
+            ...(webviewChromeMajor !== null ? { webview_chrome_major: String(webviewChromeMajor) } : {})
           }
         }
       };
@@ -351,11 +389,15 @@ export const initBrowserSentry = ({
 
       sentryModule = Sentry;
       initialized = true;
-      logger.info?.(`[Sentry] browser error tracking enabled for ${config.surface}`);
+      // Wording matters here: the iMin Android wrapper shipped a console filter
+      // that blanked the POS on any message containing "error" or "failed"
+      // (fixed in WebPosConsoleErrorPolicy, but old APKs are still in the
+      // field). Keep these two log lines free of both words.
+      logger.info?.(`[Sentry] browser telemetry active for ${config.surface}`);
       return Sentry;
     })
     .catch((error) => {
-      logger.warn?.('[Sentry] failed to initialize browser error tracking', error);
+      logger.warn?.('[Sentry] browser telemetry unavailable', error);
       initPromise = null;
       return null;
     });
@@ -540,17 +582,21 @@ export const captureRequestFailure = ({ error, method, url, status, requestId } 
   if (hasResponse && Number(status) < 500) return;
 
   const normalizedUrl = normalizeRequestUrl(url);
-  // Fingerprint is intentionally UNCHANGED by the transient/server
-  // classification below. Sentry groups solely on this array; the status
-  // code is already its 4th element, so 502/503/504/network already group
-  // separately from 500 today. Adding a classification token here would
-  // orphan every existing issue built on the current fingerprint (a new
-  // hash starts a new issue, losing assignees/ignore-state/history) and
-  // would reset the cooldown Map below, which is keyed off this same
-  // fingerprint -- the first minute after such a change would emit MORE
-  // events, not fewer. `level` and the tag are how classification is
-  // surfaced instead.
-  const fingerprint = ['api', String(method || 'GET').toUpperCase(), normalizedUrl, hasResponse ? String(status) : 'network'];
+  const normalizedMethod = String(method || 'GET').toUpperCase();
+  // Network-class failures (no response at all -- offline, DNS, CORS)
+  // deliberately DROP the URL from the fingerprint, unlike the server class
+  // below. A single connectivity blip during a fan-out (e.g. loadDgfyPanel's
+  // 11 parallel requestJson calls) used to mint one issue PER endpoint,
+  // because each endpoint's URL made its own fingerprint -- 11 "new" issues
+  // from one blip, each with its own independent cooldown, defeating the
+  // cooldown below entirely. Collapsing to one fingerprint per method means
+  // the whole fan-out grouped as a single event and the cooldown finally
+  // covers it. A genuine 5xx from a specific endpoint keeps its own
+  // fingerprint (including status, via the 4th element) so a real broken
+  // endpoint still surfaces as its own actionable issue.
+  const fingerprint = hasResponse
+    ? ['api', normalizedMethod, normalizedUrl, String(status)]
+    : ['api', normalizedMethod, 'network'];
   const fingerprintKey = fingerprint.join('|');
 
   const now = Date.now();
@@ -571,7 +617,7 @@ export const captureRequestFailure = ({ error, method, url, status, requestId } 
         failed_request: { request_id: requestId, url, status }
       },
       tags: {
-        request_method: method ? String(method).toUpperCase() : undefined,
+        request_method: normalizedMethod,
         request_status: hasResponse ? String(status) : 'network',
         request_failure_class: failureClass
       }

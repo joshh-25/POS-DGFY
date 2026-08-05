@@ -10,6 +10,7 @@ import android.media.RingtoneManager
 import android.media.ToneGenerator
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.View
 import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
@@ -94,20 +95,23 @@ class WebPosActivity : AppCompatActivity() {
         webView.webChromeClient = object : WebChromeClient() {
             override fun onConsoleMessage(consoleMessage: ConsoleMessage?): Boolean {
                 val message = consoleMessage?.message().orEmpty()
-                if (isNonFatalWebPosConsoleError(message)) {
-                    return super.onConsoleMessage(consoleMessage)
-                }
-                if (
-                    consoleMessage?.messageLevel() == ConsoleMessage.MessageLevel.ERROR ||
-                    message.contains("error", ignoreCase = true) ||
-                    message.contains("failed", ignoreCase = true)
+                val isErrorLevel =
+                    consoleMessage?.messageLevel() == ConsoleMessage.MessageLevel.ERROR
+                when (
+                    WebPosConsoleErrorPolicy.classify(isErrorLevel, message, webPosReadyReceived)
                 ) {
-                    showStatus(
+                    ConsoleAction.BLOCK -> showStatus(
                         title = "Web POS script error",
                         message = message.ifBlank { "Unknown WebView JavaScript error" },
                         showRetry = true,
                         showSpinner = false
                     )
+                    ConsoleAction.LOG_ONLY -> Log.w(
+                        TAG,
+                        "WebView console error: $message " +
+                            "(${consoleMessage?.sourceId()}:${consoleMessage?.lineNumber()})"
+                    )
+                    ConsoleAction.IGNORE -> Unit
                 }
                 return super.onConsoleMessage(consoleMessage)
             }
@@ -162,11 +166,6 @@ class WebPosActivity : AppCompatActivity() {
         }
 
         webView.loadUrl(AppConfig.hostedWebPosUrl())
-    }
-
-    private fun isNonFatalWebPosConsoleError(message: String): Boolean {
-        return message.contains("API 422 Validation Error", ignoreCase = true) ||
-            message.contains("Validation failed", ignoreCase = true)
     }
 
     override fun onDestroy() {
@@ -358,6 +357,7 @@ class WebPosActivity : AppCompatActivity() {
     }
 
     companion object {
+        private const val TAG = "WebPosActivity"
         private const val BLUETOOTH_PERMISSION_REQUEST_CODE = 7001
         private const val READY_SIGNAL_FALLBACK_MS = 10_000L
     }

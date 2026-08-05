@@ -36,8 +36,8 @@ describe('modePresentationRegistry', () => {
     expect(adapter.isRetailMode).toBe(true);
     expect(adapter.isServicesMode).toBe(false);
     expect(adapter.isFnbMode).toBe(false);
-    expect(adapter.catalogHeading).toBe('Shop the Store');
-    expect(adapter.primaryActionLabel).toBe('Add to Cart');
+    expect(adapter.catalogHeading).toBe('What are you looking for?');
+    expect(adapter.primaryActionLabel).toBe('Browse Products');
     expect(adapter.pin.label).toBe('Retail');
     expect(adapter.catalogCardVariant).toBe('product_simple');
     expect(adapter.journeyVariant).toBe('order');
@@ -73,7 +73,7 @@ describe('modePresentationRegistry', () => {
 
     expect(adapter.isRetailMode).toBe(true);
     expect(adapter.isServicesMode).toBe(false);
-    expect(adapter.catalogHeading).toBe('Shop the Store');
+    expect(adapter.catalogHeading).toBe('What are you looking for?');
     expect(adapter.hasServicesCapability).toBe(true);
     expect(adapter.supportsServiceGrouping).toBe(true);
   });

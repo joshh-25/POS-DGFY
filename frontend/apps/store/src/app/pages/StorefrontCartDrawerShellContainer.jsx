@@ -1,5 +1,4 @@
 import React from 'react';
-import { StorefrontFollowFloatingAction } from '../../shared/components/storefront/StorefrontFollowFloatingAction.jsx';
 import { StorefrontCartFab } from '../../shared/components/storefront/StorefrontCartFab.jsx';
 import { DefaultProductCartFab } from '../../shared/components/storefront/DefaultProductCartFab.jsx';
 import { DefaultProductCartDrawer } from '../../shared/components/storefront/DefaultProductCartDrawer.jsx';
@@ -7,7 +6,6 @@ import { StorefrontCartFlyAnimations } from '../../shared/components/StorefrontC
 import { StorefrontCheckoutDrawerFrame } from '../../shared/components/StorefrontCheckoutDrawerFrame.jsx';
 import { StorefrontOrderSuccessOverlay } from '../../shared/components/storefront/StorefrontOrderSuccessOverlay.jsx';
 import { DGFY_BRAND_NAME } from '../../shared/model/storefrontConstants.js';
-import { parseBooleanFlag } from '../../shared/model/storefrontJsonModel.js';
 import { ServiceCartDrawer } from '../../modes/services/booking/components/ServiceCartDrawer.jsx';
 import { ServiceBookingReviewContainer } from '../../modes/services/booking/pages/ServiceBookingReviewContainer.jsx';
 import { SimpleCartFloatingButton } from '../../modes/simple/checkout/components/SimpleCartFloatingButton.jsx';
@@ -26,13 +24,10 @@ import { FnbTrackingRouteContainer } from '../../modes/fnb/tracking/pages/FnbTra
 // See app/hooks/useStorefrontCartDrawerShellProps.js for the props bundle.
 export function StorefrontCartDrawerShellContainer(props) {
   const {
-    isStorefrontV2,
     selectedStore,
     isFnbMode,
     isServicesMode,
-    followState,
     isMobileViewport,
-    handleFollowAction,
     isAccountDrawerOpen,
     isServicesCartDrawerMode,
     serviceCartDrawerProps,
@@ -88,12 +83,6 @@ export function StorefrontCartDrawerShellContainer(props) {
 
   return (
     <>
-      <StorefrontFollowFloatingAction
-        enabled={isStorefrontV2 && selectedStore && !isFnbMode && !isServicesMode && parseBooleanFlag(selectedStore.storefront_follow_enabled, false)}
-        followState={followState}
-        isMobileViewport={isMobileViewport}
-        onFollow={handleFollowAction}
-      />
       {!isAccountDrawerOpen && isServicesCartDrawerMode && (
         <ServiceCartDrawer {...serviceCartDrawerProps} />
       )}

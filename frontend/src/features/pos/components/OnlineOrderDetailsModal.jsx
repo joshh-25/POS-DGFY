@@ -67,10 +67,10 @@ const formatQuantity = (value) => {
 const normalizePaymentStatus = (value) => {
   const normalized = String(value || '').trim().toLowerCase();
   if (!normalized) return 'Unspecified';
-  return normalized.replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+  return normalized.replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 };
 
-const humanize = (value) => String(value || '').trim().replaceAll('_', ' ').replace(/\b\w/g, (char) => char.toUpperCase());
+const humanize = (value) => String(value || '').trim().replace(/_/g, ' ').replace(/\b\w/g, (char) => char.toUpperCase());
 
 const resolveCustomerNotes = (order = {}) => String(
   order?.special_instructions || order?.customer_note || '-'

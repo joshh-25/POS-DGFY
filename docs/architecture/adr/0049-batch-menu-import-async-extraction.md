@@ -3,7 +3,7 @@ status: accepted
 authority_level: authoritative
 owner: architecture
 date: 2026-07-29
-last_reviewed: 2026-07-29
+last_reviewed: 2026-08-03
 review_by: 2027-01-29
 topic: batch_menu_import
 ---
@@ -85,6 +85,33 @@ This change crosses the Inventory/POS and external-integration boundary. It foll
   Joi validation, SKU de-duplication, and mode-taxonomy checks. Batch-wide SKU uniqueness comes from
   a `batchToken` derived from the job id plus a timestamp hoisted out of the per-row map.
 
+### Menu categories
+
+*Amended 2026-08-03 — extends this decision, does not supersede it.*
+
+- The extractor assigns every item a `section` (its menu category), carrying the most recent
+  printed heading forward to the items beneath it. Where a menu prints no applicable heading, the
+  model infers one and the item carries `section_inferred: true`; an inferred category is always
+  outranked by a printed one and is flagged for review in the preview rather than presented with
+  equal confidence.
+- `section` is deliberately **not** part of the dedup key. A dish printed under two headings is one
+  item; the merged row takes the first *non-null* section in the group, preferring printed over
+  inferred.
+- On confirm, categories are resolved to **`ItemFolder` rows and stamped onto `items.folder_id`**,
+  not merely written to the legacy `product_folder` string. This is the load-bearing part:
+  `items.category` is a fixed inventory ENUM and can never hold "Mains", and POS catalog filtering
+  keys off `folder_id`. Writing only `product_folder` left imported items displaying their category
+  in reports while being unselectable under it in the POS.
+- Matching against existing folders is case-insensitive and whitespace-collapsed, mirroring the
+  `create_category_name` resolution in `modules/inventory/repositories/itemRepository.js`, so a
+  category created through the item form and one created through a menu import converge on one
+  folder rather than two near-identical ones.
+- **Permission rule:** creating a category requires `categories:manage`, but the menu-import confirm
+  route only requires `items:import`. Rather than widening what `items:import` grants, an importer
+  without `categories:manage` gets link-to-existing-only — unmatched categories keep their
+  `product_folder` text with a NULL `folder_id` and are returned in `categories_skipped` for the UI
+  to surface. The import is never blocked and nothing is silently dropped.
+
 ### Scanned PDFs
 
 - When a PDF yields no text layer, its pages are rendered to PNG buffers
@@ -131,6 +158,16 @@ calls, also the per-file page-render concurrency; raising it must be weighed aga
 `max_memory_restart`), and `MENU_IMPORT_MAX_MERGED_ITEMS` (200 post-dedup, rejecting an over-large
 batch outright rather than truncating it silently).
 
+*Amended 2026-08-03:* the extraction model resolves through `menuImportModel()`
+(`MENU_IMPORT_MODEL` → `OPENAI_MODEL` → default), read at call time so it can be retuned without a
+redeploy. The default is `gpt-5-mini` rather than the original `gpt-4o`: menu photos are the primary
+input, so vision/OCR accuracy is the wrong axis to economise on, and `gpt-5-mini` beats `gpt-4o` on
+multimodal quality at roughly a twentieth of the input cost. GPT-5-family models reject `max_tokens`
+and restrict `temperature`, so `menuExtractionService.js` branches the request shape on the model
+family — a bare default swap would 400 every extraction. Per-token rates moved to
+`config/aiModelRates.js` so the daily-budget meter prices GPT-5 usage correctly instead of falling
+back to the `gpt-4o` rate.
+
 ### Feature gating and endpoints
 
 - Batch import has its own flags, `MENU_IMPORT_BATCH_ENABLED` and `VITE_MENU_IMPORT_BATCH_ENABLED`,
@@ -175,6 +212,56 @@ batch outright rather than truncating it silently).
 - Until those hold, the single-file path is the only menu importer that has run in production, and
   the replacement has been verified against mocks. Removing it first would leave tenants with no
   working importer if the batch path fails in production.
+
+### Item image generation
+
+*Amended 2026-08-03 — extends this decision, does not supersede it. Tracked in #176; see #197 for
+the sibling "Generate an Image" action on existing items, which reuses everything below without
+adding a second worker or service.*
+
+- Confirmed items with no photo can be opted into AI image generation, per item, in the same review
+  step that already carries the `included` checkbox — a sibling `generate_image` flag on the same
+  row object, defaulting off. Generation is **async and post-confirm**: items are created immediately
+  at confirm time, unblocked by generation latency, and image generation is enqueued afterward keyed
+  on the `{rowNumber → item_id}` mapping `confirmItemsImportUseCase` already returns. A problem
+  enqueueing generation never fails the confirm response — items are already persisted by that point.
+- **Deliberate departure from this ADR's own "worker touches no tenant database" rule (Decision →
+  Request/worker split, above):** `backend/src/workers/itemImageWorker.js` *does* write to the
+  tenant database — attaching a generated image to a specific item is inherently a tenant-scoped
+  write, unlike `menuImportWorker.js`'s DB-free extraction. It establishes tenant context per task
+  (resolve the `Tenant` row, open its connection via `TenantConnector`, build the tenant model set,
+  run the attach step inside `dbStore.run(...)`) the same way
+  `modules/dgfy/usecases/dgfyCustomerUseCases.js`'s `withTenantContext()` already does elsewhere in
+  this codebase, outside any request. Without this, generated images would land under the `default`
+  tenant's folder for every tenant — this is a correctness requirement, not a convenience.
+- Generation itself (`backend/src/services/itemImageGenerationService.js`) is the opposite: no DB
+  access, no tenant context at all. It is a single shared entry point,
+  `generateItemImage({name, description, category})`, used by both this worker's confirm-time caller
+  and the standalone "Generate an Image" action on existing items (#197) — one service, two callers,
+  not two implementations.
+- Generated images are watermarked server-side (`sharp`, bottom-right corner composite at fixed
+  opacity) and carry a `provenance` object (`{type: 'ai_generated', model, source, watermarked,
+  generated_at}`) through the same `provenance` parameter `buildUploadStorefrontCatalogImageUseCase`
+  already accepts for a barcode-registry import — an AI-generated image is distinguishable from a
+  manual upload or a registry import forever after, the same way those already are from each other.
+- Cost control mirrors the pattern above: `ITEM_IMAGE_GENERATION_ENABLED` (default off),
+  `ITEM_IMAGE_MAX_PER_BATCH`, and `ITEM_IMAGE_DAILY_USD_BUDGET` live in
+  `backend/src/config/itemImageFeature.js`, read the same call-time-resolution way as
+  `menuImportModel()`. The per-image budget check is scoped to the `item_image_generation` +
+  `menu_import` `ai_usage_logs.feature` values (added for exactly this — see #195), not folded into
+  an unscoped daily total that would pool with unrelated AI-assistant spend.
+- **Permission boundary:** generating and attaching an image is gated on `items:edit`, not
+  `items:import` — the same reasoning as the menu-categories decision above (an importer without
+  edit rights should not gain a new write capability through the import path), but resolved
+  differently: rather than the categories' skip-and-report-after-confirm pattern, the review step's
+  checkbox is disabled up front for a user without `items:edit`, so a request that cannot succeed is
+  never made in the first place.
+- **What this amendment explicitly does not do:** it does not add PDF-embedded-image harvesting (the
+  "extract a real photo from the menu file, use it instead of generating one" option raised alongside
+  this feature). That path has its own unresolved question — matching a harvested image to the
+  correct menu item — and its own file-lifecycle interaction with this ADR's "the worker unlinks a
+  file the moment its extraction attempt settles" rule (Decision → Job state, above), and is deferred
+  to a later, separate amendment once that matching question has an answer.
 
 ## Consequences
 

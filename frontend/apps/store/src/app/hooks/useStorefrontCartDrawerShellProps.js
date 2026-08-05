@@ -2,13 +2,10 @@
 // every value already has a stable identity from its own upstream state/hook, matching the
 // useCheckoutTotalsAndGating / Wave 9-11 props-hook precedent.
 export function useStorefrontCartDrawerShellProps({
-  isStorefrontV2,
   selectedStore,
   isFnbMode,
   isServicesMode,
-  followState,
   isMobileViewport,
-  handleFollowAction,
   isAccountDrawerOpen,
   isServicesCartDrawerMode,
   serviceCartDrawerProps,
@@ -52,13 +49,10 @@ export function useStorefrontCartDrawerShellProps({
   showOrderSuccessAnimation
 }) {
   return {
-    isStorefrontV2,
     selectedStore,
     isFnbMode,
     isServicesMode,
-    followState,
     isMobileViewport,
-    handleFollowAction,
     isAccountDrawerOpen,
     isServicesCartDrawerMode,
     serviceCartDrawerProps,

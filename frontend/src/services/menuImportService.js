@@ -64,9 +64,17 @@ export const previewMenuImportJob = async (jobId) => {
 /**
  * Persists the (possibly edited) preview rows. Rows are re-validated
  * server-side — client-side `valid` flags are never trusted.
+ * @param {Array} rows
+ * @param {Object} [options]
+ * @param {boolean} [options.markAlwaysAvailable] - When true, every created
+ *   item is marked "Always Available" in the POS catalog (skips stock
+ *   tracking) so it's immediately sellable instead of landing out-of-stock.
  */
-export const confirmMenuImport = async (rows) => {
-    const response = await api.post('/items/import/menu/confirm', { rows });
+export const confirmMenuImport = async (rows, { markAlwaysAvailable } = {}) => {
+    const response = await api.post('/items/import/menu/confirm', {
+        rows,
+        mark_always_available: markAlwaysAvailable === true
+    });
     return response.data.data;
 };
 

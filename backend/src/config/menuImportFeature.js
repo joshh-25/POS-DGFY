@@ -50,6 +50,21 @@ export const MENU_IMPORT_WORKER_CONCURRENCY = parsePositiveIntEnv(process.env.ME
 // merged total across a whole batch until this.
 export const MENU_IMPORT_MAX_MERGED_ITEMS = parsePositiveIntEnv(process.env.MENU_IMPORT_MAX_MERGED_ITEMS, 200);
 
+// Extraction model. Read at call time (like isMenuImportLegacySingleFileEnabled
+// below) rather than captured at import, so an operator can retune it without a
+// redeploy and so tests can swap it without module-registry juggling.
+//
+// Default is a GPT-5-tier model: menu photos are the primary input, so vision/OCR
+// accuracy is the thing not to economise on, and gpt-5-mini beats the previous
+// gpt-4o default on multimodal quality at roughly a twentieth of the input cost.
+// NOTE: GPT-5-family models reject `max_tokens` and restrict `temperature` — see
+// buildExtractionRequestParams() in services/menuExtractionService.js.
+export const MENU_IMPORT_DEFAULT_MODEL = 'gpt-5-mini';
+
+export const menuImportModel = () => (
+    process.env.MENU_IMPORT_MODEL || process.env.OPENAI_MODEL || MENU_IMPORT_DEFAULT_MODEL
+);
+
 // Deprecation of the original single-file path (/items/import/pdf/preview and
 // /confirm), superseded by the batch job endpoints above.
 //

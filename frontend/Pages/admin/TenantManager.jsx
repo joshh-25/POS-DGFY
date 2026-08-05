@@ -2316,7 +2316,7 @@ export default function TenantManager() {
                                 ) : (
                                     <div className="max-h-52 overflow-y-auto space-y-2">
                                         {visibleComplianceAuditLogs.map((entry) => {
-                                            const normalizedEventType = String(entry?.event_type || 'unknown').replaceAll('_', ' ');
+                                            const normalizedEventType = String(entry?.event_type || 'unknown').replace(/_/g, ' ');
                                             const metadata = entry?.metadata && typeof entry.metadata === 'object' ? entry.metadata : null;
                                             const metadataSummary = metadata
                                                 ? Object.entries(metadata)

@@ -29,14 +29,19 @@ function RetailOnlinePaymentPlaceholder() {
  * Retail order page's Review & Payment step. Mirrors
  * modes/simple/checkout/components/SimpleCheckoutPaymentStep.jsx's layout (payment selector +
  * cash info + online-payment placeholder + read-only item list). Payment type is
- * placeholder-only local state; the item list shows the real cart.
+ * placeholder-only local state; the item list shows the real cart. "Place Order" submits
+ * through the same shared handleCheckout used by F&B/MSME (see useCheckoutSubmission.js) —
+ * on success it navigates to the shared tracking/pickup page (FnbTrackingRouteContainer).
  */
 export function RetailOrderPaymentStep({
   cart = [],
   cartImageErrors,
+  checkoutError = '',
+  checkoutLoading = false,
   isMobileViewport = false,
   money,
   onBack,
+  onCheckout,
   onImageError,
   onPaymentTypeChange,
   paymentType = 'cash',
@@ -68,11 +73,21 @@ export function RetailOrderPaymentStep({
         onImageError={onImageError}
         withAssetOrigin={withAssetOrigin}
       />
+      {checkoutError && (
+        <div style={{ border: '1px solid #fecaca', borderRadius: 12, background: '#fef2f2', color: '#b91c1c', fontSize: 13, fontWeight: 600, padding: '10px 14px' }}>
+          {checkoutError}
+        </div>
+      )}
       {!isMobileViewport && (
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
           <button type="button" onClick={onBack} style={{ minHeight: 46, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><ChevronLeft size={18} /> Back</button>
-          <button type="button" disabled style={{ minHeight: 46, borderRadius: 12, border: 'none', background: '#cbd5e1', color: '#fff', fontWeight: 700, cursor: 'not-allowed' }}>
-            Place Order (Coming Soon)
+          <button
+            type="button"
+            onClick={onCheckout}
+            disabled={checkoutLoading}
+            style={{ minHeight: 46, borderRadius: 12, border: 'none', background: checkoutLoading ? '#93b4d6' : '#1a4e8d', color: '#fff', fontWeight: 700, cursor: checkoutLoading ? 'wait' : 'pointer' }}
+          >
+            {checkoutLoading ? 'Placing Order...' : 'Place Order'}
           </button>
         </div>
       )}

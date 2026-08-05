@@ -57,6 +57,11 @@ import {
   stopMenuImportWorker
 } from './workers/menuImportWorker.js';
 import { MENU_IMPORT_BATCH_ENABLED, requireMenuBatchImportConfig } from './config/menuImportFeature.js';
+import {
+  startItemImageWorker,
+  stopItemImageWorker
+} from './workers/itemImageWorker.js';
+import { ITEM_IMAGE_GENERATION_ENABLED, requireItemImageGenerationConfig } from './config/itemImageFeature.js';
 import * as aiController from './controllers/aiController.js';
 import { paymentsEnabled } from './config/paymentsFeature.js';
 import productionEnvValidation from './config/productionEnvValidation.cjs';
@@ -920,6 +925,22 @@ const startServer = async () => {
       logger.info('Batch menu import disabled because MENU_IMPORT_BATCH_ENABLED is not true.');
     }
 
+    // Item image generation worker — same "safe to start unconditionally,
+    // tick() no-ops without Redis" reasoning as the workers above. Unlike
+    // menuImportWorker, this worker writes to tenant databases (see its own
+    // header comment and the ADR 0049 amendment this feature adds).
+    if (ITEM_IMAGE_GENERATION_ENABLED) {
+      startItemImageWorker();
+      const { configured, missing } = requireItemImageGenerationConfig();
+      if (configured) {
+        logger.info('Item image generation ready (ITEM_IMAGE_GENERATION_ENABLED=true, all dependencies configured).');
+      } else {
+        logger.warn(`Item image generation enabled but not fully configured — missing: ${missing.join(', ')}. Generation requests will fail until these are set.`);
+      }
+    } else {
+      logger.info('Item image generation disabled because ITEM_IMAGE_GENERATION_ENABLED is not true.');
+    }
+
     // Initialize Redis (non-blocking - server will start even if Redis fails)
     if (process.env.REDIS_URL) {
       initializeRedis().catch((error) => {
@@ -971,6 +992,9 @@ const startServer = async () => {
       stopGeoInventoryWorker();
       if (MENU_IMPORT_BATCH_ENABLED) {
         stopMenuImportWorker();
+      }
+      if (ITEM_IMAGE_GENERATION_ENABLED) {
+        stopItemImageWorker();
       }
       aiController.stopAiCleanupScheduler?.();
 

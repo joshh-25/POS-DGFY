@@ -15,7 +15,21 @@ import { previewItemsImportUseCase, confirmItemsImportUseCase } from '../modules
 import { extractMenuCsvFromFile, MenuExtractionError } from '../services/menuExtractionService.js';
 import { sendUseCaseResult } from '../modules/shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../services/productUsageTelemetryService.js';
+import { resolveMenuImportCategories } from '../services/menuImportCategoryService.js';
+import { hasEffectivePermission, resolveEffectivePermissions } from '../utils/userPermissions.js';
+import { PERMISSIONS } from '../config/permissions.js';
+import { enqueueItemImageGeneration } from '../workers/itemImageWorker.js';
+import {
+    ITEM_IMAGE_GENERATION_ENABLED,
+    ITEM_IMAGE_MAX_PER_BATCH,
+    ITEM_IMAGE_DAILY_USD_BUDGET
+} from '../config/itemImageFeature.js';
+import { AI_USAGE_FEATURES } from '../config/aiUsageFeatures.js';
+import { getTenantAiSpendSince } from '../modules/menuImport/repositories/menuImportBudgetRepository.js';
+import { updateBulkPosCatalogOverridesUseCase } from '../modules/pos/index.js';
 import logger from '../config/logger.js';
+
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
@@ -114,10 +128,187 @@ export const previewPdfImport = async (req, res) => {
     }
 };
 
+/**
+ * Enqueues async image generation (#176) for confirmed rows that opted in
+ * via a `generate_image: true` flag — the sibling to the existing `included`
+ * checkbox in MenuImportBatchModal.jsx's review table
+ * (frontend/Components/items/MenuImportBatchModal.jsx). The legacy
+ * single-file import UI never sets this flag, so it naturally enqueues
+ * nothing without any path-specific branching here.
+ *
+ * Item creation has already happened by the time this runs — generation is
+ * fire-and-forget from the request's perspective and never blocks or fails
+ * the confirm response. Every skip reason is still reported back so the
+ * client can show the operator what did and didn't happen.
+ *
+ * @param {Object} params
+ * @param {Array} params.rows - the request body rows (source of generate_image + row.data)
+ * @param {Object} params.importData - confirmItemsImportUseCase's result.data (has results.created)
+ * @param {Object} params.req - the Express request (for req.user)
+ * @returns {Promise<{queued: number, skipped: Array<{rowNumber: number, reason: string}>}>}
+ */
+const enqueueGeneratedImages = async ({ rows, importData, req }) => {
+    const requestedRows = (rows || []).filter((row) => row?.generate_image === true);
+    if (requestedRows.length === 0) {
+        return { queued: 0, skipped: [] };
+    }
+
+    const createdByRowNumber = new Map(
+        (importData?.results?.created || []).map((entry) => [entry.rowNumber, entry.item_id])
+    );
+    const candidateRows = requestedRows
+        .map((row) => ({ row, itemId: createdByRowNumber.get(row.rowNumber) }))
+        .filter((entry) => Number.isInteger(entry.itemId));
+    const notCreatedSkips = requestedRows
+        .filter((row) => !createdByRowNumber.has(row.rowNumber))
+        .map((row) => ({ rowNumber: row.rowNumber, reason: 'row_not_created' }));
+
+    if (candidateRows.length === 0) {
+        return { queued: 0, skipped: notCreatedSkips };
+    }
+
+    if (!ITEM_IMAGE_GENERATION_ENABLED) {
+        return {
+            queued: 0,
+            skipped: [...notCreatedSkips, ...candidateRows.map(({ row }) => ({ rowNumber: row.rowNumber, reason: 'feature_disabled' }))]
+        };
+    }
+
+    // Gated on items:edit, not items:import — generating and attaching an
+    // image is an edit to the item, and an importer without edit rights
+    // should never get that capability for free through the import path
+    // (same boundary decision as the menu-categories permission work).
+    if (!hasEffectivePermission(req.user, PERMISSIONS.INVENTORY.actions.EDIT_ITEMS)) {
+        return {
+            queued: 0,
+            skipped: [...notCreatedSkips, ...candidateRows.map(({ row }) => ({ rowNumber: row.rowNumber, reason: 'permission_denied' }))]
+        };
+    }
+
+    const tenantId = req.user?.tenant_id;
+    const since = new Date(Date.now() - ONE_DAY_MS);
+    const spentToday = await getTenantAiSpendSince(tenantId, since, { features: [AI_USAGE_FEATURES.ITEM_IMAGE_GENERATION] });
+    if (spentToday >= ITEM_IMAGE_DAILY_USD_BUDGET) {
+        return {
+            queued: 0,
+            skipped: [...notCreatedSkips, ...candidateRows.map(({ row }) => ({ rowNumber: row.rowNumber, reason: 'budget_exceeded' }))]
+        };
+    }
+
+    const withinCap = candidateRows.slice(0, ITEM_IMAGE_MAX_PER_BATCH);
+    const overCap = candidateRows.slice(ITEM_IMAGE_MAX_PER_BATCH)
+        .map(({ row }) => ({ rowNumber: row.rowNumber, reason: 'batch_cap_exceeded' }));
+
+    // Resolved once, not re-read per task: the worker runs minutes later with
+    // no request context, so it needs an explicit permissions array rather
+    // than a role it could re-resolve against defaults that may since have
+    // changed (see itemImageWorker.js's enqueueItemImageGeneration doc).
+    const user = {
+        user_id: req.user?.user_id,
+        tenant_id: tenantId,
+        is_master_admin: req.user?.is_master_admin === true,
+        permissions: resolveEffectivePermissions(req.user)
+    };
+
+    const enqueueResults = await Promise.all(withinCap.map(async ({ row, itemId }) => {
+        try {
+            await enqueueItemImageGeneration({
+                user,
+                itemId,
+                name: row.data?.name,
+                description: row.data?.description || null,
+                // Menu-import rows carry their category as `product_folder`
+                // free text (see menuImportCategoryService.js's own header
+                // comment) — items.category is an unrelated fixed ENUM, and
+                // this row shape has no `category` key at all.
+                category: row.data?.product_folder || null
+            });
+            return { rowNumber: row.rowNumber, queued: true };
+        } catch (error) {
+            logger.error('[MenuImportController] Failed to enqueue item image generation', {
+                tenantId,
+                rowNumber: row.rowNumber,
+                reason: error?.message
+            });
+            return { rowNumber: row.rowNumber, queued: false, reason: 'queue_unavailable' };
+        }
+    }));
+
+    const queued = enqueueResults.filter((entry) => entry.queued).length;
+    const queueFailures = enqueueResults
+        .filter((entry) => !entry.queued)
+        .map((entry) => ({ rowNumber: entry.rowNumber, reason: entry.reason }));
+
+    return { queued, skipped: [...notCreatedSkips, ...overCap, ...queueFailures] };
+};
+
+/**
+ * Marks every item created by this confirm as "Always Available" in the POS
+ * catalog (pos_always_available: true on its PosCatalogOverride row) when
+ * the operator opted in via `mark_always_available` on the confirm request.
+ *
+ * Why this exists: Item.bulkCreate (csvImportService.js) never creates a
+ * PosCatalogOverride row, so a freshly-imported item resolves to
+ * pos_always_available: false + current_stock: 0 — out of stock in the POS
+ * until someone opens it and flips the same toggle by hand, one item at a
+ * time. This reuses the exact mechanism the single-item form already uses
+ * (buildUpdatePosCatalogOverrideUseCase, ItemFormModal.jsx's "Always
+ * Available" toggle) via its bulk sibling, applied to the whole confirmed
+ * batch rather than per-row opt-in — unlike image generation, marking an
+ * item always-available costs nothing, so there's no reason to make the
+ * operator tick every row individually.
+ *
+ * Same fire-and-forget contract as enqueueGeneratedImages: items are
+ * already persisted, so a failure here must never fail the confirm response.
+ * @returns {Promise<{marked: number, skipped: number}>}
+ */
+const markCreatedItemsAlwaysAvailable = async ({ importData, req }) => {
+    const createdItemIds = (importData?.results?.created || [])
+        .map((entry) => entry.item_id)
+        .filter((itemId) => Number.isInteger(itemId));
+    if (createdItemIds.length === 0) {
+        return { marked: 0, skipped: 0 };
+    }
+
+    try {
+        const result = await updateBulkPosCatalogOverridesUseCase({
+            payload: { item_ids: createdItemIds, pos_always_available: true },
+            user: req.user
+        });
+        if (!result?.success) {
+            logger.error('[MenuImportController] Failed to mark imported items Always Available', {
+                tenantId: req.user?.tenant_id,
+                reason: result?.error?.message
+            });
+            return { marked: 0, skipped: createdItemIds.length };
+        }
+        const marked = result.data?.summary?.updated || 0;
+        return { marked, skipped: createdItemIds.length - marked };
+    } catch (error) {
+        logger.error('[MenuImportController] Failed to mark imported items Always Available', {
+            tenantId: req.user?.tenant_id,
+            reason: error?.message
+        });
+        return { marked: 0, skipped: createdItemIds.length };
+    }
+};
+
 export const confirmPdfImport = async (req, res) => {
     try {
         const userId = req.user?.user_id;
-        const result = await confirmItemsImportUseCase({ rows: req.body.rows, userId });
+        const rows = req.body.rows;
+
+        // Resolve the extracted menu categories to real ItemFolders and stamp
+        // folder_id onto the rows BEFORE persisting, so imported items are
+        // selectable under their category in the POS rather than only carrying
+        // the legacy product_folder string. Shared by the batch and single-file
+        // paths, which both route through this handler.
+        const categories = await resolveMenuImportCategories({
+            rows,
+            canManageCategories: hasEffectivePermission(req.user, PERMISSIONS.SYSTEM.actions.MANAGE_CATEGORIES)
+        });
+
+        const result = await confirmItemsImportUseCase({ rows, userId });
         await trackProductUsageFromResult({
             req,
             user: req.user,
@@ -139,10 +330,37 @@ export const confirmPdfImport = async (req, res) => {
         }
 
         const importData = result.data || {};
+        const categoryNotice = categories.skipped.length > 0
+            ? ` ${categories.skipped.length} categor${categories.skipped.length === 1 ? 'y' : 'ies'} could not be created (admin access required): ${categories.skipped.join(', ')}.`
+            : '';
+
+        // Fire-and-forget: items above are already created/persisted, so a
+        // problem enqueueing image generation must never fail this response
+        // — see enqueueGeneratedImages's own doc comment.
+        const images = await enqueueGeneratedImages({ rows, importData, req });
+        const imageNotice = images.queued > 0
+            ? ` ${images.queued} image${images.queued === 1 ? '' : 's'} queued for AI generation.`
+            : '';
+
+        const alwaysAvailable = req.body.mark_always_available === true
+            ? await markCreatedItemsAlwaysAvailable({ importData, req })
+            : { marked: 0, skipped: 0 };
+        const alwaysAvailableNotice = alwaysAvailable.marked > 0
+            ? ` ${alwaysAvailable.marked} item${alwaysAvailable.marked === 1 ? '' : 's'} marked Always Available.`
+            : '';
+
         return res.status(200).json({
             success: true,
-            data: importData,
-            message: `Import complete: ${importData.createdCount} created, ${importData.updatedCount} updated, ${importData.failedCount} failed`
+            data: {
+                ...importData,
+                categories_created: categories.created,
+                categories_linked: categories.linked,
+                categories_skipped: categories.skipped,
+                images_queued: images.queued,
+                images_skipped: images.skipped,
+                always_available_marked_count: alwaysAvailable.marked
+            },
+            message: `Import complete: ${importData.createdCount} created, ${importData.updatedCount} updated, ${importData.failedCount} failed.${categoryNotice}${imageNotice}${alwaysAvailableNotice}`
         });
     } catch (error) {
         logger.error('PDF menu import confirm error:', error);

@@ -8,12 +8,13 @@ describe('POS device shift guards', () => {
             findOpenTerminalShift: jest.fn().mockResolvedValue(null),
             getTransactionById: jest.fn()
         };
-        const deviceBridgeService = {
+        const deviceDriver = {
+            id: 'lan_escpos_bridge',
             printReceipt: jest.fn()
         };
         const printReceipt = buildPrintPosReceiptUseCase({
             posRepository,
-            deviceBridgeService
+            deviceDriver
         });
 
         const result = await printReceipt({
@@ -24,6 +25,6 @@ describe('POS device shift guards', () => {
         expect(result.success).toBe(false);
         expect(result.error?.message).toBe('Receipt printing requires an open shift');
         expect(posRepository.getTransactionById).not.toHaveBeenCalled();
-        expect(deviceBridgeService.printReceipt).not.toHaveBeenCalled();
+        expect(deviceDriver.printReceipt).not.toHaveBeenCalled();
     });
 });
