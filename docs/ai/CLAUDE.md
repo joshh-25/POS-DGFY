@@ -130,7 +130,9 @@ Before attempting ANY bug fix, the following steps MUST be taken:
 │   │   │   ├── services/       # Business logic (incl. AI services)
 │   │   │   └── validators/     # Joi validation schemas
 │   │   └── tests/
-│   └── dgfy-migration-runner/  # Sequelize migration domain (one-shot container)
+│   ├── dgfy-migration-runner/  # Sequelize migration domain (one-shot container)
+│   └── dgfy-android-bridge/    # Android hosts for POS hardware (formerly android/)
+│       └── imin-wrapper/       # iMin WebView wrapper + native printer/drawer bridge
 ├── frontend/
 │   ├── Components/
 │   │   ├── ai/             # AI chat components (NEW)
@@ -290,6 +292,9 @@ SKU-Inventory-Manager/                    # Monorepo root
 │   └── package.json
 │
 ├── apps/dgfy-migration-runner/            # Migration domain: migrations/, seeders/, database-setup.sql
+│
+├── apps/dgfy-android-bridge/              # Android hosts (formerly android/)
+│   └── imin-wrapper/                      # iMin WebView wrapper; built via scripts/build-android-release.sh
 │
 ├── docs/                                 # Documentation
 │   └── QUICK_REFERENCE.md

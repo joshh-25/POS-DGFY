@@ -165,5 +165,5 @@ npm run smoke:pos-local
   Release (manual)** GitHub Actions workflow (or
   `bash scripts/build-android-release.sh dev`), which installs alongside the
   production app without overwriting it. See
-  `android/imin-wrapper/README.md` for the full flavor table and rollback
+  `apps/dgfy-android-bridge/imin-wrapper/README.md` for the full flavor table and rollback
   steps.

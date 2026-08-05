@@ -12,7 +12,7 @@ This guide is for opening, configuring, building, and installing the Android iMi
 
 Project folder:
 
-- `C:\xampp\htdocs\POS-DGFY\android\imin-wrapper`
+- `C:\xampp\htdocs\POS-DGFY\apps\dgfy-android-bridge\imin-wrapper`
 
 Android Studio executable:
 
@@ -37,7 +37,7 @@ Make sure these are ready first:
 1. Open Android Studio.
 2. On the welcome screen, click `Open`.
 3. Select this folder:
-   - `C:\xampp\htdocs\POS-DGFY\android\imin-wrapper`
+   - `C:\xampp\htdocs\POS-DGFY\apps\dgfy-android-bridge\imin-wrapper`
 4. Wait for Android Studio to load the Gradle project.
 
 ## Step 2: Let Gradle Sync Finish

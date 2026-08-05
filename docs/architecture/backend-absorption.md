@@ -39,6 +39,34 @@ The copy relationship is exact except for deliberate exclusions. Every incoming
 - The migration config files above live only in `apps/dgfy-migration-runner`, never in
   `apps/dgfy-api`.
 
+## The android path map
+
+As of 2026-08-05 this branch also relocated the Android tree, so `backend/` is no longer
+the only replay surface. `develop` still has `android/` and is actively committing to it
+(the 2026-08-05 range alone touched 15 files there), so the same absorb-don't-lose rule
+applies:
+
+| Source on `develop`     | Destination on this branch              |
+| ----------------------- | --------------------------------------- |
+| `android/imin-wrapper/**` | `apps/dgfy-android-bridge/imin-wrapper/**` |
+
+Nothing is excluded — this is a pure relocation, unlike the `backend/` split. The Kotlin
+package (`com.dgfy.iminwrapper`), the `applicationId`, and every path *inside* the Gradle
+project are unchanged, so develop's diffs apply verbatim one directory deeper.
+
+**Consumers repointed on this branch** (expect merge conflicts here whenever develop edits
+them, and re-apply the `apps/dgfy-android-bridge/` prefix):
+
+- `scripts/build-android-release.sh` — `ANDROID_DIR`
+- `.github/workflows/build-android-manual.yml` — doc comment
+- `docs/setup/LOCAL_APP_RUNBOOK.md`, `Standalone POS/README.md`, `docs/ai/CLAUDE.md`
+- the moved project's own `README.md` and `ANDROID_STUDIO_SETUP_STEPS.md`
+
+Historical docs (`Implementation.md`, `System_Audit/`, `docs/README.md`, the 2026-06-15
+compliance declaration, `docs/reference/ANDROID_IMIN_POS_EXECUTION_PLAN.md`, release
+checklists, merge-adoption JSON) deliberately still say `android/imin-wrapper` — they
+record what was true at the time, same rule the `backend/` repoints follow.
+
 ## The baseline anchor
 
 To know *what* to absorb, you need the last `develop` commit this branch already reflects.

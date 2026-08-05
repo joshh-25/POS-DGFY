@@ -66,7 +66,7 @@ adb uninstall com.dgfy.iminwrapper.stage
 
 ### What you need to do next
 
-1. Open `android/imin-wrapper` in Android Studio.
+1. Open `apps/dgfy-android-bridge/imin-wrapper` in Android Studio.
 2. Let Android Studio sync Gradle if prompted.
 3. In the Build Variants panel (or `./gradlew assemble<Flavor>Debug`), pick the flavor for the build you want.
 4. Set your final package name if you do not want `com.dgfy.iminwrapper`.
