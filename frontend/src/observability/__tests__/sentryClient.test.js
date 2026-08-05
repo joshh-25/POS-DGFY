@@ -534,7 +534,7 @@ describe('captureRequestFailure', () => {
     freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items' });
 
     const [, options] = Sentry.captureException.mock.calls[0];
-    expect(options.fingerprint).toEqual(['api', 'GET', '/api/v1/items', 'network']);
+    expect(options.fingerprint).toEqual(['api', 'GET', 'network']);
     expect(options.level).toBe('warning');
     expect(options.tags.request_failure_class).toBe('transient');
     vi.doUnmock('@sentry/react');
@@ -573,7 +573,32 @@ describe('captureRequestFailure', () => {
 
     expect(Sentry.captureException).toHaveBeenCalledTimes(1);
     const [, options] = Sentry.captureException.mock.calls[0];
-    expect(options.fingerprint).toEqual(['api', 'GET', '/api/v1/items', 'network']);
+    expect(options.fingerprint).toEqual(['api', 'GET', 'network']);
+    vi.doUnmock('@sentry/react');
+  });
+
+  it('collapses network-class failures across different URLs into one fingerprint, unlike server-class', async () => {
+    const { freshModule, Sentry } = await importInitializedSentryClient();
+
+    // Simulates loadDgfyPanel's Promise.all fan-out: one connectivity blip
+    // rejects several endpoints at once. Before the fix, each endpoint's
+    // distinct URL produced its own fingerprint (and its own independent
+    // cooldown), so a single blip minted one Sentry issue per endpoint.
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/dgfy/auth/me' });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/dgfy/customer/dashboard' });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/dgfy/account/companies' });
+
+    // Only the first call gets through the fingerprint's own cooldown; the
+    // other two collapse into the same key and are throttled immediately.
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+    const [, options] = Sentry.captureException.mock.calls[0];
+    expect(options.fingerprint).toEqual(['api', 'GET', 'network']);
+
+    // A real 5xx from two distinct endpoints must NOT collapse -- each stays
+    // its own actionable issue.
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/store/a', status: 500 });
+    freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/store/b', status: 500 });
+    expect(Sentry.captureException).toHaveBeenCalledTimes(3);
     vi.doUnmock('@sentry/react');
   });
 
