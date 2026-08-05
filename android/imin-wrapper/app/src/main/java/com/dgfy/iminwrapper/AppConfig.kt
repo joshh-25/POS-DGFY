@@ -57,6 +57,19 @@ object AppConfig {
         )
     }
 
+    // Hosts where plain HTTP is tolerated -- local development only.
+    // LIVE_POS_HOST/SKUPERVISOR_HOST are deliberately excluded: those must
+    // always be navigated over HTTPS, see WebPosNavigationPolicy.
+    fun cleartextAllowedHosts(): Set<String> {
+        return setOf(
+            activeLocalHost(),
+            LOCAL_LAN_HOST,
+            EMULATOR_HOST,
+            "localhost",
+            "127.0.0.1"
+        )
+    }
+
     private fun activeLocalHost(): String {
         return if (isProbablyEmulator()) EMULATOR_HOST else LOCAL_LAN_HOST
     }

@@ -70,7 +70,7 @@ class WebPosActivity : AppCompatActivity() {
             allowFileAccess = false
             allowContentAccess = false
             databaseEnabled = true
-            mixedContentMode = WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE
+            mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             mediaPlaybackRequiresUserGesture = false
             userAgentString = "$userAgentString DGFY-iMin-WebView"
             builtInZoomControls = false
@@ -141,7 +141,7 @@ class WebPosActivity : AppCompatActivity() {
                 request: WebResourceRequest?
             ): Boolean {
                 val targetUrl = request?.url ?: return false
-                return if (isAllowedHost(targetUrl.host)) {
+                return if (isAllowedNavigation(targetUrl.host, targetUrl.scheme)) {
                     false
                 } else {
                     startActivity(Intent(Intent.ACTION_VIEW, targetUrl))
@@ -188,8 +188,13 @@ class WebPosActivity : AppCompatActivity() {
         }
     }
 
-    private fun isAllowedHost(host: String?): Boolean {
-        return host != null && AppConfig.allowedHosts().contains(host)
+    private fun isAllowedNavigation(host: String?, scheme: String?): Boolean {
+        return WebPosNavigationPolicy.isPermitted(
+            host,
+            scheme,
+            AppConfig.allowedHosts(),
+            AppConfig.cleartextAllowedHosts()
+        )
     }
 
     private fun showStatus(
