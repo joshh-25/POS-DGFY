@@ -58,7 +58,13 @@ export const requestJson = async (url, {
   // below: 200 is never in the retryable-status set, so no special-casing
   // is needed for that, but retry must still default off so a global
   // change here can't silently start retrying every POST-shaped call site).
-  retry = false
+  retry = false,
+  // Mirrors api.js's per-request `skipRequestFailureCapture` axios config
+  // flag for parity between the two request layers. No storefront call site
+  // needs it today, but a future optional-capability probe (the kind
+  // fetchPosDeviceStatus is on the POS side) should have the same escape
+  // hatch here without inventing a third convention.
+  skipRequestFailureCapture = false
 } = {}) => {
   const normalizedMethod = String(method || 'GET').toUpperCase();
   const token = String(authToken || '').trim();
@@ -113,7 +119,9 @@ export const requestJson = async (url, {
       // only a response payload carries, so this is the only place a
       // storefront network failure reaches Sentry. Only reached once retry
       // is exhausted or not applicable, so a recovered request never fires.
-      captureRequestFailure({ error: networkError, method: normalizedMethod, url });
+      if (!skipRequestFailureCapture) {
+        captureRequestFailure({ error: networkError, method: normalizedMethod, url });
+      }
       throw buildRequestError('Request failed before reaching API. Check server/proxy/CORS connectivity.', {
         isNetworkError: true,
         cause: networkError
@@ -158,13 +166,15 @@ export const requestJson = async (url, {
         url: response.url,
         status: response.status
       });
-      captureRequestFailure({
-        error: requestError,
-        method: normalizedMethod,
-        url: response.url,
-        status: response.status,
-        requestId: payload?.request_id || null
-      });
+      if (!skipRequestFailureCapture) {
+        captureRequestFailure({
+          error: requestError,
+          method: normalizedMethod,
+          url: response.url,
+          status: response.status,
+          requestId: payload?.request_id || null
+        });
+      }
       throw requestError;
     }
 
