@@ -11,10 +11,7 @@ import {
     createPosCheckout,
     closePosDay,
     fetchPosTransactions,
-    fetchPosTransactionById,
-    fetchPosDeviceStatus,
-    printPosReceipt,
-    openPosDeviceDrawer
+    fetchPosTransactionById
 } from '../services/posService';
 import {
     TERMINAL_QUEUE_STATUS,
@@ -40,12 +37,8 @@ import {
     resolveAssetVariantUrl
 } from '@/src/utils/assetUrl.js';
 import { handlePaneScrollKeyDown } from '../utils/scrollKeyControls.js';
-import {
-    notifyIminWebPosReady,
-    openDrawerWithIminBridge,
-    printOrderWithIminBridge,
-    printReceiptWithIminBridge
-} from '../utils/iminHardwareBridge.js';
+import { notifyIminWebPosReady } from '../utils/iminHardwareBridge.js';
+import { usePosHardware } from '../hardware/usePosHardware.js';
 import { PosAddToCartToastContainer } from './PosAddToCartToastContainer.jsx';
 
 const ReceiptPrintView = lazyWithChunkRetry(() => import('./ReceiptPrintView'));
@@ -472,8 +465,7 @@ export default function POSCheckoutTerminal({
     const [historyDateTo, setHistoryDateTo] = useState('');
     const [historyDetailLoading, setHistoryDetailLoading] = useState(false);
     const [receiptSettings, setReceiptSettings] = useState({});
-    const [deviceStatus, setDeviceStatus] = useState(null);
-    const [deviceStatusLoading, setDeviceStatusLoading] = useState(false);
+    const posHardware = usePosHardware();
     const [receiptPrinting, setReceiptPrinting] = useState(false);
     const [receiptPaperWidth, setReceiptPaperWidth] = useState('80mm');
     const [drawerOpening, setDrawerOpening] = useState(false);
@@ -530,8 +522,7 @@ export default function POSCheckoutTerminal({
             String(entry?.status || '') === TERMINAL_QUEUE_STATUS.FAILED_MANUAL_RESOLUTION_REQUIRED
         )).length
     ), [queuedCheckouts]);
-    const detectedPrinterCount = Number(deviceStatus?.bridge?.printersDetected || 0);
-    const isPrinterAvailable = detectedPrinterCount > 0;
+    const isPrinterAvailable = posHardware.isPrinterAvailable;
 
     const setCurrentViewMode = useCallback((nextMode) => {
         if (!isViewModeControlled) {
@@ -850,26 +841,6 @@ export default function POSCheckoutTerminal({
         }
     }, [sessionLocked]);
 
-    const loadDeviceStatus = useCallback(async ({ notifyOnError = false } = {}) => {
-        if (sessionLocked) {
-            setDeviceStatus(null);
-            return;
-        }
-
-        setDeviceStatusLoading(true);
-        try {
-            const result = await fetchPosDeviceStatus();
-            setDeviceStatus(result || null);
-        } catch (error) {
-            setDeviceStatus(null);
-            if (notifyOnError) {
-                toast.error(error?.response?.data?.message || 'Failed to load POS device status.');
-            }
-        } finally {
-            setDeviceStatusLoading(false);
-        }
-    }, [sessionLocked]);
-
     const loadHistory = useCallback(async (page = 1) => {
         if (sessionLocked || !canViewHistory) {
             setHistoryRows([]);
@@ -1018,8 +989,9 @@ export default function POSCheckoutTerminal({
         if (sessionLocked) return;
         loadReceiptSettings();
         loadPosFolders();
-        loadDeviceStatus();
-    }, [loadDeviceStatus, loadReceiptSettings, loadPosFolders, sessionLocked]);
+        // POS hardware resolution is owned by usePosHardware itself (resolved
+        // once per tab, memoized) — see POSCheckoutTerminal.jsx for the same note.
+    }, [loadReceiptSettings, loadPosFolders, sessionLocked]);
 
     useEffect(() => {
         let active = true;
@@ -1522,20 +1494,31 @@ export default function POSCheckoutTerminal({
                 onCheckoutCompleted(data?.transaction || null);
             }
             try {
-                const completedTransaction = data?.transaction || null;
-                const receiptContract = inferReceiptContract(completedTransaction, data?.receipt_contract);
-                const iminPrintResult = printReceiptWithIminBridge({
-                    transaction: completedTransaction,
-                    businessSettings: receiptSettings,
-                    receiptContract,
-                    openDrawerAfterPrint: true
-                });
-                if (iminPrintResult.handled) {
-                    toast.success('Receipt printed and cash drawer opened.');
-                } else {
-                    const iminDrawerResult = openDrawerWithIminBridge();
-                    if (iminDrawerResult.handled) {
-                        toast.success('Cash drawer opened.');
+                // Auto-print-on-checkout only ever ran on the iMin native
+                // printer — see the equivalent note in POSCheckoutTerminal.jsx.
+                if (posHardware.driverId === 'imin_native') {
+                    const completedTransaction = data?.transaction || null;
+                    const receiptContract = inferReceiptContract(completedTransaction, data?.receipt_contract);
+                    const printOutcome = await posHardware.printReceipt({
+                        transaction: completedTransaction,
+                        businessSettings: receiptSettings,
+                        receiptContract,
+                        openDrawerAfterPrint: true,
+                        terminalId: normalizedTerminalId,
+                        reason: 'checkout_auto_print'
+                    });
+                    if (printOutcome.success) {
+                        toast.success('Receipt printed and cash drawer opened.');
+                    } else {
+                        const drawerOutcome = await posHardware.openDrawer({
+                            shiftId: activeShiftId,
+                            transactionId: completedTransaction?.pos_transaction_id,
+                            terminalId: normalizedTerminalId,
+                            reason: 'checkout_auto_open_drawer'
+                        });
+                        if (drawerOutcome.success) {
+                            toast.success('Cash drawer opened.');
+                        }
                     }
                 }
             } catch (hardwareError) {
@@ -1600,60 +1583,54 @@ export default function POSCheckoutTerminal({
 
         setReceiptPrinting(true);
         try {
-            const iminPrintResult = printReceiptWithIminBridge({
+            const outcome = await posHardware.printReceipt({
                 transaction,
                 businessSettings: receiptSettings,
                 receiptContract: inferReceiptContract(transaction),
-                openDrawerAfterPrint: true
+                openDrawerAfterPrint: true,
+                transactionId,
+                terminalId: normalizedTerminalId || undefined,
+                reason,
+                idempotencyKey: createIdempotencyKey()
             });
-            if (iminPrintResult.handled) {
-                toast.success('Receipt printed and cash drawer opened.');
-                return;
-            }
 
-            const result = await printPosReceipt({
-                idempotency_key: createIdempotencyKey(),
-                transaction_id: transactionId,
-                terminal_id: normalizedTerminalId || undefined,
-                reason
-            });
-            toast.success(
-                result?.transaction?.invoice_number
-                    ? `Print sent for ${result.transaction.invoice_number}.`
-                    : 'Receipt print request sent.'
-            );
-        } catch (error) {
-            toast.error(error?.response?.data?.message || 'Failed to send receipt to printer.');
+            if (outcome.success) {
+                toast.success(
+                    outcome.driverId === 'imin_native'
+                        ? 'Receipt printed and cash drawer opened.'
+                        : (outcome.message || 'Receipt printed.')
+                );
+            } else if (outcome.reasonCode === 'NO_PRINTER_CONFIGURED') {
+                toast.message(outcome.message || 'No printer is configured for this terminal. The receipt is available for on-screen preview.');
+            } else {
+                toast.error(outcome.message || 'Failed to send receipt to printer.');
+            }
         } finally {
             setReceiptPrinting(false);
-            loadDeviceStatus();
         }
-    }, [loadDeviceStatus, normalizedTerminalId, receiptSettings]);
+    }, [normalizedTerminalId, posHardware, receiptSettings]);
 
-    const handlePrintOrder = useCallback(() => {
+    const handlePrintOrder = useCallback(async () => {
         if (cart.length === 0) {
             toast.error('Add at least one item before printing an order.');
             return;
         }
 
-        try {
-            const result = printOrderWithIminBridge({
-                cart,
-                terminalId: normalizedTerminalId,
-                orderMethod,
-                fnbContext: normalizedFnbContext
-            });
-            if (result.handled) {
-                toast.success('Order ticket sent to printer.');
-                return;
-            }
-            toast.error('Order printing is available only inside the iMin APK.');
-        } catch (error) {
-            toast.error(error?.message || 'Failed to print order ticket.');
-        } finally {
-            loadDeviceStatus();
+        const outcome = await posHardware.printOrderTicket({
+            cart,
+            terminalId: normalizedTerminalId,
+            orderMethod,
+            fnbContext: normalizedFnbContext
+        });
+
+        if (outcome.success) {
+            toast.success(outcome.message || 'Order ticket sent to printer.');
+        } else if (outcome.reasonCode === 'NO_PRINTER_CONFIGURED' || outcome.reasonCode === 'NOT_SUPPORTED') {
+            toast.error('Order ticket printing is not available on this terminal.');
+        } else {
+            toast.error(outcome.message || 'Failed to print order ticket.');
         }
-    }, [cart, loadDeviceStatus, normalizedFnbContext, normalizedTerminalId, orderMethod]);
+    }, [cart, normalizedFnbContext, normalizedTerminalId, orderMethod, posHardware]);
 
     const printHistoryReceipt = useCallback(async (posTransactionId) => {
         const transactionId = Number(posTransactionId);
@@ -1683,27 +1660,25 @@ export default function POSCheckoutTerminal({
 
         setDrawerOpening(true);
         try {
-            const iminDrawerResult = openDrawerWithIminBridge();
-            if (iminDrawerResult.handled) {
-                toast.success('Cash drawer opened.');
-                return;
-            }
-
-            await openPosDeviceDrawer({
-                idempotency_key: createIdempotencyKey(),
-                shift_id: activeShiftId,
-                transaction_id: transactionId || undefined,
-                terminal_id: normalizedTerminalId || undefined,
-                reason
+            const outcome = await posHardware.openDrawer({
+                shiftId: activeShiftId,
+                transactionId,
+                terminalId: normalizedTerminalId || undefined,
+                reason,
+                idempotencyKey: createIdempotencyKey()
             });
-            toast.success('Cash drawer open request sent.');
-        } catch (error) {
-            toast.error(error?.response?.data?.message || error?.message || 'Failed to open the cash drawer.');
+
+            if (outcome.success) {
+                toast.success(outcome.message || 'Cash drawer opened.');
+            } else if (outcome.reasonCode === 'NO_PRINTER_CONFIGURED') {
+                toast.message(outcome.message || 'No cash drawer is configured for this terminal.');
+            } else {
+                toast.error(outcome.message || 'Failed to open the cash drawer.');
+            }
         } finally {
             setDrawerOpening(false);
-            loadDeviceStatus();
         }
-    }, [activeShiftId, loadDeviceStatus, normalizedTerminalId]);
+    }, [activeShiftId, normalizedTerminalId, posHardware]);
 
     return (
         <div className={shellClassName}>
@@ -2502,6 +2477,7 @@ export default function POSCheckoutTerminal({
                         variant="outline"
                         onClick={() => handlePrintReceipt(lastReceipt, 'last_receipt_panel')}
                         disabled={posActionsBlocked || !lastReceipt || receiptPrinting}
+                        title={isPrinterAvailable ? undefined : 'No printer is configured for this terminal. The receipt stays available for on-screen preview.'}
                     >
                         {receiptPrinting ? 'Printing...' : 'Print Last Receipt'}
                     </Button>
@@ -2513,6 +2489,7 @@ export default function POSCheckoutTerminal({
                             reason: 'manual_drawer_panel'
                         })}
                         disabled={!activeShiftId || drawerOpening}
+                        title={isPrinterAvailable ? undefined : 'No cash drawer is configured for this terminal.'}
                     >
                         {drawerOpening ? 'Opening...' : 'Open Cash Drawer'}
                     </Button>

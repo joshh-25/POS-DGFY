@@ -229,6 +229,13 @@ To stop the application:
 | Redis | 6379 | redis://localhost:6379 | Redis CLI/service status |
 | phpMyAdmin | 80 | http://localhost/phpmyadmin | Open in browser |
 
+The POS Device Bridge is optional (ADR 0053). POS checkout, receipt preview,
+and the iMin native printer path all work without it. Set
+`DEVICE_BRIDGE_ENABLED=true` in the backend `.env` to have the backend dispatch
+print/drawer actions to it; leave it unset/`false` (the default) to run
+without any LAN-attached printer. See `POS_DEVICE_DRIVER` in
+`backend/device-bridge/README.md` for the full driver override options.
+
 ---
 
 ## Next Steps After Starting

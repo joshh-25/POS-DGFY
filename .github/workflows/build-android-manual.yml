@@ -1,0 +1,74 @@
+name: Build Android Release (manual)
+
+# Builds a signed release APK of the iMin Android wrapper for the selected
+# product flavor via scripts/build-android-release.sh and uploads it as a
+# workflow artifact. Manual only -- run from the Actions tab when an APK is
+# needed for distribution/testing.
+#
+# workflow_dispatch lets you pick the ref (branch/tag/commit) this runs
+# against, independent of the flavor. That's what makes it possible to
+# build a `dev` or `staging` APK straight off an unmerged feature branch --
+# install it on a real iMin device and verify hardware behavior there --
+# before that branch ever reaches `main` (which is what `prod`/`beta` are
+# routed to). See android/imin-wrapper/README.md for the full flavor table
+# and the on-device verification steps.
+on:
+  workflow_dispatch:
+    inputs:
+      flavor:
+        description: "Product flavor to build (routes to that environment's POS origin)"
+        type: choice
+        options:
+          - dev
+          - staging
+          - beta
+          - prod
+        default: dev
+      clean:
+        description: "Run a clean Gradle build (./gradlew clean) before assembling"
+        type: boolean
+        default: false
+      pos_origin:
+        description: "Override this flavor's POS origin (e.g. https://pos.example.ph). Leave blank to use the flavor's default."
+        type: string
+        default: ""
+
+concurrency:
+  group: build-android-manual-${{ inputs.flavor }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Build release APK
+        run: |
+          ARGS=("${{ inputs.flavor }}")
+          if [[ "${{ inputs.clean }}" == "true" ]]; then
+            ARGS+=("--clean")
+          fi
+          if [[ -n "${{ inputs.pos_origin }}" ]]; then
+            ARGS+=("--pos-origin" "${{ inputs.pos_origin }}")
+          fi
+          bash scripts/build-android-release.sh "${ARGS[@]}"
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-${{ inputs.flavor }}-release-${{ github.run_number }}
+          path: releases/android/**
+          if-no-files-found: error
+          retention-days: 30

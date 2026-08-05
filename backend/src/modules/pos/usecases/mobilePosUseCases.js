@@ -33,7 +33,8 @@ const MOBILE_SETTINGS_KEYS = [
     'pos_order_method_fees',
     'pos_terminal_registry_mode',
     'pos_terminal_registry',
-    'pos_terminal_location_binding_enforced'
+    'pos_terminal_location_binding_enforced',
+    'pos_hardware_profile'
 ];
 
 const toPositiveInt = (value) => {

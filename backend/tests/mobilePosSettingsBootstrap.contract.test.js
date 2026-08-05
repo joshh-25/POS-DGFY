@@ -17,6 +17,7 @@ describe('mobile POS settings bootstrap contract', () => {
     expect(useCaseSource).toContain("'store_tenant_slug'");
     expect(useCaseSource).toContain("'pos_petty_cash_symbol'");
     expect(useCaseSource).toContain("'pos_petty_cash_amount'");
+    expect(useCaseSource).toContain("'pos_hardware_profile'");
     expect(useCaseSource).toContain('settings: pickSettings(settings)');
     expect(useCaseSource).not.toContain("'smtp_password'");
     expect(useCaseSource).not.toContain("'paymongo_secret_key'");
