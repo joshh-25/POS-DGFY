@@ -87,6 +87,35 @@ folder:
 - `DEVICE_BRIDGE_PRINTER_WIDTH`
   - default: `48`
 
+## Consumer-side environment (main backend, not this package)
+
+This bridge is optional (ADR 0053) — the main backend (`backend/src/...`)
+runs fine with no bridge process at all. These variables live in the main
+backend's own env, not here, and control whether/how it talks to a bridge:
+
+- `DEVICE_BRIDGE_ENABLED`
+  - default: unset (`false`). Set to `true` only once this bridge process is
+    actually running and reachable. When `false`, `GET /pos/device/status`
+    returns `200` with `driver.id: 'client_managed'` instead of trying to
+    reach the bridge, and print/drawer requests report
+    `NO_PRINTER_CONFIGURED` instead of a connection failure.
+- `POS_DEVICE_DRIVER`
+  - `auto` (default) | `none` | `client_managed` | `lan_escpos_bridge`.
+    `auto` resolves to `lan_escpos_bridge` only when
+    `DEVICE_BRIDGE_ENABLED=true`. Set explicitly to force a driver
+    regardless of `DEVICE_BRIDGE_ENABLED`.
+- `DEVICE_BRIDGE_BASE_URL`
+  - default: `http://127.0.0.1:5101`. Where the backend expects this bridge
+    process to be reachable from.
+- `DEVICE_BRIDGE_TIMEOUT_MS`
+  - default: `5000`.
+- `DEVICE_BRIDGE_API_KEY`
+  - must match this process's own `DEVICE_BRIDGE_API_KEY` above when set.
+
+See `docs/architecture/adr/0053-pluggable-pos-hardware-device-drivers.md` for
+the full driver contract and how to add support for a different printer or
+terminal without touching checkout code.
+
 ## Phase 1 Steps
 
 1. Lock architecture in ADR `0025-pos-application-shells-and-lan-host-runtime.md`.

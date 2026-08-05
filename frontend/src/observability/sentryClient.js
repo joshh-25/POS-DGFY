@@ -557,17 +557,21 @@ export const captureRequestFailure = ({ error, method, url, status, requestId } 
   if (hasResponse && Number(status) < 500) return;
 
   const normalizedUrl = normalizeRequestUrl(url);
-  // Fingerprint is intentionally UNCHANGED by the transient/server
-  // classification below. Sentry groups solely on this array; the status
-  // code is already its 4th element, so 502/503/504/network already group
-  // separately from 500 today. Adding a classification token here would
-  // orphan every existing issue built on the current fingerprint (a new
-  // hash starts a new issue, losing assignees/ignore-state/history) and
-  // would reset the cooldown Map below, which is keyed off this same
-  // fingerprint -- the first minute after such a change would emit MORE
-  // events, not fewer. `level` and the tag are how classification is
-  // surfaced instead.
-  const fingerprint = ['api', String(method || 'GET').toUpperCase(), normalizedUrl, hasResponse ? String(status) : 'network'];
+  const normalizedMethod = String(method || 'GET').toUpperCase();
+  // Network-class failures (no response at all -- offline, DNS, CORS)
+  // deliberately DROP the URL from the fingerprint, unlike the server class
+  // below. A single connectivity blip during a fan-out (e.g. loadDgfyPanel's
+  // 11 parallel requestJson calls) used to mint one issue PER endpoint,
+  // because each endpoint's URL made its own fingerprint -- 11 "new" issues
+  // from one blip, each with its own independent cooldown, defeating the
+  // cooldown below entirely. Collapsing to one fingerprint per method means
+  // the whole fan-out grouped as a single event and the cooldown finally
+  // covers it. A genuine 5xx from a specific endpoint keeps its own
+  // fingerprint (including status, via the 4th element) so a real broken
+  // endpoint still surfaces as its own actionable issue.
+  const fingerprint = hasResponse
+    ? ['api', normalizedMethod, normalizedUrl, String(status)]
+    : ['api', normalizedMethod, 'network'];
   const fingerprintKey = fingerprint.join('|');
 
   const now = Date.now();
@@ -588,7 +592,7 @@ export const captureRequestFailure = ({ error, method, url, status, requestId } 
         failed_request: { request_id: requestId, url, status }
       },
       tags: {
-        request_method: method ? String(method).toUpperCase() : undefined,
+        request_method: normalizedMethod,
         request_status: hasResponse ? String(status) : 'network',
         request_failure_class: failureClass
       }

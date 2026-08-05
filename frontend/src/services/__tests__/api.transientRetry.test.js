@@ -166,6 +166,32 @@ describe('api.js — transient failure retry', () => {
     expect(mockApi.history.get.length).toBeLessThanOrEqual(3);
   });
 
+  it('honours skipRequestFailureCapture + skipTransientRetry on a 503 (e.g. a caller-declared optional probe)', async () => {
+    const onApiError = vi.fn();
+    window.addEventListener('api:error', onApiError);
+    mockApi.onGet('/optional/probe').reply(503);
+
+    await expect(api.get('/optional/probe', {
+      skipGlobalErrorToast: true,
+      skipTransientRetry: true,
+      skipRequestFailureCapture: true
+    })).rejects.toBeTruthy();
+
+    // No retries at all -- a single doomed attempt, not three.
+    expect(mockApi.history.get.length).toBe(1);
+    expect(onApiError).not.toHaveBeenCalled();
+    expect(sentryClient.captureRequestFailure).not.toHaveBeenCalled();
+  });
+
+  it('still retries and still reports a 503 that does not opt out (the regression that matters)', async () => {
+    mockApi.onGet('/items').reply(503);
+
+    await expect(api.get('/items')).rejects.toBeTruthy();
+
+    expect(mockApi.history.get.length).toBe(3);
+    expect(sentryClient.captureRequestFailure).toHaveBeenCalledTimes(1);
+  });
+
   it('does not emit a global error toast or retry a canceled request', async () => {
     // Sentry-level filtering of a canceled/aborted request is asserted at
     // the unit level in sentryClient.test.js ('does not capture a

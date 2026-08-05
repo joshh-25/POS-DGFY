@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-19
-last_reviewed: 2026-06-19
+last_reviewed: 2026-08-04
 review_by: 2026-12-19
 applies_to: hardware_pos_android_imin_runtime
 topic: standalone_native_hardware_pos_runtime
@@ -15,6 +15,10 @@ supersedes_in_part: docs/architecture/adr/0025-pos-application-shells-and-lan-ho
 ## Status
 
 Accepted (2026-06-19)
+Amended (2026-08-04): ADR 0053 introduces a shared client-side hardware
+driver contract on the web POS side; this runtime's native printer/drawer/
+scanner integration is a candidate to align to the same contract in a later
+phase, without changing this ADR's ownership decision. See Amendments.
 
 ## Context
 
@@ -128,3 +132,22 @@ Native hardware app flow must mirror the current web POS operator journey, but i
 3. Scaffold a standalone hardware app workspace with local schema and sync-policy logic.
 4. Reuse the existing web POS flow as the UX parity source of truth.
 5. Keep the current Android wrapper as temporary fallback only during migration.
+
+## Amendments
+
+### 2026-08-04 — Web POS iMin path now audits its own hardware actions
+- Clause amended: Guardrail 7 / "Browser-only POS remains a rollback-safe
+  fallback" (`default`)
+- Change: the Android WebView wrapper this ADR calls a temporary fallback
+  (`window.iMinBridge`, still in production use) previously printed receipts
+  and pulsed the cash drawer without ever reporting the outcome to the
+  backend, so those actions were unaudited. Under ADR 0053, the web POS's
+  iMin driver now reports its print/drawer outcome to the backend
+  (`client_driver_id` + `client_result` on the existing print-receipt/
+  open-drawer requests), which records the same audit row a
+  backend-dispatched print would. This ADR's own native RN/Kotlin hardware
+  ownership (guardrails 1-6) is unchanged; only the temporary WebView
+  fallback's audit behavior changed.
+- Reason: close an audit gap on the fallback path while the standalone
+  native runtime this ADR describes continues to mature.
+- See: ADR 0053.

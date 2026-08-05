@@ -170,6 +170,22 @@ const posTerminalRegistrySchema = Joi.array()
     'array.max': 'A maximum of 40 terminal registry entries is allowed',
     'any.invalid': '{{#message}}'
   });
+
+// Client-side hardware preference (ADR 0053). This never overrides the
+// backend's own device driver (POS_DEVICE_DRIVER / DEVICE_BRIDGE_ENABLED,
+// a deployment-level setting — one backend/device-bridge host per store, see
+// ADR 0025) — it only tells frontend.posHardwareRegistry which client-probed
+// driver to prefer and what receipt defaults to use. `driver_preference:
+// 'none'` lets a tenant explicitly opt a terminal out of hardware probing
+// entirely (e.g. a back-office admin terminal that should never try to print).
+const POS_HARDWARE_DRIVER_PREFERENCES = ['auto', 'none', 'imin_native', 'lan_escpos_bridge'];
+const posHardwareProfileSchema = Joi.object({
+  driver_preference: Joi.string().trim().lowercase().valid(...POS_HARDWARE_DRIVER_PREFERENCES).default('auto').messages({
+    'any.only': 'Hardware driver preference must be one of: auto, none, imin_native, lan_escpos_bridge'
+  }),
+  paper_width: Joi.string().valid('80mm', '57mm').default('80mm'),
+  auto_open_drawer: Joi.boolean().default(true)
+});
 const storefrontAssetUrlSchema = Joi.string().trim().max(500).pattern(/^$|^\/uploads\/storefront-assets\/[A-Za-z0-9/_\-.]+$/).optional().messages({
   'string.pattern.base': 'Storefront asset URL must be empty or a backend-relative /uploads/storefront-assets path'
 });
@@ -455,6 +471,7 @@ export const updateSettingsSchema = Joi.object({
   pos_terminal_registry_mode: Joi.string().trim().lowercase().valid(...TERMINAL_REGISTRY_MODES).optional().messages({
     'any.only': 'Terminal registry mode must be warn or enforce'
   }),
+  pos_hardware_profile: posHardwareProfileSchema.optional(),
   pos_terminal_location_binding_enforced: Joi.boolean().optional(),
   pos_settings_access_pin: Joi.string().trim().pattern(POS_SETTINGS_ACCESS_PIN_PATTERN).allow('').optional().messages({
     'string.pattern.base': 'POS Settings access PIN must be 4 to 12 digits'
@@ -617,6 +634,7 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     pos_terminal_registry_mode: Joi.string().trim().lowercase().valid(...TERMINAL_REGISTRY_MODES).messages({
       'any.only': 'Terminal registry mode must be warn or enforce'
     }),
+    pos_hardware_profile: posHardwareProfileSchema,
     pos_terminal_location_binding_enforced: Joi.boolean(),
     pos_settings_access_pin_hash: Joi.string().trim().allow(''),
     pos_petty_cash_symbol: Joi.string().trim().max(12).allow(''),

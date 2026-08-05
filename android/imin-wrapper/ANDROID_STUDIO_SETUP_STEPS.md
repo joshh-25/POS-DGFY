@@ -1,7 +1,7 @@
 ---
 status: reference
 owner: engineering
-last_reviewed: 2026-07-04
+last_reviewed: 2026-08-04
 applies_to: android_imin_pos_wrapper
 topic: android_studio_setup_steps
 ---
@@ -28,9 +28,9 @@ Make sure these are ready first:
 
 1. Android Studio is installed.
 2. The hosted POS URL is already working in browser.
-3. Your iMin device can reach `https://pos.dgfy.ph` (prod) or `https://pos.beta.dgfy.ph` (beta), whichever flavor you are building.
+3. Your iMin device can reach the live origin for whichever flavor you are building: `https://pos.dgfy.ph` (prod), `https://pos.beta.dgfy.ph` (beta), `https://pos.stage.dgfy.ph` (staging), or `https://pos.dev.dgfy.ph` (dev).
 4. USB debugging is enabled on the iMin device.
-5. You know whether you are building the live APK or a local/LAN development APK, and which product flavor (`prod` or `beta`) you need.
+5. You know whether you are building the live APK or a local/LAN development APK, and which product flavor (`prod`, `beta`, `staging`, or `dev`) you need. `dev`/`staging` are for verifying an unmerged branch on real hardware — see `README.md`.
 
 ## Step 1: Open The Project In Android Studio
 
@@ -60,16 +60,23 @@ The live origin and allowed hosts come from the active product flavor (`environm
 - The `beta` flavor routes physical iMin devices to:
   - `https://pos.beta.dgfy.ph/?apk_build=<timestamp>#/terminal`
   - `https://pos.beta.dgfy.ph/api/v1`
+- The `staging` flavor routes physical iMin devices to:
+  - `https://pos.stage.dgfy.ph/?apk_build=<timestamp>#/terminal`
+  - `https://pos.stage.dgfy.ph/api/v1`
+- The `dev` flavor routes physical iMin devices to:
+  - `https://pos.dev.dgfy.ph/?apk_build=<timestamp>#/terminal`
+  - `https://pos.dev.dgfy.ph/api/v1`
 
-In Android Studio, use `Build > Select Build Variant` (or the Build Variants tool window) to choose `betaDebug`/`betaRelease` or `prodDebug`/`prodRelease`. From the command line use `./gradlew assembleBetaDebug` or `./gradlew assembleProdDebug` (swap `Debug` for `Release` as needed).
+In Android Studio, use `Build > Select Build Variant` (or the Build Variants tool window) to choose `devDebug`/`devRelease`, `stagingDebug`/`stagingRelease`, `betaDebug`/`betaRelease`, or `prodDebug`/`prodRelease`. From the command line use `./gradlew assembleDevDebug`, `assembleStagingDebug`, `assembleBetaDebug`, or `assembleProdDebug` (swap `Debug` for `Release` as needed). `dev`/`staging`/`beta` all install alongside `prod` on the same device — each is a distinct `applicationId` — so there is no need to uninstall anything first.
 
 Rules:
 
 1. Use the live production origin (`prod` flavor) for release APKs meant for real customers.
 2. Use the `beta` flavor to point the APK at `pos.beta.dgfy.ph` for beta testing.
-3. Use a LAN host only for emulator/development APKs — this still applies regardless of flavor.
-4. Do not use `localhost` unless the Android device itself is running the POS server.
-5. Keep allowed hosts aligned with the URL host — each flavor already keeps `LIVE_POS_HOST`/`SKUPERVISOR_HOST` in sync with its own `LIVE_POS_ORIGIN` in `app/build.gradle.kts`.
+3. Use `dev`/`staging` to verify an unmerged branch's hardware behavior on a real device before it reaches `main` — see `README.md` for the on-device verification steps and rollback (`adb uninstall com.dgfy.iminwrapper.dev` / `.stage`).
+4. Use a LAN host only for emulator/development APKs — this still applies regardless of flavor.
+5. Do not use `localhost` unless the Android device itself is running the POS server.
+6. Keep allowed hosts aligned with the URL host — each flavor already keeps `LIVE_POS_HOST`/`SKUPERVISOR_HOST` in sync with its own `LIVE_POS_ORIGIN` in `app/build.gradle.kts`.
 
 ## Step 4: Review The Main Wrapper Files
 
@@ -103,7 +110,7 @@ If the device does not appear:
 
 In Android Studio:
 
-1. Confirm the Build Variant is set to `betaDebug` (for `pos.beta.dgfy.ph`) or `prodDebug` (for `pos.dgfy.ph`).
+1. Confirm the Build Variant is set to the flavor you need: `devDebug` (`pos.dev.dgfy.ph`), `stagingDebug` (`pos.stage.dgfy.ph`), `betaDebug` (`pos.beta.dgfy.ph`), or `prodDebug` (`pos.dgfy.ph`).
 2. Click `Build`
 3. Click `Make Project`
 
@@ -146,7 +153,7 @@ Test these in order:
 
 If the app opens but nothing loads:
 
-1. verify the flavor's live origin (`https://pos.dgfy.ph` for `prod`, `https://pos.beta.dgfy.ph` for `beta`) is reachable from the iMin device browser
+1. verify the flavor's live origin (`https://pos.dgfy.ph` for `prod`, `https://pos.beta.dgfy.ph` for `beta`, `https://pos.stage.dgfy.ph` for `staging`, `https://pos.dev.dgfy.ph` for `dev`) is reachable from the iMin device browser
 2. verify the target environment's POS and backend health are green
 3. verify the APK was rebuilt after changing `app/build.gradle.kts` or switching flavors
 4. verify the WebView did not block navigation because the host is missing from `allowedHosts()`
@@ -193,8 +200,10 @@ Later steps:
 For release APKs, use the flavor matching your target environment:
 
 ```text
-https://pos.dgfy.ph/#/terminal        (prod flavor)
-https://pos.beta.dgfy.ph/#/terminal   (beta flavor)
+https://pos.dgfy.ph/#/terminal         (prod flavor)
+https://pos.beta.dgfy.ph/#/terminal    (beta flavor)
+https://pos.stage.dgfy.ph/#/terminal   (staging flavor)
+https://pos.dev.dgfy.ph/#/terminal     (dev flavor)
 ```
 
 For local development APKs, use a direct LAN URL such as:
