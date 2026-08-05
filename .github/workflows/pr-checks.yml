@@ -23,7 +23,7 @@ env:
   # needs a full VM.
   RUNNER_HEAVY_JSON: &runner_heavy '["ubuntu-latest"]'
 
-# Deliberately just 3 billable jobs. PR title/body validation and the
+# Deliberately just 4 billable jobs. PR title/body validation and the
 # pos-receipt version-bump check used to be their own jobs (conventional-
 # commits, and a step inside code-quality); each extra job pays its own
 # per-job 1-minute GitHub Actions billing floor regardless of how many
@@ -32,6 +32,12 @@ env:
 # compliance/docs) was `continue-on-error: true` -- it could never block a
 # merge -- and has been removed outright; that coverage now lives in local
 # pre-commit hooks (see .husky/pre-commit) instead of CI.
+#
+# android-build-check is the exception to "fold it in": it's a real Gradle
+# build (see #254, a merged PR that broke every dev/staging Android build
+# because nothing compiled android/ on PR), not a few seconds of git/bash,
+# so it earns its own job and billing floor rather than being folded into
+# `changes`.
 jobs:
   changes:
     uses: ./.github/workflows/shared-changed-paths.yml
@@ -50,5 +56,12 @@ jobs:
     needs: changes
     if: needs.changes.outputs.frontend == 'true'
     uses: ./.github/workflows/pr-frontend-build-checks.yml
+    with:
+      runner_labels_json: *runner_heavy
+
+  android-build-check:
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    uses: ./.github/workflows/pr-android-build-checks.yml
     with:
       runner_labels_json: *runner_heavy

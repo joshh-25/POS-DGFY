@@ -5,7 +5,7 @@
   same shape, scoped to stage.dgfy.ph instead of dev.dgfy.ph.
 
   This used to claim stage.dgfy.ph was "confirmed to terminate TLS upstream
-  (openresty; see infrastructure/nginx-host/stage.dgfy.ph.conf)" -- that file
+  (openresty; see infrastructure/nginx-host/stage.dgfy.ph.conf)". That file
   turned out to have no TLS config at all (plain `listen 80` only), so it
   didn't actually confirm anything. The cleartext carve-out for
   stage.dgfy.ph is removed for the same reason as dev: silently falling back
