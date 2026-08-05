@@ -52,6 +52,9 @@ on:
       backend:
         description: '"true" when this range touches anything the backend image is built from'
         value: ${{ jobs.detect.outputs.backend }}
+      android:
+        description: '"true" when this range touches anything the Android wrapper build is built from'
+        value: ${{ jobs.detect.outputs.android }}
 
 jobs:
   detect:
@@ -60,6 +63,7 @@ jobs:
     outputs:
       frontend: ${{ steps.filter.outputs.frontend }}
       backend: ${{ steps.filter.outputs.backend }}
+      android: ${{ steps.filter.outputs.android }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -96,6 +100,7 @@ jobs:
             FILES="(unavailable: ${REASON})"
             FRONTEND=true
             BACKEND=true
+            ANDROID=true
           else
             FILES="$(git diff --name-only "${BASE_SHA}" HEAD)"
 
@@ -106,13 +111,16 @@ jobs:
             # conventional-commits check shouldn't force both Docker builds.
             FRONTEND=false
             BACKEND=false
+            ANDROID=false
             matches '^(frontend/|packages/pos-receipt/|packages/shared-constants/|infrastructure/docker/frontend/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|build-develop|build-staging|build-main)\.yml)' && FRONTEND=true || true
             matches '^(backend/|packages/shared-constants/|infrastructure/docker/backend/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-backend|deployment-orchestrator|pr-backend-build-checks|build-develop|build-staging|build-main)\.yml)' && BACKEND=true || true
+            matches '^(android/|scripts/build-android-release\.sh|\.github/workflows/(shared-changed-paths|pr-android-build-checks|build-android-manual)\.yml)' && ANDROID=true || true
           fi
 
           {
             echo "frontend=${FRONTEND}"
             echo "backend=${BACKEND}"
+            echo "android=${ANDROID}"
           } >> "$GITHUB_OUTPUT"
 
           {
@@ -126,6 +134,7 @@ jobs:
             echo "|-------------|--------|"
             echo "| Frontend | ${FRONTEND} |"
             echo "| Backend | ${BACKEND} |"
+            echo "| Android | ${ANDROID} |"
             echo ""
             echo "<details><summary>Changed files</summary>"
             echo ""
