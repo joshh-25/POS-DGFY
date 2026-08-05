@@ -90,6 +90,22 @@ export const resolveTracingMode = (env = import.meta.env) => {
   return resolveTracesSampleRate(env.VITE_SENTRY_TRACES_SAMPLE_RATE) == null ? 'propagate' : 'spans';
 };
 
+// DGFY-POS-B: sanitizeSentryEvent strips event.request.headers for PII
+// reasons (see below), which also erased the only signal that would have
+// told us the iMin POS WebView is Chrome 80-84 -- old enough to lack
+// String.prototype.replaceAll (Chrome 85+, ES2021) and crash rendering
+// every incoming order. That had to be inferred after the fact from what
+// syntax the shipped bundle happened to contain. Tagging the Chrome major
+// version (never the full UA string, which can carry device model/build
+// fingerprint) up front makes the next WebView-version-gated compat bug
+// diagnosable directly from the issue instead of re-derived from evidence.
+export const resolveWebviewChromeMajor = (userAgent) => {
+  const match = /Chrome\/(\d+)/.exec(String(userAgent || ''));
+  if (!match) return null;
+  const major = Number.parseInt(match[1], 10);
+  return Number.isFinite(major) ? major : null;
+};
+
 // Mirrors backend/src/config/sentry.js's resolveSentryEnvironment: `MODE` is
 // "production" for every `vite build` regardless of which real environment
 // (DEV/STAGING/BETA/PROD) produced it, so falling back to it here would
@@ -340,6 +356,10 @@ export const initBrowserSentry = ({
         }));
       }
 
+      const webviewChromeMajor = typeof navigator !== 'undefined'
+        ? resolveWebviewChromeMajor(navigator.userAgent)
+        : null;
+
       const initOptions = {
         dsn: config.dsn,
         environment: config.environment,
@@ -352,7 +372,8 @@ export const initBrowserSentry = ({
         beforeSend: sanitizeSentryEvent,
         initialScope: {
           tags: {
-            surface: config.surface
+            surface: config.surface,
+            ...(webviewChromeMajor !== null ? { webview_chrome_major: String(webviewChromeMajor) } : {})
           }
         }
       };

@@ -23,7 +23,11 @@
         "react/react-in-jsx-scope": "off",
         "react/prop-types": "off",
         "no-unused-vars": "warn",
-        "max-lines": ["warn", { "max": 1500, "skipBlankLines": true, "skipComments": true }]
+        "max-lines": ["warn", { "max": 1500, "skipBlankLines": true, "skipComments": true }],
+        "no-restricted-syntax": ["error", {
+            "selector": "CallExpression[callee.property.name='replaceAll']",
+            "message": "String.prototype.replaceAll is ES2021 (Chrome 85+). The iMin POS WebView is Chrome 80-84 -- use .replace(/x/g, ...) instead. See DGFY-POS-B."
+        }]
     },
     "settings": {
         "react": {
@@ -42,6 +46,12 @@
             "files": ["**/__tests__/**", "**/*.test.js", "**/*.test.jsx"],
             "rules": {
                 "max-lines": "off"
+            }
+        },
+        {
+            "files": ["**/*.config.js", "**/*.config.mjs", "**/*.config.cjs", "apps/pos/vitePosOfflinePrecachePlugin.js"],
+            "rules": {
+                "no-restricted-syntax": "off"
             }
         }
     ]
