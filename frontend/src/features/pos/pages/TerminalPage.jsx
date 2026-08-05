@@ -4151,7 +4151,7 @@ export default function TerminalPage() {
       const missingRequirements = error?.response?.data?.errors?.missing_requirements;
       if (Array.isArray(missingRequirements) && missingRequirements.length > 0) {
         const labels = missingRequirements.map((requirement) => (
-          String(requirement || '').replaceAll('_', ' ')
+          String(requirement || '').replace(/_/g, ' ')
         ));
         toast.error(`Missing requirements: ${labels.join(', ')}`);
       } else {

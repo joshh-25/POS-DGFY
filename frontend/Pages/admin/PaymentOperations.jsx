@@ -21,7 +21,7 @@ const getRefundableCentavos = (session) => Number(session?.refundable_amount_cen
 const canRefundSession = (session) => Boolean(session?.provider_payment_id) && getRefundableCentavos(session) > 0
   && ['finalized', 'paid', 'partial_refunded', 'split_failed_manual_settlement_required'].includes(String(session?.status || ''));
 
-const csvEscape = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+const csvEscape = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
 const downloadCsv = (rows) => {
   const headers = [
     'payment_session_id',
