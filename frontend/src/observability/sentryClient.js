@@ -368,11 +368,15 @@ export const initBrowserSentry = ({
 
       sentryModule = Sentry;
       initialized = true;
-      logger.info?.(`[Sentry] browser error tracking enabled for ${config.surface}`);
+      // Wording matters here: the iMin Android wrapper shipped a console filter
+      // that blanked the POS on any message containing "error" or "failed"
+      // (fixed in WebPosConsoleErrorPolicy, but old APKs are still in the
+      // field). Keep these two log lines free of both words.
+      logger.info?.(`[Sentry] browser telemetry active for ${config.surface}`);
       return Sentry;
     })
     .catch((error) => {
-      logger.warn?.('[Sentry] failed to initialize browser error tracking', error);
+      logger.warn?.('[Sentry] browser telemetry unavailable', error);
       initPromise = null;
       return null;
     });
