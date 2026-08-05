@@ -94,6 +94,37 @@ describe('Storefront requestJson -- AbortSignal + opt-in retry', () => {
     expect(sentryClient.captureRequestFailure).toHaveBeenCalledTimes(1);
   });
 
+  it('honours skipRequestFailureCapture on an HTTP failure (parity with api.js)', async () => {
+    const { requestJson, sentryClient } = await freshRequestJson();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503, headers: { get: () => null }, json: async () => ({}) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(requestJson('/api/v1/storefront/discovery', { skipRequestFailureCapture: true }))
+      .rejects.toMatchObject({ status: 503 });
+
+    expect(sentryClient.captureRequestFailure).not.toHaveBeenCalled();
+  });
+
+  it('honours skipRequestFailureCapture on a network failure (parity with api.js)', async () => {
+    const { requestJson, sentryClient } = await freshRequestJson();
+    vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('Failed to fetch')));
+
+    await expect(requestJson('/api/v1/storefront/discovery', { skipRequestFailureCapture: true }))
+      .rejects.toBeTruthy();
+
+    expect(sentryClient.captureRequestFailure).not.toHaveBeenCalled();
+  });
+
+  it('still reports an HTTP failure that does not opt out (the regression that matters)', async () => {
+    const { requestJson, sentryClient } = await freshRequestJson();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 503, headers: { get: () => null }, json: async () => ({}) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(requestJson('/api/v1/storefront/discovery')).rejects.toMatchObject({ status: 503 });
+
+    expect(sentryClient.captureRequestFailure).toHaveBeenCalledTimes(1);
+  });
+
   it('does not retry a POST even with retry:true', async () => {
     const { requestJson } = await freshRequestJson();
     const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 502, headers: { get: () => null }, json: async () => ({}) });

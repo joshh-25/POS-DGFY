@@ -47,9 +47,9 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0022 | [Global DGFY Account For Business Registration](0022-global-dgfy-account-business-registration.md) | `accepted` | global_dgfy_account_business_registration | 2027-01-08 | 0 |
 | 0023 | [Front-Facing DGFY Customer Account](0023-front-facing-dgfy-customer-account.md) | `accepted` | front_facing_dgfy_customer_account | 2027-01-08 | 0 |
 | 0024 | [Fulfilled Guest Item Reviews For Storefront Menu Details](0024-fulfilled-guest-item-reviews.md) | `accepted` | fulfilled_guest_item_reviews | 2027-01-08 | 0 |
-| 0025 | [POS Application Shells And LAN Host Runtime](0025-pos-application-shells-and-lan-host-runtime.md) | `accepted` | pos_application_shells_and_lan_host_runtime | 2026-12-03 | 0 |
+| 0025 | [POS Application Shells And LAN Host Runtime](0025-pos-application-shells-and-lan-host-runtime.md) | `amended` | pos_application_shells_and_lan_host_runtime | 2026-12-03 | 0 |
 | 0026 | [Browser Session Cookie Authority](0026-browser-session-cookie-authority.md) | `accepted` | browser_session_cookie_authority | 2027-01-08 | 0 |
-| 0027 | [PayMongo QR Ph Commerce Payment Sessions and Platform Split Settlement](0027-paymongo-commerce-qrph-platform-split-settlement.md) | `accepted` | paymongo_qrph_platform_split_settlement | 2026-11-19 | 0 |
+| 0027 | [PayMongo QR Ph Commerce Payment Sessions and Platform Split Settlement](0027-paymongo-commerce-qrph-platform-split-settlement.md) | `superseded` | paymongo_qrph_platform_split_settlement | 2026-07-30 | 0 |
 | 0028 | [DGFY-Only Company Access And Switching](0028-dgfy-account-company-switching.md) | `accepted` | dgfy_account_company_switching | 2027-01-08 | 0 |
 | 0029 | [Catalog, Inventory, POS, and Storefront Ownership Boundaries](0029-catalog-inventory-pos-storefront-ownership-boundaries.md) | `accepted` | catalog_inventory_pos_storefront_ownership_boundaries | 2026-12-26 | 5 |
 | 0030 | [Free-Tier Signed Release Authorization](0030-free-tier-signed-release-authorization.md) | `superseded` | free_tier_signed_release_authorization | 2026-12-28 | 0 |
@@ -65,7 +65,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0040 | [On-Hand Weighted Average Cost Valuation Across Inventory, PO, JO, Suppliers, and Reporting](0040-weighted-average-cost-valuation-and-variance-analytics.md) | `accepted` | weighted_average_cost_valuation_and_variance_analytics | 2026-10-20 | 0 |
 | 0041 | [Hospitality Mode PMS And Stay Management](0041-hospitality-mode-pms-stay-management.md) | `accepted` | hospitality_mode_pms_stay_management | 2026-11-19 | 0 |
 | 0042 | [BIR RMO 24-2023 Fiscal Document and Accreditation Closure](0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md) | `accepted` | bir_rmo_24_2023_fiscal_document_and_accreditation_closure | 2026-12-01 | 0 |
-| 0043 | [Standalone Native Hardware POS Runtime](0043-standalone-native-hardware-pos-runtime.md) | `accepted` | standalone_native_hardware_pos_runtime | 2026-12-19 | 0 |
+| 0043 | [Standalone Native Hardware POS Runtime](0043-standalone-native-hardware-pos-runtime.md) | `amended` | standalone_native_hardware_pos_runtime | 2026-12-19 | 0 |
 | 0044 | [POS Terminal Device Pairing](0044-pos-terminal-device-pairing.md) | `accepted` | pos_terminal_device_pairing | 2026-12-28 | 0 |
 | 0045 | [Shared POS Receipt Renderer](0045-shared-pos-receipt-renderer.md) | `accepted` | shared_pos_receipt_renderer | 2027-01-23 | 0 |
 | 0046 | [Verified Storefront Custom Domains](0046-verified-storefront-custom-domains.md) | `accepted` | verified_storefront_custom_domains | 2026-09-04 | 0 |
@@ -75,6 +75,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0050 | [Affiliate Buyer-Facing Pricing Rule Engine (Phase 1)](0050-affiliate-buyer-facing-pricing-rule-engine.md) | `accepted` | affiliate_buyer_facing_pricing_rule_engine | 2027-01-29 | 3 |
 | 0051 | [POS Employee Credit Tender and Ledger](0051-pos-employee-credit-tender-and-ledger.md) | `accepted` | pos_employee_credit_tender_and_ledger | 2027-01-30 | 0 |
 | 0052 | [DGFY Collection, Tenant Revenue Ledger, and Controlled Settlement](0052-tenant-revenue-collection-ledger-and-settlement.md) | `accepted` | tenant_revenue_collection_ledger_settlement | 2027-01-31 | 0 |
+| 0053 | [Pluggable POS Hardware Device Drivers](0053-pluggable-pos-hardware-device-drivers.md) | `accepted` | pluggable_pos_hardware_device_drivers | 2027-02-04 | 4 |
 
 ## Renumbered (collision stubs)
 
