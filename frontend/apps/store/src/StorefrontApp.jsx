@@ -33,6 +33,7 @@ import {
   getLineModifiersTotal,
   getLineTotal
 } from './shared/model/storefrontCartModel.js';
+import { isDocumentVisibleAndOnline } from './shared/utils/browserAvailability.js';
 import { copyTextToClipboard as copyTextToClipboardUtil } from './shared/utils/clipboard.js';
 import { useCartMutations } from './shared/hooks/useCartMutations.js';
 import { useCheckoutAuthResumeRestore } from './shared/hooks/useCheckoutAuthResumeRestore.js';
@@ -2362,11 +2363,7 @@ export default function StorefrontApp() {
   useEffect(() => {
     if (!['awaiting_payment', 'paid'].includes(qrphPaymentSession?.status)) return undefined;
     const pollPaymentStatus = () => {
-      if (
-        typeof document !== 'undefined'
-        && document.visibilityState === 'visible'
-        && (typeof navigator === 'undefined' || navigator.onLine !== false)
-      ) {
+      if (isDocumentVisibleAndOnline()) {
         handleRefreshQrphPaymentSession({ silent: true });
       }
     };
@@ -3588,13 +3585,10 @@ export default function StorefrontApp() {
     isHospitalityMode
   });
   const storefrontCartDrawerShellProps = useStorefrontCartDrawerShellProps({
-    isStorefrontV2,
     selectedStore,
     isFnbMode,
     isServicesMode,
-    followState,
     isMobileViewport,
-    handleFollowAction,
     isAccountDrawerOpen,
     isServicesCartDrawerMode,
     serviceCartDrawerProps,

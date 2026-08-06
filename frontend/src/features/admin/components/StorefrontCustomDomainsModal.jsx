@@ -27,7 +27,7 @@ const STATUS_STYLES = {
   removed: 'border-slate-200 bg-slate-50 text-slate-500'
 };
 
-const formatStatus = (value) => String(value || 'unknown').replaceAll('_', ' ');
+const formatStatus = (value) => String(value || 'unknown').replace(/_/g, ' ');
 const isLocalPreviewHostname = (hostname) => (
   String(hostname || '').trim().toLowerCase().endsWith('.localhost')
 );

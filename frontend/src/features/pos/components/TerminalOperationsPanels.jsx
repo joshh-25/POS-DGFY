@@ -357,7 +357,7 @@ function IncomingQueueWorkspace({
                         </div>
                         <div className="flex items-center flex-1 min-w-0">
                           <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Payment Status</span>
-                          <span className="text-xs font-semibold text-slate-900 break-words flex-1">{String(order.payment_status || 'unpaid').replaceAll('_', ' ')}</span>
+                          <span className="text-xs font-semibold text-slate-900 break-words flex-1">{String(order.payment_status || 'unpaid').replace(/_/g, ' ')}</span>
                         </div>
                       </div>
 

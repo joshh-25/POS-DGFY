@@ -14,14 +14,27 @@ This is a minimal Android WebView wrapper for running the hosted DGFY POS URL on
 
 ## Current live routing
 
-The wrapper has two product flavors (`app/build.gradle.kts`, `environment` dimension) so both a production build and a beta build can come out of the same project without hand-editing source:
+The wrapper has four product flavors (`app/build.gradle.kts`, `environment` dimension), one per platform GitHub Environment (`infrastructure/docker/SENTRY.md`), so a build for any of them comes out of the same project without hand-editing source:
 
 | Flavor | Live origin | Allowed in-wrapper hosts | applicationId | App label |
 | --- | --- | --- | --- | --- |
 | `prod` | `https://pos.dgfy.ph` | `pos.dgfy.ph`, `skupervisor.dgfy.ph` | `com.dgfy.iminwrapper` | DGFY iMin POS |
 | `beta` | `https://pos.beta.dgfy.ph` | `pos.beta.dgfy.ph`, `skupervisor.beta.dgfy.ph` | `com.dgfy.iminwrapper.beta` | DGFY iMin POS (Beta) |
+| `staging` | `https://pos.stage.dgfy.ph` | `pos.stage.dgfy.ph`, `skupervisor.stage.dgfy.ph` | `com.dgfy.iminwrapper.stage` | DGFY iMin POS (Staging) |
+| `dev` | `https://pos.dev.dgfy.ph` | `pos.dev.dgfy.ph`, `skupervisor.dev.dgfy.ph` | `com.dgfy.iminwrapper.dev` | DGFY iMin POS (Dev) |
 
-Each flavor supplies its origin/host pair as `BuildConfig` fields (`LIVE_POS_ORIGIN`, `LIVE_POS_HOST`, `SKUPERVISOR_HOST`), which `AppConfig.kt` reads at runtime. The `beta` flavor's `applicationIdSuffix`/`versionNameSuffix` let a beta build install side-by-side with a prod build on the same device without overwriting it, and `app/src/beta/res/values/strings.xml` overrides `app_name` to "DGFY iMin POS (Beta)" so the two icons are distinguishable on the home screen.
+Each flavor supplies its origin/host pair as `BuildConfig` fields (`LIVE_POS_ORIGIN`, `LIVE_POS_HOST`, `SKUPERVISOR_HOST`), which `AppConfig.kt` reads at runtime. `LIVE_POS_HOST` is derived from `LIVE_POS_ORIGIN` in `build.gradle.kts` (never typed twice), so origin and allowed-host can't drift apart. The non-`prod` flavors' `applicationIdSuffix`/`versionNameSuffix` let all four builds install side-by-side on the same device without overwriting each other, and each flavor's `app/src/<flavor>/res/values/strings.xml` overrides `app_name` so the icons stay distinguishable on the home screen.
+
+Every origin is overridable at build time, without editing this file, via a Gradle property (or the equivalent flag on `scripts/build-android-release.sh`):
+
+```bash
+./gradlew assembleDevRelease -Pdgfy.dev.posOrigin=https://pos.example.ph
+bash scripts/build-android-release.sh dev --pos-origin https://pos.example.ph
+```
+
+This matters most for `dev`/`staging`, where `pos.dev.dgfy.ph` / `pos.stage.dgfy.ph` follow the platform's subdomain convention but weren't independently confirmed live when these flavors were added — the override is a build flag, not a code change, if that assumption turns out wrong for either.
+
+**TLS fallback (`dev`/`staging` only):** release builds default to `usesCleartextTraffic="false"` (see `buildTypes.release` in `build.gradle.kts`). `dev` and `staging` each carry their own `network_security_config.xml` (`app/src/dev/`, `app/src/staging/`) that additionally permits cleartext for that flavor's own domain plus loopback/emulator/LAN hosts — a defensive fallback in case that environment's TLS isn't set up yet, not the expected path. `prod` and `beta` carry no such config and stay strictly HTTPS-only, unchanged.
 
 Release physical-device builds route to (per flavor):
 
@@ -30,14 +43,35 @@ Release physical-device builds route to (per flavor):
 
 The Android emulator path still uses the local development host through `10.0.2.2`, regardless of flavor.
 
-## What you need to do next
+### Building a release APK
+
+From the repo root:
+
+```bash
+bash scripts/build-android-release.sh <dev|staging|beta|prod> [--clean] [--pos-origin URL]
+```
+
+Copies the signed APK + `.sha256` checksum into `releases/android/`. (`scripts/build-android-beta-release.sh [--clean]` still works as a shim for `beta`.)
+
+Or from the Actions tab: **Build Android Release (manual)** (`.github/workflows/build-android-manual.yml`) — pick `flavor`, optionally `clean` and `pos_origin`. Because it's `workflow_dispatch`, you also pick the **ref** the run builds from — including an unmerged feature branch — which is how a `dev` or `staging` APK gets verified on a real iMin device before that branch reaches `main` (`prod`/`beta` only route there today).
+
+### Rolling back an on-device test build
+
+Each flavor is a distinct `applicationId`, so installing a `dev` or `staging` APK never touches the `prod` (or `beta`) app already on the device — rollback is just uninstalling that one package:
+
+```bash
+adb uninstall com.dgfy.iminwrapper.dev
+adb uninstall com.dgfy.iminwrapper.stage
+```
+
+### What you need to do next
 
 1. Open `android/imin-wrapper` in Android Studio.
 2. Let Android Studio sync Gradle if prompted.
-3. In the Build Variants panel (or `./gradlew assembleBetaDebug` / `assembleProdDebug`), pick the `beta` or `prod` flavor for the build you want.
+3. In the Build Variants panel (or `./gradlew assemble<Flavor>Debug`), pick the flavor for the build you want.
 4. Set your final package name if you do not want `com.dgfy.iminwrapper`.
 5. Build and install the APK on the iMin device.
-6. Validate login, catalog, checkout, receipt/history, and stock deduction against the target tenant (beta or production) before treating the APK as ready for that environment.
+6. Validate login, catalog, checkout, receipt/history, and stock deduction against the target tenant before treating the APK as ready for that environment.
 
 ## Frontend bridge call
 

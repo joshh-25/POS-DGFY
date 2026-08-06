@@ -18,11 +18,26 @@ const Dialog = ({ open, onOpenChange, children }) => {
 
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center">
-      <div 
-        className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm" 
+      <div
+        className="fixed inset-0 bg-slate-950/60 backdrop-blur-sm"
         onClick={() => onOpenChange && onOpenChange(false)}
       />
-      <div className="relative z-50">
+      {/*
+        This wrapper -- not DialogContent's own className -- is what
+        guarantees a dialog can never exceed the viewport, independent of
+        whatever max-height utility a caller passes to DialogContent (often
+        a `calc(100dvh - Nrem)` one). `max-h-full` resolves against this
+        div's own `fixed inset-0` parent, whose height is set purely by
+        top/right/bottom/left anchoring -- no vh/dvh unit involved, so unlike
+        a `dvh` calc it can't silently fail to parse (and get dropped from
+        the cascade entirely) on an older WebView. `flex flex-col` + the
+        `min-h-0` added to DialogContent below is what turns that max-height
+        into an actually-enforced constraint (a normal flex-shrink target)
+        rather than a mere visual clip -- DialogContent's own header/body/
+        footer flex layout then does the rest, exactly as it already does
+        whenever its own max-height utility DOES survive.
+      */}
+      <div className="relative z-50 flex max-h-full min-h-0 w-full flex-col items-center">
         {children}
       </div>
     </div>
@@ -34,7 +49,7 @@ const DialogContent = React.forwardRef(({ className, children, ...props }, ref) 
     <div
       ref={ref}
       className={cn(
-        'relative bg-white rounded-2xl shadow-lg w-[calc(100vw-2rem)] max-w-lg max-h-[90vh] overflow-y-auto px-5 sm:w-full',
+        'relative min-h-0 bg-white rounded-2xl shadow-lg w-[calc(100vw-2rem)] max-w-lg max-h-[90vh] overflow-y-auto px-5 sm:w-full',
         className
       )}
       onClick={(e) => e.stopPropagation()}

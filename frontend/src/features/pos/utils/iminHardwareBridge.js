@@ -106,17 +106,57 @@ export const playOrderAlertWithIminBridge = (soundType = 'new_order') => {
     };
 };
 
-const formatDiagnostics = (diagnostics) => {
-    if (!diagnostics || typeof diagnostics !== 'object') return '';
-    const details = [
-        diagnostics.bindRequested != null ? `bind=${diagnostics.bindRequested}` : '',
-        diagnostics.printerServiceConnected != null ? `connected=${diagnostics.printerServiceConnected}` : '',
-        diagnostics.lastConnectionEvent ? `connection=${diagnostics.lastConnectionEvent}` : '',
-        diagnostics.lastCommand ? `command=${diagnostics.lastCommand}` : '',
-        diagnostics.lastErrorClass ? `error=${diagnostics.lastErrorClass}` : '',
-        diagnostics.lastErrorMessage ? `message=${diagnostics.lastErrorMessage}` : ''
-    ].filter(Boolean);
-    return details.length ? ` (${details.join(', ')})` : '';
+// One short, cashier-readable sentence for a failed print/drawer command,
+// replacing the long "Bluetooth receipt failed: ... | bindRequested=..." dump
+// the bridge otherwise returns verbatim. Diagnostics still travel in full on
+// result.diagnostics for the hardware-diagnostics panel/audit trail -- this
+// only decides what the cashier-facing toast says.
+const describeIminPrinterFailure = (diagnostics, nativeMessage) => {
+    const bluetooth = diagnostics?.bluetoothEscPos;
+    const serviceConnected = diagnostics?.printerServiceConnected === true;
+
+    if (!serviceConnected && bluetooth) {
+        if (bluetooth.permissionGranted === false) {
+            return {
+                reasonCode: 'PRINTER_PERMISSION_MISSING',
+                message: 'Grant Bluetooth permission to use the receipt printer.'
+            };
+        }
+        if (bluetooth.adapterEnabled === false) {
+            return {
+                reasonCode: 'PRINTER_BLUETOOTH_OFF',
+                message: 'Turn on Bluetooth to use the receipt printer.'
+            };
+        }
+        if (Number(bluetooth.pairedCount || 0) === 0) {
+            return {
+                reasonCode: 'NO_PRINTER_CONFIGURED',
+                message: 'No receipt printer is connected to this device.'
+            };
+        }
+    }
+
+    // Anything else is a genuine send failure with a paired/connected
+    // printer -- keep the native message, but drop everything from the
+    // diagnostics dump onward (buildDiagnosticMessage() joins it with " | ").
+    const shortNativeMessage = String(nativeMessage || '').split('|')[0].trim();
+    return {
+        reasonCode: 'IMIN_PRINT_FAILED',
+        message: shortNativeMessage || 'Failed to print on the receipt printer.'
+    };
+};
+
+// Normalizes a failed parseBridgeResult() into one with a short message/
+// reasonCode, keeping the raw diagnostics attached under the same key so
+// callers (and the audit trail) still see the full detail.
+const toHardwareFailureResult = (raw) => {
+    const failure = describeIminPrinterFailure(raw?.diagnostics, raw?.message);
+    return {
+        ...raw,
+        success: false,
+        message: failure.message,
+        reasonCode: failure.reasonCode
+    };
 };
 
 const getIminBridge = () => {
@@ -418,18 +458,17 @@ export const printReceiptWithIminBridge = ({ transaction, businessSettings = {},
     }
 
     const bitmapResult = tryPrintReceiptBitmap(bridge, businessSettings);
+    if (bitmapResult && !bitmapResult.success) {
+        return { handled: true, result: toHardwareFailureResult(bitmapResult) };
+    }
     if (bitmapResult) {
         emitPosHardwareMessage({
             title: 'iMin receipt printer',
             message: bitmapResult.message || 'Receipt logo print command sent.',
-            tone: bitmapResult.success ? 'info' : 'error',
+            tone: 'info',
             source: 'iMin hardware',
             details: bitmapResult.diagnostics || null
         });
-
-        if (!bitmapResult.success) {
-            throw new Error(`${bitmapResult.message || 'Failed to print receipt logo on iMin printer.'}${formatDiagnostics(bitmapResult.diagnostics)}`);
-        }
     }
 
     const result = parseBridgeResult(
@@ -440,17 +479,17 @@ export const printReceiptWithIminBridge = ({ transaction, businessSettings = {},
         'Receipt print command sent.'
     );
 
+    if (!result.success) {
+        return { handled: true, result: toHardwareFailureResult(result) };
+    }
+
     emitPosHardwareMessage({
         title: 'iMin receipt printer',
         message: result.message || 'Receipt print command sent.',
-        tone: result.success ? 'success' : 'error',
+        tone: 'success',
         source: 'iMin hardware',
         details: result.diagnostics || null
     });
-
-    if (!result.success) {
-        throw new Error(`${result.message || 'Failed to print on iMin printer.'}${formatDiagnostics(result.diagnostics)}`);
-    }
 
     return { handled: true, result };
 };
@@ -529,17 +568,17 @@ export const printOrderWithIminBridge = ({ cart = [], terminalId = '', orderMeth
         'Order ticket print command sent.'
     );
 
+    if (!result.success) {
+        return { handled: true, result: toHardwareFailureResult(result) };
+    }
+
     emitPosHardwareMessage({
         title: 'iMin order printer',
         message: result.message || 'Order ticket print command sent.',
-        tone: result.success ? 'success' : 'error',
+        tone: 'success',
         source: 'iMin hardware',
         details: result.diagnostics || null
     });
-
-    if (!result.success) {
-        throw new Error(`${result.message || 'Failed to print order ticket on iMin printer.'}${formatDiagnostics(result.diagnostics)}`);
-    }
 
     return { handled: true, result };
 };
@@ -555,22 +594,25 @@ export const openDrawerWithIminBridge = () => {
         'Cash drawer open command sent.'
     );
 
+    if (!result.success) {
+        return { handled: true, result: toHardwareFailureResult(result) };
+    }
+
     emitPosHardwareMessage({
         title: 'iMin cash drawer',
         message: result.message || 'Cash drawer open command sent.',
-        tone: result.success ? 'success' : 'error',
+        tone: 'success',
         source: 'iMin hardware',
         details: result.diagnostics || null
     });
 
-    if (!result.success) {
-        throw new Error(`${result.message || 'Failed to open the iMin cash drawer.'}${formatDiagnostics(result.diagnostics)}`);
-    }
-
     return { handled: true, result };
 };
 
-export const getIminHardwareDiagnostics = () => {
+// silent: true skips the emitPosHardwareMessage announcement -- used by the
+// printer-availability probe (iminPrinterAvailability.js), which polls this
+// on every terminal mount/refresh and must not surface a message each time.
+export const getIminHardwareDiagnostics = ({ silent = false } = {}) => {
     const bridge = getIminBridge();
     if (!bridge || typeof bridge.getHardwareDiagnostics !== 'function') {
         return { handled: false };
@@ -583,12 +625,14 @@ export const getIminHardwareDiagnostics = () => {
             'iMin hardware diagnostics loaded.'
         )
     };
-    emitPosHardwareMessage({
-        title: 'iMin hardware diagnostics',
-        message: diagnostics.result?.message || 'iMin hardware diagnostics loaded.',
-        tone: diagnostics.result?.success === false ? 'error' : 'info',
-        source: 'iMin hardware',
-        details: diagnostics.result?.diagnostics || null
-    });
+    if (!silent) {
+        emitPosHardwareMessage({
+            title: 'iMin hardware diagnostics',
+            message: diagnostics.result?.message || 'iMin hardware diagnostics loaded.',
+            tone: diagnostics.result?.success === false ? 'error' : 'info',
+            source: 'iMin hardware',
+            details: diagnostics.result?.diagnostics || null
+        });
+    }
     return diagnostics;
 };

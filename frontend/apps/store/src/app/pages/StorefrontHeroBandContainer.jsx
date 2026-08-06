@@ -76,6 +76,7 @@ export function StorefrontHeroBandContainer(props) {
     handleFollowAction,
     isFnbMode,
     isSimpleMode,
+    isRetailMode,
     isOrderSubpage,
     isFnbDetailsSubpage,
     heroSectionModel,
@@ -170,18 +171,6 @@ export function StorefrontHeroBandContainer(props) {
       )}
       {!isServicesMode && (
         <>
-          {/* ZONE 1: Navigation & Header */}
-          {!isFnbMode && !isSimpleMode && !isResolvedOrderSubpage && (
-            <section style={{ marginBottom: 20, display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 16, flexWrap: 'wrap' }}>
-              <GhostButton onClick={goDiscovery} style={{ padding: '8px 16px', minHeight: 44, fontSize: 13 }}>
-                Back to Discovery
-              </GhostButton>
-              <div style={{ color: STYLES.colors.muted, fontSize: 13, fontWeight: 700 }}>{routeSlug} {' / '} {selectedStore?.tenant_name}</div>
-              <div style={{ position: 'absolute', left: -99999, top: 'auto', width: 1, height: 1, overflow: 'hidden' }}>
-                Tenant page: {routeSlug}
-              </div>
-            </section>
-          )}
 
           {/* ZONE 2: Hero Branding */}
           {isFnbMode && !isOrderSubpage && !isFnbDetailsSubpage ? (
@@ -296,7 +285,22 @@ export function StorefrontHeroBandContainer(props) {
               followState={followState}
               handleFollowAction={handleFollowAction}
               ui={{ StorefrontExpandableBusinessHours }}
-              heroStyles={{ HERO_CANVAS_MAX_WIDTH, MAX_STOREFRONT_WHY_CHOOSE_US, MOBILE_DROPDOWN_MENU_STYLE, MOBILE_DROPDOWN_OPTION_STYLE, MOBILE_NATIVE_SELECT_STYLE, STOREFRONT_CONTACT_INFO_COLUMNS, STOREFRONT_INFO_ICON_COLUMN, STOREFRONT_INFO_PANEL_MAX_WIDTH, STOREFRONT_INFO_ROW_GAP, STYLES }}
+              heroStyles={{
+                HERO_CANVAS_MAX_WIDTH,
+                MAX_STOREFRONT_WHY_CHOOSE_US,
+                MOBILE_DROPDOWN_MENU_STYLE,
+                MOBILE_DROPDOWN_OPTION_STYLE,
+                MOBILE_NATIVE_SELECT_STYLE,
+                STOREFRONT_CONTACT_INFO_COLUMNS,
+                STOREFRONT_INFO_ICON_COLUMN,
+                // Retail's info panel (gallery/contact+map/why-choose-us card) should fill the
+                // full content width like F&B's does, not the narrower centered card the other
+                // default-like modes use — F&B's own heroStyles call (above) never passes this
+                // constant, which is why F&B's card is already full-width.
+                ...(isRetailMode ? {} : { STOREFRONT_INFO_PANEL_MAX_WIDTH }),
+                STOREFRONT_INFO_ROW_GAP,
+                STYLES
+              }}
             />
           ) : null}
         </>

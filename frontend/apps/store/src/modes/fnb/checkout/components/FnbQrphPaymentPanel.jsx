@@ -9,7 +9,7 @@ const TERMINAL_PAYMENT_STATUSES = new Set([
 ]);
 
 const formatStatus = (value) => String(value || 'awaiting_payment')
-  .replaceAll('_', ' ')
+  .replace(/_/g, ' ')
   .replace(/\b\w/g, (character) => character.toUpperCase());
 
 export function FnbQrphPaymentPanel({

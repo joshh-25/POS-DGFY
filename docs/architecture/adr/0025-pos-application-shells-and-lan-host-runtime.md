@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-03
-last_reviewed: 2026-06-03
+last_reviewed: 2026-08-04
 review_by: 2026-12-03
 applies_to: pos_windows_android_clients_and_lan_store_runtime
 topic: pos_application_shells_and_lan_host_runtime
@@ -14,6 +14,8 @@ topic: pos_application_shells_and_lan_host_runtime
 ## Status
 
 Accepted (2026-06-03)
+Amended (2026-08-04): the Hardware Strategy's backend-mediated transport is no
+longer the only path; see Amendments and ADR 0053.
 
 ## Context
 
@@ -105,4 +107,28 @@ POS Client -> Backend -> Device Bridge -> Printer -> Drawer
 3. Prove cash drawer pulse through the mapped printer.
 4. Add audited backend orchestration endpoints for print and drawer actions.
 5. Wire standalone POS clients after host/device proof is complete.
+
+## Amendments
+
+### 2026-08-04 — Hardware becomes pluggable; the LAN bridge becomes one driver among several
+- Clause amended: Hardware Strategy / Communication (`default`) and
+  Guardrail 6 (`default`)
+- Change: `POS Client -> Backend -> Device Bridge -> Printer -> Drawer` was
+  the only transport. This topology only holds when the backend and the
+  printer share a LAN host (the "Windows Host" diagram above); it does not
+  hold for a cloud-hosted backend. ADR 0053 introduces a pluggable
+  `posDeviceDriver` contract on the backend and a client-side hardware
+  registry on the frontend. The LAN device-bridge described in this ADR is
+  unchanged in behavior and remains correct for the single-host-per-store
+  topology; it is now selected via `POS_DEVICE_DRIVER` /
+  `DEVICE_BRIDGE_ENABLED` rather than being the sole path. Absence of any
+  driver is now a normal `200` response from `/pos/device/status`, not a
+  `503` — Guardrail 6 and Rollback Note 3 ("browser-only POS remains a
+  rollback-safe fallback") become the default terminal experience rather
+  than a fallback.
+- Reason: enable POS checkout on backends not co-located with terminal
+  hardware, and unify the previously separate iMin/LAN-bridge/native
+  transports behind one contract so cash drawer opens through any transport
+  are auditable (Guardrail 3).
+- See: ADR 0053.
 

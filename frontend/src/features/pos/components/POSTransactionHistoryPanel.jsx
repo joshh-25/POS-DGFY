@@ -151,6 +151,12 @@ export default function POSTransactionHistoryPanel({
 
     return (
         <section className="flex h-full min-h-0 flex-col gap-4 rounded-xl bg-white p-1 lg:p-0">
+            {/* Whole panel (search/sync bar, filter grid, table, pagination) scrolls as one
+                region so a tall stacked mobile filter grid can't clip the buttons/table beneath
+                it — previously only the table had its own scroll area, so overflow above it
+                (see Fix: History Catalog Mobile Filter Clipping) was cut off by the ancestor
+                overflow-hidden containers in POSCheckoutTerminal.jsx instead of scrolling. */}
+            <div className="dgfy-pos-scrollbar-hidden min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y" style={{ WebkitOverflowScrolling: 'touch' }}>
                 <div className="flex flex-col gap-3 border-b border-slate-200 px-3 pb-4 pt-2 xl:flex-row xl:items-start xl:justify-between lg:px-4">
                     <div className="flex w-full flex-col gap-3 lg:flex-row xl:w-auto">
                         <IconInput icon={Search}>
@@ -290,9 +296,8 @@ export default function POSTransactionHistoryPanel({
                     </div>
                 </div>
 
-                <div className="min-h-0 flex-1 overflow-hidden border-t border-slate-200">
-                    <div className="dgfy-pos-scrollbar-hidden h-full overflow-auto" aria-busy={historyLoading}>
-                        <table className={`w-full text-[13px] ${isTabletViewport ? 'min-w-[820px]' : 'min-w-[1220px]'}`} aria-label="POS transaction history table">
+                <div className="overflow-x-auto border-t border-slate-200" aria-busy={historyLoading}>
+                    <table className={`w-full text-[13px] ${isTabletViewport ? 'min-w-[820px]' : 'min-w-[1220px]'}`} aria-label="POS transaction history table">
                             <caption className="sr-only">POS transaction history with receipt and sales report actions</caption>
                             <thead>
                                 <tr className="border-b border-slate-200 bg-white text-[#0F172A]">
@@ -455,9 +460,9 @@ export default function POSTransactionHistoryPanel({
                                 )}
                             </tbody>
                         </table>
-                    </div>
+                </div>
 
-                    <div className="flex flex-col gap-4 border-t border-slate-200 px-6 py-4 text-[13px] text-[#334155] lg:flex-row lg:items-center lg:justify-between">
+                <div className="flex flex-col gap-4 border-t border-slate-200 px-6 py-4 text-[13px] text-[#334155] lg:flex-row lg:items-center lg:justify-between">
                         <p>
                             Showing {pageStart} to {pageEnd || 0} of {totalEntries || historyRows.length} entries
                         </p>
@@ -519,7 +524,7 @@ export default function POSTransactionHistoryPanel({
                             </div>
                         </div>
                     </div>
-                </div>
+            </div>
             <Dialog open={Boolean(voidTarget)} onOpenChange={(open) => !open && closeVoidDialog()}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
