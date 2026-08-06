@@ -494,7 +494,22 @@ export const printReceiptWithIminBridge = ({ transaction, businessSettings = {},
     return { handled: true, result };
 };
 
-export const formatIminOrderTicketText = ({ cart = [], terminalId = '', orderMethod = '', fnbContext = null }) => {
+const resolveOrderTicketItemName = (cartLine, index) => safeText(
+    cartLine?.item_name
+    || cartLine?.item?.name
+    || cartLine?.item_snapshot?.name
+    || cartLine?.name
+    || cartLine?.itemName,
+    `Item #${cartLine?.item_id || index + 1}`
+);
+
+export const formatIminOrderTicketText = ({
+    cart = [],
+    terminalId = '',
+    orderMethod = '',
+    fnbContext = null,
+    orderNotes = ''
+}) => {
     const rows = [
         center('DGFY'),
         center('PRINT ORDER'),
@@ -517,11 +532,22 @@ export const formatIminOrderTicketText = ({ cart = [], terminalId = '', orderMet
         pushCenteredWrapped(rows, fnbParts.join(' '));
     }
 
+    const normalizedOrderNotes = safeText(
+        orderNotes
+        || fnbContext?.kitchen_notes
+        || fnbContext?.order_notes
+        || fnbContext?.notes
+        || fnbContext?.special_instructions
+    );
+    if (normalizedOrderNotes) {
+        wrapText(`Order notes: ${normalizedOrderNotes}`).forEach((row) => rows.push(row));
+    }
+
     rows.push(line('='));
 
     cart.forEach((cartLine, index) => {
         const quantity = Number(cartLine?.quantity || 0);
-        const itemName = safeText(cartLine?.item_name, `Item #${cartLine?.item_id || index + 1}`);
+        const itemName = resolveOrderTicketItemName(cartLine, index);
         rows.push(`${quantity.toFixed(quantity % 1 === 0 ? 0 : 2)} x ${itemName}`.slice(0, RECEIPT_COLUMNS));
 
         const course = safeText(cartLine?.course || cartLine?.fnb_course_snapshot);
@@ -554,7 +580,13 @@ export const formatIminOrderTicketText = ({ cart = [], terminalId = '', orderMet
     return rows.join('\n');
 };
 
-export const printOrderWithIminBridge = ({ cart = [], terminalId = '', orderMethod = '', fnbContext = null }) => {
+export const printOrderWithIminBridge = ({
+    cart = [],
+    terminalId = '',
+    orderMethod = '',
+    fnbContext = null,
+    orderNotes = ''
+}) => {
     const bridge = getIminBridge();
     if (!bridge || typeof bridge.printReceipt !== 'function') {
         return { handled: false };
@@ -562,7 +594,7 @@ export const printOrderWithIminBridge = ({ cart = [], terminalId = '', orderMeth
 
     const result = parseBridgeResult(
         bridge.printReceipt(
-            formatIminOrderTicketText({ cart, terminalId, orderMethod, fnbContext }),
+            formatIminOrderTicketText({ cart, terminalId, orderMethod, fnbContext, orderNotes }),
             false
         ),
         'Order ticket print command sent.'

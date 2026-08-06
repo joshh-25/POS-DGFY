@@ -1,9 +1,13 @@
 import React from 'react';
-import { ShoppingBag, ShoppingCart } from 'lucide-react';
+import { ShoppingBag } from 'lucide-react';
 
 export function StorefrontCartFlyAnimations({
   animations = [],
-  isFnbMode = false
+  accentColor = '#0f766e',
+  accentSoft = 'rgba(15,118,110,0.16)',
+  accentStrong = 'rgba(45,212,191,0.32)',
+  borderColor = 'rgba(15,118,110,0.22)',
+  icon: Icon = ShoppingBag
 }) {
   if (!animations.length) return null;
 
@@ -38,12 +42,8 @@ export function StorefrontCartFlyAnimations({
                 width: animation.size,
                 height: animation.size,
                 borderRadius: 18,
-                background: isFnbMode
-                  ? 'linear-gradient(135deg, rgba(249,115,22,0.16), rgba(251,146,60,0.32))'
-                  : 'linear-gradient(135deg, rgba(15,118,110,0.16), rgba(45,212,191,0.32))',
-                border: isFnbMode
-                  ? '1px solid rgba(249,115,22,0.24)'
-                  : '1px solid rgba(15,118,110,0.22)',
+                background: `linear-gradient(135deg, ${accentSoft}, ${accentStrong})`,
+                border: `1px solid ${borderColor}`,
                 boxShadow: '0 18px 38px rgba(15,23,42,0.16)',
                 backdropFilter: 'blur(8px)',
                 animation: 'service-cart-fly-anim 620ms cubic-bezier(.2,.8,.2,1) forwards',
@@ -51,12 +51,8 @@ export function StorefrontCartFlyAnimations({
                 '--service-cart-fly-y': `${animation.deltaY}px`
               }}
             >
-              <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: isFnbMode ? '#ea580c' : '#0f766e' }}>
-                {isFnbMode ? (
-                  <ShoppingCart size={iconSize} strokeWidth={2.2} />
-                ) : (
-                  <ShoppingBag size={iconSize} strokeWidth={2.2} />
-                )}
+              <div style={{ width: '100%', height: '100%', display: 'grid', placeItems: 'center', color: accentColor }}>
+                <Icon size={iconSize} strokeWidth={2.2} />
               </div>
             </div>
           );
