@@ -100,11 +100,11 @@ Before attempting ANY bug fix, the following steps MUST be taken:
 
 # 🚨 Critical Rules (MUST FOLLOW)
 ### Frontend Rules:
-1.  **Component Structure**: All components in `frontend/Components/` folder, organized by feature (e.g., `items/`, `products/`).
-2.  **UI Components**: Use Shadcn UI components from `frontend/Components/ui/` - DO NOT create custom UI from scratch.
+1.  **Component Structure**: All components in `apps/dgfy-web/Components/` folder, organized by feature (e.g., `items/`, `products/`).
+2.  **UI Components**: Use Shadcn UI components from `apps/dgfy-web/Components/ui/` - DO NOT create custom UI from scratch.
 3.  **State Management**: Use local state (`useState`) for forms, `Zustand` for global user/settings data.
 4.  **Styling**: detailed TailwindCSS classes. No custom CSS files unless absolutely necessary.
-5.  **API Calls**: Use `frontend/src/services/` for ALL API requests. No `axios` calls in components.
+5.  **API Calls**: Use `apps/dgfy-web/src/services/` for ALL API requests. No `axios` calls in components.
 6.  **Validation**: Use `Joi` or manual validation before sending data.
 
 ### Backend Rules:
@@ -131,19 +131,19 @@ Before attempting ANY bug fix, the following steps MUST be taken:
 │   │   │   └── validators/     # Joi validation schemas
 │   │   └── tests/
 │   ├── dgfy-migration-runner/  # Sequelize migration domain (one-shot container)
-│   └── dgfy-android-bridge/    # Android hosts for POS hardware (formerly android/)
-│       └── imin-wrapper/       # iMin WebView wrapper + native printer/drawer bridge
-├── frontend/
-│   ├── Components/
-│   │   ├── ai/             # AI chat components (NEW)
-│   │   ├── items/          # Item forms, lists
-│   │   ├── products/       # Recipe wizard, product views
-│   │   ├── ui/             # Shadcn UI (Buttons, Inputs, etc.)
-│   │   └── wizard/         # Shared wizard logic
-│   ├── Pages/              # Main route views (incl. AiChat.jsx)
-│   └── src/
-│       ├── lib/            # Utils (formatting, classes)
-│       └── services/       # API wrappers (incl. aiService)
+│   ├── dgfy-android-bridge/    # Android hosts for POS hardware (formerly android/)
+│   │   └── imin-wrapper/       # iMin WebView wrapper + native printer/drawer bridge
+│   └── dgfy-web/               # React/Vite frontend (formerly frontend/)
+│       ├── Components/
+│       │   ├── ai/             # AI chat components (NEW)
+│       │   ├── items/          # Item forms, lists
+│       │   ├── products/       # Recipe wizard, product views
+│       │   ├── ui/             # Shadcn UI (Buttons, Inputs, etc.)
+│       │   └── wizard/         # Shared wizard logic
+│       ├── Pages/              # Main route views (incl. AiChat.jsx)
+│       └── src/
+│           ├── lib/            # Utils (formatting, classes)
+│           └── services/       # API wrappers (incl. aiService)
 ├── docs/                   # Detailed documentation (incl. ai/AI_GUIDELINES.md)
 └── CLAUDE.md               # Context file
 ```
@@ -223,7 +223,7 @@ node apps/dgfy-api/scripts/sync-tenant-schemas.js
 
 ```
 SKU-Inventory-Manager/                    # Monorepo root
-├── frontend/                             # React frontend application
+├── apps/dgfy-web/                         # React/Vite frontend (formerly frontend/)
 │   ├── Components/                       # React components by feature
 │   │   ├── dashboard/                    # Dashboard widgets
 │   │   ├── items/                        # Item/SKU management
@@ -425,7 +425,7 @@ SKU-Inventory-Manager/                    # Monorepo root
 | Port 5000 in use | `lsof -ti:5000 \| xargs kill -9` |
 | Port 5002 or 5183 in use | Staging port conflict — `lsof -ti:5002 \| xargs kill -9` |
 | Frontend can't reach backend | Check CORS settings in `apps/dgfy-api/src/server.js` |
-| `staging.dgfy.ph` blocked by Vite | Add `staging.dgfy.ph` to `allowedHosts` in `frontend/apps/skupervisor/vite.config.js` |
+| `staging.dgfy.ph` blocked by Vite | Add `staging.dgfy.ph` to `allowedHosts` in `apps/dgfy-web/apps/skupervisor/vite.config.js` |
 | Components not rendering | Check import paths - use `@/Components/...` |
 | API won't start | Check `.env` file exists in `apps/dgfy-api/` folder |
 | Database connection error | Verify MySQL is running, check credentials in `.env` |
@@ -461,19 +461,19 @@ SKU-Inventory-Manager/                    # Monorepo root
 ## 🔗 When You Need More Context
 
 **Working on Frontend Components?**
-→ Check `frontend/Components/` folder structure
+→ Check `apps/dgfy-web/Components/` folder structure
 
 **Working on Backend API?**
 → Check `apps/dgfy-api/src/routes/` and `apps/dgfy-api/src/controllers/`
 
 **Working on Database Models?**
-→ Check `apps/dgfy-api/src/models/` (Sequelize) and `frontend/Entities/` (frontend models)
+→ Check `apps/dgfy-api/src/models/` (Sequelize) and `apps/dgfy-web/Entities/` (frontend models)
 
 **Working on Authentication?**
 → Check `apps/dgfy-api/src/middleware/auth.js` and `apps/dgfy-api/src/services/authService.js`
 
 **Need API Integration?**
-→ Check `frontend/src/services/` for API service layer
+→ Check `apps/dgfy-web/src/services/` for API service layer
 
 **Need Full Specs?**
 → See `docs/` directory
@@ -482,7 +482,7 @@ SKU-Inventory-Manager/                    # Monorepo root
 
 ## 📝 Notes for Claude Code
 
-- This is a **monorepo** structure with `frontend/` and `apps/dgfy-api/` (the app; formerly `backend/`)
+- This is a **monorepo** structure with `apps/dgfy-web/` (formerly `frontend/`) and `apps/dgfy-api/` (the app; formerly `backend/`)
 - Always specify which part you're working on (frontend vs API)
 - Frontend uses relative imports (`@/Components/...`)
 - The API (`apps/dgfy-api`) is served on port `5100` (via nginx same-origin `/api`)

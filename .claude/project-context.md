@@ -21,8 +21,8 @@ This is a multi-tenant SKU Inventory Manager system with React frontend and Node
 
 ## Important File Locations
 - Backend: `/backend/src/`
-- Frontend Components: `/frontend/Components/`
-- Frontend Pages: `/frontend/Pages/`
+- Frontend Components: `/apps/dgfy-web/Components/`
+- Frontend Pages: `/apps/dgfy-web/Pages/`
 - Documentation: `/docs/` and root `.md` files
 - System Audit: `/System_Audit/`
 

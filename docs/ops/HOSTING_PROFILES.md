@@ -50,7 +50,7 @@ The Admin Portal exposes the same runtime view at `Admin > Hosting`. Use that sc
 ## Shared Deployment
 
 1. Copy `backend/.env.shared.example` to `backend/.env` on the shared host.
-2. Copy `frontend/.env.shared.example` to the frontend build environment.
+2. Copy `apps/dgfy-web/.env.shared.example` to the frontend build environment.
 3. Replace every placeholder value. Do not leave example domains, placeholder secrets, or `DB_AUTO_SYNC=true`.
 4. Run:
 
@@ -79,7 +79,7 @@ npm run test:hosting:shared
    - `REDIS_URL=redis://...`
    - `AUTH_BLACKLIST_FAILURE_MODE=fail_closed`
    - `TEMP_FILE_STORAGE=auto`
-3. Copy `frontend/.env.vps.example` to the frontend build environment if API origins or base paths changed.
+3. Copy `apps/dgfy-web/.env.vps.example` to the frontend build environment if API origins or base paths changed.
 4. Run:
 
 ```bash

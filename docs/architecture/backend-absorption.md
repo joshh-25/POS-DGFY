@@ -67,6 +67,50 @@ compliance declaration, `docs/reference/ANDROID_IMIN_POS_EXECUTION_PLAN.md`, rel
 checklists, merge-adoption JSON) deliberately still say `android/imin-wrapper` — they
 record what was true at the time, same rule the `backend/` repoints follow.
 
+## The frontend path map
+
+As of 2026-08-06 this branch also relocated the frontend tree (ADR 0054), so `backend/` and
+`android/` are no longer the only replay surfaces. `develop` still has `frontend/` and commits to it
+daily, so the same absorb-don't-lose rule applies:
+
+| Source on `develop`      | Destination on this branch |
+| ------------------------ | --------------------------- |
+| `frontend/**`            | `apps/dgfy-web/**`          |
+
+Nothing is excluded — this is a pure relocation, like the android move and unlike the `backend/`
+split. All 1228 tracked files moved via a single `git mv`; the internal shape (`src/`, `Components/`,
+`Pages/`, `apps/{skupervisor,pos,store}`, one `package.json`, one lockfile) is unchanged, so develop's
+diffs apply verbatim one directory deeper. The exception git's directory-rename detection cannot cover
+— a brand-new subdirectory `develop` adds under `frontend/` with no rename evidence — is the same
+failure mode documented above ("The conflict list is not the whole checklist"); after every merge,
+before staging anything:
+
+```sh
+git ls-files -- frontend/          # must be empty
+```
+
+A handful of paths inside the tree point *outside* it and needed a one-level depth adjustment on top
+of the plain relocation — re-check these if a future develop diff touches them: the three vite
+`outDir: '../../../../dist-apps/<app>'` build targets (`apps/{pos,skupervisor,store}/vite.config.js`),
+the two `file:../../packages/*` dependencies in `package.json`/`package-lock.json`, and the test
+helpers under `apps/dgfy-web/src/**/__tests__/` and `apps/dgfy-api/tests/` that read source across the
+frontend/backend boundary by relative path.
+
+**Consumers repointed on this branch** (expect merge conflicts here whenever develop edits them, and
+re-apply the `apps/dgfy-web/` prefix): the CI path filter (`.github/workflows/shared-changed-paths.yml`
+— only the `^frontend/` prefix in the regex changed; the output name `frontend`, the Docker image,
+compose service, and nginx upstream all deliberately kept their names, per ADR 0054), the compliance
+gate (`scripts/check-compliance-impact.js`), `scripts/lint-docs.js`'s test-evidence classifier, the
+compliance certification checklist, `scripts/{deploy.sh,check-frontend-budgets.js,check-batch-inventory.js,
+check-merge-adoption-required.js,gate-release-local.js,run-fnb-readiness-gate.js,
+smoke-storefront-delivery-map.js}`, the `.claude/hooks/session-start.sh` recent-activity greps, and
+root `package.json`/`.gitignore`/`ecosystem.config.cjs`/`infrastructure/docker/frontend/Dockerfile`.
+
+Historical docs (`Implementation.md`, `System_Audit/`, `docs/archive/**`,
+`docs/compliance/impact-declarations/**`, merge-adoption JSON, release batch records, dated feature
+narratives and proposals) deliberately still say `frontend/` — they record what was true at the time,
+same rule the `backend/` and `android/` repoints follow.
+
 ## The baseline anchor
 
 To know *what* to absorb, you need the last `develop` commit this branch already reflects.

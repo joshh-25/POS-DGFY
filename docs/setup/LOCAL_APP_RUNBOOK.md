@@ -42,7 +42,7 @@ DB_AUTO_SYNC=false
 PAYMENTS_ENABLED=false
 ```
 
-Minimum frontend `.env` values from repo root or `frontend/.env`:
+Minimum frontend `.env` values from repo root or `apps/dgfy-web/.env`:
 
 ```env
 VITE_API_URL=http://localhost:5000/api/v1

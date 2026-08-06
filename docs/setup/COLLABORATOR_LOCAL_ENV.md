@@ -51,7 +51,7 @@ This installs dependencies for:
 
 - Repository root
 - `backend`
-- `frontend`
+- `apps/dgfy-web`
 
 ### 3. Create Environment Files
 
@@ -65,7 +65,7 @@ cp .env.example .env
 Frontend:
 
 ```bash
-cd ../frontend
+cd ../apps/dgfy-web
 cp .env.example .env
 ```
 
@@ -276,7 +276,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ## Frontend Environment
 
-Create `frontend/.env` from the frontend folder:
+Create `apps/dgfy-web/.env` from the `apps/dgfy-web` folder:
 
 ```bash
 cp .env.example .env
@@ -299,7 +299,7 @@ VITE_SUBSCRIPTIONS_ENABLED=false
 # VITE_STORE_BASE_PATH=/
 ```
 
-`frontend/.env.development` currently only needs:
+`apps/dgfy-web/.env.development` currently only needs:
 
 ```env
 VITE_API_URL=/api/v1
@@ -434,7 +434,7 @@ Use the profile-specific examples when testing deployment behavior:
 
 - `backend/.env.shared.example` for shared hosting without Redis.
 - `backend/.env.vps.example` for Redis-capable VPS deployments.
-- `frontend/.env.shared.example` and `frontend/.env.vps.example` for matching frontend builds.
+- `apps/dgfy-web/.env.shared.example` and `apps/dgfy-web/.env.vps.example` for matching frontend builds.
 
 Shared hosting intentionally omits Redis and uses fail-open blacklist behavior. VPS mode expects Redis and fail-closed blacklist behavior.
 
@@ -493,7 +493,7 @@ npm run smoke:pos-local
 
 - Keep `DB_AUTO_SYNC=false` for shared/local development.
 - Use migrations for schema changes.
-- Do not commit `backend/.env`, `frontend/.env`, `.env.qa.local`, or `.env.prod.local`.
+- Do not commit `backend/.env`, `apps/dgfy-web/.env`, `.env.qa.local`, or `.env.prod.local`.
 - `backend/uploads` is runtime-generated. Only `backend/uploads/.gitkeep` is source-controlled.
 - Vite must proxy both `/api` and `/uploads` to the backend for uploaded images to render in local frontend surfaces.
 
@@ -547,7 +547,7 @@ docker start sku-redis
 Check:
 
 - Backend is running on `http://localhost:5000`.
-- `frontend/.env` has `VITE_API_URL=/api/v1`.
+- `apps/dgfy-web/.env` has `VITE_API_URL=/api/v1`.
 - `VITE_PROXY_TARGET=http://127.0.0.1:5000` is set if proxy behavior is needed.
 - Restart the frontend after changing `.env`.
 

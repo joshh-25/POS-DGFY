@@ -17,7 +17,7 @@ Authoritative planning entry: [docs/START_HERE.md](docs/START_HERE.md)
 ```text
 SKU-Inventory-Manager/
 |- backend/             # Express + Sequelize API
-|- frontend/            # Vite apps: skupervisor, pos, store
+|- apps/dgfy-web/       # Vite apps: skupervisor, pos, store
 |- docs/                # Architecture, API, database, testing, reference
 |- scripts/             # Repo-level helpers and docs tooling
 |- packages/            # Shared/internal packages
@@ -26,9 +26,9 @@ SKU-Inventory-Manager/
 
 ## Current App Surfaces
 
-- `frontend/apps/skupervisor`: primary tenant/admin app
-- `frontend/apps/pos`: POS terminal app
-- `frontend/apps/store`: public storefront app
+- `apps/dgfy-web/apps/skupervisor`: primary tenant/admin app
+- `apps/dgfy-web/apps/pos`: POS terminal app
+- `apps/dgfy-web/apps/store`: public storefront app
 
 ## Quick Start
 

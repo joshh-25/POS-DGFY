@@ -208,7 +208,7 @@ When `MOCK_PAYPAL=true` is set in the backend `.env`:
 2.  **Navigate to the project:** `cd /var/www/skupervisor`
 3.  **Edit Frontend Secrets:** 
     ```bash
-    nano frontend/.env
+    nano apps/dgfy-web/.env
     # Update VITE_PAYPAL_CLIENT_ID and VITE_PAYPAL_PLAN_ID with Live values
     ```
 4.  **Edit Backend Secrets:**

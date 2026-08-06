@@ -76,6 +76,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0051 | [POS Employee Credit Tender and Ledger](0051-pos-employee-credit-tender-and-ledger.md) | `accepted` | pos_employee_credit_tender_and_ledger | 2027-01-30 | 0 |
 | 0052 | [DGFY Collection, Tenant Revenue Ledger, and Controlled Settlement](0052-tenant-revenue-collection-ledger-and-settlement.md) | `accepted` | tenant_revenue_collection_ledger_settlement | 2027-01-31 | 0 |
 | 0053 | [Pluggable POS Hardware Device Drivers](0053-pluggable-pos-hardware-device-drivers.md) | `accepted` | pluggable_pos_hardware_device_drivers | 2027-02-04 | 4 |
+| 0054 | [Frontend Relocation to `apps/dgfy-web`](0054-frontend-relocation-to-apps-dgfy-web.md) | `accepted` | frontend_relocation_to_apps_dgfy_web | 2027-02-06 | 2 |
 
 ## Renumbered (collision stubs)
 

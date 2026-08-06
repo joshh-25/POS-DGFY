@@ -98,7 +98,7 @@ CORS_ORIGIN=http://localhost:5173
 REDIS_URL=redis://localhost:6379
 ```
 
-**Frontend (`frontend/.env`):**
+**Frontend (`apps/dgfy-web/.env`):**
 ```env
 VITE_API_URL=http://localhost:5000/api/v1
 ```
@@ -170,7 +170,7 @@ sudo apt-get install nginx
 
 ```
 /var/www/skupervisor/
-├── frontend/          # Built static files served by Nginx
+├── apps/dgfy-web/     # Built static files served by Nginx
 │   └── dist/          # Production build output
 ├── backend/           # Node.js API server (PM2 managed)
 │   └── .env           # Production environment variables
@@ -261,7 +261,7 @@ server {
     
     # Frontend - serve static files
     location / {
-        root /var/www/skupervisor/frontend/dist;
+        root /var/www/skupervisor/apps/dgfy-web/dist;
         try_files $uri $uri/ /index.html;
     }
     
@@ -357,7 +357,7 @@ git pull origin master
 
 # Install any new dependencies
 cd backend && npm install && cd ..
-cd frontend && npm install && npm run build && cd ..
+cd apps/dgfy-web && npm install && npm run build && cd ../..
 
 # Run migrations if database changes
 cd backend && npx sequelize-cli db:migrate && cd ..
@@ -370,7 +370,7 @@ pm2 logs sku-backend --lines 20
 ```
 
 > [!IMPORTANT]
-> Always run `npm run build` in the frontend after pulling changes. The hosting server serves the built files from `frontend/dist/`, not the development server.
+> Always run `npm run build` in the frontend after pulling changes. The hosting server serves the built files from `apps/dgfy-web/dist/`, not the development server.
 
 ### What Needs to Match
 
