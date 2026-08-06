@@ -4,10 +4,12 @@ import android.Manifest
 import android.annotation.SuppressLint
 import android.app.AlertDialog
 import android.content.Intent
+import android.content.pm.ApplicationInfo
 import android.media.AudioManager
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.media.ToneGenerator
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -21,6 +23,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.widget.Button
+import android.widget.EditText
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
@@ -62,6 +65,22 @@ class WebPosActivity : AppCompatActivity() {
         orderAlertRingtone = resolveOrderAlertRingtone()
         requestBluetoothPermissions()
         statusRetryButton.setOnClickListener { clearWebRuntimeAndReload() }
+
+        // Unlocks chrome://inspect -> Network tab against this WebView, so the
+        // actual request scheme/headers are visible instead of guessed. Gated
+        // on the manifest's debuggable flag (not BuildConfig.DEBUG) so it can
+        // never be on in a release APK regardless of how debuggable ends up
+        // set.
+        if ((applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE) != 0) {
+            WebView.setWebContentsDebuggingEnabled(true)
+        }
+
+        if (originSwitcherEnabled()) {
+            statusLogo.setOnLongClickListener {
+                showOriginSwitcherDialog()
+                true
+            }
+        }
 
         webView.settings.apply {
             javaScriptEnabled = true
@@ -120,6 +139,8 @@ class WebPosActivity : AppCompatActivity() {
             override fun onPageStarted(view: WebView?, url: String?, favicon: android.graphics.Bitmap?) {
                 webPosReadyReceived = false
                 lastLoadedUrl = url
+                val scheme = url?.let { Uri.parse(it).scheme } ?: "unknown"
+                Log.i(TAG, "onPageStarted: url=$url scheme=$scheme")
                 showLoadingStatus()
             }
 
@@ -165,7 +186,7 @@ class WebPosActivity : AppCompatActivity() {
             }
         }
 
-        webView.loadUrl(AppConfig.hostedWebPosUrl())
+        loadWebPos()
     }
 
     override fun onDestroy() {
@@ -192,7 +213,7 @@ class WebPosActivity : AppCompatActivity() {
         return WebPosNavigationPolicy.isPermitted(
             host,
             scheme,
-            AppConfig.allowedHosts(),
+            AppConfig.allowedHosts(WebPosOriginStore.read(this)),
             AppConfig.cleartextAllowedHosts()
         )
     }
@@ -212,16 +233,18 @@ class WebPosActivity : AppCompatActivity() {
     }
 
     private fun showLoadingStatus() {
+        val origin = AppConfig.effectiveOrigin(WebPosOriginStore.read(this))
         showStatus(
             title = "DGFY POS",
-            message = "Preparing your terminal...",
+            message = "Preparing your terminal...\n$origin",
             showRetry = false,
             showSpinner = true
         )
     }
 
     private fun buildTimeoutMessage(url: String?): String {
-        val targetUrl = url?.takeIf { it.isNotBlank() } ?: AppConfig.hostedWebPosUrl(0L)
+        val targetUrl = url?.takeIf { it.isNotBlank() }
+            ?: AppConfig.hostedWebPosUrl(WebPosOriginStore.read(this), 0L)
         return "POS did not become ready within 10 seconds.\nCheck device network, confirm the POS server is online, and verify this URL is reachable:\n$targetUrl"
     }
 
@@ -344,11 +367,64 @@ class WebPosActivity : AppCompatActivity() {
         webView.evaluateJavascript(cleanupScript) {
             webView.clearCache(true)
             webView.clearHistory()
-            webView.postDelayed(
-                { webView.loadUrl(AppConfig.hostedWebPosUrl()) },
-                250L
-            )
+            webView.postDelayed({ loadWebPos() }, 250L)
         }
+    }
+
+    private fun loadWebPos() {
+        val override = WebPosOriginStore.read(this)
+        val url = AppConfig.hostedWebPosUrl(override)
+        Log.i(TAG, "Loading WebPos: $url (origin=${AppConfig.effectiveOrigin(override)})")
+        webView.loadUrl(url)
+    }
+
+    // Dev/staging-only escape hatch: an emulator always resolves to the local
+    // Vite dev server by default (AppConfig.useLivePosOrigin), which made it
+    // impossible to point a tablet AVD (no physical Android tablet available)
+    // at the real dev/staging origin without a rebuild. Never enabled on a
+    // prod/beta build regardless of build type, so a production terminal
+    // can't be repointed by a long-press.
+    private fun originSwitcherEnabled(): Boolean {
+        return BuildConfig.DEBUG || BuildConfig.FLAVOR == "dev" || BuildConfig.FLAVOR == "staging"
+    }
+
+    private fun showOriginSwitcherDialog() {
+        val current = WebPosOriginStore.read(this)
+        val options = arrayOf(
+            "Local dev (${AppConfig.localDevOrigin()})",
+            "Live (${BuildConfig.LIVE_POS_ORIGIN})",
+            "Custom..."
+        )
+        AlertDialog.Builder(this)
+            .setTitle("WebView origin (testing only)")
+            .setMessage("Currently: ${AppConfig.effectiveOrigin(current)}")
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> applyOriginOverride(AppConfig.localDevOrigin())
+                    1 -> applyOriginOverride(BuildConfig.LIVE_POS_ORIGIN)
+                    2 -> showCustomOriginInput()
+                }
+            }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun showCustomOriginInput() {
+        val input = EditText(this).apply {
+            hint = "https://pos.example.dgfy.ph"
+            setText(WebPosOriginStore.read(this@WebPosActivity).orEmpty())
+        }
+        AlertDialog.Builder(this)
+            .setTitle("Custom origin")
+            .setView(input)
+            .setPositiveButton("Load") { _, _ -> applyOriginOverride(input.text.toString()) }
+            .setNegativeButton("Cancel", null)
+            .show()
+    }
+
+    private fun applyOriginOverride(origin: String?) {
+        WebPosOriginStore.write(this, origin)
+        clearWebRuntimeAndReload()
     }
 
     private fun requestBluetoothPermissions() {
