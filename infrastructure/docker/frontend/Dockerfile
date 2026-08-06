@@ -4,6 +4,16 @@
 FROM node:22-alpine AS builder
 WORKDIR /app
 COPY apps/dgfy-web/package*.json ./
+# apps/dgfy-web's file: deps point two levels up (file:../../packages/...) to
+# reach repo-root packages/ from their real, one-directory-deeper home. `npm
+# ci`'s virtual-tree loader has a bug with 2+ `../` segments in a `file:`
+# link's lockfile entry (arborist's #loadLink throws reading `.extraneous` off
+# undefined) on the npm version this base image ships -- reproducible even
+# with the actual target directory present and even after upgrading npm.
+# 1 hop resolves to the identical /packages path via WORKDIR /app (both
+# clamp at the container's filesystem root), so drop to 1 hop here, image-only
+# -- the host copy of these files is untouched and still needs 2 hops.
+RUN sed -i 's#\.\./\.\./packages/#../packages/#g' package.json package-lock.json
 COPY packages/pos-receipt /packages/pos-receipt
 COPY packages/shared-constants /packages/shared-constants
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
