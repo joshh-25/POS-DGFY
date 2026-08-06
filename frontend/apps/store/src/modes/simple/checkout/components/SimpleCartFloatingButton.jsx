@@ -2,6 +2,7 @@ import { ShoppingCart } from 'lucide-react';
 
 export function SimpleCartFloatingButton({
   cartCount = 0,
+  fabRef,
   isOpen = false,
   isMobileViewport = false,
   onToggle
@@ -9,6 +10,7 @@ export function SimpleCartFloatingButton({
   return (
     <button
       type="button"
+      ref={fabRef}
       onClick={onToggle}
       aria-label={isOpen ? 'Close product cart' : 'Open product cart'}
       style={{
