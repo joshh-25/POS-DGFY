@@ -8,7 +8,7 @@ set -Eeuo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BACKEND_DIR="$PROJECT_ROOT/backend"
-FRONTEND_DIR="$PROJECT_ROOT/frontend"
+FRONTEND_DIR="$PROJECT_ROOT/apps/dgfy-web"
 DEPLOY_LOG_DIR="$PROJECT_ROOT/logs/deploy"
 DEPLOY_STATE_DIR="$PROJECT_ROOT/.deploy-state"
 LOCK_FILE="/tmp/skupervisor_deploy.lock"
@@ -967,7 +967,7 @@ SCRIPTS_CHANGED_FILES="0"
 if [[ "$PRE_DEPLOY_COMMIT" != "$POST_PULL_COMMIT" ]]; then
     TOTAL_CHANGED_FILES="$(wc -l < "$MANIFEST_FILE" | tr -d '[:space:]')"
     BACKEND_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^backend/' | wc -l | tr -d '[:space:]')"
-    FRONTEND_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^frontend/' | wc -l | tr -d '[:space:]')"
+    FRONTEND_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^apps/dgfy-web/' | wc -l | tr -d '[:space:]')"
     DOCS_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^docs/' | wc -l | tr -d '[:space:]')"
     SCRIPTS_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^scripts/' | wc -l | tr -d '[:space:]')"
 fi

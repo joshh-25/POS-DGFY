@@ -37,7 +37,7 @@ function makeRepo() {
 test('generates JSON and markdown regression risk notice artifacts', () => {
   const root = makeRepo();
   try {
-    writeFile(root, 'frontend/apps/store/src/discoveryMap.js', 'export const ok = true;\n');
+    writeFile(root, 'apps/dgfy-web/apps/store/src/discoveryMap.js', 'export const ok = true;\n');
     runGit(root, ['add', '.']);
     runGit(root, ['commit', '-m', 'storefront discovery']);
 

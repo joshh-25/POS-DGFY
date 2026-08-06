@@ -59,7 +59,7 @@ function main() {
   addGate(gates, 'runtime.doctor', runCommand(npmCmd, ['run', 'doctor:runtime']), 'npm run doctor:runtime');
   addGate(gates, 'backend.lint', runCommand(npmCmd, ['--prefix', 'apps/dgfy-api', 'run', 'lint']), 'npm --prefix apps/dgfy-api run lint');
   addGate(gates, 'backend.test_matrix', runCommand(npmCmd, ['run', 'test:backend:matrix']), 'npm run test:backend:matrix');
-  addGate(gates, 'frontend.lint', runCommand(npmCmd, ['--prefix', 'frontend', 'run', 'lint']), 'npm --prefix frontend run lint');
+  addGate(gates, 'frontend.lint', runCommand(npmCmd, ['--prefix', 'apps/dgfy-web', 'run', 'lint']), 'npm --prefix apps/dgfy-web run lint');
   addGate(gates, 'frontend.contracts', runCommand(npmCmd, ['run', 'test:frontend:contracts']), 'npm run test:frontend:contracts');
   const frontendBudgetReportFile = path.join(evidenceDir, 'frontend-budgets', 'frontend_budget_report.json');
   addGate(
@@ -73,14 +73,14 @@ function main() {
     'scroll.contracts',
     runCommand(npmCmd, [
       '--prefix',
-      'frontend',
+      'apps/dgfy-web',
       'test',
       '--',
       '--run',
       'src/features/pos/__tests__/terminalResponsiveScroll.contract.test.js',
       'src/features/pos/utils/__tests__/scrollKeyControls.behavior.test.js',
     ]),
-    'npm --prefix frontend test -- --run <scroll-contract-suite>'
+    'npm --prefix apps/dgfy-web test -- --run <scroll-contract-suite>'
   );
   addGate(
     gates,

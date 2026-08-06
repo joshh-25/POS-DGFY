@@ -41,12 +41,12 @@ const PAYMENT_PATTERNS = [
 ];
 
 const HIGH_RISK_PATH_PATTERNS = [
-  /^frontend\/apps\/store\/src\//,
-  /^frontend\/Pages\/DgfyAuthPage\.jsx$/,
-  /^frontend\/Pages\/RegisterCompany\.jsx$/,
-  /^frontend\/src\/features\/dgfy\//,
-  /^frontend\/src\/services\/dgfyAuthService\.js$/,
-  /^frontend\/src\/services\/authService\.js$/,
+  /^apps\/dgfy-web\/apps\/store\/src\//,
+  /^apps\/dgfy-web\/Pages\/DgfyAuthPage\.jsx$/,
+  /^apps\/dgfy-web\/Pages\/RegisterCompany\.jsx$/,
+  /^apps\/dgfy-web\/src\/features\/dgfy\//,
+  /^apps\/dgfy-web\/src\/services\/dgfyAuthService\.js$/,
+  /^apps\/dgfy-web\/src\/services\/authService\.js$/,
   /^apps\/dgfy-api\/src\/middleware\/storeAuth\.js$/,
   /^apps\/dgfy-api\/src\/modules\/dgfy\//,
   /^apps\/dgfy-api\/src\/modules\/store\//,
@@ -293,7 +293,7 @@ function unique(values) {
 function affectedSurfacesForFile(filePath) {
   const surfaces = [];
   if (filePath.startsWith('apps/dgfy-api/')) surfaces.push('backend');
-  if (filePath.startsWith('frontend/')) surfaces.push('frontend');
+  if (filePath.startsWith('apps/dgfy-web/')) surfaces.push('frontend');
   if (/(^|\/)migrations?\//i.test(filePath) || /schema|sequelize/i.test(filePath)) surfaces.push('database');
   if (filePath.startsWith('scripts/') || filePath.startsWith('.github/')) surfaces.push('scripts/deploy');
   if (filePath.startsWith('docs/')) surfaces.push('docs');
@@ -313,7 +313,7 @@ function sliceKeyForFile(filePath) {
   if (/(^|\/)(pos|POS|terminal|cashier)/.test(filePath)) return 'POS';
   if (/tenant|provision|registration|company/i.test(filePath)) return 'tenant-lifecycle';
   if (filePath.startsWith('apps/dgfy-api/')) return 'backend';
-  if (filePath.startsWith('frontend/')) return 'frontend';
+  if (filePath.startsWith('apps/dgfy-web/')) return 'frontend';
   if (filePath.startsWith('docs/')) return 'docs';
   if (filePath.startsWith('scripts/') || filePath.startsWith('.github/')) return 'release-automation';
   return 'repository-support';
@@ -346,7 +346,7 @@ function inferTests(surfaces, paymentSensitive, highRiskPath) {
   const tests = ['npm run lint:docs', 'npm run check:architecture', 'npm run check:compliance'];
   if (surfaces.includes('backend') || surfaces.includes('database')) tests.push('npm run test:backend:matrix');
   if (surfaces.includes('frontend') || surfaces.includes('POS') || surfaces.includes('Storefront') || surfaces.includes('DGFY')) {
-    tests.push('npm run test:frontend', 'npm --prefix frontend run build:all', 'npm run check:frontend-budgets');
+    tests.push('npm run test:frontend', 'npm --prefix apps/dgfy-web run build:all', 'npm run check:frontend-budgets');
   }
   if (surfaces.includes('scripts/deploy')) tests.push('npm run test:development-to-production');
   if (highRiskPath) tests.push('npm run check:merge-adoption-required');

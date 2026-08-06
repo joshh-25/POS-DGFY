@@ -116,7 +116,7 @@ jobs:
             FRONTEND=false
             DGFY_API=false
             MIGRATION_RUNNER=false
-            matches '^(frontend/|packages/pos-receipt/|packages/shared-constants/|infrastructure/docker/frontend/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|build-develop|build-staging|build-main)\.yml)' && FRONTEND=true || true
+            matches '^(apps/dgfy-web/|packages/pos-receipt/|packages/shared-constants/|infrastructure/docker/frontend/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|build-develop|build-staging|build-main)\.yml)' && FRONTEND=true || true
             matches '^(apps/dgfy-api/|packages/shared-constants/|infrastructure/docker/dgfy-api/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|build-develop|build-staging|build-main)\.yml)' && DGFY_API=true || true
             matches '^(apps/dgfy-migration-runner/|infrastructure/docker/dgfy-migration-runner/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-migration-runner|deployment-orchestrator|pr-migration-runner-build-checks|build-develop|build-staging|build-main)\.yml)' && MIGRATION_RUNNER=true || true
           fi

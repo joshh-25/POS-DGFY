@@ -117,42 +117,42 @@ const COMPLIANCE_SENSITIVE_RULES = [
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^frontend\/src\/features\/pos\//,
+    pattern: /^apps\/dgfy-web\/src\/features\/pos\//,
     surfaces: ['pos', 'terminal'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^frontend\/src\/features\/compliance\//,
+    pattern: /^apps\/dgfy-web\/src\/features\/compliance\//,
     surfaces: ['compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^frontend\/src\/pages\/Settings(?:\/|\.|$)/,
+    pattern: /^apps\/dgfy-web\/src\/pages\/Settings(?:\/|\.|$)/,
     surfaces: ['settings'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^frontend\/Pages\/Settings\.jsx$/,
+    pattern: /^apps\/dgfy-web\/Pages\/Settings\.jsx$/,
     surfaces: ['settings'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^frontend\/src\/services\/paymentService\.js$/,
+    pattern: /^apps\/dgfy-web\/src\/services\/paymentService\.js$/,
     surfaces: ['payments'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^frontend\/src\/services\/complianceService\.js$/,
+    pattern: /^apps\/dgfy-web\/src\/services\/complianceService\.js$/,
     surfaces: ['compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^frontend\/src\/services\/adminService\.js$/,
+    pattern: /^apps\/dgfy-web\/src\/services\/adminService\.js$/,
     surfaces: ['settings', 'compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^frontend\/Pages\/admin\/TenantManager\.jsx$/,
+    pattern: /^apps\/dgfy-web\/Pages\/admin\/TenantManager\.jsx$/,
     surfaces: ['settings', 'compliance'],
     minimumClassification: 'regulatory'
   }

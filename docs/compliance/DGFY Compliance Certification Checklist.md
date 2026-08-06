@@ -57,9 +57,9 @@ Score formula: `round((runtime*0.35 + tests*0.30 + documentary*0.20 + risk*0.15)
 3. Hash-target lookup behavior is hardened against malformed selector-style hashes via safe hash-to-id resolution in Settings and compliance panel actions.
 4. Clipboard actions in Settings company controls now have explicit fallback feedback when browser clipboard API calls fail.
 5. Regression evidence expanded to include:
-   - `frontend/src/features/settings/__tests__/settingsDeepLink.contract.test.js`
-   - `frontend/src/pages/__tests__/Settings.deepLinking.integration.test.jsx`
-   - `frontend/src/features/compliance/__tests__/ComplianceProgramPanel.integration.test.jsx`
+   - `apps/dgfy-web/src/features/settings/__tests__/settingsDeepLink.contract.test.js`
+   - `apps/dgfy-web/src/pages/__tests__/Settings.deepLinking.integration.test.jsx`
+   - `apps/dgfy-web/src/features/compliance/__tests__/ComplianceProgramPanel.integration.test.jsx`
 6. Final Review documentary requirements are tenant self-serve in Settings > Compliance with backend-stored records (submission packet files remain internal reference artifacts).
 
 ## Closure Criteria (Current, All Controls)
@@ -89,21 +89,21 @@ Score formula: `round((runtime*0.35 + tests*0.30 + documentary*0.20 + risk*0.15)
 
 - [x] Tamper-Proofing (No Bypass Modes)
   - Evidence: Server-controlled `document_context` (`fiscal`/`non_fiscal`/`training_test`) and non-fiscal banner enforcement.
-  - References: `apps/dgfy-api/src/modules/compliance/policy/compliancePolicyEngine.js`, `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`, `frontend/src/features/pos/components/ReceiptPrintView.jsx`, `apps/dgfy-api/tests/compliancePolicyEngine.test.js`.
+  - References: `apps/dgfy-api/src/modules/compliance/policy/compliancePolicyEngine.js`, `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`, `apps/dgfy-web/src/features/pos/components/ReceiptPrintView.jsx`, `apps/dgfy-api/tests/compliancePolicyEngine.test.js`.
 
 - [x] Non-Volatile Persistence
   - Evidence: Offline-safe operation replay includes checkout, shift open, cash events, shift close, and order-status updates with parity coverage.
-  - References: `frontend/src/features/pos/components/POSCheckoutTerminal.jsx`, `frontend/src/features/pos/pages/TerminalPage.jsx`, `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`, `apps/dgfy-api/src/models/PosOperationReplay.js`, `apps/dgfy-api/tests/posOperationReplayParity.usecase.test.js`.
+  - References: `apps/dgfy-web/src/features/pos/components/POSCheckoutTerminal.jsx`, `apps/dgfy-web/src/features/pos/pages/TerminalPage.jsx`, `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`, `apps/dgfy-api/src/models/PosOperationReplay.js`, `apps/dgfy-api/tests/posOperationReplayParity.usecase.test.js`.
 
 - [x] VAT / Non-VAT Segregation
   - Evidence: VAT buckets (`vatable_sales`, `vat_amount`, `vat_exempt_sales`, `zero_rated_sales`) are persisted and rendered in POS and Sales flows.
-  - References: `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`, `frontend/src/features/pos/components/ReceiptPrintView.jsx`, `apps/dgfy-api/tests/posSalesReconciliation.db.integration.test.js`, `frontend/src/features/pos/__tests__/receiptContractConformance.contract.test.js`.
+  - References: `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`, `apps/dgfy-web/src/features/pos/components/ReceiptPrintView.jsx`, `apps/dgfy-api/tests/posSalesReconciliation.db.integration.test.js`, `apps/dgfy-web/src/features/pos/__tests__/receiptContractConformance.contract.test.js`.
 
 ## 2. Reporting & Output (Audit Trail)
 
 - [x] Standardized Receipt/Invoice Format
   - Evidence: Receipt contract metadata persists context/version and renders fixed compliance footer statements with fixture-level contract tests.
-  - References: `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`, `frontend/src/features/pos/components/ReceiptPrintView.jsx`, `frontend/src/features/pos/__tests__/receiptContractConformance.contract.test.js`, `docs/api/specification.md`.
+  - References: `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`, `apps/dgfy-web/src/features/pos/components/ReceiptPrintView.jsx`, `apps/dgfy-web/src/features/pos/__tests__/receiptContractConformance.contract.test.js`, `docs/api/specification.md`.
 
 - [x] Z-Reading Report
   - Evidence: Close-day snapshot includes `z_counter`, `reset_counter`, and lifetime grand-total fields.
@@ -137,13 +137,13 @@ Score formula: `round((runtime*0.35 + tests*0.30 + documentary*0.20 + risk*0.15)
 
 - [x] Breach Notification Tooling
   - Evidence: Immutable `security_signal` incidents support auditable admin workflow and dispatch-attempt metadata.
-  - References: `apps/dgfy-api/src/modules/compliance/usecases/complianceUseCases.js`, `apps/dgfy-api/src/routes/adminTenants.js`, `frontend/Pages/admin/TenantManager.jsx`, `apps/dgfy-api/tests/complianceSecuritySignal.usecase.test.js`, `apps/dgfy-api/tests/complianceSecurityIncidents.usecase.test.js`.
+  - References: `apps/dgfy-api/src/modules/compliance/usecases/complianceUseCases.js`, `apps/dgfy-api/src/routes/adminTenants.js`, `apps/dgfy-web/Pages/admin/TenantManager.jsx`, `apps/dgfy-api/tests/complianceSecuritySignal.usecase.test.js`, `apps/dgfy-api/tests/complianceSecurityIncidents.usecase.test.js`.
 
 ## 4. Payment Integration (BSP Avoidance Strategy)
 
 - [x] External Payment Handoff
   - Evidence: Policy engine enforces external handoff for non-cash when OPS controls are incomplete, with reason-coded denials and remediation targets.
-  - References: `apps/dgfy-api/src/modules/compliance/policy/compliancePolicyEngine.js`, `apps/dgfy-api/src/middleware/compliancePolicy.js`, `frontend/src/features/pos/pages/TerminalPage.jsx`, `frontend/src/features/pos/components/TerminalPageLayout.jsx`, `frontend/src/features/settings/settingsDeepLink.js`, `frontend/src/features/settings/__tests__/settingsDeepLink.contract.test.js`, `frontend/src/pages/__tests__/Settings.deepLinking.integration.test.jsx`, `frontend/src/features/compliance/__tests__/ComplianceProgramPanel.integration.test.jsx`, `apps/dgfy-api/tests/compliancePolicyEngine.test.js`.
+  - References: `apps/dgfy-api/src/modules/compliance/policy/compliancePolicyEngine.js`, `apps/dgfy-api/src/middleware/compliancePolicy.js`, `apps/dgfy-web/src/features/pos/pages/TerminalPage.jsx`, `apps/dgfy-web/src/features/pos/components/TerminalPageLayout.jsx`, `apps/dgfy-web/src/features/settings/settingsDeepLink.js`, `apps/dgfy-web/src/features/settings/__tests__/settingsDeepLink.contract.test.js`, `apps/dgfy-web/src/pages/__tests__/Settings.deepLinking.integration.test.jsx`, `apps/dgfy-web/src/features/compliance/__tests__/ComplianceProgramPanel.integration.test.jsx`, `apps/dgfy-api/tests/compliancePolicyEngine.test.js`.
 
 ## 5. Dev-Produced Documentation (Required for Submission)
 

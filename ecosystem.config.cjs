@@ -35,7 +35,7 @@ module.exports = {
             name: 'sku-frontend',
             script: './node_modules/vite/bin/vite.js',
             args: 'preview --config apps/skupervisor/vite.config.js --host --port 5173 --strictPort',
-            cwd: './frontend',
+            cwd: './apps/dgfy-web',
             env: {
                 NODE_ENV: 'production',
             },
@@ -47,7 +47,7 @@ module.exports = {
             name: 'sku-pos-frontend',
             script: './node_modules/vite/bin/vite.js',
             args: 'preview --config apps/pos/vite.config.js --host --port 5174 --strictPort',
-            cwd: './frontend',
+            cwd: './apps/dgfy-web',
             env: {
                 NODE_ENV: 'production',
             },
@@ -59,7 +59,7 @@ module.exports = {
             name: 'sku-store-frontend',
             script: './node_modules/vite/bin/vite.js',
             args: 'preview --config apps/store/vite.config.js --host --port 5175 --strictPort',
-            cwd: './frontend',
+            cwd: './apps/dgfy-web',
             env: {
                 NODE_ENV: 'production',
             },
@@ -111,7 +111,7 @@ module.exports = {
             name: 'sku-staging-frontend',
             script: './node_modules/vite/bin/vite.js',
             args: 'preview --config apps/skupervisor/vite.config.js --host --port 5183 --strictPort',
-            cwd: './frontend',
+            cwd: './apps/dgfy-web',
             env_staging: {
                 NODE_ENV: 'production',
             },

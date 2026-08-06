@@ -12,7 +12,7 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BACKEND_DIR="$PROJECT_ROOT/apps/dgfy-api"
-FRONTEND_DIR="$PROJECT_ROOT/frontend"
+FRONTEND_DIR="$PROJECT_ROOT/apps/dgfy-web"
 ENV_FILE="$BACKEND_DIR/.env"
 
 # ─── Header ──────────────────────────────────────────────────────────────────
@@ -37,7 +37,7 @@ _root_ok=false
 if $_frontend_ok; then
   echo "   ✅ Frontend  — node_modules present"
 else
-  echo "   ⚠️  Frontend  — missing  →  cd frontend && npm install"
+  echo "   ⚠️  Frontend  — missing  →  cd apps/dgfy-web && npm install"
 fi
 
 if $_backend_ok; then
@@ -231,9 +231,9 @@ if command -v git &>/dev/null; then
     echo "   (No previous commit to diff, or single-commit repo)"
   else
     # Frontend
-    echo "$_recent" | grep -q "^frontend/Components/"  && echo "   💼 Frontend component changes — ref: frontend/Components/"
-    echo "$_recent" | grep -q "^frontend/Pages/"       && echo "   📄 Frontend page changes      — ref: frontend/Pages/"
-    echo "$_recent" | grep -q "^frontend/src/services/" && echo "   🔌 API service layer changes  — ref: frontend/src/services/"
+    echo "$_recent" | grep -q "^apps/dgfy-web/Components/"  && echo "   💼 Frontend component changes — ref: apps/dgfy-web/Components/"
+    echo "$_recent" | grep -q "^apps/dgfy-web/Pages/"       && echo "   📄 Frontend page changes      — ref: apps/dgfy-web/Pages/"
+    echo "$_recent" | grep -q "^apps/dgfy-web/src/services/" && echo "   🔌 API service layer changes  — ref: apps/dgfy-web/src/services/"
 
     # Backend
     echo "$_recent" | grep -q "^apps/dgfy-api/src/routes/"      && echo "   🛣️  Backend route changes      — ref: backend/src/routes/"
@@ -244,7 +244,7 @@ if command -v git &>/dev/null; then
     echo "$_recent" | grep -q "^apps/dgfy-api/tests/"           && echo "   🧪 Test changes               — run: cd apps/dgfy-api && npm test"
 
     # Cross-cutting concerns
-    echo "$_recent" | grep -qE "^apps/dgfy-api/src/models/|^frontend/Entities/" && \
+    echo "$_recent" | grep -qE "^apps/dgfy-api/src/models/|^apps/dgfy-web/Entities/" && \
       echo "   ⚠️  Entity/model changes — ensure frontend & backend schemas are in sync"
 
     # Docs / Audit

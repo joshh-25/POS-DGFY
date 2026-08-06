@@ -99,7 +99,7 @@ describe('check-compliance-impact script integration', () => {
         try {
             const result = runCheck({
                 changedFiles: [
-                    'frontend/src/features/compliance/components/ComplianceProgramPanel.jsx',
+                    'apps/dgfy-web/src/features/compliance/components/ComplianceProgramPanel.jsx',
                     declaration.relativePath
                 ]
             });
@@ -139,7 +139,7 @@ describe('check-compliance-impact script integration', () => {
 
     it('passes when changed files are non-sensitive', () => {
         const result = runCheck({
-            changedFiles: ['frontend/src/utils/non-sensitive-file.js']
+            changedFiles: ['apps/dgfy-web/src/utils/non-sensitive-file.js']
         });
 
         const output = `${result.stdout}${result.stderr}`;
@@ -200,7 +200,7 @@ describe('check-compliance-impact script integration', () => {
         try {
             const result = runCheck({
                 changedFiles: [
-                    'frontend/src/services/adminService.js',
+                    'apps/dgfy-web/src/services/adminService.js',
                     declaration.relativePath
                 ]
             });

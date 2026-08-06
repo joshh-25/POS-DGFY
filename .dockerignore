@@ -1,6 +1,6 @@
 # Docker only reads <build context>/.dockerignore, and every image here
 # builds with `context: .` (repo root) -- backend/.dockerignore and
-# frontend/.dockerignore are never actually consulted. This supersedes them.
+# apps/dgfy-web/.dockerignore are never actually consulted. This supersedes them.
 
 # VCS / editor / agent tooling
 /.git
