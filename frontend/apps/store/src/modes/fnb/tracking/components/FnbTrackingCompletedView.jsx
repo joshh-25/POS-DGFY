@@ -86,7 +86,7 @@ export function FnbTrackingCompletedView({ actions, formatters, isMobileViewport
                         </div>
 
                         {/* ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ Reference / date / type strip ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ÃƒÂ¢Ã¢â‚¬ÂÃ¢â€šÂ¬ */}
-                        <div style={{ border: '1px solid #f1f5f9', borderRadius: 14, padding: '14px 16px', display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8, marginBottom: 20 }}>
+                        <div style={{ border: '1px solid #f1f5f9', borderRadius: 14, padding: '14px 16px', display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(3,1fr)', gap: isMobileViewport ? 12 : 8, marginBottom: 20 }}>
                           {[
                             { icon: <FileText size={16} color={dgfyPrimary} />, label: 'Reference No.', value: trackingResult.tracking_pin || trackingPinInput },
                             { icon: <Clock3 size={16} color={dgfyPrimary} />, label: isPickup ? 'Picked Up On' : 'Delivered On', value: completedOnLabel },
@@ -94,7 +94,7 @@ export function FnbTrackingCompletedView({ actions, formatters, isMobileViewport
                           ].map(({ icon, label, value }) => (
                             <div key={label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                               <div style={{ display: 'flex', alignItems: 'center', gap: 5, color: '#64748b', fontSize: 12 }}>{icon}<span>{label}</span></div>
-                              <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', wordBreak: 'break-all' }}>{value}</div>
+                              <div style={{ fontSize: 13, fontWeight: 800, color: '#0f172a', overflowWrap: 'break-word', wordBreak: 'normal' }}>{value}</div>
                             </div>
                           ))}
                         </div>
