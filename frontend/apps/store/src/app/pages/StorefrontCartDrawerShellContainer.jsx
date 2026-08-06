@@ -1,4 +1,5 @@
 import React from 'react';
+import { ShoppingCart } from 'lucide-react';
 import { StorefrontCartFab } from '../../shared/components/storefront/StorefrontCartFab.jsx';
 import { DefaultProductCartFab } from '../../shared/components/storefront/DefaultProductCartFab.jsx';
 import { DefaultProductCartDrawer } from '../../shared/components/storefront/DefaultProductCartDrawer.jsx';
@@ -80,14 +81,25 @@ export function StorefrontCartDrawerShellContainer(props) {
   // hides MSME's equivalent on its own order subpage. Scoped to retail only: the other
   // default-like modes' DefaultOrderPage has no such summary of its own yet.
   const shouldRenderDefaultCartSurface = isDefaultCartSurfaceMode && !(isRetailMode && isResolvedOrderSubpage);
+  // Each mode's own cart-fly-animation color/icon — F&B's orange is reproduced explicitly
+  // (previously hardcoded inside StorefrontCartFlyAnimations itself); Retail gets its own blue
+  // (matching DefaultProductCartFab.jsx); Services/others fall back to the component's own
+  // default teal, unchanged from before this mode was made configurable.
+  const cartFlyAnimationProps = isFnbMode
+    ? { accentColor: '#ea580c', accentSoft: 'rgba(249,115,22,0.16)', accentStrong: 'rgba(251,146,60,0.32)', borderColor: 'rgba(249,115,22,0.24)', icon: ShoppingCart }
+    : isRetailMode
+      ? { accentColor: '#1a4e8d', accentSoft: 'rgba(26,78,141,0.16)', accentStrong: 'rgba(26,78,141,0.32)', borderColor: 'rgba(26,78,141,0.24)', icon: ShoppingCart }
+      : isSimpleMode
+        ? { accentColor: '#0f766e', accentSoft: 'rgba(15,118,110,0.16)', accentStrong: 'rgba(45,212,191,0.32)', borderColor: 'rgba(15,118,110,0.22)', icon: ShoppingCart }
+        : {};
 
   return (
     <>
       {!isAccountDrawerOpen && isServicesCartDrawerMode && (
         <ServiceCartDrawer {...serviceCartDrawerProps} />
       )}
-      {(isServicesMode || isFnbMode) && (
-        <StorefrontCartFlyAnimations animations={serviceCartFlyAnimations} isFnbMode={isFnbMode} />
+      {(isServicesMode || isFnbMode || isRetailMode || isSimpleMode) && (
+        <StorefrontCartFlyAnimations animations={serviceCartFlyAnimations} {...cartFlyAnimationProps} />
       )}
       {!isAccountDrawerOpen && isSimpleCartSurfaceMode && (
         <>

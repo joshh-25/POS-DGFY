@@ -9,6 +9,7 @@ import { ShoppingCart } from 'lucide-react';
  */
 export function DefaultProductCartFab({
   cartCount = 0,
+  fabRef,
   isOpen = false,
   isMobileViewport = false,
   onToggle
@@ -16,6 +17,7 @@ export function DefaultProductCartFab({
   return (
     <button
       type="button"
+      ref={fabRef}
       onClick={onToggle}
       aria-label={isOpen ? 'Close product cart' : 'Open product cart'}
       style={{
