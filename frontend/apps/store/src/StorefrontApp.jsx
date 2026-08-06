@@ -1363,49 +1363,19 @@ export default function StorefrontApp() {
       openStorefrontActionLink(sanitizeExternalLink(storeContext.storefront_url || storeContext.external_storefront_url));
       return;
     }
-    const contextWorkflowMode = String(storeContext?.workflow_mode || storeContext?.business_mode || '').trim().toLowerCase();
-    const hasStoreContext = storeContext && typeof storeContext === 'object';
-    const shouldUseCanonicalStorefront = hasStoreContext && (contextWorkflowMode === 'fnb' || !canUseCheckout(storeContext));
-    if (shouldUseCanonicalStorefront) {
-      goStore(normalized, locationId);
-      if (!canUseCheckout(storeContext)) {
-        const message = getStorefrontAccessBlockMessage(storeContext);
-        if (message) toast.error(message);
-      }
-      window.requestAnimationFrame(() => {
-        document.getElementById('storefront-catalog-section')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
-      });
-      return;
+    // Always land discovery's "Order Now" on the storefront's catalog section —
+    // never jump straight into checkout, which would otherwise present an empty
+    // cart to a visitor who hasn't picked anything yet. F&B previously was the
+    // only mode routed here; every mode now behaves the same way regardless of
+    // whether the store supports checkout.
+    goStore(normalized, locationId);
+    if (!canUseCheckout(storeContext)) {
+      const message = getStorefrontAccessBlockMessage(storeContext);
+      if (message) toast.error(message);
     }
-    const persistedTrackedOrders = readTrackedOrdersForStore(normalized).filter((entry) => !TERMINAL_TRACKING_STATUSES.has(String(entry.status || '').trim().toLowerCase()));
-    const persistedTrackingPin = readLastTrackingPinForStore(normalized);
-    const resolvedInitialTab = 'checkout';
-    setPreferredStoreLocationSelection(locationId == null ? null : {
-      slug: normalized,
-      locationId: Number(locationId)
+    window.requestAnimationFrame(() => {
+      document.getElementById('storefront-catalog-section')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
     });
-    const targetSubpage = STORE_ORDER_SUBPAGE;
-    const target = buildOrderTarget(normalized);
-    if (!isCurrentStorefrontTarget(target)) {
-      window.history.pushState(buildStorefrontHistoryState({
-        storeSlug: normalized,
-        storeSubpage: targetSubpage
-      }), '', target);
-    }
-    setRouteSlug(normalized);
-    setRouteSubpage(targetSubpage);
-    setRouteServiceItemId(null);
-    setRouteItemId(null);
-    setPendingOrderInitialTab(resolvedInitialTab);
-    const preferredPin = String(persistedTrackedOrders[0]?.tracking_pin || persistedTrackingPin || '').trim().toUpperCase();
-    if (!trackingPinInput && preferredPin) {
-      setTrackingPinInput(preferredPin);
-    }
-    if (!selectedTrackingPin && preferredPin) setSelectedTrackingPin(preferredPin);
-    setFnbOrderStep(checkoutResult ? 4 : 3);
-    setSimpleOrderStep(checkoutResult ? 4 : 1);
-    setCheckoutTab(resolvedInitialTab);
-    setIsCheckoutOpen(false);
   };
   const goStoreOrderPage = ({ initialTab } = {}) => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
@@ -2689,13 +2659,17 @@ export default function StorefrontApp() {
     cart,
     cartCount,
     cartImageErrors,
+    cartSubtotal,
     cartTotal,
+    goStoreCatalogPage,
     goStoreOrderPage,
     isCheckoutOpen,
     isMobileViewport,
     money,
     removeCartItem,
-    servicesDisplayFont,
+    renderPromoCodePanel,
+    serviceCartFabRef,
+    servicesBodyFont,
     servicesPrimary,
     servicesPrimaryDark,
     servicesPrimaryShadowStrong,
@@ -2709,12 +2683,17 @@ export default function StorefrontApp() {
     cart,
     cartCount,
     cartImageErrors,
+    cartSubtotal,
     cartTotal,
+    goStoreCatalogPage,
     goStoreOrderPage,
     isCheckoutOpen,
     isMobileViewport,
     money,
     removeCartItem,
+    renderPromoCodePanel,
+    serviceCartFabRef,
+    servicesBodyFont,
     setCartImageErrors,
     setIsCheckoutOpen,
     updateQty,
