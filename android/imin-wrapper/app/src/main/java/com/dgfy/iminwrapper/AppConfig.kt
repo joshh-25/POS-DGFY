@@ -62,12 +62,10 @@ object AppConfig {
     }
 
     // Origin the WebView actually loads: the caller-supplied override when
-    // it's a valid absolute http(s) URL, otherwise today's emulator
-    // heuristic (see useLivePosOrigin/activeLocalHost). Exists because
-    // isProbablyEmulator() forces every emulator onto the local Vite dev
-    // server, which made it impossible to point a tablet AVD (no physical
-    // Android tablet available) at the real dev/staging origin without a
-    // rebuild. See WebPosOriginStore for where the override is persisted.
+    // it's a valid absolute http(s) URL, otherwise the live origin
+    // (useLivePosOrigin() is always true now -- see its doc comment). The
+    // local Vite dev server is opt-in only, via WebPosOriginStore's
+    // "Local dev" choice in WebPosActivity's origin switcher.
     private fun resolveOrigin(override: String?, localPort: Int): String {
         return parseOverrideOrigin(override) ?: defaultOrigin(localPort)
     }
@@ -146,8 +144,15 @@ object AppConfig {
         return if (isProbablyEmulator()) EMULATOR_HOST else LOCAL_LAN_HOST
     }
 
+    // Always live -- emulators used to default to the local Vite dev server
+    // (`!isProbablyEmulator()`), which meant every emulator run needed a
+    // manual long-press on the loading logo (see WebPosActivity's origin
+    // switcher) just to reach pos.dev.dgfy.ph. The switcher still lets
+    // anyone opt back into the local dev server or a custom origin when
+    // they actually want it (WebPosOriginStore); this only changes what
+    // happens with no override set, for every build (emulator or device).
     private fun useLivePosOrigin(): Boolean {
-        return !isProbablyEmulator()
+        return true
     }
 
     private fun isProbablyEmulator(): Boolean {
