@@ -108,7 +108,7 @@ export function useCartMutations({
   };
 
   const animateCartCardToFab = (sourceRect) => {
-    if (!(isServicesMode || isFnbMode) || !sourceRect || !serviceCartFabRef.current || typeof window === 'undefined') return;
+    if (!(isServicesMode || isFnbMode || isRetailMode || isSimpleMode) || !sourceRect || !serviceCartFabRef.current || typeof window === 'undefined') return;
     const targetRect = serviceCartFabRef.current.getBoundingClientRect();
     const animationId = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
     const size = Math.max(40, Math.min(84, Math.round(Math.min(sourceRect.width, sourceRect.height))));

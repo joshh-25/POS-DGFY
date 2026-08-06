@@ -3939,7 +3939,11 @@ export default function TerminalPage() {
         cart: Array.isArray(incomingOrderDetail.lines) ? incomingOrderDetail.lines : [],
         terminalId: String(activeTerminalId || ''),
         orderMethod: incomingOrderDetail.order_method || '',
-        fnbContext: null
+        fnbContext: null,
+        orderNotes: incomingOrderDetail.order_notes
+          || incomingOrderDetail.notes
+          || incomingOrderDetail.special_instructions
+          || ''
       });
       if (result?.handled !== true && typeof window !== 'undefined' && typeof window.print === 'function') {
         window.print();

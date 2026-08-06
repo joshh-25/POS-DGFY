@@ -55,6 +55,9 @@ on:
       migration_runner:
         description: '"true" when this range touches anything the dgfy-migration-runner image is built from'
         value: ${{ jobs.detect.outputs.migration_runner }}
+      android:
+        description: '"true" when this range touches anything the Android wrapper build is built from'
+        value: ${{ jobs.detect.outputs.android }}
 
 jobs:
   detect:
@@ -64,6 +67,7 @@ jobs:
       frontend: ${{ steps.filter.outputs.frontend }}
       dgfy_api: ${{ steps.filter.outputs.dgfy_api }}
       migration_runner: ${{ steps.filter.outputs.migration_runner }}
+      android: ${{ steps.filter.outputs.android }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -101,6 +105,7 @@ jobs:
             FRONTEND=true
             DGFY_API=true
             MIGRATION_RUNNER=true
+            ANDROID=true
           else
             FILES="$(git diff --name-only "${BASE_SHA}" HEAD)"
 
@@ -116,15 +121,18 @@ jobs:
             FRONTEND=false
             DGFY_API=false
             MIGRATION_RUNNER=false
+            ANDROID=false
             matches '^(apps/dgfy-web/|packages/pos-receipt/|packages/shared-constants/|infrastructure/docker/frontend/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|build-develop|build-staging|build-main)\.yml)' && FRONTEND=true || true
             matches '^(apps/dgfy-api/|packages/shared-constants/|infrastructure/docker/dgfy-api/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|build-develop|build-staging|build-main)\.yml)' && DGFY_API=true || true
             matches '^(apps/dgfy-migration-runner/|infrastructure/docker/dgfy-migration-runner/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-migration-runner|deployment-orchestrator|pr-migration-runner-build-checks|build-develop|build-staging|build-main)\.yml)' && MIGRATION_RUNNER=true || true
+            matches '^(apps/dgfy-android-bridge/|scripts/build-android-release\.sh|\.github/workflows/(shared-changed-paths|pr-android-build-checks|build-android-manual)\.yml)' && ANDROID=true || true
           fi
 
           {
             echo "frontend=${FRONTEND}"
             echo "dgfy_api=${DGFY_API}"
             echo "migration_runner=${MIGRATION_RUNNER}"
+            echo "android=${ANDROID}"
           } >> "$GITHUB_OUTPUT"
 
           {
@@ -139,6 +147,7 @@ jobs:
             echo "| Frontend | ${FRONTEND} |"
             echo "| DGFY API | ${DGFY_API} |"
             echo "| Migration Runner | ${MIGRATION_RUNNER} |"
+            echo "| Android | ${ANDROID} |"
             echo ""
             echo "<details><summary>Changed files</summary>"
             echo ""

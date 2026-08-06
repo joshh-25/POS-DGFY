@@ -3119,7 +3119,8 @@ export default function POSCheckoutTerminal({
             cart: safeCart,
             terminalId: normalizedTerminalId,
             orderMethod,
-            fnbContext: normalizedFnbContext
+            fnbContext: normalizedFnbContext,
+            orderNotes: kitchenNotes
         });
 
         if (outcome.success) {
@@ -3129,7 +3130,7 @@ export default function POSCheckoutTerminal({
         } else {
             toast.error(outcome.message || 'Failed to print order ticket.');
         }
-    }, [safeCart, normalizedFnbContext, normalizedTerminalId, orderMethod, posHardware]);
+    }, [kitchenNotes, safeCart, normalizedFnbContext, normalizedTerminalId, orderMethod, posHardware]);
 
     const printHistoryReceipt = useCallback(async (posTransactionId) => {
         const transactionId = Number(posTransactionId);
@@ -4159,6 +4160,22 @@ export default function POSCheckoutTerminal({
                     </div>
                 )}
 
+                {!posHardware.loading && !isPrinterAvailable && (
+                    <div className="shrink-0 border-t border-slate-200 pt-2">
+                        <div className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-[12px] font-semibold text-slate-600">
+                            <span>No printer detected on this device.</span>
+                            <button
+                                type="button"
+                                onClick={() => posHardware.refresh()}
+                                disabled={posHardware.loading}
+                                className="shrink-0 whitespace-nowrap rounded-md border border-slate-300 bg-white px-2 py-1 text-[11px] font-extrabold text-[#1A4E8D] hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                                Recheck printer
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 <div data-testid="pos-current-sale-actions" className="dgfy-pos-current-sale-actions grid shrink-0 grid-cols-2 sm:grid-cols-3 gap-2 border-t border-slate-200 pt-2">
                     <Button
                         type="button"
@@ -4175,7 +4192,8 @@ export default function POSCheckoutTerminal({
                         type="button"
                         variant="outline"
                         onClick={handlePrintOrder}
-                        disabled={posActionsBlocked || safeCart.length === 0}
+                        disabled={posActionsBlocked || safeCart.length === 0 || !isPrinterAvailable}
+                        title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
                         className="flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-center text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         <Printer size={14} className="mb-0.5 shrink-0" />
@@ -4195,9 +4213,9 @@ export default function POSCheckoutTerminal({
                         type="button"
                         variant="outline"
                         onClick={() => handlePrintReceipt(lastReceipt, 'last_receipt_panel')}
-                        disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync}
+                        disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync || !isPrinterAvailable}
                         title={isPrinterAvailable ? undefined : 'No printer is configured for this terminal. The receipt stays available for on-screen preview.'}
-                        className="flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border p-1.5 text-center"
+                        className="flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border p-1.5 text-center disabled:cursor-not-allowed disabled:opacity-60"
                     >
                         <Printer size={14} className="mb-0.5 shrink-0" />
                         <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">{receiptPrinting ? 'Printing...' : 'Print Last Receipt'}</span>
@@ -4891,7 +4909,8 @@ export default function POSCheckoutTerminal({
                             type="button"
                             variant="outline"
                             onClick={handlePrintOrder}
-                            disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0}
+                            disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isPrinterAvailable}
+                            title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
                             className="h-10 rounded-lg border border-[#1A4E8D] bg-white px-2 text-[12px] font-extrabold text-[#1A4E8D] hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
                         >
                             <Printer className="mr-1.5 h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -4985,9 +5004,7 @@ export default function POSCheckoutTerminal({
                             </div>
                         )}
                     </div>
-                    <DialogFooter className={`flex flex-wrap items-center border-t border-slate-200 bg-white px-5 py-3 print:hidden ${
-                        receiptPreviewSource === 'order_preview' ? 'justify-end' : 'justify-between gap-3'
-                    }`}>
+                    <DialogFooter className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-200 bg-white px-5 py-3 print:hidden">
                         {receiptPreviewSource !== 'order_preview' && (
                             <label className="flex items-center gap-2 text-xs font-extrabold text-slate-700">
                                 Paper
@@ -5002,12 +5019,25 @@ export default function POSCheckoutTerminal({
                                 </select>
                             </label>
                         )}
-                        <div className="flex items-center gap-2">
+                        <div className="ml-auto flex items-center gap-2">
+                            {lastReceipt && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={() => setReceiptPreviewSource(
+                                        receiptPreviewSource === 'order_preview' ? 'receipt_preview' : 'order_preview'
+                                    )}
+                                    className="h-9 rounded-lg border border-[#1A4E8D] bg-white px-4 text-xs font-bold text-[#1A4E8D] hover:bg-blue-50"
+                                >
+                                    {receiptPreviewSource === 'order_preview' ? 'View Receipt' : 'Back to Order'}
+                                </Button>
+                            )}
                             <Button
                                 type="button"
-                                disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync}
+                                disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync || !isPrinterAvailable}
+                                title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
                                 onClick={() => handlePrintReceipt(lastReceipt, 'history_modal')}
-                                className="h-9 rounded-lg bg-[#1A4E8D] px-4 text-xs font-bold text-white shadow-md shadow-blue-900/20 hover:bg-[#143F73]"
+                                className="h-9 rounded-lg bg-[#1A4E8D] px-4 text-xs font-bold text-white shadow-md shadow-blue-900/20 hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-60"
                             >
                                 {receiptPrinting ? 'Printing...' : 'Print'}
                             </Button>

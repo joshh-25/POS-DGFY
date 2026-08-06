@@ -490,6 +490,27 @@ body.pos-receipt-print-mode {
   }
 }
 
+/*
+ * Mirrors .pos-receipt-print-dialog/.pos-receipt-print-content above: a
+ * plain `vh` value first, then the `dvh` refinement -- a real CSS fallback,
+ * since a browser that doesn't understand `dvh` simply ignores that second
+ * declaration and keeps the `vh` one instead of dropping max-height
+ * entirely. Belt-and-braces alongside the Dialog primitive's own
+ * unit-independent clamp (Components/ui/dialog.jsx) for the one dialog this
+ * was reported unreachable on: Confirm Checkout on a tablet-sized WebView.
+ */
+.pos-checkout-confirm-dialog {
+  max-height: calc(100vh - 2rem);
+  max-height: calc(100dvh - 2rem);
+}
+
+.pos-modal-scroll-content {
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  scroll-padding-bottom: calc(5rem + env(safe-area-inset-bottom, 0px));
+}
+
 @media print {
 
   body.pos-modal-scroll-lock,

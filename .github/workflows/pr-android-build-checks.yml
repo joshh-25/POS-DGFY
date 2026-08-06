@@ -1,0 +1,42 @@
+name: PR Android Build Check
+
+on:
+  workflow_call:
+    inputs:
+      runner_labels_json:
+        description: JSON array passed to runs-on for this job
+        required: false
+        type: string
+        default: '["ubuntu-latest"]'
+
+jobs:
+  build-check:
+    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      # Build both dev and staging release variants -- proves the change
+      # actually compiles, most importantly that both flavors' own
+      # app/src/{dev,staging}/res/xml/network_security_config.xml resource
+      # sets merge cleanly (an XML comment or config typo here is a class of
+      # bug a plain XML-syntax check won't catch, since it only fails inside
+      # AAPT2's resource merge, not generic parsing -- see #254). beta/prod
+      # carry no network security config of their own and share the same
+      # app/src/main sources compiled by these two, so they don't need their
+      # own build here. This deliberately only proves the app *builds*, same
+      # scope as pr-frontend-build-checks.yml/pr-backend-build-checks.yml --
+      # it doesn't sign or upload an APK. build-android-manual.yml stays the
+      # path for an actual distributable/side-loadable build.
+      - name: Build dev + staging release APKs and run unit tests
+        working-directory: apps/dgfy-android-bridge/imin-wrapper
+        run: |
+          ./gradlew assembleDevRelease assembleStagingRelease \
+                    testDevDebugUnitTest testStagingDebugUnitTest
