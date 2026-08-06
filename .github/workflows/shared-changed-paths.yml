@@ -104,7 +104,17 @@ jobs:
           else
             FILES="$(git diff --name-only "${BASE_SHA}" HEAD)"
 
-            matches() { printf '%s\n' "${FILES}" | grep -qE "$1"; }
+            # Deliberately not `grep -qE`: -q exits the moment it finds a
+            # match, and under `set -o pipefail` (above) that can race
+            # printf's write into a broken pipe -- printf gets SIGPIPE,
+            # the pipeline's exit status becomes non-zero even though a
+            # match WAS found, and the `|| true` below silently swallows
+            # it, leaving e.g. ANDROID=false on a PR that touches only
+            # android/. Observed live in practice, not hypothetical. Without
+            # -q, grep always reads FILES to EOF before exiting, so there's
+            # no early-exit race; matches its output to /dev/null and keeps
+            # the same 0-if-matched/1-if-not exit code.
+            matches() { printf '%s\n' "${FILES}" | grep -E "$1" > /dev/null; }
 
             # .github/workflows/ only lists the workflows that actually affect
             # each image build, not the whole directory -- editing e.g. the PR
