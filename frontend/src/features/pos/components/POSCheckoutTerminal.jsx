@@ -3119,7 +3119,8 @@ export default function POSCheckoutTerminal({
             cart: safeCart,
             terminalId: normalizedTerminalId,
             orderMethod,
-            fnbContext: normalizedFnbContext
+            fnbContext: normalizedFnbContext,
+            orderNotes: kitchenNotes
         });
 
         if (outcome.success) {
@@ -3129,7 +3130,7 @@ export default function POSCheckoutTerminal({
         } else {
             toast.error(outcome.message || 'Failed to print order ticket.');
         }
-    }, [safeCart, normalizedFnbContext, normalizedTerminalId, orderMethod, posHardware]);
+    }, [kitchenNotes, safeCart, normalizedFnbContext, normalizedTerminalId, orderMethod, posHardware]);
 
     const printHistoryReceipt = useCallback(async (posTransactionId) => {
         const transactionId = Number(posTransactionId);

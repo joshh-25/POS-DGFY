@@ -139,8 +139,10 @@ Hygiene, documentation, or follow-through item that should be tracked but does n
 
 ## Current Finding Index
 
+*Re-baselined 2026-08-05 against current `develop` (see `## Re-Baseline Update (2026-08-05)` sections inside each finding file for the evidence behind each verdict below). Status tags in the finding files themselves (`[OPEN]` / `[PARTIAL]` / `[FIXED]` / `[RESOLVED]`) are authoritative; this index summarizes them.*
+
 - `1.1-Dependency_vulnerabilities_block_production.md`
-- `1.2-Default_admin_credentials_remain_available.md`
+- `1.2-Default_admin_credentials_remain_available.md` — **[OPEN], unchanged.** Default admin credentials (`skupervisor` / hash mapping to `252378`) remain reachable in production; no fail-stop guard exists for this specific gap. Critical.
 - `1.3-Browser_localStorage_tokens_expose_sessions_to_xss.md` — remediated 2026-06-02 with ADR 0026 cookie-session contract and storage guards
 - `1.4-PayMongo_webhook_signature_verification_can_fail_open.md` — remediated 2026-06-03 with fail-closed PayMongo signature verification and replay proof
 - `1.5-Legacy_company_token_invite_links_still_exposed.md` — remediated 2026-06-03 with token-only invitation links and no company-token invite URL generation
@@ -149,17 +151,17 @@ Hygiene, documentation, or follow-through item that should be tracked but does n
 - `2.2-Frontend_contract_suite_fails.md` - remediated 2026-06-03 with `npm run test:frontend` and `npm run test:frontend:contracts` passing
 - `2.3-Backend_full_test_gate_has_no_current_green_evidence.md` - remediated 2026-06-04 with `npm run test:backend:matrix` and `npm run gate:release:local` passing for target SHA `3ee0890f8a765a552546f9977c6197a2db9e5980`
 - `2.4-Frontend_budget_gate_is_not_self_contained.md` - remediated 2026-06-04 with budget-owned builds, required multi-app artifact checks, freshness enforcement, report persistence, focused tests, and a current passing aggregate local release gate for target SHA `be59a6b55f4d6367acd124729b43fa4ee579d09b`
-- `3.1-StorefrontApp_monolith_exceeds_codegen_threshold.md`
-- `3.2-High_limit_queries_risk_slow_paths.md`
+- `3.1-StorefrontApp_monolith_exceeds_codegen_threshold.md` — **[PARTIAL].** File shrank ~87% and the Babel deoptimization warning is gone; 88 lint warnings (unused vars, hook deps) remain, and the same threshold risk has migrated to `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx` (445KB).
+- `3.2-High_limit_queries_risk_slow_paths.md` — **[PARTIAL], net worse.** POS path fixed; 3 original high-limit CSV export paths unchanged; 5 new high-limit reads added via `tenantRevenueUseCases.js`. No global limit ceiling exists.
 - `3.3-Bulk_image_upload_accepts_any_mime_at_transport_layer.md`
-- `4.1-Mode_RBAC_generic_fallback_enabled_by_default.md`
-- `4.2-Architecture_allowlist_debt_due_2026_06_30.md`
-- `5.1-AI_tool_registry_has_orphan_handler.md`
-- `5.2-AI_red_team_and_cost_abuse_gate_missing_current_evidence.md`
-- `6.1-RMO_24_2023_fiscal_activation_needs_external_evidence.md`
-- `6.2-Payment_live_canary_and_settlement_governance_missing.md` — still open after local PayMongo QR Ph commerce-payment integration; PayMongo parent merchant ID and split-payment marketplace confirmation, live provider canary, child-merchant webhook, payout/fee, and settlement evidence remain required
-- `7.1-Observability_and_SLO_evidence_incomplete.md`
-- `7.2-Release_evidence_depends_on_stale_or_bypassable_QA_paths.md` - reopened after the 2026-06-22 emergency Storefront map restore deploy and still open after the June 29 Storefront tracking emergency deploy. Runtime SHA and production `.deploy-state/last_deployed_commit` match target SHA `17bb4cd1bc0abf283b224e30c02f625884e8ffae`, and live Storefront tracking API smoke passed, but the release still required owner-authorized emergency bypass for stale/unusable QA deploy-summary/runtime parity evidence. A source-current remediation now adds guarded QA promotion before the production gate and refuses production-as-QA mutation, but this finding remains open until a routine release proves exact QA deploy parity without emergency bypass.
+- `4.1-Mode_RBAC_generic_fallback_enabled_by_default.md` — **[OPEN], unchanged.** Still default-enabled in production with no fail-closed guard or usage alerting. High.
+- `4.2-Architecture_allowlist_debt_due_2026_06_30.md` — **[OPEN], now overdue.** All 6 exceptions remain past their 2026-06-30 planned removal date with no owners assigned. Recommend escalating to High.
+- `5.1-AI_tool_registry_has_orphan_handler.md` — **[OPEN], unchanged.** `get_job_order_details` orphan handler remains; likely kept alive only by a QA script. `npm run validate:ai` is currently broken in a fresh checkout (missing workspace package).
+- `5.2-AI_red_team_and_cost_abuse_gate_missing_current_evidence.md` — **[OPEN], marginal progress only.** Zero adversarial test coverage exists anywhere; the one shipped cost control (menu-import daily budget) doesn't cover the main `ai_assistant` feature.
+- `6.1-RMO_24_2023_fiscal_activation_needs_external_evidence.md` — **[OPEN], external-evidence gap.** Filing/accreditation approvals still marked pending. Its own monthly regulator-review cadence doc is itself ~4 months overdue — a compounding gap.
+- `6.2-Payment_live_canary_and_settlement_governance_missing.md` — **[PARTIAL].** Canary scenario and rollback path are now defined (`PAYMONGO_PRODUCTION_ACTIVATION.md`) and production enablement flags are gated with maker-checker; no captured canary run, payout/fee reconciliation, or chargeback handling exists yet. Flagging: the runbook's production env block and this finding's remediation item 5 currently disagree about what `COMMERCE_PAYMENTS_ENABLED`/`COMMERCE_QRPH_ENABLED` should be in production — reconcile before next payment release.
+- `7.1-Observability_and_SLO_evidence_incomplete.md` — **[PARTIAL].** Sentry + PostHog are genuinely live in production with a dated triage artifact; zero SLOs are defined anywhere, no alert routes/incident ownership exist, and the observability release gate is still report-only.
+- `7.2-Release_evidence_depends_on_stale_or_bypassable_QA_paths.md` — **[OPEN], and the underlying mechanism has changed underneath the finding.** The QA-promotion/emergency-bypass flow this file was written against no longer exists — `docs/ops/RELEASE_CANDIDATE_POLICY.md` now states the signed-controller model was "never built for this repository," local deploy is hard-disabled, and pushing to `main` deploys production with **no release-evidence gate at all** in CI (the gate scripts still exist but nothing invokes them). Net: a different and arguably larger gap than originally described. Still High.
 
 ## Remediation Order
 

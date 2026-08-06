@@ -104,9 +104,9 @@ export const iminNativeDriver = {
 
         return outcome;
     },
-    async printOrderTicket({ cart, terminalId, orderMethod, fnbContext } = {}) {
+    async printOrderTicket({ cart, terminalId, orderMethod, fnbContext, orderNotes } = {}) {
         try {
-            const result = printOrderWithIminBridge({ cart, terminalId, orderMethod, fnbContext });
+            const result = printOrderWithIminBridge({ cart, terminalId, orderMethod, fnbContext, orderNotes });
             if (!result.handled) return normalizeHardwareResult({ handled: false, driverId: this.id });
             return normalizeHardwareResult({
                 success: result.result?.success !== false,
