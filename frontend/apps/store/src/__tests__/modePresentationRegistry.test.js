@@ -37,7 +37,7 @@ describe('modePresentationRegistry', () => {
     expect(adapter.isServicesMode).toBe(false);
     expect(adapter.isFnbMode).toBe(false);
     expect(adapter.catalogHeading).toBe('What are you looking for?');
-    expect(adapter.primaryActionLabel).toBe('Add to Cart');
+    expect(adapter.primaryActionLabel).toBe('Browse Products');
     expect(adapter.pin.label).toBe('Retail');
     expect(adapter.catalogCardVariant).toBe('product_simple');
     expect(adapter.journeyVariant).toBe('order');

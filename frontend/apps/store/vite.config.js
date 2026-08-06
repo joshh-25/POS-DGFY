@@ -106,6 +106,8 @@ export default defineConfig({
     outDir: path.resolve(__dirname, '../../../dist-apps/store'),
     emptyOutDir: true,
     sourcemap: sentrySourcemapBuildValue(appSurface),
+    // Older customer handsets can be as old as the iMin POS WebView (Chrome 80-84). See DGFY-POS-B.
+    target: ['chrome80', 'edge88', 'firefox78', 'safari14'],
     // MapLibre is lazy-loaded; keep chunk warnings focused on initial app/vendor regressions.
     chunkSizeWarningLimit: 1100,
     rollupOptions: {

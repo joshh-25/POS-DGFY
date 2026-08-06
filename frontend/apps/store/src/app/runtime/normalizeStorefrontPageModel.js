@@ -246,7 +246,7 @@ const buildStorefrontMessageHref = ({ messengerLink = '', phone = '', email = ''
   return '';
 };
 
-const formatRatingLabel = (reviewSummary) => {
+export const formatRatingLabel = (reviewSummary) => {
   if (!reviewSummary || reviewSummary.score == null) return '';
   const countLabel = reviewSummary.totalCount > 0 ? ` (${reviewSummary.totalCount})` : '';
   return `${Number(reviewSummary.score).toFixed(1)}${countLabel}`;

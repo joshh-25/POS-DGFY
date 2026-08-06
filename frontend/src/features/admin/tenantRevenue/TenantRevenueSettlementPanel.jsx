@@ -60,7 +60,7 @@ const statusClass = (status) => {
 
 const StatusBadge = ({ value }) => (
     <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold capitalize ${statusClass(value)}`}>
-        {String(value || 'unknown').replaceAll('_', ' ')}
+        {String(value || 'unknown').replace(/_/g, ' ')}
     </span>
 );
 
@@ -412,7 +412,7 @@ export default function TenantRevenueSettlementPanel({ tenants = [] }) {
                         Settlement status
                         <select value={transactionFilters.settlement_status} onChange={(event) => setTransactionFilters((current) => ({ ...current, settlement_status: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm">
                             <option value="">All statuses</option>
-                            {['pending', 'eligible', 'scheduled', 'processing', 'partially_settled', 'settled', 'on_hold', 'reversed'].map((status) => <option key={status} value={status}>{status.replaceAll('_', ' ')}</option>)}
+                            {['pending', 'eligible', 'scheduled', 'processing', 'partially_settled', 'settled', 'on_hold', 'reversed'].map((status) => <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
                         </select>
                     </label>
                     <label className="text-sm font-medium text-slate-700">
@@ -695,7 +695,7 @@ export default function TenantRevenueSettlementPanel({ tenants = [] }) {
                         {exceptions.map((record) => (
                             <article key={record.reconciliation_id} className="rounded-lg border border-rose-200 bg-rose-50/40 p-4">
                                 <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                                    <div><div className="font-semibold text-slate-900">{String(record.exception_type).replaceAll('_', ' ')}</div><div className="text-xs text-slate-500">{record.tenant?.name || record.tenant_id} · detected {dateTime(record.detected_at)}</div></div>
+                                    <div><div className="font-semibold text-slate-900">{String(record.exception_type).replace(/_/g, ' ')}</div><div className="text-xs text-slate-500">{record.tenant?.name || record.tenant_id} · detected {dateTime(record.detected_at)}</div></div>
                                     <StatusBadge value={record.severity} />
                                 </div>
                                 <div className="mt-3 grid gap-3 text-xs md:grid-cols-2"><pre className="overflow-auto rounded bg-white p-2">{JSON.stringify(record.expected_value, null, 2)}</pre><pre className="overflow-auto rounded bg-white p-2">{JSON.stringify(record.actual_value, null, 2)}</pre></div>

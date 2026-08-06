@@ -53,7 +53,7 @@ const formatQuantity = (value) => {
 
 const paymentStatus = (value) => String(value || 'unpaid')
   .trim()
-  .replaceAll('_', ' ')
+  .replace(/_/g, ' ')
   .replace(/\b\w/g, (character) => character.toUpperCase());
 
 export default function OnlineOrderReceiptModal({

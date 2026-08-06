@@ -86,6 +86,8 @@ export default defineConfig({
   build: {
     outDir: path.resolve(__dirname, '../../../dist-apps/skupervisor'),
     emptyOutDir: true,
-    sourcemap: sentrySourcemapBuildValue(appSurface)
+    sourcemap: sentrySourcemapBuildValue(appSurface),
+    // Reachable from the iMin POS WebView (Chrome 80-84) via the Sales handoff. See DGFY-POS-B.
+    target: ['chrome80', 'edge88', 'firefox78', 'safari14']
   }
 });

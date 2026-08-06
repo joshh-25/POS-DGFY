@@ -204,7 +204,13 @@ export function StorefrontCatalogRouteContainer(props) {
     ? (resolvedTab ? (activeGroup?.items || []) : servicesViewModel.allServices)
     : usesSectionedCatalogPresentation
       ? (resolvedFnbSection ? (activeFnbSection?.items || []) : filteredFnbViewModel.menuItems)
-      : filteredCatalog;
+      // MSME's product card reads item.descriptionPreview (falls back to a generic
+      // "Item available in this storefront." string when absent) — that field is only
+      // populated by getFoodBeverageStorefrontViewModel's per-item enrichment, so MSME
+      // must consume the same enriched list F&B/Retail use, not the raw filteredCatalog.
+      : isSimpleMode
+        ? filteredFnbViewModel.menuItems
+        : filteredCatalog;
   const itemsToRender = usesSectionedCatalogPresentation ? fnbCatalogPresentation.sortedItems : rawItemsToRender;
   const totalFnbPages = usesSectionedCatalogPresentation ? fnbCatalogPresentation.totalPages : 1;
   const resolvedFnbPage = usesSectionedCatalogPresentation ? fnbCatalogPresentation.resolvedPage : 1;

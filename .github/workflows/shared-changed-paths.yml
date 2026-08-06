@@ -52,6 +52,9 @@ on:
       backend:
         description: '"true" when this range touches anything the backend image is built from'
         value: ${{ jobs.detect.outputs.backend }}
+      android:
+        description: '"true" when this range touches anything the Android wrapper build is built from'
+        value: ${{ jobs.detect.outputs.android }}
 
 jobs:
   detect:
@@ -60,6 +63,7 @@ jobs:
     outputs:
       frontend: ${{ steps.filter.outputs.frontend }}
       backend: ${{ steps.filter.outputs.backend }}
+      android: ${{ steps.filter.outputs.android }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -96,23 +100,37 @@ jobs:
             FILES="(unavailable: ${REASON})"
             FRONTEND=true
             BACKEND=true
+            ANDROID=true
           else
             FILES="$(git diff --name-only "${BASE_SHA}" HEAD)"
 
-            matches() { printf '%s\n' "${FILES}" | grep -qE "$1"; }
+            # Deliberately not `grep -qE`: -q exits the moment it finds a
+            # match, and under `set -o pipefail` (above) that can race
+            # printf's write into a broken pipe -- printf gets SIGPIPE,
+            # the pipeline's exit status becomes non-zero even though a
+            # match WAS found, and the `|| true` below silently swallows
+            # it, leaving e.g. ANDROID=false on a PR that touches only
+            # android/. Observed live in practice, not hypothetical. Without
+            # -q, grep always reads FILES to EOF before exiting, so there's
+            # no early-exit race; matches its output to /dev/null and keeps
+            # the same 0-if-matched/1-if-not exit code.
+            matches() { printf '%s\n' "${FILES}" | grep -E "$1" > /dev/null; }
 
             # .github/workflows/ only lists the workflows that actually affect
             # each image build, not the whole directory -- editing e.g. the PR
             # conventional-commits check shouldn't force both Docker builds.
             FRONTEND=false
             BACKEND=false
+            ANDROID=false
             matches '^(frontend/|packages/pos-receipt/|packages/shared-constants/|infrastructure/docker/frontend/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|build-develop|build-staging|build-main)\.yml)' && FRONTEND=true || true
             matches '^(backend/|packages/shared-constants/|infrastructure/docker/backend/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-backend|deployment-orchestrator|pr-backend-build-checks|build-develop|build-staging|build-main)\.yml)' && BACKEND=true || true
+            matches '^(android/|scripts/build-android-release\.sh|\.github/workflows/(shared-changed-paths|pr-android-build-checks|build-android-manual)\.yml)' && ANDROID=true || true
           fi
 
           {
             echo "frontend=${FRONTEND}"
             echo "backend=${BACKEND}"
+            echo "android=${ANDROID}"
           } >> "$GITHUB_OUTPUT"
 
           {
@@ -126,6 +144,7 @@ jobs:
             echo "|-------------|--------|"
             echo "| Frontend | ${FRONTEND} |"
             echo "| Backend | ${BACKEND} |"
+            echo "| Android | ${ANDROID} |"
             echo ""
             echo "<details><summary>Changed files</summary>"
             echo ""

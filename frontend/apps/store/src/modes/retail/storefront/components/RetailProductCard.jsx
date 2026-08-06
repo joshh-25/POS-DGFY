@@ -55,7 +55,7 @@ const RetailProductCard = ({
         data-cart-fly-origin="true"
         style={{
           background: '#fff',
-          borderRadius: 20,
+          borderRadius: 10,
           padding: 10,
           boxShadow: '0 4px 16px rgba(15,23,42,0.04)',
           border: '1px solid #f1f5f9',
@@ -140,7 +140,7 @@ const RetailProductCard = ({
               style={{
                 width: '100%',
                 height: 38,
-                borderRadius: 12,
+                borderRadius: 10,
                 border: 'none',
                 background: available ? accent : '#e2e8f0',
                 color: buttonTextOnAccent,
@@ -177,7 +177,7 @@ const RetailProductCard = ({
       data-cart-fly-origin="true"
       style={{
         background: cardSurface,
-        borderRadius: isMobileViewport ? 20 : 28,
+        borderRadius: 10,
         padding: 0,
         boxShadow: isHovered ? '0 22px 44px rgba(73, 38, 20, 0.14)' : '0 14px 32px rgba(73, 38, 20, 0.09)',
         border: `1px solid ${cardBorder}`,
@@ -306,7 +306,7 @@ const RetailProductCard = ({
               width: '100%',
               minHeight: actionHeight,
               height: actionHeight,
-              borderRadius: isMobileViewport ? 12 : 18,
+              borderRadius: 10,
               border: 'none',
               background: available ? accent : '#e5e7eb',
               color: buttonTextOnAccent,
