@@ -33,6 +33,14 @@ env:
 # merge -- and has been removed outright; that coverage now lives in local
 # pre-commit hooks (see .husky/pre-commit) instead of CI.
 #
+# EXCEPT the compliance impact guardrail, restored 2026-08-07 as a blocking
+# step inside `changes` (enforce_compliance_declarations: true). Pre-commit
+# hooks are bypassable with `git commit --no-verify`, and PRs #284 and #288
+# both did exactly that and merged with a mandatory POS impact declaration
+# missing. It costs no extra billable job -- `npm run check:compliance` is
+# dependency-free plain node folded into a job that already runs -- so the
+# billing argument that removed the rest of code-quality does not apply.
+#
 # android-build-check is the exception to "fold it in": it's a real Gradle
 # build (see #254, a merged PR that broke every dev/staging Android build
 # because nothing compiled android/ on PR), not a few seconds of git/bash,
@@ -44,6 +52,7 @@ jobs:
     with:
       runner_labels_json: *runner_light
       validate_pr_metadata: true
+      enforce_compliance_declarations: true
 
   backend-build-check:
     needs: changes
