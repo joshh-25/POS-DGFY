@@ -5609,6 +5609,31 @@ export const buildGetCurrentTerminalShiftUseCase = ({
                         terminalId: requestedTerminalId,
                         locationId: authorizedLocationId
                     });
+                    if (occupiedShift) {
+                        // This is the server-side counterpart to the client's
+                        // blocked-open decision (terminalShiftEntryDecision.js):
+                        // the frontend already tells the cashier "already in use
+                        // by another cashier", but that message is invisible to
+                        // anyone who isn't looking at that one screen, and a
+                        // shift that's been sitting open for weeks (a stale-shift
+                        // bug, not a real concurrent cashier) previously required
+                        // a manual DB query to spot. One line here makes both
+                        // visible in `docker compose logs backend` with no client
+                        // instrumentation involved at all.
+                        const occupiedSince = occupiedShift?.opened_at ? new Date(occupiedShift.opened_at) : null;
+                        const occupiedAgeHours = occupiedSince
+                            ? Math.round((Date.now() - occupiedSince.getTime()) / 3_600_000)
+                            : null;
+                        logger.info('[POS][TerminalOccupancy] Open Shift blocked: terminal already has an open shift', {
+                            terminal_id: requestedTerminalId,
+                            location_id: authorizedLocationId,
+                            requesting_user_id: normalizedUserId,
+                            occupying_shift_id: occupiedShift?.pos_terminal_shift_id ?? null,
+                            occupying_user_id: occupiedShift?.active_operator_user_id ?? occupiedShift?.cashier_id ?? null,
+                            occupied_since: occupiedSince ? occupiedSince.toISOString() : null,
+                            occupied_age_hours: occupiedAgeHours
+                        });
+                    }
                     terminalOccupancy = occupiedShift
                         ? {
                             status: 'occupied_by_other',
