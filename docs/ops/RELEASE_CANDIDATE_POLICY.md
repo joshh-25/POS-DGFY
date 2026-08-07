@@ -77,9 +77,6 @@ Everything in `pr-checks.yml`, same as any other PR:
 - `changes` — resolves which image builds the diff needs, and folds in three
   advisory checks (`continue-on-error: true`, visible but never blocking): PR
   title format, PR body sections, and the POS receipt version bump.
-- `changes` also runs the **compliance impact guardrail**
-  (`npm run check:compliance`), and that step **does block**. It is the one
-  non-advisory folded-in step.
 - `backend-build-check` / `frontend-build-check` — the actual Docker images
   build cleanly, gated by `shared-changed-paths.yml` so an unrelated change
   doesn't force both.
@@ -88,11 +85,21 @@ There is **no** `code-quality` job and no `conventional-commits` job. Both were
 removed; earlier revisions of this document listed them, which is how PRs #284
 and #288 came to state in good faith that "CI's compliance gate will still
 block merge" while nothing was in fact running. Architecture guardrails,
-controller boundaries, tenant schema coverage and lint now run only in
-`.husky/pre-commit`, which `git commit --no-verify` skips — treat them as
-developer conveniences, not gates. The compliance guardrail was restored to CI
-on 2026-08-07 precisely because a bypassable local hook was the only thing
-standing behind a mandatory declaration.
+controller boundaries, tenant schema coverage, lint, and the **compliance
+impact guardrail** now run only in `.husky/pre-commit`, which
+`git commit --no-verify` skips — treat all of these as developer conveniences,
+not gates.
+
+`shared-changed-paths.yml`'s `changes` job has a blocking `check:compliance`
+step wired up behind an `enforce_compliance_declarations` input, added
+2026-08-07. It is currently passed as `false` from `pr-checks.yml` — flipped
+off the same day it was turned on, because it immediately blocked an in-flight
+release over two already-merged PRs with no fast path to clear it (the
+declaration front matter needs a real `POST /api/v1/compliance/preflight`
+result, which needs a live authenticated backend session). Re-enabling it is
+still the right fix for the gap that let #284/#288 through, but needs a
+faster way to satisfy the check to land alongside it, not just a flag flip.
+See `docs/compliance/request-time-preflight-protocol.md`.
 
 There is no inventory/regression-risk/QA-evidence gate on `main` today. The
 scripts for one exist (`check:batch-inventory`, `check:regression-risk`,

@@ -77,12 +77,19 @@ Reference URLs:
    - Enforces computed minimum classification floor from changed paths/surfaces.
    - Enforces strict preflight evidence semantics for `major|regulatory` declarations.
 2. `.husky/pre-commit` enforces declaration checks on staged sensitive files.
-   This is **bypassable** with `git commit --no-verify` and must never be
-   treated as the gate on its own.
-3. CI enforces the same check as a blocking step in `pr-checks.yml`'s `changes`
-   job (`enforce_compliance_declarations: true` in
-   `.github/workflows/shared-changed-paths.yml`). It runs on every PR into
-   `develop`, `staging`, and `main`.
+   This is **bypassable** with `git commit --no-verify` and, as of 2026-08-07,
+   is the *only* thing enforcing this — treat it as a developer convenience,
+   not a gate.
+3. CI does **not** currently enforce this. `pr-checks.yml`'s `changes` job has
+   a blocking `check:compliance` step wired up behind
+   `enforce_compliance_declarations` in
+   `.github/workflows/shared-changed-paths.yml`, but `pr-checks.yml` passes it
+   as `false`. It was briefly `true` the same day it was added, and was
+   immediately used to block an in-flight release over two already-merged PRs
+   with no fast way to clear it — see `docs/ops/RELEASE_CANDIDATE_POLICY.md`
+   for the full history. Re-enabling it needs a faster path to a real
+   `no_breach` result than "someone with backend access manually runs curl,"
+   or the same situation recurs the next time it's flipped on.
 
 ### What the guardrail does and does not verify
 
