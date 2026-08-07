@@ -3528,6 +3528,37 @@ export const posRepository = {
         return toPlain(created);
     },
 
+    async getReceiptPrintStatuses(posTransactionIds = []) {
+        const AuditLog = dbStore.get('AuditLog');
+        const normalizedIds = Array.from(new Set((Array.isArray(posTransactionIds) ? posTransactionIds : [])
+            .map(toPositiveInt)
+            .filter(Boolean)));
+        if (!AuditLog || normalizedIds.length === 0) return {};
+
+        const rows = await AuditLog.findAll({
+            where: {
+                entity_type: 'pos_device_receipt',
+                entity_id: { [Op.in]: normalizedIds }
+            },
+            attributes: ['entity_id', 'changes', 'timestamp', 'log_id'],
+            order: [['timestamp', 'DESC'], ['log_id', 'DESC']]
+        });
+        const statuses = {};
+        rows.forEach((row) => {
+            const id = toPositiveInt(row.entity_id);
+            if (!id || statuses[id]) return;
+            const changes = parseJsonLoosely(row.changes) || {};
+            const bridgeResult = changes.bridge_result || changes.client_result || {};
+            statuses[id] = {
+                status: bridgeResult?.success === false || bridgeResult?.ok === false ? 'failed' : 'printed',
+                printed_at: row.timestamp || null,
+                reason_code: bridgeResult?.reason_code || null,
+                message: bridgeResult?.message || null
+            };
+        });
+        return statuses;
+    },
+
     async listCashDrawerEventsByShiftId(shiftId, options = {}) {
         const PosCashDrawerEvent = dbStore.get('PosCashDrawerEvent');
         return PosCashDrawerEvent.findAll({
@@ -3600,6 +3631,18 @@ export const posRepository = {
     async updateOrderById(orderId, payload = {}, options = {}) {
         const PosTransaction = dbStore.get('PosTransaction');
         const row = await PosTransaction.findByPk(orderId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+        await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    async updateDeliveryJobByOrderId(orderId, payload = {}, options = {}) {
+        const DeliveryJob = dbStore.get('DeliveryJob');
+        const row = await DeliveryJob.findOne({
+            where: { pos_transaction_id: orderId },
             transaction: options.transaction,
             lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         });

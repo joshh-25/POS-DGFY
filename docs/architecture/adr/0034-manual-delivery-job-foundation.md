@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-10
@@ -28,3 +28,15 @@ The initial provider is `manual` and the initial state is `pending_dispatch`. Th
 - `npm --prefix backend run check:architecture-guardrails`
 - Apply the landlord migration and run `npm --prefix backend run repair:tenant-schema` before enabling delivery checkout in an environment.
 - Confirm `npm --prefix backend run doctor:runtime` is healthy and `npm --prefix backend run check:tenant-schema` completes without failed tenants.
+
+## Amendments
+
+### 2026-08-07 — POS manual delivery lifecycle control
+
+POS may advance a tenant-local `manual` delivery job through the guarded
+transitions `pending_dispatch -> assigned -> picked_up -> delivered` while the
+associated online order is `out_for_delivery`. Each mutation requires the
+authenticated cashier's open shift at the order location, uses idempotent replay
+protection, and records an audit event. POS cannot mutate provider-owned jobs or
+write `failed`/`cancelled` states; courier integrations and provider lifecycle
+events remain separate follow-up work.

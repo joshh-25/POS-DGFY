@@ -107,3 +107,51 @@ export const buildReceiptLines = (receipt = {}, { width = 48 } = {}) => {
 
   return output;
 };
+
+export const buildShiftSummaryLines = (payload = {}, { width = 48 } = {}) => {
+  const normalizedWidth = clampWidth(width);
+  const business = payload?.business || {};
+  const shift = payload?.shift || {};
+  const cash = payload?.cash_summary || {};
+  const sales = payload?.sales_summary || {};
+  const divider = '-'.repeat(normalizedWidth);
+  const lines = [
+    business.name || 'DGFY',
+    'CASHIER SHIFT SALES SUMMARY',
+    shift.business_date ? `Business date: ${shift.business_date}` : '',
+    shift.terminal_id ? `Terminal: ${shift.terminal_id}` : '',
+    shift.pos_terminal_shift_id ? `Shift: ${shift.pos_terminal_shift_id}` : '',
+    divider,
+    buildKeyValueLine('Transactions', String(sales.transaction_count || 0), normalizedWidth),
+    buildKeyValueLine('Subtotal', money(sales.subtotal_amount), normalizedWidth),
+    buildKeyValueLine('Discounts', money(sales.discount_amount), normalizedWidth),
+    buildKeyValueLine('VAT', money(sales.vat_amount), normalizedWidth),
+    buildKeyValueLine('Total sales', money(sales.total_amount), normalizedWidth),
+    divider,
+    'PAYMENT BREAKDOWN'
+  ].filter(Boolean);
+
+  (Array.isArray(sales.payment_breakdown) ? sales.payment_breakdown : []).forEach((entry) => {
+    lines.push(buildKeyValueLine(
+      `${entry.payment_type || 'Other'} (${entry.count || 0})`,
+      money(entry.amount),
+      normalizedWidth
+    ));
+  });
+
+  lines.push(
+    divider,
+    'CASH RECONCILIATION',
+    buildKeyValueLine('Opening float', money(cash.opening_float_amount), normalizedWidth),
+    buildKeyValueLine('Cash sales', money(cash.cash_sales_amount), normalizedWidth),
+    buildKeyValueLine('Cash in', money(cash.cash_in_total), normalizedWidth),
+    buildKeyValueLine('Cash out', money(cash.cash_out_total), normalizedWidth),
+    buildKeyValueLine('Expected cash', money(cash.expected_cash_amount), normalizedWidth),
+    buildKeyValueLine('Closing cash', money(cash.closing_cash_amount), normalizedWidth),
+    buildKeyValueLine('Variance', money(cash.cash_variance_amount), normalizedWidth),
+    divider,
+    'Keep this report with the cashier close evidence.'
+  );
+
+  return lines;
+};

@@ -15,7 +15,11 @@ const requiredAuthMockExports = [
     'invalidateUserAuthCache',
     'checkAnyPermission',
     'checkStorefrontBrandingEditPermission',
-    'requireTenantCapability'
+    'requireTenantCapability',
+    'authorizeAdminFinancialRoles',
+    'requireTenantAdmin',
+    'requireAdminPermission',
+    'requirePlatformMaster'
 ];
 
 const buildAuthModuleMock = () => {
@@ -31,7 +35,11 @@ const buildAuthModuleMock = () => {
         authenticateAdmin: (req, res, next) => next(),
         invalidateUserAuthCache: mockInvalidateUserAuthCache,
         checkStorefrontBrandingEditPermission: (req, res, next) => next(),
-        requireTenantCapability: () => (req, res, next) => next()
+        requireTenantCapability: () => (req, res, next) => next(),
+        authorizeAdminFinancialRoles: () => (req, res, next) => next(),
+        requireTenantAdmin: (req, res, next) => next(),
+        requireAdminPermission: () => (req, res, next) => next(),
+        requirePlatformMaster: (req, res, next) => next()
     };
 
     for (const exportName of requiredAuthMockExports) {

@@ -1,4 +1,4 @@
-import { fetchPosDeviceStatus, printPosReceipt, openPosDeviceDrawer } from '../../services/posService.js';
+import { fetchPosDeviceStatus, printPosReceipt, printPosShiftSummary, openPosDeviceDrawer } from '../../services/posService.js';
 import { normalizeHardwareResult } from '../posHardwareContract.js';
 
 const extractErrorMessage = (error, fallback) => (
@@ -48,6 +48,30 @@ export const lanBridgeDriver = {
                 success: false,
                 driverId: this.id,
                 message: extractErrorMessage(error, 'Failed to send receipt to printer.'),
+                reasonCode: 'LAN_BRIDGE_PRINT_FAILED'
+            });
+        }
+    },
+    async printShiftSummary({ shiftId, terminalId, reason, idempotencyKey, copies, paperWidth } = {}) {
+        try {
+            const result = await printPosShiftSummary(shiftId, {
+                idempotency_key: idempotencyKey,
+                terminal_id: terminalId || undefined,
+                reason,
+                copies,
+                paper_width: paperWidth
+            });
+            return normalizeHardwareResult({
+                success: true,
+                driverId: this.id,
+                message: 'Shift sales summary print request sent.',
+                raw: result
+            });
+        } catch (error) {
+            return normalizeHardwareResult({
+                success: false,
+                driverId: this.id,
+                message: extractErrorMessage(error, 'Failed to send shift sales summary to printer.'),
                 reasonCode: 'LAN_BRIDGE_PRINT_FAILED'
             });
         }

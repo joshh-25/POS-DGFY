@@ -33,7 +33,8 @@ const REQUIRED_METHODS = [
     'closeTerminalShift',
     'listIncomingOnlineOrders',
     'getOrderByIdForLifecycle',
-    'updateOrderById'
+    'updateOrderById',
+    'updateDeliveryJobByOrderId'
 ];
 
 export const assertPosRepositoryContract = (repository) => {

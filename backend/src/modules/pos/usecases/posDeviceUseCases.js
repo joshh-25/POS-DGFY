@@ -7,7 +7,8 @@ import { mapPosUseCaseError } from './posUseCaseError.js';
 
 const POS_DEVICE_OPERATION_KEYS = Object.freeze({
     RECEIPT_PRINT: 'terminal.device_receipt_print',
-    DRAWER_OPEN: 'terminal.device_drawer_open'
+    DRAWER_OPEN: 'terminal.device_drawer_open',
+    SHIFT_SUMMARY_PRINT: 'terminal.device_shift_summary_print'
 });
 
 const toSerializable = (value) => (
@@ -23,6 +24,17 @@ const parsePositiveInt = (value) => {
 };
 
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
+
+const resolveShiftSalesWindow = (shift = {}) => {
+    const startAt = new Date(shift?.opened_at || '');
+    if (!Number.isFinite(startAt.getTime())) return {};
+
+    const requestedEndAt = shift?.closed_at ? new Date(shift.closed_at) : new Date();
+    const endAt = Number.isFinite(requestedEndAt.getTime()) && requestedEndAt > startAt
+        ? requestedEndAt
+        : new Date();
+    return { startAt, endAt };
+};
 
 const normalizeOptionalIdempotencyKey = (value) => {
     const normalized = String(value || '').trim();
@@ -209,6 +221,71 @@ const buildReceiptPayload = ({ transaction, settings }) => {
     };
 };
 
+const summarizeShiftCashEvents = (events = []) => {
+    const effectByType = {
+        cash_in: 1,
+        cash_out: -1,
+        opening_adjustment: 1,
+        closing_adjustment: -1
+    };
+    return (Array.isArray(events) ? events : []).reduce((summary, event) => {
+        const eventType = String(event?.event_type || '').trim();
+        const amount = round4(event?.amount);
+        if (!Object.prototype.hasOwnProperty.call(effectByType, eventType)) return summary;
+        const key = `${eventType}_total`;
+        summary[key] = round4((summary[key] || 0) + amount);
+        summary.net_events_total = round4(summary.net_events_total + (amount * effectByType[eventType]));
+        return summary;
+    }, {
+        cash_in_total: 0,
+        cash_out_total: 0,
+        opening_adjustment_total: 0,
+        closing_adjustment_total: 0,
+        net_events_total: 0
+    });
+};
+
+const buildShiftSummaryPayload = async ({ posRepository, shift, settings, transaction }) => {
+    const cashEvents = Array.isArray(shift?.cashEvents) ? shift.cashEvents : [];
+    const eventSummary = summarizeShiftCashEvents(cashEvents);
+    const openingFloatAmount = round4(shift?.opening_float_amount);
+    const cashSalesAmount = typeof posRepository?.getShiftCashSalesTotal === 'function'
+        ? round4(await posRepository.getShiftCashSalesTotal(shift.pos_terminal_shift_id, { transaction }))
+        : 0;
+    const expectedCashAmount = shift?.expected_cash_amount == null
+        ? round4(openingFloatAmount + eventSummary.net_events_total + cashSalesAmount)
+        : round4(shift.expected_cash_amount);
+    const salesSummary = typeof posRepository?.getZReadingSummary === 'function'
+        ? await posRepository.getZReadingSummary({
+            shiftId: shift.pos_terminal_shift_id,
+            ...resolveShiftSalesWindow(shift)
+        }, { transaction })
+        : null;
+
+    return {
+        business: buildBusinessSettings(settings),
+        shift: {
+            pos_terminal_shift_id: shift.pos_terminal_shift_id,
+            business_date: shift.business_date,
+            terminal_id: shift.terminal_id,
+            location_id: shift.location_id || null,
+            cashier_id: shift.cashier_id || null,
+            status: shift.status,
+            opened_at: shift.opened_at || null,
+            closed_at: shift.closed_at || null
+        },
+        cash_summary: {
+            opening_float_amount: openingFloatAmount,
+            closing_cash_amount: shift?.closing_cash_amount == null ? null : round4(shift.closing_cash_amount),
+            expected_cash_amount: expectedCashAmount,
+            cash_variance_amount: shift?.cash_variance_amount == null ? null : round4(shift.cash_variance_amount),
+            cash_sales_amount: cashSalesAmount,
+            ...eventSummary
+        },
+        sales_summary: salesSummary
+    };
+};
+
 export const buildGetPosDeviceStatusUseCase = ({ posRepository, deviceDriver }) => {
     return async ({ user, auditContext = {} }) => {
         const userId = parsePositiveInt(user?.user_id);
@@ -384,6 +461,30 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceDriver }) => 
                 replay_outcome: 'processed'
             });
         } catch (error) {
+            try {
+                await posRepository.createAuditLog({
+                    user_id: userId,
+                    entity_type: 'pos_device_receipt',
+                    entity_id: transactionId,
+                    action: 'UPDATE',
+                    changes: {
+                        operation: 'print_receipt',
+                        reason,
+                        copies,
+                        paper_width: paperWidth,
+                        driver_id: clientDriverId || deviceDriver?.id || null,
+                        bridge_result: {
+                            success: false,
+                            reason_code: error?.details?.reason_code || error?.code || 'RECEIPT_PRINT_FAILED',
+                            message: error?.message || 'Receipt print failed'
+                        }
+                    },
+                    ...buildAuditMetadata(auditContext)
+                });
+            } catch {
+                // Print failure evidence is best effort and must not hide the
+                // original hardware/domain error.
+            }
             if (error instanceof DomainError && idempotencyKey) {
                 await persistOperationReplay({
                     posRepository,
@@ -396,6 +497,163 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceDriver }) => 
                 });
             }
             return fail(mapPosUseCaseError(error, 'Failed to print POS receipt'));
+        }
+    };
+};
+
+export const buildPrintPosShiftSummaryUseCase = ({ posRepository, deviceDriver }) => {
+    return async ({ shiftId: rawShiftId, payload = {}, user, auditContext = {} } = {}) => {
+        const userId = parsePositiveInt(user?.user_id);
+        const shiftId = parsePositiveInt(rawShiftId);
+        const copies = Math.max(1, Math.min(Number.parseInt(payload?.copies, 10) || 1, 3));
+        const paperWidth = payload?.paper_width === '57mm' ? '57mm' : '80mm';
+        const reason = String(payload?.reason || '').trim() || 'shift_close_report';
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const clientDriverId = String(payload?.client_driver_id || '').trim() || null;
+        const clientResult = (clientDriverId && payload?.client_result && typeof payload.client_result === 'object')
+            ? payload.client_result
+            : null;
+
+        if (!userId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated POS user is required',
+                { statusCode: 401 }
+            ));
+        }
+        if (!shiftId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'shift_id must be a positive integer',
+                { statusCode: 422 }
+            ));
+        }
+
+        const requestHash = hashPayload({
+            shift_id: shiftId,
+            copies,
+            paper_width: paperWidth,
+            reason,
+            client_driver_id: clientDriverId
+        });
+
+        try {
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_DEVICE_OPERATION_KEYS.SHIFT_SUMMARY_PRINT,
+                idempotencyKey,
+                requestHash
+            });
+            if (replay) return ok(replay);
+
+            const shift = toSerializable(await posRepository.getTerminalShiftById(shiftId));
+            if (!shift) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    `Terminal shift not found: ${shiftId}`,
+                    { statusCode: 404 }
+                );
+            }
+            if (String(shift.status || '').trim().toLowerCase() !== 'closed') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Shift summary printing is available after the shift is closed',
+                    { statusCode: 409 }
+                );
+            }
+
+            const allSettings = unwrapApplicationResultOrThrow(await getAllSettingsUseCase());
+            const shiftSummary = await buildShiftSummaryPayload({
+                posRepository,
+                shift,
+                settings: allSettings
+            });
+            const bridgeResponse = clientDriverId
+                ? {
+                    ok: clientResult?.success !== false,
+                    delegated: true,
+                    driver: clientDriverId,
+                    client_result: clientResult
+                }
+                : await deviceDriver.printShiftSummary({
+                    shift_summary: shiftSummary,
+                    copies,
+                    paper_width: paperWidth
+                });
+
+            await posRepository.createAuditLog({
+                user_id: userId,
+                entity_type: 'pos_device_shift_summary',
+                entity_id: shiftId,
+                action: 'UPDATE',
+                changes: {
+                    operation: 'print_shift_summary',
+                    reason,
+                    copies,
+                    paper_width: paperWidth,
+                    driver_id: clientDriverId || deviceDriver.id,
+                    bridge_result: bridgeResponse?.result || bridgeResponse?.client_result || null
+                },
+                ...buildAuditMetadata(auditContext)
+            });
+
+            const responsePayload = {
+                shift_summary: shiftSummary,
+                paper_width: paperWidth,
+                bridge: bridgeResponse
+            };
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_DEVICE_OPERATION_KEYS.SHIFT_SUMMARY_PRINT,
+                idempotencyKey,
+                requestHash,
+                replayStatus: 'processed',
+                responsePayload,
+                createdBy: userId
+            });
+
+            return ok({
+                ...responsePayload,
+                idempotent_replay: false,
+                replay_outcome: 'processed'
+            });
+        } catch (error) {
+            try {
+                await posRepository.createAuditLog({
+                    user_id: userId,
+                    entity_type: 'pos_device_shift_summary',
+                    entity_id: shiftId,
+                    action: 'UPDATE',
+                    changes: {
+                        operation: 'print_shift_summary',
+                        reason,
+                        copies,
+                        paper_width: paperWidth,
+                        driver_id: clientDriverId || deviceDriver?.id || null,
+                        bridge_result: {
+                            success: false,
+                            reason_code: error?.details?.reason_code || error?.code || 'SHIFT_SUMMARY_PRINT_FAILED',
+                            message: error?.message || 'Shift summary print failed'
+                        }
+                    },
+                    ...buildAuditMetadata(auditContext)
+                });
+            } catch {
+                // Print failure evidence is best effort and must not hide the
+                // original hardware/domain error.
+            }
+            if (error instanceof DomainError && idempotencyKey) {
+                await persistOperationReplay({
+                    posRepository,
+                    operationKey: POS_DEVICE_OPERATION_KEYS.SHIFT_SUMMARY_PRINT,
+                    idempotencyKey,
+                    requestHash,
+                    replayStatus: 'blocked',
+                    responsePayload: serializeReplayFailure(error),
+                    createdBy: userId
+                });
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to print shift sales summary'));
         }
     };
 };

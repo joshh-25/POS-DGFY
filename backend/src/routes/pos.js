@@ -26,6 +26,8 @@ import {
     validateIncomingOnlineOrdersQuery,
     validateAdminLocationMonitorQuery,
     validateCollectCashPickupOrder,
+    validateCollectCashDeliveryOrder,
+    validateUpdateDeliveryJobStatus,
     validateShiftIdParam,
     validateOpenTerminalShift,
     validateSwitchTerminalShiftLocation,
@@ -34,6 +36,7 @@ import {
     validateForceCloseStaleTerminalShift,
     validateUpdateOnlineOrderStatus,
     validatePosDeviceReceiptPrint,
+    validatePosDeviceShiftSummaryPrint,
     validatePosDeviceDrawerOpen,
     validateFiscalPrintEvent,
     validateVoidPosTransaction,
@@ -134,6 +137,7 @@ router.get('/reports/overview', checkPermission(PERMISSIONS.POS.actions.VIEW_POS
 router.get('/reports/export', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosReportsExportQuery, posController.exportReports);
 router.get('/device/status', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.getDeviceStatus);
 router.post('/device/print-receipt', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), posController.requirePairedTerminal, validatePosDeviceReceiptPrint, posController.printReceipt);
+router.post('/terminal/shifts/:id/print-summary', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), validateShiftIdParam, validatePosDeviceShiftSummaryPrint, posController.printShiftSummary);
 router.post('/device/open-drawer', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), posController.requirePairedTerminal, validatePosDeviceDrawerOpen, posController.openDeviceDrawer);
 router.post('/transactions/:id/fiscal-print-events', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), posController.requirePairedTerminal, validatePosTransactionIdParam, validateFiscalPrintEvent, posController.recordFiscalPrintEvent);
 router.post('/transactions/:id/void', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateVoidPosTransaction, posController.voidTransaction);
@@ -146,7 +150,9 @@ router.get('/fiscal-ledger/integrity', checkPermission(PERMISSIONS.POS.actions.V
 router.get('/incoming-orders', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateIncomingOnlineOrdersQuery, posController.listIncomingOnlineOrders);
 router.get('/admin/location-monitor', checkPermission(PERMISSIONS.POS.actions.SWITCH_LOCATION_POS), validateAdminLocationMonitorQuery, posController.getAdminLocationMonitor);
 router.post('/orders/:id/collect-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashPickupOrder, posController.collectCashPickupOrder);
+router.post('/orders/:id/collect-delivery-cash', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), posController.requirePairedTerminal, validatePosTransactionIdParam, validateCollectCashDeliveryOrder, posController.collectCashDeliveryOrder);
 // ADR 0031: online order lifecycle uses logical terminal/open-shift checks; physical pairing must not block.
+router.patch('/orders/:id/delivery-job/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateDeliveryJobStatus, posController.updateDeliveryJobStatus);
 router.patch('/orders/:id/status', checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS), validatePosTransactionIdParam, validateUpdateOnlineOrderStatus, posController.updateOnlineOrderStatus);
 router.post('/z-reading/close-day', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), posController.requirePairedTerminal, validateCloseDayBody, posController.closeDayZReading);
 router.post('/z-reading/governed-reset', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), posController.requirePairedTerminal, validateGovernedResetBody, posController.incrementGovernedResetCounter);

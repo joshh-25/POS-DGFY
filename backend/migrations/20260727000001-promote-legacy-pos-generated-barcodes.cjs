@@ -1,6 +1,9 @@
 'use strict';
 
-const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_]+$/;
+// MySQL database names may contain hyphens when quoted. Tenant fixtures use
+// that valid form, so the migration must accept it while still rejecting
+// whitespace, quoting characters, and SQL syntax.
+const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 const quoteIdentifier = (identifier) => {
   const normalized = String(identifier || '').trim();

@@ -53,6 +53,36 @@ export const getGtinValidationMessage = (value) => {
   return '';
 };
 
+export const resolveProductBarcodeInput = ({ manualBarcode = '', gtin = '' } = {}) => {
+  const normalizedManualBarcode = normalizeBarcodeEntry(manualBarcode);
+  const normalizedGtin = normalizeBarcodeEntry(gtin);
+
+  if (normalizedManualBarcode) {
+    return {
+      code: normalizedManualBarcode,
+      kind: 'manual',
+      shouldGenerate: false,
+      validationMessage: getInternalBarcodeValidationMessage(normalizedManualBarcode)
+    };
+  }
+
+  if (normalizedGtin) {
+    return {
+      code: normalizedGtin,
+      kind: 'gtin',
+      shouldGenerate: false,
+      validationMessage: getGtinValidationMessage(normalizedGtin)
+    };
+  }
+
+  return {
+    code: '',
+    kind: 'generated',
+    shouldGenerate: true,
+    validationMessage: ''
+  };
+};
+
 const INVALID_PRODUCT_QR_MESSAGE = 'This QR code does not contain a supported product GTIN.';
 const GS1_GROUP_SEPARATOR = String.fromCharCode(29);
 

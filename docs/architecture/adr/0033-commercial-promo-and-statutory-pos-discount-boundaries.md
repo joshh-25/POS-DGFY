@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-07-07
@@ -121,6 +121,36 @@ both Storefront and POS without affecting completed transactions.
    paid order and webhook-confirmed QR Ph retains verified provider evidence.
 9. Cash pickup tests for collection success, insufficient cash, closed shift,
    wrong method/order state, duplicate replay, and unpaid completion rejection.
+10. Delivery completion tests for delivered-job proof, prepaid payment proof,
+    COD collection evidence, and the fail-closed precondition before inventory
+    deduction.
+
+## Amendments
+
+### 2026-08-07 — Explicit payment timing for delivery cash orders
+
+The existing `payment_type: cash` value is retained as the tender type. A
+server-derived `payment_timing` value distinguishes `upfront`, `on_pickup`,
+and `on_delivery` collection semantics. New online delivery cash orders resolve
+to `on_delivery`; new online pickup cash orders resolve to `on_pickup`; all other
+transaction paths resolve to `upfront` unless a later contract explicitly adds
+another timing mode.
+
+The existing payment collection evidence columns remain the source of truth for
+cash collection: amount received, change, collection time, cashier, shift, and
+terminal. Existing rows are backfilled without rewriting transaction amounts,
+payment statuses, fulfillment statuses, or completed history. The delivery cash
+collection use case is implemented as a dedicated POS action for
+`out_for_delivery` orders and writes payment, collector, shift, terminal, cash,
+change, and audit evidence atomically with idempotent replay protection.
+
+### 2026-08-07 — Delivery completion guard
+
+Delivery completion now requires the linked `DeliveryJob` to be `delivered`.
+Prepaid delivery requires `payment_status=paid`; COD delivery additionally
+requires the server-recorded cash collection evidence before inventory deduction
+and order completion. Missing delivery proof or payment proof returns a
+deterministic conflict and leaves the order unchanged.
 
 ## Authoritative Sources
 

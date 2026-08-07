@@ -547,6 +547,23 @@ body.pos-receipt-print-mode {
     max-width: 80mm;
     margin: 0 auto;
   }
+
+  body:has(.pos-shift-summary-print-shell) > #root {
+    visibility: hidden;
+  }
+
+  body:has(.pos-shift-summary-print-shell) .pos-shift-summary-print-shell,
+  body:has(.pos-shift-summary-print-shell) .pos-shift-summary-print-shell * {
+    visibility: visible;
+  }
+
+  body:has(.pos-shift-summary-print-shell) .pos-shift-summary-print-shell {
+    position: fixed;
+    inset: 0;
+    z-index: 2147483647;
+    width: 80mm;
+    margin: 0 auto;
+  }
 }
 
 .wizard-core-typography {

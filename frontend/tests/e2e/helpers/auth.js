@@ -23,5 +23,9 @@ export async function loginToApp(page, email, password, token = TEST_COMPANY_TOK
   
   await page.getByRole('button', { name: /Sign In/i }).click();
 }
-export const TEST_USER_EMAIL = process.env.VITE_TEST_USER_EMAIL || 'admin@tenant-a.com';
-export const TEST_USER_PASSWORD = process.env.VITE_TEST_USER_PASSWORD || 'Admin123!';
+export const TEST_USER_EMAIL = process.env.E2E_TEST_USER_EMAIL
+  || process.env.VITE_TEST_USER_EMAIL
+  || 'admin@tenant-a.com';
+export const TEST_USER_PASSWORD = process.env.E2E_TEST_USER_PASSWORD
+  || process.env.VITE_TEST_USER_PASSWORD
+  || 'Admin123!';

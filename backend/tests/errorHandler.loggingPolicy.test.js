@@ -88,7 +88,7 @@ describe('errorHandler stack logging policy', () => {
     expect(res.status).toHaveBeenCalledWith(413);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       success: false,
-      message: 'Uploaded image is too large. Use an image 5 MB or smaller.',
+      message: 'Uploaded file is too large for this upload type.',
       error_code: 'LIMIT_FILE_SIZE'
     }));
   });

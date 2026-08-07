@@ -2832,6 +2832,33 @@ Update online order fulfillment status from POS terminal operations.
 5. Conflicts/blocked replays surface deterministic idempotency details in error payloads.
 6. Invalid transitions return `409` with `errors.order_lifecycle.reason_code` and transition metadata.
 
+### PATCH /pos/orders/:id/delivery-job/status
+Advance the manual delivery job for an online delivery order from the POS queue.
+
+**Permission**: `pos:transact`
+**Plan Gate**: Premium (`requirePremium`)
+
+**Request Body**
+```json
+{
+  "idempotency_key": "delivery-job-20260409-789-delivered",
+  "status": "delivered"
+}
+```
+
+**Supported Status Values**
+- `assigned`
+- `picked_up`
+- `delivered`
+
+**Transition Notes**
+1. The server allows only `pending_dispatch -> assigned -> picked_up -> delivered`.
+2. The associated online order must already be `out_for_delivery`.
+3. The delivery job provider must be `manual`; provider-owned jobs are not writable through POS.
+4. Each successful transition records the acting cashier, shift/location context, timestamp, and audit evidence.
+5. Successful responses include `data.delivery_job`, `data.status_transition`, `data.idempotent_replay`, and `data.replay_outcome`.
+6. The order completion endpoint still requires `deliveryJob.status=delivered`; marking the job delivered does not complete the order automatically.
+
 ### POST /pos/z-reading/close-day
 Generate same-day Z-reading summary for completed POS transactions.
 
@@ -6063,14 +6090,14 @@ Perform the PO or JO receive operation. The QR token is validated server-side; n
 
 ## Email Configuration
 
-The system uses Nodemailer with SMTP for baseline email delivery and can use Brevo's HTTPS transactional email API as the production fallback when outbound SMTP ports are blocked. Most lifecycle emails gracefully degrade - if email fails, the primary operation (approval/invitation) still succeeds. Email OTP requests are stricter: delivery must succeed before the final account mutation can proceed.
+The system uses Nodemailer with SMTP as the sole email delivery path. Most lifecycle emails gracefully degrade - if email fails, the primary operation (approval/invitation) still succeeds. Email OTP requests are stricter: delivery must succeed before the final account mutation can proceed.
 
-Current operational status as of 2026-05-17:
+Current operational status as of 2026-08-07 (issue #279 superseded the `2026-05-17` entry below):
 - Local Gmail SMTP requires a valid Gmail App Password. A normal Gmail password will fail with `EAUTH 535 BadCredentials`.
-- Production commit `064766a3c465ca398f2abd821eb8465b72e13e7c` is deployed, the landlord `email_otps` migration is up, and Brevo SMTP verifies with `SMTP_HOST=smtp-relay.brevo.com`, `SMTP_PORT=587`, `SMTP_SECURE=false`, the Brevo SMTP login, the active SMTP key, and verified `EMAIL_FROM=skupervisor@gmail.com`.
-- A production send check using `npm run verify:email -- --send-to skupervisor@gmail.com` succeeded through the same `sendEmail` service path used by OTP delivery, returning provider `smtp` and a Brevo/Nodemailer message ID.
-- Brevo HTTPS API fallback is configured in shape (`EMAIL_DELIVERY_PROVIDER=auto`, `EMAIL_DELIVERY_FALLBACK_TO_BREVO_API=true`, `BREVO_API_URL=https://api.brevo.com/v3/smtp/email`) but `BREVO_API_KEY` is intentionally empty until an API key is provisioned. The active production path is SMTP.
-- Gmail SMTP is acceptable for local/testing only. Production should use Brevo SMTP where ports and credentials verify, or Brevo HTTPS API where only HTTPS egress is reliable.
+- Production SMTP delivery is via Namecheap Private Email on the `dgfy.ph` domain (#135's cutover, made after the Brevo relay was found to fail DMARC for Yahoo/iCloud recipients). Confirm the live `SMTP_HOST`/`EMAIL_FROM` values operationally with `npm run verify:email` rather than relying on values recorded here.
+- The Brevo HTTPS API fallback path (`sendEmailViaBrevoApi`, `BREVO_API_KEY`, `BREVO_API_URL`, `EMAIL_DELIVERY_PROVIDER`, `EMAIL_DELIVERY_FALLBACK_TO_BREVO_API`) was **removed** in #279 -- it exercised zero production traffic and, being unauthenticated for our sending domain, would have failed DMARC the same way SMTP could. A send failure now throws with no fallback attempted; `getEmailProviderMode()` returns only `smtp` or `unconfigured`.
+- Every outbound send -- not just OTPs -- is now recorded in `email_delivery_logs` (accepted/rejected recipients, SMTP response, and later an async bounce status from IMAP-polled DSNs), and failures raise an operational alert. See the #279 compliance impact declaration and ADR 0054.
+- Gmail SMTP is acceptable for local/testing only.
 
 ### Environment Variables
 ```env
@@ -6081,16 +6108,21 @@ SMTP_USER=your-email@gmail.com
 SMTP_PASS=your-app-password
 EMAIL_FROM=your-email@gmail.com
 EMAIL_FROM_NAME=SKUpervisor
-EMAIL_DELIVERY_PROVIDER=auto
-EMAIL_DELIVERY_FALLBACK_TO_BREVO_API=true
-BREVO_API_KEY=
-BREVO_API_URL=https://api.brevo.com/v3/smtp/email
 APP_URL=https://your-domain.com
 ```
 
-Run `npm run verify:email` from the repo root before enabling OTP enforcement in a new environment. Use `npm run verify:email -- --send-to operator@example.com` for an end-to-end provider send test. The check fails when placeholder SMTP/Brevo credentials are still present. On production, this check passed after correcting `SMTP_USER` to the Brevo SMTP login.
+Run `npm run verify:email` from the repo root before enabling OTP enforcement in a new environment. Use `npm run verify:email -- --send-to operator@example.com` for an end-to-end provider send test. The check fails when placeholder SMTP credentials are still present.
 
 OTP email sends use `sendEmailOtpCode()` and explicitly set the sender display name to `DGFY`. Generic lifecycle email sends keep the configured `EMAIL_FROM_NAME` value, defaulting to `SKUpervisor`.
+
+<details>
+<summary>Superseded `2026-05-17` entry (Brevo relay, pre-#135 cutover, pre-#279 removal)</summary>
+
+- Production commit `064766a3c465ca398f2abd821eb8465b72e13e7c` is deployed, the landlord `email_otps` migration is up, and Brevo SMTP verifies with `SMTP_HOST=smtp-relay.brevo.com`, `SMTP_PORT=587`, `SMTP_SECURE=false`, the Brevo SMTP login, the active SMTP key, and verified `EMAIL_FROM=skupervisor@gmail.com`.
+- A production send check using `npm run verify:email -- --send-to skupervisor@gmail.com` succeeded through the same `sendEmail` service path used by OTP delivery, returning provider `smtp` and a Brevo/Nodemailer message ID.
+- Brevo HTTPS API fallback is configured in shape (`EMAIL_DELIVERY_PROVIDER=auto`, `EMAIL_DELIVERY_FALLBACK_TO_BREVO_API=true`, `BREVO_API_URL=https://api.brevo.com/v3/smtp/email`) but `BREVO_API_KEY` is intentionally empty until an API key is provisioned. The active production path is SMTP.
+
+</details>
 
 ### Email Types
 
