@@ -1,7 +1,6 @@
 import dotenv from 'dotenv';
 import {
   getEmailProviderMode,
-  isBrevoApiConfigured,
   isEmailConfigured,
   isSmtpConfigured,
   sendEmail,
@@ -23,15 +22,13 @@ const looksPlaceholder = (value) => /your-|replace_with|change_me/i.test(String(
 const placeholderFindings = [
   ['SMTP_USER', process.env.SMTP_USER],
   ['SMTP_PASS', process.env.SMTP_PASS],
-  ['EMAIL_FROM', process.env.EMAIL_FROM],
-  ['BREVO_API_KEY', process.env.BREVO_API_KEY]
+  ['EMAIL_FROM', process.env.EMAIL_FROM]
 ].filter(([, value]) => looksPlaceholder(value));
 
 const summary = {
   configured: isEmailConfigured(),
   mode: getEmailProviderMode(),
   smtp_configured: isSmtpConfigured(),
-  brevo_api_configured: isBrevoApiConfigured(),
   smtp_host: process.env.SMTP_HOST || null,
   smtp_user: masked(process.env.SMTP_USER),
   email_from: process.env.EMAIL_FROM || null,
@@ -41,7 +38,7 @@ const summary = {
 console.log(JSON.stringify(summary, null, 2));
 
 if (!summary.configured || placeholderFindings.length) {
-  console.error('Email delivery is not production-ready: configure real SMTP credentials or BREVO_API_KEY with a verified EMAIL_FROM sender.');
+  console.error('Email delivery is not production-ready: configure real SMTP credentials with a verified EMAIL_FROM sender.');
   process.exit(1);
 }
 
@@ -65,7 +62,6 @@ console.log(JSON.stringify({
   verified: verification.success,
   provider: verification.provider || null,
   mode: verification.mode || summary.mode,
-  warning: verification.warning || null,
   error: verification.error || null
 }, null, 2));
 

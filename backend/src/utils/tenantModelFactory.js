@@ -8,6 +8,7 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     'UserTenantMapping',
     'UserInvitation',
     'EmailOtp',
+    'EmailDeliveryLog',
     'DgfyAccount',
     'DgfyAccountHandoff',
     'DgfyAccountTenantMembership',

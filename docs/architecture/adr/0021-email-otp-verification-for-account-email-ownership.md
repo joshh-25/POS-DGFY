@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-05-17
-last_reviewed: 2026-06-11
+last_reviewed: 2026-08-07
 review_by: 2026-11-17
 applies_to: auth, tenant_registration, tenant_user_invitations, profile_email_change, dgfy_accounts
 topic: email_otp_verification
@@ -63,3 +63,10 @@ Add a landlord-level `email_otps` registry for purpose-scoped email verification
 2. Existing tenant records, users, invitations, and email-to-tenant mappings remain valid.
 3. The `email_otps` table is additive and can remain unused during rollback.
 4. A temporary rollback can set `STOREFRONT_GUEST_OTP_REQUIRED=false`; this restores legacy guest checkout while leaving the additive OTP purpose and rows intact.
+
+## Amendments
+
+### 2026-08-07 — Brevo HTTPS API fallback removed; delivery is SMTP-only with no fallback
+- Clause amended: Decision 9 (`default`)
+- Change: Decision 9 said "Delivery may use SMTP or the Brevo HTTPS API fallback." Issue #135 found the Brevo relay was DMARC-blocked for Yahoo/iCloud recipients regardless of which path was used (Brevo had no authenticated sending domain for the configured `EMAIL_FROM`), and production cut over to Namecheap SMTP on `dgfy.ph`. Issue #279 then removed the Brevo HTTPS API fallback path entirely (`sendEmailViaBrevoApi`, `isBrevoApiConfigured`, `EMAIL_DELIVERY_PROVIDER`, `EMAIL_DELIVERY_FALLBACK_TO_BREVO_API`, `BREVO_API_KEY`, `BREVO_API_URL`) — it exercised zero production traffic and, being unauthenticated for the sending domain, would have failed the same way. Decision 9 now reads: delivery uses SMTP only; a send failure throws with no fallback provider attempted, and fail-closed OTP enforcement is unchanged. See ADR 0054 for the delivery-observability work (`email_delivery_logs`, async bounce capture, operational alerting) that #279 added alongside the removal.
+- Superseded text (Decision 9, original): "Configured email delivery failure is fail-closed for OTP requests. Delivery may use SMTP or the Brevo HTTPS API fallback, but account email ownership checks cannot be bypassed by manual links."

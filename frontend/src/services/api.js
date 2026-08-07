@@ -72,6 +72,68 @@ const formatApiValidationError = (data) => {
 
 const API_BASE_URL = resolveApiBaseUrl(import.meta.env, typeof window !== 'undefined' ? window.location : undefined);
 const RUNTIME_CONFIG = getRuntimeConfig(import.meta.env, typeof window !== 'undefined' ? window.location : undefined);
+const IS_POS_SURFACE = RUNTIME_CONFIG.appSurface === 'pos';
+// Matches TerminalPage.jsx/posService.js's TERMINAL_ID_STORAGE_KEY. Not a
+// shared export -- like those two, this is a plain localStorage key string
+// contract, not a module dependency (api.js must not import the POS feature).
+const POS_TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
+
+// ── Sentry-independent request diagnostics ──────────────────────────────────
+// A small in-memory ring buffer of the last N API outcomes (success AND
+// failure), read by the on-device POS diagnostics view. Exists because
+// Sentry only ever sees what these interceptors hand it -- a request that
+// never leaves the device (offline, DNS, a blocked WebView) or a failure
+// that's a local throw upstream of axios entirely is invisible to Sentry by
+// construction. This buffer has none of those gaps: it is filled directly
+// by axios's own request/response lifecycle.
+const API_OUTCOME_BUFFER_LIMIT = 10;
+const apiOutcomeBuffer = [];
+
+// Lightweight pub/sub so a component (the POS Online/Offline indicator,
+// TerminalPage.jsx) can react to real request outcomes as they happen
+// instead of polling the buffer. `navigator.onLine` alone is not enough --
+// on Android it is true whenever any network interface exists, so a
+// terminal that can reach the local Wi-Fi but not pos.dev.dgfy.ph still
+// reads "Online". Kept separate from the buffer itself since most callers
+// (the diagnostics view) only need the array, not live updates.
+const apiOutcomeListeners = new Set();
+
+export const onApiOutcome = (callback) => {
+  if (typeof callback !== 'function') return () => {};
+  apiOutcomeListeners.add(callback);
+  return () => apiOutcomeListeners.delete(callback);
+};
+
+const recordApiOutcome = (entry) => {
+  apiOutcomeBuffer.push(entry);
+  if (apiOutcomeBuffer.length > API_OUTCOME_BUFFER_LIMIT) {
+    apiOutcomeBuffer.shift();
+  }
+  apiOutcomeListeners.forEach((listener) => {
+    try {
+      listener(entry);
+    } catch {
+      // A listener's own bug must never break the request pipeline it's
+      // observing.
+    }
+  });
+};
+
+export const getRecentApiOutcomes = () => apiOutcomeBuffer.slice();
+
+// Set by POS terminal-unlock/shift-open failure handling
+// (TerminalPage.jsx's reportTerminalFailure) so the request a cashier
+// retries right after reading the on-screen reference code carries that
+// same ref in its headers -- letting the code shown on the terminal be
+// found directly in the server-side access log, not only matched against a
+// Sentry event (which a local-throw failure may never have produced).
+let activePosErrorRef = '';
+export const setActivePosErrorRef = (ref) => {
+  activePosErrorRef = String(ref || '').trim();
+};
+export const clearActivePosErrorRef = () => {
+  activePosErrorRef = '';
+};
 
 const buildDesktopHashRedirect = (path, search = '') => {
   const normalizedPath = String(path || '/').startsWith('/') ? String(path || '/') : `/${String(path || '')}`;
@@ -369,6 +431,18 @@ api.interceptors.request.use(
     config._authTokenAtDispatch = readBearerToken(config.headers);
     config._authCompanyTokenAtDispatch = getRequestHeader(config.headers, 'x-company-token');
 
+    // Attribution headers for the access log (see infrastructure/nginx-host)
+    // and the outcome ring buffer's start-time stamp -- POS-only, so other
+    // surfaces' request shape is unchanged.
+    if (IS_POS_SURFACE) {
+      const terminalId = typeof window !== 'undefined'
+        ? String(window.localStorage?.getItem(POS_TERMINAL_ID_STORAGE_KEY) || '').trim()
+        : '';
+      if (terminalId) setRequestHeader(config.headers, 'x-pos-terminal-id', terminalId);
+      if (activePosErrorRef) setRequestHeader(config.headers, 'x-pos-error-ref', activePosErrorRef);
+    }
+    config._outcomeStartedAt = Date.now();
+
     return config;
   },
   (error) => Promise.reject(error)
@@ -656,16 +730,45 @@ api.interceptors.response.use(
 // with nothing left to recover it -- a genuine, final failure -- without
 // this needing to know about any of that retry logic itself.
 api.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    if (IS_POS_SURFACE) {
+      recordApiOutcome({
+        method: String(response.config?.method || 'get').toUpperCase(),
+        url: response.config?.url || '',
+        status: response.status,
+        kind: 'http',
+        ref: activePosErrorRef || null,
+        durationMs: Date.now() - (response.config?._outcomeStartedAt ?? Date.now()),
+        at: Date.now()
+      });
+    }
+    return response;
+  },
   (error) => {
     // Every `return api(originalRequest)` retry above is a recursive axios
     // dispatch, and this interceptor is a genuinely separate .then() link --
     // so when a retried request still fails, axios re-invokes THIS handler
     // once per level of that recursion, each time with the SAME final error
-    // object bubbling back up. Without this guard, a request retried twice
-    // and still failing would report to Sentry three times for one logical
-    // failure. The flag lives on the error object because that object
-    // reference is exactly what's shared across every level.
+    // object bubbling back up. Recording the outcome (like the Sentry report
+    // below) must happen only on the first pass, or one logical failure
+    // would leave several duplicate entries in the ring buffer.
+    if (IS_POS_SURFACE && !error.__requestFailureReported) {
+      const status = error.response?.status ?? null;
+      recordApiOutcome({
+        method: String(error.config?.method || 'get').toUpperCase(),
+        url: error.config?.url || '',
+        status,
+        kind: status ? 'http' : 'network',
+        ref: activePosErrorRef || null,
+        durationMs: Date.now() - (error.config?._outcomeStartedAt ?? Date.now()),
+        at: Date.now()
+      });
+    }
+
+    // Without this guard, a request retried twice and still failing would
+    // report to Sentry three times for one logical failure. The flag lives
+    // on the error object because that object reference is exactly what's
+    // shared across every level.
     if (error.__requestFailureReported) return Promise.reject(error);
     error.__requestFailureReported = true;
 

@@ -15,6 +15,13 @@ name: Shared Changed Paths
 # (validate_pr_metadata: true, PR mode only) -- folded in here rather than
 # kept as their own workflows/jobs so they don't each pay a separate per-job
 # 1-minute GitHub Actions billing floor for a few seconds of git/bash work.
+#
+# Same reasoning for the compliance impact guardrail
+# (enforce_compliance_declarations, PR mode only): both scripts behind
+# `npm run check:compliance` are dependency-free plain node (fs/path/
+# child_process, no npm install), so they run in seconds and fold in here
+# rather than earning their own billable job. Unlike every other folded-in
+# step, that one is NOT continue-on-error -- see its step comment.
 
 on:
   workflow_call:
@@ -45,6 +52,16 @@ on:
         required: false
         type: boolean
         default: false
+      enforce_compliance_declarations:
+        description: >-
+          Run the compliance impact guardrail (`npm run check:compliance`) and
+          FAIL the job when a compliance-sensitive change is missing its
+          declaration. PR mode only -- the script resolves the changed-file set
+          from GITHUB_BASE_REF, and exempts aggregate promotion PRs itself via
+          PROMOTION_HEAD_BY_BASE / PROMOTION_HEAD_PREFIX_BY_BASE.
+        required: false
+        type: boolean
+        default: false
     outputs:
       frontend:
         description: '"true" when this range touches anything the frontend image is built from'
@@ -52,6 +69,9 @@ on:
       backend:
         description: '"true" when this range touches anything the backend image is built from'
         value: ${{ jobs.detect.outputs.backend }}
+      android:
+        description: '"true" when this range touches anything the Android wrapper build is built from'
+        value: ${{ jobs.detect.outputs.android }}
 
 jobs:
   detect:
@@ -60,6 +80,7 @@ jobs:
     outputs:
       frontend: ${{ steps.filter.outputs.frontend }}
       backend: ${{ steps.filter.outputs.backend }}
+      android: ${{ steps.filter.outputs.android }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -96,23 +117,37 @@ jobs:
             FILES="(unavailable: ${REASON})"
             FRONTEND=true
             BACKEND=true
+            ANDROID=true
           else
             FILES="$(git diff --name-only "${BASE_SHA}" HEAD)"
 
-            matches() { printf '%s\n' "${FILES}" | grep -qE "$1"; }
+            # Deliberately not `grep -qE`: -q exits the moment it finds a
+            # match, and under `set -o pipefail` (above) that can race
+            # printf's write into a broken pipe -- printf gets SIGPIPE,
+            # the pipeline's exit status becomes non-zero even though a
+            # match WAS found, and the `|| true` below silently swallows
+            # it, leaving e.g. ANDROID=false on a PR that touches only
+            # android/. Observed live in practice, not hypothetical. Without
+            # -q, grep always reads FILES to EOF before exiting, so there's
+            # no early-exit race; matches its output to /dev/null and keeps
+            # the same 0-if-matched/1-if-not exit code.
+            matches() { printf '%s\n' "${FILES}" | grep -E "$1" > /dev/null; }
 
             # .github/workflows/ only lists the workflows that actually affect
             # each image build, not the whole directory -- editing e.g. the PR
             # conventional-commits check shouldn't force both Docker builds.
             FRONTEND=false
             BACKEND=false
+            ANDROID=false
             matches '^(frontend/|packages/pos-receipt/|packages/shared-constants/|infrastructure/docker/frontend/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|build-develop|build-staging|build-main)\.yml)' && FRONTEND=true || true
             matches '^(backend/|packages/shared-constants/|infrastructure/docker/backend/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-backend|deployment-orchestrator|pr-backend-build-checks|build-develop|build-staging|build-main)\.yml)' && BACKEND=true || true
+            matches '^(android/|scripts/build-android-release\.sh|\.github/workflows/(shared-changed-paths|pr-android-build-checks|build-android-manual)\.yml)' && ANDROID=true || true
           fi
 
           {
             echo "frontend=${FRONTEND}"
             echo "backend=${BACKEND}"
+            echo "android=${ANDROID}"
           } >> "$GITHUB_OUTPUT"
 
           {
@@ -126,6 +161,7 @@ jobs:
             echo "|-------------|--------|"
             echo "| Frontend | ${FRONTEND} |"
             echo "| Backend | ${BACKEND} |"
+            echo "| Android | ${ANDROID} |"
             echo ""
             echo "<details><summary>Changed files</summary>"
             echo ""
@@ -172,3 +208,28 @@ jobs:
         env:
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: node scripts/check-pos-receipt-version-bump.js
+
+      # Deliberately NOT continue-on-error, unlike every other folded-in step
+      # above. This check previously lived in a `code-quality` job that WAS
+      # continue-on-error, which meant it could never block a merge; that job
+      # was then removed entirely as dead weight. The result was a gap nothing
+      # covered: PRs #284 and #288 (2026-08-07) each merged to develop and rode
+      # a promotion to staging with a mandatory `frontend/src/features/pos/**`
+      # impact declaration missing, and both PR descriptions asserted in good
+      # faith that "CI's compliance gate will still block merge" -- because
+      # docs/ops/RELEASE_CANDIDATE_POLICY.md and
+      # docs/compliance/request-time-preflight-protocol.md both still said a
+      # gate existed. An advisory-only guardrail here is worse than none: it
+      # produces exactly that false confidence. If this fails, add the
+      # declaration under docs/compliance/impact-declarations/ -- see
+      # docs/compliance/request-time-preflight-protocol.md.
+      #
+      # Aggregate promotion PRs (to-staging -> staging, release/* -> main) are
+      # exempted inside check-compliance-impact.js itself, so this is safe to
+      # run on every PR including promotions.
+      - name: Enforce compliance impact declarations
+        if: inputs.enforce_compliance_declarations
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+        run: npm run check:compliance

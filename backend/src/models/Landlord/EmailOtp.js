@@ -43,12 +43,20 @@ export default (sequelize) => {
       defaultValue: 5
     },
     delivery_status: {
-      type: DataTypes.ENUM('sent', 'failed'),
+      type: DataTypes.ENUM('sent', 'failed', 'recorded', 'bounced'),
       allowNull: false,
       defaultValue: 'sent'
     },
     delivery_error: {
       type: DataTypes.STRING(500),
+      allowNull: true
+    },
+    // Points at the canonical send record in email_delivery_logs (issue
+    // #279). Not a duplicated provider_message_id -- the log row already
+    // carries message_id, provider_queue_id, and full bounce detail; this
+    // column just links back to it.
+    email_delivery_id: {
+      type: DataTypes.UUID,
       allowNull: true
     },
     metadata: {

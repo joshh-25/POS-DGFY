@@ -1,14 +1,24 @@
 /**
  * Email Service
  *
- * Handles email sending via SMTP using nodemailer, with optional Brevo HTTPS API delivery.
+ * Handles email sending via SMTP using nodemailer.
  * Supports HTML templates for user invitations.
  *
  * Uses lazy initialization - only creates transporter when needed.
+ *
+ * Prior to issue #279 this also supported a Brevo HTTPS API fallback path;
+ * it was removed as part of that issue (see the compliance impact
+ * declaration and ADR 0021's 2026-08-07 amendment) because it exercised
+ * zero production traffic and, being unauthenticated for our sending
+ * domain, would have failed DMARC the same way SMTP could -- one less
+ * delivery path to instrument for delivery-status feedback.
  */
 
+import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import logger from '../config/logger.js';
+import { raiseOperationalAlert } from './operationalAlertService.js';
+import { hashRecipientEmail, extractRecipientDomain, splitRecipients } from '../modules/emailDelivery/utils/emailAddress.js';
 import {
   getInvitationTemplate,
   getAffiliateInviteTemplate,
@@ -32,56 +42,69 @@ import {
 // Lazy initialize transporter
 let _transporter = null;
 const getAppUrl = () => process.env.APP_URL || 'http://localhost:5173';
-const getEmailDeliveryProvider = () => String(process.env.EMAIL_DELIVERY_PROVIDER || 'auto').trim().toLowerCase();
-const getBrevoApiUrl = () => process.env.BREVO_API_URL || 'https://api.brevo.com/v3/smtp/email';
 const stripHtml = (html = '') => String(html).replace(/<[^>]*>/g, '');
 const getFromIdentity = ({ fromName, fromEmail } = {}) => ({
   fromName: fromName || process.env.EMAIL_FROM_NAME || 'SKUpervisor',
   fromEmail: fromEmail || process.env.EMAIL_FROM || process.env.SMTP_USER
 });
 
-export const isSmtpConfigured = () => {
-  return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
+// Domain used for the self-generated Message-ID (see sendEmail below).
+// Falls back to the resolved from-address's domain so a bare send() without
+// EMAIL_MESSAGE_ID_DOMAIN configured still produces a syntactically valid
+// Message-ID.
+const getMessageIdDomain = (fromEmail) => (
+  process.env.EMAIL_MESSAGE_ID_DOMAIN
+  || extractRecipientDomain(fromEmail)
+  || 'localhost'
+);
+
+// --- Delivery log repository access (issue #279) ---------------------------
+//
+// Loaded via a memoized dynamic import, not a static one: emailService.js is
+// imported by ~30 modules, and a static `models/index.js` import (which the
+// repository needs) would drag the entire model layer into all of their
+// tests just to import this file. The dynamic import only resolves the
+// first time a send is actually attempted with logging enabled.
+let _deliveryLogRepositoryOverride = null;
+let _deliveryLogRepositoryPromise = null;
+
+/** Test seam: inject a fake repository instead of loading the real one. */
+export const setEmailDeliveryLogRepository = (repository) => {
+  _deliveryLogRepositoryOverride = repository;
+  _deliveryLogRepositoryPromise = null;
 };
 
-export const isBrevoApiConfigured = () => {
-  const { fromEmail } = getFromIdentity();
-  return !!(process.env.BREVO_API_KEY && fromEmail);
+const getDeliveryLogRepository = async () => {
+  if (_deliveryLogRepositoryOverride) return _deliveryLogRepositoryOverride;
+
+  if (!_deliveryLogRepositoryPromise) {
+    _deliveryLogRepositoryPromise = import('../modules/emailDelivery/repositories/emailDeliveryLogRepository.js')
+      .then((mod) => mod.emailDeliveryLogRepository)
+      .catch((error) => {
+        logger.error('[emailService] Failed to load the email delivery log repository', error);
+        _deliveryLogRepositoryPromise = null;
+        return null;
+      });
+  }
+
+  return _deliveryLogRepositoryPromise;
+};
+
+const isDeliveryLogEnabled = () => process.env.EMAIL_DELIVERY_LOG_ENABLED !== 'false';
+
+export const isSmtpConfigured = () => {
+  return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 };
 
 /**
  * Check if email is configured
  */
 export const isEmailConfigured = () => {
-  return isSmtpConfigured() || isBrevoApiConfigured();
+  return isSmtpConfigured();
 };
 
 export const getEmailProviderMode = () => {
-  const requestedProvider = getEmailDeliveryProvider();
-  const smtpConfigured = isSmtpConfigured();
-  const brevoApiConfigured = isBrevoApiConfigured();
-
-  if (requestedProvider === 'brevo_api') {
-    return brevoApiConfigured ? 'brevo_api' : 'unconfigured';
-  }
-
-  if (requestedProvider === 'smtp') {
-    return smtpConfigured ? 'smtp' : 'unconfigured';
-  }
-
-  if (smtpConfigured && brevoApiConfigured) {
-    return 'smtp_with_brevo_api_fallback';
-  }
-
-  if (smtpConfigured) {
-    return 'smtp';
-  }
-
-  if (brevoApiConfigured) {
-    return 'brevo_api';
-  }
-
-  return 'unconfigured';
+  return isSmtpConfigured() ? 'smtp' : 'unconfigured';
 };
 
 /**
@@ -102,7 +125,12 @@ const getTransporter = () => {
     auth: {
       user: process.env.SMTP_USER,
       pass: process.env.SMTP_PASS
-    }
+    },
+    // With no fallback provider (issue #279), a hung socket would otherwise
+    // hang the request indefinitely instead of failing loudly.
+    connectionTimeout: parseInt(process.env.SMTP_CONNECTION_TIMEOUT_MS, 10) || 10_000,
+    greetingTimeout: parseInt(process.env.SMTP_GREETING_TIMEOUT_MS, 10) || 10_000,
+    socketTimeout: parseInt(process.env.SMTP_SOCKET_TIMEOUT_MS, 10) || 20_000
   };
 
   _transporter = nodemailer.createTransport(config);
@@ -110,84 +138,63 @@ const getTransporter = () => {
   return _transporter;
 };
 
-const buildBrevoRecipients = (to) => {
-  if (Array.isArray(to)) {
-    return to.map((email) => ({ email: String(email).trim() })).filter((entry) => entry.email);
-  }
-
-  return String(to || '')
-    .split(',')
-    .map((email) => ({ email: email.trim() }))
-    .filter((entry) => entry.email);
+/**
+ * Test seam / config-change seam: drops the cached transporter so the next
+ * send re-reads SMTP_* from the environment. Production never calls this in
+ * the request path -- it exists because _transporter is a module-level
+ * singleton that would otherwise silently keep using stale credentials for
+ * the lifetime of the process.
+ */
+export const resetTransporter = () => {
+  _transporter = null;
 };
 
-const normalizeAttachmentsForBrevo = (attachments = []) => attachments.map((attachment) => {
-  if (!attachment?.filename || attachment?.content == null) throw new Error('Email attachments require a filename and in-memory content.');
-  return {
-    name: String(attachment.filename),
-    content: Buffer.isBuffer(attachment.content)
-      ? attachment.content.toString('base64')
-      : Buffer.from(String(attachment.content)).toString('base64')
-  };
-});
+/**
+ * Records what happened to a send attempt into email_delivery_logs (issue
+ * #279). Never throws and never blocks the caller's success/failure path --
+ * this runs after the send has already resolved or rejected, purely to
+ * persist the outcome. A DB hiccup here must not turn a successful send
+ * into a failed one, or vice versa.
+ */
+const recordDeliveryAttempt = async ({ deliveryId, messageId, outcome, subject, fromEmail, primaryRecipient, recipientCount, meta }) => {
+  if (!isDeliveryLogEnabled()) return;
 
-export const sendEmailViaBrevoApi = async ({ to, subject, html, text, fromName, fromEmail, attachments = [] }) => {
-  if (!isBrevoApiConfigured()) {
-    const error = new Error('Brevo API email delivery is not configured. Set BREVO_API_KEY and EMAIL_FROM.');
-    error.code = 'BREVO_API_NOT_CONFIGURED';
-    throw error;
-  }
-
-  const { fromName: resolvedFromName, fromEmail: resolvedFromEmail } = getFromIdentity({ fromName, fromEmail });
-  const payload = {
-    sender: {
-      name: resolvedFromName,
-      email: resolvedFromEmail
-    },
-    to: buildBrevoRecipients(to),
-    subject,
-    htmlContent: html,
-    textContent: text || stripHtml(html)
-  };
-  if (attachments.length) payload.attachment = normalizeAttachmentsForBrevo(attachments);
-
-  if (!payload.to.length) {
-    const error = new Error('At least one recipient email is required for Brevo API delivery.');
-    error.code = 'EMAIL_RECIPIENT_REQUIRED';
-    throw error;
-  }
-
-  const response = await fetch(getBrevoApiUrl(), {
-    method: 'POST',
-    headers: {
-      accept: 'application/json',
-      'api-key': process.env.BREVO_API_KEY,
-      'content-type': 'application/json'
-    },
-    body: JSON.stringify(payload)
-  });
-
-  let responseBody = null;
   try {
-    responseBody = await response.json();
-  } catch {
-    // Non-JSON provider errors are handled by HTTP status below.
-  }
+    const repository = await getDeliveryLogRepository();
+    if (!repository) return;
 
-  if (!response.ok) {
-    const error = new Error(responseBody?.message || `Brevo API delivery failed with HTTP ${response.status}`);
-    error.code = 'BREVO_API_DELIVERY_FAILED';
-    error.status = response.status;
-    error.details = responseBody;
-    throw error;
-  }
+    const providerQueueIdMatch = typeof outcome.smtpResponse === 'string'
+      ? outcome.smtpResponse.match(/\bid=(\S+)/i)
+      : null;
 
-  logger.info(`Email sent successfully to ${to} via Brevo API`, { messageId: responseBody?.messageId });
-  return {
-    messageId: responseBody?.messageId,
-    provider: 'brevo_api',
-    response: responseBody
-  };
+    await repository.create({
+      id: deliveryId,
+      message_id: messageId,
+      provider: 'smtp',
+      provider_queue_id: providerQueueIdMatch ? providerQueueIdMatch[1] : null,
+      purpose: meta?.purpose || null,
+      tenant_id: meta?.tenantId || null,
+      recipient_email: primaryRecipient || null,
+      recipient_email_hash: hashRecipientEmail(primaryRecipient),
+      recipient_domain: extractRecipientDomain(primaryRecipient),
+      recipient_count: recipientCount,
+      subject: subject ? String(subject).slice(0, 255) : null,
+      from_email: fromEmail || null,
+      status: outcome.status,
+      smtp_response: outcome.smtpResponse ? String(outcome.smtpResponse).slice(0, 500) : null,
+      accepted_recipients: outcome.accepted?.length ? outcome.accepted : null,
+      rejected_recipients: outcome.rejected?.length ? outcome.rejected : null,
+      error_code: outcome.errorCode || null,
+      error_message: outcome.errorMessage || null,
+      sent_at: new Date()
+    });
+  } catch (writeError) {
+    await raiseOperationalAlert({
+      key: 'email.delivery_log_write_failed',
+      error: writeError,
+      context: { delivery_id: deliveryId }
+    });
+  }
 };
 
 /**
@@ -197,20 +204,10 @@ export const sendEmailViaBrevoApi = async ({ to, subject, html, text, fromName, 
  * @param {string} options.subject - Email subject
  * @param {string} options.html - HTML content
  * @param {string} [options.text] - Plain text content (optional)
- * @returns {Promise<Object>} - Nodemailer send result
+ * @param {Object} [options.meta] - Optional { purpose, tenantId } recorded on the delivery log row.
+ * @returns {Promise<Object>} - Nodemailer send result, plus { provider, deliveryId }
  */
-export const sendEmail = async ({ to, subject, html, text, fromName, fromEmail, attachments = [] }) => {
-  const provider = getEmailDeliveryProvider();
-  const allowBrevoFallback = process.env.EMAIL_DELIVERY_FALLBACK_TO_BREVO_API !== 'false';
-
-  if (provider === 'brevo_api') {
-    return sendEmailViaBrevoApi({ to, subject, html, text, fromName, fromEmail, attachments });
-  }
-
-  if (!isSmtpConfigured() && isBrevoApiConfigured()) {
-    return sendEmailViaBrevoApi({ to, subject, html, text, fromName, fromEmail, attachments });
-  }
-
+export const sendEmail = async ({ to, subject, html, text, fromName, fromEmail, attachments = [], meta = {} }) => {
   const transporter = getTransporter();
 
   if (!transporter) {
@@ -221,30 +218,123 @@ export const sendEmail = async ({ to, subject, html, text, fromName, fromEmail, 
 
   const { fromName: resolvedFromName, fromEmail: resolvedFromEmail } = getFromIdentity({ fromName, fromEmail });
 
+  // Self-generated correlation key (issue #279): rather than relying on the
+  // SMTP envelope sender being predictable for a future bounce reply --
+  // authenticated relays commonly rewrite it to the authenticated mailbox,
+  // which may not be the address a bounce mailbox is watching -- the
+  // delivery log's own id is embedded directly in the outgoing message.
+  const deliveryId = crypto.randomUUID();
+  const generatedMessageId = `<${deliveryId}@${getMessageIdDomain(resolvedFromEmail)}>`;
+  const recipients = splitRecipients(to);
+  const primaryRecipient = recipients[0] || '';
+
   const mailOptions = {
     from: `"${resolvedFromName}" <${resolvedFromEmail}>`,
     to,
     subject,
     html,
     text: text || stripHtml(html),
-    attachments
+    attachments,
+    messageId: generatedMessageId,
+    headers: {
+      // Redundant with the Message-ID header above: some MTAs return only
+      // headers (not the full Message-ID) in a bounce, so a second,
+      // differently-named occurrence makes correlation more robust.
+      'X-DGFY-Delivery-Id': deliveryId
+    }
   };
+
+  let outcome;
 
   try {
     const result = await transporter.sendMail(mailOptions);
-    logger.info(`Email sent successfully to ${to}`, { messageId: result.messageId });
-    return {
-      ...result,
-      provider: 'smtp'
-    };
-  } catch (error) {
-    logger.error(`Failed to send email to ${to}:`, error);
-    if (allowBrevoFallback && isBrevoApiConfigured()) {
-      logger.warn(`Retrying email to ${to} through Brevo API after SMTP failure`);
-      return sendEmailViaBrevoApi({ to, subject, html, text, fromName, fromEmail, attachments });
+    const accepted = result.accepted || [];
+    const rejected = result.rejected || [];
+
+    if (rejected.length === 0) {
+      outcome = { status: 'sent', accepted, rejected, smtpResponse: result.response, result };
+    } else if (accepted.length > 0) {
+      // nodemailer resolves (does not throw) on a partial rejection -- a
+      // second silent-success shape this issue also closes. The caller
+      // still gets a result back (some recipients did receive it), but the
+      // rejection is recorded and alerted rather than disappearing.
+      outcome = {
+        status: 'partial',
+        accepted,
+        rejected,
+        smtpResponse: result.response,
+        errorCode: 'EMAIL_SOME_RECIPIENTS_REJECTED',
+        errorMessage: `Some recipients were rejected by the SMTP server: ${rejected.join(', ')}`,
+        result
+      };
+    } else {
+      outcome = {
+        status: 'failed',
+        accepted,
+        rejected,
+        smtpResponse: result.response,
+        errorCode: 'EMAIL_ALL_RECIPIENTS_REJECTED',
+        errorMessage: `All recipients were rejected by the SMTP server: ${rejected.join(', ')}`,
+        result
+      };
     }
+  } catch (error) {
+    outcome = {
+      status: 'failed',
+      accepted: [],
+      rejected: [],
+      smtpResponse: error?.response || null,
+      errorCode: error?.code || error?.responseCode || 'EMAIL_SEND_FAILED',
+      errorMessage: String(error?.message || 'Email send failed').slice(0, 500),
+      thrownError: error
+    };
+  }
+
+  await recordDeliveryAttempt({
+    deliveryId,
+    messageId: generatedMessageId,
+    outcome,
+    subject,
+    fromEmail: resolvedFromEmail,
+    primaryRecipient,
+    recipientCount: recipients.length,
+    meta
+  });
+
+  if (outcome.status === 'partial') {
+    logger.warn(`Email to ${to} had some recipients rejected`, { messageId: generatedMessageId, rejected: outcome.rejected });
+    await raiseOperationalAlert({
+      key: 'email.recipients_rejected',
+      level: 'warning',
+      message: outcome.errorMessage,
+      context: {
+        delivery_id: deliveryId,
+        recipient_domain: extractRecipientDomain(primaryRecipient),
+        rejected_count: outcome.rejected.length
+      }
+    });
+    return { ...outcome.result, provider: 'smtp', deliveryId };
+  }
+
+  if (outcome.status === 'failed') {
+    // No fallback provider (issue #279): a send failure must surface, not
+    // silently retry through a second path that would fail the same way.
+    const error = outcome.thrownError || Object.assign(new Error(outcome.errorMessage), { code: outcome.errorCode });
+    logger.error(`Failed to send email to ${to}:`, error);
+    await raiseOperationalAlert({
+      key: 'email.smtp_send_failed',
+      error,
+      context: {
+        delivery_id: deliveryId,
+        recipient_domain: extractRecipientDomain(primaryRecipient),
+        error_code: outcome.errorCode
+      }
+    });
     throw error;
   }
+
+  logger.info(`Email sent successfully to ${to}`, { messageId: generatedMessageId });
+  return { ...outcome.result, provider: 'smtp', deliveryId };
 };
 
 /**
@@ -284,7 +374,7 @@ export const sendInvitationEmail = async ({ email, inviterName, role, invitation
  * @param {string} [params.inviterName] - Name of the person sending the invite
  * @param {string} params.invitationToken - Opaque invite token (link only)
  * @param {boolean} params.accountExists - Whether a DGFY account already exists for this email
- * @returns {Promise<Object>} Nodemailer/Brevo send result
+ * @returns {Promise<Object>} Nodemailer send result
  */
 export const sendAffiliateInviteEmail = async ({ email, businessName, inviterName, invitationToken, accountExists }) => {
   const appOrigin = String(process.env.STOREFRONT_PUBLIC_ORIGIN || 'https://dgfy.ph').trim();
@@ -327,7 +417,8 @@ export const sendCashierCredentialEmail = async ({
   tenantName,
   temporaryPassword,
   terminalLabel,
-  storeName
+  storeName,
+  tenantId
 }) => {
   const appUrl = getAppUrl();
   const loginUrl = `${appUrl}/login`;
@@ -355,7 +446,8 @@ export const sendCashierCredentialEmail = async ({
       `Login: ${loginUrl}`,
       `Reset Password: ${resetPasswordUrl}`,
       'Use the reset-password link if you want to set your own password immediately, or sign in first and change it in account settings.'
-    ].join('\n')
+    ].join('\n'),
+    meta: { purpose: 'cashier_credential', tenantId: tenantId || null }
   });
 };
 
@@ -423,7 +515,7 @@ export const sendCompanyRejectedEmail = async ({ email, companyName, rejectionRe
   });
 };
 
-export const sendEmailOtpCode = async ({ email, code, purposeLabel = 'email verification', expiresInMinutes = 10 }) => {
+export const sendEmailOtpCode = async ({ email, code, purposeLabel = 'email verification', expiresInMinutes = 10, tenantId = null }) => {
   const safePurpose = String(purposeLabel || 'email verification');
   const safeMinutes = Number.isFinite(Number(expiresInMinutes)) ? Number(expiresInMinutes) : 10;
   const html = `
@@ -441,7 +533,8 @@ export const sendEmailOtpCode = async ({ email, code, purposeLabel = 'email veri
     subject: 'Your DGFY email verification code',
     html,
     text: `Your DGFY email verification code is ${code}. It expires in ${safeMinutes} minutes.`,
-    fromName: 'DGFY'
+    fromName: 'DGFY',
+    meta: { purpose: 'email_otp', tenantId }
   });
 };
 
@@ -451,14 +544,6 @@ export const sendEmailOtpCode = async ({ email, code, purposeLabel = 'email veri
  * @returns {Promise<boolean>} - True if connection is successful
  */
 export const verifyConnection = async () => {
-  if (getEmailDeliveryProvider() === 'brevo_api' || (!isSmtpConfigured() && isBrevoApiConfigured())) {
-    return {
-      success: true,
-      provider: 'brevo_api',
-      mode: getEmailProviderMode()
-    };
-  }
-
   const transporter = getTransporter();
 
   if (!transporter) {
@@ -471,14 +556,6 @@ export const verifyConnection = async () => {
     return { success: true, provider: 'smtp', mode: getEmailProviderMode() };
   } catch (error) {
     logger.error('SMTP connection verification failed:', error);
-    if (isBrevoApiConfigured()) {
-      return {
-        success: true,
-        provider: 'brevo_api',
-        mode: getEmailProviderMode(),
-        warning: `SMTP verification failed; Brevo API fallback is configured: ${error.message}`
-      };
-    }
     return { success: false, mode: getEmailProviderMode(), error: error.message };
   }
 };

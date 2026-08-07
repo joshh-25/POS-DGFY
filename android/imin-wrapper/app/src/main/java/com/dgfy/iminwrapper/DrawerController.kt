@@ -92,9 +92,15 @@ class DrawerController(
             lastCommandSuccess = false
             lastErrorClass = "PrinterServiceDisconnected"
             lastErrorMessage = "iMin printer service is not connected"
+            // Full diagnostic detail (bind state, service visibility, etc.) is
+            // logged and still travels in the separate `diagnostics` JSON
+            // field IminBridge attaches -- it no longer gets stuffed into the
+            // cashier-facing `message`, which used to render as a long
+            // unreadable dump in the WebView.
+            Log.w(TAG, buildDiagnosticMessage("Bluetooth receipt failed: ${bluetoothResult.message}. iMin printer service is not connected"))
             return DrawerCommandResult(
                 success = false,
-                message = "${buildDiagnosticMessage("Bluetooth receipt failed: ${bluetoothResult.message}. iMin printer service is not connected")}"
+                message = "No receipt printer is connected to this device."
             )
         }
 
@@ -259,9 +265,15 @@ class DrawerController(
             )
         }
 
+        // See printReceipt's !isPrinterServiceConnected branch above -- same
+        // policy: diagnostics logged and still attached separately, not
+        // concatenated into the returned message. baseMessage is already a
+        // short, caller-supplied sentence (e.g. "iMin printer service is
+        // not connected"), so it's returned as-is rather than replaced.
+        Log.w(TAG, "${buildDiagnosticMessage(baseMessage)} | Bluetooth fallback failed: ${bluetoothResult.message}")
         return DrawerCommandResult(
             success = false,
-            message = "${buildDiagnosticMessage(baseMessage)} | Bluetooth fallback failed: ${bluetoothResult.message}"
+            message = baseMessage
         )
     }
 
@@ -279,9 +291,10 @@ class DrawerController(
             )
         }
 
+        Log.w(TAG, "${buildDiagnosticMessage(baseMessage)} | Bluetooth fallback failed: ${bluetoothResult.message}")
         return DrawerCommandResult(
             success = false,
-            message = "${buildDiagnosticMessage(baseMessage)} | Bluetooth fallback failed: ${bluetoothResult.message}"
+            message = baseMessage
         )
     }
 

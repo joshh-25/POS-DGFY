@@ -86,6 +86,58 @@ describe('email OTP service', () => {
     }));
   });
 
+  it('links the OTP row to its email_delivery_logs row via email_delivery_id (issue #279)', async () => {
+    const otpRow = {
+      otp_id: 'otp-linked',
+      purpose: EMAIL_OTP_PURPOSES.DGFY_ACCOUNT_VERIFICATION,
+      email: 'user@example.com',
+      expires_at: new Date('2026-05-17T04:20:00.000Z'),
+      delivery_status: 'sent',
+      update: jest.fn().mockResolvedValue({})
+    };
+    const sender = {
+      isEmailConfigured: jest.fn().mockReturnValue(true),
+      sendEmailOtpCode: jest.fn().mockResolvedValue({ deliveryId: 'delivery-42', provider: 'smtp' })
+    };
+    mockEmailOtp.update.mockResolvedValue([1]);
+    mockEmailOtp.create.mockResolvedValue(otpRow);
+
+    await requestEmailOtp({
+      purpose: EMAIL_OTP_PURPOSES.DGFY_ACCOUNT_VERIFICATION,
+      email: 'user@example.com',
+      tenantId: 'tenant-7',
+      emailSender: sender
+    });
+
+    expect(sender.sendEmailOtpCode).toHaveBeenCalledWith(expect.objectContaining({ tenantId: 'tenant-7' }));
+    expect(otpRow.update).toHaveBeenCalledWith({ email_delivery_id: 'delivery-42' });
+  });
+
+  it('does not attempt to link email_delivery_id when the send result carries none', async () => {
+    const otpRow = {
+      otp_id: 'otp-unlinked',
+      purpose: EMAIL_OTP_PURPOSES.EMAIL_CHANGE,
+      email: 'user2@example.com',
+      expires_at: new Date('2026-05-17T04:20:00.000Z'),
+      delivery_status: 'sent',
+      update: jest.fn().mockResolvedValue({})
+    };
+    const sender = {
+      isEmailConfigured: jest.fn().mockReturnValue(true),
+      sendEmailOtpCode: jest.fn().mockResolvedValue({})
+    };
+    mockEmailOtp.update.mockResolvedValue([1]);
+    mockEmailOtp.create.mockResolvedValue(otpRow);
+
+    await requestEmailOtp({
+      purpose: EMAIL_OTP_PURPOSES.EMAIL_CHANGE,
+      email: 'user2@example.com',
+      emailSender: sender
+    });
+
+    expect(otpRow.update).not.toHaveBeenCalled();
+  });
+
   it('falls back to a local dev code when email delivery is unavailable outside production', async () => {
     const otpRow = {
       otp_id: 'otp-dev',

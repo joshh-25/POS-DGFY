@@ -11,6 +11,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.os.Build
+import android.util.Log
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
@@ -165,10 +166,12 @@ class BluetoothEscPosController(
 
         lastErrorClass = finalError?.javaClass?.name ?: "BluetoothSendFailed"
         lastErrorMessage = finalError?.message ?: "Failed to send Bluetooth ESC/POS command"
-        return BluetoothCommandResult(
-            false,
-            "$lastErrorMessage | pairedCount=$lastPairedCount, lastAttempted=$lastAttemptedDevice"
-        )
+        // pairedCount/lastAttemptedDevice already surface separately via
+        // diagnosticsJson() -- no need to also append them to the message
+        // DrawerController folds into its own diagnostic dump (or, now, no
+        // longer does; see DrawerController.printReceipt).
+        Log.w(TAG, "$lastErrorMessage | pairedCount=$lastPairedCount, lastAttempted=$lastAttemptedDevice")
+        return BluetoothCommandResult(false, lastErrorMessage)
     }
 
     private fun pairedDevicesOrEmpty(): Set<BluetoothDevice> {
@@ -307,6 +310,7 @@ class BluetoothEscPosController(
     )
 
     companion object {
+        private const val TAG = "BluetoothEscPosController"
         private val SPP_UUID: UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB")
         private val INIT_PRINTER_BYTES = byteArrayOf(0x1B, 0x40)
         private val ALIGN_CENTER_BYTES = byteArrayOf(0x1B, 0x61, 0x01)

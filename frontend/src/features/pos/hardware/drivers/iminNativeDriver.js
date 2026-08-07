@@ -6,6 +6,7 @@ import {
 } from '../../utils/iminHardwareBridge.js';
 import { reportPosDeviceClientResult } from '../../services/posService.js';
 import { normalizeHardwareResult } from '../posHardwareContract.js';
+import { resolveIminPrinterAvailability } from '../iminPrinterAvailability.js';
 
 const isIminWrapper = () => {
     if (typeof window === 'undefined' || !window.iMinBridge) return false;
@@ -17,20 +18,44 @@ const isIminWrapper = () => {
     }
 };
 
-// The native Android/iMin WebView bridge. Detection is a pure, synchronous,
-// local check (window.iMinBridge) — no network call, so this driver can
-// always be probed first without cost.
+// Silent (no on-screen announcement) probe of the bridge's hardware
+// diagnostics, resolved through resolveIminPrinterAvailability's fail-open
+// predicate. Shared by detect() (gates whether this driver is even offered)
+// and getStatus()/refresh() (re-probed on demand, e.g. after pairing a
+// Bluetooth printer). Returns both the availability verdict and the raw
+// diagnostics call so callers don't have to hit the bridge twice.
+const probeAvailability = () => {
+    const diagnostics = getIminHardwareDiagnostics({ silent: true });
+    if (!diagnostics.handled) {
+        // No bridge at all -- detect() already gates on isIminWrapper(), so
+        // this only means the diagnostics call itself failed. Fail open.
+        return { diagnostics, availability: { available: true, reasonCode: null, message: null } };
+    }
+    return { diagnostics, availability: resolveIminPrinterAvailability(diagnostics.result?.diagnostics) };
+};
+
+// The native Android/iMin WebView bridge. Detection is a synchronous, local
+// check (window.iMinBridge) followed by a silent hardware-diagnostics probe
+// — no network call either way, so this driver can always be probed first
+// without cost. A bridge with no reachable printer (no iMin service, no
+// paired Bluetooth device) does NOT claim the terminal; resolution falls
+// through to the next driver (ordinarily noopDriver), so Print controls read
+// isPrinterAvailable: false instead of offering a print that's guaranteed to
+// fail.
 export const iminNativeDriver = {
     id: 'imin_native',
     label: 'iMin built-in printer',
     async detect() {
-        return isIminWrapper();
+        if (!isIminWrapper()) return false;
+        return probeAvailability().availability.available;
     },
     async getStatus() {
-        const diagnostics = getIminHardwareDiagnostics();
+        const { diagnostics, availability } = probeAvailability();
         return {
-            available: diagnostics.handled && diagnostics.result?.success !== false,
-            printersDetected: diagnostics.handled ? 1 : 0,
+            available: diagnostics.handled && diagnostics.result?.success !== false && availability.available,
+            printersDetected: availability.available ? 1 : 0,
+            reasonCode: availability.reasonCode,
+            message: availability.message,
             raw: diagnostics.result || null
         };
     },
@@ -48,9 +73,10 @@ export const iminNativeDriver = {
             const result = printReceiptWithIminBridge({ transaction, businessSettings, receiptContract, openDrawerAfterPrint });
             if (!result.handled) return normalizeHardwareResult({ handled: false, driverId: this.id });
             outcome = normalizeHardwareResult({
-                success: true,
+                success: result.result?.success !== false,
                 driverId: this.id,
                 message: result.result?.message,
+                reasonCode: result.result?.reasonCode || null,
                 raw: result.result
             });
         } catch (error) {
@@ -78,14 +104,15 @@ export const iminNativeDriver = {
 
         return outcome;
     },
-    async printOrderTicket({ cart, terminalId, orderMethod, fnbContext } = {}) {
+    async printOrderTicket({ cart, terminalId, orderMethod, fnbContext, orderNotes } = {}) {
         try {
-            const result = printOrderWithIminBridge({ cart, terminalId, orderMethod, fnbContext });
+            const result = printOrderWithIminBridge({ cart, terminalId, orderMethod, fnbContext, orderNotes });
             if (!result.handled) return normalizeHardwareResult({ handled: false, driverId: this.id });
             return normalizeHardwareResult({
-                success: true,
+                success: result.result?.success !== false,
                 driverId: this.id,
                 message: result.result?.message,
+                reasonCode: result.result?.reasonCode || null,
                 raw: result.result
             });
         } catch (error) {
@@ -103,9 +130,10 @@ export const iminNativeDriver = {
             const result = openDrawerWithIminBridge();
             if (!result.handled) return normalizeHardwareResult({ handled: false, driverId: this.id });
             outcome = normalizeHardwareResult({
-                success: true,
+                success: result.result?.success !== false,
                 driverId: this.id,
                 message: result.result?.message,
+                reasonCode: result.result?.reasonCode || null,
                 raw: result.result
             });
         } catch (error) {

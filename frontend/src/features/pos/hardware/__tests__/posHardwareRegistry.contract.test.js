@@ -46,6 +46,46 @@ describe('posHardwareRegistry', () => {
         expect(fetchPosDeviceStatus).not.toHaveBeenCalled();
     });
 
+    it('falls through to the noop driver when the iMin bridge is present but no printer is reachable (no iMin service, no paired Bluetooth device)', async () => {
+        globalThis.window = {
+            location: { origin: 'http://localhost' },
+            iMinBridge: {
+                isIminWrapper: () => true,
+                getHardwareDiagnostics: () => ({
+                    diagnostics: {
+                        printerServiceConnected: false,
+                        bluetoothEscPos: { permissionGranted: true, adapterEnabled: true, pairedCount: 0 }
+                    }
+                })
+            }
+        };
+        fetchPosDeviceStatus.mockResolvedValue({ driver: null });
+
+        const driver = await resolvePosHardwareDriver();
+
+        expect(driver.id).toBe('none');
+    });
+
+    it('resolves to the iMin driver when the iMin service is unreachable but a Bluetooth printer is paired', async () => {
+        globalThis.window = {
+            location: { origin: 'http://localhost' },
+            iMinBridge: {
+                isIminWrapper: () => true,
+                getHardwareDiagnostics: () => ({
+                    diagnostics: {
+                        printerServiceConnected: false,
+                        bluetoothEscPos: { permissionGranted: true, adapterEnabled: true, pairedCount: 1 }
+                    }
+                })
+            }
+        };
+
+        const driver = await resolvePosHardwareDriver();
+
+        expect(driver.id).toBe('imin_native');
+        expect(fetchPosDeviceStatus).not.toHaveBeenCalled();
+    });
+
     it('falls back to the noop driver when no client-only driver matches and the backend reports no server driver', async () => {
         fetchPosDeviceStatus.mockResolvedValue({ driver: { id: 'client_managed' } });
 
