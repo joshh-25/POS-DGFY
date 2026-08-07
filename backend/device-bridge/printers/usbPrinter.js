@@ -1,7 +1,7 @@
 import USBAdapter from '@node-escpos/usb-adapter';
 import { Printer } from '@node-escpos/core';
 import { runtimeConfig } from '../config/runtime.js';
-import { buildReceiptLines } from '../receipts/receiptFormatter.js';
+import { buildReceiptLines, buildShiftSummaryLines } from '../receipts/receiptFormatter.js';
 import { buildTestReceipt } from '../receipts/testReceiptBuilder.js';
 
 const formatHex = (value) => {
@@ -159,6 +159,32 @@ export const printReceiptPayload = async ({ receipt, copies = 1 } = {}) => {
       device,
       invoiceNumber: receipt?.transaction?.invoice_number || null,
       transactionId: receipt?.transaction?.pos_transaction_id || null
+    };
+  });
+};
+
+export const printShiftSummaryPayload = async ({ shiftSummary, copies = 1 } = {}) => {
+  if (!shiftSummary || typeof shiftSummary !== 'object' || Array.isArray(shiftSummary)) {
+    throw new Error('shift summary payload is required');
+  }
+
+  const summaryLines = buildShiftSummaryLines(shiftSummary, {
+    width: runtimeConfig.printerWidth
+  });
+  const safeCopies = Math.max(1, Math.min(Number.parseInt(copies, 10) || 1, 3));
+
+  return withPrinter(async (printer, device) => {
+    for (let index = 0; index < safeCopies; index += 1) {
+      printer.align('lt').style('normal').size(1, 1);
+      summaryLines.forEach((line) => printer.println(line));
+      printer.style('normal').align('lt').println('').cut();
+      await printer.flush();
+    }
+
+    return {
+      copies: safeCopies,
+      device,
+      shiftId: shiftSummary?.shift?.pos_terminal_shift_id || null
     };
   });
 };

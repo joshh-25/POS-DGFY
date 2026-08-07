@@ -1,6 +1,6 @@
 'use strict';
 
-const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_]+$/;
+const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 const quoteIdentifier = (identifier) => {
   const normalized = String(identifier || '').trim();

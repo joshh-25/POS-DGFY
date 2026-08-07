@@ -88,7 +88,13 @@ const buildCatalogRow = (overrides = {}) => ({
         : {
             storefront_visible: true,
             storefront_image_url: '/uploads/storefront/item-10.png'
-        }
+    }
+});
+
+const imageVariantsFor = (url) => ({
+    thumbnail_url: url,
+    medium_url: url,
+    large_url: url
 });
 
 describe('storeRepository location-stock schema fallback', () => {
@@ -257,7 +263,13 @@ describe('storeRepository location-stock schema fallback', () => {
         expect(result[0]).toEqual(expect.objectContaining({
             item_id: 650,
             image_url: '/uploads/storefront/visible.png',
-            image_gallery: [{ url: '/uploads/storefront/visible.png', is_primary: true, sort_order: 0 }]
+            image_variants: imageVariantsFor('/uploads/storefront/visible.png'),
+            image_gallery: [{
+                url: '/uploads/storefront/visible.png',
+                variants: imageVariantsFor('/uploads/storefront/visible.png'),
+                is_primary: true,
+                sort_order: 0
+            }]
         }));
         const retryQuery = itemFindAllMock.mock.calls[1][0];
         const storefrontInclude = retryQuery.include.find((entry) => entry.as === 'storefrontCatalogOverride');
@@ -291,10 +303,26 @@ describe('storeRepository location-stock schema fallback', () => {
         expect(result[0]).toEqual(expect.objectContaining({
             item_id: 660,
             image_url: '/uploads/storefront/primary.png',
+            image_variants: imageVariantsFor('/uploads/storefront/primary.png'),
             image_gallery: [
-                { url: '/uploads/storefront/primary.png', is_primary: true, sort_order: 0 },
-                { url: '/uploads/storefront/second.png', is_primary: false, sort_order: 1 },
-                { url: '/uploads/storefront/third.png', is_primary: false, sort_order: 2 }
+                {
+                    url: '/uploads/storefront/primary.png',
+                    variants: imageVariantsFor('/uploads/storefront/primary.png'),
+                    is_primary: true,
+                    sort_order: 0
+                },
+                {
+                    url: '/uploads/storefront/second.png',
+                    variants: imageVariantsFor('/uploads/storefront/second.png'),
+                    is_primary: false,
+                    sort_order: 1
+                },
+                {
+                    url: '/uploads/storefront/third.png',
+                    variants: imageVariantsFor('/uploads/storefront/third.png'),
+                    is_primary: false,
+                    sort_order: 2
+                }
             ]
         }));
     });

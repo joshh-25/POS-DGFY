@@ -60,10 +60,12 @@ describe('posRepository catalog image mapping', () => {
     const ItemBarcode = {
       findAll: jest.fn().mockResolvedValue([
         {
+          scope: 'pos',
           toJSON: () => ({
             item_barcode_id: 501,
             item_id: 101,
             code: 'CHEESE-101',
+            scope: 'pos',
             is_primary: true
           })
         }
@@ -90,6 +92,7 @@ describe('posRepository catalog image mapping', () => {
       primary_barcode: {
         item_barcode_id: 501,
         code: 'CHEESE-101',
+        scope: 'pos',
         is_primary: true
       }
     }));

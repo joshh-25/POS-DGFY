@@ -47,9 +47,12 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     listIncomingOnlineOrdersUseCase: jest.fn(),
     getAdminLocationMonitorUseCase: jest.fn(),
     collectCashPickupOrderUseCase: jest.fn(),
+    collectCashDeliveryOrderUseCase: jest.fn(),
+    updateDeliveryJobStatusUseCase: jest.fn(),
     updateOnlineOrderStatusUseCase: jest.fn(),
     getPosDeviceStatusUseCase: mockGetPosDeviceStatusUseCase,
     printPosReceiptUseCase: jest.fn(),
+    printPosShiftSummaryUseCase: jest.fn(),
     openPosDrawerUseCase: jest.fn(),
     getPairedPosTerminalUseCase: jest.fn(),
     posTerminalPairingMaxAgeMs: 300000

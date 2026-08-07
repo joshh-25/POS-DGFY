@@ -4,6 +4,7 @@ export const ORDER_METHOD_LABELS = Object.freeze({
   pickup: 'Pickup',
   delivery: 'Delivery',
   appointment: 'Appointment',
+  walk_in: 'Walk-in',
   online: 'Online'
 });
 
@@ -53,6 +54,37 @@ export const FULFILLMENT_ACTION_LABELS = Object.freeze({
   out_for_delivery: 'Out for Delivery',
   completed: 'Complete'
 });
+
+export const DELIVERY_JOB_STATUS_LABELS = Object.freeze({
+  pending_dispatch: 'Pending Dispatch',
+  assigned: 'Assigned',
+  picked_up: 'Picked Up',
+  delivered: 'Delivered',
+  failed: 'Failed',
+  cancelled: 'Cancelled'
+});
+
+const DELIVERY_JOB_TRANSITIONS = Object.freeze({
+  pending_dispatch: 'assigned',
+  assigned: 'picked_up',
+  picked_up: 'delivered'
+});
+
+export const getNextDeliveryJobStatus = (order = {}) => {
+  if (String(order?.order_method || '').trim() !== 'delivery') return null;
+  if (String(order?.fulfillment_status || '').trim() !== 'out_for_delivery') return null;
+  const currentStatus = String(order?.deliveryJob?.status || '').trim();
+  return DELIVERY_JOB_TRANSITIONS[currentStatus] || null;
+};
+
+export const getDeliveryJobActionLabel = (status) => {
+  switch (String(status || '').trim()) {
+  case 'assigned': return 'Assign Delivery';
+  case 'picked_up': return 'Mark Picked Up';
+  case 'delivered': return 'Mark Delivered';
+  default: return DELIVERY_JOB_STATUS_LABELS[status] || status;
+  }
+};
 
 export const getFulfillmentActionLabel = (status, order = {}) => {
   const normalizedStatus = String(status || '').trim();

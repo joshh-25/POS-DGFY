@@ -71,6 +71,11 @@ const {
     DgfyAccount,
     DgfyAccountTenantMembership,
     DgfyLegalAcknowledgement,
+    CompanyRegistrationApplication,
+    CompanyRegistrationAttempt,
+    CompanyRegistrationEvent,
+    CompanyRegistrationEmailDelivery,
+    UserTenantMapping,
     PlatformAdminUser,
     PlatformAdminSession
 } = await import('../src/models/index.js');
@@ -100,6 +105,7 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
             status: overrides.status || 'pending',
             admin_email: overrides.admin_email || `tenant-${suffix}@example.test`,
             admin_password_hash: overrides.admin_password_hash || '$2y$10$abcdefghijklmnopqrstuv',
+            owner_dgfy_account_id: overrides.owner_dgfy_account_id || dgfyAccount.id,
             plan: overrides.plan || 'premium',
             subscription_status: overrides.subscription_status || 'inactive',
             settings: overrides.settings || {}
@@ -109,7 +115,29 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
             payload.id = overrides.id;
         }
 
-        return Tenant.create(payload);
+        const tenant = await Tenant.create(payload);
+        if (tenant.status === 'pending') {
+            const application = await CompanyRegistrationApplication.create({
+                tenant_id: tenant.id,
+                dgfy_account_id: dgfyAccount.id,
+                registration_email_snapshot: dgfyAccount.email,
+                current_attempt_no: 1,
+                review_status: 'pending',
+                provisioning_status: 'not_started',
+                optimistic_version: 1
+            });
+            await CompanyRegistrationAttempt.create({
+                application_id: application.id,
+                attempt_no: 1,
+                submission_snapshot: {
+                    company_name: tenant.name,
+                    workflow_mode: 'food_manufacturing'
+                },
+                legal_terms_snapshot: {},
+                decision: 'pending'
+            });
+        }
+        return tenant;
     };
 
     beforeAll(async () => {
@@ -211,6 +239,27 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
     });
 
     afterAll(async () => {
+        const testTenants = await Tenant.findAll({
+            where: { name: { [Op.like]: `${ADMIN_TEST_TENANT_PREFIX}%` } },
+            attributes: ['id']
+        });
+        const tenantIds = testTenants.map((tenant) => tenant.id);
+        if (tenantIds.length > 0) {
+            await DgfyAccountTenantMembership.destroy({ where: { tenant_id: { [Op.in]: tenantIds } } });
+            await UserTenantMapping.destroy({ where: { tenant_id: { [Op.in]: tenantIds } } });
+            await DgfyLegalAcknowledgement.destroy({ where: { tenant_id: { [Op.in]: tenantIds } } });
+            const applications = await CompanyRegistrationApplication.findAll({
+                where: { tenant_id: { [Op.in]: tenantIds } },
+                attributes: ['id']
+            });
+            const applicationIds = applications.map((application) => application.id);
+            if (applicationIds.length > 0) {
+                await CompanyRegistrationEvent.destroy({ where: { application_id: { [Op.in]: applicationIds } } });
+                await CompanyRegistrationAttempt.destroy({ where: { application_id: { [Op.in]: applicationIds } } });
+                await CompanyRegistrationEmailDelivery.destroy({ where: { application_id: { [Op.in]: applicationIds } } });
+                await CompanyRegistrationApplication.destroy({ where: { id: { [Op.in]: applicationIds } } });
+            }
+        }
         await Tenant.destroy({ where: { name: { [Op.like]: `${ADMIN_TEST_TENANT_PREFIX}%` } } });
         if (dgfyAccount) {
             await DgfyAccount.destroy({ where: { id: dgfyAccount.id } });
@@ -379,19 +428,13 @@ describe('Admin Tenant Lifecycle Integration - Parity', () => {
             .set('Authorization', `Bearer ${adminApiToken}`)
             .send({ status: 'active' });
 
-        expect(response.status).toBe(200);
-        expect(response.body.message).toBe('Tenant approved and provisioned successfully.');
-        expect(mockProvisionTenant).toHaveBeenCalledWith(expect.objectContaining({
-            tenantId: tenant.id,
-            name: tenant.name,
-            dbName: tenant.db_name,
-            companyToken: tenant.company_token,
-            adminEmail: tenant.admin_email,
-            adminPasswordHash: tenant.admin_password_hash
-        }));
+        expect(response.status).toBe(422);
+        expect(response.body.message).toBe('Pending public registrations may only be activated by the dedicated approval workflow.');
+        expect(mockProvisionTenant).not.toHaveBeenCalled();
 
         const refreshed = await Tenant.findByPk(tenant.id);
-        expect(refreshed.plan).toBe('premium');
+        expect(refreshed.status).toBe('pending');
+        expect(refreshed.plan).toBe('standard');
     });
 
     it('keeps active tenant premium when admin update requests a standard plan', async () => {

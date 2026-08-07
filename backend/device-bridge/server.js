@@ -4,7 +4,7 @@ import { requireBridgeAuth } from './auth/bridgeAuth.js';
 import { openDrawer } from './drawer/openDrawer.js';
 import { runtimeConfig } from './config/runtime.js';
 import { logError, logInfo } from './bridgeLogger.js';
-import { listUsbPrinters, printTestReceipt, printReceiptPayload } from './printers/usbPrinter.js';
+import { listUsbPrinters, printTestReceipt, printReceiptPayload, printShiftSummaryPayload } from './printers/usbPrinter.js';
 
 const app = express();
 
@@ -95,6 +95,24 @@ app.post('/device/print-receipt', async (request, response) => {
     response.status(500).json({
       ok: false,
       error: 'RECEIPT_PRINT_FAILED',
+      message: error.message,
+    });
+  }
+});
+
+app.post('/device/print-shift-summary', async (request, response) => {
+  try {
+    const { shift_summary: shiftSummary, copies = 1 } = request.body ?? {};
+    const result = await printShiftSummaryPayload({ shiftSummary, copies });
+    response.json({
+      ok: true,
+      result,
+    });
+  } catch (error) {
+    logError('shift summary print failed', error);
+    response.status(500).json({
+      ok: false,
+      error: 'SHIFT_SUMMARY_PRINT_FAILED',
       message: error.message,
     });
   }

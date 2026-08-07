@@ -13,6 +13,8 @@ import {
     buildServiceDashboardUseCase,
     buildUpdateServiceBookingStatusUseCase
 } from '../src/modules/services/usecases/serviceUseCases.js';
+import dbStore from '../src/utils/dbStore.js';
+import { generateStoreGuestCheckoutProof } from '../src/modules/store/utils/storeJwtToken.js';
 import { jest } from '@jest/globals';
 
 const transaction = () => ({
@@ -75,6 +77,47 @@ const registeredTransactionSettings = () => [
         })
     }
 ];
+
+const serviceTestTenantId = '11111111-1111-4111-8111-111111111111';
+
+const withGuestCheckoutProof = (useCase) => {
+    const proofByRequest = new Map();
+    return async (request = {}) => {
+        if (request.source !== 'storefront') return useCase(request);
+        const payload = { ...(request.payload || {}) };
+        const email = String(
+            payload.customer_email
+            || payload.bookings?.[0]?.customer_email
+            || request.storeCustomer?.email
+            || 'guest@example.com'
+        ).trim().toLowerCase();
+        const idempotencyKey = String(payload.idempotency_key || '').trim();
+        const requestKey = `${email}|${idempotencyKey}`;
+        const proof = payload.guest_checkout_proof
+            || proofByRequest.get(requestKey)
+            || generateStoreGuestCheckoutProof({
+                tenantId: serviceTestTenantId,
+                email,
+                idempotencyKey
+            });
+        proofByRequest.set(requestKey, proof);
+        return dbStore.run({ tenantId: serviceTestTenantId }, () => useCase({
+            ...request,
+            payload: {
+                ...payload,
+                guest_checkout_proof: proof
+            }
+        }));
+    };
+};
+
+const createServiceBookingUseCase = (options) => withGuestCheckoutProof(
+    buildCreateServiceBookingUseCase(options)
+);
+
+const createServiceBookingBatchUseCase = (options) => withGuestCheckoutProof(
+    buildCreateServiceBookingBatchUseCase(options)
+);
 
 const storefrontClosedMondaySettings = () => [
     ...registeredTransactionSettings(),
@@ -355,7 +398,7 @@ describe('Services Mode use cases', () => {
 
     it('blocks booking against a resource blackout date', async () => {
         const tx = transaction();
-        const useCase = buildCreateServiceBookingUseCase({
+        const useCase = createServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
                 getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
@@ -396,7 +439,7 @@ describe('Services Mode use cases', () => {
     it('blocks storefront bookings when the service is disabled at the requested branch', async () => {
         const tx = transaction();
         const findServiceItemById = jest.fn(async () => null);
-        const useCase = buildCreateServiceBookingUseCase({
+        const useCase = createServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
                 getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
@@ -468,7 +511,7 @@ describe('Services Mode use cases', () => {
     it('accepts service booking quantity when resource capacity allows', async () => {
         const tx = transaction();
         const createBooking = jest.fn(async (payload) => ({ booking_id: 11, ...payload }));
-        const useCase = buildCreateServiceBookingUseCase({
+        const useCase = createServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
                 getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
@@ -532,7 +575,7 @@ describe('Services Mode use cases', () => {
     it('takes a price snapshot on booking_lines at creation time (quantity * current sale price)', async () => {
         const tx = transaction();
         const createBookingLines = jest.fn(async (rows) => rows.map((row, index) => ({ ...row, booking_line_id: 700 + index })));
-        const useCase = buildCreateServiceBookingUseCase({
+        const useCase = createServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
                 getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
@@ -587,7 +630,7 @@ describe('Services Mode use cases', () => {
     it('marks guest service bookings with a new email as eligible for DGFY account signup', async () => {
         const tx = transaction();
         const createBooking = jest.fn(async (payload) => ({ booking_id: 13, ...payload }));
-        const useCase = buildCreateServiceBookingUseCase({
+        const useCase = createServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
                 getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
@@ -653,7 +696,7 @@ describe('Services Mode use cases', () => {
         const tx = transaction();
         const findStoreCustomerByEmail = jest.fn();
         const createBooking = jest.fn(async (payload) => ({ booking_id: 14, ...payload }));
-        const useCase = buildCreateServiceBookingUseCase({
+        const useCase = createServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
                 getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
@@ -742,8 +785,8 @@ describe('Services Mode use cases', () => {
                     booking_id: 44,
                     resource_id: 7,
                     quantity: 1,
-                    start_at: new Date(`${monday}T09:00:00`),
-                    end_at: new Date(`${monday}T10:00:00`),
+                    start_at: new Date(`${monday}T09:00:00Z`),
+                    end_at: new Date(`${monday}T10:00:00Z`),
                     status: 'confirmed'
                 }])
             }
@@ -901,8 +944,8 @@ describe('Services Mode use cases', () => {
 
         expect(result.success).toBe(true);
         expect(result.data.available).toBe(true);
-        expect(new Date(result.data.slots[0].start_at).getHours()).toBe(18);
-        expect(result.data.slots.every((slot) => new Date(slot.start_at).getHours() >= 18)).toBe(true);
+        expect(new Date(result.data.slots[0].start_at).getUTCHours()).toBe(18);
+        expect(result.data.slots.every((slot) => new Date(slot.start_at).getUTCHours() >= 18)).toBe(true);
     });
 
     it('returns availability diagnostics for fully booked generated slots', async () => {
@@ -925,8 +968,8 @@ describe('Services Mode use cases', () => {
                     booking_id: 44,
                     resource_id: 7,
                     quantity: 1,
-                    start_at: new Date(`${monday}T09:00:00`),
-                    end_at: new Date(`${monday}T11:00:00`),
+                    start_at: new Date(`${monday}T09:00:00Z`),
+                    end_at: new Date(`${monday}T11:00:00Z`),
                     status: 'confirmed'
                 }])
             }
@@ -1091,7 +1134,7 @@ describe('Services Mode use cases', () => {
             getSettingsByKeys: jest.fn(async () => storefrontClosedMondaySettings()),
             findServiceItemById: jest.fn()
         };
-        const useCase = buildCreateServiceBookingUseCase({ serviceRepository: repository });
+        const useCase = createServiceBookingUseCase({ serviceRepository: repository });
 
         const result = await useCase({
             payload: {
@@ -1117,7 +1160,7 @@ describe('Services Mode use cases', () => {
             getSettingsByKeys: jest.fn(async () => storefrontClosedMondaySettings()),
             findServiceItemById: jest.fn()
         };
-        const useCase = buildCreateServiceBookingBatchUseCase({ serviceRepository: repository });
+        const useCase = createServiceBookingBatchUseCase({ serviceRepository: repository });
 
         const result = await useCase({
             payload: {
@@ -1213,7 +1256,7 @@ describe('Services Mode use cases', () => {
         const tx = transaction();
         const updateHoldById = jest.fn(async () => null);
         const createBooking = jest.fn(async (payload) => ({ booking_id: 88, ...payload }));
-        const useCase = buildCreateServiceBookingUseCase({
+        const useCase = createServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
                 getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
@@ -1287,7 +1330,7 @@ describe('Services Mode use cases', () => {
     it('rejects storefront service booking when sale price is not positive', async () => {
         const tx = transaction();
         const createBooking = jest.fn();
-        const useCase = buildCreateServiceBookingUseCase({
+        const useCase = createServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
                 getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
@@ -1321,7 +1364,7 @@ describe('Services Mode use cases', () => {
     it('auto-selects an assigned resource for storefront quantity when capacity allows', async () => {
         const tx = transaction();
         const createBooking = jest.fn(async (payload) => ({ booking_id: 12, ...payload }));
-        const useCase = buildCreateServiceBookingUseCase({
+        const useCase = createServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
                 getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
@@ -1379,7 +1422,7 @@ describe('Services Mode use cases', () => {
     it('rejects location-only service quantity without a capacity anchor', async () => {
         const tx = transaction();
         const createBooking = jest.fn();
-        const useCase = buildCreateServiceBookingUseCase({
+        const useCase = createServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
                 getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
@@ -1412,7 +1455,7 @@ describe('Services Mode use cases', () => {
 
     it('rejects service booking quantity that exceeds overlapping resource capacity', async () => {
         const tx = transaction();
-        const useCase = buildCreateServiceBookingUseCase({
+        const useCase = createServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
                 getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
@@ -1462,7 +1505,7 @@ describe('Services Mode use cases', () => {
         const tx = transaction();
         let bookingId = 20;
         const createBooking = jest.fn(async (payload) => ({ booking_id: bookingId += 1, ...payload }));
-        const useCase = buildCreateServiceBookingBatchUseCase({
+        const useCase = createServiceBookingBatchUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
                 getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
@@ -1531,7 +1574,7 @@ describe('Services Mode use cases', () => {
             const rows = [...bookingsByKey.values()].flat();
             return rows.find((row) => row.booking_id === id);
         });
-        const useCase = buildCreateServiceBookingUseCase({
+        const useCase = createServiceBookingUseCase({
             serviceRepository: {
                 beginTransaction,
                 getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),
@@ -1570,7 +1613,7 @@ describe('Services Mode use cases', () => {
     it('rolls back a service booking batch when one draft fails', async () => {
         const tx = transaction();
         const createBooking = jest.fn(async (payload) => ({ booking_id: 31, ...payload }));
-        const useCase = buildCreateServiceBookingBatchUseCase({
+        const useCase = createServiceBookingBatchUseCase({
             serviceRepository: {
                 beginTransaction: jest.fn(async () => tx),
                 getSettingsByKeys: jest.fn(async () => registeredTransactionSettings()),

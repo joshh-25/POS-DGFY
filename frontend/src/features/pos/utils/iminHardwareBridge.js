@@ -503,6 +503,66 @@ const resolveOrderTicketItemName = (cartLine, index) => safeText(
     `Item #${cartLine?.item_id || index + 1}`
 );
 
+const formatShiftSummaryValue = (value) => Number(value || 0).toFixed(2);
+
+export const formatIminShiftSummaryText = ({ shiftSummary = {}, businessSettings = {} } = {}) => {
+    const shift = shiftSummary?.shift || {};
+    const cash = shiftSummary?.cash_summary || {};
+    const sales = shiftSummary?.sales_summary || {};
+    const lines = [
+        center(safeText(businessSettings?.pos_business_name, 'DGFY')),
+        center('CASHIER SHIFT SALES SUMMARY'),
+        `Business date: ${safeText(shift.business_date)}`,
+        `Terminal: ${safeText(shift.terminal_id)}`,
+        `Shift: ${safeText(shift.pos_terminal_shift_id)}`,
+        line(),
+        pair('Transactions', sales.transaction_count || 0),
+        pair('Subtotal', formatShiftSummaryValue(sales.subtotal_amount)),
+        pair('Discounts', formatShiftSummaryValue(sales.discount_amount)),
+        pair('VAT', formatShiftSummaryValue(sales.vat_amount)),
+        pair('Total sales', formatShiftSummaryValue(sales.total_amount)),
+        line(),
+        center('PAYMENT BREAKDOWN')
+    ];
+    (Array.isArray(sales.payment_breakdown) ? sales.payment_breakdown : []).forEach((entry) => {
+        lines.push(pair(`${entry.payment_type || 'Other'} (${entry.count || 0})`, formatShiftSummaryValue(entry.amount)));
+    });
+    lines.push(
+        line(),
+        center('CASH RECONCILIATION'),
+        pair('Opening float', formatShiftSummaryValue(cash.opening_float_amount)),
+        pair('Cash sales', formatShiftSummaryValue(cash.cash_sales_amount)),
+        pair('Cash in', formatShiftSummaryValue(cash.cash_in_total)),
+        pair('Cash out', formatShiftSummaryValue(cash.cash_out_total)),
+        pair('Expected cash', formatShiftSummaryValue(cash.expected_cash_amount)),
+        pair('Closing cash', formatShiftSummaryValue(cash.closing_cash_amount)),
+        pair('Variance', formatShiftSummaryValue(cash.cash_variance_amount)),
+        line(),
+        center('Keep with cashier close evidence.')
+    );
+    return lines.join('\n');
+};
+
+export const printShiftSummaryWithIminBridge = ({ shiftSummary, businessSettings = {} }) => {
+    const bridge = getIminBridge();
+    if (!bridge || typeof bridge.printReceipt !== 'function') {
+        return { handled: false };
+    }
+    const result = parseBridgeResult(
+        bridge.printReceipt(formatIminShiftSummaryText({ shiftSummary, businessSettings }), false),
+        'Shift sales summary print command sent.'
+    );
+    const normalizedResult = result.success ? result : toHardwareFailureResult(result);
+    emitPosHardwareMessage({
+        title: 'iMin receipt printer',
+        message: normalizedResult.message || 'Shift sales summary print command sent.',
+        tone: normalizedResult.success ? 'success' : 'error',
+        source: 'iMin hardware',
+        details: normalizedResult.diagnostics || null
+    });
+    return { handled: true, result: normalizedResult };
+};
+
 export const formatIminOrderTicketText = ({
     cart = [],
     terminalId = '',

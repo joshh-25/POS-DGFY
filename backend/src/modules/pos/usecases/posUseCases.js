@@ -10,6 +10,7 @@ import {
     COMPLIANCE_OPERATION
 } from '../../compliance/index.js';
 import logger from '../../../config/logger.js';
+import { PERMISSIONS } from '../../../config/permissions.js';
 import dbStore from '../../../utils/dbStore.js';
 import { resolveMovementLocation } from '../../inventory/index.js';
 import {
@@ -35,6 +36,7 @@ import {
 } from '../../shared/utils/stockBearingPolicy.js';
 import { requireExplicitSalePrice } from '../../shared/utils/itemFinancialPolicy.js';
 import { buildFnbRecipeConsumptionPlan } from '../../shared/utils/fnbRecipeConsumption.js';
+import { isCodDelivery } from '../../shared/utils/paymentTimingPolicy.js';
 import { getDgfyLegacyLinkStatus } from '../../dgfy/index.js';
 import { recordDgfyOrderActivity } from '../../dgfy/utils/customerActivityRecorder.js';
 import { hasEffectivePermission } from '../../../utils/userPermissions.js';
@@ -83,6 +85,22 @@ const ONLINE_FULFILLMENT_TRANSITIONS = Object.freeze({
     cancelled: [],
     rejected: []
 });
+const DELIVERY_JOB_STATUS_VALUES = Object.freeze([
+    'pending_dispatch',
+    'assigned',
+    'picked_up',
+    'delivered',
+    'failed',
+    'cancelled'
+]);
+const DELIVERY_JOB_TRANSITIONS = Object.freeze({
+    pending_dispatch: ['assigned'],
+    assigned: ['picked_up'],
+    picked_up: ['delivered'],
+    delivered: [],
+    failed: [],
+    cancelled: []
+});
 const CASH_EVENT_EFFECT = Object.freeze({
     cash_in: 1,
     opening_adjustment: 1,
@@ -110,7 +128,9 @@ const POS_OPERATION_KEYS = Object.freeze({
     SHIFT_CLOSE: 'terminal.shift_close',
     SHIFT_FORCE_CLOSE: 'terminal.shift_force_close',
     ORDER_STATUS_UPDATE: 'terminal.order_status_update',
-    PICKUP_CASH_COLLECTION: 'terminal.pickup_cash_collection'
+    PICKUP_CASH_COLLECTION: 'terminal.pickup_cash_collection',
+    DELIVERY_CASH_COLLECTION: 'terminal.delivery_cash_collection',
+    DELIVERY_JOB_STATUS_UPDATE: 'terminal.delivery_job_status_update'
 });
 const TERMINAL_POLICY_MODES = new Set(['warn', 'enforce']);
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
@@ -415,6 +435,13 @@ export const buildGetPosReportsOverviewUseCase = ({ posRepository }) => {
     });
     return async ({ query = {}, user } = {}) => {
         try {
+            if (!isPlainObject(query)) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'Report query must be an object',
+                    { statusCode: 400 }
+                );
+            }
             const dateFrom = normalizeBusinessDateInput(query.date_from) || nowInManilaBusinessDate();
             const dateTo = normalizeBusinessDateInput(query.date_to) || dateFrom;
             if (!/^\d{4}-\d{2}-\d{2}$/.test(dateFrom) || !/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) {
@@ -1006,6 +1033,73 @@ const validateOnlineOrderTransition = ({ currentStatus, nextStatus, orderMethod 
                         current_status: currentStatus,
                         requested_status: nextStatus,
                         order_method: orderMethod
+                    }
+                }
+            }
+        );
+    }
+};
+
+const assertDeliveryCompletionReadiness = (order) => {
+    const deliveryJobStatus = String(order?.deliveryJob?.status || '').trim().toLowerCase();
+    if (deliveryJobStatus !== 'delivered') {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'Delivery orders can be completed only after the delivery job is marked delivered.',
+            {
+                statusCode: 409,
+                details: {
+                    order_lifecycle: {
+                        reason_code: 'DELIVERY_JOB_NOT_DELIVERED',
+                        delivery_job_status: deliveryJobStatus || null
+                    }
+                }
+            }
+        );
+    }
+
+    const paymentStatus = String(order?.payment_status || '').trim().toLowerCase();
+    if (!isCodDelivery({
+        orderMethod: order?.order_method,
+        paymentType: order?.payment_type,
+        paymentTiming: order?.payment_timing
+    })) {
+        if (paymentStatus !== 'paid') {
+            throw new DomainError(
+                DomainErrorCode.CONFLICT,
+                'Delivery orders must have verified payment before completion.',
+                {
+                    statusCode: 409,
+                    details: {
+                        order_lifecycle: {
+                            reason_code: 'DELIVERY_PAYMENT_REQUIRED',
+                            payment_status: paymentStatus || null
+                        }
+                    }
+                }
+            );
+        }
+        return;
+    }
+
+    const hasCollectionEvidence = Boolean(paymentStatus === 'paid'
+        && order?.cash_received != null
+        && order?.change_amount != null
+        && order?.payment_collected_at
+        && parsePositiveInt(order?.payment_collected_by)
+        && parsePositiveInt(order?.payment_collected_shift_id)
+        && String(order?.payment_collected_terminal_id || '').trim());
+
+    if (!hasCollectionEvidence) {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'COD delivery orders must have server-recorded cash payment before completion.',
+            {
+                statusCode: 409,
+                details: {
+                    order_lifecycle: {
+                        reason_code: 'DELIVERY_COD_PAYMENT_REQUIRED',
+                        payment_status: paymentStatus || null
                     }
                 }
             }
@@ -3771,7 +3865,21 @@ export const buildListPosTransactionsUseCase = ({ posRepository }) => {
                 ...(query || {}),
                 location_id: locationScope.location_id
             });
-            return ok(data);
+            const printStatuses = typeof posRepository?.getReceiptPrintStatuses === 'function'
+                ? await posRepository.getReceiptPrintStatuses((data?.transactions || []).map((row) => row?.pos_transaction_id))
+                : {};
+            return ok({
+                ...data,
+                transactions: (data?.transactions || []).map((row) => {
+                    const status = printStatuses?.[row?.pos_transaction_id];
+                    return {
+                        ...row,
+                        receipt_print_status: status?.status || 'pending',
+                        receipt_printed_at: status?.printed_at || null,
+                        receipt_print_failure_reason: status?.reason_code || null
+                    };
+                })
+            });
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to list POS transactions'));
         }
@@ -4062,7 +4170,16 @@ export const buildGetPosTransactionByIdUseCase = ({ posRepository }) => {
                     { statusCode: 404 }
                 ));
             }
-            return ok(toSerializable(data));
+            const serialized = toSerializable(data);
+            const printStatuses = typeof posRepository?.getReceiptPrintStatuses === 'function'
+                ? await posRepository.getReceiptPrintStatuses([normalizedId])
+                : {};
+            return ok({
+                ...serialized,
+                receipt_print_status: printStatuses?.[normalizedId]?.status || 'pending',
+                receipt_printed_at: printStatuses?.[normalizedId]?.printed_at || null,
+                receipt_print_failure_reason: printStatuses?.[normalizedId]?.reason_code || null
+            });
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to retrieve POS transaction'));
         }
@@ -4987,6 +5104,27 @@ const buildShiftCashSummary = ({ shift, cashSalesAmount }) => {
     };
 };
 
+const resolveShiftSalesWindow = (shift = {}) => {
+    const startAt = new Date(shift?.opened_at || '');
+    if (!Number.isFinite(startAt.getTime())) return {};
+
+    const requestedEndAt = shift?.closed_at ? new Date(shift.closed_at) : new Date();
+    const endAt = Number.isFinite(requestedEndAt.getTime()) && requestedEndAt > startAt
+        ? requestedEndAt
+        : new Date();
+    return { startAt, endAt };
+};
+
+const buildShiftSalesSummary = async ({ posRepository, shiftId, shift, transaction }) => {
+    if (typeof posRepository?.getZReadingSummary !== 'function') return null;
+    return normalizeZReadingSummary(
+        await posRepository.getZReadingSummary({
+            shiftId,
+            ...resolveShiftSalesWindow(shift)
+        }, { transaction })
+    );
+};
+
 export const buildOpenTerminalShiftUseCase = ({
     posRepository,
     resolveIdentityStatus = resolvePosOperatorIdentityStatus,
@@ -4999,6 +5137,17 @@ export const buildOpenTerminalShiftUseCase = ({
                 DomainErrorCode.AUTHENTICATION_FAILED,
                 'Authenticated user is required to open a terminal shift',
                 { statusCode: 401 }
+            ));
+        }
+
+        if (hasPermission(user, PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS)) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHORIZATION_FAILED,
+                'Administrator navigation is read-only. Sign in as the cashier to open the shift.',
+                {
+                    statusCode: 403,
+                    details: { reason_code: 'ADMIN_SHIFT_OPEN_NOT_ALLOWED' }
+                }
             ));
         }
 
@@ -5654,15 +5803,22 @@ export const buildGetCurrentTerminalShiftUseCase = ({
                 return ok({
                     shift: null,
                     cash_summary: null,
+                    sales_summary: null,
                     terminal_occupancy: terminalOccupancy,
                     location_binding_readiness: readinessSummary
                 });
             }
 
             const cashSales = await posRepository.getShiftCashSalesTotal(shift.pos_terminal_shift_id);
+            const salesSummary = await buildShiftSalesSummary({
+                posRepository,
+                shiftId: shift.pos_terminal_shift_id,
+                shift
+            });
             return ok({
                 shift: toSerializable(shift),
                 cash_summary: buildShiftCashSummary({ shift: toSerializable(shift), cashSalesAmount: cashSales }),
+                sales_summary: salesSummary,
                 terminal_occupancy: terminalOccupancy,
                 location_binding_readiness: readinessSummary
             });
@@ -5914,6 +6070,12 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
             );
             const tempShift = { ...shiftPayload, cashEvents };
             const summary = buildShiftCashSummary({ shift: tempShift, cashSalesAmount: cashSales });
+            const salesSummary = await buildShiftSalesSummary({
+                posRepository,
+                shiftId: normalizedShiftId,
+                shift: shiftPayload,
+                transaction
+            });
             const expectedCashAmount = round4(summary.expected_cash_amount || 0);
             const variance = round4(closingCashAmount - expectedCashAmount);
 
@@ -5938,7 +6100,8 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                     closing_cash_amount: closingCashAmount,
                     expected_cash_amount: expectedCashAmount,
                     cash_variance_amount: variance
-                }
+                },
+                sales_summary: salesSummary
             };
             await createShiftAuditLog({
                 posRepository,
@@ -6090,6 +6253,12 @@ export const buildForceCloseStaleTerminalShiftUseCase = ({
                 shift: { ...shiftPayload, cashEvents },
                 cashSalesAmount: cashSales
             });
+            const salesSummary = await buildShiftSalesSummary({
+                posRepository,
+                shiftId: normalizedShiftId,
+                shift: shiftPayload,
+                transaction
+            });
             const expectedCashAmount = round4(summary.expected_cash_amount || 0);
             const variance = round4(closingCashAmount - expectedCashAmount);
             const closed = await posRepository.closeTerminalShift(normalizedShiftId, {
@@ -6114,7 +6283,8 @@ export const buildForceCloseStaleTerminalShiftUseCase = ({
                     closing_cash_amount: closingCashAmount,
                     expected_cash_amount: expectedCashAmount,
                     cash_variance_amount: variance
-                }
+                },
+                sales_summary: salesSummary
             };
             await createShiftAuditLog({
                 posRepository,
@@ -6316,7 +6486,21 @@ export const buildListIncomingOnlineOrdersUseCase = ({
                 locationId: locationScope.location_id,
                 limit: query?.limit || 200
             });
-            return ok({ orders });
+            const printStatuses = typeof posRepository?.getReceiptPrintStatuses === 'function'
+                ? await posRepository.getReceiptPrintStatuses(orders.map((order) => order?.pos_transaction_id))
+                : {};
+            return ok({
+                orders: orders.map((order) => {
+                    const serialized = toSerializable(order);
+                    const status = printStatuses?.[serialized?.pos_transaction_id];
+                    return {
+                        ...serialized,
+                        receipt_print_status: status?.status || 'pending',
+                        receipt_printed_at: status?.printed_at || null,
+                        receipt_print_failure_reason: status?.reason_code || null
+                    };
+                })
+            });
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to list incoming online orders'));
         }
@@ -6403,7 +6587,15 @@ export const buildGetAdminLocationMonitorUseCase = ({
     };
 };
 
-export const buildCollectCashPickupOrderUseCase = ({ posRepository }) => {
+const buildCollectCashOnlineOrderUseCase = ({
+    posRepository,
+    orderMethod,
+    paymentTiming,
+    requiredFulfillmentStatus,
+    operationKey,
+    orderLabel,
+    fulfillmentLabel
+}) => {
     return async ({ posTransactionId, payload = {}, user = {}, auditContext = {} } = {}) => {
         const orderId = parsePositiveInt(posTransactionId);
         const cashierId = parsePositiveInt(user?.user_id);
@@ -6427,7 +6619,7 @@ export const buildCollectCashPickupOrderUseCase = ({ posRepository }) => {
         try {
             const replay = await findOperationReplayEntry({
                 posRepository,
-                operationKey: POS_OPERATION_KEYS.PICKUP_CASH_COLLECTION,
+                operationKey,
                 idempotencyKey,
                 requestHash
             });
@@ -6439,9 +6631,10 @@ export const buildCollectCashPickupOrderUseCase = ({ posRepository }) => {
             // waited for the first collection can return its durable replay.
             const lockedReplay = await findOperationReplayEntry({
                 posRepository,
-                operationKey: POS_OPERATION_KEYS.PICKUP_CASH_COLLECTION,
+                operationKey,
                 idempotencyKey,
-                requestHash
+                requestHash,
+                transaction
             });
             if (lockedReplay) {
                 await transaction.rollback();
@@ -6450,19 +6643,26 @@ export const buildCollectCashPickupOrderUseCase = ({ posRepository }) => {
             }
             const order = await posRepository.getOrderByIdForLifecycle(orderId, { transaction, lock: true });
             if (!order || order.order_source !== ONLINE_ORDER_SOURCE) {
-                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Online pickup order not found.', { statusCode: 404 });
+                throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, `Online ${orderLabel} order not found.`, { statusCode: 404 });
             }
-            if (order.order_method !== 'pickup') {
-                throw new DomainError(DomainErrorCode.CONFLICT, 'Cash collection is available only for pickup orders.', { statusCode: 409 });
+            if (order.order_method !== orderMethod) {
+                throw new DomainError(DomainErrorCode.CONFLICT, `Cash collection is available only for ${orderLabel} orders.`, { statusCode: 409 });
             }
             if (String(order.payment_type || '').trim().toLowerCase() !== 'cash') {
-                throw new DomainError(DomainErrorCode.CONFLICT, 'Cash collection is available only for cash pickup orders.', { statusCode: 409 });
+                throw new DomainError(DomainErrorCode.CONFLICT, `Cash collection is available only for cash ${orderLabel} orders.`, { statusCode: 409 });
+            }
+            if (String(order.payment_timing || '').trim().toLowerCase() !== paymentTiming) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    `Payment timing must be ${paymentTiming} for ${orderLabel} cash orders.`,
+                    { statusCode: 409, details: { reason_code: 'PAYMENT_TIMING_MISMATCH' } }
+                );
             }
             if (String(order.payment_status || '').trim().toLowerCase() !== 'unpaid') {
-                throw new DomainError(DomainErrorCode.CONFLICT, 'This pickup order has already been paid or cannot accept cash collection.', { statusCode: 409 });
+                throw new DomainError(DomainErrorCode.CONFLICT, `This ${orderLabel} order has already been paid or cannot accept cash collection.`, { statusCode: 409 });
             }
-            if (String(order.fulfillment_status || '').trim() !== 'ready_for_pickup') {
-                throw new DomainError(DomainErrorCode.CONFLICT, 'Cash can be collected only when the pickup order is ready.', { statusCode: 409 });
+            if (String(order.fulfillment_status || '').trim() !== requiredFulfillmentStatus) {
+                throw new DomainError(DomainErrorCode.CONFLICT, `Cash can be collected only when the ${orderLabel} order is ${fulfillmentLabel}.`, { statusCode: 409 });
             }
 
             const activeShift = await assertOpenShiftForPosMutation({
@@ -6477,7 +6677,7 @@ export const buildCollectCashPickupOrderUseCase = ({ posRepository }) => {
             if (cashReceived < totalAmount) {
                 throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
-                    'Cash received must cover the pickup order total.',
+                    `Cash received must cover the ${orderLabel} order total.`,
                     { statusCode: 422, details: { total_amount: totalAmount, cash_received: cashReceived } }
                 );
             }
@@ -6490,7 +6690,9 @@ export const buildCollectCashPickupOrderUseCase = ({ posRepository }) => {
                 payment_collected_at: collectedAt,
                 payment_collected_by: cashierId,
                 payment_collected_shift_id: activeShift.pos_terminal_shift_id,
-                payment_collected_terminal_id: terminalId
+                payment_collected_terminal_id: terminalId,
+                cashier_id: parsePositiveInt(order.cashier_id) || cashierId,
+                shift_id: activeShift.pos_terminal_shift_id
             }, { transaction, lock: true });
 
             await posRepository.createAuditLog({
@@ -6499,8 +6701,9 @@ export const buildCollectCashPickupOrderUseCase = ({ posRepository }) => {
                 entity_id: orderId,
                 action: 'UPDATE',
                 changes: {
-                    event: 'pickup_cash_collected',
+                    event: `${orderLabel}_cash_collected`,
                     payment_type: 'cash',
+                    payment_timing: paymentTiming,
                     payment_status: 'paid',
                     cash_received: cashReceived,
                     change_amount: changeAmount,
@@ -6515,6 +6718,8 @@ export const buildCollectCashPickupOrderUseCase = ({ posRepository }) => {
             const responsePayload = {
                 order: toSerializable(updated),
                 collection: {
+                    order_method: orderMethod,
+                    payment_timing: paymentTiming,
                     cash_received: cashReceived,
                     change_amount: changeAmount,
                     collected_at: collectedAt.toISOString(),
@@ -6531,7 +6736,7 @@ export const buildCollectCashPickupOrderUseCase = ({ posRepository }) => {
             };
             await persistOperationReplay({
                 posRepository,
-                operationKey: POS_OPERATION_KEYS.PICKUP_CASH_COLLECTION,
+                operationKey,
                 idempotencyKey,
                 requestHash,
                 replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
@@ -6543,7 +6748,275 @@ export const buildCollectCashPickupOrderUseCase = ({ posRepository }) => {
             return ok({ ...responsePayload, idempotent_replay: false, replay_outcome: 'processed' });
         } catch (error) {
             if (transaction && !transaction.finished) await transaction.rollback();
-            return fail(mapPosUseCaseError(error, 'Failed to collect cash for pickup order'));
+            return fail(mapPosUseCaseError(error, `Failed to collect cash for ${orderLabel} order`));
+        }
+    };
+};
+
+export const buildCollectCashPickupOrderUseCase = ({ posRepository }) => buildCollectCashOnlineOrderUseCase({
+    posRepository,
+    orderMethod: 'pickup',
+    paymentTiming: 'on_pickup',
+    requiredFulfillmentStatus: 'ready_for_pickup',
+    operationKey: POS_OPERATION_KEYS.PICKUP_CASH_COLLECTION,
+    orderLabel: 'pickup',
+    fulfillmentLabel: 'ready'
+});
+
+export const buildCollectCashDeliveryOrderUseCase = ({ posRepository }) => buildCollectCashOnlineOrderUseCase({
+    posRepository,
+    orderMethod: 'delivery',
+    paymentTiming: 'on_delivery',
+    requiredFulfillmentStatus: 'out_for_delivery',
+    operationKey: POS_OPERATION_KEYS.DELIVERY_CASH_COLLECTION,
+    orderLabel: 'delivery',
+    fulfillmentLabel: 'out for delivery'
+});
+
+export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
+    return async ({ posTransactionId, payload = {}, user = {}, auditContext = {} } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        const cashierId = parsePositiveInt(user?.user_id);
+        const requestedStatus = String(payload?.status || '').trim().toLowerCase();
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const requestHash = hashPayload({
+            pos_transaction_id: orderId,
+            status: requestedStatus
+        });
+
+        if (!orderId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'posTransactionId must be a positive integer',
+                { statusCode: 400 }
+            ));
+        }
+        if (!cashierId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated POS user is required',
+                { statusCode: 401 }
+            ));
+        }
+        if (!['assigned', 'picked_up', 'delivered'].includes(requestedStatus)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'status must be assigned, picked_up, or delivered',
+                { statusCode: 422 }
+            ));
+        }
+
+        let transaction = null;
+        try {
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DELIVERY_JOB_STATUS_UPDATE,
+                idempotencyKey,
+                requestHash
+            });
+            if (replay) return ok(replay);
+
+            const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+            transaction = await sequelize.transaction();
+            const transactionReplay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DELIVERY_JOB_STATUS_UPDATE,
+                idempotencyKey,
+                requestHash,
+                transaction
+            });
+            if (transactionReplay) {
+                await transaction.commit();
+                return ok(transactionReplay);
+            }
+
+            const order = await posRepository.getOrderByIdForLifecycle(orderId, {
+                transaction,
+                lock: true
+            });
+            if (!order || order.order_source !== ONLINE_ORDER_SOURCE || order.order_method !== 'delivery') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Delivery job actions are available only for online delivery orders.',
+                    {
+                        statusCode: 409,
+                        details: { reason_code: 'DELIVERY_ORDER_REQUIRED' }
+                    }
+                );
+            }
+            if (String(order.fulfillment_status || '').trim() !== 'out_for_delivery') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Delivery job actions are available only when the order is out for delivery.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: 'DELIVERY_ORDER_OUT_FOR_DELIVERY_REQUIRED',
+                            fulfillment_status: order.fulfillment_status || null
+                        }
+                    }
+                );
+            }
+            const deliveryJob = order.deliveryJob;
+            if (!deliveryJob) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This delivery order does not have a delivery job.',
+                    {
+                        statusCode: 409,
+                        details: { reason_code: 'DELIVERY_JOB_REQUIRED' }
+                    }
+                );
+            }
+            if (String(deliveryJob.provider || '').trim().toLowerCase() !== 'manual') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Only manual delivery jobs can be updated from POS.',
+                    {
+                        statusCode: 409,
+                        details: { reason_code: 'MANUAL_DELIVERY_JOB_REQUIRED' }
+                    }
+                );
+            }
+
+            const activeShift = await assertOpenShiftForPosMutation({
+                posRepository,
+                cashierId,
+                locationId: order.location_id || null,
+                transaction,
+                lock: true
+            });
+            const currentStatus = String(deliveryJob.status || '').trim().toLowerCase();
+            if (!DELIVERY_JOB_STATUS_VALUES.includes(currentStatus)) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Current delivery job state is invalid.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: 'DELIVERY_JOB_STATUS_INVALID',
+                            current_status: currentStatus || null
+                        }
+                    }
+                );
+            }
+
+            const allowedNextStatuses = DELIVERY_JOB_TRANSITIONS[currentStatus] || [];
+            if (currentStatus !== requestedStatus && !allowedNextStatuses.includes(requestedStatus)) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    `Invalid delivery job transition: ${currentStatus} -> ${requestedStatus}`,
+                    {
+                        statusCode: 409,
+                        details: {
+                            delivery_job: {
+                                reason_code: 'DELIVERY_JOB_STATUS_TRANSITION_INVALID',
+                                current_status: currentStatus,
+                                requested_status: requestedStatus,
+                                allowed_next_statuses: allowedNextStatuses
+                            }
+                        }
+                    }
+                );
+            }
+
+            const mutationTimestamp = new Date();
+            const updatePayload = currentStatus === requestedStatus
+                ? {}
+                : {
+                    status: requestedStatus,
+                    ...(requestedStatus === 'picked_up' ? { picked_up_at: mutationTimestamp } : {}),
+                    ...(requestedStatus === 'delivered' ? { delivered_at: mutationTimestamp } : {})
+                };
+            const updatedDeliveryJob = Object.keys(updatePayload).length > 0
+                ? await posRepository.updateDeliveryJobByOrderId(orderId, updatePayload, {
+                    transaction,
+                    lock: true
+                })
+                : deliveryJob;
+            if (!updatedDeliveryJob) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'The delivery job could not be updated.',
+                    {
+                        statusCode: 409,
+                        details: { reason_code: 'DELIVERY_JOB_UPDATE_FAILED' }
+                    }
+                );
+            }
+
+            if (currentStatus !== requestedStatus) {
+                await posRepository.createAuditLog({
+                    user_id: cashierId,
+                    entity_type: 'delivery_job',
+                    entity_id: parsePositiveInt(deliveryJob.delivery_job_id) || null,
+                    action: 'UPDATE',
+                    changes: {
+                        event: 'delivery_job_status_changed',
+                        pos_transaction_id: orderId,
+                        provider: deliveryJob.provider,
+                        previous_status: currentStatus,
+                        status: requestedStatus,
+                        shift_id: activeShift.pos_terminal_shift_id,
+                        location_id: order.location_id || null,
+                        applied_at: mutationTimestamp.toISOString()
+                    },
+                    ip_address: auditContext.ipAddress || null,
+                    user_agent: auditContext.userAgent || null
+                }, { transaction });
+            }
+
+            const updatedOrder = {
+                ...order,
+                deliveryJob: updatedDeliveryJob
+            };
+            const responsePayload = {
+                order: toSerializable(updatedOrder),
+                delivery_job: toSerializable(updatedDeliveryJob),
+                status_transition: {
+                    current_status: currentStatus,
+                    requested_status: requestedStatus,
+                    applied_by: cashierId,
+                    applied_at: mutationTimestamp.toISOString(),
+                    outcome: currentStatus === requestedStatus ? 'no_change' : 'processed'
+                },
+                idempotency: {
+                    key: idempotencyKey || null,
+                    request_fingerprint: requestHash,
+                    outcome: 'processed',
+                    idempotent_replay: false
+                }
+            };
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DELIVERY_JOB_STATUS_UPDATE,
+                idempotencyKey,
+                requestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+                responsePayload,
+                createdBy: cashierId,
+                transaction
+            });
+            await transaction.commit();
+            return ok({
+                ...responsePayload,
+                idempotent_replay: false,
+                replay_outcome: 'processed'
+            });
+        } catch (error) {
+            if (transaction && !transaction.finished) await transaction.rollback();
+            if (error instanceof DomainError && idempotencyKey) {
+                await persistOperationReplay({
+                    posRepository,
+                    operationKey: POS_OPERATION_KEYS.DELIVERY_JOB_STATUS_UPDATE,
+                    idempotencyKey,
+                    requestHash,
+                    replayStatus: OPERATION_REPLAY_STATUS.BLOCKED,
+                    responsePayload: serializeReplayFailure(error),
+                    createdBy: cashierId
+                });
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to update delivery job status'));
         }
     };
 };
@@ -6661,6 +7134,13 @@ export const buildUpdateOnlineOrderStatusUseCase = ({
                     'Cash pickup orders must be paid before they are marked as picked up.',
                     { statusCode: 409, details: { reason_code: 'PICKUP_PAYMENT_REQUIRED' } }
                 );
+            }
+            if (
+                currentStatus !== 'completed'
+                && targetStatus === 'completed'
+                && existing.order_method === 'delivery'
+            ) {
+                assertDeliveryCompletionReadiness(existing);
             }
             const mutationTimestamp = new Date();
 

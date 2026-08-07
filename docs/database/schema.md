@@ -1360,6 +1360,7 @@ CREATE TABLE system_settings (
   - `service_fee_label_snapshot` (string, nullable)
   - `service_fee_method_snapshot` (enum `dine_in|takeout|pickup|delivery`, nullable; legacy `online` remains read-compatible for historical data)
   - `service_fee_overridden` (boolean, default false)
+  - `payment_timing` (enum `upfront|on_pickup|on_delivery`, server-derived; online delivery cash resolves to `on_delivery` and online pickup cash resolves to `on_pickup`)
   - `payment_status` (enum `unpaid|payment_pending|paid|failed|refund_pending|partial_refunded|refunded`, default `paid`)
   - `payment_reference` (provider payment/reference ID, nullable)
   - `payment_checkout_url` (provider checkout URL, nullable)

@@ -70,7 +70,6 @@ import {
 } from '../services/terminalOperationQueueStore.js';
 import { loadOfflinePosSnapshot, saveOfflinePosSnapshot } from '../services/offlinePosSnapshotStore.js';
 import { usePosCartDraft } from '../hooks/usePosCartDraft.js';
-import EmployeeCreditPaymentPanel from './EmployeeCreditPaymentPanel.jsx';
 import {
     DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD,
     getCatalogStockColorClassName,
@@ -94,11 +93,12 @@ import { usePosHardware } from '../hardware/usePosHardware.js';
 import { PosAddToCartToastContainer } from './PosAddToCartToastContainer.jsx';
 import { calculateCatalogGridCapacity } from '../utils/catalogGridCapacity.js';
 import { resolvePosWorkflow } from '../utils/posWorkflowResolver.js';
-import { FnbWorkflowPanel } from './FnbWorkflowPanel.jsx';
-import { ServicesWorkflowPanel } from './ServicesWorkflowPanel.jsx';
 
 const ReceiptPrintView = lazyWithChunkRetry(() => import('./ReceiptPrintView'));
 const OrderPreviewView = lazyWithChunkRetry(() => import('./OrderPreviewView.jsx'));
+const EmployeeCreditPaymentPanel = lazyWithChunkRetry(() => import('./EmployeeCreditPaymentPanel.jsx'));
+const FnbWorkflowPanel = lazyWithChunkRetry(() => import('./FnbWorkflowPanel.jsx').then(({ FnbWorkflowPanel: Component }) => ({ default: Component })));
+const ServicesWorkflowPanel = lazyWithChunkRetry(() => import('./ServicesWorkflowPanel.jsx').then(({ ServicesWorkflowPanel: Component }) => ({ default: Component })));
 
 const CATALOG_GRID_GAP_PX = 8;
 const CATALOG_DESKTOP_CARD_HEIGHT_PX = 176;
@@ -897,6 +897,7 @@ export default function POSCheckoutTerminal({
     const [catalogLoading, setCatalogLoading] = useState(true);
     const [catalogRefreshing, setCatalogRefreshing] = useState(false);
     const posWorkflow = useMemo(() => resolvePosWorkflow(workflowMode), [workflowMode]);
+    const isFnbWorkflow = posWorkflow.mode === 'fnb';
     const [search, setSearch] = useState('');
     const [orderMethod, setOrderMethod] = useState(() => posWorkflow.allowedMethods[0] || 'dine_in');
     const [tableNumber, setTableNumber] = useState('');
@@ -2259,11 +2260,11 @@ export default function POSCheckoutTerminal({
                     category: item.category,
                     vat_type: item.vat_type || 'vatable',
                     senior_pwd_discount_eligible: isSeniorPwdDiscountEligible(item.senior_pwd_discount_eligible),
-                    course: routed.course || normalizedFnbContext?.default_course || 'main',
-                    kitchen_station_id: routed.kitchen_station_id || null,
-                    fnbKitchenRoutes: Array.isArray(item.fnbKitchenRoutes) ? item.fnbKitchenRoutes : [],
-                    modifier_groups: modifierGroups,
-                    line_modifiers: defaultModifiers,
+                    course: isFnbWorkflow ? (routed.course || normalizedFnbContext?.default_course || 'main') : null,
+                    kitchen_station_id: isFnbWorkflow ? (routed.kitchen_station_id || null) : null,
+                    fnbKitchenRoutes: isFnbWorkflow && Array.isArray(item.fnbKitchenRoutes) ? item.fnbKitchenRoutes : [],
+                    modifier_groups: isFnbWorkflow ? modifierGroups : [],
+                    line_modifiers: isFnbWorkflow ? defaultModifiers : [],
                     special_instructions: '',
                     scan_metadata: options.scanMetadata || null
                 }
@@ -2807,6 +2808,8 @@ export default function POSCheckoutTerminal({
             terminal_id: normalizedTerminalId || undefined,
             location_id: selectedLocationId || undefined,
             order_method: orderMethod,
+            customer_name: posWorkflow.mode === 'services' ? servicesClientName.trim() || undefined : undefined,
+            special_instructions: posWorkflow.mode === 'services' ? servicesNotes.trim() || undefined : undefined,
             payment_type: paymentType,
             payment_handoff_mode: ['cash', 'employee_credit'].includes(paymentType) ? 'internal' : 'external',
             cash_received: isCashPayment ? Number(customerPaymentAmount || 0) : undefined,
@@ -2846,10 +2849,12 @@ export default function POSCheckoutTerminal({
                 quantity: Number(line.quantity),
                 sale_price: Number(line.sale_price),
                 price_override_reason: String(line.price_override_reason || '').trim() || undefined,
-                course: line.course || normalizedFnbContext?.default_course || undefined,
-                line_modifiers: line.line_modifiers || undefined,
-                special_instructions: line.special_instructions || undefined,
-                kitchen_station_id: line.kitchen_station_id || undefined,
+                ...(isFnbWorkflow ? {
+                    course: line.course || normalizedFnbContext?.default_course || undefined,
+                    line_modifiers: line.line_modifiers || undefined,
+                    special_instructions: line.special_instructions || undefined,
+                    kitchen_station_id: line.kitchen_station_id || undefined
+                } : {}),
                 scan_metadata: line.scan_metadata || undefined
             }))
         };
@@ -4727,32 +4732,36 @@ export default function POSCheckoutTerminal({
                                 {posWorkflow.mode === 'services' ? 'Service details' : 'Order details'}
                             </p>
                             {posWorkflow.mode === 'fnb' && (
-                                <FnbWorkflowPanel
-                                    orderMethod={orderMethod}
-                                    setOrderMethod={setOrderMethod}
-                                    tableNumber={tableNumber}
-                                    setTableNumber={setTableNumber}
-                                    kitchenNotes={kitchenNotes}
-                                    setKitchenNotes={setKitchenNotes}
-                                    disabled={posActionsBlocked || checkoutLoading}
-                                />
+                                <Suspense fallback={null}>
+                                    <FnbWorkflowPanel
+                                        orderMethod={orderMethod}
+                                        setOrderMethod={setOrderMethod}
+                                        tableNumber={tableNumber}
+                                        setTableNumber={setTableNumber}
+                                        kitchenNotes={kitchenNotes}
+                                        setKitchenNotes={setKitchenNotes}
+                                        disabled={posActionsBlocked || checkoutLoading}
+                                    />
+                                </Suspense>
                             )}
                             {posWorkflow.mode === 'services' && (
-                                <ServicesWorkflowPanel
-                                    visitType={orderMethod}
-                                    setVisitType={setOrderMethod}
-                                    clientName={servicesClientName}
-                                    setClientName={setServicesClientName}
-                                    appointmentDateTime={servicesDateTime}
-                                    setAppointmentDateTime={setServicesDateTime}
-                                    provider={servicesProvider}
-                                    setProvider={setServicesProvider}
-                                    resource={servicesResource}
-                                    setResource={setServicesResource}
-                                    serviceNotes={servicesNotes}
-                                    setServiceNotes={setServicesNotes}
-                                    disabled={posActionsBlocked || checkoutLoading}
-                                />
+                                <Suspense fallback={null}>
+                                    <ServicesWorkflowPanel
+                                        visitType={orderMethod}
+                                        setVisitType={setOrderMethod}
+                                        clientName={servicesClientName}
+                                        setClientName={setServicesClientName}
+                                        appointmentDateTime={servicesDateTime}
+                                        setAppointmentDateTime={setServicesDateTime}
+                                        provider={servicesProvider}
+                                        setProvider={setServicesProvider}
+                                        resource={servicesResource}
+                                        setResource={setServicesResource}
+                                        serviceNotes={servicesNotes}
+                                        setServiceNotes={setServicesNotes}
+                                        disabled={posActionsBlocked || checkoutLoading}
+                                    />
+                                </Suspense>
                             )}
                             <label className="block text-[11px] font-medium text-slate-500">
                                 Payment Type
@@ -4846,14 +4855,16 @@ export default function POSCheckoutTerminal({
                         </div>
 
                         {isEmployeeCreditPayment && (
-                            <EmployeeCreditPaymentPanel
-                                selectedEmployee={selectedEmployeeCreditOption}
-                                onSelectEmployee={handleSelectEmployeeCredit}
-                                lookupLoading={employeeCreditLookupLoading}
-                                account={employeeCreditAccount}
-                                totalDue={cartTotal}
-                                locationId={selectedLocationId}
-                            />
+                            <Suspense fallback={<div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-500">Loading employee credit...</div>}>
+                                <EmployeeCreditPaymentPanel
+                                    selectedEmployee={selectedEmployeeCreditOption}
+                                    onSelectEmployee={handleSelectEmployeeCredit}
+                                    lookupLoading={employeeCreditLookupLoading}
+                                    account={employeeCreditAccount}
+                                    totalDue={cartTotal}
+                                    locationId={selectedLocationId}
+                                />
+                            </Suspense>
                         )}
                         {!isEmployeeCreditPayment && (
                         <label className="block text-[11px] font-bold uppercase tracking-wide text-[#64748B]">
@@ -5032,6 +5043,15 @@ export default function POSCheckoutTerminal({
                                     {receiptPreviewSource === 'order_preview' ? 'View Receipt' : 'Back to Order'}
                                 </Button>
                             )}
+                            <Button
+                                type="button"
+                                variant="outline"
+                                data-testid="pos-receipt-modal-open-sales-report"
+                                disabled={posActionsBlocked || !lastReceipt}
+                                onClick={() => openInSalesReport(lastReceipt)}
+                            >
+                                Open in Sales Report
+                            </Button>
                             <Button
                                 type="button"
                                 disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync || !isPrinterAvailable}

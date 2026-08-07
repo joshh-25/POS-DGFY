@@ -26,6 +26,22 @@ describe('POS transactions query validator', () => {
         expect(req.validatedQuery.order_source).toBe('online_store');
     });
 
+    it('accepts the Services walk-in order method', () => {
+        const req = {
+            query: {
+                order_method: 'walk_in'
+            }
+        };
+        const res = mockRes();
+        const next = jest.fn();
+
+        validatePosTransactionsQuery(req, res, next);
+
+        expect(res.status).not.toHaveBeenCalled();
+        expect(next).toHaveBeenCalledTimes(1);
+        expect(req.validatedQuery.order_method).toBe('walk_in');
+    });
+
     it('rejects unsupported order_source values', () => {
         const req = {
             query: {

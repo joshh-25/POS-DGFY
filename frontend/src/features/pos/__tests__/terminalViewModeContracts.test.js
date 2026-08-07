@@ -351,10 +351,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsWorkspaceContent).toContain('isValidOpeningCashAmount');
     expect(terminalOperationsPanelsContent).toContain('shiftState = { shift: null }');
     expect(terminalOperationsWorkspaceContent).toContain('shiftState={shiftState}');
-    expect(terminalOperationsWorkspaceContent).toContain('const canRenderAdminShiftOpen = canAdminBypassShiftPrompt || canTransactPos;');
+    expect(terminalOperationsWorkspaceContent).toContain('const canRenderAdminShiftOpen = canTransactPos && !canAdminBypassShiftPrompt;');
     expect(terminalOperationsWorkspaceContent).toContain('disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !isOnline || !activeTerminalMatchesOperatingLocation}');
     expect(terminalSidebarPanelContent).toContain('isValidOpeningCashAmount');
-    expect(terminalSidebarPanelContent).toContain('disabled={shiftActionLoading.open || locked || !canTransactPos}');
+    expect(terminalSidebarPanelContent).toContain('disabled={shiftActionLoading.open || locked || !canOpenShift}');
     expect(terminalPageContent).toContain("const canCloseShift = hasPermission('pos:shift_close') || hasPermission('pos:close_day');");
     expect(terminalPageContent).toContain('canCloseDay={canCloseShift}');
     expect(posCheckoutTerminalContent).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason);');
@@ -475,7 +475,20 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('const [incomingReceiptOpeningId, setIncomingReceiptOpeningId] = useState(null);');
     expect(terminalPageContent).toContain('if (incomingReceiptOpeningId !== null) return;');
     expect(terminalOperationsPanelsContent).toContain('Opening...');
+    expect(terminalOperationsPanelsContent).toContain('Retry Print');
+    expect(terminalOperationsPanelsContent).toContain('Print Receipt');
+    expect(terminalOperationsPanelsContent).toContain('Reprint Receipt');
+    expect(terminalPageContent).toContain('retryPrint = false');
     expect(terminalSidebarPanelContent).toContain('Completed or cancelled online orders move to History/Receipt Preview.');
+  });
+
+  it('exposes a current shift summary action without auto-printing it', () => {
+    expect(terminalPageContent).toContain('const handleViewShiftSummary = useCallback(() => {');
+    expect(terminalPageContent).toContain('setClosedShiftReportAutoPrint(false);');
+    expect(terminalPageContent).toContain("title={closedShiftReportAutoPrint ? 'Cashier Shift Sales Summary' : 'Current Shift Sales Summary'}");
+    expect(terminalOperationsWorkspaceContent).toContain('View Shift Summary');
+    expect(terminalOperationsWorkspaceContent).toContain('shiftState.salesSummary?.total_amount');
+    expect(terminalSidebarPanelContent).toContain('View Shift Summary');
   });
 
   it('sorts active incoming orders locally and shows lifecycle guidance only for an empty queue', () => {
@@ -574,6 +587,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(posHistoryPanelContent).toContain('<span>View</span>');
     expect(posHistoryPanelContent).toContain('<span>Receipt</span>');
     expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-open-sales-report"');
+    expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-modal-open-sales-report"');
     expect(posCheckoutTerminalContent).toContain("params.set('source', 'POS');");
     expect(posCheckoutTerminalContent).toContain("params.set('pos_order_source', historyOrderSource);");
     expect(posCheckoutTerminalContent).toContain("openSkupervisorPath('/sales', query)");

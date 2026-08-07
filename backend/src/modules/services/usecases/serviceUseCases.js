@@ -465,9 +465,47 @@ const timeToMinutes = (value) => {
     return hours * 60 + minutes;
 };
 
-const dayAvailabilityKeys = (date) => {
+const getZonedCalendarParts = (date, timezone) => {
+    if (!timezone) {
+        return {
+            day: date.getDay(),
+            year: date.getFullYear(),
+            month: date.getMonth() + 1,
+            date: date.getDate(),
+            hour: date.getHours(),
+            minute: date.getMinutes()
+        };
+    }
+    try {
+        const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone,
+            weekday: 'long',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: false,
+            hourCycle: 'h23'
+        }).formatToParts(date).map((part) => [part.type, part.value]));
+        const day = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday']
+            .indexOf(String(parts.weekday || '').toLowerCase());
+        return {
+            day: day >= 0 ? day : date.getDay(),
+            year: Number(parts.year),
+            month: Number(parts.month),
+            date: Number(parts.day),
+            hour: Number(parts.hour),
+            minute: Number(parts.minute)
+        };
+    } catch {
+        return getZonedCalendarParts(date, null);
+    }
+};
+
+const dayAvailabilityKeys = (date, timezone = null) => {
     const names = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    const day = date.getDay();
+    const day = getZonedCalendarParts(date, timezone).day;
     return [String(day), names[day], names[day].slice(0, 3)];
 };
 
@@ -490,14 +528,16 @@ const normalizeAvailabilitySlots = (rawSlots) => {
         .filter((slot) => Number.isFinite(slot.start) && Number.isFinite(slot.end) && slot.end > slot.start);
 };
 
-const isWithinWeeklyAvailability = ({ startAt, endAt, weeklyAvailability }) => {
+const isWithinWeeklyAvailability = ({ startAt, endAt, weeklyAvailability, timezone = null }) => {
     if (!isPlainObject(weeklyAvailability) || Object.keys(weeklyAvailability).length === 0) return true;
-    if (dateKey(startAt) !== dateKey(endAt)) return false;
-    const rawSlots = dayAvailabilityKeys(startAt).map((key) => weeklyAvailability[key]).find((value) => value !== undefined);
+    const startParts = getZonedCalendarParts(startAt, timezone);
+    const endParts = getZonedCalendarParts(endAt, timezone);
+    if (`${startParts.year}-${startParts.month}-${startParts.date}` !== `${endParts.year}-${endParts.month}-${endParts.date}`) return false;
+    const rawSlots = dayAvailabilityKeys(startAt, timezone).map((key) => weeklyAvailability[key]).find((value) => value !== undefined);
     const slots = normalizeAvailabilitySlots(rawSlots);
     if (slots.length === 0) return false;
-    const startMinutes = startAt.getHours() * 60 + startAt.getMinutes();
-    const endMinutes = endAt.getHours() * 60 + endAt.getMinutes();
+    const startMinutes = startParts.hour * 60 + startParts.minute;
+    const endMinutes = endParts.hour * 60 + endParts.minute;
     return slots.some((slot) => startMinutes >= slot.start && endMinutes <= slot.end);
 };
 
@@ -963,15 +1003,30 @@ const parseAvailabilityDate = (value) => {
     if (!match) {
         throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'date must use YYYY-MM-DD format', { statusCode: 422 });
     }
-    const parsed = new Date(`${raw}T00:00:00`);
-    const parsedKey = `${parsed.getFullYear()}-${String(parsed.getMonth() + 1).padStart(2, '0')}-${String(parsed.getDate()).padStart(2, '0')}`;
+    // Keep the requested calendar date independent of the Node process timezone.
+    // A midday UTC anchor remains on the same calendar day in supported tenant
+    // timezones and lets getZonedDayStart project it into the configured zone.
+    const parsed = new Date(`${raw}T12:00:00.000Z`);
+    const parsedKey = `${parsed.getUTCFullYear()}-${String(parsed.getUTCMonth() + 1).padStart(2, '0')}-${String(parsed.getUTCDate()).padStart(2, '0')}`;
     if (!Number.isFinite(parsed.getTime()) || parsedKey !== raw) {
         throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'date must be a valid calendar date', { statusCode: 422 });
     }
     return parsed;
 };
 
-const formatLocalDateKey = (date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+const formatLocalDateKey = (date, timezone = null) => {
+    try {
+        const parts = Object.fromEntries(new Intl.DateTimeFormat('en-US', {
+            timeZone: timezone || 'Asia/Manila',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit'
+        }).formatToParts(date).map((part) => [part.type, part.value]));
+        return `${parts.year}-${parts.month}-${parts.day}`;
+    } catch {
+        return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, '0')}-${String(date.getUTCDate()).padStart(2, '0')}`;
+    }
+};
 
 const addMinutes = (date, minutes) => new Date(date.getTime() + (minutes * 60 * 1000));
 
@@ -994,7 +1049,7 @@ const buildAvailabilityStartCandidates = ({
     const earliest = new Date(Date.now() + (toNonNegativeInt(leadTimeMinutes, 0) * 60 * 1000));
     const hasAvailabilityRules = isPlainObject(weeklyAvailability) && Object.keys(weeklyAvailability).length > 0;
     const rawSlots = hasAvailabilityRules
-        ? dayAvailabilityKeys(date).map((key) => weeklyAvailability[key]).find((value) => value !== undefined)
+        ? dayAvailabilityKeys(date, timezone).map((key) => weeklyAvailability[key]).find((value) => value !== undefined)
         : null;
     const availabilityRanges = hasAvailabilityRules
         ? normalizeAvailabilitySlots(rawSlots)
@@ -1212,7 +1267,7 @@ export const buildGetServiceAvailabilityUseCase = ({ serviceRepository }) => asy
         const durationMinutes = toPositiveInt(detail.duration_minutes, 60);
         const baseResponse = {
             service_item_id: service.item_id,
-            date: formatLocalDateKey(date),
+            date: formatLocalDateKey(date, timezone),
             quantity: requestedQuantity,
             duration_minutes: durationMinutes,
             slot_interval_minutes: intervalMinutes,
@@ -1299,7 +1354,12 @@ export const buildGetServiceAvailabilityUseCase = ({ serviceRepository }) => asy
                     incrementReason(reasonCounts, 'resource_blackout_date');
                     continue;
                 }
-                if (!isWithinWeeklyAvailability({ startAt, endAt, weeklyAvailability: candidate.weeklyAvailability })) {
+                if (!isWithinWeeklyAvailability({
+                    startAt,
+                    endAt,
+                    weeklyAvailability: candidate.weeklyAvailability,
+                    timezone
+                })) {
                     incrementReason(reasonCounts, 'outside_weekly_availability');
                     continue;
                 }

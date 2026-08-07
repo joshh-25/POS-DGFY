@@ -329,6 +329,8 @@ export default function SalesPage() {
                   <option value="takeout">Takeout</option>
                   <option value="pickup">Pickup</option>
                   <option value="delivery">Delivery</option>
+                  <option value="appointment">Appointment</option>
+                  <option value="walk_in">Walk-in</option>
                 </select>
                 <select
                   value={posOrderSource}
