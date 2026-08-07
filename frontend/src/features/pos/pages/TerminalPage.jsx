@@ -60,12 +60,18 @@ import { getWorkflowModeLabel, isMsmeWorkflowMode } from '../../settings/workflo
 import { resolveBusinessModePosDefaults } from '../../settings/businessModeTemplates.js';
 import {
   POS_TERMINAL_LOGIN_ERROR_CODES,
+  classifyTerminalLoginFailure,
   createTerminalLoginError,
   isCompanyTokenResolutionError,
   normalizeLookupTenantOptions,
   resolveTerminalLoginErrorMessage,
   shouldFallbackToCurrentCompanyTokenAfterLookupError
 } from '../utils/terminalUnlockDiagnostics.js';
+import {
+  captureTerminalFlowFailure,
+  resetSentryIdentity,
+  setSentryContext
+} from '../../../observability/sentryClient.js';
 import {
   TERMINAL_QUEUE_STATUS,
   enqueueTerminalOperationIntent as persistTerminalOperationIntent,
@@ -219,6 +225,17 @@ const createIdempotencyKey = (prefix = 'pos-terminal') => {
     return `${prefix}-${crypto.randomUUID()}`;
   }
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+};
+
+// Short, screen-readable code shown on the inline Open Shift failure panel
+// so a cashier can read it off the terminal and a supervisor can find the
+// matching Sentry event by searching `pos_error_ref:<code>` -- see
+// captureTerminalFlowFailure in observability/sentryClient.js.
+const createTerminalErrorRef = () => {
+  const raw = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID().replace(/-/g, '')
+    : `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
+  return raw.slice(0, 8).toUpperCase();
 };
 
 const readStoredTerminalId = () => {
@@ -482,6 +499,11 @@ export default function TerminalPage() {
   });
   const [terminalUnlockRequired, setTerminalUnlockRequired] = useState(false);
   const [terminalUnlockModalOpen, setTerminalUnlockModalOpen] = useState(false);
+  // Persistent inline failure surfaced in the Open Shift dialogs, replacing
+  // reliance on the auto-dismissing top-right toast for a failure the
+  // cashier needs to actually read and possibly relay to a supervisor. See
+  // reportTerminalFailure below, which is what populates this.
+  const [unlockFailure, setUnlockFailure] = useState(null);
   const [terminalUnlockMode, setTerminalUnlockMode] = useState(() => {
     const storedReason = readStoredTerminalLockReason();
     if (storedReason === 'admin_reunlock') return 'admin_reunlock';
@@ -1608,6 +1630,10 @@ export default function TerminalPage() {
       setTerminalUnlockRequired(false);
       setTerminalUnlockModalOpen(false);
       setLoadingUser(false);
+      // A full re-lock, not just a lost tenant session -- clear the POS
+      // terminal/location tags too, so events captured while the terminal
+      // sits locked don't carry the previous cashier's context.
+      resetSentryIdentity();
       return;
     }
 
@@ -1629,6 +1655,7 @@ export default function TerminalPage() {
       setLocked(true);
       setDrawerOpen(true);
       setLoadingUser(false);
+      resetSentryIdentity();
       return;
     }
 
@@ -2273,6 +2300,48 @@ export default function TerminalPage() {
     registryMode: terminalRegistryMode
   });
 
+  // Single reporting path for every terminal-unlock / shift-open failure:
+  // resolves the operator-facing message the same way the toast always has,
+  // classifies whether it was a real network failure, a real HTTP error, or
+  // a locally-thrown check (see classifyTerminalLoginFailure), then (a)
+  // keeps the toast for at-a-glance visibility, (b) populates the inline
+  // panel with a short reference code so the message survives long enough
+  // to read and can be relayed to a supervisor, and (c) sends it to Sentry
+  // -- including local throws, which never touch axios and were previously
+  // invisible in observability entirely.
+  const reportTerminalFailure = (error, flow) => {
+    const message = resolveTerminalLoginErrorMessage(error);
+    const { kind, status, requestPath } = classifyTerminalLoginFailure(error);
+    const method = String(error?.config?.method || '').toUpperCase() || '';
+    const ref = createTerminalErrorRef();
+    toast.error(message);
+    setUnlockFailure({ message, method, requestPath, status, ref });
+    captureTerminalFlowFailure({ error, flow, ref, requestPath, status, kind });
+  };
+
+  // Shared body for the persistent failure block in both Open Shift dialogs
+  // (terminalUnlockModalOpen's shift_start mode and the standalone
+  // shiftOpeningModalOpen dialog) -- replaces relying on the auto-dismissing
+  // top-right toast, which is what made the original iMin incident
+  // impossible to read off the device.
+  const renderUnlockFailurePanel = () => {
+    if (!unlockFailure) return null;
+    const metaParts = [
+      unlockFailure.method && unlockFailure.requestPath
+        ? `${unlockFailure.method} ${unlockFailure.requestPath}`
+        : unlockFailure.requestPath,
+      unlockFailure.status ? `status ${unlockFailure.status}` : null,
+      `ref ${unlockFailure.ref}`
+    ].filter(Boolean);
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900" role="alert">
+        <p className="font-semibold text-red-950">Could not open shift</p>
+        <p className="mt-0.5">{unlockFailure.message}</p>
+        <p className="mt-1 font-mono text-[10px] text-red-700">{metaParts.join(' · ')}</p>
+      </div>
+    );
+  };
+
   const validateSelectedTerminalForUnlock = (selectedTerminalId) => {
     const registryEntry = terminalRegistryLookup.get(selectedTerminalId);
     if (activeTerminalRegistry.length === 0) {
@@ -2346,6 +2415,18 @@ export default function TerminalPage() {
     if (Number.isInteger(Number(operatingLocationIdOverride)) && Number(operatingLocationIdOverride) > 0) {
       setOperatingLocationId(Number(operatingLocationIdOverride));
     }
+    // Tag from this call's own parameters, not `terminalUser`/`operatingLocationId`
+    // state -- completeTerminalUnlock is a fresh closure every render, so a
+    // state variable read here would still be the value from BEFORE this
+    // unlock (the setXxx calls above only just scheduled the update). The
+    // parameters are current by definition, so which terminal/location an
+    // event actually happened on is always right.
+    setSentryContext({
+      terminalId: selectedTerminalId || undefined,
+      locationId: (Number.isInteger(Number(operatingLocationIdOverride)) && Number(operatingLocationIdOverride) > 0)
+        ? Number(operatingLocationIdOverride)
+        : undefined
+    });
     await hydrateUser({ suppressGlobalErrors: true });
     await Promise.all([
       hydrateTerminalMeta({ suppressGlobalErrors: true }),
@@ -2373,6 +2454,7 @@ export default function TerminalPage() {
       openingNote: ''
     });
     setTerminalUnlockModalOpen(false);
+    setUnlockFailure(null);
     await notifyStockAlertsAfterUnlock();
   };
 
@@ -2431,6 +2513,7 @@ export default function TerminalPage() {
     const continuingAfterCompanyPicker = dgfyPosState.authenticated === true;
 
     setSubmitting(true);
+    setUnlockFailure(null);
     try {
       setCashierUnlockSession(null);
       setDgfyAdminBypassActive(false);
@@ -2705,7 +2788,7 @@ export default function TerminalPage() {
       setLocked(true);
       setDrawerOpen(true);
       setDgfyPosState((prev) => ({ ...prev, loadingCompanies: false }));
-      toast.error(resolveTerminalLoginErrorMessage(error));
+      reportTerminalFailure(error, 'terminal_unlock');
     } finally {
       setSubmitting(false);
     }
@@ -2837,6 +2920,7 @@ export default function TerminalPage() {
     }
 
     setSubmitting(true);
+    setUnlockFailure(null);
     try {
       const { cashierUser } = await authenticateCashierCredentials({
         identifier,
@@ -2866,7 +2950,7 @@ export default function TerminalPage() {
       });
       toast.success('Cashier verified. Shift resumed.');
     } catch (error) {
-      toast.error(resolveTerminalLoginErrorMessage(error));
+      reportTerminalFailure(error, 'cashier_resume');
     } finally {
       setSubmitting(false);
     }
@@ -2885,6 +2969,7 @@ export default function TerminalPage() {
     }
 
     setSubmitting(true);
+    setUnlockFailure(null);
     try {
       let resolvedCompanyToken = companyTokenHint;
       if (identifier.includes('@')) {
@@ -2938,7 +3023,7 @@ export default function TerminalPage() {
       ]);
       toast.success('Admin verified. POS unlocked.');
     } catch (error) {
-      toast.error(resolveTerminalLoginErrorMessage(error));
+      reportTerminalFailure(error, 'admin_reauth');
     } finally {
       setSubmitting(false);
     }
@@ -3004,6 +3089,7 @@ export default function TerminalPage() {
       return;
     }
     setSubmitting(true);
+    setUnlockFailure(null);
     try {
       const resolvedCompanyToken = String(
         cashierUnlockSession?.companyToken
@@ -3131,7 +3217,7 @@ export default function TerminalPage() {
             : 'Terminal unlocked successfully.'
       );
     } catch (error) {
-      toast.error(resolveTerminalLoginErrorMessage(error));
+      reportTerminalFailure(error, 'terminal_unlock');
     } finally {
       setSubmitting(false);
     }
@@ -3421,6 +3507,7 @@ export default function TerminalPage() {
       idempotency_key: createIdempotencyKey('pos-shift-open')
     };
     setShiftActionLoading((prev) => ({ ...prev, open: true }));
+    setUnlockFailure(null);
     try {
       await openTerminalShift(payload, SUPPRESS_GLOBAL_ERROR_TOAST);
       toast.success('Shift opened successfully.');
@@ -3433,7 +3520,7 @@ export default function TerminalPage() {
       setPosViewMode('checkout');
       setMobileNavOpen(false);
     } catch (error) {
-      toast.error(resolveTerminalLoginErrorMessage(error));
+      reportTerminalFailure(error, 'shift_open');
     } finally {
       setShiftActionLoading((prev) => ({ ...prev, open: false }));
     }
@@ -4695,6 +4782,7 @@ function PosRestorationLoadingScreen() {
                     </div>
                   </>
                 ) : null}
+                {renderUnlockFailurePanel()}
               </div>
               <DialogFooter className="border-t border-slate-100 px-5 py-4">
                 {canAdminBypassShiftPrompt && !signedInShiftResume && (
@@ -4772,6 +4860,7 @@ function PosRestorationLoadingScreen() {
                     disabled={shiftActionLoading.open}
                   />
                 </div>
+                {renderUnlockFailurePanel()}
               </div>
               <DialogFooter className="border-t border-slate-100 px-5 py-4">
                 {canAdminBypassShiftPrompt && (

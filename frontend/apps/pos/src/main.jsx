@@ -109,10 +109,17 @@ function ObservabilityIdentitySync() {
       try {
         const user = await getCurrentUser();
         if (cancelled) return;
-        if (user?.id) {
-          identifyAnalyticsUser({ id: user.id, role: user.role });
+        // getCurrentUser() (GET /users/me) returns `user_id`, not `id` --
+        // backend/src/services/userService.js's attribute list never
+        // selects `id`. Checking `user?.id` here was always false, so this
+        // sync silently fell through to resetSentryIdentity() on every
+        // call, and every POS Sentry event reported 0 users regardless of
+        // who was signed in.
+        const userId = user?.user_id || user?.id;
+        if (userId) {
+          identifyAnalyticsUser({ id: userId, role: user.role });
           setAnalyticsContext({ tenantId: user.company?.id, businessMode: user.company?.business_mode });
-          identifySentryUser({ id: user.id, role: user.role });
+          identifySentryUser({ id: userId, role: user.role });
           setSentryContext({ tenantId: user.company?.id, businessMode: user.company?.business_mode });
         } else {
           resetAnalyticsIdentity();
