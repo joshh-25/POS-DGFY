@@ -488,6 +488,16 @@ describe('Sentry identity, context, and route helpers', () => {
     expect(Sentry.setTag).toHaveBeenCalledWith('business_mode', 'fnb');
     expect(Sentry.setTag).not.toHaveBeenCalledWith('store_slug', expect.anything());
     expect(Sentry.setTag).not.toHaveBeenCalledWith('location_id', expect.anything());
+    expect(Sentry.setTag).not.toHaveBeenCalledWith('pos_terminal_id', expect.anything());
+    vi.doUnmock('@sentry/react');
+  });
+
+  it('setSentryContext tags the POS terminal id', async () => {
+    const { freshModule, Sentry } = await importInitializedSentryClient();
+    freshModule.setSentryContext({ locationId: 3, terminalId: 'COUNTER-01' });
+
+    expect(Sentry.setTag).toHaveBeenCalledWith('location_id', '3');
+    expect(Sentry.setTag).toHaveBeenCalledWith('pos_terminal_id', 'COUNTER-01');
     vi.doUnmock('@sentry/react');
   });
 
@@ -501,6 +511,7 @@ describe('Sentry identity, context, and route helpers', () => {
     expect(Sentry.setTag).toHaveBeenCalledWith('store_slug', undefined);
     expect(Sentry.setTag).toHaveBeenCalledWith('business_mode', undefined);
     expect(Sentry.setTag).toHaveBeenCalledWith('location_id', undefined);
+    expect(Sentry.setTag).toHaveBeenCalledWith('pos_terminal_id', undefined);
     vi.doUnmock('@sentry/react');
   });
 
@@ -720,6 +731,113 @@ describe('captureRequestFailure', () => {
     vi.resetModules();
     const freshModule = await import('../sentryClient.js');
     expect(() => freshModule.captureRequestFailure({ method: 'get', url: '/api/v1/items', status: 500 })).not.toThrow();
+  });
+});
+
+describe('captureTerminalFlowFailure', () => {
+  const importInitializedSentryClient = async () => {
+    const Sentry = {
+      init: vi.fn(),
+      captureException: vi.fn(() => 'evt-1'),
+      setTag: vi.fn(),
+      browserTracingIntegration: vi.fn(() => ({ name: 'BrowserTracing' })),
+      replayIntegration: vi.fn(() => ({ name: 'Replay' }))
+    };
+    vi.doMock('@sentry/react', () => Sentry);
+    vi.resetModules();
+    const freshModule = await import('../sentryClient.js');
+    freshModule.initBrowserSentry({
+      env: { VITE_SENTRY_ENABLED: 'true', VITE_SENTRY_DSN_POS: 'https://test@sentry.test/1' },
+      surface: 'pos'
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    return { freshModule, Sentry };
+  };
+
+  it('captures a locally-thrown terminal failure with a POS-flow fingerprint and the on-screen ref', async () => {
+    const { freshModule, Sentry } = await importInitializedSentryClient();
+    const error = new Error('Terminal COUNTER-01 is already in use by another cashier. Supervisor assistance is required.');
+
+    freshModule.captureTerminalFlowFailure({
+      error,
+      flow: 'shift_open',
+      ref: 'A7K29QX1',
+      requestPath: '',
+      status: null,
+      kind: 'local'
+    });
+
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+    const [capturedError, options] = Sentry.captureException.mock.calls[0];
+    expect(capturedError).toBe(error);
+    expect(options.fingerprint).toEqual(['pos-flow', 'shift_open', 'local', 'local']);
+    expect(options.level).toBe('error');
+    expect(options.tags).toMatchObject({
+      pos_flow: 'shift_open',
+      pos_error_ref: 'A7K29QX1',
+      pos_failure_kind: 'local'
+    });
+    vi.doUnmock('@sentry/react');
+  });
+
+  it('skips capture and only tags the ref when the axios interceptor already reported the error', async () => {
+    const { freshModule, Sentry } = await importInitializedSentryClient();
+    const error = new Error('Request failed with status code 500');
+    error.__requestFailureReported = true;
+
+    freshModule.captureTerminalFlowFailure({ error, flow: 'terminal_unlock', ref: 'B2K1', kind: 'http', status: 500 });
+
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+    expect(Sentry.setTag).toHaveBeenCalledWith('pos_error_ref', 'B2K1');
+    vi.doUnmock('@sentry/react');
+  });
+
+  it('shares captureRequestFailure\'s cooldown so a repeatedly-failing terminal cannot spam events', async () => {
+    const { freshModule, Sentry } = await importInitializedSentryClient();
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(2_000_000);
+
+    freshModule.captureTerminalFlowFailure({
+      error: new Error('Terminal already in use'),
+      flow: 'shift_open',
+      ref: 'REF1',
+      kind: 'local'
+    });
+    freshModule.captureTerminalFlowFailure({
+      error: new Error('Terminal already in use'),
+      flow: 'shift_open',
+      ref: 'REF2',
+      kind: 'local'
+    });
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+
+    nowSpy.mockReturnValue(2_000_000 + 60_000);
+    freshModule.captureTerminalFlowFailure({
+      error: new Error('Terminal already in use'),
+      flow: 'shift_open',
+      ref: 'REF3',
+      kind: 'local'
+    });
+    expect(Sentry.captureException).toHaveBeenCalledTimes(2);
+
+    nowSpy.mockRestore();
+    vi.doUnmock('@sentry/react');
+  });
+
+  it('is a no-op without an error', async () => {
+    const { freshModule, Sentry } = await importInitializedSentryClient();
+    expect(() => freshModule.captureTerminalFlowFailure({ flow: 'shift_open', ref: 'REF' })).not.toThrow();
+    expect(Sentry.captureException).not.toHaveBeenCalled();
+    vi.doUnmock('@sentry/react');
+  });
+
+  it('does not throw when Sentry was never initialized', async () => {
+    vi.resetModules();
+    const freshModule = await import('../sentryClient.js');
+    expect(() => freshModule.captureTerminalFlowFailure({
+      error: new Error('boom'),
+      flow: 'shift_open',
+      ref: 'REF'
+    })).not.toThrow();
   });
 });
 

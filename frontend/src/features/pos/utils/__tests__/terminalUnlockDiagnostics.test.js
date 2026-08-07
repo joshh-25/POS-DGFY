@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   POS_TERMINAL_LOGIN_ERROR_CODES,
+  classifyTerminalLoginFailure,
   createTerminalLoginError,
   isCompanyTokenResolutionError,
   normalizeLookupTenantOptions,
@@ -150,5 +151,65 @@ describe('terminal unlock diagnostics', () => {
     }))).toBe(
       'The POS backend could not complete the request. Try again or contact an administrator if the problem continues.'
     );
+  });
+
+  it('does not misreport a locally-thrown occupancy/session error as a network outage', () => {
+    // No `.response`, no transport `.code`, no `.request` -- exactly the
+    // shape of `throw new Error(...)` in TerminalPage.jsx's unlock/shift
+    // handlers (e.g. terminalShiftEntryDecision's "already in use" throw).
+    const localError = new Error('Terminal COUNTER-01 is already in use by another cashier. Supervisor assistance is required.');
+    expect(resolveTerminalLoginErrorMessage(localError)).toBe(
+      'Terminal COUNTER-01 is already in use by another cashier. Supervisor assistance is required.'
+    );
+    expect(classifyTerminalLoginFailure(localError)).toEqual({
+      kind: 'local',
+      status: null,
+      requestPath: '',
+      code: ''
+    });
+  });
+
+  it('falls back to a generic sign-in message for a local error with no message', () => {
+    expect(resolveTerminalLoginErrorMessage(new Error())).toBe('Unable to sign in to terminal.');
+  });
+
+  it('still reports genuine transport failures as an unreachable backend', () => {
+    const networkError = {
+      name: 'AxiosError',
+      code: 'ERR_NETWORK',
+      message: 'Network Error',
+      request: {},
+      config: { url: '/pos/terminal/shifts/open' }
+    };
+    expect(resolveTerminalLoginErrorMessage(networkError)).toBe(
+      'Unable to reach the POS backend. Check the server connection and try again.'
+    );
+    expect(classifyTerminalLoginFailure(networkError)).toEqual({
+      kind: 'network',
+      status: null,
+      requestPath: '/pos/terminal/shifts/open',
+      code: 'ERR_NETWORK'
+    });
+
+    const timeoutError = {
+      name: 'AxiosError',
+      code: 'ECONNABORTED',
+      message: 'timeout of 10000ms exceeded',
+      request: {},
+      config: { url: '/pos/auth/cashier-login' }
+    };
+    expect(resolveTerminalLoginErrorMessage(timeoutError)).toBe(
+      'Unable to reach the POS backend. Check the server connection and try again.'
+    );
+    expect(classifyTerminalLoginFailure(timeoutError).kind).toBe('network');
+  });
+
+  it('classifies a genuine HTTP failure distinctly from network and local failures', () => {
+    expect(classifyTerminalLoginFailure(apiError({ status: 401, url: '/auth/login' }))).toEqual({
+      kind: 'http',
+      status: 401,
+      requestPath: '/auth/login',
+      code: ''
+    });
   });
 });
