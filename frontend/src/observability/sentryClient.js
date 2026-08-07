@@ -248,15 +248,24 @@ export const sanitizeSentryEvent = (rawEvent) => {
   };
 };
 
-// Vite dev-only test trigger: exposes window.__sentryTestError() so a DSN
-// can be proven end-to-end from the browser console without shipping a
-// trigger to production. Registered on every initBrowserSentry() call
-// (regardless of whether Sentry ends up active) so it's always discoverable
-// in a dev build, and gives a clear message instead of silently no-oping
-// when Sentry isn't enabled/configured.
+// Exposes window.__sentryTestError() so a DSN can be proven end-to-end from
+// the browser console (or chrome://inspect on a WebView, e.g. the iMin
+// POS terminal) without shipping a trigger to PROD. `import.meta.env.DEV`
+// was the original gate here, but that's a Vite build-mode flag -- every
+// `vite build` (including DEV/STAGING/BETA deploys, not just a local `vite
+// dev` server) runs in "production" mode, so `import.meta.env.DEV` is false
+// on every deployed environment and this never existed outside a local
+// dev server. Gate on the resolved Sentry *environment* instead (DEV/
+// STAGING/BETA all get it; only PROD does not), so a real deployed
+// device -- like a Chrome 80 iMin terminal that has never sent a single
+// Sentry event -- can actually be used to prove delivery works.
+// Registered on every initBrowserSentry() call (regardless of whether
+// Sentry ends up active) so it's always discoverable, and gives a clear
+// message instead of silently no-oping when Sentry isn't enabled/configured.
 const registerDevSentryTestTrigger = (config, logger) => {
   if (typeof window === 'undefined') return;
-  if (!import.meta.env?.DEV) return;
+  const environment = String(config?.environment || '').trim().toUpperCase();
+  if (environment === 'PROD') return;
 
   window.__sentryTestError = () => {
     const error = new Error('[Sentry] Test error triggered via window.__sentryTestError()');

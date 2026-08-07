@@ -46,7 +46,7 @@ import { completeOnboarding } from '@/services/onboardingService.js';
 import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
 import { getAllUsers } from '@/services/userService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
-import api from '@/services/api.js';
+import api, { onApiOutcome } from '@/services/api.js';
 import { clearClientSession } from '@/services/sessionCleanup.js';
 import {
   clearBrowserSession,
@@ -682,6 +682,21 @@ export default function TerminalPage() {
   });
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
+  // `isOnline` above only tells us the device has *a* network interface --
+  // on Android that's true whenever any Wi-Fi/data connection exists, even
+  // one that cannot reach pos.dev.dgfy.ph. This tracks whether the most
+  // recent real API call actually got a response, which is what the
+  // Online/Offline indicator should mean. Defaults true so the dot doesn't
+  // flash "Offline" before the first request completes. Display-only --
+  // every existing `if (!isOnline)` gate elsewhere in this file is left
+  // reading the network-interface signal unchanged.
+  const [apiReachable, setApiReachable] = useState(true);
+  useEffect(() => {
+    const unsubscribe = onApiOutcome((entry) => {
+      setApiReachable(entry.kind !== 'network');
+    });
+    return unsubscribe;
+  }, []);
   const workspacePaneRef = useRef(null);
   const replayingQueueRef = useRef(false);
   const [isDesktopWide, setIsDesktopWide] = useState(() => {
@@ -5193,7 +5208,7 @@ function PosRestorationLoadingScreen() {
         <TerminalPageLayout
           key={locked ? 'terminal-layout-locked' : `terminal-layout-unlocked-${terminalLayoutEpoch}`}
           locked={locked}
-          isOnline={isOnline}
+          isOnline={isOnline && apiReachable}
           activeTerminalId={activeTerminalId}
           terminalIdOptions={terminalIdOptions}
           terminalRegistry={activeTerminalRegistry}

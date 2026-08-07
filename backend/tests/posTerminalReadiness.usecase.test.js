@@ -3,6 +3,7 @@ import {
     buildGetAdminLocationMonitorUseCase,
     buildGetCurrentTerminalShiftUseCase
 } from '../src/modules/pos/usecases/posUseCases.js';
+import logger from '../src/config/logger.js';
 
 describe('POS terminal readiness context', () => {
     it('includes location binding readiness in current shift response', async () => {
@@ -114,6 +115,50 @@ describe('POS terminal readiness context', () => {
       terminalId: 'JOHN-01',
       locationId: 9
     });
+  });
+
+  it('logs a blocked-open occupancy so a stale/occupied shift is visible without any client instrumentation', async () => {
+    const openedAt = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000); // 30 days ago
+    const findOpenTerminalShift = jest.fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        pos_terminal_shift_id: 44,
+        terminal_id: 'JOHN-01',
+        location_id: 9,
+        cashier_id: 12,
+        active_operator_user_id: 12,
+        opened_at: openedAt,
+        status: 'open'
+      });
+    const useCase = buildGetCurrentTerminalShiftUseCase({
+      posRepository: {
+        getShiftLocationBindingReadinessSummary: jest.fn().mockResolvedValue(null),
+        findOpenTerminalShift
+      },
+      resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 9 })
+    });
+    const infoSpy = jest.spyOn(logger, 'info').mockImplementation(() => {});
+
+    await useCase({
+      query: { terminal_id: 'JOHN-01', location_id: 9 },
+      user: { user_id: 7, role: 'cashier' }
+    });
+
+    expect(infoSpy).toHaveBeenCalledWith(
+      '[POS][TerminalOccupancy] Open Shift blocked: terminal already has an open shift',
+      expect.objectContaining({
+        terminal_id: 'JOHN-01',
+        location_id: 9,
+        requesting_user_id: 7,
+        occupying_shift_id: 44,
+        occupying_user_id: 12,
+        occupied_age_hours: expect.any(Number)
+      })
+    );
+    // 30 days, give or take test execution jitter.
+    expect(infoSpy.mock.calls[0][1].occupied_age_hours).toBeGreaterThan(29 * 24);
+
+    infoSpy.mockRestore();
   });
 
   it('reports the selected terminal as available when no cashier owns it', async () => {
