@@ -24,153 +24,167 @@ jest.unstable_mockModule('../src/config/logger.js', () => ({
 const {
   getEmailProviderMode,
   isEmailConfigured,
+  isSmtpConfigured,
   sendEmail,
-  sendEmailOtpCode
+  sendEmailOtpCode,
+  verifyConnection
 } = await import('../src/services/emailService.js');
 
 const ORIGINAL_ENV = { ...process.env };
 
-describe('email service delivery providers', () => {
-  beforeEach(() => {
-    jest.clearAllMocks();
-    process.env = { ...ORIGINAL_ENV };
-    delete process.env.SMTP_HOST;
-    delete process.env.SMTP_PORT;
-    delete process.env.SMTP_SECURE;
-    delete process.env.SMTP_USER;
-    delete process.env.SMTP_PASS;
-    delete process.env.EMAIL_FROM;
-    delete process.env.EMAIL_FROM_NAME;
-    delete process.env.EMAIL_DELIVERY_PROVIDER;
-    delete process.env.EMAIL_DELIVERY_FALLBACK_TO_BREVO_API;
-    delete process.env.BREVO_API_KEY;
-    delete process.env.BREVO_API_URL;
-    global.fetch = jest.fn();
-  });
+const clearSmtpEnv = () => {
+  delete process.env.SMTP_HOST;
+  delete process.env.SMTP_PORT;
+  delete process.env.SMTP_SECURE;
+  delete process.env.SMTP_USER;
+  delete process.env.SMTP_PASS;
+  delete process.env.EMAIL_FROM;
+  delete process.env.EMAIL_FROM_NAME;
+};
 
+// Brevo HTTPS API delivery was removed in issue #279 -- it exercised zero
+// production traffic and, being unauthenticated for our sending domain,
+// would have failed DMARC the same way SMTP could. sendEmail now has a
+// single delivery path: SMTP or an EMAIL_NOT_CONFIGURED throw, with no
+// fallback on failure.
+//
+// The "unconfigured" cases below MUST run before any test that configures
+// SMTP: getTransporter()'s _transporter is a module-level singleton that is
+// only reset by resetTransporter() (issue #279, a later phase), so once a
+// transporter has been created it stays cached regardless of what the env
+// vars say afterward. Splitting into two describe blocks keeps declaration
+// order (and therefore execution order) enforcing that constraint instead
+// of relying on it silently.
+describe('email service delivery providers', () => {
   afterAll(() => {
     process.env = ORIGINAL_ENV;
   });
 
-  it('treats Brevo HTTPS API credentials as a configured email provider', () => {
-    process.env.BREVO_API_KEY = 'xkeysib-test-key';
-    process.env.EMAIL_FROM = 'sender@example.com';
+  describe('when SMTP is not configured', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      process.env = { ...ORIGINAL_ENV };
+      clearSmtpEnv();
+    });
 
-    expect(isEmailConfigured()).toBe(true);
-    expect(getEmailProviderMode()).toBe('brevo_api');
+    it('reports unconfigured', () => {
+      expect(isEmailConfigured()).toBe(false);
+      expect(isSmtpConfigured()).toBe(false);
+      expect(getEmailProviderMode()).toBe('unconfigured');
+    });
+
+    it('throws EMAIL_NOT_CONFIGURED and never attempts a transport', async () => {
+      await expect(sendEmail({
+        to: 'user@example.com',
+        subject: 'Verify',
+        html: '<p>Hello</p>'
+      })).rejects.toMatchObject({ code: 'EMAIL_NOT_CONFIGURED' });
+
+      expect(createTransportMock).not.toHaveBeenCalled();
+    });
+
+    it('verifyConnection reports failure with no fallback provider', async () => {
+      const result = await verifyConnection();
+      expect(result).toEqual(expect.objectContaining({ success: false, mode: 'unconfigured' }));
+      expect(result.provider).toBeUndefined();
+      expect(result.warning).toBeUndefined();
+    });
   });
 
-  it('sends through Brevo API when explicitly selected', async () => {
-    process.env.EMAIL_DELIVERY_PROVIDER = 'brevo_api';
-    process.env.BREVO_API_KEY = 'xkeysib-test-key';
-    process.env.EMAIL_FROM = 'sender@example.com';
-    process.env.EMAIL_FROM_NAME = 'SKUpervisor';
-    global.fetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ messageId: '<brevo-message-id>' })
+  describe('when SMTP is configured', () => {
+    beforeEach(() => {
+      jest.clearAllMocks();
+      process.env = { ...ORIGINAL_ENV };
+      clearSmtpEnv();
+      process.env.SMTP_HOST = 'smtp.example.com';
+      process.env.SMTP_USER = 'smtp-user@example.com';
+      process.env.SMTP_PASS = 'smtp-pass';
     });
 
-    const result = await sendEmail({
-      to: 'user@example.com',
-      subject: 'Verify',
-      html: '<p>Hello</p>'
+    it('reports smtp as both configured and the provider mode', () => {
+      expect(isEmailConfigured()).toBe(true);
+      expect(isSmtpConfigured()).toBe(true);
+      expect(getEmailProviderMode()).toBe('smtp');
     });
 
-    expect(createTransportMock).not.toHaveBeenCalled();
-    expect(global.fetch).toHaveBeenCalledWith(
-      'https://api.brevo.com/v3/smtp/email',
-      expect.objectContaining({
-        method: 'POST',
-        headers: expect.objectContaining({
-          'api-key': 'xkeysib-test-key',
-          'content-type': 'application/json'
-        }),
-        body: expect.any(String)
-      })
-    );
-    expect(JSON.parse(global.fetch.mock.calls[0][1].body)).toEqual(expect.objectContaining({
-      sender: {
-        name: 'SKUpervisor',
-        email: 'sender@example.com'
-      },
-      to: [{ email: 'user@example.com' }],
-      subject: 'Verify',
-      htmlContent: '<p>Hello</p>',
-      textContent: 'Hello'
-    }));
-    expect(result).toEqual(expect.objectContaining({
-      provider: 'brevo_api',
-      messageId: '<brevo-message-id>'
-    }));
-  });
+    it('sends through SMTP and returns the nodemailer result with provider: smtp', async () => {
+      sendMailMock.mockResolvedValue({ messageId: '<smtp-message-id>', accepted: ['user@example.com'], rejected: [] });
 
-  it('falls back to Brevo API when SMTP delivery fails', async () => {
-    process.env.SMTP_HOST = 'smtp.example.com';
-    process.env.SMTP_USER = 'smtp-user';
-    process.env.SMTP_PASS = 'smtp-pass';
-    process.env.EMAIL_FROM = 'sender@example.com';
-    process.env.BREVO_API_KEY = 'xkeysib-test-key';
-    sendMailMock.mockRejectedValue(new Error('SMTP timeout'));
-    global.fetch.mockResolvedValue({
-      ok: true,
-      json: async () => ({ messageId: '<brevo-fallback-id>' })
+      const result = await sendEmail({
+        to: 'user@example.com',
+        subject: 'Verify',
+        html: '<p>Hello</p>'
+      });
+
+      expect(createTransportMock).toHaveBeenCalledWith(expect.objectContaining({
+        host: 'smtp.example.com',
+        auth: {
+          user: 'smtp-user@example.com',
+          pass: 'smtp-pass'
+        }
+      }));
+      expect(sendMailMock).toHaveBeenCalled();
+      expect(result).toEqual(expect.objectContaining({
+        provider: 'smtp',
+        messageId: '<smtp-message-id>'
+      }));
     });
 
-    const result = await sendEmail({
-      to: 'user@example.com',
-      subject: 'Verify',
-      html: '<p>Hello</p>'
+    it('rethrows on SMTP failure with no fallback attempted', async () => {
+      sendMailMock.mockRejectedValue(new Error('SMTP timeout'));
+
+      await expect(sendEmail({
+        to: 'user@example.com',
+        subject: 'Verify',
+        html: '<p>Hello</p>'
+      })).rejects.toThrow('SMTP timeout');
+
+      expect(sendMailMock).toHaveBeenCalled();
     });
 
-    expect(createTransportMock).toHaveBeenCalledWith(expect.objectContaining({
-      host: 'smtp.example.com',
-      auth: {
-        user: 'smtp-user',
-        pass: 'smtp-pass'
-      }
-    }));
-    expect(sendMailMock).toHaveBeenCalled();
-    expect(global.fetch).toHaveBeenCalled();
-    expect(result).toEqual(expect.objectContaining({
-      provider: 'brevo_api',
-      messageId: '<brevo-fallback-id>'
-    }));
-  });
+    it('keeps SKUpervisor as the generic default sender display name', async () => {
+      sendMailMock.mockResolvedValue({ messageId: '<smtp-message-id>' });
 
-  it('keeps SKUpervisor as the generic default sender display name', async () => {
-    process.env.SMTP_HOST = 'smtp.example.com';
-    process.env.SMTP_USER = 'smtp-user@example.com';
-    process.env.SMTP_PASS = 'smtp-pass';
-    sendMailMock.mockResolvedValue({ messageId: '<smtp-message-id>' });
+      await sendEmail({
+        to: 'user@example.com',
+        subject: 'Generic notification',
+        html: '<p>Hello</p>'
+      });
 
-    await sendEmail({
-      to: 'user@example.com',
-      subject: 'Generic notification',
-      html: '<p>Hello</p>'
+      expect(sendMailMock).toHaveBeenCalledWith(expect.objectContaining({
+        from: '"SKUpervisor" <smtp-user@example.com>',
+        subject: 'Generic notification'
+      }));
     });
 
-    expect(sendMailMock).toHaveBeenCalledWith(expect.objectContaining({
-      from: '"SKUpervisor" <smtp-user@example.com>',
-      subject: 'Generic notification'
-    }));
-  });
+    it('uses DGFY as the default sender display name for verification emails', async () => {
+      sendMailMock.mockResolvedValue({ messageId: '<smtp-message-id>' });
 
-  it('uses DGFY as the default sender display name for verification emails', async () => {
-    process.env.SMTP_HOST = 'smtp.example.com';
-    process.env.SMTP_USER = 'smtp-user@example.com';
-    process.env.SMTP_PASS = 'smtp-pass';
-    process.env.EMAIL_FROM_NAME = 'SKUpervisor';
-    sendMailMock.mockResolvedValue({ messageId: '<smtp-message-id>' });
+      await sendEmailOtpCode({
+        email: 'user@example.com',
+        code: '123456'
+      });
 
-    await sendEmailOtpCode({
-      email: 'user@example.com',
-      code: '123456'
+      expect(sendMailMock).toHaveBeenCalledWith(expect.objectContaining({
+        from: '"DGFY" <smtp-user@example.com>',
+        subject: 'Your DGFY email verification code',
+        text: expect.stringContaining('Your DGFY email verification code is 123456')
+      }));
     });
 
-    expect(sendMailMock).toHaveBeenCalledWith(expect.objectContaining({
-      from: '"DGFY" <smtp-user@example.com>',
-      subject: 'Your DGFY email verification code',
-      text: expect.stringContaining('Your DGFY email verification code is 123456')
-    }));
+    it('verifyConnection reports success when the transporter verifies', async () => {
+      verifyMock.mockResolvedValue(true);
+
+      const result = await verifyConnection();
+      expect(result).toEqual(expect.objectContaining({ success: true, provider: 'smtp', mode: 'smtp' }));
+    });
+
+    it('verifyConnection reports failure with the SMTP error and no Brevo fallback offered', async () => {
+      verifyMock.mockRejectedValue(new Error('connection refused'));
+
+      const result = await verifyConnection();
+      expect(result).toEqual(expect.objectContaining({ success: false, mode: 'smtp', error: 'connection refused' }));
+      expect(result.warning).toBeUndefined();
+    });
   });
 });
