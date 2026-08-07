@@ -68,6 +68,37 @@ const getRequestPath = (error) => {
   }
 };
 
+// axios never throws a bare transport failure without tagging it -- either
+// with one of these codes, or (for the older browser adapter paths) by
+// attaching `.request` (the dispatched XHR/http.ClientRequest) while leaving
+// `.response` unset because nothing ever came back. A locally-thrown
+// `new Error(...)` -- e.g. "terminal already in use", "shift linked to an
+// unavailable terminal" -- has neither, so it is never misread as the
+// backend being unreachable.
+const NETWORK_TRANSPORT_ERROR_CODES = new Set(['ERR_NETWORK', 'ECONNABORTED', 'ETIMEDOUT']);
+
+const isNetworkTransportError = (error) => {
+  const code = String(error?.code || '').trim();
+  if (NETWORK_TRANSPORT_ERROR_CODES.has(code)) return true;
+  return Boolean(error?.request) && !error?.response;
+};
+
+// Single place both the toast copy (resolveTerminalLoginErrorMessage) and
+// the inline diagnostics panel / Sentry capture (TerminalPage.jsx) derive
+// their "what kind of failure was this" read from, so the two can never
+// disagree about whether a given error was a real network outage.
+export const classifyTerminalLoginFailure = (error) => {
+  const status = getStatus(error);
+  // getRequestPath resolves an empty/missing URL against a dummy base and
+  // returns '/', which reads as a real (if useless) path on the inline
+  // diagnostics panel -- only report a path when the error actually carried
+  // a request config (i.e. it came from axios, not a local throw).
+  const requestPath = error?.config?.url ? getRequestPath(error) : '';
+  const code = getErrorCode(error);
+  const kind = status ? 'http' : (isNetworkTransportError(error) ? 'network' : 'local');
+  return { kind, status: status || null, requestPath: requestPath || '', code: code || '' };
+};
+
 export const shouldFallbackToCurrentCompanyTokenAfterLookupError = (error) => {
   const status = getStatus(error);
   if (!status) return true;
@@ -117,7 +148,17 @@ export const resolveTerminalLoginErrorMessage = (error) => {
   }
 
   if (!status) {
-    return 'Unable to reach the POS backend. Check the server connection and try again.';
+    if (isNetworkTransportError(error)) {
+      return 'Unable to reach the POS backend. Check the server connection and try again.';
+    }
+    // No status and no transport failure means this was thrown locally
+    // (e.g. a shift-occupancy or session-shape check) rather than by a
+    // failed request -- surface its real message instead of relabeling it
+    // as a connectivity outage.
+    if (responseMessage) {
+      return responseMessage;
+    }
+    return 'Unable to sign in to terminal.';
   }
 
   if (status === 401 && requestPath.includes('/pos/terminal/')) {
