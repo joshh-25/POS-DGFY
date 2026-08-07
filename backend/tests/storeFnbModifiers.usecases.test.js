@@ -4,6 +4,7 @@ import {
   buildStoreCheckoutUseCase
 } from '../src/modules/store/usecases/storeUseCases.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
+import { generateStoreGuestCheckoutProof } from '../src/modules/store/utils/storeJwtToken.js';
 
 const createTransaction = () => {
   const transaction = {
@@ -59,6 +60,39 @@ const buildRepository = (items, overrides = {}) => ({
   ...overrides
 });
 
+const buildCartQuoteUseCase = (repository) => buildStoreCartQuoteUseCase({
+  storeRepository: repository,
+  revenueSharingEnabled: false
+});
+
+const buildCheckoutUseCase = (repository) => {
+  const useCase = buildStoreCheckoutUseCase({
+    storeRepository: repository,
+    revenueSharingEnabled: false
+  });
+
+  return async ({ tenantId: requestTenantId, payload, storeCustomer, ...options }) => {
+    if (storeCustomer) {
+      return useCase({ tenantId: requestTenantId, payload, storeCustomer, ...options });
+    }
+
+    const email = payload?.customer_email || 'guest@example.test';
+    return useCase({
+      tenantId: requestTenantId,
+      payload: {
+        ...payload,
+        customer_email: email,
+        guest_checkout_proof: generateStoreGuestCheckoutProof({
+          tenantId: requestTenantId,
+          email,
+          idempotencyKey: payload?.idempotency_key
+        })
+      },
+      ...options
+    });
+  };
+};
+
 const burgerItem = {
   item_id: 20,
   name: 'Burger',
@@ -92,7 +126,7 @@ describe('storefront F&B modifier checkout contract', () => {
 
   it('computes quote totals from database-backed F&B modifier deltas and snapshots selected options', async () => {
     const repository = buildRepository([burgerItem]);
-    const useCase = buildStoreCartQuoteUseCase({ storeRepository: repository });
+    const useCase = buildCartQuoteUseCase(repository);
 
     const result = await useCase({
       payload: {
@@ -149,7 +183,7 @@ describe('storefront F&B modifier checkout contract', () => {
         }
       ])
     });
-    const useCase = buildStoreCartQuoteUseCase({ storeRepository: repository });
+    const useCase = buildCartQuoteUseCase(repository);
 
     const result = await useCase({
       payload: {
@@ -186,7 +220,7 @@ describe('storefront F&B modifier checkout contract', () => {
         lines: []
       })
     });
-    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+    const useCase = buildCheckoutUseCase(repository);
 
     const result = await useCase({
       tenantId,
@@ -231,7 +265,7 @@ describe('storefront F&B modifier checkout contract', () => {
         lines: []
       })
     });
-    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+    const useCase = buildCheckoutUseCase(repository);
 
     const result = await useCase({
       tenantId,
@@ -264,7 +298,7 @@ describe('storefront F&B modifier checkout contract', () => {
 
   it('rejects selected modifier options that are not published for the menu item', async () => {
     const repository = buildRepository([burgerItem]);
-    const useCase = buildStoreCartQuoteUseCase({ storeRepository: repository });
+    const useCase = buildCartQuoteUseCase(repository);
 
     const result = await useCase({
       payload: {
@@ -306,7 +340,7 @@ describe('storefront F&B modifier checkout contract', () => {
         }
       }])
     });
-    const useCase = buildStoreCartQuoteUseCase({ storeRepository: repository });
+    const useCase = buildCartQuoteUseCase(repository);
 
     const result = await useCase({
       payload: {
@@ -351,7 +385,7 @@ describe('storefront F&B modifier checkout contract', () => {
         }
       }])
     });
-    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+    const useCase = buildCheckoutUseCase(repository);
 
     const result = await useCase({
       tenantId,
@@ -396,7 +430,7 @@ describe('storefront F&B modifier checkout contract', () => {
         }
       }])
     });
-    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+    const useCase = buildCheckoutUseCase(repository);
 
     const result = await useCase({
       tenantId,
@@ -453,7 +487,7 @@ describe('storefront F&B modifier checkout contract', () => {
       pos_always_available: true,
       fnbModifierGroups: []
     }]);
-    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+    const useCase = buildCheckoutUseCase(repository);
 
     const result = await useCase({
       tenantId,
@@ -492,7 +526,7 @@ describe('storefront F&B modifier checkout contract', () => {
       tracking_toggle_available: false,
       fnbModifierGroups: []
     }]);
-    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+    const useCase = buildCheckoutUseCase(repository);
 
     const result = await useCase({
       tenantId,
@@ -547,7 +581,7 @@ describe('storefront F&B modifier checkout contract', () => {
         }]),
       findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null)
     });
-    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+    const useCase = buildCheckoutUseCase(repository);
     const payload = {
       idempotency_key: 'store-fnb-replay-after-consumption',
       location_id: 4,
@@ -602,7 +636,7 @@ describe('storefront F&B modifier checkout contract', () => {
       }]),
       createFnbKitchenOrderForOnlineTransaction: jest.fn().mockResolvedValue(null)
     });
-    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+    const useCase = buildCheckoutUseCase(repository);
 
     const result = await useCase({
       tenantId,
@@ -631,7 +665,7 @@ describe('storefront F&B modifier checkout contract', () => {
         { setting_key: 'storefront_hours', setting_value: '9:00 AM - 6:00 PM daily' }
       ])
     });
-    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+    const useCase = buildCheckoutUseCase(repository);
 
     const result = await useCase({
       tenantId,
@@ -657,7 +691,7 @@ describe('storefront F&B modifier checkout contract', () => {
         { setting_key: 'storefront_hours', setting_value: '9:00 AM - 6:00 PM daily' }
       ])
     });
-    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+    const useCase = buildCheckoutUseCase(repository);
 
     const result = await useCase({
       tenantId,
@@ -703,7 +737,7 @@ describe('storefront F&B modifier checkout contract', () => {
         { setting_key: 'storefront_hours', setting_value: JSON.stringify(structuredHours) }
       ])
     });
-    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+    const useCase = buildCheckoutUseCase(repository);
 
     const result = await useCase({
       tenantId,
@@ -753,7 +787,7 @@ describe('storefront F&B modifier checkout contract', () => {
         { setting_key: 'storefront_hours', setting_value: JSON.stringify(splitHours) }
       ])
     });
-    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+    const useCase = buildCheckoutUseCase(repository);
 
     const morning = await useCase({
       tenantId,
@@ -815,7 +849,7 @@ describe('storefront F&B modifier checkout contract', () => {
         { setting_key: 'storefront_hours', setting_value: JSON.stringify(splitHours) }
       ])
     });
-    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+    const useCase = buildCheckoutUseCase(repository);
 
     const result = await useCase({
       tenantId,
@@ -842,7 +876,7 @@ describe('storefront F&B modifier checkout contract', () => {
         { setting_key: 'storefront_hours', setting_value: 'open by appointment' }
       ])
     });
-    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+    const useCase = buildCheckoutUseCase(repository);
 
     const result = await useCase({
       tenantId,
@@ -868,7 +902,7 @@ describe('storefront F&B modifier checkout contract', () => {
         { setting_key: 'storefront_hours', setting_value: '10:00 PM - 2:00 AM daily' }
       ])
     });
-    const useCase = buildStoreCheckoutUseCase({ storeRepository: repository });
+    const useCase = buildCheckoutUseCase(repository);
 
     const result = await useCase({
       tenantId,

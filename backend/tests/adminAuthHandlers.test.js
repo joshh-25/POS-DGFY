@@ -56,13 +56,13 @@ describe('adminAuthHandlers.adminLogin', () => {
     expect(mockAdminLoginUseCase).toHaveBeenCalledWith({
       username: 'skupervisor',
       password: '252378',
-      sourceIp: 'unknown-ip'
+      sourceIp: 'unknown-ip',
+      userAgent: ''
     });
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith({
       success: true,
       message: 'Admin login successful',
-      token: 'jwt-token',
       admin: { username: 'skupervisor' }
     });
   });

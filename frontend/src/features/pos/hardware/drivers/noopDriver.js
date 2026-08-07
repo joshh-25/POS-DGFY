@@ -13,6 +13,9 @@ export const noopDriver = {
     async printReceipt() {
         return noPrinterResult(this.id, 'No printer is configured for this terminal. The receipt is available for on-screen preview.');
     },
+    async printShiftSummary() {
+        return noPrinterResult(this.id, 'No printer is configured for this terminal. The shift sales summary is available for on-screen preview.');
+    },
     async printOrderTicket() {
         return noPrinterResult(this.id, 'No order-ticket printer is configured for this terminal.');
     },

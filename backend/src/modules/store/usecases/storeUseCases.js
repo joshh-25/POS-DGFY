@@ -62,6 +62,7 @@ import {
     normalizePromoCode,
     resolveCommercialPromoApplication
 } from '../../shared/utils/commercialPromoPolicy.js';
+import { resolvePaymentTiming } from '../../shared/utils/paymentTimingPolicy.js';
 
 const INVOICE_COUNTER_KEY = 'POS_OR';
 const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
@@ -330,6 +331,7 @@ const serializeOrderBase = (order) => ({
     order_source: order?.order_source,
     order_method: order?.order_method,
     payment_type: order?.payment_type,
+    payment_timing: order?.payment_timing,
     payment_status: order?.payment_status,
     payment_reference: order?.payment_reference,
     payment_checkout_url: order?.payment_checkout_url,
@@ -388,11 +390,15 @@ const buildNormalizedCheckoutRequest = (payload = {}, storeCustomer = null) => {
             return stableStringify(a.line_modifiers).localeCompare(stableStringify(b.line_modifiers));
         });
 
+    const orderMethod = String(payload.order_method || 'delivery').trim();
+    const paymentType = String(payload.payment_type || 'cash').trim();
+
     return {
         idempotency_key: String(payload.idempotency_key || '').trim(),
         location_id: payload.location_id == null ? null : Number.parseInt(payload.location_id, 10),
-        order_method: String(payload.order_method || 'delivery').trim(),
-        payment_type: String(payload.payment_type || 'cash').trim(),
+        order_method: orderMethod,
+        payment_type: paymentType,
+        payment_timing: resolvePaymentTiming({ orderMethod, paymentType }),
         promo_code: normalizePromoCode(payload.promo_code),
         customer_name: String(payload.customer_name || storeCustomer?.name || '').trim(),
         customer_phone: String(payload.customer_phone || storeCustomer?.phone || '').trim(),
@@ -1253,6 +1259,7 @@ const resolveCheckoutContext = async ({
     storeCustomer = null,
     options = {},
     validateRecipeAvailability = true,
+    revenueSharingEnabled = tenantRevenueSharingEnabled,
     // Explicit tenantId for the Phase 1 affiliate pricing rule engine lookup only. Optional and
     // falls back to the ambient dbStore context (currentTenantAccessContext()) when omitted, to
     // preserve today's behavior for the two callers (cart quote, QRPh payment session) that don't
@@ -1398,7 +1405,7 @@ const resolveCheckoutContext = async ({
     });
 
     const deliveryFee = resolveStoreDeliveryFee(settings, orderMethod);
-    const serviceFeeAmount = tenantRevenueSharingEnabled
+    const serviceFeeAmount = revenueSharingEnabled
         ? 0
         : computeDgfyConvenienceFee(prepared.subtotalAmount);
     const serviceFeeLabel = getDgfyConvenienceFeeLabel();
@@ -2183,7 +2190,10 @@ export const buildDeleteStoreCustomerAddressUseCase = ({ storeRepository }) => {
     };
 };
 
-export const buildStoreCartQuoteUseCase = ({ storeRepository }) => {
+export const buildStoreCartQuoteUseCase = ({
+    storeRepository,
+    revenueSharingEnabled = tenantRevenueSharingEnabled
+}) => {
     return async ({ payload, storeCustomer = null }) => {
         if (!isPlainObject(payload)) {
             return fail(new DomainError(
@@ -2194,7 +2204,12 @@ export const buildStoreCartQuoteUseCase = ({ storeRepository }) => {
         }
 
         try {
-            const resolved = await resolveCheckoutContext({ storeRepository, payload, storeCustomer });
+            const resolved = await resolveCheckoutContext({
+                storeRepository,
+                payload,
+                storeCustomer,
+                revenueSharingEnabled
+            });
             return ok({
                 subtotal_amount: resolved.prepared.subtotalAmount,
                 discount_amount: resolved.promoApplication.discountAmount,
@@ -2293,7 +2308,10 @@ export const buildVerifyStoreGuestCheckoutOtpUseCase = ({ emailOtpService }) => 
     };
 };
 
-export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
+export const buildStoreCheckoutUseCase = ({
+    storeRepository,
+    revenueSharingEnabled = tenantRevenueSharingEnabled
+}) => {
     return async ({ tenantId, payload, storeCustomer = null }) => {
         if (!isPlainObject(payload)) {
             return fail(new DomainError(
@@ -2344,7 +2362,8 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
                 storeCustomer: normalizedStoreCustomer,
                 options: { transaction, lock: true },
                 validateRecipeAvailability: !existing,
-                tenantId: normalizedTenantId
+                tenantId: normalizedTenantId,
+                revenueSharingEnabled
             });
             const { normalized } = resolved;
 
@@ -2352,6 +2371,7 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
                 location_id: normalized.location_id,
                 order_method: normalized.order_method,
                 payment_type: normalized.payment_type,
+                payment_timing: normalized.payment_timing,
                 promo_code: normalized.promo_code,
                 customer_name: normalized.customer_name,
                 customer_phone: normalized.customer_phone,
@@ -2441,6 +2461,7 @@ export const buildStoreCheckoutUseCase = ({ storeRepository }) => {
                     order_source: 'online_store',
                     order_method: normalized.order_method,
                     payment_type: normalized.payment_type,
+                    payment_timing: normalized.payment_timing,
                     ...paymentSnapshot,
                     fulfillment_status: 'placed',
                     subtotal_amount: resolved.prepared.subtotalAmount,

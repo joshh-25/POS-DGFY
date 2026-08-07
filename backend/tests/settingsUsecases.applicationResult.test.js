@@ -8,7 +8,6 @@ import { resolveChangedSettingKeys } from '../src/modules/settings/usecases/sett
 import { assertPublicStorefrontHandleAvailable } from '../src/modules/settings/usecases/publicStorefrontHandlePolicy.js';
 import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
 import dbStore from '../src/utils/dbStore.js';
-import bcrypt from 'bcryptjs';
 
 describe('settings use-cases application result contract', () => {
   it('getAllSettings returns success envelope', async () => {
@@ -984,7 +983,7 @@ describe('settings use-cases application result contract', () => {
     expect(updateSettingByKey).toHaveBeenCalledWith('pos_terminal_location_binding_enforced', true);
   });
 
-  it('updateSettings hashes new terminal passwords before saving terminal registry', async () => {
+  it('updateSettings does not persist terminal passwords in the pairing-only registry', async () => {
     const updateSettings = jest.fn().mockResolvedValue({ updated: 1 });
     const useCase = buildUpdateSettingsUseCase({
       settingsRepository: {
@@ -1014,14 +1013,12 @@ describe('settings use-cases application result contract', () => {
 
     expect(result.success).toBe(true);
     const savedRegistry = updateSettings.mock.calls[0][0].pos_terminal_registry;
-    expect(savedRegistry[0].terminal_password_hash).toEqual(expect.any(String));
-    expect(savedRegistry[0].terminal_password_hash).not.toBe('4321');
-    await expect(bcrypt.compare('4321', savedRegistry[0].terminal_password_hash)).resolves.toBe(true);
+    expect(savedRegistry[0].terminal_password_hash).toBe('');
     expect(savedRegistry[0]).not.toHaveProperty('terminal_password');
   });
 
-  it('updateSettings keeps the existing terminal password hash when the password field is left blank', async () => {
-    const existingHash = await bcrypt.hash('1234', 10);
+  it('updateSettings clears legacy terminal password hashes when the password field is left blank', async () => {
+    const existingHash = '$2a$10$legacy-hash-placeholder';
     const updateSettings = jest.fn().mockResolvedValue({ updated: 1 });
     const useCase = buildUpdateSettingsUseCase({
       settingsRepository: {
@@ -1051,11 +1048,11 @@ describe('settings use-cases application result contract', () => {
 
     expect(result.success).toBe(true);
     const savedRegistry = updateSettings.mock.calls[0][0].pos_terminal_registry;
-    expect(savedRegistry[0].terminal_password_hash).toBe(existingHash);
+    expect(savedRegistry[0].terminal_password_hash).toBe('');
   });
 
-  it('updateSettings clears the existing terminal password hash when explicitly requested', async () => {
-    const existingHash = await bcrypt.hash('1234', 10);
+  it('updateSettings keeps the terminal password hash cleared when explicitly requested', async () => {
+    const existingHash = '$2a$10$legacy-hash-placeholder';
     const updateSettings = jest.fn().mockResolvedValue({ updated: 1 });
     const useCase = buildUpdateSettingsUseCase({
       settingsRepository: {

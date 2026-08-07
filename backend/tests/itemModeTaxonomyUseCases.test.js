@@ -46,7 +46,7 @@ describe('inventory item mode taxonomy use cases', () => {
         });
 
         expect(result).toEqual({ item_id: 7 });
-        expect(itemRepository.updateItem).toHaveBeenCalledWith(7, { description: 'legacy row note' }, 1);
+        expect(itemRepository.updateItem).toHaveBeenCalledWith(7, { description: 'legacy row note' }, 1, { canManageCategories: false });
     });
 
     it('persists inferred corrected-mode preset when creating new F&B items', async () => {

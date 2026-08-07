@@ -24,10 +24,15 @@ describe('POS terminal pairing contract', () => {
     expect(terminalPageSource).toContain("'Unlock POS'");
   });
 
-  it('resumes a locked open shift with cashier credentials instead of terminal password', () => {
+  it('resumes a locked open shift through the DGFY POS session instead of a tenant-local cashier password', () => {
     expect(terminalPageSource).toContain("setTerminalUnlockMode('cashier_resume')");
     expect(terminalPageSource).toContain('cashierResumeUnlock ? handleCashierResumeSubmit : handleTerminalUnlockSubmit');
     expect(terminalPageSource).toContain('Terminal password is not required.');
+    expect(terminalPageSource).toContain('loginDgfyAccount({');
+    expect(terminalPageSource).toContain('startDgfyPosSession({');
+    expect(terminalPageSource).toContain('const tenantId = String(cashierResumeContext.tenantId ||');
+    expect(terminalPageSource).not.toContain('loginCashierWithCredentials');
+    expect(terminalPageSource).not.toContain('authenticateCashierCredentials');
     expect(terminalPageSource).toContain('Only the cashier who owns this open shift can continue it.');
     expect(terminalPageSource).toContain('authenticatedCashierId !== expectedCashierId');
     expect(terminalPageSource).toContain("!cashierResumeUnlock && terminalUnlockMode === 'shift_start'");

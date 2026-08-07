@@ -54,6 +54,8 @@ import {
     buildListIncomingOnlineOrdersUseCase,
     buildGetAdminLocationMonitorUseCase,
     buildCollectCashPickupOrderUseCase,
+    buildCollectCashDeliveryOrderUseCase,
+    buildUpdateDeliveryJobStatusUseCase,
     buildUpdateOnlineOrderStatusUseCase,
     buildVerifyPosTerminalUseCase,
     buildGetPairedPosTerminalUseCase
@@ -61,6 +63,7 @@ import {
 import {
     buildGetPosDeviceStatusUseCase,
     buildPrintPosReceiptUseCase,
+    buildPrintPosShiftSummaryUseCase,
     buildOpenPosDrawerUseCase
 } from './usecases/posDeviceUseCases.js';
 import {
@@ -131,6 +134,8 @@ export const getTerminalTodayDashboardUseCase = buildGetTerminalTodayDashboardUs
 export const listIncomingOnlineOrdersUseCase = buildListIncomingOnlineOrdersUseCase({ posRepository });
 export const getAdminLocationMonitorUseCase = buildGetAdminLocationMonitorUseCase({ posRepository });
 export const collectCashPickupOrderUseCase = buildCollectCashPickupOrderUseCase({ posRepository });
+export const collectCashDeliveryOrderUseCase = buildCollectCashDeliveryOrderUseCase({ posRepository });
+export const updateDeliveryJobStatusUseCase = buildUpdateDeliveryJobStatusUseCase({ posRepository });
 export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService,
@@ -150,6 +155,10 @@ export const getPosDeviceStatusUseCase = buildGetPosDeviceStatusUseCase({
     deviceDriver: posDeviceDriver
 });
 export const printPosReceiptUseCase = buildPrintPosReceiptUseCase({
+    posRepository,
+    deviceDriver: posDeviceDriver
+});
+export const printPosShiftSummaryUseCase = buildPrintPosShiftSummaryUseCase({
     posRepository,
     deviceDriver: posDeviceDriver
 });

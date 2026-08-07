@@ -374,7 +374,15 @@ describe('storefront catalog use cases', () => {
         }));
         expect(updateStorefrontCatalogImage).toHaveBeenCalledWith(88, {
             path: 'uploads/storefront.png',
-            url: '/uploads/storefront.png'
+            url: '/uploads/storefront.png',
+            gallery: [{
+                path: 'uploads/storefront.png',
+                url: '/uploads/storefront.png',
+                variants: null,
+                original_path: null,
+                classification: null,
+                source: { type: 'manual_upload' }
+            }]
         }, {
             keepVisible: false
         });
@@ -557,6 +565,7 @@ describe('storefront catalog use cases', () => {
                     variants: null,
                     original_path: null,
                     classification: null,
+                    source: null,
                     is_primary: true,
                     sort_order: 0
                 },
@@ -566,6 +575,7 @@ describe('storefront catalog use cases', () => {
                     variants: null,
                     original_path: null,
                     classification: null,
+                    source: null,
                     is_primary: false,
                     sort_order: 1
                 },
@@ -575,6 +585,7 @@ describe('storefront catalog use cases', () => {
                     variants: null,
                     original_path: null,
                     classification: null,
+                    source: null,
                     is_primary: false,
                     sort_order: 2
                 },
@@ -584,6 +595,7 @@ describe('storefront catalog use cases', () => {
                     variants: null,
                     original_path: null,
                     classification: null,
+                    source: null,
                     is_primary: false,
                     sort_order: 3
                 }
@@ -649,6 +661,7 @@ describe('storefront catalog use cases', () => {
                     variants: null,
                     original_path: null,
                     classification: null,
+                    source: null,
                     is_primary: true,
                     sort_order: 0
                 },
@@ -658,6 +671,7 @@ describe('storefront catalog use cases', () => {
                     variants: null,
                     original_path: null,
                     classification: null,
+                    source: null,
                     is_primary: false,
                     sort_order: 1
                 }
@@ -725,6 +739,7 @@ describe('storefront catalog use cases', () => {
                     variants: null,
                     original_path: null,
                     classification: null,
+                    source: null,
                     is_primary: true,
                     sort_order: 0
                 },
@@ -734,6 +749,7 @@ describe('storefront catalog use cases', () => {
                     variants: null,
                     original_path: null,
                     classification: null,
+                    source: null,
                     is_primary: false,
                     sort_order: 1
                 },
@@ -743,6 +759,7 @@ describe('storefront catalog use cases', () => {
                     variants: null,
                     original_path: null,
                     classification: null,
+                    source: null,
                     is_primary: false,
                     sort_order: 2
                 }
@@ -837,8 +854,8 @@ describe('storefront catalog use cases', () => {
             storefront_image_path: 'storefront-catalog/tenant/second.png',
             storefront_image_url: '/uploads/second.png',
             storefront_image_gallery: [
-                { path: 'storefront-catalog/tenant/second.png', url: '/uploads/second.png', variants: null, original_path: null, classification: null, is_primary: true, sort_order: 0 },
-                { path: 'storefront-catalog/tenant/first.png', url: '/uploads/first.png', variants: null, original_path: null, classification: null, is_primary: false, sort_order: 1 }
+                { path: 'storefront-catalog/tenant/second.png', url: '/uploads/second.png', variants: null, original_path: null, classification: null, source: null, is_primary: true, sort_order: 0 },
+                { path: 'storefront-catalog/tenant/first.png', url: '/uploads/first.png', variants: null, original_path: null, classification: null, source: null, is_primary: false, sort_order: 1 }
             ]
         }));
         expect(remove).toHaveBeenCalledWith({ path: 'storefront-catalog/tenant/third.png' });
@@ -872,7 +889,7 @@ describe('storefront catalog use cases', () => {
             storefront_image_path: 'storefront-catalog/tenant/second.png',
             storefront_image_url: '/uploads/second.png',
             storefront_image_gallery: [
-                { path: 'storefront-catalog/tenant/second.png', url: '/uploads/second.png', variants: null, original_path: null, classification: null, is_primary: true, sort_order: 0 }
+                { path: 'storefront-catalog/tenant/second.png', url: '/uploads/second.png', variants: null, original_path: null, classification: null, source: null, is_primary: true, sort_order: 0 }
             ]
         }));
         expect(remove).toHaveBeenCalledWith({ path: 'storefront-catalog/tenant/first.png' });

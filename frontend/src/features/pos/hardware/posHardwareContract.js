@@ -6,6 +6,7 @@
 
 export const POS_HARDWARE_CAPABILITIES = Object.freeze({
     PRINT_RECEIPT: 'print_receipt',
+    PRINT_SHIFT_SUMMARY: 'print_shift_summary',
     OPEN_DRAWER: 'open_drawer',
     PRINT_ORDER_TICKET: 'print_order_ticket'
 });

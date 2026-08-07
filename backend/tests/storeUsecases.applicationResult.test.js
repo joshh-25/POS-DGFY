@@ -790,6 +790,7 @@ describe('store use-cases application result contract', () => {
 
     it('storeCartQuote returns DGFY fee fields and total math for normal subtotal', async () => {
         const useCase = buildStoreCartQuoteUseCase({
+            revenueSharingEnabled: false,
             storeRepository: {
                 findSellableItemsByIds: jest.fn().mockResolvedValue([
                     {
@@ -901,6 +902,7 @@ describe('store use-cases application result contract', () => {
 
     it('storeCartQuote ignores POS shift status when the storefront location is open', async () => {
         const useCase = buildStoreCartQuoteUseCase({
+            revenueSharingEnabled: false,
             storeRepository: {
                 findSellableItemsByIds: jest.fn().mockResolvedValue([
                     {
@@ -1236,6 +1238,7 @@ describe('store use-cases application result contract', () => {
 
     it('storeCartQuote applies an active promo code and returns discounted totals', async () => {
         const useCase = buildStoreCartQuoteUseCase({
+            revenueSharingEnabled: false,
             storeRepository: {
                 findLocationById: jest.fn().mockResolvedValue({
                     location_id: 2,
@@ -1304,6 +1307,7 @@ describe('store use-cases application result contract', () => {
 
     it('storeCartQuote applies promo discounts only to configured target items', async () => {
         const useCase = buildStoreCartQuoteUseCase({
+            revenueSharingEnabled: false,
             storeRepository: {
                 findLocationById: jest.fn().mockResolvedValue({
                     location_id: 2,
@@ -1510,6 +1514,7 @@ describe('store use-cases application result contract', () => {
         const updateSettingByKey = jest.fn().mockResolvedValue({});
         const createOnlineTransactionWithLines = jest.fn().mockResolvedValue(901);
         const useCase = buildStoreCheckoutUseCase({
+            revenueSharingEnabled: false,
             storeRepository: {
                 beginTransaction: jest.fn().mockResolvedValue(transaction),
                 findLocationById: jest.fn().mockResolvedValue({

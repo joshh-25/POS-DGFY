@@ -1,7 +1,7 @@
 import Joi from 'joi';
 
 const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer'];
-const ORDER_METHOD_FILTERS = ['dine_in', 'takeout', 'pickup', 'delivery', 'online'];
+const ORDER_METHOD_FILTERS = ['dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment', 'walk_in'];
 const POS_ORDER_SOURCES = ['in_store', 'online_store'];
 const SALES_SOURCES = ['ALL', 'POS', 'DISPATCH'];
 const SORT_BY_VALUES = ['occurred_at', 'gross_sales', 'cogs', 'gross_profit', 'reference_no'];

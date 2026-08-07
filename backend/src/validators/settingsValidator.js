@@ -349,7 +349,7 @@ const storefrontGalleryUrlSchema = Joi.alternatives().try(
   Joi.string().trim().max(500).uri({ scheme: ['http', 'https'] }),
   storefrontAssetUrlSchema
 ).allow('', null).optional();
-const storefrontGalleryPathSchema = Joi.string().trim().max(500).pattern(/^$|^storefront-assets\/[A-Za-z0-9/_\-.]+$/).allow(null).optional().messages({
+const storefrontGalleryPathSchema = Joi.string().trim().max(500).pattern(/^$|^storefront-assets\/[A-Za-z0-9/_\-.]+$/).allow('', null).optional().messages({
   'string.pattern.base': 'Storefront gallery path must be empty or a storefront-assets relative path'
 });
 const storefrontGalleryImageSchema = Joi.object({
@@ -384,13 +384,56 @@ const storefrontReviewSummarySchema = Joi.object({
   score: Joi.number().min(0).max(5).precision(2).allow(null).optional(),
   total_count: Joi.number().integer().min(0).max(1000000).allow(null).optional(),
   star_distribution: Joi.object({
-    1: Joi.number().integer().min(0).max(1000000).optional(),
-    2: Joi.number().integer().min(0).max(1000000).optional(),
-    3: Joi.number().integer().min(0).max(1000000).optional(),
-    4: Joi.number().integer().min(0).max(1000000).optional(),
-    5: Joi.number().integer().min(0).max(1000000).optional()
+    1: Joi.number().integer().min(0).max(1000000).allow(null).optional(),
+    2: Joi.number().integer().min(0).max(1000000).allow(null).optional(),
+    3: Joi.number().integer().min(0).max(1000000).allow(null).optional(),
+    4: Joi.number().integer().min(0).max(1000000).allow(null).optional(),
+    5: Joi.number().integer().min(0).max(1000000).allow(null).optional()
   }).optional()
 }).optional();
+
+const normalizeNullableSettingValue = (value) => {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string' && ['null', ''].includes(value.trim().toLowerCase())) return null;
+  return value;
+};
+
+const normalizeStorefrontSettingsPlaceholders = (settings = {}, { dropBlankGalleryRows = true } = {}) => {
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return settings;
+  const normalized = { ...settings };
+
+  if (Array.isArray(normalized.storefront_gallery_images)) {
+    normalized.storefront_gallery_images = normalized.storefront_gallery_images
+      .filter((entry) => !dropBlankGalleryRows
+        || Boolean(String(entry?.url || '').trim())
+        || Boolean(String(entry?.path || '').trim()))
+      .map((entry) => ({
+        ...entry,
+        url: String(entry?.url || '').trim(),
+        path: String(entry?.path || '').trim(),
+        caption: entry?.caption === undefined || entry?.caption === null ? entry?.caption : String(entry.caption).trim(),
+        alt: entry?.alt === undefined || entry?.alt === null ? entry?.alt : String(entry.alt).trim()
+      }));
+  }
+
+  if (normalized.storefront_review_summary && typeof normalized.storefront_review_summary === 'object') {
+    const summary = { ...normalized.storefront_review_summary };
+    if (Object.prototype.hasOwnProperty.call(summary, 'score')) {
+      summary.score = normalizeNullableSettingValue(summary.score);
+    }
+    if (Object.prototype.hasOwnProperty.call(summary, 'total_count')) {
+      summary.total_count = normalizeNullableSettingValue(summary.total_count);
+    }
+    if (summary.star_distribution && typeof summary.star_distribution === 'object') {
+      summary.star_distribution = Object.fromEntries(
+        [1, 2, 3, 4, 5].map((star) => [star, normalizeNullableSettingValue(summary.star_distribution[star])])
+      );
+    }
+    normalized.storefront_review_summary = summary;
+  }
+
+  return normalized;
+};
 const customerAccessModeSchema = Joi.string().trim().lowercase().valid(...CUSTOMER_ACCESS_MODES).messages({
   'any.only': `Customer access mode must be one of: ${CUSTOMER_ACCESS_MODES.join(', ')}`
 });
@@ -536,7 +579,8 @@ export const updateSingleSettingSchema = Joi.object({
 
 // Middleware to validate settings update
 export const validateUpdateSettings = (req, res, next) => {
-  const rawOrderMethodFees = req?.body?.pos_order_method_fees;
+  const normalizedBody = normalizeStorefrontSettingsPlaceholders(req?.body);
+  const rawOrderMethodFees = normalizedBody?.pos_order_method_fees;
   if (rawOrderMethodFees && typeof rawOrderMethodFees === 'object' && !Array.isArray(rawOrderMethodFees)) {
     const unsupportedKeys = Object.keys(rawOrderMethodFees).filter((key) => !ORDER_METHODS.includes(key));
     if (unsupportedKeys.length > 0) {
@@ -552,7 +596,7 @@ export const validateUpdateSettings = (req, res, next) => {
     }
   }
 
-  const { error, value } = updateSettingsSchema.validate(req.body, {
+  const { error, value } = updateSettingsSchema.validate(normalizedBody, {
     abortEarly: false,
     stripUnknown: true
   });
@@ -577,7 +621,14 @@ export const validateUpdateSettings = (req, res, next) => {
 
 // Middleware to validate single setting update
 export const validateUpdateSingleSetting = (req, res, next) => {
-  const { error, value } = updateSingleSettingSchema.validate(req.body, {
+  const settingKey = String(req?.params?.key || '').trim();
+  const normalizedSettingValue = normalizeStorefrontSettingsPlaceholders({
+    [settingKey]: req?.body?.value
+  }, { dropBlankGalleryRows: false })[settingKey];
+  const normalizedBody = req?.body && typeof req.body === 'object'
+    ? { ...req.body, value: normalizedSettingValue }
+    : req.body;
+  const { error, value } = updateSingleSettingSchema.validate(normalizedBody, {
     abortEarly: false
   });
 
@@ -595,7 +646,6 @@ export const validateUpdateSingleSetting = (req, res, next) => {
     });
   }
 
-  const settingKey = String(req?.params?.key || '').trim();
   if (PLATFORM_CONTROLLED_POS_SOFTWARE_KEYS.has(settingKey)) {
     return res.status(422).json({
       success: false,

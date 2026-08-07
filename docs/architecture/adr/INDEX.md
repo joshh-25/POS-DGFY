@@ -43,7 +43,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0018 | [Barcode Identity, Labels, And Scan Routing](0018-barcode-identity-labels-and-scan-routing.md) | `accepted` | barcode_identity_labels_and_scan_routing | 2026-11-05 | 0 |
 | 0019 | [Food & Beverage Mode Full-Service Restaurant Workflow](0019-food-and-beverage-mode-full-service-restaurant.md) | `accepted` | food_and_beverage_mode_full_service_restaurant | 2026-11-05 | 0 |
 | 0020 | [Mode-Aware RBAC And Role Presets](0020-mode-aware-rbac-and-role-presets.md) | `accepted` | mode_aware_rbac_and_role_presets | 2026-11-06 | 0 |
-| 0021 | [Email OTP Verification For Account Email Ownership](0021-email-otp-verification-for-account-email-ownership.md) | `accepted` | email_otp_verification | 2026-11-17 | 0 |
+| 0021 | [Email OTP Verification For Account Email Ownership](0021-email-otp-verification-for-account-email-ownership.md) | `amended` | email_otp_verification | 2026-11-17 | 0 |
 | 0022 | [Global DGFY Account For Business Registration](0022-global-dgfy-account-business-registration.md) | `accepted` | global_dgfy_account_business_registration | 2027-01-08 | 0 |
 | 0023 | [Front-Facing DGFY Customer Account](0023-front-facing-dgfy-customer-account.md) | `accepted` | front_facing_dgfy_customer_account | 2027-01-08 | 0 |
 | 0024 | [Fulfilled Guest Item Reviews For Storefront Menu Details](0024-fulfilled-guest-item-reviews.md) | `accepted` | fulfilled_guest_item_reviews | 2027-01-08 | 0 |
@@ -76,6 +76,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0051 | [POS Employee Credit Tender and Ledger](0051-pos-employee-credit-tender-and-ledger.md) | `accepted` | pos_employee_credit_tender_and_ledger | 2027-01-30 | 0 |
 | 0052 | [DGFY Collection, Tenant Revenue Ledger, and Controlled Settlement](0052-tenant-revenue-collection-ledger-and-settlement.md) | `accepted` | tenant_revenue_collection_ledger_settlement | 2027-01-31 | 0 |
 | 0053 | [Pluggable POS Hardware Device Drivers](0053-pluggable-pos-hardware-device-drivers.md) | `accepted` | pluggable_pos_hardware_device_drivers | 2027-02-04 | 4 |
+| 0054 | [Outbound Email Delivery Log And Bounce Capture](0054-outbound-email-delivery-log-and-bounce-capture.md) | `accepted` | outbound_email_delivery_log_and_bounce_capture | 2027-02-07 | 0 |
 
 ## Renumbered (collision stubs)
 

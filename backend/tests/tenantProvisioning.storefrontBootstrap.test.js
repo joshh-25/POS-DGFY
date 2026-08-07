@@ -55,7 +55,7 @@ describe('tenantProvisioning storefront public visibility defaults', () => {
         });
 
         jest.spyOn(Sequelize.prototype, 'sync').mockResolvedValue(undefined);
-        jest.spyOn(Sequelize.prototype, 'query').mockResolvedValue([]);
+        jest.spyOn(Sequelize.prototype, 'query').mockResolvedValue([[]]);
         jest.spyOn(Sequelize.prototype, 'close').mockResolvedValue(undefined);
 
         const { provisionTenant } = await import('../src/services/tenantProvisioningService.js');

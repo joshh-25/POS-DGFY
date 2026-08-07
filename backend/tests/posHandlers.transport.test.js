@@ -1,4 +1,4 @@
-import { jest } from '@jest/globals';
+import { beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 const mockListPosCatalogUseCase = jest.fn();
 const mockScanPosBarcodeUseCase = jest.fn();
@@ -40,9 +40,12 @@ const mockGetTerminalTodayDashboardUseCase = jest.fn();
 const mockListIncomingOnlineOrdersUseCase = jest.fn();
 const mockGetAdminLocationMonitorUseCase = jest.fn();
 const mockCollectCashPickupOrderUseCase = jest.fn();
+const mockCollectCashDeliveryOrderUseCase = jest.fn();
+const mockUpdateDeliveryJobStatusUseCase = jest.fn();
 const mockUpdateOnlineOrderStatusUseCase = jest.fn();
 const mockGetPosDeviceStatusUseCase = jest.fn();
 const mockPrintPosReceiptUseCase = jest.fn();
+const mockPrintPosShiftSummaryUseCase = jest.fn();
 const mockOpenPosDrawerUseCase = jest.fn();
 const mockVerifyPosTerminalUseCase = jest.fn();
 const mockGetPairedPosTerminalUseCase = jest.fn();
@@ -89,9 +92,12 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     listIncomingOnlineOrdersUseCase: mockListIncomingOnlineOrdersUseCase,
     getAdminLocationMonitorUseCase: mockGetAdminLocationMonitorUseCase,
     collectCashPickupOrderUseCase: mockCollectCashPickupOrderUseCase,
+    collectCashDeliveryOrderUseCase: mockCollectCashDeliveryOrderUseCase,
+    updateDeliveryJobStatusUseCase: mockUpdateDeliveryJobStatusUseCase,
     updateOnlineOrderStatusUseCase: mockUpdateOnlineOrderStatusUseCase,
     getPosDeviceStatusUseCase: mockGetPosDeviceStatusUseCase,
     printPosReceiptUseCase: mockPrintPosReceiptUseCase,
+    printPosShiftSummaryUseCase: mockPrintPosShiftSummaryUseCase,
     openPosDrawerUseCase: mockOpenPosDrawerUseCase,
     verifyPosTerminalUseCase: mockVerifyPosTerminalUseCase,
     getPairedPosTerminalUseCase: mockGetPairedPosTerminalUseCase,
@@ -116,6 +122,8 @@ let recordCashDrawerEvent;
 let closeTerminalShift;
 let forceCloseStaleTerminalShift;
 let getAdminLocationMonitor;
+let collectCashDeliveryOrder;
+let updateDeliveryJobStatus;
 let updateOnlineOrderStatus;
 
 beforeAll(async () => {
@@ -134,6 +142,8 @@ beforeAll(async () => {
     closeTerminalShift = mod.closeTerminalShift;
     forceCloseStaleTerminalShift = mod.forceCloseStaleTerminalShift;
     getAdminLocationMonitor = mod.getAdminLocationMonitor;
+    collectCashDeliveryOrder = mod.collectCashDeliveryOrder;
+    updateDeliveryJobStatus = mod.updateDeliveryJobStatus;
     updateOnlineOrderStatus = mod.updateOnlineOrderStatus;
 });
 
@@ -843,6 +853,108 @@ describe('posHandlers transport contracts', () => {
                 replay_outcome: 'processed'
             }),
             message: 'Online order status updated successfully',
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('collectCashDeliveryOrder returns the delivery cash collection contract', async () => {
+        mockCollectCashDeliveryOrderUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                idempotent_replay: false,
+                replay_outcome: 'processed',
+                collection: { order_method: 'delivery', payment_timing: 'on_delivery' }
+            }
+        });
+
+        const req = {
+            validatedParams: { id: 89 },
+            params: { id: 89 },
+            validatedData: {
+                idempotency_key: 'delivery-cash-20260409-89',
+                terminal_id: 'COUNTER-01',
+                cash_received: 200
+            },
+            body: {},
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            ip: '127.0.0.1',
+            get: jest.fn(() => 'test-agent'),
+            requestId: 'req-pos-delivery-cash'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await collectCashDeliveryOrder(req, res, next);
+
+        expect(mockCollectCashDeliveryOrderUseCase).toHaveBeenCalledWith({
+            posTransactionId: 89,
+            payload: req.validatedData,
+            user: req.user,
+            auditContext: {
+                ipAddress: '127.0.0.1',
+                userAgent: 'test-agent'
+            }
+        });
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: expect.objectContaining({
+                idempotent_replay: false,
+                replay_outcome: 'processed'
+            }),
+            message: 'Cash payment collected for delivery order.',
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('updateDeliveryJobStatus returns the guarded manual delivery lifecycle contract', async () => {
+        mockUpdateDeliveryJobStatusUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                idempotent_replay: false,
+                replay_outcome: 'processed',
+                delivery_job: { status: 'delivered' },
+                status_transition: { current_status: 'picked_up', requested_status: 'delivered' }
+            }
+        });
+
+        const req = {
+            validatedParams: { id: 89 },
+            params: { id: 89 },
+            validatedData: {
+                idempotency_key: 'delivery-job-20260409-89',
+                status: 'delivered'
+            },
+            body: {},
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            ip: '127.0.0.1',
+            get: jest.fn(() => 'test-agent'),
+            requestId: 'req-pos-delivery-job'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await updateDeliveryJobStatus(req, res, next);
+
+        expect(mockUpdateDeliveryJobStatusUseCase).toHaveBeenCalledWith({
+            posTransactionId: 89,
+            payload: req.validatedData,
+            user: req.user,
+            auditContext: {
+                ipAddress: '127.0.0.1',
+                userAgent: 'test-agent'
+            }
+        });
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: expect.objectContaining({
+                idempotent_replay: false,
+                delivery_job: { status: 'delivered' }
+            }),
+            message: 'Delivery job status updated successfully.',
             timestamp: expect.any(String)
         });
         expect(next).not.toHaveBeenCalled();

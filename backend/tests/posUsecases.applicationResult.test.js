@@ -1,4 +1,4 @@
-import { jest } from '@jest/globals';
+import { describe, expect, it, jest } from '@jest/globals';
 import fs from 'fs/promises';
 import os from 'os';
 import path from 'path';
@@ -152,6 +152,33 @@ describe('pos use-cases application result contract', () => {
             }),
             expect.objectContaining({ transaction: expect.any(Object) })
         );
+    });
+
+    it('blocks administrator navigation from opening a cashier shift', async () => {
+        const posRepository = createShiftOpenRepository();
+        const useCase = buildOpenTerminalShiftUseCase({
+            posRepository,
+            resolveIdentityStatus: jest.fn().mockResolvedValue({ identity_mode: 'dgfy_membership' }),
+            resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 3 })
+        });
+
+        const result = await runWithTenantComplianceContext(() => useCase({
+            payload: {
+                terminal_id: 'COUNTER-01',
+                location_id: 3,
+                opening_float_amount: 500
+            },
+            user: {
+                user_id: 1,
+                is_master_admin: false,
+                permissions: ['pos:transact', 'settings:view']
+            }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(403);
+        expect(result.error.details.reason_code).toBe('ADMIN_SHIFT_OPEN_NOT_ALLOWED');
+        expect(posRepository.createTerminalShift).not.toHaveBeenCalled();
     });
 
     it('blocks shift open for inactive or unknown logical terminals', async () => {
@@ -1151,7 +1178,13 @@ describe('pos use-cases application result contract', () => {
             locationId: 2,
             limit: 25
         });
-        expect(result.data.orders).toEqual([{ pos_transaction_id: 54, location_id: 2 }]);
+        expect(result.data.orders).toEqual([{
+            pos_transaction_id: 54,
+            location_id: 2,
+            receipt_print_status: 'pending',
+            receipt_printed_at: null,
+            receipt_print_failure_reason: null
+        }]);
     });
 
     it('listIncomingOnlineOrders rejects a branch request outside the active shift location', async () => {
@@ -1454,9 +1487,13 @@ describe('pos use-cases application result contract', () => {
             tracking_pin: 'SK-DELIV1',
             order_source: 'online_store',
             order_method: 'delivery',
+            payment_type: 'qrph',
+            payment_timing: 'upfront',
+            payment_status: 'paid',
             fulfillment_status: currentStatus,
             location_id: 5,
-            lines: []
+            lines: [],
+            deliveryJob: { status: 'delivered' }
         };
         const updatedOrder = {
             ...existingOrder,

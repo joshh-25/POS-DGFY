@@ -97,6 +97,7 @@ export default function TerminalPageLayout({
     handleSwitchShiftLocation,
     handleRecordCashEvent,
     handleCloseShift,
+    handleViewShiftSummary = () => {},
     refreshOperationalContext,
     setOperatingLocationId,
     setQueueLocationScopeId,
@@ -766,6 +767,7 @@ export default function TerminalPageLayout({
                 handleSwitchShiftLocation={handleSwitchShiftLocation}
                 handleRecordCashEvent={handleRecordCashEvent}
                 handleCloseShift={handleCloseShift}
+                handleViewShiftSummary={handleViewShiftSummary}
                 refreshOperationalContext={refreshOperationalContext}
                 locationsState={locationsState}
                 operatingLocationId={operatingLocationId}

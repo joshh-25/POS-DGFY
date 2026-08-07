@@ -248,15 +248,24 @@ export const sanitizeSentryEvent = (rawEvent) => {
   };
 };
 
-// Vite dev-only test trigger: exposes window.__sentryTestError() so a DSN
-// can be proven end-to-end from the browser console without shipping a
-// trigger to production. Registered on every initBrowserSentry() call
-// (regardless of whether Sentry ends up active) so it's always discoverable
-// in a dev build, and gives a clear message instead of silently no-oping
-// when Sentry isn't enabled/configured.
+// Exposes window.__sentryTestError() so a DSN can be proven end-to-end from
+// the browser console (or chrome://inspect on a WebView, e.g. the iMin
+// POS terminal) without shipping a trigger to PROD. `import.meta.env.DEV`
+// was the original gate here, but that's a Vite build-mode flag -- every
+// `vite build` (including DEV/STAGING/BETA deploys, not just a local `vite
+// dev` server) runs in "production" mode, so `import.meta.env.DEV` is false
+// on every deployed environment and this never existed outside a local
+// dev server. Gate on the resolved Sentry *environment* instead (DEV/
+// STAGING/BETA all get it; only PROD does not), so a real deployed
+// device -- like a Chrome 80 iMin terminal that has never sent a single
+// Sentry event -- can actually be used to prove delivery works.
+// Registered on every initBrowserSentry() call (regardless of whether
+// Sentry ends up active) so it's always discoverable, and gives a clear
+// message instead of silently no-oping when Sentry isn't enabled/configured.
 const registerDevSentryTestTrigger = (config, logger) => {
   if (typeof window === 'undefined') return;
-  if (!import.meta.env?.DEV) return;
+  const environment = String(config?.environment || '').trim().toUpperCase();
+  if (environment === 'PROD') return;
 
   window.__sentryTestError = () => {
     const error = new Error('[Sentry] Test error triggered via window.__sentryTestError()');
@@ -475,16 +484,20 @@ export const identifySentryUser = ({ id, role } = {}) => {
 };
 
 /**
- * Registers tenant/store/business-mode/location as tags on every subsequent
- * event from this session, so issues can be filtered/grouped by tenant in
- * Sentry the same way setAnalyticsContext groups PostHog events.
+ * Registers tenant/store/business-mode/location/terminal as tags on every
+ * subsequent event from this session, so issues can be filtered/grouped by
+ * tenant (or POS terminal) in Sentry the same way setAnalyticsContext groups
+ * PostHog events. `terminalId` is POS-specific -- set from
+ * completeTerminalUnlock's own parameters (not React state) so it can never
+ * lag behind which terminal a cashier actually unlocked.
  */
-export const setSentryContext = ({ tenantId, storeSlug, businessMode, locationId } = {}) => {
+export const setSentryContext = ({ tenantId, storeSlug, businessMode, locationId, terminalId } = {}) => {
   withSentry((Sentry) => {
     if (tenantId) Sentry.setTag('tenant_id', String(tenantId));
     if (storeSlug) Sentry.setTag('store_slug', storeSlug);
     if (businessMode) Sentry.setTag('business_mode', businessMode);
     if (locationId) Sentry.setTag('location_id', String(locationId));
+    if (terminalId) Sentry.setTag('pos_terminal_id', String(terminalId));
   });
 };
 
@@ -496,6 +509,7 @@ export const resetSentryIdentity = () => {
     Sentry.setTag('store_slug', undefined);
     Sentry.setTag('business_mode', undefined);
     Sentry.setTag('location_id', undefined);
+    Sentry.setTag('pos_terminal_id', undefined);
   });
 };
 
@@ -620,6 +634,70 @@ export const captureRequestFailure = ({ error, method, url, status, requestId } 
         request_method: normalizedMethod,
         request_status: hasResponse ? String(status) : 'network',
         request_failure_class: failureClass
+      }
+    });
+  });
+};
+
+/**
+ * Captures a POS terminal-unlock/shift-open failure that never went through
+ * axios -- a locally-thrown `Error` (e.g. terminalShiftEntryDecision's
+ * "terminal already in use", or activateDgfyTenantSession's malformed-
+ * session check) has no `.response`, so it never reaches the axios
+ * interceptor that feeds captureRequestFailure above, and was invisible in
+ * Sentry even though it's exactly the failure resolveTerminalLoginErrorMessage
+ * surfaces to the cashier on screen. Shares captureRequestFailure's
+ * cooldown/session-cap state (not a second budget) so a terminal stuck in a
+ * failure loop still can't burn the event quota.
+ *
+ * `ref` is the short code shown on the inline diagnostics panel
+ * (TerminalPage.jsx) -- tagging it is what lets a cashier read a code off
+ * the screen and have it resolve straight to the matching Sentry event.
+ */
+export const captureTerminalFlowFailure = ({ error, flow, ref, requestPath, status, kind } = {}) => {
+  if (!error) return;
+
+  // The axios trailing interceptor (api.js) already ran and reported this
+  // exact error object once it fell through every retry -- that covers the
+  // 'network' and 'http' kinds. Avoid a duplicate event for those, but still
+  // tag the active scope so the axios-side event and the on-screen ref line
+  // up when someone searches by ref. Only a 'local' throw (never dispatched
+  // through axios) reaches the capture below.
+  if (error.__requestFailureReported) {
+    withSentry((Sentry) => Sentry.setTag?.('pos_error_ref', ref || ''));
+    return;
+  }
+
+  const normalizedFlow = String(flow || 'terminal_unlock');
+  const normalizedKind = String(kind || 'local');
+  const fingerprint = ['pos-flow', normalizedFlow, normalizedKind, requestPath || 'local'];
+  const fingerprintKey = fingerprint.join('|');
+
+  const now = Date.now();
+  const lastSentAt = requestFailureLastSentAt.get(fingerprintKey);
+  if (lastSentAt !== undefined && now - lastSentAt < REQUEST_FAILURE_COOLDOWN_MS) return;
+  if (requestFailureEventCount >= MAX_REQUEST_FAILURE_EVENTS_PER_SESSION) return;
+
+  requestFailureLastSentAt.set(fingerprintKey, now);
+  requestFailureEventCount += 1;
+
+  withSentry((Sentry) => {
+    Sentry.captureException(error, {
+      fingerprint,
+      level: normalizedKind === 'network' ? 'warning' : 'error',
+      contexts: {
+        pos_flow_failure: {
+          flow: normalizedFlow,
+          ref: ref || null,
+          request_path: requestPath || null,
+          status: status || null,
+          kind: normalizedKind
+        }
+      },
+      tags: {
+        pos_flow: normalizedFlow,
+        pos_error_ref: ref || '',
+        pos_failure_kind: normalizedKind
       }
     });
   });

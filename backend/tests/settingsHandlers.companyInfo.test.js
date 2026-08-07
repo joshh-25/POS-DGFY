@@ -15,7 +15,8 @@ jest.unstable_mockModule('../src/modules/settings/index.js', () => ({
   getCompanyInfoUseCase: mockGetCompanyInfoUseCase,
   uploadStorefrontAssetUseCase: mockUploadStorefrontAssetUseCase,
   deleteStorefrontAssetUseCase: mockDeleteStorefrontAssetUseCase,
-  verifyPosSettingsAccessPinUseCase: mockVerifyPosSettingsAccessPinUseCase
+  verifyPosSettingsAccessPinUseCase: mockVerifyPosSettingsAccessPinUseCase,
+  generateStorefrontSlugUseCase: jest.fn()
 }));
 
 jest.unstable_mockModule('../src/utils/dbStore.js', () => ({

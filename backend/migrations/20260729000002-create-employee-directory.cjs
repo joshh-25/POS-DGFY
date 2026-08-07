@@ -1,6 +1,6 @@
 'use strict';
 
-const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_]+$/;
+const SAFE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_-]+$/;
 
 const quoteIdentifier = (identifier) => {
   const normalized = String(identifier || '').trim();
@@ -65,6 +65,21 @@ const addColumnIfMissing = async (queryInterface, databaseName, tableName, colum
 const migrateDatabase = async (queryInterface, databaseName) => {
   if (!(await tableExists(queryInterface, databaseName, 'pos_transactions'))) return;
 
+  const hasTenantLocations = await tableExists(queryInterface, databaseName, 'tenant_locations');
+  const hasUsers = await tableExists(queryInterface, databaseName, 'users');
+  const employeeForeignKeys = [
+    hasTenantLocations
+      ? 'CONSTRAINT `fk_employees_location` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON UPDATE RESTRICT ON DELETE SET NULL'
+      : null,
+    hasUsers
+      ? 'CONSTRAINT `fk_employees_created_by` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON UPDATE RESTRICT ON DELETE SET NULL'
+      : null,
+    hasUsers
+      ? 'CONSTRAINT `fk_employees_updated_by` FOREIGN KEY (`updated_by`) REFERENCES `users` (`user_id`) ON UPDATE RESTRICT ON DELETE SET NULL'
+      : null
+  ].filter(Boolean).join(',\n      ');
+  const employeeForeignKeysSql = employeeForeignKeys ? `,\n      ${employeeForeignKeys}` : '';
+
   await queryInterface.sequelize.query(`
     CREATE TABLE IF NOT EXISTS ${quoteIdentifier(databaseName)}.\`employees\` (
       \`employee_id\` INT NOT NULL AUTO_INCREMENT,
@@ -81,10 +96,7 @@ const migrateDatabase = async (queryInterface, databaseName) => {
       PRIMARY KEY (\`employee_id\`),
       UNIQUE KEY \`uq_employees_code\` (\`employee_code\`),
       KEY \`idx_employees_name\` (\`full_name\`),
-      KEY \`idx_employees_location_active\` (\`location_id\`, \`is_active\`),
-      CONSTRAINT \`fk_employees_location\` FOREIGN KEY (\`location_id\`) REFERENCES \`tenant_locations\` (\`location_id\`) ON UPDATE RESTRICT ON DELETE SET NULL,
-      CONSTRAINT \`fk_employees_created_by\` FOREIGN KEY (\`created_by\`) REFERENCES \`users\` (\`user_id\`) ON UPDATE RESTRICT ON DELETE SET NULL,
-      CONSTRAINT \`fk_employees_updated_by\` FOREIGN KEY (\`updated_by\`) REFERENCES \`users\` (\`user_id\`) ON UPDATE RESTRICT ON DELETE SET NULL
+      KEY \`idx_employees_location_active\` (\`location_id\`, \`is_active\`)${employeeForeignKeysSql}
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 

@@ -24,6 +24,7 @@ const mockListTenantCapabilityAuditLogs = jest.fn((req, res) => {
 const noopHandler = jest.fn((req, res) => res.status(200).json({ success: true }));
 
 jest.unstable_mockModule('../src/controllers/adminTenantController.js', () => ({
+    retryTenantProvisioning: noopHandler,
     registerCompanyRequest: noopHandler,
     listTenants: noopHandler,
     approveTenant: noopHandler,

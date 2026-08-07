@@ -23,7 +23,10 @@ import {
   storeCheckoutUseCase,
   trackStoreOrderUseCase
 } from '../src/modules/store/index.js';
-import { generateStoreCancelProof } from '../src/modules/store/utils/storeJwtToken.js';
+import {
+    generateStoreCancelProof,
+    generateStoreGuestCheckoutProof
+} from '../src/modules/store/utils/storeJwtToken.js';
 import { sequelize as landlordSequelize } from '../src/models/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -261,6 +264,11 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       order_method: orderMethod,
       fulfillment_status: fulfillmentStatus,
       payment_type: paymentType,
+      payment_timing: orderMethod === 'pickup' && paymentType === 'cash'
+        ? 'on_pickup'
+        : orderMethod === 'delivery' && paymentType === 'cash'
+          ? 'on_delivery'
+          : 'upfront',
       payment_status: paymentStatus,
       subtotal_amount: subtotal,
       vatable_sales: money4(subtotal / 1.12),
@@ -1091,9 +1099,10 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       cashierId: cashier.user_id,
       locationId: location.location_id,
       fulfillmentStatus: 'ready_for_pickup',
+      orderMethod: 'pickup',
       totalAmount: 80
     }));
-    const pickupShift = await createOpenTerminalShift({
+    await createOpenTerminalShift({
       cashierId: cashier.user_id,
       locationId: location.location_id
     });
@@ -1428,17 +1437,25 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     }));
     expect(baselineSales.success).toBe(true);
 
-    const checkout = await runInStoreTenantContext(() => storeCheckoutUseCase({
-      tenantId: STORE_TENANT_ID,
-      payload: {
-        idempotency_key: `checkout-flow-${crypto.randomUUID()}`,
+    const checkoutIdempotencyKey = `checkout-flow-${crypto.randomUUID()}`;
+    const checkoutPayload = {
+        idempotency_key: checkoutIdempotencyKey,
         location_id: location.location_id,
         order_method: 'pickup',
         payment_type: 'cash',
         customer_name: 'Checkout Buyer',
+        customer_email: 'checkout.buyer@gmail.com',
         customer_phone: '09171112222',
-        lines: [{ item_id: item.item_id, quantity: 2 }]
-      }
+        lines: [{ item_id: item.item_id, quantity: 2 }],
+        guest_checkout_proof: generateStoreGuestCheckoutProof({
+            tenantId: STORE_TENANT_ID,
+            email: 'checkout.buyer@gmail.com',
+            idempotencyKey: checkoutIdempotencyKey
+        })
+    };
+    const checkout = await runInStoreTenantContext(() => storeCheckoutUseCase({
+        tenantId: STORE_TENANT_ID,
+        payload: checkoutPayload
     }));
     expect(checkout.success).toBe(true);
     expect(checkout.data.order.order_source).toBe('online_store');

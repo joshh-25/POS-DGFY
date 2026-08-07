@@ -6,8 +6,11 @@ import {
   FULFILLMENT_STATUS_LABELS,
   ORDER_METHOD_LABELS,
   PAYMENT_TYPE_LABELS,
+  DELIVERY_JOB_STATUS_LABELS,
+  getDeliveryJobActionLabel,
   getFulfillmentActionLabel,
   getIncomingOrderUtilityActions,
+  getNextDeliveryJobStatus,
   getNextStatusActions
 } from './orderFulfillmentUi.js';
 
@@ -29,15 +32,6 @@ const parseDeliveryCoords = (order = {}) => {
     latitude: lat,
     longitude: lng
   };
-};
-
-const DELIVERY_JOB_STATUS_LABELS = {
-  pending_dispatch: 'Pending Dispatch',
-  assigned: 'Assigned',
-  picked_up: 'Picked Up',
-  delivered: 'Delivered',
-  failed: 'Failed',
-  cancelled: 'Cancelled'
 };
 
 function WorkspaceShell({ title, children, locked, className = 'p-5' }) {
@@ -79,6 +73,7 @@ function IncomingQueueWorkspace({
   incomingOrdersState,
   incomingOrderActionState,
   handleIncomingOrderStatusChange,
+  handleDeliveryJobStatusChange,
   handleOpenCashCollection,
   handleOpenIncomingOrderReceipt,
   incomingReceiptOpeningId,
@@ -199,13 +194,14 @@ function IncomingQueueWorkspace({
           {sortedIncomingOrders.map((order) => {
             const actionLoading = incomingOrderActionState?.[order.pos_transaction_id] || '';
             const nextActions = getNextStatusActions(order);
+            const nextDeliveryJobStatus = getNextDeliveryJobStatus(order);
             const utilityActions = getIncomingOrderUtilityActions(order);
-            const canCollectCash = (
-              order.order_method === 'pickup'
-              && order.payment_type === 'cash'
+            const canCollectCash = order.payment_type === 'cash'
               && order.payment_status === 'unpaid'
-              && order.fulfillment_status === 'ready_for_pickup'
-            );
+              && (
+                (order.order_method === 'pickup' && order.fulfillment_status === 'ready_for_pickup')
+                || (order.order_method === 'delivery' && order.fulfillment_status === 'out_for_delivery')
+              );
             const deliveryCoords = parseDeliveryCoords(order);
             const deliveryJob = order.deliveryJob || null;
             const cashierName = order.cashier?.username || order.acceptedByUser?.username || '-';
@@ -224,7 +220,23 @@ function IncomingQueueWorkspace({
                   onClick={() => handleOpenCashCollection?.(order)}
                 >
                   <Wallet className="mr-2 h-4 w-4 shrink-0" />
-                  Collect Cash
+                  {order.order_method === 'delivery' ? 'Collect Delivery Cash' : 'Collect Cash'}
+                </Button>
+              );
+            }
+            if (nextDeliveryJobStatus) {
+              const deliveryJobActionKey = `delivery-job:${nextDeliveryJobStatus}`;
+              buttons.push(
+                <Button
+                  key={deliveryJobActionKey}
+                  type="button"
+                  size="sm"
+                  variant={nextDeliveryJobStatus === 'delivered' ? 'default' : 'outline'}
+                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift}
+                  onClick={() => handleDeliveryJobStatusChange?.(order.pos_transaction_id, nextDeliveryJobStatus)}
+                >
+                  <Truck className="mr-2 h-4 w-4 shrink-0" />
+                  {actionLoading === deliveryJobActionKey ? 'Saving...' : getDeliveryJobActionLabel(nextDeliveryJobStatus)}
                 </Button>
               );
             }
@@ -275,10 +287,19 @@ function IncomingQueueWorkspace({
                   size="sm"
                   variant="outline"
                   disabled={locked || !canViewPos || !isOnline || incomingReceiptOpeningId !== null}
-                  onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printMode: true })}
+                  onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, {
+                    printMode: true,
+                    retryPrint: order.receipt_print_status === 'failed'
+                  })}
                 >
                   <Printer className="mr-2 h-4 w-4 shrink-0" />
-                  {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'Print Order'}
+                  {incomingReceiptOpeningId === Number(order.pos_transaction_id)
+                    ? 'Printing...'
+                    : order.receipt_print_status === 'failed'
+                      ? 'Retry Print'
+                      : order.receipt_print_status === 'printed'
+                        ? 'Reprint Receipt'
+                        : 'Print Receipt'}
                 </Button>
               );
             }
@@ -358,6 +379,18 @@ function IncomingQueueWorkspace({
                         <div className="flex items-center flex-1 min-w-0">
                           <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Payment Status</span>
                           <span className="text-xs font-semibold text-slate-900 break-words flex-1">{String(order.payment_status || 'unpaid').replace(/_/g, ' ')}</span>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-3 py-1.5 border-b border-slate-100">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-500 border border-slate-100/80">
+                          <Printer className="h-4 w-4" />
+                        </div>
+                        <div className="flex items-center flex-1 min-w-0">
+                          <span className="w-16 md:w-20 shrink-0 text-xs text-slate-500 font-medium">Receipt</span>
+                          <span className={`text-xs font-semibold break-words flex-1 ${order.receipt_print_status === 'printed' ? 'text-emerald-700' : order.receipt_print_status === 'failed' ? 'text-rose-700' : 'text-amber-700'}`}>
+                            {order.receipt_print_status === 'printed' ? 'Printed' : order.receipt_print_status === 'failed' ? 'Print failed' : 'Not printed'}
+                          </span>
                         </div>
                       </div>
 
