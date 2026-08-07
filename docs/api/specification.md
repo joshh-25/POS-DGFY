@@ -2832,6 +2832,33 @@ Update online order fulfillment status from POS terminal operations.
 5. Conflicts/blocked replays surface deterministic idempotency details in error payloads.
 6. Invalid transitions return `409` with `errors.order_lifecycle.reason_code` and transition metadata.
 
+### PATCH /pos/orders/:id/delivery-job/status
+Advance the manual delivery job for an online delivery order from the POS queue.
+
+**Permission**: `pos:transact`
+**Plan Gate**: Premium (`requirePremium`)
+
+**Request Body**
+```json
+{
+  "idempotency_key": "delivery-job-20260409-789-delivered",
+  "status": "delivered"
+}
+```
+
+**Supported Status Values**
+- `assigned`
+- `picked_up`
+- `delivered`
+
+**Transition Notes**
+1. The server allows only `pending_dispatch -> assigned -> picked_up -> delivered`.
+2. The associated online order must already be `out_for_delivery`.
+3. The delivery job provider must be `manual`; provider-owned jobs are not writable through POS.
+4. Each successful transition records the acting cashier, shift/location context, timestamp, and audit evidence.
+5. Successful responses include `data.delivery_job`, `data.status_transition`, `data.idempotent_replay`, and `data.replay_outcome`.
+6. The order completion endpoint still requires `deliveryJob.status=delivered`; marking the job delivered does not complete the order automatically.
+
 ### POST /pos/z-reading/close-day
 Generate same-day Z-reading summary for completed POS transactions.
 
