@@ -313,6 +313,18 @@ mistaken for absorption regressions later:
   unconditionally, but the untouched implementation still gates that only on
   `tenantRevenueSharingEnabled` and otherwise enforces the older "sources must sum to the
   refund amount" validation. Same conclusion: a develop-side test/implementation mismatch
+- `apps/dgfy-web/src/features/inventory/__tests__/externalProductLookup.contract.test.js`'s
+  `'requires explicit confirmation before saving a private code as an internal POS barcode'`
+  test (found during the 2026-08-07 merge's post-merge verification, comparing a full
+  `apps/dgfy-web` test run against the same run on the pre-merge branch tip) asserts
+  `TerminalOperationsWorkspace.jsx` contains the literal strings `'Use as Internal Barcode'`
+  and `'internal_barcode: { code: externalBarcode }'` / `'manufacturer_barcode: { code:
+  externalBarcode }'`. Develop's 11-commit range rewrote the surrounding barcode-selection
+  code to use `barcodeSelection.code` instead of `externalBarcode` and reworded the button
+  label; the object-shape assertions (`internal_barcode: { code: ... }`) still match, only
+  the exact-string ones don't. The test file and `TerminalOperationsWorkspace.jsx` are both
+  byte-identical to develop's copies post-merge, so this is a develop-authored test/
+  implementation drift, not something this absorption introduced or should silently patch.
   predating this merge, not a regression introduced by it.
 
 Both are upstream `develop` issues; fix them there (or accept the fix when it lands and
