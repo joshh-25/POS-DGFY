@@ -103,6 +103,12 @@ describe('POS terminal view-mode contracts', () => {
     );
   });
 
+  it('returns a signed-in cashier to terminal login before opening a shift', () => {
+    expect(terminalPageContent).toContain("cashierUnlockSession?.email && !activeShiftId && terminalUnlockMode === 'shift_start'");
+    expect(terminalPageContent).toContain('onClick={handleLock}');
+    expect(terminalPageContent).toContain('Back to Login');
+  });
+
 
   it('validates POS onboarding starter item cost and stock before calling the onboarding API', () => {
     expect(posTenantSetupModalContent).toContain('const parsedCost = cost === \'\' ? null : Number(cost);');

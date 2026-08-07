@@ -8,7 +8,7 @@ surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.08.05
 verification_evidence: npm run check:compliance
-rollback_note: Revert the Phase 1 report-query validation, lazy-loading, and smoke-harness changes together with this declaration.
+rollback_note: Revert the Phase 1 report-query validation, lazy-loading, smoke-harness, and cashier pre-shift login-return changes together with this declaration.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-08-07T00:00:00+08:00
@@ -39,6 +39,10 @@ payloads, or offline replay semantics.
 4. The compliance impact script no longer derives a clean local worktree's
    changed files from an aggregate merge commit. CI diff evaluation remains
    unchanged.
+5. A cashier who has authenticated but has not opened a shift can explicitly
+   return to terminal login from the Open Shift modal. The action uses the
+   existing governed terminal logout/reset path and does not close, transfer,
+   or modify any shift.
 
 ## Compliance Preconditions
 
@@ -51,6 +55,9 @@ payloads, or offline replay semantics.
    failures.
 4. Compliance-sensitive changes remain declaration-gated; no declaration
    classification or surface check is disabled.
+5. The Back to Login action must remain limited to the signed-in cashier,
+   pre-shift `shift_start` state, and no active shift; admin re-authentication,
+   shift resume, and active-shift flows must not expose this action.
 
 ## Verification Evidence
 
@@ -60,3 +67,6 @@ payloads, or offline replay semantics.
    checks pass.
 4. POS terminal browser smoke is rerun against the repository-managed local
    stack.
+5. `npm run test -- --run src/features/pos/__tests__/terminalViewModeContracts.test.js`
+   passes with the cashier Back to Login contract covered.
+6. `npm run build:pos` passes after the terminal modal update.

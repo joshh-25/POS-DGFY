@@ -4982,6 +4982,16 @@ function PosRestorationLoadingScreen() {
                 {renderUnlockFailurePanel()}
               </div>
               <DialogFooter className="border-t border-slate-100 px-5 py-4">
+                {cashierUnlockSession?.email && !activeShiftId && terminalUnlockMode === 'shift_start' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleLock}
+                    disabled={submitting || shiftActionLoading.open}
+                  >
+                    Back to Login
+                  </Button>
+                )}
                 {canAdminBypassShiftPrompt && !signedInShiftResume && (
                   <Button
                     type="button"
