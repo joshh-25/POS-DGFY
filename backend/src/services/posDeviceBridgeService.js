@@ -138,6 +138,13 @@ export const posDeviceBridgeService = {
         });
     },
 
+    async printShiftSummary(payload = {}) {
+        return requestBridge('/device/print-shift-summary', {
+            method: 'POST',
+            body: payload
+        });
+    },
+
     async openDrawer(payload = {}) {
         return requestBridge('/device/open-drawer', {
             method: 'POST',

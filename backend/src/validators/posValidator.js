@@ -1,6 +1,6 @@
 import Joi from 'joi';
 
-const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'appointment'];
+const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'appointment', 'walk_in'];
 const ORDER_METHOD_FILTERS = [...ORDER_METHODS, 'online'];
 const ORDER_SOURCES = ['in_store', 'online_store'];
 const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'employee_credit'];
@@ -409,6 +409,11 @@ const updateOnlineOrderStatusSchema = Joi.object({
         otherwise: Joi.optional().allow('', null)
     })
 });
+
+const updateDeliveryJobStatusSchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).optional(),
+    status: Joi.string().valid('assigned', 'picked_up', 'delivered').required()
+});
 const collectCashPickupOrderSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).required(),
     terminal_id: Joi.string().trim().max(100).required(),
@@ -428,6 +433,16 @@ const devicePrintReceiptSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
     transaction_id: Joi.number().integer().positive().required(),
     copies: Joi.number().integer().min(1).max(5).default(1),
+    paper_width: Joi.string().valid('80mm', '57mm').default('80mm'),
+    reason: Joi.string().trim().max(255).allow('', null).optional(),
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
+    client_driver_id: Joi.string().trim().max(60).optional(),
+    client_result: deviceClientResultSchema.optional()
+});
+
+const devicePrintShiftSummarySchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).optional(),
+    copies: Joi.number().integer().min(1).max(3).default(1),
     paper_width: Joi.string().valid('80mm', '57mm').default('80mm'),
     reason: Joi.string().trim().max(255).allow('', null).optional(),
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
@@ -669,8 +684,11 @@ export const validateCashDrawerEvent = validateSchema(cashDrawerEventSchema, 'bo
 export const validateCloseTerminalShift = validateSchema(closeTerminalShiftSchema, 'body', 'validatedData');
 export const validateForceCloseStaleTerminalShift = validateSchema(forceCloseStaleTerminalShiftSchema, 'body', 'validatedData');
 export const validateUpdateOnlineOrderStatus = validateSchema(updateOnlineOrderStatusSchema, 'body', 'validatedData');
+export const validateUpdateDeliveryJobStatus = validateSchema(updateDeliveryJobStatusSchema, 'body', 'validatedData');
 export const validateCollectCashPickupOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
+export const validateCollectCashDeliveryOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validatePosDeviceReceiptPrint = validateSchema(devicePrintReceiptSchema, 'body', 'validatedData');
+export const validatePosDeviceShiftSummaryPrint = validateSchema(devicePrintShiftSummarySchema, 'body', 'validatedData');
 export const validatePosDeviceDrawerOpen = validateSchema(deviceOpenDrawerSchema, 'body', 'validatedData');
 export const validateFiscalPrintEvent = validateSchema(fiscalPrintEventSchema, 'body', 'validatedData');
 export const validateVoidPosTransaction = validateSchema(voidPosTransactionSchema, 'body', 'validatedData');

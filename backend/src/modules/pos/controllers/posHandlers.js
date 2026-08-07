@@ -40,9 +40,12 @@ import {
     listIncomingOnlineOrdersUseCase,
     getAdminLocationMonitorUseCase,
     collectCashPickupOrderUseCase,
+    collectCashDeliveryOrderUseCase,
+    updateDeliveryJobStatusUseCase,
     updateOnlineOrderStatusUseCase,
     getPosDeviceStatusUseCase,
     printPosReceiptUseCase,
+    printPosShiftSummaryUseCase,
     openPosDrawerUseCase,
     getPairedPosTerminalUseCase
 } from '../index.js';
@@ -850,6 +853,58 @@ export const collectCashPickupOrder = async (req, res, next) => {
     }
 };
 
+export const collectCashDeliveryOrder = async (req, res, next) => {
+    try {
+        const result = await collectCashDeliveryOrderUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Cash payment collected for delivery order.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const updateDeliveryJobStatus = async (req, res, next) => {
+    try {
+        const result = await updateDeliveryJobStatusUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Delivery job status updated successfully.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const getDeviceStatus = async (req, res, next) => {
     try {
         const result = await getPosDeviceStatusUseCase({
@@ -891,6 +946,33 @@ export const printReceipt = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'POS receipt print request sent',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const printShiftSummary = async (req, res, next) => {
+    try {
+        const result = await printPosShiftSummaryUseCase({
+            shiftId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Shift sales summary print request sent',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -1260,5 +1342,6 @@ export default {
     updateOnlineOrderStatus,
     getDeviceStatus,
     printReceipt,
+    printShiftSummary,
     openDeviceDrawer
 };

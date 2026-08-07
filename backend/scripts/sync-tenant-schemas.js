@@ -107,6 +107,9 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         change_amount: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `change_amount` DECIMAL(14,4) NULL AFTER `cash_received`"
         }),
+        payment_timing: Object.freeze({
+            sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_timing` ENUM('upfront','on_pickup','on_delivery') NOT NULL DEFAULT 'upfront' AFTER `payment_type`"
+        }),
         payment_collected_at: Object.freeze({
             sql: "ALTER TABLE `pos_transactions` ADD COLUMN `payment_collected_at` DATETIME NULL AFTER `payment_status`"
         }),
@@ -703,12 +706,12 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
             sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `payment_type` ENUM('cash','gcash','maya','card','bank_transfer','qrph','employee_credit') NOT NULL DEFAULT 'cash'"
         }),
         order_method: Object.freeze({
-            enumValues: Object.freeze(['dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment']),
-            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `order_method` ENUM('dine_in','takeout','pickup','delivery','online','appointment') NOT NULL DEFAULT 'dine_in'"
+            enumValues: Object.freeze(['dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment', 'walk_in']),
+            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `order_method` ENUM('dine_in','takeout','pickup','delivery','online','appointment','walk_in') NOT NULL DEFAULT 'dine_in'"
         }),
         service_fee_method_snapshot: Object.freeze({
-            enumValues: Object.freeze(['dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment']),
-            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `service_fee_method_snapshot` ENUM('dine_in','takeout','pickup','delivery','online','appointment') NULL"
+            enumValues: Object.freeze(['dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment', 'walk_in']),
+            sql: "ALTER TABLE `pos_transactions` MODIFY COLUMN `service_fee_method_snapshot` ENUM('dine_in','takeout','pickup','delivery','online','appointment','walk_in') NULL"
         })
     }),
     employee_credit_ledger_entries: Object.freeze({
@@ -719,7 +722,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-01.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-07.2';
 
 export function getTenantSchemaCapabilityChecksum() {
     const manifest = {

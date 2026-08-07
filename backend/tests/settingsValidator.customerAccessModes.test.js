@@ -27,7 +27,13 @@ describe('settings validator customer access modes', () => {
     expect(req.validatedData).toEqual({
       customer_access_mode: 'inquiry',
       inventory_display_mode: 'low_stock',
-      inventory_low_stock_display_threshold: 4
+      inventory_low_stock_display_threshold: 4,
+      pos_best_seller_settings: {
+        enabled: true,
+        lookback_days: 30,
+        top_limit: 3,
+        daily_top_enabled: false
+      }
     });
   });
 

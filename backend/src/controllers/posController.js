@@ -48,9 +48,12 @@ export {
     listIncomingOnlineOrders,
     getAdminLocationMonitor,
     collectCashPickupOrder,
+    collectCashDeliveryOrder,
+    updateDeliveryJobStatus,
     updateOnlineOrderStatus,
     getDeviceStatus,
     printReceipt,
+    printShiftSummary,
     openDeviceDrawer
 } from '../modules/pos/controllers/posHandlers.js';
 
@@ -100,9 +103,12 @@ import {
     listIncomingOnlineOrders,
     getAdminLocationMonitor,
     collectCashPickupOrder,
+    collectCashDeliveryOrder,
+    updateDeliveryJobStatus,
     updateOnlineOrderStatus,
     getDeviceStatus,
     printReceipt,
+    printShiftSummary,
     openDeviceDrawer
 } from '../modules/pos/controllers/posHandlers.js';
 
@@ -152,8 +158,11 @@ export default {
     listIncomingOnlineOrders,
     getAdminLocationMonitor,
     collectCashPickupOrder,
+    collectCashDeliveryOrder,
+    updateDeliveryJobStatus,
     updateOnlineOrderStatus,
     getDeviceStatus,
     printReceipt,
+    printShiftSummary,
     openDeviceDrawer
 };

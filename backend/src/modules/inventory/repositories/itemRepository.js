@@ -328,7 +328,6 @@ const normalizeSkuConflictError = (error) => {
 
 const isActiveBarcodeUniqueConstraintError = (error) => {
     if (!error) return false;
-    if (error?.statusCode === 409) return true;
     if (error?.name !== 'SequelizeUniqueConstraintError') return false;
     const constraint = String(
         error?.parent?.constraint

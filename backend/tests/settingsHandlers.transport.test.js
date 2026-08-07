@@ -18,6 +18,7 @@ jest.unstable_mockModule('../src/modules/settings/index.js', () => ({
   getSettingByKeyUseCase: mockGetSettingByKeyUseCase,
   updateSettingsUseCase: mockUpdateSettingsUseCase,
   updateSettingByKeyUseCase: mockUpdateSettingByKeyUseCase,
+  generateStorefrontSlugUseCase: jest.fn(),
   verifyPosSettingsAccessPinUseCase: mockVerifyPosSettingsAccessPinUseCase,
   resetSettingsToDefaultUseCase: mockResetSettingsToDefaultUseCase,
   getCompanyInfoUseCase: mockGetCompanyInfoUseCase,

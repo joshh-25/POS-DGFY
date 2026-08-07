@@ -1,4 +1,4 @@
-import { jest } from '@jest/globals';
+import { beforeAll, describe, expect, it, jest } from '@jest/globals';
 import dbStore from '../src/utils/dbStore.js';
 
 let buildCollectCashPickupOrderUseCase;
@@ -23,6 +23,7 @@ const buildRepository = (seed = {}) => {
         order_source: 'online_store',
         order_method: 'pickup',
         payment_type: 'cash',
+        payment_timing: 'on_pickup',
         payment_status: 'unpaid',
         fulfillment_status: 'ready_for_pickup',
         total_amount: 150,
@@ -62,7 +63,7 @@ describe('POS cash pickup collection', () => {
         const payload = { terminal_id: 'COUNTER-01', cash_received: 200, idempotency_key: 'pickup-cash-001' };
         const first = await run(() => useCase({ posTransactionId: 44, payload, user: { user_id: 12 } }));
         expect(first.success).toBe(true);
-        expect(repository.order).toMatchObject({ payment_status: 'paid', cash_received: 200, change_amount: 50, payment_collected_by: 12, payment_collected_shift_id: 9, payment_collected_terminal_id: 'COUNTER-01' });
+        expect(repository.order).toMatchObject({ payment_status: 'paid', cash_received: 200, change_amount: 50, payment_collected_by: 12, payment_collected_shift_id: 9, payment_collected_terminal_id: 'COUNTER-01', cashier_id: 12, shift_id: 9 });
         expect(repository.audit).toHaveLength(1);
 
         const replay = await run(() => useCase({ posTransactionId: 44, payload, user: { user_id: 12 } }));
