@@ -841,7 +841,63 @@ describe('captureTerminalFlowFailure', () => {
   });
 });
 
-describe('window.__sentryTestError dev hook', () => {
+describe('window.__sentryTestError', () => {
+  it('is registered for a deployed (non-DEV-server) DEV environment build -- import.meta.env.DEV is false here', async () => {
+    // Regression guard: this used to gate on import.meta.env.DEV, a Vite
+    // build-mode flag that is false for every `vite build` (DEV/STAGING/
+    // BETA deploys included), not just local `vite dev`. That meant the
+    // trigger never existed outside a developer's own machine -- including
+    // on a real deployed DEV/staging device, like the Chrome 80 iMin
+    // terminal that had never sent a single Sentry event and needed this
+    // to prove delivery worked at all.
+    vi.stubGlobal('window', {});
+    const Sentry = {
+      init: vi.fn(),
+      captureException: vi.fn(() => 'evt-1'),
+      browserTracingIntegration: vi.fn(() => ({ name: 'BrowserTracing' })),
+      replayIntegration: vi.fn(() => ({ name: 'Replay' }))
+    };
+    vi.doMock('@sentry/react', () => Sentry);
+    vi.resetModules();
+    const freshModule = await import('../sentryClient.js');
+    freshModule.initBrowserSentry({
+      env: {
+        VITE_SENTRY_ENABLED: 'true',
+        VITE_SENTRY_DSN_STORE: 'https://test@sentry.test/1',
+        VITE_SENTRY_ENVIRONMENT: 'DEV',
+        MODE: 'production'
+      },
+      surface: 'store'
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(typeof window.__sentryTestError).toBe('function');
+    window.__sentryTestError();
+    expect(Sentry.captureException).toHaveBeenCalledTimes(1);
+
+    vi.doUnmock('@sentry/react');
+    vi.unstubAllGlobals();
+  });
+
+  it('is not registered for a PROD environment build', async () => {
+    vi.stubGlobal('window', {});
+    vi.resetModules();
+    const freshModule = await import('../sentryClient.js');
+    freshModule.initBrowserSentry({
+      env: {
+        VITE_SENTRY_ENABLED: 'true',
+        VITE_SENTRY_DSN_STORE: 'https://test@sentry.test/1',
+        VITE_SENTRY_ENVIRONMENT: 'PROD',
+        MODE: 'production'
+      },
+      surface: 'store'
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(window.__sentryTestError).toBeUndefined();
+    vi.unstubAllGlobals();
+  });
+
   it('is registered in a dev build and captures a test error when Sentry is active', async () => {
     vi.stubGlobal('window', {});
     const Sentry = {
