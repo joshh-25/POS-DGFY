@@ -144,6 +144,13 @@ describe('terminal unlock diagnostics', () => {
     }))).toBe('This terminal already has an active shift.');
   });
 
+  it('preserves actionable local shift ownership errors', () => {
+    expect(resolveTerminalLoginErrorMessage({
+      message: 'Terminal COUNTER-01 is already in use by another cashier. Supervisor assistance is required.',
+      config: { url: '/pos/terminal/shifts/current' }
+    })).toBe('Terminal COUNTER-01 is already in use by another cashier. Supervisor assistance is required.');
+  });
+
   it('does not misclassify generic server failures as connection outages', () => {
     expect(resolveTerminalLoginErrorMessage(apiError({
       status: 500,

@@ -722,6 +722,7 @@ function ShiftControlsWorkspace({
   closeShiftForm,
   setCloseShiftForm,
   handleCloseShift,
+  handleViewShiftSummary = () => {},
   locked,
   refreshOperationalContext,
   canAdjustCashDrawer,
@@ -763,7 +764,7 @@ function ShiftControlsWorkspace({
   const shiftCashierLabel = activeShift?.cashier?.username
     || activeShift?.cashier?.email
     || (activeShift?.cashier_id ? `Cashier #${activeShift.cashier_id}` : 'Current cashier');
-  const canRenderAdminShiftOpen = canAdminBypassShiftPrompt || canTransactPos;
+  const canRenderAdminShiftOpen = canTransactPos && !canAdminBypassShiftPrompt;
   const activeTerminals = useMemo(
     () => (Array.isArray(terminalRegistry) ? terminalRegistry : [])
       .filter((entry) => entry?.is_active !== false),
@@ -1231,7 +1232,11 @@ function ShiftControlsWorkspace({
             >
               {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
             </Button>
-            {!canRenderAdminShiftOpen && <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>}
+            {canAdminBypassShiftPrompt ? (
+              <p className="text-[11px] text-slate-500">Administrator navigation is read-only. A cashier must open the shift.</p>
+            ) : !canRenderAdminShiftOpen ? (
+              <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>
+            ) : null}
             {canAdminBypassShiftPrompt && !activeTerminalMatchesOperatingLocation && (
               <p className="text-[11px] text-amber-700">Select and confirm a terminal assigned to this branch before opening a shift.</p>
             )}
@@ -1411,7 +1416,11 @@ function ShiftControlsWorkspace({
             >
               {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
             </Button>
-            {!canRenderAdminShiftOpen && <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>}
+            {canAdminBypassShiftPrompt ? (
+              <p className="text-[11px] text-slate-500">Administrator navigation is read-only. A cashier must open the shift.</p>
+            ) : !canRenderAdminShiftOpen ? (
+              <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>
+            ) : null}
             {canAdminBypassShiftPrompt && !activeTerminalMatchesOperatingLocation && (
               <p className="text-[11px] text-amber-700">Select and confirm a terminal assigned to this branch before opening a shift.</p>
             )}
@@ -1430,6 +1439,10 @@ function ShiftControlsWorkspace({
           </p>
         ) : (
           <div className="mt-3 space-y-3">
+            <div className="flex items-center justify-between rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+              <span className="text-xs font-semibold text-slate-600">Current shift sales</span>
+              <span className="text-sm font-black text-[#1A4E8D]">{terminalMeta.pettyCashSymbol} {money(shiftState.salesSummary?.total_amount)}</span>
+            </div>
             <p className="text-xs text-slate-600">
               Expected Cash: <span className="font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(shiftState.cashSummary?.expected_cash_amount)}</span>
             </p>
@@ -1450,15 +1463,27 @@ function ShiftControlsWorkspace({
               onChange={(event) => setCloseShiftForm((prev) => ({ ...prev, closingNote: event.target.value }))}
               placeholder="End-of-shift note"
             />
-            <Button
-              type="button"
-              variant="outline"
-              className="h-10 rounded-lg border-slate-300 bg-white px-4 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
-              onClick={handleCloseShift}
-              disabled={shiftActionLoading.close || locked}
-            >
-              {shiftActionLoading.close ? 'Closing Shift...' : 'Close Shift'}
-            </Button>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 rounded-lg border-slate-300 bg-white px-4 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
+                onClick={handleViewShiftSummary}
+                disabled={shiftActionLoading.close || locked}
+              >
+                <BarChart3 className="mr-2 h-4 w-4" />
+                View Shift Summary
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                className="h-10 rounded-lg border-slate-300 bg-white px-4 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
+                onClick={handleCloseShift}
+                disabled={shiftActionLoading.close || locked}
+              >
+                {shiftActionLoading.close ? 'Closing Shift...' : 'Close Shift'}
+              </Button>
+            </div>
           </div>
         )}
       </div>
@@ -8495,6 +8520,7 @@ export default function TerminalOperationsWorkspace({
   handleSwitchShiftLocation = () => {},
   handleRecordCashEvent,
   handleCloseShift,
+  handleViewShiftSummary = () => {},
   refreshOperationalContext,
   locationsState = { loading: false, locations: [] },
   operatingLocationId = null,
@@ -8509,6 +8535,7 @@ export default function TerminalOperationsWorkspace({
   handleForceCloseStaleShift = async () => false,
   incomingOrderActionState = {},
   handleIncomingOrderStatusChange = () => {},
+  handleDeliveryJobStatusChange = () => {},
   handleOpenCashCollection = () => {},
   handleOpenIncomingOrderReceipt = () => {},
   incomingReceiptOpeningId = null,
@@ -8543,6 +8570,7 @@ export default function TerminalOperationsWorkspace({
           incomingOrdersState={incomingOrdersState}
           incomingOrderActionState={incomingOrderActionState}
           handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
+          handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
           handleOpenCashCollection={handleOpenCashCollection}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
           incomingReceiptOpeningId={incomingReceiptOpeningId}
@@ -8606,6 +8634,7 @@ export default function TerminalOperationsWorkspace({
           closeShiftForm={closeShiftForm}
           setCloseShiftForm={setCloseShiftForm}
           handleCloseShift={handleCloseShift}
+          handleViewShiftSummary={handleViewShiftSummary}
           locked={locked}
           refreshOperationalContext={refreshOperationalContext}
           canAdjustCashDrawer={canAdjustCashDrawer}
@@ -8646,6 +8675,7 @@ export default function TerminalOperationsWorkspace({
           closeShiftForm={closeShiftForm}
           setCloseShiftForm={setCloseShiftForm}
           handleCloseShift={handleCloseShift}
+          handleViewShiftSummary={handleViewShiftSummary}
           locked={locked}
           refreshOperationalContext={refreshOperationalContext}
           canAdjustCashDrawer={canAdjustCashDrawer}
@@ -8728,9 +8758,11 @@ export default function TerminalOperationsWorkspace({
     canSwitchPosLocation,
     canTransactPos,
     canViewPos,
+    handleDeliveryJobStatusChange,
     cashEventForm,
     closeShiftForm,
     handleCloseShift,
+    handleViewShiftSummary,
     handleIncomingOrderStatusChange,
     handleOpenCashCollection,
     handleOpenIncomingOrderReceipt,

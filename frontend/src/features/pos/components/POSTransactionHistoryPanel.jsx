@@ -221,6 +221,7 @@ export default function POSTransactionHistoryPanel({
                             <option value="pickup">Pickup</option>
                             <option value="delivery">Delivery</option>
                             <option value="appointment">Appointment</option>
+                            <option value="walk_in">Walk-in</option>
                         </SelectField>
 
                         <SelectField label="Sources" className={`max-sm:order-3 max-sm:col-span-2 ${isTabletViewport ? 'order-4' : ''}`} value={historyOrderSource} onChange={(event) => setHistoryOrderSource(event.target.value)}>
@@ -333,6 +334,11 @@ export default function POSTransactionHistoryPanel({
                                             <tr className="border-b border-slate-100 text-slate-700 transition hover:bg-slate-50/70">
                                                 <td className="px-6 py-4 text-[13px] font-black text-[#0F172A]">
                                                     <div>{row.invoice_number}</div>
+                                                    {row.order_source === 'online_store' && (
+                                                        <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${row.receipt_print_status === 'printed' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : row.receipt_print_status === 'failed' ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
+                                                            Receipt {row.receipt_print_status === 'printed' ? 'Printed' : row.receipt_print_status === 'failed' ? 'Failed' : 'Pending'}
+                                                        </span>
+                                                    )}
                                                     {isOfflinePending && (
                                                         <span className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-700">
                                                             Pending Sync
