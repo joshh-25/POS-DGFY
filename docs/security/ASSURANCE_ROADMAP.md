@@ -43,7 +43,7 @@ Everything here is configuration or documentation work, achievable without new s
 - OWASP ASVS Level 2 self-assessment, recorded as a control matrix mirroring `docs/compliance/control-matrix.md` (#249)
 - OWASP ZAP baseline scan in CI (#249)
 - Public Trust page in merchant-readable language (#250)
-- Subprocessor list: PayMongo, PayPal, Brevo, OpenAI, Sentry, PostHog, OpenFreeMap, GHCR (#250)
+- Subprocessor list: PayMongo, PayPal, Namecheap (transactional email SMTP), OpenAI, Sentry, PostHog, OpenFreeMap, GHCR (#250) — Brevo was removed as a subprocessor when its HTTPS API fallback was deleted in #279; it was DMARC-blocked for Yahoo/iCloud recipients (#135) and had carried zero production traffic since
 - Privacy policy for DGFY/storefront consumers + merchant Data Processing Agreement template (#250) — built on the legal-acknowledgement delivery mechanism that already exists (`dgfyLegalTerms.js`, `DgfyLegalAcknowledgement`)
 
 **This tier alone answers most of an early-stage partner's security questionnaire and every merchant-trust question.**

@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: product
-last_reviewed: 2026-07-28
+last_reviewed: 2026-08-07
 applies_to: tenant_management_and_plan_gating
 topic: tenant_management
 ---
@@ -304,12 +304,22 @@ Invited users sign in with DGFY, see pending invitations in My Account -> Busine
 ### Delivery And Recovery Status
 The product handles SMTP/API unavailable or failed delivery as a first-class state, but recovery is through the DGFY in-account invitation notification, not a manual link.
 
-Current verified status as of `2026-05-17`:
+Current verified status as of `2026-08-07` (issue #279 superseded the `2026-05-17` entry below, which described the Brevo-relay configuration that #135 found DMARC-blocked for Yahoo/iCloud):
+- Production SMTP delivery is via Namecheap Private Email on the `dgfy.ph` domain, not Brevo -- see #135's Decision for why the cutover happened. Confirm the live `SMTP_HOST`/`EMAIL_FROM` values operationally with `npm run verify:email` in that environment; this doc intentionally does not restate secret-adjacent config values.
+- The Brevo HTTPS API fallback path (`sendEmailViaBrevoApi`, `BREVO_API_KEY`, `BREVO_API_URL`, `EMAIL_DELIVERY_FALLBACK_TO_BREVO_API`) was **removed** in #279 -- it exercised zero production traffic and, being unauthenticated for our sending domain, would have failed DMARC the same way. `EMAIL_DELIVERY_PROVIDER` no longer has meaning; `getEmailProviderMode()` now returns only `smtp` or `unconfigured`. A send failure now throws with no fallback attempt.
+- Every outbound send (not just OTPs) is now recorded in `email_delivery_logs`, and failures raise an operational alert -- see the #279 compliance impact declaration and ADR 0054 for the delivery-observability design.
+- OTP emails sent through `sendEmailOtpCode()` still use the sender display name `DGFY`; generic lifecycle emails keep `EMAIL_FROM_NAME` (default `SKUpervisor`).
+- Before enabling enforced OTP flows in any new environment, run `npm run verify:email` and then `npm run verify:email -- --send-to operator@example.com` from that environment.
+
+<details>
+<summary>Superseded `2026-05-17` entry (Brevo relay, pre-#135 cutover, pre-#279 removal)</summary>
+
 - Local Gmail SMTP is configured, but the saved credential fails with `EAUTH 535 BadCredentials`. Use a valid Gmail App Password for local/testing SMTP.
 - Production is deployed at commit `064766a3c465ca398f2abd821eb8465b72e13e7c`; the landlord `email_otps` migration is applied.
 - Production Brevo SMTP is verified with the Brevo SMTP login (`a1b722001@smtp-brevo.com`), active SMTP key, and `EMAIL_FROM=skupervisor@gmail.com`. Generic lifecycle emails keep the configured sender display name (`EMAIL_FROM_NAME`, default `SKUpervisor`), while OTP emails sent through `sendEmailOtpCode()` explicitly use the sender display name `DGFY` so email verification appears as DGFY without changing the authenticated SMTP mailbox. `npm run verify:email` passes, and `npm run verify:email -- --send-to skupervisor@gmail.com` sent a real message through provider `smtp`.
 - Brevo HTTPS API delivery is supported through `BREVO_API_KEY`, `BREVO_API_URL`, `EMAIL_DELIVERY_PROVIDER`, and `EMAIL_DELIVERY_FALLBACK_TO_BREVO_API`; production has the non-secret fallback keys present, but `BREVO_API_KEY` remains empty because SMTP is the verified active provider.
-- Before enabling enforced OTP flows in any new environment, run `npm run verify:email` and then `npm run verify:email -- --send-to operator@example.com` from that environment.
+
+</details>
 
 Production email delivery is closed for the SMTP path. DGFY in-account invitation recovery remains available when email delivery fails, but email-ownership OTP flows now have a verified production delivery path and still fail closed if provider delivery fails.
 

@@ -37,7 +37,7 @@
 9.  **Multi-Supplier PO Creation**: Create separate POs for multiple suppliers in one wizard flow.
 10. **Item-Supplier Coverage**: Track which items have suppliers assigned; quick-assign suppliers to items.
 11. **AI Assistant (SKUpervisor)**: Natural language interface powered by OpenAI GPT-4o with **52 tools** for querying, creating, and managing inventory data. Fully tenant-isolated with database-per-tenant persistence. Supports bulk folder creation/deletion via single confirmation.
-12. **Email Notifications**: Automated emails for user invitations, company approval/rejection, **subscription expiry warnings, and payment failure alerts**. Uses Nodemailer SMTP with graceful degradation and manual-link recovery for invitations. Local/testing can use Gmail SMTP with an App Password; production is configured for Brevo SMTP but still needs provider/network SMTP access or a Brevo HTTPS API delivery path.
+12. **Email Notifications**: Automated emails for user invitations, company approval/rejection, **subscription expiry warnings, and payment failure alerts**. Uses Nodemailer SMTP only (the Brevo HTTPS API fallback was removed in issue #279; a send failure now throws with no fallback and is recorded in `email_delivery_logs`) with manual-link recovery for invitations. Local/testing can use Gmail SMTP with an App Password; production uses Namecheap Private Email SMTP on `dgfy.ph` (see #135).
 
 ## 🤖 AI Assistant Features
 The SKUpervisor AI Assistant provides natural language interaction with the inventory system:
