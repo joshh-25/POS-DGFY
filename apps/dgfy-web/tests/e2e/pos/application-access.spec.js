@@ -7,6 +7,6 @@ test('DGFY POS terminal is accessible', async ({ page }) => {
   await expect(page).toHaveTitle('DGFY POS');
   await expect(page.getByRole('heading', { name: 'Terminal Login Required' })).toBeVisible();
   await expect(page.getByLabel('DGFY or Cashier Email')).toBeVisible();
-  await expect(page.getByLabel('Password')).toBeVisible();
+  await expect(page.getByRole('textbox', { name: 'Password' })).toBeVisible();
   await expect(page.getByRole('button', { name: /^sign in$/i })).toBeEnabled();
 });

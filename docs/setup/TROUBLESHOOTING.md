@@ -217,26 +217,26 @@ lsof -ti:5000 | xargs kill -9
 - Backend logs show `EAUTH`, `535 BadCredentials`, or `Connection timeout`
 - `isEmailConfigured()` returns true but emails still fail
 
-**Current verified state (2026-04-30)**:
+> **Superseded (2026-08-07, issue #279).** The `2026-04-30` state below described production relaying through Brevo (`smtp-relay.brevo.com`), which #135 later found was DMARC-blocked for Yahoo/iCloud recipients regardless of whether the port was reachable -- Brevo had no authenticated sending domain for `EMAIL_FROM=skupervisor@gmail.com`. Production has since cut over to Namecheap Private Email SMTP on the `dgfy.ph` domain, and the Brevo HTTPS API fallback referenced below (`sendEmailViaBrevoApi`, `BREVO_API_KEY`) was removed entirely in #279. If emails aren't sending today, check `email_delivery_logs` first (or the admin Email Delivery view) -- a send failure now throws and is logged there with a reason, rather than needing a manual port probe. The port-probe diagnosis below is kept for historical reference and as a template if a future host blocks outbound SMTP again.
+
+**Historical state (2026-04-30, pre-#135 cutover)**:
 - Local Gmail SMTP is configured but rejects the saved credential with `EAUTH 535 BadCredentials`. Use a valid Gmail App Password, not the normal account password.
 - Production is configured for Brevo SMTP, but outbound SMTP to `smtp-relay.brevo.com` times out on ports `587`, `2525`, and `465`.
 - Production firewall was checked: `ufw` inactive and `iptables OUTPUT ACCEPT`; this points to an upstream VPS/network SMTP block or provider policy rather than an application bug.
 - HTTPS to Brevo works from production, but no valid Brevo API key is currently configured.
 
-**Diagnosis**:
+**Diagnosis** (template -- substitute the current SMTP host):
 ```bash
 # Test common SMTP ports from the production host
 timeout 5 bash -c 'cat < /dev/tcp/smtp.gmail.com/587' && echo "OPEN" || echo "BLOCKED"
 timeout 5 bash -c 'cat < /dev/tcp/smtp.gmail.com/465' && echo "OPEN" || echo "BLOCKED"
-timeout 5 bash -c 'cat < /dev/tcp/smtp-relay.brevo.com/587' && echo "OPEN" || echo "BLOCKED"
-timeout 5 bash -c 'cat < /dev/tcp/smtp-relay.brevo.com/2525' && echo "OPEN" || echo "BLOCKED"
-timeout 5 bash -c 'cat < /dev/tcp/smtp-relay.brevo.com/465' && echo "OPEN" || echo "BLOCKED"
+timeout 5 bash -c 'cat < /dev/tcp/<current-smtp-host>/587' && echo "OPEN" || echo "BLOCKED"
+timeout 5 bash -c 'cat < /dev/tcp/<current-smtp-host>/465' && echo "OPEN" || echo "BLOCKED"
 ```
 
 **Solution**:
 - **Local/testing**: Use Gmail SMTP with a Gmail App Password. The normal Gmail account password is expected to fail. Keep `EMAIL_FROM` aligned with `SMTP_USER`.
-- **Production preferred**: Keep Brevo for production delivery, but first confirm the VPS/provider allows outbound SMTP to Brevo on `587`, `2525`, or `465`. If the provider blocks SMTP, request an outbound SMTP unblock or use a host/provider that permits SMTP relay.
-- **Production alternative**: Add Brevo HTTPS API delivery with a valid Brevo API key. HTTPS already works from production, so this avoids outbound SMTP port restrictions.
+- **Production**: There is a single SMTP delivery path with no provider fallback (issue #279 removed the Brevo API fallback deliberately -- see that issue for why). If the current SMTP relay is unreachable, confirm outbound SMTP isn't blocked at the host/VPS level, then check `email_delivery_logs`/Sentry for the specific failure reason before assuming a network block.
 - **Operational fallback**: Until real SMTP delivery is verified, invitation workflows remain usable through the manual-link delivery state in User Management.
 
 

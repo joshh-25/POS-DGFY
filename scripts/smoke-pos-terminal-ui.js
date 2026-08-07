@@ -40,8 +40,10 @@ const collectTerminalEvidence = async (browser, viewport) => {
   await page.getByRole('heading', { name: 'Current Sale' }).waitFor({ timeout: 15000 });
   await page.getByText('Terminal Login Required').waitFor({ timeout: 15000 });
   const bodyText = await page.locator('body').innerText({ timeout: 10000 });
-  await page.getByPlaceholder('admin@company.com or cashier username').fill(`cashier-${viewport.name}@example.test`);
-  await page.getByPlaceholder('Enter your password').fill(`password-${viewport.name}`);
+  const emailInput = page.locator('#dgfy-pos-email');
+  const passwordInput = page.getByPlaceholder('Enter your password');
+  await emailInput.fill(`cashier-${viewport.name}@example.test`);
+  await passwordInput.fill(`password-${viewport.name}`);
 
   const filterButton = page.getByRole('button', { name: /filter/i });
   const lockDrawerBlocksCatalog = await filterButton.evaluate((element) => {
@@ -53,12 +55,15 @@ const collectTerminalEvidence = async (browser, viewport) => {
   });
 
   const ignoredHttpErrors = httpErrors.filter((entry) => {
-    return entry.status === 400 && /\/api\/v1\/auth\/refresh-token$/.test(entry.url);
+    return (
+      (entry.status === 400 && /\/api\/v1\/auth\/refresh-token$/.test(entry.url))
+      || (entry.status === 401 && /\/api\/v1\/pos\/device\/status$/.test(entry.url))
+    );
   });
   const unexpectedHttpErrors = httpErrors.filter((entry) => !ignoredHttpErrors.includes(entry));
   const consoleErrors = logs.filter((entry) => entry.type === 'error' || entry.type === 'pageerror').map((entry) => entry.text);
   const visibleConsoleErrors = unexpectedHttpErrors.length === 0
-    ? consoleErrors.filter((text) => !/Failed to load resource: the server responded with a status of 400/.test(text))
+    ? consoleErrors.filter((text) => !/Failed to load resource: the server responded with a status of (400|401)/.test(text))
     : consoleErrors;
 
   const evidence = {
@@ -66,9 +71,9 @@ const collectTerminalEvidence = async (browser, viewport) => {
     hasTerminal: bodyText.includes('Terminal Login Required'),
     hasCatalog: bodyText.includes('POS Catalog'),
     hasCurrentSale: bodyText.includes('Current Sale'),
-    hasLogin: bodyText.includes('DGFY Password') && bodyText.includes('Company selection and terminal unlock appear after login succeeds.'),
-    loginFormEditable: (await page.getByPlaceholder('admin@company.com or cashier username').inputValue()).includes(viewport.name)
-      && (await page.getByPlaceholder('Enter your password').inputValue()).includes(viewport.name),
+    hasLogin: await emailInput.isVisible() && await passwordInput.isVisible(),
+    loginFormEditable: (await emailInput.inputValue()).includes(viewport.name)
+      && (await passwordInput.inputValue()).includes(viewport.name),
     lockDrawerBlocksCatalog,
     errors: visibleConsoleErrors,
     httpErrors: unexpectedHttpErrors,

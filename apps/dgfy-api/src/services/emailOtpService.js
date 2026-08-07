@@ -156,12 +156,20 @@ export const requestEmailOtp = async ({
   }
 
   try {
-    await emailSender.sendEmailOtpCode({
+    const deliveryResult = await emailSender.sendEmailOtpCode({
       email: normalizedEmail,
       code,
       purposeLabel: PURPOSE_LABELS[normalizedPurpose] || 'email verification',
-      expiresInMinutes: Math.max(1, OTP_TTL_MINUTES)
+      expiresInMinutes: Math.max(1, OTP_TTL_MINUTES),
+      tenantId: normalizedTenantId
     });
+    if (deliveryResult?.deliveryId) {
+      // Links this OTP row back to its canonical send record in
+      // email_delivery_logs (issue #279) -- previously the return value was
+      // dropped entirely, so the OTP row had no way to be correlated to a
+      // later async bounce.
+      await otp.update({ email_delivery_id: deliveryResult.deliveryId });
+    }
     return buildPublicOtpPayload(otp);
   } catch (error) {
     if (isDevOtpFallbackEnabled()) {

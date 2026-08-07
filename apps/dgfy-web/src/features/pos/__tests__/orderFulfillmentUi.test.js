@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   getFulfillmentActionLabel,
+  getDeliveryJobActionLabel,
   getIncomingOrderUtilityActions,
+  getNextDeliveryJobStatus,
   ORDER_METHOD_LABELS,
   PAYMENT_TYPE_LABELS
 } from '../components/orderFulfillmentUi.js';
@@ -40,5 +42,29 @@ describe('orderFulfillmentUi queue action mapping', () => {
   it('uses readable appointment and QR Ph labels', () => {
     expect(ORDER_METHOD_LABELS.appointment).toBe('Appointment');
     expect(PAYMENT_TYPE_LABELS.qrph).toBe('QR Ph');
+  });
+
+  it('maps manual delivery jobs through the guarded operational lifecycle', () => {
+    expect(getNextDeliveryJobStatus({
+      order_method: 'delivery',
+      fulfillment_status: 'out_for_delivery',
+      deliveryJob: { status: 'pending_dispatch' }
+    })).toBe('assigned');
+    expect(getNextDeliveryJobStatus({
+      order_method: 'delivery',
+      fulfillment_status: 'out_for_delivery',
+      deliveryJob: { status: 'assigned' }
+    })).toBe('picked_up');
+    expect(getNextDeliveryJobStatus({
+      order_method: 'delivery',
+      fulfillment_status: 'out_for_delivery',
+      deliveryJob: { status: 'picked_up' }
+    })).toBe('delivered');
+    expect(getNextDeliveryJobStatus({
+      order_method: 'delivery',
+      fulfillment_status: 'preparing',
+      deliveryJob: { status: 'pending_dispatch' }
+    })).toBe(null);
+    expect(getDeliveryJobActionLabel('delivered')).toBe('Mark Delivered');
   });
 });

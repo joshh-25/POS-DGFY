@@ -42,6 +42,7 @@ jest.unstable_mockModule('../src/modules/store/index.js', () => ({
     verifyStoreGuestCheckoutOtpUseCase: mockVerifyStoreGuestCheckoutOtpUseCase,
     storeCheckoutPaymentSessionUseCase: mockStoreCheckoutPaymentSessionUseCase,
     getStoreCheckoutPaymentSessionUseCase: mockGetStoreCheckoutPaymentSessionUseCase,
+    confirmStoreCheckoutSandboxPaymentUseCase: jest.fn(),
     storeCheckoutUseCase: mockStoreCheckoutUseCase,
     trackStoreOrderUseCase: mockTrackStoreOrderUseCase,
     claimStoreOrderUseCase: mockClaimStoreOrderUseCase,

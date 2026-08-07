@@ -142,6 +142,39 @@ export const printPosReceipt = async (payload = {}, { silent = false } = {}) => 
     }
 };
 
+export const printPosShiftSummary = async (shiftId, payload = {}, { silent = false } = {}) => {
+    try {
+        const response = await api.post(`/pos/terminal/shifts/${shiftId}/print-summary`, payload, {
+            headers: payload?.terminal_id
+                ? { 'x-pos-terminal-id': payload.terminal_id }
+                : undefined,
+            skipGlobalErrorToast: silent || undefined
+        });
+        const responsePayload = response.data?.data;
+        const message = String(response.data?.message || responsePayload?.message || '').trim();
+        if (message && !silent) {
+            emitPosHardwareMessage({
+                title: 'POS shift summary printer',
+                message,
+                tone: 'success',
+                source: 'POS hardware'
+            });
+        }
+        return responsePayload;
+    } catch (error) {
+        if (!silent) {
+            emitPosHardwareMessage({
+                title: 'POS shift summary printer error',
+                message: String(error?.response?.data?.message || error?.message || 'Failed to print shift sales summary.').trim(),
+                tone: 'error',
+                source: 'POS hardware',
+                details: error?.response?.data?.errors || null
+            });
+        }
+        throw error;
+    }
+};
+
 export const openPosDeviceDrawer = async (payload = {}, { silent = false } = {}) => {
     try {
         const response = await api.post('/pos/device/open-drawer', payload, {
@@ -195,6 +228,17 @@ export const reportPosDeviceClientResult = async ({
                 idempotency_key: idempotencyKey,
                 shift_id: shiftId,
                 transaction_id: transactionId || undefined,
+                terminal_id: terminalId || undefined,
+                reason: reason || 'client_driver_report',
+                client_driver_id: driverId,
+                client_result: result
+            }, { silent: true });
+            return;
+        }
+
+        if (operation === 'print_shift_summary') {
+            await printPosShiftSummary(shiftId, {
+                idempotency_key: idempotencyKey,
                 terminal_id: terminalId || undefined,
                 reason: reason || 'client_driver_report',
                 client_driver_id: driverId,
@@ -387,6 +431,18 @@ export const collectCashPickupOrder = async (posTransactionId, payload = {}) => 
     return response.data?.data;
 };
 
+export const collectCashDeliveryOrder = async (posTransactionId, payload = {}) => {
+    const response = await api.post(`/pos/orders/${posTransactionId}/collect-delivery-cash`, payload, {
+        headers: getRegisteredTerminalHeaders(payload?.terminal_id)
+    });
+    return response.data?.data;
+};
+
+export const updateDeliveryJobStatus = async (posTransactionId, payload = {}) => {
+    const response = await api.patch(`/pos/orders/${posTransactionId}/delivery-job/status`, payload);
+    return response.data?.data;
+};
+
 const unsupportedFiscalEndpointError = (operation) => {
     const error = new Error(`${operation} is not available in the current backend runtime.`);
     error.code = 'POS_FISCAL_ENDPOINT_UNAVAILABLE';
@@ -498,6 +554,8 @@ export default {
     exportPosReportCsv,
     fetchIncomingOnlineOrders,
     collectCashPickupOrder,
+    collectCashDeliveryOrder,
+    updateDeliveryJobStatus,
     updateOnlineOrderStatus,
     fetchFiscalTerminalRegistrations,
     saveFiscalTerminalRegistration,

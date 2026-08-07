@@ -16,11 +16,12 @@ import {
   switchTerminalShiftLocation,
   recordCashDrawerEvent,
   collectCashPickupOrder,
+  collectCashDeliveryOrder,
+  updateDeliveryJobStatus,
   updateOnlineOrderStatus
 } from '../services/posService';
 import {
   login as loginWithCredentials,
-  loginCashier as loginCashierWithCredentials,
   getCurrentUser as fetchCurrentUser
 } from '@/services/authService.js';
 import {
@@ -46,7 +47,7 @@ import { completeOnboarding } from '@/services/onboardingService.js';
 import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
 import { getAllUsers } from '@/services/userService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
-import api from '@/services/api.js';
+import api, { onApiOutcome } from '@/services/api.js';
 import { clearClientSession } from '@/services/sessionCleanup.js';
 import {
   clearBrowserSession,
@@ -60,12 +61,18 @@ import { getWorkflowModeLabel, isMsmeWorkflowMode } from '../../settings/workflo
 import { resolveBusinessModePosDefaults } from '../../settings/businessModeTemplates.js';
 import {
   POS_TERMINAL_LOGIN_ERROR_CODES,
+  classifyTerminalLoginFailure,
   createTerminalLoginError,
   isCompanyTokenResolutionError,
   normalizeLookupTenantOptions,
   resolveTerminalLoginErrorMessage,
   shouldFallbackToCurrentCompanyTokenAfterLookupError
 } from '../utils/terminalUnlockDiagnostics.js';
+import {
+  captureTerminalFlowFailure,
+  resetSentryIdentity,
+  setSentryContext
+} from '../../../observability/sentryClient.js';
 import {
   TERMINAL_QUEUE_STATUS,
   enqueueTerminalOperationIntent as persistTerminalOperationIntent,
@@ -111,14 +118,13 @@ import {
   resolveTenantSetupViewMode
 } from '../utils/setupFlow.js';
 import { openDrawerWithIminBridge, printOrderWithIminBridge } from '../utils/iminHardwareBridge.js';
+import { usePosHardware } from '../hardware/usePosHardware.js';
+import ShiftCloseSummaryPrintView from '../components/ShiftCloseSummaryPrintView.jsx';
 import {
   blurActiveTerminalEditor,
   restoreTerminalViewportAfterUnlock
 } from '../utils/terminalViewportRecovery.js';
 
-import PosHardwareMessageModal from '../components/PosHardwareMessageModal.jsx';
-import OnlineOrderDetailsModal from '../components/OnlineOrderDetailsModal.jsx';
-import OnlineOrderReceiptModal from '../components/OnlineOrderReceiptModal.jsx';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -135,6 +141,9 @@ import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const TerminalPageLayout = lazyWithChunkRetry(() => import('../components/TerminalPageLayout.jsx'));
 const PosTenantSetupModal = lazyWithChunkRetry(() => import('../components/PosTenantSetupModal.jsx'));
+const PosHardwareMessageModal = lazyWithChunkRetry(() => import('../components/PosHardwareMessageModal.jsx'));
+const OnlineOrderDetailsModal = lazyWithChunkRetry(() => import('../components/OnlineOrderDetailsModal.jsx'));
+const OnlineOrderReceiptModal = lazyWithChunkRetry(() => import('../components/OnlineOrderReceiptModal.jsx'));
 
 const DEFAULT_CURRENCY = 'PHP';
 const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
@@ -219,6 +228,17 @@ const createIdempotencyKey = (prefix = 'pos-terminal') => {
     return `${prefix}-${crypto.randomUUID()}`;
   }
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 10)}`;
+};
+
+// Short, screen-readable code shown on the inline Open Shift failure panel
+// so a cashier can read it off the terminal and a supervisor can find the
+// matching Sentry event by searching `pos_error_ref:<code>` -- see
+// captureTerminalFlowFailure in observability/sentryClient.js.
+const createTerminalErrorRef = () => {
+  const raw = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID().replace(/-/g, '')
+    : `${Date.now().toString(16)}${Math.random().toString(16).slice(2)}`;
+  return raw.slice(0, 8).toUpperCase();
 };
 
 const readStoredTerminalId = () => {
@@ -452,6 +472,9 @@ export default function TerminalPage() {
   const [tenantSetupModalOpen, setTenantSetupModalOpen] = useState(false);
   const [tenantSetupDismissedThisSession, setTenantSetupDismissedThisSession] = useState(false);
   const [closeShiftConfirmOpen, setCloseShiftConfirmOpen] = useState(false);
+  const [closedShiftReport, setClosedShiftReport] = useState(null);
+  const [closedShiftReportOpen, setClosedShiftReportOpen] = useState(false);
+  const [closedShiftReportAutoPrint, setClosedShiftReportAutoPrint] = useState(false);
   const [hardwareMessage, setHardwareMessage] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeTerminalId, setActiveTerminalId] = useState(() => readInitialTerminalId());
@@ -482,6 +505,11 @@ export default function TerminalPage() {
   });
   const [terminalUnlockRequired, setTerminalUnlockRequired] = useState(false);
   const [terminalUnlockModalOpen, setTerminalUnlockModalOpen] = useState(false);
+  // Persistent inline failure surfaced in the Open Shift dialogs, replacing
+  // reliance on the auto-dismissing top-right toast for a failure the
+  // cashier needs to actually read and possibly relay to a supervisor. See
+  // reportTerminalFailure below, which is what populates this.
+  const [unlockFailure, setUnlockFailure] = useState(null);
   const [terminalUnlockMode, setTerminalUnlockMode] = useState(() => {
     const storedReason = readStoredTerminalLockReason();
     if (storedReason === 'admin_reunlock') return 'admin_reunlock';
@@ -531,11 +559,13 @@ export default function TerminalPage() {
     loading: false
   });
   const [legacyDgfyLinkBannerDismissed, setLegacyDgfyLinkBannerDismissed] = useState(false);
+  const posHardware = usePosHardware();
 
   const [shiftState, setShiftState] = useState({
     loading: false,
     shift: null,
-    cashSummary: null
+    cashSummary: null,
+    salesSummary: null
   });
   const [todayDashboard, setTodayDashboard] = useState({
     loading: false,
@@ -660,12 +690,34 @@ export default function TerminalPage() {
   });
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(() => (typeof navigator === 'undefined' ? true : navigator.onLine));
+  // `isOnline` above only tells us the device has *a* network interface --
+  // on Android that's true whenever any Wi-Fi/data connection exists, even
+  // one that cannot reach pos.dev.dgfy.ph. This tracks whether the most
+  // recent real API call actually got a response, which is what the
+  // Online/Offline indicator should mean. Defaults true so the dot doesn't
+  // flash "Offline" before the first request completes. Display-only --
+  // every existing `if (!isOnline)` gate elsewhere in this file is left
+  // reading the network-interface signal unchanged.
+  const [apiReachable, setApiReachable] = useState(true);
+  useEffect(() => {
+    const unsubscribe = onApiOutcome((entry) => {
+      setApiReachable(entry.kind !== 'network');
+    });
+    return unsubscribe;
+  }, []);
   const workspacePaneRef = useRef(null);
   const replayingQueueRef = useRef(false);
   const [isDesktopWide, setIsDesktopWide] = useState(() => {
     if (typeof window === 'undefined') return false;
     return window.innerWidth >= DESKTOP_TERMINAL_BREAKPOINT_PX;
   });
+
+  useEffect(() => {
+    if (!closedShiftReportOpen || !closedShiftReport || !closedShiftReportAutoPrint || typeof window === 'undefined' || typeof window.print !== 'function') return undefined;
+    const timer = window.setTimeout(() => window.print(), 120);
+    return () => window.clearTimeout(timer);
+  }, [closedShiftReport, closedShiftReportAutoPrint, closedShiftReportOpen]);
+
   const isMsmeMode = isMsmeWorkflowMode(workflowMode);
   const activeTenantId = String(terminalUser?.company?.id || '').trim();
   const offlinePosScope = useMemo(() => ({
@@ -758,6 +810,7 @@ export default function TerminalPage() {
   const canCreateItems = hasPermission('items:create');
   const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
   const canAdminBypassShiftPrompt = hasPermission('settings:view') || dgfyAdminBypassActive;
+  const canOpenShift = canTransactPos && !canAdminBypassShiftPrompt;
   const canEditItems = hasPermission('items:edit');
   const canDeleteItems = hasPermission('items:delete');
   const canManageCategories = hasPermission('categories:manage');
@@ -1103,13 +1156,13 @@ export default function TerminalPage() {
     if ((!allowWhileLocked && locked) || !canViewPos) {
       setShiftState((prev) => ({ ...prev, loading: false }));
       setTodayDashboard((prev) => ({ ...prev, loading: false }));
-      return { shift: null, cashSummary: null };
+      return { shift: null, cashSummary: null, salesSummary: null };
     }
     const terminalId = sanitizeTerminalId(terminalIdOverride || activeTerminalId);
     if (!terminalId) {
-      setShiftState((prev) => ({ ...prev, loading: false, shift: null, cashSummary: null }));
+      setShiftState((prev) => ({ ...prev, loading: false, shift: null, cashSummary: null, salesSummary: null }));
       setTodayDashboard((prev) => ({ ...prev, loading: false, businessDate: null, salesSummary: null }));
-      return { shift: null, cashSummary: null };
+      return { shift: null, cashSummary: null, salesSummary: null };
     }
     const scopedOperatingLocationId = Number.isInteger(Number(operatingLocationIdOverride || operatingLocationId))
       ? Number(operatingLocationIdOverride || operatingLocationId)
@@ -1126,6 +1179,7 @@ export default function TerminalPage() {
       );
       const shiftPayload = currentShiftResult?.shift || null;
       const cashSummary = currentShiftResult?.cash_summary || null;
+      const shiftSalesSummary = currentShiftResult?.sales_summary || null;
       const shiftLocationId = Number(shiftPayload?.location_id);
       const effectiveLocationId = Number.isInteger(shiftLocationId) && shiftLocationId > 0
         ? shiftLocationId
@@ -1143,7 +1197,8 @@ export default function TerminalPage() {
       setShiftState({
         loading: false,
         shift: activeShift,
-        cashSummary: activeShiftSummary
+        cashSummary: activeShiftSummary,
+        salesSummary: shiftSalesSummary
       });
       const activeShiftLocationId = Number(activeShift?.location_id);
       if (Number.isInteger(activeShiftLocationId) && activeShiftLocationId > 0 && activeShiftLocationId !== scopedOperatingLocationId) {
@@ -1367,6 +1422,54 @@ export default function TerminalPage() {
     refreshAdminLocationMonitor({ silent: true });
   }, [refreshAdminLocationMonitor]);
 
+  const printClosedShiftSummary = useCallback(async (closeResult, { reason = 'shift_close_report' } = {}) => {
+    const report = closeResult || null;
+    const shiftId = Number(report?.shift?.pos_terminal_shift_id || 0);
+    if (!report || !Number.isInteger(shiftId) || shiftId <= 0) return false;
+
+    try {
+      const outcome = await posHardware.printShiftSummary({
+        shiftId,
+        shiftSummary: report,
+        businessSettings: { pos_business_name: 'DGFY' },
+        terminalId: sanitizeTerminalId(activeTerminalId) || report?.shift?.terminal_id || undefined,
+        reason,
+        idempotencyKey: createIdempotencyKey('pos-shift-summary-print'),
+        copies: 1,
+        paperWidth: '80mm'
+      });
+      if (outcome?.success) {
+        toast.success('Cashier shift sales summary printed.');
+        return true;
+      }
+      setClosedShiftReportAutoPrint(true);
+      setClosedShiftReport(report);
+      setClosedShiftReportOpen(true);
+      toast.message(outcome?.message || 'No printer is configured. The shift sales summary is opening for browser printing.');
+      return false;
+    } catch (error) {
+      setClosedShiftReportAutoPrint(true);
+      setClosedShiftReport(report);
+      setClosedShiftReportOpen(true);
+      toast.message(error?.response?.data?.message || 'Shift closed. The sales summary is available for browser printing.');
+      return false;
+    }
+  }, [activeTerminalId, posHardware]);
+
+  const handleViewShiftSummary = useCallback(() => {
+    if (!shiftState?.shift) {
+      toast.error('Open a shift before viewing its sales summary.');
+      return;
+    }
+    setClosedShiftReportAutoPrint(false);
+    setClosedShiftReport({
+      shift: shiftState.shift,
+      cash_summary: shiftState.cashSummary || {},
+      sales_summary: shiftState.salesSummary || {}
+    });
+    setClosedShiftReportOpen(true);
+  }, [shiftState.cashSummary, shiftState.salesSummary, shiftState.shift]);
+
   const replayQueuedTerminalOperations = useCallback(async ({
     toastIfEmpty = false,
     force = false
@@ -1437,7 +1540,8 @@ export default function TerminalPage() {
             if (!Number.isInteger(shiftId) || shiftId <= 0) {
               throw new Error('Missing shift_id for queued shift-close replay.');
             }
-            await closeTerminalShift(shiftId, payload);
+            const closeResult = await closeTerminalShift(shiftId, payload);
+            await printClosedShiftSummary(closeResult);
             shouldRefreshOperational = true;
           } else if (operation === 'order_status_update') {
             await markTerminalOperationFailedManualResolution(intentId, {
@@ -1535,6 +1639,7 @@ export default function TerminalPage() {
     refreshIncomingOrders,
     refreshOperationalContext,
     refreshTerminalOperationQueue,
+    printClosedShiftSummary,
   ]);
 
   const filteredQueueEntries = useMemo(() => {
@@ -1608,6 +1713,10 @@ export default function TerminalPage() {
       setTerminalUnlockRequired(false);
       setTerminalUnlockModalOpen(false);
       setLoadingUser(false);
+      // A full re-lock, not just a lost tenant session -- clear the POS
+      // terminal/location tags too, so events captured while the terminal
+      // sits locked don't carry the previous cashier's context.
+      resetSentryIdentity();
       return;
     }
 
@@ -1629,6 +1738,7 @@ export default function TerminalPage() {
       setLocked(true);
       setDrawerOpen(true);
       setLoadingUser(false);
+      resetSentryIdentity();
       return;
     }
 
@@ -2273,6 +2383,48 @@ export default function TerminalPage() {
     registryMode: terminalRegistryMode
   });
 
+  // Single reporting path for every terminal-unlock / shift-open failure:
+  // resolves the operator-facing message the same way the toast always has,
+  // classifies whether it was a real network failure, a real HTTP error, or
+  // a locally-thrown check (see classifyTerminalLoginFailure), then (a)
+  // keeps the toast for at-a-glance visibility, (b) populates the inline
+  // panel with a short reference code so the message survives long enough
+  // to read and can be relayed to a supervisor, and (c) sends it to Sentry
+  // -- including local throws, which never touch axios and were previously
+  // invisible in observability entirely.
+  const reportTerminalFailure = (error, flow) => {
+    const message = resolveTerminalLoginErrorMessage(error);
+    const { kind, status, requestPath } = classifyTerminalLoginFailure(error);
+    const method = String(error?.config?.method || '').toUpperCase() || '';
+    const ref = createTerminalErrorRef();
+    toast.error(message);
+    setUnlockFailure({ message, method, requestPath, status, ref });
+    captureTerminalFlowFailure({ error, flow, ref, requestPath, status, kind });
+  };
+
+  // Shared body for the persistent failure block in both Open Shift dialogs
+  // (terminalUnlockModalOpen's shift_start mode and the standalone
+  // shiftOpeningModalOpen dialog) -- replaces relying on the auto-dismissing
+  // top-right toast, which is what made the original iMin incident
+  // impossible to read off the device.
+  const renderUnlockFailurePanel = () => {
+    if (!unlockFailure) return null;
+    const metaParts = [
+      unlockFailure.method && unlockFailure.requestPath
+        ? `${unlockFailure.method} ${unlockFailure.requestPath}`
+        : unlockFailure.requestPath,
+      unlockFailure.status ? `status ${unlockFailure.status}` : null,
+      `ref ${unlockFailure.ref}`
+    ].filter(Boolean);
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-900" role="alert">
+        <p className="font-semibold text-red-950">Could not open shift</p>
+        <p className="mt-0.5">{unlockFailure.message}</p>
+        <p className="mt-1 font-mono text-[10px] text-red-700">{metaParts.join(' · ')}</p>
+      </div>
+    );
+  };
+
   const validateSelectedTerminalForUnlock = (selectedTerminalId) => {
     const registryEntry = terminalRegistryLookup.get(selectedTerminalId);
     if (activeTerminalRegistry.length === 0) {
@@ -2346,6 +2498,18 @@ export default function TerminalPage() {
     if (Number.isInteger(Number(operatingLocationIdOverride)) && Number(operatingLocationIdOverride) > 0) {
       setOperatingLocationId(Number(operatingLocationIdOverride));
     }
+    // Tag from this call's own parameters, not `terminalUser`/`operatingLocationId`
+    // state -- completeTerminalUnlock is a fresh closure every render, so a
+    // state variable read here would still be the value from BEFORE this
+    // unlock (the setXxx calls above only just scheduled the update). The
+    // parameters are current by definition, so which terminal/location an
+    // event actually happened on is always right.
+    setSentryContext({
+      terminalId: selectedTerminalId || undefined,
+      locationId: (Number.isInteger(Number(operatingLocationIdOverride)) && Number(operatingLocationIdOverride) > 0)
+        ? Number(operatingLocationIdOverride)
+        : undefined
+    });
     await hydrateUser({ suppressGlobalErrors: true });
     await Promise.all([
       hydrateTerminalMeta({ suppressGlobalErrors: true }),
@@ -2373,6 +2537,7 @@ export default function TerminalPage() {
       openingNote: ''
     });
     setTerminalUnlockModalOpen(false);
+    setUnlockFailure(null);
     await notifyStockAlertsAfterUnlock();
   };
 
@@ -2431,6 +2596,7 @@ export default function TerminalPage() {
     const continuingAfterCompanyPicker = dgfyPosState.authenticated === true;
 
     setSubmitting(true);
+    setUnlockFailure(null);
     try {
       setCashierUnlockSession(null);
       setDgfyAdminBypassActive(false);
@@ -2705,7 +2871,7 @@ export default function TerminalPage() {
       setLocked(true);
       setDrawerOpen(true);
       setDgfyPosState((prev) => ({ ...prev, loadingCompanies: false }));
-      toast.error(resolveTerminalLoginErrorMessage(error));
+      reportTerminalFailure(error, 'terminal_unlock');
     } finally {
       setSubmitting(false);
     }
@@ -2785,41 +2951,6 @@ export default function TerminalPage() {
     }
   }, [resolveCompanyTokenFromEmailLookupState]);
 
-  const authenticateCashierCredentials = async ({ identifier, password, companyTokenHint = '' }) => {
-    const normalizedIdentifier = String(identifier || '').trim();
-    const normalizedPassword = String(password || '');
-    const currentCompanyToken = String(companyTokenHint || getCompanyToken() || '').trim();
-    let resolvedCompanyToken = '';
-    if (normalizedIdentifier.includes('@')) {
-      resolvedCompanyToken = await resolveCompanyTokenForEmailIdentifier(normalizedIdentifier, currentCompanyToken);
-    } else {
-      resolvedCompanyToken = currentCompanyToken;
-    }
-    if (!resolvedCompanyToken) {
-      throw createTerminalLoginError(
-        'Username login requires this POS to be linked to its company. Sign in as the company admin once, or use the cashier email.',
-        POS_TERMINAL_LOGIN_ERROR_CODES.COMPANY_TOKEN_UNRESOLVED
-      );
-    }
-
-    await loginCashierWithCredentials(
-      { identifier: normalizedIdentifier, password: normalizedPassword, companyToken: resolvedCompanyToken },
-      SUPPRESS_GLOBAL_ERROR_TOAST
-    );
-    const cashierUser = await fetchCurrentUser(SUPPRESS_GLOBAL_ERROR_TOAST);
-    if (String(cashierUser?.role || '').trim().toLowerCase() !== 'cashier') {
-      clearClientSession({
-        reason: 'logout',
-        broadcast: true,
-        emitAuthEvents: true,
-        redirectTo: null
-      });
-      throw createTerminalLoginError('This login is only for POS cashier accounts. Use DGFY sign in for admin accounts.');
-    }
-
-    return { cashierUser, companyToken: resolvedCompanyToken };
-  };
-
   const handleCashierResumeSubmit = async (event) => {
     event.preventDefault();
     const identifier = String(cashierResumeForm.identifier || '').trim();
@@ -2837,12 +2968,56 @@ export default function TerminalPage() {
     }
 
     setSubmitting(true);
+    setUnlockFailure(null);
     try {
-      const { cashierUser } = await authenticateCashierCredentials({
-        identifier,
+      if (!identifier.includes('@')) {
+        throw createTerminalLoginError('Enter the cashier DGFY email used for this company membership.');
+      }
+
+      const tenantId = String(cashierResumeContext.tenantId || '').trim();
+      const terminalId = sanitizeTerminalId(cashierResumeContext.terminalId || activeTerminalId);
+      if (!tenantId || !terminalId) {
+        throw createTerminalLoginError('The locked shift is missing its company or terminal session. Sign in again.');
+      }
+
+      const loginResult = await loginDgfyAccount({
+        email: identifier,
         password,
-        companyTokenHint: cashierResumeContext.companyToken
+        remember_device: false
       });
+      const dgfyToken = String(loginResult?.token || '').trim();
+      if (!dgfyToken) {
+        throw createTerminalLoginError('Unable to start the DGFY cashier session. Sign in again.');
+      }
+
+      const posSession = await startDgfyPosSession({
+        tenantId,
+        terminalId
+      }, dgfyToken, { activate: false });
+      const cashierUser = await fetchCurrentUser(
+        SUPPRESS_GLOBAL_ERROR_TOAST,
+        {
+          token: posSession?.token,
+          companyToken: posSession?.company?.token,
+          installSession: false
+        }
+      );
+      if (!cashierUser) {
+        throw createTerminalLoginError('The cashier company session could not be verified. Sign in again.');
+      }
+
+      if (String(cashierUser?.role || '').trim().toLowerCase() !== 'cashier') {
+        clearDgfySession();
+        clearClientSession({
+          reason: 'logout',
+          broadcast: true,
+          emitAuthEvents: true,
+          redirectTo: null
+        });
+        toast.error('This login is not an active cashier account for the selected company.');
+        return;
+      }
+
       const expectedCashierId = Number(cashierResumeContext.cashierId || 0);
       const authenticatedCashierId = Number(cashierUser?.user_id || 0);
       if (
@@ -2850,6 +3025,7 @@ export default function TerminalPage() {
         && expectedCashierId > 0
         && authenticatedCashierId !== expectedCashierId
       ) {
+        clearDgfySession();
         clearClientSession({
           reason: 'logout',
           broadcast: true,
@@ -2860,13 +3036,14 @@ export default function TerminalPage() {
         return;
       }
 
+      activateDgfyTenantSession(posSession);
       setTerminalUser(cashierUser);
-      await completeTerminalUnlock(cashierResumeContext.terminalId || activeTerminalId, {
+      await completeTerminalUnlock(terminalId, {
         operatingLocationIdOverride: cashierResumeContext.locationId
       });
       toast.success('Cashier verified. Shift resumed.');
     } catch (error) {
-      toast.error(resolveTerminalLoginErrorMessage(error));
+      reportTerminalFailure(error, 'cashier_resume');
     } finally {
       setSubmitting(false);
     }
@@ -2885,6 +3062,7 @@ export default function TerminalPage() {
     }
 
     setSubmitting(true);
+    setUnlockFailure(null);
     try {
       let resolvedCompanyToken = companyTokenHint;
       if (identifier.includes('@')) {
@@ -2938,7 +3116,7 @@ export default function TerminalPage() {
       ]);
       toast.success('Admin verified. POS unlocked.');
     } catch (error) {
-      toast.error(resolveTerminalLoginErrorMessage(error));
+      reportTerminalFailure(error, 'admin_reauth');
     } finally {
       setSubmitting(false);
     }
@@ -3004,6 +3182,7 @@ export default function TerminalPage() {
       return;
     }
     setSubmitting(true);
+    setUnlockFailure(null);
     try {
       const resolvedCompanyToken = String(
         cashierUnlockSession?.companyToken
@@ -3131,7 +3310,7 @@ export default function TerminalPage() {
             : 'Terminal unlocked successfully.'
       );
     } catch (error) {
-      toast.error(resolveTerminalLoginErrorMessage(error));
+      reportTerminalFailure(error, 'terminal_unlock');
     } finally {
       setSubmitting(false);
     }
@@ -3280,6 +3459,7 @@ export default function TerminalPage() {
         cashierUsername: String(terminalUser?.username || '').trim(),
         terminalId: selectedTerminalId,
         locationId: Number.isInteger(activeShiftLocationId) && activeShiftLocationId > 0 ? activeShiftLocationId : null,
+        tenantId: String(cashierUnlockSession?.tenantId || terminalUser?.company?.id || formData.dgfyTenantId || '').trim(),
         companyToken: activeCompanyToken
       });
       setCashierResumeForm({
@@ -3368,6 +3548,10 @@ export default function TerminalPage() {
   }, []);
 
   const handleOpenShift = async () => {
+    if (canAdminBypassShiftPrompt) {
+      toast.error('Administrator navigation is read-only. Sign in as the cashier to open the shift.');
+      return;
+    }
     if (terminalUnlockRequired) {
       setTerminalUnlockModalOpen(true);
       toast.error('Unlock the terminal before opening a new shift.');
@@ -3421,6 +3605,7 @@ export default function TerminalPage() {
       idempotency_key: createIdempotencyKey('pos-shift-open')
     };
     setShiftActionLoading((prev) => ({ ...prev, open: true }));
+    setUnlockFailure(null);
     try {
       await openTerminalShift(payload, SUPPRESS_GLOBAL_ERROR_TOAST);
       toast.success('Shift opened successfully.');
@@ -3433,7 +3618,7 @@ export default function TerminalPage() {
       setPosViewMode('checkout');
       setMobileNavOpen(false);
     } catch (error) {
-      toast.error(resolveTerminalLoginErrorMessage(error));
+      reportTerminalFailure(error, 'shift_open');
     } finally {
       setShiftActionLoading((prev) => ({ ...prev, open: false }));
     }
@@ -3602,7 +3787,8 @@ export default function TerminalPage() {
       setShiftState({
         loading: false,
         shift: null,
-        cashSummary: null
+        cashSummary: null,
+        salesSummary: null
       });
       setCashierUnlockSession(null);
       setCashierResumeContext(null);
@@ -3637,7 +3823,8 @@ export default function TerminalPage() {
 
     setShiftActionLoading((prev) => ({ ...prev, close: true }));
     try {
-      await closeTerminalShift(activeShiftId, payload);
+      const closeResult = await closeTerminalShift(activeShiftId, payload);
+      await printClosedShiftSummary(closeResult);
       if (preserveAdminNavigation) {
         toast.success('Shift closed successfully.');
         setCloseShiftConfirmOpen(false);
@@ -3645,7 +3832,8 @@ export default function TerminalPage() {
         setShiftState({
           loading: false,
           shift: null,
-          cashSummary: null
+          cashSummary: null,
+          salesSummary: null
         });
         setAdminShiftPromptSkipped(true);
         setDgfyAdminBypassActive(true);
@@ -3660,7 +3848,8 @@ export default function TerminalPage() {
       setShiftState({
         loading: false,
         shift: null,
-        cashSummary: null
+        cashSummary: null,
+        salesSummary: null
       });
       setCashierUnlockSession(null);
       setCashierResumeContext(null);
@@ -3701,7 +3890,8 @@ export default function TerminalPage() {
         setShiftState({
           loading: false,
           shift: null,
-          cashSummary: null
+          cashSummary: null,
+          salesSummary: null
         });
         setCashierUnlockSession(null);
         setCashierResumeContext(null);
@@ -3783,6 +3973,43 @@ export default function TerminalPage() {
     }
   };
 
+  const printOnlineOrderReceiptById = useCallback(async (posTransactionId, {
+    transaction = null,
+    automatic = false
+  } = {}) => {
+    const normalizedId = Number.parseInt(posTransactionId, 10);
+    if (!Number.isInteger(normalizedId) || normalizedId <= 0) return null;
+
+    let detail = transaction;
+    if (!detail) {
+      detail = await fetchPosTransactionById(normalizedId);
+    }
+    if (automatic && String(detail?.receipt_print_status || '').trim().toLowerCase() === 'printed') {
+      return { skipped: true, success: true };
+    }
+
+    const outcome = await posHardware.printReceipt({
+      transaction: detail,
+      businessSettings: { pos_business_name: 'DGFY' },
+      receiptContract: null,
+      openDrawerAfterPrint: false,
+      transactionId: normalizedId,
+      terminalId: sanitizeTerminalId(activeTerminalId) || undefined,
+      reason: automatic ? 'online_order_completion_receipt' : 'online_order_receipt',
+      idempotencyKey: createIdempotencyKey('pos-online-receipt')
+    });
+    if (!outcome?.success) {
+      if (outcome?.reasonCode === 'NO_PRINTER_CONFIGURED') {
+        toast.message(outcome.message || 'No printer is configured. The online order receipt remains available for preview.');
+      } else {
+        toast.error(outcome?.message || 'Online order receipt was not printed.');
+      }
+    } else if (!automatic) {
+      toast.success('Online order receipt printed.');
+    }
+    return outcome;
+  }, [activeTerminalId, posHardware]);
+
   const handleIncomingOrderStatusChange = async (posTransactionId, fulfillmentStatus, reason = null) => {
     if (!isOnline) {
       toast.error('Reconnect to the internet before changing an online order.');
@@ -3815,6 +4042,13 @@ export default function TerminalPage() {
     setIncomingOrderActionState((prev) => ({ ...prev, [normalizedId]: nextStatus }));
     try {
       const response = await updateOnlineOrderStatus(normalizedId, payload);
+      if (nextStatus === 'completed') {
+        try {
+          await printOnlineOrderReceiptById(normalizedId, { automatic: true });
+        } catch (printError) {
+          toast.message(printError?.response?.data?.message || 'Order completed, but the online order receipt still needs printing.');
+        }
+      }
       const paymentLifecycle = response?.payment_lifecycle || response?.data?.payment_lifecycle || null;
       if (paymentLifecycle?.payment_action === 'refunded') {
         toast.success('Order rejected and PayMongo refund confirmed.');
@@ -3843,6 +4077,45 @@ export default function TerminalPage() {
     }
   };
 
+  const handleDeliveryJobStatusChange = async (posTransactionId, deliveryJobStatus) => {
+    if (!isOnline) {
+      toast.error('Reconnect to the internet before updating delivery status.');
+      return false;
+    }
+
+    const normalizedId = Number.parseInt(posTransactionId, 10);
+    const nextStatus = String(deliveryJobStatus || '').trim();
+    if (!Number.isInteger(normalizedId) || normalizedId <= 0 || !nextStatus) {
+      toast.error('Invalid delivery job update.');
+      return false;
+    }
+
+    const actionKey = `delivery-job:${nextStatus}`;
+    setIncomingOrderActionState((prev) => ({ ...prev, [normalizedId]: actionKey }));
+    try {
+      await updateDeliveryJobStatus(normalizedId, {
+        status: nextStatus,
+        idempotency_key: createIdempotencyKey('pos-delivery-job')
+      });
+      toast.success(nextStatus === 'delivered' ? 'Delivery marked as delivered.' : 'Delivery status updated.');
+      await refreshIncomingOrders({ silent: true });
+      return true;
+    } catch (error) {
+      if (isRetryableTerminalOperationError(error)) {
+        toast.error('The delivery job was not changed because the server connection was lost. Reconnect and try again.');
+      } else {
+        toast.error(error?.response?.data?.message || 'Failed to update delivery status.');
+      }
+      return false;
+    } finally {
+      setIncomingOrderActionState((prev) => {
+        const next = { ...prev };
+        delete next[normalizedId];
+        return next;
+      });
+    }
+  };
+
   const handleOpenCashCollection = (order) => {
     if (!isOnline) {
       toast.error('Reconnect to the internet before collecting payment for an online order.');
@@ -3852,7 +4125,7 @@ export default function TerminalPage() {
     setCashReceivedInput(order?.total_amount == null ? '' : String(order.total_amount));
   };
 
-  const handleCollectPickupCash = async () => {
+  const handleCollectCash = async () => {
     if (!isOnline) {
       toast.error('Reconnect to the internet before collecting payment for an online order.');
       return;
@@ -3866,18 +4139,31 @@ export default function TerminalPage() {
     }
     setCashCollectionSaving(true);
     try {
-      await collectCashPickupOrder(orderId, { terminal_id: terminalId, cash_received: cashReceived, idempotency_key: createIdempotencyKey('pos-pickup-cash') });
-      toast.success('Cash payment collected. You can now mark the order as picked up.');
+      const isDeliveryOrder = cashCollectionOrder?.order_method === 'delivery';
+      const collectCash = isDeliveryOrder ? collectCashDeliveryOrder : collectCashPickupOrder;
+      await collectCash(orderId, {
+        terminal_id: terminalId,
+        cash_received: cashReceived,
+        idempotency_key: createIdempotencyKey(isDeliveryOrder ? 'pos-delivery-cash' : 'pos-pickup-cash')
+      });
+      try {
+        await printOnlineOrderReceiptById(orderId, { automatic: true });
+      } catch (printError) {
+        toast.message(printError?.response?.data?.message || 'Cash collected, but the online order receipt still needs printing.');
+      }
+      toast.success(isDeliveryOrder
+        ? 'Delivery cash payment collected. You can now complete the order after delivery.'
+        : 'Cash payment collected. You can now mark the order as picked up.');
       setCashCollectionOrder(null);
       await refreshIncomingOrders({ silent: true });
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to collect cash for pickup order.');
+      toast.error(error?.response?.data?.message || 'Failed to collect cash for the order.');
     } finally {
       setCashCollectionSaving(false);
     }
   };
 
-  const handleOpenIncomingOrderReceipt = async (posTransactionId, { printMode = false } = {}) => {
+  const handleOpenIncomingOrderReceipt = async (posTransactionId, { printMode = false, retryPrint = false } = {}) => {
     if (!isOnline) {
       toast.error('Reconnect to the internet before opening or printing an online order.');
       return;
@@ -3894,6 +4180,13 @@ export default function TerminalPage() {
     try {
       const detail = await fetchPosTransactionById(normalizedId);
       setIncomingOrderDetail(detail || null);
+      if (retryPrint) {
+        await printOnlineOrderReceiptById(normalizedId, {
+          transaction: detail,
+          automatic: false
+        });
+        return;
+      }
       if (printMode) {
         setIncomingOrderReceiptOpen(true);
       } else {
@@ -3935,26 +4228,16 @@ export default function TerminalPage() {
 
     setIncomingOrderPrintLoading(true);
     try {
-      const result = printOrderWithIminBridge({
-        cart: Array.isArray(incomingOrderDetail.lines) ? incomingOrderDetail.lines : [],
-        terminalId: String(activeTerminalId || ''),
-        orderMethod: incomingOrderDetail.order_method || '',
-        fnbContext: null,
-        orderNotes: incomingOrderDetail.order_notes
-          || incomingOrderDetail.notes
-          || incomingOrderDetail.special_instructions
-          || ''
+      await printOnlineOrderReceiptById(incomingOrderDetail.pos_transaction_id, {
+        transaction: incomingOrderDetail,
+        automatic: false
       });
-      if (result?.handled !== true && typeof window !== 'undefined' && typeof window.print === 'function') {
-        window.print();
-      }
-      toast.success('Non-fiscal order receipt sent to printer.');
     } catch (error) {
       toast.error(error?.message || 'Failed to print the active order.');
     } finally {
       setIncomingOrderPrintLoading(false);
     }
-  }, [activeTerminalId, incomingOrderDetail, isOnline]);
+  }, [incomingOrderDetail, isOnline, printOnlineOrderReceiptById]);
 
   const handleCheckoutCompleted = useCallback(async (completedTransaction = null) => {
     await refreshOperationalContext();
@@ -4291,6 +4574,7 @@ export default function TerminalPage() {
     && canViewPos
     && !shiftOpenPromptBlockedBySetup
     && !suppressAdminShiftPrompt
+    && !canAdminBypassShiftPrompt
   );
   const openingCashAmountText = String(openShiftForm.openingFloatAmount ?? '').trim();
   const openingCashAmountNumber = Number(openingCashAmountText);
@@ -4433,7 +4717,7 @@ function PosRestorationLoadingScreen() {
           <DialogContent className="border border-slate-200 bg-white shadow-2xl sm:max-w-md">
             <DialogHeader>
               <DialogTitle className="text-lg font-black text-slate-950">Collect Cash</DialogTitle>
-              <DialogDescription className="text-sm leading-6 text-slate-600">Record payment before releasing this pickup order. Change is calculated by the POS.</DialogDescription>
+              <DialogDescription className="text-sm leading-6 text-slate-600">Record payment before completing this order. Change is calculated by the POS.</DialogDescription>
             </DialogHeader>
             <div className="space-y-3">
               <div className="rounded-lg bg-slate-50 p-3 text-sm text-slate-700">
@@ -4441,13 +4725,13 @@ function PosRestorationLoadingScreen() {
                 <p>Change: PHP {Math.max(0, Number(cashReceivedInput || 0) - Number(cashCollectionOrder?.total_amount || 0)).toFixed(2)}</p>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="pickup-cash-received">Amount received</Label>
-                <Input id="pickup-cash-received" inputMode="decimal" type="number" min="0" step="0.01" value={cashReceivedInput} onChange={(event) => setCashReceivedInput(event.target.value)} disabled={cashCollectionSaving} />
+                <Label htmlFor="cash-received">Amount received</Label>
+                <Input id="cash-received" inputMode="decimal" type="number" min="0" step="0.01" value={cashReceivedInput} onChange={(event) => setCashReceivedInput(event.target.value)} disabled={cashCollectionSaving} />
               </div>
             </div>
             <DialogFooter className="gap-2 sm:justify-end">
               <Button type="button" variant="outline" onClick={() => setCashCollectionOrder(null)} disabled={cashCollectionSaving}>Cancel</Button>
-              <Button type="button" onClick={handleCollectPickupCash} disabled={cashCollectionSaving}>{cashCollectionSaving ? 'Collecting...' : 'Collect Cash'}</Button>
+              <Button type="button" onClick={handleCollectCash} disabled={cashCollectionSaving}>{cashCollectionSaving ? 'Collecting...' : 'Collect Cash'}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -4475,7 +4759,7 @@ function PosRestorationLoadingScreen() {
                   {adminReauthUnlock
                     ? 'Enter the admin credentials to unlock POS. Cashier and terminal credentials are not required.'
                     : cashierResumeUnlock
-                      ? 'Enter the cashier credentials for the open shift. Terminal password is not required.'
+                      ? 'Enter the DGFY cashier credentials for the open shift. Terminal password is not required.'
                       : signedInShiftResume
                         ? 'Your active shift was found. Resume the same terminal, cart, totals, and cashier session.'
                       : terminalUnlockMode === 'relock'
@@ -4532,14 +4816,14 @@ function PosRestorationLoadingScreen() {
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="cashier-resume-identifier" className="text-xs font-extrabold text-[#0F172A]">
-                        Cashier Username or Email
+                        Cashier DGFY Email
                       </Label>
                       <Input
                         id="cashier-resume-identifier"
                         type="text"
                         value={cashierResumeForm.identifier}
                         onChange={(event) => setCashierResumeForm((prev) => ({ ...prev, identifier: event.target.value }))}
-                        placeholder="cashier username or email"
+                        placeholder="cashier@company.com"
                         autoComplete="username"
                         disabled={submitting}
                         required
@@ -4547,7 +4831,7 @@ function PosRestorationLoadingScreen() {
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor="cashier-resume-password" className="text-xs font-extrabold text-[#0F172A]">
-                        Cashier Password
+                        DGFY Password
                       </Label>
                       <Input
                         id="cashier-resume-password"
@@ -4695,6 +4979,7 @@ function PosRestorationLoadingScreen() {
                     </div>
                   </>
                 ) : null}
+                {renderUnlockFailurePanel()}
               </div>
               <DialogFooter className="border-t border-slate-100 px-5 py-4">
                 {canAdminBypassShiftPrompt && !signedInShiftResume && (
@@ -4772,6 +5057,7 @@ function PosRestorationLoadingScreen() {
                     disabled={shiftActionLoading.open}
                   />
                 </div>
+                {renderUnlockFailurePanel()}
               </div>
               <DialogFooter className="border-t border-slate-100 px-5 py-4">
                 {canAdminBypassShiftPrompt && (
@@ -4787,7 +5073,7 @@ function PosRestorationLoadingScreen() {
                 <Button
                   type="submit"
                   className="bg-[#1A4E8D] text-white hover:bg-[#143F73]"
-                  disabled={shiftActionLoading.open || !canTransactPos || !canSubmitOpenShift}
+                  disabled={shiftActionLoading.open || !canOpenShift || !canSubmitOpenShift}
                 >
                   {shiftActionLoading.open ? 'Opening...' : 'Open Shift'}
                 </Button>
@@ -4936,11 +5222,15 @@ function PosRestorationLoadingScreen() {
           }}
           onSetupDataChanged={handleTenantSetupDataChanged}
         />
-        <PosHardwareMessageModal
-          open={Boolean(hardwareMessage)}
-          message={hardwareMessage}
-          onOpenChange={handleHardwareMessageOpenChange}
-        />
+        {hardwareMessage && (
+          <Suspense fallback={null}>
+            <PosHardwareMessageModal
+              open
+              message={hardwareMessage}
+              onOpenChange={handleHardwareMessageOpenChange}
+            />
+          </Suspense>
+        )}
         <Dialog
           open={settingsAccessPinModalOpen}
           onOpenChange={(open) => {
@@ -5087,24 +5377,48 @@ function PosRestorationLoadingScreen() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
-        <OnlineOrderDetailsModal
-          open={incomingOrderModalOpen}
-          onOpenChange={handleIncomingOrderModalOpenChange}
-          order={incomingOrderDetail}
-          loading={incomingReceiptOpeningId !== null && !incomingOrderDetail}
-        />
-        <OnlineOrderReceiptModal
-          open={incomingOrderReceiptOpen}
-          onOpenChange={handleIncomingOrderReceiptOpenChange}
-          order={incomingOrderDetail}
-          loading={incomingReceiptOpeningId !== null && !incomingOrderDetail}
-          onPrint={handlePrintIncomingOrder}
-          printLoading={incomingOrderPrintLoading}
-        />
+        {incomingOrderModalOpen && (
+          <Suspense fallback={null}>
+            <OnlineOrderDetailsModal
+              open
+              onOpenChange={handleIncomingOrderModalOpenChange}
+              order={incomingOrderDetail}
+              loading={incomingReceiptOpeningId !== null && !incomingOrderDetail}
+            />
+          </Suspense>
+        )}
+        {incomingOrderReceiptOpen && (
+          <Suspense fallback={null}>
+            <OnlineOrderReceiptModal
+              open
+              onOpenChange={handleIncomingOrderReceiptOpenChange}
+              order={incomingOrderDetail}
+              loading={incomingReceiptOpeningId !== null && !incomingOrderDetail}
+              onPrint={handlePrintIncomingOrder}
+              printLoading={incomingOrderPrintLoading}
+            />
+            </Suspense>
+        )}
+        {closedShiftReportOpen && closedShiftReport && (
+          <ShiftCloseSummaryPrintView
+            report={closedShiftReport}
+            currency={terminalMeta.pettyCashSymbol || DEFAULT_CURRENCY}
+            autoPrint={closedShiftReportAutoPrint}
+            title={closedShiftReportAutoPrint ? 'Cashier Shift Sales Summary' : 'Current Shift Sales Summary'}
+            onPrint={() => printClosedShiftSummary(closedShiftReport, {
+              reason: closedShiftReportAutoPrint ? 'shift_summary_reprint' : 'shift_summary_manual_print'
+            })}
+            onClose={() => {
+              setClosedShiftReportOpen(false);
+              setClosedShiftReport(null);
+              setClosedShiftReportAutoPrint(false);
+            }}
+          />
+        )}
         <TerminalPageLayout
           key={locked ? 'terminal-layout-locked' : `terminal-layout-unlocked-${terminalLayoutEpoch}`}
           locked={locked}
-          isOnline={isOnline}
+          isOnline={isOnline && apiReachable}
           activeTerminalId={activeTerminalId}
           terminalIdOptions={terminalIdOptions}
           terminalRegistry={activeTerminalRegistry}
@@ -5175,11 +5489,13 @@ function PosRestorationLoadingScreen() {
           handleSwitchShiftLocation={handleSwitchShiftLocation}
           handleRecordCashEvent={handleRecordCashEvent}
           handleCloseShift={handleCloseShift}
+          handleViewShiftSummary={handleViewShiftSummary}
           refreshOperationalContext={refreshOperationalContext}
           setOperatingLocationId={setOperatingLocationId}
           setQueueLocationScopeId={setQueueLocationScopeId}
           incomingOrderActionState={incomingOrderActionState}
           handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
+          handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
           handleOpenCashCollection={handleOpenCashCollection}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
           incomingReceiptOpeningId={incomingReceiptOpeningId}

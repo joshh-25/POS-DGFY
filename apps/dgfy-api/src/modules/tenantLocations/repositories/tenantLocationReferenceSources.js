@@ -106,6 +106,22 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         where: (locationId) => ({ location_id: locationId })
     },
     {
+        key: 'employees',
+        label: 'employees',
+        modelName: 'Employee',
+        association: 'Employee.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        key: 'employeeCreditLedgerEntries',
+        label: 'employee credit ledger entries',
+        modelName: 'EmployeeCreditLedgerEntry',
+        association: 'EmployeeCreditLedgerEntry.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
         key: 'serviceProviderAssignments',
         label: 'service provider assignments',
         modelName: 'ServiceProviderAssignment',

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Banknote, ChevronLeft, ChevronRight, LogIn, LogOut, UserCircle2 } from 'lucide-react';
+import { Banknote, BarChart3, ChevronLeft, ChevronRight, LogIn, LogOut, UserCircle2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -110,6 +110,7 @@ export default function TerminalSidebarPanel({
   handleSwitchShiftLocation = () => {},
   handleRecordCashEvent,
   handleCloseShift,
+  handleViewShiftSummary = () => {},
   refreshOperationalContext,
   locationsState = { loading: false, locations: [] },
   operatingLocationId = null,
@@ -134,7 +135,9 @@ export default function TerminalSidebarPanel({
   const hiddenSectionsInMsme = new Set(['incoming_queue', 'location_scope', 'cash_drawer', 'terminal_setup']);
   const [switchReason, setSwitchReason] = useState('');
   const canSubmitOpenShift = isValidOpeningCashAmount(openShiftForm.openingFloatAmount);
+  const canOpenShift = canTransactPos && !canAdminBypassShiftPrompt;
   const activeShift = shiftState?.shift || null;
+  const displayedSalesTotal = shiftState?.salesSummary?.total_amount ?? todayDashboard?.salesSummary?.total_amount;
   const activeShiftLocationLabel = activeShift?.location?.name
     || activeShift?.location_name
     || activeShift?.location_id
@@ -172,7 +175,7 @@ export default function TerminalSidebarPanel({
         </div>
         <div className="rounded-lg border border-slate-200 bg-white px-2 py-2 text-center">
           <p className="text-[10px] font-extrabold uppercase text-[#334155]">Sales</p>
-          <p className="text-xs font-black text-[#0F172A]">{terminalMeta.pettyCashSymbol} {money(todayDashboard?.salesSummary?.total_amount)}</p>
+          <p className="text-xs font-black text-[#0F172A]">{terminalMeta.pettyCashSymbol} {money(displayedSalesTotal)}</p>
         </div>
         {locked ? (
           <Button type="button" variant="outline" className="h-9 w-full px-2" onClick={() => setDrawerOpen(true)} title="Unlock terminal">
@@ -280,10 +283,26 @@ export default function TerminalSidebarPanel({
             {activeShift ? 'Shift Open' : 'Shift Closed'}
           </p>
           {activeShift ? (
-            <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2">
-              <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Shift Location</p>
-              <p className="mt-1 text-sm font-semibold text-slate-900">{activeShiftLocationLabel}</p>
-            </div>
+            <>
+              <div className="rounded-md border border-slate-200 bg-slate-50 px-2 py-2">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-slate-500">Shift Location</p>
+                <p className="mt-1 text-sm font-semibold text-slate-900">{activeShiftLocationLabel}</p>
+              </div>
+              <div className="flex items-center justify-between rounded-md border border-blue-100 bg-blue-50 px-2 py-2">
+                <span className="text-[11px] font-semibold text-slate-600">Current shift sales</span>
+                <span className="text-sm font-black text-[#1A4E8D]">{terminalMeta.pettyCashSymbol} {money(shiftState?.salesSummary?.total_amount)}</span>
+              </div>
+              <Button
+                type="button"
+                variant="outline"
+                className="w-full"
+                onClick={handleViewShiftSummary}
+                disabled={locked || shiftState.loading}
+              >
+                <BarChart3 className="mr-2 h-4 w-4" />
+                View Shift Summary
+              </Button>
+            </>
           ) : canAdminBypassShiftPrompt ? (
             <>
               <Label htmlFor="sidebar-admin-operating-location" className="text-xs">Operating Location</Label>
@@ -428,12 +447,14 @@ export default function TerminalSidebarPanel({
                 onChange={(event) => setOpenShiftForm((prev) => ({ ...prev, openingNote: event.target.value }))}
                 placeholder="Opening shift cash note"
               />
-              <Button type="button" onClick={handleOpenShift} disabled={shiftActionLoading.open || locked || !canTransactPos}>
+              <Button type="button" onClick={handleOpenShift} disabled={shiftActionLoading.open || locked || !canOpenShift}>
                 {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
               </Button>
-              {!canTransactPos && (
+              {canAdminBypassShiftPrompt ? (
+                <p className="text-[11px] text-slate-500">Administrator navigation is read-only. A cashier must open the shift.</p>
+              ) : !canTransactPos ? (
                 <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>
-              )}
+              ) : null}
             </div>
           )}
         </div>
@@ -604,6 +625,11 @@ export default function TerminalSidebarPanel({
                       Payment: <span className="font-semibold text-slate-900">{PAYMENT_TYPE_LABELS[order.payment_type] || order.payment_type || '-'}</span>
                     </p>
                     <p className="text-[11px] text-slate-600">
+                      Receipt: <span className={`font-semibold ${order.receipt_print_status === 'printed' ? 'text-emerald-700' : order.receipt_print_status === 'failed' ? 'text-rose-700' : 'text-amber-700'}`}>
+                        {order.receipt_print_status === 'printed' ? 'Printed' : order.receipt_print_status === 'failed' ? 'Print failed' : 'Not printed'}
+                      </span>
+                    </p>
+                    <p className="text-[11px] text-slate-600">
                       Mode: <span className="font-semibold text-slate-900">{ORDER_METHOD_LABELS[order.order_method] || order.order_method || '-'}</span>
                     </p>
                     <p className="text-[11px] text-slate-600">
@@ -667,9 +693,18 @@ export default function TerminalSidebarPanel({
                           variant="outline"
                           className="h-7 text-[11px]"
                           disabled={locked || !canViewPos || incomingReceiptOpeningId !== null}
-                          onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printMode: true })}
+                          onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, {
+                            printMode: true,
+                            retryPrint: order.receipt_print_status === 'failed'
+                          })}
                         >
-                          {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'Print Order'}
+                          {incomingReceiptOpeningId === Number(order.pos_transaction_id)
+                            ? 'Printing...'
+                            : order.receipt_print_status === 'failed'
+                              ? 'Retry Print'
+                              : order.receipt_print_status === 'printed'
+                                ? 'Reprint Receipt'
+                                : 'Print Receipt'}
                         </Button>
                       )}
                     </div>

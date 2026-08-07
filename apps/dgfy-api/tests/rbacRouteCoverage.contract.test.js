@@ -142,7 +142,7 @@ describe('RBAC-01 route-to-permission coverage contracts', () => {
             method: 'post',
             routePath: '/terminal/shifts/:id/close',
             requiredFragments: [
-                'checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS)',
+                'checkPermission(PERMISSIONS.POS.actions.CLOSE_SHIFT_POS)',
                 'validateShiftIdParam',
                 'validateCloseTerminalShift',
                 'posController.closeTerminalShift'
@@ -160,6 +160,20 @@ describe('RBAC-01 route-to-permission coverage contracts', () => {
             ],
             forbiddenFragments: [
                 // ADR 0031 requires physical-device pairing to stay out of normal online order handling.
+                'posController.requirePairedTerminal'
+            ]
+        });
+        expectRouteContract({
+            source: posRoutes,
+            method: 'patch',
+            routePath: '/orders/:id/delivery-job/status',
+            requiredFragments: [
+                'checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS)',
+                'validatePosTransactionIdParam',
+                'validateUpdateDeliveryJobStatus',
+                'posController.updateDeliveryJobStatus'
+            ],
+            forbiddenFragments: [
                 'posController.requirePairedTerminal'
             ]
         });

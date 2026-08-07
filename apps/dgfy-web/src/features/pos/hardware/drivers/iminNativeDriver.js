@@ -1,5 +1,6 @@
 import {
     printReceiptWithIminBridge,
+    printShiftSummaryWithIminBridge,
     printOrderWithIminBridge,
     openDrawerWithIminBridge,
     getIminHardwareDiagnostics
@@ -123,6 +124,38 @@ export const iminNativeDriver = {
                 reasonCode: 'IMIN_PRINT_FAILED'
             });
         }
+    },
+    async printShiftSummary({ shiftSummary, businessSettings, shiftId, terminalId, reason, idempotencyKey } = {}) {
+        let outcome;
+        try {
+            const result = printShiftSummaryWithIminBridge({ shiftSummary, businessSettings });
+            if (!result.handled) return normalizeHardwareResult({ handled: false, driverId: this.id });
+            outcome = normalizeHardwareResult({
+                success: true,
+                driverId: this.id,
+                message: result.result?.message,
+                raw: result.result
+            });
+        } catch (error) {
+            outcome = normalizeHardwareResult({
+                success: false,
+                driverId: this.id,
+                message: error?.message || 'Failed to print the shift sales summary on the iMin printer.',
+                reasonCode: 'IMIN_PRINT_FAILED'
+            });
+        }
+
+        reportPosDeviceClientResult({
+            operation: 'print_shift_summary',
+            shiftId,
+            terminalId,
+            reason,
+            idempotencyKey,
+            driverId: this.id,
+            result: { success: outcome.success, message: outcome.message, reason_code: outcome.reasonCode }
+        });
+
+        return outcome;
     },
     async openDrawer({ shiftId, transactionId, terminalId, reason, idempotencyKey } = {}) {
         let outcome;

@@ -276,7 +276,11 @@ const resolveChangedFiles = () => {
       || process.env.CI_COMMIT_BEFORE_SHA
   );
 
-  if (!isCiDiffContext && localFiles.length > 0) {
+  // A clean local worktree has no candidate change set. Do not fall through
+  // to HEAD's merge/parent diff: on a promotion merge that diff aggregates
+  // previously validated declarations from unrelated feature work and makes
+  // the local gate report false compliance-surface failures.
+  if (!isCiDiffContext) {
     return localFiles;
   }
 

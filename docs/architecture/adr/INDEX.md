@@ -43,7 +43,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0018 | [Barcode Identity, Labels, And Scan Routing](0018-barcode-identity-labels-and-scan-routing.md) | `accepted` | barcode_identity_labels_and_scan_routing | 2026-11-05 | 0 |
 | 0019 | [Food & Beverage Mode Full-Service Restaurant Workflow](0019-food-and-beverage-mode-full-service-restaurant.md) | `accepted` | food_and_beverage_mode_full_service_restaurant | 2026-11-05 | 0 |
 | 0020 | [Mode-Aware RBAC And Role Presets](0020-mode-aware-rbac-and-role-presets.md) | `accepted` | mode_aware_rbac_and_role_presets | 2026-11-06 | 0 |
-| 0021 | [Email OTP Verification For Account Email Ownership](0021-email-otp-verification-for-account-email-ownership.md) | `accepted` | email_otp_verification | 2026-11-17 | 0 |
+| 0021 | [Email OTP Verification For Account Email Ownership](0021-email-otp-verification-for-account-email-ownership.md) | `amended` | email_otp_verification | 2026-11-17 | 0 |
 | 0022 | [Global DGFY Account For Business Registration](0022-global-dgfy-account-business-registration.md) | `accepted` | global_dgfy_account_business_registration | 2027-01-08 | 0 |
 | 0023 | [Front-Facing DGFY Customer Account](0023-front-facing-dgfy-customer-account.md) | `accepted` | front_facing_dgfy_customer_account | 2027-01-08 | 0 |
 | 0024 | [Fulfilled Guest Item Reviews For Storefront Menu Details](0024-fulfilled-guest-item-reviews.md) | `accepted` | fulfilled_guest_item_reviews | 2027-01-08 | 0 |
@@ -55,8 +55,8 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0030 | [Free-Tier Signed Release Authorization](0030-free-tier-signed-release-authorization.md) | `superseded` | free_tier_signed_release_authorization | 2026-12-28 | 0 |
 | 0031 | [POS Terminal Pairing and Shift-Safe Navigation](0031-pos-terminal-pairing-and-shift-safe-navigation.md) | `accepted` | pos_terminal_pairing_and_shift_safe_navigation | 2026-12-28 | 0 |
 | 0032 | [Standalone DGFY API Service (`apps/dgfy-api`)](0032-standalone-dgfy-api-service.md) | `accepted` | standalone_dgfy_api_service | 2027-01-08 | 0 |
-| 0033 | [Commercial Promo and Statutory POS Discount Boundaries](0033-commercial-promo-and-statutory-pos-discount-boundaries.md) | `accepted` | commercial_promo_and_statutory_pos_discount_boundaries | 2027-01-07 | 0 |
-| 0034 | [Manual Delivery Job Foundation](0034-manual-delivery-job-foundation.md) | `accepted` | manual_delivery_job_foundation | 2027-01-10 | 0 |
+| 0033 | [Commercial Promo and Statutory POS Discount Boundaries](0033-commercial-promo-and-statutory-pos-discount-boundaries.md) | `amended` | commercial_promo_and_statutory_pos_discount_boundaries | 2027-01-07 | 0 |
+| 0034 | [Manual Delivery Job Foundation](0034-manual-delivery-job-foundation.md) | `amended` | manual_delivery_job_foundation | 2027-01-10 | 0 |
 | 0035 | [Compatibility-Seam Governance](0035-compatibility-seam-governance.md) | `accepted` | compatibility_seam_governance | 2027-01-12 | 4 |
 | 0036 | [Affiliates Program — Commission Ledger, Attribution, and Cashout](0036-affiliates-program-commission-and-cashout.md) | `amended` | affiliates_program_commission_and_cashout | 2027-01-24 | 1 |
 | 0037 | [Open Multi-Vertical Product Model and Capability-Driven Store Types](0037-unified-product-domain-and-capability-driven-store-types.md) | `proposed` | unified_product_domain_and_capability_driven_store_types | 2027-01-25 | 0 |
@@ -76,7 +76,8 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0051 | [POS Employee Credit Tender and Ledger](0051-pos-employee-credit-tender-and-ledger.md) | `accepted` | pos_employee_credit_tender_and_ledger | 2027-01-30 | 0 |
 | 0052 | [DGFY Collection, Tenant Revenue Ledger, and Controlled Settlement](0052-tenant-revenue-collection-ledger-and-settlement.md) | `accepted` | tenant_revenue_collection_ledger_settlement | 2027-01-31 | 0 |
 | 0053 | [Pluggable POS Hardware Device Drivers](0053-pluggable-pos-hardware-device-drivers.md) | `accepted` | pluggable_pos_hardware_device_drivers | 2027-02-04 | 4 |
-| 0054 | [Frontend Relocation to `apps/dgfy-web`](0054-frontend-relocation-to-apps-dgfy-web.md) | `accepted` | frontend_relocation_to_apps_dgfy_web | 2027-02-06 | 2 |
+| 0054 | [Outbound Email Delivery Log And Bounce Capture](0054-outbound-email-delivery-log-and-bounce-capture.md) | `accepted` | outbound_email_delivery_log_and_bounce_capture | 2027-02-07 | 0 |
+| 0055 | [Frontend Relocation to `apps/dgfy-web`](0055-frontend-relocation-to-apps-dgfy-web.md) | `accepted` | frontend_relocation_to_apps_dgfy_web | 2027-02-06 | 2 |
 
 ## Renumbered (collision stubs)
 

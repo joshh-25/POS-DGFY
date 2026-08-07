@@ -17,6 +17,20 @@ const pushResult = (name, ok, status, message = '') => {
   results.push({ name, ok, status, message });
 };
 
+const printResults = () => {
+  const failed = results.filter((entry) => !entry.ok);
+  const width = Math.max(...results.map((entry) => entry.name.length), 16);
+  console.log('\n[SmokePOS] Results');
+  console.log('-'.repeat(width + 24));
+  for (const entry of results) {
+    const marker = entry.ok ? 'PASS' : 'FAIL';
+    const suffix = entry.message ? ` (${entry.message})` : '';
+    console.log(`${entry.name.padEnd(width)}  ${marker}  ${entry.status}${suffix}`);
+  }
+  console.log('-'.repeat(width + 24));
+  return failed;
+};
+
 const fetchJson = async (path, options = {}) => {
   const response = await fetch(`${API_BASE}${path}`, options);
   const text = await response.text();
@@ -35,7 +49,19 @@ const run = async () => {
     pushResult('GET /health', health.response.status === 200, health.response.status);
 
     const validateToken = await fetchJson(`/api/v1/auth/validate-token/${encodeURIComponent(COMPANY_TOKEN)}`);
-    pushResult('GET /api/v1/auth/validate-token/:token', validateToken.response.status === 200, validateToken.response.status);
+    const tokenValid = validateToken.response.status === 200;
+    pushResult(
+      'GET /api/v1/auth/validate-token/:token',
+      tokenValid,
+      validateToken.response.status,
+      tokenValid ? '' : 'Set SMOKE_COMPANY_TOKEN to an active local tenant token or restore the documented local seed.'
+    );
+
+    if (!tokenValid) {
+      printResults();
+      process.exitCode = 1;
+      return;
+    }
 
     const login = await fetchJson('/api/v1/auth/login', {
       method: 'POST',
@@ -80,17 +106,7 @@ const run = async () => {
       pushResult(`GET ${endpoint}`, ok, res.response.status);
     }
 
-    const failed = results.filter((entry) => !entry.ok);
-    const width = Math.max(...results.map((entry) => entry.name.length), 16);
-    console.log('\n[SmokePOS] Results');
-    console.log('-'.repeat(width + 24));
-    for (const entry of results) {
-      const marker = entry.ok ? 'PASS' : 'FAIL';
-      const suffix = entry.message ? ` (${entry.message})` : '';
-      console.log(`${entry.name.padEnd(width)}  ${marker}  ${entry.status}${suffix}`);
-    }
-    console.log('-'.repeat(width + 24));
-
+    const failed = printResults();
     if (failed.length > 0) {
       process.exit(1);
     }

@@ -1,10 +1,17 @@
 import request from 'supertest';
-import app from '../src/server.js';
-import db from '../src/models/index.js';
-import sequelize from '../src/config/database.js';
 import { Op } from 'sequelize';
 import { generateDgfyToken } from '../src/modules/dgfy/usecases/dgfyAuthUseCases.js';
 import { DGFY_LEGAL_TERM_VERSIONS } from '../src/modules/shared/utils/dgfyLegalTerms.js';
+
+// Registration tests must never depend on a developer's real SMTP credentials.
+process.env.SMTP_HOST = '';
+process.env.SMTP_USER = '';
+process.env.SMTP_PASS = '';
+process.env.BREVO_API_KEY = '';
+
+const { default: app } = await import('../src/server.js');
+const db = await import('../src/models/index.js');
+const { default: sequelize } = await import('../src/config/database.js');
 
 // Shared email prefix so afterAll can sweep up anything this suite touches
 // regardless of which individual test created it.
@@ -44,6 +51,13 @@ const baseData = (label) => ({
     marketplace_terms_version: DGFY_LEGAL_TERM_VERSIONS.marketplaceTerms
 });
 
+const readRegisteredCompanyToken = async (registrationResponse) => {
+    const tenant = await db.Tenant.findByPk(registrationResponse.body.data.id, {
+        attributes: ['company_token']
+    });
+    return tenant?.company_token;
+};
+
 // ─── Cleanup ────────────────────────────────────────────────────────────────
 beforeAll(async () => {
     previousApprovalMode = process.env.TENANT_REGISTRATION_APPROVAL_MODE;
@@ -62,6 +76,17 @@ afterAll(async () => {
     await db.UserTenantMapping.destroy({
         where: { email: { [Op.like]: `${EMAIL_PREFIX}%` } },
     });
+    const registrationApplications = await db.CompanyRegistrationApplication.findAll({
+        where: { registration_email_snapshot: { [Op.like]: `${EMAIL_PREFIX}%` } },
+        attributes: ['id']
+    });
+    const applicationIds = registrationApplications.map((application) => application.id);
+    if (applicationIds.length > 0) {
+        await db.CompanyRegistrationEvent.destroy({ where: { application_id: { [Op.in]: applicationIds } } });
+        await db.CompanyRegistrationAttempt.destroy({ where: { application_id: { [Op.in]: applicationIds } } });
+        await db.CompanyRegistrationEmailDelivery.destroy({ where: { application_id: { [Op.in]: applicationIds } } });
+        await db.CompanyRegistrationApplication.destroy({ where: { id: { [Op.in]: applicationIds } } });
+    }
     await db.DgfyAccount.destroy({
         where: { email: { [Op.like]: `${EMAIL_PREFIX}%` } },
     });
@@ -88,7 +113,7 @@ describe('Company Token Lookup — full coverage', () => {
 
             expect(regRes.body.success).toBe(true);
             expect(regRes.body.data.status).toBe('pending');
-            const expectedToken = regRes.body.data.company_token;
+            const expectedToken = await readRegisteredCompanyToken(regRes);
 
             const lookupRes = await request(app)
                 .post('/api/v1/auth/lookup')
@@ -125,7 +150,7 @@ describe('Company Token Lookup — full coverage', () => {
                 .send(data)
                 .expect(201);
 
-            const expectedToken = regRes.body.data.company_token;
+            const expectedToken = await readRegisteredCompanyToken(regRes);
 
             // Lookup with fully uppercased email
             const lookupRes = await request(app)
@@ -146,7 +171,7 @@ describe('Company Token Lookup — full coverage', () => {
                 .send(data)
                 .expect(201);
 
-            const expectedToken = regRes.body.data.company_token;
+            const expectedToken = await readRegisteredCompanyToken(regRes);
 
             // Flip casing of every other character
             const mixedEmail = account.email
@@ -182,8 +207,8 @@ describe('Company Token Lookup — full coverage', () => {
                 .send(baseData('multi-b'))
                 .expect(201);
 
-            const tokenA = reg1.body.data.company_token;
-            const tokenB = reg2.body.data.company_token;
+            const tokenA = await readRegisteredCompanyToken(reg1);
+            const tokenB = await readRegisteredCompanyToken(reg2);
 
             const lookupRes = await request(app)
                 .post('/api/v1/auth/lookup')

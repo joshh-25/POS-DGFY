@@ -29,7 +29,7 @@ describe('checkStorefrontBrandingEditPermission middleware', () => {
     expect(res.status).not.toHaveBeenCalled();
   });
 
-  it('allows admin role without micropermission', () => {
+  it('rejects admin role without the dedicated branding micropermission', () => {
     const req = {
       user: {
         role: 'admin',
@@ -42,8 +42,12 @@ describe('checkStorefrontBrandingEditPermission middleware', () => {
 
     checkStorefrontBrandingEditPermission(req, res, next);
 
-    expect(next).toHaveBeenCalledTimes(1);
-    expect(res.status).not.toHaveBeenCalled();
+    expect(next).not.toHaveBeenCalled();
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
+      success: false,
+      required: 'settings:storefront_branding_edit'
+    }));
   });
 
   it('allows non-admin with micropermission', () => {
