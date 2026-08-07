@@ -74,14 +74,25 @@ is the same qualified snapshot as `staging`.
 
 Everything in `pr-checks.yml`, same as any other PR:
 
-- `conventional-commits` — PR title and body format. `continue-on-error:
-  true`, so it is visible but does not block merge.
-- `code-quality` — architecture guardrails, controller boundaries, tenant
-  schema coverage, POS receipt version bump, and the compliance impact
-  guardrail described above.
+- `changes` — resolves which image builds the diff needs, and folds in three
+  advisory checks (`continue-on-error: true`, visible but never blocking): PR
+  title format, PR body sections, and the POS receipt version bump.
+- `changes` also runs the **compliance impact guardrail**
+  (`npm run check:compliance`), and that step **does block**. It is the one
+  non-advisory folded-in step.
 - `backend-build-check` / `frontend-build-check` — the actual Docker images
-  build cleanly, gated by `changed-paths.yml` so an unrelated change doesn't
-  force both.
+  build cleanly, gated by `shared-changed-paths.yml` so an unrelated change
+  doesn't force both.
+
+There is **no** `code-quality` job and no `conventional-commits` job. Both were
+removed; earlier revisions of this document listed them, which is how PRs #284
+and #288 came to state in good faith that "CI's compliance gate will still
+block merge" while nothing was in fact running. Architecture guardrails,
+controller boundaries, tenant schema coverage and lint now run only in
+`.husky/pre-commit`, which `git commit --no-verify` skips — treat them as
+developer conveniences, not gates. The compliance guardrail was restored to CI
+on 2026-08-07 precisely because a bypassable local hook was the only thing
+standing behind a mandatory declaration.
 
 There is no inventory/regression-risk/QA-evidence gate on `main` today. The
 scripts for one exist (`check:batch-inventory`, `check:regression-risk`,

@@ -77,7 +77,29 @@ Reference URLs:
    - Enforces computed minimum classification floor from changed paths/surfaces.
    - Enforces strict preflight evidence semantics for `major|regulatory` declarations.
 2. `.husky/pre-commit` enforces declaration checks on staged sensitive files.
-3. CI runs compliance check before backend tests.
+   This is **bypassable** with `git commit --no-verify` and must never be
+   treated as the gate on its own.
+3. CI enforces the same check as a blocking step in `pr-checks.yml`'s `changes`
+   job (`enforce_compliance_declarations: true` in
+   `.github/workflows/shared-changed-paths.yml`). It runs on every PR into
+   `develop`, `staging`, and `main`.
+
+### What the guardrail does and does not verify
+
+The guardrail is a **document check, not a runtime check**. For a
+`major|regulatory` declaration it requires four front-matter fields —
+`preflight_result` (must literally equal `no_breach`), `preflight_reason_code`,
+`preflight_run_at`, `preflight_request_ref` — and validates only their *shape*.
+It never calls `POST /api/v1/compliance/preflight` and cannot distinguish a
+recorded real preflight from a typed one.
+
+So a passing `check:compliance` proves a declaration exists and is well-formed.
+It does not prove the policy engine ever evaluated the change. If a declaration
+is written without a live preflight, say so explicitly in its body rather than
+leaving the front matter to imply otherwise — see
+`docs/compliance/impact-declarations/2026-07-29-pos-batch-menu-import.md` for
+the established shape of that caveat. Reconciling `preflight_run_at` /
+`preflight_request_ref` against a real run remains a human step.
 
 ## Dirty Worktree Handling
 1. Use path-scoped diffs while preparing declaration evidence:

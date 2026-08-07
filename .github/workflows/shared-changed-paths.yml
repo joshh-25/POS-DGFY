@@ -15,6 +15,13 @@ name: Shared Changed Paths
 # (validate_pr_metadata: true, PR mode only) -- folded in here rather than
 # kept as their own workflows/jobs so they don't each pay a separate per-job
 # 1-minute GitHub Actions billing floor for a few seconds of git/bash work.
+#
+# Same reasoning for the compliance impact guardrail
+# (enforce_compliance_declarations, PR mode only): both scripts behind
+# `npm run check:compliance` are dependency-free plain node (fs/path/
+# child_process, no npm install), so they run in seconds and fold in here
+# rather than earning their own billable job. Unlike every other folded-in
+# step, that one is NOT continue-on-error -- see its step comment.
 
 on:
   workflow_call:
@@ -42,6 +49,16 @@ on:
           fails this job, matching the behavior of the workflows this
           replaces (pr-conventional-commits.yml, and the pos-receipt-version
           step formerly in pr-code-checks.yml).
+        required: false
+        type: boolean
+        default: false
+      enforce_compliance_declarations:
+        description: >-
+          Run the compliance impact guardrail (`npm run check:compliance`) and
+          FAIL the job when a compliance-sensitive change is missing its
+          declaration. PR mode only -- the script resolves the changed-file set
+          from GITHUB_BASE_REF, and exempts aggregate promotion PRs itself via
+          PROMOTION_HEAD_BY_BASE / PROMOTION_HEAD_PREFIX_BY_BASE.
         required: false
         type: boolean
         default: false
@@ -191,3 +208,28 @@ jobs:
         env:
           GITHUB_BASE_REF: ${{ github.base_ref }}
         run: node scripts/check-pos-receipt-version-bump.js
+
+      # Deliberately NOT continue-on-error, unlike every other folded-in step
+      # above. This check previously lived in a `code-quality` job that WAS
+      # continue-on-error, which meant it could never block a merge; that job
+      # was then removed entirely as dead weight. The result was a gap nothing
+      # covered: PRs #284 and #288 (2026-08-07) each merged to develop and rode
+      # a promotion to staging with a mandatory `frontend/src/features/pos/**`
+      # impact declaration missing, and both PR descriptions asserted in good
+      # faith that "CI's compliance gate will still block merge" -- because
+      # docs/ops/RELEASE_CANDIDATE_POLICY.md and
+      # docs/compliance/request-time-preflight-protocol.md both still said a
+      # gate existed. An advisory-only guardrail here is worse than none: it
+      # produces exactly that false confidence. If this fails, add the
+      # declaration under docs/compliance/impact-declarations/ -- see
+      # docs/compliance/request-time-preflight-protocol.md.
+      #
+      # Aggregate promotion PRs (to-staging -> staging, release/* -> main) are
+      # exempted inside check-compliance-impact.js itself, so this is safe to
+      # run on every PR including promotions.
+      - name: Enforce compliance impact declarations
+        if: inputs.enforce_compliance_declarations
+        env:
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+          GITHUB_HEAD_REF: ${{ github.head_ref }}
+        run: npm run check:compliance
