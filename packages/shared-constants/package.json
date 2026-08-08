@@ -21,6 +21,14 @@
       "import": "./src/capabilityModules.js",
       "default": "./src/capabilityModules.js"
     },
+    "./posWorkflows": {
+      "import": "./src/posWorkflows.js",
+      "default": "./src/posWorkflows.js"
+    },
+    "./storeProfile": {
+      "import": "./src/storeProfile.js",
+      "default": "./src/storeProfile.js"
+    },
     "./uomConverter": {
       "import": "./src/uomConverter.js",
       "default": "./src/uomConverter.js"

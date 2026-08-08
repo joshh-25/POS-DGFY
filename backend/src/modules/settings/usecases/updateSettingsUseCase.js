@@ -44,6 +44,10 @@ import {
     assertPosSettingsAccessPinAuthorization,
     resolvePosSettingsAccessPinPatch
 } from './posSettingsAccessPinPolicy.js';
+import {
+    applyStoreProfileShadowWrite,
+    assertStoreProfileNotClientWritten
+} from './storeProfileShadowWrite.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
@@ -234,6 +238,7 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository, storefrontAsset
             settingsData = posMetadataReview.settingsData;
 
             assertTenantSettingsDoNotMutatePlatformAccessCeiling({ settingsData });
+            assertStoreProfileNotClientWritten({ settingsData });
             assertWorkflowModeAuthorization({ settingsData, actorUser });
             assertEnabledCapabilitiesAuthorization({ settingsData, actorUser });
             assertInventoryAuthorityAuthorization({ settingsData, actorUser });
@@ -335,6 +340,8 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository, storefrontAsset
                 settingsRepository,
                 settingsData
             });
+
+            settingsData = await applyStoreProfileShadowWrite({ settingsRepository, settingsData });
 
             const result = await settingsRepository.updateSettings(settingsData);
             await cleanupOmittedStorefrontGalleryAssets({

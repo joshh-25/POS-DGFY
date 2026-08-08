@@ -6,6 +6,7 @@ import logger from '../config/logger.js';
 import { Sequelize } from 'sequelize';
 import * as landlordService from './landlordService.js';
 import { syncStorefrontDiscoveryWithReliability } from './storefrontDiscoverySyncReliabilityService.js';
+import { STORE_PROFILE_SETTING_KEY, buildStoreProfile } from '../modules/shared/constants/storeProfile.js';
 import {
     normalizeWorkflowMode,
     WORKFLOW_MODE_VALUES
@@ -121,6 +122,24 @@ const seedWorkflowModeSetting = async (tenantSequelize, workflowMode) => {
                 WORKFLOW_MODE_SETTING_KEY,
                 normalizedWorkflowMode,
                 `Tenant operations workflow mode (${WORKFLOW_MODE_VALUES.join(' | ')})`
+            ]
+        }
+    );
+    // Shadow-written Store Profile (issue #178 Phase 11): derived from the
+    // seeded mode, never read at runtime yet.
+    await tenantSequelize.query(
+        `INSERT INTO system_settings (setting_key, setting_value, data_type, description, updated_at)
+         VALUES (?, ?, 'json', ?, NOW())
+         ON DUPLICATE KEY UPDATE
+           setting_value = VALUES(setting_value),
+           data_type = VALUES(data_type),
+           description = VALUES(description),
+           updated_at = NOW()`,
+        {
+            replacements: [
+                STORE_PROFILE_SETTING_KEY,
+                JSON.stringify(buildStoreProfile({ workflowMode: normalizedWorkflowMode })),
+                'Server-derived Store Profile (shadow-write; not read at runtime)'
             ]
         }
     );

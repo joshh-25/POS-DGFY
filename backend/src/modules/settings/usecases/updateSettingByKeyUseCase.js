@@ -26,6 +26,11 @@ import {
 import { resolveChangedSettingKeys } from './settingsChangeSet.js';
 import { assertPublicStorefrontHandleAvailable } from './publicStorefrontHandlePolicy.js';
 import {
+    applyStoreProfileShadowWrite,
+    assertStoreProfileNotClientWritten
+} from './storeProfileShadowWrite.js';
+import { STORE_PROFILE_SETTING_KEY } from '../../shared/constants/storeProfile.js';
+import {
     POS_RECEIPT_METADATA_PENDING_SETTING_KEY,
     buildPendingPosReceiptMetadata,
     isPlatformControlledPosSoftwareKey,
@@ -132,6 +137,7 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
                     pending_review_keys: [key]
                 });
             }
+            assertStoreProfileNotClientWritten({ settingsData: { [key]: value } });
             if (key === WORKFLOW_MODE_SETTING_KEY) {
                 if (!isWorkflowMode(value)) {
                     return fail(new DomainError(
@@ -266,6 +272,17 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
                 settingsRepository,
                 settingsData: { [key]: normalizedValue }
             });
+
+            if (key === WORKFLOW_MODE_SETTING_KEY || key === ENABLED_CAPABILITIES_SETTING_KEY) {
+                const patchedSettingsData = await applyStoreProfileShadowWrite({
+                    settingsRepository,
+                    settingsData: { [key]: normalizedValue }
+                });
+                const shadowProfile = patchedSettingsData[STORE_PROFILE_SETTING_KEY];
+                if (shadowProfile) {
+                    await settingsRepository.updateSettingByKey(STORE_PROFILE_SETTING_KEY, shadowProfile);
+                }
+            }
 
             const updatedSetting = await settingsRepository.updateSettingByKey(key, normalizedValue);
             await cleanupOmittedStorefrontGalleryAssets({
