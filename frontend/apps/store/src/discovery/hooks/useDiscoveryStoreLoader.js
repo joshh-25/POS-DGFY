@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef } from 'react';
+import { normalizeProfileLocations } from '../../features/discovery/utils/storefrontDiscoveryNormalization.js';
 
 export function useDiscoveryStoreLoader({
   debouncedDiscoverySearch,
@@ -135,42 +136,37 @@ export function useDiscoveryStoreLoader({
     loadStores();
   }, [loadStores, debouncedDiscoverySearch]);
 
+  // Historically this fanned out one GET /api/v1/store/locations per store
+  // in an unbounded Promise.all -- up to 100 simultaneous requests (the
+  // discovery query above caps at limit=100), each resolving a different
+  // tenant database against a fixed-size tenant connection cache. That is
+  // what produced DGFY-STORE-X (prod 500) and its trail of network-failure
+  // siblings; see #297.
+  //
+  // The discovery response already carries everything each store's branch
+  // list needs, in `active_location_snapshot` (populated from the same
+  // TenantLocation query `listActiveLocations` runs, mirrored into the
+  // landlord-side storefront_discovery_index row for every store). So this
+  // is now a pure derivation from `stores`, not a network effect: zero
+  // requests, and nothing left to re-fire on every search keystroke.
   useEffect(() => {
-    let cancelled = false;
+    if (!Array.isArray(stores) || stores.length === 0) {
+      setDiscoveryLocationMap({});
+      setLoadingDiscoveryLocations(false);
+      return;
+    }
 
-    const loadDiscoveryLocations = async () => {
-      if (!Array.isArray(stores) || stores.length === 0) {
-        setDiscoveryLocationMap({});
-        return;
-      }
-
-      setLoadingDiscoveryLocations(true);
-      try {
-        const locationPairs = await Promise.all(
-          stores.map(async (store) => {
-            const slug = toSlug(store?.slug);
-            if (!slug) return [slug, { locations: [], primary_location_id: null }];
-            try {
-              const data = await requestJson('/api/v1/store/locations', { storeSlug: slug });
-              const locations = Array.isArray(data?.locations) ? data.locations : [];
-              return [slug, { locations, primary_location_id: data?.primary_location_id ?? null }];
-            } catch {
-              return [slug, { locations: [], primary_location_id: null }];
-            }
-          })
-        );
-        if (cancelled) return;
-        setDiscoveryLocationMap(Object.fromEntries(locationPairs.filter(([slug]) => Boolean(slug))));
-      } finally {
-        if (!cancelled) setLoadingDiscoveryLocations(false);
-      }
-    };
-
-    loadDiscoveryLocations();
-    return () => {
-      cancelled = true;
-    };
-  }, [requestJson, setDiscoveryLocationMap, setLoadingDiscoveryLocations, stores, toSlug]);
+    const locationPairs = stores.map((store) => {
+      const slug = toSlug(store?.slug);
+      if (!slug) return [slug, { locations: [], primary_location_id: null }];
+      return [slug, {
+        locations: normalizeProfileLocations(store),
+        primary_location_id: store?.location_id ?? null
+      }];
+    });
+    setDiscoveryLocationMap(Object.fromEntries(locationPairs.filter(([slug]) => Boolean(slug))));
+    setLoadingDiscoveryLocations(false);
+  }, [setDiscoveryLocationMap, setLoadingDiscoveryLocations, stores, toSlug]);
 
   return { loadStores, retryLoadStores };
 }

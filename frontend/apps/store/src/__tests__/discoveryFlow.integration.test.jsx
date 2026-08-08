@@ -1006,9 +1006,10 @@ describe('storefront discovery integration flow', () => {
     await user.type(searchInput, 'aircon');
     await user.click(screen.getByRole('button', { name: /^Search$/i }));
     await waitFor(() => expect(screen.getAllByText('A/C Innovative Solutions').length).toBeGreaterThan(0));
-    await waitFor(() => {
-      expect(fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).includes('/api/v1/store/locations'))).toBe(true);
-    });
+    // Branch locations are derived synchronously from the discovery response
+    // (active_location_snapshot) rather than fetched separately, so there is
+    // no /api/v1/store/locations request to wait on here anymore -- waiting
+    // for the map to react to the new result set is the real signal.
     await waitFor(() => {
       expect(getMapViewportCallCount()).toBeGreaterThan(0);
     });
@@ -1256,7 +1257,17 @@ describe('storefront discovery integration flow', () => {
               matching_item_sample: ['Calamansi Juice'],
               has_in_stock_match: true,
               matching_location_ids: [22],
-              nearest_matching_location_id: 22
+              nearest_matching_location_id: 22,
+              location_id: 11,
+              // Single branch: this test asserts the hero-map click -> "Open
+              // storefront" -> location_id routing chain, not multi-branch pin
+              // selection (covered by the duplicate-coordinate-cluster test).
+              // A second active branch would make buildHeroDiscoveryMapPins
+              // legitimately emit two pins once discoveryLocationMap populates,
+              // racing waitForDiscoveryPinFeatures(1).
+              active_location_snapshot: [
+                { location_id: 11, name: 'Main', address_line: 'Main Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true, supports_delivery: true, supports_pickup: true, supports_dine_in: true }
+              ]
             }
           ],
           pagination: { page: 1, limit: 100, total: 1, totalPages: 1 },
@@ -1268,12 +1279,15 @@ describe('storefront discovery integration flow', () => {
           }
         });
       }
+      // Still fetched for real: openStoreBySlug's own /api/v1/store/locations
+      // call (useStoreCatalogLoader.js) is a single-store request made when
+      // opening the tenant page, unrelated to the discovery fan-out this
+      // change removes -- see the plan note not to touch that call site.
       if (normalized.includes('/api/v1/store/locations')) {
         return makeJsonResponse({
           primary_location_id: 11,
           locations: [
-            { location_id: 11, name: 'Main', address_line: 'Main Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true, supports_delivery: true, supports_pickup: true, supports_dine_in: true },
-            { location_id: 22, name: 'Branch', address_line: 'Branch Road', latitude: 10.721, longitude: 122.562, is_active: true, is_primary_storefront: false, is_open: true, supports_delivery: true, supports_pickup: true, supports_dine_in: true }
+            { location_id: 11, name: 'Main', address_line: 'Main Road', latitude: 10.72, longitude: 122.56, is_active: true, is_primary_storefront: true, is_open: true, supports_delivery: true, supports_pickup: true, supports_dine_in: true }
           ]
         });
       }
@@ -2129,5 +2143,68 @@ describe('storefront discovery integration flow', () => {
     });
     expect(window.location.pathname).toBe('/tenant-store/alpha');
     expect(window.location.search).toBe('?location_id=22');
+  });
+
+  // Regression coverage for #297: a discovery load used to fan out one
+  // GET /api/v1/store/locations request per store (up to 100 for a full
+  // page, each against a different tenant DB) to build discoveryLocationMap.
+  // Branch data now comes from active_location_snapshot on the discovery
+  // response itself, so no such request should ever fire.
+  it('derives store branch locations from the discovery response without any /api/v1/store/locations requests', async () => {
+    fetchMock.mockImplementation(async (url) => {
+      const normalized = String(url);
+      if (normalized.includes('/api/v1/storefront/discovery?')) {
+        return makeJsonResponse({
+          stores: Array.from({ length: 12 }, (_, index) => ({
+            tenant_id: `tenant-${index}`,
+            tenant_name: `Fanout Store ${index}`,
+            slug: `fanout-store-${index}`,
+            storefront_open: true,
+            address_line: 'Iloilo City',
+            latitude: 10.7 + index * 0.001,
+            longitude: 122.5 + index * 0.001,
+            catalog_count: 1,
+            location_id: 100 + index,
+            active_location_snapshot: [
+              {
+                location_id: 100 + index,
+                name: `Fanout Store ${index} Main`,
+                address_line: 'Iloilo City',
+                latitude: 10.7 + index * 0.001,
+                longitude: 122.5 + index * 0.001,
+                is_active: true,
+                is_primary_storefront: true,
+                is_open: true,
+                supports_delivery: true,
+                supports_pickup: true,
+                supports_dine_in: true
+              }
+            ]
+          })),
+          pagination: { page: 1, limit: 100, total: 12, totalPages: 1 },
+          applied_filters: {
+            result_mode: 'union',
+            stock_filter: 'include_out_of_stock',
+            pin_scope: 'tenant_primary',
+            include_match_meta: true
+          }
+        });
+      }
+      if (normalized.includes('/api/v1/store/catalog')) {
+        return makeJsonResponse({ items: [] });
+      }
+      return makeJsonResponse({});
+    });
+
+    render(<BrowserRouter><App /></BrowserRouter>);
+    await waitFor(() => expect(screen.getAllByText('Fanout Store 0').length).toBeGreaterThan(0));
+    // The hero map derives pins from discoveryLocationMap synchronously, so
+    // by the time all 12 stores have rendered, branch data is already there.
+    await waitForDiscoveryPinFeatures(12);
+
+    const locationRequests = fetchMock.mock.calls
+      .map(([requestUrl]) => String(requestUrl))
+      .filter((requestUrl) => requestUrl.includes('/api/v1/store/locations'));
+    expect(locationRequests).toEqual([]);
   });
 });
