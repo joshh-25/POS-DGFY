@@ -73,6 +73,7 @@ describe('adminService admin operation contracts', () => {
     ['createTenantPayMongoChildAccount', 'post', '/commerce-payments/admin/tenants/tenant-1/paymongo-child-account', () => adminService.createTenantPayMongoChildAccount('tenant-1', { trade_name: 'QA Store' })],
     ['operateTenantPayMongoChildAccount', 'post', '/commerce-payments/admin/tenants/tenant-1/paymongo-child-account/sync-readiness', () => adminService.operateTenantPayMongoChildAccount('tenant-1', 'sync-readiness')],
     ['createCommercePaymentRefund', 'post', '/commerce-payments/admin/payment-sessions/PAY-123/refunds', () => adminService.createCommercePaymentRefund('PAY-123', { amount: 25 })],
+    ['reconcileCommercePaymentSession', 'post', '/commerce-payments/admin/payment-sessions/PAY-123/reconcile', () => adminService.reconcileCommercePaymentSession('PAY-123')],
     ['retryCommercePaymentFinalization', 'post', '/commerce-payments/admin/payment-sessions/PAY-123/retry-finalization', () => adminService.retryCommercePaymentFinalization('PAY-123')]
   ])('%s sends %s %s with the admin bearer token and CSRF header for unsafe methods', async (_name, method, path, callService) => {
     mockAdminApi.onAny(path).reply((config) => {
