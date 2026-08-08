@@ -129,7 +129,7 @@ cause this. Specifically verified: the `#300` fix depends on discovery responses
 `active_location_snapshot` — checked live against `dev.dgfy.ph`'s real discovery
 endpoint, 5/5 sampled stores returned a populated snapshot as expected.
 
-## Finding 2: `api.dev.dgfy.ph` / `api.stage.dgfy.ph` 502 — dead upstream, already known
+## Finding 2: `api.dev.dgfy.ph` / `api.stage.dgfy.ph` 502 — dormant upstream, already known
 
 ### Symptom
 
@@ -139,6 +139,11 @@ Reproducible **from inside the VM** (not edge-related, a genuine config issue):
 Host: api.dev.dgfy.ph   -> http=502
 Host: api.stage.dgfy.ph -> http=502
 ```
+
+**Not a functional gap today**: current architecture is same-origin `/api` (proxied to
+the real backend on `:5000`/`:6000`), which is what every app actually calls and is
+unaffected by this. `api.*` is planned infrastructure for later, intentionally dormant
+while the platform settles on same-domain `/api` — see Fix below.
 
 ### Root cause
 
@@ -157,21 +162,20 @@ standalone mobile-auth service, then later removed from the repo entirely
 counterpart `api.stage.dgfy.ph` (`localhost:6100`) both still point at that service's old
 port. Nothing has listened there since the removal.
 
-**Confirmed unused**: the storefront/POS/skupervisor SPAs all call the same-origin `/api`
-path (proxied to the real backend on `:5000`/`:6000`), not `api.*` — that path works
-fine, as shown by dev/stage's `/api/v1/health` returning 200 throughout this
-investigation. No `VITE_API_BASE_URL` or Android build flavor in this repo references
+**Confirmed unused today**: the storefront/POS/skupervisor SPAs all call the same-origin
+`/api` path, not `api.*` — that path works fine, as shown by dev/stage's
+`/api/v1/health` returning 200 throughout this investigation. No `VITE_API_BASE_URL` or
+Android build flavor in this repo currently references
 `api.dev.dgfy.ph`/`api.stage.dgfy.ph`.
 
-### Fix — dead config, not a functional gap
+### Fix — leave as-is; correct the port when the service returns
 
-Remove the `api.dev.dgfy.ph` and `api.stage.dgfy.ph` server blocks from both the live
-host config (`/etc/nginx/sites-available/dgfy-dev-staging` on `vm-sieitzstaging`) and
-the tracked copies (`infrastructure/nginx-host/dev.dgfy.ph.conf`,
-`infrastructure/nginx-host/stage.dgfy.ph.conf`) in the same change, per the "any manual
-host edit comes back to this file in the same commit" convention those files already
-state. Not urgent — reviving the port instead would resurrect a route to a service that
-no longer exists in the repo, which is the wrong direction.
+Per the repo owner: `api.*` is not being removed — it's earmarked for a future
+standalone API surface, and the platform is deliberately staying on same-origin `/api`
+for now. **Do not remove the vhost blocks.** The only actionable item here is that the
+upstream port (`:5100`/`:6100`) is stale from the old `apps/dgfy-api` service and should
+be corrected to whatever port the next iteration of that service actually binds, once
+one exists — not urgent before then, since nothing depends on the route today.
 
 ## Finding 3: DEV MySQL is under-provisioned relative to staging and prod
 
