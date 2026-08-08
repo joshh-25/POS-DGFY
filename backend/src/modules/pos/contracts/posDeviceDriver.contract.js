@@ -10,6 +10,7 @@ const REQUIRED_METHODS = [
     'getStatus',
     'printReceipt',
     'printShiftSummary',
+    'printZReading',
     'openDrawer'
 ];
 

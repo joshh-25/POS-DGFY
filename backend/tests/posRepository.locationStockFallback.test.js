@@ -1,4 +1,4 @@
-import { jest } from '@jest/globals';
+import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 const itemFindAllMock = jest.fn();
 const itemLocationStockFindAllMock = jest.fn();
@@ -31,6 +31,14 @@ const missingLocationStockColumnError = () => ({
     original: {
         code: 'ER_BAD_FIELD_ERROR',
         sqlMessage: "Unknown column 'quantity_on_hand' in 'field list'"
+    }
+});
+
+const qualifiedMissingLocationStockColumnError = () => ({
+    name: 'SequelizeDatabaseError',
+    original: {
+        code: 'ER_BAD_FIELD_ERROR',
+        sqlMessage: "Unknown column 'ItemLocationStock.location_id' in 'field list'"
     }
 });
 
@@ -92,5 +100,18 @@ describe('posRepository location-stock schema fallback', () => {
             'min_threshold',
             'fifo_enabled'
         ]));
+        });
     });
-});
+
+    it('falls back when MySQL qualifies the missing location column with the model name', async () => {
+        itemFindAllMock.mockResolvedValue([buildCatalogRow({ item_id: 504, current_stock: 8 })]);
+        itemLocationStockFindAllMock.mockRejectedValue(qualifiedMissingLocationStockColumnError());
+
+        const result = await posRepository.listCatalog({ limit: 100, location_id: 3 });
+
+        expect(result).toHaveLength(1);
+        expect(result[0]).toEqual(expect.objectContaining({
+            item_id: 504,
+            current_stock: 8
+        }));
+    });

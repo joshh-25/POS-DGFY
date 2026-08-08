@@ -8,6 +8,7 @@ import {
   listCommercePaymentSessionsUseCase,
   listTenantPaymentAccountsUseCase,
   operateTenantPayMongoChildAccountUseCase,
+  reconcileCommercePaymentSessionUseCase,
   retryCommercePaymentFinalizationUseCase,
   upsertTenantPaymentAccountUseCase
 } from '../index.js';
@@ -88,6 +89,18 @@ export const retryPaymentSessionFinalization = async (req, res, next) => {
   try {
     const result = await retryCommercePaymentFinalizationUseCase({
       paymentSessionId: (req.validatedParams || req.params).payment_session_id
+    });
+    return sendResult(res, result);
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const reconcilePaymentSession = async (req, res, next) => {
+  try {
+    const result = await reconcileCommercePaymentSessionUseCase({
+      paymentSessionId: (req.validatedParams || req.params).payment_session_id,
+      actor: req.admin?.username || req.user?.email || req.user?.username || 'paymongo_admin_reconciliation'
     });
     return sendResult(res, result);
   } catch (error) {

@@ -42,6 +42,13 @@ export const clientManagedDeviceDriver = {
             { statusCode: 503, details: { reason_code: 'NO_PRINTER_CONFIGURED' } }
         );
     },
+    async printZReading() {
+        throw new DomainError(
+            DomainErrorCode.SERVICE_UNAVAILABLE,
+            'No printer is configured for this terminal. The Z-reading remains available for on-screen preview.',
+            { statusCode: 503, details: { reason_code: 'NO_PRINTER_CONFIGURED' } }
+        );
+    },
     async openDrawer() {
         throw new DomainError(
             DomainErrorCode.SERVICE_UNAVAILABLE,

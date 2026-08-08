@@ -279,10 +279,10 @@ function IncomingQueueWorkspace({
                 </Button>
               );
             });
-            if (utilityActions.includes('print_order')) {
+            if (utilityActions.includes('print_receipt')) {
               buttons.push(
                 <Button
-                  key="print_order"
+                  key="print_receipt"
                   type="button"
                   size="sm"
                   variant="outline"
@@ -297,9 +297,24 @@ function IncomingQueueWorkspace({
                     ? 'Printing...'
                     : order.receipt_print_status === 'failed'
                       ? 'Retry Print'
-                      : order.receipt_print_status === 'printed'
+                    : order.receipt_print_status === 'printed'
                         ? 'Reprint Receipt'
                         : 'Print Receipt'}
+                </Button>
+              );
+            }
+            if (utilityActions.includes('print_order')) {
+              buttons.push(
+                <Button
+                  key="print_order"
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  disabled={locked || !canViewPos || !isOnline || incomingReceiptOpeningId !== null}
+                  onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printOrder: true })}
+                >
+                  <Printer className="mr-2 h-4 w-4 shrink-0" />
+                  {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Printing...' : 'Print Order'}
                 </Button>
               );
             }

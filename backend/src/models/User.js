@@ -32,6 +32,10 @@ const User = sequelize.define('User', {
     type: DataTypes.STRING(255),
     allowNull: true
   },
+  pos_day_close_pin_hash: {
+    type: DataTypes.STRING(255),
+    allowNull: true
+  },
   role: {
     type: DataTypes.ENUM('admin', 'manager', 'staff', 'cashier', 'po', 'do', 'jo'),
     defaultValue: 'staff'

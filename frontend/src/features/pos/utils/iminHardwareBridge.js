@@ -563,6 +563,61 @@ export const printShiftSummaryWithIminBridge = ({ shiftSummary, businessSettings
     return { handled: true, result: normalizedResult };
 };
 
+const formatZReadingValue = (value) => Number(value || 0).toFixed(2);
+
+export const formatIminZReadingText = ({ zReading = {}, businessSettings = {} } = {}) => {
+    const reading = zReading?.z_reading || {};
+    const summary = reading?.summary || {};
+    const lines = [
+        center(safeText(businessSettings?.pos_business_name, 'DGFY')),
+        center('Z-READING / CLOSE DAY'),
+        `Business date: ${safeText(reading.business_date)}`,
+        `Location: ${safeText(reading.location_id)}`,
+        `Reading: ${safeText(reading.reading_identifier)}`,
+        line(),
+        pair('Transactions', summary.transaction_count || 0),
+        pair('Subtotal', formatZReadingValue(summary.subtotal_amount)),
+        pair('Discounts', formatZReadingValue(summary.discount_amount)),
+        pair('VAT', formatZReadingValue(summary.vat_amount)),
+        pair('Total sales', formatZReadingValue(summary.total_amount)),
+        line(),
+        center('PAYMENT BREAKDOWN')
+    ];
+    (Array.isArray(summary.payment_breakdown) ? summary.payment_breakdown : []).forEach((entry) => {
+        lines.push(pair(`${entry.payment_type || 'Other'} (${entry.count || 0})`, formatZReadingValue(entry.amount)));
+    });
+    lines.push(
+        line(),
+        center('FISCAL COUNTERS'),
+        pair('Z counter', reading.z_counter_value || 0),
+        pair('Reset counter', reading.reset_counter_value || 0),
+        pair('Lifetime total', formatZReadingValue(Number(reading.lifetime_grand_total_cents || 0) / 100)),
+        line(),
+        center('Keep with day-end close evidence.')
+    );
+    return lines.join('\n');
+};
+
+export const printZReadingWithIminBridge = ({ zReading, businessSettings = {} }) => {
+    const bridge = getIminBridge();
+    if (!bridge || typeof bridge.printReceipt !== 'function') {
+        return { handled: false };
+    }
+    const result = parseBridgeResult(
+        bridge.printReceipt(formatIminZReadingText({ zReading, businessSettings }), false),
+        'Z-reading print command sent.'
+    );
+    const normalizedResult = result.success ? result : toHardwareFailureResult(result);
+    emitPosHardwareMessage({
+        title: 'iMin receipt printer',
+        message: normalizedResult.message || 'Z-reading print command sent.',
+        tone: normalizedResult.success ? 'success' : 'error',
+        source: 'iMin hardware',
+        details: normalizedResult.diagnostics || null
+    });
+    return { handled: true, result: normalizedResult };
+};
+
 export const formatIminOrderTicketText = ({
     cart = [],
     terminalId = '',

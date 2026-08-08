@@ -1,15 +1,14 @@
 import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import {
-  finalizePaidCommerceSession,
   getPaymentIdFromPayMongoResource
 } from './finalizePaidCommerceSession.js';
 import { reconcileRefundedPaymentState } from './commercePaymentAdminUseCases.js';
 import {
-  postPaidTenantRevenueTransactionUseCase,
   recordTenantRevenueChargebackUseCase,
   recordSucceededTenantRevenueRefundUseCase
 } from '../../tenantRevenue/index.js';
+import { buildProcessVerifiedPaidCommerceSessionUseCase } from './processVerifiedPaidCommerceSession.js';
 
 const toPlain = (value) => (value?.get ? value.get({ plain: true }) : value);
 
@@ -36,39 +35,6 @@ const getEventResource = (body = {}) => (
 );
 
 const getAttributes = (resource = {}) => resource?.attributes || resource || {};
-const normalizeCurrency = (value) => String(value || '').trim().toUpperCase();
-const toPositiveInteger = (value) => {
-  const parsed = Number(value);
-  return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
-};
-const getPaidPaymentValidationFailure = ({ session, resource }) => {
-  const attrs = getAttributes(resource);
-  const providerStatus = String(attrs.status || '').trim().toLowerCase();
-  const expectedAmount = toPositiveInteger(session?.total_amount_centavos);
-  const paidAmount = toPositiveInteger(attrs.amount);
-  const expectedCurrency = normalizeCurrency(session?.currency || 'PHP');
-  const paidCurrency = normalizeCurrency(attrs.currency);
-
-  if (providerStatus !== 'paid') {
-    return {
-      code: 'PAYMENT_STATUS_MISMATCH',
-      reason: `PayMongo payment.paid event contained payment status "${providerStatus || 'missing'}".`
-    };
-  }
-  if (!expectedAmount || !paidAmount || paidAmount !== expectedAmount) {
-    return {
-      code: 'PAYMENT_AMOUNT_MISMATCH',
-      reason: `Paid amount ${paidAmount || 'missing'} centavos does not match expected amount ${expectedAmount || 'missing'} centavos.`
-    };
-  }
-  if (!paidCurrency || paidCurrency !== expectedCurrency) {
-    return {
-      code: 'PAYMENT_CURRENCY_MISMATCH',
-      reason: `Paid currency ${paidCurrency || 'missing'} does not match expected currency ${expectedCurrency}.`
-    };
-  }
-  return null;
-};
 const getAccountId = (resource = {}) => {
   const attrs = getAttributes(resource);
   return resource?.id || attrs.account_id || attrs.merchant_id || attrs.id || null;
@@ -128,8 +94,54 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
   commercePaymentRepository,
   paymongoService,
   logger,
-  recordSucceededRevenueRefund = recordSucceededTenantRevenueRefundUseCase
+  recordSucceededRevenueRefund = recordSucceededTenantRevenueRefundUseCase,
+  raiseOperationalAlert = async () => {},
+  processVerifiedPaidCommerceSession: processVerifiedPaidCommerceSessionOverride = null
 }) => {
+  const processVerifiedPaidCommerceSession = processVerifiedPaidCommerceSessionOverride
+    || buildProcessVerifiedPaidCommerceSessionUseCase({ commercePaymentRepository });
+
+  const writeWebhookAudit = async ({
+    eventType,
+    providerEventId,
+    providerPaymentId = null,
+    session = null,
+    outcome,
+    status = null,
+    error = null
+  }) => {
+    if (typeof commercePaymentRepository?.createAuditLog !== 'function') return;
+
+    const failureCode = error?.details?.code || error?.code || null;
+    const failureReason = error?.message ? String(error.message).slice(0, 500) : null;
+
+    try {
+      await commercePaymentRepository.createAuditLog({
+        user_id: null,
+        entity_type: 'CommercePayment',
+        entity_id: session?.session_id || null,
+        action: 'UPDATE',
+        changes: {
+          event: `commerce_payment_webhook_${outcome}`,
+          event_type: eventType || null,
+          provider_event_id: providerEventId || null,
+          provider_payment_id: providerPaymentId || null,
+          payment_session: session?.public_reference || null,
+          payment_session_status: status || session?.status || null,
+          failure_code: failureCode,
+          failure_reason: failureReason
+        },
+        user_agent: 'PayMongo Commerce Webhook'
+      });
+    } catch (auditError) {
+      logger?.warn?.('PayMongo commerce webhook audit write failed', {
+        eventType,
+        providerEventId,
+        error: auditError?.message
+      });
+    }
+  };
+
   const handleRefundEvent = async ({ resource, providerEventId }) => {
     const refundId = getRefundId(resource);
     const refund = refundId ? await commercePaymentRepository.findRefundByProviderId(refundId) : null;
@@ -280,15 +292,27 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
   };
 
   return async ({ headers = {}, body = {}, rawBody = '' } = {}) => {
+    let eventType = null;
+    let providerEventId = null;
+    let resource = {};
+    let session = null;
+
     try {
       const signature = headers['paymongo-signature'] || headers['x-paymongo-signature'] || null;
       if (!paymongoService.verifyWebhookSignature(signature, rawBody || body)) {
         throw new DomainError(DomainErrorCode.AUTHENTICATION_FAILED, 'Invalid PayMongo webhook signature', { statusCode: 401 });
       }
 
-      const eventType = getEventType(body);
-      const providerEventId = getEventId(body, headers);
-      const resource = toPlain(getEventResource(body));
+      eventType = getEventType(body);
+      providerEventId = getEventId(body, headers);
+      resource = toPlain(getEventResource(body));
+      await writeWebhookAudit({
+        eventType,
+        providerEventId,
+        providerPaymentId: getPaymentId(resource),
+        outcome: 'received'
+      });
+
       if (['account.activated', 'account.declined', 'merchant.activated', 'merchant.declined', 'consumer.activated', 'consumer.declined'].includes(eventType)) {
         return handleAccountLifecycleEvent({ eventType, resource, providerEventId });
       }
@@ -296,7 +320,7 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
         return handleRefundEvent({ resource, providerEventId });
       }
 
-      const session = await findSessionForResource(resource);
+      session = await findSessionForResource(resource);
 
       if (!session) {
         logger?.warn?.('PayMongo commerce webhook ignored: session not found', {
@@ -304,6 +328,13 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
           providerEventId,
           paymentIntentId: getPaymentIntentId(resource),
           sessionReference: getSessionReference(resource)
+        });
+        await writeWebhookAudit({
+          eventType,
+          providerEventId,
+          providerPaymentId: getPaymentId(resource),
+          outcome: 'ignored',
+          status: 'session_not_found'
         });
         return ok({ handled: false, reason: 'session_not_found' });
       }
@@ -316,6 +347,14 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
           actor: 'paymongo_webhook'
         });
         if (!revenueResult.success) throw revenueResult.error;
+        await writeWebhookAudit({
+          eventType,
+          providerEventId,
+          providerPaymentId: getPaymentId(resource),
+          session,
+          outcome: 'processed',
+          status: 'chargeback_recorded'
+        });
         return ok({
           handled: true,
           status: 'chargeback_recorded',
@@ -324,79 +363,21 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
       }
 
       if (eventType === 'payment.paid') {
-        if (session.status === 'finalized' || session.pos_transaction_id || session.tracking_pin) {
-          return ok({
-            handled: true,
-            idempotent_replay: true,
-            status: session.status === 'paid' ? 'finalized' : session.status,
-            payment_session: session.public_reference
-          });
-        }
-        if (session.status === 'paid_manual_resolution_required') {
-          return ok({
-            handled: true,
-            idempotent_replay: true,
-            status: session.status,
-            payment_session: session.public_reference
-          });
-        }
-        const paymentValidationFailure = getPaidPaymentValidationFailure({ session, resource });
-        if (paymentValidationFailure) {
-          const heldSession = await commercePaymentRepository.updateSessionById(session.session_id, {
-            status: 'paid_manual_resolution_required',
-            paid_at: new Date(),
-            provider_event_id: providerEventId || session.provider_event_id,
-            provider_payment_id: getPaymentId(resource) || session.provider_payment_id,
-            provider_payload: resource,
-            failure_code: paymentValidationFailure.code,
-            failure_reason: paymentValidationFailure.reason
-          });
-          await commercePaymentRepository.createAuditLog?.({
-            user_id: null,
-            entity_type: 'CommercePayment',
-            entity_id: session.session_id,
-            action: 'UPDATE',
-            changes: {
-              event: 'commerce_payment_paid_validation_hold',
-              provider_event_id: providerEventId,
-              payment_session: session.public_reference,
-              failure_code: paymentValidationFailure.code,
-              expected_amount_centavos: toPositiveInteger(session.total_amount_centavos),
-              provider_amount_centavos: toPositiveInteger(getAttributes(resource).amount),
-              expected_currency: normalizeCurrency(session.currency || 'PHP'),
-              provider_currency: normalizeCurrency(getAttributes(resource).currency)
-            },
-            user_agent: 'PayMongo Commerce Webhook'
-          });
-          return ok({
-            handled: true,
-            status: heldSession.status,
-            payment_session: heldSession.public_reference,
-            manual_resolution_required: true,
-            failure_code: paymentValidationFailure.code
-          });
-        }
-        const paidSession = await commercePaymentRepository.updateSessionById(session.session_id, {
-          status: 'paid',
-          paid_at: new Date(),
-          provider_event_id: providerEventId || session.provider_event_id,
-          provider_payment_id: getPaymentId(resource) || session.provider_payment_id,
-          provider_payload: resource
-        });
-        const revenueResult = await postPaidTenantRevenueTransactionUseCase({
-          session: paidSession,
+        const processed = await processVerifiedPaidCommerceSession({
+          session,
           resource,
           providerEventId,
           actor: 'paymongo_webhook'
         });
-        if (!revenueResult.success) throw revenueResult.error;
-        const finalized = await finalizePaidCommerceSession({
-          session: paidSession,
-          resource,
+        await writeWebhookAudit({
+          eventType,
           providerEventId,
-          commercePaymentRepository
+          providerPaymentId: getPaymentId(resource),
+          session,
+          outcome: 'processed',
+          status: processed?.status
         });
-        return ok({ handled: true, status: finalized.status, payment_session: finalized.public_reference });
+        return ok(processed);
       }
 
       if (eventType === 'payment.failed') {
@@ -407,6 +388,14 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
           provider_payload: resource,
           failure_code: 'PAYMENT_FAILED',
           failure_reason: getAttributes(resource)?.failed_message || 'PayMongo reported payment failure.'
+        });
+        await writeWebhookAudit({
+          eventType,
+          providerEventId,
+          providerPaymentId: getPaymentId(resource),
+          session: failed,
+          outcome: 'processed',
+          status: failed.status
         });
         return ok({ handled: true, status: failed.status, payment_session: failed.public_reference });
       }
@@ -419,11 +408,61 @@ export const buildHandlePayMongoCommerceWebhookUseCase = ({
           failure_code: 'QRPH_EXPIRED',
           failure_reason: 'PayMongo QR Ph code expired before payment.'
         });
+        await writeWebhookAudit({
+          eventType,
+          providerEventId,
+          providerPaymentId: getPaymentId(resource),
+          session: expired,
+          outcome: 'processed',
+          status: expired.status
+        });
         return ok({ handled: true, status: expired.status, payment_session: expired.public_reference });
       }
 
+      await writeWebhookAudit({
+        eventType,
+        providerEventId,
+        providerPaymentId: getPaymentId(resource),
+        session,
+        outcome: 'ignored',
+        status: 'event_type_ignored'
+      });
       return ok({ handled: false, reason: 'event_type_ignored', event_type: eventType });
     } catch (error) {
+      logger?.error?.('PayMongo commerce webhook failed', {
+        eventType,
+        providerEventId,
+        paymentSession: session?.public_reference || null,
+        providerPaymentId: getPaymentId(resource),
+        error: error?.message,
+        stack: error?.stack
+      });
+
+      await writeWebhookAudit({
+        eventType,
+        providerEventId,
+        providerPaymentId: getPaymentId(resource),
+        session,
+        outcome: 'failed',
+        error
+      });
+
+      if (eventType || session) {
+        await Promise.resolve(raiseOperationalAlert({
+          key: 'paymongo.commerce_webhook_failure',
+          message: `PayMongo commerce webhook failed${eventType ? ` during ${eventType}` : ''}`,
+          error,
+          context: {
+            event_type: eventType,
+            provider_event_id: providerEventId,
+            provider_payment_id: getPaymentId(resource),
+            payment_session: session?.public_reference || null
+          }
+        })).catch((alertError) => {
+          logger?.warn?.('PayMongo commerce webhook alert failed', { error: alertError?.message });
+        });
+      }
+
       return fail(error instanceof DomainError
         ? error
         : new DomainError(DomainErrorCode.INTERNAL_ERROR, error.message || 'PayMongo commerce webhook failed', { statusCode: 500 }));

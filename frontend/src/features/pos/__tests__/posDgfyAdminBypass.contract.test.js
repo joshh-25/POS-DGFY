@@ -43,6 +43,8 @@ describe('DGFY POS administrator bypass contract', () => {
 
   it('uses settings permission rather than role name for shift bypass visibility', () => {
     expect(terminalPageSource).toContain("const canAdminBypassShiftPrompt = hasPermission('settings:view') || dgfyAdminBypassActive;");
+    expect(terminalPageSource).toContain('const isMasterAdminOperator = terminalUser?.is_master_admin === true;');
+    expect(terminalPageSource).toContain('const canOpenShift = canTransactPos && (!canAdminBypassShiftPrompt || isMasterAdminOperator);');
     expect(terminalPageSource).not.toContain("|| normalizedTerminalRole === 'admin'");
   });
 

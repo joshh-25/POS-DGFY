@@ -46,6 +46,7 @@ export default function TerminalPageLayout({
     canDeleteItems = false,
     canManageCategories = false,
     canAdminBypassShiftPrompt = false,
+    canOpenShift = false,
     itemsStockFilterPreset = '',
     onItemsStockFilterPresetApplied = () => {},
     canAdjustCashDrawer,
@@ -81,6 +82,7 @@ export default function TerminalPageLayout({
     TERMINAL_SECTION_IDS,
     workspacePaneRef,
     canTransactPos,
+    canCloseShift,
     terminalMeta,
     todayDashboard,
     reportRefreshKey = 0,
@@ -97,6 +99,7 @@ export default function TerminalPageLayout({
     handleSwitchShiftLocation,
     handleRecordCashEvent,
     handleCloseShift,
+    handleCloseDay,
     handleViewShiftSummary = () => {},
     refreshOperationalContext,
     setOperatingLocationId,
@@ -752,6 +755,8 @@ export default function TerminalPageLayout({
                 itemsStockFilterPreset={itemsStockFilterPreset}
                 onItemsStockFilterPresetApplied={onItemsStockFilterPresetApplied}
                 canTransactPos={canTransactPos}
+                canOpenShift={canOpenShift}
+                canCloseShift={canCloseShift}
                 canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
                 canAdjustCashDrawer={canAdjustCashDrawer}
                 canCloseDay={canCloseDay}
@@ -767,6 +772,7 @@ export default function TerminalPageLayout({
                 handleSwitchShiftLocation={handleSwitchShiftLocation}
                 handleRecordCashEvent={handleRecordCashEvent}
                 handleCloseShift={handleCloseShift}
+                handleCloseDay={handleCloseDay}
                 handleViewShiftSummary={handleViewShiftSummary}
                 refreshOperationalContext={refreshOperationalContext}
                 locationsState={locationsState}

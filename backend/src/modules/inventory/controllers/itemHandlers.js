@@ -47,9 +47,18 @@ import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 import { enqueueItemImageGeneration } from '../../../workers/itemImageWorker.js';
 import { setItemImageStatus, getItemImageStatus } from '../../../workers/itemImageStatusStore.js';
 import logger from '../../../config/logger.js';
+import { publishCatalogChange } from '../../shared/services/catalogChangeEventBus.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
+const publishCatalogInvalidation = async (req, reason, itemIds = []) => {
+  if (!req.user?.tenant_id && !req.tenant?.id) return;
+  await publishCatalogChange({
+    tenantId: req.user?.tenant_id || req.tenant?.id,
+    reason,
+    itemIds
+  });
+};
 const defaultErrorPayload = (req, res, failure) => ({
   success: false,
   data: null,
@@ -176,6 +185,9 @@ export const createItem = async (req, res, next) => {
       () => createItemUseCase({ itemData, userId, canManageCategories }),
       'Failed to create item'
     );
+    if (result.success) {
+      await publishCatalogInvalidation(req, 'item_created', [result.data?.item_id]);
+    }
     await trackProductUsageFromResult({
       req,
       user: req.user,
@@ -231,6 +243,9 @@ export const updateItem = async (req, res, next) => {
       () => updateItemUseCase({ itemId: item_id, itemData, userId, canManageCategories }),
       'Failed to update item'
     );
+    if (result.success) {
+      await publishCatalogInvalidation(req, 'item_updated', [item_id]);
+    }
     await trackProductUsageFromResult({
       req,
       user: req.user,
@@ -268,6 +283,9 @@ export const finalizeItem = async (req, res, next) => {
       () => finalizeItemUseCase({ itemId: item_id, itemData, userId }),
       'Failed to finalize item'
     );
+    if (result.success) {
+      await publishCatalogInvalidation(req, 'item_finalized', [item_id]);
+    }
     await trackProductUsageFromResult({
       req,
       user: req.user,
@@ -305,6 +323,9 @@ export const deleteItem = async (req, res, next) => {
       () => deleteItemUseCase({ itemId: item_id, userId }),
       'Failed to delete item'
     );
+    if (result.success) {
+      await publishCatalogInvalidation(req, 'item_deleted', [item_id]);
+    }
     await trackProductUsageFromResult({
       req,
       user: req.user,

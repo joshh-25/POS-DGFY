@@ -175,6 +175,39 @@ export const printPosShiftSummary = async (shiftId, payload = {}, { silent = fal
     }
 };
 
+export const printPosZReading = async (businessDate, payload = {}, { silent = false } = {}) => {
+    const normalizedDate = String(businessDate || '').trim();
+    if (!normalizedDate) throw new Error('Business date is required to print the Z-reading.');
+    try {
+        const response = await api.post(`/pos/z-reading/${normalizedDate}/print`, payload, {
+            headers: getRegisteredTerminalHeaders(payload?.terminal_id),
+            skipGlobalErrorToast: silent || undefined
+        });
+        const responsePayload = response.data?.data;
+        const message = String(response.data?.message || responsePayload?.message || '').trim();
+        if (message && !silent) {
+            emitPosHardwareMessage({
+                title: 'POS Z-reading printer',
+                message,
+                tone: 'success',
+                source: 'POS hardware'
+            });
+        }
+        return responsePayload;
+    } catch (error) {
+        if (!silent) {
+            emitPosHardwareMessage({
+                title: 'POS Z-reading printer error',
+                message: String(error?.response?.data?.message || error?.message || 'Failed to print the Z-reading.').trim(),
+                tone: 'error',
+                source: 'POS hardware',
+                details: error?.response?.data?.errors || null
+            });
+        }
+        throw error;
+    }
+};
+
 export const openPosDeviceDrawer = async (payload = {}, { silent = false } = {}) => {
     try {
         const response = await api.post('/pos/device/open-drawer', payload, {
@@ -216,6 +249,8 @@ export const reportPosDeviceClientResult = async ({
     operation,
     transactionId,
     shiftId,
+    businessDate,
+    locationId,
     terminalId,
     reason,
     idempotencyKey,
@@ -247,6 +282,18 @@ export const reportPosDeviceClientResult = async ({
             return;
         }
 
+        if (operation === 'print_z_reading') {
+            await printPosZReading(businessDate, {
+                idempotency_key: idempotencyKey,
+                terminal_id: terminalId || undefined,
+                location_id: locationId || undefined,
+                reason: reason || 'client_driver_report',
+                client_driver_id: driverId,
+                client_result: result
+            }, { silent: true });
+            return;
+        }
+
         await printPosReceipt({
             idempotency_key: idempotencyKey,
             transaction_id: transactionId,
@@ -262,8 +309,12 @@ export const reportPosDeviceClientResult = async ({
     }
 };
 
-export const closePosDay = async (businessDate = null) => {
-    const response = await api.post('/pos/z-reading/close-day', businessDate ? { business_date: businessDate } : {}, {
+export const closePosDay = async (businessDate = null, { dayClosePin = '' } = {}) => {
+    const payload = {
+        ...(businessDate ? { business_date: businessDate } : {}),
+        day_close_pin: dayClosePin
+    };
+    const response = await api.post('/pos/z-reading/close-day', payload, {
         headers: getRegisteredTerminalHeaders()
     });
     return response.data?.data;
@@ -534,6 +585,8 @@ export default {
     fetchPosTransactionById,
     fetchPosDeviceStatus,
     printPosReceipt,
+    printPosShiftSummary,
+    printPosZReading,
     openPosDeviceDrawer,
     reportPosDeviceClientResult,
     closePosDay,

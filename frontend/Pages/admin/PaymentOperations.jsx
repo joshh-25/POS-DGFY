@@ -54,6 +54,7 @@ export default function PaymentOperations() {
   const [submittingRefund, setSubmittingRefund] = useState(false);
   const [refundConfirmation, setRefundConfirmation] = useState(null);
   const [retryingReference, setRetryingReference] = useState('');
+  const [reconcilingReference, setReconcilingReference] = useState('');
   const [providerAction, setProviderAction] = useState('');
   const [sessions, setSessions] = useState([]);
   const [accounts, setAccounts] = useState([]);
@@ -303,6 +304,26 @@ export default function PaymentOperations() {
       toast.error(error.response?.data?.message || error.message || 'Failed to retry finalization.');
     } finally {
       setRetryingReference('');
+    }
+  };
+
+  const reconcilePayment = async (reference) => {
+    setReconcilingReference(reference);
+    try {
+      const response = await adminService.reconcileCommercePaymentSession(reference);
+      const reconciliation = response.data?.reconciliation || {};
+      if (reconciliation.status === 'finalized') {
+        toast.success('PayMongo payment verified and the online order was finalized.');
+      } else if (reconciliation.status === 'provider_not_paid') {
+        toast.info(`PayMongo still reports ${reconciliation.provider_status || 'this payment'} as not paid.`);
+      } else {
+        toast.warning('PayMongo payment was verified, but order finalization still needs review.');
+      }
+      await loadData();
+    } catch (error) {
+      toast.error(error.response?.data?.message || error.message || 'Failed to reconcile PayMongo payment.');
+    } finally {
+      setReconcilingReference('');
     }
   };
 
@@ -587,6 +608,11 @@ export default function PaymentOperations() {
                         <div className="flex flex-wrap gap-2">
                           <Button size="sm" variant="outline" onClick={() => setExpandedSession(isExpanded ? '' : session.public_reference)}>{isExpanded ? 'Hide' : 'Details'}</Button>
                           <Button size="sm" variant="outline" disabled={!canRefundSession(session)} onClick={() => setRefundForm((form) => ({ ...form, payment_session_id: session.public_reference, amount: session.refundable_amount_centavos ? (Number(session.refundable_amount_centavos) / 100).toFixed(2) : form.amount }))}>Refund</Button>
+                          {['awaiting_payment', 'created'].includes(session.status) && (
+                            <Button size="sm" variant="outline" disabled={reconcilingReference === session.public_reference} onClick={() => reconcilePayment(session.public_reference)}>
+                              {reconcilingReference === session.public_reference ? 'Checking...' : 'Verify payment'}
+                            </Button>
+                          )}
                           {['paid', 'paid_manual_resolution_required', 'split_failed_manual_settlement_required'].includes(session.status) && (
                             <Button size="sm" variant="outline" disabled={retryingReference === session.public_reference} onClick={() => retryFinalization(session.public_reference)}>
                               {retryingReference === session.public_reference ? 'Retrying...' : 'Retry'}

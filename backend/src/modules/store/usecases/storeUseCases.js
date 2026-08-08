@@ -2312,7 +2312,7 @@ export const buildStoreCheckoutUseCase = ({
     storeRepository,
     revenueSharingEnabled = tenantRevenueSharingEnabled
 }) => {
-    return async ({ tenantId, payload, storeCustomer = null }) => {
+    return async ({ tenantId, payload, storeCustomer = null, allowExpiredGuestCheckoutProof = false }) => {
         if (!isPlainObject(payload)) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -2437,7 +2437,11 @@ export const buildStoreCheckoutUseCase = ({
                 email: normalized.customer_email,
                 idempotencyKey,
                 proof: payload.guest_checkout_proof,
-                storeCustomer: normalizedStoreCustomer
+                storeCustomer: normalizedStoreCustomer,
+                allowExpired: allowExpiredGuestCheckoutProof === true
+                    && normalized.payment_type === 'qrph'
+                    && payload.payment_webhook_confirmed === true
+                    && Boolean(String(payload.payment_session_reference || '').trim())
             });
 
             const trackingPin = await generateUniqueTrackingPin(storeRepository, {
@@ -2867,6 +2871,14 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             const resolved = await resolveCheckoutContext({
                 storeRepository,
                 payload: normalizedPayload,
+                storeCustomer
+            });
+
+            assertGuestCheckoutProof({
+                tenantId,
+                email: resolved.normalized.customer_email,
+                idempotencyKey,
+                proof: normalizedPayload.guest_checkout_proof,
                 storeCustomer
             });
 

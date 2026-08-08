@@ -115,6 +115,11 @@ export const updatePosApprovalPin = async (userId, { pin, clear = false } = {}) 
   return response.data.data;
 };
 
+export const updatePosDayClosePin = async (userId, { pin, clear = false } = {}) => {
+  const response = await api.put(`/users/${userId}/pos-day-close-pin`, clear ? { clear: true } : { pin });
+  return response.data.data;
+};
+
 /**
  * Remove user from company (soft delete)
  * @param {number} userId - Target user ID
