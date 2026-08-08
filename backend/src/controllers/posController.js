@@ -14,6 +14,7 @@ export {
     listDiscountApprovers,
     verifyDiscountApproval,
     listCatalog,
+    streamCatalogEvents,
     scanBarcode,
     checkout,
     listTransactions,
@@ -54,6 +55,7 @@ export {
     getDeviceStatus,
     printReceipt,
     printShiftSummary,
+    printZReading,
     openDeviceDrawer
 } from '../modules/pos/controllers/posHandlers.js';
 
@@ -69,6 +71,7 @@ import {
     listDiscountApprovers,
     verifyDiscountApproval,
     listCatalog,
+    streamCatalogEvents,
     scanBarcode,
     checkout,
     listTransactions,
@@ -109,6 +112,7 @@ import {
     getDeviceStatus,
     printReceipt,
     printShiftSummary,
+    printZReading,
     openDeviceDrawer
 } from '../modules/pos/controllers/posHandlers.js';
 
@@ -126,6 +130,7 @@ export default {
     listDiscountApprovers,
     verifyDiscountApproval,
     listCatalog,
+    streamCatalogEvents,
     scanBarcode,
     checkout,
     listTransactions,
@@ -164,5 +169,6 @@ export default {
     getDeviceStatus,
     printReceipt,
     printShiftSummary,
+    printZReading,
     openDeviceDrawer
 };

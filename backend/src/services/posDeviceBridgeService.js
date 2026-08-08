@@ -145,6 +145,13 @@ export const posDeviceBridgeService = {
         });
     },
 
+    async printZReading(payload = {}) {
+        return requestBridge('/device/print-z-reading', {
+            method: 'POST',
+            body: payload
+        });
+    },
+
     async openDrawer(payload = {}) {
         return requestBridge('/device/open-drawer', {
             method: 'POST',

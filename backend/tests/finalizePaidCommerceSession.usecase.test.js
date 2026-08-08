@@ -62,6 +62,7 @@ describe('finalizePaidCommerceSession', () => {
       checkout_payload: JSON.stringify({
         company_id: 1,
         location_id: 3,
+        payment_type: 'card',
         customer_name: 'Admin User',
         _verified_store_customer: {
           customer_id: 77,
@@ -101,11 +102,13 @@ describe('finalizePaidCommerceSession', () => {
     expect(storeCheckoutUseCase).toHaveBeenCalledWith(expect.objectContaining({
       tenantId: tenant.id,
       payload: expect.objectContaining({
+        payment_type: 'card',
         payment_status: 'paid',
         payment_webhook_confirmed: true,
         payment_session_reference: session.public_reference,
         customer_name: 'Admin User'
       }),
+      allowExpiredGuestCheckoutProof: true,
       storeCustomer: {
         customer_id: 77,
         dgfy_account_id: 'dgfy-account-77',
@@ -119,6 +122,101 @@ describe('finalizePaidCommerceSession', () => {
       pos_transaction_id: 9001,
       tracking_pin: 'TRACK123'
     }));
+  });
+
+  it('preserves a stored GCash payment type during finalization', async () => {
+    const tenant = {
+      id: 'f5d1f5e9-7fda-4aaa-95d6-9ed3dac1a11a',
+      name: 'Masu Cafe',
+      plan: 'standard',
+      subscription_status: 'active'
+    };
+    const session = {
+      session_id: 14,
+      tenant_id: tenant.id,
+      store_slug: 'masu-cafe-ed841f',
+      public_reference: 'CPS-GCASH1234',
+      status: 'paid',
+      checkout_payload: JSON.stringify({
+        payment_type: 'gcash',
+        customer_name: 'GCash Buyer',
+        customer_email: 'buyer@example.com'
+      }),
+      idempotency_key: 'checkout:CPS-GCASH1234'
+    };
+    const commercePaymentRepository = {
+      findTenantById: jest.fn().mockResolvedValue(tenant),
+      updateSessionById: jest.fn().mockImplementation(async (_id, changes) => ({
+        ...session,
+        ...changes
+      }))
+    };
+
+    await finalizePaidCommerceSession({
+      session,
+      resource: { id: 'pay_gcash', attributes: { status: 'paid' } },
+      providerEventId: 'evt_gcash',
+      commercePaymentRepository
+    });
+
+    expect(storeCheckoutUseCase).toHaveBeenCalledWith(expect.objectContaining({
+      payload: expect.objectContaining({ payment_type: 'gcash' })
+    }));
+  });
+
+  it('records a recoverable state when paid order finalization fails', async () => {
+    const tenant = {
+      id: 'f5d1f5e9-7fda-4aaa-95d6-9ed3dac1a11a',
+      name: 'Masu Cafe',
+      plan: 'standard',
+      subscription_status: 'active'
+    };
+    const session = {
+      session_id: 12,
+      tenant_id: tenant.id,
+      public_reference: 'CPS-FAILED1234',
+      status: 'paid',
+      provider_payment_id: 'pay_existing',
+      checkout_payload: JSON.stringify({
+        customer_name: 'Buyer',
+        customer_email: 'buyer@example.com'
+      }),
+      idempotency_key: 'checkout:CPS-FAILED1234'
+    };
+    const updateSessionById = jest.fn().mockResolvedValue({
+      ...session,
+      status: 'paid_manual_resolution_required',
+      failure_code: 'ORDER_FINALIZATION_FAILED',
+      failure_reason: 'customer_name is required'
+    });
+    storeCheckoutUseCase.mockResolvedValueOnce({
+      success: false,
+      error: new Error('customer_name is required')
+    });
+    const commercePaymentRepository = {
+      findTenantById: jest.fn().mockResolvedValue(tenant),
+      updateSessionById
+    };
+
+    await expect(finalizePaidCommerceSession({
+      session,
+      resource: { id: 'pay_existing', attributes: { status: 'paid' } },
+      providerEventId: 'evt_failed',
+      commercePaymentRepository
+    })).rejects.toMatchObject({
+      message: 'Payment received; order finalization is pending retry.'
+    });
+
+    expect(updateSessionById).toHaveBeenCalledWith(
+      session.session_id,
+      expect.objectContaining({
+        status: 'paid_manual_resolution_required',
+        provider_event_id: 'evt_failed',
+        provider_payment_id: 'pay_existing',
+        failure_code: 'ORDER_FINALIZATION_FAILED',
+        failure_reason: 'customer_name is required'
+      })
+    );
   });
 
   it('does not create another order for an already finalized session', async () => {
@@ -199,6 +297,77 @@ describe('PayMongo paid webhook replay', () => {
     }));
     expect(commercePaymentRepository.updateSessionById).not.toHaveBeenCalled();
     expect(storeCheckoutUseCase).not.toHaveBeenCalled();
+  });
+
+  it('records and alerts a webhook finalization failure', async () => {
+    const session = {
+      session_id: 13,
+      public_reference: 'CPS-CONFLICT1234',
+      status: 'paid'
+    };
+    const createAuditLog = jest.fn().mockResolvedValue({});
+    const raiseOperationalAlert = jest.fn().mockResolvedValue(undefined);
+    const processVerifiedPaidCommerceSession = jest.fn().mockRejectedValue(
+      new Error('idempotency_key was already used with a different payload')
+    );
+    const commercePaymentRepository = {
+      findSessionByPublicReference: jest.fn().mockResolvedValue(session),
+      createAuditLog
+    };
+    const useCase = buildHandlePayMongoCommerceWebhookUseCase({
+      commercePaymentRepository,
+      paymongoService: {
+        verifyWebhookSignature: jest.fn().mockReturnValue(true)
+      },
+      logger: {
+        warn: jest.fn(),
+        error: jest.fn()
+      },
+      raiseOperationalAlert,
+      processVerifiedPaidCommerceSession
+    });
+
+    const result = await useCase({
+      headers: { 'paymongo-signature': 'verified-test-signature' },
+      rawBody: '{"data":{}}',
+      body: {
+        data: {
+          id: 'evt_conflict',
+          attributes: {
+            type: 'payment.paid',
+            data: {
+              id: 'pay_conflict',
+              attributes: {
+                status: 'paid',
+                metadata: { commerce_payment_session: session.public_reference }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    expect(result).toMatchObject({
+      success: false,
+      error: expect.objectContaining({ statusCode: 500 })
+    });
+    expect(createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+      changes: expect.objectContaining({ event: 'commerce_payment_webhook_received' })
+    }));
+    expect(createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+      changes: expect.objectContaining({
+        event: 'commerce_payment_webhook_failed',
+        event_type: 'payment.paid',
+        payment_session: session.public_reference
+      })
+    }));
+    expect(raiseOperationalAlert).toHaveBeenCalledWith(expect.objectContaining({
+      key: 'paymongo.commerce_webhook_failure',
+      context: expect.objectContaining({
+        event_type: 'payment.paid',
+        payment_session: session.public_reference
+      })
+    }));
   });
 
   it('holds a paid event when the provider amount does not match the locked checkout total', async () => {

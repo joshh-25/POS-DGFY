@@ -594,6 +594,15 @@ export const retryCommercePaymentFinalization = async (paymentSessionId) => {
     return response.data;
 };
 
+export const reconcileCommercePaymentSession = async (paymentSessionId) => {
+    const response = await adminApi.post(
+        `/commerce-payments/admin/payment-sessions/${paymentSessionId}/reconcile`,
+        {},
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
 export const getTenantRevenueDashboard = async (params = {}) => {
     const response = await adminApi.get('/tenant-revenue/admin/dashboard', {
         ...requireAdminAuthConfig(),

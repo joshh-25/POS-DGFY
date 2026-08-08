@@ -37,7 +37,7 @@ Canonical UX flow from item setup in IMS to POS checkout, history review, and Sa
    - queued offline operations
    - shift state
    - compliance state and reason code
-8. Review POS history records and hand off to Sales timeline (`Open in Sales Report`).
+8. Review POS history records and open the POS-native Reports workspace (`Open POS Report`).
 9. Export Sales CSV with precheck confirmation and retain export metadata.
 10. Use Sync Queue console for deterministic replay/resolve actions when offline intents enter manual-resolution state.
 
@@ -62,6 +62,11 @@ Canonical UX flow from item setup in IMS to POS checkout, history review, and Sa
    - cost price,
    - description / notes.
 6. POS edit flows must continue to update the same IMS-backed item record, not a POS-only shadow copy.
+7. After a successful item, POS visibility/override, or POS image mutation, open
+   cashier terminals receive a tenant-scoped catalog invalidation and reload
+   their authorized catalog automatically. The refresh must preserve the
+   cashier's cart, search, filters, and checkout draft; location-scoped catalog
+   access remains enforced by the normal catalog read.
 
 ## Readiness Gate Behavior
 1. Enabling `Show in POS` is readiness-gated.
@@ -76,7 +81,7 @@ Canonical UX flow from item setup in IMS to POS checkout, history review, and Sa
 5. Use `Orders` mode for online order queue actions with independent `Queue Location Scope`.
 6. Complete checkout and review receipt.
 7. Use `History` mode for transaction lookup and receipt re-open.
-8. Use `Open in Sales Report` when escalation/reporting is required.
+8. Use `Open POS Report` when escalation/reporting is required; cashier accounts remain in POS History.
 
 ## Terminal Location Safety Contract
 1. POS read paths are fail-closed by location grants for:

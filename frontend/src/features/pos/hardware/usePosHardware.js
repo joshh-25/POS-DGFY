@@ -48,6 +48,7 @@ export const usePosHardware = () => {
 
     const printReceipt = useCallback((args) => withDriver('printReceipt', args), [withDriver]);
     const printShiftSummary = useCallback((args) => withDriver('printShiftSummary', args), [withDriver]);
+    const printZReading = useCallback((args) => withDriver('printZReading', args), [withDriver]);
     const printOrderTicket = useCallback((args) => withDriver('printOrderTicket', args), [withDriver]);
     const openDrawer = useCallback((args) => withDriver('openDrawer', args), [withDriver]);
 
@@ -63,6 +64,7 @@ export const usePosHardware = () => {
         refresh: () => load({ forceRefresh: true }),
         printReceipt,
         printShiftSummary,
+        printZReading,
         printOrderTicket,
         openDrawer
     };

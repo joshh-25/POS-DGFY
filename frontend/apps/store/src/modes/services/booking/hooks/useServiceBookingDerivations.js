@@ -47,6 +47,9 @@ export function useServiceBookingDerivations({
   serviceCartTotal,
   serviceDraftQuantity,
   serviceIntakeResponses,
+  serviceLineAddOns,
+  serviceOrderMethod = 'delivery',
+  serviceScheduleMode = 'asap',
   servicePaymentTiming,
   serviceUnitType
 }) {
@@ -118,13 +121,20 @@ export function useServiceBookingDerivations({
     if (!String(customerName || '').trim()) missing.push('Customer Name');
     if (!String(customerPhone || '').trim()) missing.push('Contact Number');
     if (bookingFieldPlan.emailField?.required && !String(customerEmail || '').trim()) missing.push('Email');
-    if (isAddressRequired && !String(serviceLocationSummaryDraft || '').trim()) missing.push('Service Location');
     return missing;
-  }, [bookingFieldPlan.emailField?.required, customerEmail, customerName, customerPhone, isAddressRequired, serviceLocationSummaryDraft]);
+  }, [bookingFieldPlan.emailField?.required, customerEmail, customerName, customerPhone]);
+  // Location now belongs to the Fulfillment step (only required when the customer picked
+  // Delivery); schedule is only required when they picked Schedule over NOW. Both new gates
+  // mirror F&B's fnbScheduleMode relaxation pattern used elsewhere in this app.
   const missingScheduleAndServiceInfo = useMemo(() => {
     const missing = [];
-    if (!selectedServiceDatePart) missing.push('Preferred Date');
-    if (!selectedServiceTimePart) missing.push('Preferred Time Slot');
+    if (isAddressRequired && serviceOrderMethod === 'delivery' && !String(serviceLocationSummaryDraft || '').trim()) {
+      missing.push('Service Location');
+    }
+    if (serviceScheduleMode === 'schedule') {
+      if (!selectedServiceDatePart) missing.push('Preferred Date');
+      if (!selectedServiceTimePart) missing.push('Preferred Time Slot');
+    }
     if (bookingFieldPlan.unitTypeField && bookingFieldPlan.unitTypeField.required && !String(serviceUnitType || '').trim()) {
       missing.push(bookingFieldPlan.unitTypeField.label);
     }
@@ -132,15 +142,17 @@ export function useServiceBookingDerivations({
       missing.push(bookingFieldPlan.unitCountField.label);
     }
     return missing;
-  }, [bookingFieldPlan.unitCountField, bookingFieldPlan.unitTypeField, selectedServiceDatePart, selectedServiceTimePart, serviceDraftQuantity, serviceUnitType]);
-  const stepOneComplete = missingCustomerInformation.length === 0
-    && missingScheduleAndServiceInfo.length === 0
+  }, [bookingFieldPlan.unitCountField, bookingFieldPlan.unitTypeField, isAddressRequired, selectedServiceDatePart, selectedServiceTimePart, serviceDraftQuantity, serviceLocationSummaryDraft, serviceOrderMethod, serviceScheduleMode, serviceUnitType]);
+  const accountStepComplete = missingCustomerInformation.length === 0;
+  const fulfillmentStepComplete = missingScheduleAndServiceInfo.length === 0
     && missingStepOneAdditionalFields.length === 0;
+  const stepOneComplete = accountStepComplete && fulfillmentStepComplete;
   const paymentStepComplete = Boolean(servicePaymentTiming);
   const reviewStepReady = stepOneComplete;
   const {
     bookingSummaryAmount,
     bookingSummaryQuantity,
+    groupedServiceLineItems,
     reviewServiceLines,
     serviceBookingSummaryLineItems,
     serviceBookingSummaryRows,
@@ -149,7 +161,6 @@ export function useServiceBookingDerivations({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- verbatim from StorefrontApp.jsx; `money` intentionally omitted there too
   } = useMemo(() => buildServiceBookingSummaryModel({
     activeBookingService,
-    bookingPagePaymentOptions,
     firstServiceLine,
     hasServiceCart,
     money,
@@ -158,11 +169,10 @@ export function useServiceBookingDerivations({
     serviceCartTotal,
     serviceDraftQuantity,
     serviceIntakeResponses,
-    serviceLocationSummaryDraft,
-    servicePaymentTiming
+    serviceLineAddOns,
+    serviceOrderMethod
   }), [
     activeBookingService,
-    bookingPagePaymentOptions,
     firstServiceLine,
     hasServiceCart,
     serviceAppointmentAt,
@@ -170,11 +180,12 @@ export function useServiceBookingDerivations({
     serviceCartTotal,
     serviceDraftQuantity,
     serviceIntakeResponses,
-    serviceLocationSummaryDraft,
-    servicePaymentTiming
+    serviceLineAddOns,
+    serviceOrderMethod
   ]);
 
   return {
+    accountStepComplete,
     activeBookingService,
     activeServiceCartLine,
     bookingDateOptions,
@@ -187,6 +198,8 @@ export function useServiceBookingDerivations({
     bookingSummaryQuantity,
     bookingTimeSlotOptions,
     firstServiceLine,
+    fulfillmentStepComplete,
+    groupedServiceLineItems,
     isAddressRequired,
     missingCustomerInformation,
     missingRequiredIntake,

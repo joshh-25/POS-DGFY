@@ -11,6 +11,10 @@ const PosZReadingSnapshot = sequelize.define('PosZReadingSnapshot', {
         type: DataTypes.DATEONLY,
         allowNull: false
     },
+    location_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
     reading_identifier: {
         type: DataTypes.STRING(80),
         allowNull: false,
@@ -33,6 +37,18 @@ const PosZReadingSnapshot = sequelize.define('PosZReadingSnapshot', {
         allowNull: false,
         defaultValue: {}
     },
+    closed_by_user_id: {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    },
+    closed_from_terminal_id: {
+        type: DataTypes.STRING(100),
+        allowNull: true
+    },
+    day_close_pin_confirmed_at: {
+        type: DataTypes.DATE,
+        allowNull: true
+    },
     generated_at: {
         type: DataTypes.DATE,
         allowNull: false,
@@ -45,6 +61,12 @@ const PosZReadingSnapshot = sequelize.define('PosZReadingSnapshot', {
     updatedAt: false,
     indexes: [
         { fields: ['business_date'] },
+        {
+            unique: true,
+            fields: ['business_date', 'location_id'],
+            name: 'uq_pos_z_reading_snapshots_business_date_location'
+        },
+        { fields: ['closed_by_user_id'] },
         { fields: ['z_counter_value'] },
         { fields: ['generated_at'] }
     ]

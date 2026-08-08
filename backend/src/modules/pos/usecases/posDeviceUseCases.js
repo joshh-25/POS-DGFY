@@ -8,7 +8,8 @@ import { mapPosUseCaseError } from './posUseCaseError.js';
 const POS_DEVICE_OPERATION_KEYS = Object.freeze({
     RECEIPT_PRINT: 'terminal.device_receipt_print',
     DRAWER_OPEN: 'terminal.device_drawer_open',
-    SHIFT_SUMMARY_PRINT: 'terminal.device_shift_summary_print'
+    SHIFT_SUMMARY_PRINT: 'terminal.device_shift_summary_print',
+    Z_READING_PRINT: 'terminal.device_z_reading_print'
 });
 
 const toSerializable = (value) => (
@@ -34,6 +35,13 @@ const resolveShiftSalesWindow = (shift = {}) => {
         ? requestedEndAt
         : new Date();
     return { startAt, endAt };
+};
+
+const normalizeBusinessDate = (value) => {
+    const dateString = value instanceof Date
+        ? value.toISOString().slice(0, 10)
+        : String(value || '').slice(0, 10);
+    return /^\d{4}-\d{2}-\d{2}$/.test(dateString) ? dateString : null;
 };
 
 const normalizeOptionalIdempotencyKey = (value) => {
@@ -654,6 +662,180 @@ export const buildPrintPosShiftSummaryUseCase = ({ posRepository, deviceDriver }
                 });
             }
             return fail(mapPosUseCaseError(error, 'Failed to print shift sales summary'));
+        }
+    };
+};
+
+export const buildPrintPosZReadingUseCase = ({ posRepository, deviceDriver }) => {
+    return async ({ businessDateInput, locationId: rawLocationId, payload = {}, user, auditContext = {} } = {}) => {
+        const userId = parsePositiveInt(user?.user_id);
+        const businessDate = normalizeBusinessDate(businessDateInput);
+        const locationId = parsePositiveInt(rawLocationId);
+        const copies = Math.max(1, Math.min(Number.parseInt(payload?.copies, 10) || 1, 3));
+        const paperWidth = payload?.paper_width === '57mm' ? '57mm' : '80mm';
+        const reason = String(payload?.reason || '').trim() || 'z_reading_close_day';
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const clientDriverId = String(payload?.client_driver_id || '').trim() || null;
+        const clientResult = (clientDriverId && payload?.client_result && typeof payload.client_result === 'object')
+            ? payload.client_result
+            : null;
+
+        if (!userId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated POS user is required',
+                { statusCode: 401 }
+            ));
+        }
+        if (!businessDate) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'business_date must be in YYYY-MM-DD format',
+                { statusCode: 422 }
+            ));
+        }
+        if (!locationId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'location_id must be a positive integer',
+                { statusCode: 422 }
+            ));
+        }
+
+        const requestHash = hashPayload({
+            business_date: businessDate,
+            location_id: locationId,
+            copies,
+            paper_width: paperWidth,
+            reason,
+            client_driver_id: clientDriverId
+        });
+
+        try {
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_DEVICE_OPERATION_KEYS.Z_READING_PRINT,
+                idempotencyKey,
+                requestHash
+            });
+            if (replay) return ok(replay);
+
+            const snapshot = toSerializable(
+                await posRepository.getLatestZReadingSnapshotByBusinessDate(businessDate, { locationId })
+            );
+            if (!snapshot) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Close Day must be completed before printing the Z-reading.',
+                    { statusCode: 409, details: { reason_code: 'Z_READING_NOT_CLOSED' } }
+                );
+            }
+
+            const allSettings = unwrapApplicationResultOrThrow(await getAllSettingsUseCase());
+            const zReading = {
+                business: buildBusinessSettings(allSettings),
+                z_reading: {
+                    pos_z_reading_snapshot_id: snapshot.pos_z_reading_snapshot_id || null,
+                    business_date: snapshot.business_date || businessDate,
+                    location_id: snapshot.location_id || locationId,
+                    reading_identifier: snapshot.reading_identifier || null,
+                    generated_at: snapshot.generated_at || snapshot.created_at || null,
+                    summary: parseJsonObject(snapshot.summary),
+                    z_counter_value: Number.parseInt(snapshot.z_counter_value || 0, 10),
+                    reset_counter_value: Number.parseInt(snapshot.reset_counter_value || 0, 10),
+                    lifetime_grand_total_cents: Number.parseInt(snapshot.lifetime_grand_total_cents || 0, 10)
+                }
+            };
+            const bridgeResponse = clientDriverId
+                ? {
+                    ok: clientResult?.success !== false,
+                    delegated: true,
+                    driver: clientDriverId,
+                    client_result: clientResult
+                }
+                : await deviceDriver.printZReading({
+                    z_reading: zReading,
+                    copies,
+                    paper_width: paperWidth
+                });
+
+            await posRepository.createAuditLog({
+                user_id: userId,
+                entity_type: 'pos_device_z_reading',
+                entity_id: snapshot.pos_z_reading_snapshot_id || null,
+                action: 'UPDATE',
+                changes: {
+                    operation: 'print_z_reading',
+                    business_date: businessDate,
+                    location_id: locationId,
+                    reason,
+                    copies,
+                    paper_width: paperWidth,
+                    driver_id: clientDriverId || deviceDriver.id,
+                    bridge_result: bridgeResponse?.result || bridgeResponse?.client_result || null
+                },
+                ...buildAuditMetadata(auditContext)
+            });
+
+            const responsePayload = {
+                z_reading: zReading,
+                paper_width: paperWidth,
+                bridge: bridgeResponse
+            };
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_DEVICE_OPERATION_KEYS.Z_READING_PRINT,
+                idempotencyKey,
+                requestHash,
+                replayStatus: 'processed',
+                responsePayload,
+                createdBy: userId
+            });
+
+            return ok({
+                ...responsePayload,
+                idempotent_replay: false,
+                replay_outcome: 'processed'
+            });
+        } catch (error) {
+            try {
+                await posRepository.createAuditLog({
+                    user_id: userId,
+                    entity_type: 'pos_device_z_reading',
+                    entity_id: null,
+                    action: 'UPDATE',
+                    changes: {
+                        operation: 'print_z_reading',
+                        business_date: businessDate,
+                        location_id: locationId,
+                        reason,
+                        copies,
+                        paper_width: paperWidth,
+                        driver_id: clientDriverId || deviceDriver?.id || null,
+                        bridge_result: {
+                            success: false,
+                            reason_code: error?.details?.reason_code || error?.code || 'Z_READING_PRINT_FAILED',
+                            message: error?.message || 'Z-reading print failed'
+                        }
+                    },
+                    ...buildAuditMetadata(auditContext)
+                });
+            } catch {
+                // Print failure evidence is best effort and must not hide the
+                // original hardware/domain error.
+            }
+            if (error instanceof DomainError && idempotencyKey) {
+                await persistOperationReplay({
+                    posRepository,
+                    operationKey: POS_DEVICE_OPERATION_KEYS.Z_READING_PRINT,
+                    idempotencyKey,
+                    requestHash,
+                    replayStatus: 'blocked',
+                    responsePayload: serializeReplayFailure(error),
+                    createdBy: userId
+                });
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to print Z-reading'));
         }
     };
 };
