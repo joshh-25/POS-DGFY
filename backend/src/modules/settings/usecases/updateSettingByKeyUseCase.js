@@ -30,6 +30,8 @@ import {
     assertStoreProfileNotClientWritten
 } from './storeProfileShadowWrite.js';
 import { STORE_PROFILE_SETTING_KEY } from '../../shared/constants/storeProfile.js';
+import { applyWorkflowModeAuditLog } from './workflowModeAuditLog.js';
+import logger from '../../../config/logger.js';
 import {
     POS_RECEIPT_METADATA_PENDING_SETTING_KEY,
     buildPendingPosReceiptMetadata,
@@ -273,7 +275,16 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
                 settingsData: { [key]: normalizedValue }
             });
 
+            let workflowModeAuditBeforeValues = null;
             if (key === WORKFLOW_MODE_SETTING_KEY || key === ENABLED_CAPABILITIES_SETTING_KEY) {
+                workflowModeAuditBeforeValues = typeof settingsRepository?.getSettingsByKeys === 'function'
+                    ? await settingsRepository.getSettingsByKeys([WORKFLOW_MODE_SETTING_KEY, ENABLED_CAPABILITIES_SETTING_KEY])
+                        .then((current) => ({
+                            [WORKFLOW_MODE_SETTING_KEY]: current?.[WORKFLOW_MODE_SETTING_KEY]?.value ?? null,
+                            [ENABLED_CAPABILITIES_SETTING_KEY]: current?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value ?? null
+                        }))
+                    : {};
+
                 const patchedSettingsData = await applyStoreProfileShadowWrite({
                     settingsRepository,
                     settingsData: { [key]: normalizedValue }
@@ -289,6 +300,19 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
                 omittedPaths: omittedStorefrontGalleryPaths,
                 storefrontAssetStorage
             });
+            if (workflowModeAuditBeforeValues) {
+                try {
+                    await applyWorkflowModeAuditLog({
+                        settingsData: { [key]: normalizedValue },
+                        beforeValues: workflowModeAuditBeforeValues,
+                        actorUser
+                    });
+                } catch (error) {
+                    logger.warn('[WorkflowModeAudit] failed to record workflow mode change log', {
+                        error: error?.message
+                    });
+                }
+            }
             return ok(sanitizeSingleSettingForRead({ key, setting: updatedSetting }));
         } catch (error) {
             return fail(mapSettingsUseCaseError(error, 'Failed to update setting'));

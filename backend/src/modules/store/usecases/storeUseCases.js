@@ -833,6 +833,8 @@ const prepareCheckoutLines = ({
         preparedLines.push({
             item_id: item.item_id,
             item_name: item.name,
+            item_name_snapshot: item.name || null,
+            sku_snapshot: item.sku_code || null,
             quantity: round4(quantity),
             unit_of_measure: item.unit_of_measure || null,
             cost_snapshot: descriptor.carries_cost ? (item.cost_per_unit != null ? round4(item.cost_per_unit) : null) : null,

@@ -2726,6 +2726,8 @@ export const buildCheckoutPosUseCase = ({
                 preparedLines.push({
                     item_id: item.item_id,
                     item_name: item.name,
+                    item_name_snapshot: item.name || null,
+                    sku_snapshot: item.sku_code || null,
                     quantity: round4(quantity),
                     unit_of_measure: item.unit_of_measure,
                     // Only a true service has no cost to report; an untracked/toggle

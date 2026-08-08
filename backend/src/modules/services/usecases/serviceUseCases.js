@@ -2708,6 +2708,7 @@ export const buildSettleServiceBookingUseCase = ({ serviceRepository, inventoryC
             },
             lines: allLines.map((line) => ({
                 item_id: line.item_id,
+                item_name_snapshot: line.name_snapshot || null,
                 quantity: line.quantity,
                 stock_effect_type: line.stock_effect_type,
                 stock_exempt_reason: line.stock_exempt_reason || null,

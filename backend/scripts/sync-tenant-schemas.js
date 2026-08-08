@@ -76,6 +76,12 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         stock_exempt_reason: Object.freeze({
             sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `stock_exempt_reason` VARCHAR(80) NULL COMMENT 'Immutable reason when a POS sale line intentionally creates no inventory movement'"
+        }),
+        item_name_snapshot: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `item_name_snapshot` VARCHAR(255) NULL COMMENT 'Sale-time item name snapshot; immune to later item renames (issue #178 phase 5)'"
+        }),
+        sku_snapshot: Object.freeze({
+            sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `sku_snapshot` VARCHAR(100) NULL COMMENT 'Sale-time SKU snapshot; immune to later item edits (issue #178 phase 5)'"
         })
     }),
     items: Object.freeze({
@@ -205,6 +211,25 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  UNIQUE KEY `item_id` (`item_id`),\n"
             + "  UNIQUE KEY `storefront_catalog_overrides_item_id` (`item_id`),\n"
             + "  CONSTRAINT `storefront_catalog_overrides_ibfk_1` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`) ON DELETE CASCADE ON UPDATE CASCADE\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    // Created by migration 20260808190000-create-workflow-mode-change-log.cjs
+    // (issue #178 phase 5): tenant-scoped, append-only audit trail for
+    // ops_workflow_mode / ops_enabled_capabilities changes. Registered here
+    // from the start so tenants provisioned before this migration ran get
+    // the table via the same repair-apply path as any other backfilled gap.
+    workflow_mode_change_log: Object.freeze({
+        sql: "CREATE TABLE `workflow_mode_change_log` (\n"
+            + "  `workflow_mode_change_log_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `actor_user_id` int DEFAULT NULL,\n"
+            + "  `actor_username_snapshot` varchar(150) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+            + "  `from_workflow_mode` varchar(64) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+            + "  `to_workflow_mode` varchar(64) COLLATE utf8mb4_general_ci DEFAULT NULL,\n"
+            + "  `from_enabled_capabilities` json DEFAULT NULL,\n"
+            + "  `to_enabled_capabilities` json DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`workflow_mode_change_log_id`),\n"
+            + "  KEY `workflow_mode_change_log_created_at` (`created_at`)\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
     employees: Object.freeze({
