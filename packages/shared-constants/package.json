@@ -17,6 +17,10 @@
       "import": "./src/orderMethods.js",
       "default": "./src/orderMethods.js"
     },
+    "./capabilityModules": {
+      "import": "./src/capabilityModules.js",
+      "default": "./src/capabilityModules.js"
+    },
     "./uomConverter": {
       "import": "./src/uomConverter.js",
       "default": "./src/uomConverter.js"
