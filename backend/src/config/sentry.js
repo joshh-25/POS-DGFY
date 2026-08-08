@@ -323,13 +323,23 @@ export const sentryRequestContext = (req, _res, next) => {
   });
 };
 
+// sentryErrorHandler runs BEFORE errorHandler (see server.js), so
+// res.statusCode is still Express's default 200 at that point --
+// res.status() has not been called yet. This used to be part of the
+// fallback chain here, which meant any error without an explicit
+// .statusCode/.status (a raw TypeError, an unmapped Sequelize error -- the
+// typical unhandled 500) evaluated `200 >= 500` as false and was silently
+// dropped. Exported standalone so this can be unit-tested without spinning
+// up the real Sentry.expressErrorHandler.
+export const shouldReportErrorToSentry = (error) => {
+  const statusCode = Number(error?.statusCode || error?.status || 500);
+  return statusCode >= 500;
+};
+
 export const sentryErrorHandler = (err, req, res, next) => {
   if (!initialized) return next(err);
   return Sentry.expressErrorHandler({
-    shouldHandleError(error) {
-      const statusCode = Number(error?.statusCode || error?.status || res?.statusCode || 500);
-      return statusCode >= 500;
-    }
+    shouldHandleError: shouldReportErrorToSentry
   })(err, req, res, next);
 };
 

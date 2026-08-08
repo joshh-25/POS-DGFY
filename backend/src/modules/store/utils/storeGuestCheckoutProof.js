@@ -10,7 +10,7 @@ const isStorefrontGuestOtpRequired = () => (
 
 const isDgfyStoreCustomer = (storeCustomer) => Boolean(String(storeCustomer?.dgfy_account_id || '').trim());
 
-export const assertGuestCheckoutProof = ({ tenantId, email, idempotencyKey, proof, storeCustomer }) => {
+export const assertGuestCheckoutProof = ({ tenantId, email, idempotencyKey, proof, storeCustomer, allowExpired = false }) => {
     if (!isStorefrontGuestOtpRequired() || isDgfyStoreCustomer(storeCustomer)) return;
 
     const normalizedEmail = String(email || '').trim().toLowerCase();
@@ -23,7 +23,7 @@ export const assertGuestCheckoutProof = ({ tenantId, email, idempotencyKey, proo
     }
 
     try {
-        const decoded = verifyStoreGuestCheckoutProof(proof);
+        const decoded = verifyStoreGuestCheckoutProof(proof, allowExpired ? { ignoreExpiration: true } : undefined);
         if (
             decoded?.type !== 'store_guest_checkout_proof'
             || normalizeTenantIdentifier(decoded?.tenant_id) !== normalizeTenantIdentifier(tenantId)

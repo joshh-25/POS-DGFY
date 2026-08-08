@@ -13,12 +13,12 @@ describe('orderFulfillmentUi queue action mapping', () => {
     expect(getIncomingOrderUtilityActions({
       fulfillment_status: 'placed',
       order_method: 'pickup'
-    })).toEqual(['open_order', 'print_order']);
+    })).toEqual(['open_order', 'print_receipt', 'print_order']);
 
     expect(getIncomingOrderUtilityActions({
       fulfillment_status: 'ready_for_pickup',
       order_method: 'pickup'
-    })).toEqual(['open_order', 'print_order']);
+    })).toEqual(['open_order', 'print_receipt', 'print_order']);
   });
 
   it('does not expose completed orders in the active incoming queue', () => {

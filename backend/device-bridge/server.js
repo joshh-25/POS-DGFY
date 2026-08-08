@@ -4,7 +4,7 @@ import { requireBridgeAuth } from './auth/bridgeAuth.js';
 import { openDrawer } from './drawer/openDrawer.js';
 import { runtimeConfig } from './config/runtime.js';
 import { logError, logInfo } from './bridgeLogger.js';
-import { listUsbPrinters, printTestReceipt, printReceiptPayload, printShiftSummaryPayload } from './printers/usbPrinter.js';
+import { listUsbPrinters, printTestReceipt, printReceiptPayload, printShiftSummaryPayload, printZReadingPayload } from './printers/usbPrinter.js';
 
 const app = express();
 
@@ -113,6 +113,24 @@ app.post('/device/print-shift-summary', async (request, response) => {
     response.status(500).json({
       ok: false,
       error: 'SHIFT_SUMMARY_PRINT_FAILED',
+      message: error.message,
+    });
+  }
+});
+
+app.post('/device/print-z-reading', async (request, response) => {
+  try {
+    const { z_reading: zReading, copies = 1 } = request.body ?? {};
+    const result = await printZReadingPayload({ zReading, copies });
+    response.json({
+      ok: true,
+      result,
+    });
+  } catch (error) {
+    logError('Z-reading print failed', error);
+    response.status(500).json({
+      ok: false,
+      error: 'Z_READING_PRINT_FAILED',
       message: error.message,
     });
   }

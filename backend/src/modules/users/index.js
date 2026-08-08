@@ -11,6 +11,7 @@ import {
   buildUpdateUserStatusUseCase,
   buildUpdateUserPermissionsUseCase,
   buildUpdatePosApprovalPinUseCase,
+  buildUpdatePosDayClosePinUseCase,
   buildGetUserLocationGrantsUseCase,
   buildUpdateUserLocationGrantsUseCase,
   buildInviteUserUseCase,
@@ -31,6 +32,7 @@ export const updateUserRoleUseCase = buildUpdateUserRoleUseCase({ userService })
 export const updateUserStatusUseCase = buildUpdateUserStatusUseCase({ userService });
 export const updateUserPermissionsUseCase = buildUpdateUserPermissionsUseCase({ userService });
 export const updatePosApprovalPinUseCase = buildUpdatePosApprovalPinUseCase({ userService });
+export const updatePosDayClosePinUseCase = buildUpdatePosDayClosePinUseCase({ userService });
 export const getUserLocationGrantsUseCase = buildGetUserLocationGrantsUseCase({ userService });
 export const updateUserLocationGrantsUseCase = buildUpdateUserLocationGrantsUseCase({ userService });
 export const inviteUserUseCase = buildInviteUserUseCase({ userService });

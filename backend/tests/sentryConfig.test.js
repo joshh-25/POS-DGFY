@@ -7,7 +7,8 @@ import {
   resolveSentryEnvironment,
   resolveTracesSampleRate,
   sanitizeSentryEvent,
-  sentryRequestContext
+  sentryRequestContext,
+  shouldReportErrorToSentry
 } from '../src/config/sentry.js';
 import { extractSentryTraceId, requestContext } from '../src/middleware/requestContext.js';
 
@@ -241,6 +242,28 @@ describe('exception message scrubbing', () => {
     const event = sanitizeSentryEvent({ exception: { values: [{ type: 'Error', value }] } });
 
     expect(event.exception.values[0].value).toBe(value);
+  });
+});
+
+describe('shouldReportErrorToSentry', () => {
+  // sentryErrorHandler runs before errorHandler, so res.statusCode is never
+  // a legitimate signal here -- this predicate must decide purely from the
+  // error itself. The generic-500 case below is the actual bug this guards:
+  // a plain Error with no .statusCode used to fall through to
+  // `res.statusCode` (still Express's default 200 at this point in the
+  // pipeline) and get silently dropped.
+  test('reports a generic error with no explicit status code', () => {
+    expect(shouldReportErrorToSentry(new Error('boom'))).toBe(true);
+  });
+
+  test('reports an error with an explicit 5xx statusCode', () => {
+    expect(shouldReportErrorToSentry({ statusCode: 503 })).toBe(true);
+    expect(shouldReportErrorToSentry({ status: 500 })).toBe(true);
+  });
+
+  test('does not report an error with an explicit 4xx statusCode', () => {
+    expect(shouldReportErrorToSentry({ statusCode: 404 })).toBe(false);
+    expect(shouldReportErrorToSentry({ status: 400 })).toBe(false);
   });
 });
 

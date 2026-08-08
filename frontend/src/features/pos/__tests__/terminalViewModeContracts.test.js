@@ -97,10 +97,16 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('uses the iMin drawer bridge before the USB bridge for cash-in events', () => {
-    expect(terminalPageContent).toContain("import { openDrawerWithIminBridge, printOrderWithIminBridge } from '../utils/iminHardwareBridge.js';");
+    expect(terminalPageContent).toContain("import { openDrawerWithIminBridge } from '../utils/iminHardwareBridge.js';");
     expect(terminalPageContent).toContain(
       "const iminDrawerResult = openDrawerWithIminBridge();\n          if (!iminDrawerResult.handled) {\n            await openPosDeviceDrawer({"
     );
+  });
+
+  it('returns a signed-in cashier to terminal login before opening a shift', () => {
+    expect(terminalPageContent).toContain("cashierUnlockSession?.email && !activeShiftId && terminalUnlockMode === 'shift_start'");
+    expect(terminalPageContent).toContain('onClick={handleLock}');
+    expect(terminalPageContent).toContain('Back to Login');
   });
 
 
@@ -351,12 +357,19 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsWorkspaceContent).toContain('isValidOpeningCashAmount');
     expect(terminalOperationsPanelsContent).toContain('shiftState = { shift: null }');
     expect(terminalOperationsWorkspaceContent).toContain('shiftState={shiftState}');
-    expect(terminalOperationsWorkspaceContent).toContain('const canRenderAdminShiftOpen = canTransactPos && !canAdminBypassShiftPrompt;');
+    expect(terminalOperationsWorkspaceContent).toContain('const canRenderAdminShiftOpen = canOpenShift;');
     expect(terminalOperationsWorkspaceContent).toContain('disabled={shiftActionLoading.open || locked || !canRenderAdminShiftOpen || !isOnline || !activeTerminalMatchesOperatingLocation}');
     expect(terminalSidebarPanelContent).toContain('isValidOpeningCashAmount');
     expect(terminalSidebarPanelContent).toContain('disabled={shiftActionLoading.open || locked || !canOpenShift}');
     expect(terminalPageContent).toContain("const canCloseShift = hasPermission('pos:shift_close') || hasPermission('pos:close_day');");
-    expect(terminalPageContent).toContain('canCloseDay={canCloseShift}');
+    expect(terminalPageContent).toContain('canCloseShift={canCloseShift}');
+    expect(terminalPageContent).toContain('canCloseDay={canCloseDay}');
+    expect(terminalPageContent).toContain('const handleCloseDay = useCallback(() => {');
+    expect(terminalPageContent).toContain('setZReadingCloseConfirmOpen(true);');
+    expect(terminalPageContent).toContain('closePosDay(null, { dayClosePin: zReadingClosePin })');
+    expect(terminalPageContent).toContain('<ZReadingPrintView');
+    expect(terminalOperationsWorkspaceContent).toContain('Close Day & Print Z-reading');
+    expect(terminalOperationsWorkspaceContent).toContain('handleCloseDay');
     expect(posCheckoutTerminalContent).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason);');
     expect(posCheckoutTerminalContent).toContain('notifyPosActionBlocked');
     expect(posCheckoutTerminalContent).toContain('disabled={posActionsBlocked || safeCart.length === 0}');
@@ -471,6 +484,19 @@ describe('POS terminal view-mode contracts', () => {
     expect(onlineOrderReceiptModalContent).toContain('pos-online-order-receipt-print-mode');
   });
 
+  it('routes online-order receipt and kitchen printing to separate hardware actions', () => {
+    expect(terminalPageContent).toContain('const printOnlineOrderKitchenTicket = useCallback(async (order) => {');
+    expect(terminalPageContent).toContain('posHardware.printOrderTicket({');
+    expect(terminalPageContent).toContain('printOrder = false');
+    expect(terminalPageContent).toContain('await printOnlineOrderKitchenTicket(detail);');
+    expect(terminalOperationsPanelsContent).toContain("utilityActions.includes('print_receipt')");
+    expect(terminalOperationsPanelsContent).toContain("{ printOrder: true }");
+    expect(terminalOperationsPanelsContent).toContain("'Print Order'");
+    expect(terminalSidebarPanelContent).toContain("utilityActions.includes('print_receipt')");
+    expect(terminalSidebarPanelContent).toContain("{ printOrder: true }");
+    expect(terminalSidebarPanelContent).toContain("'Print Order'");
+  });
+
   it('guards incoming queue receipt action with opening lock and lifecycle guidance copy', () => {
     expect(terminalPageContent).toContain('const [incomingReceiptOpeningId, setIncomingReceiptOpeningId] = useState(null);');
     expect(terminalPageContent).toContain('if (incomingReceiptOpeningId !== null) return;');
@@ -580,17 +606,18 @@ describe('POS terminal view-mode contracts', () => {
     expect(posCheckoutTerminalContent).toContain('terminal_id: normalizedTerminalId || undefined');
   });
 
-  it('keeps receipt modal sales-report handoff while history rows stay receipt-focused', () => {
-    expect(posCheckoutTerminalContent).toContain('openInSalesReport');
+  it('keeps receipt modal POS-report navigation while history rows stay receipt-focused', () => {
+    expect(posCheckoutTerminalContent).toContain('openInPosReport');
+    expect(posCheckoutTerminalContent).toContain("setCurrentViewMode(isCashierRole ? 'history' : 'reports')");
+    expect(posCheckoutTerminalContent).not.toContain('openSkupervisorPath');
+    expect(posCheckoutTerminalContent).not.toContain("../utils/skupervisorHandoff.js");
     expect(posHistoryPanelContent).not.toContain('data-testid="pos-history-open-sales-report"');
     expect(posHistoryPanelContent).not.toContain('data-testid={`pos-history-row-open-sales-report-${row.pos_transaction_id}`}');
     expect(posHistoryPanelContent).toContain('<span>View</span>');
     expect(posHistoryPanelContent).toContain('<span>Receipt</span>');
-    expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-open-sales-report"');
-    expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-modal-open-sales-report"');
-    expect(posCheckoutTerminalContent).toContain("params.set('source', 'POS');");
-    expect(posCheckoutTerminalContent).toContain("params.set('pos_order_source', historyOrderSource);");
-    expect(posCheckoutTerminalContent).toContain("openSkupervisorPath('/sales', query)");
+    expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-open-pos-report"');
+    expect(posCheckoutTerminalContent).toContain('data-testid="pos-receipt-modal-open-pos-report"');
+    expect(posCheckoutTerminalContent).toContain("const posReportActionLabel = isCashierRole ? 'Open POS History' : 'Open POS Report';");
   });
 
   it('exposes deterministic sidebar test hook for history mode switching', () => {

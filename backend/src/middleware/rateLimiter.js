@@ -27,6 +27,8 @@ const storeTrackingWindowMs = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_WIN
 const storeTrackingMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_MAX_REQUESTS) || (isDevelopment ? 120 : 30);
 const storeTrackingReadWindowMs = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_READ_WINDOW_MS) || 15 * 60 * 1000; // 15 minutes
 const storeTrackingReadMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_TRACKING_READ_MAX_REQUESTS) || (isDevelopment ? 600 : 300);
+const storeLocationsWindowMs = parseInt(process.env.RATE_LIMIT_STORE_LOCATIONS_WINDOW_MS) || 60 * 1000; // 1 minute
+const storeLocationsMaxRequests = parseInt(process.env.RATE_LIMIT_STORE_LOCATIONS_MAX_REQUESTS) || (isDevelopment ? 240 : 90);
 const storefrontDiscoveryWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_WINDOW_MS) || 60 * 1000; // 1 minute
 const storefrontDiscoveryMaxRequests = parseInt(process.env.RATE_LIMIT_STOREFRONT_DISCOVERY_MAX_REQUESTS) || (isDevelopment ? 240 : 90);
 const storefrontFollowWindowMs = parseInt(process.env.RATE_LIMIT_STOREFRONT_FOLLOW_WINDOW_MS) || 60 * 1000; // 1 minute
@@ -82,6 +84,7 @@ const rateLimitCounters = {
   store_auth: 0,
   store_tracking: 0,
   store_tracking_read: 0,
+  store_locations: 0,
   storefront_discovery: 0,
   storefront_follow: 0,
   onboarding_events: 0,
@@ -738,6 +741,44 @@ export const storeTrackingLimiter = rateLimit({
         'ip_store_tracking_pin'
       );
       logRateLimitEvent(req, 'store_tracking_read', response.retryAfterSeconds, 'ip_store_tracking_pin');
+    res.set('Retry-After', String(response.retryAfterSeconds));
+    res.status(response.status).json(response.body);
+  },
+  skip: () => {
+    if (process.env.NODE_ENV === 'test') return true;
+    if (isDevelopment && process.env.DISABLE_RATE_LIMIT === 'true') return true;
+    return false;
+  },
+});
+
+// GET /api/v1/store/locations had no rate limiter at all -- unlike every
+// other public storefront read route. That mattered once the discovery
+// page fanned out one call per store per page load (up to 100 at once, see
+// #297): nothing here would have throttled it back. IP + store-slug keyed,
+// matching the tracking-read limiter above, since each key now legitimately
+// sees at most one request per store profile view.
+export const storeLocationsLimiter = rateLimit({
+  windowMs: storeLocationsWindowMs,
+  max: storeLocationsMaxRequests,
+  message: createRateLimitError('Too many location requests. Please wait before trying again.'),
+  standardHeaders: true,
+  legacyHeaders: false,
+  validate: { trustProxy: false },
+  store: new DynamicStore('store_locations'),
+  keyGenerator: (req) => {
+    const ip = firstForwardedIp(req) || req.ip || req.connection?.remoteAddress || 'unknown-ip';
+    const storeSlug = normalizeStoreLimiterSlug(req.headers?.['x-store-slug']) || 'unknown-store';
+    return `store_locations:${ip}:${storeSlug}`;
+  },
+  handler: (req, res, _next, options) => {
+    const response = buildRateLimitResponse(
+      req,
+      options,
+      'Too many location requests. Please wait before trying again.',
+      'store_locations',
+      'ip_store_slug'
+    );
+    logRateLimitEvent(req, 'store_locations', response.retryAfterSeconds, 'ip_store_slug');
     res.set('Retry-After', String(response.retryAfterSeconds));
     res.status(response.status).json(response.body);
   },

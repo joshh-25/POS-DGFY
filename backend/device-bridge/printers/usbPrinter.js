@@ -1,7 +1,7 @@
 import USBAdapter from '@node-escpos/usb-adapter';
 import { Printer } from '@node-escpos/core';
 import { runtimeConfig } from '../config/runtime.js';
-import { buildReceiptLines, buildShiftSummaryLines } from '../receipts/receiptFormatter.js';
+import { buildReceiptLines, buildShiftSummaryLines, buildZReadingLines } from '../receipts/receiptFormatter.js';
 import { buildTestReceipt } from '../receipts/testReceiptBuilder.js';
 
 const formatHex = (value) => {
@@ -185,6 +185,32 @@ export const printShiftSummaryPayload = async ({ shiftSummary, copies = 1 } = {}
       copies: safeCopies,
       device,
       shiftId: shiftSummary?.shift?.pos_terminal_shift_id || null
+    };
+  });
+};
+
+export const printZReadingPayload = async ({ zReading, copies = 1 } = {}) => {
+  if (!zReading || typeof zReading !== 'object' || Array.isArray(zReading)) {
+    throw new Error('Z-reading payload is required');
+  }
+
+  const readingLines = buildZReadingLines(zReading, {
+    width: runtimeConfig.printerWidth
+  });
+  const safeCopies = Math.max(1, Math.min(Number.parseInt(copies, 10) || 1, 3));
+
+  return withPrinter(async (printer, device) => {
+    for (let index = 0; index < safeCopies; index += 1) {
+      printer.align('lt').style('normal').size(1, 1);
+      readingLines.forEach((line) => printer.println(line));
+      printer.style('normal').align('lt').println('').cut();
+      await printer.flush();
+    }
+
+    return {
+      copies: safeCopies,
+      device,
+      readingIdentifier: zReading?.z_reading?.reading_identifier || null
     };
   });
 };

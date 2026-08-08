@@ -65,6 +65,9 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
     users: Object.freeze({
         pos_approval_pin_hash: Object.freeze({
             sql: "ALTER TABLE `users` ADD COLUMN `pos_approval_pin_hash` VARCHAR(255) NULL"
+        }),
+        pos_day_close_pin_hash: Object.freeze({
+            sql: "ALTER TABLE `users` ADD COLUMN `pos_day_close_pin_hash` VARCHAR(255) NULL"
         })
     }),
     pos_transaction_lines: Object.freeze({

@@ -111,7 +111,7 @@ export const getIncomingOrderUtilityActions = (order = {}) => {
   case 'preparing':
   case 'ready_for_pickup':
   case 'out_for_delivery':
-    return ['open_order', 'print_order'];
+    return ['open_order', 'print_receipt', 'print_order'];
   default:
     return [];
   }

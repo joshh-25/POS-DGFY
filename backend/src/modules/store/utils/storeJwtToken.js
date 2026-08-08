@@ -123,7 +123,7 @@ export const generateStoreGuestCheckoutProof = ({ tenantId, email, idempotencyKe
     }, STORE_GUEST_CHECKOUT_PROOF_SECRET, { expiresIn: STORE_GUEST_CHECKOUT_PROOF_EXPIRY });
 };
 
-export const verifyStoreGuestCheckoutProof = (token) => jwt.verify(token, STORE_GUEST_CHECKOUT_PROOF_SECRET);
+export const verifyStoreGuestCheckoutProof = (token, options) => jwt.verify(token, STORE_GUEST_CHECKOUT_PROOF_SECRET, options);
 
 export const getStoreTokenConfig = () => ({
     expiresIn: STORE_JWT_EXPIRY,

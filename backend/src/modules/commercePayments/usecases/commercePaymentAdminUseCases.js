@@ -4,6 +4,7 @@ import { DomainError, DomainErrorCode } from '../../shared/contracts/domainError
 import tenantConnector from '../../../utils/TenantConnector.js';
 import { getTenantModels } from '../../../utils/tenantModelFactory.js';
 import { finalizePaidCommerceSession } from './finalizePaidCommerceSession.js';
+import { buildProcessVerifiedPaidCommerceSessionUseCase } from './processVerifiedPaidCommerceSession.js';
 import { tenantRevenueSharingEnabled } from '../../../config/tenantRevenueFeature.js';
 import { recordSucceededTenantRevenueRefundUseCase } from '../../tenantRevenue/index.js';
 
@@ -25,6 +26,7 @@ const TERMINAL_REFUND_FAILURE_STATUSES = new Set(['failed', 'cancelled', 'cancel
 const ACTIVE_REFUND_STATUSES = ['pending', 'succeeded'];
 const SUCCEEDED_REFUND_STATUSES = ['succeeded'];
 const SETTLEMENT_REPORT_STATUSES = ['finalized', 'paid', 'refund_pending', 'partial_refunded', 'refunded', 'split_failed_manual_settlement_required'];
+const PAID_PROVIDER_STATUSES = new Set(['paid', 'succeeded', 'success', 'completed']);
 
 const serializeAccount = (account = {}) => ({
   account_id: account.account_id,
@@ -289,6 +291,80 @@ const writePaymentAudit = async ({ commercePaymentRepository, entityId, action, 
     },
     user_agent: 'PayMongo Commerce Admin'
   });
+};
+
+const getProviderPaymentRecords = (paymentIntent = {}) => {
+  const attributes = paymentIntent?.attributes || {};
+  const paymentCollection = Array.isArray(attributes.payments)
+    ? attributes.payments
+    : (Array.isArray(attributes.payments?.data) ? attributes.payments.data : []);
+  const candidates = [
+    ...paymentCollection,
+    attributes.latest_payment,
+    attributes.payment
+  ].filter(Boolean);
+  return candidates.map((candidate) => ({
+    resource: candidate?.data || candidate,
+    attributes: candidate?.data?.attributes || candidate?.attributes || {}
+  }));
+};
+
+const buildProviderPaidResource = ({ session, paymentIntent }) => {
+  const intentAttributes = paymentIntent?.attributes || {};
+  const paymentRecords = getProviderPaymentRecords(paymentIntent);
+  const paidRecord = paymentRecords.find(({ attributes }) => PAID_PROVIDER_STATUSES.has(String(attributes.status || '').trim().toLowerCase()));
+  const paymentRecord = paidRecord || null;
+  const paymentAttributes = paymentRecord?.attributes || {};
+  const observedPaymentAttributes = paymentRecords[0]?.attributes || {};
+  const providerStatus = String(
+    paymentRecords.length > 0
+      ? paymentAttributes.status || observedPaymentAttributes.status || ''
+      : intentAttributes.status || ''
+  ).trim().toLowerCase();
+  const paymentId = String(
+    paymentRecord?.resource?.id
+    || paymentAttributes.id
+    || ''
+  ).trim();
+  const isPaid = paymentRecords.length > 0
+    ? Boolean(paidRecord)
+    : PAID_PROVIDER_STATUSES.has(String(intentAttributes.status || '').trim().toLowerCase());
+
+  if (!isPaid) {
+    return {
+      isPaid: false,
+      providerStatus,
+      paymentId: null,
+      resource: null
+    };
+  }
+
+  if (!paymentId.startsWith('pay_')) {
+    return {
+      isPaid: true,
+      providerStatus,
+      paymentId: null,
+      resource: null
+    };
+  }
+
+  return {
+    isPaid: true,
+    providerStatus,
+    paymentId,
+    resource: {
+      id: paymentId,
+      type: 'payment',
+      attributes: {
+        ...paymentAttributes,
+        status: 'paid',
+        amount: paymentAttributes.amount ?? intentAttributes.amount,
+        currency: paymentAttributes.currency || intentAttributes.currency || session.currency || 'PHP',
+        payment_intent_id: paymentAttributes.payment_intent_id || paymentIntent.id || session.provider_payment_intent_id,
+        metadata: paymentAttributes.metadata || intentAttributes.metadata || {}
+      }
+    }
+  };
 };
 
 export const buildListCommercePaymentSessionsUseCase = ({ commercePaymentRepository }) => async ({ query = {} } = {}) => {
@@ -745,6 +821,88 @@ export const buildRetryCommercePaymentFinalizationUseCase = ({ commercePaymentRe
       }
     });
     return ok({ payment_session: serializeSession(finalized, await commercePaymentRepository.listRefundsBySession(finalized.session_id)) });
+  } catch (error) {
+    return fail(error instanceof DomainError ? error : new DomainError(DomainErrorCode.INTERNAL_ERROR, error.message));
+  }
+};
+
+export const buildReconcileCommercePaymentSessionUseCase = ({
+  commercePaymentRepository,
+  paymongoService
+}) => async ({ paymentSessionId, actor = 'paymongo_admin_reconciliation' }) => {
+  try {
+    const reference = normalizeReference(paymentSessionId);
+    const session = await commercePaymentRepository.findSessionByPublicReference(reference);
+    if (!session) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Payment session not found', { statusCode: 404 });
+    const refunds = await commercePaymentRepository.listRefundsBySession(session.session_id);
+
+    if (session.status === 'finalized' || session.pos_transaction_id || session.tracking_pin) {
+      return ok({
+        payment_session: serializeSession(session, refunds),
+        reconciliation: {
+          status: 'already_finalized',
+          provider_status: session.status,
+          provider_payment_id: session.provider_payment_id || null
+        }
+      });
+    }
+    if (!session.provider_payment_intent_id) {
+      throw new DomainError(DomainErrorCode.CONFLICT, 'Payment session has no PayMongo payment intent to reconcile', { statusCode: 409 });
+    }
+
+    const paymentIntent = await paymongoService.retrievePaymentIntent(session.provider_payment_intent_id);
+    const providerPayment = buildProviderPaidResource({ session, paymentIntent });
+    if (!providerPayment.isPaid) {
+      return ok({
+        payment_session: serializeSession(session, refunds),
+        reconciliation: {
+          status: 'provider_not_paid',
+          provider_status: providerPayment.providerStatus || 'unknown',
+          provider_payment_id: null
+        }
+      });
+    }
+    if (!providerPayment.paymentId || !providerPayment.resource) {
+      throw new DomainError(
+        DomainErrorCode.CONFLICT,
+        'PayMongo reports the payment intent as paid but did not return a payment record.',
+        { statusCode: 409 }
+      );
+    }
+
+    const processVerifiedPaidCommerceSession = buildProcessVerifiedPaidCommerceSessionUseCase({
+      commercePaymentRepository
+    });
+    const processed = await processVerifiedPaidCommerceSession({
+      session,
+      resource: providerPayment.resource,
+      actor
+    });
+    const reconciledSession = await commercePaymentRepository.findSessionByPublicReference(reference) || session;
+    const reconciledRefunds = await commercePaymentRepository.listRefundsBySession(reconciledSession.session_id);
+    await writePaymentAudit({
+      commercePaymentRepository,
+      entityId: reconciledSession.session_id,
+      action: 'UPDATE',
+      actor,
+      changes: {
+        event: 'commerce_payment_provider_reconciled',
+        payment_session_id: reference,
+        provider_status: providerPayment.providerStatus,
+        provider_payment_intent_id: session.provider_payment_intent_id,
+        provider_payment_id: providerPayment.paymentId,
+        final_status: reconciledSession.status,
+        finalization_status: processed?.status || null
+      }
+    });
+    return ok({
+      payment_session: serializeSession(reconciledSession, reconciledRefunds),
+      reconciliation: {
+        status: processed?.status === 'finalized' ? 'finalized' : 'paid_manual_resolution_required',
+        provider_status: providerPayment.providerStatus,
+        provider_payment_id: providerPayment.paymentId
+      }
+    });
   } catch (error) {
     return fail(error instanceof DomainError ? error : new DomainError(DomainErrorCode.INTERNAL_ERROR, error.message));
   }

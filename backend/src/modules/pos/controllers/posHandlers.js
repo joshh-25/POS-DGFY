@@ -46,6 +46,7 @@ import {
     getPosDeviceStatusUseCase,
     printPosReceiptUseCase,
     printPosShiftSummaryUseCase,
+    printPosZReadingUseCase,
     openPosDrawerUseCase,
     getPairedPosTerminalUseCase
 } from '../index.js';
@@ -54,9 +55,15 @@ import { trackProductUsageFromResult } from '../../../services/productUsageTelem
 import {
     setTenantSessionCookies
 } from '../../../utils/browserSessionCookies.js';
+import { publishCatalogChange, subscribeCatalogChanges } from '../../shared/services/catalogChangeEventBus.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
+const publishCatalogInvalidation = async (req, reason, itemIds = []) => {
+    const tenantId = req.user?.tenant_id || req.tenant?.id;
+    if (!tenantId) return;
+    await publishCatalogChange({ tenantId, reason, itemIds });
+};
 
 const defaultErrorPayload = (req, res, failure) => ({
     success: false,
@@ -309,6 +316,51 @@ export const listCatalog = async (req, res, next) => {
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+const writeCatalogEvent = (res, type, payload = {}) => {
+    res.write(`event: ${type}\n`);
+    res.write(`data: ${JSON.stringify(payload)}\n\n`);
+};
+
+// Events are invalidation signals only. The terminal always reloads its own
+// authorized catalog, so no item data leaks across location grants.
+export const streamCatalogEvents = async (req, res, next) => {
+    try {
+        const tenantId = String(req.user?.tenant_id || req.tenant?.id || '').trim();
+        if (!tenantId) {
+            res.status(403).json({
+                success: false,
+                message: 'Tenant context is required for catalog updates.'
+            });
+            return;
+        }
+
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache, no-transform');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no');
+        res.flushHeaders?.();
+
+        writeCatalogEvent(res, 'connected', { connected: true, emitted_at: timestamp() });
+        const unsubscribe = subscribeCatalogChanges(tenantId, (event) => {
+            writeCatalogEvent(res, 'pos.catalog.changed', {
+                reason: event?.reason || 'catalog_changed',
+                emitted_at: event?.emitted_at || timestamp()
+            });
+        });
+        const heartbeat = setInterval(() => {
+            writeCatalogEvent(res, 'heartbeat', { emitted_at: timestamp() });
+        }, 25000);
+
+        req.on('close', () => {
+            clearInterval(heartbeat);
+            unsubscribe();
+            res.end();
         });
     } catch (error) {
         next(error);
@@ -982,6 +1034,34 @@ export const printShiftSummary = async (req, res, next) => {
     }
 };
 
+export const printZReading = async (req, res, next) => {
+    try {
+        const result = await printPosZReadingUseCase({
+            businessDateInput: req.validatedParams?.date || req.params.date,
+            locationId: req.posTerminalRegistration?.location_id || null,
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Z-reading print request sent',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const openDeviceDrawer = async (req, res, next) => {
     try {
         const result = await openPosDrawerUseCase({
@@ -1074,7 +1154,11 @@ export const getTransactionById = async (req, res, next) => {
 export const closeDayZReading = async (req, res, next) => {
     try {
         const result = await closeDayZReadingUseCase({
-            businessDateInput: req.validatedData?.business_date || null
+            businessDateInput: req.validatedData?.business_date || null,
+            dayClosePin: req.validatedData?.day_close_pin || '',
+            terminalId: req.posTerminalRegistration?.terminal_id || null,
+            user: req.user,
+            locationId: req.posTerminalRegistration?.location_id || null
         });
         await trackProductUsageFromResult({
             req,
@@ -1107,7 +1191,9 @@ export const closeDayZReading = async (req, res, next) => {
 export const getDailyZReading = async (req, res, next) => {
     try {
         const result = await getDailyZReadingUseCase({
-            businessDateInput: req.validatedParams?.date || req.params.date
+            businessDateInput: req.validatedParams?.date || req.params.date,
+            user: req.user,
+            locationId: req.validatedQuery?.location_id || null
         });
 
         return sendUseCaseResult(res, result, {
@@ -1197,11 +1283,15 @@ export const listCatalogOverrides = async (req, res, next) => {
 
 export const updateCatalogOverride = async (req, res, next) => {
     try {
+        const itemId = req.validatedParams?.item_id || req.params.item_id;
         const result = await updatePosCatalogOverrideUseCase({
-            itemId: req.validatedParams?.item_id || req.params.item_id,
+            itemId,
             payload: req.validatedData || req.body,
             user: req.user
         });
+        if (result.success) {
+            await publishCatalogInvalidation(req, 'catalog_override_updated', [itemId]);
+        }
 
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
@@ -1224,6 +1314,9 @@ export const updateBulkCatalogOverrides = async (req, res, next) => {
             payload: req.validatedData || req.body,
             user: req.user
         });
+        if (result.success) {
+            await publishCatalogInvalidation(req, 'catalog_overrides_updated');
+        }
 
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
@@ -1242,11 +1335,15 @@ export const updateBulkCatalogOverrides = async (req, res, next) => {
 
 export const uploadCatalogImage = async (req, res, next) => {
     try {
+        const itemId = req.validatedParams?.item_id || req.params.item_id;
         const result = await uploadPosCatalogImageUseCase({
-            itemId: req.validatedParams?.item_id || req.params.item_id,
+            itemId,
             file: req.file,
             user: req.user
         });
+        if (result.success) {
+            await publishCatalogInvalidation(req, 'catalog_image_uploaded', [itemId]);
+        }
 
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
@@ -1269,6 +1366,9 @@ export const uploadBulkCatalogImages = async (req, res, next) => {
             files: req.files,
             user: req.user
         });
+        if (result.success) {
+            await publishCatalogInvalidation(req, 'catalog_images_uploaded');
+        }
 
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
@@ -1287,10 +1387,14 @@ export const uploadBulkCatalogImages = async (req, res, next) => {
 
 export const deleteCatalogImage = async (req, res, next) => {
     try {
+        const itemId = req.validatedParams?.item_id || req.params.item_id;
         const result = await deletePosCatalogImageUseCase({
-            itemId: req.validatedParams?.item_id || req.params.item_id,
+            itemId,
             user: req.user
         });
+        if (result.success) {
+            await publishCatalogInvalidation(req, 'catalog_image_deleted', [itemId]);
+        }
 
         return sendUseCaseResult(res, result, {
             successStatusCodeResolver: () => 200,
@@ -1315,6 +1419,7 @@ export default {
     listSetupCashiers,
     loginCashier,
     listCatalog,
+    streamCatalogEvents,
     scanBarcode,
     checkout,
     listTransactions,
@@ -1343,5 +1448,6 @@ export default {
     getDeviceStatus,
     printReceipt,
     printShiftSummary,
+    printZReading,
     openDeviceDrawer
 };

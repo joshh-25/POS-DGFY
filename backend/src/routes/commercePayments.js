@@ -9,6 +9,7 @@ import {
   listPaymentSessions,
   listTenantPaymentAccounts,
   operateTenantPayMongoChildAccount,
+  reconcilePaymentSession,
   retryPaymentSessionFinalization,
   upsertTenantPaymentAccount
 } from '../modules/commercePayments/controllers/commercePaymentHandlers.js';
@@ -32,6 +33,7 @@ router.get('/admin/certification/paymongo-sandbox', setNoStoreCacheControl, auth
 router.get('/admin/settlement-report', setNoStoreCacheControl, authenticateAdmin, validateListCommercePaymentSessionsQuery, getSettlementReport);
 router.get('/admin/payment-sessions', setNoStoreCacheControl, authenticateAdmin, validateListCommercePaymentSessionsQuery, listPaymentSessions);
 router.get('/admin/payment-sessions/:payment_session_id', setNoStoreCacheControl, authenticateAdmin, validateCommercePaymentSessionParam, getPaymentSession);
+router.post('/admin/payment-sessions/:payment_session_id/reconcile', setNoStoreCacheControl, authenticateAdmin, validateCommercePaymentSessionParam, reconcilePaymentSession);
 router.post('/admin/payment-sessions/:payment_session_id/retry-finalization', setNoStoreCacheControl, authenticateAdmin, validateCommercePaymentSessionParam, retryPaymentSessionFinalization);
 router.post('/admin/payment-sessions/:payment_session_id/refunds', setNoStoreCacheControl, authenticateAdmin, validateCommercePaymentSessionParam, validateCommercePaymentRefundBody, createPaymentSessionRefund);
 router.get('/admin/tenant-payment-accounts', setNoStoreCacheControl, authenticateAdmin, validateTenantPaymentAccountsQuery, listTenantPaymentAccounts);

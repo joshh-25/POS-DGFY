@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-29
-last_reviewed: 2026-07-02
+last_reviewed: 2026-08-08
 review_by: 2026-12-28
 applies_to: architecture_decision
 topic: pos_terminal_pairing_and_shift_safe_navigation
@@ -143,3 +143,11 @@ profiles inside the selected tenant, not a separate credential authority.
 4. A master-admin recovery requires a reason and produces complete audit and
    cash-reconciliation evidence.
 5. Closing the final POS shift does not change Storefront ordering availability.
+
+## Amendments
+
+### 2026-08-08: Per-Operator Day-Close Confirmation PIN
+
+1. A tenant user who already has `pos:close_day` may be assigned a personal, write-only Day Close PIN for confirming a Z-reading. This PIN is a step-up confirmation for the already authenticated DGFY tenant user; it must not unlock the POS, establish a session, open a shift, or replace DGFY membership and authorization.
+2. The PIN is stored only as a password hash and never returned by an API. The master administrator may configure or clear it only for an active user who already holds `pos:close_day`.
+3. The close-day operation verifies the current authenticated user against their own PIN, records the operator and terminal on the immutable Z-reading snapshot, and must reject closure while any shift remains open at that location.

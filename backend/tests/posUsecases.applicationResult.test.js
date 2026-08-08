@@ -154,7 +154,35 @@ describe('pos use-cases application result contract', () => {
         );
     });
 
-    it('blocks administrator navigation from opening a cashier shift', async () => {
+    it('allows a master administrator to open their own shift', async () => {
+        const posRepository = createShiftOpenRepository();
+        const useCase = buildOpenTerminalShiftUseCase({
+            posRepository,
+            resolveIdentityStatus: jest.fn().mockResolvedValue({ identity_mode: 'dgfy_membership' }),
+            resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 3 })
+        });
+
+        const result = await runWithTenantComplianceContext(() => useCase({
+            payload: {
+                terminal_id: 'COUNTER-01',
+                location_id: 3,
+                opening_float_amount: 500
+            },
+            user: {
+                user_id: 1,
+                is_master_admin: true,
+                permissions: ['pos:transact', 'settings:view']
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(posRepository.createTerminalShift).toHaveBeenCalledWith(
+            expect.objectContaining({ cashier_id: 1, terminal_id: 'COUNTER-01' }),
+            expect.any(Object)
+        );
+    });
+
+    it('keeps non-master settings administrators read-only for shift opening', async () => {
         const posRepository = createShiftOpenRepository();
         const useCase = buildOpenTerminalShiftUseCase({
             posRepository,
@@ -178,6 +206,45 @@ describe('pos use-cases application result contract', () => {
         expect(result.success).toBe(false);
         expect(result.error.statusCode).toBe(403);
         expect(result.error.details.reason_code).toBe('ADMIN_SHIFT_OPEN_NOT_ALLOWED');
+        expect(posRepository.createTerminalShift).not.toHaveBeenCalled();
+    });
+
+    it('does not let a master administrator take over another cashier terminal', async () => {
+        const posRepository = createShiftOpenRepository();
+        posRepository.findOpenTerminalShift.mockImplementation(async ({ terminalId }) => {
+            if (terminalId === 'COUNTER-01') {
+                return {
+                    pos_terminal_shift_id: 202,
+                    terminal_id: 'COUNTER-01',
+                    location_id: 3,
+                    cashier_id: 44,
+                    status: 'open'
+                };
+            }
+            return null;
+        });
+        const useCase = buildOpenTerminalShiftUseCase({
+            posRepository,
+            resolveIdentityStatus: jest.fn().mockResolvedValue({ identity_mode: 'dgfy_membership' }),
+            resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 3 })
+        });
+
+        const result = await runWithTenantComplianceContext(() => useCase({
+            payload: {
+                terminal_id: 'COUNTER-01',
+                location_id: 3,
+                opening_float_amount: 500
+            },
+            user: {
+                user_id: 1,
+                is_master_admin: true,
+                permissions: ['pos:transact', 'settings:view']
+            }
+        }));
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(409);
+        expect(result.error.details.active_cashier_id).toBe(44);
         expect(posRepository.createTerminalShift).not.toHaveBeenCalled();
     });
 
@@ -256,10 +323,11 @@ describe('pos use-cases application result contract', () => {
 
     it('getDailyZReading validates YYYY-MM-DD date format', async () => {
         const useCase = buildGetDailyZReadingUseCase({
-            posRepository: { getZReadingSummary: jest.fn() }
+            posRepository: { getZReadingSummary: jest.fn() },
+            resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 7 })
         });
 
-        const result = await useCase({ businessDateInput: 'invalid-date' });
+        const result = await useCase({ businessDateInput: 'invalid-date', user: { user_id: 7 } });
         expect(result.success).toBe(false);
         expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
     });
