@@ -76,16 +76,28 @@ router.use(authenticate);
 // were gated to F&B, which is what kept add-ons restaurant-only. They now sit
 // behind `menuModifiers` instead.
 //
-// Everything else here — dining areas, tables, kitchen stations and tickets,
-// checks, reservations, service charge — is genuinely restaurant-native and
-// stays behind `fnbDining`.
+// The remaining restaurant-native surface is gated at sub-capability
+// granularity so a template/profile can compose F&B tiers: a full-service
+// restaurant runs tables + kitchen + service charge, a counter-service
+// carenderia runs none of them, and both are still F&B.
+//   dining areas / tables      -> `tableService`
+//   kitchen stations / routes /
+//   tickets                    -> `kitchenQueue`
+//   service charge settings    -> `restaurantServiceCharge`
+//   dashboard / checks /
+//   reservations               -> `fnbDining` (the base F&B capability)
+// The fnb mode holds all four, so fnb tenants see no change; composed-overlay
+// tenants grant exactly the tiers they need.
 //
-// Note this must NOT be expressed as two sub-routers with their own
+// Note this must NOT be expressed as sub-routers with their own
 // `.use()`: a sub-router's middleware runs for every request routed into it,
 // not just the paths it defines, so `/fnb/dashboard` would be evaluated
 // against the modifier capability first.
 const requireFnbDining = requireWorkflowCapability('fnbDining', 'Food & Beverage');
 const requireMenuModifiers = requireWorkflowCapability('menuModifiers', 'Menu Modifiers');
+const requireTableService = requireWorkflowCapability('tableService', 'Table Service');
+const requireKitchenQueue = requireWorkflowCapability('kitchenQueue', 'Kitchen Queue');
+const requireRestaurantServiceCharge = requireWorkflowCapability('restaurantServiceCharge', 'Restaurant Service Charge');
 
 const modePermission = (primary, fallback) => checkAnyPermission(buildModePermissionRequirements(primary, fallback));
 
@@ -94,14 +106,14 @@ router.get('/dashboard', requireFnbDining, modePermission(PERMISSIONS.FNB.action
 router.get('/modifier-groups', requireMenuModifiers, modePermission(PERMISSIONS.FNB.actions.VIEW_MENU, PERMISSIONS.INVENTORY.actions.VIEW_ITEMS), validateFnbIncludeInactiveQuery, listModifierGroups);
 router.post('/modifier-groups', requireMenuModifiers, modePermission(PERMISSIONS.FNB.actions.MANAGE_MENU, PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateCreateFnbModifierGroup, createModifierGroup);
 
-router.get('/dining-areas', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.VIEW_DINING, PERMISSIONS.POS.actions.VIEW_POS), validateFnbIncludeInactiveQuery, listDiningAreas);
-router.post('/dining-areas', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.MANAGE_DINING, PERMISSIONS.POS.actions.TRANSACT_POS), validateCreateFnbDiningArea, createDiningArea);
-router.patch('/tables/:table_id/status', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.MANAGE_DINING, PERMISSIONS.POS.actions.TRANSACT_POS), validateFnbTableIdParam, validateUpdateFnbTableStatus, updateTableStatus);
+router.get('/dining-areas', requireTableService, modePermission(PERMISSIONS.FNB.actions.VIEW_DINING, PERMISSIONS.POS.actions.VIEW_POS), validateFnbIncludeInactiveQuery, listDiningAreas);
+router.post('/dining-areas', requireTableService, modePermission(PERMISSIONS.FNB.actions.MANAGE_DINING, PERMISSIONS.POS.actions.TRANSACT_POS), validateCreateFnbDiningArea, createDiningArea);
+router.patch('/tables/:table_id/status', requireTableService, modePermission(PERMISSIONS.FNB.actions.MANAGE_DINING, PERMISSIONS.POS.actions.TRANSACT_POS), validateFnbTableIdParam, validateUpdateFnbTableStatus, updateTableStatus);
 
-router.get('/kitchen-stations', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.VIEW_KITCHEN, PERMISSIONS.POS.actions.VIEW_POS), validateFnbIncludeInactiveQuery, listKitchenStations);
-router.post('/kitchen-stations', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.MANAGE_KITCHEN, PERMISSIONS.POS.actions.TRANSACT_POS), validateCreateFnbKitchenStation, createKitchenStation);
-router.get('/item-kitchen-routes', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.VIEW_MENU, PERMISSIONS.INVENTORY.actions.VIEW_ITEMS), validateFnbItemAssignmentQuery, listItemKitchenRoutes);
-router.put('/item-kitchen-routes/:item_id', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.MANAGE_MENU, PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateFnbItemIdParam, validateUpsertFnbItemKitchenRoute, upsertItemKitchenRoute);
+router.get('/kitchen-stations', requireKitchenQueue, modePermission(PERMISSIONS.FNB.actions.VIEW_KITCHEN, PERMISSIONS.POS.actions.VIEW_POS), validateFnbIncludeInactiveQuery, listKitchenStations);
+router.post('/kitchen-stations', requireKitchenQueue, modePermission(PERMISSIONS.FNB.actions.MANAGE_KITCHEN, PERMISSIONS.POS.actions.TRANSACT_POS), validateCreateFnbKitchenStation, createKitchenStation);
+router.get('/item-kitchen-routes', requireKitchenQueue, modePermission(PERMISSIONS.FNB.actions.VIEW_MENU, PERMISSIONS.INVENTORY.actions.VIEW_ITEMS), validateFnbItemAssignmentQuery, listItemKitchenRoutes);
+router.put('/item-kitchen-routes/:item_id', requireKitchenQueue, modePermission(PERMISSIONS.FNB.actions.MANAGE_MENU, PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateFnbItemIdParam, validateUpsertFnbItemKitchenRoute, upsertItemKitchenRoute);
 router.get('/item-modifier-groups', requireMenuModifiers, modePermission(PERMISSIONS.FNB.actions.VIEW_MENU, PERMISSIONS.INVENTORY.actions.VIEW_ITEMS), validateFnbItemAssignmentQuery, listItemModifierGroups);
 router.put('/item-modifier-groups/:item_id', requireMenuModifiers, modePermission(PERMISSIONS.FNB.actions.MANAGE_MENU, PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateFnbItemIdParam, validateReplaceFnbItemModifierGroups, replaceItemModifierGroups);
 
@@ -112,14 +124,14 @@ router.patch('/checks/:check_id/transfer', requireFnbDining, modePermission(PERM
 router.post('/checks/:check_id/split', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.MANAGE_CHECKS, PERMISSIONS.POS.actions.TRANSACT_POS), validateFnbCheckIdParam, validateSplitFnbCheck, splitCheck);
 router.post('/checks/:check_id/merge', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.MANAGE_CHECKS, PERMISSIONS.POS.actions.TRANSACT_POS), validateFnbCheckIdParam, validateMergeFnbChecks, mergeChecks);
 router.post('/checks/:check_id/lines', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.MANAGE_CHECKS, PERMISSIONS.POS.actions.TRANSACT_POS), validateFnbCheckIdParam, validateCreateFnbCheckLine, addCheckLine);
-router.post('/checks/:check_id/kitchen-tickets', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.MANAGE_KITCHEN, PERMISSIONS.POS.actions.TRANSACT_POS), validateFnbCheckIdParam, validateCreateFnbKitchenTicket, createKitchenTicket);
-router.patch('/kitchen-tickets/:ticket_id/status', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.MANAGE_KITCHEN, PERMISSIONS.POS.actions.TRANSACT_POS), validateFnbTicketIdParam, validateUpdateFnbTicketStatus, updateKitchenTicketStatus);
+router.post('/checks/:check_id/kitchen-tickets', requireKitchenQueue, modePermission(PERMISSIONS.FNB.actions.MANAGE_KITCHEN, PERMISSIONS.POS.actions.TRANSACT_POS), validateFnbCheckIdParam, validateCreateFnbKitchenTicket, createKitchenTicket);
+router.patch('/kitchen-tickets/:ticket_id/status', requireKitchenQueue, modePermission(PERMISSIONS.FNB.actions.MANAGE_KITCHEN, PERMISSIONS.POS.actions.TRANSACT_POS), validateFnbTicketIdParam, validateUpdateFnbTicketStatus, updateKitchenTicketStatus);
 
 router.get('/reservations', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.VIEW_RESERVATIONS, PERMISSIONS.POS.actions.VIEW_POS), validateFnbReservationsQuery, listReservations);
 router.post('/reservations', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.MANAGE_RESERVATIONS, PERMISSIONS.POS.actions.TRANSACT_POS), validateCreateFnbReservation, createReservation);
 router.patch('/reservations/:reservation_id/status', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.MANAGE_RESERVATIONS, PERMISSIONS.POS.actions.TRANSACT_POS), validateFnbReservationIdParam, validateUpdateFnbReservationStatus, updateReservationStatus);
 
-router.get('/service-charge-settings', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.VIEW_SERVICE_CHARGE, PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS), getServiceChargeSettings);
-router.put('/service-charge-settings', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.MANAGE_SERVICE_CHARGE, PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), validateUpdateFnbServiceCharge, updateServiceChargeSettings);
+router.get('/service-charge-settings', requireRestaurantServiceCharge, modePermission(PERMISSIONS.FNB.actions.VIEW_SERVICE_CHARGE, PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS), getServiceChargeSettings);
+router.put('/service-charge-settings', requireRestaurantServiceCharge, modePermission(PERMISSIONS.FNB.actions.MANAGE_SERVICE_CHARGE, PERMISSIONS.SYSTEM.actions.EDIT_SETTINGS), validateUpdateFnbServiceCharge, updateServiceChargeSettings);
 
 export default router;

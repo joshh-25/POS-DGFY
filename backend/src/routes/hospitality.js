@@ -59,54 +59,68 @@ const pos = PERMISSIONS.POS.actions;
 const reports = PERMISSIONS.REPORTS.actions;
 
 router.use(authenticate);
-router.use(requireWorkflowCapability('hospitalityReservations', 'Hospitality'));
+
+// The admin surface is gated per section rather than wholesale, so a
+// template/profile can compose hospitality tiers (a guesthouse without
+// housekeeping/maintenance boards, a resort with all of them). The
+// hospitality mode holds every sub-capability, so hospitality tenants see no
+// change. Kept as per-route middleware, not sub-routers (see fnb.js for why).
+// The public storefront surface stays on the base reservations capability.
 publicRouter.use(requireWorkflowCapability('hospitalityReservations', 'Hospitality'));
 
-router.get('/dashboard', checkAnyPermission([hp.VIEW_DASHBOARD, reports.VIEW_REPORTS]), dashboard);
-router.get('/availability', checkAnyPermission([hp.VIEW_RESERVATIONS, hp.VIEW_ROOMS]), availability);
+const requireReservations = requireWorkflowCapability('hospitalityReservations', 'Hospitality');
+const requireRooms = requireWorkflowCapability('hospitalityRooms', 'Rooms');
+const requireHousekeeping = requireWorkflowCapability('hospitalityHousekeeping', 'Housekeeping');
+const requireMaintenance = requireWorkflowCapability('hospitalityMaintenance', 'Maintenance');
+const requireFolios = requireWorkflowCapability('hospitalityFolios', 'Folios');
+const requireRates = requireWorkflowCapability('hospitalityRates', 'Rates');
+const requireAmenities = requireWorkflowCapability('hospitalityAmenities', 'Amenities');
 
-router.get('/room-types', checkAnyPermission([hp.VIEW_ROOMS]), listRoomTypes);
-router.post('/room-types', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_ROOMS]), createRoomType);
-router.get('/rooms', checkAnyPermission([hp.VIEW_ROOMS]), listRooms);
-router.post('/rooms', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_ROOMS]), createRoom);
-router.patch('/rooms/:room_id/status', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_ROOMS, hp.MANAGE_HOUSEKEEPING]), updateRoomStatus);
+router.get('/dashboard', requireReservations, checkAnyPermission([hp.VIEW_DASHBOARD, reports.VIEW_REPORTS]), dashboard);
+router.get('/availability', requireReservations, checkAnyPermission([hp.VIEW_RESERVATIONS, hp.VIEW_ROOMS]), availability);
 
-router.get('/guests', checkAnyPermission([hp.VIEW_GUESTS, hp.VIEW_RESERVATIONS]), listGuests);
-router.post('/guests', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_GUESTS, hp.MANAGE_RESERVATIONS]), createGuest);
-router.get('/reservations', checkAnyPermission([hp.VIEW_RESERVATIONS]), listReservations);
-router.post('/reservations', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_RESERVATIONS]), createReservation);
-router.patch('/reservations/:reservation_id/status', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_RESERVATIONS]), updateReservationStatus);
-router.patch('/reservations/:reservation_id/rooms/:reservation_room_id', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_RESERVATIONS, hp.MANAGE_ROOMS]), updateReservationRoomAssignment);
-router.get('/stays', checkAnyPermission([hp.VIEW_RESERVATIONS]), listStays);
+router.get('/room-types', requireRooms, checkAnyPermission([hp.VIEW_ROOMS]), listRoomTypes);
+router.post('/room-types', requireRooms, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_ROOMS]), createRoomType);
+router.get('/rooms', requireRooms, checkAnyPermission([hp.VIEW_ROOMS]), listRooms);
+router.post('/rooms', requireRooms, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_ROOMS]), createRoom);
+router.patch('/rooms/:room_id/status', requireRooms, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_ROOMS, hp.MANAGE_HOUSEKEEPING]), updateRoomStatus);
 
-router.get('/rate-plans', checkAnyPermission([hp.VIEW_RATES]), listRatePlans);
-router.post('/rate-plans', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_RATES]), createRatePlan);
+router.get('/guests', requireReservations, checkAnyPermission([hp.VIEW_GUESTS, hp.VIEW_RESERVATIONS]), listGuests);
+router.post('/guests', requireReservations, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_GUESTS, hp.MANAGE_RESERVATIONS]), createGuest);
+router.get('/reservations', requireReservations, checkAnyPermission([hp.VIEW_RESERVATIONS]), listReservations);
+router.post('/reservations', requireReservations, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_RESERVATIONS]), createReservation);
+router.patch('/reservations/:reservation_id/status', requireReservations, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_RESERVATIONS]), updateReservationStatus);
+router.patch('/reservations/:reservation_id/rooms/:reservation_room_id', requireReservations, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_RESERVATIONS, hp.MANAGE_ROOMS]), updateReservationRoomAssignment);
+router.get('/stays', requireReservations, checkAnyPermission([hp.VIEW_RESERVATIONS]), listStays);
 
-router.get('/folios', checkAnyPermission([hp.VIEW_FOLIOS]), listFolios);
-router.post('/folios', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_FOLIOS]), createFolio);
-router.post('/folios/:folio_id/lines', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_FOLIOS, pos.TRANSACT_POS]), addFolioLine);
+router.get('/rate-plans', requireRates, checkAnyPermission([hp.VIEW_RATES]), listRatePlans);
+router.post('/rate-plans', requireRates, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_RATES]), createRatePlan);
 
-router.get('/housekeeping/tasks', checkAnyPermission([hp.VIEW_HOUSEKEEPING]), listHousekeepingTasks);
-router.post('/housekeeping/tasks', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_HOUSEKEEPING]), createHousekeepingTask);
-router.patch('/housekeeping/tasks/:task_id', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_HOUSEKEEPING]), updateHousekeepingTask);
+router.get('/folios', requireFolios, checkAnyPermission([hp.VIEW_FOLIOS]), listFolios);
+router.post('/folios', requireFolios, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_FOLIOS]), createFolio);
+router.post('/folios/:folio_id/lines', requireFolios, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_FOLIOS, pos.TRANSACT_POS]), addFolioLine);
 
-router.get('/maintenance/requests', checkAnyPermission([hp.VIEW_MAINTENANCE]), listMaintenanceRequests);
-router.post('/maintenance/requests', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_MAINTENANCE]), createMaintenanceRequest);
-router.patch('/maintenance/requests/:request_id', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_MAINTENANCE]), updateMaintenanceRequest);
+router.get('/housekeeping/tasks', requireHousekeeping, checkAnyPermission([hp.VIEW_HOUSEKEEPING]), listHousekeepingTasks);
+router.post('/housekeeping/tasks', requireHousekeeping, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_HOUSEKEEPING]), createHousekeepingTask);
+router.patch('/housekeeping/tasks/:task_id', requireHousekeeping, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_HOUSEKEEPING]), updateHousekeepingTask);
 
-router.get('/amenities', checkAnyPermission([hp.VIEW_AMENITIES]), listAmenities);
-router.post('/amenities', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_AMENITIES]), createAmenity);
-router.post('/room-amenities', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_AMENITIES, hp.MANAGE_ROOMS]), createRoomAmenity);
-router.post('/property-amenities', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_AMENITIES]), createPropertyAmenity);
-router.get('/facilities', checkAnyPermission([hp.VIEW_FACILITIES]), listFacilities);
-router.post('/facilities', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_FACILITIES]), createFacility);
-router.post('/facilities/bookings', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_FACILITIES, hp.MANAGE_RESERVATIONS]), createFacilityBooking);
-router.get('/packages', checkAnyPermission([hp.VIEW_AMENITIES, hp.VIEW_RATES]), listPackages);
-router.post('/packages', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_AMENITIES, hp.MANAGE_RATES]), createPackage);
-router.post('/packages/items', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_AMENITIES, hp.MANAGE_RATES]), createPackageItem);
-router.get('/guest-messages', checkAnyPermission([hp.VIEW_GUESTS, hp.VIEW_RESERVATIONS]), listGuestMessages);
-router.post('/guest-messages', setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_GUESTS, hp.MANAGE_RESERVATIONS]), createGuestMessage);
-router.get('/reports', checkAnyPermission([hp.VIEW_REPORTS, reports.VIEW_REPORTS]), hospitalityReports);
+router.get('/maintenance/requests', requireMaintenance, checkAnyPermission([hp.VIEW_MAINTENANCE]), listMaintenanceRequests);
+router.post('/maintenance/requests', requireMaintenance, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_MAINTENANCE]), createMaintenanceRequest);
+router.patch('/maintenance/requests/:request_id', requireMaintenance, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_MAINTENANCE]), updateMaintenanceRequest);
+
+router.get('/amenities', requireAmenities, checkAnyPermission([hp.VIEW_AMENITIES]), listAmenities);
+router.post('/amenities', requireAmenities, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_AMENITIES]), createAmenity);
+router.post('/room-amenities', requireAmenities, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_AMENITIES, hp.MANAGE_ROOMS]), createRoomAmenity);
+router.post('/property-amenities', requireAmenities, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_AMENITIES]), createPropertyAmenity);
+router.get('/facilities', requireAmenities, checkAnyPermission([hp.VIEW_FACILITIES]), listFacilities);
+router.post('/facilities', requireAmenities, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_FACILITIES]), createFacility);
+router.post('/facilities/bookings', requireAmenities, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_FACILITIES, hp.MANAGE_RESERVATIONS]), createFacilityBooking);
+router.get('/packages', requireAmenities, checkAnyPermission([hp.VIEW_AMENITIES, hp.VIEW_RATES]), listPackages);
+router.post('/packages', requireAmenities, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_AMENITIES, hp.MANAGE_RATES]), createPackage);
+router.post('/packages/items', requireAmenities, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_AMENITIES, hp.MANAGE_RATES]), createPackageItem);
+router.get('/guest-messages', requireReservations, checkAnyPermission([hp.VIEW_GUESTS, hp.VIEW_RESERVATIONS]), listGuestMessages);
+router.post('/guest-messages', requireReservations, setNoStoreCacheControl, checkAnyPermission([hp.MANAGE_GUESTS, hp.MANAGE_RESERVATIONS]), createGuestMessage);
+router.get('/reports', requireReservations, checkAnyPermission([hp.VIEW_REPORTS, reports.VIEW_REPORTS]), hospitalityReports);
 
 publicRouter.get('/availability', setReadCacheControl({ maxAgeSeconds: 15, sMaxAgeSeconds: 15 }), availability);
 publicRouter.post('/quote', setNoStoreCacheControl, quote);

@@ -44,8 +44,8 @@ export const WORKFLOW_PAGE_CAPABILITIES = Object.freeze({
   Calendar: 'services',
   Providers: 'services',
   Fnb: 'fnbDining',
-  Kitchen: 'fnbDining',
-  Tables: 'fnbDining',
+  Kitchen: 'kitchenQueue',
+  Tables: 'tableService',
   Hospitality: 'hospitalityReservations'
 });
 
@@ -58,8 +58,8 @@ export const WORKFLOW_ROUTE_CAPABILITIES = Object.freeze({
   '/services/bookings': 'services',
   '/services/providers': 'services',
   '/fnb': 'fnbDining',
-  '/fnb/kitchen': 'fnbDining',
-  '/fnb/tables': 'fnbDining',
+  '/fnb/kitchen': 'kitchenQueue',
+  '/fnb/tables': 'tableService',
   '/hospitality': 'hospitalityReservations'
 });
 
