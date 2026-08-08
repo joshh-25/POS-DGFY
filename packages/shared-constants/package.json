@@ -13,6 +13,10 @@
       "import": "./src/modeItemTaxonomy.js",
       "default": "./src/modeItemTaxonomy.js"
     },
+    "./orderMethods": {
+      "import": "./src/orderMethods.js",
+      "default": "./src/orderMethods.js"
+    },
     "./uomConverter": {
       "import": "./src/uomConverter.js",
       "default": "./src/uomConverter.js"

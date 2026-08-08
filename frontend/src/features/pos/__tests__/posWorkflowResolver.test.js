@@ -23,10 +23,25 @@ describe('resolvePosWorkflow', () => {
     expect(config.capabilities.providers).toBe(true);
   });
 
-  it('falls back safely for unknown or missing modes', () => {
-    const configUnknown = resolvePosWorkflow('unknown_mode');
-    expect(configUnknown.mode).toBe('fnb');
+  it('resolves counter-selling modes to the counter config without dine-in, tables, or kitchen', () => {
+    ['retail', 'msme', 'food_manufacturing'].forEach((mode) => {
+      const config = resolvePosWorkflow(mode);
+      expect(config.mode).toBe('counter');
+      expect(config.transactionRecord).toBe('order');
+      expect(config.allowedMethods).toEqual(['walk_in', 'pickup', 'delivery']);
+      expect(config.allowedMethods).not.toContain('dine_in');
+      expect(config.capabilities.tables).toBe(false);
+      expect(config.capabilities.kitchen).toBe(false);
+      expect(config.capabilities.bookings).toBe(false);
+    });
+  });
 
+  it('falls back safely for unknown or missing modes', () => {
+    // Unknown strings normalize to the msme family, which sells over the counter.
+    const configUnknown = resolvePosWorkflow('unknown_mode');
+    expect(configUnknown.mode).toBe('counter');
+
+    // An absent mode (still loading) keeps the pre-existing fnb-shaped default.
     const configNull = resolvePosWorkflow(null);
     expect(configNull.mode).toBe('fnb');
   });

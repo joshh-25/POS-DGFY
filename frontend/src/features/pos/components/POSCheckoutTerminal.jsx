@@ -98,6 +98,7 @@ const OrderPreviewView = lazyWithChunkRetry(() => import('./OrderPreviewView.jsx
 const EmployeeCreditPaymentPanel = lazyWithChunkRetry(() => import('./EmployeeCreditPaymentPanel.jsx'));
 const FnbWorkflowPanel = lazyWithChunkRetry(() => import('./FnbWorkflowPanel.jsx').then(({ FnbWorkflowPanel: Component }) => ({ default: Component })));
 const ServicesWorkflowPanel = lazyWithChunkRetry(() => import('./ServicesWorkflowPanel.jsx').then(({ ServicesWorkflowPanel: Component }) => ({ default: Component })));
+const CounterWorkflowPanel = lazyWithChunkRetry(() => import('./CounterWorkflowPanel.jsx').then(({ CounterWorkflowPanel: Component }) => ({ default: Component })));
 
 const CATALOG_GRID_GAP_PX = 8;
 const CATALOG_DESKTOP_CARD_HEIGHT_PX = 176;
@@ -2232,7 +2233,7 @@ export default function POSCheckoutTerminal({
         // service add regardless of what else was already in the cart, so
         // ringing up a service alongside unrelated retail lines silently
         // reclassified the whole mixed-basket transaction as an appointment.
-        if (isServiceCatalogItem(item) && cart.length === 0) {
+        if (isServiceCatalogItem(item) && cart.length === 0 && posWorkflow.allowedMethods.includes('appointment')) {
             setOrderMethod('appointment');
         }
         let stockWarning = '';
@@ -2825,6 +2826,9 @@ export default function POSCheckoutTerminal({
             order_method: orderMethod,
             customer_name: posWorkflow.mode === 'services' ? servicesClientName.trim() || undefined : undefined,
             special_instructions: posWorkflow.mode === 'services' ? servicesNotes.trim() || undefined : undefined,
+            scheduled_for: posWorkflow.mode === 'services' && servicesDateTime
+                ? new Date(servicesDateTime).toISOString()
+                : undefined,
             payment_type: paymentType,
             payment_handoff_mode: ['cash', 'employee_credit'].includes(paymentType) ? 'internal' : 'external',
             cash_received: isCashPayment ? Number(customerPaymentAmount || 0) : undefined,
@@ -4800,6 +4804,16 @@ export default function POSCheckoutTerminal({
                                         setTableNumber={setTableNumber}
                                         kitchenNotes={kitchenNotes}
                                         setKitchenNotes={setKitchenNotes}
+                                        disabled={posActionsBlocked || checkoutLoading}
+                                    />
+                                </Suspense>
+                            )}
+                            {posWorkflow.mode === 'counter' && (
+                                <Suspense fallback={null}>
+                                    <CounterWorkflowPanel
+                                        orderMethod={orderMethod}
+                                        setOrderMethod={setOrderMethod}
+                                        allowedMethods={posWorkflow.allowedMethods}
                                         disabled={posActionsBlocked || checkoutLoading}
                                     />
                                 </Suspense>

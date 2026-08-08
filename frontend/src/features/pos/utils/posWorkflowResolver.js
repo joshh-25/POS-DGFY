@@ -27,6 +27,19 @@ export const POS_WORKFLOW_CONFIGS = Object.freeze({
       serviceOptions: false
     })
   }),
+  counter: Object.freeze({
+    mode: 'counter',
+    transactionRecord: 'order',
+    allowedMethods: Object.freeze(['walk_in', 'pickup', 'delivery']),
+    capabilities: Object.freeze({
+      tables: false,
+      kitchen: false,
+      bookings: false,
+      providers: false,
+      resources: false,
+      serviceOptions: false
+    })
+  }),
   default: Object.freeze({
     mode: 'fnb',
     transactionRecord: 'order',
@@ -57,6 +70,7 @@ export const resolvePosWorkflow = (workflowMode) => {
     return POS_WORKFLOW_CONFIGS.fnb;
   }
 
-  // Fallback / default to safe fnb configuration if unspecified or retail/msme for backwards compatibility
-  return POS_WORKFLOW_CONFIGS.fnb;
+  // Retail, msme, food_manufacturing, and the placeholder modes sell over the
+  // counter: no tables, no kitchen, no dine-in default.
+  return POS_WORKFLOW_CONFIGS.counter;
 };
