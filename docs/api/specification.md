@@ -2342,6 +2342,31 @@ List sellable POS catalog items.
   - `category=service` + service metadata with `visible_in_pos !== false`: visible by default in POS
   - other categories/types: hidden until explicitly enabled (`pos_visible=true`)
 
+### GET /pos/catalog/events
+Open the authenticated POS catalog invalidation stream.
+
+**Permission**: `pos:view`
+**Plan Gate**: Premium (`requirePremium`)
+
+**Response**: `text/event-stream`
+
+**Events**
+- `connected`: emitted when the stream is ready.
+- `heartbeat`: emitted every 25 seconds to keep an idle connection alive.
+- `pos.catalog.changed`: emitted after a successful tenant catalog item,
+  visibility/override, or catalog-image mutation.
+
+**Payload Contract**
+- Event payloads contain only `reason` and `emitted_at` (or `connected` for
+  the connection event). They never include item, stock, price, or location
+  data.
+- Clients must re-fetch `GET /pos/catalog` on `connected` and
+  `pos.catalog.changed`. The normal catalog response remains authoritative and
+  applies the caller's location grant and POS visibility rules.
+- Browser clients must send the same bearer and company context used for the
+  normal POS API. Native `EventSource` is not sufficient because it cannot set
+  the required authorization headers.
+
 ### POST /pos/scan
 Resolve a barcode scan for the current POS context before cart insertion.
 
@@ -2860,7 +2885,7 @@ Advance the manual delivery job for an online delivery order from the POS queue.
 6. The order completion endpoint still requires `deliveryJob.status=delivered`; marking the job delivered does not complete the order automatically.
 
 ### POST /pos/z-reading/close-day
-Generate same-day Z-reading summary for completed POS transactions.
+Generate the branch-scoped Z-reading summary for completed POS transactions. The branch is resolved from the registered terminal location and the authenticated user's location access.
 
 **Permission**: `pos:close_day`
 **Plan Gate**: Premium (`requirePremium`)
@@ -2868,6 +2893,10 @@ Generate same-day Z-reading summary for completed POS transactions.
 **Extended Response Fields (non-breaking)**
 - `snapshot_persisted` (`boolean`)
 - `reading_identifier` (`string`, stable per persisted close-day snapshot)
+- `location_id` (`integer`, the authorized terminal branch)
+- `snapshot_reused` (`boolean`, `true` when the branch/date was already closed)
+- `idempotent_replay` (`boolean`, equivalent replay indicator for a repeated close request)
+- `replay_outcome` (`string`, `new_snapshot` or `existing_snapshot`)
 - `counters`:
   - `z_counter`
   - `reset_counter`
@@ -2882,6 +2911,13 @@ Retrieve Z-reading summary for a specific business date (`YYYY-MM-DD`).
 
 When a persisted snapshot exists for the requested date, response uses the stored snapshot payload.
 When no snapshot exists, response is computed on demand with `snapshot_persisted=false`.
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `location_id` | integer | Optional authorized branch. If omitted, the server resolves the user's location scope; multi-branch users must provide it. |
+
+Historical snapshots created before branch scoping are not assigned to a branch automatically. They are not used as a branch snapshot; the endpoint computes the requested branch on demand until a branch-scoped snapshot exists.
 
 Z-reading summary includes:
 - `transaction_count`
@@ -3649,6 +3685,7 @@ The split checkout described by the older commerce-admin endpoints is deprecated
 | `GET` | `/payment-sessions/:payment_session_id` | Inspect a payment session, provider IDs, order linkage, refundable balance, and refund attempts. |
 | `GET` | `/settlement-report` | Summarize/export QR Ph gross, fixed DGFY 1%, estimated tenant gross, refund exposure, provider IDs, and variance. Supports the same filter shape as payment-session listing. |
 | `GET` | `/certification/paymongo-sandbox` | Return app-verifiable PayMongo sandbox readiness checks, parent split-capability confirmation status, and the remaining external evidence required before live money movement. |
+| `POST` | `/payment-sessions/:payment_session_id/reconcile` | Admin-only recovery check against the PayMongo Payment Intent API. It finalizes only when a paid provider payment record exists and its amount/currency match the locked session; otherwise it reports the provider state or returns a review conflict. |
 | `POST` | `/payment-sessions/:payment_session_id/retry-finalization` | Retry local order finalization for paid unresolved sessions without creating duplicate orders. |
 | `POST` | `/payment-sessions/:payment_session_id/refunds` | Submit a PayMongo refund for a paid/finalized session. |
 | `GET` | `/tenant-payment-accounts` | List tenant PayMongo child merchant readiness records. Supports `tenant_id`. |

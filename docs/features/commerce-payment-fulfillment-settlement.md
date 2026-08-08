@@ -1,7 +1,7 @@
 ---
 status: authoritative
 owner: payments
-last_reviewed: 2026-07-31
+last_reviewed: 2026-08-08
 applies_to: storefront_paymongo_pos_fulfillment_tenant_settlement
 ---
 
@@ -20,6 +20,25 @@ applies_to: storefront_paymongo_pos_fulfillment_tenant_settlement
 8. The refund ledger reverses tenant payable and the proportional DGFY platform
    fee. Provider-fee treatment remains a reconciliation item until PayMongo
    confirms whether that fee was returned.
+
+## Paid-session finalization recovery
+
+- A verified `payment.paid` event records the payment before Storefront order
+  creation is attempted.
+- If order creation fails after payment confirmation, the session is retained as
+  `paid_manual_resolution_required` with `ORDER_FINALIZATION_FAILED`; it must
+  never be downgraded to a failed payment or silently discarded.
+- Administrator retry-finalization is idempotent and may reuse the signed guest
+  checkout proof after its short presentation expiry because the PayMongo payment
+  session already bound the proof to the tenant, email, and checkout key.
+- Admin > Payments provides a provider reconciliation action for sessions still
+  waiting on a webhook. It retrieves the Payment Intent server-side and only
+  enters the shared paid/finalization path when PayMongo returns a paid payment
+  record whose amount and currency match the locked session total.
+- Provider reconciliation is an audited recovery path, not a replacement for the
+  signed `payment.paid` webhook and never trusts browser payment confirmation.
+- A retry must either create/link the POS transaction and tracking PIN or leave
+  the session in the recoverable manual-resolution state with the latest failure.
 
 ## Failure behavior
 

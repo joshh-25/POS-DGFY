@@ -30,7 +30,8 @@ Confirmed business contract from the June 8, 2026 alignment:
 
 The admin operations slice adds:
 - Tenant PayMongo child merchant readiness create/update/list APIs and an Admin > Payments test panel.
-- Payment-session listing, inspection, and paid-session finalization retry.
+- Payment-session listing, inspection, provider reconciliation, and paid-session
+  finalization retry.
 - PayMongo refund submission with proportional, tenant-shouldered, and DGFY-shouldered split-refund strategies.
 - Refund attempt storage in `commerce_payment_refunds`, PayMongo `payment.refunded` / `payment.refund.updated` webhook status updates, and tenant order `payment_status` reconciliation through `refund_pending`, `partial_refunded`, or `refunded`.
 - Admin payment validators reject malformed payment-session IDs, refund payloads, unsafe status filters, and malformed tenant readiness payloads before use-case execution.
@@ -149,6 +150,7 @@ Current production setup status:
 - Admin > Payments is now the operator surface for PayMongo child-merchant onboarding actions: create child account, sync requirements, submit review, and request activation. Active QR Ph readiness can be set only from PayMongo activation evidence, and split/charge readiness still requires explicit wallet/capability evidence from PayMongo or manually recorded operator evidence.
 - Services/reservation QR Ph remains intentionally gated off. The service booking UI labels its payment area as a manual preview until a hold-bound commerce payment session prevents expired-hold payment, duplicate booking, and orphan settlement risks.
 - Admin > Payments now includes settlement summary cards, certification check visibility, expandable provider/refund evidence, and CSV export for reconciliation review.
+- Admin > Payments can verify an awaiting session against PayMongo's server-side Payment Intent API when a signed `payment.paid` webhook is delayed or missed. The recovery is idempotent, audit logged, requires a paid provider payment record, and reuses the same amount/currency validation and order-finalization path as the webhook. It must not be used to bypass webhook configuration or browser-side payment safety.
 - The current settlement report estimates tenant gross from stored total minus the fixed DGFY split. It does not claim provider-fee or payout truth until PayMongo payout/reporting data is integrated.
 - Tenant readiness setup now requires a PayMongo verification reference and verification date before active/charge/split/QR Ph flags can be enabled.
 - Tenant readiness setup now stores wallet status and wallet verification date; split/charge readiness is blocked unless the wallet is `enabled`.
