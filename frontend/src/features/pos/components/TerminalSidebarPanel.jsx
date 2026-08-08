@@ -686,7 +686,7 @@ export default function TerminalSidebarPanel({
                           {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Opening...' : 'Open Order'}
                         </Button>
                       )}
-                      {utilityActions.includes('print_order') && (
+                      {utilityActions.includes('print_receipt') && (
                         <Button
                           type="button"
                           size="sm"
@@ -702,9 +702,21 @@ export default function TerminalSidebarPanel({
                             ? 'Printing...'
                             : order.receipt_print_status === 'failed'
                               ? 'Retry Print'
-                              : order.receipt_print_status === 'printed'
+                            : order.receipt_print_status === 'printed'
                                 ? 'Reprint Receipt'
                                 : 'Print Receipt'}
+                        </Button>
+                      )}
+                      {utilityActions.includes('print_order') && (
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-[11px]"
+                          disabled={locked || !canViewPos || incomingReceiptOpeningId !== null}
+                          onClick={() => handleOpenIncomingOrderReceipt?.(order.pos_transaction_id, { printOrder: true })}
+                        >
+                          {incomingReceiptOpeningId === Number(order.pos_transaction_id) ? 'Printing...' : 'Print Order'}
                         </Button>
                       )}
                     </div>

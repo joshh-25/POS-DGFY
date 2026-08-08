@@ -1,4 +1,4 @@
-import { fetchPosDeviceStatus, printPosReceipt, printPosShiftSummary, openPosDeviceDrawer } from '../../services/posService.js';
+import { fetchPosDeviceStatus, printPosReceipt, printPosShiftSummary, printPosZReading, openPosDeviceDrawer } from '../../services/posService.js';
 import { normalizeHardwareResult } from '../posHardwareContract.js';
 
 const extractErrorMessage = (error, fallback) => (
@@ -72,6 +72,30 @@ export const lanBridgeDriver = {
                 success: false,
                 driverId: this.id,
                 message: extractErrorMessage(error, 'Failed to send shift sales summary to printer.'),
+                reasonCode: 'LAN_BRIDGE_PRINT_FAILED'
+            });
+        }
+    },
+    async printZReading({ businessDate, terminalId, reason, idempotencyKey, copies, paperWidth } = {}) {
+        try {
+            const result = await printPosZReading(businessDate, {
+                idempotency_key: idempotencyKey,
+                terminal_id: terminalId || undefined,
+                reason,
+                copies,
+                paper_width: paperWidth
+            });
+            return normalizeHardwareResult({
+                success: true,
+                driverId: this.id,
+                message: 'Z-reading print request sent.',
+                raw: result
+            });
+        } catch (error) {
+            return normalizeHardwareResult({
+                success: false,
+                driverId: this.id,
+                message: extractErrorMessage(error, 'Failed to send Z-reading to printer.'),
                 reasonCode: 'LAN_BRIDGE_PRINT_FAILED'
             });
         }

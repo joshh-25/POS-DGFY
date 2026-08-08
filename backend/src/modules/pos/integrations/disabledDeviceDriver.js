@@ -34,6 +34,13 @@ export const disabledDeviceDriver = {
             { statusCode: 503, details: { reason_code: 'POS_PRINTING_DISABLED' } }
         );
     },
+    async printZReading() {
+        throw new DomainError(
+            DomainErrorCode.SERVICE_UNAVAILABLE,
+            'POS printing is disabled for this tenant. The Z-reading remains available for on-screen preview.',
+            { statusCode: 503, details: { reason_code: 'POS_HARDWARE_DISABLED' } }
+        );
+    },
     async openDrawer() {
         throw new DomainError(
             DomainErrorCode.SERVICE_UNAVAILABLE,

@@ -203,14 +203,15 @@ const isMissingItemLocationStockSchemaError = (error) => {
     if (!error) return false;
     const code = error.original?.code || error.parent?.code || error.code;
     const message = String(error.original?.sqlMessage || error.parent?.sqlMessage || error.message || '');
+    const normalizedMessage = message.toLowerCase();
     if (code === 'ER_NO_SUCH_TABLE' && message.includes('item_location_stocks')) {
         return true;
     }
     if (code === 'ER_BAD_FIELD_ERROR' && (
-        message.includes('item_location_stocks')
-        || message.includes("Unknown column 'quantity_on_hand'")
-        || message.includes("Unknown column 'location_id'")
-        || message.includes("Unknown column 'item_id'")
+        normalizedMessage.includes('item_location_stocks')
+        || normalizedMessage.includes('quantity_on_hand')
+        || normalizedMessage.includes('location_id')
+        || normalizedMessage.includes('item_id')
     )) {
         return true;
     }
@@ -1624,6 +1625,17 @@ export const posRepository = {
         return toPlain(row);
     },
 
+    async findActiveDayCloseOperatorById(userId, options = {}) {
+        const User = dbStore.get('User');
+        const row = await User.findOne({
+            where: buildVisibleWhere({ user_id: userId, is_active: true }),
+            attributes: ['user_id', 'username', 'is_active', 'deleted_at', 'pos_day_close_pin_hash'],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
     async findSystemSettingByKey(key, options = {}) {
         const SystemSetting = dbStore.get('SystemSetting');
         const row = await SystemSetting.findOne({
@@ -1820,7 +1832,8 @@ export const posRepository = {
         if (!key) return 0;
 
         const counter = await PosInvoiceCounter.findByPk(key, {
-            transaction: options.transaction
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         });
         if (!counter) return 0;
 
@@ -2751,13 +2764,18 @@ export const posRepository = {
 
     async getLatestZReadingSnapshotByBusinessDate(businessDate, options = {}) {
         const PosZReadingSnapshot = dbStore.get('PosZReadingSnapshot');
+        const where = {
+            business_date: businessDate,
+            reading_identifier: { [Op.like]: 'ZR-%' }
+        };
+        if (Object.prototype.hasOwnProperty.call(options, 'locationId')) {
+            where.location_id = options.locationId;
+        }
         const row = await PosZReadingSnapshot.findOne({
-            where: {
-                business_date: businessDate,
-                reading_identifier: { [Op.like]: 'ZR-%' }
-            },
+            where,
             order: [['generated_at', 'DESC'], ['pos_z_reading_snapshot_id', 'DESC']],
-            transaction: options.transaction
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
         });
         return toPlain(row);
     },

@@ -111,7 +111,7 @@ import {
   updateSettings,
   uploadStorefrontAsset
 } from '@/services/settingsService.js';
-import { getAllUsers, updatePosApprovalPin, updateProfile } from '@/services/userService.js';
+import { getAllUsers, updatePosApprovalPin, updatePosDayClosePin, updateProfile } from '@/services/userService.js';
 import * as tenantLocationService from '@/services/tenantLocationService.js';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '@/src/features/pos/utils/terminalIdentity.js';
@@ -716,12 +716,14 @@ function ShiftControlsWorkspace({
   setOpenShiftForm,
   handleOpenShift,
   shiftActionLoading,
-  canTransactPos,
+  canOpenShift = false,
+  canCloseShift,
   canCloseDay,
   canAdminBypassShiftPrompt = false,
   closeShiftForm,
   setCloseShiftForm,
   handleCloseShift,
+  handleCloseDay = () => {},
   handleViewShiftSummary = () => {},
   locked,
   refreshOperationalContext,
@@ -764,7 +766,7 @@ function ShiftControlsWorkspace({
   const shiftCashierLabel = activeShift?.cashier?.username
     || activeShift?.cashier?.email
     || (activeShift?.cashier_id ? `Cashier #${activeShift.cashier_id}` : 'Current cashier');
-  const canRenderAdminShiftOpen = canTransactPos && !canAdminBypassShiftPrompt;
+  const canRenderAdminShiftOpen = canOpenShift;
   const activeTerminals = useMemo(
     () => (Array.isArray(terminalRegistry) ? terminalRegistry : [])
       .filter((entry) => entry?.is_active !== false),
@@ -1232,7 +1234,7 @@ function ShiftControlsWorkspace({
             >
               {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
             </Button>
-            {canAdminBypassShiftPrompt ? (
+            {!canRenderAdminShiftOpen && canAdminBypassShiftPrompt ? (
               <p className="text-[11px] text-slate-500">Administrator navigation is read-only. A cashier must open the shift.</p>
             ) : !canRenderAdminShiftOpen ? (
               <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>
@@ -1383,6 +1385,25 @@ function ShiftControlsWorkspace({
   };
 
   const renderCloseShiftPane = () => {
+    const closeDayAction = canCloseDay ? (
+      <div className="mt-4 border-t border-slate-200 pt-4">
+        <p className="text-[12px] font-black text-[#0F172A]">Day-end Z-reading</p>
+        <p className="mt-1 text-[12px] leading-5 text-[#475569]">
+          Closes the branch day report using financially recognized sales from all cashiers, then sends the Z-reading to the configured printer.
+        </p>
+        <Button
+          type="button"
+          className="mt-3 h-10 rounded-lg !bg-[#1A4E8D] px-4 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#143F73]"
+          onClick={handleCloseDay}
+          disabled={shiftActionLoading.zReading || locked || !isOnline || !activeTerminalMatchesOperatingLocation}
+        >
+          <Receipt className="mr-2 h-4 w-4" />
+          {shiftActionLoading.zReading ? 'Closing Day...' : 'Close Day & Print Z-reading'}
+        </Button>
+        {!isOnline ? <p className="mt-2 text-[11px] text-amber-700">Reconnect before closing the day.</p> : null}
+      </div>
+    ) : null;
+
     if (!activeShift) {
       return (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
@@ -1416,7 +1437,7 @@ function ShiftControlsWorkspace({
             >
               {shiftActionLoading.open ? 'Opening Shift...' : 'Open Shift'}
             </Button>
-            {canAdminBypassShiftPrompt ? (
+            {!canRenderAdminShiftOpen && canAdminBypassShiftPrompt ? (
               <p className="text-[11px] text-slate-500">Administrator navigation is read-only. A cashier must open the shift.</p>
             ) : !canRenderAdminShiftOpen ? (
               <p className="text-[11px] text-slate-500">You need POS transact permission to open shifts.</p>
@@ -1426,6 +1447,7 @@ function ShiftControlsWorkspace({
             )}
             {!isOnline && <p className="text-[11px] text-amber-700">Reconnect before opening a shift.</p>}
           </div>
+          {closeDayAction}
         </div>
       );
     }
@@ -1433,9 +1455,9 @@ function ShiftControlsWorkspace({
     return (
       <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
         <p className="text-[13px] font-black text-[#0F172A]">Close Shift</p>
-        {!canCloseDay ? (
+        {!canCloseShift ? (
           <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
-            You need close-day permission to close shifts.
+            You need shift-close or close-day permission to close shifts.
           </p>
         ) : (
           <div className="mt-3 space-y-3">
@@ -1486,6 +1508,7 @@ function ShiftControlsWorkspace({
             </div>
           </div>
         )}
+        {closeDayAction}
       </div>
     );
   };
@@ -2850,6 +2873,7 @@ function ItemsWorkspace({
     const finalizeCreatedItem = async ({ barcode = '', warningMessage = '', action = 'created' } = {}) => {
       closeCreate({ force: true });
       await Promise.all([loadItems(), loadPosFolders()]);
+      notifyPosCatalogUpdated();
       setSavedMessage({ name, barcode, action });
       if (warningMessage) {
         toast.warning(warningMessage);
@@ -4904,6 +4928,7 @@ function SettingsWorkspace({
   const canManageCashiers = terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('users:manage');
   const canManageDiscountApprovalPins = terminalUser?.is_master_admin === true;
+  const canManageDayClosePins = terminalUser?.is_master_admin === true;
   const canManageEmployeeCredit = terminalUser?.is_master_admin === true
     || resolveUserPermissionList(terminalUser).includes('pos:employee_credit:manage');
   const canManageEmployees = terminalUser?.is_master_admin === true
@@ -4927,6 +4952,11 @@ function SettingsWorkspace({
   const [approvalPinUser, setApprovalPinUser] = useState(null);
   const [approvalPin, setApprovalPin] = useState('');
   const [savingApprovalPin, setSavingApprovalPin] = useState(false);
+  const [dayCloseOperators, setDayCloseOperators] = useState([]);
+  const [dayCloseOperatorsLoading, setDayCloseOperatorsLoading] = useState(false);
+  const [dayClosePinUser, setDayClosePinUser] = useState(null);
+  const [dayClosePin, setDayClosePin] = useState('');
+  const [savingDayClosePin, setSavingDayClosePin] = useState(false);
   const [employeeDirectoryRevision, setEmployeeDirectoryRevision] = useState(0);
   const [storefrontPromoItemOptions, setStorefrontPromoItemOptions] = useState([]);
   const [storefrontPromoItemsLoading, setStorefrontPromoItemsLoading] = useState(false);
@@ -5221,6 +5251,27 @@ function SettingsWorkspace({
     }
   }, [canManageDiscountApprovalPins]);
 
+  const loadDayCloseOperators = useCallback(async ({ silent = false } = {}) => {
+    if (!canManageDayClosePins) {
+      setDayCloseOperators([]);
+      return;
+    }
+    if (!silent) setDayCloseOperatorsLoading(true);
+    try {
+      const rows = await getAllUsers({ include_invitations: false });
+      setDayCloseOperators((Array.isArray(rows) ? rows : [])
+        .filter((user) => user?.is_active !== false && !user?.deleted_at)
+        .filter((user) => resolveUserPermissionList(user).includes('pos:close_day'))
+        .sort((left, right) => String(left?.username || '').localeCompare(String(right?.username || ''))));
+    } catch (error) {
+      if (!silent) {
+        toast.error(error?.response?.data?.message || 'Failed to load Day Close operators.');
+      }
+    } finally {
+      setDayCloseOperatorsLoading(false);
+    }
+  }, [canManageDayClosePins]);
+
   const closeApprovalPinDialog = useCallback(() => {
     if (savingApprovalPin) return;
     setApprovalPinUser(null);
@@ -5250,6 +5301,36 @@ function SettingsWorkspace({
       setSavingApprovalPin(false);
     }
   }, [approvalPin, approvalPinUser]);
+
+  const closeDayClosePinDialog = useCallback(() => {
+    if (savingDayClosePin) return;
+    setDayClosePinUser(null);
+    setDayClosePin('');
+  }, [savingDayClosePin]);
+
+  const saveDayClosePin = useCallback(async ({ clear = false } = {}) => {
+    if (!dayClosePinUser) return;
+    if (!clear && !/^\d{4,12}$/.test(dayClosePin)) {
+      toast.error('POS Day Close PIN must contain 4 to 12 digits.');
+      return;
+    }
+    setSavingDayClosePin(true);
+    try {
+      const updated = await updatePosDayClosePin(dayClosePinUser.user_id, { pin: dayClosePin, clear });
+      setDayCloseOperators((current) => current.map((user) => (
+        user.user_id === dayClosePinUser.user_id
+          ? { ...user, pos_day_close_pin_configured: updated.pos_day_close_pin_configured === true }
+          : user
+      )));
+      toast.success(clear ? 'POS Day Close PIN cleared.' : 'POS Day Close PIN configured.');
+      setDayClosePinUser(null);
+      setDayClosePin('');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to update POS Day Close PIN.');
+    } finally {
+      setSavingDayClosePin(false);
+    }
+  }, [dayClosePin, dayClosePinUser]);
 
   const loadStorefrontPromoItems = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
@@ -5431,6 +5512,10 @@ function SettingsWorkspace({
   useEffect(() => {
     loadDiscountApprovers({ silent: true });
   }, [loadDiscountApprovers]);
+
+  useEffect(() => {
+    loadDayCloseOperators({ silent: true });
+  }, [loadDayCloseOperators]);
 
   useEffect(() => {
     loadStorefrontPromoItems({ silent: true });
@@ -7019,6 +7104,49 @@ function SettingsWorkspace({
                     ) : null}
                   </div>
                 </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-[12px] font-black text-[#0F172A]">POS Day Close PINs</p>
+                      <p className="mt-1 text-[11px] text-[#64748B]">Configure the write-only personal PIN each authorized cashier enters before generating the branch Z-reading.</p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="h-9 rounded-lg px-3 text-[12px] font-extrabold"
+                      onClick={() => loadDayCloseOperators()}
+                      disabled={locked || loading || dayCloseOperatorsLoading}
+                    >
+                      {dayCloseOperatorsLoading ? 'Refreshing...' : 'Refresh'}
+                    </Button>
+                  </div>
+                  <div className="mt-3 grid gap-2">
+                    {dayCloseOperators.map((user) => (
+                      <div key={`day-close-operator-${user.user_id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                        <div className="min-w-0">
+                          <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{user.username || user.email}</p>
+                          <p className="text-[11px] capitalize text-[#64748B]">{user.role} · {user.pos_day_close_pin_configured ? 'PIN configured' : 'PIN not set'}</p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9 rounded-lg px-3 text-[12px] font-extrabold text-blue-700"
+                          onClick={() => {
+                            setDayClosePinUser(user);
+                            setDayClosePin('');
+                          }}
+                          disabled={locked || loading}
+                        >
+                          <KeyRound className="mr-1.5 h-4 w-4" />
+                          {user.pos_day_close_pin_configured ? 'Reset PIN' : 'Set PIN'}
+                        </Button>
+                      </div>
+                    ))}
+                    {!dayCloseOperatorsLoading && dayCloseOperators.length === 0 ? (
+                      <p className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-[12px] text-[#64748B]">No active users have close-day permission. Grant pos:close_day to the cashiers first.</p>
+                    ) : null}
+                  </div>
+                </div>
               </div>
             ) : null}
             <div className="mt-4 grid gap-3">
@@ -8473,6 +8601,57 @@ function SettingsWorkspace({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+      <Dialog open={Boolean(dayClosePinUser)} onOpenChange={(open) => !open && closeDayClosePinDialog()}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-5 w-5 text-blue-600" />
+              POS Day Close PIN
+            </DialogTitle>
+            <DialogDescription>
+              This PIN is used only by this signed-in operator to confirm a branch Z-reading. It cannot be viewed after saving.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+              <p className="font-semibold">{dayClosePinUser?.username || dayClosePinUser?.email}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                {dayClosePinUser?.pos_day_close_pin_configured
+                  ? 'A Day Close PIN is configured. Enter a new PIN to replace it.'
+                  : 'Configure the personal PIN this operator will enter before closing the branch day.'}
+              </p>
+            </div>
+            <div>
+              <Label className="text-sm font-semibold text-slate-800">New Day Close PIN</Label>
+              <Input
+                value={dayClosePin}
+                onChange={(event) => setDayClosePin(event.target.value.replace(/\D/g, '').slice(0, 12))}
+                type="password"
+                inputMode="numeric"
+                autoComplete="new-password"
+                placeholder="4 to 12 digits"
+                className="mt-1"
+                disabled={savingDayClosePin}
+              />
+            </div>
+          </div>
+          <DialogFooter className="mt-4 flex-row justify-between gap-2 border-t pt-4 sm:justify-between">
+            <div>
+              {dayClosePinUser?.pos_day_close_pin_configured ? (
+                <Button type="button" variant="outline" onClick={() => saveDayClosePin({ clear: true })} disabled={savingDayClosePin} className="text-rose-600">
+                  Clear PIN
+                </Button>
+              ) : null}
+            </div>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={closeDayClosePinDialog} disabled={savingDayClosePin}>Cancel</Button>
+              <Button type="button" onClick={() => saveDayClosePin()} disabled={savingDayClosePin} className="bg-blue-600 hover:bg-blue-700">
+                {savingDayClosePin ? 'Saving...' : 'Save PIN'}
+              </Button>
+            </div>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -8505,6 +8684,8 @@ export default function TerminalOperationsWorkspace({
   itemsStockFilterPreset = '',
   onItemsStockFilterPresetApplied = () => {},
   canTransactPos,
+  canOpenShift = false,
+  canCloseShift,
   canAdminBypassShiftPrompt = false,
   canSwitchPosLocation = false,
   canAdjustCashDrawer,
@@ -8520,6 +8701,7 @@ export default function TerminalOperationsWorkspace({
   handleSwitchShiftLocation = () => {},
   handleRecordCashEvent,
   handleCloseShift,
+  handleCloseDay = () => {},
   handleViewShiftSummary = () => {},
   refreshOperationalContext,
   locationsState = { loading: false, locations: [] },
@@ -8628,12 +8810,14 @@ export default function TerminalOperationsWorkspace({
           setOpenShiftForm={setOpenShiftForm}
           handleOpenShift={handleOpenShift}
           shiftActionLoading={shiftActionLoading}
-          canTransactPos={canTransactPos}
+          canOpenShift={canOpenShift}
+          canCloseShift={canCloseShift}
           canCloseDay={canCloseDay}
           canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
           closeShiftForm={closeShiftForm}
           setCloseShiftForm={setCloseShiftForm}
           handleCloseShift={handleCloseShift}
+          handleCloseDay={handleCloseDay}
           handleViewShiftSummary={handleViewShiftSummary}
           locked={locked}
           refreshOperationalContext={refreshOperationalContext}
@@ -8669,12 +8853,14 @@ export default function TerminalOperationsWorkspace({
           setOpenShiftForm={setOpenShiftForm}
           handleOpenShift={handleOpenShift}
           shiftActionLoading={shiftActionLoading}
-          canTransactPos={canTransactPos}
+          canOpenShift={canOpenShift}
+          canCloseShift={canCloseShift}
           canCloseDay={canCloseDay}
           canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
           closeShiftForm={closeShiftForm}
           setCloseShiftForm={setCloseShiftForm}
           handleCloseShift={handleCloseShift}
+          handleCloseDay={handleCloseDay}
           handleViewShiftSummary={handleViewShiftSummary}
           locked={locked}
           refreshOperationalContext={refreshOperationalContext}
@@ -8745,6 +8931,8 @@ export default function TerminalOperationsWorkspace({
   }, [
     canAdjustCashDrawer,
     canAdminBypassShiftPrompt,
+    canOpenShift,
+    canCloseShift,
     canCloseDay,
     canCreateItems,
     canDeleteItems,
@@ -8762,6 +8950,7 @@ export default function TerminalOperationsWorkspace({
     cashEventForm,
     closeShiftForm,
     handleCloseShift,
+    handleCloseDay,
     handleViewShiftSummary,
     handleIncomingOrderStatusChange,
     handleOpenCashCollection,

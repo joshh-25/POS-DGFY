@@ -1,6 +1,7 @@
 import {
     printReceiptWithIminBridge,
     printShiftSummaryWithIminBridge,
+    printZReadingWithIminBridge,
     printOrderWithIminBridge,
     openDrawerWithIminBridge,
     getIminHardwareDiagnostics
@@ -148,6 +149,40 @@ export const iminNativeDriver = {
         reportPosDeviceClientResult({
             operation: 'print_shift_summary',
             shiftId,
+            terminalId,
+            reason,
+            idempotencyKey,
+            driverId: this.id,
+            result: { success: outcome.success, message: outcome.message, reason_code: outcome.reasonCode }
+        });
+
+        return outcome;
+    },
+    async printZReading({ zReading, businessSettings, businessDate, locationId, terminalId, reason, idempotencyKey } = {}) {
+        let outcome;
+        try {
+            const result = printZReadingWithIminBridge({ zReading, businessSettings });
+            if (!result.handled) return normalizeHardwareResult({ handled: false, driverId: this.id });
+            outcome = normalizeHardwareResult({
+                success: result.result?.success !== false,
+                driverId: this.id,
+                message: result.result?.message,
+                reasonCode: result.result?.reasonCode || null,
+                raw: result.result
+            });
+        } catch (error) {
+            outcome = normalizeHardwareResult({
+                success: false,
+                driverId: this.id,
+                message: error?.message || 'Failed to print the Z-reading on the iMin printer.',
+                reasonCode: 'IMIN_PRINT_FAILED'
+            });
+        }
+
+        reportPosDeviceClientResult({
+            operation: 'print_z_reading',
+            businessDate,
+            locationId,
             terminalId,
             reason,
             idempotencyKey,
