@@ -26,7 +26,8 @@ export const mapStoreUseCaseError = (error, fallbackMessage = 'Store operation f
         fallbackMessage,
         {
             statusCode: error?.statusCode || 500,
-            details: error?.details || null
+            details: error?.details || null,
+            cause: error
         }
     );
 };

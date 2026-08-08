@@ -623,6 +623,10 @@ export default function StorefrontApp() {
   const [serviceAreaFilter, setServiceAreaFilter] = useState('all');
   const [serviceDurationFilter, setServiceDurationFilter] = useState('all');
   const [serviceBookingStep, setServiceBookingStep] = useState(1);
+  const [serviceOrderMethod, setServiceOrderMethod] = useState('delivery');
+  const [serviceScheduleMode, setServiceScheduleMode] = useState('schedule');
+  const [serviceLineAddOns, setServiceLineAddOns] = useState({});
+  const [serviceSpecialInstructions, setServiceSpecialInstructions] = useState('');
   const {
     bookingPreferredDateInputRef,
     jumpToBookingField,
@@ -1619,6 +1623,7 @@ export default function StorefrontApp() {
   const isServicesCartDrawerMode = isServicesMode && !isBookingSubpage;
   const isSimpleCartSurfaceMode = isSimpleMode && !isResolvedOrderSubpage;
   const {
+    accountStepComplete,
     activeBookingService,
     activeServiceCartLine,
     bookingDateOptions,
@@ -1631,6 +1636,8 @@ export default function StorefrontApp() {
     bookingSummaryQuantity,
     bookingTimeSlotOptions,
     firstServiceLine,
+    fulfillmentStepComplete,
+    groupedServiceLineItems,
     missingCustomerInformation,
     missingRequiredSelectedServiceIntake,
     missingScheduleAndServiceInfo,
@@ -1645,6 +1652,7 @@ export default function StorefrontApp() {
     serviceBookingSummarySchedule,
     serviceBookingSummaryTitle,
     serviceIntakeFields,
+    serviceLocationSummaryDraft,
     servicePaymentOptions,
     stepOneComplete
   } = useServiceBookingDerivations({
@@ -1663,6 +1671,9 @@ export default function StorefrontApp() {
     serviceCartTotal,
     serviceDraftQuantity,
     serviceIntakeResponses,
+    serviceLineAddOns,
+    serviceOrderMethod,
+    serviceScheduleMode,
     servicePaymentTiming,
     serviceUnitType
   });
@@ -3334,6 +3345,8 @@ export default function StorefrontApp() {
     withAssetOrigin
   });
   const storefrontCatalogRouteProps = useStorefrontCatalogRouteProps({
+    accountStepComplete,
+    fulfillmentStepComplete,
     isServicesMode,
     servicesViewModel,
     activeServiceTab,
@@ -3415,13 +3428,24 @@ export default function StorefrontApp() {
     serviceBookingStep,
     serviceBookingSummaryLineItems,
     serviceBookingSummaryRows,
+    serviceBookingSummarySchedule,
     serviceBookingSummaryTitle,
     serviceCartLines,
     serviceDraftQuantity,
     serviceDurationFilter,
     serviceHeroModel,
     serviceIntakeResponses,
+    serviceLineAddOns,
+    setServiceLineAddOns,
+    groupedServiceLineItems,
+    serviceSpecialInstructions,
+    setServiceSpecialInstructions,
     serviceLocationLandmarkNote,
+    serviceLocationSummaryDraft,
+    serviceOrderMethod,
+    setServiceOrderMethod,
+    serviceScheduleMode,
+    setServiceScheduleMode,
     servicePage,
     servicePageSize,
     servicePaymentPreviewCard,
@@ -3580,6 +3604,7 @@ export default function StorefrontApp() {
     hasServiceCart,
     isFnbOrderSubpage,
     isFnbDetailsSubpage,
+    isBookingSubpage,
     isCheckoutOpen,
     isRetailMode,
     isSimpleMode,

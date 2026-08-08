@@ -1,122 +1,68 @@
 import React from 'react';
-import { CheckCircle2, Clock3, Trash2 } from 'lucide-react';
+import { CalendarDays, CheckCircle2, Clock3, MapPin, MessageSquare, Truck } from 'lucide-react';
 import { ServiceBookingDetailsForm } from './ServiceBookingDetailsForm.jsx';
+import { ServiceBookingFulfillmentChoices } from './ServiceBookingFulfillmentChoices.jsx';
+import { formatTimeSlotLabel } from '../model/serviceBookingSchedule.js';
 
-export function ServiceBookingStepOne({
-  STYLES,
-  BOOKING_FIELD_STYLE,
-  StorefrontDropdown,
+const formatShortDateWithYear = (dateString) => {
+  if (!dateString) return '';
+  const parsed = new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+};
+
+export function ServiceBookingStepAccount({
+  GhostButton,
   PrimaryButton,
   renderAccountOwnedIdentitySummary,
   renderGuestIdentityFields,
   renderGuestCheckoutEntry,
-  registerBookingFieldRef,
-  shouldBookingFieldSpanFullWidth,
-  formatLongDateLabel,
-  combineDateAndTimeParts,
-  getPreferredBookingTimeForDate,
-  openPreferredBookingDatePicker,
+  bookingFieldPlan,
   activeBookingService,
   isMobileViewport,
   isDgfyCustomerSignedIn,
   canUseGuestCheckoutFlow,
-  bookingFieldPlan,
-  selectedServiceDatePart,
-  bookingDateOptions,
-  bookingPreferredDateInputRef,
-  selectedServiceTimePart,
-  bookingTimeSlotOptions,
-  setServiceAppointmentAt,
-  serviceUnitType,
-  setServiceUnitType,
-  serviceDraftQuantity,
-  setServiceDraftQuantity,
-  bookingStepOneAdditionalFields,
-  serviceIntakeResponses,
-  setServiceIntakeResponses,
   missingCustomerInformation,
-  missingScheduleAndServiceInfo,
-  missingStepOneAdditionalFields,
-  stepOneComplete,
-  servicesPrimary,
-  servicesDisplayFont,
+  accountStepComplete,
   toast,
+  onBack,
   setServiceBookingStep,
-  renderLocationSection,
 }) {
   return (
     <div style={{ display: 'grid', gap: 20 }}>
       {isDgfyCustomerSignedIn || canUseGuestCheckoutFlow ? (
-        <>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 900, color: servicesPrimary, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Step 1: Service Information</div>
-            <div style={{ marginTop: 4, fontSize: 13, color: STYLES.colors.muted }}>
-              Confirm who is booking, then set the schedule, service options, notes, and service location.
-            </div>
+        <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
+          <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>Step 1: Customer Details</div>
+          <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>
+            Your account details are already linked. Review them here before continuing to fulfillment.
           </div>
 
-          <div style={{ display: 'grid', gap: 18 }}>
-            <section style={{ display: 'grid', gap: 12 }}>
-              {isDgfyCustomerSignedIn ? renderAccountOwnedIdentitySummary({
-                title: 'Customer Details',
-                subtitle: 'We will use your signed-in DGFY account for this booking.',
-              }) : renderGuestIdentityFields({
-                title: 'Customer Details',
-                subtitle: 'We will use these details for your booking.',
-                requireEmail: bookingFieldPlan.emailField?.required === true,
-                includeAddress: false,
-                addressLabel: 'Service Address',
-                addressPlaceholder: 'Use the map and saved-location picker below.',
-                addressRequired: false,
-              })}
-            </section>
-
-            <ServiceBookingDetailsForm
-              STYLES={STYLES}
-              BOOKING_FIELD_STYLE={BOOKING_FIELD_STYLE}
-              StorefrontDropdown={StorefrontDropdown}
-              activeBookingService={activeBookingService}
-              bookingDateOptions={bookingDateOptions}
-              bookingFieldPlan={bookingFieldPlan}
-              bookingPreferredDateInputRef={bookingPreferredDateInputRef}
-              bookingStepOneAdditionalFields={bookingStepOneAdditionalFields}
-              bookingTimeSlotOptions={bookingTimeSlotOptions}
-              combineDateAndTimeParts={combineDateAndTimeParts}
-              formatLongDateLabel={formatLongDateLabel}
-              getPreferredBookingTimeForDate={getPreferredBookingTimeForDate}
-              isMobileViewport={isMobileViewport}
-              openPreferredBookingDatePicker={openPreferredBookingDatePicker}
-              registerBookingFieldRef={registerBookingFieldRef}
-              selectedServiceDatePart={selectedServiceDatePart}
-              selectedServiceTimePart={selectedServiceTimePart}
-              serviceDraftQuantity={serviceDraftQuantity}
-              serviceIntakeResponses={serviceIntakeResponses}
-              serviceUnitType={serviceUnitType}
-              servicesPrimary={servicesPrimary}
-              setServiceAppointmentAt={setServiceAppointmentAt}
-              setServiceDraftQuantity={setServiceDraftQuantity}
-              setServiceIntakeResponses={setServiceIntakeResponses}
-              setServiceUnitType={setServiceUnitType}
-              shouldBookingFieldSpanFullWidth={shouldBookingFieldSpanFullWidth}
-            />
-
-            {typeof renderLocationSection === 'function' ? renderLocationSection() : null}
+          <div style={{ display: 'grid', gap: 12 }}>
+            {isDgfyCustomerSignedIn ? renderAccountOwnedIdentitySummary({
+              title: 'Customer Details',
+              subtitle: 'We will use your signed-in DGFY account for this booking.',
+            }) : renderGuestIdentityFields({
+              title: 'Customer Details',
+              subtitle: 'We will use these details for your booking.',
+              requireEmail: bookingFieldPlan.emailField?.required === true,
+              includeAddress: false,
+              addressLabel: 'Service Address',
+              addressPlaceholder: 'Use the map and saved-location picker in the next step.',
+              addressRequired: false,
+            })}
           </div>
 
-          {(missingCustomerInformation.length > 0 || missingScheduleAndServiceInfo.length > 0 || missingStepOneAdditionalFields.length > 0) && (
+          {missingCustomerInformation.length > 0 && (
             <div style={{ fontSize: 13, color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2', borderRadius: 14, padding: '10px 12px', lineHeight: 1.6 }}>
-              Complete the required customer, schedule, and service details before continuing.
+              Complete the required customer details before continuing.
             </div>
           )}
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
+            <GhostButton onClick={onBack} style={{ minHeight: isMobileViewport ? 38 : 44, fontSize: isMobileViewport ? 14 : 15 }}>Back</GhostButton>
             <PrimaryButton
               onClick={() => {
-                const firstMissingField = missingCustomerInformation[0]
-                  || missingScheduleAndServiceInfo[0]
-                  || missingStepOneAdditionalFields[0]?.label
-                  || '';
-                if (!stepOneComplete) {
-                  toast.error(firstMissingField ? `Complete "${firstMissingField}" before continuing.` : 'Complete the required booking details before continuing.');
+                if (!accountStepComplete) {
+                  toast.error(missingCustomerInformation[0] ? `Complete "${missingCustomerInformation[0]}" before continuing.` : 'Complete the required customer details before continuing.');
                   return;
                 }
                 setServiceBookingStep(2);
@@ -126,7 +72,7 @@ export function ServiceBookingStepOne({
               Continue
             </PrimaryButton>
           </div>
-        </>
+        </section>
       ) : renderGuestCheckoutEntry({
         title: 'Continue to your booking',
         description: 'Create an account or continue as guest to continue this booking.',
@@ -140,124 +86,138 @@ export function ServiceBookingStepOne({
   );
 }
 
-export function ServiceBookingStepTwo({
+export function ServiceBookingStepFulfillment({
   STYLES,
+  BOOKING_FIELD_STYLE,
+  StorefrontDropdown,
   GhostButton,
   PrimaryButton,
+  activeBookingService,
+  bookingDateOptions,
+  bookingFieldPlan,
+  bookingPreferredDateInputRef,
+  bookingStepOneAdditionalFields,
+  bookingTimeSlotOptions,
+  combineDateAndTimeParts,
+  formatLongDateLabel,
+  getPreferredBookingTimeForDate,
+  openPreferredBookingDatePicker,
+  registerBookingFieldRef,
   isMobileViewport,
+  selectedServiceDatePart,
+  selectedServiceTimePart,
+  serviceDraftQuantity,
+  serviceIntakeResponses,
+  serviceUnitType,
   servicesPrimary,
-  servicesDisplayFont,
-  reviewServiceLines,
-  reviewSections,
-  jumpToBookingField,
-  selectedLocation,
+  servicesPrimaryShadow,
+  setServiceAppointmentAt,
+  setServiceDraftQuantity,
+  setServiceIntakeResponses,
+  setServiceUnitType,
+  shouldBookingFieldSpanFullWidth,
+  serviceOrderMethod,
+  onOrderMethodChange,
+  renderLocationSection,
+  missingScheduleAndServiceInfo,
+  fulfillmentStepComplete,
+  toast,
   setServiceBookingStep,
 }) {
   return (
-    <div style={{ display: 'grid', gap: 18 }}>
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 900, color: servicesPrimary || '#1a4e8d', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Step 2: Review Booking</div>
-        <div style={{ marginTop: 4, fontSize: 13, color: STYLES.colors.muted }}>
-          Review the selected services and booking details before you choose the payment method.
+    <div style={{ display: 'grid', gap: 20 }}>
+      <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
+        <div style={{ fontSize: 18, fontWeight: 800, color: servicesPrimary }}>Step 3: Fulfillment</div>
+        <div style={{ marginTop: -4, fontSize: 12, color: STYLES.colors.muted }}>
+          Choose how and when the customer will receive the order, then add the service details.
         </div>
-      </div>
-      <div style={{ display: 'grid', gap: 16 }}>
-        {reviewServiceLines.map((line) => (
-          <section key={line.key} style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fcfdff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 15, fontWeight: 900, color: STYLES.colors.dark }}>{line.title}</div>
-              <GhostButton onClick={() => jumpToBookingField(1, line.editFieldKey || 'unit_count')} style={{ minHeight: isMobileViewport ? 34 : 36, padding: '0 12px' }}>
-                Edit service
-              </GhostButton>
-            </div>
-            <div style={{ display: 'grid', gap: 10 }}>
-              {line.rows.map((row) => (
-                <div key={`${line.key}-${row.label}`} style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(140px, 180px) minmax(0, 1fr) auto', gap: 10, alignItems: 'center', paddingTop: 10, borderTop: '1px solid #edf2f7' }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{row.label}</div>
-                  <div style={{ fontSize: 14, color: '#0f172a', lineHeight: 1.55, wordBreak: 'break-word' }}>{row.value}</div>
-                  <button
-                    type="button"
-                    onClick={() => jumpToBookingField(1, row.fieldKey)}
-                    style={{ border: 'none', background: 'transparent', color: '#1a4e8d', fontWeight: 800, cursor: 'pointer', padding: 0, justifySelf: isMobileViewport ? 'start' : 'end' }}
-                  >
-                    Edit
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
-        ))}
 
-        {reviewSections.map((section) => (
-          <section key={section.title} style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fcfdff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 15, fontWeight: 900, color: STYLES.colors.dark }}>{section.title}</div>
-              <GhostButton onClick={() => jumpToBookingField(section.step, section.rows[0]?.fieldKey || '')} style={{ minHeight: isMobileViewport ? 34 : 36, padding: '0 12px' }}>
-                Edit section
-              </GhostButton>
-            </div>
-            <div style={{ display: 'grid', gap: 10 }}>
-              {section.rows.map((row) => (
-                <div key={`${section.title}-${row.label}`} style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(140px, 180px) minmax(0, 1fr) auto', gap: 10, alignItems: 'center', paddingTop: 10, borderTop: '1px solid #edf2f7' }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{row.label}</div>
-                  <div style={{ fontSize: 14, color: '#0f172a', lineHeight: 1.55, wordBreak: 'break-word' }}>{row.value}</div>
-                  <button
-                    type="button"
-                    onClick={() => jumpToBookingField(section.step, row.fieldKey)}
-                    style={{ border: 'none', background: 'transparent', color: '#1a4e8d', fontWeight: 800, cursor: 'pointer', padding: 0, justifySelf: isMobileViewport ? 'start' : 'end' }}
-                  >
-                    Edit
-                  </button>
-                </div>
-              ))}
-            </div>
-          </section>
-        ))}
+        <ServiceBookingFulfillmentChoices
+          isMobileViewport={isMobileViewport}
+          onOrderMethodChange={onOrderMethodChange}
+          serviceOrderMethod={serviceOrderMethod}
+          servicesPrimary={servicesPrimary}
+          servicesPrimaryShadow={servicesPrimaryShadow}
+        />
 
-        {selectedLocation ? (
-          <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fcfdff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 12 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-              <div style={{ fontSize: 15, fontWeight: 900, color: STYLES.colors.dark }}>Service Location</div>
-              <GhostButton onClick={() => setServiceBookingStep(1)} style={{ minHeight: isMobileViewport ? 34 : 36, padding: '0 12px' }}>
-                Edit location
-              </GhostButton>
-            </div>
-            <div style={{ fontSize: 14, color: '#0f172a', lineHeight: 1.6 }}>
-              {selectedLocation.address || 'No location selected yet.'}
-            </div>
-          </section>
-        ) : null}
-      </div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <GhostButton onClick={() => setServiceBookingStep(1)} style={{ minHeight: isMobileViewport ? 38 : 44, fontSize: isMobileViewport ? 14 : 15 }}>Back</GhostButton>
-        <PrimaryButton onClick={() => setServiceBookingStep(3)} style={{ minHeight: isMobileViewport ? 38 : 44, fontSize: isMobileViewport ? 14 : 15 }}>
-          Continue
-        </PrimaryButton>
-      </div>
+        <ServiceBookingDetailsForm
+          STYLES={STYLES}
+          BOOKING_FIELD_STYLE={BOOKING_FIELD_STYLE}
+          StorefrontDropdown={StorefrontDropdown}
+          activeBookingService={activeBookingService}
+          bookingDateOptions={bookingDateOptions}
+          bookingFieldPlan={bookingFieldPlan}
+          bookingPreferredDateInputRef={bookingPreferredDateInputRef}
+          bookingStepOneAdditionalFields={bookingStepOneAdditionalFields}
+          bookingTimeSlotOptions={bookingTimeSlotOptions}
+          combineDateAndTimeParts={combineDateAndTimeParts}
+          formatLongDateLabel={formatLongDateLabel}
+          getPreferredBookingTimeForDate={getPreferredBookingTimeForDate}
+          isMobileViewport={isMobileViewport}
+          openPreferredBookingDatePicker={openPreferredBookingDatePicker}
+          registerBookingFieldRef={registerBookingFieldRef}
+          selectedServiceDatePart={selectedServiceDatePart}
+          selectedServiceTimePart={selectedServiceTimePart}
+          serviceDraftQuantity={serviceDraftQuantity}
+          serviceIntakeResponses={serviceIntakeResponses}
+          serviceUnitType={serviceUnitType}
+          servicesPrimary={servicesPrimary}
+          setServiceAppointmentAt={setServiceAppointmentAt}
+          setServiceDraftQuantity={setServiceDraftQuantity}
+          setServiceIntakeResponses={setServiceIntakeResponses}
+          setServiceUnitType={setServiceUnitType}
+          shouldBookingFieldSpanFullWidth={shouldBookingFieldSpanFullWidth}
+        />
+
+        {typeof renderLocationSection === 'function' ? renderLocationSection() : null}
+
+        {missingScheduleAndServiceInfo.length > 0 && (
+          <div style={{ fontSize: 13, color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2', borderRadius: 14, padding: '10px 12px', lineHeight: 1.6 }}>
+            Complete the required fulfillment details before continuing.
+          </div>
+        )}
+        <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
+          <GhostButton onClick={() => setServiceBookingStep(2)} style={{ minHeight: isMobileViewport ? 38 : 44, fontSize: isMobileViewport ? 14 : 15 }}>Back</GhostButton>
+          <PrimaryButton
+            onClick={() => {
+              if (!fulfillmentStepComplete) {
+                toast.error(missingScheduleAndServiceInfo[0] ? `Complete "${missingScheduleAndServiceInfo[0]}" before continuing.` : 'Complete the required fulfillment details before continuing.');
+                return;
+              }
+              setServiceBookingStep(4);
+            }}
+            style={{ minHeight: isMobileViewport ? 38 : 44, fontSize: isMobileViewport ? 14 : 15 }}
+          >
+            Continue
+          </PrimaryButton>
+        </div>
+      </section>
     </div>
   );
 }
 
-export function ServiceBookingStepThree({
+export function ServiceBookingStepReviewPayment({
   STYLES,
   BOOKING_FIELD_STYLE,
   StorefrontDropdown,
   GhostButton,
   PrimaryButton,
   servicesPrimary,
+  servicesPrimarySoft,
+  servicesPrimaryBorder,
   money,
   registerBookingFieldRef,
   isMobileViewport,
+  serviceOrderMethod,
+  serviceLocationSummaryDraft,
+  groupedServiceLineItems = [],
+  selectedServiceDatePart,
+  selectedServiceTimePart,
+  specialInstructions,
   servicePaymentTiming,
   setServicePaymentTiming,
   bookingPagePaymentOptions,
-  servicePaymentPreviewMethod,
-  setServicePaymentPreviewMethod,
   bookingSummaryAmount,
-  servicePaymentPreviewReceiptName,
-  setServicePaymentPreviewReceiptName,
-  servicePaymentPreviewCard,
-  setServicePaymentPreviewCard,
   servicesDisplayFont,
   checkoutError,
   storefrontClosedByHours = false,
@@ -288,15 +248,81 @@ export function ServiceBookingStepThree({
     previousPaymentTimingRef.current = servicePaymentTiming;
   }, [onlinePaymentSelected, servicePaymentTiming, showOnlinePaymentNotice]);
 
+  const handoffLabel = serviceOrderMethod === 'pickup'
+    ? "Pick up and I'll collect"
+    : 'Pick up and deliver';
+  const fulfillmentRows = [
+    { icon: Truck, label: 'Handoff', value: handoffLabel },
+    { icon: CalendarDays, label: 'Preferred date', value: selectedServiceDatePart ? formatShortDateWithYear(selectedServiceDatePart) : 'Not selected' },
+    { icon: Clock3, label: 'Preferred time', value: selectedServiceTimePart ? formatTimeSlotLabel(selectedServiceTimePart) : 'Not selected' },
+    { icon: MapPin, label: 'Delivery Address', value: serviceLocationSummaryDraft || 'Not selected' },
+  ];
+  const editSectionButtonStyle = { fontSize: 12, fontWeight: 700, color: servicesPrimary, background: '#fff', border: `1px solid ${servicesPrimaryBorder}`, borderRadius: 999, padding: '4px 10px', cursor: 'pointer', whiteSpace: 'nowrap' };
+
   return (
     <>
-    <div style={{ display: 'grid', gap: 18 }}>
-      <div>
-        <div style={{ fontSize: 13, fontWeight: 900, color: servicesPrimary || '#1a4e8d', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 4 }}>Step 3: Payment</div>
-        <div style={{ marginTop: 4, fontSize: 13, color: STYLES.colors.muted }}>
-          Choose how the service will be paid before you confirm the booking.
-        </div>
+    <div style={{ display: 'grid', gap: 20 }}>
+      <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 14 : 18, display: 'grid', gap: 14 }}>
+      <div style={{ fontSize: 18, fontWeight: 800, color: servicesPrimary || '#1a4e8d' }}>Step 4: Review and Payment</div>
+      <div style={{ marginTop: -4, fontSize: 12, color: STYLES.colors.muted }}>
+        Review the fulfillment details, then choose how the service will be paid before you confirm the booking.
       </div>
+
+      <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 12 }}>
+        <div style={{ fontSize: 14, fontWeight: 800, color: STYLES.colors.dark }}>Selected services</div>
+        {groupedServiceLineItems.map((line, index) => (
+          <div key={line.key} style={{ paddingTop: index === 0 ? 0 : 10, borderTop: index === 0 ? 'none' : '1px solid #eef2f7', display: 'grid', gap: 2 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+              <span style={{ fontSize: 14, fontWeight: 800, color: '#0f172a' }}>{line.title}</span>
+              <span style={{ fontSize: 13, fontWeight: 800, color: '#64748b', whiteSpace: 'nowrap' }}>{line.quantity}x</span>
+            </div>
+            {line.variant ? <div style={{ fontSize: 12, color: '#64748b' }}>{line.variant}</div> : null}
+            {(line.addOns || []).map((addOn) => (
+              <div key={addOn.key} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+                <span style={{ fontSize: 12, color: servicesPrimary }}>+ {addOn.label}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, color: servicesPrimary, whiteSpace: 'nowrap' }}>{addOn.amount}</span>
+              </div>
+            ))}
+          </div>
+        ))}
+      </section>
+
+      <section style={{ border: `1px solid ${servicesPrimaryBorder}`, background: servicesPrimarySoft, borderRadius: 20, padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 14 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: STYLES.colors.dark }}>Fulfillment Information</div>
+          <button type="button" onClick={() => setServiceBookingStep(3)} style={editSectionButtonStyle}>Edit section</button>
+        </div>
+        <div style={{ display: 'grid', gap: 10 }}>
+          {fulfillmentRows.map((row) => (
+            <div key={row.label} style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <div style={{ width: 30, height: 30, borderRadius: 9, background: '#fff', border: `1px solid ${servicesPrimaryBorder}`, display: 'grid', placeItems: 'center', color: servicesPrimary, flexShrink: 0 }}>
+                <row.icon size={15} />
+              </div>
+              <div style={{ minWidth: 0, display: 'flex', flex: 1, justifyContent: 'space-between', gap: 12, flexWrap: isMobileViewport ? 'wrap' : 'nowrap' }}>
+                <span style={{ fontSize: 12, color: '#64748b' }}>{row.label}</span>
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', textAlign: 'right', wordBreak: 'break-word' }}>{row.value}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+          <div style={{ fontSize: 14, fontWeight: 800, color: STYLES.colors.dark }}>Additional Instructions</div>
+          <button type="button" onClick={() => setServiceBookingStep(2)} style={editSectionButtonStyle}>Edit section</button>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 30, height: 30, borderRadius: 9, background: servicesPrimarySoft, border: `1px solid ${servicesPrimaryBorder}`, display: 'grid', placeItems: 'center', color: servicesPrimary, flexShrink: 0 }}>
+            <MessageSquare size={15} />
+          </div>
+          <div style={{ minWidth: 0, display: 'flex', flex: 1, justifyContent: 'space-between', gap: 12, flexWrap: isMobileViewport ? 'wrap' : 'nowrap' }}>
+            <span style={{ fontSize: 12, color: '#64748b' }}>Special instructions (optional)</span>
+            <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', textAlign: 'right', wordBreak: 'break-word' }}>{specialInstructions || 'Not provided'}</span>
+          </div>
+        </div>
+      </section>
+
       <div style={{ display: 'grid', gap: 16 }}>
         <label ref={registerBookingFieldRef('payment_timing')} style={{ display: 'block', fontSize: 12, color: '#475569', minWidth: 0, maxWidth: isMobileViewport ? '100%' : 360 }}>
           Payment Method
@@ -330,8 +356,8 @@ export function ServiceBookingStepThree({
         </div>
       ) : null}
       {checkoutError && <p style={{ margin: 0, fontSize: 13, color: '#b91c1c' }}>{checkoutError}</p>}
-      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-        <GhostButton onClick={() => setServiceBookingStep(2)} style={{ minHeight: isMobileViewport ? 38 : 44, fontSize: isMobileViewport ? 14 : 15 }}>Back</GhostButton>
+      <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
+        <GhostButton onClick={() => setServiceBookingStep(3)} style={{ minHeight: isMobileViewport ? 38 : 44, fontSize: isMobileViewport ? 14 : 15 }}>Back</GhostButton>
         <PrimaryButton
           onClick={() => {
             if (!paymentStepComplete) {
@@ -345,6 +371,7 @@ export function ServiceBookingStepThree({
           Confirm Booking
         </PrimaryButton>
       </div>
+      </section>
     </div>
     {showOnlinePaymentNotice ? (
       <div

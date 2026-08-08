@@ -12,6 +12,8 @@ import { DeliveryPinMap } from '../../features/locations/components/DeliveryPinM
 // the body only. See app/hooks/useStorefrontCatalogRouteProps.js for the props bundle.
 export function StorefrontCatalogRouteContainer(props) {
   const {
+    accountStepComplete,
+    fulfillmentStepComplete,
     isServicesMode,
     servicesViewModel,
     activeServiceTab,
@@ -93,13 +95,24 @@ export function StorefrontCatalogRouteContainer(props) {
     serviceBookingStep,
     serviceBookingSummaryLineItems,
     serviceBookingSummaryRows,
+    serviceBookingSummarySchedule,
     serviceBookingSummaryTitle,
     serviceCartLines,
     serviceDraftQuantity,
     serviceDurationFilter,
     serviceHeroModel,
     serviceIntakeResponses,
+    serviceLineAddOns,
+    setServiceLineAddOns,
+    groupedServiceLineItems,
+    serviceSpecialInstructions,
+    setServiceSpecialInstructions,
     serviceLocationLandmarkNote,
+    serviceLocationSummaryDraft,
+    serviceOrderMethod,
+    setServiceOrderMethod,
+    serviceScheduleMode,
+    setServiceScheduleMode,
     servicePage,
     servicePageSize,
     servicePaymentPreviewCard,
@@ -236,6 +249,8 @@ export function StorefrontCatalogRouteContainer(props) {
     return (
       <StorefrontServicesCatalog
         DeliveryPinMap={DeliveryPinMap}
+        accountStepComplete={accountStepComplete}
+        fulfillmentStepComplete={fulfillmentStepComplete}
         activeBookingService={activeBookingService}
         activeServiceLocationSummary={activeServiceLocationSummary}
         addToCart={addToCart}
@@ -309,13 +324,24 @@ export function StorefrontCatalogRouteContainer(props) {
         serviceBookingStep={serviceBookingStep}
         serviceBookingSummaryLineItems={serviceBookingSummaryLineItems}
         serviceBookingSummaryRows={serviceBookingSummaryRows}
+        serviceBookingSummarySchedule={serviceBookingSummarySchedule}
         serviceBookingSummaryTitle={serviceBookingSummaryTitle}
         serviceCartLines={serviceCartLines}
         serviceDraftQuantity={serviceDraftQuantity}
         serviceDurationFilter={serviceDurationFilter}
         serviceHeroModel={serviceHeroModel}
         serviceIntakeResponses={serviceIntakeResponses}
+        serviceLineAddOns={serviceLineAddOns}
+        setServiceLineAddOns={setServiceLineAddOns}
+        groupedServiceLineItems={groupedServiceLineItems}
+        serviceSpecialInstructions={serviceSpecialInstructions}
+        setServiceSpecialInstructions={setServiceSpecialInstructions}
         serviceLocationLandmarkNote={serviceLocationLandmarkNote}
+        serviceLocationSummaryDraft={serviceLocationSummaryDraft}
+        serviceOrderMethod={serviceOrderMethod}
+        setServiceOrderMethod={setServiceOrderMethod}
+        serviceScheduleMode={serviceScheduleMode}
+        setServiceScheduleMode={setServiceScheduleMode}
         servicePage={servicePage}
         servicePageSize={servicePageSize}
         servicePaymentPreviewCard={servicePaymentPreviewCard}

@@ -32,7 +32,12 @@ export const resolveDomainErrorStatus = (code) => DOMAIN_ERROR_STATUS[code] || 5
 
 export class DomainError extends Error {
     constructor(code, message, options = {}) {
-        super(message);
+        // `cause` lets a use case's catch block remap an infrastructure
+        // error (a SequelizeConnectionError, say) into a stable domain code
+        // for the HTTP layer without discarding the original error's stack
+        // and details -- callers that need the real failure for logging or
+        // error reporting can read it back off `error.cause`.
+        super(message, options.cause !== undefined ? { cause: options.cause } : undefined);
         this.name = 'DomainError';
         this.code = code || DomainErrorCode.INTERNAL_ERROR;
         this.details = options.details || null;
