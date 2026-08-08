@@ -18,6 +18,7 @@ export function StorefrontCartFab({
   isServicesCartDrawerMode,
   isFnbOrderSubpage,
   isFnbDetailsSubpage,
+  isBookingSubpage,
   isCheckoutOpen,
   isSimpleMode,
   isResolvedOrderSubpage,
@@ -81,7 +82,7 @@ export function StorefrontCartFab({
           : (
             isServicesMode && isDesktopViewport
               ? 'none'
-              : (((isFnbOrderSubpage || isFnbDetailsSubpage || (isFnbMode && isCheckoutOpen)) || (isSimpleMode && isResolvedOrderSubpage) || isSimpleCartSurfaceMode) ? 'none' : 'block')
+              : (((isFnbOrderSubpage || isFnbDetailsSubpage || (isFnbMode && isCheckoutOpen)) || (isServicesMode && isBookingSubpage) || (isSimpleMode && isResolvedOrderSubpage) || isSimpleCartSurfaceMode) ? 'none' : 'block')
           )
       }}
     >

@@ -41,6 +41,7 @@ export function StorefrontCartDrawerShellContainer(props) {
     hasServiceCart,
     isFnbOrderSubpage,
     isFnbDetailsSubpage,
+    isBookingSubpage,
     isCheckoutOpen,
     isRetailMode,
     isSimpleMode,
@@ -127,6 +128,7 @@ export function StorefrontCartDrawerShellContainer(props) {
         isServicesCartDrawerMode={isServicesCartDrawerMode}
         isFnbOrderSubpage={isFnbOrderSubpage}
         isFnbDetailsSubpage={isFnbDetailsSubpage}
+        isBookingSubpage={isBookingSubpage}
         isCheckoutOpen={isCheckoutOpen}
         isSimpleMode={isSimpleMode}
         isResolvedOrderSubpage={isResolvedOrderSubpage}
