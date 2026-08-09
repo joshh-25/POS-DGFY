@@ -225,6 +225,12 @@ later fully restores whatever the previous one granted. Every write is also
 recorded in `TenantAdminAuditLog` (before/after settings snapshot), the same
 trail `PATCH /:id/capabilities` uses.
 
+Frontend: a per-tenant template picker on `frontend/Pages/admin/TenantManager.jsx`
+(published templates only, loaded via `listStoreTemplates` from
+`frontend/src/services/adminService.js`), gated to active tenants, with the
+same reason-required confirmation-modal pattern the capability controls on
+the same page already use.
+
 ## Platform-admin curation surface
 
 `/api/v1/admin/templates` (issue #178 Phase 14) — Platform Master Admin

@@ -352,6 +352,18 @@ export const updateTenantCapabilities = async (tenantId, payload = {}) => {
     return response.data;
 };
 
+// Issue #178 Phase 17: applies a published Store Template to an
+// already-provisioned tenant. Mirrors updateTenantCapabilities above -
+// same audited platform-admin write shape.
+export const applyTenantTemplate = async (tenantId, payload = {}) => {
+    const response = await adminApi.post(
+        `/admin/tenants/${tenantId}/apply-template`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
 export const listTenantCapabilityAuditLogs = async (tenantId, params = {}) => {
     const response = await adminApi.get(`/admin/tenants/${tenantId}/capabilities/audit-logs`, {
         ...requireAdminAuthConfig(),
