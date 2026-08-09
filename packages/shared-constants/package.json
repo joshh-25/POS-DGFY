@@ -25,6 +25,10 @@
       "import": "./src/registrationIndustries.js",
       "default": "./src/registrationIndustries.js"
     },
+    "./fulfillmentProfiles": {
+      "import": "./src/fulfillmentProfiles.js",
+      "default": "./src/fulfillmentProfiles.js"
+    },
     "./posWorkflows": {
       "import": "./src/posWorkflows.js",
       "default": "./src/posWorkflows.js"
