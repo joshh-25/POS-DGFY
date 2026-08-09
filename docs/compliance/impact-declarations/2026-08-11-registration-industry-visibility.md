@@ -7,7 +7,7 @@ classification: regulatory
 surfaces: settings,pos,terminal,compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.08.09
-verification_evidence: registrationIndustries.transport.test.js,registerCompanyRequestUseCase.registrationIndustry.test.js,adminRegistrationIndustries.transport.test.js,adminRegistrationIndustryUseCases.test.js,runtimeSchemaAuditService.test.js,check:architecture
+verification_evidence: registrationIndustries.transport.test.js,registerCompanyRequestUseCase.registrationIndustry.test.js,adminRegistrationIndustries.transport.test.js,adminRegistrationIndustryUseCases.test.js,runtimeSchemaAuditService.test.js,IndustrySelect.test.jsx,RegisterCompanyLoginHandoff.test.jsx,StorefrontBusinessGrowPage.test.jsx,IndustryPicker.test.jsx,StoreTemplateManager.registrationIndustries.integration.test.jsx,TenantManager.assistedProvisioning.integration.test.jsx,check:architecture
 rollback_note: Drop the two new landlord tables (registration_industry_visibility, registration_industry_visibility_audit_logs) via the migration's down() -- both are additive with no foreign keys into any existing table, and row absence already means "visible" so dropping them returns every industry to fully visible with zero data loss elsewhere. Revert the hidden-flag addition in listRegistrationIndustriesUseCase.js and the hidden_industry_key rejection block in registerCompanyRequestUseCase.js -- both are wrapped in their own try/catch and default to the pre-change behavior (no hidden field, no rejection) if the visibility repository is absent or errors, so a partial rollback (route/handlers reverted, migration left in place) is also safe. Revert the new admin route/validator/use-case/handler/repository files and their server.js mount -- none are referenced by any other module.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -83,7 +83,20 @@ degrades to "every industry visible", never to "registration blocked".
    badges and notes) — that distinction is admin-surface-only as of this
    phase. Submitted payload shape (`industryKey`, `industryTag`) is
    unchanged.
-6. **POS/terminal surface — unaffected, declared defensively.** No file
+6. **Admin curation UI** (`frontend/Pages/admin/StoreTemplateManager.jsx`,
+   `frontend/src/services/adminService.js` — `adminService.js` carries the
+   `settings,compliance` regulatory floor independently, already covered
+   by the `2026-08-09-registration-industry-templates` declaration's
+   presence in this branch's history). A new "Registration industries"
+   panel lists all 11 industries with live visibility state and a
+   Hide/Show action using the existing publish/deprecate `window.prompt`
+   reason convention; three new read-only wrappers added to
+   `adminService.js` alongside the existing template ones. The admin-only
+   `IndustryPicker.jsx` (TenantManager's assisted-provisioning consumer)
+   gains a data-driven "Hidden from registration" badge — no new prop, no
+   change to `TenantManager.jsx` itself, since the public catalog response
+   already carries `hidden` per Affected Surface 4 above.
+7. **POS/terminal surface — unaffected, declared defensively.** No file
    under `frontend/src/features/pos/` or the POS/terminal request path is
    touched. `pos`/`terminal` are declared solely because this declaration's
    `surfaces` field is deliberately a superset (see Classification section
@@ -153,3 +166,27 @@ degrades to "every industry visible", never to "registration blocked".
    targeted pattern sweeps used per the repository's established
    convention; no test outside the files listed above references any file
    this phase touches.
+8. `frontend/src/features/registration/__tests__/IndustrySelect.test.jsx`
+   (new) — the dropdown/modal UX, hidden-entry filtering, fail-open on the
+   raw local-constant fallback, and a genuine-regression pin proving no
+   engine-classification text renders anywhere (reverted/confirmed-failing/
+   restored).
+9. `frontend/Pages/__tests__/RegisterCompanyLoginHandoff.test.jsx` and
+   `frontend/apps/store/src/business/pages/StorefrontBusinessGrowPage.test.jsx`
+   — updated for the select-based interaction; submitted payload
+   assertions (`industryKey`, no raw `workflowMode`) unchanged.
+10. `frontend/src/features/registration/__tests__/IndustryPicker.test.jsx`
+    — extended for the "Hidden from registration" badge and continued
+    selectability of a hidden entry.
+11. `frontend/src/pages/__tests__/StoreTemplateManager.registrationIndustries.integration.test.jsx`
+    (new) — the admin panel's list rendering, hide-reason/actor display,
+    and the prompt-confirm/cancel/too-short-reason paths.
+12. `frontend/src/pages/__tests__/TenantManager.assistedProvisioning.integration.test.jsx`
+    — extended to close the coverage gap noted since Phase 33: selecting
+    an industry via `IndustryPicker` now has an explicit assertion that it
+    derives `workflowMode`/`templateKey` and sends no `industryKey`. This
+    file's pre-existing "Refresh" button duplication failure (unrelated to
+    this phase) reproduces identically against the pre-Phase-40 version of
+    the file — confirmed via `git stash`.
+13. `npx vite build` succeeded for both `frontend/` and
+    `frontend/apps/store/` after every frontend-touching phase (38, 40).

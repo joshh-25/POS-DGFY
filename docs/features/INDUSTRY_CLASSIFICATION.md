@@ -301,6 +301,82 @@ Folio) fit it. Tracked by the draft "software sales as a new way to sell"
 GitHub issue referenced in `docs/development/STORE_TEMPLATES_HANDOFF.md`
 §6 (not yet filed — pending explicit approval).
 
+## Registration visibility (issue #178 Phase 39)
+
+An admin can hide any of the 11 modeled industries from the merchant-facing
+signup surfaces without touching this classification guide or the
+`REGISTRATION_INDUSTRIES` catalog constant — visibility is landlord-database
+curation state, not a catalog edit:
+
+- Store: `registration_industry_visibility` (landlord-only, one row per
+  industry an admin has deliberately touched; row absence means visible).
+  `registration_industry_visibility_audit_logs` records every hide/unhide
+  with an actor and a required reason.
+- Admin surface: the "Registration industries" panel on the Store Template
+  Manager page (`frontend/Pages/admin/StoreTemplateManager.jsx`), and the
+  `GET/PATCH /api/v1/admin/registration-industries*` endpoints behind it.
+- Merchant contract: `GET /api/v1/registration/industries` always returns
+  all 11 entries — it never shortens the array — with a `hidden: boolean`
+  field per entry. The merchant-facing `IndustrySelect` dropdown
+  (`frontend/src/features/registration/IndustrySelect.jsx`) filters out any
+  `hidden: true` entry; the admin-only `IndustryPicker`
+  (`frontend/src/features/registration/IndustryPicker.jsx`, TenantManager's
+  assisted-provisioning panel) instead annotates it "Hidden from
+  registration" and leaves it selectable.
+- Server enforcement: `registerCompanyRequestUseCase.js` rejects a hidden
+  `industryKey` with a 400 (`hidden_industry_key`) even if the client
+  bypasses the dropdown's own filtering. Admin assisted provisioning is
+  unaffected by construction — it sends `workflowMode`/`templateKey`
+  directly, never `industryKey`.
+- **Fail-open everywhere.** A landlord-DB outage never blocks or reshapes
+  registration: the catalog read degrades to `hidden: false` on every
+  entry, and the write-side rejection is skipped entirely, on any lookup
+  failure.
+- The pre-existing `visibility` ENUM on `store_configuration_templates`
+  (write-only since it shipped, never read anywhere) is **not** the
+  mechanism here — it only covers the 7 template-backed industries, and
+  four (Healthcare, Ticketing and Transport, Logistics and Distribution,
+  Education and Institutions) have no template row at all. See
+  `docs/development/STORE_TEMPLATES_HANDOFF.md` §5 for the fuller writeup
+  and that column's superseded status.
+
+## Roadmap: hierarchical industry grouping (not yet built)
+
+Today's catalog is a flat list of 11 industries. Feedback after Phase
+38-40 shipped asked for grouping — e.g. Food & Beverage → {Full-service
+restaurant, Micro Food & Beverage / carinderia}, Retail → {Retail
+(supermarket-scale), Micro-Retail or Simple MSME (tiangge-scale)} — so the
+registration dropdown can present a two-level picker instead of 11 flat
+options.
+
+The catalog already has this shape implicitly: `fnb` and `micro_fnb` are
+two industries sharing one `workflow_mode` (`fnb`) — a two-member group in
+everything but name. `retail`/`micro_retail` is the same pattern for
+retail.
+
+**Planned approach when this is built** (ADR 0057's code-owned-constant
+pattern, not a database change): a new frozen constant
+`REGISTRATION_INDUSTRY_GROUPS` in
+`packages/shared-constants/src/registrationIndustries.js`, shaped like the
+existing `CAPABILITY_MODULE_GROUPS` (`{label, order}` per group key, plus a
+`members: [industryKey, ...]` list this constant would add). The merchant
+dropdown (`IndustrySelect.jsx`) would render `<optgroup>` elements sourced
+from it — zero API change, since the public catalog response already
+carries every industry's key. Consequences to plan for when this lands:
+
+- `backend/tests/registrationIndustries.contract.test.js`'s "unique,
+  contiguous 1-based `order` values" pin
+  (`orders` must equal `[1..N]` with no gaps) needs re-scoping to
+  per-group ordering, or a second, group-level order field.
+- The visibility store above stays industry-keyed, not group-keyed — hiding
+  a whole group would mean toggling each member individually, which is
+  probably fine at 11 industries but worth revisiting if the catalog grows.
+
+This is deliberately **not a phase** — documented as a roadmap item only,
+per the same "code-owned constant first, template/DB linkage only behind a
+future, separately-authorized decision" posture ADR 0057 established for
+the fulfillment-profile vocabulary.
+
 ## See also
 
 - `docs/features/STORE_TEMPLATES_AND_PROFILES.md` — the "Registration

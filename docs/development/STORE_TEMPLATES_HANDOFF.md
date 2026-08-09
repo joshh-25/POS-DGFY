@@ -287,9 +287,12 @@ merchant-facing layer above Store Templates: `REGISTRATION_INDUSTRIES`,
 one entry per industry in `docs/features/INDUSTRY_CLASSIFICATION.md`
 (DGFY's own business-niche guide), each `{ order, label, summary, niches,
 workflow_mode, template_key }`. `GET /api/v1/registration/industries`
-serves it (joined against live template publish-status) to the shared
-`IndustryPicker` component (`frontend/src/features/registration/`), used
-on all three signup surfaces.
+serves it (joined against live template publish-status and, since Phase
+39, admin visibility state) to the two components in
+`frontend/src/features/registration/`: `IndustrySelect.jsx` (the merchant
+dropdown on `/business/grow` and `/register-company`, since Phase 38) and
+`IndustryPicker.jsx` (admin-only, TenantManager's assisted-provisioning
+panel — the card-based UI every signup surface used before Phase 38).
 
 **To add a new registration industry** (most common case — prefer this
 over adding a mode, see below):
@@ -328,6 +331,44 @@ existing mode's capability list can express even with the additive/
 subtractive overlays — see `MODE_DEVELOPMENT_PLAYBOOK.md` for that
 heavier path, which now also requires declaring (or explicitly opting
 out of) a registration Industry entry for the new mode.
+
+### Admin visibility: hiding an industry from registration (issue #178 Phase 39)
+
+An admin can hide any of the 11 industries from merchant-facing signup
+without editing `REGISTRATION_INDUSTRIES` or removing anything — visibility
+is landlord-database state, curated through the "Registration industries"
+panel on the Store Template Manager page
+(`frontend/Pages/admin/StoreTemplateManager.jsx`), backed by
+`GET/PATCH /api/v1/admin/registration-industries*`.
+
+Mechanics:
+
+- New landlord-only tables `registration_industry_visibility` (row absence
+  = visible) and `registration_industry_visibility_audit_logs` (every
+  hide/unhide, with actor + required reason). Keyed by industry key, not a
+  template id — four industries have no template row at all.
+- `GET /api/v1/registration/industries` always returns all 11 entries,
+  each carrying `hidden: boolean`; the array is never shortened.
+- `IndustrySelect.jsx` filters hidden entries out; `IndustryPicker.jsx`
+  (admin-only) annotates them "Hidden from registration" but leaves them
+  selectable, since assisted provisioning bypasses `industryKey` entirely.
+- `registerCompanyRequestUseCase.js` rejects a hidden `industryKey`
+  server-side (400, `hidden_industry_key`) as defense in depth against a
+  direct API call bypassing the dropdown's filtering.
+- Every lookup — catalog read and registration-write enforcement alike —
+  fails OPEN on a landlord-DB error: registration is never blocked by this
+  feature being unavailable.
+
+**The pre-existing `visibility` ENUM on `store_configuration_templates`
+(shipped with the original template catalog migration, Phase 13) is
+superseded by this feature and remains dead** — it was write-only from day
+one (set on create, never read by any consumer), and even if wired up it
+would only cover the 7 template-backed industries, not the 4 preset-less
+ones (Healthcare, Ticketing and Transport, Logistics and Distribution,
+Education and Institutions). Left in place rather than removed to avoid
+churning `adminTemplateValidator.js` and three test files for zero
+behavioral gain; a candidate for a future cleanup migration if it's ever
+worth the churn.
 
 ## 6. Extension recipes, cheapest first
 

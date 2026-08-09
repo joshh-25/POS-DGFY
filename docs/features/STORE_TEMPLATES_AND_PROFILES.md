@@ -150,17 +150,24 @@ registration, so every carinderia signup fell back to the full-service
 admin. It is now reachable with no new mode added.
 
 `GET /api/v1/registration/industries` serves the catalog (joined against
-live template publish-status, degrading a missing/unpublished template to
-`template_key: null` rather than erroring) to all three signup surfaces —
-`/business/grow`, `/register-company`, and the admin assisted-provisioning
-panel — via the shared `IndustryPicker` component
-(`frontend/src/features/registration/`). `registerCompanyRequestUseCase.js`
-resolves an optional `industryKey` server-side into `workflow_mode` and
-`store_template_key`; the client can never request an arbitrary
-`templateKey` directly. `approveTenantUseCase.js` forwards that
-`templateKey` into the same `provisionTenant({...})` call the
+live template publish-status and, since Phase 39, admin visibility state —
+see below) to all three signup surfaces —`/business/grow`,
+`/register-company`, and the admin assisted-provisioning panel.
+`registerCompanyRequestUseCase.js` resolves an optional `industryKey`
+server-side into `workflow_mode` and `store_template_key`; the client can
+never request an arbitrary `templateKey` directly. `approveTenantUseCase.js`
+forwards that `templateKey` into the same `provisionTenant({...})` call the
 admin-initiated endpoints already used, closing the gap the previous
 section used to describe as open.
+
+**The merchant and admin surfaces render differently as of issue #178
+Phase 38.** `/business/grow` and `/register-company` use `IndustrySelect`
+(`frontend/src/features/registration/IndustrySelect.jsx`) — a dropdown of
+industry names, with an (i) button opening a catalog-detail modal and a
+per-selection "What you'll get" modal, and **no engine classification
+display at all**. The admin assisted-provisioning panel keeps the original
+card-based `IndustryPicker` (same directory), which still shows engine
+badges/notes — that distinction is deliberately admin-only now.
 
 **Two published presets are deliberately excluded from the registration
 catalog** — `services_with_parts_retail` and `hospitality_guesthouse`
@@ -172,14 +179,30 @@ every published preset appears either as a `template_key` in
 `REGISTRATION_INDUSTRIES` or in this exclusion list — a new preset must
 consciously choose to be registerable or not.
 
-**External-engine industries stay self-registerable, honestly.** The four
-registration-offered, preset-less modes from the previous section
-(`healthcare`, `ticketing_transport`, `logistics_distribution`,
-`education_institutions`) each get an entry with `template_key: null`;
-`IndustryPicker` renders a "Listing only" note sourced from
-`WORKFLOW_MODE_ENGINE`/`WORKFLOW_MODE_ENGINE_NOTES` rather than hiding
-them. Registering into one provisions with null template provenance,
-exactly as it always has.
+**External-engine industries stay self-registerable, honestly — on the
+admin surface.** The four registration-offered, preset-less modes from the
+previous section (`healthcare`, `ticketing_transport`,
+`logistics_distribution`, `education_institutions`) each get an entry with
+`template_key: null`; the admin-only `IndustryPicker` renders a "Listing
+only" note sourced from `WORKFLOW_MODE_ENGINE`/`WORKFLOW_MODE_ENGINE_NOTES`
+rather than hiding them. As of Phase 38, the merchant-facing
+`IndustrySelect` shows none of this — a merchant just sees the industry
+name and its plain-language summary. Registering into one provisions with
+null template provenance, exactly as it always has.
+
+**Admin visibility toggle (issue #178 Phase 39-40).** An admin can hide
+any industry from merchant signup — not remove it — via a new landlord
+table (`registration_industry_visibility`, row absence = visible) curated
+through a "Registration industries" panel on the Store Template Manager
+page. The catalog response gains a `hidden: boolean` field per entry and
+never shortens its 11-entry array; `IndustrySelect` filters hidden entries
+out, `IndustryPicker` annotates them but keeps them selectable (assisted
+provisioning never sends `industryKey`, so it's unaffected either way).
+`registerCompanyRequestUseCase.js` also rejects a hidden `industryKey`
+server-side, as defense in depth. Every lookup fails open on a landlord-DB
+error. See `docs/development/STORE_TEMPLATES_HANDOFF.md` §5 for the full
+mechanics and the now-superseded `visibility` ENUM this feature does
+*not* reuse.
 
 **Deliberately not modeled**: the classification guide's industry #12,
 "Technology and Digital Products" (software/SaaS/subscriptions) — it needs
