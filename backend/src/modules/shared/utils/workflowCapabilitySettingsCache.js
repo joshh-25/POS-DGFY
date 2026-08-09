@@ -7,6 +7,7 @@ import {
     normalizeDisabledCapabilities,
     normalizeWorkflowMode
 } from '../constants/workflowModes.js';
+import { STORE_PROFILE_READ_SETTING_KEY, normalizeStoreProfileReadFlag } from '../constants/storeProfile.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 
@@ -37,7 +38,14 @@ const parseJsonSettingValue = (setting, fallback) => {
 const readWorkflowCapabilitySettings = async () => {
     const SystemSetting = dbStore.get('SystemSetting');
     const rows = await SystemSetting.findAll({
-        where: { setting_key: [WORKFLOW_MODE_SETTING_KEY, ENABLED_CAPABILITIES_SETTING_KEY, DISABLED_CAPABILITIES_SETTING_KEY] },
+        where: {
+            setting_key: [
+                WORKFLOW_MODE_SETTING_KEY,
+                ENABLED_CAPABILITIES_SETTING_KEY,
+                DISABLED_CAPABILITIES_SETTING_KEY,
+                STORE_PROFILE_READ_SETTING_KEY
+            ]
+        },
         attributes: ['setting_key', 'setting_value', 'data_type']
     });
     const byKey = Object.fromEntries(rows.map((row) => [row.setting_key, row]));
@@ -49,18 +57,25 @@ const readWorkflowCapabilitySettings = async () => {
     const disabledCapabilities = normalizeDisabledCapabilities(
         parseJsonSettingValue(byKey[DISABLED_CAPABILITIES_SETTING_KEY], [])
     );
-    return { mode, enabledCapabilities, disabledCapabilities };
+    // Issue #178 Phase 19: read in the same cached query so the common
+    // (flag-off) gate check never pays for a second lookup - only tenants
+    // that have actually opted in pay resolveStoreProfile.js's extra cost,
+    // in requireWorkflowCapability.
+    const readFlagEnabled = normalizeStoreProfileReadFlag(
+        parseJsonSettingValue(byKey[STORE_PROFILE_READ_SETTING_KEY], false)
+    );
+    return { mode, enabledCapabilities, disabledCapabilities, readFlagEnabled };
 };
 
 /**
  * Tenant-scoped, short-TTL cache for the settings that drive workflow
  * capability gating (ops_workflow_mode + the Phase 6 ops_enabled_capabilities
- * overlay + the Phase 16 ops_disabled_capabilities overlay). Replaces the
- * previous uncached per-request SystemSetting.findOne in
- * requireWorkflowCapability, which ran once per guarded request with no
- * cache of any kind. disabledCapabilities is plumbed through starting Phase
- * 16 but not yet consumed by the gate itself — see workflowModeCapability.js
- * for the Phase 19 flip that reads it.
+ * overlay + the Phase 16 ops_disabled_capabilities overlay + the
+ * ops_store_profile_read flag). Replaces the previous uncached per-request
+ * SystemSetting.findOne in requireWorkflowCapability, which ran once per
+ * guarded request with no cache of any kind. disabledCapabilities and
+ * readFlagEnabled are both consumed starting Phase 19 - see
+ * workflowModeCapability.js.
  */
 export const resolveWorkflowCapabilitySettings = async () => {
     const store = dbStore.getStore();

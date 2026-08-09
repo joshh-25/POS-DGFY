@@ -9,13 +9,16 @@ topic: store_templates_and_profiles
 
 # Store Templates & Capability Configuration
 
-**Status: the full three-layer model is built and curatable (Phases 6d, 6e,
-10-14 shipped); a template's module list can now genuinely diverge a
-tenant's Profile from its base mode and be applied at provisioning or to an
-existing tenant (Phases 16-17); the frontend POS-defaults affordance now
-reads the Profile (Phase 18); the backend's flagged `resolveStoreProfile.js`
-read path (Phase 12) is still deliberately unwired, reserved for Phase 19's
-fail-closed capability-gate flip — see below.** This is the classification
+**Status: the full three-layer model is built, curatable, applicable, and
+enforced (Phases 6d, 6e, 10-19 all shipped).** A template's module list can
+genuinely diverge a tenant's Profile from its base mode and be applied at
+provisioning or to an existing tenant (Phases 16-17); the frontend
+POS-defaults affordance reads the Profile (Phase 18); and — the phase that
+makes curation actually mean something — the fail-closed capability gate
+itself now honors a template's subtractive overlay and, for opted-in
+tenants, reads through the flagged `resolveStoreProfile.js` resolver
+(Phase 19). See below for what remains deliberately unwired
+(storefront order methods, item taxonomy) and why. This is the classification
 that grounds the Store Templates work (ADR 0037 Axis 2): what the platform
 actually sells today, which behaviors are fixed engineering-owned code, and
 which are curatable per store. The integration plan and phase numbering live
@@ -116,7 +119,7 @@ The flexibility ladder, cheapest first:
 3. **Never** — migrating or rewriting historical rows on a switch. All
    schema work stays additive.
 
-## Runtime read-path resolver (scaffolding, not wired to any consumer)
+## Runtime read-path resolver — now wired to the capability gate (issue #178 Phase 19)
 
 `backend/src/modules/settings/usecases/resolveStoreProfile.js` resolves a
 tenant's effective Store Profile, gated by the master-admin-only
@@ -128,20 +131,38 @@ called for, now real rather than only tested by the equivalence harness. A
 divergent or version-stale persisted profile is never served, even with the
 flag on; a fresh rebuild is always correct by construction.
 
-**Nothing reads through this resolver yet**, deliberately — but as of Phase
-16 it is no longer true that nothing *could*. Two things had to exist before
-any Phase 12 flip could mean anything: a template entity (Phase 13) and a
-way for a template's module list to actually subtract from a mode's base
-capabilities (Phase 16's `ops_disabled_capabilities` overlay, below —
-without it, a template like `fnb_counter_service` was a landlord-DB row
-nothing could ever apply). Both now exist, so the differ above is live
-infrastructure, not a permanently-inert one: a tenant curated with a
-non-canonical template genuinely can diverge from its base mode, and the
-resolver will catch it. Wiring a real consumer is still separate future
-work (storefront order methods, item taxonomy validation, POS terminal
-defaults, capability gating) — deferred a little longer to keep this change
-isolated to the mechanism, not the flip, and because capability gating in
-particular needs its own care (see below).
+**`requireWorkflowCapability` (`backend/src/middleware/workflowModeCapability.js`)
+is this resolver's first real consumer**, and — deliberately — its only one.
+Two things had to exist before wiring the fail-closed gate could mean
+anything beyond latency: a template entity (Phase 13) and a way for a
+template's module list to actually subtract from a mode's base capabilities
+(Phase 16's `ops_disabled_capabilities` overlay, below). Both now exist. The
+gate's behavior per tenant:
+
+- **`ops_store_profile_read` off (the default, and every tenant not
+  explicitly opted in):** gates on the registries directly —
+  `modeHasCapability(mode, capability, enabledCapabilities,
+  disabledCapabilities)` — now honoring the disabled overlay as well as the
+  enabled one. This is the **permanent** fallback, not a temporary one, and
+  costs the one cached settings query gating already paid before this
+  phase (`workflowCapabilitySettingsCache.js`, extended to read the flag in
+  the same query).
+- **`ops_store_profile_read` on (master-admin, per tenant):** gates on
+  `resolveStoreProfile()`'s resolution instead. Because the resolver never
+  serves a divergent or version-stale persisted profile, this is provably
+  equivalent to the registry path for every tenant today — the flag
+  controls rollout order, not the answer.
+- **Any resolver or settings-read failure denies.** Both paths' errors fall
+  through to `next(error)`, mapped to a 5xx by the global error handler —
+  there is no "allow on error" branch anywhere in the gate.
+
+Storefront order methods and item-taxonomy validation remain unwired, as
+scoped in ADR 0037's amendment: `STOREFRONT_ORDER_METHODS` is a
+mode-independent constant (wiring it would be pure churn), and item
+taxonomy already derives from mode + overlay so it inherits subtraction for
+free without a separate flip. **The registries are not retired** —
+`WORKFLOW_MODE_CAPABILITIES` stays the differ's oracle and the gate's
+permanent flag-off path.
 
 ### The subtractive overlay (`ops_disabled_capabilities`)
 
@@ -301,6 +322,16 @@ grantable capability vocabulary, and fail template validation if selected.
 
 ## Verification
 
+- `backend/tests/workflowModeCapability.middleware.test.js` (issue #178
+  Phase 19) — the gate: grants/denies via the registry path honoring the
+  disabled overlay when the flag is off; grants/denies via
+  `resolveStoreProfile()` when the flag is on (subtraction actually
+  enforced, not just resolvable); fails closed (never grants, always
+  `next(error)`) when either resolver throws.
+- `backend/tests/workflowCapabilitySettingsCache.test.js` — the
+  `ops_store_profile_read` flag is read in the same cached query as
+  mode/enabled/disabled, so the common flag-off gate check pays no extra
+  cost.
 - `frontend/src/features/settings/__tests__/WorkflowModeContext.profile.test.jsx`
   (issue #178 Phase 18) — the context distributes the server-persisted
   profile when present and an identical local rebuild otherwise.

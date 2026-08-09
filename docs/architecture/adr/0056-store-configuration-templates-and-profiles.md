@@ -125,15 +125,22 @@ Phases 10 and 11 (Capability Module catalog; Store Profile shadow-write)
 shipped ahead of this ADR under ADR 0037's `[default]`-tier phased rollout
 and are unaffected by it. Phase 12 (runtime read-path) shipped as tested
 scaffolding only — a resolver and a divergence differ, gated by a flag no
-consumer reads through yet — scoped by clause 2 above from its first commit.
-Phases 13 (landlord template catalog) and 14 (curation surface) have since
-shipped, scoped by clauses 1, 3, 5, and 6; Phase 13's existence is what
-would make wiring a real Phase 12 consumer meaningful, which is why it
-landed first. Phase 16 (this amendment's subtractive overlay) and Phase 17
-(apply-template) close the remaining gap — a template's module list can now
-actually diverge a Profile from its base mode — and Phases 18-19 wire the
-first real Phase 12 consumers: POS affordances, then the fail-closed
-capability gate last, with a permanent rebuild fallback there.
+consumer read through yet — scoped by clause 2 above from its first commit.
+Phases 13 (landlord template catalog) and 14 (curation surface) shipped
+next, scoped by clauses 1, 3, 5, and 6; Phase 13's existence is what would
+make wiring a real Phase 12 consumer meaningful, which is why it landed
+first. Phase 16 (this amendment's subtractive overlay) and Phase 17
+(apply-template) closed the remaining gap — a template's module list can
+genuinely diverge a Profile from its base mode, at provisioning or applied
+to an existing tenant. Phases 18 and 19 have since wired the first two real
+Phase 12 consumers: POS affordances (a shadow-write read, not through the
+resolver), then the fail-closed capability gate last — the resolver's first
+actual consumer, and the only one, with the registries kept as its
+permanent flag-off fallback rather than retired. All phases through 19 are
+now shipped; issue #178's remaining scope (storefront order methods, item
+taxonomy validation wiring, the four `planned` catalog modules) is
+deliberately out of this ADR's rollout, per the reasons recorded in ADR
+0037's amendment.
 
 ## Validation
 

@@ -726,6 +726,22 @@ IMS delegation); new phases use 10+. Status as of this amendment:
   by a new audited platform-admin action,
   `POST /admin/tenants/:id/apply-template`, for already-provisioned tenants.
   Non-destructive per ADR 0008/0019: settings only, no data migration.
+- **Phase 19 — Flip the fail-closed capability gate (shipped, last):**
+  `requireWorkflowCapability` (`backend/src/middleware/workflowModeCapability.js`)
+  now honors the disabled overlay in its permanent registry-path fallback
+  (`ops_store_profile_read` off, the default for every tenant) and, for
+  tenants explicitly opted in, gates on `resolveStoreProfile()`'s
+  resolution instead. Because that resolver never serves a divergent or
+  version-stale persisted profile, the two paths are provably equivalent
+  for every tenant today — the flag controls rollout order, not the
+  answer. Every error branch (settings read, resolver) falls through to
+  `next(error)`, never granting access — the fail-closed guarantee this
+  gate has always had is unchanged, just extended to cover the new paths.
+  The frontend's UI-only mirrors (`WorkflowModeRouteGate.jsx`, `Layout.jsx`'s
+  nav filtering, `isWorkflowPageVisible`/`isWorkflowPathBlocked`) also honor
+  the disabled overlay now — cosmetic only, since the backend gate above is
+  what actually enforces. The registries remain the differ's oracle and the
+  gate's permanent fallback; this phase does not retire them.
 
 The three `[binding]` cross-boundary clauses this realization needs — never
 dereferencing provenance at runtime, locked-module compliance determinism,
