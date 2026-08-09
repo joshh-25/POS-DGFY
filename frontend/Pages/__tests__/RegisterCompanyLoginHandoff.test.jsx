@@ -444,7 +444,7 @@ describe('DGFY auth and business registration routes', () => {
     expect(screen.getByLabelText('Company Name')).toBeTruthy();
     expect(await screen.findByText('What kind of business is this?')).toBeTruthy();
 
-    fireEvent.click(await screen.findByRole('radio', { name: /Micro Food & Beverage/i }));
+    fireEvent.change(await screen.findByRole('combobox'), { target: { value: 'micro_fnb' } });
     fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Auto Foods' } });
     fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
     fireEvent.click(screen.getByRole('button', { name: /create company/i }));

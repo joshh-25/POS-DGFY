@@ -22,7 +22,7 @@ import {
 } from '../../../../../src/services/dgfyAuthService.js';
 import DgfyAuthHero from '../../../../../src/features/dgfy/components/DgfyAuthHero.jsx';
 import { resolvePosTerminalUrl } from '../../../../../src/features/dgfyRouteHelpers.js';
-import IndustryPicker from '../../../../../src/features/registration/IndustryPicker.jsx';
+import IndustrySelect from '../../../../../src/features/registration/IndustrySelect.jsx';
 
 import { writeDgfyAuthToken } from '../../auth/storefrontSessionStorage.js';
 import { resolveSkupervisorUrl } from '../../auth/storefrontSkupervisorLink.js';
@@ -379,7 +379,7 @@ export default function StorefrontBusinessGrowPage() {
           </div>
 
           <form onSubmit={handleSubmitCompany} className="space-y-5">
-            <IndustryPicker
+            <IndustrySelect
               idPrefix="business-grow-industry"
               value={companyForm.industryKey}
               disabled={isLoading}

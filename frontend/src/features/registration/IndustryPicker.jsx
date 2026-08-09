@@ -1,31 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { Badge } from '@/components/ui/badge';
-import { CAPABILITY_MODULES, STORE_TEMPLATE_PRESETS } from '@sieitzz/shared-constants/capabilityModules';
 import { fetchRegistrationIndustries } from './registrationIndustryService.js';
-
-// "What you'll get" is generated from the module catalog's own
-// description/enforcement metadata (issue #178 Phase 29), never
-// hand-written per-industry copy - so it can never drift from what the
-// template actually turns on. Locked/planned modules are never shown; a
-// merchant only sees what's actually theirs to use.
-const resolveWhatYoullGet = (templateKey) => {
-  const preset = templateKey ? STORE_TEMPLATE_PRESETS[templateKey] : null;
-  if (!preset) return [];
-  return [...preset.modules]
-    .map((key) => ({ key, module: CAPABILITY_MODULES[key] }))
-    .filter(({ module }) => module && module.status === 'shipped' && module.enforcement !== 'locked')
-    .map(({ key, module }) => ({ key, label: module.label, description: module.description }))
-    .sort((a, b) => a.label.localeCompare(b.label));
-};
+import { resolveWhatYoullGet } from './whatYoullGet.js';
 
 /**
- * The registration Industry picker (issue #178 "templates become the
- * Operating Mode" follow-up). Replaces the raw "Operating Mode" `<select>`
- * on all three signup surfaces with one component that presents DGFY's own
- * business-niche classification guide, so a merchant chooses what kind of
- * business they run rather than an engineering enum. Selecting an entry
- * derives both `workflow_mode` and the store template server-side - the
- * caller only ever needs `entry.key` (industryKey) for submission.
+ * The ADMIN-ONLY registration Industry picker (issue #178 "templates become
+ * the Operating Mode" follow-up). As of Phase 38, merchant-facing signup
+ * surfaces use `IndustrySelect.jsx` (a dropdown, with this component's
+ * detail shown in modals) instead - it drops the engine badges/notes below,
+ * which are appropriate for an admin operating the assisted-provisioning
+ * panel but not for a merchant. This component's only remaining consumer is
+ * `frontend/Pages/admin/TenantManager.jsx`. Selecting an entry derives both
+ * `workflow_mode` and the store template server-side - the caller only ever
+ * needs `entry.key` (industryKey) for submission.
  *
  * `onSelect` receives the full described entry:
  * `{ key, label, summary, niches, workflow_mode, template_key, engine, engine_note }`.

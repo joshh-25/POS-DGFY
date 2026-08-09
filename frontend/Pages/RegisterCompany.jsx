@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertTriangle, Building2, Eye, EyeOff, LogOut, UserRound } from 'lucide-react';
 import DgfyAuthHero from '../src/features/dgfy/components/DgfyAuthHero.jsx';
-import IndustryPicker from '../src/features/registration/IndustryPicker.jsx';
+import IndustrySelect from '../src/features/registration/IndustrySelect.jsx';
 import { buildDgfyAuthPath, DGFY_REGISTER_COMPANY_ENTRY } from '../src/features/dgfyRouteHelpers.js';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -596,7 +596,7 @@ export default function RegisterCompany() {
                     </div>
 
                     <form onSubmit={handleSubmitCompany} className="space-y-5">
-                        <IndustryPicker
+                        <IndustrySelect
                             idPrefix="register-company-industry"
                             value={companyForm.industryKey}
                             disabled={isLoading}

@@ -6,7 +6,7 @@ import { MemoryRouter } from 'react-router-dom';
 
 // Mocked at the same specifier StorefrontBusinessGrowPage.jsx itself imports
 // from (frontend/src, a cross-app import — see the component's own comment)
-// so both the page and IndustryPicker/registrationIndustryService, which
+// so both the page and IndustrySelect/registrationIndustryService, which
 // resolve to the same frontend/src/services/api.js file, share one mock.
 const apiMock = vi.hoisted(() => ({
   post: vi.fn(),
@@ -127,7 +127,7 @@ describe('StorefrontBusinessGrowPage — registration Industry picker', () => {
     renderPage();
 
     expect(await screen.findByText('What kind of business is this?')).toBeTruthy();
-    fireEvent.click(await screen.findByRole('radio', { name: /Micro Food & Beverage/i }));
+    fireEvent.change(await screen.findByRole('combobox'), { target: { value: 'micro_fnb' } });
     fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Kusina ni Nena' } });
     fireEvent.change(screen.getByLabelText('Industry (optional)'), { target: { value: 'carinderia' } });
     fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
