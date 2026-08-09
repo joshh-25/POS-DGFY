@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import { AlertTriangle, LogOut, UserRound } from 'lucide-react';
@@ -22,7 +22,7 @@ import {
 } from '../../../../../src/services/dgfyAuthService.js';
 import DgfyAuthHero from '../../../../../src/features/dgfy/components/DgfyAuthHero.jsx';
 import { resolvePosTerminalUrl } from '../../../../../src/features/dgfyRouteHelpers.js';
-import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_SELECT_VALUES } from '../../../../../src/features/settings/workflowMode.js';
+import IndustrySelect from '../../../../../src/features/registration/IndustrySelect.jsx';
 
 import { writeDgfyAuthToken } from '../../auth/storefrontSessionStorage.js';
 import { resolveSkupervisorUrl } from '../../auth/storefrontSkupervisorLink.js';
@@ -164,17 +164,13 @@ export default function StorefrontBusinessGrowPage() {
   const [legalTermsError, setLegalTermsError] = useState('');
   const [companyForm, setCompanyForm] = useState({
     companyName: '',
-    workflowMode: 'food_manufacturing',
+    industryKey: '',
+    industryTag: '',
     acceptedCompanyTerms: false
   });
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-
-  const businessIndustryOptions = useMemo(() => WORKFLOW_MODE_SELECT_VALUES.map((mode) => ({
-    value: mode,
-    label: WORKFLOW_MODE_LABELS[mode] || mode
-  })), []);
 
   useEffect(() => {
     let cancelled = false;
@@ -254,6 +250,10 @@ export default function StorefrontBusinessGrowPage() {
       setError('Sign in with your DGFY account before registering a business.');
       return;
     }
+    if (!companyForm.industryKey) {
+      setError('Choose what kind of business this is before registering.');
+      return;
+    }
     if (!companyForm.acceptedCompanyTerms) {
       setError('Accept the DGFY company terms before registering a company.');
       return;
@@ -267,7 +267,8 @@ export default function StorefrontBusinessGrowPage() {
     try {
       const response = await api.post('/admin/tenants/register', {
         name: companyForm.companyName,
-        workflowMode: companyForm.workflowMode,
+        industryKey: companyForm.industryKey,
+        industryTag: companyForm.industryTag,
         accepted_company_terms: true,
         company_terms_version: companyLegalSnapshot.company_terms_version,
         marketplace_terms_version: companyLegalSnapshot.marketplace_terms_version
@@ -378,20 +379,12 @@ export default function StorefrontBusinessGrowPage() {
           </div>
 
           <form onSubmit={handleSubmitCompany} className="space-y-5">
-            <div>
-              <Label htmlFor="workflowMode">Business Industry</Label>
-              <select
-                id="workflowMode"
-                value={companyForm.workflowMode}
-                onChange={(e) => setCompanyForm({ ...companyForm, workflowMode: e.target.value })}
-                disabled={isLoading}
-                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-              >
-                {businessIndustryOptions.map((mode) => (
-                  <option key={mode.value} value={mode.value}>{mode.label}</option>
-                ))}
-              </select>
-            </div>
+            <IndustrySelect
+              idPrefix="business-grow-industry"
+              value={companyForm.industryKey}
+              disabled={isLoading}
+              onSelect={(entry) => setCompanyForm({ ...companyForm, industryKey: entry.key })}
+            />
 
             <div>
               <Label htmlFor="companyName">Company Name</Label>
@@ -406,6 +399,20 @@ export default function StorefrontBusinessGrowPage() {
                 disabled={isLoading}
                 className="mt-1"
               />
+            </div>
+
+            <div>
+              <Label htmlFor="industryTag">Industry (optional)</Label>
+              <Input
+                id="industryTag"
+                placeholder="e.g. coffee shop, hardware store, freelance repair"
+                value={companyForm.industryTag}
+                onChange={(e) => setCompanyForm({ ...companyForm, industryTag: e.target.value })}
+                maxLength={120}
+                disabled={isLoading}
+                className="mt-1"
+              />
+              <p className="mt-1 text-xs text-slate-500">How you&apos;d describe your business, for your profile only — it doesn&apos;t change how DGFY works for you.</p>
             </div>
 
             <div className="rounded-2xl border border-[#d8e8e3] bg-[#f7fbfa] p-4">

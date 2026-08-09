@@ -58,6 +58,7 @@ export default function TerminalPageLayout({
     onSwitchCompany = async () => {},
     posViewMode,
     workflowMode = '',
+    effectiveCapabilities = null,
     isMsmeMode = false,
     shiftState,
     incomingOrdersState,
@@ -690,6 +691,7 @@ export default function TerminalPageLayout({
             <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
               <POSCheckoutTerminal
                 workflowMode={workflowMode}
+                effectiveCapabilities={effectiveCapabilities}
                 sessionLocked={locked}
                 isMsmeMode={isMsmeMode}
                 sidebarCollapsed={effectiveSidebarCollapsed}

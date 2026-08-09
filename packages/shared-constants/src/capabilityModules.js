@@ -1,7 +1,8 @@
 import {
     WORKFLOW_MODE_CAPABILITIES,
     ALL_WORKFLOW_CAPABILITIES,
-    resolveEffectiveCapabilities
+    resolveEffectiveCapabilities,
+    resolveWorkflowModeFamily
 } from './workflowModes.js';
 
 /**
@@ -33,6 +34,27 @@ export const CAPABILITY_MODULE_ENFORCEMENT = Object.freeze({
     LOCKED: 'locked'
 });
 
+// Which selling surface a module's behavior is visible on - admin-UI
+// metadata only, read by the curation grid's surface badges (issue #178
+// final-touch pass). Not consumed by any enforcement path.
+export const CAPABILITY_MODULE_SURFACES = Object.freeze({
+    POS: 'pos',
+    STOREFRONT: 'storefront',
+    BACK_OFFICE: 'back_office'
+});
+
+// Machine-readable form of the comment-only section headers this catalog
+// already had. `order` controls the curation grid's group ordering (issue
+// #178 final-touch pass).
+export const CAPABILITY_MODULE_GROUPS = Object.freeze({
+    universal: Object.freeze({ label: 'Universal selling surfaces', order: 1 }),
+    stock: Object.freeze({ label: 'Stock & production', order: 2 }),
+    services: Object.freeze({ label: 'Service bookings', order: 3 }),
+    fnb: Object.freeze({ label: 'F&B dining', order: 4 }),
+    hospitality: Object.freeze({ label: 'Hospitality', order: 5 }),
+    presentation: Object.freeze({ label: 'Presentation & affordances', order: 6 })
+});
+
 const gateModule = (overrides) => Object.freeze({
     enforcement: 'gate',
     status: 'shipped',
@@ -48,20 +70,32 @@ export const CAPABILITY_MODULES = Object.freeze({
     //    off-switches for a future profile that can subtract) ────────────────
     catalog: gateModule({
         label: 'Item Catalog',
+        description: 'The tenant\'s item/product list — names, prices, images, categories. The foundation almost every other module builds on.',
+        group: 'universal',
+        surface: 'back_office',
         enforced_by: 'backend/src/routes/items.js'
     }),
     pos: gateModule({
         label: 'Point of Sale',
+        description: 'In-person checkout at the counter/terminal, for staff ringing up a sale face-to-face with the customer.',
+        group: 'universal',
+        surface: 'pos',
         requires: ['catalog'],
         enforced_by: 'backend/src/routes/pos.js'
     }),
     storefront: gateModule({
         label: 'Online Store',
+        description: 'The public online store: the customer-facing catalog page and online checkout at the tenant\'s store URL. Off = the tenant sells in person only; their public store page is not reachable.',
+        group: 'universal',
+        surface: 'storefront',
         requires: ['catalog'],
         enforced_by: 'backend/src/routes/store.js'
     }),
     menuModifiers: gateModule({
         label: 'Add-ons & Modifiers',
+        description: 'Add-on option groups attached to any item — "extra rice" on a dish, gift wrap on a retail SKU, an extended warranty on a repair job. Not restaurant-specific despite the name.',
+        group: 'universal',
+        surface: 'pos',
         requires: ['catalog'],
         enforced_by: 'backend/src/routes/fnb.js (modifier-group routes)'
     }),
@@ -69,16 +103,25 @@ export const CAPABILITY_MODULES = Object.freeze({
     // ── Stock behavior ──────────────────────────────────────────────────────
     inventory: gateModule({
         label: 'Inventory & Stock Movements',
+        description: 'Stock-on-hand tracking and stock movement history (receiving, adjustments, transfers) per item.',
+        group: 'stock',
+        surface: 'back_office',
         requires: ['catalog'],
         enforced_by: 'backend/src/routes/stockMovements.js'
     }),
     productionWorkflows: gateModule({
         label: 'Production Workflows (Job & Dispatch Orders)',
+        description: 'Job orders (production runs that consume raw-material stock to produce finished goods) and dispatch orders (outbound fulfillment batches). Manufacturing-shop operations, not a simple stock count.',
+        group: 'stock',
+        surface: 'back_office',
         requires: ['inventory'],
         enforced_by: 'backend/src/routes/jobOrders.js, backend/src/routes/dispatchOrders.js'
     }),
     foodManufacturing: gateModule({
         label: 'Manufacturing Item Taxonomy',
+        description: 'Validates items against food-manufacturing-specific classification rules (e.g. raw material vs finished good). A back-office validation rule, not a visible surface.',
+        group: 'stock',
+        surface: 'back_office',
         requires: ['catalog'],
         enforced_by: 'CAPABILITY_TAXONOMY_OVERLAY_MODES (item-taxonomy validation layer)'
     }),
@@ -86,6 +129,9 @@ export const CAPABILITY_MODULES = Object.freeze({
     // ── Booking lifecycle (services) ────────────────────────────────────────
     services: gateModule({
         label: 'Service Bookings',
+        description: 'Scheduled appointments with a provider and a calendar — a salon appointment, a repair job, a consultation. Settles into a POS transaction on completion.',
+        group: 'services',
+        surface: 'back_office',
         requires: ['catalog'],
         enforced_by: 'backend/src/routes/services.js, backend/src/routes/store.js (/services/*)'
     }),
@@ -93,21 +139,33 @@ export const CAPABILITY_MODULES = Object.freeze({
     // ── F&B dining, tiered by operational scale ─────────────────────────────
     fnbDining: gateModule({
         label: 'F&B Dining Operations',
+        description: 'Base restaurant/eatery operations layer the more specific dining modules (table service, kitchen queue, service charge) build on.',
+        group: 'fnb',
+        surface: 'pos',
         requires: ['catalog', 'pos'],
         enforced_by: 'backend/src/routes/fnb.js'
     }),
     tableService: gateModule({
         label: 'Table Service',
+        description: 'Dining areas and tables, and orders assigned to a table — for a sit-down restaurant. Off for counter-service eateries.',
+        group: 'fnb',
+        surface: 'pos',
         requires: ['fnbDining'],
         enforced_by: 'backend/src/routes/fnb.js (dining-areas/tables routes)'
     }),
     kitchenQueue: gateModule({
         label: 'Kitchen Queue',
+        description: 'A live queue of fired orders for the kitchen to work through, with per-item prep status.',
+        group: 'fnb',
+        surface: 'pos',
         requires: ['fnbDining'],
         enforced_by: 'backend/src/routes/fnb.js (kitchen routes)'
     }),
     restaurantServiceCharge: gateModule({
         label: 'Restaurant Service Charge',
+        description: 'An automatic service charge line applied to dine-in checks.',
+        group: 'fnb',
+        surface: 'pos',
         requires: ['fnbDining'],
         enforced_by: 'backend/src/routes/fnb.js (service-charge routes)'
     }),
@@ -115,36 +173,57 @@ export const CAPABILITY_MODULES = Object.freeze({
     // ── Folio lifecycle (hospitality), tiered by property complexity ────────
     hospitalityReservations: gateModule({
         label: 'Hospitality Reservations',
+        description: 'Guest reservations and booking holds for a lodging property. Base layer the other hospitality modules build on.',
+        group: 'hospitality',
+        surface: 'back_office',
         requires: ['catalog'],
         enforced_by: 'backend/src/routes/hospitality.js'
     }),
     hospitalityRooms: gateModule({
         label: 'Rooms & Room Types',
+        description: 'The property\'s inventory of room types and individual rooms, assigned to stays.',
+        group: 'hospitality',
+        surface: 'back_office',
         requires: ['hospitalityReservations'],
         enforced_by: 'backend/src/routes/hospitality.js (rooms routes)'
     }),
     hospitalityHousekeeping: gateModule({
         label: 'Housekeeping Board',
+        description: 'A task board for room cleaning/turnover status. Off for small guesthouses without a housekeeping staff to manage.',
+        group: 'hospitality',
+        surface: 'back_office',
         requires: ['hospitalityRooms'],
         enforced_by: 'backend/src/routes/hospitality.js (housekeeping routes)'
     }),
     hospitalityMaintenance: gateModule({
         label: 'Maintenance Requests',
+        description: 'Tracked maintenance/repair tickets against a room or property asset.',
+        group: 'hospitality',
+        surface: 'back_office',
         requires: ['hospitalityRooms'],
         enforced_by: 'backend/src/routes/hospitality.js (maintenance routes)'
     }),
     hospitalityFolios: gateModule({
         label: 'Guest Folios',
+        description: 'A guest\'s running charge balance across a stay — room, incidentals, amenities — settled at checkout. The hospitality lifecycle never settles into a POS transaction the way an order does.',
+        group: 'hospitality',
+        surface: 'pos',
         requires: ['hospitalityReservations'],
         enforced_by: 'backend/src/routes/hospitality.js (folio routes)'
     }),
     hospitalityRates: gateModule({
         label: 'Rate Plans',
+        description: 'Priced rate plans and a rate calendar for room types (e.g. seasonal or weekday/weekend pricing).',
+        group: 'hospitality',
+        surface: 'back_office',
         requires: ['hospitalityReservations'],
         enforced_by: 'backend/src/routes/hospitality.js (rate-plan routes)'
     }),
     hospitalityAmenities: gateModule({
         label: 'Amenities, Facilities & Packages',
+        description: 'Bookable amenities, shared facilities, and bundled packages a guest can add to their stay.',
+        group: 'hospitality',
+        surface: 'storefront',
         requires: ['hospitalityReservations'],
         enforced_by: 'backend/src/routes/hospitality.js (amenity/facility/package routes)'
     }),
@@ -152,6 +231,9 @@ export const CAPABILITY_MODULES = Object.freeze({
     // ── Affordance modules: presentation shaped per template, API unchanged ─
     posWorkflowPanel: Object.freeze({
         label: 'POS Workflow Panel',
+        description: 'Which POS checkout panel layout the terminal shows (e.g. table-and-course flow vs a simple cart). Presentation only — the backend accepts any POS order method regardless of this setting.',
+        group: 'presentation',
+        surface: 'pos',
         enforcement: 'affordance',
         status: 'shipped',
         requires: Object.freeze(['pos']),
@@ -160,6 +242,9 @@ export const CAPABILITY_MODULES = Object.freeze({
     }),
     storefrontLayout: Object.freeze({
         label: 'Storefront Layout & Journey',
+        description: 'Which storefront page layout and checkout journey the public online store uses (e.g. a booking-style flow vs a standard product catalog). Presentation only.',
+        group: 'presentation',
+        surface: 'storefront',
         enforcement: 'affordance',
         status: 'shipped',
         requires: Object.freeze(['storefront']),
@@ -170,6 +255,9 @@ export const CAPABILITY_MODULES = Object.freeze({
     // ── Locked modules: in the catalog for completeness, never curated ──────
     fiscalProfile: Object.freeze({
         label: 'Fiscal / BIR Profile',
+        description: 'BIR fiscalization/compliance policy pack. Determined by registration and compliance state, never by a Store Template — not shown in curation.',
+        group: 'presentation',
+        surface: 'back_office',
         enforcement: 'locked',
         status: 'shipped',
         requires: Object.freeze([]),
@@ -178,6 +266,9 @@ export const CAPABILITY_MODULES = Object.freeze({
     }),
     customerAccessMode: Object.freeze({
         label: 'Customer Access Ceiling',
+        description: 'The maximum level of storefront access a customer can have. Determined by platform/registration policy, never by a Store Template — not shown in curation.',
+        group: 'presentation',
+        surface: 'storefront',
         enforcement: 'locked',
         status: 'shipped',
         requires: Object.freeze(['storefront']),
@@ -275,17 +366,23 @@ export const validateModuleSelection = (moduleKeys) => {
 
 /**
  * The gate-module bundle a workflow mode resolves to today. By construction
- * this is exactly resolveEffectiveCapabilities(mode, overlay) — the catalog
- * introduces no behavior of its own (issue #178 Phase 10: metadata only). The
- * equivalence is pinned by capabilityModules.contract.test.js.
+ * this is exactly resolveEffectiveCapabilities(mode, enabled, disabled) — the
+ * catalog introduces no behavior of its own (issue #178 Phase 10: metadata
+ * only). The equivalence is pinned by capabilityModules.contract.test.js.
+ * No production caller today (test/documentation-only) - kept in step with
+ * resolveEffectiveCapabilities's full signature (issue #178 Phase 16) rather
+ * than left on a stale 2-arg claim.
  */
-export const resolveModeModuleBundle = (workflowMode, enabledCapabilities = []) => (
-    resolveEffectiveCapabilities(workflowMode, enabledCapabilities)
+export const resolveModeModuleBundle = (workflowMode, enabledCapabilities = [], disabledCapabilities = []) => (
+    resolveEffectiveCapabilities(workflowMode, enabledCapabilities, disabledCapabilities)
 );
 
 /**
- * Curated Store Template presets — data only; nothing consumes these yet.
- * They document the two dimensions templates vary on:
+ * Curated Store Template presets — the source data
+ * `seedCanonicalTemplatePresetsUseCase`
+ * (`backend/src/modules/templates/usecases/seedCanonicalTemplatePresets.js`)
+ * materializes into landlord `store_configuration_templates` rows (issue
+ * #178 Phase 13). They document the two dimensions templates vary on:
  * 1. selling-behavior mix (a services shop that also retails parts), and
  * 2. operational scale within one vertical (full-service restaurant vs
  *    counter-service carenderia — same food business, different module tiers).
@@ -353,6 +450,75 @@ export const STORE_TEMPLATE_PRESETS = Object.freeze({
         modules: Object.freeze([...WORKFLOW_MODE_CAPABILITIES.msme])
     })
 });
+
+/**
+ * Registration offers 10 Operating Mode choices (WORKFLOW_MODE_VALUES minus
+ * the deprecated `manufacturing` alias) but only 6 of them have a curated
+ * template preset above. These 4 are intentionally bare, not an oversight:
+ * `healthcare`, `ticketing_transport`, `logistics_distribution`, and
+ * `education_institutions` are candidates for verticals that may end up
+ * powered by separate sibling apps under the same parent company, with DGFY
+ * providing registration and UI/UX visibility only - the operating "engine"
+ * living elsewhere. Until that direction is decided (tracked in a follow-up
+ * issue), they stay retail-shaped (see WORKFLOW_MODE_CAPABILITIES) and
+ * preset-less: a tenant registering in one of these modes provisions with
+ * null template provenance, which the whole system already tolerates by
+ * design (ADR 0056 - provenance is never required for a mode to function).
+ *
+ * This list exists so that bareness is a checked, deliberate fact rather
+ * than a silent gap: capabilityModules.contract.test.js asserts these four
+ * (and only these four) offered modes lack a canonical preset. Adding an
+ * 11th mode without deciding its preset story, or seeding a preset for one
+ * of these four without removing it from this list first, both fail that
+ * test loudly instead of drifting unnoticed.
+ */
+export const STORE_TEMPLATE_PRESETLESS_MODES = Object.freeze([
+    'healthcare',
+    'ticketing_transport',
+    'logistics_distribution',
+    'education_institutions'
+]);
+
+/**
+ * Which module groups the curation grid shows by default for a given base
+ * mode (issue #178 final-touch pass). A filter, not a fence: it exists so
+ * the admin template form doesn't dump all 21 selectable modules on every
+ * screen regardless of relevance, but the grid always offers a "Show all
+ * module groups" escape hatch, and a group already holding a selected
+ * module is force-shown even when the base mode wouldn't otherwise surface
+ * it — so no legitimate cross-family bundle (e.g. services_with_parts_retail,
+ * which adds `inventory` to a services-based template) is ever inexpressible.
+ *
+ * Deliberately explicit metadata rather than derived from
+ * WORKFLOW_MODE_CAPABILITIES: a template's whole purpose is to deviate from
+ * its base mode's default capability list, so deriving visibility from that
+ * list would hide exactly the modules an admin is most likely to be adding.
+ *
+ * Keyed by workflow mode FAMILY (resolveWorkflowModeFamily's output), so the
+ * `manufacturing` alias resolves without a duplicate entry. Every family maps
+ * to a value containing 'universal'. External-engine modes are not
+ * authorable (TEMPLATE_AUTHORABLE_MODES in workflowModes.js), but a
+ * pre-existing template row for one can still be viewed - a retail-shaped
+ * fallback covers that case.
+ */
+export const MODE_FAMILY_MODULE_GROUPS = Object.freeze({
+    retail: Object.freeze(['universal', 'stock', 'presentation']),
+    services: Object.freeze(['universal', 'services', 'stock', 'presentation']),
+    food_manufacturing: Object.freeze(['universal', 'stock', 'presentation']),
+    fnb: Object.freeze(['universal', 'fnb', 'stock', 'presentation']),
+    hospitality: Object.freeze(['universal', 'hospitality', 'stock', 'presentation']),
+    msme: Object.freeze(['universal', 'presentation']),
+    // External modes are not authorable, but a pre-existing template row
+    // (or a future flip back to native) still needs a sensible grid.
+    healthcare: Object.freeze(['universal', 'stock', 'presentation']),
+    ticketing_transport: Object.freeze(['universal', 'stock', 'presentation']),
+    logistics_distribution: Object.freeze(['universal', 'stock', 'presentation']),
+    education_institutions: Object.freeze(['universal', 'stock', 'presentation'])
+});
+
+export const resolveModeFamilyModuleGroups = (workflowMode) => (
+    MODE_FAMILY_MODULE_GROUPS[resolveWorkflowModeFamily(workflowMode)] || MODE_FAMILY_MODULE_GROUPS.retail
+);
 
 // Guard against typos drifting from the enforced vocabulary: every shipped
 // gate module whose key is a workflow capability must exist there, and vice

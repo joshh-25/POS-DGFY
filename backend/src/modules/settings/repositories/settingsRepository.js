@@ -4,7 +4,7 @@ import dbStore from '../../../utils/dbStore.js';
 import { buildVisibleWhere } from '../../../utils/softDeletePolicy.js';
 import { assertSettingsRepositoryContract } from '../contracts/settingsRepository.contract.js';
 import logger from '../../../config/logger.js';
-import { normalizeWorkflowMode, normalizeEnabledCapabilities, normalizeInventoryAuthority } from '../../shared/constants/workflowModes.js';
+import { normalizeWorkflowMode, normalizeEnabledCapabilities, normalizeDisabledCapabilities, normalizeInventoryAuthority } from '../../shared/constants/workflowModes.js';
 import { ORDER_METHOD_FEE_METHODS } from '../../shared/constants/orderMethods.js';
 import {
     normalizeCustomerAccessMode,
@@ -324,6 +324,9 @@ const normalizeValueForSettingKey = (settingKey, value) => {
     }
     if (settingKey === 'ops_enabled_capabilities') {
         return normalizeEnabledCapabilities(value);
+    }
+    if (settingKey === 'ops_disabled_capabilities') {
+        return normalizeDisabledCapabilities(value);
     }
     if (settingKey === 'inventory_authority') {
         return normalizeInventoryAuthority(value);

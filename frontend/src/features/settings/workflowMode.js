@@ -87,25 +87,26 @@ export const isWorkflowPageModeSensitive = (pageName) => (
   MODE_SENSITIVE_NAV_PAGES.includes(String(pageName || '').trim())
 );
 
-// enabledCapabilities is optional (Phase 6 composed-capability overlay). Every
-// pre-Phase-6 caller that omits it keeps checking only the base mode's fixed
-// capability list - identical to before.
-export const isWorkflowPageVisible = (pageName, workflowMode, enabledCapabilities = []) => {
+// enabledCapabilities is optional (Phase 6 composed-capability overlay).
+// disabledCapabilities is optional too (issue #178 Phase 16/19 subtractive
+// overlay). Every pre-Phase-6 caller that omits both keeps checking only
+// the base mode's fixed capability list - identical to before.
+export const isWorkflowPageVisible = (pageName, workflowMode, enabledCapabilities = [], disabledCapabilities = []) => {
   const normalizedPage = String(pageName || '').trim();
   const capability = WORKFLOW_PAGE_CAPABILITIES[normalizedPage];
-  if (capability) return modeHasCapability(workflowMode, capability, enabledCapabilities);
+  if (capability) return modeHasCapability(workflowMode, capability, enabledCapabilities, disabledCapabilities);
   const hiddenPages = MODE_HIDDEN_NAV_PAGES[resolveWorkflowModeFamily(workflowMode)];
   return !hiddenPages?.includes(normalizedPage);
 };
 
-export const isWorkflowPathBlocked = (pathname, workflowMode, enabledCapabilities = []) => {
+export const isWorkflowPathBlocked = (pathname, workflowMode, enabledCapabilities = [], disabledCapabilities = []) => {
   const normalizedPath = String(pathname || '/').trim().toLowerCase();
   const matchesPrefix = (prefix) => (
     normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`)
   );
   const capabilityEntry = Object.entries(WORKFLOW_ROUTE_CAPABILITIES)
     .find(([prefix]) => matchesPrefix(prefix));
-  if (capabilityEntry) return !modeHasCapability(workflowMode, capabilityEntry[1], enabledCapabilities);
+  if (capabilityEntry) return !modeHasCapability(workflowMode, capabilityEntry[1], enabledCapabilities, disabledCapabilities);
   const hiddenPrefixes = MODE_HIDDEN_ROUTE_PREFIXES[resolveWorkflowModeFamily(workflowMode)] || [];
   return hiddenPrefixes.some(matchesPrefix);
 };

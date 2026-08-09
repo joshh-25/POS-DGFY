@@ -825,7 +825,8 @@ export default function POSCheckoutTerminal({
     externalCatalogSearch = '',
     onExternalCatalogHydrated = null,
     fnbContext = null,
-    workflowMode = null
+    workflowMode = null,
+    effectiveCapabilities = null
 }) {
     useEffect(() => {
         notifyIminWebPosReady();
@@ -896,7 +897,17 @@ export default function POSCheckoutTerminal({
     const [posFoldersError, setPosFoldersError] = useState('');
     const [catalogLoading, setCatalogLoading] = useState(true);
     const [catalogRefreshing, setCatalogRefreshing] = useState(false);
-    const posWorkflow = useMemo(() => resolvePosWorkflow(workflowMode), [workflowMode]);
+    // Issue #178 Phase 21: effectiveCapabilities (the tenant's Store Profile
+    // modules list, when supplied by the caller) lets a curated
+    // fnb_counter_service-style store resolve the counter workflow instead
+    // of the full fnb one - without it, a template's subtraction was
+    // enforced by the API (Phase 19) but still rendered tables/kitchen
+    // buttons the API would then 403. Omitting the prop keeps every other
+    // caller (and every test) on today's mode-only behavior.
+    const posWorkflow = useMemo(
+        () => resolvePosWorkflow(workflowMode, effectiveCapabilities),
+        [workflowMode, effectiveCapabilities]
+    );
     const isFnbWorkflow = posWorkflow.mode === 'fnb';
     const [search, setSearch] = useState('');
     const [orderMethod, setOrderMethod] = useState(() => posWorkflow.allowedMethods[0] || 'dine_in');

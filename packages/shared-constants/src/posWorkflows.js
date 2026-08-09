@@ -65,7 +65,17 @@ export const POS_WORKFLOW_CONFIGS = Object.freeze({
   })
 });
 
-export const resolvePosWorkflow = (workflowMode) => {
+// FNB-family capabilities that, when both subtracted, mean a store no
+// longer runs the full-service dining floor - it sells over the counter
+// instead (issue #178 Phase 21). Neither key exists in hospitality's own
+// base capability list (hospitalityRooms/Folios/etc. are a different
+// vocabulary), so this check is deliberately scoped to the fnb family only:
+// a family-blind version would flip every hospitality tenant to counter
+// mode regardless of what it curated, since hospitality never has these
+// keys to begin with.
+const FNB_DINING_FLOOR_CAPABILITIES = Object.freeze(['tableService', 'kitchenQueue']);
+
+export const resolvePosWorkflow = (workflowMode, effectiveCapabilities = null) => {
   if (!workflowMode || typeof workflowMode !== 'string') {
     return POS_WORKFLOW_CONFIGS.default;
   }
@@ -76,7 +86,25 @@ export const resolvePosWorkflow = (workflowMode) => {
     return POS_WORKFLOW_CONFIGS.services;
   }
 
-  if (family === 'fnb' || family === 'hospitality') {
+  if (family === 'fnb') {
+    // A curated store that subtracted both the dining floor capabilities
+    // (fnb_counter_service, or any equivalent hand-curated selection) sells
+    // over the counter, not full-service - it must not render tables/
+    // kitchen affordances its own API 403s. Omitting effectiveCapabilities
+    // (the pre-Phase-21 2-arg call) keeps every existing caller on today's
+    // exact behavior.
+    if (Array.isArray(effectiveCapabilities)) {
+      const hasDiningFloor = FNB_DINING_FLOOR_CAPABILITIES.some(
+        (capability) => effectiveCapabilities.includes(capability)
+      );
+      if (!hasDiningFloor) {
+        return POS_WORKFLOW_CONFIGS.counter;
+      }
+    }
+    return POS_WORKFLOW_CONFIGS.fnb;
+  }
+
+  if (family === 'hospitality') {
     return POS_WORKFLOW_CONFIGS.fnb;
   }
 

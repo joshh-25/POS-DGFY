@@ -13,6 +13,19 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     'DgfyAccountHandoff',
     'DgfyAccountTenantMembership',
     'DgfyAccountAdminAuditLog',
+    // Landlord Store Template catalog (issue #178 Phase 13, ADR 0056 clause
+    // 5): a template is a curated bundle used to materialize a tenant's
+    // Profile at provisioning time. It must never be cloned into a tenant
+    // database - a tenant reading its own template row would reintroduce
+    // the exact runtime dereference ADR 0056 clause 2 forbids.
+    'StoreConfigurationTemplate',
+    'StoreConfigurationTemplateModule',
+    'StoreConfigurationTemplateAuditLog',
+    // Landlord registration-Industry visibility store (issue #178 Phase
+    // 39): admin curation state, not a template. Never cloned into a
+    // tenant database for the same reason as the template rows above.
+    'RegistrationIndustryVisibility',
+    'RegistrationIndustryVisibilityAuditLog',
     'DgfyAccountBusinessAuditLog',
     'DgfyLegalAcknowledgement',
     'Payment',

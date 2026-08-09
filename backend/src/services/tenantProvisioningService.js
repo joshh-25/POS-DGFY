@@ -6,10 +6,17 @@ import logger from '../config/logger.js';
 import { Sequelize } from 'sequelize';
 import * as landlordService from './landlordService.js';
 import { syncStorefrontDiscoveryWithReliability } from './storefrontDiscoverySyncReliabilityService.js';
-import { STORE_PROFILE_SETTING_KEY, buildStoreProfile } from '../modules/shared/constants/storeProfile.js';
+import {
+    STORE_PROFILE_SETTING_KEY,
+    buildStoreProfile,
+    applyTemplateProvenance
+} from '../modules/shared/constants/storeProfile.js';
+import { storeConfigurationTemplateRepository, materializeTemplateModuleSelection } from '../modules/templates/index.js';
 import {
     normalizeWorkflowMode,
-    WORKFLOW_MODE_VALUES
+    WORKFLOW_MODE_VALUES,
+    ENABLED_CAPABILITIES_SETTING_KEY,
+    DISABLED_CAPABILITIES_SETTING_KEY
 } from '../modules/shared/constants/workflowModes.js';
 import {
     DEFAULT_CUSTOMER_ACCESS_MODE,
@@ -107,7 +114,81 @@ const buildRegisteredOnboardingProgress = () => ({
     }
 });
 
-const seedWorkflowModeSetting = async (tenantSequelize, workflowMode) => {
+// Issue #178 Phase 17: which template (if any) selects a fresh tenant's
+// initial module list. A caller-chosen templateKey wins ONLY when it is
+// published and its base_mode matches the tenant's requested workflow mode
+// - templateKey never overrides the mode itself, it only refines within it,
+// so a client can't smuggle a different mode in via a template. Absent a
+// (usable) templateKey, this falls back to the pre-Phase-17 canonical-for-
+// mode lookup unchanged. Lookup is best-effort throughout - a landlord DB
+// hiccup or an unseeded catalog must never block provisioning. This is the
+// ONLY place a template row is ever read at provisioning time; nothing
+// reads it again afterward (ADR 0056 clause 2).
+const resolveProvisioningTemplateSelection = async (normalizedWorkflowMode, templateKey = null) => {
+    try {
+        let template = null;
+        if (templateKey) {
+            const candidate = await storeConfigurationTemplateRepository.findByKey(templateKey);
+            if (candidate?.status === 'published' && candidate.base_mode === normalizedWorkflowMode) {
+                template = candidate;
+            } else if (candidate) {
+                logger.warn('[TenantProvisioning] requested template ignored - not published or mode mismatch', {
+                    template_key: templateKey,
+                    template_status: candidate.status,
+                    template_base_mode: candidate.base_mode,
+                    requested_mode: normalizedWorkflowMode
+                });
+            }
+        }
+        if (!template) {
+            template = await storeConfigurationTemplateRepository.findPublishedCanonicalForMode(normalizedWorkflowMode);
+        }
+        if (!template) {
+            return { template: null, enabledCapabilities: [], disabledCapabilities: [] };
+        }
+        const { enabledCapabilities, disabledCapabilities } = materializeTemplateModuleSelection(template);
+        return { template, enabledCapabilities, disabledCapabilities };
+    } catch (error) {
+        logger.warn('[TenantProvisioning] template provenance lookup failed; provisioning without it', {
+            workflow_mode: normalizedWorkflowMode,
+            error: error?.message
+        });
+        return { template: null, enabledCapabilities: [], disabledCapabilities: [] };
+    }
+};
+
+// Builds the freshly-provisioned Store Profile, stamped with template
+// provenance when a template was selected (Phase 13, extended Phase 17 to
+// accept an explicit templateKey rather than only the canonical-for-mode
+// default). enabledCapabilities/disabledCapabilities resolve from the same
+// selection this profile's provenance is stamped from, so the two can never
+// disagree - see seedWorkflowModeSetting for where those two settings
+// themselves get seeded from the identical selection.
+export const buildProvisioningStoreProfile = async (normalizedWorkflowMode, { templateKey = null } = {}) => {
+    const { template, enabledCapabilities, disabledCapabilities } = await resolveProvisioningTemplateSelection(
+        normalizedWorkflowMode,
+        templateKey
+    );
+    const profile = buildStoreProfile({ workflowMode: normalizedWorkflowMode, enabledCapabilities, disabledCapabilities });
+    if (!template) return profile;
+    return applyTemplateProvenance(profile, {
+        templateId: template.template_id,
+        templateVersion: template.version
+    });
+};
+
+const upsertJsonSystemSetting = async (tenantSequelize, key, value, description) => tenantSequelize.query(
+    `INSERT INTO system_settings (setting_key, setting_value, data_type, description, updated_at)
+     VALUES (?, ?, 'json', ?, NOW())
+     ON DUPLICATE KEY UPDATE
+       setting_value = VALUES(setting_value),
+       data_type = VALUES(data_type),
+       description = VALUES(description),
+       updated_at = NOW()`,
+    { replacements: [key, JSON.stringify(value), description] }
+);
+
+const seedWorkflowModeSetting = async (tenantSequelize, workflowMode, templateKey = null) => {
     const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
     await tenantSequelize.query(
         `INSERT INTO system_settings (setting_key, setting_value, data_type, description, updated_at)
@@ -125,23 +206,49 @@ const seedWorkflowModeSetting = async (tenantSequelize, workflowMode) => {
             ]
         }
     );
+
+    // Issue #178 Phase 17: a single template lookup drives both the
+    // enabled/disabled overlay settings (what the runtime actually enforces
+    // today) and the Profile's provenance below, so the two can never
+    // disagree. Only seeded when non-empty - the common canonical/no-template
+    // path stays byte-identical to pre-Phase-17 provisioning (no extra rows).
+    const { template, enabledCapabilities, disabledCapabilities } = await resolveProvisioningTemplateSelection(
+        normalizedWorkflowMode,
+        templateKey
+    );
+    if (enabledCapabilities.length > 0) {
+        await upsertJsonSystemSetting(
+            tenantSequelize,
+            ENABLED_CAPABILITIES_SETTING_KEY,
+            enabledCapabilities,
+            'Capabilities additionally granted on top of the base workflow mode (composed-capability overlay)'
+        );
+    }
+    if (disabledCapabilities.length > 0) {
+        await upsertJsonSystemSetting(
+            tenantSequelize,
+            DISABLED_CAPABILITIES_SETTING_KEY,
+            disabledCapabilities,
+            'Capabilities removed from the base workflow mode (subtractive template overlay, issue #178 Phase 16)'
+        );
+    }
+
     // Shadow-written Store Profile (issue #178 Phase 11): derived from the
-    // seeded mode, never read at runtime yet.
-    await tenantSequelize.query(
-        `INSERT INTO system_settings (setting_key, setting_value, data_type, description, updated_at)
-         VALUES (?, ?, 'json', ?, NOW())
-         ON DUPLICATE KEY UPDATE
-           setting_value = VALUES(setting_value),
-           data_type = VALUES(data_type),
-           description = VALUES(description),
-           updated_at = NOW()`,
-        {
-            replacements: [
-                STORE_PROFILE_SETTING_KEY,
-                JSON.stringify(buildStoreProfile({ workflowMode: normalizedWorkflowMode })),
-                'Server-derived Store Profile (shadow-write; not read at runtime)'
-            ]
-        }
+    // same selection as the two overlay settings above, stamped with
+    // template provenance when a template was resolved (issue #178 Phase 13/17).
+    const provisioningProfile = buildStoreProfile({
+        workflowMode: normalizedWorkflowMode,
+        enabledCapabilities,
+        disabledCapabilities
+    });
+    const provisioningProfileWithProvenance = template
+        ? applyTemplateProvenance(provisioningProfile, { templateId: template.template_id, templateVersion: template.version })
+        : provisioningProfile;
+    await upsertJsonSystemSetting(
+        tenantSequelize,
+        STORE_PROFILE_SETTING_KEY,
+        provisioningProfileWithProvenance,
+        'Server-derived Store Profile (read by frontend affordance consumers directly, and by the fail-closed capability gate when ops_store_profile_read is enabled for this tenant - issue #178 Phases 18-19)'
     );
     return normalizedWorkflowMode;
 };
@@ -260,6 +367,11 @@ export const provisionTenant = async (options) => {
         subscriptionId = null,    // Optional subscription ID for manual entry
         complianceMode = 'non_compliant',
         workflowMode = 'food_manufacturing',
+        // Issue #178 Phase 17: optional - selects a published, non-canonical
+        // template whose base_mode matches workflowMode instead of the
+        // canonical preset for that mode. Ignored (with a warning) if it
+        // doesn't resolve to a published template matching workflowMode.
+        templateKey = null,
         // Option 2: Approval provisioning (new workflow)
         tenantId,
         dbName: providedDbName,
@@ -405,7 +517,7 @@ export const provisionTenant = async (options) => {
                 email
             });
 
-            const seededWorkflowMode = await seedWorkflowModeSetting(tenantSequelize, normalizedWorkflowMode);
+            const seededWorkflowMode = await seedWorkflowModeSetting(tenantSequelize, normalizedWorkflowMode, templateKey);
             logger.info('[Provisioning] Workflow mode setting seeded', {
                 tenantId: uuid,
                 workflowMode: seededWorkflowMode

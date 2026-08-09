@@ -3,10 +3,15 @@ import {
     WORKFLOW_MODE_LABELS as backendLabels,
     WORKFLOW_MODE_PIN_META as backendPins,
     WORKFLOW_MODE_VALUES as backendValues,
+    WORKFLOW_MODE_ENGINE as backendEngine,
+    WORKFLOW_MODE_ENGINE_NOTES as backendEngineNotes,
+    TEMPLATE_AUTHORABLE_MODES as backendAuthorableModes,
     ALL_WORKFLOW_CAPABILITIES as backendAllCapabilities,
     ENABLED_CAPABILITIES_SETTING_KEY as backendEnabledCapabilitiesKey,
+    DISABLED_CAPABILITIES_SETTING_KEY as backendDisabledCapabilitiesKey,
     modeHasCapability as backendModeHasCapability,
     normalizeEnabledCapabilities as normalizeBackendEnabledCapabilities,
+    normalizeDisabledCapabilities as normalizeBackendDisabledCapabilities,
     normalizeWorkflowMode as normalizeBackendWorkflowMode,
     resolveEffectiveCapabilities as resolveBackendEffectiveCapabilities,
     resolveWorkflowModeFamily as resolveBackendWorkflowModeFamily,
@@ -17,10 +22,15 @@ import {
     WORKFLOW_MODE_LABELS as frontendLabels,
     WORKFLOW_MODE_PIN_META as frontendPins,
     WORKFLOW_MODE_VALUES as frontendValues,
+    WORKFLOW_MODE_ENGINE as frontendEngine,
+    WORKFLOW_MODE_ENGINE_NOTES as frontendEngineNotes,
+    TEMPLATE_AUTHORABLE_MODES as frontendAuthorableModes,
     ALL_WORKFLOW_CAPABILITIES as frontendAllCapabilities,
     ENABLED_CAPABILITIES_SETTING_KEY as frontendEnabledCapabilitiesKey,
+    DISABLED_CAPABILITIES_SETTING_KEY as frontendDisabledCapabilitiesKey,
     modeHasCapability as frontendModeHasCapability,
     normalizeEnabledCapabilities as normalizeFrontendEnabledCapabilities,
+    normalizeDisabledCapabilities as normalizeFrontendDisabledCapabilities,
     normalizeWorkflowMode as normalizeFrontendWorkflowMode,
     resolveEffectiveCapabilities as resolveFrontendEffectiveCapabilities,
     resolveWorkflowModeFamily as resolveFrontendWorkflowModeFamily,
@@ -43,6 +53,18 @@ describe('workflow mode cross-layer contracts', () => {
         expect(frontendPins.fnb.label).toBe('Food & Beverage');
         expect(frontendPins.fnb.icon).toBe('Utensils');
         expect(frontendPins.food_manufacturing.icon).toBe('Factory');
+    });
+
+    // issue #178 final-touch pass: the native/transitional/external engine
+    // classification and its derived authorable-modes list. Both layers
+    // re-export the same shared-constants package, so this is structural
+    // convention-keeping (matching every other mode-shaped pin in this
+    // file) rather than drift protection - the real content pin lives in
+    // capabilityModules.contract.test.js.
+    it('keeps backend and frontend engine classification aligned', () => {
+        expect(frontendEngine).toEqual(backendEngine);
+        expect(frontendEngineNotes).toEqual(backendEngineNotes);
+        expect(frontendAuthorableModes).toEqual(backendAuthorableModes);
     });
 
     it('resolves normalization, mode family, and template family identically across layers', () => {
@@ -162,6 +184,59 @@ describe('workflow mode cross-layer contracts', () => {
             expect(resolveBackendEffectiveCapabilities('fnb', undefined)).toEqual(
                 resolveBackendEffectiveCapabilities('fnb', [])
             );
+        });
+    });
+
+    describe('Phase 16 subtractive disabled_capabilities overlay', () => {
+        it('keeps the setting key aligned across layers', () => {
+            expect(frontendDisabledCapabilitiesKey).toBe(backendDisabledCapabilitiesKey);
+            expect(backendDisabledCapabilitiesKey).toBe('ops_disabled_capabilities');
+        });
+
+        it('silently drops unknown/decommissioned capability strings from the overlay, identically to the enabled overlay', () => {
+            const overlay = ['tableService', 'not-a-real-capability', ''];
+            expect(normalizeBackendDisabledCapabilities(overlay)).toEqual(['tableService']);
+            expect(normalizeFrontendDisabledCapabilities(overlay)).toEqual(['tableService']);
+        });
+
+        it('removes a base-mode capability from the effective set identically across layers', () => {
+            const backendEffective = resolveBackendEffectiveCapabilities('fnb', [], ['tableService', 'kitchenQueue', 'restaurantServiceCharge']);
+            const frontendEffective = resolveFrontendEffectiveCapabilities('fnb', [], ['tableService', 'kitchenQueue', 'restaurantServiceCharge']);
+            expect(frontendEffective).toEqual(backendEffective);
+            expect(backendEffective).not.toContain('tableService');
+            expect(backendEffective).not.toContain('kitchenQueue');
+            expect(backendEffective).not.toContain('restaurantServiceCharge');
+            expect(backendEffective).toContain('fnbDining');
+        });
+
+        it('reproduces the fnb_counter_service preset exactly by subtracting from fnb', () => {
+            const counterServiceModules = resolveBackendEffectiveCapabilities(
+                'fnb',
+                [],
+                ['tableService', 'kitchenQueue', 'restaurantServiceCharge']
+            );
+            expect([...counterServiceModules].sort()).toEqual(
+                ['catalog', 'fnbDining', 'inventory', 'menuModifiers', 'pos', 'storefront'].sort()
+            );
+        });
+
+        it('lets a disabled entry win over an enabled one for the same capability', () => {
+            expect(backendModeHasCapability('retail', 'services', ['services'], ['services'])).toBe(false);
+        });
+
+        it('leaves resolveEffectiveCapabilities byte-identical for callers that pass no disabled overlay', () => {
+            expect(resolveBackendEffectiveCapabilities('fnb', ['services'])).toEqual(
+                resolveBackendEffectiveCapabilities('fnb', ['services'], [])
+            );
+            expect(resolveBackendEffectiveCapabilities('fnb', ['services'])).toEqual(
+                resolveBackendEffectiveCapabilities('fnb', ['services'], undefined)
+            );
+        });
+
+        it('cannot reach a locked module - neither locked module belongs to ALL_WORKFLOW_CAPABILITIES', () => {
+            expect(backendAllCapabilities).not.toContain('fiscalProfile');
+            expect(backendAllCapabilities).not.toContain('customerAccessMode');
+            expect(normalizeBackendDisabledCapabilities(['fiscalProfile', 'customerAccessMode'])).toEqual([]);
         });
     });
 });

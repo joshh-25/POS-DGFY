@@ -40,6 +40,72 @@ export const WORKFLOW_MODE_ALIASES = Object.freeze({
     manufacturing: 'food_manufacturing'
 });
 
+// Issue #178 final-touch pass: does DGFY run this vertical's selling engine
+// end-to-end (online ordering through POS terminal encoding), or does the
+// engine live in a separate app?
+//
+// - 'native': DGFY is the engine. Full support - catalog, POS, storefront,
+//   fulfillment all run inside this platform.
+// - 'transitional': DGFY runs the engine TODAY, but the product direction is
+//   to move it to a sibling app under the same parent company (Sieitz).
+//   These modes stay fully authorable for Store Templates (nothing is
+//   removed while the native engine is still the one actually running) and
+//   get an admin-visible "native today, external engine planned" badge so
+//   the direction isn't mistaken for the current state.
+// - 'external': the engine already lives (or will live) in a separate app;
+//   DGFY provides registration and UI/UX visibility only. These are exactly
+//   STORE_TEMPLATE_PRESETLESS_MODES in capabilityModules.js and are hidden
+//   from Store Template authoring (see TEMPLATE_AUTHORABLE_MODES below) and
+//   rejected server-side on template create.
+//
+// Flipping a mode's classification is meant to be a one-line change here.
+// If a transitional mode flips to 'external', decide separately whether its
+// seeded presets should be retired (STORE_TEMPLATE_PRESETLESS_MODES is a
+// distinct list - flipping engine classification does not by itself change
+// preset membership). See docs/development/STORE_TEMPLATES_HANDOFF.md §4.
+export const WORKFLOW_MODE_ENGINE_VALUES = Object.freeze(['native', 'transitional', 'external']);
+
+export const WORKFLOW_MODE_ENGINE = Object.freeze({
+    retail: 'native',
+    services: 'native',
+    manufacturing: 'transitional', // alias - mirrors food_manufacturing
+    food_manufacturing: 'transitional', // planned external engine: Skupervisor
+    fnb: 'native',
+    hospitality: 'transitional', // planned external engine: Sync Core
+    healthcare: 'external',
+    ticketing_transport: 'external',
+    logistics_distribution: 'external',
+    education_institutions: 'external',
+    msme: 'native'
+});
+
+// Planned external engine names for transitional modes only - surfaced in
+// admin badges/help text. Not populated for 'native' or 'external' modes:
+// native has no external engine to name, and external modes' eventual
+// engines are unknown sibling apps (see STORE_TEMPLATE_PRESETLESS_MODES'
+// doc comment in capabilityModules.js).
+export const WORKFLOW_MODE_ENGINE_NOTES = Object.freeze({
+    hospitality: 'Sync Core',
+    food_manufacturing: 'Skupervisor',
+    manufacturing: 'Skupervisor'
+});
+
+export const getWorkflowModeEngine = (value) => (
+    WORKFLOW_MODE_ENGINE[normalizeWorkflowMode(value)] || 'native'
+);
+
+// The modes an admin may author a new Store Template against: every
+// offered mode (WORKFLOW_MODE_VALUES minus the deprecated `manufacturing`
+// alias) whose engine classification isn't 'external'. Transitional modes
+// (hospitality, food_manufacturing) stay authorable - the native engine is
+// still what actually runs them. Single source of truth for both the
+// frontend base-mode dropdown and the backend create-draft validator.
+export const TEMPLATE_AUTHORABLE_MODES = Object.freeze(
+    WORKFLOW_MODE_VALUES.filter((mode) => (
+        !(mode in WORKFLOW_MODE_ALIASES) && WORKFLOW_MODE_ENGINE[mode] !== 'external'
+    ))
+);
+
 const WORKFLOW_MODE_FAMILY_MAP = Object.freeze({
     retail: 'retail',
     services: 'services',
@@ -133,6 +199,10 @@ export const WORKFLOW_MODE_CAPABILITIES = Object.freeze({
         'pos',
         'storefront'
     ],
+    // These four share retail's exact capability list and are deliberately
+    // preset-less (STORE_TEMPLATE_PRESETLESS_MODES in capabilityModules.js)
+    // - candidates for verticals that may end up powered by separate
+    // sibling apps, not an oversight in this arc.
     healthcare: ['catalog', 'inventory', 'menuModifiers', 'pos', 'storefront'],
     ticketing_transport: ['catalog', 'inventory', 'menuModifiers', 'pos', 'storefront'],
     logistics_distribution: ['catalog', 'inventory', 'menuModifiers', 'pos', 'storefront'],
@@ -155,6 +225,28 @@ export const ALL_WORKFLOW_CAPABILITIES = Object.freeze(
 );
 
 export const normalizeEnabledCapabilities = (value) => {
+    const list = Array.isArray(value) ? value : [];
+    const deduped = [...new Set(list.map((entry) => String(entry || '').trim()).filter(Boolean))];
+    return Object.freeze(deduped.filter((capability) => ALL_WORKFLOW_CAPABILITIES.includes(capability)));
+};
+
+// Phase 16 (issue #178): the subtractive counterpart to
+// ENABLED_CAPABILITIES_SETTING_KEY, so a Store Template's module list can
+// remove a capability from a mode's base list, not just add to one -
+// without it, non-canonical presets like fnb_counter_service (fnb minus
+// tableService/kitchenQueue/restaurantServiceCharge) are inexpressible as a
+// Profile. Mirrors ENABLED_CAPABILITIES_SETTING_KEY's governance shape
+// exactly (single-source key, master-admin gated write, 15s tenant-scoped
+// cache) rather than a second authorization model.
+//
+// Normalized against the same ALL_WORKFLOW_CAPABILITIES allowlist as the
+// enabled overlay - since a `locked` module (fiscalProfile,
+// customerAccessMode) never appears in any mode's base list, it can never
+// appear in ALL_WORKFLOW_CAPABILITIES either, so it stays unreachable by
+// this overlay too (ADR 0056 clause 1, unaffected by this amendment).
+export const DISABLED_CAPABILITIES_SETTING_KEY = 'ops_disabled_capabilities';
+
+export const normalizeDisabledCapabilities = (value) => {
     const list = Array.isArray(value) ? value : [];
     const deduped = [...new Set(list.map((entry) => String(entry || '').trim()).filter(Boolean))];
     return Object.freeze(deduped.filter((capability) => ALL_WORKFLOW_CAPABILITIES.includes(capability)));
@@ -188,14 +280,25 @@ export const isDelegatedInventoryAuthority = (value) => normalizeInventoryAuthor
 
 // The tenant's effective capability set: the base workflow mode's fixed list,
 // composed (unioned) with whatever the master admin has additionally opted
-// into via the enabled_capabilities overlay. Existing tenants with no overlay
-// set resolve to exactly the base mode's list - byte-identical to pre-Phase-6
-// behavior.
-export const resolveEffectiveCapabilities = (value, enabledCapabilities = []) => {
+// into via the enabled_capabilities overlay, then (Phase 16) with whatever
+// has been removed via the disabled_capabilities overlay. Existing tenants
+// with no overlay set resolve to exactly the base mode's list -
+// byte-identical to pre-Phase-6 behavior. disabledCapabilities is applied
+// last, so a capability present in both overlays always resolves to
+// disabled - subtraction wins over addition, matching a template's "this
+// module is off" being the more specific instruction. A write that would
+// leave a capability in both overlays is itself rejected before it can be
+// persisted (updateSettingsUseCase.js / updateSettingByKeyUseCase.js, issue
+// #178 Phase 22) - this ordering is the belt to that write-time braces, not
+// a case this function expects to see in practice.
+export const resolveEffectiveCapabilities = (value, enabledCapabilities = [], disabledCapabilities = []) => {
     const mode = normalizeWorkflowMode(value);
     const baseCapabilities = WORKFLOW_MODE_CAPABILITIES[mode] || [];
     const overlay = normalizeEnabledCapabilities(enabledCapabilities);
-    return Object.freeze([...new Set([...baseCapabilities, ...overlay])]);
+    const removed = normalizeDisabledCapabilities(disabledCapabilities);
+    const composed = new Set([...baseCapabilities, ...overlay]);
+    removed.forEach((capability) => composed.delete(capability));
+    return Object.freeze([...composed]);
 };
 
 export const normalizeWorkflowMode = (value) => {
@@ -232,13 +335,15 @@ export const getWorkflowModePinMeta = (value) => {
     return WORKFLOW_MODE_PIN_META[mode] || WORKFLOW_MODE_PIN_META[DEFAULT_WORKFLOW_MODE];
 };
 
-// enabledCapabilities is optional and additive: every pre-Phase-6 call site
-// that passes only (value, capability) keeps checking the base mode's fixed
-// list exactly as before. Passing the tenant's enabled_capabilities overlay
-// as a third argument makes the check capability-driven (composed).
-export const modeHasCapability = (value, capability, enabledCapabilities = []) => {
+// enabledCapabilities and disabledCapabilities are optional: every
+// pre-Phase-6 call site that passes only (value, capability) keeps checking
+// the base mode's fixed list exactly as before. Passing the tenant's
+// enabled_capabilities overlay makes the check composed (additive); passing
+// disabled_capabilities (Phase 16) as a fourth argument makes it subtractive
+// too.
+export const modeHasCapability = (value, capability, enabledCapabilities = [], disabledCapabilities = []) => {
     const normalizedCapability = String(capability || '').trim();
-    const effectiveCapabilities = resolveEffectiveCapabilities(value, enabledCapabilities);
+    const effectiveCapabilities = resolveEffectiveCapabilities(value, enabledCapabilities, disabledCapabilities);
     return effectiveCapabilities.includes(normalizedCapability);
 };
 

@@ -5,14 +5,19 @@ import dbStore from '../../../utils/dbStore.js';
 import {
     isWorkflowMode,
     normalizeWorkflowMode,
+    DEFAULT_WORKFLOW_MODE,
     WORKFLOW_MODE_VALUES,
     ALL_WORKFLOW_CAPABILITIES,
     ENABLED_CAPABILITIES_SETTING_KEY,
     normalizeEnabledCapabilities,
+    DISABLED_CAPABILITIES_SETTING_KEY,
+    normalizeDisabledCapabilities,
+    resolveEffectiveCapabilities,
     INVENTORY_AUTHORITY_SETTING_KEY,
     INVENTORY_AUTHORITY_VALUES,
     normalizeInventoryAuthority
 } from '../../shared/constants/workflowModes.js';
+import { validateModuleSelection } from '../../shared/constants/capabilityModules.js';
 import {
     assertComplianceOperationAllowed,
     COMPLIANCE_OPERATION
@@ -29,7 +34,11 @@ import {
     applyStoreProfileShadowWrite,
     assertStoreProfileNotClientWritten
 } from './storeProfileShadowWrite.js';
-import { STORE_PROFILE_SETTING_KEY } from '../../shared/constants/storeProfile.js';
+import {
+    STORE_PROFILE_SETTING_KEY,
+    STORE_PROFILE_READ_SETTING_KEY,
+    normalizeStoreProfileReadFlag
+} from '../../shared/constants/storeProfile.js';
 import { applyWorkflowModeAuditLog } from './workflowModeAuditLog.js';
 import logger from '../../../config/logger.js';
 import {
@@ -47,9 +56,94 @@ import {
     sanitizeTerminalRegistryForRead,
     sanitizeSingleSettingForRead
 } from './posTerminalRegistrySecrets.js';
+import { clearWorkflowCapabilitySettingsCache } from '../../shared/utils/workflowCapabilitySettingsCache.js';
+import { clearStoreProfileResolutionCache } from './resolveStoreProfile.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
+
+// issue #178 Phase 22: mirrors updateSettingsUseCase.js's
+// clearCapabilityCachesIfTouched for the single-key write path.
+const CAPABILITY_CACHE_SENSITIVE_KEYS = Object.freeze([
+    WORKFLOW_MODE_SETTING_KEY,
+    ENABLED_CAPABILITIES_SETTING_KEY,
+    DISABLED_CAPABILITIES_SETTING_KEY,
+    STORE_PROFILE_READ_SETTING_KEY
+]);
+
+const clearCapabilityCachesIfKeyTouched = async (settingKey) => {
+    if (!CAPABILITY_CACHE_SENSITIVE_KEYS.includes(settingKey)) return;
+    clearWorkflowCapabilitySettingsCache();
+    clearStoreProfileResolutionCache();
+    // Dynamic import deliberately - see updateSettingsUseCase.js's identical
+    // comment: a static import here would form a settings <-> inventory
+    // circular init (itemRepository.js imports settings/index.js).
+    const { clearItemRepositorySettingsCache } = await import('../../inventory/index.js');
+    clearItemRepositorySettingsCache();
+};
+
+// Phase 16 (issue #178): mirrors assertEffectiveModuleSelectionIsBuildable
+// in updateSettingsUseCase.js for the single-key write path. Resolves
+// whichever of mode/enabled/disabled this write doesn't touch from the
+// tenant's current settings, so a lone PATCH to ops_disabled_capabilities is
+// validated against the tenant's real resulting state.
+const assertEffectiveModuleSelectionIsBuildable = async ({ settingsRepository, key, normalizedValue }) => {
+    const touchesMode = key === WORKFLOW_MODE_SETTING_KEY;
+    const touchesEnabled = key === ENABLED_CAPABILITIES_SETTING_KEY;
+    const touchesDisabled = key === DISABLED_CAPABILITIES_SETTING_KEY;
+    if (!touchesMode && !touchesEnabled && !touchesDisabled) return;
+    if (typeof settingsRepository?.getSettingsByKeys !== 'function') return;
+
+    const current = await settingsRepository.getSettingsByKeys([
+        WORKFLOW_MODE_SETTING_KEY,
+        ENABLED_CAPABILITIES_SETTING_KEY,
+        DISABLED_CAPABILITIES_SETTING_KEY
+    ]);
+
+    const effectiveMode = touchesMode
+        ? normalizedValue
+        : (current?.[WORKFLOW_MODE_SETTING_KEY]?.value ?? DEFAULT_WORKFLOW_MODE);
+    const effectiveEnabled = touchesEnabled
+        ? normalizedValue
+        : (current?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value ?? []);
+    const effectiveDisabled = touchesDisabled
+        ? normalizedValue
+        : (current?.[DISABLED_CAPABILITIES_SETTING_KEY]?.value ?? []);
+
+    // issue #178 Phase 22: mirrors updateSettingsUseCase.js's contradictory-
+    // write rejection for the single-key path.
+    const contradictory = normalizeEnabledCapabilities(effectiveEnabled)
+        .filter((capability) => normalizeDisabledCapabilities(effectiveDisabled).includes(capability));
+    if (contradictory.length > 0) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'A capability cannot be both enabled and disabled at the same time.',
+            {
+                statusCode: 422,
+                details: {
+                    reason_code: 'CAPABILITY_SELECTION_CONTRADICTORY',
+                    contradictory_capabilities: contradictory
+                }
+            }
+        );
+    }
+
+    const effectiveModules = resolveEffectiveCapabilities(effectiveMode, effectiveEnabled, effectiveDisabled);
+    const validation = validateModuleSelection(effectiveModules);
+    if (!validation.ok) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'The resulting capability selection is not buildable: a disabled capability is still required by another enabled one.',
+            {
+                statusCode: 422,
+                details: {
+                    reason_code: 'CAPABILITY_SELECTION_UNBUILDABLE',
+                    ...validation
+                }
+            }
+        );
+    }
+};
 
 const getTenantComplianceSnapshot = () => {
     const store = dbStore.getStore() || {};
@@ -174,6 +268,23 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
                 }
                 normalizedValue = normalizeEnabledCapabilities(value);
             }
+            if (key === DISABLED_CAPABILITIES_SETTING_KEY) {
+                if (!Array.isArray(value) || value.some((entry) => !ALL_WORKFLOW_CAPABILITIES.includes(String(entry || '').trim()))) {
+                    return fail(new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        `ops_disabled_capabilities must be an array containing only: ${ALL_WORKFLOW_CAPABILITIES.join(', ')}`,
+                        { statusCode: 422 }
+                    ));
+                }
+                if (actorUser?.is_master_admin !== true) {
+                    return fail(new DomainError(
+                        DomainErrorCode.AUTHORIZATION_FAILED,
+                        'Only master admin can update ops_disabled_capabilities',
+                        { statusCode: 403 }
+                    ));
+                }
+                normalizedValue = normalizeDisabledCapabilities(value);
+            }
             if (key === INVENTORY_AUTHORITY_SETTING_KEY) {
                 if (!INVENTORY_AUTHORITY_VALUES.includes(String(value || '').trim().toLowerCase())) {
                     return fail(new DomainError(
@@ -191,6 +302,17 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
                 }
                 normalizedValue = normalizeInventoryAuthority(value);
             }
+            if (key === STORE_PROFILE_READ_SETTING_KEY) {
+                if (actorUser?.is_master_admin !== true) {
+                    return fail(new DomainError(
+                        DomainErrorCode.AUTHORIZATION_FAILED,
+                        'Only master admin can update ops_store_profile_read',
+                        { statusCode: 403 }
+                    ));
+                }
+                normalizedValue = normalizeStoreProfileReadFlag(value);
+            }
+            await assertEffectiveModuleSelectionIsBuildable({ settingsRepository, key, normalizedValue });
             if (key === 'store_tenant_slug') {
                 await assertPublicStorefrontHandleAvailable({
                     handleValue: normalizedValue,
@@ -276,12 +398,21 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
             });
 
             let workflowModeAuditBeforeValues = null;
-            if (key === WORKFLOW_MODE_SETTING_KEY || key === ENABLED_CAPABILITIES_SETTING_KEY) {
+            if (
+                key === WORKFLOW_MODE_SETTING_KEY
+                || key === ENABLED_CAPABILITIES_SETTING_KEY
+                || key === DISABLED_CAPABILITIES_SETTING_KEY
+            ) {
                 workflowModeAuditBeforeValues = typeof settingsRepository?.getSettingsByKeys === 'function'
-                    ? await settingsRepository.getSettingsByKeys([WORKFLOW_MODE_SETTING_KEY, ENABLED_CAPABILITIES_SETTING_KEY])
+                    ? await settingsRepository.getSettingsByKeys([
+                        WORKFLOW_MODE_SETTING_KEY,
+                        ENABLED_CAPABILITIES_SETTING_KEY,
+                        DISABLED_CAPABILITIES_SETTING_KEY
+                    ])
                         .then((current) => ({
                             [WORKFLOW_MODE_SETTING_KEY]: current?.[WORKFLOW_MODE_SETTING_KEY]?.value ?? null,
-                            [ENABLED_CAPABILITIES_SETTING_KEY]: current?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value ?? null
+                            [ENABLED_CAPABILITIES_SETTING_KEY]: current?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value ?? null,
+                            [DISABLED_CAPABILITIES_SETTING_KEY]: current?.[DISABLED_CAPABILITIES_SETTING_KEY]?.value ?? null
                         }))
                     : {};
 
@@ -296,6 +427,7 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
             }
 
             const updatedSetting = await settingsRepository.updateSettingByKey(key, normalizedValue);
+            await clearCapabilityCachesIfKeyTouched(key);
             await cleanupOmittedStorefrontGalleryAssets({
                 omittedPaths: omittedStorefrontGalleryPaths,
                 storefrontAssetStorage

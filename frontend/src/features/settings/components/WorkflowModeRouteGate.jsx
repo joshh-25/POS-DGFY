@@ -39,7 +39,7 @@ export default function WorkflowModeRouteGate({
   children
 }) {
   const location = useLocation();
-  const { loading, resolved, workflowMode, enabledCapabilities } = useWorkflowMode();
+  const { loading, resolved, workflowMode, enabledCapabilities, disabledCapabilities } = useWorkflowMode();
 
   if (loading || !resolved) {
     return (
@@ -54,7 +54,7 @@ export default function WorkflowModeRouteGate({
     return <WorkflowModeRedirect moduleLabel={moduleLabel} fromPath={fromPath} />;
   }
 
-  if (requiredCapability && !modeHasCapability(workflowMode, requiredCapability, enabledCapabilities)) {
+  if (requiredCapability && !modeHasCapability(workflowMode, requiredCapability, enabledCapabilities, disabledCapabilities)) {
     const fromPath = `${location.pathname}${location.search || ''}`;
     return <WorkflowModeRedirect moduleLabel={moduleLabel} fromPath={fromPath} />;
   }

@@ -146,6 +146,12 @@ const createAdminProvisionedAccount = async ({ input, dgfyAccountRepository, has
 const validateTenantInput = ({ body, ownerAccount = null }) => {
     const name = normalizeName(body.name || body.company_name || body.companyName);
     const workflowMode = normalizeWorkflowMode(body.workflowMode || body.workflow_mode);
+    // Issue #178 Phase 17: optional, best-effort - see
+    // tenantProvisioningService.js's provisionTenant doc comment. Not
+    // validated here (an invalid/mismatched key is ignored with a warning
+    // at the provisioning layer, never a hard failure).
+    const templateKeyRaw = body.templateKey || body.template_key;
+    const templateKey = templateKeyRaw ? String(templateKeyRaw).trim() : null;
     const adminEmail = normalizeEmail(ownerAccount?.email || body.adminEmail || body.admin_email);
     const adminPhone = normalizePhoneNumber(ownerAccount?.phone || body.adminPhone || body.admin_phone);
     const adminUsername = normalizeName(ownerAccount?.first_name || body.adminUsername || body.admin_username || 'Admin') || 'Admin';
@@ -168,7 +174,7 @@ const validateTenantInput = ({ body, ownerAccount = null }) => {
         throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Temporary password must be at least 8 characters.', { statusCode: 400 });
     }
 
-    return { name, workflowMode, adminEmail, adminPhone, adminUsername, temporaryPassword };
+    return { name, workflowMode, templateKey, adminEmail, adminPhone, adminUsername, temporaryPassword };
 };
 
 const createTenantRecord = async ({
@@ -261,7 +267,8 @@ const provisionCreatedTenant = async ({ provisionTenant, tenant, tenantInput }) 
     adminPhone: tenant.admin_phone,
     adminUsername: tenantInput.adminUsername,
     adminPasswordHash: tenant.admin_password_hash,
-    workflowMode: tenantInput.workflowMode
+    workflowMode: tenantInput.workflowMode,
+    templateKey: tenantInput.templateKey
 });
 
 export const buildCreateAdminProvisionedTenantUseCase = ({

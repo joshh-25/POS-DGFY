@@ -274,6 +274,115 @@ describe('settings use-cases application result contract', () => {
     }));
   });
 
+  it('updateSettings rejects a non-master-admin actor setting ops_disabled_capabilities', async () => {
+    const updateSettings = jest.fn();
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: { updateSettings }
+    });
+
+    const result = await useCase({
+      settingsData: { ops_disabled_capabilities: ['tableService'] },
+      actorUser: { username: 'tenant_admin' }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.AUTHORIZATION_FAILED);
+    expect(result.error.statusCode).toBe(403);
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('updateSettings rejects an unknown capability string in ops_disabled_capabilities even for a master admin', async () => {
+    const updateSettings = jest.fn();
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: { updateSettings }
+    });
+
+    const result = await useCase({
+      settingsData: { ops_disabled_capabilities: ['not-a-real-capability'] },
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('updateSettings lets a master admin set ops_disabled_capabilities, deduped and normalized', async () => {
+    const updateSettings = jest.fn().mockResolvedValue({ ops_disabled_capabilities: ['tableService'] });
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: {
+        updateSettings,
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          ops_workflow_mode: { value: 'fnb' },
+          ops_enabled_capabilities: { value: [] },
+          ops_disabled_capabilities: { value: [] }
+        })
+      }
+    });
+
+    const result = await useCase({
+      settingsData: { ops_disabled_capabilities: ['tableService', 'tableService', ' kitchenQueue '] },
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(true);
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      ops_disabled_capabilities: ['tableService', 'kitchenQueue']
+    }));
+  });
+
+  it('updateSettings rejects a disabled-capabilities write that would leave an enabled module without its requirement', async () => {
+    const updateSettings = jest.fn();
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: {
+        updateSettings,
+        // pos requires catalog; the tenant's current mode is retail (which
+        // grants both), so disabling catalog alone must be rejected before
+        // it ever reaches the repository.
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          ops_workflow_mode: { value: 'retail' },
+          ops_enabled_capabilities: { value: [] },
+          ops_disabled_capabilities: { value: [] }
+        })
+      }
+    });
+
+    const result = await useCase({
+      settingsData: { ops_disabled_capabilities: ['catalog'] },
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.details?.reason_code).toBe('CAPABILITY_SELECTION_UNBUILDABLE');
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('updateSettings rejects a write that would leave a capability both enabled and disabled at once (issue #178 Phase 22)', async () => {
+    const updateSettings = jest.fn();
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: {
+        updateSettings,
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          ops_workflow_mode: { value: 'retail' },
+          ops_enabled_capabilities: { value: [] },
+          ops_disabled_capabilities: { value: [] }
+        })
+      }
+    });
+
+    const result = await useCase({
+      settingsData: { ops_enabled_capabilities: ['services'], ops_disabled_capabilities: ['services'] },
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.details?.reason_code).toBe('CAPABILITY_SELECTION_CONTRADICTORY');
+    expect(result.error.details?.contradictory_capabilities).toEqual(['services']);
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
   it('updateSettings rejects a non-master-admin actor setting inventory_authority', async () => {
     const updateSettings = jest.fn();
     const useCase = buildUpdateSettingsUseCase({
@@ -321,6 +430,40 @@ describe('settings use-cases application result contract', () => {
     expect(result.success).toBe(true);
     expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
       inventory_authority: 'external_ims'
+    }));
+  });
+
+  it('updateSettings rejects a non-master-admin actor setting ops_store_profile_read', async () => {
+    const updateSettings = jest.fn();
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: { updateSettings }
+    });
+
+    const result = await useCase({
+      settingsData: { ops_store_profile_read: true },
+      actorUser: { username: 'tenant_admin' }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.AUTHORIZATION_FAILED);
+    expect(result.error.statusCode).toBe(403);
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('updateSettings lets a master admin turn on ops_store_profile_read', async () => {
+    const updateSettings = jest.fn().mockResolvedValue({ ops_store_profile_read: true });
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: { updateSettings }
+    });
+
+    const result = await useCase({
+      settingsData: { ops_store_profile_read: true },
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(true);
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      ops_store_profile_read: true
     }));
   });
 
@@ -524,6 +667,117 @@ describe('settings use-cases application result contract', () => {
     expect(updateSettingByKey).toHaveBeenCalledWith('ops_enabled_capabilities', ['services', 'fnbDining']);
   });
 
+  it('updateSettingByKey rejects a non-master-admin actor setting ops_disabled_capabilities', async () => {
+    const updateSettingByKey = jest.fn();
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: { updateSettingByKey }
+    });
+
+    const result = await useCase({
+      key: 'ops_disabled_capabilities',
+      value: ['tableService'],
+      actorUser: { username: 'tenant_admin' }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.AUTHORIZATION_FAILED);
+    expect(updateSettingByKey).not.toHaveBeenCalled();
+  });
+
+  it('updateSettingByKey rejects a non-array or unknown-capability value for ops_disabled_capabilities', async () => {
+    const updateSettingByKey = jest.fn();
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: { updateSettingByKey }
+    });
+
+    const result = await useCase({
+      key: 'ops_disabled_capabilities',
+      value: ['not-a-real-capability'],
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(updateSettingByKey).not.toHaveBeenCalled();
+  });
+
+  it('updateSettingByKey lets a master admin set ops_disabled_capabilities, deduped and normalized', async () => {
+    const updateSettingByKey = jest.fn().mockResolvedValue({
+      setting_key: 'ops_disabled_capabilities',
+      setting_value: ['services', 'fnbDining']
+    });
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: {
+        updateSettingByKey,
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          ops_workflow_mode: { value: 'fnb' },
+          ops_enabled_capabilities: { value: [] },
+          ops_disabled_capabilities: { value: [] }
+        })
+      }
+    });
+
+    const result = await useCase({
+      key: 'ops_disabled_capabilities',
+      value: ['tableService', 'tableService', ' kitchenQueue '],
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(true);
+    expect(updateSettingByKey).toHaveBeenCalledWith('ops_disabled_capabilities', ['tableService', 'kitchenQueue']);
+  });
+
+  it('updateSettingByKey rejects a disabled-capabilities write that would leave an enabled module without its requirement', async () => {
+    const updateSettingByKey = jest.fn();
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: {
+        updateSettingByKey,
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          ops_workflow_mode: { value: 'retail' },
+          ops_enabled_capabilities: { value: [] },
+          ops_disabled_capabilities: { value: [] }
+        })
+      }
+    });
+
+    const result = await useCase({
+      key: 'ops_disabled_capabilities',
+      value: ['catalog'],
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.details?.reason_code).toBe('CAPABILITY_SELECTION_UNBUILDABLE');
+    expect(updateSettingByKey).not.toHaveBeenCalled();
+  });
+
+  it('updateSettingByKey rejects disabling a capability the tenant currently has enabled (issue #178 Phase 22)', async () => {
+    const updateSettingByKey = jest.fn();
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: {
+        updateSettingByKey,
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          ops_workflow_mode: { value: 'retail' },
+          ops_enabled_capabilities: { value: ['services'] },
+          ops_disabled_capabilities: { value: [] }
+        })
+      }
+    });
+
+    const result = await useCase({
+      key: 'ops_disabled_capabilities',
+      value: ['services'],
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.details?.reason_code).toBe('CAPABILITY_SELECTION_CONTRADICTORY');
+    expect(result.error.details?.contradictory_capabilities).toEqual(['services']);
+    expect(updateSettingByKey).not.toHaveBeenCalled();
+  });
+
   it('updateSettingByKey rejects a non-master-admin actor setting inventory_authority', async () => {
     const updateSettingByKey = jest.fn();
     const useCase = buildUpdateSettingByKeyUseCase({
@@ -576,6 +830,43 @@ describe('settings use-cases application result contract', () => {
 
     expect(result.success).toBe(true);
     expect(updateSettingByKey).toHaveBeenCalledWith('inventory_authority', 'external_ims');
+  });
+
+  it('updateSettingByKey rejects a non-master-admin actor setting ops_store_profile_read', async () => {
+    const updateSettingByKey = jest.fn();
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: { updateSettingByKey }
+    });
+
+    const result = await useCase({
+      key: 'ops_store_profile_read',
+      value: true,
+      actorUser: { username: 'tenant_admin' }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.AUTHORIZATION_FAILED);
+    expect(result.error.statusCode).toBe(403);
+    expect(updateSettingByKey).not.toHaveBeenCalled();
+  });
+
+  it('updateSettingByKey lets a master admin turn on ops_store_profile_read', async () => {
+    const updateSettingByKey = jest.fn().mockResolvedValue({
+      setting_key: 'ops_store_profile_read',
+      setting_value: 'true'
+    });
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: { updateSettingByKey }
+    });
+
+    const result = await useCase({
+      key: 'ops_store_profile_read',
+      value: true,
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(true);
+    expect(updateSettingByKey).toHaveBeenCalledWith('ops_store_profile_read', true);
   });
 
   it('updateSettingByKey does not create a POS metadata pending review when the receipt value is unchanged', async () => {

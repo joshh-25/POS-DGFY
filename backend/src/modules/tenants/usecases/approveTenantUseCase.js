@@ -4,9 +4,9 @@ import { normalizeWorkflowMode } from '../../shared/constants/workflowModes.js';
 import { resolveRegisteredTenantPlan } from './tenantPlanPolicy.js';
 import { resolveCompanyRegistrationStatusUrl } from '../entities/companyRegistrationStatusUrl.js';
 
-const extractWorkflowModeFromTenant = (tenant) => {
+const parseTenantSettings = (tenant) => {
     const rawSettings = tenant?.settings;
-    if (!rawSettings) return normalizeWorkflowMode(null);
+    if (!rawSettings) return {};
 
     let parsedSettings = rawSettings;
     if (typeof parsedSettings === 'string') {
@@ -17,7 +17,23 @@ const extractWorkflowModeFromTenant = (tenant) => {
         }
     }
 
-    return normalizeWorkflowMode(parsedSettings?.workflow_mode);
+    return parsedSettings || {};
+};
+
+const extractWorkflowModeFromTenant = (tenant) => (
+    normalizeWorkflowMode(parseTenantSettings(tenant)?.workflow_mode)
+);
+
+// issue #178 "templates become the Operating Mode" follow-up: a tenant
+// registered through the Industry picker carries the derived template key
+// in its settings JSON (registerCompanyRequestUseCase.js). Tenants
+// registered before this change, or via a caller that only sent
+// workflowMode, simply have no key here - provisionTenant's own
+// resolveProvisioningTemplateSelection falls back to the canonical preset
+// for the mode exactly as it always has, so this is additive only.
+const extractStoreTemplateKeyFromTenant = (tenant) => {
+    const key = parseTenantSettings(tenant)?.store_template_key;
+    return typeof key === 'string' && key.trim() ? key.trim() : null;
 };
 
 export const buildApproveTenantUseCase = ({
@@ -68,7 +84,8 @@ export const buildApproveTenantUseCase = ({
                 adminEmail: tenant.admin_email,
                 adminPhone: tenant.admin_phone,
                 adminPasswordHash: tenant.admin_password_hash,
-                    workflowMode: extractWorkflowModeFromTenant(tenant)
+                    workflowMode: extractWorkflowModeFromTenant(tenant),
+                    templateKey: extractStoreTemplateKeyFromTenant(tenant)
                 });
                 await dgfyAccountRepository.upsertFounderMembership({
                     dgfyAccountId: tenant.owner_dgfy_account_id,

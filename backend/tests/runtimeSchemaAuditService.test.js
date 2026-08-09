@@ -53,7 +53,15 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260726000003-add-entity-type-to-discovery-index.cjs' },
         { name: '20260729000001-create-employee-credit-ledger.cjs' },
         { name: '20260729000002-create-employee-directory.cjs' },
-        { name: '20260730000001-convert-employee-credit-to-outstanding-balance.cjs' }
+        { name: '20260730000001-convert-employee-credit-to-outstanding-balance.cjs' },
+        { name: '20260808183439-add-item-identity-snapshot-to-pos-transaction-lines.cjs' },
+        { name: '20260808190000-create-workflow-mode-change-log.cjs' },
+        { name: '20260809000001-create-store-configuration-templates.cjs' },
+        { name: '20260809000002-create-store-configuration-template-audit-logs.cjs' },
+        { name: '20260809000003-add-disabled-capabilities-to-workflow-mode-change-log.cjs' },
+        { name: '20260810000001-add-is-canonical-to-store-configuration-templates.cjs' },
+        { name: '20260810000002-seed-store-configuration-template-presets.cjs' },
+        { name: '20260811000001-create-registration-industry-visibility.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -254,7 +262,9 @@ const buildHealthySequelizeMock = () => ({
                     sale_price_overridden: {},
                     price_override_reason: {},
                     stock_effect_type: { allowNull: false },
-                    stock_exempt_reason: { allowNull: true }
+                    stock_exempt_reason: { allowNull: true },
+                    item_name_snapshot: {},
+                    sku_snapshot: {}
                 },
                 pos_terminal_shifts: {
                     pos_terminal_shift_id: {},

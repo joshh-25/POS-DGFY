@@ -14,7 +14,8 @@ import {
     CreditCard,
     UsersRound,
     FileText,
-    ShieldCheck
+    ShieldCheck,
+    LayoutTemplate
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +32,7 @@ const SIDEBAR_ITEMS = [
     { path: '/admin/hosting', label: 'Hosting', icon: Server, permission: 'admin.hosting' },
     { path: '/admin/invoices', label: 'Invoices', icon: FileText, permission: 'admin.invoices' },
     { path: '/admin/platform-admins', label: 'Platform Admins', icon: ShieldCheck, masterOnly: true },
+    { path: '/admin/store-templates', label: 'Store Templates', icon: LayoutTemplate, masterOnly: true },
 ];
 
 export default function AdminLayout() {

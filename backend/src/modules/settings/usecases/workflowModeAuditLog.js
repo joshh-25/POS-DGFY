@@ -1,5 +1,5 @@
 import dbStore from '../../../utils/dbStore.js';
-import { ENABLED_CAPABILITIES_SETTING_KEY } from '../../shared/constants/workflowModes.js';
+import { ENABLED_CAPABILITIES_SETTING_KEY, DISABLED_CAPABILITIES_SETTING_KEY } from '../../shared/constants/workflowModes.js';
 
 // Not centralized in workflowModes.js - duplicated as a local const across
 // ~11 backend call sites (see workflowModes.js's own comment on this).
@@ -31,16 +31,23 @@ export const applyWorkflowModeAuditLog = async ({
 } = {}) => {
     const touchesMode = hasOwn(settingsData, WORKFLOW_MODE_SETTING_KEY);
     const touchesOverlay = hasOwn(settingsData, ENABLED_CAPABILITIES_SETTING_KEY);
-    if (!touchesMode && !touchesOverlay) return null;
+    const touchesDisabledOverlay = hasOwn(settingsData, DISABLED_CAPABILITIES_SETTING_KEY);
+    if (!touchesMode && !touchesOverlay && !touchesDisabledOverlay) return null;
 
     const fromMode = beforeValues[WORKFLOW_MODE_SETTING_KEY] ?? null;
     const toMode = touchesMode ? settingsData[WORKFLOW_MODE_SETTING_KEY] : fromMode;
     const fromCapabilities = beforeValues[ENABLED_CAPABILITIES_SETTING_KEY] ?? null;
     const toCapabilities = touchesOverlay ? settingsData[ENABLED_CAPABILITIES_SETTING_KEY] : fromCapabilities;
+    const fromDisabledCapabilities = beforeValues[DISABLED_CAPABILITIES_SETTING_KEY] ?? null;
+    const toDisabledCapabilities = touchesDisabledOverlay
+        ? settingsData[DISABLED_CAPABILITIES_SETTING_KEY]
+        : fromDisabledCapabilities;
 
     const modeChanged = touchesMode && fromMode !== toMode;
     const capabilitiesChanged = touchesOverlay && !capabilitiesEqual(fromCapabilities, toCapabilities);
-    if (!modeChanged && !capabilitiesChanged) return null;
+    const disabledCapabilitiesChanged = touchesDisabledOverlay
+        && !capabilitiesEqual(fromDisabledCapabilities, toDisabledCapabilities);
+    if (!modeChanged && !capabilitiesChanged && !disabledCapabilitiesChanged) return null;
 
     const WorkflowModeChangeLog = typeof dbStore?.get === 'function'
         ? dbStore.get('WorkflowModeChangeLog')
@@ -53,7 +60,9 @@ export const applyWorkflowModeAuditLog = async ({
         from_workflow_mode: fromMode,
         to_workflow_mode: toMode,
         from_enabled_capabilities: sortedCapabilities(fromCapabilities),
-        to_enabled_capabilities: sortedCapabilities(toCapabilities)
+        to_enabled_capabilities: sortedCapabilities(toCapabilities),
+        from_disabled_capabilities: sortedCapabilities(fromDisabledCapabilities),
+        to_disabled_capabilities: sortedCapabilities(toDisabledCapabilities)
     });
 };
 

@@ -1,3 +1,5 @@
+import { FULFILLMENT_PROFILES, resolveFulfillmentProfilesForServiceAreaType } from '@sieitzz/shared-constants/fulfillmentProfiles';
+
 const normalizeBookingFieldText = (value) => String(value || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 
 const getBookingFieldSearchText = (field) => normalizeBookingFieldText(`${field?.id || ''} ${field?.label || ''}`);
@@ -10,6 +12,22 @@ const bookingFieldMatchesAny = (field, tokens) => {
 const isServiceAreaOnSite = (serviceItem) => {
   const value = normalizeBookingFieldText(serviceItem?.serviceAreaLabel || serviceItem?.service_detail?.service_area_type || '');
   return value.includes('home') || value.includes('on site') || value.includes('onsite') || value.includes('customer location');
+};
+
+// Derives address-requirement from the real service_area_type enum via the
+// fulfillment-profile vocabulary (issue #178, ADR 0057) when it resolves -
+// a deterministic replacement for guessing off a label string. Returns
+// null (not false) when service_area_type is missing or unrecognized, so
+// the caller falls back to isServiceAreaOnSite's label heuristic exactly
+// as before - ADR 0057 permits this vocabulary to drive client-side
+// checkout composition only, never a payload field, so this stays a pure,
+// local derivation.
+const resolveRequiresAddressFromFulfillmentProfile = (serviceItem) => {
+  const areaType = String(serviceItem?.service_detail?.service_area_type || '').trim();
+  if (!areaType) return null;
+  const [profileKey] = resolveFulfillmentProfilesForServiceAreaType(areaType);
+  if (!profileKey) return null;
+  return FULFILLMENT_PROFILES[profileKey].checkout_fields.customer_address !== 'hidden';
 };
 
 export const normalizeServiceFormFields = (schema) => {
@@ -88,7 +106,8 @@ export const buildServiceBookingFieldPlan = ({ fields, serviceItem }) => {
     unitCountField,
     instructionField,
     remainingFields,
-    requiresAddress: Boolean(addressField) || isServiceAreaOnSite(serviceItem)
+    requiresAddress: Boolean(addressField)
+      || (resolveRequiresAddressFromFulfillmentProfile(serviceItem) ?? isServiceAreaOnSite(serviceItem))
   };
 };
 

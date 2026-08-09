@@ -3,12 +3,15 @@ import { getAllSettings } from '@/services/settingsService.js';
 import {
   DEFAULT_WORKFLOW_MODE,
   ENABLED_CAPABILITIES_SETTING_KEY,
+  DISABLED_CAPABILITIES_SETTING_KEY,
   WORKFLOW_MODE_CHANGED_EVENT,
   WORKFLOW_MODE_SETTING_KEY,
   modeHasCapability,
   normalizeEnabledCapabilities,
+  normalizeDisabledCapabilities,
   normalizeWorkflowMode
 } from './workflowMode.js';
+import { STORE_PROFILE_SETTING_KEY, buildStoreProfile } from '@sieitzz/shared-constants/storeProfile';
 import { getAccessToken, refreshBrowserSession } from '@/services/browserSession.js';
 import { shouldRefreshBrowserSessionForPath } from '@/services/publicRoutePolicy.js';
 
@@ -22,6 +25,26 @@ const extractEnabledCapabilitiesFromSettings = (settings) => (
   normalizeEnabledCapabilities(settings?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value)
 );
 
+// Issue #178 Phase 16 - plumbed through starting here so Phase 19's gate
+// flip has it ready, mirroring the backend's own staged rollout
+// (workflowCapabilitySettingsCache.js reads it before anything consumes it).
+const extractDisabledCapabilitiesFromSettings = (settings) => (
+  normalizeDisabledCapabilities(settings?.[DISABLED_CAPABILITIES_SETTING_KEY]?.value)
+);
+
+// Issue #178 Phase 18: the server's own materialized Profile when present
+// (a tenant curated with a Store Template) - otherwise a client-side
+// rebuild from mode + both overlays, which is what a tenant with no
+// template curation has always effectively had (buildStoreProfile is the
+// exact same pure function the backend uses to build ops_store_profile in
+// the first place, so an uncurated tenant's rebuild is byte-identical to
+// what the server would have stamped).
+const extractProfileFromSettings = (settings, { workflowMode, enabledCapabilities, disabledCapabilities }) => {
+  const persisted = settings?.[STORE_PROFILE_SETTING_KEY]?.value;
+  if (persisted && typeof persisted === 'object') return persisted;
+  return buildStoreProfile({ workflowMode, enabledCapabilities, disabledCapabilities });
+};
+
 export const broadcastWorkflowModeChange = ({ mode, source = 'settings' } = {}) => {
   const normalizedMode = normalizeWorkflowMode(mode);
   window.dispatchEvent(new CustomEvent(WORKFLOW_MODE_CHANGED_EVENT, {
@@ -33,9 +56,13 @@ export const broadcastWorkflowModeChange = ({ mode, source = 'settings' } = {}) 
   return normalizedMode;
 };
 
+const DEFAULT_PROFILE = buildStoreProfile({ workflowMode: DEFAULT_WORKFLOW_MODE, enabledCapabilities: [], disabledCapabilities: [] });
+
 export function WorkflowModeProvider({ children }) {
   const [workflowMode, setWorkflowMode] = useState(DEFAULT_WORKFLOW_MODE);
   const [enabledCapabilities, setEnabledCapabilities] = useState([]);
+  const [disabledCapabilities, setDisabledCapabilities] = useState([]);
+  const [profile, setProfile] = useState(DEFAULT_PROFILE);
   const [loading, setLoading] = useState(true);
   const [resolved, setResolved] = useState(false);
   const [error, setError] = useState(null);
@@ -46,6 +73,8 @@ export function WorkflowModeProvider({ children }) {
     if (!shouldRefreshBrowserSessionForPath(window.location.pathname)) {
       setWorkflowMode(DEFAULT_WORKFLOW_MODE);
       setEnabledCapabilities([]);
+      setDisabledCapabilities([]);
+      setProfile(DEFAULT_PROFILE);
       setResolved(true);
       setError(null);
       setLoading(false);
@@ -56,6 +85,8 @@ export function WorkflowModeProvider({ children }) {
     if (!token) {
       setWorkflowMode(DEFAULT_WORKFLOW_MODE);
       setEnabledCapabilities([]);
+      setDisabledCapabilities([]);
+      setProfile(DEFAULT_PROFILE);
       setResolved(true);
       setError(null);
       setLoading(false);
@@ -69,13 +100,23 @@ export function WorkflowModeProvider({ children }) {
     try {
       const settings = await getAllSettings({ force });
       const nextMode = extractWorkflowModeFromSettings(settings);
+      const nextEnabledCapabilities = extractEnabledCapabilitiesFromSettings(settings);
+      const nextDisabledCapabilities = extractDisabledCapabilitiesFromSettings(settings);
       setWorkflowMode(nextMode);
-      setEnabledCapabilities(extractEnabledCapabilitiesFromSettings(settings));
+      setEnabledCapabilities(nextEnabledCapabilities);
+      setDisabledCapabilities(nextDisabledCapabilities);
+      setProfile(extractProfileFromSettings(settings, {
+        workflowMode: nextMode,
+        enabledCapabilities: nextEnabledCapabilities,
+        disabledCapabilities: nextDisabledCapabilities
+      }));
       setResolved(true);
       return nextMode;
     } catch (refreshError) {
       setWorkflowMode(DEFAULT_WORKFLOW_MODE);
       setEnabledCapabilities([]);
+      setDisabledCapabilities([]);
+      setProfile(DEFAULT_PROFILE);
       setResolved(false);
       setError(refreshError);
       return DEFAULT_WORKFLOW_MODE;
@@ -103,6 +144,8 @@ export function WorkflowModeProvider({ children }) {
     const handleAuthLogout = () => {
       setWorkflowMode(DEFAULT_WORKFLOW_MODE);
       setEnabledCapabilities([]);
+      setDisabledCapabilities([]);
+      setProfile(DEFAULT_PROFILE);
       setResolved(false);
       setError(null);
       setModeChangeNotice(null);
@@ -134,13 +177,21 @@ export function WorkflowModeProvider({ children }) {
     };
   }, [refreshWorkflowMode]);
 
+  // Issue #178 Phase 21: honors the disabled overlay too, so a curated
+  // template's subtraction is reflected everywhere this hook gates UI, not
+  // just in the pages/routes that call modeHasCapability directly
+  // (Layout.jsx, WorkflowModeRouteGate.jsx). PosPageShell.jsx's panel
+  // rendering is the consumer this fixes - it was rendering panels a
+  // template had subtracted, which the backend then correctly 403'd.
   const hasCapability = useCallback((capability) => (
-    modeHasCapability(workflowMode, capability, enabledCapabilities)
-  ), [enabledCapabilities, workflowMode]);
+    modeHasCapability(workflowMode, capability, enabledCapabilities, disabledCapabilities)
+  ), [disabledCapabilities, enabledCapabilities, workflowMode]);
 
   const value = useMemo(() => ({
     workflowMode,
     enabledCapabilities,
+    disabledCapabilities,
+    profile,
     hasCapability,
     loading,
     resolved,
@@ -148,7 +199,7 @@ export function WorkflowModeProvider({ children }) {
     modeChangeNotice,
     refreshWorkflowMode,
     dismissModeChangeNotice
-  }), [dismissModeChangeNotice, enabledCapabilities, error, hasCapability, loading, modeChangeNotice, refreshWorkflowMode, resolved, workflowMode]);
+  }), [dismissModeChangeNotice, disabledCapabilities, enabledCapabilities, error, hasCapability, loading, modeChangeNotice, profile, refreshWorkflowMode, resolved, workflowMode]);
 
   return (
     <WorkflowModeContext.Provider value={value}>

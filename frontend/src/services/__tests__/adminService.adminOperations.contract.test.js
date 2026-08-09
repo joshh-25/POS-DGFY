@@ -42,6 +42,7 @@ describe('adminService admin operation contracts', () => {
 
   it.each([
     ['updateTenantCapabilities', 'patch', '/admin/tenants/tenant-1/capabilities', () => adminService.updateTenantCapabilities('tenant-1', { ims_enabled: true })],
+    ['applyTenantTemplate', 'post', '/admin/tenants/tenant-1/apply-template', () => adminService.applyTenantTemplate('tenant-1', { templateKey: 'fnb_counter_service', reason: 'Downgrading to counter service' })],
     ['listTenantCapabilityAuditLogs', 'get', '/admin/tenants/tenant-1/capabilities/audit-logs', () => adminService.listTenantCapabilityAuditLogs('tenant-1', { limit: 20 })],
     ['getTenantPosMetadata', 'get', '/admin/tenants/tenant-1/pos-metadata', () => adminService.getTenantPosMetadata('tenant-1')],
     ['listTenantPosMetadataAuditLogs', 'get', '/admin/tenants/tenant-1/pos-metadata/audit-logs', () => adminService.listTenantPosMetadataAuditLogs('tenant-1', { limit: 10 })],

@@ -264,6 +264,7 @@ export default function Layout({ children, currentPageName }) {
   const {
     workflowMode,
     enabledCapabilities,
+    disabledCapabilities,
     loading: workflowModeLoading,
     resolved: workflowModeResolved = true,
     modeChangeNotice,
@@ -379,8 +380,8 @@ export default function Layout({ children, currentPageName }) {
     // A capability-gated entry is inherently mode-sensitive, so it stays hidden
     // until the mode resolves rather than flashing and then disappearing.
     if (!workflowModeReady && (item.requiredCapability || isWorkflowPageModeSensitive(item.page))) return false;
-    if (workflowModeReady && item.requiredCapability && !modeHasCapability(workflowMode, item.requiredCapability, enabledCapabilities)) return false;
-    if (workflowModeReady && !isWorkflowPageVisible(item.page, workflowMode, enabledCapabilities)) return false;
+    if (workflowModeReady && item.requiredCapability && !modeHasCapability(workflowMode, item.requiredCapability, enabledCapabilities, disabledCapabilities)) return false;
+    if (workflowModeReady && !isWorkflowPageVisible(item.page, workflowMode, enabledCapabilities, disabledCapabilities)) return false;
     if (loading) return true; // Show all during loading to prevent flash
     if (item.permissionAny?.length) {
       return item.permissionAny.some((permission) => can(permission));

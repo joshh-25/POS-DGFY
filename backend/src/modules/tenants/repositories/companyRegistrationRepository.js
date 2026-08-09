@@ -10,7 +10,7 @@ import { Op } from 'sequelize';
 const transactionOptions = (transaction) => transaction ? { transaction } : {};
 
 export const companyRegistrationRepository = {
-  createInitial({ tenant, dgfyAccount, legalAcknowledgement, workflowMode, industryTag, transaction }) {
+  createInitial({ tenant, dgfyAccount, legalAcknowledgement, workflowMode, industryTag, registrationIndustry = null, storeTemplateKey = null, transaction }) {
     const options = transactionOptions(transaction);
     return CompanyRegistrationApplication.create({
       tenant_id: tenant.id, dgfy_account_id: dgfyAccount.id,
@@ -19,7 +19,13 @@ export const companyRegistrationRepository = {
     }, options).then(async (application) => {
       await CompanyRegistrationAttempt.create({
         application_id: application.id, attempt_no: 1,
-        submission_snapshot: { company_name: tenant.name, workflow_mode: workflowMode, industry_tag: industryTag },
+        submission_snapshot: {
+          company_name: tenant.name,
+          workflow_mode: workflowMode,
+          industry_tag: industryTag,
+          registration_industry: registrationIndustry,
+          store_template_key: storeTemplateKey
+        },
         legal_terms_snapshot: legalAcknowledgement, decision: 'pending'
       }, options);
       await CompanyRegistrationEvent.create({ application_id: application.id, event_type: 'submitted', actor_type: 'applicant', actor_id: dgfyAccount.id }, options);
