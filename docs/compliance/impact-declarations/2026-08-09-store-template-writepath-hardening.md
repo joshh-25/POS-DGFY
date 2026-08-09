@@ -4,11 +4,11 @@ owner: engineering
 last_reviewed: 2026-08-09
 declaration_id: 2026-08-09-store-template-writepath-hardening
 classification: major
-surfaces: settings
+surfaces: settings,pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.08.09
-verification_evidence: settingsUsecases.applicationResult.test.js,applyTemplateToTenantUseCase.test.js,applyTemplateToTenantUseCase.cacheInvalidation.test.js,resolveStoreProfile.usecase.test.js,tenantProvisioningStoreProfileProvenance.test.js,fnbKitchenQueueTemplateGate.route.test.js,check:architecture
-rollback_note: Revert the cache-invalidation calls and the two new validation checks (CAPABILITY_SELECTION_CONTRADICTORY, the re-validated materialized selection in applyTemplateToTenantUseCase) together with this declaration. Each write path falls back to its pre-change behavior (writes still succeed; caches simply stay stale for their existing TTL, same as before this batch) -- no data migration, no schema change, nothing to unwind.
+verification_evidence: settingsUsecases.applicationResult.test.js,applyTemplateToTenantUseCase.test.js,applyTemplateToTenantUseCase.cacheInvalidation.test.js,resolveStoreProfile.usecase.test.js,tenantProvisioningStoreProfileProvenance.test.js,fnbKitchenQueueTemplateGate.route.test.js,storeProfile.equivalence.contract.test.js,modeItemTaxonomy.contract.test.js,WorkflowModeContext.profile.test.jsx,check:architecture
+rollback_note: Revert the cache-invalidation calls, the two new validation checks (CAPABILITY_SELECTION_CONTRADICTORY, the re-validated materialized selection in applyTemplateToTenantUseCase), and the POSCheckoutTerminal.jsx/TerminalPageLayout.jsx/TerminalPage.jsx effectiveCapabilities threading together with this declaration -- they were verified and reviewed as one batch. Each falls back to its pre-change behavior (writes still succeed; caches simply stay stale for their existing TTL; the POS terminal falls back to mode-only panel resolution) -- no data migration, no schema change, nothing to unwind.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-08-09T00:00:00+08:00
@@ -19,16 +19,21 @@ preflight_request_ref: STORE-TEMPLATES-PHASE20-23-20260809
 
 ## Compliance Impact Classification
 
-Major, per the classification matrix's floor for `backend/src/modules/settings/**`.
-Two files under that path are touched here:
-`updateSettingsUseCase.js` gains a stricter rejection (a capability requested in
-both the enabled and disabled overlays at once is now rejected outright, where it
-previously resolved silently), and `resolveStoreProfile.js` gains a cache-clear
-export plus documentation corrections. Neither file's fiscal, VAT, or payment
-logic is touched — this is validation strictness and cache freshness for the
+Major, per the classification matrix's floor for both
+`backend/src/modules/settings/**` and `frontend/src/features/pos/**`. Two
+files under the settings path are touched: `updateSettingsUseCase.js` gains a
+stricter rejection (a capability requested in both the enabled and disabled
+overlays at once is now rejected outright, where it previously resolved
+silently), and `resolveStoreProfile.js` gains a cache-clear export plus
+documentation corrections. Three files under the POS surface are touched —
+`POSCheckoutTerminal.jsx`, `TerminalPageLayout.jsx`, `TerminalPage.jsx` — to
+thread the tenant's effective capability set into the terminal's workflow
+resolver, so a curated (subtractive) template renders the correct POS panel.
+No fiscal, VAT, or payment logic in either surface is touched — this is
+validation strictness, cache freshness, and terminal-panel rendering for the
 existing `ops_workflow_mode` / `ops_enabled_capabilities` /
-`ops_disabled_capabilities` / `ops_store_profile_read` settings, which this same
-ADR 0056 / issue #178 arc already governs.
+`ops_disabled_capabilities` / `ops_store_profile_read` settings, which this
+same ADR 0056 / issue #178 arc already governs.
 
 ## Affected Surfaces
 
@@ -52,6 +57,21 @@ ADR 0056 / issue #178 arc already governs.
    to state that the resolver is wired to `requireWorkflowCapability` (issue #178
    Phase 19) rather than the pre-Phase-19 "not wired to any consumer yet"
    language — a documentation-only change with no runtime effect.
+5. **POS surface.** `resolvePosWorkflow(mode, effectiveCapabilities)`
+   (`packages/shared-constants/src/posWorkflows.js`) gains an optional second
+   argument: an fnb-family store whose effective capabilities are missing
+   both `tableService` and `kitchenQueue` now resolves to the existing
+   `POS_WORKFLOW_CONFIGS.counter` UI config instead of the full-service `fnb`
+   one. `POSCheckoutTerminal.jsx` reads `profile.modules` (via a new
+   `effectiveCapabilities` prop, prop-drilled through `TerminalPageLayout.jsx`
+   from `TerminalPage.jsx`) and passes it into the resolver. This is a
+   **presentation-only** change — which POS panel/buttons render — not a
+   change to what the backend accepts or how a transaction is priced,
+   recorded, or fiscalized. The backend capability gate (Phase 19, unchanged
+   here) already enforces the same subtraction independently; this closes the
+   gap where the terminal rendered a panel the backend would then 403.
+   Omitting the new prop/argument (every pre-existing caller) preserves
+   exact prior behavior.
 
 ## Compliance Preconditions
 
@@ -69,6 +89,10 @@ ADR 0056 / issue #178 arc already governs.
 4. The contradictory-write rejection is strictly narrower than the previous
    behavior (it rejects a request the write path used to silently accept) — no
    previously-accepted, non-contradictory write is newly rejected.
+5. The POS panel change never affects checkout, payment, discount, tax, or
+   receipt logic — `POSCheckoutTerminal.jsx`'s own checkout/payment code
+   paths are untouched; only which vertical panel (dining floor vs. counter)
+   is shown before checkout begins.
 
 ## Verification Evidence
 
@@ -88,7 +112,14 @@ ADR 0056 / issue #178 arc already governs.
    `requireWorkflowCapability` mounted exactly as `routes/fnb.js` wires it,
    proving two differently-templated tenants get different real 200/403
    outcomes.
-5. `npm run check:architecture` passed (46 modules / 451 files; 84 controller
+5. `backend/tests/storeProfile.equivalence.contract.test.js` — a
+   counter-service Profile resolves `pos_workflow.mode === 'counter'`; a
+   full-service fnb tenant and a hospitality tenant are unaffected
+   (zero-behavior-change controls).
+6. `frontend/src/features/settings/__tests__/WorkflowModeContext.profile.test.jsx`
+   — `hasCapability` honors the disabled overlay, the consumer
+   `PosPageShell.jsx`'s panel rendering depends on.
+7. `npm run check:architecture` passed (46 modules / 451 files; 84 controller
    files, no unauthorized model imports).
-6. `npm run check:compliance -- --staged` passed with this declaration staged
-   alongside the settings-module changes it covers.
+8. `npm run check:compliance -- --staged` passed with this declaration staged
+   alongside the settings-module and POS-surface changes it covers.

@@ -142,9 +142,12 @@ catalog was never seeded) and subtraction stopping at the API boundary for
 three affordance paths Phase 19 didn't touch; Phases 20-22 close both, and
 Phase 23 corrects the resulting stale documentation and a non-load-bearing
 regression test — see ADR 0037's amendment for the full account of each.
-All phases through 23 are now shipped; issue #178's remaining scope (the
-storefront blind spot recorded in that same amendment, the four `planned`
-catalog modules) is deliberately out of this ADR's rollout.
+All phases through 23 are now shipped; issue #178's remaining scope — the
+storefront capability/presentation gap, `storefrontLayout`'s
+non-materialization into the Profile, `templateKey` reachability on the
+organic signup funnel (all three defined in ADR 0037's amendment, "What
+Phase 20-23's audit found and left deliberately out"), and the four
+`planned` catalog modules — is deliberately out of this ADR's rollout.
 
 ## Validation
 

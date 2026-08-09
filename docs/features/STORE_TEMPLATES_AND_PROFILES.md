@@ -166,6 +166,29 @@ enabled overlay, never the disabled one) and is corrected there. **The
 registries are not retired** — `WORKFLOW_MODE_CAPABILITIES` stays the
 differ's oracle and the gate's permanent flag-off path.
 
+Three further gaps a Phase 20-23 audit found real but left deliberately
+out of this rollout — full definitions in ADR 0037's amendment ("What
+Phase 20-23's audit found and left deliberately out"):
+
+- **The public storefront doesn't see subtraction.**
+  `storeUseCases.js`'s catalog listing reads only the enabled overlay from
+  `resolveWorkflowCapabilitySettings()`, never the disabled one, and
+  `frontend/apps/store`'s own capability model
+  (`shared/model/workflowCapabilities.js`, `modePresentationRegistry.js`)
+  has no subtractive concept at all — a counter-service tenant's backend
+  and admin POS both correctly deny table/kitchen capabilities, but its
+  public storefront can still present them.
+- **`storefrontLayout` is declared but never materialized** — the catalog
+  names `storefrontTemplateRegistry.js`/`modePresentationRegistry.js` as
+  its `enforced_by`, but `buildStoreProfile()` never reads either; unlike
+  `posWorkflowPanel` (fixed in Phase 21), the storefront's own presentation
+  affordance has no Profile equivalent yet.
+- **`templateKey` at provisioning only reaches the two admin-initiated
+  endpoints**, not the organic signup->approval funnel most real tenants
+  use — a product decision (should self-signup offer a template choice at
+  all?) rather than a missing mechanism; `buildProvisioningStoreProfile(mode,
+  { templateKey })` already supports it.
+
 ### The subtractive overlay (`ops_disabled_capabilities`)
 
 `packages/shared-constants/src/workflowModes.js`'s `resolveEffectiveCapabilities`

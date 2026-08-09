@@ -791,9 +791,71 @@ IMS delegation); new phases use 10+. Status as of this amendment:
   `resolveStoreProfile()` end-to-end and asserts the template repository is
   never called — see ADR 0056's own amendment. Corrects the stale
   "scaffolding, not wired" language left in `resolveStoreProfile.js` and
-  `storeProfile.js` after Phase 19 shipped, and closes issue #178's three
-  outstanding commitments (playbook amendment, the last classification
-  mislabel, the first compatibility-seam registration).
+  `storeProfile.js` after Phase 19 shipped. Closes two of issue #178's
+  three outstanding commitments — the mode-development playbook amendment
+  (no new hard-coded vertical after Phase 13) and the last classification
+  mislabel (`StorefrontBusinessGrowPage.jsx`'s "Business Industry" ->
+  "Operating Mode"). The third, registering the first entry in
+  `docs/architecture/compatibility-seams.json`, was evaluated and
+  deliberately **not** done: that registry (ADR 0035) is for temporary
+  compatibility bridges with genuine `removal_criteria`, and
+  `requireWorkflowCapability`'s registry-path fallback is documented
+  throughout Phases 19-21 as the *permanent* flag-off path, not a bridge
+  scheduled for removal — forcing it into that framework would require a
+  fabricated removal plan and would misrepresent the architecture rather
+  than honestly describe it.
+
+### What Phase 20-23's audit found and left deliberately out
+
+Three gaps the pre-PR audit found real but chose not to close in this
+batch, recorded here so they are not silently lost (the previous version
+of this amendment referenced "the storefront blind spot" from ADR 0056's
+Rollout section without ever defining it — this section is that missing
+definition, not a new deferral):
+
+- **The storefront catalog and presentation layer do not see the
+  disabled-capabilities overlay.**
+  `backend/src/modules/store/usecases/storeUseCases.js` destructures only
+  `{ mode, enabledCapabilities }` from `resolveWorkflowCapabilitySettings()`
+  and never reads `disabledCapabilities`, even though that function
+  returns it; the storefront catalog payload it builds therefore never
+  carries subtraction. `frontend/apps/store/src/shared/model/workflowCapabilities.js`
+  (`hasServicesCapability` and friends) and its consumer
+  `frontend/apps/store/src/app/runtime/modePresentationRegistry.js` derive
+  presentation from the raw additive capability state directly, with no
+  subtractive concept at all and no path through the Profile or
+  `resolveStoreProfile()`. Net effect: a `fnb_counter_service`-templated
+  tenant's backend and admin POS both correctly deny table/kitchen
+  capabilities, but its public storefront can still present them. Left out
+  because `frontend/apps/store` is a separate app with its own capability
+  model entirely (Decision/Consequence scope of a future phase, not a
+  same-day fix), not because the gap is minor.
+- **`storefrontLayout` is declared in the catalog but never materialized
+  into the Profile.** `packages/shared-constants/src/capabilityModules.js`
+  declares `storefrontLayout` as an `affordance`-class module with
+  `enforced_by: 'frontend/apps/store storefrontTemplateRegistry.js /
+  modePresentationRegistry.js'` — but `buildStoreProfile()`
+  (`packages/shared-constants/src/storeProfile.js`) never reads either
+  file or materializes anything for this module; `profile.storefront`
+  carries only `order_methods`. This is the storefront analogue of what
+  Phase 21 fixed for `posWorkflowPanel` (POS terminal presentation) — same
+  shape of gap, not yet closed for the storefront's equivalent.
+- **`templateKey` at provisioning is reachable only from the two
+  admin-initiated endpoints**, not the funnel most real tenants actually
+  use. `POST /admin/tenants/provision` and `POST /admin-provision` both
+  thread an optional `templateKey` through to
+  `resolveProvisioningTemplateSelection` (`tenantProvisioningService.js`).
+  The organic self-signup path — `registerCompanyRequestUseCase.js` (the
+  request) and `approveTenantUseCase.js` (the approval that actually
+  provisions) — has no `templateKey`/`template_key` handling anywhere, so
+  every tenant that signs up and gets approved through the platform's own
+  public flow always falls back to the canonical template for its chosen
+  mode, with no way to request a non-canonical preset (e.g.
+  `fnb_counter_service`) at signup time. Left out as a product decision —
+  whether a self-signing business should be offered a template choice at
+  all — rather than an engineering gap; the mechanism it would plug into
+  (`buildProvisioningStoreProfile(mode, { templateKey })`) already exists
+  and needs no further backend work to wire up.
 
 The three `[binding]` cross-boundary clauses this realization needs — never
 dereferencing provenance at runtime, locked-module compliance determinism,
