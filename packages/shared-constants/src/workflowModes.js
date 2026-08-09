@@ -40,6 +40,72 @@ export const WORKFLOW_MODE_ALIASES = Object.freeze({
     manufacturing: 'food_manufacturing'
 });
 
+// Issue #178 final-touch pass: does DGFY run this vertical's selling engine
+// end-to-end (online ordering through POS terminal encoding), or does the
+// engine live in a separate app?
+//
+// - 'native': DGFY is the engine. Full support - catalog, POS, storefront,
+//   fulfillment all run inside this platform.
+// - 'transitional': DGFY runs the engine TODAY, but the product direction is
+//   to move it to a sibling app under the same parent company (Sieitz).
+//   These modes stay fully authorable for Store Templates (nothing is
+//   removed while the native engine is still the one actually running) and
+//   get an admin-visible "native today, external engine planned" badge so
+//   the direction isn't mistaken for the current state.
+// - 'external': the engine already lives (or will live) in a separate app;
+//   DGFY provides registration and UI/UX visibility only. These are exactly
+//   STORE_TEMPLATE_PRESETLESS_MODES in capabilityModules.js and are hidden
+//   from Store Template authoring (see TEMPLATE_AUTHORABLE_MODES below) and
+//   rejected server-side on template create.
+//
+// Flipping a mode's classification is meant to be a one-line change here.
+// If a transitional mode flips to 'external', decide separately whether its
+// seeded presets should be retired (STORE_TEMPLATE_PRESETLESS_MODES is a
+// distinct list - flipping engine classification does not by itself change
+// preset membership). See docs/development/STORE_TEMPLATES_HANDOFF.md §4.
+export const WORKFLOW_MODE_ENGINE_VALUES = Object.freeze(['native', 'transitional', 'external']);
+
+export const WORKFLOW_MODE_ENGINE = Object.freeze({
+    retail: 'native',
+    services: 'native',
+    manufacturing: 'transitional', // alias - mirrors food_manufacturing
+    food_manufacturing: 'transitional', // planned external engine: Skupervisor
+    fnb: 'native',
+    hospitality: 'transitional', // planned external engine: Sync Core
+    healthcare: 'external',
+    ticketing_transport: 'external',
+    logistics_distribution: 'external',
+    education_institutions: 'external',
+    msme: 'native'
+});
+
+// Planned external engine names for transitional modes only - surfaced in
+// admin badges/help text. Not populated for 'native' or 'external' modes:
+// native has no external engine to name, and external modes' eventual
+// engines are unknown sibling apps (see STORE_TEMPLATE_PRESETLESS_MODES'
+// doc comment in capabilityModules.js).
+export const WORKFLOW_MODE_ENGINE_NOTES = Object.freeze({
+    hospitality: 'Sync Core',
+    food_manufacturing: 'Skupervisor',
+    manufacturing: 'Skupervisor'
+});
+
+export const getWorkflowModeEngine = (value) => (
+    WORKFLOW_MODE_ENGINE[normalizeWorkflowMode(value)] || 'native'
+);
+
+// The modes an admin may author a new Store Template against: every
+// offered mode (WORKFLOW_MODE_VALUES minus the deprecated `manufacturing`
+// alias) whose engine classification isn't 'external'. Transitional modes
+// (hospitality, food_manufacturing) stay authorable - the native engine is
+// still what actually runs them. Single source of truth for both the
+// frontend base-mode dropdown and the backend create-draft validator.
+export const TEMPLATE_AUTHORABLE_MODES = Object.freeze(
+    WORKFLOW_MODE_VALUES.filter((mode) => (
+        !(mode in WORKFLOW_MODE_ALIASES) && WORKFLOW_MODE_ENGINE[mode] !== 'external'
+    ))
+);
+
 const WORKFLOW_MODE_FAMILY_MAP = Object.freeze({
     retail: 'retail',
     services: 'services',

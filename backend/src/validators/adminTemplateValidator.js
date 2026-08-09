@@ -1,5 +1,5 @@
 import Joi from 'joi';
-import { WORKFLOW_MODE_VALUES } from '../modules/shared/constants/workflowModes.js';
+import { WORKFLOW_MODE_VALUES, TEMPLATE_AUTHORABLE_MODES } from '../modules/shared/constants/workflowModes.js';
 import { ALL_CAPABILITY_MODULE_KEYS } from '../modules/shared/constants/capabilityModules.js';
 
 const buildValidationErrorResponse = (error) => ({
@@ -31,7 +31,14 @@ const createDraftTemplateSchema = Joi.object({
         'string.pattern.base': 'template_key must be lowercase letters, digits, and underscores, starting with a letter'
     }),
     label: Joi.string().trim().min(2).max(150).required(),
-    base_mode: Joi.string().trim().lowercase().valid(...WORKFLOW_MODE_VALUES).required(),
+    // Deliberately narrower than WORKFLOW_MODE_VALUES: only modes with a
+    // native or transitional engine classification (TEMPLATE_AUTHORABLE_MODES,
+    // workflowModes.js) can be authored against. Rejects the deprecated
+    // `manufacturing` alias and all four external-engine modes - none of
+    // which any legitimate client sends (issue #178 final-touch pass). The
+    // list-query filter below stays unrestricted so existing templates of
+    // any mode remain listable/filterable.
+    base_mode: Joi.string().trim().lowercase().valid(...TEMPLATE_AUTHORABLE_MODES).required(),
     // is_preset is accepted here (so an old client sending it isn't 422'd -
     // this schema's .unknown(false) rejects truly unrecognized keys outright,
     // it does not silently strip them) but it is a platform-owned provenance

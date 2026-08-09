@@ -3,6 +3,9 @@ import {
     WORKFLOW_MODE_LABELS as backendLabels,
     WORKFLOW_MODE_PIN_META as backendPins,
     WORKFLOW_MODE_VALUES as backendValues,
+    WORKFLOW_MODE_ENGINE as backendEngine,
+    WORKFLOW_MODE_ENGINE_NOTES as backendEngineNotes,
+    TEMPLATE_AUTHORABLE_MODES as backendAuthorableModes,
     ALL_WORKFLOW_CAPABILITIES as backendAllCapabilities,
     ENABLED_CAPABILITIES_SETTING_KEY as backendEnabledCapabilitiesKey,
     DISABLED_CAPABILITIES_SETTING_KEY as backendDisabledCapabilitiesKey,
@@ -19,6 +22,9 @@ import {
     WORKFLOW_MODE_LABELS as frontendLabels,
     WORKFLOW_MODE_PIN_META as frontendPins,
     WORKFLOW_MODE_VALUES as frontendValues,
+    WORKFLOW_MODE_ENGINE as frontendEngine,
+    WORKFLOW_MODE_ENGINE_NOTES as frontendEngineNotes,
+    TEMPLATE_AUTHORABLE_MODES as frontendAuthorableModes,
     ALL_WORKFLOW_CAPABILITIES as frontendAllCapabilities,
     ENABLED_CAPABILITIES_SETTING_KEY as frontendEnabledCapabilitiesKey,
     DISABLED_CAPABILITIES_SETTING_KEY as frontendDisabledCapabilitiesKey,
@@ -47,6 +53,18 @@ describe('workflow mode cross-layer contracts', () => {
         expect(frontendPins.fnb.label).toBe('Food & Beverage');
         expect(frontendPins.fnb.icon).toBe('Utensils');
         expect(frontendPins.food_manufacturing.icon).toBe('Factory');
+    });
+
+    // issue #178 final-touch pass: the native/transitional/external engine
+    // classification and its derived authorable-modes list. Both layers
+    // re-export the same shared-constants package, so this is structural
+    // convention-keeping (matching every other mode-shaped pin in this
+    // file) rather than drift protection - the real content pin lives in
+    // capabilityModules.contract.test.js.
+    it('keeps backend and frontend engine classification aligned', () => {
+        expect(frontendEngine).toEqual(backendEngine);
+        expect(frontendEngineNotes).toEqual(backendEngineNotes);
+        expect(frontendAuthorableModes).toEqual(backendAuthorableModes);
     });
 
     it('resolves normalization, mode family, and template family identically across layers', () => {

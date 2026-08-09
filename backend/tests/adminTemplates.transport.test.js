@@ -118,6 +118,60 @@ describe('admin template curation transport contracts (issue #178 Phase 14)', ()
         }));
     });
 
+    // issue #178 final-touch pass: create-draft narrows base_mode to
+    // TEMPLATE_AUTHORABLE_MODES (native + transitional engine modes) rather
+    // than every WORKFLOW_MODE_VALUES entry - external-engine modes and the
+    // deprecated `manufacturing` alias are rejected. The list-query filter
+    // (below) stays unrestricted so existing templates of any mode remain
+    // listable/filterable.
+    it('rejects a create-draft payload for an external-engine base_mode', async () => {
+        const response = await request(app)
+            .post('/api/v1/admin/templates')
+            .send({
+                template_key: 'healthcare_attempt',
+                label: 'Healthcare Attempt',
+                base_mode: 'healthcare',
+                module_keys: ['catalog']
+            });
+
+        expect(response.status).toBe(422);
+        expect(mockCreateDraftTemplate).not.toHaveBeenCalled();
+    });
+
+    it('rejects a create-draft payload using the deprecated manufacturing alias', async () => {
+        const response = await request(app)
+            .post('/api/v1/admin/templates')
+            .send({
+                template_key: 'manufacturing_alias_attempt',
+                label: 'Manufacturing Alias Attempt',
+                base_mode: 'manufacturing',
+                module_keys: ['catalog']
+            });
+
+        expect(response.status).toBe(422);
+        expect(mockCreateDraftTemplate).not.toHaveBeenCalled();
+    });
+
+    it('accepts a create-draft payload for a transitional (native-today) base_mode', async () => {
+        const response = await request(app)
+            .post('/api/v1/admin/templates')
+            .send({
+                template_key: 'hospitality_attempt',
+                label: 'Hospitality Attempt',
+                base_mode: 'hospitality',
+                module_keys: ['catalog', 'hospitalityReservations']
+            });
+
+        expect(response.status).toBe(201);
+        expect(mockCreateDraftTemplate).toHaveBeenCalledTimes(1);
+    });
+
+    it('still accepts an external-engine base_mode on the list filter', async () => {
+        const response = await request(app).get('/api/v1/admin/templates?base_mode=healthcare');
+        expect(response.status).toBe(200);
+        expect(mockListTemplates.mock.calls[0][0].validatedQuery).toEqual({ base_mode: 'healthcare' });
+    });
+
     it('rejects updating modules without a reason', async () => {
         const response = await request(app)
             .patch('/api/v1/admin/templates/5/modules')
