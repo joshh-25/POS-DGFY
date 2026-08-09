@@ -284,8 +284,11 @@ export const resolveModeModuleBundle = (workflowMode, enabledCapabilities = []) 
 );
 
 /**
- * Curated Store Template presets — data only; nothing consumes these yet.
- * They document the two dimensions templates vary on:
+ * Curated Store Template presets — the source data
+ * `seedCanonicalTemplatePresetsUseCase`
+ * (`backend/src/modules/templates/usecases/seedCanonicalTemplatePresets.js`)
+ * materializes into landlord `store_configuration_templates` rows (issue
+ * #178 Phase 13). They document the two dimensions templates vary on:
  * 1. selling-behavior mix (a services shop that also retails parts), and
  * 2. operational scale within one vertical (full-service restaurant vs
  *    counter-service carenderia — same food business, different module tiers).

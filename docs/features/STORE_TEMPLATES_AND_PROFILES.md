@@ -2,7 +2,7 @@
 status: reference
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-08-08
+last_reviewed: 2026-08-09
 applies_to: catalog,inventory,pos,services,storefront,settings
 topic: store_templates_and_profiles
 ---
@@ -132,6 +132,40 @@ mismatches) for zero behavior change. The resolver stays as tested,
 ready-to-wire infrastructure until Phase 13 gives templates a way to
 actually curate a Profile away from its mode.
 
+## The landlord Store Template catalog
+
+`store_configuration_templates` / `store_configuration_template_modules`
+(issue #178 Phase 13, `docs/architecture/adr/0056-store-configuration-templates-and-profiles.md`)
+are landlord-DB-only tables — registered in `NON_TENANT_MODEL_EXPORTS`
+(`backend/src/utils/tenantModelFactory.js`), never cloned into a tenant
+database. A template is a versioned, curated bundle of Capability Module
+keys with a lifecycle: `draft` (module list editable) →
+`published` (frozen — editing a published template's modules is rejected at
+the use-case layer, not just discouraged; to change content, deprecate and
+create a new template) → `deprecated`. Publishing validates the module
+selection against the same `validateModuleSelection()` the catalog itself
+uses.
+
+`seedCanonicalTemplatePresetsUseCase`
+(`backend/src/modules/templates/usecases/seedCanonicalTemplatePresets.js`)
+materializes `STORE_TEMPLATE_PRESETS` into rows once; re-running it never
+overwrites an existing `template_key`.
+
+**Provenance, captured once, never dereferenced again.** At tenant
+provisioning, if a published canonical template exists for the chosen mode,
+`buildProvisioningStoreProfile` (`backend/src/services/tenantProvisioningService.js`)
+looks it up exactly once and stamps the resulting Profile's `provenance`
+block (`source_template_id`, `source_template_version`,
+`diverged_from_source`). Template lookup is best-effort — a failure falls
+back to the pre-Phase-13 behavior rather than blocking provisioning. No
+other code path ever reads a template row again: a later settings-driven
+mode/capability change carries the origin pointer forward and flags
+`diverged_from_source: true`, but never re-derives anything from the
+template itself (ADR 0056 clause 2). This is what makes "editing a
+published template changes zero existing tenants' Profiles" true by
+construction, not by convention — proven in
+`backend/tests/tenantProvisioningStoreProfileProvenance.test.js`.
+
 ## Planned modules (roadmap slots in the catalog, not implemented)
 
 - `laborTracking` — who performed a job, actual start/finish, rate-based
@@ -154,4 +188,13 @@ grantable capability vocabulary, and fail template validation if selected.
 - `backend/tests/orderMethods.crossLayer.contract.test.js` — order-method
   vocabulary ↔ DB ENUM.
 - `backend/tests/resolveStoreProfile.usecase.test.js` — the read-path
-  resolver's flag/version/divergence logic.
+  resolver's flag/version/divergence logic, including that template
+  provenance never trips a false divergence.
+- `backend/tests/storeConfigurationTemplateUseCases.test.js` — template
+  lifecycle (draft → published → deprecated), publish-time validation, and
+  published-template module immutability.
+- `backend/tests/seedCanonicalTemplatePresetsUseCase` (`seedCanonicalTemplatePresets.usecase.test.js`) —
+  idempotent seeding from `STORE_TEMPLATE_PRESETS`.
+- `backend/tests/tenantProvisioningStoreProfileProvenance.test.js` — the
+  Phase 13 acceptance criterion: editing a template after provisioning
+  changes zero already-provisioned tenants' Profiles.

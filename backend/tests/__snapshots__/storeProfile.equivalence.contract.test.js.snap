@@ -32,7 +32,12 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 2,
+  "profile_version": 3,
+  "provenance": {
+    "diverged_from_source": false,
+    "source_template_id": null,
+    "source_template_version": null,
+  },
   "source": {
     "base_mode": "education_institutions",
     "enabled_capabilities": [],
@@ -101,7 +106,12 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "fnb",
     "transaction_record": "order",
   },
-  "profile_version": 2,
+  "profile_version": 3,
+  "provenance": {
+    "diverged_from_source": false,
+    "source_template_id": null,
+    "source_template_version": null,
+  },
   "source": {
     "base_mode": "fnb",
     "enabled_capabilities": [],
@@ -167,7 +177,12 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 2,
+  "profile_version": 3,
+  "provenance": {
+    "diverged_from_source": false,
+    "source_template_id": null,
+    "source_template_version": null,
+  },
   "source": {
     "base_mode": "food_manufacturing",
     "enabled_capabilities": [],
@@ -222,7 +237,12 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 2,
+  "profile_version": 3,
+  "provenance": {
+    "diverged_from_source": false,
+    "source_template_id": null,
+    "source_template_version": null,
+  },
   "source": {
     "base_mode": "healthcare",
     "enabled_capabilities": [],
@@ -297,7 +317,12 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "fnb",
     "transaction_record": "order",
   },
-  "profile_version": 2,
+  "profile_version": 3,
+  "provenance": {
+    "diverged_from_source": false,
+    "source_template_id": null,
+    "source_template_version": null,
+  },
   "source": {
     "base_mode": "hospitality",
     "enabled_capabilities": [],
@@ -352,7 +377,12 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 2,
+  "profile_version": 3,
+  "provenance": {
+    "diverged_from_source": false,
+    "source_template_id": null,
+    "source_template_version": null,
+  },
   "source": {
     "base_mode": "logistics_distribution",
     "enabled_capabilities": [],
@@ -418,7 +448,12 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 2,
+  "profile_version": 3,
+  "provenance": {
+    "diverged_from_source": false,
+    "source_template_id": null,
+    "source_template_version": null,
+  },
   "source": {
     "base_mode": "food_manufacturing",
     "enabled_capabilities": [],
@@ -479,7 +514,12 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 2,
+  "profile_version": 3,
+  "provenance": {
+    "diverged_from_source": false,
+    "source_template_id": null,
+    "source_template_version": null,
+  },
   "source": {
     "base_mode": "msme",
     "enabled_capabilities": [],
@@ -543,7 +583,12 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 2,
+  "profile_version": 3,
+  "provenance": {
+    "diverged_from_source": false,
+    "source_template_id": null,
+    "source_template_version": null,
+  },
   "source": {
     "base_mode": "retail",
     "enabled_capabilities": [],
@@ -605,7 +650,12 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "services",
     "transaction_record": "booking",
   },
-  "profile_version": 2,
+  "profile_version": 3,
+  "provenance": {
+    "diverged_from_source": false,
+    "source_template_id": null,
+    "source_template_version": null,
+  },
   "source": {
     "base_mode": "services",
     "enabled_capabilities": [],
@@ -660,7 +710,12 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 2,
+  "profile_version": 3,
+  "provenance": {
+    "diverged_from_source": false,
+    "source_template_id": null,
+    "source_template_version": null,
+  },
   "source": {
     "base_mode": "ticketing_transport",
     "enabled_capabilities": [],

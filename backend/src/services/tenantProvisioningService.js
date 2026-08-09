@@ -6,7 +6,12 @@ import logger from '../config/logger.js';
 import { Sequelize } from 'sequelize';
 import * as landlordService from './landlordService.js';
 import { syncStorefrontDiscoveryWithReliability } from './storefrontDiscoverySyncReliabilityService.js';
-import { STORE_PROFILE_SETTING_KEY, buildStoreProfile } from '../modules/shared/constants/storeProfile.js';
+import {
+    STORE_PROFILE_SETTING_KEY,
+    buildStoreProfile,
+    applyTemplateProvenance
+} from '../modules/shared/constants/storeProfile.js';
+import { storeConfigurationTemplateRepository } from '../modules/templates/index.js';
 import {
     normalizeWorkflowMode,
     WORKFLOW_MODE_VALUES
@@ -107,6 +112,31 @@ const buildRegisteredOnboardingProgress = () => ({
     }
 });
 
+// Issue #178 Phase 13: if a published, canonical template exists for this
+// mode, stamp the freshly-built profile with its provenance. Template
+// lookup is best-effort - a lookup failure (landlord DB hiccup, no template
+// seeded yet) must never block tenant provisioning, so it falls back to the
+// exact pre-Phase-13 behavior (a profile with no provenance) rather than
+// throwing. This is the ONLY place a template row is ever read at
+// provisioning time; nothing reads it again afterward (ADR 0056 clause 2).
+export const buildProvisioningStoreProfile = async (normalizedWorkflowMode) => {
+    const profile = buildStoreProfile({ workflowMode: normalizedWorkflowMode });
+    try {
+        const template = await storeConfigurationTemplateRepository.findPublishedCanonicalForMode(normalizedWorkflowMode);
+        if (!template) return profile;
+        return applyTemplateProvenance(profile, {
+            templateId: template.template_id,
+            templateVersion: template.version
+        });
+    } catch (error) {
+        logger.warn('[TenantProvisioning] template provenance lookup failed; provisioning without it', {
+            workflow_mode: normalizedWorkflowMode,
+            error: error?.message
+        });
+        return profile;
+    }
+};
+
 const seedWorkflowModeSetting = async (tenantSequelize, workflowMode) => {
     const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
     await tenantSequelize.query(
@@ -126,7 +156,9 @@ const seedWorkflowModeSetting = async (tenantSequelize, workflowMode) => {
         }
     );
     // Shadow-written Store Profile (issue #178 Phase 11): derived from the
-    // seeded mode, never read at runtime yet.
+    // seeded mode, stamped with template provenance when a canonical
+    // published template exists for this mode (issue #178 Phase 13).
+    const provisioningProfile = await buildProvisioningStoreProfile(normalizedWorkflowMode);
     await tenantSequelize.query(
         `INSERT INTO system_settings (setting_key, setting_value, data_type, description, updated_at)
          VALUES (?, ?, 'json', ?, NOW())
@@ -138,7 +170,7 @@ const seedWorkflowModeSetting = async (tenantSequelize, workflowMode) => {
         {
             replacements: [
                 STORE_PROFILE_SETTING_KEY,
-                JSON.stringify(buildStoreProfile({ workflowMode: normalizedWorkflowMode })),
+                JSON.stringify(provisioningProfile),
                 'Server-derived Store Profile (shadow-write; not read at runtime)'
             ]
         }

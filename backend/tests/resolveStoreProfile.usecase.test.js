@@ -4,7 +4,11 @@ import {
     clearStoreProfileResolutionCache
 } from '../src/modules/settings/usecases/resolveStoreProfile.js';
 import dbStore from '../src/utils/dbStore.js';
-import { buildStoreProfile, STORE_PROFILE_VERSION } from '../src/modules/shared/constants/storeProfile.js';
+import {
+    buildStoreProfile,
+    applyTemplateProvenance,
+    STORE_PROFILE_VERSION
+} from '../src/modules/shared/constants/storeProfile.js';
 import logger from '../src/config/logger.js';
 
 const mockSettingsRows = (rows) => {
@@ -107,6 +111,31 @@ describe('resolveStoreProfile (issue #178 Phase 12 scaffolding)', () => {
             '[StoreProfile] persisted profile diverges from a fresh rebuild',
             expect.objectContaining({ reason: 'content_mismatch' })
         );
+    });
+
+    it('does not flag a template-provenanced persisted profile as diverged (a rebuild can never reproduce provenance)', async () => {
+        const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+        const provenancedProfile = applyTemplateProvenance(
+            buildStoreProfile({ workflowMode: 'fnb' }),
+            { templateId: 7, templateVersion: 2 }
+        );
+        mockSettingsRows([
+            { setting_key: 'ops_workflow_mode', setting_value: 'fnb', data_type: 'string' },
+            { setting_key: 'ops_store_profile_read', setting_value: 'true', data_type: 'boolean' },
+            { setting_key: 'ops_store_profile', setting_value: JSON.stringify(provenancedProfile), data_type: 'json' }
+        ]);
+        jest.spyOn(dbStore, 'getStore').mockReturnValue({ tenantId: 'tenant-g' });
+
+        const resolution = await resolveStoreProfile();
+
+        expect(resolution.diverged).toBe(false);
+        expect(resolution.source).toBe('persisted');
+        expect(resolution.profile.provenance).toEqual({
+            source_template_id: 7,
+            source_template_version: 2,
+            diverged_from_source: false
+        });
+        expect(warnSpy).not.toHaveBeenCalled();
     });
 
     it('caches the resolution per tenant for the TTL window (one SystemSetting query per resolve call within it)', async () => {

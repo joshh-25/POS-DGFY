@@ -25,6 +25,17 @@ const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const CACHE_TTL_MS = 15 * 1000;
 const cache = new Map();
 
+// provenance (issue #178 Phase 13) is a historical fact stamped once at
+// provisioning or carried forward on divergence - a fresh rebuild can never
+// reproduce it (buildStoreProfile always defaults it to null/false), so
+// comparing it here would flag every template-provisioned tenant as
+// "diverged" forever. The differ's job is catching drift in the
+// registry-derived content, not in a field no rebuild could ever match.
+const stripProvenanceForComparison = (profile) => {
+    const { provenance, ...rest } = profile || {};
+    return rest;
+};
+
 const parseJsonSettingValue = (setting, fallback) => {
     if (!setting) return fallback;
     const raw = setting.setting_value;
@@ -73,7 +84,10 @@ const readStoreProfileResolution = async () => {
     const persistedIsCurrentVersion = persistedProfile != null
         && persistedProfile.profile_version === STORE_PROFILE_VERSION;
     const contentDiverged = persistedIsCurrentVersion
-        ? !storeProfilesEqual(persistedProfile, rebuiltProfile)
+        ? !storeProfilesEqual(
+            stripProvenanceForComparison(persistedProfile),
+            stripProvenanceForComparison(rebuiltProfile)
+        )
         : false;
     const diverged = persistedProfile != null && (!persistedIsCurrentVersion || contentDiverged);
 

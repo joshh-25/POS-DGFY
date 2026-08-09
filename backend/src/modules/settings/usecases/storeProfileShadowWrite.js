@@ -28,6 +28,26 @@ export const assertStoreProfileNotClientWritten = ({ settingsData }) => {
     );
 };
 
+// A settings write that touches mode/overlay only ever runs after
+// provisioning (that first write happens directly in
+// tenantProvisioningService.js, not through this path) - so if the
+// tenant's existing profile carries template provenance, this write is, by
+// definition, the tenant's config moving away from what that template
+// produced. Preserve the origin pointer (a future review-and-accept flow
+// needs it - issue #178 §9.3) but flag the divergence; never re-derive it
+// from the template row itself (ADR 0056 clause 2).
+const carryForwardProvenance = (existingProfile, nextProfile) => {
+    const existingProvenance = existingProfile?.provenance;
+    if (!existingProvenance?.source_template_id) return nextProfile;
+    return {
+        ...nextProfile,
+        provenance: {
+            ...existingProvenance,
+            diverged_from_source: true
+        }
+    };
+};
+
 /**
  * Shadow-write (issue #178 Phase 11): whenever a settings write touches
  * ops_workflow_mode or ops_enabled_capabilities, materialize the resulting
@@ -46,16 +66,16 @@ export const applyStoreProfileShadowWrite = async ({ settingsRepository, setting
         STORE_PROFILE_SETTING_KEY
     ]);
 
-    const profile = buildStoreProfile({
+    const existingProfile = current?.[STORE_PROFILE_SETTING_KEY]?.value || null;
+
+    const profile = carryForwardProvenance(existingProfile, buildStoreProfile({
         workflowMode: touchesMode
             ? settingsData[WORKFLOW_MODE_SETTING_KEY]
             : current?.[WORKFLOW_MODE_SETTING_KEY]?.value,
         enabledCapabilities: touchesOverlay
             ? settingsData[ENABLED_CAPABILITIES_SETTING_KEY]
             : current?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value
-    });
-
-    const existingProfile = current?.[STORE_PROFILE_SETTING_KEY]?.value || null;
+    }));
     if (existingProfile && !storeProfilesEqual(existingProfile, profile)) {
         logger.info('[StoreProfile] shadow profile changed on settings write', {
             from_base_mode: existingProfile?.source?.base_mode,

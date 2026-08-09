@@ -34,9 +34,15 @@ import { resolvePosDefaultsAndTerminology } from './posDefaultsAndTerminology.js
  * against `BUSINESS_MODE_TEMPLATE_REGISTRY`
  * (`frontend/src/features/settings/businessModeTemplates.js`), so the
  * profile fully covers every live registry before Phase 12 reads it.
+ *
+ * v3 (issue #178 Phase 13) adds `provenance`, defaulted to null/false for
+ * every mode-switch-derived profile. Only `applyTemplateProvenance` (below)
+ * ever sets it to something else, and only at tenant provisioning time — see
+ * that function's own doc comment for why this does not violate ADR 0056
+ * clause 2 (provenance never dereferenced at runtime).
  */
 export const STORE_PROFILE_SETTING_KEY = 'ops_store_profile';
-export const STORE_PROFILE_VERSION = 2;
+export const STORE_PROFILE_VERSION = 3;
 
 export const buildStoreProfile = ({ workflowMode, enabledCapabilities = [] } = {}) => {
     const baseMode = normalizeWorkflowMode(workflowMode);
@@ -71,11 +77,41 @@ export const buildStoreProfile = ({ workflowMode, enabledCapabilities = [] } = {
                 preset_keys: itemTaxonomy.presets.map((preset) => preset.key)
             }
             : null,
-        terminology: { ...terminology }
+        terminology: { ...terminology },
+        provenance: {
+            source_template_id: null,
+            source_template_version: null,
+            diverged_from_source: false
+        }
     };
 };
 
 export const storeProfilesEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * Stamps template provenance onto an already-built profile (issue #178
+ * Phase 13). Called exactly once, at tenant provisioning, right after a
+ * canonical published template was found for the tenant's chosen mode -
+ * never again afterward, and never by any request-serving code path.
+ *
+ * This does NOT violate ADR 0056 clause 2 ("provenance is never
+ * dereferenced at runtime"): the clause forbids using a template row to
+ * DETERMINE a tenant's effective configuration on an ongoing basis. Stamping
+ * an immutable record of where a profile originated, once, at the moment it
+ * is first written, is provenance capture, not dereference - nothing ever
+ * reads `source_template_id` back out to decide what a tenant's Profile
+ * should contain. `diverged_from_source` is deliberately left `false` here
+ * and is never recomputed by this codebase yet (issue #178 §9.3: captured
+ * now, without building the review-and-accept flow that would maintain it).
+ */
+export const applyTemplateProvenance = (profile, { templateId, templateVersion } = {}) => ({
+    ...profile,
+    provenance: {
+        source_template_id: templateId ?? null,
+        source_template_version: templateVersion ?? null,
+        diverged_from_source: false
+    }
+});
 
 /**
  * Master-admin gated per-tenant setting that opts a tenant into the runtime
