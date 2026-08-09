@@ -59,7 +59,6 @@ import {
 } from '@/services/browserSession.js';
 import { useWorkflowMode } from '../../settings/WorkflowModeContext.jsx';
 import { getWorkflowModeLabel, isMsmeWorkflowMode } from '../../settings/workflowMode.js';
-import { resolveBusinessModePosDefaults } from '../../settings/businessModeTemplates.js';
 import {
   POS_TERMINAL_LOGIN_ERROR_CODES,
   classifyTerminalLoginFailure,
@@ -451,7 +450,7 @@ const buildTenantSetupStateSnapshot = ({
 export default function TerminalPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { workflowMode, modeChangeNotice, dismissModeChangeNotice } = useWorkflowMode();
+  const { workflowMode, profile, modeChangeNotice, dismissModeChangeNotice } = useWorkflowMode();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const stored = localStorage.getItem('posTerminalSidebarCollapsed');
     return stored === '1';
@@ -753,9 +752,12 @@ export default function TerminalPage() {
   useEffect(() => {
     setManualSyncPolicy(getManualPosSyncPolicy(offlinePosScope));
   }, [offlinePosScope]);
+  // Issue #178 Phase 18: reads the server-resolved Store Profile instead of
+  // recomputing from the frontend's own copy of the mode->defaults mapping
+  // (businessModeTemplates.js's posDefaults, now retired - see that file).
   const modePosDefaults = useMemo(
-    () => resolveBusinessModePosDefaults(workflowMode),
-    [workflowMode]
+    () => profile?.pos_defaults || {},
+    [profile]
   );
   const activeOperationsViewModes = useMemo(() => {
     const baseModes = isMsmeMode ? MSME_OPERATIONS_VIEW_MODES : OPERATIONS_VIEW_MODES;

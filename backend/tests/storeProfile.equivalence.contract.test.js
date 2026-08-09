@@ -15,10 +15,9 @@ import { STOREFRONT_ORDER_METHODS, POS_ORDER_METHODS } from '../src/modules/shar
 // profile materializes exactly what the admin POS terminal resolves.
 import { resolvePosWorkflow } from '../../frontend/src/features/pos/utils/posWorkflowResolver.js';
 import {
-    resolveBusinessModePosDefaults,
-    resolveBusinessModeWizardLabels
-} from '../../frontend/src/features/settings/businessModeTemplates.js';
-import { POS_DEFAULTS_AND_TERMINOLOGY_VOCABULARY_ALIGNED } from '../src/modules/shared/constants/posDefaultsAndTerminology.js';
+    POS_DEFAULTS_AND_TERMINOLOGY_VOCABULARY_ALIGNED,
+    resolvePosDefaultsAndTerminology
+} from '../src/modules/shared/constants/posDefaultsAndTerminology.js';
 
 const ALL_MODES = Object.keys(WORKFLOW_MODE_CAPABILITIES);
 
@@ -78,11 +77,19 @@ describe('store profile equivalence harness (issue #178 Phase 11)', () => {
         expect(POS_DEFAULTS_AND_TERMINOLOGY_VOCABULARY_ALIGNED.entries_outside_mode_vocabulary).toEqual([]);
     });
 
-    it('materializes pos_defaults and terminology byte-identical to BUSINESS_MODE_TEMPLATE_REGISTRY', () => {
+    it('materializes pos_defaults and terminology byte-identical to resolvePosDefaultsAndTerminology (issue #178 Phase 18)', () => {
+        // Prior to Phase 18 this cross-checked against a second, independent
+        // frontend copy (businessModeTemplates.js's posDefaults/wizardLabels
+        // fields). That copy is now retired - TerminalPage.jsx reads
+        // profile.pos_defaults directly instead of recomputing it - so the
+        // only remaining source of truth is this registry, which
+        // buildStoreProfile itself calls. Kept as a wiring/golden-value pin,
+        // not a cross-implementation check.
         for (const mode of ALL_MODES) {
             const profile = buildStoreProfile({ workflowMode: mode });
-            expect(profile.pos_defaults).toEqual(resolveBusinessModePosDefaults(mode));
-            expect(profile.terminology).toEqual(resolveBusinessModeWizardLabels(mode));
+            const expected = resolvePosDefaultsAndTerminology(mode);
+            expect(profile.pos_defaults).toEqual(expected.pos_defaults);
+            expect(profile.terminology).toEqual(expected.terminology);
         }
     });
 

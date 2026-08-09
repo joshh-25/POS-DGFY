@@ -11,9 +11,11 @@ topic: store_templates_and_profiles
 
 **Status: the full three-layer model is built and curatable (Phases 6d, 6e,
 10-14 shipped); a template's module list can now genuinely diverge a
-tenant's Profile from its base mode (Phase 16's subtractive overlay); the
-runtime read-path (Phase 12) is still deliberately scaffolded and not wired
-to any consumer yet — see below.** This is the classification
+tenant's Profile from its base mode and be applied at provisioning or to an
+existing tenant (Phases 16-17); the frontend POS-defaults affordance now
+reads the Profile (Phase 18); the backend's flagged `resolveStoreProfile.js`
+read path (Phase 12) is still deliberately unwired, reserved for Phase 19's
+fail-closed capability-gate flip — see below.** This is the classification
 that grounds the Store Templates work (ADR 0037 Axis 2): what the platform
 actually sells today, which behaviors are fixed engineering-owned code, and
 which are curatable per store. The integration plan and phase numbering live
@@ -156,6 +158,36 @@ rejected at the settings-write layer with `CAPABILITY_SELECTION_UNBUILDABLE`
 via the same `validateModuleSelection()` the template catalog itself uses.
 `STORE_PROFILE_VERSION` is now 4, carrying `source.disabled_capabilities`.
 
+## Frontend affordance consumers now read the Profile (issue #178 Phase 18)
+
+`frontend/src/features/settings/WorkflowModeContext.jsx` distributes the
+tenant's Store Profile (`profile`) and `disabledCapabilities` alongside the
+existing `workflowMode`/`enabledCapabilities`. The Profile it distributes is
+the tenant's own shadow-written `ops_store_profile` setting when present
+(already shipped in every `GET /settings` response, at zero extra request
+cost), or an identical local rebuild via the same `buildStoreProfile` pure
+function otherwise. **This is a different, lower-stakes read path than**
+`resolveStoreProfile.js` above — it reads the shadow-write directly rather
+than going through that resolver's flag/differ machinery, because a stale
+POS default is cosmetic where a stale capability grant is a security
+concern; the resolver stays reserved for Phase 19's gate flip.
+
+`frontend/src/features/pos/pages/TerminalPage.jsx` reads `profile.pos_defaults`
+instead of recomputing it from `businessModeTemplates.js`'s frontend-only
+copy. Tracing every other original Phase 12 affordance candidate found two
+corrections to make while implementing, not just a flip:
+
+- **`terminology` had zero live readers anywhere in the codebase** —
+  `resolveBusinessModeWizardLabels` and its `wizardLabels` registry field
+  were dead code (materialized into the Profile for completeness at Phase 11,
+  never actually read by anything). Removed rather than flipped.
+- **`itemDefaults`/`productDefaults` are a different shape with no Profile
+  equivalent** — per-field item/product creation defaults (category, unit of
+  measure, VAT type...), not POS terminal preferences. `ItemFormModal.jsx`
+  and `ProductCreateWizard.jsx` still read these from
+  `businessModeTemplates.js`, which is trimmed to just these two fields, not
+  retired.
+
 ## The landlord Store Template catalog
 
 `store_configuration_templates` / `store_configuration_template_modules`
@@ -269,6 +301,13 @@ grantable capability vocabulary, and fail template validation if selected.
 
 ## Verification
 
+- `frontend/src/features/settings/__tests__/WorkflowModeContext.profile.test.jsx`
+  (issue #178 Phase 18) — the context distributes the server-persisted
+  profile when present and an identical local rebuild otherwise.
+- `backend/tests/storeProfile.equivalence.contract.test.js` — `pos_defaults`/
+  `terminology` byte-identical to `resolvePosDefaultsAndTerminology` directly
+  (the frontend cross-check this test used before Phase 18 retired the
+  second implementation it compared against).
 - `backend/tests/capabilityModules.contract.test.js` — catalog ↔ capability
   vocabulary lockstep; per-mode bundle equivalence; preset validity.
 - `backend/tests/workflowCapabilities.enforcement.contract.test.js` — no

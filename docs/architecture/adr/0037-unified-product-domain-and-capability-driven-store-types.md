@@ -667,14 +667,32 @@ IMS delegation); new phases use 10+. Status as of this amendment:
   produced a value mathematically identical to the registries, because
   nothing could make a tenant's Profile diverge from its mode until Phase 13
   shipped a curation mechanism and Phase 16 gave that mechanism a
-  subtractive channel (below). Both now exist; Phase 18 flips the affordance
-  consumers (POS defaults, terminology), Phase 19 flips the fail-closed
-  capability gate last, with a permanent rebuild fallback there rather than
-  a temporary one. The storefront-order-methods and item-taxonomy
+  subtractive channel (below). Both now exist; Phase 18 flips the one
+  genuinely-live affordance consumer (POS defaults), Phase 19 flips the
+  fail-closed capability gate last, with a permanent rebuild fallback there
+  rather than a temporary one. The storefront-order-methods and item-taxonomy
   candidates stay unflipped: `STOREFRONT_ORDER_METHODS` is a mode-independent
   constant (flipping it would be pure churn), and item taxonomy already
   derives from mode + overlay so it inherits subtraction for free once
   Phase 16 lands.
+- **Phase 18 — Flip the POS-defaults affordance consumer (shipped):**
+  `WorkflowModeContext.jsx` now distributes the tenant's Store Profile
+  (server-persisted when present, an identical local rebuild otherwise) and
+  the disabled-capabilities overlay alongside mode + enabled capabilities.
+  `TerminalPage.jsx` reads `profile.pos_defaults` instead of recomputing it
+  from a second frontend-only registry. Two corrections to the original
+  Phase 12 candidate list, found while implementing: `terminology`
+  (`businessModeTemplates.js`'s `wizardLabels`) had zero live readers
+  anywhere in the codebase, so there was nothing to flip — the dead fields
+  were removed instead of flipped. `itemDefaults`/`productDefaults` (a
+  different shape entirely — per-field item defaults, not POS terminal
+  preferences) have no Profile equivalent and were never in scope; they stay
+  on `businessModeTemplates.js`, which is trimmed, not retired. This read
+  goes through the tenant's shadow-written `ops_store_profile` setting
+  directly (already proven correct by the equivalence harness and the
+  shadow-write's own tests) — not through `resolveStoreProfile.js`'s
+  flagged/differ-checked resolver, which stays reserved for Phase 19's
+  higher-stakes capability-gate flip.
 - **Phase 13 — Landlord template catalog (shipped):**
   `store_configuration_templates` / `_modules`, landlord-only
   (`NON_TENANT_MODEL_EXPORTS`). A template's module list is frozen once
