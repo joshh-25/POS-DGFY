@@ -667,14 +667,18 @@ IMS delegation); new phases use 10+. Status as of this amendment:
   produced a value mathematically identical to the registries, because
   nothing could make a tenant's Profile diverge from its mode until Phase 13
   shipped a curation mechanism and Phase 16 gave that mechanism a
-  subtractive channel (below). Both now exist; Phase 18 flips the one
-  genuinely-live affordance consumer (POS defaults), Phase 19 flips the
-  fail-closed capability gate last, with a permanent rebuild fallback there
-  rather than a temporary one. The storefront-order-methods and item-taxonomy
-  candidates stay unflipped: `STOREFRONT_ORDER_METHODS` is a mode-independent
-  constant (flipping it would be pure churn), and item taxonomy already
-  derives from mode + overlay so it inherits subtraction for free once
-  Phase 16 lands.
+  subtractive channel (below). Both now exist; Phase 18 flips the
+  genuinely-live affordance consumers (POS defaults, then POS workflow and
+  item taxonomy in Phase 21), Phase 19 flips the fail-closed capability
+  gate, with a permanent rebuild fallback there rather than a temporary
+  one. The storefront-order-methods candidate stays unflipped:
+  `STOREFRONT_ORDER_METHODS` is a mode-independent constant (flipping it
+  would be pure churn). Item taxonomy's "inherits subtraction for free"
+  claim in an earlier draft of this amendment turned out to be false when
+  checked: `resolveEffectiveItemTaxonomy` was fed only the raw enabled
+  overlay, so a capability additively enabled and later subtracted kept
+  granting its taxonomy presets forever. Phase 21 fixes this by feeding it
+  the full effective module set instead — see that phase's entry below.
 - **Phase 18 — Flip the POS-defaults affordance consumer (shipped):**
   `WorkflowModeContext.jsx` now distributes the tenant's Store Profile
   (server-persisted when present, an identical local rebuild otherwise) and
@@ -742,6 +746,54 @@ IMS delegation); new phases use 10+. Status as of this amendment:
   the disabled overlay now — cosmetic only, since the backend gate above is
   what actually enforces. The registries remain the differ's oracle and the
   gate's permanent fallback; this phase does not retire them.
+- **Phase 20 — Seed the catalog, make `canonical` real (shipped):** a
+  pre-PR audit of Phases 13-19 found `seedCanonicalTemplatePresetsUseCase`
+  had zero production call sites and neither Phase 13 migration inserted a
+  row — in any real environment the template catalog was empty, so the
+  entire Phases 13-19 arc was unreachable outside a test suite. A new
+  landlord data migration seeds `STORE_TEMPLATE_PRESETS` on deploy via a
+  dynamic import of the shared-constants module (never restating its
+  content — clause 3). A new `is_canonical` column replaces
+  `findPublishedCanonicalForMode`'s previous "lowest `template_id` wins"
+  resolution, which was correct only because `Object.entries` happened to
+  list each canonical preset before its non-canonical sibling.
+- **Phase 21 — Subtraction reaches every affordance, not just the API gate
+  (shipped):** Phase 19 made the backend gate honor subtraction, but three
+  affordance paths still resolved from the base mode alone — an
+  `fnb_counter_service` tenant still rendered the full-service floor plan
+  (tables, kitchen, `dine_in` default) even though its own API 403'd those
+  routes, the render-then-403 failure Phase 5 eliminated, reintroduced.
+  `resolvePosWorkflow(mode, effectiveCapabilities)` now routes an fnb-family
+  store missing both `tableService` and `kitchenQueue` to the existing
+  `POS_WORKFLOW_CONFIGS.counter`; `WorkflowModeContext.jsx`'s
+  `hasCapability` (the sole consumer of `PosPageShell.jsx`'s panel
+  rendering) moved onto the 4-arg `modeHasCapability` call Phase 19 had
+  flipped everywhere else but this hook; and item taxonomy's false
+  "inherits subtraction for free" claim (above) is fixed by feeding
+  `resolveEffectiveItemTaxonomy` the effective module set. `STORE_PROFILE_VERSION`
+  moves to 5 — the re-recorded equivalence snapshot changes only
+  `profile_version` across all 11 modes, proving the default path is
+  untouched.
+- **Phase 22 — Cache invalidation and write-path validation (shipped):**
+  `applyTemplateToTenantUseCase` committed its settings transaction and
+  invalidated nothing, leaving the capability gate's 15s cache and
+  item-taxonomy validation's 5-minute cache serving the pre-apply overlay —
+  the same pre-existing gap in the settings write path
+  (`updateSettingsUseCase`/`updateSettingByKeyUseCase`), fixed identically.
+  The materialized `{mode, enabled, disabled}` selection is now re-validated
+  against `validateModuleSelection()` before being persisted by
+  apply-template, and a capability requested in both overlays at once is
+  now rejected (`CAPABILITY_SELECTION_CONTRADICTORY`) rather than silently
+  resolved by subtraction-wins ordering.
+- **Phase 23 — Governance (this amendment; shipped):** replaces a
+  provenance-non-dereference test that asserted only that a captured
+  JavaScript object did not mutate itself with one that exercises
+  `resolveStoreProfile()` end-to-end and asserts the template repository is
+  never called — see ADR 0056's own amendment. Corrects the stale
+  "scaffolding, not wired" language left in `resolveStoreProfile.js` and
+  `storeProfile.js` after Phase 19 shipped, and closes issue #178's three
+  outstanding commitments (playbook amendment, the last classification
+  mislabel, the first compatibility-seam registration).
 
 The three `[binding]` cross-boundary clauses this realization needs — never
 dereferencing provenance at runtime, locked-module compliance determinism,

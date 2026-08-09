@@ -379,7 +379,7 @@ export default function StorefrontBusinessGrowPage() {
 
           <form onSubmit={handleSubmitCompany} className="space-y-5">
             <div>
-              <Label htmlFor="workflowMode">Business Industry</Label>
+              <Label htmlFor="workflowMode">Operating Mode</Label>
               <select
                 id="workflowMode"
                 value={companyForm.workflowMode}
@@ -391,6 +391,7 @@ export default function StorefrontBusinessGrowPage() {
                   <option key={mode.value} value={mode.value}>{mode.label}</option>
                 ))}
               </select>
+              <p className="mt-1 text-xs text-slate-500">Configures which DGFY tools and workflows are set up for your account. You can pick the closest match — this isn&apos;t your industry.</p>
             </div>
 
             <div>

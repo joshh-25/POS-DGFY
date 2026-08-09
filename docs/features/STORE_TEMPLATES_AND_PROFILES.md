@@ -9,20 +9,21 @@ topic: store_templates_and_profiles
 
 # Store Templates & Capability Configuration
 
-**Status: the full three-layer model is built, curatable, applicable, and
-enforced (Phases 6d, 6e, 10-19 all shipped).** A template's module list can
-genuinely diverge a tenant's Profile from its base mode and be applied at
-provisioning or to an existing tenant (Phases 16-17); the frontend
-POS-defaults affordance reads the Profile (Phase 18); and — the phase that
-makes curation actually mean something — the fail-closed capability gate
-itself now honors a template's subtractive overlay and, for opted-in
-tenants, reads through the flagged `resolveStoreProfile.js` resolver
-(Phase 19). See below for what remains deliberately unwired
-(storefront order methods, item taxonomy) and why. This is the classification
-that grounds the Store Templates work (ADR 0037 Axis 2): what the platform
-actually sells today, which behaviors are fixed engineering-owned code, and
-which are curatable per store. The integration plan and phase numbering live
-in GitHub issue #178; the four-axis product model lives in
+**Status: the full three-layer model is built, curatable, applicable, seeded,
+and enforced at every affordance (Phases 6d, 6e, 10-23 all shipped).** A
+template's module list can genuinely diverge a tenant's Profile from its
+base mode and be applied at provisioning or to an existing tenant (Phases
+16-17); every affordance consumer — POS defaults, the POS workflow panel,
+item taxonomy, and the fail-closed capability gate itself — honors that
+divergence (Phases 18, 19, 21). The catalog is seeded on deploy (Phase 20)
+and both the capability gate and item-taxonomy validation invalidate their
+caches on a template write (Phase 22). See below for the one candidate
+that remains deliberately unwired (storefront order methods) and why. This
+is the classification that grounds the Store Templates work (ADR 0037
+Axis 2): what the platform actually sells today, which behaviors are fixed
+engineering-owned code, and which are curatable per store. The integration
+plan and phase numbering live in GitHub issue #178; the four-axis product
+model lives in
 `docs/architecture/adr/0037-unified-product-domain-and-capability-driven-store-types.md`;
 the cross-boundary binding clauses live in
 `docs/architecture/adr/0056-store-configuration-templates-and-profiles.md`.
@@ -156,13 +157,14 @@ gate's behavior per tenant:
   through to `next(error)`, mapped to a 5xx by the global error handler —
   there is no "allow on error" branch anywhere in the gate.
 
-Storefront order methods and item-taxonomy validation remain unwired, as
-scoped in ADR 0037's amendment: `STOREFRONT_ORDER_METHODS` is a
-mode-independent constant (wiring it would be pure churn), and item
-taxonomy already derives from mode + overlay so it inherits subtraction for
-free without a separate flip. **The registries are not retired** —
-`WORKFLOW_MODE_CAPABILITIES` stays the differ's oracle and the gate's
-permanent flag-off path.
+Storefront order methods remain unwired, as scoped in ADR 0037's amendment:
+`STOREFRONT_ORDER_METHODS` is a mode-independent constant, so wiring it
+would be pure churn. Item taxonomy is wired too now (issue #178 Phase
+21) — see below; it was initially believed to "inherit subtraction for
+free," which turned out to be false when checked (it only ever saw the raw
+enabled overlay, never the disabled one) and is corrected there. **The
+registries are not retired** — `WORKFLOW_MODE_CAPABILITIES` stays the
+differ's oracle and the gate's permanent flag-off path.
 
 ### The subtractive overlay (`ops_disabled_capabilities`)
 
@@ -176,8 +178,14 @@ no mode's base list and so never enter `ALL_WORKFLOW_CAPABILITIES` either).
 A write that would leave an enabled module without a `requires` dependency
 it needs — disabling `catalog` while `pos` stays enabled, for example — is
 rejected at the settings-write layer with `CAPABILITY_SELECTION_UNBUILDABLE`
-via the same `validateModuleSelection()` the template catalog itself uses.
-`STORE_PROFILE_VERSION` is now 4, carrying `source.disabled_capabilities`.
+via the same `validateModuleSelection()` the template catalog itself uses,
+and (issue #178 Phase 22) so is a write that would leave a capability
+requested in both overlays at once (`CAPABILITY_SELECTION_CONTRADICTORY`) —
+subtraction wins over addition either way, but a contradictory request is
+rejected rather than silently resolved. `STORE_PROFILE_VERSION` moved to 4
+to carry `source.disabled_capabilities`, then to 5 (Phase 21) when
+`pos_workflow` and `item_taxonomy` started deriving from the effective
+module set instead of the base mode alone.
 
 ## Frontend affordance consumers now read the Profile (issue #178 Phase 18)
 
@@ -208,6 +216,73 @@ corrections to make while implementing, not just a flip:
   and `ProductCreateWizard.jsx` still read these from
   `businessModeTemplates.js`, which is trimmed to just these two fields, not
   retired.
+
+## Subtraction reaches every affordance (issue #178 Phase 21)
+
+Phase 19 made the backend gate honor a template's subtractive overlay, but
+a pre-PR audit found three affordance paths still resolving from the base
+mode alone — reintroducing the render-then-403 failure ADR 0037 Phase 5
+spent a sub-phase eliminating: a `fnb_counter_service` tenant would still
+see the tables/kitchen POS panel and full-service floor plan even though
+its own API 403'd those routes.
+
+- **`resolvePosWorkflow(workflowMode, effectiveCapabilities)`**
+  (`packages/shared-constants/src/posWorkflows.js`) now takes an optional
+  second argument: an fnb-family store missing both `tableService` and
+  `kitchenQueue` resolves to the existing `POS_WORKFLOW_CONFIGS.counter`
+  instead of the full-service `fnb` config. Scoped to the fnb family
+  deliberately — hospitality never carries those two keys in its own base
+  capability list, so a family-blind version of this rule would misroute
+  every hospitality tenant regardless of curation.
+  `POSCheckoutTerminal.jsx` now threads `profile.modules` down as this
+  argument (prop-drilled through `TerminalPageLayout.jsx`, the same way
+  `workflowMode` already is).
+- **`WorkflowModeContext.jsx`'s `hasCapability`** moved onto the 4-arg
+  `modeHasCapability(mode, capability, enabled, disabled)` call — the one
+  hook Phase 19 missed when it flipped `Layout.jsx` and
+  `WorkflowModeRouteGate.jsx`. `PosPageShell.jsx`'s vertical-panel rendering
+  is the consumer this fixes.
+- **Item taxonomy honors subtraction too**, both in the Profile
+  (`buildStoreProfile` now derives `item_taxonomy` from the effective
+  module set, not the raw enabled overlay) and at the backend validation
+  layer (`validateItemAgainstModeTaxonomy` gained a `disabledCapabilities`
+  parameter; `itemRepository.js`'s `resolveCachedDisabledCapabilities`
+  mirrors its enabled-overlay counterpart). Before this, a capability
+  additively enabled and later subtracted kept granting its item-taxonomy
+  presets forever.
+
+`STORE_PROFILE_VERSION` moved to 5; the re-recorded equivalence snapshot
+changes only `profile_version` across all 11 modes, proving the default
+(no-subtraction) path is unaffected.
+`backend/tests/fnbKitchenQueueTemplateGate.route.test.js` mounts the real
+`requireWorkflowCapability` exactly as `backend/src/routes/fnb.js` wires
+it and proves two differently-templated tenants get different real
+200/403 outcomes — the acceptance criterion Phase 19's own plan called for
+but that had only ever been covered by a mocked-middleware unit test.
+
+## Seeding the catalog and cache invalidation (issue #178 Phases 20, 22)
+
+Two more gaps a pre-PR audit found in Phases 13-19: `seedCanonicalTemplatePresetsUseCase`
+had zero production call sites and neither Phase 13 migration inserted a
+row, so in any real environment the template catalog was empty — the
+TenantManager picker had nothing to show and `findPublishedCanonicalForMode`
+returned null for every tenant. A new landlord data migration seeds
+`STORE_TEMPLATE_PRESETS` on deploy, reading the constant via a dynamic
+import rather than restating its content (ADR 0056 clause 3). A new
+`is_canonical` column replaces `findPublishedCanonicalForMode`'s previous
+"lowest `template_id` wins" resolution order, which was correct only
+because `Object.entries(STORE_TEMPLATE_PRESETS)` happened to list each
+canonical preset before its non-canonical sibling.
+
+Separately, `applyTemplateToTenantUseCase` committed its settings
+transaction and invalidated nothing — the capability gate's 15s cache and
+item-taxonomy validation's 5-minute settings cache would keep serving the
+pre-apply overlay, making a just-applied template appear not to have taken
+effect. The same pre-existing gap existed in the ordinary settings write
+path. All three write paths now clear the capability-gate cache, the Store
+Profile resolver's cache, and the item-repository settings cache whenever
+a write touches `ops_workflow_mode` / `ops_enabled_capabilities` /
+`ops_disabled_capabilities` / `ops_store_profile_read`.
 
 ## The landlord Store Template catalog
 
@@ -368,10 +443,13 @@ grantable capability vocabulary, and fail template validation if selected.
 - `backend/tests/seedCanonicalTemplatePresetsUseCase` (`seedCanonicalTemplatePresets.usecase.test.js`) —
   idempotent seeding from `STORE_TEMPLATE_PRESETS`.
 - `backend/tests/tenantProvisioningStoreProfileProvenance.test.js` — the
-  Phase 13 acceptance criterion: editing a template after provisioning
-  changes zero already-provisioned tenants' Profiles; Phase 17's explicit
-  `templateKey` selection (mode-matching, mode-mismatched, draft, and
-  not-found cases, each falling back to the pre-Phase-17 canonical lookup).
+  Phase 13 acceptance criterion, proven end-to-end (Phase 23 rewrite):
+  resolves a provisioned tenant's Profile through `resolveStoreProfile()`
+  after its source template has been edited, and asserts both that the
+  resolution is unchanged and that the template repository is never
+  called during the read; Phase 17's explicit `templateKey` selection
+  (mode-matching, mode-mismatched, draft, and not-found cases, each
+  falling back to the pre-Phase-17 canonical lookup).
 - `backend/tests/materializeTemplateModuleSelection.test.js` — the pure
   template→overlay diff: empty overlays for a canonical template, a real
   disabled overlay for a subtractive one, a real enabled overlay for an
@@ -388,3 +466,35 @@ grantable capability vocabulary, and fail template validation if selected.
 - `backend/tests/platformAdminRouteClassification.test.js` — `/admin/templates`
   resolves to `masterOnly` (curation, platform-wide); `/admin/tenants/:id/apply-template`
   resolves to the delegable `admin.tenants` permission (a single tenant).
+- `backend/tests/seedStoreConfigurationTemplatePresets.migration.test.js`
+  (issue #178 Phase 20) — pins the seed migration's row-builders against
+  `STORE_TEMPLATE_PRESETS` directly, and exercises `up()`/`down()`
+  idempotency and FK-safe delete order against a mocked `queryInterface`.
+- `backend/tests/storeConfigurationTemplateRepository.canonical.test.js`
+  (issue #178 Phase 20) — canonical resolution filters on `is_canonical`
+  rather than `template_id` order, with a case where the canonical row does
+  not have the lowest id.
+- `backend/tests/storeProfile.equivalence.contract.test.js` (issue #178
+  Phase 21 additions) — a counter-service Profile resolves
+  `pos_workflow.mode === 'counter'`; a capability additively enabled and
+  then subtracted drops out of `item_taxonomy`.
+- `backend/tests/modeItemTaxonomy.contract.test.js` (issue #178 Phase 21) —
+  the same additive-then-subtracted taxonomy fix at the item-validation
+  layer, plus proof that disabling a base-mode (non-taxonomy-overlay)
+  capability leaves taxonomy resolution unaffected.
+- `frontend/src/features/settings/__tests__/WorkflowModeContext.profile.test.jsx`
+  (issue #178 Phase 21 addition) — `hasCapability` honors the disabled
+  overlay, the exact gap that let the 3-arg call survive Phase 19.
+- `backend/tests/fnbKitchenQueueTemplateGate.route.test.js` (issue #178
+  Phase 21) — mounts the real `requireWorkflowCapability` exactly as
+  `routes/fnb.js` wires it; two differently-templated tenants get
+  different real 200/403 outcomes.
+- `backend/tests/applyTemplateToTenantUseCase.cacheInvalidation.test.js`
+  (issue #178 Phase 22) — all three capability-related caches are cleared
+  on a successful apply, cleared on nothing when the write is rejected,
+  the `CAPABILITY_SELECTION_UNBUILDABLE` rejection for a materialized
+  selection that isn't buildable, and `base_mode` normalization.
+- `backend/tests/settingsUsecases.applicationResult.test.js` (issue #178
+  Phase 22 additions) — `CAPABILITY_SELECTION_CONTRADICTORY` rejection for
+  a capability requested in both overlays at once, on both the bulk and
+  single-key write paths.

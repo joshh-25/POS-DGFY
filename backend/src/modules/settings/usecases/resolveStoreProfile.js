@@ -22,8 +22,9 @@ const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 // Same short-TTL, tenant-scoped shape as workflowCapabilitySettingsCache.js's
 // resolveWorkflowCapabilitySettings — kept as a separate cache rather than
 // merged into it because this one also reads the (potentially large)
-// persisted profile JSON on every miss, and nothing gates on this resolver
-// yet (issue #178 Phase 12: this is scaffolding, not a wired consumer).
+// persisted profile JSON on every miss. requireWorkflowCapability
+// (workflowModeCapability.js, issue #178 Phase 19) is this resolver's
+// consumer for every tenant opted into ops_store_profile_read.
 const CACHE_TTL_MS = 15 * 1000;
 const cache = new Map();
 
@@ -113,10 +114,10 @@ const readStoreProfileResolution = async () => {
     }
 
     // Never serve a divergent or version-stale persisted profile, even with
-    // the flag on: this resolver's job is to prove the mechanism is safe to
-    // wire up later (issue #178 Phase 13+), not to let a stale shadow-write
-    // silently become authoritative. A rebuild is always correct by
-    // definition — it IS the registries.
+    // the flag on: a stale shadow-write must never silently become
+    // authoritative for the tenants that gate on this resolver
+    // (requireWorkflowCapability, issue #178 Phase 19). A rebuild is always
+    // correct by definition — it IS the registries.
     const canServePersisted = readFlagEnabled && persistedIsCurrentVersion && !contentDiverged;
 
     return {
@@ -128,15 +129,16 @@ const readStoreProfileResolution = async () => {
 };
 
 /**
- * Resolves a tenant's effective Store Profile (issue #178 Phase 12
- * scaffolding). NOT WIRED TO ANY CONSUMER YET — see
- * docs/features/STORE_TEMPLATES_AND_PROFILES.md. Building this ahead of any
- * real consumer is deliberate: until Store Templates (Phase 13) exist, a
- * tenant's persisted profile can never diverge from what rebuilding it would
- * produce, so flipping a real read path onto this resolver today would add
- * latency and failure surface to a live request for zero behavior change.
- * This resolver and its differ are the tested, ready-to-wire mechanism for
- * when that stops being true.
+ * Resolves a tenant's effective Store Profile (issue #178 Phase 12,
+ * differ; Phase 19, wired). requireWorkflowCapability
+ * (workflowModeCapability.js) is this resolver's consumer for every tenant
+ * with ops_store_profile_read enabled - see
+ * docs/features/STORE_TEMPLATES_AND_PROFILES.md. Was built ahead of any
+ * real consumer, deliberately: until Store Templates (Phase 13) and the
+ * subtractive overlay (Phase 16) existed, a tenant's persisted profile
+ * could never diverge from what rebuilding it would produce, so flipping a
+ * real read path onto this resolver would have added latency and failure
+ * surface for zero behavior change. Both now exist, so it is wired.
  */
 export const resolveStoreProfile = async () => {
     const store = dbStore.getStore();

@@ -136,18 +136,37 @@ to an existing tenant. Phases 18 and 19 have since wired the first two real
 Phase 12 consumers: POS affordances (a shadow-write read, not through the
 resolver), then the fail-closed capability gate last — the resolver's first
 actual consumer, and the only one, with the registries kept as its
-permanent flag-off fallback rather than retired. All phases through 19 are
-now shipped; issue #178's remaining scope (storefront order methods, item
-taxonomy validation wiring, the four `planned` catalog modules) is
-deliberately out of this ADR's rollout, per the reasons recorded in ADR
-0037's amendment.
+permanent flag-off fallback rather than retired. A pre-PR audit of Phases
+13-19 found the arc unreachable in any real environment (the template
+catalog was never seeded) and subtraction stopping at the API boundary for
+three affordance paths Phase 19 didn't touch; Phases 20-22 close both, and
+Phase 23 corrects the resulting stale documentation and a non-load-bearing
+regression test — see ADR 0037's amendment for the full account of each.
+All phases through 23 are now shipped; issue #178's remaining scope (the
+storefront blind spot recorded in that same amendment, the four `planned`
+catalog modules) is deliberately out of this ADR's rollout.
 
 ## Validation
 
 - `npm run check:architecture` — `store_configuration_template*` never
   appears among tenant-cloned models.
-- A test proving a published template edit changes zero existing tenants'
-  Profiles (Phase 13 acceptance criterion, issue #178).
+- `backend/tests/tenantProvisioningStoreProfileProvenance.test.js`'s
+  "editing a published template changes zero already-provisioned tenants"
+  describe block proves a published template edit changes zero existing
+  tenants' Profiles (Phase 13 acceptance criterion, issue #178) by
+  resolving through `resolveStoreProfile()` end-to-end and asserting the
+  template repository is never called during the read — not, as an earlier
+  version of this test did, by asserting a captured JavaScript object did
+  not mutate itself.
+- `backend/tests/fnbKitchenQueueTemplateGate.route.test.js` (Phase 21) —
+  mounts the real `requireWorkflowCapability` exactly as
+  `backend/src/routes/fnb.js` wires it, proving two differently-templated
+  tenants get different real 200/403 outcomes through the actual
+  production gate, not just a mocked-middleware unit test.
+- `backend/tests/seedStoreConfigurationTemplatePresets.migration.test.js`
+  (Phase 20) — pins the seed migration's row-builders against
+  `STORE_TEMPLATE_PRESETS` directly, and exercises idempotency and FK-safe
+  delete order against a mocked `queryInterface`.
 - `backend/tests/capabilityModules.contract.test.js` and
   `backend/tests/storeProfile.equivalence.contract.test.js` continue passing
   unmodified by this ADR — it constrains future phases, not shipped ones.
@@ -195,6 +214,49 @@ same before/after audit snapshot). Both paths share one materializer so they
 cannot compute `{mode, enabled, disabled}` differently. Non-destructive per
 ADR 0008/0019: a settings write only, no data migration, switching back
 restores access.
+
+### Phases 20-23 — a pre-PR audit found the arc unreachable, and subtraction incomplete
+
+Before this branch was finalized, auditing Phases 13-19 against a real
+environment (not just their own test suites) found two defects severe
+enough to change what "shipped" meant for this ADR.
+
+**The template catalog was never seeded.** `seedCanonicalTemplatePresetsUseCase`
+was exported and unit-tested but had zero production call sites, and
+neither Phase 13 migration inserted a row. In any real environment the
+TenantManager picker was empty, `POST /:id/apply-template` always 404'd,
+and `findPublishedCanonicalForMode` returned null for every tenant — the
+entire Phases 13-19 arc was reachable only inside a test process, never in
+production. Phase 20 fixes this with a landlord data migration that seeds
+`STORE_TEMPLATE_PRESETS` on deploy (via a dynamic import, per clause 3 —
+never a second hand-copied source of truth), and adds an `is_canonical`
+column so `findPublishedCanonicalForMode` stops resolving "canonical" by
+insertion order, which was correct only by accident of
+`Object.entries(STORE_TEMPLATE_PRESETS)`'s ordering.
+
+**Subtraction stopped at the API boundary.** Phase 19 made
+`requireWorkflowCapability` honor a template's subtraction, but three
+affordance paths still resolved from the base mode alone: the POS terminal
+still rendered the full-service floor plan for a counter-service tenant,
+`WorkflowModeContext.jsx`'s `hasCapability` was still on the 3-arg call
+Phase 19 had flipped everywhere else, and item taxonomy fed only the raw
+enabled overlay so a capability additively enabled and later subtracted
+kept granting its presets forever — the exact false claim this ADR's
+Phase 12 amendment made about item taxonomy above. Phase 21 fixes all
+three (`STORE_PROFILE_VERSION` moves to 5); Phase 22 closes the cache
+invalidation and write-path validation gaps that made both Phase 17
+(apply-template) and the settings write path leave stale grants cached and
+accepted a contradictory enabled/disabled write silently; Phase 23 corrects
+the resulting stale "scaffolding, not wired" documentation and replaces a
+provenance-non-dereference regression test that had stopped testing
+anything (it asserted a captured JavaScript object did not mutate itself,
+not that the resolver avoids dereferencing the template).
+
+None of this reopens Decision 1 or Decision 2 above — the subtractive
+overlay and the no-dereference guarantee were correctly designed in the
+original amendment; what was missing was deployment (the seed) and
+completeness (every affordance, not just the gate, honoring what the
+overlay already computed correctly).
 
 ## Authoritative Sources
 

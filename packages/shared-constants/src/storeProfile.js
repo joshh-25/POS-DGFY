@@ -12,7 +12,7 @@ import { STOREFRONT_ORDER_METHODS } from './orderMethods.js';
 import { resolvePosDefaultsAndTerminology } from './posDefaultsAndTerminology.js';
 
 /**
- * Store Profile materialization (issue #178 Phase 11) — SHADOW-WRITE ONLY.
+ * Store Profile materialization (issue #178 Phase 11).
  *
  * buildStoreProfile derives a tenant's current effective selling
  * configuration from the same registries the runtime reads today
@@ -20,11 +20,14 @@ import { resolvePosDefaultsAndTerminology } from './posDefaultsAndTerminology.js
  * MODE_ITEM_TAXONOMY, order-method vocabulary). The result is persisted to
  * the `ops_store_profile` tenant setting whenever mode or overlay changes.
  *
- * NOTHING MAY READ THIS PROFILE AT RUNTIME YET. It is written and diffed so
- * the equivalence harness (backend/tests/storeProfile.equivalence.contract.
- * test.js) can prove profile-driven config is byte-identical to
- * registry-driven config before any consumer flips over (Phase 12, per
- * module, behind a per-tenant flag).
+ * Real consumers now read this profile: frontend affordances read it
+ * directly from the shadow-write (Phase 18, WorkflowModeContext.jsx), and
+ * the fail-closed capability gate reads it through resolveStoreProfile.js
+ * for tenants opted into ops_store_profile_read (Phase 19). The equivalence
+ * harness (backend/tests/storeProfile.equivalence.contract.test.js)
+ * continues to prove profile-driven config is byte-identical to
+ * registry-driven config for every tenant that has not curated a
+ * subtractive overlay.
  *
  * The builder is deterministic: same mode + overlay in, byte-identical JSON
  * out. No timestamps, no randomness — determinism is what makes the diff
@@ -150,9 +153,8 @@ export const applyTemplateProvenance = (profile, { templateId, templateVersion }
  * template (Phases 13/16/17) now has a real effect — the resolver serves a
  * Profile that can genuinely diverge from the base-mode registries, since
  * the disabled_capabilities overlay (Phase 16) gives templates a real
- * subtractive channel. Until a consumer is wired to the resolver (Phase 19),
- * this remains scaffolding: the flag governs what the resolver *would*
- * serve, without anything reading through it yet.
+ * subtractive channel, and requireWorkflowCapability (Phase 19) gates on
+ * that resolution for every tenant with this flag on.
  */
 export const STORE_PROFILE_READ_SETTING_KEY = 'ops_store_profile_read';
 

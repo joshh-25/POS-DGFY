@@ -4,6 +4,11 @@ import { storeConfigurationTemplateRepository } from '../src/modules/templates/i
 import { buildStoreProfile } from '../src/modules/shared/constants/storeProfile.js';
 import { WORKFLOW_MODE_CAPABILITIES } from '../src/modules/shared/constants/workflowModes.js';
 import logger from '../src/config/logger.js';
+import {
+    resolveStoreProfile,
+    clearStoreProfileResolutionCache
+} from '../src/modules/settings/usecases/resolveStoreProfile.js';
+import dbStore from '../src/utils/dbStore.js';
 
 describe('tenant provisioning Store Profile provenance (issue #178 Phase 13)', () => {
     afterEach(() => {
@@ -64,34 +69,86 @@ describe('tenant provisioning Store Profile provenance (issue #178 Phase 13)', (
         );
     });
 
-    it('proves editing a template after provisioning changes zero already-provisioned profiles', async () => {
-        jest.spyOn(storeConfigurationTemplateRepository, 'findPublishedCanonicalForMode').mockResolvedValueOnce({
-            template_id: 5,
-            version: 1,
-            status: 'published',
-            base_mode: 'retail',
-            modules: [...WORKFLOW_MODE_CAPABILITIES.retail]
+    // ADR 0056 clause 2 ("provenance never dereferenced at runtime") -
+    // proven end-to-end, not just at the JS-object level. A prior version of
+    // this test only proved that a captured JS variable did not mutate
+    // itself when a later mock changed: it never exercised
+    // resolveStoreProfile.js (the real runtime read path an opted-in
+    // tenant's requests actually go through), never persisted anything to
+    // simulate a real tenant's settings, and so could not have caught a
+    // regression where something started re-reading the template row on
+    // every request. This version does all three.
+    describe('editing a published template changes zero already-provisioned tenants (ADR 0056 clause 2)', () => {
+        afterEach(() => {
+            clearStoreProfileResolutionCache();
         });
 
-        // Simulates one tenant provisioning against template v1 - this is
-        // the snapshot a real tenant's ops_store_profile would be written
-        // with, once, and never re-derived from the template afterward.
-        const provisionedProfile = await buildProvisioningStoreProfile('retail');
-        expect(provisionedProfile.provenance.source_template_version).toBe(1);
+        it('resolveStoreProfile never calls the template repository, and serves the profile captured at provisioning unchanged after the template is edited', async () => {
+            const findCanonicalSpy = jest.spyOn(storeConfigurationTemplateRepository, 'findPublishedCanonicalForMode')
+                .mockResolvedValueOnce({
+                    template_id: 5,
+                    version: 1,
+                    status: 'published',
+                    base_mode: 'retail',
+                    modules: [...WORKFLOW_MODE_CAPABILITIES.retail]
+                });
+            const findByKeySpy = jest.spyOn(storeConfigurationTemplateRepository, 'findByKey');
 
-        // The template is later "edited" (a new version published) - but
-        // nothing re-reads the template for the already-provisioned tenant;
-        // its own captured profile object is untouched by this mock change.
-        jest.spyOn(storeConfigurationTemplateRepository, 'findPublishedCanonicalForMode').mockResolvedValueOnce({
-            template_id: 5,
-            version: 2,
-            status: 'published',
-            base_mode: 'retail',
-            modules: ['catalog']
+            // One tenant provisions against template v1 - this is the
+            // snapshot a real tenant's ops_store_profile setting would be
+            // written with, once, at creation.
+            const provisionedProfile = await buildProvisioningStoreProfile('retail');
+            expect(provisionedProfile.provenance).toEqual({
+                source_template_id: 5,
+                source_template_version: 1,
+                diverged_from_source: false
+            });
+            findCanonicalSpy.mockClear();
+
+            // Simulate that tenant's real settings, as they would exist in
+            // its own tenant DB after provisioning wrote them.
+            jest.spyOn(dbStore, 'get').mockImplementation((name) => (
+                name === 'SystemSetting' ? {
+                    findAll: jest.fn().mockResolvedValue([
+                        { setting_key: 'ops_workflow_mode', setting_value: 'retail', data_type: 'string' },
+                        { setting_key: 'ops_enabled_capabilities', setting_value: '[]', data_type: 'json' },
+                        { setting_key: 'ops_disabled_capabilities', setting_value: '[]', data_type: 'json' },
+                        { setting_key: 'ops_store_profile_read', setting_value: 'true', data_type: 'boolean' },
+                        { setting_key: 'ops_store_profile', setting_value: JSON.stringify(provisionedProfile), data_type: 'json' }
+                    ])
+                } : null
+            ));
+            jest.spyOn(dbStore, 'getStore').mockReturnValue({ tenantId: 'tenant-under-test' });
+
+            // The template is later "edited" - published to a new version
+            // with a completely different module list, simulating a
+            // platform admin republishing it.
+            findCanonicalSpy.mockResolvedValue({
+                template_id: 5,
+                version: 2,
+                status: 'published',
+                base_mode: 'retail',
+                modules: ['catalog']
+            });
+
+            const resolution = await resolveStoreProfile();
+
+            // The already-provisioned tenant's resolution is byte-identical
+            // to what was captured at provisioning - and NOT diverged,
+            // which is what "changes zero already-provisioned profiles"
+            // actually means at runtime: an opted-in tenant keeps serving
+            // exactly what it always did, unaffected by the edit.
+            expect(resolution.diverged).toBe(false);
+            expect(resolution.source).toBe('persisted');
+            expect(resolution.profile).toEqual(provisionedProfile);
+
+            // The binding clause itself: the template row is never
+            // dereferenced again to determine this tenant's effective
+            // configuration - not at provisioning-replay time, not on this
+            // read, regardless of what the template now looks like.
+            expect(findCanonicalSpy).not.toHaveBeenCalled();
+            expect(findByKeySpy).not.toHaveBeenCalled();
         });
-
-        expect(provisionedProfile.provenance.source_template_version).toBe(1);
-        expect(provisionedProfile.modules).toEqual(buildStoreProfile({ workflowMode: 'retail' }).modules);
     });
 
     describe('explicit templateKey selection (issue #178 Phase 17)', () => {

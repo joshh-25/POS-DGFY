@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-05-07
+last_reviewed: 2026-08-09
 applies_to: workflow_modes
 topic: mode_development
 ---
@@ -194,6 +194,27 @@ Current corrected item-taxonomy modes are Food Manufacturing (`food_manufacturin
 Hospitality uses PMS/stay-management nouns: room types, rooms, guests, reservations, stays, folios, room charges, housekeeping tasks, maintenance requests, amenities, facilities, packages, rate plans, rate calendars, and guest messages. Room nights, amenities, and facility bookings are stock-exempt capacity reservations; minibar, retail, supplies, linens, and physical add-ons remain stock-bearing inventory lines when they affect stock.
 
 Placeholder modes must not gain custom POS, Storefront, image, import/export, or recommendation defaults through one-off UI logic. Until the checklist above is complete, they inherit conservative finished-goods catalog defaults and must be labelled as conservative/default behavior in future implementation notes.
+
+## No new hard-coded verticals after the Store Template layer
+
+Issue #178's own recommendation (§8, "no new vertical should be added as a
+hard-coded mode after Phase 13 lands") was never folded into this
+playbook, even though Phase 13 (the landlord Store Template catalog) has
+shipped. It is now: a genuinely new industry vertical does not get a new
+`WORKFLOW_MODE_VALUES` entry, a new `WORKFLOW_MODE_CAPABILITIES` list, or a
+new hard-coded registry row across `businessModeTemplates.js`,
+`storefrontTemplateRegistry.js`, and the others this playbook's checklist
+above governs. It gets a **Store Template** — a curated bundle of the
+existing Capability Module catalog
+(`packages/shared-constants/src/capabilityModules.js`), composed the same
+way `fnb_counter_service` composes a subset of `fnb`'s capabilities (issue
+#178 Phases 13-17,
+`docs/features/STORE_TEMPLATES_AND_PROFILES.md`). This playbook's checklist
+still governs the rare case of a genuinely new *mode family* — a business
+shape the existing capability vocabulary cannot express at all (a new
+lifecycle beyond order/booking/folio, not a new combination of existing
+capabilities) — which remains hard-coded, engineering-owned work exactly as
+described above.
 
 ## Future Mode Provisioning Checklist
 

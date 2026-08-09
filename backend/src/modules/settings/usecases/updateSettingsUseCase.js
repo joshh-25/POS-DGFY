@@ -320,11 +320,11 @@ const assertInventoryAuthorityAuthorization = ({ settingsData, actorUser }) => {
     settingsData[INVENTORY_AUTHORITY_SETTING_KEY] = normalizeInventoryAuthority(requested);
 };
 
-// Issue #178 Phase 12 scaffolding switch - mirrors
+// Issue #178 Phase 12 switch, wired Phase 19 - mirrors
 // assertEnabledCapabilitiesAuthorization's/assertInventoryAuthorityAuthorization's
-// shape (master-admin gated). See resolveStoreProfile.js for what this flag
-// actually does today (nothing observable - no consumer reads through it
-// yet) and why it exists anyway.
+// shape (master-admin gated). Turning this on for a tenant makes
+// requireWorkflowCapability gate on resolveStoreProfile.js's resolution
+// instead of the registries directly - see that file's own doc comment.
 const assertStoreProfileReadFlagAuthorization = ({ settingsData, actorUser }) => {
     if (!Object.prototype.hasOwnProperty.call(settingsData, STORE_PROFILE_READ_SETTING_KEY)) {
         return;

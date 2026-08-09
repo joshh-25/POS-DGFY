@@ -6,15 +6,19 @@ import {
 
 import { resolveItemDefaultsForMode } from './modeItemTaxonomy.js';
 
-// Issue #178 Phase 18: posDefaults/wizardLabels used to live here too, but
-// both are now sourced from the server-materialized Store Profile
-// (profile.pos_defaults / profile.terminology, via WorkflowModeContext) -
-// packages/shared-constants/src/posDefaultsAndTerminology.js is their
-// single source of truth. itemDefaults/productDefaults stay here: they
-// have no Profile equivalent (the Profile's item_taxonomy block covers a
-// different shape - preset keys, not per-field defaults - and
-// resolveBusinessModeItemDefaults below already prefers
-// resolveItemDefaultsForMode over this registry in practice).
+// Issue #178 Phase 18: posDefaults/wizardLabels used to live here too.
+// posDefaults is now sourced from the server-materialized Store Profile
+// (profile.pos_defaults, via WorkflowModeContext -> TerminalPage.jsx) -
+// packages/shared-constants/src/posDefaultsAndTerminology.js is its single
+// source of truth. wizardLabels/terminology was removed outright rather
+// than flipped: profile.terminology exists in the Profile schema but had
+// zero live readers anywhere in the codebase, on this branch or before it -
+// dead code materialized for schema completeness, never actually consumed.
+// itemDefaults/productDefaults stay here: they have no Profile equivalent
+// (the Profile's item_taxonomy block covers a different shape - preset
+// keys, not per-field defaults - and resolveBusinessModeItemDefaults below
+// already prefers resolveItemDefaultsForMode over this registry in
+// practice).
 const TEMPLATE_BASE = Object.freeze({
   itemDefaults: Object.freeze({
     category: 'raw_material',
