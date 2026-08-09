@@ -140,6 +140,12 @@
       "topic": "ai_implementation_checklist",
       "expected_status": "reference",
       "expected_authority_level": "reference"
+    },
+    {
+      "path": "docs/features/STORE_TEMPLATES_AND_PROFILES.md",
+      "topic": "store_templates_and_profiles",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
     }
   ]
 }

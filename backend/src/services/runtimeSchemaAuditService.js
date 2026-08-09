@@ -54,7 +54,9 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260726000003-add-entity-type-to-discovery-index.cjs',
     '20260729000001-create-employee-credit-ledger.cjs',
     '20260729000002-create-employee-directory.cjs',
-    '20260730000001-convert-employee-credit-to-outstanding-balance.cjs'
+    '20260730000001-convert-employee-credit-to-outstanding-balance.cjs',
+    '20260808183439-add-item-identity-snapshot-to-pos-transaction-lines.cjs',
+    '20260808190000-create-workflow-mode-change-log.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -202,7 +204,9 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'sale_price_overridden',
         'price_override_reason',
         'stock_effect_type',
-        'stock_exempt_reason'
+        'stock_exempt_reason',
+        'item_name_snapshot',
+        'sku_snapshot'
     ],
     pos_terminal_shifts: [
         'pos_terminal_shift_id',

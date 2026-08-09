@@ -90,17 +90,21 @@ rewritten, and switching back restores access. Concretely: after a
 services→retail switch, booking tables remain in the tenant DB but their
 routes 403; money, VAT, quantities, and `order_method` on historical
 transactions are snapshotted and render correctly regardless of the current
-mode.
+mode. Item name and SKU are also snapshotted on every transaction line
+(`pos_transaction_lines.item_name_snapshot` / `.sku_snapshot`, written at sale
+time by POS checkout, storefront checkout, and booking settlement alike), so
+receipts and reports never retro-change when an item is later renamed,
+recategorized, or deleted. Every change to `ops_workflow_mode` or
+`ops_enabled_capabilities` is recorded in `workflow_mode_change_log`
+(who, when, from→to), written by `applyWorkflowModeAuditLog`.
 
 The flexibility ladder, cheapest first:
 
 1. **Add capabilities without switching** — the `ops_enabled_capabilities`
    overlay is additive and also re-legalizes item taxonomy via
    `CAPABILITY_TAXONOMY_OVERLAY_MODES`.
-2. **Full template/mode switch** — allowed, records frozen in place. Known
-   hardening gaps tracked in issue #178: no audit trail or confirmation on
-   mode change, and item names/SKUs are not snapshotted on transaction lines
-   (receipts re-join live `items`).
+2. **Full template/mode switch** — allowed, records frozen in place and
+   audited as above.
 3. **Never** — migrating or rewriting historical rows on a switch. All
    schema work stays additive.
 
