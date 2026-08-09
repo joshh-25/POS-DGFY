@@ -27,6 +27,9 @@ model lives in
 `docs/architecture/adr/0037-unified-product-domain-and-capability-driven-store-types.md`;
 the cross-boundary binding clauses live in
 `docs/architecture/adr/0056-store-configuration-templates-and-profiles.md`.
+For a developer-facing "how do I extend this" guide — deploy impact, admin
+how-to, and the extension recipes for a new template/module/lifecycle —
+see `docs/development/STORE_TEMPLATES_HANDOFF.md`.
 
 The model in one line: **Capability Modules** (fixed units of selling
 behavior, catalogued in `packages/shared-constants/src/capabilityModules.js`)
@@ -93,6 +96,18 @@ one-preset-per-industry:
 The canonical preset of each base mode equals the mode's own capability
 list, so materializing a preset is provably behavior-identical to the mode it
 packages (`backend/tests/capabilityModules.contract.test.js`).
+
+**Four registration-offered modes are deliberately preset-less** (issue
+#178 final-touch hardening): `healthcare`, `ticketing_transport`,
+`logistics_distribution`, `education_institutions`. Pinned by
+`STORE_TEMPLATE_PRESETLESS_MODES` in `capabilityModules.js` and the
+accompanying contract test — not an oversight, but a hold on verticals
+that may end up powered by separate sibling apps under the same parent
+company, with DGFY providing registration and UI/UX visibility only. A
+tenant registering in one of these modes provisions with null template
+provenance, which the platform already tolerates by design. See
+`docs/development/STORE_TEMPLATES_HANDOFF.md` for the extension recipe
+and the open product question these four modes are tracked against.
 
 ## Template/mode switching and historical records
 
@@ -183,11 +198,12 @@ Phase 20-23's audit found and left deliberately out"):
   its `enforced_by`, but `buildStoreProfile()` never reads either; unlike
   `posWorkflowPanel` (fixed in Phase 21), the storefront's own presentation
   affordance has no Profile equivalent yet.
-- **`templateKey` at provisioning only reaches the two admin-initiated
-  endpoints**, not the organic signup->approval funnel most real tenants
-  use — a product decision (should self-signup offer a template choice at
-  all?) rather than a missing mechanism; `buildProvisioningStoreProfile(mode,
-  { templateKey })` already supports it.
+- **`templateKey` at provisioning only reaches the three admin-initiated
+  endpoints** (`POST /admin/tenants/provision`, `/admin-provision`,
+  `/admin-provision-with-account`), not the organic signup->approval funnel
+  most real tenants use — a product decision (should self-signup offer a
+  template choice at all?) rather than a missing mechanism;
+  `buildProvisioningStoreProfile(mode, { templateKey })` already supports it.
 
 ### The subtractive overlay (`ops_disabled_capabilities`)
 
@@ -397,8 +413,19 @@ Frontend: `frontend/Pages/admin/StoreTemplateManager.jsx`, wired into
 - `POST /admin/templates/:id/publish` — validate and freeze (requires a
   reason).
 - `POST /admin/templates/:id/deprecate` — retire (requires a reason).
+  **Rejected (409) for a preset (`is_preset`) or canonical
+  (`is_canonical`) template** (issue #178 final-touch hardening) — both
+  are platform-owned and unremovable through this surface; deprecating a
+  canonical row would permanently break `findPublishedCanonicalForMode`
+  for that base mode, since the seed migration is idempotent-by-key and
+  never repairs a deprecated row.
 - `GET /admin/templates`, `GET /admin/templates/:id`,
   `GET /admin/templates/:id/audit-logs` — read paths.
+
+`is_preset`/`is_canonical` can only ever be set by the platform seed (never
+by `POST /admin/templates`, which ignores both even if a client sends
+them) — an admin-authored template can never claim platform-preset or
+canonical provenance.
 
 Every write is recorded in `store_configuration_template_audit_logs`
 (actor, reason, before/after snapshot) — a purpose-built table, not a reuse

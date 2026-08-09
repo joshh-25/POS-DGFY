@@ -214,7 +214,10 @@ still governs the rare case of a genuinely new *mode family* — a business
 shape the existing capability vocabulary cannot express at all (a new
 lifecycle beyond order/booking/folio, not a new combination of existing
 capabilities) — which remains hard-coded, engineering-owned work exactly as
-described above.
+described above. For the concrete, file-by-file recipe for both cases (a
+new template needs no code; a new capability module or a new lifecycle
+each have a traced layer checklist), see
+`docs/development/STORE_TEMPLATES_HANDOFF.md`.
 
 ## Future Mode Provisioning Checklist
 
