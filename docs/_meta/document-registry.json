@@ -158,6 +158,12 @@
       "topic": "dgfy_industry_classification",
       "expected_status": "reference",
       "expected_authority_level": "reference"
+    },
+    {
+      "path": "docs/features/SERVICES_FULFILLMENT_PROFILES.md",
+      "topic": "services_fulfillment_profiles",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
     }
   ]
 }

@@ -505,6 +505,21 @@ reopen without a product decision. A third has since shipped:**
 3. ~~**`templateKey` is unreachable from the organic signup funnel**~~
    **Shipped (issue #178 Phases 31-33).** See §5's "registration Industry
    catalog" subsection above.
+4. **The Online Store and Online Checkout dimensions have no template
+   seam yet** (issue #178 Phases 35-36, ADR 0057). Only POS is
+   profile-driven today (§ "the four dimensions of 'how we do business'"
+   in `docs/features/STORE_TEMPLATES_AND_PROFILES.md`). The Services
+   fulfillment-profile vocabulary
+   (`packages/shared-constants/src/fulfillmentProfiles.js`,
+   `docs/features/SERVICES_FULFILLMENT_PROFILES.md`) is a first named seed
+   for Online Store, scoped to Services and deliberately client-side-only
+   — ADR 0057 clause 3 forbids wiring it into `buildStoreProfile()`,
+   `STORE_TEMPLATE_PRESETS`, or any database column until a superseding or
+   amending decision. Delivery and Online Checkout have no seed at all
+   yet. Do not add template linkage for any of these without first reading
+   ADR 0057 and (for Delivery/Online Checkout) writing an equivalent ADR —
+   this is a repeat of the same governance ordering issue #178 established
+   for the Template/Profile layer itself (ADR 0056 clause 3).
 
 ## 9. AI-agent orientation
 

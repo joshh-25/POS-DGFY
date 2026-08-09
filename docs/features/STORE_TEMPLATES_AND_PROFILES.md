@@ -188,6 +188,31 @@ template, and is tracked as a separate issue rather than forced into this
 catalog. See `docs/features/INDUSTRY_CLASSIFICATION.md` for the full guide
 and the out-of-scope note.
 
+## The four dimensions of "how we do business"
+
+Templating governs one of four independent dimensions a store's operations
+can vary along — a merchant-facing way of asking the same question this
+whole doc answers technically:
+
+| Dimension | Governs | Template-driven today? |
+|---|---|---|
+| **POS** | How items/services are added, priced, and billed at the counter | Yes — `profile.pos_workflow` (issue #178 Phase 21) |
+| **Delivery** | How items reach the customer | No |
+| **Online Store** | How a customer avails an item (purchase, booking, deposit, time selection) | No — see "Services fulfillment profiles" below for the one place this axis has a named seed |
+| **Online Checkout** | How the customer pays (cash, GCash, credit, downpayment) | No |
+
+**Services fulfillment profiles** (issue #178, ADR 0057,
+`docs/features/SERVICES_FULFILLMENT_PROFILES.md`) is the Online Store
+dimension's first named seed, scoped to Services: a client-side-only
+vocabulary (`packages/shared-constants/src/fulfillmentProfiles.js`) that
+maps `ServiceItemDetail.service_area_type` onto which checkout fields a
+booking flow shows and what its final action is called. Per ADR 0057
+clause 3 it is explicitly **not** wired into `buildStoreProfile()`,
+`STORE_TEMPLATE_PRESETS`, or any database column — a services-domain
+concept the template/profile layer may eventually compose with, not a
+template-layer feature itself. Delivery and Online Checkout remain fully
+open dimensions.
+
 ## Template/mode switching and historical records
 
 Doctrine (ADR 0008 Decision, ADR 0019): switching is allowed, master-admin

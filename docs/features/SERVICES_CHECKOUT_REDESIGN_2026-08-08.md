@@ -1,6 +1,8 @@
 # Services Checkout Redesign (2026-08-08)
 
-Status: **Implemented.** Uncommitted on `layout/Storefront_Modifications`.
+Status: **Implemented and committed** (`292cb08c`, "Redesign Services
+booking checkout into a 4-step wizard"; originally landed on
+`layout/Storefront_Modifications`, since merged).
 Scope: Frontend only (`frontend/apps/store`), Services mode (`isServicesMode`) booking flow. No backend routes, controllers, or validators were touched.
 
 ## Goal
