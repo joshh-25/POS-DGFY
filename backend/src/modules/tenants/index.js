@@ -14,6 +14,7 @@ import { getTenantRegistrationApprovalMode } from '../../config/tenantRegistrati
 import { tenantAdminRepository } from './repositories/tenantAdminRepository.js';
 import { companyRegistrationRepository } from './repositories/companyRegistrationRepository.js';
 import { dgfyAccountRepository } from '../dgfy/index.js';
+import { registrationIndustryVisibilityRepository } from '../registration/index.js';
 import { createTenantPayMongoChildAccountUseCase } from '../commercePayments/index.js';
 import { buildRegisterCompanyRequestUseCase } from './usecases/registerCompanyRequestUseCase.js';
 import { buildListTenantsUseCase } from './usecases/listTenantsUseCase.js';
@@ -53,6 +54,7 @@ export const registerCompanyRequestUseCase = buildRegisterCompanyRequestUseCase(
     trackEngagementEvent,
     addEmailTenantMapping: landlordService.addEmailTenantMapping,
     dgfyAccountRepository,
+    registrationIndustryVisibilityRepository,
     emailService,
     idGenerator: uuidv4,
     getTenantRegistrationApprovalMode: () => getTenantRegistrationApprovalMode(process.env, logger),

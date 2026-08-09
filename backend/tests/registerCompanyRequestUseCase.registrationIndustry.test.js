@@ -23,6 +23,7 @@ const createUseCase = () => {
     trackEngagementEvent: jest.fn().mockResolvedValue({}),
     addEmailTenantMapping: jest.fn().mockResolvedValue({}),
     dgfyAccountRepository: { recordLegalAcknowledgement: jest.fn().mockResolvedValue({}), upsertPendingFounderMembership: jest.fn().mockResolvedValue({}) },
+    registrationIndustryVisibilityRepository: { isHidden: jest.fn().mockResolvedValue(false) },
     provisionTenant: jest.fn(),
     createPayMongoChildAccountForTenant: jest.fn(),
     shouldAutoCreatePayMongoChildAccounts: jest.fn().mockReturnValue(false),
@@ -125,5 +126,51 @@ describe('registerCompanyRequestUseCase - registration Industry catalog', () => 
       registration_industry: 'healthcare',
       store_template_key: null
     }));
+  });
+
+  // Phase 39: an industry an admin has hidden from registration is rejected
+  // even though the client can technically still send its key - the
+  // picker filters it client-side, but nothing stops a direct API call.
+  describe('admin visibility toggle (issue #178 Phase 39)', () => {
+    it('rejects a hidden industryKey with a 400 before touching the database', async () => {
+      const { deps, useCase } = createUseCase();
+      deps.registrationIndustryVisibilityRepository.isHidden.mockImplementation(async (key) => key === 'micro_fnb');
+
+      const result = await useCase({ body: { ...baseBody, industryKey: 'micro_fnb' }, dgfyAccount, correlationId: 'hidden-industry' });
+
+      // Pins the exact key isHidden() is called with - a stray reference to
+      // a field the resolved catalog entry doesn't carry (e.g.
+      // resolvedIndustry.key, which resolveRegistrationIndustry() never
+      // sets) would call isHidden(undefined) and this mock would return
+      // false, silently letting a hidden industry through.
+      expect(deps.registrationIndustryVisibilityRepository.isHidden).toHaveBeenCalledWith('micro_fnb');
+      expect(result.success).toBe(false);
+      expect(result.error.statusCode).toBe(400);
+      expect(deps.tenantAdminRepository.createTenant).not.toHaveBeenCalled();
+      expect(deps.trackEngagementEvent).toHaveBeenCalledWith(expect.objectContaining({
+        metadata: expect.objectContaining({ failure_reason: 'hidden_industry_key' })
+      }));
+    });
+
+    it('fails open (registration proceeds) when the visibility lookup itself rejects', async () => {
+      const { deps, useCase } = createUseCase();
+      deps.registrationIndustryVisibilityRepository.isHidden.mockRejectedValue(new Error('landlord DB unreachable'));
+
+      const result = await useCase({ body: { ...baseBody, industryKey: 'micro_fnb' }, dgfyAccount, correlationId: 'visibility-lookup-fails' });
+
+      expect(result.success).toBe(true);
+      expect(deps.tenantAdminRepository.createTenant).toHaveBeenCalled();
+    });
+
+    it('fails open (registration proceeds) when registrationIndustryVisibilityRepository is not injected at all', async () => {
+      const { deps } = createUseCase();
+      delete deps.registrationIndustryVisibilityRepository;
+      const useCase = buildRegisterCompanyRequestUseCase(deps);
+
+      const result = await useCase({ body: { ...baseBody, industryKey: 'micro_fnb' }, dgfyAccount, correlationId: 'no-visibility-dep' });
+
+      expect(result.success).toBe(true);
+      expect(deps.tenantAdminRepository.createTenant).toHaveBeenCalled();
+    });
   });
 });

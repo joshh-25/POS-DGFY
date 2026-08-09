@@ -21,6 +21,11 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     'StoreConfigurationTemplate',
     'StoreConfigurationTemplateModule',
     'StoreConfigurationTemplateAuditLog',
+    // Landlord registration-Industry visibility store (issue #178 Phase
+    // 39): admin curation state, not a template. Never cloned into a
+    // tenant database for the same reason as the template rows above.
+    'RegistrationIndustryVisibility',
+    'RegistrationIndustryVisibilityAuditLog',
     'DgfyAccountBusinessAuditLog',
     'DgfyLegalAcknowledgement',
     'Payment',

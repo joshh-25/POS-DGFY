@@ -54,6 +54,7 @@ export const buildRegisterCompanyRequestUseCase = ({
     trackEngagementEvent,
     addEmailTenantMapping,
     dgfyAccountRepository,
+    registrationIndustryVisibilityRepository = null,
     emailService,
     idGenerator,
     getTenantRegistrationApprovalMode = () => TENANT_REGISTRATION_APPROVAL_MODES.MANUAL,
@@ -147,6 +148,40 @@ export const buildRegisterCompanyRequestUseCase = ({
                 return fail(new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
                     'workflowMode does not match the selected industryKey. Send only industryKey, or omit workflowMode.',
+                    { statusCode: 400 }
+                ));
+            }
+
+            // Admin visibility toggle (issue #178 Phase 39): an industry an
+            // admin has hidden from registration is rejected here even
+            // though the client can technically still send its key (the
+            // frontend filters it out of the picker, but nothing stops a
+            // direct API call). A lookup failure fails OPEN - a landlord-DB
+            // outage must never block registration, mirroring every other
+            // fail-open posture this feature already has (the catalog
+            // endpoint's own template/visibility lookups).
+            let industryHidden = false;
+            if (resolvedIndustry && registrationIndustryVisibilityRepository) {
+                try {
+                    industryHidden = await registrationIndustryVisibilityRepository.isHidden(normalizedIndustryKey);
+                } catch (visibilityError) {
+                    logger?.warn?.('[Registration] Industry visibility lookup failed; proceeding as visible', {
+                        industry_key: normalizedIndustryKey,
+                        error: visibilityError.message
+                    });
+                }
+            }
+            if (industryHidden) {
+                await tracker.failed({
+                    failureCode: 'validation_failed',
+                    failureReason: 'hidden_industry_key',
+                    httpStatus: 400,
+                    metadata: { industry_key: normalizedIndustryKey }
+                });
+
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    `industryKey "${normalizedIndustryKey}" is not currently open for registration.`,
                     { statusCode: 400 }
                 ));
             }
