@@ -133,6 +133,10 @@ export const WORKFLOW_MODE_CAPABILITIES = Object.freeze({
         'pos',
         'storefront'
     ],
+    // These four share retail's exact capability list and are deliberately
+    // preset-less (STORE_TEMPLATE_PRESETLESS_MODES in capabilityModules.js)
+    // - candidates for verticals that may end up powered by separate
+    // sibling apps, not an oversight in this arc.
     healthcare: ['catalog', 'inventory', 'menuModifiers', 'pos', 'storefront'],
     ticketing_transport: ['catalog', 'inventory', 'menuModifiers', 'pos', 'storefront'],
     logistics_distribution: ['catalog', 'inventory', 'menuModifiers', 'pos', 'storefront'],

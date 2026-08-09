@@ -360,6 +360,34 @@ export const STORE_TEMPLATE_PRESETS = Object.freeze({
     })
 });
 
+/**
+ * Registration offers 10 Operating Mode choices (WORKFLOW_MODE_VALUES minus
+ * the deprecated `manufacturing` alias) but only 6 of them have a curated
+ * template preset above. These 4 are intentionally bare, not an oversight:
+ * `healthcare`, `ticketing_transport`, `logistics_distribution`, and
+ * `education_institutions` are candidates for verticals that may end up
+ * powered by separate sibling apps under the same parent company, with DGFY
+ * providing registration and UI/UX visibility only - the operating "engine"
+ * living elsewhere. Until that direction is decided (tracked in a follow-up
+ * issue), they stay retail-shaped (see WORKFLOW_MODE_CAPABILITIES) and
+ * preset-less: a tenant registering in one of these modes provisions with
+ * null template provenance, which the whole system already tolerates by
+ * design (ADR 0056 - provenance is never required for a mode to function).
+ *
+ * This list exists so that bareness is a checked, deliberate fact rather
+ * than a silent gap: capabilityModules.contract.test.js asserts these four
+ * (and only these four) offered modes lack a canonical preset. Adding an
+ * 11th mode without deciding its preset story, or seeding a preset for one
+ * of these four without removing it from this list first, both fail that
+ * test loudly instead of drifting unnoticed.
+ */
+export const STORE_TEMPLATE_PRESETLESS_MODES = Object.freeze([
+    'healthcare',
+    'ticketing_transport',
+    'logistics_distribution',
+    'education_institutions'
+]);
+
 // Guard against typos drifting from the enforced vocabulary: every shipped
 // gate module whose key is a workflow capability must exist there, and vice
 // versa nothing outside the catalog may claim to be a capability.

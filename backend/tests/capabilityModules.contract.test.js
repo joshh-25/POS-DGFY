@@ -4,10 +4,13 @@ import {
     SHIPPED_GATE_MODULE_KEYS,
     CAPABILITY_MODULE_VOCABULARY_ALIGNED,
     STORE_TEMPLATE_PRESETS,
+    STORE_TEMPLATE_PRESETLESS_MODES,
     resolveModeModuleBundle,
     validateModuleSelection
 } from '../src/modules/shared/constants/capabilityModules.js';
 import {
+    WORKFLOW_MODE_VALUES,
+    WORKFLOW_MODE_ALIASES,
     WORKFLOW_MODE_CAPABILITIES,
     ALL_WORKFLOW_CAPABILITIES,
     normalizeEnabledCapabilities,
@@ -73,6 +76,44 @@ describe('capability module catalog contracts', () => {
         // The overlay normalizer silently drops them, so a planned module can
         // never be granted through ops_enabled_capabilities.
         expect(normalizeEnabledCapabilities(plannedKeys)).toEqual([]);
+    });
+
+    // issue #178 final-touch hardening: pins which registration-offered
+    // modes intentionally lack a canonical preset. Mirrors the registration
+    // UI's set (frontend's WORKFLOW_MODE_SELECT_VALUES) via the alias
+    // exclusion, which frontend/src/features/settings/__tests__/
+    // workflowMode.services.test.js pins on the frontend side.
+    it('has a canonical published preset for every offered mode except the intentionally bare ones', () => {
+        const offeredModes = WORKFLOW_MODE_VALUES.filter((mode) => !(mode in WORKFLOW_MODE_ALIASES));
+
+        // Guards against the list itself drifting off the offered-mode set
+        // (e.g. a rename) without anyone noticing.
+        for (const bareMode of STORE_TEMPLATE_PRESETLESS_MODES) {
+            expect(offeredModes).toContain(bareMode);
+        }
+
+        for (const mode of offeredModes) {
+            const presetsForMode = Object.values(STORE_TEMPLATE_PRESETS).filter((preset) => preset.base_mode === mode);
+            const canonicalPresetsForMode = presetsForMode.filter((preset) => preset.canonical === true);
+
+            if (STORE_TEMPLATE_PRESETLESS_MODES.includes(mode)) {
+                // Intentionally bare: zero presets of any kind (not just zero
+                // canonical ones) - if someone seeds a non-canonical preset
+                // for one of these four without a product decision to
+                // un-bare the mode, this should fail just as loudly.
+                expect({ mode, presetCount: presetsForMode.length }).toEqual({ mode, presetCount: 0 });
+                // Still a real, provisionable mode - bare doesn't mean unbuilt.
+                expect(WORKFLOW_MODE_CAPABILITIES[mode]).toBeDefined();
+                expect(WORKFLOW_MODE_CAPABILITIES[mode].length).toBeGreaterThan(0);
+            } else {
+                // Every other offered mode must have exactly one canonical,
+                // published-shaped preset - not zero (an unnoticed 11th mode
+                // added without a preset story), not two (an ambiguous
+                // provisioning default, resolved today only by template_id
+                // ordering, which is exactly the fragility Phase 20 removed).
+                expect({ mode, canonicalPresetCount: canonicalPresetsForMode.length }).toEqual({ mode, canonicalPresetCount: 1 });
+            }
+        }
     });
 
     it('rejects selections that violate the requires graph', () => {
