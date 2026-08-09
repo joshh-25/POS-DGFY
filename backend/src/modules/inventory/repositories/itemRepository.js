@@ -14,7 +14,9 @@ import {
     normalizeWorkflowMode,
     resolveWorkflowModeFamily,
     ENABLED_CAPABILITIES_SETTING_KEY,
-    normalizeEnabledCapabilities
+    normalizeEnabledCapabilities,
+    DISABLED_CAPABILITIES_SETTING_KEY,
+    normalizeDisabledCapabilities
 } from '../../shared/constants/workflowModes.js';
 import { resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
 import {
@@ -252,6 +254,19 @@ export const resolveCachedWorkflowMode = async () => {
 export const resolveCachedEnabledCapabilities = async () => {
     const settings = await getCachedSettingsForTenant();
     return normalizeEnabledCapabilities(settings?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value);
+};
+
+/**
+ * Resolve the tenant's disabled_capabilities overlay (issue #178 Phase 16),
+ * same cached settings object as resolveCachedEnabledCapabilities/
+ * resolveCachedWorkflowMode - no extra query. Without this, item-taxonomy
+ * validation could only ever grant taxonomy presets, never honor a
+ * template's subtraction (Phase 21): a capability additively enabled and
+ * later disabled again still granted its taxonomy presets forever.
+ */
+export const resolveCachedDisabledCapabilities = async () => {
+    const settings = await getCachedSettingsForTenant();
+    return normalizeDisabledCapabilities(settings?.[DISABLED_CAPABILITIES_SETTING_KEY]?.value);
 };
 
 const calculateThresholds = async (maxCapacity) => {

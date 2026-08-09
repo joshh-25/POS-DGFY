@@ -5667,6 +5667,7 @@ function PosRestorationLoadingScreen() {
           onSwitchCompany={handleCompanySwitch}
           posViewMode={posViewMode}
           workflowMode={workflowMode}
+          effectiveCapabilities={profile?.modules}
           isMsmeMode={isMsmeMode}
           shiftState={shiftState}
           incomingOrdersState={incomingOrdersState}

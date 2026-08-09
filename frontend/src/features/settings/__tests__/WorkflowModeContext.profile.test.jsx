@@ -19,12 +19,14 @@ vi.mock('@/services/browserSession.js', () => browserSessionMock);
 vi.mock('@/services/settingsService.js', () => settingsServiceMock);
 
 const Probe = () => {
-  const { profile, disabledCapabilities } = useWorkflowMode();
+  const { profile, disabledCapabilities, hasCapability } = useWorkflowMode();
   return (
     <div>
       <span data-testid="profile-source">{profile?.provenance?.source_template_id ?? 'none'}</span>
       <span data-testid="profile-modules">{JSON.stringify(profile?.modules || [])}</span>
       <span data-testid="disabled-capabilities">{JSON.stringify(disabledCapabilities)}</span>
+      <span data-testid="has-table-service">{String(hasCapability('tableService'))}</span>
+      <span data-testid="has-fnb-dining">{String(hasCapability('fnbDining'))}</span>
     </div>
   );
 };
@@ -80,5 +82,25 @@ describe('WorkflowModeProvider Store Profile distribution (issue #178 Phase 18)'
     expect(JSON.parse(screen.getByTestId('profile-modules').textContent)).toEqual(
       buildStoreProfile({ workflowMode: 'retail' }).modules
     );
+  });
+
+  it('honors the disabled overlay in hasCapability (issue #178 Phase 21 - PosPageShell panel gating)', async () => {
+    settingsServiceMock.getAllSettings.mockResolvedValueOnce({
+      ops_workflow_mode: { value: 'fnb' },
+      ops_disabled_capabilities: { value: ['tableService'] }
+    });
+
+    render(
+      <WorkflowModeProvider>
+        <Probe />
+      </WorkflowModeProvider>
+    );
+
+    // A subtracted capability must read as unavailable through the same
+    // hasCapability() hook PosPageShell gates its panels on - before Phase
+    // 21 this stayed on the 3-arg call and always reported `true` here.
+    await waitFor(() => expect(screen.getByTestId('has-table-service').textContent).toBe('false'));
+    // A capability the template did NOT subtract stays granted.
+    expect(screen.getByTestId('has-fnb-dining').textContent).toBe('true');
   });
 });

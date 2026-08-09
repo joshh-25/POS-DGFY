@@ -50,16 +50,30 @@ import { resolvePosDefaultsAndTerminology } from './posDefaultsAndTerminology.js
  * always base-mode-union-overlay, never able to shrink below the base mode.
  * See ADR 0056's amendment for why this strengthens, not weakens, clause 1
  * (locked modules stay unreachable by either overlay).
+ *
+ * v5 (issue #178 Phase 21) makes `pos_workflow` and `item_taxonomy` derive
+ * from the *effective* module set (`modules`, below) instead of the base
+ * mode alone. Before this, a fnb_counter_service store's Profile still
+ * carried the full-service fnb POS workflow (tables, kitchen, dine_in
+ * default) and could still surface fnb-family item taxonomy presets it had
+ * subtracted - Phase 19's backend gate correctly 403'd those surfaces, but
+ * the affordances that render the buttons leading to them did not know to
+ * stay hidden. Every mode's own base capability list already contains or
+ * omits these keys identically to before, so this is a no-op for every
+ * tenant that has not curated a subtractive overlay - proven by the
+ * equivalence harness catching only a profile_version bump across all 11
+ * modes.
  */
 export const STORE_PROFILE_SETTING_KEY = 'ops_store_profile';
-export const STORE_PROFILE_VERSION = 4;
+export const STORE_PROFILE_VERSION = 5;
 
 export const buildStoreProfile = ({ workflowMode, enabledCapabilities = [], disabledCapabilities = [] } = {}) => {
     const baseMode = normalizeWorkflowMode(workflowMode);
     const overlay = normalizeEnabledCapabilities(enabledCapabilities);
     const disabledOverlay = normalizeDisabledCapabilities(disabledCapabilities);
-    const posWorkflow = resolvePosWorkflow(baseMode);
-    const itemTaxonomy = resolveEffectiveItemTaxonomy(baseMode, overlay);
+    const modules = [...resolveEffectiveCapabilities(baseMode, overlay, disabledOverlay)].sort();
+    const posWorkflow = resolvePosWorkflow(baseMode, modules);
+    const itemTaxonomy = resolveEffectiveItemTaxonomy(baseMode, modules);
     const { pos_defaults: posDefaults, terminology } = resolvePosDefaultsAndTerminology(baseMode);
 
     return {
@@ -71,7 +85,7 @@ export const buildStoreProfile = ({ workflowMode, enabledCapabilities = [], disa
             enabled_capabilities: [...overlay].sort(),
             disabled_capabilities: [...disabledOverlay].sort()
         },
-        modules: [...resolveEffectiveCapabilities(baseMode, overlay, disabledOverlay)].sort(),
+        modules,
         pos_workflow: {
             mode: posWorkflow.mode,
             transaction_record: posWorkflow.transactionRecord,

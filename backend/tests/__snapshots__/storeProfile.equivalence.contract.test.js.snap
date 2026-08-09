@@ -32,7 +32,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 4,
+  "profile_version": 5,
   "provenance": {
     "diverged_from_source": false,
     "source_template_id": null,
@@ -107,7 +107,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "fnb",
     "transaction_record": "order",
   },
-  "profile_version": 4,
+  "profile_version": 5,
   "provenance": {
     "diverged_from_source": false,
     "source_template_id": null,
@@ -179,7 +179,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 4,
+  "profile_version": 5,
   "provenance": {
     "diverged_from_source": false,
     "source_template_id": null,
@@ -240,7 +240,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 4,
+  "profile_version": 5,
   "provenance": {
     "diverged_from_source": false,
     "source_template_id": null,
@@ -321,7 +321,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "fnb",
     "transaction_record": "order",
   },
-  "profile_version": 4,
+  "profile_version": 5,
   "provenance": {
     "diverged_from_source": false,
     "source_template_id": null,
@@ -382,7 +382,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 4,
+  "profile_version": 5,
   "provenance": {
     "diverged_from_source": false,
     "source_template_id": null,
@@ -454,7 +454,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 4,
+  "profile_version": 5,
   "provenance": {
     "diverged_from_source": false,
     "source_template_id": null,
@@ -521,7 +521,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 4,
+  "profile_version": 5,
   "provenance": {
     "diverged_from_source": false,
     "source_template_id": null,
@@ -591,7 +591,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 4,
+  "profile_version": 5,
   "provenance": {
     "diverged_from_source": false,
     "source_template_id": null,
@@ -659,7 +659,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "services",
     "transaction_record": "booking",
   },
-  "profile_version": 4,
+  "profile_version": 5,
   "provenance": {
     "diverged_from_source": false,
     "source_template_id": null,
@@ -720,7 +720,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 4,
+  "profile_version": 5,
   "provenance": {
     "diverged_from_source": false,
     "source_template_id": null,

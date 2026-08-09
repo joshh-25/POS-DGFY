@@ -275,12 +275,15 @@ export const validateModuleSelection = (moduleKeys) => {
 
 /**
  * The gate-module bundle a workflow mode resolves to today. By construction
- * this is exactly resolveEffectiveCapabilities(mode, overlay) — the catalog
- * introduces no behavior of its own (issue #178 Phase 10: metadata only). The
- * equivalence is pinned by capabilityModules.contract.test.js.
+ * this is exactly resolveEffectiveCapabilities(mode, enabled, disabled) — the
+ * catalog introduces no behavior of its own (issue #178 Phase 10: metadata
+ * only). The equivalence is pinned by capabilityModules.contract.test.js.
+ * No production caller today (test/documentation-only) - kept in step with
+ * resolveEffectiveCapabilities's full signature (issue #178 Phase 16) rather
+ * than left on a stale 2-arg claim.
  */
-export const resolveModeModuleBundle = (workflowMode, enabledCapabilities = []) => (
-    resolveEffectiveCapabilities(workflowMode, enabledCapabilities)
+export const resolveModeModuleBundle = (workflowMode, enabledCapabilities = [], disabledCapabilities = []) => (
+    resolveEffectiveCapabilities(workflowMode, enabledCapabilities, disabledCapabilities)
 );
 
 /**

@@ -138,6 +138,58 @@ describe('store profile equivalence harness (issue #178 Phase 11)', () => {
         expect(guesthouseProfile.modules).toEqual([...guesthouse.modules].sort());
     });
 
+    it('resolves the counter-service POS workflow for a store that subtracted both dining-floor capabilities (issue #178 Phase 21)', () => {
+        const counterService = STORE_TEMPLATE_PRESETS.fnb_counter_service;
+        const counterServiceProfile = buildStoreProfile({
+            workflowMode: counterService.base_mode,
+            disabledCapabilities: WORKFLOW_MODE_CAPABILITIES[counterService.base_mode]
+                .filter((capability) => !counterService.modules.includes(capability))
+        });
+        expect(counterServiceProfile.pos_workflow.mode).toBe('counter');
+        expect(counterServiceProfile.pos_workflow.capabilities.tables).toBe(false);
+        expect(counterServiceProfile.pos_workflow.capabilities.kitchen).toBe(false);
+
+        // A full-service fnb store (nothing subtracted) still gets the full
+        // fnb workflow - this is the zero-behavior-change control case.
+        const fullServiceProfile = buildStoreProfile({ workflowMode: 'fnb' });
+        expect(fullServiceProfile.pos_workflow.mode).toBe('fnb');
+        expect(fullServiceProfile.pos_workflow.capabilities.tables).toBe(true);
+        expect(fullServiceProfile.pos_workflow.capabilities.kitchen).toBe(true);
+
+        // Hospitality never carries tableService/kitchenQueue in its own
+        // base list, so it must not be swept into counter mode by a
+        // family-blind version of this rule.
+        const hospitalityProfile = buildStoreProfile({ workflowMode: 'hospitality' });
+        expect(hospitalityProfile.pos_workflow.mode).toBe('fnb');
+    });
+
+    it('drops item taxonomy for a capability that was additively enabled and then subtracted (issue #178 Phase 21)', () => {
+        // Before Phase 21, item_taxonomy read only the raw enabled overlay,
+        // so a tenant that enabled 'services' and later disabled it again
+        // still carried services item-taxonomy presets forever - the
+        // additive-only bug this test pins shut.
+        const stillEnabledProfile = buildStoreProfile({
+            workflowMode: 'retail',
+            enabledCapabilities: ['services']
+        });
+        expect(stillEnabledProfile.item_taxonomy.preset_keys).toEqual(
+            resolveEffectiveItemTaxonomy('retail', ['services']).presets.map((preset) => preset.key)
+        );
+
+        const subtractedAgainProfile = buildStoreProfile({
+            workflowMode: 'retail',
+            enabledCapabilities: ['services'],
+            disabledCapabilities: ['services']
+        });
+        const retailOnlyTaxonomy = resolveEffectiveItemTaxonomy('retail', []);
+        expect(subtractedAgainProfile.item_taxonomy.preset_keys).toEqual(
+            retailOnlyTaxonomy.presets.map((preset) => preset.key)
+        );
+        expect(subtractedAgainProfile.item_taxonomy.preset_keys).not.toEqual(
+            stillEnabledProfile.item_taxonomy.preset_keys
+        );
+    });
+
     it('rejects a subtraction that breaks a requires edge (validateModuleSelection stays the write-time guard)', () => {
         // pos requires catalog; disabling catalog while pos stays enabled must
         // be caught by validateModuleSelection before a write can persist it.

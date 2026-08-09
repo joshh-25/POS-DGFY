@@ -177,13 +177,15 @@ export function WorkflowModeProvider({ children }) {
     };
   }, [refreshWorkflowMode]);
 
-  // Capability gating itself still checks only the additive overlay here -
-  // disabledCapabilities is distributed below for Phase 19's consumers, not
-  // consumed by this hook yet (the fail-closed gate gets its own careful
-  // flip, last, with a permanent rebuild fallback - see workflowMode.js).
+  // Issue #178 Phase 21: honors the disabled overlay too, so a curated
+  // template's subtraction is reflected everywhere this hook gates UI, not
+  // just in the pages/routes that call modeHasCapability directly
+  // (Layout.jsx, WorkflowModeRouteGate.jsx). PosPageShell.jsx's panel
+  // rendering is the consumer this fixes - it was rendering panels a
+  // template had subtracted, which the backend then correctly 403'd.
   const hasCapability = useCallback((capability) => (
-    modeHasCapability(workflowMode, capability, enabledCapabilities)
-  ), [enabledCapabilities, workflowMode]);
+    modeHasCapability(workflowMode, capability, enabledCapabilities, disabledCapabilities)
+  ), [disabledCapabilities, enabledCapabilities, workflowMode]);
 
   const value = useMemo(() => ({
     workflowMode,

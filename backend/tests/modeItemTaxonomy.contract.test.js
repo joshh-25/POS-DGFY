@@ -376,4 +376,50 @@ describe('mode-aware item taxonomy contract', () => {
             expect(result.taxonomy).toBe('retail');
         });
     });
+
+    describe('Phase 16/21 subtractive disabled_capabilities overlay', () => {
+        it('rejects a service item on a retail tenant that enabled services and then disabled it again', () => {
+            // Before Phase 21, validateItemAgainstModeTaxonomy only ever saw
+            // the raw enabled overlay, so a capability that was additively
+            // enabled and later subtracted still granted its item-taxonomy
+            // presets forever.
+            expect(() => validateItemAgainstModeTaxonomy({
+                workflowMode: 'retail',
+                enabledCapabilities: ['services'],
+                disabledCapabilities: ['services'],
+                itemData: { category: 'service', unit_of_measure: 'service' },
+                operation: 'create'
+            })).toThrow(/does not support category/i);
+        });
+
+        it('still unlocks the services taxonomy when a different capability is disabled', () => {
+            const result = validateItemAgainstModeTaxonomy({
+                workflowMode: 'retail',
+                enabledCapabilities: ['services'],
+                disabledCapabilities: ['inventory'],
+                itemData: { category: 'service', unit_of_measure: 'service' },
+                operation: 'create'
+            });
+            expect(result.ok).toBe(true);
+            expect(result.preset.key).toBe('service');
+        });
+
+        it('does not let disabling a base-mode capability change the base taxonomy (base list stays the taxonomy oracle)', () => {
+            // 'catalog' is a base retail capability, not a taxonomy-overlay
+            // key - disabling it must not affect item taxonomy resolution.
+            const result = validateItemAgainstModeTaxonomy({
+                workflowMode: 'retail',
+                disabledCapabilities: ['catalog'],
+                itemData: {
+                    category: 'product',
+                    product_type: 'finished_goods',
+                    mode_item_preset: 'weighed_goods',
+                    unit_of_measure: 'kg'
+                },
+                operation: 'create'
+            });
+            expect(result.ok).toBe(true);
+            expect(result.taxonomy).toBe('retail');
+        });
+    });
 });
