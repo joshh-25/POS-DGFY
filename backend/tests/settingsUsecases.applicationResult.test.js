@@ -324,6 +324,40 @@ describe('settings use-cases application result contract', () => {
     }));
   });
 
+  it('updateSettings rejects a non-master-admin actor setting ops_store_profile_read', async () => {
+    const updateSettings = jest.fn();
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: { updateSettings }
+    });
+
+    const result = await useCase({
+      settingsData: { ops_store_profile_read: true },
+      actorUser: { username: 'tenant_admin' }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.AUTHORIZATION_FAILED);
+    expect(result.error.statusCode).toBe(403);
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
+  it('updateSettings lets a master admin turn on ops_store_profile_read', async () => {
+    const updateSettings = jest.fn().mockResolvedValue({ ops_store_profile_read: true });
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: { updateSettings }
+    });
+
+    const result = await useCase({
+      settingsData: { ops_store_profile_read: true },
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(true);
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      ops_store_profile_read: true
+    }));
+  });
+
   it('updateSettings rejects reserved public storefront handles', async () => {
     const updateSettings = jest.fn();
     const useCase = buildUpdateSettingsUseCase({
@@ -576,6 +610,43 @@ describe('settings use-cases application result contract', () => {
 
     expect(result.success).toBe(true);
     expect(updateSettingByKey).toHaveBeenCalledWith('inventory_authority', 'external_ims');
+  });
+
+  it('updateSettingByKey rejects a non-master-admin actor setting ops_store_profile_read', async () => {
+    const updateSettingByKey = jest.fn();
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: { updateSettingByKey }
+    });
+
+    const result = await useCase({
+      key: 'ops_store_profile_read',
+      value: true,
+      actorUser: { username: 'tenant_admin' }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.AUTHORIZATION_FAILED);
+    expect(result.error.statusCode).toBe(403);
+    expect(updateSettingByKey).not.toHaveBeenCalled();
+  });
+
+  it('updateSettingByKey lets a master admin turn on ops_store_profile_read', async () => {
+    const updateSettingByKey = jest.fn().mockResolvedValue({
+      setting_key: 'ops_store_profile_read',
+      setting_value: 'true'
+    });
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: { updateSettingByKey }
+    });
+
+    const result = await useCase({
+      key: 'ops_store_profile_read',
+      value: true,
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(true);
+    expect(updateSettingByKey).toHaveBeenCalledWith('ops_store_profile_read', true);
   });
 
   it('updateSettingByKey does not create a POS metadata pending review when the receipt value is unchanged', async () => {

@@ -76,3 +76,22 @@ export const buildStoreProfile = ({ workflowMode, enabledCapabilities = [] } = {
 };
 
 export const storeProfilesEqual = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+
+/**
+ * Master-admin gated per-tenant setting that opts a tenant into the runtime
+ * resolving `ops_store_profile` instead of rebuilding it on every read
+ * (issue #178 Phase 12). Mirrors `ENABLED_CAPABILITIES_SETTING_KEY`'s
+ * governance shape (single-source key here, master-admin write gate,
+ * short-TTL cache) rather than inventing a second authorization model.
+ *
+ * Default off. Turning it on for a tenant today has NO observable effect:
+ * the persisted profile is always byte-identical to what a fresh rebuild
+ * produces (there is no template curation yet that could make them diverge
+ * — that's Phase 13). The flag exists so the read-path resolver
+ * (`resolveStoreProfile.js`) and its divergence differ are real, tested
+ * infrastructure ready for the day a consumer is actually wired to it,
+ * without every tenant provisioned in the meantime silently opting in.
+ */
+export const STORE_PROFILE_READ_SETTING_KEY = 'ops_store_profile_read';
+
+export const normalizeStoreProfileReadFlag = (value) => value === true || value === 'true';

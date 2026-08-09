@@ -48,6 +48,7 @@ import {
     applyStoreProfileShadowWrite,
     assertStoreProfileNotClientWritten
 } from './storeProfileShadowWrite.js';
+import { STORE_PROFILE_READ_SETTING_KEY, normalizeStoreProfileReadFlag } from '../../shared/constants/storeProfile.js';
 import { applyWorkflowModeAuditLog } from './workflowModeAuditLog.js';
 import logger from '../../../config/logger.js';
 
@@ -181,6 +182,27 @@ const assertInventoryAuthorityAuthorization = ({ settingsData, actorUser }) => {
     settingsData[INVENTORY_AUTHORITY_SETTING_KEY] = normalizeInventoryAuthority(requested);
 };
 
+// Issue #178 Phase 12 scaffolding switch - mirrors
+// assertEnabledCapabilitiesAuthorization's/assertInventoryAuthorityAuthorization's
+// shape (master-admin gated). See resolveStoreProfile.js for what this flag
+// actually does today (nothing observable - no consumer reads through it
+// yet) and why it exists anyway.
+const assertStoreProfileReadFlagAuthorization = ({ settingsData, actorUser }) => {
+    if (!Object.prototype.hasOwnProperty.call(settingsData, STORE_PROFILE_READ_SETTING_KEY)) {
+        return;
+    }
+
+    if (actorUser?.is_master_admin !== true) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'Only master admin can update ops_store_profile_read',
+            { statusCode: 403 }
+        );
+    }
+
+    settingsData[STORE_PROFILE_READ_SETTING_KEY] = normalizeStoreProfileReadFlag(settingsData[STORE_PROFILE_READ_SETTING_KEY]);
+};
+
 const getTenantComplianceSnapshot = () => {
     const store = dbStore.getStore() || {};
     const tenantId = store.tenantId;
@@ -275,6 +297,7 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository, storefrontAsset
             assertWorkflowModeAuthorization({ settingsData, actorUser });
             assertEnabledCapabilitiesAuthorization({ settingsData, actorUser });
             assertInventoryAuthorityAuthorization({ settingsData, actorUser });
+            assertStoreProfileReadFlagAuthorization({ settingsData, actorUser });
             assertPosSettingsAccessPinAuthorization({ settingsData, actorUser });
             await assertPublicStorefrontHandlePatch({ settingsData, settingsRepository });
             if (

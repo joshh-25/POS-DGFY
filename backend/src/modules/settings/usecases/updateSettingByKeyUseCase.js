@@ -29,7 +29,11 @@ import {
     applyStoreProfileShadowWrite,
     assertStoreProfileNotClientWritten
 } from './storeProfileShadowWrite.js';
-import { STORE_PROFILE_SETTING_KEY } from '../../shared/constants/storeProfile.js';
+import {
+    STORE_PROFILE_SETTING_KEY,
+    STORE_PROFILE_READ_SETTING_KEY,
+    normalizeStoreProfileReadFlag
+} from '../../shared/constants/storeProfile.js';
 import { applyWorkflowModeAuditLog } from './workflowModeAuditLog.js';
 import logger from '../../../config/logger.js';
 import {
@@ -190,6 +194,16 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
                     ));
                 }
                 normalizedValue = normalizeInventoryAuthority(value);
+            }
+            if (key === STORE_PROFILE_READ_SETTING_KEY) {
+                if (actorUser?.is_master_admin !== true) {
+                    return fail(new DomainError(
+                        DomainErrorCode.AUTHORIZATION_FAILED,
+                        'Only master admin can update ops_store_profile_read',
+                        { statusCode: 403 }
+                    ));
+                }
+                normalizedValue = normalizeStoreProfileReadFlag(value);
             }
             if (key === 'store_tenant_slug') {
                 await assertPublicStorefrontHandleAvailable({

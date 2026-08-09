@@ -560,7 +560,8 @@ export const updateSettingsSchema = Joi.object({
     'any.only': `Workflow mode must be one of: ${WORKFLOW_MODE_VALUES.join(', ')}`
   }),
   ops_enabled_capabilities: enabledCapabilitiesSchema.optional(),
-  inventory_authority: inventoryAuthoritySchema.optional()
+  inventory_authority: inventoryAuthoritySchema.optional(),
+  ops_store_profile_read: Joi.boolean().optional()
 }).min(1).messages({
   'object.min': 'At least one setting must be provided'
 });
@@ -727,7 +728,8 @@ export const validateUpdateSingleSetting = (req, res, next) => {
       'any.only': `Workflow mode must be one of: ${WORKFLOW_MODE_VALUES.join(', ')}`
     }),
     ops_enabled_capabilities: enabledCapabilitiesSchema,
-    inventory_authority: inventoryAuthoritySchema
+    inventory_authority: inventoryAuthoritySchema,
+    ops_store_profile_read: Joi.boolean()
   };
 
   if (settingKey === 'pos_order_method_fees' && value?.value && typeof value.value === 'object' && !Array.isArray(value.value)) {

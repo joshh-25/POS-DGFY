@@ -1,0 +1,130 @@
+import dbStore from '../../../utils/dbStore.js';
+import logger from '../../../config/logger.js';
+import {
+    STORE_PROFILE_SETTING_KEY,
+    STORE_PROFILE_VERSION,
+    STORE_PROFILE_READ_SETTING_KEY,
+    buildStoreProfile,
+    storeProfilesEqual,
+    normalizeStoreProfileReadFlag
+} from '../../shared/constants/storeProfile.js';
+import {
+    DEFAULT_WORKFLOW_MODE,
+    ENABLED_CAPABILITIES_SETTING_KEY,
+    normalizeEnabledCapabilities,
+    normalizeWorkflowMode
+} from '../../shared/constants/workflowModes.js';
+
+const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
+
+// Same short-TTL, tenant-scoped shape as workflowCapabilitySettingsCache.js's
+// resolveWorkflowCapabilitySettings — kept as a separate cache rather than
+// merged into it because this one also reads the (potentially large)
+// persisted profile JSON on every miss, and nothing gates on this resolver
+// yet (issue #178 Phase 12: this is scaffolding, not a wired consumer).
+const CACHE_TTL_MS = 15 * 1000;
+const cache = new Map();
+
+const parseJsonSettingValue = (setting, fallback) => {
+    if (!setting) return fallback;
+    const raw = setting.setting_value;
+    if (setting.data_type === 'json' && typeof raw === 'string') {
+        try {
+            return JSON.parse(raw);
+        } catch {
+            return fallback;
+        }
+    }
+    return raw ?? fallback;
+};
+
+const readStoreProfileResolution = async () => {
+    const SystemSetting = dbStore.get('SystemSetting');
+    const rows = await SystemSetting.findAll({
+        where: {
+            setting_key: [
+                WORKFLOW_MODE_SETTING_KEY,
+                ENABLED_CAPABILITIES_SETTING_KEY,
+                STORE_PROFILE_SETTING_KEY,
+                STORE_PROFILE_READ_SETTING_KEY
+            ]
+        },
+        attributes: ['setting_key', 'setting_value', 'data_type']
+    });
+    const byKey = Object.fromEntries(rows.map((row) => [row.setting_key, row]));
+
+    const mode = normalizeWorkflowMode(parseJsonSettingValue(byKey[WORKFLOW_MODE_SETTING_KEY], DEFAULT_WORKFLOW_MODE));
+    const enabledCapabilities = normalizeEnabledCapabilities(
+        parseJsonSettingValue(byKey[ENABLED_CAPABILITIES_SETTING_KEY], [])
+    );
+    const readFlagEnabled = normalizeStoreProfileReadFlag(
+        parseJsonSettingValue(byKey[STORE_PROFILE_READ_SETTING_KEY], false)
+    );
+    const persistedProfile = parseJsonSettingValue(byKey[STORE_PROFILE_SETTING_KEY], null);
+
+    const rebuiltProfile = buildStoreProfile({ workflowMode: mode, enabledCapabilities });
+
+    // The differ: always compute both regardless of the flag, so a
+    // divergence is caught the moment it exists, not only once someone flips
+    // a tenant's flag on. A stale profile_version counts as diverged too —
+    // it means the tenant hasn't gone through a mode/overlay write since the
+    // last STORE_PROFILE_VERSION bump, so its shape cannot be trusted as
+    // current even if its content happens to be a subset match.
+    const persistedIsCurrentVersion = persistedProfile != null
+        && persistedProfile.profile_version === STORE_PROFILE_VERSION;
+    const contentDiverged = persistedIsCurrentVersion
+        ? !storeProfilesEqual(persistedProfile, rebuiltProfile)
+        : false;
+    const diverged = persistedProfile != null && (!persistedIsCurrentVersion || contentDiverged);
+
+    if (diverged) {
+        const store = dbStore.getStore();
+        logger.warn('[StoreProfile] persisted profile diverges from a fresh rebuild', {
+            tenant_id: store?.tenantId ?? null,
+            reason: persistedIsCurrentVersion ? 'content_mismatch' : 'stale_profile_version',
+            persisted_version: persistedProfile?.profile_version ?? null,
+            current_version: STORE_PROFILE_VERSION
+        });
+    }
+
+    // Never serve a divergent or version-stale persisted profile, even with
+    // the flag on: this resolver's job is to prove the mechanism is safe to
+    // wire up later (issue #178 Phase 13+), not to let a stale shadow-write
+    // silently become authoritative. A rebuild is always correct by
+    // definition — it IS the registries.
+    const canServePersisted = readFlagEnabled && persistedIsCurrentVersion && !contentDiverged;
+
+    return {
+        profile: canServePersisted ? persistedProfile : rebuiltProfile,
+        source: canServePersisted ? 'persisted' : 'rebuilt',
+        diverged,
+        read_flag_enabled: readFlagEnabled
+    };
+};
+
+/**
+ * Resolves a tenant's effective Store Profile (issue #178 Phase 12
+ * scaffolding). NOT WIRED TO ANY CONSUMER YET — see
+ * docs/features/STORE_TEMPLATES_AND_PROFILES.md. Building this ahead of any
+ * real consumer is deliberate: until Store Templates (Phase 13) exist, a
+ * tenant's persisted profile can never diverge from what rebuilding it would
+ * produce, so flipping a real read path onto this resolver today would add
+ * latency and failure surface to a live request for zero behavior change.
+ * This resolver and its differ are the tested, ready-to-wire mechanism for
+ * when that stops being true.
+ */
+export const resolveStoreProfile = async () => {
+    const store = dbStore.getStore();
+    const tenantKey = store?.tenantId ?? 'default';
+    const cached = cache.get(tenantKey);
+    if (cached && cached.expiresAt > Date.now()) {
+        return cached.resolution;
+    }
+
+    const resolution = await readStoreProfileResolution();
+    cache.set(tenantKey, { resolution, expiresAt: Date.now() + CACHE_TTL_MS });
+    return resolution;
+};
+
+// Test-only: force the next read to hit SystemSetting again.
+export const clearStoreProfileResolutionCache = () => cache.clear();

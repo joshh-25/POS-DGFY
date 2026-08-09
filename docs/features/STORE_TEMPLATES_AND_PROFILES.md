@@ -108,6 +108,30 @@ The flexibility ladder, cheapest first:
 3. **Never** — migrating or rewriting historical rows on a switch. All
    schema work stays additive.
 
+## Runtime read-path resolver (scaffolding, not wired to any consumer)
+
+`backend/src/modules/settings/usecases/resolveStoreProfile.js` resolves a
+tenant's effective Store Profile, gated by the master-admin-only
+`ops_store_profile_read` setting (default off, same governance shape as
+`ops_enabled_capabilities`). It always rebuilds the profile from the live
+registries as well as reading the persisted one, and logs a structured
+divergence warning whenever they disagree — the differ issue #178 Phase 11
+called for, now real rather than only tested by the equivalence harness. A
+divergent or version-stale persisted profile is never served, even with the
+flag on; a fresh rebuild is always correct by construction.
+
+**Nothing reads through this resolver yet**, deliberately. Every runtime
+consumer identified for a Phase 12 flip — storefront order methods, item
+taxonomy validation, POS terminal defaults, capability gating — currently
+produces a value that is mathematically identical to what the Profile would
+return, because no Store Template (Phase 13) exists yet to make a tenant's
+Profile diverge from its base mode. Wiring a real consumer onto the resolver
+before that point would add latency and a new failure surface (an async
+settings fetch on payment/checkout paths, cache staleness, version
+mismatches) for zero behavior change. The resolver stays as tested,
+ready-to-wire infrastructure until Phase 13 gives templates a way to
+actually curate a Profile away from its mode.
+
 ## Planned modules (roadmap slots in the catalog, not implemented)
 
 - `laborTracking` — who performed a job, actual start/finish, rate-based
@@ -129,3 +153,5 @@ grantable capability vocabulary, and fail template validation if selected.
   decorative capabilities.
 - `backend/tests/orderMethods.crossLayer.contract.test.js` — order-method
   vocabulary ↔ DB ENUM.
+- `backend/tests/resolveStoreProfile.usecase.test.js` — the read-path
+  resolver's flag/version/divergence logic.
