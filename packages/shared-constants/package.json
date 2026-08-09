@@ -21,6 +21,10 @@
       "import": "./src/capabilityModules.js",
       "default": "./src/capabilityModules.js"
     },
+    "./registrationIndustries": {
+      "import": "./src/registrationIndustries.js",
+      "default": "./src/registrationIndustries.js"
+    },
     "./posWorkflows": {
       "import": "./src/posWorkflows.js",
       "default": "./src/posWorkflows.js"
