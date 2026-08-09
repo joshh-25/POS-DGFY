@@ -1,5 +1,5 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-09
@@ -13,7 +13,7 @@ topic: store_configuration_templates_and_profiles
 
 ## Status
 
-Accepted (2026-08-09)
+Amended (2026-08-09). Read the Amendments section last.
 
 ## Context
 
@@ -129,7 +129,11 @@ consumer reads through yet — scoped by clause 2 above from its first commit.
 Phases 13 (landlord template catalog) and 14 (curation surface) have since
 shipped, scoped by clauses 1, 3, 5, and 6; Phase 13's existence is what
 would make wiring a real Phase 12 consumer meaningful, which is why it
-landed first.
+landed first. Phase 16 (this amendment's subtractive overlay) and Phase 17
+(apply-template) close the remaining gap — a template's module list can now
+actually diverge a Profile from its base mode — and Phases 18-19 wire the
+first real Phase 12 consumers: POS affordances, then the fail-closed
+capability gate last, with a permanent rebuild fallback there.
 
 ## Validation
 
@@ -141,6 +145,49 @@ landed first.
   `backend/tests/storeProfile.equivalence.contract.test.js` continue passing
   unmodified by this ADR — it constrains future phases, not shipped ones.
 - `npm run lint:docs`.
+
+## Amendments (2026-08-09)
+
+### A subtractive capability overlay, so a template can actually change a store
+
+Phases 13-14 gave templates a persisted, curatable, versioned home, but two of
+the three non-canonical presets seeded at Phase 13 (`fnb_counter_service`,
+`hospitality_guesthouse`) *remove* modules from their base mode's list. Until
+now, `buildStoreProfile` only accepted an additive `enabledCapabilities`
+overlay (`resolveEffectiveCapabilities` was a strict union), so those rows
+were inexpressible as a Profile — nothing could ever apply them. Phase 16
+adds `ops_disabled_capabilities`, mirroring `ops_enabled_capabilities`'
+governance shape exactly (same master-admin write gate, same 15s
+tenant-scoped cache, same `ALL_WORKFLOW_CAPABILITIES` normalization) rather
+than inventing a second authorization model — consistent with Decision 6's
+`[default]`. Effective capabilities become `(base ∪ enabled) \ disabled`,
+validated against `validateModuleSelection()`'s `requires`/`conflicts_with`
+edges before the write is accepted, so a subtraction can never leave a store
+requesting a module whose dependency it just removed. `STORE_PROFILE_VERSION`
+moves to 4 to carry `source.disabled_capabilities`.
+
+**Decision 1 is strengthened by this, not weakened.** The disabled overlay
+is normalized against `ALL_WORKFLOW_CAPABILITIES` — the same gate/affordance
+vocabulary `WORKFLOW_MODE_CAPABILITIES` entries are drawn from. Neither
+`fiscalProfile` nor `customerAccessMode` (the catalog's two `locked`
+modules) appears in any mode's base list or in `ALL_WORKFLOW_CAPABILITIES`,
+so no disabled-capabilities write can reach them; they stay
+compliance-determined exactly as before. Decision 2 (provenance never
+dereferenced at runtime) is unaffected: Phase 17's apply-template action
+writes `{mode, enabled, disabled}` and stamps provenance once, at write
+time, and never re-reads the template row afterward — the same shape as
+provisioning's existing one-time lookup.
+
+### Phase 17 — applying a template is now possible, not just curating one
+
+A template can now actually be applied: at provisioning via an optional
+`templateKey`, and to an already-provisioned tenant via a new audited
+platform-admin action, `POST /admin/tenants/:id/apply-template` (mirrors the
+existing `PATCH /:id/capabilities` pattern — same `authenticateAdmin` gate,
+same before/after audit snapshot). Both paths share one materializer so they
+cannot compute `{mode, enabled, disabled}` differently. Non-destructive per
+ADR 0008/0019: a settings write only, no data migration, switching back
+restores access.
 
 ## Authoritative Sources
 

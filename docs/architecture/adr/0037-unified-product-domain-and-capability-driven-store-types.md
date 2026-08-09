@@ -659,18 +659,22 @@ IMS delegation); new phases use 10+. Status as of this amendment:
   byte-identical to the registries it derives from. Nothing reads the profile
   yet.
 - **Phase 12 — Runtime reads the Profile, module by module, behind a
-  per-tenant flag (scaffolding shipped, no consumer wired yet):**
-  `resolveStoreProfile.js` and the `ops_store_profile_read` flag exist and
-  are tested, including the live divergence differ. Deliberately not wired
-  to any real consumer: tracing every candidate (POS defaults, storefront
-  order methods, item taxonomy, capability gating) found each currently
-  produces a value mathematically identical to the registries, because
+  per-tenant flag (scaffolding shipped in a first pass; consumers wired in
+  Phases 18-19):** `resolveStoreProfile.js` and the `ops_store_profile_read`
+  flag exist and are tested, including the live divergence differ. Initially
+  shipped with no consumer wired: tracing every candidate (POS defaults,
+  storefront order methods, item taxonomy, capability gating) found each
+  produced a value mathematically identical to the registries, because
   nothing could make a tenant's Profile diverge from its mode until Phase 13
-  shipped a curation mechanism. Wiring a consumer before that point would
-  have added latency and failure surface for zero behavior change. Phase 13
-  now exists; consumer flips remain future work, in the same order noted
-  above, with capability gating last and never a full cutover — a rebuild
-  fallback stays permanent there, not temporary.
+  shipped a curation mechanism and Phase 16 gave that mechanism a
+  subtractive channel (below). Both now exist; Phase 18 flips the affordance
+  consumers (POS defaults, terminology), Phase 19 flips the fail-closed
+  capability gate last, with a permanent rebuild fallback there rather than
+  a temporary one. The storefront-order-methods and item-taxonomy
+  candidates stay unflipped: `STOREFRONT_ORDER_METHODS` is a mode-independent
+  constant (flipping it would be pure churn), and item taxonomy already
+  derives from mode + overlay so it inherits subtraction for free once
+  Phase 16 lands.
 - **Phase 13 — Landlord template catalog (shipped):**
   `store_configuration_templates` / `_modules`, landlord-only
   (`NON_TENANT_MODEL_EXPORTS`). A template's module list is frozen once
@@ -683,6 +687,27 @@ IMS delegation); new phases use 10+. Status as of this amendment:
   template shapes every future tenant, platform-wide). Every write is
   audited in a purpose-built `store_configuration_template_audit_logs`
   table.
+- **Phase 15 — Governance for the subtractive channel (this amendment):**
+  recorded here and in ADR 0056's own amendment below.
+- **Phase 16 — Subtractive capability overlay (shipped):**
+  `ops_disabled_capabilities` mirrors `ops_enabled_capabilities`'
+  governance shape (master-admin gated, 15s tenant-scoped cache) and lets a
+  template's module list actually subtract from a mode's base capabilities,
+  not just add to it — without it, non-canonical presets like
+  `fnb_counter_service` and `hospitality_guesthouse` were rows in the
+  landlord DB no Profile could ever express. `STORE_PROFILE_VERSION` moved
+  to 4. Validated against `validateModuleSelection()`'s `requires`/
+  `conflicts_with` edges so a subtraction can never leave a store in an
+  unbuildable state, and filtered to `ALL_WORKFLOW_CAPABILITIES` so no
+  `locked` module (`fiscalProfile`, `customerAccessMode` — catalog-only,
+  never in any mode's base list) is reachable by curation either way.
+- **Phase 17 — Apply a template to a tenant (shipped):** a shared
+  materializer turns a template's module list plus its `base_mode` into
+  `{workflowMode, enabledCapabilities, disabledCapabilities}`, used both at
+  provisioning (an optional `templateKey` beyond the canonical default) and
+  by a new audited platform-admin action,
+  `POST /admin/tenants/:id/apply-template`, for already-provisioned tenants.
+  Non-destructive per ADR 0008/0019: settings only, no data migration.
 
 The three `[binding]` cross-boundary clauses this realization needs — never
 dereferencing provenance at runtime, locked-module compliance determinism,
