@@ -10,6 +10,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "pos",
     "storefront",
   ],
+  "pos_defaults": {
+    "preferred_order_method": "takeout",
+    "preferred_payment_type": "cash",
+    "show_online_queue": true,
+  },
   "pos_workflow": {
     "allowed_methods": [
       "walk_in",
@@ -27,7 +32,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 1,
+  "profile_version": 2,
   "source": {
     "base_mode": "education_institutions",
     "enabled_capabilities": [],
@@ -41,6 +46,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
       "pickup",
       "delivery",
     ],
+  },
+  "terminology": {
+    "item_create_label": "Create Campus SKU",
+    "pos_workspace_label": "POS Terminal",
+    "product_create_label": "Create Product",
   },
 }
 `;
@@ -68,6 +78,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "storefront",
     "tableService",
   ],
+  "pos_defaults": {
+    "preferred_order_method": "dine_in",
+    "preferred_payment_type": "cash",
+    "show_online_queue": true,
+  },
   "pos_workflow": {
     "allowed_methods": [
       "dine_in",
@@ -86,7 +101,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "fnb",
     "transaction_record": "order",
   },
-  "profile_version": 1,
+  "profile_version": 2,
   "source": {
     "base_mode": "fnb",
     "enabled_capabilities": [],
@@ -100,6 +115,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
       "pickup",
       "delivery",
     ],
+  },
+  "terminology": {
+    "item_create_label": "Create Menu Item",
+    "pos_workspace_label": "POS Terminal",
+    "product_create_label": "Create Menu Product",
   },
 }
 `;
@@ -125,6 +145,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "productionWorkflows",
     "storefront",
   ],
+  "pos_defaults": {
+    "preferred_order_method": "takeout",
+    "preferred_payment_type": "cash",
+    "show_online_queue": true,
+  },
   "pos_workflow": {
     "allowed_methods": [
       "walk_in",
@@ -142,7 +167,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 1,
+  "profile_version": 2,
   "source": {
     "base_mode": "food_manufacturing",
     "enabled_capabilities": [],
@@ -157,6 +182,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
       "delivery",
     ],
   },
+  "terminology": {
+    "item_create_label": "Create Food Manufacturing Item",
+    "pos_workspace_label": "POS Terminal",
+    "product_create_label": "Create Food Product",
+  },
 }
 `;
 
@@ -170,6 +200,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "pos",
     "storefront",
   ],
+  "pos_defaults": {
+    "preferred_order_method": "takeout",
+    "preferred_payment_type": "cash",
+    "show_online_queue": true,
+  },
   "pos_workflow": {
     "allowed_methods": [
       "walk_in",
@@ -187,7 +222,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 1,
+  "profile_version": 2,
   "source": {
     "base_mode": "healthcare",
     "enabled_capabilities": [],
@@ -201,6 +236,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
       "pickup",
       "delivery",
     ],
+  },
+  "terminology": {
+    "item_create_label": "Create Healthcare SKU",
+    "pos_workspace_label": "POS Terminal",
+    "product_create_label": "Create Product",
   },
 }
 `;
@@ -234,6 +274,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "pos",
     "storefront",
   ],
+  "pos_defaults": {
+    "preferred_order_method": "dine_in",
+    "preferred_payment_type": "cash",
+    "show_online_queue": true,
+  },
   "pos_workflow": {
     "allowed_methods": [
       "dine_in",
@@ -252,7 +297,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "fnb",
     "transaction_record": "order",
   },
-  "profile_version": 1,
+  "profile_version": 2,
   "source": {
     "base_mode": "hospitality",
     "enabled_capabilities": [],
@@ -267,6 +312,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
       "delivery",
     ],
   },
+  "terminology": {
+    "item_create_label": "Create Hospitality Item",
+    "pos_workspace_label": "POS Terminal",
+    "product_create_label": "Create Product",
+  },
 }
 `;
 
@@ -280,6 +330,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "pos",
     "storefront",
   ],
+  "pos_defaults": {
+    "preferred_order_method": "delivery",
+    "preferred_payment_type": "cash",
+    "show_online_queue": true,
+  },
   "pos_workflow": {
     "allowed_methods": [
       "walk_in",
@@ -297,7 +352,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 1,
+  "profile_version": 2,
   "source": {
     "base_mode": "logistics_distribution",
     "enabled_capabilities": [],
@@ -311,6 +366,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
       "pickup",
       "delivery",
     ],
+  },
+  "terminology": {
+    "item_create_label": "Create Logistics SKU",
+    "pos_workspace_label": "POS Terminal",
+    "product_create_label": "Create Product",
   },
 }
 `;
@@ -336,6 +396,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "productionWorkflows",
     "storefront",
   ],
+  "pos_defaults": {
+    "preferred_order_method": "takeout",
+    "preferred_payment_type": "cash",
+    "show_online_queue": true,
+  },
   "pos_workflow": {
     "allowed_methods": [
       "walk_in",
@@ -353,7 +418,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 1,
+  "profile_version": 2,
   "source": {
     "base_mode": "food_manufacturing",
     "enabled_capabilities": [],
@@ -367,6 +432,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
       "pickup",
       "delivery",
     ],
+  },
+  "terminology": {
+    "item_create_label": "Create Food Manufacturing Item",
+    "pos_workspace_label": "POS Terminal",
+    "product_create_label": "Create Food Product",
   },
 }
 `;
@@ -387,6 +457,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "pos",
     "storefront",
   ],
+  "pos_defaults": {
+    "preferred_order_method": "takeout",
+    "preferred_payment_type": "cash",
+    "show_online_queue": false,
+  },
   "pos_workflow": {
     "allowed_methods": [
       "walk_in",
@@ -404,7 +479,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 1,
+  "profile_version": 2,
   "source": {
     "base_mode": "msme",
     "enabled_capabilities": [],
@@ -418,6 +493,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
       "pickup",
       "delivery",
     ],
+  },
+  "terminology": {
+    "item_create_label": "Create Item",
+    "pos_workspace_label": "POS Terminal",
+    "product_create_label": "Create Product",
   },
 }
 `;
@@ -441,6 +521,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "pos",
     "storefront",
   ],
+  "pos_defaults": {
+    "preferred_order_method": "takeout",
+    "preferred_payment_type": "cash",
+    "show_online_queue": true,
+  },
   "pos_workflow": {
     "allowed_methods": [
       "walk_in",
@@ -458,7 +543,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 1,
+  "profile_version": 2,
   "source": {
     "base_mode": "retail",
     "enabled_capabilities": [],
@@ -472,6 +557,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
       "pickup",
       "delivery",
     ],
+  },
+  "terminology": {
+    "item_create_label": "Create Retail SKU",
+    "pos_workspace_label": "POS Terminal",
+    "product_create_label": "Create Product",
   },
 }
 `;
@@ -494,6 +584,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "services",
     "storefront",
   ],
+  "pos_defaults": {
+    "preferred_order_method": "appointment",
+    "preferred_payment_type": "cash",
+    "show_online_queue": true,
+  },
   "pos_workflow": {
     "allowed_methods": [
       "walk_in",
@@ -510,7 +605,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "services",
     "transaction_record": "booking",
   },
-  "profile_version": 1,
+  "profile_version": 2,
   "source": {
     "base_mode": "services",
     "enabled_capabilities": [],
@@ -525,6 +620,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
       "delivery",
     ],
   },
+  "terminology": {
+    "item_create_label": "Create Service",
+    "pos_workspace_label": "Services POS",
+    "product_create_label": "Create Service Package",
+  },
 }
 `;
 
@@ -538,6 +638,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "pos",
     "storefront",
   ],
+  "pos_defaults": {
+    "preferred_order_method": "pickup",
+    "preferred_payment_type": "cash",
+    "show_online_queue": true,
+  },
   "pos_workflow": {
     "allowed_methods": [
       "walk_in",
@@ -555,7 +660,7 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
     "mode": "counter",
     "transaction_record": "order",
   },
-  "profile_version": 1,
+  "profile_version": 2,
   "source": {
     "base_mode": "ticketing_transport",
     "enabled_capabilities": [],
@@ -569,6 +674,11 @@ exports[`store profile equivalence harness (issue #178 Phase 11) matches the gol
       "pickup",
       "delivery",
     ],
+  },
+  "terminology": {
+    "item_create_label": "Create Ticket SKU",
+    "pos_workspace_label": "POS Terminal",
+    "product_create_label": "Create Product",
   },
 }
 `;

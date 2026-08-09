@@ -8,6 +8,7 @@ import {
 import { resolvePosWorkflow } from './posWorkflows.js';
 import { resolveEffectiveItemTaxonomy } from './modeItemTaxonomy.js';
 import { STOREFRONT_ORDER_METHODS } from './orderMethods.js';
+import { resolvePosDefaultsAndTerminology } from './posDefaultsAndTerminology.js';
 
 /**
  * Store Profile materialization (issue #178 Phase 11) — SHADOW-WRITE ONLY.
@@ -27,15 +28,22 @@ import { STOREFRONT_ORDER_METHODS } from './orderMethods.js';
  * The builder is deterministic: same mode + overlay in, byte-identical JSON
  * out. No timestamps, no randomness — determinism is what makes the diff
  * meaningful.
+ *
+ * v2 (issue #178 Phase 11 amendment) adds `pos_defaults` and `terminology`,
+ * materialized from `posDefaultsAndTerminology.js` — closing the last gap
+ * against `BUSINESS_MODE_TEMPLATE_REGISTRY`
+ * (`frontend/src/features/settings/businessModeTemplates.js`), so the
+ * profile fully covers every live registry before Phase 12 reads it.
  */
 export const STORE_PROFILE_SETTING_KEY = 'ops_store_profile';
-export const STORE_PROFILE_VERSION = 1;
+export const STORE_PROFILE_VERSION = 2;
 
 export const buildStoreProfile = ({ workflowMode, enabledCapabilities = [] } = {}) => {
     const baseMode = normalizeWorkflowMode(workflowMode);
     const overlay = normalizeEnabledCapabilities(enabledCapabilities);
     const posWorkflow = resolvePosWorkflow(baseMode);
     const itemTaxonomy = resolveEffectiveItemTaxonomy(baseMode, overlay);
+    const { pos_defaults: posDefaults, terminology } = resolvePosDefaultsAndTerminology(baseMode);
 
     return {
         profile_version: STORE_PROFILE_VERSION,
@@ -52,6 +60,7 @@ export const buildStoreProfile = ({ workflowMode, enabledCapabilities = [] } = {
             allowed_methods: [...posWorkflow.allowedMethods],
             capabilities: { ...posWorkflow.capabilities }
         },
+        pos_defaults: { ...posDefaults },
         storefront: {
             order_methods: [...STOREFRONT_ORDER_METHODS]
         },
@@ -61,7 +70,8 @@ export const buildStoreProfile = ({ workflowMode, enabledCapabilities = [] } = {
                 default_preset: itemTaxonomy.default_preset,
                 preset_keys: itemTaxonomy.presets.map((preset) => preset.key)
             }
-            : null
+            : null,
+        terminology: { ...terminology }
     };
 };
 

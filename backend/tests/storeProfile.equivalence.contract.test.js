@@ -13,6 +13,11 @@ import { STOREFRONT_ORDER_METHODS, POS_ORDER_METHODS } from '../src/modules/shar
 // Imported through the frontend path deliberately: the harness proves the
 // profile materializes exactly what the admin POS terminal resolves.
 import { resolvePosWorkflow } from '../../frontend/src/features/pos/utils/posWorkflowResolver.js';
+import {
+    resolveBusinessModePosDefaults,
+    resolveBusinessModeWizardLabels
+} from '../../frontend/src/features/settings/businessModeTemplates.js';
+import { POS_DEFAULTS_AND_TERMINOLOGY_VOCABULARY_ALIGNED } from '../src/modules/shared/constants/posDefaultsAndTerminology.js';
 
 const ALL_MODES = Object.keys(WORKFLOW_MODE_CAPABILITIES);
 
@@ -65,6 +70,19 @@ describe('store profile equivalence harness (issue #178 Phase 11)', () => {
     it('materializes the storefront order methods from the shared vocabulary', () => {
         const profile = buildStoreProfile({ workflowMode: 'retail' });
         expect(profile.storefront.order_methods).toEqual([...STOREFRONT_ORDER_METHODS]);
+    });
+
+    it('has a pos_defaults/terminology entry for every real workflow mode and none outside it', () => {
+        expect(POS_DEFAULTS_AND_TERMINOLOGY_VOCABULARY_ALIGNED.modes_missing_entry).toEqual([]);
+        expect(POS_DEFAULTS_AND_TERMINOLOGY_VOCABULARY_ALIGNED.entries_outside_mode_vocabulary).toEqual([]);
+    });
+
+    it('materializes pos_defaults and terminology byte-identical to BUSINESS_MODE_TEMPLATE_REGISTRY', () => {
+        for (const mode of ALL_MODES) {
+            const profile = buildStoreProfile({ workflowMode: mode });
+            expect(profile.pos_defaults).toEqual(resolveBusinessModePosDefaults(mode));
+            expect(profile.terminology).toEqual(resolveBusinessModeWizardLabels(mode));
+        }
     });
 
     it('applies the enabled-capabilities overlay exactly as the runtime does', () => {

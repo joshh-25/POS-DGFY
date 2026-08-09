@@ -29,6 +29,10 @@
       "import": "./src/storeProfile.js",
       "default": "./src/storeProfile.js"
     },
+    "./posDefaultsAndTerminology": {
+      "import": "./src/posDefaultsAndTerminology.js",
+      "default": "./src/posDefaultsAndTerminology.js"
+    },
     "./uomConverter": {
       "import": "./src/uomConverter.js",
       "default": "./src/uomConverter.js"
