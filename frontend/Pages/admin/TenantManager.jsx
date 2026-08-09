@@ -2026,7 +2026,7 @@ export default function TenantManager() {
                                                             <option value="">Apply Store Template…</option>
                                                             {templates.map((template) => (
                                                                 <option key={template.template_key} value={template.template_key}>
-                                                                    {template.label} ({template.base_mode})
+                                                                    {template.label} ({WORKFLOW_MODE_LABELS[template.base_mode] || template.base_mode})
                                                                 </option>
                                                             ))}
                                                         </select>

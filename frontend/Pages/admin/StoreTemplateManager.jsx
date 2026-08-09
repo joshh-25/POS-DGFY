@@ -1,22 +1,49 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import * as adminService from '@/services/adminService';
-import { WORKFLOW_MODE_VALUES, WORKFLOW_MODE_LABELS } from '@sieitzz/shared-constants/workflowModes';
-import { CAPABILITY_MODULES } from '@sieitzz/shared-constants/capabilityModules';
+import {
+    TEMPLATE_AUTHORABLE_MODES,
+    WORKFLOW_MODE_LABELS,
+    getWorkflowModeEngine,
+    WORKFLOW_MODE_ENGINE_NOTES
+} from '@sieitzz/shared-constants/workflowModes';
+import {
+    CAPABILITY_MODULES,
+    CAPABILITY_MODULE_GROUPS,
+    CAPABILITY_MODULE_SURFACES,
+    resolveModeFamilyModuleGroups
+} from '@sieitzz/shared-constants/capabilityModules';
 
 // Only shipped, template-selectable modules are offered as curation choices
 // - `locked` modules are compliance-determined (ADR 0056 clause 1) and
 // `planned` modules aren't implemented, so validateModuleSelection() would
 // reject either one server-side even if we let an admin pick them here.
-const SELECTABLE_MODULES = Object.entries(CAPABILITY_MODULES)
-    .filter(([, module]) => module.status === 'shipped' && module.enforcement !== 'locked')
-    .map(([key, module]) => ({ key, label: module.label }))
-    .sort((a, b) => a.label.localeCompare(b.label));
+// Grouped and ordered per CAPABILITY_MODULE_GROUPS (issue #178 final-touch
+// pass) so the grid reads as related clusters instead of an alphabetical
+// scatter across families.
+const SELECTABLE_MODULE_GROUPS = Object.entries(CAPABILITY_MODULE_GROUPS)
+    .sort(([, a], [, b]) => a.order - b.order)
+    .map(([groupKey, group]) => ({
+        key: groupKey,
+        label: group.label,
+        modules: Object.entries(CAPABILITY_MODULES)
+            .filter(([, module]) => module.status === 'shipped' && module.enforcement !== 'locked' && module.group === groupKey)
+            .map(([key, module]) => ({ key, label: module.label, description: module.description, surface: module.surface }))
+            .sort((a, b) => a.label.localeCompare(b.label))
+    }))
+    .filter((group) => group.modules.length > 0);
+
+const SURFACE_BADGE_LABEL = {
+    [CAPABILITY_MODULE_SURFACES.POS]: 'POS',
+    [CAPABILITY_MODULE_SURFACES.STOREFRONT]: 'Storefront',
+    [CAPABILITY_MODULE_SURFACES.BACK_OFFICE]: 'Back office'
+};
 
 const STATUS_BADGE_VARIANT = {
     draft: 'secondary',
@@ -31,9 +58,109 @@ const STATUS_BADGE_VARIANT = {
 const EMPTY_DRAFT_FORM = {
     template_key: '',
     label: '',
-    base_mode: WORKFLOW_MODE_VALUES[0],
+    base_mode: TEMPLATE_AUTHORABLE_MODES[0],
     module_keys: []
 };
+
+// Base-mode dropdown options: only modes with a native or transitional
+// engine (TEMPLATE_AUTHORABLE_MODES) - external-engine modes are hidden
+// here and rejected server-side (issue #178 final-touch pass).
+const BASE_MODE_OPTIONS = TEMPLATE_AUTHORABLE_MODES.map((mode) => ({
+    value: mode,
+    label: WORKFLOW_MODE_LABELS[mode] || mode,
+    engine: getWorkflowModeEngine(mode),
+    engineNote: WORKFLOW_MODE_ENGINE_NOTES[mode]
+}));
+
+function EngineBadge({ baseMode }) {
+    const engine = getWorkflowModeEngine(baseMode);
+    if (engine === 'transitional') {
+        const note = WORKFLOW_MODE_ENGINE_NOTES[baseMode];
+        return (
+            <Badge variant="outline" title={note ? `Planned external engine: ${note}` : 'External engine planned'}>
+                Native today · external planned
+            </Badge>
+        );
+    }
+    if (engine === 'external') {
+        return <Badge variant="secondary">External engine</Badge>;
+    }
+    return null;
+}
+
+function ModuleGrid({ idPrefix, baseMode, selectedKeys, onToggle, disabled }) {
+    const [showAll, setShowAll] = useState(false);
+
+    const visibleGroupKeys = useMemo(() => {
+        const defaultGroups = new Set(resolveModeFamilyModuleGroups(baseMode));
+        if (showAll) {
+            return new Set(SELECTABLE_MODULE_GROUPS.map((group) => group.key));
+        }
+        // A group already holding a selected module is force-shown even if
+        // the base mode wouldn't otherwise surface it, so switching base
+        // mode never silently hides an already-checked box.
+        for (const group of SELECTABLE_MODULE_GROUPS) {
+            if (group.modules.some((module) => selectedKeys.includes(module.key))) {
+                defaultGroups.add(group.key);
+            }
+        }
+        return defaultGroups;
+    }, [baseMode, showAll, selectedKeys]);
+
+    const visibleGroups = SELECTABLE_MODULE_GROUPS.filter((group) => visibleGroupKeys.has(group.key));
+    const hiddenGroupCount = SELECTABLE_MODULE_GROUPS.length - visibleGroups.length;
+
+    return (
+        <fieldset className="space-y-4">
+            <div className="flex items-center justify-between">
+                <legend className="text-xs font-medium text-slate-600">Modules</legend>
+                {hiddenGroupCount > 0 && (
+                    <button
+                        type="button"
+                        className="text-xs font-medium text-[#1A4E8D] underline"
+                        onClick={() => setShowAll((current) => !current)}
+                    >
+                        {showAll ? 'Show only relevant module groups' : `Show all module groups (${hiddenGroupCount} more)`}
+                    </button>
+                )}
+            </div>
+            {visibleGroups.map((group) => (
+                <div key={group.key} className="space-y-2">
+                    <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">{group.label}</h4>
+                    <div className="grid gap-2 sm:grid-cols-2">
+                        {group.modules.map((module) => (
+                            <label
+                                key={module.key}
+                                htmlFor={`${idPrefix}-module-${module.key}`}
+                                className="flex items-start gap-2 rounded-lg border p-2 text-sm"
+                            >
+                                <Checkbox
+                                    id={`${idPrefix}-module-${module.key}`}
+                                    checked={selectedKeys.includes(module.key)}
+                                    onCheckedChange={() => onToggle(module.key)}
+                                    disabled={disabled}
+                                />
+                                <span className="space-y-0.5">
+                                    <span className="flex items-center gap-1.5">
+                                        <span className="font-medium text-slate-800">{module.label}</span>
+                                        {module.surface && (
+                                            <Badge variant="outline" className="px-1.5 py-0 text-[10px]">
+                                                {SURFACE_BADGE_LABEL[module.surface] || module.surface}
+                                            </Badge>
+                                        )}
+                                    </span>
+                                    {module.description && (
+                                        <span className="block text-xs text-slate-500">{module.description}</span>
+                                    )}
+                                </span>
+                            </label>
+                        ))}
+                    </div>
+                </div>
+            ))}
+        </fieldset>
+    );
+}
 
 export default function StoreTemplateManager() {
     const [templates, setTemplates] = useState([]);
@@ -140,6 +267,8 @@ export default function StoreTemplateManager() {
         await action(() => adminService.deprecateStoreTemplate(template.template_id, reason.trim()));
     };
 
+    const draftBaseModeEngine = getWorkflowModeEngine(draftForm.base_mode);
+
     return (
         <section className="mx-auto max-w-6xl space-y-6">
             <header>
@@ -162,48 +291,73 @@ export default function StoreTemplateManager() {
 
             <div className="rounded-xl border bg-white p-4 shadow-sm">
                 <h2 className="mb-3 text-sm font-semibold text-slate-900">Create a draft template</h2>
-                <form onSubmit={submitDraft} className="space-y-3">
-                    <div className="flex flex-wrap gap-3">
-                        <Input
-                            required
-                            placeholder="template_key (e.g. fnb_counter_service)"
-                            value={draftForm.template_key}
-                            onChange={(e) => setDraftForm((f) => ({ ...f, template_key: e.target.value }))}
-                            className="max-w-xs"
-                        />
-                        <Input
-                            required
-                            placeholder="Label"
-                            value={draftForm.label}
-                            onChange={(e) => setDraftForm((f) => ({ ...f, label: e.target.value }))}
-                            className="max-w-xs"
-                        />
-                        <Select
-                            value={draftForm.base_mode}
-                            onValueChange={(value) => setDraftForm((f) => ({ ...f, base_mode: value }))}
-                        >
-                            <SelectTrigger className="w-48">
-                                <SelectValue placeholder="Base mode" />
-                            </SelectTrigger>
-                            <SelectContent>
-                                {WORKFLOW_MODE_VALUES.map((mode) => (
-                                    <SelectItem key={mode} value={mode}>{WORKFLOW_MODE_LABELS[mode] || mode}</SelectItem>
-                                ))}
-                            </SelectContent>
-                        </Select>
+                <form onSubmit={submitDraft} className="space-y-4">
+                    <div className="grid gap-4 sm:grid-cols-3">
+                        <div className="space-y-1">
+                            <Label htmlFor="draft-template-key">Template key</Label>
+                            <Input
+                                id="draft-template-key"
+                                required
+                                placeholder="fnb_counter_service"
+                                value={draftForm.template_key}
+                                onChange={(e) => setDraftForm((f) => ({ ...f, template_key: e.target.value }))}
+                            />
+                            <p className="text-xs text-slate-500">
+                                Machine identifier, permanent once published. Lowercase letters, digits,
+                                and underscores; starts with a letter.
+                            </p>
+                        </div>
+                        <div className="space-y-1">
+                            <Label htmlFor="draft-template-label">Display label</Label>
+                            <Input
+                                id="draft-template-label"
+                                required
+                                placeholder="Counter-Service Eatery"
+                                value={draftForm.label}
+                                onChange={(e) => setDraftForm((f) => ({ ...f, label: e.target.value }))}
+                            />
+                            <p className="text-xs text-slate-500">
+                                The human name admins and provisioning logs show for this template.
+                            </p>
+                        </div>
+                        <div className="space-y-1">
+                            <Label htmlFor="draft-template-base-mode">Base mode</Label>
+                            <Select
+                                value={draftForm.base_mode}
+                                onValueChange={(value) => setDraftForm((f) => ({ ...f, base_mode: value }))}
+                            >
+                                <SelectTrigger id="draft-template-base-mode">
+                                    <SelectValue placeholder="Base mode" />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {BASE_MODE_OPTIONS.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>
+                                            {option.label}
+                                            {option.engine === 'transitional' ? ' · native today, external planned' : ''}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                            <p className="text-xs text-slate-500">
+                                The industry type this template builds on. The module list starts from
+                                this mode&apos;s default behavior; add or remove modules below.
+                            </p>
+                            {draftBaseModeEngine === 'transitional' && (
+                                <p className="rounded-md bg-amber-50 p-2 text-xs text-amber-800">
+                                    Native today · external engine planned
+                                    {WORKFLOW_MODE_ENGINE_NOTES[draftForm.base_mode] ? ` (${WORKFLOW_MODE_ENGINE_NOTES[draftForm.base_mode]})` : ''}.
+                                    DGFY currently runs this vertical end-to-end; the product direction is to
+                                    move its engine to a sibling app.
+                                </p>
+                            )}
+                        </div>
                     </div>
-                    <fieldset className="grid gap-2 sm:grid-cols-3">
-                        <legend className="mb-1 text-xs font-medium text-slate-600">Modules</legend>
-                        {SELECTABLE_MODULES.map((module) => (
-                            <label key={module.key} className="flex items-center gap-2 rounded-lg border p-2 text-sm">
-                                <Checkbox
-                                    checked={draftForm.module_keys.includes(module.key)}
-                                    onCheckedChange={() => toggleDraftModule(module.key)}
-                                />
-                                {module.label}
-                            </label>
-                        ))}
-                    </fieldset>
+                    <ModuleGrid
+                        idPrefix="draft"
+                        baseMode={draftForm.base_mode}
+                        selectedKeys={draftForm.module_keys}
+                        onToggle={toggleDraftModule}
+                    />
                     <Button type="submit" disabled={busy}>Create draft</Button>
                 </form>
             </div>
@@ -241,7 +395,12 @@ export default function StoreTemplateManager() {
                             <tr className="border-t" key={template.template_id}>
                                 <td className="p-3 font-medium">{template.template_key}</td>
                                 <td className="p-3">{template.label}</td>
-                                <td className="p-3">{WORKFLOW_MODE_LABELS[template.base_mode] || template.base_mode}</td>
+                                <td className="p-3">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                        <span>{WORKFLOW_MODE_LABELS[template.base_mode] || template.base_mode}</span>
+                                        <EngineBadge baseMode={template.base_mode} />
+                                    </div>
+                                </td>
                                 <td className="p-3">
                                     <Badge variant={STATUS_BADGE_VARIANT[template.status] || 'secondary'}>
                                         {template.status}
@@ -287,24 +446,19 @@ export default function StoreTemplateManager() {
                     <h2 className="mb-1 text-sm font-semibold text-slate-900">
                         {selected.label} <span className="font-normal text-slate-500">({selected.template_key})</span>
                     </h2>
-                    <p className="mb-3 text-xs text-slate-500">
-                        {WORKFLOW_MODE_LABELS[selected.base_mode] || selected.base_mode} • v{selected.version} • {selected.status}
+                    <p className="mb-3 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                        <span>{WORKFLOW_MODE_LABELS[selected.base_mode] || selected.base_mode} • v{selected.version} • {selected.status}</span>
+                        <EngineBadge baseMode={selected.base_mode} />
                     </p>
 
                     {selected.status === 'draft' ? (
                         <div className="space-y-3">
-                            <fieldset className="grid gap-2 sm:grid-cols-3">
-                                <legend className="mb-1 text-xs font-medium text-slate-600">Modules (editable while draft)</legend>
-                                {SELECTABLE_MODULES.map((module) => (
-                                    <label key={module.key} className="flex items-center gap-2 rounded-lg border p-2 text-sm">
-                                        <Checkbox
-                                            checked={(editModuleKeys || []).includes(module.key)}
-                                            onCheckedChange={() => toggleEditModule(module.key)}
-                                        />
-                                        {module.label}
-                                    </label>
-                                ))}
-                            </fieldset>
+                            <ModuleGrid
+                                idPrefix="edit"
+                                baseMode={selected.base_mode}
+                                selectedKeys={editModuleKeys || []}
+                                onToggle={toggleEditModule}
+                            />
                             <Textarea
                                 placeholder="Reason for this change (required, min 3 characters)"
                                 value={editReason}

@@ -97,6 +97,8 @@ describe('TenantManager apply-template picker (issue #178 final-touch hardening)
     await screen.findByRole('heading', { name: 'Lean Retail Co' });
 
     const picker = await screen.findByLabelText('Apply Store Template to Lean Retail Co');
-    expect(within(picker).getByText('Retail Store (retail)')).toBeTruthy();
+    // The base mode is shown as its human label (Retail), not the raw
+    // base_mode key (retail) - issue #178 final-touch pass.
+    expect(within(picker).getByText('Retail Store (Retail)')).toBeTruthy();
   });
 });
