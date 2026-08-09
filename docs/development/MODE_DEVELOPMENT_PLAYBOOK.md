@@ -238,3 +238,14 @@ Before implementing or promoting any future mode, complete this checklist:
    `docs/development/STORE_TEMPLATES_HANDOFF.md` §4 for the full
    native/transitional/external model and what else moves with a
    classification change.
+9. Declare the mode's registration Industry entry in
+   `packages/shared-constants/src/registrationIndustries.js` (issue #178
+   Phases 31-33) — or explicitly opt out with a documented reason (e.g. the
+   mode is an internal/admin-only shape never offered at signup). A mode
+   with no entry and no documented opt-out is unreachable from any signup
+   surface, silently — the same failure mode `micro_fnb` closed for
+   `fnb_counter_service`. If the mode is backed by a real preset, prefer
+   pointing an *existing* industry's `template_key` at a new preset over
+   adding a whole new registration industry entry — see
+   `docs/development/STORE_TEMPLATES_HANDOFF.md` §5, "why adding a
+   template is now usually the right move instead of adding a mode."

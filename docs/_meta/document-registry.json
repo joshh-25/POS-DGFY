@@ -152,6 +152,12 @@
       "topic": "store_templates_handoff",
       "expected_status": "reference",
       "expected_authority_level": "reference"
+    },
+    {
+      "path": "docs/features/INDUSTRY_CLASSIFICATION.md",
+      "topic": "dgfy_industry_classification",
+      "expected_status": "reference",
+      "expected_authority_level": "reference"
     }
   ]
 }

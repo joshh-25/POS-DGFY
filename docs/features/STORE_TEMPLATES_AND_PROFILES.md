@@ -36,7 +36,12 @@ behavior, catalogued in `packages/shared-constants/src/capabilityModules.js`)
 are composed into **Store Templates** (curated, versioned bundles — today's
 "industry types" become presets), which materialize into a per-tenant
 **Store Profile** (independently editable, with provenance back to its source
-template that is never dereferenced at runtime).
+template that is never dereferenced at runtime). One layer sits above all
+three, merchant-facing rather than engineering-facing: the **Registration
+Industry** catalog (issue #178 Phases 31-33) is what a business owner
+actually picks at signup — DGFY's own business-niche classification, not a
+raw mode or template key — with `workflow_mode` and `store_template_key`
+derived from it server-side. See "Registration Industry layer" below.
 
 ## The three transaction lifecycles
 
@@ -121,6 +126,68 @@ See `docs/development/STORE_TEMPLATES_HANDOFF.md` §4 for the full engine
 classification, the flip recipe, and the open product question these four
 modes are tracked against.
 
+## Registration Industry layer (issue #178 Phases 31-33)
+
+Operating Mode and Store Template used to look like two unrelated
+concepts to anyone outside the codebase, because registration only ever
+exposed the mode: a hardcoded enum with a fixed capability list. But a
+canonical template's module list is *contractually equal* to its base
+mode's capability list (pinned by `capabilityModules.contract.test.js`) —
+picking a template already implies a mode, so a merchant should never be
+asked to pick both. `packages/shared-constants/src/registrationIndustries.js`
+is the layer that makes that true at signup: `REGISTRATION_INDUSTRIES`
+transcribes DGFY's own "Sample Business Niches by Industry" classification
+guide (`docs/features/INDUSTRY_CLASSIFICATION.md`) into 11 entries, each
+`{ label, summary, niches, workflow_mode, template_key }`. A merchant picks
+an industry; the server derives everything else.
+
+`micro_fnb` ("Micro Food & Beverage" — carinderia, turo-turo, food cart) is
+the entry that proves the point: it is the classification guide's own
+industry #05, and before this phase it existed in the platform only as a
+template (`fnb_counter_service`) with no mode of its own — unreachable from
+registration, so every carinderia signup fell back to the full-service
+`fnb_full_service` bundle and had to be repaired afterward by a platform
+admin. It is now reachable with no new mode added.
+
+`GET /api/v1/registration/industries` serves the catalog (joined against
+live template publish-status, degrading a missing/unpublished template to
+`template_key: null` rather than erroring) to all three signup surfaces —
+`/business/grow`, `/register-company`, and the admin assisted-provisioning
+panel — via the shared `IndustryPicker` component
+(`frontend/src/features/registration/`). `registerCompanyRequestUseCase.js`
+resolves an optional `industryKey` server-side into `workflow_mode` and
+`store_template_key`; the client can never request an arbitrary
+`templateKey` directly. `approveTenantUseCase.js` forwards that
+`templateKey` into the same `provisionTenant({...})` call the
+admin-initiated endpoints already used, closing the gap the previous
+section used to describe as open.
+
+**Two published presets are deliberately excluded from the registration
+catalog** — `services_with_parts_retail` and `hospitality_guesthouse`
+(`REGISTRATION_EXCLUDED_TEMPLATE_KEYS`). Both are real refinements *within*
+an industry a merchant has already registered into, applied afterward by a
+platform admin via `POST /admin/tenants/:id/apply-template` rather than
+offered as a thirteenth choice at signup. A contract test enforces that
+every published preset appears either as a `template_key` in
+`REGISTRATION_INDUSTRIES` or in this exclusion list — a new preset must
+consciously choose to be registerable or not.
+
+**External-engine industries stay self-registerable, honestly.** The four
+registration-offered, preset-less modes from the previous section
+(`healthcare`, `ticketing_transport`, `logistics_distribution`,
+`education_institutions`) each get an entry with `template_key: null`;
+`IndustryPicker` renders a "Listing only" note sourced from
+`WORKFLOW_MODE_ENGINE`/`WORKFLOW_MODE_ENGINE_NOTES` rather than hiding
+them. Registering into one provisions with null template provenance,
+exactly as it always has.
+
+**Deliberately not modeled**: the classification guide's industry #12,
+"Technology and Digital Products" (software/SaaS/subscriptions) — it needs
+its own lifecycle (licensing, renewals, entitlement), not a POS/stock
+template, and is tracked as a separate issue rather than forced into this
+catalog. See `docs/features/INDUSTRY_CLASSIFICATION.md` for the full guide
+and the out-of-scope note.
+
 ## Template/mode switching and historical records
 
 Doctrine (ADR 0008 Decision, ADR 0019): switching is allowed, master-admin
@@ -193,9 +260,10 @@ enabled overlay, never the disabled one) and is corrected there. **The
 registries are not retired** — `WORKFLOW_MODE_CAPABILITIES` stays the
 differ's oracle and the gate's permanent flag-off path.
 
-Three further gaps a Phase 20-23 audit found real but left deliberately
-out of this rollout — full definitions in ADR 0037's amendment ("What
-Phase 20-23's audit found and left deliberately out"):
+A Phase 20-23 audit found three further gaps — full definitions in ADR
+0037's amendment ("What Phase 20-23's audit found and left deliberately
+out"). Two remain open; the third has since shipped (issue #178 Phases
+31-33, "templates become the registration Industry"):
 
 - **The public storefront doesn't see subtraction.**
   `storeUseCases.js`'s catalog listing reads only the enabled overlay from
@@ -210,12 +278,22 @@ Phase 20-23's audit found and left deliberately out"):
   its `enforced_by`, but `buildStoreProfile()` never reads either; unlike
   `posWorkflowPanel` (fixed in Phase 21), the storefront's own presentation
   affordance has no Profile equivalent yet.
-- **`templateKey` at provisioning only reaches the three admin-initiated
-  endpoints** (`POST /admin/tenants/provision`, `/admin-provision`,
-  `/admin-provision-with-account`), not the organic signup->approval funnel
-  most real tenants use — a product decision (should self-signup offer a
-  template choice at all?) rather than a missing mechanism;
-  `buildProvisioningStoreProfile(mode, { templateKey })` already supports it.
+- ~~**`templateKey` at provisioning only reaches the three
+  admin-initiated endpoints**~~ **Shipped (Phases 31-33).** The organic
+  signup→approval funnel now reaches it too. Registration no longer asks
+  for a raw `workflowMode`; it asks which of DGFY's 11 registration
+  Industries the business is (`packages/shared-constants/src/registrationIndustries.js`,
+  transcribed from DGFY's own business-niche classification guide — see
+  `docs/features/INDUSTRY_CLASSIFICATION.md`). The server derives both
+  `workflow_mode` and `store_template_key` from the chosen industry — the
+  client can request an industry, never a raw template — and
+  `approveTenantUseCase.js` now forwards that `templateKey` into the same
+  `provisionTenant({...})` call the three admin-initiated endpoints already
+  used. `resolveProvisioningTemplateSelection`'s existing validation and
+  canonical-fallback behavior (Phase 6/17) is unchanged; every existing
+  tenant and every registration that supplies only a legacy `workflowMode`
+  keeps behaving exactly as before. See the "Registration Industry layer"
+  section below.
 
 ### The subtractive overlay (`ops_disabled_capabilities`)
 

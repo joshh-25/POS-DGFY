@@ -266,12 +266,68 @@ caches, and audits to `TenantAdminAuditLog`. Non-destructive — applying a
 different template later fully restores whatever the previous one
 granted; nothing is deleted.
 
-**`templateKey` at provisioning time** — reachable on three admin-only
-endpoints: `POST /admin/tenants/provision` (legacy),
-`/admin-provision`, and `/admin-provision-with-account`. Not reachable
-from the organic `/register` → `/approve` funnel (§3) — a product
-decision, not a missing mechanism (`buildProvisioningStoreProfile`
-already accepts a `templateKey` option).
+**`templateKey` at provisioning time** — reachable on the three admin-only
+endpoints (`POST /admin/tenants/provision` (legacy), `/admin-provision`,
+and `/admin-provision-with-account`) **and, since issue #178 Phases
+31-33, the organic `/register` → `/approve` funnel too** (§3). Registration
+no longer accepts a raw `templateKey` from the client — it accepts an
+`industryKey` (see "The registration Industry catalog" below), which
+`registerCompanyRequestUseCase.js` resolves server-side into
+`workflow_mode` and `store_template_key`; `approveTenantUseCase.js`
+forwards the resolved `templateKey` into the same
+`provisionTenant({...})` call every other path already used.
+`buildProvisioningStoreProfile` itself is unchanged — it always accepted a
+`templateKey` option, the gap was purely that the organic funnel never
+populated it.
+
+### The registration Industry catalog
+
+`packages/shared-constants/src/registrationIndustries.js` is the
+merchant-facing layer above Store Templates: `REGISTRATION_INDUSTRIES`,
+one entry per industry in `docs/features/INDUSTRY_CLASSIFICATION.md`
+(DGFY's own business-niche guide), each `{ order, label, summary, niches,
+workflow_mode, template_key }`. `GET /api/v1/registration/industries`
+serves it (joined against live template publish-status) to the shared
+`IndustryPicker` component (`frontend/src/features/registration/`), used
+on all three signup surfaces.
+
+**To add a new registration industry** (most common case — prefer this
+over adding a mode, see below):
+
+1. Add an entry to `REGISTRATION_INDUSTRIES` with the next `order` value,
+   a `label`/`summary`/`niches` transcribed from product's classification
+   guide, and either an existing `workflow_mode` + a `template_key`
+   pointing at a **published** preset whose `base_mode` matches (this is
+   contract-pinned), or `workflow_mode` with `template_key: null` if no
+   template should back it yet.
+2. If the industry needs a preset that doesn't exist, create and publish
+   one first (§5 above, "Curating templates") — then reference its key.
+3. Run `backend/tests/registrationIndustries.contract.test.js` — it will
+   fail loudly on a mismatched `base_mode`/`template_key` pairing, a
+   non-`published` template, an `order` collision, or (if the mode is
+   `external`) a non-null `template_key`.
+4. Update `docs/features/INDUSTRY_CLASSIFICATION.md` with the new
+   industry's full write-up.
+
+No migration, no new endpoint, no frontend change beyond the constant —
+`IndustryPicker` and the catalog endpoint both derive the full list from
+`REGISTRATION_INDUSTRIES`.
+
+**Why adding a *template* (or a registration-catalog entry) is now
+usually the right move instead of adding a mode.** Before this arc, the
+only way to make a new kind of business registerable was a new
+`workflow_mode` — code, migration, playbook, a new capability list. Now:
+a template is a curated bundle of existing capability modules (a UI
+action, no code); a registration-catalog entry is a constant edit (no
+migration). `micro_fnb` ("Micro Food & Beverage") is the proof: it needed
+zero new modes, zero new capabilities — only a template
+(`fnb_counter_service`, already existed) and a catalog entry pointing at
+it. Reach for a new `workflow_mode` only when the business genuinely needs
+a capability, transaction lifecycle, or POS workflow shape that no
+existing mode's capability list can express even with the additive/
+subtractive overlays — see `MODE_DEVELOPMENT_PLAYBOOK.md` for that
+heavier path, which now also requires declaring (or explicitly opting
+out of) a registration Industry entry for the new mode.
 
 ## 6. Extension recipes, cheapest first
 
@@ -434,8 +490,8 @@ are therefore not discriminating on that axis today — every template's
 provenance reads version 1 forever. Not fixed in this pass; if you need
 real versioning, that's new work, not a bug fix.
 
-**Three gaps from ADR 0037's amendment are deliberately deferred — do not
-reopen without a product decision:**
+**Two gaps from ADR 0037's amendment are deliberately deferred — do not
+reopen without a product decision. A third has since shipped:**
 
 1. **The public storefront doesn't see subtraction.** `storeUseCases.js`'s
    catalog listing and `frontend/apps/store`'s capability model both read
@@ -446,8 +502,9 @@ reopen without a product decision:**
    Store Profile — the catalog names `storefrontTemplateRegistry.js` /
    `modePresentationRegistry.js` as its `enforced_by`, but
    `buildStoreProfile()` never reads either.
-3. **`templateKey` is unreachable from the organic signup funnel** (§3,
-   §5) — a product decision, not a missing mechanism.
+3. ~~**`templateKey` is unreachable from the organic signup funnel**~~
+   **Shipped (issue #178 Phases 31-33).** See §5's "registration Industry
+   catalog" subsection above.
 
 ## 9. AI-agent orientation
 
