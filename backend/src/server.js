@@ -731,11 +731,15 @@ import dgfyRoutes from './routes/dgfy.js';
 import geoSearchRoutes from './routes/geoSearch.js';
 import routeCalculatorRoutes from './routes/routeCalculator.js';
 import internalStorefrontDomainOperationRoutes from './routes/internalStorefrontDomainOperations.js';
+import registrationRoutes from './routes/registration.js';
 app.use('/api/v1/internal/storefront-domain-operations', internalStorefrontDomainOperationRoutes);
 app.use(csrfProtection);
 app.use('/api/v1/dgfy', tenantHandler, dgfyRoutes);
 app.use('/api/v1/geo', geoSearchRoutes);
 app.use('/api/v1/geo', routeCalculatorRoutes);
+// Public - no tenant context needed, called before any tenant exists (all
+// three signup surfaces' Industry pickers).
+app.use('/api/v1/registration', registrationRoutes);
 
 app.use(tenantHandler);
 

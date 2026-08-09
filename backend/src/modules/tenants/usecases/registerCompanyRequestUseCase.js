@@ -11,6 +11,7 @@ import {
     normalizeWorkflowMode,
     WORKFLOW_MODE_VALUES
 } from '../../shared/constants/workflowModes.js';
+import { resolveRegistrationIndustry } from '../../shared/constants/registrationIndustries.js';
 import { TENANT_REGISTRATION_APPROVAL_MODES } from '../../../config/tenantRegistrationApproval.js';
 import {
     isValidTenantPlan,
@@ -62,8 +63,9 @@ export const buildRegisterCompanyRequestUseCase = ({
         const {
             name,
             subscriptionId,
-            workflowMode,
-            industryTag
+            workflowMode: rawWorkflowMode,
+            industryTag,
+            industryKey
         } = body || {};
         const adminEmail = String(dgfyAccount?.email || '').trim().toLowerCase();
         const adminPhone = String(dgfyAccount?.phone || '').trim();
@@ -73,6 +75,24 @@ export const buildRegisterCompanyRequestUseCase = ({
         const normalizedComplianceMode = 'non_compliant';
         const requestedPlan = normalizeRequestedTenantPlan(plan);
         const normalizedPlan = resolveRegisteredTenantPlan();
+
+        // The client sends industryKey (the Industry picker's choice) OR the
+        // raw workflowMode (older/unmigrated callers) - never a raw
+        // templateKey, so no arbitrary template can ever be requested from
+        // outside. When industryKey resolves, it is the single source of
+        // truth for both workflowMode and the store template; a workflowMode
+        // sent alongside it must agree or the request is rejected below
+        // (issue #178 "templates become the Operating Mode" follow-up).
+        const normalizedIndustryKey = typeof industryKey === 'string' ? industryKey.trim() : '';
+        const resolvedIndustry = normalizedIndustryKey ? resolveRegistrationIndustry(normalizedIndustryKey) : null;
+        const industryKeyUnresolvable = Boolean(normalizedIndustryKey) && !resolvedIndustry;
+        const rawWorkflowModeProvided = rawWorkflowMode !== undefined && rawWorkflowMode !== null && String(rawWorkflowMode).trim() !== '';
+        const industryModeConflict = Boolean(resolvedIndustry)
+            && rawWorkflowModeProvided
+            && normalizeWorkflowMode(rawWorkflowMode) !== resolvedIndustry.workflow_mode;
+        const workflowMode = resolvedIndustry ? resolvedIndustry.workflow_mode : rawWorkflowMode;
+        const storeTemplateKey = resolvedIndustry ? resolvedIndustry.template_key : null;
+
         const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
         const workflowModeMissing = workflowMode === undefined || workflowMode === null || String(workflowMode).trim() === '';
         // Purely descriptive — how the merchant would describe their business — kept
@@ -100,6 +120,36 @@ export const buildRegisterCompanyRequestUseCase = ({
         let validatedSubscriptionId = null;
         try {
             await tracker.attempt();
+
+            if (industryKeyUnresolvable) {
+                await tracker.failed({
+                    failureCode: 'validation_failed',
+                    failureReason: 'unknown_industry_key',
+                    httpStatus: 400,
+                    metadata: { industry_key: normalizedIndustryKey }
+                });
+
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    `industryKey "${normalizedIndustryKey}" is not a recognized business industry.`,
+                    { statusCode: 400 }
+                ));
+            }
+
+            if (industryModeConflict) {
+                await tracker.failed({
+                    failureCode: 'validation_failed',
+                    failureReason: 'industry_workflow_mode_conflict',
+                    httpStatus: 400,
+                    metadata: { industry_key: normalizedIndustryKey, workflow_mode: rawWorkflowMode }
+                });
+
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'workflowMode does not match the selected industryKey. Send only industryKey, or omit workflowMode.',
+                    { statusCode: 400 }
+                ));
+            }
 
             const normalizedAdminPhone = normalizePhoneNumber(adminPhone);
             if (!dgfyAccount?.id || !name || !adminEmail || !normalizedAdminPhone || !adminPasswordHash || workflowModeMissing) {
@@ -311,7 +361,9 @@ export const buildRegisterCompanyRequestUseCase = ({
                         owner_dgfy_account_id: dgfyAccount.id,
                         settings: {
                             workflow_mode: normalizedWorkflowMode,
-                            industry_tag: normalizedIndustryTag
+                            industry_tag: normalizedIndustryTag,
+                            registration_industry: resolvedIndustry ? normalizedIndustryKey : null,
+                            store_template_key: storeTemplateKey
                         }
                     }, { transaction });
 
@@ -331,6 +383,8 @@ export const buildRegisterCompanyRequestUseCase = ({
                         legalAcknowledgement,
                         workflowMode: normalizedWorkflowMode,
                         industryTag: normalizedIndustryTag,
+                        registrationIndustry: resolvedIndustry ? normalizedIndustryKey : null,
+                        storeTemplateKey,
                         transaction
                     });
 
@@ -415,6 +469,8 @@ export const buildRegisterCompanyRequestUseCase = ({
                         compliance_mode_state: complianceModeState,
                         workflow_mode: normalizedWorkflowMode,
                         industry_tag: normalizedIndustryTag,
+                        registration_industry: resolvedIndustry ? normalizedIndustryKey : null,
+                        store_template_key: storeTemplateKey,
                         application_id: registrationApplication.id
                     }
                 }

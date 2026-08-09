@@ -3,6 +3,7 @@ import { buildProvisioningStoreProfile } from '../src/services/tenantProvisionin
 import { storeConfigurationTemplateRepository } from '../src/modules/templates/index.js';
 import { buildStoreProfile } from '../src/modules/shared/constants/storeProfile.js';
 import { WORKFLOW_MODE_CAPABILITIES } from '../src/modules/shared/constants/workflowModes.js';
+import { REGISTRATION_INDUSTRIES } from '../src/modules/shared/constants/registrationIndustries.js';
 import logger from '../src/config/logger.js';
 import {
     resolveStoreProfile,
@@ -239,6 +240,40 @@ describe('tenant provisioning Store Profile provenance (issue #178 Phase 13)', (
 
             expect(canonicalSpy).toHaveBeenCalledWith('retail');
             expect(profile.provenance.source_template_id).toBe(42);
+        });
+
+        // issue #178 "templates become the Operating Mode" follow-up: the
+        // concrete gap the registration Industry catalog closes. Before
+        // approveTenantUseCase forwarded a templateKey, EVERY organic
+        // signup fell into the "no explicit key" branch above regardless
+        // of which industry the merchant picked, so a carinderia
+        // registration always provisioned the full-service fnb bundle
+        // (floor plan, kitchen queue, service charge). This proves the
+        // catalog's own micro_fnb -> fnb_counter_service pairing
+        // provisions with the subtractive overlay end to end, through the
+        // exact code path approveTenantUseCase now drives.
+        it('provisions a Micro Food & Beverage registration with the counter-service subtractive overlay, not the full-service bundle', async () => {
+            const microFnb = REGISTRATION_INDUSTRIES.micro_fnb;
+            expect(microFnb.template_key).toBe('fnb_counter_service');
+
+            jest.spyOn(storeConfigurationTemplateRepository, 'findByKey').mockResolvedValue({
+                template_id: 9,
+                template_key: microFnb.template_key,
+                version: 1,
+                status: 'published',
+                base_mode: microFnb.workflow_mode,
+                modules: WORKFLOW_MODE_CAPABILITIES.fnb.filter((key) => (
+                    !['tableService', 'kitchenQueue', 'restaurantServiceCharge'].includes(key)
+                ))
+            });
+
+            const profile = await buildProvisioningStoreProfile(microFnb.workflow_mode, { templateKey: microFnb.template_key });
+
+            expect(profile.modules).not.toContain('tableService');
+            expect(profile.modules).not.toContain('kitchenQueue');
+            expect(profile.modules).not.toContain('restaurantServiceCharge');
+            expect(profile.pos_workflow.mode).toBe('counter');
+            expect(profile.provenance.source_template_id).toBe(9);
         });
     });
 });
