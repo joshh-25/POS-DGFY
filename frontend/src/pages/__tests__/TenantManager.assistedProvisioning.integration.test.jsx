@@ -68,6 +68,7 @@ describe('TenantManager assisted provisioning', () => {
     await waitFor(() => expect(mocks.adminService.createAdminProvisionedTenant).toHaveBeenCalledWith({
       name: 'Assisted Foods',
       workflowMode: 'food_manufacturing',
+      templateKey: null,
       adminEmail: 'OPS@EXAMPLE.TEST',
       adminPhone: '+639111111111',
       adminPassword: 'Company123!',
@@ -91,7 +92,7 @@ describe('TenantManager assisted provisioning', () => {
     expect(await screen.findByText(/OneTime123!/)).toBeTruthy();
     expect(mocks.adminService.createAdminProvisionedAccountAndTenant).toHaveBeenCalledWith(expect.objectContaining({
       dgfy_account: expect.objectContaining({ email: 'ada@example.test' }),
-      company: { name: 'Assisted Foods', workflowMode: 'food_manufacturing' }
+      company: { name: 'Assisted Foods', workflowMode: 'food_manufacturing', templateKey: null }
     }));
 
     mocks.adminService.createAdminProvisionedAccountAndTenant.mockRejectedValueOnce(new Error('duplicate account'));

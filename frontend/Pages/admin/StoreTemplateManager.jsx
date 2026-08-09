@@ -19,6 +19,10 @@ import {
     CAPABILITY_MODULE_SURFACES,
     resolveModeFamilyModuleGroups
 } from '@sieitzz/shared-constants/capabilityModules';
+import {
+    REGISTRATION_INDUSTRIES,
+    REGISTRATION_EXCLUDED_TEMPLATE_KEYS
+} from '@sieitzz/shared-constants/registrationIndustries';
 
 // Only shipped, template-selectable modules are offered as curation choices
 // - `locked` modules are compliance-determined (ADR 0056 clause 1) and
@@ -50,6 +54,27 @@ const STATUS_BADGE_VARIANT = {
     published: 'default',
     deprecated: 'outline'
 };
+
+// Ties template curation back to the registration Industry catalog (issue
+// #178 "templates become the Operating Mode" follow-up) so an admin editing
+// a preset can see whether it's what a merchant actually picks at signup.
+const TEMPLATE_KEY_TO_REGISTRATION_LABEL = Object.fromEntries(
+    Object.values(REGISTRATION_INDUSTRIES)
+        .filter((entry) => entry.template_key)
+        .map((entry) => [entry.template_key, entry.label])
+);
+const REGISTRATION_EXCLUDED_TEMPLATE_KEY_SET = new Set(REGISTRATION_EXCLUDED_TEMPLATE_KEYS);
+
+function RegistrationReachabilityNote({ templateKey }) {
+    const industryLabel = TEMPLATE_KEY_TO_REGISTRATION_LABEL[templateKey];
+    if (industryLabel) {
+        return <p className="mt-0.5 text-xs text-slate-400">Shown at registration as: {industryLabel}</p>;
+    }
+    if (REGISTRATION_EXCLUDED_TEMPLATE_KEY_SET.has(templateKey)) {
+        return <p className="mt-0.5 text-xs text-slate-400">Admin-only refinement — not offered at registration</p>;
+    }
+    return null;
+}
 
 // is_preset/is_canonical are platform-owned provenance flags, set only by
 // the seed migration - never authored through this admin form (issue #178
@@ -394,7 +419,10 @@ export default function StoreTemplateManager() {
                         {templates.map((template) => (
                             <tr className="border-t" key={template.template_id}>
                                 <td className="p-3 font-medium">{template.template_key}</td>
-                                <td className="p-3">{template.label}</td>
+                                <td className="p-3">
+                                    {template.label}
+                                    <RegistrationReachabilityNote templateKey={template.template_key} />
+                                </td>
                                 <td className="p-3">
                                     <div className="flex flex-wrap items-center gap-1.5">
                                         <span>{WORKFLOW_MODE_LABELS[template.base_mode] || template.base_mode}</span>
@@ -446,10 +474,12 @@ export default function StoreTemplateManager() {
                     <h2 className="mb-1 text-sm font-semibold text-slate-900">
                         {selected.label} <span className="font-normal text-slate-500">({selected.template_key})</span>
                     </h2>
-                    <p className="mb-3 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
+                    <p className="mb-1 flex flex-wrap items-center gap-1.5 text-xs text-slate-500">
                         <span>{WORKFLOW_MODE_LABELS[selected.base_mode] || selected.base_mode} • v{selected.version} • {selected.status}</span>
                         <EngineBadge baseMode={selected.base_mode} />
                     </p>
+                    <RegistrationReachabilityNote templateKey={selected.template_key} />
+                    <div className="mb-2" />
 
                     {selected.status === 'draft' ? (
                         <div className="space-y-3">

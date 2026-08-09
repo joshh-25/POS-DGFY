@@ -47,6 +47,7 @@ import {
   appendDgfyHandoffToken,
   normalizeDgfyReturnTarget
 } from '../../src/features/dgfyRouteHelpers.js';
+import { resetRegistrationIndustriesCache } from '../../src/features/registration/registrationIndustryService.js';
 
 const dgfyAccount = {
   id: 'dgfy-1',
@@ -144,6 +145,12 @@ describe('DGFY auth and business registration routes', () => {
 
     apiMock.post.mockReset();
     apiMock.get.mockReset();
+    // The registration Industry picker (issue #178 follow-up) fetches this
+    // on mount; resolving with an empty list makes it fall back to the
+    // real, code-owned REGISTRATION_INDUSTRIES_DESCRIBED catalog, exactly
+    // as it would in production if the endpoint were briefly unreachable.
+    apiMock.get.mockResolvedValue({ data: { data: { industries: [] } } });
+    resetRegistrationIndustriesCache();
     dgfyAuthMock.clearDgfySession.mockReset();
     dgfyAuthMock.completeDgfyPasswordReset.mockReset();
     dgfyAuthMock.createDgfyHandoff.mockReset();
@@ -435,15 +442,16 @@ describe('DGFY auth and business registration routes', () => {
     expect(await screen.findByText(/DGFY account connected/i)).toBeTruthy();
     expect(screen.queryByLabelText('Last Name')).toBeNull();
     expect(screen.getByLabelText('Company Name')).toBeTruthy();
-    expect(screen.getByLabelText('Operating Mode')).toBeTruthy();
+    expect(await screen.findByText('What kind of business is this?')).toBeTruthy();
 
+    fireEvent.click(await screen.findByRole('radio', { name: /Micro Food & Beverage/i }));
     fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Auto Foods' } });
     fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
     fireEvent.click(screen.getByRole('button', { name: /create company/i }));
 
     await waitFor(() => expect(apiMock.post).toHaveBeenCalledWith('/admin/tenants/register', {
       name: 'Auto Foods',
-      workflowMode: 'food_manufacturing',
+      industryKey: 'micro_fnb',
       industryTag: '',
       accepted_company_terms: true,
       company_terms_version: 'dgfy-company-terms-2026-06-08',
@@ -456,6 +464,23 @@ describe('DGFY auth and business registration routes', () => {
     expect(await screen.findByText('Registration status route')).toBeTruthy();
     expect(dgfyAuthMock.startDgfyTenantSession).not.toHaveBeenCalled();
     expect(mockLocation.assign).not.toHaveBeenCalled();
+  });
+
+  it('blocks company registration until an Industry is chosen', async () => {
+    dgfyAuthMock.fetchDgfyMe.mockResolvedValueOnce({
+      token: 'dgfy-token',
+      account: dgfyAccount
+    });
+
+    renderRoutes(['/register-company#business-registration']);
+
+    expect(await screen.findByText('What kind of business is this?')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Company Name'), { target: { value: 'Auto Foods' } });
+    fireEvent.click(screen.getByLabelText(/I have reviewed and agree to the current DGFY Company Registration Terms/i));
+    fireEvent.click(screen.getByRole('button', { name: /create company/i }));
+
+    expect(await screen.findByText(/choose what kind of business this is before registering/i)).toBeTruthy();
+    expect(apiMock.post).not.toHaveBeenCalledWith('/admin/tenants/register', expect.anything(), expect.anything());
   });
 
 

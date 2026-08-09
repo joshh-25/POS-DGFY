@@ -37,7 +37,8 @@ import {
     TENANT_CAPABILITY_MESSAGES,
     getStorefrontAccessModeMessage
 } from '../../src/utils/tenantCapabilityMessages.js';
-import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_SELECT_VALUES } from '../../src/features/settings/workflowMode.js';
+import { WORKFLOW_MODE_LABELS } from '../../src/features/settings/workflowMode.js';
+import IndustryPicker from '../../src/features/registration/IndustryPicker.jsx';
 import StorefrontCustomDomainsModal from '../../src/features/admin/components/StorefrontCustomDomainsModal.jsx';
 import TenantRevenueSettlementPanel from '../../src/features/admin/tenantRevenue/TenantRevenueSettlementPanel.jsx';
 
@@ -493,7 +494,9 @@ export default function TenantManager() {
     const [assistTemporaryPassword, setAssistTemporaryPassword] = useState('');
     const [assistForm, setAssistForm] = useState({
         name: '',
+        industryKey: '',
         workflowMode: 'food_manufacturing',
+        templateKey: '',
         adminEmail: '',
         adminPhone: '',
         adminPassword: '',
@@ -615,12 +618,14 @@ export default function TenantManager() {
                     },
                     company: {
                         name: assistForm.name,
-                        workflowMode: assistForm.workflowMode
+                        workflowMode: assistForm.workflowMode,
+                        templateKey: assistForm.templateKey || null
                     }
                 })
                 : await adminService.createAdminProvisionedTenant({
                     name: assistForm.name,
                     workflowMode: assistForm.workflowMode,
+                    templateKey: assistForm.templateKey || null,
                     adminEmail: assistForm.adminEmail,
                     adminPhone: assistForm.adminPhone,
                     adminPassword: assistForm.adminPassword,
@@ -629,7 +634,9 @@ export default function TenantManager() {
             setAssistTemporaryPassword(response.data?.temporary_password || '');
             setAssistForm({
                 name: '',
+                industryKey: '',
                 workflowMode: 'food_manufacturing',
+                templateKey: '',
                 adminEmail: '',
                 adminPhone: '',
                 adminPassword: '',
@@ -1476,13 +1483,15 @@ export default function TenantManager() {
                         <button type="button" onClick={() => setAssistMode('account_company')} className={cn('rounded-md px-3 py-1.5 text-sm', assistMode === 'account_company' ? 'bg-slate-900 text-white' : 'text-slate-600')}>DGFY + Company</button>
                     </div>
                 </div>
+                <div className="mb-3 rounded-lg border border-slate-200 p-3">
+                    <IndustryPicker
+                        idPrefix="assisted-provisioning-industry"
+                        value={assistForm.industryKey}
+                        onSelect={(entry) => setAssistForm((current) => ({ ...current, industryKey: entry.key, workflowMode: entry.workflow_mode, templateKey: entry.template_key || '' }))}
+                    />
+                </div>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                     <input required className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Company name" value={assistForm.name} onChange={(event) => updateAssistForm('name', event.target.value)} />
-                    <select className="rounded-lg border border-slate-300 px-3 py-2 text-sm" value={assistForm.workflowMode} onChange={(event) => updateAssistForm('workflowMode', event.target.value)}>
-                        {WORKFLOW_MODE_SELECT_VALUES.map((mode) => (
-                            <option key={mode} value={mode}>{WORKFLOW_MODE_LABELS[mode] || mode}</option>
-                        ))}
-                    </select>
                     <input required minLength={3} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Audit reason" value={assistForm.reason} onChange={(event) => updateAssistForm('reason', event.target.value)} />
                     {assistMode === 'company' ? (
                         <>
