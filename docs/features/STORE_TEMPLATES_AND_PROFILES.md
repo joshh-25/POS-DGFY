@@ -176,12 +176,15 @@ materializes `STORE_TEMPLATE_PRESETS` into rows once; re-running it never
 overwrites an existing `template_key`.
 
 **Provenance, captured once, never dereferenced again.** At tenant
-provisioning, if a published canonical template exists for the chosen mode,
-`buildProvisioningStoreProfile` (`backend/src/services/tenantProvisioningService.js`)
-looks it up exactly once and stamps the resulting Profile's `provenance`
+provisioning, `buildProvisioningStoreProfile`
+(`backend/src/services/tenantProvisioningService.js`) resolves a template —
+an explicit `templateKey` if provided and it is both published and matches
+the requested mode (issue #178 Phase 17), otherwise falling back to the
+published canonical template for that mode (Phase 13's original behavior) —
+looks it up exactly once, and stamps the resulting Profile's `provenance`
 block (`source_template_id`, `source_template_version`,
 `diverged_from_source`). Template lookup is best-effort — a failure falls
-back to the pre-Phase-13 behavior rather than blocking provisioning. No
+back to a plain mode-derived profile rather than blocking provisioning. No
 other code path ever reads a template row again: a later settings-driven
 mode/capability change carries the origin pointer forward and flags
 `diverged_from_source: true`, but never re-derives anything from the
@@ -189,6 +192,38 @@ template itself (ADR 0056 clause 2). This is what makes "editing a
 published template changes zero existing tenants' Profiles" true by
 construction, not by convention — proven in
 `backend/tests/tenantProvisioningStoreProfileProvenance.test.js`.
+
+**A template's module list becomes real settings, not just a Profile.**
+`materializeTemplateModuleSelection`
+(`backend/src/modules/templates/usecases/materializeTemplateModuleSelection.js`)
+diffs a template's flat `modules` list against its `base_mode`'s own
+capability list to produce `{enabledCapabilities, disabledCapabilities}` —
+the same two overlay settings `ops_enabled_capabilities` /
+`ops_disabled_capabilities` (Phase 6 / Phase 16) already govern. Both
+provisioning and the apply-template action below share this one function,
+so they can never compute a template's effective settings differently.
+
+## Applying a template to an existing tenant
+
+`POST /admin/tenants/:id/apply-template` (issue #178 Phase 17) — an
+audited, platform-admin write, delegable under the `admin.tenants`
+permission (same classification as `PATCH /:id/capabilities`, unlike
+template curation itself which is platform-wide and master-only). Requires
+`templateKey` and a `reason` (≥3 characters, mirroring every other audited
+platform-admin write in this codebase). Rejects a tenant that isn't
+`active`, a `templateKey` that doesn't resolve to any template, or one that
+resolves to a template that isn't `published`.
+
+In one transaction: seeds `ops_workflow_mode` /
+`ops_enabled_capabilities` / `ops_disabled_capabilities` from the
+materialized selection, writes a fresh `ops_store_profile` stamped with this
+template's provenance, and — best-effort, after the transaction commits —
+appends a `workflow_mode_change_log` row via the same `applyWorkflowModeAuditLog`
+helper a settings write already uses. **Non-destructive per ADR 0008/0019**:
+a settings write only, no data migration; applying a different template
+later fully restores whatever the previous one granted. Every write is also
+recorded in `TenantAdminAuditLog` (before/after settings snapshot), the same
+trail `PATCH /:id/capabilities` uses.
 
 ## Platform-admin curation surface
 
@@ -258,8 +293,22 @@ grantable capability vocabulary, and fail template validation if selected.
   idempotent seeding from `STORE_TEMPLATE_PRESETS`.
 - `backend/tests/tenantProvisioningStoreProfileProvenance.test.js` — the
   Phase 13 acceptance criterion: editing a template after provisioning
-  changes zero already-provisioned tenants' Profiles.
+  changes zero already-provisioned tenants' Profiles; Phase 17's explicit
+  `templateKey` selection (mode-matching, mode-mismatched, draft, and
+  not-found cases, each falling back to the pre-Phase-17 canonical lookup).
+- `backend/tests/materializeTemplateModuleSelection.test.js` — the pure
+  template→overlay diff: empty overlays for a canonical template, a real
+  disabled overlay for a subtractive one, a real enabled overlay for an
+  additive one, both non-canonical presets reproduced exactly.
+- `backend/tests/applyTemplateToTenantUseCase.test.js` — the existing-tenant
+  apply-template action: settings seeded correctly for both a canonical and
+  a subtractive template, the audit trail, and every rejection path (tenant
+  not found/inactive, template not found/unpublished, missing reason).
+- `backend/tests/adminTenantCapabilities.transport.test.js` — apply-template
+  route validation gates (`templateKey`/`reason` required, no unknown
+  fields) and request/response wiring.
 - `backend/tests/adminTemplates.transport.test.js` — curation route
   validation gates and request/response wiring.
 - `backend/tests/platformAdminRouteClassification.test.js` — `/admin/templates`
-  resolves to `masterOnly`, not a delegable permission.
+  resolves to `masterOnly` (curation, platform-wide); `/admin/tenants/:id/apply-template`
+  resolves to the delegable `admin.tenants` permission (a single tenant).

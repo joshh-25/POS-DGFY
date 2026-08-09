@@ -14,6 +14,7 @@ const mockUpdateTenantUseCase = jest.fn();
 const mockDeleteTenantUseCase = jest.fn();
 const mockResubmitRegistrationUseCase = jest.fn();
 const mockUpdateTenantCapabilitiesUseCase = jest.fn();
+const mockApplyTemplateToTenantUseCase = jest.fn();
 const mockListTenantCapabilityAuditLogsUseCase = jest.fn();
 const mockListTenantPosMetadataAuditLogsUseCase = jest.fn();
 const mockGetTenantPosMetadataUseCase = jest.fn();
@@ -37,6 +38,7 @@ jest.unstable_mockModule('../src/modules/tenants/index.js', () => ({
   deleteTenantUseCase: mockDeleteTenantUseCase,
   resubmitRegistrationUseCase: mockResubmitRegistrationUseCase,
   updateTenantCapabilitiesUseCase: mockUpdateTenantCapabilitiesUseCase,
+  applyTemplateToTenantUseCase: mockApplyTemplateToTenantUseCase,
   listTenantCapabilityAuditLogsUseCase: mockListTenantCapabilityAuditLogsUseCase,
   listTenantPosMetadataAuditLogsUseCase: mockListTenantPosMetadataAuditLogsUseCase,
   getTenantPosMetadataUseCase: mockGetTenantPosMetadataUseCase,

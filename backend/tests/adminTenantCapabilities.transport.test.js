@@ -20,6 +20,15 @@ const mockListTenantCapabilityAuditLogs = jest.fn((req, res) => {
         }
     });
 });
+const mockApplyTemplateToTenant = jest.fn((req, res) => {
+    res.status(200).json({
+        success: true,
+        data: {
+            tenant_id: req.params?.id || null,
+            validated: req.validatedData
+        }
+    });
+});
 
 const noopHandler = jest.fn((req, res) => res.status(200).json({ success: true }));
 
@@ -37,6 +46,7 @@ jest.unstable_mockModule('../src/controllers/adminTenantController.js', () => ({
     updatePricingSettings: noopHandler,
     updateTenant: noopHandler,
     updateTenantCapabilities: mockUpdateTenantCapabilities,
+    applyTemplateToTenant: mockApplyTemplateToTenant,
     listTenantCapabilityAuditLogs: mockListTenantCapabilityAuditLogs,
     getTenantPosMetadata: noopHandler,
     listTenantPosMetadataAuditLogs: noopHandler,
@@ -162,5 +172,56 @@ describe('tenant capability admin transport contracts', () => {
         expect(response.status).toBe(200);
         expect(mockListTenantCapabilityAuditLogs).toHaveBeenCalledTimes(1);
         expect(mockListTenantCapabilityAuditLogs.mock.calls[0][0].validatedQuery).toEqual({ limit: 35 });
+    });
+});
+
+describe('apply-template admin transport contracts (issue #178 Phase 17)', () => {
+    beforeEach(() => {
+        jest.clearAllMocks();
+    });
+
+    it('rejects a missing templateKey or reason before calling the handler', async () => {
+        const response = await request(app)
+            .post('/api/v1/admin/tenants/tenant-1/apply-template')
+            .send({ reason: 'x' });
+
+        expect(response.status).toBe(422);
+        expect(response.body.errors.map((error) => error.field)).toEqual(expect.arrayContaining([
+            'templateKey',
+            'reason'
+        ]));
+        expect(mockApplyTemplateToTenant).not.toHaveBeenCalled();
+    });
+
+    it('rejects unknown fields in the apply-template payload', async () => {
+        const response = await request(app)
+            .post('/api/v1/admin/tenants/tenant-1/apply-template')
+            .send({
+                templateKey: 'fnb_counter_service',
+                reason: 'Switching to counter service',
+                enabled_capabilities: ['services']
+            });
+
+        expect(response.status).toBe(422);
+        expect(mockApplyTemplateToTenant).not.toHaveBeenCalled();
+    });
+
+    it('passes a valid apply-template payload to the handler', async () => {
+        const response = await request(app)
+            .post('/api/v1/admin/tenants/tenant-1/apply-template')
+            .send({
+                templateKey: 'fnb_counter_service',
+                reason: 'Switching to counter service'
+            });
+
+        expect(response.status).toBe(200);
+        expect(mockApplyTemplateToTenant).toHaveBeenCalledTimes(1);
+        expect(mockApplyTemplateToTenant.mock.calls[0][0]).toEqual(expect.objectContaining({
+            params: expect.objectContaining({ id: 'tenant-1' }),
+            validatedData: {
+                templateKey: 'fnb_counter_service',
+                reason: 'Switching to counter service'
+            }
+        }));
     });
 });

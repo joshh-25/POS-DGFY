@@ -31,6 +31,7 @@ import { buildUpdateTenantUseCase } from './usecases/updateTenantUseCase.js';
 import { buildDeleteTenantUseCase } from './usecases/deleteTenantUseCase.js';
 import { buildGetCompanyRegistrationStatusUseCase, buildResubmitCompanyRegistrationUseCase } from './usecases/companyRegistrationStatusUseCase.js';
 import { buildUpdateTenantCapabilitiesUseCase } from './usecases/updateTenantCapabilitiesUseCase.js';
+import { buildApplyTemplateToTenantUseCase } from './usecases/applyTemplateToTenantUseCase.js';
 import {
     buildListTenantCapabilityAuditLogsUseCase,
     buildListTenantPosMetadataAuditLogsUseCase
@@ -132,6 +133,12 @@ export const updateTenantCapabilitiesUseCase = buildUpdateTenantCapabilitiesUseC
     tenantAdminRepository,
     tenantConnector,
     syncStorefrontDiscoveryIndexForTenant,
+    logger
+});
+
+export const applyTemplateToTenantUseCase = buildApplyTemplateToTenantUseCase({
+    tenantAdminRepository,
+    tenantConnector,
     logger
 });
 

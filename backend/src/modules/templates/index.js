@@ -9,6 +9,7 @@ import {
     buildDeprecateTemplateUseCase
 } from './usecases/storeConfigurationTemplateUseCases.js';
 import { buildSeedCanonicalTemplatePresetsUseCase } from './usecases/seedCanonicalTemplatePresets.js';
+import { materializeTemplateModuleSelection } from './usecases/materializeTemplateModuleSelection.js';
 
 export const listTemplatesUseCase = buildListTemplatesUseCase({ repository: storeConfigurationTemplateRepository });
 export const getTemplateUseCase = buildGetTemplateUseCase({ repository: storeConfigurationTemplateRepository });
@@ -19,4 +20,4 @@ export const publishTemplateUseCase = buildPublishTemplateUseCase({ repository: 
 export const deprecateTemplateUseCase = buildDeprecateTemplateUseCase({ repository: storeConfigurationTemplateRepository });
 export const seedCanonicalTemplatePresetsUseCase = buildSeedCanonicalTemplatePresetsUseCase({ repository: storeConfigurationTemplateRepository });
 
-export { storeConfigurationTemplateRepository };
+export { storeConfigurationTemplateRepository, materializeTemplateModuleSelection };

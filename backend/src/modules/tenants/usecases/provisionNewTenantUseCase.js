@@ -14,7 +14,8 @@ export const buildProvisionNewTenantUseCase = ({ provisionTenant, logger }) => {
                 adminPassword,
                 subscriptionId,
                 complianceMode,
-                workflowMode
+                workflowMode,
+                templateKey
             } = body || {};
             const normalizedComplianceMode = typeof complianceMode === 'string'
                 ? complianceMode.trim().toLowerCase()
@@ -52,7 +53,10 @@ export const buildProvisionNewTenantUseCase = ({ provisionTenant, logger }) => {
                 plan: resolveRegisteredTenantPlan(),
                 subscriptionId,
                 complianceMode: normalizedComplianceMode,
-                workflowMode: normalizedWorkflowMode
+                workflowMode: normalizedWorkflowMode,
+                // Issue #178 Phase 17: optional, best-effort - see
+                // tenantProvisioningService.js's provisionTenant doc comment.
+                templateKey: templateKey ? String(templateKey).trim() : null
             });
 
             return ok({

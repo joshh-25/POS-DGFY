@@ -22,6 +22,7 @@ jest.unstable_mockModule('../src/modules/tenants/index.js', () => ({
     updatePricingSettingsUseCase: noopUseCase,
     updateTenantUseCase: noopUseCase,
     updateTenantCapabilitiesUseCase: noopUseCase,
+    applyTemplateToTenantUseCase: noopUseCase,
     listTenantCapabilityAuditLogsUseCase: noopUseCase,
     getTenantPosMetadataUseCase: noopUseCase,
     listTenantPosMetadataAuditLogsUseCase: noopUseCase,

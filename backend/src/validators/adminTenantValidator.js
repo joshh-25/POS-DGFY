@@ -24,6 +24,15 @@ const capabilityAuditLogQuerySchema = Joi.object({
     limit: Joi.number().integer().min(1).max(100).default(20)
 });
 
+// Issue #178 Phase 17: applying a Store Template to an already-provisioned
+// tenant. templateKey selects which published template; reason is required
+// with the same minimum length as every other audited platform-admin write
+// (capabilityPatchSchema above, tenantPosMetadataPatchSchema below).
+const applyTemplateSchema = Joi.object({
+    templateKey: Joi.string().trim().min(1).max(100).required(),
+    reason: Joi.string().trim().min(3).max(500).required()
+}).unknown(false);
+
 const tenantPosMetadataPatchSchema = Joi.object({
     software_settings: Joi.object({
         pos_software_name: Joi.string().trim().max(120).allow('').optional(),
@@ -47,6 +56,21 @@ const buildValidationErrorResponse = (error) => ({
 
 export const validateTenantCapabilityPatch = (req, res, next) => {
     const { error, value } = capabilityPatchSchema.validate(req.body, {
+        abortEarly: false,
+        stripUnknown: true,
+        convert: true
+    });
+
+    if (error) {
+        return res.status(422).json(buildValidationErrorResponse(error));
+    }
+
+    req.validatedData = value;
+    return next();
+};
+
+export const validateApplyTemplateToTenant = (req, res, next) => {
+    const { error, value } = applyTemplateSchema.validate(req.body, {
         abortEarly: false,
         stripUnknown: true,
         convert: true
