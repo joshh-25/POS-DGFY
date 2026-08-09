@@ -2,6 +2,7 @@ import { storeConfigurationTemplateRepository } from './repositories/storeConfig
 import {
     buildListTemplatesUseCase,
     buildGetTemplateUseCase,
+    buildListTemplateAuditLogsUseCase,
     buildCreateDraftTemplateUseCase,
     buildUpdateTemplateModulesUseCase,
     buildPublishTemplateUseCase,
@@ -11,6 +12,7 @@ import { buildSeedCanonicalTemplatePresetsUseCase } from './usecases/seedCanonic
 
 export const listTemplatesUseCase = buildListTemplatesUseCase({ repository: storeConfigurationTemplateRepository });
 export const getTemplateUseCase = buildGetTemplateUseCase({ repository: storeConfigurationTemplateRepository });
+export const listTemplateAuditLogsUseCase = buildListTemplateAuditLogsUseCase({ repository: storeConfigurationTemplateRepository });
 export const createDraftTemplateUseCase = buildCreateDraftTemplateUseCase({ repository: storeConfigurationTemplateRepository });
 export const updateTemplateModulesUseCase = buildUpdateTemplateModulesUseCase({ repository: storeConfigurationTemplateRepository });
 export const publishTemplateUseCase = buildPublishTemplateUseCase({ repository: storeConfigurationTemplateRepository });

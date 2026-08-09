@@ -659,12 +659,30 @@ IMS delegation); new phases use 10+. Status as of this amendment:
   byte-identical to the registries it derives from. Nothing reads the profile
   yet.
 - **Phase 12 — Runtime reads the Profile, module by module, behind a
-  per-tenant flag:** in progress. Order: POS workflow/defaults → storefront
-  order methods → item taxonomy → capability gating last (highest blast
-  radius, and the only phase where the old registries are not fully retired
-  as a permanent fallback rather than a temporary differ oracle).
-- **Phase 13 — Landlord template catalog** and **Phase 14 — Handler curation
-  surface:** not started.
+  per-tenant flag (scaffolding shipped, no consumer wired yet):**
+  `resolveStoreProfile.js` and the `ops_store_profile_read` flag exist and
+  are tested, including the live divergence differ. Deliberately not wired
+  to any real consumer: tracing every candidate (POS defaults, storefront
+  order methods, item taxonomy, capability gating) found each currently
+  produces a value mathematically identical to the registries, because
+  nothing could make a tenant's Profile diverge from its mode until Phase 13
+  shipped a curation mechanism. Wiring a consumer before that point would
+  have added latency and failure surface for zero behavior change. Phase 13
+  now exists; consumer flips remain future work, in the same order noted
+  above, with capability gating last and never a full cutover — a rebuild
+  fallback stays permanent there, not temporary.
+- **Phase 13 — Landlord template catalog (shipped):**
+  `store_configuration_templates` / `_modules`, landlord-only
+  (`NON_TENANT_MODEL_EXPORTS`). A template's module list is frozen once
+  published — editing is rejected at the use-case layer, not just
+  discouraged. Provisioning stamps a Profile's `provenance` block from a
+  published canonical template exactly once; no other code path
+  dereferences a template again.
+- **Phase 14 — Handler curation surface (shipped):** `/api/v1/admin/templates`,
+  Platform Master Admin only (not a delegable page permission — a published
+  template shapes every future tenant, platform-wide). Every write is
+  audited in a purpose-built `store_configuration_template_audit_logs`
+  table.
 
 The three `[binding]` cross-boundary clauses this realization needs — never
 dereferencing provenance at runtime, locked-module compliance determinism,

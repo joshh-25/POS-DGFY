@@ -15,7 +15,8 @@ describe('seedCanonicalTemplatePresetsUseCase (issue #178 Phase 13)', () => {
             setStatus: jest.fn().mockImplementation(async (templateId, status) => {
                 if (status === 'published') publishedIds.push(templateId);
                 return { template_id: templateId, status };
-            })
+            }),
+            createAuditLog: jest.fn().mockResolvedValue({})
         };
         const seed = buildSeedCanonicalTemplatePresetsUseCase({ repository });
 
@@ -25,13 +26,16 @@ describe('seedCanonicalTemplatePresetsUseCase (issue #178 Phase 13)', () => {
         expect(createdKeys.sort()).toEqual([...presetKeys].sort());
         expect(publishedIds).toHaveLength(presetKeys.length);
         expect(results.every((r) => r.action === 'created_and_published')).toBe(true);
+        // draft_created + published per preset
+        expect(repository.createAuditLog).toHaveBeenCalledTimes(presetKeys.length * 2);
     });
 
     it('is idempotent: never overwrites an existing template_key', async () => {
         const repository = {
             findByKey: jest.fn().mockResolvedValue({ template_id: 1, template_key: 'retail_store' }),
             create: jest.fn(),
-            setStatus: jest.fn()
+            setStatus: jest.fn(),
+            createAuditLog: jest.fn()
         };
         const seed = buildSeedCanonicalTemplatePresetsUseCase({ repository });
 
@@ -39,6 +43,7 @@ describe('seedCanonicalTemplatePresetsUseCase (issue #178 Phase 13)', () => {
 
         expect(repository.create).not.toHaveBeenCalled();
         expect(repository.setStatus).not.toHaveBeenCalled();
+        expect(repository.createAuditLog).not.toHaveBeenCalled();
         expect(results.every((r) => r.action === 'skipped_existing')).toBe(true);
     });
 

@@ -20,6 +20,7 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     // the exact runtime dereference ADR 0056 clause 2 forbids.
     'StoreConfigurationTemplate',
     'StoreConfigurationTemplateModule',
+    'StoreConfigurationTemplateAuditLog',
     'DgfyAccountBusinessAuditLog',
     'DgfyLegalAcknowledgement',
     'Payment',

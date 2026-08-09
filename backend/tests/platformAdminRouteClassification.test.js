@@ -16,7 +16,12 @@ describe('Platform Admin protected-route classification', () => {
     expect(resolvePlatformAdminRoutePolicy({ originalUrl })).toEqual({ permissions });
   });
 
-  test.each(['/api/v1/admin/platform-admins', '/api/v1/admin/unclassified-legacy-operation'])('makes %s master-only', (originalUrl) => {
+  test.each([
+    '/api/v1/admin/platform-admins',
+    '/api/v1/admin/unclassified-legacy-operation',
+    '/api/v1/admin/templates',
+    '/api/v1/admin/templates/5/publish'
+  ])('makes %s master-only', (originalUrl) => {
     expect(resolvePlatformAdminRoutePolicy({ originalUrl })).toEqual({ masterOnly: true });
   });
 

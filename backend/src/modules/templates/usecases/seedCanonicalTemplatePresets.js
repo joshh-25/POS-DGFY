@@ -25,7 +25,21 @@ export const buildSeedCanonicalTemplatePresetsUseCase = ({ repository }) => asyn
             owner: 'platform',
             moduleKeys: [...preset.modules]
         });
-        await repository.setStatus(created.template_id, 'published');
+        await repository.createAuditLog({
+            templateId: created.template_id,
+            action: 'draft_created',
+            actorUsername: 'system_seed',
+            afterSnapshot: created
+        });
+        const published = await repository.setStatus(created.template_id, 'published');
+        await repository.createAuditLog({
+            templateId: created.template_id,
+            action: 'published',
+            actorUsername: 'system_seed',
+            reason: 'Seeded canonical preset from STORE_TEMPLATE_PRESETS',
+            beforeSnapshot: created,
+            afterSnapshot: published
+        });
         results.push({ template_key: presetKey, action: 'created_and_published', template_id: created.template_id });
     }
 

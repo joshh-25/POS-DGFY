@@ -9,12 +9,16 @@ topic: store_templates_and_profiles
 
 # Store Templates & Capability Configuration
 
-**Status: design with prerequisite phases shipping.** This is the
-classification that grounds the Store Templates work (ADR 0037 Axis 2): what
-the platform actually sells today, which behaviors are fixed engineering-owned
-code, and which are curatable per store. The integration plan and phase
-numbering live in GitHub issue #178; the four-axis product model lives in
-`docs/architecture/adr/0037-unified-product-domain-and-capability-driven-store-types.md`.
+**Status: the full three-layer model is built and curatable (Phases 6d, 6e,
+10-14 shipped); the runtime read-path (Phase 12) is deliberately scaffolded
+but not wired to any consumer yet — see below.** This is the classification
+that grounds the Store Templates work (ADR 0037 Axis 2): what the platform
+actually sells today, which behaviors are fixed engineering-owned code, and
+which are curatable per store. The integration plan and phase numbering live
+in GitHub issue #178; the four-axis product model lives in
+`docs/architecture/adr/0037-unified-product-domain-and-capability-driven-store-types.md`;
+the cross-boundary binding clauses live in
+`docs/architecture/adr/0056-store-configuration-templates-and-profiles.md`.
 
 The model in one line: **Capability Modules** (fixed units of selling
 behavior, catalogued in `packages/shared-constants/src/capabilityModules.js`)
@@ -166,6 +170,29 @@ published template changes zero existing tenants' Profiles" true by
 construction, not by convention — proven in
 `backend/tests/tenantProvisioningStoreProfileProvenance.test.js`.
 
+## Platform-admin curation surface
+
+`/api/v1/admin/templates` (issue #178 Phase 14) — Platform Master Admin
+only (`resolvePlatformAdminRoutePolicy` in `backend/src/middleware/auth.js`
+routes it to `masterOnly`, not a delegable page permission: a published
+template shapes what every future tenant provisions with, platform-wide).
+Frontend: `frontend/Pages/admin/StoreTemplateManager.jsx`, wired into
+`AdminLayout.jsx`'s sidebar as "Store Templates".
+
+- `POST /admin/templates` — create a draft.
+- `PATCH /admin/templates/:id/modules` — edit a draft's modules (draft only;
+  requires a reason).
+- `POST /admin/templates/:id/publish` — validate and freeze (requires a
+  reason).
+- `POST /admin/templates/:id/deprecate` — retire (requires a reason).
+- `GET /admin/templates`, `GET /admin/templates/:id`,
+  `GET /admin/templates/:id/audit-logs` — read paths.
+
+Every write is recorded in `store_configuration_template_audit_logs`
+(actor, reason, before/after snapshot) — a purpose-built table, not a reuse
+of `TenantAdminAuditLog` (that model's `tenant_id` FK doesn't fit an action
+that targets a template, not a tenant).
+
 ## Planned modules (roadmap slots in the catalog, not implemented)
 
 - `laborTracking` — who performed a job, actual start/finish, rate-based
@@ -198,3 +225,7 @@ grantable capability vocabulary, and fail template validation if selected.
 - `backend/tests/tenantProvisioningStoreProfileProvenance.test.js` — the
   Phase 13 acceptance criterion: editing a template after provisioning
   changes zero already-provisioned tenants' Profiles.
+- `backend/tests/adminTemplates.transport.test.js` — curation route
+  validation gates and request/response wiring.
+- `backend/tests/platformAdminRouteClassification.test.js` — `/admin/templates`
+  resolves to `masterOnly`, not a delegable permission.

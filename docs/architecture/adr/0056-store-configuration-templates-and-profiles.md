@@ -123,9 +123,13 @@ which this ADR supplements rather than duplicates.
 
 Phases 10 and 11 (Capability Module catalog; Store Profile shadow-write)
 shipped ahead of this ADR under ADR 0037's `[default]`-tier phased rollout
-and are unaffected by it. Phase 12 (runtime read-path) is scoped by clause 2
-above from its first commit. Phases 13-14 (landlord template catalog;
-curation surface) are scoped by clauses 1, 3, 5, and 6.
+and are unaffected by it. Phase 12 (runtime read-path) shipped as tested
+scaffolding only — a resolver and a divergence differ, gated by a flag no
+consumer reads through yet — scoped by clause 2 above from its first commit.
+Phases 13 (landlord template catalog) and 14 (curation surface) have since
+shipped, scoped by clauses 1, 3, 5, and 6; Phase 13's existence is what
+would make wiring a real Phase 12 consumer meaningful, which is why it
+landed first.
 
 ## Validation
 

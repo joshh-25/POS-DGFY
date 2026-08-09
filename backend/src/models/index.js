@@ -122,6 +122,7 @@ import DgfyAccountHandoffFactory from './Landlord/DgfyAccountHandoff.js';
 import DgfyAccountAdminAuditLogFactory from './Landlord/DgfyAccountAdminAuditLog.js';
 import StoreConfigurationTemplateFactory from './Landlord/StoreConfigurationTemplate.js';
 import StoreConfigurationTemplateModuleFactory from './Landlord/StoreConfigurationTemplateModule.js';
+import StoreConfigurationTemplateAuditLogFactory from './Landlord/StoreConfigurationTemplateAuditLog.js';
 import DgfyAccountBusinessAuditLogFactory from './Landlord/DgfyAccountBusinessAuditLog.js';
 import DgfyLegalAcknowledgementFactory from './Landlord/DgfyLegalAcknowledgement.js';
 import DgfyCustomerActivityFactory from './Landlord/DgfyCustomerActivity.js';
@@ -193,6 +194,7 @@ const DgfyAccountHandoff = DgfyAccountHandoffFactory(sequelize);
 const DgfyAccountAdminAuditLog = DgfyAccountAdminAuditLogFactory(sequelize);
 const StoreConfigurationTemplate = StoreConfigurationTemplateFactory(sequelize);
 const StoreConfigurationTemplateModule = StoreConfigurationTemplateModuleFactory(sequelize);
+const StoreConfigurationTemplateAuditLog = StoreConfigurationTemplateAuditLogFactory(sequelize);
 const DgfyAccountBusinessAuditLog = DgfyAccountBusinessAuditLogFactory(sequelize);
 const DgfyLegalAcknowledgement = DgfyLegalAcknowledgementFactory(sequelize);
 const DgfyCustomerActivity = DgfyCustomerActivityFactory(sequelize);
@@ -290,6 +292,8 @@ DgfyAccountTenantMembership.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_i
 DgfyAccount.hasMany(DgfyAccountHandoff, { foreignKey: 'dgfy_account_id', as: 'handoffs' });
 StoreConfigurationTemplate.hasMany(StoreConfigurationTemplateModule, { foreignKey: 'template_id', as: 'modules' });
 StoreConfigurationTemplateModule.belongsTo(StoreConfigurationTemplate, { foreignKey: 'template_id', as: 'template' });
+StoreConfigurationTemplate.hasMany(StoreConfigurationTemplateAuditLog, { foreignKey: 'template_id', as: 'auditLogs' });
+StoreConfigurationTemplateAuditLog.belongsTo(StoreConfigurationTemplate, { foreignKey: 'template_id', as: 'template' });
 DgfyAccountHandoff.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
 DgfyAccount.hasMany(DgfyAccountAdminAuditLog, { foreignKey: 'dgfy_account_id', as: 'adminAuditLogs' });
 DgfyAccountAdminAuditLog.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
@@ -909,6 +913,7 @@ const db = {
   WorkflowModeChangeLog,
   StoreConfigurationTemplate,
   StoreConfigurationTemplateModule,
+  StoreConfigurationTemplateAuditLog,
   ServiceOptionGroup,
   ServiceOption,
   ServiceItemOptionGroup,
@@ -1095,6 +1100,7 @@ export {
   WorkflowModeChangeLog,
   StoreConfigurationTemplate,
   StoreConfigurationTemplateModule,
+  StoreConfigurationTemplateAuditLog,
   ServiceOptionGroup,
   ServiceOption,
   ServiceItemOptionGroup,

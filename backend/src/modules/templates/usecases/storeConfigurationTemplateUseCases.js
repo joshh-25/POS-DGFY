@@ -18,6 +18,34 @@ const assertValidModuleSelection = (moduleKeys) => {
     }
 };
 
+const requireActorUsername = (actorUser) => {
+    const username = String(actorUser?.username || '').trim();
+    if (!username) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'A platform admin actor is required for this action',
+            { statusCode: 403 }
+        );
+    }
+    return username.slice(0, 120);
+};
+
+// Mirrors updateTenantCapabilitiesUseCase.js's requireReason shape exactly -
+// every audited platform-admin write to tenant-visible configuration in
+// this codebase requires a human-readable reason of the same minimum
+// length, and template curation is no exception.
+const requireReason = (reason) => {
+    const normalized = String(reason || '').trim();
+    if (normalized.length < 3) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'reason is required and must be at least 3 characters',
+            { statusCode: 422 }
+        );
+    }
+    return normalized.slice(0, 500);
+};
+
 export const buildListTemplatesUseCase = ({ repository }) => async ({ status = null, baseMode = null } = {}) => (
     repository.findAll({ status, baseMode })
 );
@@ -30,6 +58,12 @@ export const buildGetTemplateUseCase = ({ repository }) => async ({ templateId, 
     return template;
 };
 
+export const buildListTemplateAuditLogsUseCase = ({ repository }) => async ({ templateId, limit = 50 }) => {
+    const template = await repository.findById(templateId);
+    if (!template) throw notFound(templateId);
+    return repository.listAuditLogs(templateId, { limit });
+};
+
 export const buildCreateDraftTemplateUseCase = ({ repository }) => async ({
     templateKey,
     label,
@@ -37,8 +71,10 @@ export const buildCreateDraftTemplateUseCase = ({ repository }) => async ({
     isPreset = false,
     visibility = 'visible',
     owner = null,
-    moduleKeys = []
+    moduleKeys = [],
+    actorUser = null
 }) => {
+    const actorUsername = requireActorUsername(actorUser);
     assertValidModuleSelection(moduleKeys);
 
     const existing = await repository.findByKey(templateKey);
@@ -50,7 +86,14 @@ export const buildCreateDraftTemplateUseCase = ({ repository }) => async ({
         );
     }
 
-    return repository.create({ templateKey, label, baseMode, isPreset, visibility, owner, moduleKeys });
+    const template = await repository.create({ templateKey, label, baseMode, isPreset, visibility, owner, moduleKeys });
+    await repository.createAuditLog({
+        templateId: template.template_id,
+        action: 'draft_created',
+        actorUsername,
+        afterSnapshot: template
+    });
+    return template;
 };
 
 // Only draft templates may have their module list edited. A published
@@ -58,7 +101,10 @@ export const buildCreateDraftTemplateUseCase = ({ repository }) => async ({
 // may retroactively change what an already-materialized tenant Profile
 // means). To change a published template's content, deprecate it and
 // publish a new template/version instead.
-export const buildUpdateTemplateModulesUseCase = ({ repository }) => async ({ templateId, moduleKeys }) => {
+export const buildUpdateTemplateModulesUseCase = ({ repository }) => async ({ templateId, moduleKeys, reason, actorUser = null }) => {
+    const actorUsername = requireActorUsername(actorUser);
+    const normalizedReason = requireReason(reason);
+
     const template = await repository.findById(templateId);
     if (!template) throw notFound(templateId);
     if (template.status !== 'draft') {
@@ -70,10 +116,22 @@ export const buildUpdateTemplateModulesUseCase = ({ repository }) => async ({ te
     }
 
     assertValidModuleSelection(moduleKeys);
-    return repository.replaceModules(templateId, moduleKeys);
+    const updated = await repository.replaceModules(templateId, moduleKeys);
+    await repository.createAuditLog({
+        templateId,
+        action: 'modules_updated',
+        actorUsername,
+        reason: normalizedReason,
+        beforeSnapshot: template,
+        afterSnapshot: updated
+    });
+    return updated;
 };
 
-export const buildPublishTemplateUseCase = ({ repository }) => async ({ templateId }) => {
+export const buildPublishTemplateUseCase = ({ repository }) => async ({ templateId, reason, actorUser = null }) => {
+    const actorUsername = requireActorUsername(actorUser);
+    const normalizedReason = requireReason(reason);
+
     const template = await repository.findById(templateId);
     if (!template) throw notFound(templateId);
     if (template.status === 'published') return template;
@@ -86,12 +144,34 @@ export const buildPublishTemplateUseCase = ({ repository }) => async ({ template
     }
 
     assertValidModuleSelection(template.modules);
-    return repository.setStatus(templateId, 'published');
+    const published = await repository.setStatus(templateId, 'published');
+    await repository.createAuditLog({
+        templateId,
+        action: 'published',
+        actorUsername,
+        reason: normalizedReason,
+        beforeSnapshot: template,
+        afterSnapshot: published
+    });
+    return published;
 };
 
-export const buildDeprecateTemplateUseCase = ({ repository }) => async ({ templateId }) => {
+export const buildDeprecateTemplateUseCase = ({ repository }) => async ({ templateId, reason, actorUser = null }) => {
+    const actorUsername = requireActorUsername(actorUser);
+    const normalizedReason = requireReason(reason);
+
     const template = await repository.findById(templateId);
     if (!template) throw notFound(templateId);
     if (template.status === 'deprecated') return template;
-    return repository.setStatus(templateId, 'deprecated');
+
+    const deprecated = await repository.setStatus(templateId, 'deprecated');
+    await repository.createAuditLog({
+        templateId,
+        action: 'deprecated',
+        actorUsername,
+        reason: normalizedReason,
+        beforeSnapshot: template,
+        afterSnapshot: deprecated
+    });
+    return deprecated;
 };

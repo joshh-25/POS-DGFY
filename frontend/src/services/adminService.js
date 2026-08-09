@@ -1023,3 +1023,34 @@ export const updateTenantCompliancePeripheralVerification = async (tenantId, per
     );
     return response.data;
 };
+
+/**
+ * Store Template curation (issue #178 Phase 14, ADR 0056).
+ */
+export const listStoreTemplates = async (params = {}) => (
+    await adminApi.get('/admin/templates', { ...requireAdminAuthConfig(), params })
+).data;
+
+export const getStoreTemplate = async (templateId) => (
+    await adminApi.get(`/admin/templates/${templateId}`, requireAdminAuthConfig())
+).data;
+
+export const listStoreTemplateAuditLogs = async (templateId, params = {}) => (
+    await adminApi.get(`/admin/templates/${templateId}/audit-logs`, { ...requireAdminAuthConfig(), params })
+).data;
+
+export const createStoreTemplateDraft = async (payload) => (
+    await adminApi.post('/admin/templates', payload, requireAdminAuthConfig())
+).data;
+
+export const updateStoreTemplateModules = async (templateId, payload) => (
+    await adminApi.patch(`/admin/templates/${templateId}/modules`, payload, requireAdminAuthConfig())
+).data;
+
+export const publishStoreTemplate = async (templateId, reason) => (
+    await adminApi.post(`/admin/templates/${templateId}/publish`, { reason }, requireAdminAuthConfig())
+).data;
+
+export const deprecateStoreTemplate = async (templateId, reason) => (
+    await adminApi.post(`/admin/templates/${templateId}/deprecate`, { reason }, requireAdminAuthConfig())
+).data;

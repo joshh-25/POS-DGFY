@@ -1,6 +1,7 @@
 import {
     StoreConfigurationTemplate,
     StoreConfigurationTemplateModule,
+    StoreConfigurationTemplateAuditLog,
     sequelize
 } from '../../../models/index.js';
 
@@ -107,11 +108,23 @@ export const storeConfigurationTemplateRepository = {
         return this.findById(templateId);
     },
 
-    async bumpVersion(templateId) {
-        const row = await StoreConfigurationTemplate.findByPk(templateId);
-        if (!row) return null;
-        row.version += 1;
-        await row.save();
-        return this.findById(templateId);
+    async createAuditLog({ templateId, action, actorUsername, reason = null, beforeSnapshot = null, afterSnapshot = null }) {
+        return StoreConfigurationTemplateAuditLog.create({
+            template_id: templateId,
+            action,
+            actor_username: actorUsername,
+            reason,
+            before_snapshot: beforeSnapshot,
+            after_snapshot: afterSnapshot
+        });
+    },
+
+    async listAuditLogs(templateId, { limit = 50 } = {}) {
+        const rows = await StoreConfigurationTemplateAuditLog.findAll({
+            where: { template_id: templateId },
+            order: [['created_at', 'DESC']],
+            limit: Math.min(Math.max(Number.parseInt(limit, 10) || 50, 1), 200)
+        });
+        return rows.map((row) => row.get({ plain: true }));
     }
 };
