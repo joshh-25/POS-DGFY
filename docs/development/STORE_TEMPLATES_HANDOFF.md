@@ -152,31 +152,73 @@ before (no behavior change, since canonical ≡ base mode by construction);
 existing tenants get nothing until an admin explicitly applies a template
 to them; the UI a merchant sees at signup is byte-identical.
 
-## 4. The four intentionally bare modes
+## 4. The native/transitional/external engine classification
+
+Every workflow mode is classified by **who runs its selling engine** —
+`WORKFLOW_MODE_ENGINE` in `packages/shared-constants/src/workflowModes.js`:
+
+- **`native`** (`retail`, `services`, `fnb`, `msme`) — DGFY runs the engine
+  end-to-end: catalog, POS, storefront, fulfillment all live inside this
+  platform.
+- **`transitional`** (`hospitality`, `food_manufacturing`) — DGFY runs the
+  engine **today** (hospitality alone is ~2,100 LOC across 22 tables with a
+  public booking API; food_manufacturing has job/dispatch orders and the
+  richest per-mode RBAC preset set), but the product direction is to move
+  it to a **separate sibling app** under the same parent company (Sieitz) —
+  hospitality to "Sync Core", food_manufacturing to an external Skupervisor
+  engine. `WORKFLOW_MODE_ENGINE_NOTES` names the planned engine per mode.
+  These stay fully authorable in Store Template curation and keep their
+  seeded presets (`hospitality_property`, `hospitality_guesthouse`,
+  `food_manufacturer`) — nothing about how they run changes today, only
+  the admin-visible label ("Native today · external engine planned").
+- **`external`** (`healthcare`, `ticketing_transport`,
+  `logistics_distribution`, `education_institutions`) — the engine already
+  lives, or will live, in a separate app; DGFY provides registration and
+  UI/UX visibility only. These are exactly `STORE_TEMPLATE_PRESETLESS_MODES`
+  (below) and are hidden from Store Template authoring
+  (`TEMPLATE_AUTHORABLE_MODES` excludes them; `adminTemplateValidator.js`'s
+  create-draft schema rejects them server-side with a 422).
+
+**Flipping a mode's classification is meant to be a one-line change** in
+`WORKFLOW_MODE_ENGINE` — but check what moves with it:
+
+1. `backend/tests/capabilityModules.contract.test.js`'s "engine
+   classification contracts" suite pins the *current* membership of each
+   tier by name — update the expected arrays in the same commit as the flip,
+   or the test fails loudly (that's the point).
+2. Flipping a mode to `external` automatically removes it from
+   `TEMPLATE_AUTHORABLE_MODES` (derived, not separately maintained) — but
+   **does not** by itself retire its seeded presets.
+   `STORE_TEMPLATE_PRESETLESS_MODES` is a distinct list; the engine
+   classification contract test only pins `external ⊆ presetless`
+   (subset, not equality) precisely so a transitional mode can flip to
+   external while keeping its presets until a separate, deliberate product
+   decision retires them (that retirement is itself nontrivial — see §7's
+   note on `capabilityModules.contract.test.js`'s "canonical preset per
+   offered mode" test, which would need updating, plus a new down-migration
+   for the already-seeded rows; do not do this casually).
+3. If a `transitional` mode's engine genuinely moves, more changes than
+   this one constant — the native backend module doesn't switch itself off.
+
+### The four preset-less external modes, specifically
 
 `healthcare`, `ticketing_transport`, `logistics_distribution`, and
 `education_institutions` are offered at registration and are real,
 provisionable modes (`WORKFLOW_MODE_CAPABILITIES` has an entry for each),
 but have **no** template preset — pinned by
 `STORE_TEMPLATE_PRESETLESS_MODES` in `capabilityModules.js` and a contract
-test that fails if this set drifts in either direction.
-
-This is not an oversight. These four are candidates for verticals that
-may end up powered by **separate sibling apps** under the same parent
-company (Sieitz), with DGFY providing registration and UI/UX visibility
-only — the operating "engine" (the actual domain logic: appointment
-scheduling for healthcare, ticket issuance for transport, and so on)
-living elsewhere. Until that product direction is decided, these four
-modes stay retail-shaped (identical capability list to `retail`) and
-preset-less. A tenant registering in one of them provisions with null
-template provenance, which — per §3 above — the whole system already
-tolerates by design.
+test that fails if this set drifts in either direction. They stay
+retail-shaped (identical capability list to `retail`) and preset-less. A
+tenant registering in one of them provisions with null template
+provenance, which — per §3 above — the whole system already tolerates by
+design.
 
 If you're picking this up: check whether a follow-up issue exists for
-"externally-powered verticals" before assuming these four need a preset.
-Adding one without that product decision would be exactly the kind of
-undocumented drift `STORE_TEMPLATE_PRESETLESS_MODES` and its contract
-test exist to prevent — the test will fail loudly if you try.
+"externally-powered verticals" before assuming these four need a preset
+(or a fifth mode should join them). Adding one without that product
+decision would be exactly the kind of undocumented drift
+`STORE_TEMPLATE_PRESETLESS_MODES` and its contract test exist to prevent —
+the test will fail loudly if you try.
 
 ## 5. Admin how-to
 
@@ -185,11 +227,18 @@ test exist to prevent — the test will fail loudly if you try.
 only (`masterOnly` in `middleware/auth.js`, not a delegable permission —
 a published template shapes every future tenant, platform-wide):
 
-- Create a draft: key, label, base mode (must be an existing
-  `WORKFLOW_MODE_VALUES` entry — you cannot template a mode that doesn't
-  exist in code), and a module selection (validated against
-  `validateModuleSelection` — unknown/planned/`requires`-violating
-  selections are rejected).
+- Create a draft: key, label, base mode (must be an authorable mode —
+  `TEMPLATE_AUTHORABLE_MODES`, i.e. `native` or `transitional` engine
+  classification; the four `external` modes and the deprecated
+  `manufacturing` alias are rejected with a 422, see §4), and a module
+  selection (validated against `validateModuleSelection` —
+  unknown/planned/`requires`-violating selections are rejected). The
+  module grid groups and describes modules (`description`/`surface`/
+  `group` fields on `CAPABILITY_MODULES`), filtered by default to the
+  selected base mode's relevant groups (`MODE_FAMILY_MODULE_GROUPS`) with
+  a "show all module groups" toggle — this is presentation only, it
+  narrows what the grid *shows*, never what a selection can validly
+  contain.
 - Edit a draft's modules (draft-only; requires a reason).
 - Publish (freezes the module list — publishing again is idempotent;
   editing a published template is rejected, not just discouraged).
@@ -366,6 +415,18 @@ cd frontend && npx vite build
 ```
 
 ## 8. Known limitations & deliberate deferrals
+
+**`DEFAULT_WORKFLOW_MODE` is `food_manufacturing`, a `transitional`-engine
+mode.** It is the pre-selected default on all three registration surfaces
+and the fallback for automatic business classification
+(`businessClassification.js`). This predates the engine classification
+(§4) and was deliberately left unchanged in that pass — the registration
+UX guarantee for this arc was "as if nothing happened". Whether the
+platform default should be a `native` mode (e.g. `retail`) instead is an
+open follow-up product decision, not a bug; if you pick it up, the touch
+points are the three registration forms' default form values, the
+classification fallback, and the discovery-index fallbacks (grep
+`DEFAULT_WORKFLOW_MODE` usages before changing it).
 
 **`template.version` is always `1`.** Set at creation, never incremented
 anywhere in the codebase. Provenance stamps (`source_template_version`)

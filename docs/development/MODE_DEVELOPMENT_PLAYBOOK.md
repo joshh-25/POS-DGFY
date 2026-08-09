@@ -230,3 +230,11 @@ Before implementing or promoting any future mode, complete this checklist:
 5. Run the mode matrix against every value in `WORKFLOW_MODE_VALUES`, including placeholder modes that inherit conservative defaults.
 6. Confirm approval and auto-approval failures restore a valid retryable landlord status (`pending` for approval paths) and drop any zombie tenant database safely.
 7. Document seed/default data requirements for first-login onboarding, including brand assets, primary storefront location, starter-item presets, customer access settings, role presets, Storefront discovery, and mode-native setup tables.
+8. Declare the mode's engine classification in `WORKFLOW_MODE_ENGINE`
+   (`packages/shared-constants/src/workflowModes.js`, issue #178
+   final-touch pass) — `native` if DGFY runs the new mode's engine
+   end-to-end, `external` if it's a registration/visibility-only vertical
+   with no Store Template authoring. See
+   `docs/development/STORE_TEMPLATES_HANDOFF.md` §4 for the full
+   native/transitional/external model and what else moves with a
+   classification change.

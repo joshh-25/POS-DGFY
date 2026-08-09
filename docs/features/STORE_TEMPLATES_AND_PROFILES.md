@@ -97,17 +97,29 @@ The canonical preset of each base mode equals the mode's own capability
 list, so materializing a preset is provably behavior-identical to the mode it
 packages (`backend/tests/capabilityModules.contract.test.js`).
 
-**Four registration-offered modes are deliberately preset-less** (issue
-#178 final-touch hardening): `healthcare`, `ticketing_transport`,
-`logistics_distribution`, `education_institutions`. Pinned by
-`STORE_TEMPLATE_PRESETLESS_MODES` in `capabilityModules.js` and the
-accompanying contract test — not an oversight, but a hold on verticals
+**Every workflow mode carries a native/transitional/external engine
+classification** (`WORKFLOW_MODE_ENGINE` in `workflowModes.js`, issue #178
+final-touch pass): `native` modes (`retail`, `services`, `fnb`, `msme`) run
+their full selling engine inside DGFY; `transitional` modes
+(`hospitality`, `food_manufacturing`) run natively today but are planned to
+move to a sibling app; `external` modes are the four below. Only `native`
+and `transitional` modes are authorable in Store Template curation
+(`TEMPLATE_AUTHORABLE_MODES`) — `external` modes are hidden from the
+create-draft base-mode dropdown and rejected server-side with a 422.
+
+**Four registration-offered modes are deliberately preset-less and
+engine-external** (issue #178 final-touch hardening): `healthcare`,
+`ticketing_transport`, `logistics_distribution`, `education_institutions`.
+Pinned by `STORE_TEMPLATE_PRESETLESS_MODES` in `capabilityModules.js` and
+the accompanying contract test — not an oversight, but a hold on verticals
 that may end up powered by separate sibling apps under the same parent
 company, with DGFY providing registration and UI/UX visibility only. A
 tenant registering in one of these modes provisions with null template
-provenance, which the platform already tolerates by design. See
-`docs/development/STORE_TEMPLATES_HANDOFF.md` for the extension recipe
-and the open product question these four modes are tracked against.
+provenance, which the platform already tolerates by design; they remain
+fully registerable and listable, only template *authoring* is restricted.
+See `docs/development/STORE_TEMPLATES_HANDOFF.md` §4 for the full engine
+classification, the flip recipe, and the open product question these four
+modes are tracked against.
 
 ## Template/mode switching and historical records
 
@@ -407,7 +419,12 @@ template shapes what every future tenant provisions with, platform-wide).
 Frontend: `frontend/Pages/admin/StoreTemplateManager.jsx`, wired into
 `AdminLayout.jsx`'s sidebar as "Store Templates".
 
-- `POST /admin/templates` — create a draft.
+- `POST /admin/templates` — create a draft. `base_mode` must be an
+  authorable mode (`TEMPLATE_AUTHORABLE_MODES`: `native` or `transitional`
+  engine classification, issue #178 final-touch pass) — the four
+  `external`-engine modes and the deprecated `manufacturing` alias are
+  rejected with a 422. `GET /admin/templates?base_mode=` is unrestricted —
+  existing templates of any mode remain listable/filterable.
 - `PATCH /admin/templates/:id/modules` — edit a draft's modules (draft only;
   requires a reason).
 - `POST /admin/templates/:id/publish` — validate and freeze (requires a
