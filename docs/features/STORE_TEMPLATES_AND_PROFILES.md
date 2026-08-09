@@ -10,8 +10,10 @@ topic: store_templates_and_profiles
 # Store Templates & Capability Configuration
 
 **Status: the full three-layer model is built and curatable (Phases 6d, 6e,
-10-14 shipped); the runtime read-path (Phase 12) is deliberately scaffolded
-but not wired to any consumer yet — see below.** This is the classification
+10-14 shipped); a template's module list can now genuinely diverge a
+tenant's Profile from its base mode (Phase 16's subtractive overlay); the
+runtime read-path (Phase 12) is still deliberately scaffolded and not wired
+to any consumer yet — see below.** This is the classification
 that grounds the Store Templates work (ADR 0037 Axis 2): what the platform
 actually sells today, which behaviors are fixed engineering-owned code, and
 which are curatable per store. The integration plan and phase numbering live
@@ -124,17 +126,35 @@ called for, now real rather than only tested by the equivalence harness. A
 divergent or version-stale persisted profile is never served, even with the
 flag on; a fresh rebuild is always correct by construction.
 
-**Nothing reads through this resolver yet**, deliberately. Every runtime
-consumer identified for a Phase 12 flip — storefront order methods, item
-taxonomy validation, POS terminal defaults, capability gating — currently
-produces a value that is mathematically identical to what the Profile would
-return, because no Store Template (Phase 13) exists yet to make a tenant's
-Profile diverge from its base mode. Wiring a real consumer onto the resolver
-before that point would add latency and a new failure surface (an async
-settings fetch on payment/checkout paths, cache staleness, version
-mismatches) for zero behavior change. The resolver stays as tested,
-ready-to-wire infrastructure until Phase 13 gives templates a way to
-actually curate a Profile away from its mode.
+**Nothing reads through this resolver yet**, deliberately — but as of Phase
+16 it is no longer true that nothing *could*. Two things had to exist before
+any Phase 12 flip could mean anything: a template entity (Phase 13) and a
+way for a template's module list to actually subtract from a mode's base
+capabilities (Phase 16's `ops_disabled_capabilities` overlay, below —
+without it, a template like `fnb_counter_service` was a landlord-DB row
+nothing could ever apply). Both now exist, so the differ above is live
+infrastructure, not a permanently-inert one: a tenant curated with a
+non-canonical template genuinely can diverge from its base mode, and the
+resolver will catch it. Wiring a real consumer is still separate future
+work (storefront order methods, item taxonomy validation, POS terminal
+defaults, capability gating) — deferred a little longer to keep this change
+isolated to the mechanism, not the flip, and because capability gating in
+particular needs its own care (see below).
+
+### The subtractive overlay (`ops_disabled_capabilities`)
+
+`packages/shared-constants/src/workflowModes.js`'s `resolveEffectiveCapabilities`
+now computes `(base mode ∪ ops_enabled_capabilities) \ ops_disabled_capabilities`.
+`ops_disabled_capabilities` mirrors `ops_enabled_capabilities` exactly —
+same master-admin write gate, same 15s tenant-scoped cache, same
+`ALL_WORKFLOW_CAPABILITIES` allowlist (which is why neither overlay can ever
+reach a `locked` module: `fiscalProfile` and `customerAccessMode` belong to
+no mode's base list and so never enter `ALL_WORKFLOW_CAPABILITIES` either).
+A write that would leave an enabled module without a `requires` dependency
+it needs — disabling `catalog` while `pos` stays enabled, for example — is
+rejected at the settings-write layer with `CAPABILITY_SELECTION_UNBUILDABLE`
+via the same `validateModuleSelection()` the template catalog itself uses.
+`STORE_PROFILE_VERSION` is now 4, carrying `source.disabled_capabilities`.
 
 ## The landlord Store Template catalog
 
@@ -216,7 +236,21 @@ grantable capability vocabulary, and fail template validation if selected.
   vocabulary ↔ DB ENUM.
 - `backend/tests/resolveStoreProfile.usecase.test.js` — the read-path
   resolver's flag/version/divergence logic, including that template
-  provenance never trips a false divergence.
+  provenance and a curated disabled-capabilities overlay never trip a false
+  divergence, and that a genuine drift in the disabled overlay is still
+  caught.
+- `backend/tests/workflowModes.crossLayer.contract.test.js` — the
+  `ops_disabled_capabilities` overlay resolves identically across the
+  backend and frontend copies of `resolveEffectiveCapabilities`, cannot
+  reach a `locked` module, and reproduces `fnb_counter_service` exactly.
+- `backend/tests/storeProfile.equivalence.contract.test.js` — the
+  disabled-capabilities overlay reproduces both non-canonical presets
+  (`fnb_counter_service`, `hospitality_guesthouse`) byte-for-byte via
+  subtraction, and a subtraction breaking a `requires` edge is rejected.
+- `backend/tests/settingsUsecases.applicationResult.test.js` — the
+  `ops_disabled_capabilities` write gate (master-admin only, normalized,
+  deduped) and the `CAPABILITY_SELECTION_UNBUILDABLE` rejection for both the
+  bulk and single-key settings write paths.
 - `backend/tests/storeConfigurationTemplateUseCases.test.js` — template
   lifecycle (draft → published → deprecated), publish-time validation, and
   published-template module immutability.

@@ -1,6 +1,9 @@
 import logger from '../../../config/logger.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
-import { ENABLED_CAPABILITIES_SETTING_KEY } from '../../shared/constants/workflowModes.js';
+import {
+    ENABLED_CAPABILITIES_SETTING_KEY,
+    DISABLED_CAPABILITIES_SETTING_KEY
+} from '../../shared/constants/workflowModes.js';
 import {
     STORE_PROFILE_SETTING_KEY,
     buildStoreProfile,
@@ -50,19 +53,21 @@ const carryForwardProvenance = (existingProfile, nextProfile) => {
 
 /**
  * Shadow-write (issue #178 Phase 11): whenever a settings write touches
- * ops_workflow_mode or ops_enabled_capabilities, materialize the resulting
- * Store Profile into the same write. The profile is written and diffed only —
- * no runtime path reads it yet.
+ * ops_workflow_mode, ops_enabled_capabilities, or (Phase 16)
+ * ops_disabled_capabilities, materialize the resulting Store Profile into
+ * the same write.
  */
 export const applyStoreProfileShadowWrite = async ({ settingsRepository, settingsData }) => {
     const touchesMode = hasOwn(settingsData, WORKFLOW_MODE_SETTING_KEY);
     const touchesOverlay = hasOwn(settingsData, ENABLED_CAPABILITIES_SETTING_KEY);
-    if (!touchesMode && !touchesOverlay) return settingsData;
+    const touchesDisabledOverlay = hasOwn(settingsData, DISABLED_CAPABILITIES_SETTING_KEY);
+    if (!touchesMode && !touchesOverlay && !touchesDisabledOverlay) return settingsData;
     if (typeof settingsRepository?.getSettingsByKeys !== 'function') return settingsData;
 
     const current = await settingsRepository.getSettingsByKeys([
         WORKFLOW_MODE_SETTING_KEY,
         ENABLED_CAPABILITIES_SETTING_KEY,
+        DISABLED_CAPABILITIES_SETTING_KEY,
         STORE_PROFILE_SETTING_KEY
     ]);
 
@@ -74,7 +79,10 @@ export const applyStoreProfileShadowWrite = async ({ settingsRepository, setting
             : current?.[WORKFLOW_MODE_SETTING_KEY]?.value,
         enabledCapabilities: touchesOverlay
             ? settingsData[ENABLED_CAPABILITIES_SETTING_KEY]
-            : current?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value
+            : current?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value,
+        disabledCapabilities: touchesDisabledOverlay
+            ? settingsData[DISABLED_CAPABILITIES_SETTING_KEY]
+            : current?.[DISABLED_CAPABILITIES_SETTING_KEY]?.value
     }));
     if (existingProfile && !storeProfilesEqual(existingProfile, profile)) {
         logger.info('[StoreProfile] shadow profile changed on settings write', {

@@ -5,8 +5,10 @@ import {
     WORKFLOW_MODE_VALUES as backendValues,
     ALL_WORKFLOW_CAPABILITIES as backendAllCapabilities,
     ENABLED_CAPABILITIES_SETTING_KEY as backendEnabledCapabilitiesKey,
+    DISABLED_CAPABILITIES_SETTING_KEY as backendDisabledCapabilitiesKey,
     modeHasCapability as backendModeHasCapability,
     normalizeEnabledCapabilities as normalizeBackendEnabledCapabilities,
+    normalizeDisabledCapabilities as normalizeBackendDisabledCapabilities,
     normalizeWorkflowMode as normalizeBackendWorkflowMode,
     resolveEffectiveCapabilities as resolveBackendEffectiveCapabilities,
     resolveWorkflowModeFamily as resolveBackendWorkflowModeFamily,
@@ -19,8 +21,10 @@ import {
     WORKFLOW_MODE_VALUES as frontendValues,
     ALL_WORKFLOW_CAPABILITIES as frontendAllCapabilities,
     ENABLED_CAPABILITIES_SETTING_KEY as frontendEnabledCapabilitiesKey,
+    DISABLED_CAPABILITIES_SETTING_KEY as frontendDisabledCapabilitiesKey,
     modeHasCapability as frontendModeHasCapability,
     normalizeEnabledCapabilities as normalizeFrontendEnabledCapabilities,
+    normalizeDisabledCapabilities as normalizeFrontendDisabledCapabilities,
     normalizeWorkflowMode as normalizeFrontendWorkflowMode,
     resolveEffectiveCapabilities as resolveFrontendEffectiveCapabilities,
     resolveWorkflowModeFamily as resolveFrontendWorkflowModeFamily,
@@ -162,6 +166,59 @@ describe('workflow mode cross-layer contracts', () => {
             expect(resolveBackendEffectiveCapabilities('fnb', undefined)).toEqual(
                 resolveBackendEffectiveCapabilities('fnb', [])
             );
+        });
+    });
+
+    describe('Phase 16 subtractive disabled_capabilities overlay', () => {
+        it('keeps the setting key aligned across layers', () => {
+            expect(frontendDisabledCapabilitiesKey).toBe(backendDisabledCapabilitiesKey);
+            expect(backendDisabledCapabilitiesKey).toBe('ops_disabled_capabilities');
+        });
+
+        it('silently drops unknown/decommissioned capability strings from the overlay, identically to the enabled overlay', () => {
+            const overlay = ['tableService', 'not-a-real-capability', ''];
+            expect(normalizeBackendDisabledCapabilities(overlay)).toEqual(['tableService']);
+            expect(normalizeFrontendDisabledCapabilities(overlay)).toEqual(['tableService']);
+        });
+
+        it('removes a base-mode capability from the effective set identically across layers', () => {
+            const backendEffective = resolveBackendEffectiveCapabilities('fnb', [], ['tableService', 'kitchenQueue', 'restaurantServiceCharge']);
+            const frontendEffective = resolveFrontendEffectiveCapabilities('fnb', [], ['tableService', 'kitchenQueue', 'restaurantServiceCharge']);
+            expect(frontendEffective).toEqual(backendEffective);
+            expect(backendEffective).not.toContain('tableService');
+            expect(backendEffective).not.toContain('kitchenQueue');
+            expect(backendEffective).not.toContain('restaurantServiceCharge');
+            expect(backendEffective).toContain('fnbDining');
+        });
+
+        it('reproduces the fnb_counter_service preset exactly by subtracting from fnb', () => {
+            const counterServiceModules = resolveBackendEffectiveCapabilities(
+                'fnb',
+                [],
+                ['tableService', 'kitchenQueue', 'restaurantServiceCharge']
+            );
+            expect([...counterServiceModules].sort()).toEqual(
+                ['catalog', 'fnbDining', 'inventory', 'menuModifiers', 'pos', 'storefront'].sort()
+            );
+        });
+
+        it('lets a disabled entry win over an enabled one for the same capability', () => {
+            expect(backendModeHasCapability('retail', 'services', ['services'], ['services'])).toBe(false);
+        });
+
+        it('leaves resolveEffectiveCapabilities byte-identical for callers that pass no disabled overlay', () => {
+            expect(resolveBackendEffectiveCapabilities('fnb', ['services'])).toEqual(
+                resolveBackendEffectiveCapabilities('fnb', ['services'], [])
+            );
+            expect(resolveBackendEffectiveCapabilities('fnb', ['services'])).toEqual(
+                resolveBackendEffectiveCapabilities('fnb', ['services'], undefined)
+            );
+        });
+
+        it('cannot reach a locked module - neither locked module belongs to ALL_WORKFLOW_CAPABILITIES', () => {
+            expect(backendAllCapabilities).not.toContain('fiscalProfile');
+            expect(backendAllCapabilities).not.toContain('customerAccessMode');
+            expect(normalizeBackendDisabledCapabilities(['fiscalProfile', 'customerAccessMode'])).toEqual([]);
         });
     });
 });

@@ -3,6 +3,8 @@ import {
     DEFAULT_WORKFLOW_MODE,
     ENABLED_CAPABILITIES_SETTING_KEY,
     normalizeEnabledCapabilities,
+    DISABLED_CAPABILITIES_SETTING_KEY,
+    normalizeDisabledCapabilities,
     normalizeWorkflowMode
 } from '../constants/workflowModes.js';
 
@@ -10,11 +12,11 @@ const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 
 // Short TTL relative to itemRepository's 5-minute settings cache: this cache
 // backs an authorization check that gates nearly every guarded request
-// (requireWorkflowCapability), so a change to ops_workflow_mode or
-// ops_enabled_capabilities should take effect quickly rather than staying
-// stale for minutes. 15s still collapses "one SystemSetting query per guarded
-// request" (the pre-Phase-6 behavior) down to at most one query per tenant
-// per 15 seconds.
+// (requireWorkflowCapability), so a change to ops_workflow_mode,
+// ops_enabled_capabilities, or (Phase 16) ops_disabled_capabilities should
+// take effect quickly rather than staying stale for minutes. 15s still
+// collapses "one SystemSetting query per guarded request" (the pre-Phase-6
+// behavior) down to at most one query per tenant per 15 seconds.
 const CACHE_TTL_MS = 15 * 1000;
 
 const cache = new Map();
@@ -35,7 +37,7 @@ const parseJsonSettingValue = (setting, fallback) => {
 const readWorkflowCapabilitySettings = async () => {
     const SystemSetting = dbStore.get('SystemSetting');
     const rows = await SystemSetting.findAll({
-        where: { setting_key: [WORKFLOW_MODE_SETTING_KEY, ENABLED_CAPABILITIES_SETTING_KEY] },
+        where: { setting_key: [WORKFLOW_MODE_SETTING_KEY, ENABLED_CAPABILITIES_SETTING_KEY, DISABLED_CAPABILITIES_SETTING_KEY] },
         attributes: ['setting_key', 'setting_value', 'data_type']
     });
     const byKey = Object.fromEntries(rows.map((row) => [row.setting_key, row]));
@@ -44,15 +46,21 @@ const readWorkflowCapabilitySettings = async () => {
     const enabledCapabilities = normalizeEnabledCapabilities(
         parseJsonSettingValue(byKey[ENABLED_CAPABILITIES_SETTING_KEY], [])
     );
-    return { mode, enabledCapabilities };
+    const disabledCapabilities = normalizeDisabledCapabilities(
+        parseJsonSettingValue(byKey[DISABLED_CAPABILITIES_SETTING_KEY], [])
+    );
+    return { mode, enabledCapabilities, disabledCapabilities };
 };
 
 /**
- * Tenant-scoped, short-TTL cache for the two settings that drive workflow
+ * Tenant-scoped, short-TTL cache for the settings that drive workflow
  * capability gating (ops_workflow_mode + the Phase 6 ops_enabled_capabilities
- * overlay). Replaces the previous uncached per-request SystemSetting.findOne
- * in requireWorkflowCapability, which ran once per guarded request with no
- * cache of any kind.
+ * overlay + the Phase 16 ops_disabled_capabilities overlay). Replaces the
+ * previous uncached per-request SystemSetting.findOne in
+ * requireWorkflowCapability, which ran once per guarded request with no
+ * cache of any kind. disabledCapabilities is plumbed through starting Phase
+ * 16 but not yet consumed by the gate itself — see workflowModeCapability.js
+ * for the Phase 19 flip that reads it.
  */
 export const resolveWorkflowCapabilitySettings = async () => {
     const store = dbStore.getStore();

@@ -5,14 +5,19 @@ import dbStore from '../../../utils/dbStore.js';
 import {
     isWorkflowMode,
     normalizeWorkflowMode,
+    DEFAULT_WORKFLOW_MODE,
     WORKFLOW_MODE_VALUES,
     ALL_WORKFLOW_CAPABILITIES,
     ENABLED_CAPABILITIES_SETTING_KEY,
     normalizeEnabledCapabilities,
+    DISABLED_CAPABILITIES_SETTING_KEY,
+    normalizeDisabledCapabilities,
+    resolveEffectiveCapabilities,
     INVENTORY_AUTHORITY_SETTING_KEY,
     INVENTORY_AUTHORITY_VALUES,
     normalizeInventoryAuthority
 } from '../../shared/constants/workflowModes.js';
+import { validateModuleSelection } from '../../shared/constants/capabilityModules.js';
 import {
     assertComplianceOperationAllowed,
     COMPLIANCE_OPERATION
@@ -61,16 +66,22 @@ const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode
 const resolveWorkflowModeAuditBeforeValues = async ({ settingsRepository, settingsData }) => {
     const touchesMode = Object.prototype.hasOwnProperty.call(settingsData, WORKFLOW_MODE_SETTING_KEY);
     const touchesOverlay = Object.prototype.hasOwnProperty.call(settingsData, ENABLED_CAPABILITIES_SETTING_KEY);
-    if ((!touchesMode && !touchesOverlay) || typeof settingsRepository?.getSettingsByKeys !== 'function') {
+    const touchesDisabledOverlay = Object.prototype.hasOwnProperty.call(settingsData, DISABLED_CAPABILITIES_SETTING_KEY);
+    if (
+        (!touchesMode && !touchesOverlay && !touchesDisabledOverlay)
+        || typeof settingsRepository?.getSettingsByKeys !== 'function'
+    ) {
         return {};
     }
     const current = await settingsRepository.getSettingsByKeys([
         WORKFLOW_MODE_SETTING_KEY,
-        ENABLED_CAPABILITIES_SETTING_KEY
+        ENABLED_CAPABILITIES_SETTING_KEY,
+        DISABLED_CAPABILITIES_SETTING_KEY
     ]);
     return {
         [WORKFLOW_MODE_SETTING_KEY]: current?.[WORKFLOW_MODE_SETTING_KEY]?.value ?? null,
-        [ENABLED_CAPABILITIES_SETTING_KEY]: current?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value ?? null
+        [ENABLED_CAPABILITIES_SETTING_KEY]: current?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value ?? null,
+        [DISABLED_CAPABILITIES_SETTING_KEY]: current?.[DISABLED_CAPABILITIES_SETTING_KEY]?.value ?? null
     };
 };
 
@@ -151,6 +162,81 @@ const assertEnabledCapabilitiesAuthorization = ({ settingsData, actorUser }) => 
     }
 
     settingsData[ENABLED_CAPABILITIES_SETTING_KEY] = normalizeEnabledCapabilities(requested);
+};
+
+// Phase 16 (issue #178): the subtractive counterpart to
+// assertEnabledCapabilitiesAuthorization - same allowlist, same master-admin
+// gate, same shape.
+const assertDisabledCapabilitiesAuthorization = ({ settingsData, actorUser }) => {
+    if (!Object.prototype.hasOwnProperty.call(settingsData, DISABLED_CAPABILITIES_SETTING_KEY)) {
+        return;
+    }
+
+    const requested = settingsData[DISABLED_CAPABILITIES_SETTING_KEY];
+    if (!Array.isArray(requested) || requested.some((entry) => !ALL_WORKFLOW_CAPABILITIES.includes(String(entry || '').trim()))) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            `ops_disabled_capabilities must be an array containing only: ${ALL_WORKFLOW_CAPABILITIES.join(', ')}`,
+            { statusCode: 422 }
+        );
+    }
+
+    if (actorUser?.is_master_admin !== true) {
+        throw new DomainError(
+            DomainErrorCode.AUTHORIZATION_FAILED,
+            'Only master admin can update ops_disabled_capabilities',
+            { statusCode: 403 }
+        );
+    }
+
+    settingsData[DISABLED_CAPABILITIES_SETTING_KEY] = normalizeDisabledCapabilities(requested);
+};
+
+// Phase 16 (issue #178): once a write can touch mode, the enabled overlay,
+// or the disabled overlay, the *combined* result must still be a buildable
+// selection - disabling `catalog` while `pos` (which requires it) stays
+// enabled must reject, not silently persist a store that can never serve a
+// POS request. Resolves whichever of the three keys this write doesn't
+// touch from the tenant's current settings, so a single-key PATCH is
+// validated against the tenant's real resulting state, not just the delta.
+const assertEffectiveModuleSelectionIsBuildable = async ({ settingsRepository, settingsData }) => {
+    const touchesMode = Object.prototype.hasOwnProperty.call(settingsData, WORKFLOW_MODE_SETTING_KEY);
+    const touchesEnabled = Object.prototype.hasOwnProperty.call(settingsData, ENABLED_CAPABILITIES_SETTING_KEY);
+    const touchesDisabled = Object.prototype.hasOwnProperty.call(settingsData, DISABLED_CAPABILITIES_SETTING_KEY);
+    if (!touchesMode && !touchesEnabled && !touchesDisabled) return;
+    if (typeof settingsRepository?.getSettingsByKeys !== 'function') return;
+
+    const current = await settingsRepository.getSettingsByKeys([
+        WORKFLOW_MODE_SETTING_KEY,
+        ENABLED_CAPABILITIES_SETTING_KEY,
+        DISABLED_CAPABILITIES_SETTING_KEY
+    ]);
+
+    const effectiveMode = touchesMode
+        ? settingsData[WORKFLOW_MODE_SETTING_KEY]
+        : (current?.[WORKFLOW_MODE_SETTING_KEY]?.value ?? DEFAULT_WORKFLOW_MODE);
+    const effectiveEnabled = touchesEnabled
+        ? settingsData[ENABLED_CAPABILITIES_SETTING_KEY]
+        : (current?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value ?? []);
+    const effectiveDisabled = touchesDisabled
+        ? settingsData[DISABLED_CAPABILITIES_SETTING_KEY]
+        : (current?.[DISABLED_CAPABILITIES_SETTING_KEY]?.value ?? []);
+
+    const effectiveModules = resolveEffectiveCapabilities(effectiveMode, effectiveEnabled, effectiveDisabled);
+    const validation = validateModuleSelection(effectiveModules);
+    if (!validation.ok) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'The resulting capability selection is not buildable: a disabled capability is still required by another enabled one.',
+            {
+                statusCode: 422,
+                details: {
+                    reason_code: 'CAPABILITY_SELECTION_UNBUILDABLE',
+                    ...validation
+                }
+            }
+        );
+    }
 };
 
 // Phase 9 Axis 4 delegation switch - mirrors
@@ -296,6 +382,8 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository, storefrontAsset
             assertStoreProfileNotClientWritten({ settingsData });
             assertWorkflowModeAuthorization({ settingsData, actorUser });
             assertEnabledCapabilitiesAuthorization({ settingsData, actorUser });
+            assertDisabledCapabilitiesAuthorization({ settingsData, actorUser });
+            await assertEffectiveModuleSelectionIsBuildable({ settingsRepository, settingsData });
             assertInventoryAuthorityAuthorization({ settingsData, actorUser });
             assertStoreProfileReadFlagAuthorization({ settingsData, actorUser });
             assertPosSettingsAccessPinAuthorization({ settingsData, actorUser });

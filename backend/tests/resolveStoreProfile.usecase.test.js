@@ -138,6 +138,55 @@ describe('resolveStoreProfile (issue #178 Phase 12 scaffolding)', () => {
         expect(warnSpy).not.toHaveBeenCalled();
     });
 
+    it('does not flag a template-curated (disabled-capabilities) persisted profile as diverged (issue #178 Phase 16)', async () => {
+        const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+        const curatedProfile = buildStoreProfile({
+            workflowMode: 'fnb',
+            disabledCapabilities: ['tableService', 'kitchenQueue', 'restaurantServiceCharge']
+        });
+        mockSettingsRows([
+            { setting_key: 'ops_workflow_mode', setting_value: 'fnb', data_type: 'string' },
+            { setting_key: 'ops_disabled_capabilities', setting_value: JSON.stringify(['tableService', 'kitchenQueue', 'restaurantServiceCharge']), data_type: 'json' },
+            { setting_key: 'ops_store_profile_read', setting_value: 'true', data_type: 'boolean' },
+            { setting_key: 'ops_store_profile', setting_value: JSON.stringify(curatedProfile), data_type: 'json' }
+        ]);
+        jest.spyOn(dbStore, 'getStore').mockReturnValue({ tenantId: 'tenant-h' });
+
+        const resolution = await resolveStoreProfile();
+
+        expect(resolution.diverged).toBe(false);
+        expect(resolution.source).toBe('persisted');
+        expect(resolution.profile.modules).not.toContain('tableService');
+        expect(warnSpy).not.toHaveBeenCalled();
+    });
+
+    it('flags a persisted profile as diverged when the disabled-capabilities setting has since drifted from what was persisted', async () => {
+        const warnSpy = jest.spyOn(logger, 'warn').mockImplementation(() => {});
+        // Persisted while tableService/kitchenQueue were disabled...
+        const staleCuratedProfile = buildStoreProfile({
+            workflowMode: 'fnb',
+            disabledCapabilities: ['tableService', 'kitchenQueue']
+        });
+        mockSettingsRows([
+            { setting_key: 'ops_workflow_mode', setting_value: 'fnb', data_type: 'string' },
+            // ...but the live setting now only disables tableService.
+            { setting_key: 'ops_disabled_capabilities', setting_value: JSON.stringify(['tableService']), data_type: 'json' },
+            { setting_key: 'ops_store_profile_read', setting_value: 'true', data_type: 'boolean' },
+            { setting_key: 'ops_store_profile', setting_value: JSON.stringify(staleCuratedProfile), data_type: 'json' }
+        ]);
+        jest.spyOn(dbStore, 'getStore').mockReturnValue({ tenantId: 'tenant-i' });
+
+        const resolution = await resolveStoreProfile();
+
+        expect(resolution.source).toBe('rebuilt');
+        expect(resolution.diverged).toBe(true);
+        expect(resolution.profile.modules).toContain('kitchenQueue');
+        expect(warnSpy).toHaveBeenCalledWith(
+            '[StoreProfile] persisted profile diverges from a fresh rebuild',
+            expect.objectContaining({ reason: 'content_mismatch' })
+        );
+    });
+
     it('caches the resolution per tenant for the TTL window (one SystemSetting query per resolve call within it)', async () => {
         const findAllMock = jest.fn().mockResolvedValue([
             { setting_key: 'ops_workflow_mode', setting_value: 'msme', data_type: 'string' }

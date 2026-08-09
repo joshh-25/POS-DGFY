@@ -176,6 +176,17 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         promo_code: Object.freeze({
             sql: "ALTER TABLE `pos_transaction_discounts` ADD COLUMN `promo_code` VARCHAR(40) NULL COMMENT 'Commercial promo code validated by the server at checkout'"
         })
+    }),
+    // Added by migration 20260809000003-add-disabled-capabilities-to-workflow-mode-change-log.cjs
+    // (issue #178 phase 16): audits the new ops_disabled_capabilities
+    // subtractive overlay alongside the pre-existing enabled-capabilities pair.
+    workflow_mode_change_log: Object.freeze({
+        from_disabled_capabilities: Object.freeze({
+            sql: "ALTER TABLE `workflow_mode_change_log` ADD COLUMN `from_disabled_capabilities` JSON NULL"
+        }),
+        to_disabled_capabilities: Object.freeze({
+            sql: "ALTER TABLE `workflow_mode_change_log` ADD COLUMN `to_disabled_capabilities` JSON NULL"
+        })
     })
 });
 
@@ -750,7 +761,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-07.2';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-09.1';
 
 export function getTenantSchemaCapabilityChecksum() {
     const manifest = {

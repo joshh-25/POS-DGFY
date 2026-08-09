@@ -1,6 +1,7 @@
 import {
     normalizeWorkflowMode,
     normalizeEnabledCapabilities,
+    normalizeDisabledCapabilities,
     resolveWorkflowModeFamily,
     resolveWorkflowTemplateMode,
     resolveEffectiveCapabilities
@@ -40,13 +41,23 @@ import { resolvePosDefaultsAndTerminology } from './posDefaultsAndTerminology.js
  * ever sets it to something else, and only at tenant provisioning time — see
  * that function's own doc comment for why this does not violate ADR 0056
  * clause 2 (provenance never dereferenced at runtime).
+ *
+ * v4 (issue #178 Phase 16) adds `source.disabled_capabilities` — the
+ * subtractive counterpart to `enabled_capabilities`. Without it, a
+ * non-canonical template whose module list removes something from its base
+ * mode (e.g. fnb_counter_service dropping tableService/kitchenQueue/
+ * restaurantServiceCharge) was inexpressible as a Profile: modules was
+ * always base-mode-union-overlay, never able to shrink below the base mode.
+ * See ADR 0056's amendment for why this strengthens, not weakens, clause 1
+ * (locked modules stay unreachable by either overlay).
  */
 export const STORE_PROFILE_SETTING_KEY = 'ops_store_profile';
-export const STORE_PROFILE_VERSION = 3;
+export const STORE_PROFILE_VERSION = 4;
 
-export const buildStoreProfile = ({ workflowMode, enabledCapabilities = [] } = {}) => {
+export const buildStoreProfile = ({ workflowMode, enabledCapabilities = [], disabledCapabilities = [] } = {}) => {
     const baseMode = normalizeWorkflowMode(workflowMode);
     const overlay = normalizeEnabledCapabilities(enabledCapabilities);
+    const disabledOverlay = normalizeDisabledCapabilities(disabledCapabilities);
     const posWorkflow = resolvePosWorkflow(baseMode);
     const itemTaxonomy = resolveEffectiveItemTaxonomy(baseMode, overlay);
     const { pos_defaults: posDefaults, terminology } = resolvePosDefaultsAndTerminology(baseMode);
@@ -57,9 +68,10 @@ export const buildStoreProfile = ({ workflowMode, enabledCapabilities = [] } = {
             base_mode: baseMode,
             family: resolveWorkflowModeFamily(baseMode),
             template_mode: resolveWorkflowTemplateMode(baseMode),
-            enabled_capabilities: [...overlay].sort()
+            enabled_capabilities: [...overlay].sort(),
+            disabled_capabilities: [...disabledOverlay].sort()
         },
-        modules: [...resolveEffectiveCapabilities(baseMode, overlay)].sort(),
+        modules: [...resolveEffectiveCapabilities(baseMode, overlay, disabledOverlay)].sort(),
         pos_workflow: {
             mode: posWorkflow.mode,
             transaction_record: posWorkflow.transactionRecord,
@@ -120,13 +132,13 @@ export const applyTemplateProvenance = (profile, { templateId, templateVersion }
  * governance shape (single-source key here, master-admin write gate,
  * short-TTL cache) rather than inventing a second authorization model.
  *
- * Default off. Turning it on for a tenant today has NO observable effect:
- * the persisted profile is always byte-identical to what a fresh rebuild
- * produces (there is no template curation yet that could make them diverge
- * — that's Phase 13). The flag exists so the read-path resolver
- * (`resolveStoreProfile.js`) and its divergence differ are real, tested
- * infrastructure ready for the day a consumer is actually wired to it,
- * without every tenant provisioned in the meantime silently opting in.
+ * Default off. Turning it on for a tenant curated with a non-canonical
+ * template (Phases 13/16/17) now has a real effect — the resolver serves a
+ * Profile that can genuinely diverge from the base-mode registries, since
+ * the disabled_capabilities overlay (Phase 16) gives templates a real
+ * subtractive channel. Until a consumer is wired to the resolver (Phase 19),
+ * this remains scaffolding: the flag governs what the resolver *would*
+ * serve, without anything reading through it yet.
  */
 export const STORE_PROFILE_READ_SETTING_KEY = 'ops_store_profile_read';
 

@@ -56,7 +56,10 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260729000002-create-employee-directory.cjs',
     '20260730000001-convert-employee-credit-to-outstanding-balance.cjs',
     '20260808183439-add-item-identity-snapshot-to-pos-transaction-lines.cjs',
-    '20260808190000-create-workflow-mode-change-log.cjs'
+    '20260808190000-create-workflow-mode-change-log.cjs',
+    '20260809000001-create-store-configuration-templates.cjs',
+    '20260809000002-create-store-configuration-template-audit-logs.cjs',
+    '20260809000003-add-disabled-capabilities-to-workflow-mode-change-log.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({

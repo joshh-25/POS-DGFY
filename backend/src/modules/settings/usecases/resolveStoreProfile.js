@@ -12,6 +12,8 @@ import {
     DEFAULT_WORKFLOW_MODE,
     ENABLED_CAPABILITIES_SETTING_KEY,
     normalizeEnabledCapabilities,
+    DISABLED_CAPABILITIES_SETTING_KEY,
+    normalizeDisabledCapabilities,
     normalizeWorkflowMode
 } from '../../shared/constants/workflowModes.js';
 
@@ -56,6 +58,7 @@ const readStoreProfileResolution = async () => {
             setting_key: [
                 WORKFLOW_MODE_SETTING_KEY,
                 ENABLED_CAPABILITIES_SETTING_KEY,
+                DISABLED_CAPABILITIES_SETTING_KEY,
                 STORE_PROFILE_SETTING_KEY,
                 STORE_PROFILE_READ_SETTING_KEY
             ]
@@ -68,12 +71,20 @@ const readStoreProfileResolution = async () => {
     const enabledCapabilities = normalizeEnabledCapabilities(
         parseJsonSettingValue(byKey[ENABLED_CAPABILITIES_SETTING_KEY], [])
     );
+    // Phase 16: without this, every template-curated tenant (whose
+    // disabled_capabilities overlay is what makes its Profile diverge from
+    // its base mode on purpose) would be flagged "diverged" on every read -
+    // the rebuild has to see the same overlay the persisted profile was
+    // built with, or the comparison below is comparing apples to oranges.
+    const disabledCapabilities = normalizeDisabledCapabilities(
+        parseJsonSettingValue(byKey[DISABLED_CAPABILITIES_SETTING_KEY], [])
+    );
     const readFlagEnabled = normalizeStoreProfileReadFlag(
         parseJsonSettingValue(byKey[STORE_PROFILE_READ_SETTING_KEY], false)
     );
     const persistedProfile = parseJsonSettingValue(byKey[STORE_PROFILE_SETTING_KEY], null);
 
-    const rebuiltProfile = buildStoreProfile({ workflowMode: mode, enabledCapabilities });
+    const rebuiltProfile = buildStoreProfile({ workflowMode: mode, enabledCapabilities, disabledCapabilities });
 
     // The differ: always compute both regardless of the flag, so a
     // divergence is caught the moment it exists, not only once someone flips

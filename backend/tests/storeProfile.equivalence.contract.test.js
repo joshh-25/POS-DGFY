@@ -8,6 +8,7 @@ import {
     resolveEffectiveCapabilities,
     resolveWorkflowModeFamily
 } from '../src/modules/shared/constants/workflowModes.js';
+import { STORE_TEMPLATE_PRESETS, validateModuleSelection } from '../src/modules/shared/constants/capabilityModules.js';
 import { resolveEffectiveItemTaxonomy } from '../src/modules/shared/constants/modeItemTaxonomy.js';
 import { STOREFRONT_ORDER_METHODS, POS_ORDER_METHODS } from '../src/modules/shared/constants/orderMethods.js';
 // Imported through the frontend path deliberately: the harness proves the
@@ -92,6 +93,55 @@ describe('store profile equivalence harness (issue #178 Phase 11)', () => {
         // Overlay unlocks the services item presets on a retail base.
         const overlayTaxonomy = resolveEffectiveItemTaxonomy('retail', ['services']);
         expect(profile.item_taxonomy.preset_keys).toEqual(overlayTaxonomy.presets.map((preset) => preset.key));
+    });
+
+    it('applies the disabled-capabilities overlay exactly as the runtime does (issue #178 Phase 16)', () => {
+        const profile = buildStoreProfile({ workflowMode: 'fnb', disabledCapabilities: ['tableService', 'kitchenQueue'] });
+        expect(profile.modules).toEqual(
+            [...resolveEffectiveCapabilities('fnb', [], ['tableService', 'kitchenQueue'])].sort()
+        );
+        expect(profile.source.disabled_capabilities).toEqual(['kitchenQueue', 'tableService']);
+        expect(profile.modules).not.toContain('tableService');
+        expect(profile.modules).not.toContain('kitchenQueue');
+    });
+
+    it('has an empty disabled_capabilities and unchanged modules when no disabled overlay is given (zero-behavior-change baseline)', () => {
+        for (const mode of ALL_MODES) {
+            const profile = buildStoreProfile({ workflowMode: mode });
+            expect(profile.source.disabled_capabilities).toEqual([]);
+            expect(profile.modules).toEqual([...resolveEffectiveCapabilities(mode)].sort());
+        }
+    });
+
+    it('reproduces the non-canonical fnb_counter_service and hospitality_guesthouse presets exactly via subtraction', () => {
+        const counterService = STORE_TEMPLATE_PRESETS.fnb_counter_service;
+        const counterServiceProfile = buildStoreProfile({
+            workflowMode: counterService.base_mode,
+            disabledCapabilities: WORKFLOW_MODE_CAPABILITIES[counterService.base_mode]
+                .filter((capability) => !counterService.modules.includes(capability))
+        });
+        expect(counterServiceProfile.modules).toEqual([...counterService.modules].sort());
+
+        const guesthouse = STORE_TEMPLATE_PRESETS.hospitality_guesthouse;
+        const guesthouseProfile = buildStoreProfile({
+            workflowMode: guesthouse.base_mode,
+            disabledCapabilities: WORKFLOW_MODE_CAPABILITIES[guesthouse.base_mode]
+                .filter((capability) => !guesthouse.modules.includes(capability))
+        });
+        expect(guesthouseProfile.modules).toEqual([...guesthouse.modules].sort());
+    });
+
+    it('rejects a subtraction that breaks a requires edge (validateModuleSelection stays the write-time guard)', () => {
+        // pos requires catalog; disabling catalog while pos stays enabled must
+        // be caught by validateModuleSelection before a write can persist it.
+        const brokenSelection = resolveEffectiveCapabilities('retail', [], ['catalog']);
+        expect(brokenSelection).toContain('pos');
+        expect(brokenSelection).not.toContain('catalog');
+        const validation = validateModuleSelection(brokenSelection);
+        expect(validation.ok).toBe(false);
+        expect(validation.missing_requirements).toEqual(
+            expect.arrayContaining([{ module: 'pos', requires: 'catalog' }])
+        );
     });
 
     it('is deterministic: identical inputs produce byte-identical JSON', () => {

@@ -160,6 +160,28 @@ export const normalizeEnabledCapabilities = (value) => {
     return Object.freeze(deduped.filter((capability) => ALL_WORKFLOW_CAPABILITIES.includes(capability)));
 };
 
+// Phase 16 (issue #178): the subtractive counterpart to
+// ENABLED_CAPABILITIES_SETTING_KEY, so a Store Template's module list can
+// remove a capability from a mode's base list, not just add to one -
+// without it, non-canonical presets like fnb_counter_service (fnb minus
+// tableService/kitchenQueue/restaurantServiceCharge) are inexpressible as a
+// Profile. Mirrors ENABLED_CAPABILITIES_SETTING_KEY's governance shape
+// exactly (single-source key, master-admin gated write, 15s tenant-scoped
+// cache) rather than a second authorization model.
+//
+// Normalized against the same ALL_WORKFLOW_CAPABILITIES allowlist as the
+// enabled overlay - since a `locked` module (fiscalProfile,
+// customerAccessMode) never appears in any mode's base list, it can never
+// appear in ALL_WORKFLOW_CAPABILITIES either, so it stays unreachable by
+// this overlay too (ADR 0056 clause 1, unaffected by this amendment).
+export const DISABLED_CAPABILITIES_SETTING_KEY = 'ops_disabled_capabilities';
+
+export const normalizeDisabledCapabilities = (value) => {
+    const list = Array.isArray(value) ? value : [];
+    const deduped = [...new Set(list.map((entry) => String(entry || '').trim()).filter(Boolean))];
+    return Object.freeze(deduped.filter((capability) => ALL_WORKFLOW_CAPABILITIES.includes(capability)));
+};
+
 // Phase 9 Axis 4 delegation switch: does this platform's own inventory
 // module own the tenant's stock ledger (the 'platform' default), or has the
 // tenant delegated ledger authority to an external inventory-management
@@ -188,14 +210,22 @@ export const isDelegatedInventoryAuthority = (value) => normalizeInventoryAuthor
 
 // The tenant's effective capability set: the base workflow mode's fixed list,
 // composed (unioned) with whatever the master admin has additionally opted
-// into via the enabled_capabilities overlay. Existing tenants with no overlay
-// set resolve to exactly the base mode's list - byte-identical to pre-Phase-6
-// behavior.
-export const resolveEffectiveCapabilities = (value, enabledCapabilities = []) => {
+// into via the enabled_capabilities overlay, then (Phase 16) with whatever
+// has been removed via the disabled_capabilities overlay. Existing tenants
+// with no overlay set resolve to exactly the base mode's list -
+// byte-identical to pre-Phase-6 behavior. disabledCapabilities is applied
+// last, so a capability present in both overlays (a contradictory write,
+// which the write-path validator rejects before it can be persisted) always
+// resolves to disabled - subtraction wins over addition, matching a
+// template's "this module is off" being the more specific instruction.
+export const resolveEffectiveCapabilities = (value, enabledCapabilities = [], disabledCapabilities = []) => {
     const mode = normalizeWorkflowMode(value);
     const baseCapabilities = WORKFLOW_MODE_CAPABILITIES[mode] || [];
     const overlay = normalizeEnabledCapabilities(enabledCapabilities);
-    return Object.freeze([...new Set([...baseCapabilities, ...overlay])]);
+    const removed = normalizeDisabledCapabilities(disabledCapabilities);
+    const composed = new Set([...baseCapabilities, ...overlay]);
+    removed.forEach((capability) => composed.delete(capability));
+    return Object.freeze([...composed]);
 };
 
 export const normalizeWorkflowMode = (value) => {
@@ -232,13 +262,15 @@ export const getWorkflowModePinMeta = (value) => {
     return WORKFLOW_MODE_PIN_META[mode] || WORKFLOW_MODE_PIN_META[DEFAULT_WORKFLOW_MODE];
 };
 
-// enabledCapabilities is optional and additive: every pre-Phase-6 call site
-// that passes only (value, capability) keeps checking the base mode's fixed
-// list exactly as before. Passing the tenant's enabled_capabilities overlay
-// as a third argument makes the check capability-driven (composed).
-export const modeHasCapability = (value, capability, enabledCapabilities = []) => {
+// enabledCapabilities and disabledCapabilities are optional: every
+// pre-Phase-6 call site that passes only (value, capability) keeps checking
+// the base mode's fixed list exactly as before. Passing the tenant's
+// enabled_capabilities overlay makes the check composed (additive); passing
+// disabled_capabilities (Phase 16) as a fourth argument makes it subtractive
+// too.
+export const modeHasCapability = (value, capability, enabledCapabilities = [], disabledCapabilities = []) => {
     const normalizedCapability = String(capability || '').trim();
-    const effectiveCapabilities = resolveEffectiveCapabilities(value, enabledCapabilities);
+    const effectiveCapabilities = resolveEffectiveCapabilities(value, enabledCapabilities, disabledCapabilities);
     return effectiveCapabilities.includes(normalizedCapability);
 };
 

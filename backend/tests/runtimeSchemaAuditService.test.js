@@ -55,7 +55,10 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260729000002-create-employee-directory.cjs' },
         { name: '20260730000001-convert-employee-credit-to-outstanding-balance.cjs' },
         { name: '20260808183439-add-item-identity-snapshot-to-pos-transaction-lines.cjs' },
-        { name: '20260808190000-create-workflow-mode-change-log.cjs' }
+        { name: '20260808190000-create-workflow-mode-change-log.cjs' },
+        { name: '20260809000001-create-store-configuration-templates.cjs' },
+        { name: '20260809000002-create-store-configuration-template-audit-logs.cjs' },
+        { name: '20260809000003-add-disabled-capabilities-to-workflow-mode-change-log.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
