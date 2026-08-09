@@ -3,6 +3,7 @@ import * as posController from '../controllers/posController.js';
 import * as employeeCreditController from '../modules/employeeCredit/controllers/employeeCreditHandlers.js';
 import * as employeeController from '../modules/employees/controllers/employeeHandlers.js';
 import { authenticate, checkAnyPermission, checkPermission, requirePremium, requireTenantCapability } from '../middleware/auth.js';
+import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
 import { posLimiter } from '../middleware/rateLimiter.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import { posCatalogBulkImageUpload, posCatalogImageUpload, preserveTenantContext } from '../config/uploadConfig.js';
@@ -85,6 +86,11 @@ router.post(
 router.use(authenticate);
 router.use(requirePremium);
 router.use(requireTenantCapability('tenant_pos_enabled', 'POS'));
+// `pos` (the workflow capability, distinct from the landlord-level
+// tenant_pos_enabled gate above) is held by every mode, so this changes
+// nothing today; it makes the capability real so a Store Profile that can
+// subtract modules has a working off-switch for the POS surface.
+router.use(requireWorkflowCapability('pos', 'POS'));
 router.use(posLimiter);
 
 router.post('/terminal/pair', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateVerifyTerminal, posController.verifyTerminal);

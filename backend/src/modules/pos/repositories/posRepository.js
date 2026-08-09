@@ -1341,8 +1341,11 @@ const normalizeReportLineRows = (transactions = [], filters = {}) => {
                 order_source: transaction?.order_source || 'in_store',
                 order_method: transaction?.order_method || 'dine_in',
                 item_id: line?.item_id,
-                item_name: item?.name || `Item #${line?.item_id}`,
-                sku_code: item?.sku_code || null,
+                // Prefer the sale-time snapshot so a later item rename/delete
+                // never retro-changes a historical report row. Category still
+                // reads live: recategorization is meant to reclassify history.
+                item_name: line?.item_name_snapshot || item?.name || `Item #${line?.item_id}`,
+                sku_code: line?.sku_snapshot || item?.sku_code || null,
                 category: reportCategory || null,
                 quantity,
                 gross_sales: grossSales,

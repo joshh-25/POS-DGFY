@@ -44,9 +44,46 @@ import {
     assertPosSettingsAccessPinAuthorization,
     resolvePosSettingsAccessPinPatch
 } from './posSettingsAccessPinPolicy.js';
+import {
+    applyStoreProfileShadowWrite,
+    assertStoreProfileNotClientWritten
+} from './storeProfileShadowWrite.js';
+import { applyWorkflowModeAuditLog } from './workflowModeAuditLog.js';
+import logger from '../../../config/logger.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
+
+// Mode-switch hardening (issue #178 phase 5): capture the pre-write values so
+// the audit log can record an accurate from -> to, even though the actual
+// diffing/writing of the log happens after the setting write succeeds.
+const resolveWorkflowModeAuditBeforeValues = async ({ settingsRepository, settingsData }) => {
+    const touchesMode = Object.prototype.hasOwnProperty.call(settingsData, WORKFLOW_MODE_SETTING_KEY);
+    const touchesOverlay = Object.prototype.hasOwnProperty.call(settingsData, ENABLED_CAPABILITIES_SETTING_KEY);
+    if ((!touchesMode && !touchesOverlay) || typeof settingsRepository?.getSettingsByKeys !== 'function') {
+        return {};
+    }
+    const current = await settingsRepository.getSettingsByKeys([
+        WORKFLOW_MODE_SETTING_KEY,
+        ENABLED_CAPABILITIES_SETTING_KEY
+    ]);
+    return {
+        [WORKFLOW_MODE_SETTING_KEY]: current?.[WORKFLOW_MODE_SETTING_KEY]?.value ?? null,
+        [ENABLED_CAPABILITIES_SETTING_KEY]: current?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value ?? null
+    };
+};
+
+// The audit log is diagnostic, not authoritative: a logging failure must
+// never roll back or mask an otherwise-successful settings write.
+const safelyLogWorkflowModeAudit = async ({ settingsData, beforeValues, actorUser }) => {
+    try {
+        await applyWorkflowModeAuditLog({ settingsData, beforeValues, actorUser });
+    } catch (error) {
+        logger.warn('[WorkflowModeAudit] failed to record workflow mode change log', {
+            error: error?.message
+        });
+    }
+};
 
 const assertTenantSettingsDoNotMutatePlatformAccessCeiling = ({ settingsData }) => {
     if (!Object.prototype.hasOwnProperty.call(settingsData, PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY)) {
@@ -234,6 +271,7 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository, storefrontAsset
             settingsData = posMetadataReview.settingsData;
 
             assertTenantSettingsDoNotMutatePlatformAccessCeiling({ settingsData });
+            assertStoreProfileNotClientWritten({ settingsData });
             assertWorkflowModeAuthorization({ settingsData, actorUser });
             assertEnabledCapabilitiesAuthorization({ settingsData, actorUser });
             assertInventoryAuthorityAuthorization({ settingsData, actorUser });
@@ -336,11 +374,19 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository, storefrontAsset
                 settingsData
             });
 
+            const auditBeforeValues = await resolveWorkflowModeAuditBeforeValues({
+                settingsRepository,
+                settingsData
+            });
+
+            settingsData = await applyStoreProfileShadowWrite({ settingsRepository, settingsData });
+
             const result = await settingsRepository.updateSettings(settingsData);
             await cleanupOmittedStorefrontGalleryAssets({
                 omittedPaths: omittedStorefrontGalleryPaths,
                 storefrontAssetStorage
             });
+            await safelyLogWorkflowModeAudit({ settingsData, beforeValues: auditBeforeValues, actorUser });
             return ok({
                 ...result,
                 pending_review_keys: posMetadataReview.pendingReviewKeys

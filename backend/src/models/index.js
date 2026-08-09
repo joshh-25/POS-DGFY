@@ -69,6 +69,7 @@ import ServiceBookingHold from './ServiceBookingHold.js';
 import ServiceBookingLine from './ServiceBookingLine.js';
 import ServiceWaitlistEntry from './ServiceWaitlistEntry.js';
 import ServiceReminderOutbox from './ServiceReminderOutbox.js';
+import WorkflowModeChangeLog from './WorkflowModeChangeLog.js';
 import ServiceOptionGroup from './ServiceOptionGroup.js';
 import ServiceOption from './ServiceOption.js';
 import ServiceItemOptionGroup from './ServiceItemOptionGroup.js';
@@ -899,6 +900,7 @@ const db = {
   ServiceBookingLine,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
+  WorkflowModeChangeLog,
   ServiceOptionGroup,
   ServiceOption,
   ServiceItemOptionGroup,
@@ -1082,6 +1084,7 @@ export {
   ServiceBookingLine,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
+  WorkflowModeChangeLog,
   ServiceOptionGroup,
   ServiceOption,
   ServiceItemOptionGroup,

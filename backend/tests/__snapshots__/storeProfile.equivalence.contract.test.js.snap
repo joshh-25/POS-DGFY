@@ -1,0 +1,574 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`store profile equivalence harness (issue #178 Phase 11) matches the golden per-mode snapshots (zero-visible-behavior-change baseline): education_institutions 1`] = `
+{
+  "item_taxonomy": null,
+  "modules": [
+    "catalog",
+    "inventory",
+    "menuModifiers",
+    "pos",
+    "storefront",
+  ],
+  "pos_workflow": {
+    "allowed_methods": [
+      "walk_in",
+      "pickup",
+      "delivery",
+    ],
+    "capabilities": {
+      "bookings": false,
+      "kitchen": false,
+      "providers": false,
+      "resources": false,
+      "serviceOptions": false,
+      "tables": false,
+    },
+    "mode": "counter",
+    "transaction_record": "order",
+  },
+  "profile_version": 1,
+  "source": {
+    "base_mode": "education_institutions",
+    "enabled_capabilities": [],
+    "family": "education_institutions",
+    "template_mode": "education_institutions",
+  },
+  "storefront": {
+    "order_methods": [
+      "dine_in",
+      "takeout",
+      "pickup",
+      "delivery",
+    ],
+  },
+}
+`;
+
+exports[`store profile equivalence harness (issue #178 Phase 11) matches the golden per-mode snapshots (zero-visible-behavior-change baseline): fnb 1`] = `
+{
+  "item_taxonomy": {
+    "default_preset": "menu_item",
+    "mode": "fnb",
+    "preset_keys": [
+      "menu_item",
+      "ingredient",
+      "packaged_beverage",
+      "packaging_supply",
+    ],
+  },
+  "modules": [
+    "catalog",
+    "fnbDining",
+    "inventory",
+    "kitchenQueue",
+    "menuModifiers",
+    "pos",
+    "restaurantServiceCharge",
+    "storefront",
+    "tableService",
+  ],
+  "pos_workflow": {
+    "allowed_methods": [
+      "dine_in",
+      "takeout",
+      "pickup",
+      "delivery",
+    ],
+    "capabilities": {
+      "bookings": false,
+      "kitchen": true,
+      "providers": false,
+      "resources": false,
+      "serviceOptions": false,
+      "tables": true,
+    },
+    "mode": "fnb",
+    "transaction_record": "order",
+  },
+  "profile_version": 1,
+  "source": {
+    "base_mode": "fnb",
+    "enabled_capabilities": [],
+    "family": "fnb",
+    "template_mode": "fnb",
+  },
+  "storefront": {
+    "order_methods": [
+      "dine_in",
+      "takeout",
+      "pickup",
+      "delivery",
+    ],
+  },
+}
+`;
+
+exports[`store profile equivalence harness (issue #178 Phase 11) matches the golden per-mode snapshots (zero-visible-behavior-change baseline): food_manufacturing 1`] = `
+{
+  "item_taxonomy": {
+    "default_preset": "raw_material",
+    "mode": "food_manufacturing",
+    "preset_keys": [
+      "raw_material",
+      "packaging",
+      "supplies",
+      "finished_product",
+    ],
+  },
+  "modules": [
+    "catalog",
+    "foodManufacturing",
+    "inventory",
+    "menuModifiers",
+    "pos",
+    "productionWorkflows",
+    "storefront",
+  ],
+  "pos_workflow": {
+    "allowed_methods": [
+      "walk_in",
+      "pickup",
+      "delivery",
+    ],
+    "capabilities": {
+      "bookings": false,
+      "kitchen": false,
+      "providers": false,
+      "resources": false,
+      "serviceOptions": false,
+      "tables": false,
+    },
+    "mode": "counter",
+    "transaction_record": "order",
+  },
+  "profile_version": 1,
+  "source": {
+    "base_mode": "food_manufacturing",
+    "enabled_capabilities": [],
+    "family": "food_manufacturing",
+    "template_mode": "food_manufacturing",
+  },
+  "storefront": {
+    "order_methods": [
+      "dine_in",
+      "takeout",
+      "pickup",
+      "delivery",
+    ],
+  },
+}
+`;
+
+exports[`store profile equivalence harness (issue #178 Phase 11) matches the golden per-mode snapshots (zero-visible-behavior-change baseline): healthcare 1`] = `
+{
+  "item_taxonomy": null,
+  "modules": [
+    "catalog",
+    "inventory",
+    "menuModifiers",
+    "pos",
+    "storefront",
+  ],
+  "pos_workflow": {
+    "allowed_methods": [
+      "walk_in",
+      "pickup",
+      "delivery",
+    ],
+    "capabilities": {
+      "bookings": false,
+      "kitchen": false,
+      "providers": false,
+      "resources": false,
+      "serviceOptions": false,
+      "tables": false,
+    },
+    "mode": "counter",
+    "transaction_record": "order",
+  },
+  "profile_version": 1,
+  "source": {
+    "base_mode": "healthcare",
+    "enabled_capabilities": [],
+    "family": "healthcare",
+    "template_mode": "healthcare",
+  },
+  "storefront": {
+    "order_methods": [
+      "dine_in",
+      "takeout",
+      "pickup",
+      "delivery",
+    ],
+  },
+}
+`;
+
+exports[`store profile equivalence harness (issue #178 Phase 11) matches the golden per-mode snapshots (zero-visible-behavior-change baseline): hospitality 1`] = `
+{
+  "item_taxonomy": {
+    "default_preset": "room_night",
+    "mode": "hospitality",
+    "preset_keys": [
+      "room_night",
+      "paid_amenity",
+      "facility_booking",
+      "minibar_retail_product",
+      "physical_add_on",
+      "housekeeping_supply",
+      "linen_reusable_asset",
+    ],
+  },
+  "modules": [
+    "catalog",
+    "hospitalityAmenities",
+    "hospitalityFolios",
+    "hospitalityHousekeeping",
+    "hospitalityMaintenance",
+    "hospitalityRates",
+    "hospitalityReservations",
+    "hospitalityRooms",
+    "inventory",
+    "menuModifiers",
+    "pos",
+    "storefront",
+  ],
+  "pos_workflow": {
+    "allowed_methods": [
+      "dine_in",
+      "takeout",
+      "pickup",
+      "delivery",
+    ],
+    "capabilities": {
+      "bookings": false,
+      "kitchen": true,
+      "providers": false,
+      "resources": false,
+      "serviceOptions": false,
+      "tables": true,
+    },
+    "mode": "fnb",
+    "transaction_record": "order",
+  },
+  "profile_version": 1,
+  "source": {
+    "base_mode": "hospitality",
+    "enabled_capabilities": [],
+    "family": "hospitality",
+    "template_mode": "hospitality",
+  },
+  "storefront": {
+    "order_methods": [
+      "dine_in",
+      "takeout",
+      "pickup",
+      "delivery",
+    ],
+  },
+}
+`;
+
+exports[`store profile equivalence harness (issue #178 Phase 11) matches the golden per-mode snapshots (zero-visible-behavior-change baseline): logistics_distribution 1`] = `
+{
+  "item_taxonomy": null,
+  "modules": [
+    "catalog",
+    "inventory",
+    "menuModifiers",
+    "pos",
+    "storefront",
+  ],
+  "pos_workflow": {
+    "allowed_methods": [
+      "walk_in",
+      "pickup",
+      "delivery",
+    ],
+    "capabilities": {
+      "bookings": false,
+      "kitchen": false,
+      "providers": false,
+      "resources": false,
+      "serviceOptions": false,
+      "tables": false,
+    },
+    "mode": "counter",
+    "transaction_record": "order",
+  },
+  "profile_version": 1,
+  "source": {
+    "base_mode": "logistics_distribution",
+    "enabled_capabilities": [],
+    "family": "logistics_distribution",
+    "template_mode": "logistics_distribution",
+  },
+  "storefront": {
+    "order_methods": [
+      "dine_in",
+      "takeout",
+      "pickup",
+      "delivery",
+    ],
+  },
+}
+`;
+
+exports[`store profile equivalence harness (issue #178 Phase 11) matches the golden per-mode snapshots (zero-visible-behavior-change baseline): manufacturing 1`] = `
+{
+  "item_taxonomy": {
+    "default_preset": "raw_material",
+    "mode": "food_manufacturing",
+    "preset_keys": [
+      "raw_material",
+      "packaging",
+      "supplies",
+      "finished_product",
+    ],
+  },
+  "modules": [
+    "catalog",
+    "foodManufacturing",
+    "inventory",
+    "menuModifiers",
+    "pos",
+    "productionWorkflows",
+    "storefront",
+  ],
+  "pos_workflow": {
+    "allowed_methods": [
+      "walk_in",
+      "pickup",
+      "delivery",
+    ],
+    "capabilities": {
+      "bookings": false,
+      "kitchen": false,
+      "providers": false,
+      "resources": false,
+      "serviceOptions": false,
+      "tables": false,
+    },
+    "mode": "counter",
+    "transaction_record": "order",
+  },
+  "profile_version": 1,
+  "source": {
+    "base_mode": "food_manufacturing",
+    "enabled_capabilities": [],
+    "family": "food_manufacturing",
+    "template_mode": "food_manufacturing",
+  },
+  "storefront": {
+    "order_methods": [
+      "dine_in",
+      "takeout",
+      "pickup",
+      "delivery",
+    ],
+  },
+}
+`;
+
+exports[`store profile equivalence harness (issue #178 Phase 11) matches the golden per-mode snapshots (zero-visible-behavior-change baseline): msme 1`] = `
+{
+  "item_taxonomy": {
+    "default_preset": "supplies",
+    "mode": "msme",
+    "preset_keys": [
+      "product",
+      "supplies",
+    ],
+  },
+  "modules": [
+    "catalog",
+    "menuModifiers",
+    "pos",
+    "storefront",
+  ],
+  "pos_workflow": {
+    "allowed_methods": [
+      "walk_in",
+      "pickup",
+      "delivery",
+    ],
+    "capabilities": {
+      "bookings": false,
+      "kitchen": false,
+      "providers": false,
+      "resources": false,
+      "serviceOptions": false,
+      "tables": false,
+    },
+    "mode": "counter",
+    "transaction_record": "order",
+  },
+  "profile_version": 1,
+  "source": {
+    "base_mode": "msme",
+    "enabled_capabilities": [],
+    "family": "msme",
+    "template_mode": "msme",
+  },
+  "storefront": {
+    "order_methods": [
+      "dine_in",
+      "takeout",
+      "pickup",
+      "delivery",
+    ],
+  },
+}
+`;
+
+exports[`store profile equivalence harness (issue #178 Phase 11) matches the golden per-mode snapshots (zero-visible-behavior-change baseline): retail 1`] = `
+{
+  "item_taxonomy": {
+    "default_preset": "general_merchandise",
+    "mode": "retail",
+    "preset_keys": [
+      "general_merchandise",
+      "weighed_goods",
+      "refill_product",
+      "supplies",
+    ],
+  },
+  "modules": [
+    "catalog",
+    "inventory",
+    "menuModifiers",
+    "pos",
+    "storefront",
+  ],
+  "pos_workflow": {
+    "allowed_methods": [
+      "walk_in",
+      "pickup",
+      "delivery",
+    ],
+    "capabilities": {
+      "bookings": false,
+      "kitchen": false,
+      "providers": false,
+      "resources": false,
+      "serviceOptions": false,
+      "tables": false,
+    },
+    "mode": "counter",
+    "transaction_record": "order",
+  },
+  "profile_version": 1,
+  "source": {
+    "base_mode": "retail",
+    "enabled_capabilities": [],
+    "family": "retail",
+    "template_mode": "retail",
+  },
+  "storefront": {
+    "order_methods": [
+      "dine_in",
+      "takeout",
+      "pickup",
+      "delivery",
+    ],
+  },
+}
+`;
+
+exports[`store profile equivalence harness (issue #178 Phase 11) matches the golden per-mode snapshots (zero-visible-behavior-change baseline): services 1`] = `
+{
+  "item_taxonomy": {
+    "default_preset": "service",
+    "mode": "services",
+    "preset_keys": [
+      "service",
+      "physical_add_on",
+      "supplies",
+    ],
+  },
+  "modules": [
+    "catalog",
+    "menuModifiers",
+    "pos",
+    "services",
+    "storefront",
+  ],
+  "pos_workflow": {
+    "allowed_methods": [
+      "walk_in",
+      "appointment",
+    ],
+    "capabilities": {
+      "bookings": true,
+      "kitchen": false,
+      "providers": true,
+      "resources": true,
+      "serviceOptions": true,
+      "tables": false,
+    },
+    "mode": "services",
+    "transaction_record": "booking",
+  },
+  "profile_version": 1,
+  "source": {
+    "base_mode": "services",
+    "enabled_capabilities": [],
+    "family": "services",
+    "template_mode": "services",
+  },
+  "storefront": {
+    "order_methods": [
+      "dine_in",
+      "takeout",
+      "pickup",
+      "delivery",
+    ],
+  },
+}
+`;
+
+exports[`store profile equivalence harness (issue #178 Phase 11) matches the golden per-mode snapshots (zero-visible-behavior-change baseline): ticketing_transport 1`] = `
+{
+  "item_taxonomy": null,
+  "modules": [
+    "catalog",
+    "inventory",
+    "menuModifiers",
+    "pos",
+    "storefront",
+  ],
+  "pos_workflow": {
+    "allowed_methods": [
+      "walk_in",
+      "pickup",
+      "delivery",
+    ],
+    "capabilities": {
+      "bookings": false,
+      "kitchen": false,
+      "providers": false,
+      "resources": false,
+      "serviceOptions": false,
+      "tables": false,
+    },
+    "mode": "counter",
+    "transaction_record": "order",
+  },
+  "profile_version": 1,
+  "source": {
+    "base_mode": "ticketing_transport",
+    "enabled_capabilities": [],
+    "family": "ticketing_transport",
+    "template_mode": "ticketing_transport",
+  },
+  "storefront": {
+    "order_methods": [
+      "dine_in",
+      "takeout",
+      "pickup",
+      "delivery",
+    ],
+  },
+}
+`;

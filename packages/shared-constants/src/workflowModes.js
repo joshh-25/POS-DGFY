@@ -91,11 +91,23 @@ export const WORKFLOW_MODE_PIN_META = Object.freeze({
 // restaurant-locked. It stays a real capability rather than being deleted
 // because the composed-capability overlay in the next phase needs a per-tenant
 // switch to turn add-ons off.
+//
+// `catalog`, `pos`, and `storefront` follow the same universal-off-switch
+// pattern: every mode holds them, and each gates its whole surface (items
+// router, POS router, public store router), so today they change nothing — but
+// a Store Profile that can subtract modules gets a real switch for "no online
+// store" / "no POS" tiers without new plumbing.
+//
+// Every capability in this registry must be read by a guard: either a
+// `requireWorkflowCapability` route gate or the item-taxonomy overlay
+// (CAPABILITY_TAXONOMY_OVERLAY_MODES — how `foodManufacturing` is enforced).
+// backend/tests/workflowCapabilities.enforcement.contract.test.js fails when a
+// declared capability has no reader, so decorative entries cannot reappear.
 export const WORKFLOW_MODE_CAPABILITIES = Object.freeze({
     retail: ['catalog', 'inventory', 'menuModifiers', 'pos', 'storefront'],
     services: ['services', 'catalog', 'menuModifiers', 'pos', 'storefront'],
-    manufacturing: ['foodManufacturing', 'productionWorkflows', 'inventory', 'menuModifiers', 'pos', 'storefront'],
-    food_manufacturing: ['foodManufacturing', 'productionWorkflows', 'inventory', 'menuModifiers', 'pos', 'storefront'],
+    manufacturing: ['foodManufacturing', 'productionWorkflows', 'catalog', 'inventory', 'menuModifiers', 'pos', 'storefront'],
+    food_manufacturing: ['foodManufacturing', 'productionWorkflows', 'catalog', 'inventory', 'menuModifiers', 'pos', 'storefront'],
     fnb: [
         'fnbDining',
         'menuModifiers',

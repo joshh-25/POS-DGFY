@@ -1,7 +1,8 @@
 import Joi from 'joi';
+import { ALL_ORDER_METHODS, POS_ORDER_METHODS } from '../modules/shared/constants/orderMethods.js';
 
-const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'appointment', 'walk_in'];
-const ORDER_METHOD_FILTERS = [...ORDER_METHODS, 'online'];
+const ORDER_METHODS = POS_ORDER_METHODS;
+const ORDER_METHOD_FILTERS = ALL_ORDER_METHODS;
 const ORDER_SOURCES = ['in_store', 'online_store'];
 const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'employee_credit'];
 const REPORT_GRANULARITIES = ['daily', 'weekly', 'monthly', 'yearly'];
@@ -131,6 +132,7 @@ const checkoutPosSchema = Joi.object({
     buyer_business_style: Joi.string().trim().max(255).allow('', null).optional(),
     buyer_address: Joi.string().trim().max(1000).allow('', null).optional(),
     special_instructions: Joi.string().trim().max(500).allow('', null).optional(),
+    scheduled_for: Joi.date().iso().allow(null).optional(),
     discount_beneficiary: discountBeneficiarySchema.optional(),
     governed_discount: governedDiscountSchema.optional(),
     lines: Joi.array().items(checkoutLineSchema).min(1).required().messages({

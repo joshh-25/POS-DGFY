@@ -4,8 +4,9 @@ import {
   CUSTOMER_ACCESS_MODES,
   INVENTORY_DISPLAY_MODES
 } from '../modules/shared/utils/customerAccessPolicy.js';
+import { ORDER_METHOD_FEE_METHODS } from '../modules/shared/constants/orderMethods.js';
 
-const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'online'];
+const ORDER_METHODS = ORDER_METHOD_FEE_METHODS;
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODES = ['warn', 'enforce'];
 const POS_SETTINGS_ACCESS_PIN_PATTERN = /^[0-9]{4,12}$/;

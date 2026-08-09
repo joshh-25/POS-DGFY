@@ -15,6 +15,17 @@ const PosTransactionLine = sequelize.define('PosTransactionLine', {
         type: DataTypes.INTEGER,
         allowNull: false
     },
+    // Snapshotted at sale time so a later item rename/delete can never
+    // retro-change a historical receipt or report. Nullable: older rows
+    // (written before this column existed) fall back to the live item join.
+    item_name_snapshot: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
+    sku_snapshot: {
+        type: DataTypes.STRING(100),
+        allowNull: true
+    },
     quantity: {
         type: DataTypes.DECIMAL(24, 12),
         allowNull: false

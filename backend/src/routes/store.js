@@ -61,6 +61,10 @@ import { getStorefrontDomainContext } from '../modules/storefrontDomains/control
 const router = express.Router();
 router.get('/domain-context', setNoStoreCacheControl, getStorefrontDomainContext);
 router.use(requireTenantContext);
+// `storefront` is held by every mode, so this changes nothing today; it makes
+// the capability real so a Store Profile that can subtract modules has a
+// working off-switch for the whole public storefront surface.
+router.use(requireWorkflowCapability('storefront', 'Online Store'));
 const catalogReadCacheControl = setReadCacheControl({
     maxAgeSeconds: 45,
     sMaxAgeSeconds: 45,

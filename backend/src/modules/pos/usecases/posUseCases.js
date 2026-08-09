@@ -24,6 +24,7 @@ import {
     validateImageUploadFile
 } from '../../shared/utils/imageUploadValidation.js';
 import { resolveCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
+import { POS_ORDER_METHODS } from '../../shared/constants/orderMethods.js';
 import {
     normalizeBarcodeValue,
     parseBarcodeStructuredPayload
@@ -63,7 +64,7 @@ const FISCAL_LIFETIME_COUNTER_KEY = 'POS_FISCAL_LIFETIME_TOTAL_CENTS';
 const Z_READING_COUNTER_KEY = 'POS_Z_READING_COUNTER';
 const RESET_COUNTER_KEY = 'POS_RESET_COUNTER';
 const FISCAL_DOCUMENT_TEMPLATE_VERSION = 'rmo-24-2023-prep-v1';
-const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'appointment', 'walk_in'];
+const ORDER_METHODS = POS_ORDER_METHODS;
 const FNB_COURSES = new Set(['appetizer', 'main', 'dessert', 'drink', 'other']);
 const ONLINE_ORDER_SOURCE = 'online_store';
 const ONLINE_FULFILLMENT_STATUSES = [
@@ -2344,6 +2345,11 @@ export const buildCheckoutPosUseCase = ({
             buyer_business_style: buyerFiscalDetails.business_style,
             buyer_address: buyerFiscalDetails.address,
             special_instructions: String(payload.special_instructions || '').trim() || null,
+            // Only present when supplied so request hashes of payloads without a
+            // schedule stay identical to pre-scheduled_for clients.
+            ...(payload.scheduled_for
+                ? { scheduled_for: new Date(payload.scheduled_for).toISOString() }
+                : {}),
             discount_beneficiary: isPlainObject(payload.discount_beneficiary)
                 ? {
                     category: String(payload.discount_beneficiary.category || '').trim().toLowerCase() || null,
@@ -2720,6 +2726,8 @@ export const buildCheckoutPosUseCase = ({
                 preparedLines.push({
                     item_id: item.item_id,
                     item_name: item.name,
+                    item_name_snapshot: item.name || null,
+                    sku_snapshot: item.sku_code || null,
                     quantity: round4(quantity),
                     unit_of_measure: item.unit_of_measure,
                     // Only a true service has no cost to report; an untracked/toggle
@@ -2997,6 +3005,7 @@ export const buildCheckoutPosUseCase = ({
                     buyer_business_style: isFiscalReceipt ? buyerFiscalDetails.business_style : null,
                     buyer_address: isFiscalReceipt ? buyerFiscalDetails.address : null,
                     special_instructions: transactionSpecialInstructions,
+                    scheduled_for: payload.scheduled_for ? new Date(payload.scheduled_for) : null,
                     payment_type: normalizedPaymentType,
                     payment_status: 'paid',
                     payment_collected_at: preparedEmployeeCreditDebit ? new Date() : null,
