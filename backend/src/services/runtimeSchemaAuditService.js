@@ -59,7 +59,9 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260808190000-create-workflow-mode-change-log.cjs',
     '20260809000001-create-store-configuration-templates.cjs',
     '20260809000002-create-store-configuration-template-audit-logs.cjs',
-    '20260809000003-add-disabled-capabilities-to-workflow-mode-change-log.cjs'
+    '20260809000003-add-disabled-capabilities-to-workflow-mode-change-log.cjs',
+    '20260810000001-add-is-canonical-to-store-configuration-templates.cjs',
+    '20260810000002-seed-store-configuration-template-presets.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({

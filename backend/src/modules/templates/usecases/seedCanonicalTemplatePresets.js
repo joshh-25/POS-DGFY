@@ -21,6 +21,7 @@ export const buildSeedCanonicalTemplatePresetsUseCase = ({ repository }) => asyn
             label: preset.label,
             baseMode: preset.base_mode,
             isPreset: true,
+            isCanonical: preset.canonical === true,
             visibility: 'visible',
             owner: 'platform',
             moduleKeys: [...preset.modules]

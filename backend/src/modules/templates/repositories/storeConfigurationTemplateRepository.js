@@ -45,27 +45,32 @@ export const storeConfigurationTemplateRepository = {
         return toPlainTemplate(row);
     },
 
-    // The provisioning-time lookup (issue #178 Phase 13): the canonical,
-    // published preset for a base mode, if one exists. Deliberately narrow -
-    // this is the only read path outside the future curation surface, and it
-    // runs exactly once per tenant, at creation, never again (ADR 0056
-    // clause 2 - never dereferenced to determine ongoing effective config).
+    // The provisioning-time lookup (issue #178 Phase 13, canonical
+    // resolution hardened Phase 20): the canonical, published preset for a
+    // base mode, if one exists. is_canonical is set only by the platform
+    // seed (seedCanonicalTemplatePresets.js), never by the curation surface,
+    // so an admin-authored template can never become a tenant's default.
+    // Deliberately narrow - this is the only read path outside the future
+    // curation surface, and it runs exactly once per tenant, at creation,
+    // never again (ADR 0056 clause 2 - never dereferenced to determine
+    // ongoing effective config).
     async findPublishedCanonicalForMode(baseMode) {
         const row = await StoreConfigurationTemplate.findOne({
-            where: { base_mode: baseMode, status: 'published', is_preset: true },
+            where: { base_mode: baseMode, status: 'published', is_canonical: true },
             include: WITH_MODULES_INCLUDE,
             order: [['template_id', 'ASC']]
         });
         return toPlainTemplate(row);
     },
 
-    async create({ templateKey, label, baseMode, isPreset = false, visibility = 'visible', owner = null, moduleKeys = [] }) {
+    async create({ templateKey, label, baseMode, isPreset = false, isCanonical = false, visibility = 'visible', owner = null, moduleKeys = [] }) {
         return sequelize.transaction(async (transaction) => {
             const template = await StoreConfigurationTemplate.create({
                 template_key: templateKey,
                 label,
                 base_mode: baseMode,
                 is_preset: isPreset,
+                is_canonical: isCanonical,
                 visibility,
                 owner,
                 status: 'draft',

@@ -43,6 +43,18 @@ export default (sequelize) => {
             allowNull: false,
             defaultValue: false
         },
+        // Issue #178 Phase 20: which published preset a base mode's
+        // provisioning-time lookup resolves to (findPublishedCanonicalForMode
+        // below). Distinct from is_preset - fnb_counter_service is a preset
+        // (platform-authored, seeded) but not canonical (fnb_full_service is).
+        // Only the platform seed sets this; the curation surface never does -
+        // an admin-authored template is never eligible to become a tenant's
+        // default.
+        is_canonical: {
+            type: DataTypes.BOOLEAN,
+            allowNull: false,
+            defaultValue: false
+        },
         visibility: {
             type: DataTypes.ENUM('visible', 'hidden'),
             allowNull: false,
