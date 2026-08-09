@@ -56,9 +56,40 @@ import {
 import { STORE_PROFILE_READ_SETTING_KEY, normalizeStoreProfileReadFlag } from '../../shared/constants/storeProfile.js';
 import { applyWorkflowModeAuditLog } from './workflowModeAuditLog.js';
 import logger from '../../../config/logger.js';
+import { clearWorkflowCapabilitySettingsCache } from '../../shared/utils/workflowCapabilitySettingsCache.js';
+import { clearStoreProfileResolutionCache } from './resolveStoreProfile.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
+
+// issue #178 Phase 22: a write to any of these settings can change what the
+// capability gate (15s TTL), the Store Profile resolver, and item-taxonomy
+// validation's settings cache (5min TTL) would otherwise keep serving stale
+// for up to that long. Cleared together whenever a write touches any one of
+// them, mirroring applyTemplateToTenantUseCase.js's same three-cache clear.
+const CAPABILITY_CACHE_SENSITIVE_KEYS = Object.freeze([
+    WORKFLOW_MODE_SETTING_KEY,
+    ENABLED_CAPABILITIES_SETTING_KEY,
+    DISABLED_CAPABILITIES_SETTING_KEY,
+    STORE_PROFILE_READ_SETTING_KEY
+]);
+
+const clearCapabilityCachesIfTouched = async (settingsData) => {
+    const touched = CAPABILITY_CACHE_SENSITIVE_KEYS.some((key) => (
+        Object.prototype.hasOwnProperty.call(settingsData, key)
+    ));
+    if (!touched) return;
+    clearWorkflowCapabilitySettingsCache();
+    clearStoreProfileResolutionCache();
+    // Dynamic import deliberately - inventory/index.js imports settings/index.js
+    // (itemRepository.js reads getAllSettingsUseCase), so a static import
+    // here would form settings <-> inventory circular init and throw
+    // "Cannot access 'buildUpdateSettingsUseCase' before initialization" at
+    // module load. Deferred until this function actually runs, well after
+    // both modules have finished evaluating.
+    const { clearItemRepositorySettingsCache } = await import('../../inventory/index.js');
+    clearItemRepositorySettingsCache();
+};
 
 // Mode-switch hardening (issue #178 phase 5): capture the pre-write values so
 // the audit log can record an accurate from -> to, even though the actual
@@ -221,6 +252,27 @@ const assertEffectiveModuleSelectionIsBuildable = async ({ settingsRepository, s
     const effectiveDisabled = touchesDisabled
         ? settingsData[DISABLED_CAPABILITIES_SETTING_KEY]
         : (current?.[DISABLED_CAPABILITIES_SETTING_KEY]?.value ?? []);
+
+    // issue #178 Phase 22: a capability requested in both overlays at once is
+    // a contradictory write, not an ambiguous one - resolveEffectiveCapabilities'
+    // subtraction-wins ordering makes it harmless (the capability simply
+    // isn't granted), but silently resolving it hides what is very likely a
+    // curation mistake. Reject explicitly rather than accept-and-ignore.
+    const contradictory = normalizeEnabledCapabilities(effectiveEnabled)
+        .filter((capability) => normalizeDisabledCapabilities(effectiveDisabled).includes(capability));
+    if (contradictory.length > 0) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'A capability cannot be both enabled and disabled at the same time.',
+            {
+                statusCode: 422,
+                details: {
+                    reason_code: 'CAPABILITY_SELECTION_CONTRADICTORY',
+                    contradictory_capabilities: contradictory
+                }
+            }
+        );
+    }
 
     const effectiveModules = resolveEffectiveCapabilities(effectiveMode, effectiveEnabled, effectiveDisabled);
     const validation = validateModuleSelection(effectiveModules);
@@ -493,6 +545,7 @@ export const buildUpdateSettingsUseCase = ({ settingsRepository, storefrontAsset
             settingsData = await applyStoreProfileShadowWrite({ settingsRepository, settingsData });
 
             const result = await settingsRepository.updateSettings(settingsData);
+            await clearCapabilityCachesIfTouched(settingsData);
             await cleanupOmittedStorefrontGalleryAssets({
                 omittedPaths: omittedStorefrontGalleryPaths,
                 storefrontAssetStorage

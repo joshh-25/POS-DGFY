@@ -43,6 +43,15 @@ import {
 
 const settingsCache = new Map();
 const SETTINGS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+// Issue #178 Phase 22: an admin write that changes ops_workflow_mode /
+// ops_enabled_capabilities / ops_disabled_capabilities (a settings write,
+// applyTemplateToTenantUseCase, or tenant provisioning) should not leave
+// this 5-minute cache serving the pre-write overlay to item-taxonomy
+// validation. Exported alongside clearWorkflowCapabilitySettingsCache and
+// clearStoreProfileResolutionCache so a single write path can invalidate
+// all three caches that read these settings.
+export const clearItemRepositorySettingsCache = () => settingsCache.clear();
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const MANUFACTURING_PURCHASABLE_CATEGORIES = Object.freeze(['raw_material', 'packaging', 'supplies']);
 const MSME_PURCHASABLE_CATEGORIES = Object.freeze(['raw_material', 'packaging', 'supplies', 'product']);

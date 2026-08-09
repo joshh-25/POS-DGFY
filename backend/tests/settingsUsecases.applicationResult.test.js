@@ -358,6 +358,31 @@ describe('settings use-cases application result contract', () => {
     expect(updateSettings).not.toHaveBeenCalled();
   });
 
+  it('updateSettings rejects a write that would leave a capability both enabled and disabled at once (issue #178 Phase 22)', async () => {
+    const updateSettings = jest.fn();
+    const useCase = buildUpdateSettingsUseCase({
+      settingsRepository: {
+        updateSettings,
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          ops_workflow_mode: { value: 'retail' },
+          ops_enabled_capabilities: { value: [] },
+          ops_disabled_capabilities: { value: [] }
+        })
+      }
+    });
+
+    const result = await useCase({
+      settingsData: { ops_enabled_capabilities: ['services'], ops_disabled_capabilities: ['services'] },
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.details?.reason_code).toBe('CAPABILITY_SELECTION_CONTRADICTORY');
+    expect(result.error.details?.contradictory_capabilities).toEqual(['services']);
+    expect(updateSettings).not.toHaveBeenCalled();
+  });
+
   it('updateSettings rejects a non-master-admin actor setting inventory_authority', async () => {
     const updateSettings = jest.fn();
     const useCase = buildUpdateSettingsUseCase({
@@ -724,6 +749,32 @@ describe('settings use-cases application result contract', () => {
     expect(result.success).toBe(false);
     expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
     expect(result.error.details?.reason_code).toBe('CAPABILITY_SELECTION_UNBUILDABLE');
+    expect(updateSettingByKey).not.toHaveBeenCalled();
+  });
+
+  it('updateSettingByKey rejects disabling a capability the tenant currently has enabled (issue #178 Phase 22)', async () => {
+    const updateSettingByKey = jest.fn();
+    const useCase = buildUpdateSettingByKeyUseCase({
+      settingsRepository: {
+        updateSettingByKey,
+        getSettingsByKeys: jest.fn().mockResolvedValue({
+          ops_workflow_mode: { value: 'retail' },
+          ops_enabled_capabilities: { value: ['services'] },
+          ops_disabled_capabilities: { value: [] }
+        })
+      }
+    });
+
+    const result = await useCase({
+      key: 'ops_disabled_capabilities',
+      value: ['services'],
+      actorUser: { is_master_admin: true }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
+    expect(result.error.details?.reason_code).toBe('CAPABILITY_SELECTION_CONTRADICTORY');
+    expect(result.error.details?.contradictory_capabilities).toEqual(['services']);
     expect(updateSettingByKey).not.toHaveBeenCalled();
   });
 

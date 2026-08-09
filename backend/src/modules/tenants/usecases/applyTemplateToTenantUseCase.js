@@ -10,9 +10,14 @@ import {
 } from '../../shared/constants/storeProfile.js';
 import {
     ENABLED_CAPABILITIES_SETTING_KEY,
-    DISABLED_CAPABILITIES_SETTING_KEY
+    DISABLED_CAPABILITIES_SETTING_KEY,
+    normalizeWorkflowMode,
+    resolveEffectiveCapabilities
 } from '../../shared/constants/workflowModes.js';
+import { validateModuleSelection } from '../../shared/constants/capabilityModules.js';
 import { applyWorkflowModeAuditLog } from '../../settings/usecases/workflowModeAuditLog.js';
+import { clearWorkflowCapabilitySettingsCache } from '../../shared/utils/workflowCapabilitySettingsCache.js';
+import { clearStoreProfileResolutionCache } from '../../settings/usecases/resolveStoreProfile.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const SETTINGS_KEYS = [WORKFLOW_MODE_SETTING_KEY, ENABLED_CAPABILITIES_SETTING_KEY, DISABLED_CAPABILITIES_SETTING_KEY];
@@ -151,7 +156,35 @@ export const buildApplyTemplateToTenantUseCase = ({
                 ));
             }
 
-            const { workflowMode, enabledCapabilities, disabledCapabilities } = materializeTemplateModuleSelection(template);
+            const materialized = materializeTemplateModuleSelection(template);
+            // issue #178 Phase 22: normalize rather than trust template.base_mode
+            // verbatim - tenantProvisioningService.js never passes the
+            // materializer's own workflowMode through unnormalized either (it
+            // uses its own already-normalized request mode instead). A
+            // corrupted/legacy base_mode on a template row must fall back to
+            // the platform default, not persist as-is.
+            const workflowMode = normalizeWorkflowMode(materialized.workflowMode);
+            const { enabledCapabilities, disabledCapabilities } = materialized;
+
+            // issue #178 Phase 22: a template's own publish-time validation
+            // (storeConfigurationTemplateUseCases.js) checked its flat module
+            // list, not the {mode, enabled, disabled} triple this action
+            // actually persists - re-validate the materialized selection here
+            // so a subtraction can never leave a tenant in an unbuildable
+            // state via this write path either.
+            const effectiveModules = resolveEffectiveCapabilities(workflowMode, enabledCapabilities, disabledCapabilities);
+            const selectionValidation = validateModuleSelection(effectiveModules);
+            if (!selectionValidation.ok) {
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    `Template '${templateKey}' resolves to a capability selection that is not buildable for this tenant.`,
+                    {
+                        statusCode: 422,
+                        details: { reason_code: 'CAPABILITY_SELECTION_UNBUILDABLE', ...selectionValidation }
+                    }
+                ));
+            }
+
             const nextProfile = applyTemplateProvenance(
                 buildStoreProfile({ workflowMode, enabledCapabilities, disabledCapabilities }),
                 { templateId: template.template_id, templateVersion: template.version }
@@ -200,13 +233,31 @@ export const buildApplyTemplateToTenantUseCase = ({
                         STORE_PROFILE_SETTING_KEY,
                         nextProfile,
                         'json',
-                        'Server-derived Store Profile (shadow-write; not read at runtime)',
+                        'Server-derived Store Profile (read by frontend affordance consumers directly, and by the fail-closed capability gate when ops_store_profile_read is enabled for this tenant - issue #178 Phases 18-19)',
                         { transaction }
                     );
 
                     const after = await readTemplateApplicationSettings(SystemSetting, { transaction });
                     return { before, after };
                 });
+
+                // issue #178 Phase 22: the settings write just committed above,
+                // but the capability gate (15s TTL), the Store Profile resolver
+                // cache, and item-taxonomy validation's settings cache (5min
+                // TTL) would otherwise keep serving the pre-apply overlay for
+                // up to that long - an admin applying a template would see it
+                // appear not to have taken effect. Clear all three; each is a
+                // small in-memory Map, and this is a rare admin action.
+                clearWorkflowCapabilitySettingsCache();
+                clearStoreProfileResolutionCache();
+                // Dynamic import deliberately - inventory/index.js imports
+                // settings/index.js (itemRepository.js reads
+                // getAllSettingsUseCase), so a static import here risks a
+                // circular init through whichever module eagerly builds this
+                // use case first (see the identical comment in
+                // updateSettingsUseCase.js, where this was reproduced).
+                const { clearItemRepositorySettingsCache } = await import('../../inventory/index.js');
+                clearItemRepositorySettingsCache();
 
                 // Best-effort, appended AFTER the settings transaction commits -
                 // mirrors updateSettingsUseCase.js's safelyLogWorkflowModeAudit:

@@ -248,7 +248,7 @@ const seedWorkflowModeSetting = async (tenantSequelize, workflowMode, templateKe
         tenantSequelize,
         STORE_PROFILE_SETTING_KEY,
         provisioningProfileWithProvenance,
-        'Server-derived Store Profile (shadow-write; not read at runtime)'
+        'Server-derived Store Profile (read by frontend affordance consumers directly, and by the fail-closed capability gate when ops_store_profile_read is enabled for this tenant - issue #178 Phases 18-19)'
     );
     return normalizedWorkflowMode;
 };

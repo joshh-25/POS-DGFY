@@ -56,9 +56,31 @@ import {
     sanitizeTerminalRegistryForRead,
     sanitizeSingleSettingForRead
 } from './posTerminalRegistrySecrets.js';
+import { clearWorkflowCapabilitySettingsCache } from '../../shared/utils/workflowCapabilitySettingsCache.js';
+import { clearStoreProfileResolutionCache } from './resolveStoreProfile.js';
 
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const PLATFORM_MAX_CUSTOMER_ACCESS_MODE_KEY = 'platform_max_customer_access_mode';
+
+// issue #178 Phase 22: mirrors updateSettingsUseCase.js's
+// clearCapabilityCachesIfTouched for the single-key write path.
+const CAPABILITY_CACHE_SENSITIVE_KEYS = Object.freeze([
+    WORKFLOW_MODE_SETTING_KEY,
+    ENABLED_CAPABILITIES_SETTING_KEY,
+    DISABLED_CAPABILITIES_SETTING_KEY,
+    STORE_PROFILE_READ_SETTING_KEY
+]);
+
+const clearCapabilityCachesIfKeyTouched = async (settingKey) => {
+    if (!CAPABILITY_CACHE_SENSITIVE_KEYS.includes(settingKey)) return;
+    clearWorkflowCapabilitySettingsCache();
+    clearStoreProfileResolutionCache();
+    // Dynamic import deliberately - see updateSettingsUseCase.js's identical
+    // comment: a static import here would form a settings <-> inventory
+    // circular init (itemRepository.js imports settings/index.js).
+    const { clearItemRepositorySettingsCache } = await import('../../inventory/index.js');
+    clearItemRepositorySettingsCache();
+};
 
 // Phase 16 (issue #178): mirrors assertEffectiveModuleSelectionIsBuildable
 // in updateSettingsUseCase.js for the single-key write path. Resolves
@@ -87,6 +109,24 @@ const assertEffectiveModuleSelectionIsBuildable = async ({ settingsRepository, k
     const effectiveDisabled = touchesDisabled
         ? normalizedValue
         : (current?.[DISABLED_CAPABILITIES_SETTING_KEY]?.value ?? []);
+
+    // issue #178 Phase 22: mirrors updateSettingsUseCase.js's contradictory-
+    // write rejection for the single-key path.
+    const contradictory = normalizeEnabledCapabilities(effectiveEnabled)
+        .filter((capability) => normalizeDisabledCapabilities(effectiveDisabled).includes(capability));
+    if (contradictory.length > 0) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'A capability cannot be both enabled and disabled at the same time.',
+            {
+                statusCode: 422,
+                details: {
+                    reason_code: 'CAPABILITY_SELECTION_CONTRADICTORY',
+                    contradictory_capabilities: contradictory
+                }
+            }
+        );
+    }
 
     const effectiveModules = resolveEffectiveCapabilities(effectiveMode, effectiveEnabled, effectiveDisabled);
     const validation = validateModuleSelection(effectiveModules);
@@ -387,6 +427,7 @@ export const buildUpdateSettingByKeyUseCase = ({ settingsRepository, storefrontA
             }
 
             const updatedSetting = await settingsRepository.updateSettingByKey(key, normalizedValue);
+            await clearCapabilityCachesIfKeyTouched(key);
             await cleanupOmittedStorefrontGalleryAssets({
                 omittedPaths: omittedStorefrontGalleryPaths,
                 storefrontAssetStorage

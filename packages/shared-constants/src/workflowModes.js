@@ -214,10 +214,13 @@ export const isDelegatedInventoryAuthority = (value) => normalizeInventoryAuthor
 // has been removed via the disabled_capabilities overlay. Existing tenants
 // with no overlay set resolve to exactly the base mode's list -
 // byte-identical to pre-Phase-6 behavior. disabledCapabilities is applied
-// last, so a capability present in both overlays (a contradictory write,
-// which the write-path validator rejects before it can be persisted) always
-// resolves to disabled - subtraction wins over addition, matching a
-// template's "this module is off" being the more specific instruction.
+// last, so a capability present in both overlays always resolves to
+// disabled - subtraction wins over addition, matching a template's "this
+// module is off" being the more specific instruction. A write that would
+// leave a capability in both overlays is itself rejected before it can be
+// persisted (updateSettingsUseCase.js / updateSettingByKeyUseCase.js, issue
+// #178 Phase 22) - this ordering is the belt to that write-time braces, not
+// a case this function expects to see in practice.
 export const resolveEffectiveCapabilities = (value, enabledCapabilities = [], disabledCapabilities = []) => {
     const mode = normalizeWorkflowMode(value);
     const baseCapabilities = WORKFLOW_MODE_CAPABILITIES[mode] || [];

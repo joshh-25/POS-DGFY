@@ -1,4 +1,12 @@
-import { itemRepository, resolveCachedWorkflowMode, resolveCachedEnabledCapabilities, resolveCachedDisabledCapabilities } from './repositories/itemRepository.js';
+import {
+  itemRepository,
+  resolveCachedWorkflowMode,
+  resolveCachedEnabledCapabilities,
+  resolveCachedDisabledCapabilities,
+  clearItemRepositorySettingsCache
+} from './repositories/itemRepository.js';
+
+export { clearItemRepositorySettingsCache };
 import { buildGetItemsUseCase } from './usecases/getItemsUseCase.js';
 import { buildGetItemByIdUseCase } from './usecases/getItemByIdUseCase.js';
 import { buildCreateItemUseCase } from './usecases/createItemUseCase.js';
