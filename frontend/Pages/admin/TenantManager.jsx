@@ -567,7 +567,11 @@ export default function TenantManager() {
         (async () => {
             try {
                 const response = await adminService.listStoreTemplates({ status: 'published' });
-                if (!cancelled) setTemplates(response.data || []);
+                // listStoreTemplates() returns { success, data: { templates } } -
+                // response.data is the wrapper object, not the array itself (this
+                // dropped the apply-template picker silently until fixed - issue
+                // #178 final-touch hardening; matches StoreTemplateManager.jsx).
+                if (!cancelled) setTemplates(response.data?.templates || []);
             } catch (err) {
                 console.error('Failed to load Store Templates', err);
             }

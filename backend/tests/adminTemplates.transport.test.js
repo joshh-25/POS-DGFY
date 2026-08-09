@@ -90,6 +90,34 @@ describe('admin template curation transport contracts (issue #178 Phase 14)', ()
         }));
     });
 
+    // issue #178 final-touch hardening: is_preset is a platform-owned
+    // provenance flag. It is still ACCEPTED by validation (so an old client
+    // sending it isn't 422'd - this schema's .unknown(false) rejects truly
+    // unrecognized keys outright rather than silently stripping them), but
+    // is_preset is never read from validatedData by the real handler (see
+    // storeConfigurationTemplateHandlers.test.js for the layer that proves
+    // it's ignored).
+    it('accepts a client-supplied is_preset on create-draft without a 422', async () => {
+        const response = await request(app)
+            .post('/api/v1/admin/templates')
+            .send({
+                template_key: 'attempted_preset_claim',
+                label: 'Attempted Preset Claim',
+                base_mode: 'retail',
+                module_keys: ['catalog'],
+                is_preset: true
+            });
+
+        expect(response.status).toBe(201);
+        expect(mockCreateDraftTemplate).toHaveBeenCalledTimes(1);
+        expect(mockCreateDraftTemplate.mock.calls[0][0].validatedData).toEqual(expect.objectContaining({
+            template_key: 'attempted_preset_claim',
+            label: 'Attempted Preset Claim',
+            base_mode: 'retail',
+            module_keys: ['catalog']
+        }));
+    });
+
     it('rejects updating modules without a reason', async () => {
         const response = await request(app)
             .patch('/api/v1/admin/templates/5/modules')

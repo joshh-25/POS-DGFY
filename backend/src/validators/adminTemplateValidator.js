@@ -32,6 +32,13 @@ const createDraftTemplateSchema = Joi.object({
     }),
     label: Joi.string().trim().min(2).max(150).required(),
     base_mode: Joi.string().trim().lowercase().valid(...WORKFLOW_MODE_VALUES).required(),
+    // is_preset is accepted here (so an old client sending it isn't 422'd -
+    // this schema's .unknown(false) rejects truly unrecognized keys outright,
+    // it does not silently strip them) but it is a platform-owned provenance
+    // flag: neither the handler nor the create use case reads it anymore,
+    // so it is always ignored regardless of what's sent (issue #178
+    // final-touch hardening). Set only by the seed migration/use case,
+    // never by the curation surface.
     is_preset: Joi.boolean().strict().optional(),
     visibility: Joi.string().trim().lowercase().valid('visible', 'hidden').optional(),
     module_keys: Joi.array().items(Joi.string().trim().valid(...ALL_CAPABILITY_MODULE_KEYS)).min(1).required()

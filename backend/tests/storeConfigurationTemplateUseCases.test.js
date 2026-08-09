@@ -34,13 +34,19 @@ const buildFakeRepository = () => {
         async findById(templateId) {
             return byId.get(templateId) || null;
         },
-        async create({ templateKey, label, baseMode, isPreset, visibility, owner, moduleKeys }) {
+        // isPreset/isCanonical default to false, matching
+        // storeConfigurationTemplateRepository.js's real defaults - the use
+        // case under test never passes them (they're platform-owned), so
+        // only the seed-flow-style direct-repository-call tests below set
+        // them explicitly, exactly like seedCanonicalTemplatePresets.js does.
+        async create({ templateKey, label, baseMode, isPreset = false, isCanonical = false, visibility, owner, moduleKeys }) {
             const template = {
                 template_id: nextId++,
                 template_key: templateKey,
                 label,
                 base_mode: baseMode,
                 is_preset: isPreset,
+                is_canonical: isCanonical,
                 visibility,
                 owner,
                 status: 'draft',
@@ -231,5 +237,80 @@ describe('store configuration template use cases (issue #178 Phase 13/14)', () =
         expect(logs.map((l) => l.action)).toEqual(['draft_created', 'published']);
 
         await expect(listAuditLogs({ templateId: 999 })).rejects.toMatchObject({ code: DomainErrorCode.RESOURCE_NOT_FOUND });
+    });
+
+    // issue #178 final-touch hardening: platform presets and canonical
+    // defaults are unremovable through the curation surface.
+    describe('preset/canonical protection (issue #178 final-touch hardening)', () => {
+        it('rejects deprecating an is_preset template and leaves it untouched', async () => {
+            const repository = buildFakeRepository();
+            const deprecate = buildDeprecateTemplateUseCase({ repository });
+
+            // Mirrors seedCanonicalTemplatePresets.js: calls repository.create
+            // directly with isPreset true, bypassing the create use case
+            // (which can no longer set it).
+            const preset = await repository.create({
+                templateKey: 'fnb_counter_service', label: 'Counter Service', baseMode: 'fnb',
+                isPreset: true, isCanonical: false, visibility: 'visible', owner: 'platform', moduleKeys: ['catalog']
+            });
+            await repository.setStatus(preset.template_id, 'published');
+
+            await expect(deprecate({
+                templateId: preset.template_id, reason: REASON, actorUser: ACTOR
+            })).rejects.toMatchObject({ code: DomainErrorCode.CONFLICT });
+
+            const stillPublished = await repository.findById(preset.template_id);
+            expect(stillPublished.status).toBe('published');
+            expect(repository.auditLogs.filter((entry) => entry.action === 'deprecated')).toHaveLength(0);
+        });
+
+        it('rejects deprecating an is_canonical template', async () => {
+            const repository = buildFakeRepository();
+            const deprecate = buildDeprecateTemplateUseCase({ repository });
+
+            const canonical = await repository.create({
+                templateKey: 'fnb_full_service', label: 'Full Service', baseMode: 'fnb',
+                isPreset: true, isCanonical: true, visibility: 'visible', owner: 'platform', moduleKeys: ['catalog']
+            });
+            await repository.setStatus(canonical.template_id, 'published');
+
+            await expect(deprecate({
+                templateId: canonical.template_id, reason: REASON, actorUser: ACTOR
+            })).rejects.toMatchObject({ code: DomainErrorCode.CONFLICT });
+        });
+
+        it('still allows deprecating a plain admin-authored template', async () => {
+            const repository = buildFakeRepository();
+            const createDraft = buildCreateDraftTemplateUseCase({ repository });
+            const publish = buildPublishTemplateUseCase({ repository });
+            const deprecate = buildDeprecateTemplateUseCase({ repository });
+
+            const template = await createDraft({
+                templateKey: 'admin_authored', label: 'Admin Authored', baseMode: 'retail',
+                moduleKeys: ['catalog'], actorUser: ACTOR
+            });
+            expect(template.is_preset).toBe(false);
+            await publish({ templateId: template.template_id, reason: REASON, actorUser: ACTOR });
+
+            const deprecated = await deprecate({ templateId: template.template_id, reason: REASON, actorUser: ACTOR });
+            expect(deprecated.status).toBe('deprecated');
+            expect(repository.auditLogs).toContainEqual(expect.objectContaining({ action: 'deprecated' }));
+        });
+
+        it('the create use case never forwards is_preset/is_canonical to the repository', async () => {
+            const repository = buildFakeRepository();
+            const createDraft = buildCreateDraftTemplateUseCase({ repository });
+
+            // Passing isPreset/isCanonical as if a caller tried to sneak them
+            // through - the use case signature no longer accepts them at all,
+            // so they're simply ignored (repository defaults win).
+            const template = await createDraft({
+                templateKey: 'attempted_preset_claim', label: 'X', baseMode: 'retail',
+                moduleKeys: ['catalog'], actorUser: ACTOR, isPreset: true, isCanonical: true
+            });
+
+            expect(template.is_preset).toBe(false);
+            expect(template.is_canonical).toBe(false);
+        });
     });
 });

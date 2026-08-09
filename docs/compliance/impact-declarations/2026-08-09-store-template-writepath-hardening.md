@@ -3,8 +3,8 @@ status: reference
 owner: engineering
 last_reviewed: 2026-08-09
 declaration_id: 2026-08-09-store-template-writepath-hardening
-classification: major
-surfaces: settings,pos,terminal
+classification: regulatory
+surfaces: settings,pos,terminal,compliance
 reason_codes_impacted: ALLOWED
 policy_version: 2026.08.09
 verification_evidence: settingsUsecases.applicationResult.test.js,applyTemplateToTenantUseCase.test.js,applyTemplateToTenantUseCase.cacheInvalidation.test.js,resolveStoreProfile.usecase.test.js,tenantProvisioningStoreProfileProvenance.test.js,fnbKitchenQueueTemplateGate.route.test.js,storeProfile.equivalence.contract.test.js,modeItemTaxonomy.contract.test.js,WorkflowModeContext.profile.test.jsx,check:architecture
@@ -19,21 +19,36 @@ preflight_request_ref: STORE-TEMPLATES-PHASE20-23-20260809
 
 ## Compliance Impact Classification
 
-Major, per the classification matrix's floor for both
-`backend/src/modules/settings/**` and `frontend/src/features/pos/**`. Two
-files under the settings path are touched: `updateSettingsUseCase.js` gains a
-stricter rejection (a capability requested in both the enabled and disabled
-overlays at once is now rejected outright, where it previously resolved
-silently), and `resolveStoreProfile.js` gains a cache-clear export plus
-documentation corrections. Three files under the POS surface are touched —
+Regulatory, per the classification matrix's floor for the `compliance`
+surface (`SURFACE_MIN_CLASSIFICATION.compliance` in
+`scripts/check-compliance-impact.js`). Three admin-provisioning files carry
+an explicit `regulatory` rule in that same matrix and are touched by this
+arc's Phase 17 (apply-template-to-tenant): `backend/src/routes/adminTenants.js`
+(the `/:id/apply-template` route this arc adds sits in this file, which
+already carries a blanket `regulatory` rule regardless of which handler in
+it changes), `frontend/src/services/adminService.js` (the
+`applyTenantTemplate`/`listStoreTemplates` client calls added here), and
+`frontend/Pages/admin/TenantManager.jsx` (the apply-template picker UI).
+This declaration was originally filed at `major` covering only the
+`settings`/`pos`/`terminal` surfaces below; the `compliance` surface and the
+`regulatory` floor it carries were missed at filing time and are corrected
+here (issue #178 final-touch hardening) — no additional code changes to
+those three files beyond what Phase 17 already shipped; this is a
+classification correction, not a new behavior. Two files under the settings
+path are touched: `updateSettingsUseCase.js` gains a stricter rejection (a
+capability requested in both the enabled and disabled overlays at once is
+now rejected outright, where it previously resolved silently), and
+`resolveStoreProfile.js` gains a cache-clear export plus documentation
+corrections. Three files under the POS surface are touched —
 `POSCheckoutTerminal.jsx`, `TerminalPageLayout.jsx`, `TerminalPage.jsx` — to
 thread the tenant's effective capability set into the terminal's workflow
 resolver, so a curated (subtractive) template renders the correct POS panel.
-No fiscal, VAT, or payment logic in either surface is touched — this is
-validation strictness, cache freshness, and terminal-panel rendering for the
-existing `ops_workflow_mode` / `ops_enabled_capabilities` /
-`ops_disabled_capabilities` / `ops_store_profile_read` settings, which this
-same ADR 0056 / issue #178 arc already governs.
+No fiscal, VAT, or payment logic in any surface is touched — this is
+validation strictness, cache freshness, terminal-panel rendering, and an
+admin-only tenant-provisioning affordance, for the existing
+`ops_workflow_mode` / `ops_enabled_capabilities` / `ops_disabled_capabilities`
+/ `ops_store_profile_read` settings, which this same ADR 0056 / issue #178
+arc already governs.
 
 ## Affected Surfaces
 
@@ -72,6 +87,14 @@ same ADR 0056 / issue #178 arc already governs.
    gap where the terminal rendered a panel the backend would then 403.
    Omitting the new prop/argument (every pre-existing caller) preserves
    exact prior behavior.
+6. **Compliance surface (classification correction only).**
+   `backend/src/routes/adminTenants.js`, `frontend/src/services/adminService.js`,
+   and `frontend/Pages/admin/TenantManager.jsx` carry a `regulatory` floor
+   in the compliance-sensitivity matrix because they are part of the
+   admin-only tenant-provisioning surface. This declaration's original
+   filing under-classified them; no additional runtime change accompanies
+   this correction beyond what item 2/5 above already describe (the
+   apply-template action and its picker UI, both issue #178 Phase 17).
 
 ## Compliance Preconditions
 
@@ -93,6 +116,11 @@ same ADR 0056 / issue #178 arc already governs.
    receipt logic — `POSCheckoutTerminal.jsx`'s own checkout/payment code
    paths are untouched; only which vertical panel (dining floor vs. counter)
    is shown before checkout begins.
+6. The apply-template admin action (`adminTenants.js`, `adminService.js`,
+   `TenantManager.jsx`) is master-admin-only, requires an audited reason
+   (Phase 17), and only ever writes the same four settings keys covered by
+   precondition 1 — it introduces no new data classification, no new
+   external integration, and no new customer-facing surface.
 
 ## Verification Evidence
 

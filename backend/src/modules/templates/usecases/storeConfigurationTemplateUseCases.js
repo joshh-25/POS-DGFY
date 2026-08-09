@@ -64,11 +64,17 @@ export const buildListTemplateAuditLogsUseCase = ({ repository }) => async ({ te
     return repository.listAuditLogs(templateId, { limit });
 };
 
+// is_preset/is_canonical are never accepted from the curation surface - both
+// are platform-owned provenance flags. is_preset is set only by the seed
+// use case (seedCanonicalTemplatePresets.js), which calls repository.create
+// directly; is_canonical is set only there too and is never even a
+// parameter here. repository.create() defaults both to false, so an
+// admin-authored template can never claim platform-preset/canonical
+// provenance (issue #178 final-touch hardening).
 export const buildCreateDraftTemplateUseCase = ({ repository }) => async ({
     templateKey,
     label,
     baseMode,
-    isPreset = false,
     visibility = 'visible',
     owner = null,
     moduleKeys = [],
@@ -86,7 +92,7 @@ export const buildCreateDraftTemplateUseCase = ({ repository }) => async ({
         );
     }
 
-    const template = await repository.create({ templateKey, label, baseMode, isPreset, visibility, owner, moduleKeys });
+    const template = await repository.create({ templateKey, label, baseMode, visibility, owner, moduleKeys });
     await repository.createAuditLog({
         templateId: template.template_id,
         action: 'draft_created',
@@ -163,6 +169,22 @@ export const buildDeprecateTemplateUseCase = ({ repository }) => async ({ templa
     const template = await repository.findById(templateId);
     if (!template) throw notFound(templateId);
     if (template.status === 'deprecated') return template;
+    // Platform presets (is_preset) and canonical defaults (is_canonical) are
+    // unremovable by curation-surface action. Deprecating a canonical row
+    // would make findPublishedCanonicalForMode() return null for that base
+    // mode permanently - the seed migration is idempotent-by-key and will
+    // never repair a deprecated row. Non-canonical presets are blocked too:
+    // once is_preset is no longer client-settable on create (see
+    // buildCreateDraftTemplateUseCase below), a deprecated preset can never
+    // be recreated through the admin UI, only through a new migration.
+    // Admin-authored templates (is_preset: false) remain freely deprecatable.
+    if (template.is_preset === true || template.is_canonical === true) {
+        throw new DomainError(
+            DomainErrorCode.CONFLICT,
+            'Platform preset templates cannot be deprecated',
+            { statusCode: 409 }
+        );
+    }
 
     const deprecated = await repository.setStatus(templateId, 'deprecated');
     await repository.createAuditLog({

@@ -56,7 +56,6 @@ export const createDraftTemplate = async (req, res, next) => {
             templateKey: req.validatedData?.template_key,
             label: req.validatedData?.label,
             baseMode: req.validatedData?.base_mode,
-            isPreset: req.validatedData?.is_preset === true,
             visibility: req.validatedData?.visibility || 'visible',
             owner: actor.username,
             moduleKeys: req.validatedData?.module_keys || [],

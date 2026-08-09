@@ -24,11 +24,14 @@ const STATUS_BADGE_VARIANT = {
     deprecated: 'outline'
 };
 
+// is_preset/is_canonical are platform-owned provenance flags, set only by
+// the seed migration - never authored through this admin form (issue #178
+// final-touch hardening). A template created here is always an
+// admin-authored, non-preset row.
 const EMPTY_DRAFT_FORM = {
     template_key: '',
     label: '',
     base_mode: WORKFLOW_MODE_VALUES[0],
-    is_preset: false,
     module_keys: []
 };
 
@@ -188,13 +191,6 @@ export default function StoreTemplateManager() {
                                 ))}
                             </SelectContent>
                         </Select>
-                        <label className="flex items-center gap-2 text-sm">
-                            <Checkbox
-                                checked={draftForm.is_preset}
-                                onCheckedChange={(checked) => setDraftForm((f) => ({ ...f, is_preset: checked }))}
-                            />
-                            Canonical preset
-                        </label>
                     </div>
                     <fieldset className="grid gap-2 sm:grid-cols-3">
                         <legend className="mb-1 text-xs font-medium text-slate-600">Modules</legend>
@@ -236,7 +232,7 @@ export default function StoreTemplateManager() {
                             <th className="p-3">Base mode</th>
                             <th className="p-3">Status</th>
                             <th className="p-3">Version</th>
-                            <th className="p-3">Preset</th>
+                            <th className="p-3">Provenance</th>
                             <th className="p-3">Actions</th>
                         </tr>
                     </thead>
@@ -252,7 +248,13 @@ export default function StoreTemplateManager() {
                                     </Badge>
                                 </td>
                                 <td className="p-3">{template.version}</td>
-                                <td className="p-3">{template.is_preset ? 'Yes' : 'No'}</td>
+                                <td className="p-3 space-x-1">
+                                    {template.is_canonical && <Badge variant="default">Canonical</Badge>}
+                                    {template.is_preset && !template.is_canonical && <Badge variant="secondary">Preset</Badge>}
+                                    {!template.is_preset && !template.is_canonical && (
+                                        <span className="text-slate-400">—</span>
+                                    )}
+                                </td>
                                 <td className="space-x-2 p-3">
                                     <Button size="sm" variant="outline" disabled={busy} onClick={() => selectTemplate(template)}>
                                         View
@@ -260,10 +262,15 @@ export default function StoreTemplateManager() {
                                     {template.status === 'draft' && (
                                         <Button size="sm" disabled={busy} onClick={() => publish(template)}>Publish</Button>
                                     )}
-                                    {template.status !== 'deprecated' && (
+                                    {template.status !== 'deprecated' && !template.is_preset && !template.is_canonical && (
                                         <Button size="sm" variant="destructive" disabled={busy} onClick={() => deprecate(template)}>
                                             Deprecate
                                         </Button>
+                                    )}
+                                    {template.status !== 'deprecated' && (template.is_preset || template.is_canonical) && (
+                                        <span className="text-xs text-slate-400" title="Platform preset templates cannot be deprecated">
+                                            Platform preset
+                                        </span>
                                     )}
                                 </td>
                             </tr>
