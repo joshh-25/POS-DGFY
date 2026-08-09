@@ -583,6 +583,7 @@ catalog, and the phased roadmap live in
 - `docs/architecture/adr/0035-compatibility-seam-governance.md`
 - `docs/architecture/adr/0009-multi-location-inventory-ledger-and-safety-rollout.md`
 - `docs/architecture/adr/0040-weighted-average-cost-valuation-and-variance-analytics.md`
+- `docs/architecture/adr/0056-store-configuration-templates-and-profiles.md`
 - `docs/features/UNIFIED_PRODUCT_DOMAIN.md`
 - `docs/features/OFFERING_ARCHETYPES.md`
 - `docs/features/INVENTORY_TRACKING_MODES.md`
@@ -590,4 +591,87 @@ catalog, and the phased roadmap live in
 - `docs/features/FOOD_AND_BEVERAGE_MODE.md`
 - `docs/database/legacy-stock-movement-type-remap.md`
 - `docs/database/dgfy-data-migration-map.md`
+
+## Amendments (2026-08-09)
+
+### Axis 2 realized as a three-layer Capability Module / Store Template / Store Profile model
+
+GitHub issue #178 ("Store Templates & Capability Configuration") reconciled an
+uploaded proposal against this ADR and found Axis 2's "vertical preset" is the
+right shape but was never given an entity, a version, or a curation surface.
+Decision 2's Axis 2 is realized as three layers, in order of who owns them:
+
+1. **Capability Module** (fixed, engineering-owned) — the existing
+   `ALL_WORKFLOW_CAPABILITIES` vocabulary
+   (`packages/shared-constants/src/workflowModes.js`), now catalogued with
+   metadata (`label`, `enforcement`: `gate`/`affordance`/`locked`,
+   `requires`/`conflicts_with`) in
+   `packages/shared-constants/src/capabilityModules.js`. A module is composed
+   FROM by templates and profiles; it never gains a new value, column, or
+   business logic from either (binding in new ADR 0056, cited below).
+2. **Store Template** (curated, versioned bundle) — today's "industry types"
+   become presets (`STORE_TEMPLATE_PRESETS` in the same file for now; promoted
+   to real landlord tables per the phased rollout below).
+3. **Store Profile** (a tenant's materialized, independently-editable copy,
+   with provenance back to its source template that is **never dereferenced
+   at runtime** — binding in ADR 0056) — `ops_store_profile`
+   (`packages/shared-constants/src/storeProfile.js`).
+
+This replaces Decision 2's "thin preset selecting a composition of
+capabilities, not a new engineering mode" language with the concrete
+three-layer shape; the tiering (Tier 1 Native / Tier 2 Basic / Tier 3 None)
+is unaffected — it becomes a property of which templates a mode's presets
+belong to, not a separate mechanism.
+
+The **enforcement posture correction** the issue made against the uploaded
+proposal is binding here too: configuration is not uniformly "an affordance,
+not a restriction." `gate` modules fail closed at the route
+(`requireWorkflowCapability`, per ADR 0008 Decision 7's already-accepted
+route-level enforcement); only `affordance` modules are presentation-only;
+`locked` modules (fiscal profile, customer access ceiling) are
+compliance-determined and never template-selectable.
+
+### Phased rollout update
+
+Prerequisite sub-phases were folded into Phase 6 (Phase numbers 7-9 are
+already spoken for by booking generalization / external listings / external
+IMS delegation); new phases use 10+. Status as of this amendment:
+
+- **Phase 6d — Make the capability vocabulary real (shipped):** of 19
+  declared capabilities, 13 were decorative (no route guard). Each is now
+  either enforced by a real gate or intentionally split into finer-grained
+  gates (e.g. `fnbDining` into `tableService`/`kitchenQueue`/
+  `restaurantServiceCharge`); verified by
+  `backend/tests/workflowCapabilities.enforcement.contract.test.js`.
+- **Phase 6e — Fix the `order_method` divergence (shipped):** unified five
+  divergent `ORDER_METHODS` lists into `packages/shared-constants/src/orderMethods.js`,
+  pinned to the `pos_transactions.order_method` DB ENUM by
+  `backend/tests/orderMethods.crossLayer.contract.test.js`; gave
+  retail/msme/food_manufacturing a real counter-sale POS config instead of
+  silently inheriting F&B's.
+- **Phase 10 — Capability Module catalog (shipped):** frozen metadata
+  constant, not a landlord table, per the original plan; verified by
+  `backend/tests/capabilityModules.contract.test.js`.
+- **Phase 11 — Store Profile shadow-write (shipped):** materializes each
+  tenant's current effective config to `ops_store_profile` on every
+  mode/overlay change; the equivalence harness
+  (`backend/tests/storeProfile.equivalence.contract.test.js`) proves it
+  byte-identical to the registries it derives from. Nothing reads the profile
+  yet.
+- **Phase 12 — Runtime reads the Profile, module by module, behind a
+  per-tenant flag:** in progress. Order: POS workflow/defaults → storefront
+  order methods → item taxonomy → capability gating last (highest blast
+  radius, and the only phase where the old registries are not fully retired
+  as a permanent fallback rather than a temporary differ oracle).
+- **Phase 13 — Landlord template catalog** and **Phase 14 — Handler curation
+  surface:** not started.
+
+The three `[binding]` cross-boundary clauses this realization needs — never
+dereferencing provenance at runtime, locked-module compliance determinism,
+and templates never adding enum values/columns/logic — are recorded in the
+new `docs/architecture/adr/0056-store-configuration-templates-and-profiles.md`
+rather than here, per ADR 0039's amendment-path guidance: this ADR is still
+`status: proposed` so a same-document amendment is sufficient for
+Decision-level content, but the binding clauses touch the already-**accepted**
+ADR 0008 and warrant their own short ADR.
 - `docs/proposals/2026-07-06-flexible-item-types-mini-tiangge-jewelry.md`

@@ -53,13 +53,13 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0028 | [DGFY-Only Company Access And Switching](0028-dgfy-account-company-switching.md) | `accepted` | dgfy_account_company_switching | 2027-01-08 | 0 |
 | 0029 | [Catalog, Inventory, POS, and Storefront Ownership Boundaries](0029-catalog-inventory-pos-storefront-ownership-boundaries.md) | `accepted` | catalog_inventory_pos_storefront_ownership_boundaries | 2026-12-26 | 5 |
 | 0030 | [Free-Tier Signed Release Authorization](0030-free-tier-signed-release-authorization.md) | `superseded` | free_tier_signed_release_authorization | 2026-12-28 | 0 |
-| 0031 | [POS Terminal Pairing and Shift-Safe Navigation](0031-pos-terminal-pairing-and-shift-safe-navigation.md) | `accepted` | pos_terminal_pairing_and_shift_safe_navigation | 2026-12-28 | 0 |
+| 0031 | [POS Terminal Pairing and Shift-Safe Navigation](0031-pos-terminal-pairing-and-shift-safe-navigation.md) | `amended` | pos_terminal_pairing_and_shift_safe_navigation | 2026-12-28 | 0 |
 | 0032 | [Standalone DGFY API Service (`apps/dgfy-api`)](0032-standalone-dgfy-api-service.md) | `accepted` | standalone_dgfy_api_service | 2027-01-08 | 0 |
 | 0033 | [Commercial Promo and Statutory POS Discount Boundaries](0033-commercial-promo-and-statutory-pos-discount-boundaries.md) | `amended` | commercial_promo_and_statutory_pos_discount_boundaries | 2027-01-07 | 0 |
 | 0034 | [Manual Delivery Job Foundation](0034-manual-delivery-job-foundation.md) | `amended` | manual_delivery_job_foundation | 2027-01-10 | 0 |
 | 0035 | [Compatibility-Seam Governance](0035-compatibility-seam-governance.md) | `accepted` | compatibility_seam_governance | 2027-01-12 | 4 |
 | 0036 | [Affiliates Program — Commission Ledger, Attribution, and Cashout](0036-affiliates-program-commission-and-cashout.md) | `amended` | affiliates_program_commission_and_cashout | 2027-01-24 | 1 |
-| 0037 | [Open Multi-Vertical Product Model and Capability-Driven Store Types](0037-unified-product-domain-and-capability-driven-store-types.md) | `proposed` | unified_product_domain_and_capability_driven_store_types | 2027-01-25 | 0 |
+| 0037 | [Open Multi-Vertical Product Model and Capability-Driven Store Types](0037-unified-product-domain-and-capability-driven-store-types.md) | `proposed` | unified_product_domain_and_capability_driven_store_types | 2027-01-25 | 1 |
 | 0038 | [External Barcode Product Registry Lookup](0038-external-barcode-product-registry-lookup.md) | `accepted` | external_barcode_product_registry_lookup | 2027-01-25 | 0 |
 | 0039 | [ADR Lifecycle, Strictness Tiers, and Amendment Path](0039-adr-lifecycle-strictness-tiers-and-amendment-path.md) | `amended` | adr_lifecycle_governance | 2026-10-29 | 1 |
 | 0040 | [On-Hand Weighted Average Cost Valuation Across Inventory, PO, JO, Suppliers, and Reporting](0040-weighted-average-cost-valuation-and-variance-analytics.md) | `accepted` | weighted_average_cost_valuation_and_variance_analytics | 2026-10-20 | 0 |
@@ -78,6 +78,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0053 | [Pluggable POS Hardware Device Drivers](0053-pluggable-pos-hardware-device-drivers.md) | `accepted` | pluggable_pos_hardware_device_drivers | 2027-02-04 | 4 |
 | 0054 | [Outbound Email Delivery Log And Bounce Capture](0054-outbound-email-delivery-log-and-bounce-capture.md) | `accepted` | outbound_email_delivery_log_and_bounce_capture | 2027-02-07 | 0 |
 | 0055 | [Tenant-Scoped POS Catalog Realtime Invalidation](0055-tenant-scoped-pos-catalog-realtime-invalidation.md) | `accepted` | tenant_scoped_pos_catalog_realtime_invalidation | 2027-02-08 | 0 |
+| 0056 | [Store Configuration Templates and Profiles](0056-store-configuration-templates-and-profiles.md) | `accepted` | store_configuration_templates_and_profiles | 2027-02-09 | 3 |
 
 ## Renumbered (collision stubs)
 
