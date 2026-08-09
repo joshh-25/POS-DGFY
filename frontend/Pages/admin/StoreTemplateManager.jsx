@@ -197,6 +197,8 @@ export default function StoreTemplateManager() {
     const [editModuleKeys, setEditModuleKeys] = useState(null);
     const [editReason, setEditReason] = useState('');
     const [auditLogs, setAuditLogs] = useState([]);
+    const [registrationIndustries, setRegistrationIndustries] = useState([]);
+    const [industriesError, setIndustriesError] = useState('');
 
     const load = useCallback(async () => {
         try {
@@ -209,7 +211,18 @@ export default function StoreTemplateManager() {
         }
     }, [statusFilter]);
 
+    const loadRegistrationIndustries = useCallback(async () => {
+        try {
+            const response = await adminService.listRegistrationIndustryVisibility();
+            setRegistrationIndustries(response.data?.industries || []);
+            setIndustriesError('');
+        } catch (err) {
+            setIndustriesError(err.response?.data?.message || 'Failed to load registration Industry visibility.');
+        }
+    }, []);
+
     useEffect(() => { load(); }, [load]);
+    useEffect(() => { loadRegistrationIndustries(); }, [loadRegistrationIndustries]);
 
     const selected = useMemo(
         () => templates.find((t) => t.template_id === selectedId) || null,
@@ -292,6 +305,30 @@ export default function StoreTemplateManager() {
         await action(() => adminService.deprecateStoreTemplate(template.template_id, reason.trim()));
     };
 
+    // Registration Industry visibility (issue #178 Phase 39): same
+    // window.prompt reason pattern as publish/deprecate above, but a
+    // separate reload since this state is independent of the template list.
+    const toggleIndustryVisibility = async (industry) => {
+        const nextHidden = !industry.hidden;
+        const verb = nextHidden ? 'Hide' : 'Show';
+        const reason = window.prompt(
+            `${verb} "${industry.label}" ${nextHidden ? 'from' : 'on'} merchant registration? State the reason (min 3 characters).`
+        );
+        if (reason == null) return;
+        if (reason.trim().length < 3) { setIndustriesError('A reason is required.'); return; }
+
+        setBusy(true);
+        setIndustriesError('');
+        try {
+            await adminService.setRegistrationIndustryVisibility(industry.key, { hidden: nextHidden, reason: reason.trim() });
+            await loadRegistrationIndustries();
+        } catch (err) {
+            setIndustriesError(err.response?.data?.message || 'Failed to update registration visibility.');
+        } finally {
+            setBusy(false);
+        }
+    };
+
     const draftBaseModeEngine = getWorkflowModeEngine(draftForm.base_mode);
 
     return (
@@ -313,6 +350,61 @@ export default function StoreTemplateManager() {
                     {error}
                 </p>
             )}
+
+            <div className="rounded-xl border bg-white p-4 shadow-sm">
+                <h2 className="text-sm font-semibold text-slate-900">Registration industries</h2>
+                <p className="mt-1 text-xs text-slate-500">
+                    Hidden industries disappear from merchant signup only. Admin assisted
+                    provisioning still shows them, annotated.
+                </p>
+                {industriesError && (
+                    <p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 p-2 text-xs text-red-700">
+                        {industriesError}
+                    </p>
+                )}
+                <div className="mt-3 overflow-x-auto rounded-lg border">
+                    <table className="min-w-full text-sm">
+                        <thead className="bg-slate-50 text-left text-slate-600">
+                            <tr>
+                                <th className="p-3">Industry</th>
+                                <th className="p-3">Mode</th>
+                                <th className="p-3">Registration status</th>
+                                <th className="p-3">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {registrationIndustries.map((industry) => (
+                                <tr className="border-t" key={industry.key}>
+                                    <td className="p-3">
+                                        <span className="block font-medium text-slate-800">{industry.label}</span>
+                                        <span className="block text-xs text-slate-500">{industry.summary}</span>
+                                    </td>
+                                    <td className="p-3">{WORKFLOW_MODE_LABELS[industry.workflow_mode] || industry.workflow_mode}</td>
+                                    <td className="p-3">
+                                        <Badge variant={industry.hidden ? 'outline' : 'default'}>
+                                            {industry.hidden ? 'Hidden' : 'Visible'}
+                                        </Badge>
+                                        {industry.hidden && (industry.hidden_reason || industry.hidden_updated_by) && (
+                                            <span className="mt-0.5 block text-xs text-slate-400">
+                                                {industry.hidden_reason}
+                                                {industry.hidden_updated_by ? ` — ${industry.hidden_updated_by}` : ''}
+                                            </span>
+                                        )}
+                                    </td>
+                                    <td className="p-3">
+                                        <Button size="sm" variant="outline" disabled={busy} onClick={() => toggleIndustryVisibility(industry)}>
+                                            {industry.hidden ? 'Show' : 'Hide'}
+                                        </Button>
+                                    </td>
+                                </tr>
+                            ))}
+                            {!registrationIndustries.length && (
+                                <tr><td className="p-6 text-slate-500" colSpan="4">No registration industries found.</td></tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
             <div className="rounded-xl border bg-white p-4 shadow-sm">
                 <h2 className="mb-3 text-sm font-semibold text-slate-900">Create a draft template</h2>

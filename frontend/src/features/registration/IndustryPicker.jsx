@@ -80,11 +80,16 @@ export default function IndustryPicker({ value, onSelect, disabled = false, idPr
                     <span className="mt-1 block text-xs text-slate-400">{entry.niches.slice(0, 4).join(', ')}…</span>
                   ) : null}
                 </span>
-                {entry.engine !== 'native' ? (
-                  <Badge variant="outline" className="shrink-0">
-                    {entry.engine === 'transitional' ? 'Native today' : 'Listing only'}
-                  </Badge>
-                ) : null}
+                <span className="flex shrink-0 items-center gap-1.5">
+                  {entry.engine !== 'native' ? (
+                    <Badge variant="outline">
+                      {entry.engine === 'transitional' ? 'Native today' : 'Listing only'}
+                    </Badge>
+                  ) : null}
+                  {entry.hidden === true ? (
+                    <Badge variant="secondary">Hidden from registration</Badge>
+                  ) : null}
+                </span>
               </button>
 
               {entry.engine === 'transitional' ? (

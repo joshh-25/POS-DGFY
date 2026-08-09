@@ -98,4 +98,27 @@ describe('IndustryPicker', () => {
     const notSelected = screen.getByRole('radio', { name: /^Retail/i });
     expect(notSelected.getAttribute('aria-checked')).toBe('false');
   });
+
+  // Phase 39/40: the admin visibility toggle. IndustryPicker is admin-only
+  // (TenantManager's assisted-provisioning panel), so a hidden industry is
+  // annotated but stays selectable - assisted provisioning sends
+  // workflowMode/templateKey directly, unaffected by hidden enforcement.
+  it('annotates a hidden industry and still fires onSelect when clicked', async () => {
+    fetchRegistrationIndustriesMock.mockResolvedValue(
+      REGISTRATION_INDUSTRIES_DESCRIBED.map((entry) => (
+        entry.key === 'food_manufacturing' ? { ...entry, hidden: true } : entry
+      ))
+    );
+    const onSelect = vi.fn();
+    render(<IndustryPicker value="" onSelect={onSelect} />);
+
+    const hiddenCard = (await screen.findByRole('radio', { name: /^Food Manufacturing/i })).closest('div');
+    expect(hiddenCard.textContent).toMatch(/hidden from registration/i);
+
+    fireEvent.click(screen.getByRole('radio', { name: /^Food Manufacturing/i }));
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ key: 'food_manufacturing' }));
+
+    const visibleCard = screen.getByRole('radio', { name: /^Retail/i }).closest('div');
+    expect(visibleCard.textContent).not.toMatch(/hidden from registration/i);
+  });
 });
