@@ -77,13 +77,18 @@ export function useStoreCatalogLoader({
     try {
       let profile;
       try {
-        profile = await requestJson(`/api/v1/storefront/discovery/${encodeURIComponent(normalized)}`, { cache: 'no-store' });
+        // No `cache: 'no-store'` here (issue #282, Phase B): the backend
+        // marks this route `public, max-age=30, stale-while-revalidate=60`
+        // with `Vary: X-Store-Slug`, so requestJson's default `cache:
+        // 'default'` lets the browser actually use that caching instead of
+        // discarding it on every navigation.
+        profile = await requestJson(`/api/v1/storefront/discovery/${encodeURIComponent(normalized)}`);
       } catch (profileError) {
         if (Number(profileError?.status) !== 404) throw profileError;
 
         let canonicalSlug = '';
         for (const fallbackQuery of buildStorefrontSlugFallbackQueries(normalized)) {
-          const discoveryFallback = await requestJson(`/api/v1/storefront/discovery?search=${encodeURIComponent(fallbackQuery)}&limit=20&result_mode=union&stock_filter=include_out_of_stock&pin_scope=tenant_primary&include_match_meta=true`, { cache: 'no-store' });
+          const discoveryFallback = await requestJson(`/api/v1/storefront/discovery?search=${encodeURIComponent(fallbackQuery)}&limit=20&result_mode=union&stock_filter=include_out_of_stock&pin_scope=tenant_primary&include_match_meta=true`);
           const fallbackStores = Array.isArray(discoveryFallback?.stores) ? discoveryFallback.stores : [];
           canonicalSlug = findCanonicalStorefrontSlug(normalized, fallbackStores)
             || findCanonicalStorefrontSlug(fallbackQuery, fallbackStores);
@@ -91,7 +96,7 @@ export function useStoreCatalogLoader({
         }
         if (!canonicalSlug) throw profileError;
 
-        profile = await requestJson(`/api/v1/storefront/discovery/${encodeURIComponent(canonicalSlug)}`, { cache: 'no-store' });
+        profile = await requestJson(`/api/v1/storefront/discovery/${encodeURIComponent(canonicalSlug)}`);
       }
       if (requestSequence !== storeLoadRequestSequenceRef.current) return;
 
@@ -117,7 +122,9 @@ export function useStoreCatalogLoader({
         || profile?.map_publication_disabled === true;
 
       try {
-        const locationsData = await requestJson('/api/v1/store/locations', { storeSlug: profile.slug, cache: 'no-store' });
+        // No `cache: 'no-store'` (issue #282, Phase B) -- see the profile
+        // fetch above for why.
+        const locationsData = await requestJson('/api/v1/store/locations', { storeSlug: profile.slug });
         if (requestSequence !== storeLoadRequestSequenceRef.current) return;
         const storeHasNoLocation = profileHasNoLocation
           || locationsData?.store_has_no_location === true
@@ -175,7 +182,9 @@ export function useStoreCatalogLoader({
       const catalogQuery = resolvedCatalogLocationId == null
         ? '/api/v1/store/catalog?limit=120'
         : `/api/v1/store/catalog?limit=120&location_id=${encodeURIComponent(resolvedCatalogLocationId)}`;
-      const catalogData = await requestJson(catalogQuery, { storeSlug: profile.slug, cache: 'no-store' });
+      // No `cache: 'no-store'` (issue #282, Phase B) -- see the profile
+      // fetch above for why.
+      const catalogData = await requestJson(catalogQuery, { storeSlug: profile.slug });
       if (requestSequence !== storeLoadRequestSequenceRef.current) return;
       const accessPatch = buildAccessPolicyStorePatch(catalogData?.access_policy);
       const capabilityPatch = buildWorkflowCapabilityStorePatch(catalogData);
@@ -221,7 +230,9 @@ export function useStoreCatalogLoader({
         const catalogQuery = selectedLocationId == null
           ? '/api/v1/store/catalog?limit=120'
           : `/api/v1/store/catalog?limit=120&location_id=${encodeURIComponent(selectedLocationId)}`;
-        const catalogData = await requestJson(catalogQuery, { storeSlug: selectedStore.slug, cache: 'no-store' });
+        // No `cache: 'no-store'` (issue #282, Phase B) -- see openStoreBySlug's
+        // profile fetch above for why.
+        const catalogData = await requestJson(catalogQuery, { storeSlug: selectedStore.slug });
         if (cancelled || requestSequence !== locationCatalogRequestSequenceRef.current) return;
         const accessPatch = buildAccessPolicyStorePatch(catalogData?.access_policy);
         const capabilityPatch = buildWorkflowCapabilityStorePatch(catalogData);
