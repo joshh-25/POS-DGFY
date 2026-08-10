@@ -22,3 +22,36 @@ it is the single largest, cheapest bundle win — bigger than all 25k lines of m
 targeted by item 6, for a fraction of the effort.
 
 Re-run the same build after each phase and diff against this table.
+
+## Post-Phase-E delta
+
+After lazy-loading the 4 maplibre-gl consumers (`DeliveryPinMap`, `StoresMap`,
+`TrackingRouteMap`, plus leaving the already-dead-code `DeliveryTrackingView`
+untouched) behind `React.lazy` wrappers with self-contained `Suspense`
+boundaries, and moving the `maplibre-gl.css` import out of `StorefrontApp.jsx`
+into each of the three real implementation files:
+
+| Asset | Before | After |
+|---|---:|---:|
+| Main app bundle (`index-*.js`) | 1,878.54 kB / 472.33 kB gzip | 1,847.24 kB / 462.28 kB gzip |
+| `vendor-maplibre-*.js` | 1,055.20 kB / 285.09 kB gzip | **same size, but no longer eagerly loaded** |
+| `vendor-maplibre-*.css` | 69.94 kB / 10.06 kB gzip | **same size, but no longer eagerly loaded** |
+| New: `DeliveryPinMap-*.js` | -- | 5.71 kB / 2.43 kB gzip |
+| New: `StoresMap-*.js` | -- | 16.57 kB / 5.88 kB gzip |
+| New: `TrackingRouteMap-*.js` | -- | 2.93 kB / 1.39 kB gzip |
+| New: `discoveryMapLayers-*.js` | -- | 8.45 kB / 3.00 kB gzip |
+
+Verified via `dist-apps/store/index.html`: `vendor-maplibre-*.js` and its CSS
+no longer appear in the `<link rel="modulepreload">` / `<link rel="stylesheet">`
+list at all -- only `vendor-icons` and `vendor-qrcode` remain eager. Each of
+the three new lazy chunks statically imports `vendor-maplibre-*.js` from
+*within* its own dynamically-`import()`ed module, confirmed by inspecting
+the built chunk output directly.
+
+**Net effect on a cold storefront-page load with no map ever rendering**
+(the common case — home/catalog browsing, most checkout flows): **285 kB
+gzip of JS and 10 kB gzip of CSS removed from the critical path**, a ~28%
+cut to the ~1,038 kB gzip JS total measured in the pre-fix baseline above.
+Stores with hero map data (`StoresMap` in the contact-location components)
+still pay this cost, but only once the map actually mounts, and it no
+longer blocks anything else on the page.

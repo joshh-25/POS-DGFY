@@ -1,6 +1,6 @@
 import React from 'react';
 import { Bike, Maximize } from 'lucide-react';
-import { StoresMap } from '../../../../discovery/components/StoresMap.jsx';
+import { StoresMap } from '../../../../discovery/components/StoresMapLazy.jsx';
 import { getStorefrontContactIcon } from '../../../../features/shared-storefront/utils/storefrontDisplayUtils.jsx';
 import { StorefrontDirectionsEta } from '../../../../shared/components/storefront/hero/StorefrontDirectionsEta.jsx';
 

@@ -4,7 +4,7 @@ import { FnbProductDetailsRoute } from '../../modes/fnb/storefront/pages/FnbProd
 import { StorefrontServicesCatalog } from '../../modes/services/storefront/components/StorefrontServicesCatalog.jsx';
 import { StorefrontClassicCatalog } from '../../shared/components/storefront/StorefrontClassicCatalog.jsx';
 import { SERVICE_CATEGORY_ICON_MAP } from '../../modes/services/storefront/model/serviceCategoryIconMap.jsx';
-import { DeliveryPinMap } from '../../features/locations/components/DeliveryPinMap.jsx';
+import { DeliveryPinMap } from '../../features/locations/components/DeliveryPinMapLazy.jsx';
 
 // ZONE 4: Catalog Grid with Sidebar — cross-mode dispatcher (fnb product-details route,
 // services catalog, classic catalog). Moved verbatim out of StorefrontApp.jsx's ZONE 4 IIFE;

@@ -165,7 +165,7 @@ import {
   TILING_SERVER,
   tileTransformRequest
 } from './app/runtime/storefrontMapRuntime.js';
-import { DeliveryPinMap } from './features/locations/components/DeliveryPinMap.jsx';
+import { DeliveryPinMap } from './features/locations/components/DeliveryPinMapLazy.jsx';
 import { createAddressPinEditorRenderer } from './features/locations/renderers/addressPinEditorRenderer.jsx';
 import {
   buildPinnedDeliveryAddress,
@@ -212,7 +212,7 @@ import { useServiceCartDrawerProps } from './modes/services/booking/hooks/useSer
 import { useSimpleCartDrawerProps } from './modes/simple/checkout/hooks/useSimpleCartDrawerProps.js';
 import { useSimpleCheckoutGating } from './modes/simple/checkout/hooks/useSimpleCheckoutGating.js';
 import { useSimpleCheckoutRouteProps } from './modes/simple/checkout/hooks/useSimpleCheckoutRouteProps.js';
-import { StoresMap } from './discovery/components/StoresMap.jsx';
+import { StoresMap } from './discovery/components/StoresMapLazy.jsx';
 import {
   DISCOVERY_CATEGORY_FILTER_OPTIONS,
   DISCOVERY_CATEGORY_MATCHERS,
@@ -302,7 +302,11 @@ import {
   selectIsOnlinePaymentModalOpen,
   selectViewportWidth
 } from './store/selectors/uiSelectors.js';
-import 'maplibre-gl/dist/maplibre-gl.css';
+// Issue #282, Phase E: no longer imported here -- it shipped maplibre-gl's
+// CSS on every storefront page load regardless of whether any map ever
+// rendered. Colocated instead with the library import in DeliveryPinMap.jsx,
+// StoresMap.jsx, and TrackingRouteMap.jsx, which are now only reached
+// through their respective *Lazy.jsx wrappers' dynamic import().
 
 /* Legacy storefront contract anchors (frontend-only compatibility)
 id: 'reservation'
