@@ -5,10 +5,10 @@ const repoRoot = process.cwd();
 const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 
 const docsSpec = read('docs/api/specification.md');
-const posValidator = read('backend/src/validators/posValidator.js');
-const complianceUseCases = read('backend/src/modules/compliance/usecases/complianceUseCases.js');
-const compliancePolicyEngine = read('backend/src/modules/compliance/policy/compliancePolicyEngine.js');
-const reportService = read('backend/src/services/reportService.js');
+const posValidator = read('apps/dgfy-api/src/validators/posValidator.js');
+const complianceUseCases = read('apps/dgfy-api/src/modules/compliance/usecases/complianceUseCases.js');
+const compliancePolicyEngine = read('apps/dgfy-api/src/modules/compliance/policy/compliancePolicyEngine.js');
+const reportService = read('apps/dgfy-api/src/services/reportService.js');
 
 const checks = [
     {

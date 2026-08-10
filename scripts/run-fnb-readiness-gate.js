@@ -13,52 +13,52 @@ const steps = [
   {
     label: 'Backend F&B operational QA',
     command: npmCommand,
-    args: ['--prefix', 'backend', 'test', '--', 'fnbOperationalReadiness.qa.test.js', '--runInBand']
+    args: ['--prefix', 'apps/dgfy-api', 'test', '--', 'fnbOperationalReadiness.qa.test.js', '--runInBand']
   },
   {
     label: 'Backend F&B use cases',
     command: npmCommand,
-    args: ['--prefix', 'backend', 'test', '--', 'fnbMode.usecases.test.js', '--runInBand']
+    args: ['--prefix', 'apps/dgfy-api', 'test', '--', 'fnbMode.usecases.test.js', '--runInBand']
   },
   {
     label: 'Backend POS F&B checkout contracts',
     command: npmCommand,
-    args: ['--prefix', 'backend', 'test', '--', 'posCheckoutFnbContracts.usecase.test.js', '--runInBand']
+    args: ['--prefix', 'apps/dgfy-api', 'test', '--', 'posCheckoutFnbContracts.usecase.test.js', '--runInBand']
   },
   {
     label: 'Backend Storefront F&B checkout contracts',
     command: npmCommand,
-    args: ['--prefix', 'backend', 'test', '--', 'storeFnbModifiers.usecases.test.js', '--runInBand']
+    args: ['--prefix', 'apps/dgfy-api', 'test', '--', 'storeFnbModifiers.usecases.test.js', '--runInBand']
   },
   {
     label: 'Frontend F&B kitchen queue display contract',
     command: npmCommand,
-    args: ['--prefix', 'frontend', 'test', '--', 'kitchenQueueDisplay.test.js']
+    args: ['--prefix', 'apps/dgfy-web', 'test', '--', 'kitchenQueueDisplay.test.js']
   },
   {
     label: 'Frontend POS terminal mode contract',
     command: npmCommand,
-    args: ['--prefix', 'frontend', 'test', '--', 'terminalViewModeContracts.test.js']
+    args: ['--prefix', 'apps/dgfy-web', 'test', '--', 'terminalViewModeContracts.test.js']
   },
   {
     label: 'Frontend Storefront error-message contract',
     command: npmCommand,
-    args: ['--prefix', 'frontend', 'test', '--', 'storefrontErrorMessages.test.js']
+    args: ['--prefix', 'apps/dgfy-web', 'test', '--', 'storefrontErrorMessages.test.js']
   },
   {
     label: 'Skupervisor production build',
     command: npmCommand,
-    args: ['--prefix', 'frontend', 'run', 'build:skupervisor']
+    args: ['--prefix', 'apps/dgfy-web', 'run', 'build:skupervisor']
   },
   {
     label: 'POS production build',
     command: npmCommand,
-    args: ['--prefix', 'frontend', 'run', 'build:pos']
+    args: ['--prefix', 'apps/dgfy-web', 'run', 'build:pos']
   },
   {
     label: 'Storefront production build',
     command: npmCommand,
-    args: ['--prefix', 'frontend', 'run', 'build:store']
+    args: ['--prefix', 'apps/dgfy-web', 'run', 'build:store']
   },
   {
     label: 'Architecture gate',

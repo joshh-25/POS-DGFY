@@ -29,7 +29,7 @@ function writeFile(projectRoot, relativePath, content) {
 }
 
 function writePassingManifest(projectRoot, relativePath = 'docs/release/merge-adoption/test.json') {
-  writeFile(projectRoot, 'frontend/apps/store/src/StorefrontApp.jsx', 'const title = "Continue to your order";');
+  writeFile(projectRoot, 'apps/dgfy-web/apps/store/src/StorefrontApp.jsx', 'const title = "Continue to your order";');
   writeFile(
     projectRoot,
     relativePath,
@@ -50,14 +50,14 @@ function writePassingManifest(projectRoot, relativePath = 'docs/release/merge-ad
             intent: 'Adopt checkout entry UI while preserving master order linkage.',
             master_behaviors_preserved: ['DGFY account ownership remains explicit.'],
             proof: {
-              required_files_present: ['frontend/apps/store/src/StorefrontApp.jsx'],
+              required_files_present: ['apps/dgfy-web/apps/store/src/StorefrontApp.jsx'],
               required_strings_present: [
                 {
-                  file: 'frontend/apps/store/src/StorefrontApp.jsx',
+                  file: 'apps/dgfy-web/apps/store/src/StorefrontApp.jsx',
                   text: 'Continue to your order',
                 },
               ],
-              tests: ['npm --prefix frontend test -- --run apps/store/src/__tests__/checkoutRules.test.js'],
+              tests: ['npm --prefix apps/dgfy-web test -- --run apps/store/src/__tests__/checkoutRules.test.js'],
             },
           },
         ],
@@ -70,15 +70,15 @@ function writePassingManifest(projectRoot, relativePath = 'docs/release/merge-ad
 }
 
 test('recognizes high-risk storefront and customer-flow paths', () => {
-  assert.equal(isHighRiskPath('frontend/apps/store/src/StorefrontApp.jsx'), true);
-  assert.equal(isHighRiskPath('backend/src/modules/dgfy/usecases/dgfyCustomerUseCases.js'), true);
+  assert.equal(isHighRiskPath('apps/dgfy-web/apps/store/src/StorefrontApp.jsx'), true);
+  assert.equal(isHighRiskPath('apps/dgfy-api/src/modules/dgfy/usecases/dgfyCustomerUseCases.js'), true);
   assert.equal(isHighRiskPath('docs/features/DGFY_CUSTOMER_ACCOUNT.md'), true);
   assert.equal(isHighRiskPath('docs/archive/old-note.md'), false);
 });
 
 test('finds adoption manifests under docs/release/merge-adoption', () => {
   assert.deepEqual(findManifestCandidates([
-    'frontend/apps/store/src/StorefrontApp.jsx',
+    'apps/dgfy-web/apps/store/src/StorefrontApp.jsx',
     'docs/release/merge-adoption/storefront-customer-flow.json',
     'docs/templates/MERGE_ADOPTION_MANIFEST_TEMPLATE.json',
   ]), ['docs/release/merge-adoption/storefront-customer-flow.json']);
@@ -131,7 +131,7 @@ test('fails high-risk changes without a manifest', () => {
     assert.throws(
       () => validateRequiredManifest({
         projectRoot,
-        changedFiles: ['frontend/apps/store/src/StorefrontApp.jsx'],
+        changedFiles: ['apps/dgfy-web/apps/store/src/StorefrontApp.jsx'],
         logger: silentLogger,
       }),
       (error) => error instanceof MergeAdoptionRequiredError && error.code === 'MANIFEST_REQUIRED'
@@ -147,7 +147,7 @@ test('auto-selects and validates a single changed manifest', () => {
     const manifestPath = writePassingManifest(projectRoot);
     const report = validateRequiredManifest({
       projectRoot,
-      changedFiles: ['frontend/apps/store/src/StorefrontApp.jsx', manifestPath],
+      changedFiles: ['apps/dgfy-web/apps/store/src/StorefrontApp.jsx', manifestPath],
       logger: silentLogger,
     });
     assert.equal(report.required, true);
@@ -160,7 +160,7 @@ test('auto-selects and validates a single changed manifest', () => {
 test('allows explicit no-adoption override for documented exceptions', () => {
   const report = validateRequiredManifest({
     projectRoot: makeTempProject(),
-    changedFiles: ['frontend/apps/store/src/StorefrontApp.jsx'],
+    changedFiles: ['apps/dgfy-web/apps/store/src/StorefrontApp.jsx'],
     allowNotRequired: true,
     logger: silentLogger,
   });

@@ -16,19 +16,27 @@ Authoritative planning entry: [docs/START_HERE.md](docs/START_HERE.md)
 
 ```text
 SKU-Inventory-Manager/
-|- backend/             # Express + Sequelize API
-|- frontend/            # Vite apps: skupervisor, pos, store
+|- apps/
+|  |- dgfy-api/              # Express + Sequelize API
+|  |- dgfy-migration-runner/ # Sequelize migrations, seeders, DB bootstrap
+|  |- dgfy-web/               # Vite apps: skupervisor, pos, store
+|  \- dgfy-android-bridge/    # imin-wrapper Android app
 |- docs/                # Architecture, API, database, testing, reference
 |- scripts/             # Repo-level helpers and docs tooling
 |- packages/            # Shared/internal packages
 \- package.json         # Root scripts
 ```
 
+> There is no `backend/`, `frontend/`, or `android/` at the repo root — they were
+> relocated under `apps/`. See
+> [docs/architecture/apps-layout-migration.md](docs/architecture/apps-layout-migration.md)
+> for the full path map and before/after local-run commands.
+
 ## Current App Surfaces
 
-- `frontend/apps/skupervisor`: primary tenant/admin app
-- `frontend/apps/pos`: POS terminal app
-- `frontend/apps/store`: public storefront app
+- `apps/dgfy-web/apps/skupervisor`: primary tenant/admin app
+- `apps/dgfy-web/apps/pos`: POS terminal app
+- `apps/dgfy-web/apps/store`: public storefront app
 
 ## Quick Start
 
@@ -102,6 +110,7 @@ Start here:
 
 High-value docs:
 
+- [docs/architecture/apps-layout-migration.md](docs/architecture/apps-layout-migration.md)
 - [docs/architecture/ARCHITECTURE_BOUNDARIES.md](docs/architecture/ARCHITECTURE_BOUNDARIES.md)
 - [docs/architecture/ARCHITECTURE_GOVERNANCE.md](docs/architecture/ARCHITECTURE_GOVERNANCE.md)
 - [docs/api/specification.md](docs/api/specification.md)

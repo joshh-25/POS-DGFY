@@ -33,12 +33,16 @@ jobs:
           node-version: '24'
           cache: npm
           cache-dependency-path: |
-            backend/package-lock.json
+            apps/dgfy-api/package-lock.json
             frontend/package-lock.json
 
-      - name: Install backend dependencies
+      - name: Install dgfy-api dependencies
         run: npm ci
-        working-directory: ./backend
+        working-directory: ./apps/dgfy-api
+
+      - name: Install migration-runner dependencies
+        run: npm ci
+        working-directory: ./apps/dgfy-migration-runner
 
       - name: Install frontend dependencies
         run: npm ci
@@ -46,11 +50,11 @@ jobs:
 
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
-        working-directory: ./backend
+        working-directory: ./apps/dgfy-api
 
       - name: Prepare runtime schema
-        run: npx sequelize-cli db:migrate --env development --config src/config/sequelize.config.cjs --migrations-path migrations
-        working-directory: ./backend
+        run: npx sequelize-cli db:migrate --config src/config/sequelize.config.cjs
+        working-directory: ./apps/dgfy-migration-runner
         env:
           NODE_ENV: test
           DB_HOST: localhost
@@ -65,7 +69,7 @@ jobs:
 
       - name: Run IMS->POS->Sales matrix browser journey
         run: npm run test:frontend-ims-pos-sales-e2e:matrix
-        working-directory: ./backend
+        working-directory: ./apps/dgfy-api
         env:
           RUN_BROWSER_E2E: 'true'
           NODE_ENV: test
@@ -86,7 +90,7 @@ jobs:
         with:
           name: ims-pos-sales-journey-nightly-artifacts
           path: |
-            backend/tests/artifacts/**
-            backend/test-results/**
+            apps/dgfy-api/tests/artifacts/**
+            apps/dgfy-api/test-results/**
           if-no-files-found: ignore
           retention-days: 5

@@ -96,8 +96,8 @@ work the same after this ships." Each claim below states the mechanism,
 not just the conclusion, so it can be checked rather than trusted.
 
 **Registration is visually and functionally unchanged.** Both
-registration UIs (`frontend/Pages/RegisterCompany.jsx` and
-`frontend/apps/store/src/business/pages/StorefrontBusinessGrowPage.jsx`)
+registration UIs (`apps/dgfy-web/Pages/RegisterCompany.jsx` and
+`apps/dgfy-web/apps/store/src/business/pages/StorefrontBusinessGrowPage.jsx`)
 still show the same 10 "Operating Mode" choices, built from
 `WORKFLOW_MODE_SELECT_VALUES`. There is no template picker on the organic
 signup path. Nothing about what a merchant sees or fills in changes.
@@ -114,7 +114,7 @@ this either didn't happen (before Phase 20's seed migration existed) or
 happened against an empty catalog. **The materialized capability set is
 unchanged**: a canonical preset's module list is defined to equal its
 base mode's own capability list
-(`backend/tests/capabilityModules.contract.test.js` pins this), so a
+(`apps/dgfy-api/tests/capabilityModules.contract.test.js` pins this), so a
 tenant provisioned today gets exactly the same effective capabilities it
 would have gotten before this template existed. The only visible change
 is that the Profile now carries a provenance stamp instead of nulls.
@@ -182,7 +182,7 @@ Every workflow mode is classified by **who runs its selling engine** —
 **Flipping a mode's classification is meant to be a one-line change** in
 `WORKFLOW_MODE_ENGINE` — but check what moves with it:
 
-1. `backend/tests/capabilityModules.contract.test.js`'s "engine
+1. `apps/dgfy-api/tests/capabilityModules.contract.test.js`'s "engine
    classification contracts" suite pins the *current* membership of each
    tier by name — update the expected arrays in the same commit as the flip,
    or the test fails loudly (that's the point).
@@ -223,7 +223,7 @@ the test will fail loudly if you try.
 ## 5. Admin how-to
 
 **Curating templates** — `/admin/store-templates`
-(`frontend/Pages/admin/StoreTemplateManager.jsx`), Platform Master Admin
+(`apps/dgfy-web/Pages/admin/StoreTemplateManager.jsx`), Platform Master Admin
 only (`masterOnly` in `middleware/auth.js`, not a delegable permission —
 a published template shapes every future tenant, platform-wide):
 
@@ -256,7 +256,7 @@ a published template shapes every future tenant, platform-wide):
   platform-preset or canonical provenance.
 
 **Applying a template to an existing tenant** — the per-tenant picker on
-`frontend/Pages/admin/TenantManager.jsx` (published templates only,
+`apps/dgfy-web/Pages/admin/TenantManager.jsx` (published templates only,
 active tenants only), or `POST /admin/tenants/:id/apply-template`
 directly. Requires `templateKey` and a reason (≥3 characters). One
 transaction: seeds the three overlay settings from the materialized
@@ -296,7 +296,7 @@ baseline and the read/write paths' fail-open fallback, not the runtime
 catalog** — see ADR 0058.
 
 The endpoint (joined against live template publish-status) serves
-`frontend/src/features/registration/`'s two components: `IndustrySelect.jsx`
+`apps/dgfy-web/src/features/registration/`'s two components: `IndustrySelect.jsx`
 (the merchant dropdown on `/business/grow` and `/register-company`, since
 Phase 38) and `IndustryPicker.jsx` (admin-only, TenantManager's
 assisted-provisioning panel).
@@ -306,7 +306,7 @@ assisted-provisioning panel).
 1. If the industry needs a template that doesn't exist yet, create and
    publish one first (§5 above, "Curating templates").
 2. Open the "Registration industries" panel on the Store Template Manager
-   page (`frontend/Pages/admin/StoreTemplateManager.jsx`) and use the "New
+   page (`apps/dgfy-web/Pages/admin/StoreTemplateManager.jsx`) and use the "New
    industry" form: key, label, summary, niches, workflow mode, and (for
    any non-`external`-engine mode) the published template to pair it with
    — the panel only offers templates whose `base_mode` matches the chosen
@@ -321,7 +321,7 @@ assisted-provisioning panel).
    new industry's write-up for narrative/reference purposes — the catalog
    itself no longer depends on that doc or the constant to function.
 
-`backend/tests/registrationIndustries.contract.test.js` still exists and
+`apps/dgfy-api/tests/registrationIndustries.contract.test.js` still exists and
 still runs on every change to the constant, but its role changed: it now
 pins **seed-baseline integrity** (the 11 shipped entries stay internally
 consistent — mode/template pairing, `order` contiguity, null-iff-external)
@@ -348,7 +348,7 @@ entry for the new mode.
 
 An admin curates the entire catalog — hide/show, create, and edit — through
 the "Registration industries" panel on the Store Template Manager page
-(`frontend/Pages/admin/StoreTemplateManager.jsx`), backed by
+(`apps/dgfy-web/Pages/admin/StoreTemplateManager.jsx`), backed by
 `GET/POST/PATCH /api/v1/admin/registration-industries*`.
 
 Mechanics:
@@ -432,11 +432,11 @@ example — every layer a new module or a new mode variant touches:
    needed) — `orderMethods.js`. **This one is a DB migration in the same
    PR**: `ALL_ORDER_METHODS` must stay identical to the
    `pos_transactions.order_method` ENUM, enforced by
-   `backend/tests/orderMethods.crossLayer.contract.test.js`.
+   `apps/dgfy-api/tests/orderMethods.crossLayer.contract.test.js`.
 5. **The actual guard** — a `requireWorkflowCapability(...)` route gate,
    or an entry in `CAPABILITY_TAXONOMY_OVERLAY_MODES`
    (`modeItemTaxonomy.js`) for item-taxonomy-shaped capabilities. This is
-   not optional: `backend/tests/workflowCapabilities.enforcement.contract.test.js`
+   not optional: `apps/dgfy-api/tests/workflowCapabilities.enforcement.contract.test.js`
    fails if a declared capability has no real reader — decorative
    capabilities cannot land.
 6. **Store Profile** — if the module affects a Profile block (`modules`,
@@ -444,11 +444,11 @@ example — every layer a new module or a new mode variant touches:
    `storeProfile.js`'s `buildStoreProfile` derives it from the *effective*
    module set, not just the base mode — and bump `STORE_PROFILE_VERSION`
    if the Profile's shape changes at all.
-7. **Frontend affordance consumers** — `frontend/src/features/settings/workflowMode.js`
+7. **Frontend affordance consumers** — `apps/dgfy-web/src/features/settings/workflowMode.js`
    (`WORKFLOW_PAGE_CAPABILITIES`/`WORKFLOW_ROUTE_CAPABILITIES`),
    `WorkflowModeContext.jsx`'s `hasCapability`, and any POS/storefront
    component that renders conditionally on the capability.
-8. **Storefront presentation** (`frontend/apps/store/src/app/runtime/`) —
+8. **Storefront presentation** (`apps/dgfy-web/apps/store/src/app/runtime/`) —
    `storefrontTemplateRegistry.js` / `modePresentationRegistry.js`, if the
    module changes what the public storefront shows.
 
@@ -489,10 +489,10 @@ definitely not a Folio. Before writing any code, work through:
   POS at all. This needs new modeling, not a flag on an existing one.
 - **Fiscal/VAT implications** of a recurring or partial-payment sale are
   a compliance-surface question — loop in whoever owns
-  `backend/src/modules/compliance/` before designing the settlement
+  `apps/dgfy-api/src/modules/compliance/` before designing the settlement
   shape, not after.
 - **The layer checklist from §6.2 still applies**, plus: a new backend
-  module under `backend/src/modules/`, a new `frontend/apps/store/src/modes/<x>/`
+  module under `apps/dgfy-api/src/modules/`, a new `apps/dgfy-web/apps/store/src/modes/<x>/`
   storefront tree, an ADR, and the lifecycle table in
   `STORE_TEMPLATES_AND_PROFILES.md` growing from three rows to four.
 - **No catalog slot is reserved for this today, deliberately.** The four
@@ -511,18 +511,18 @@ final-touch hardening pass, if you can't find it.
 Run these after any change in this area — they're what catches a skipped
 layer, not code review:
 
-- `backend/tests/capabilityModules.contract.test.js` — catalog ↔
+- `apps/dgfy-api/tests/capabilityModules.contract.test.js` — catalog ↔
   capability vocabulary lockstep, per-mode bundle equivalence, preset
   validity, and (issue #178 final-touch) the bare-mode partition.
-- `backend/tests/workflowCapabilities.enforcement.contract.test.js` — no
+- `apps/dgfy-api/tests/workflowCapabilities.enforcement.contract.test.js` — no
   capability may be declared without a real reader.
-- `backend/tests/orderMethods.crossLayer.contract.test.js` — order-method
+- `apps/dgfy-api/tests/orderMethods.crossLayer.contract.test.js` — order-method
   vocabulary ↔ DB ENUM.
-- `backend/tests/workflowModes.crossLayer.contract.test.js` — backend and
+- `apps/dgfy-api/tests/workflowModes.crossLayer.contract.test.js` — backend and
   frontend copies of `resolveEffectiveCapabilities` stay in lockstep.
-- `backend/tests/storeProfile.equivalence.contract.test.js` — Profile
+- `apps/dgfy-api/tests/storeProfile.equivalence.contract.test.js` — Profile
   byte-equivalence; this is what catches an unbumped `STORE_PROFILE_VERSION`.
-- `backend/tests/workflowModeCapability.middleware.test.js` — the
+- `apps/dgfy-api/tests/workflowModeCapability.middleware.test.js` — the
   fail-closed gate itself: grants/denies on both the registry and
   resolver paths, always denies on error.
 
@@ -568,7 +568,7 @@ real versioning, that's new work, not a bug fix.
 reopen without a product decision. A third has since shipped:**
 
 1. **The public storefront doesn't see subtraction.** `storeUseCases.js`'s
-   catalog listing and `frontend/apps/store`'s capability model both read
+   catalog listing and `apps/dgfy-web/apps/store`'s capability model both read
    only the enabled overlay, never the disabled one. Backend and admin
    POS correctly deny subtracted capabilities; the public storefront can
    still present them. A separate app, a separate phase's worth of work.
@@ -606,19 +606,19 @@ If you're an AI assistant picking up work in this area:
   `packages/shared-constants/src/capabilityModules.js` — never restate
   `STORE_TEMPLATE_PRESETS` content anywhere else (the seed migration reads
   it via a dynamic import for exactly this reason).
-- **Compliance tripwires** — changes under `backend/src/modules/settings/**`
-  or `frontend/src/features/pos/**` require a compliance impact
+- **Compliance tripwires** — changes under `apps/dgfy-api/src/modules/settings/**`
+  or `apps/dgfy-web/src/features/pos/**` require a compliance impact
   declaration (`docs/compliance/impact-declarations/`,
-  `npm run check:compliance`). `backend/src/routes/adminTenants.js`,
-  `frontend/src/services/adminService.js`, and
-  `frontend/Pages/admin/TenantManager.jsx` carry a `regulatory` floor
+  `npm run check:compliance`). `apps/dgfy-api/src/routes/adminTenants.js`,
+  `apps/dgfy-web/src/services/adminService.js`, and
+  `apps/dgfy-web/Pages/admin/TenantManager.jsx` carry a `regulatory` floor
   specifically — see `scripts/check-compliance-impact.js`'s sensitivity
   matrix before assuming a `major` classification is enough. A clean
   local git tree makes `npm run check:compliance` report "no
   compliance-sensitive changes" even when a PR's full diff would fail it
   — simulate against the real diff before trusting a local pass:
   `COMPLIANCE_CHANGED_FILES="$(git diff --name-only origin/develop...HEAD | tr '\n' ',')" node scripts/check-compliance-impact.js`.
-- **Circular-import hazard**: `backend/src/modules/inventory/repositories/itemRepository.js`
+- **Circular-import hazard**: `apps/dgfy-api/src/modules/inventory/repositories/itemRepository.js`
   statically imports `settings/index.js`, so any static reverse edge from
   a settings use case into `inventory/index.js` throws at module load.
   Use dynamic `await import()` if you need that direction.

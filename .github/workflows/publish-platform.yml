@@ -87,6 +87,20 @@ jobs:
           # Token is piped over the existing SSH stdin into `docker login
           # --password-stdin` on the remote -- never an argv or env var on
           # that host, so it can't leak via `ps aux` there.
+          #
+          # Staleness guard (PR #55): $DOCKER_DIR on the server is
+          # hand-maintained, NOT a git checkout (see this file's header
+          # comment) -- it does not pick up the compose-file service/image
+          # rename from `backend` to `dgfy-api` + `dgfy-migration-runner`
+          # just because this workflow merged. Without this check, a server
+          # whose compose wasn't updated yet would `pull`/`up` cleanly
+          # against the now-frozen `backend:<tag>` image while everything
+          # else moves on -- a green deploy that silently leaves the API on
+          # stale code. Fail loudly instead.
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
-            "docker login ghcr.io -u $GITHUB_ACTOR --password-stdin && cd $DOCKER_DIR && docker compose pull && docker compose up -d --remove-orphans && docker logout ghcr.io" \
+            "docker login ghcr.io -u $GITHUB_ACTOR --password-stdin && \
+             cd $DOCKER_DIR && \
+             COMPOSE_IMAGES=\$(docker compose config --images) && \
+             { echo \"\$COMPOSE_IMAGES\" | grep -q 'dgfy-platform/api' && echo \"\$COMPOSE_IMAGES\" | grep -q 'dgfy-platform/migration-runner'; } || { echo \"::error::\$(pwd) compose has no dgfy-api/migration-runner image reference -- server compose is stale, refusing to deploy.\" >&2; exit 1; } && \
+             docker compose pull && docker compose up -d --remove-orphans && docker logout ghcr.io" \
             <<< "$GITHUB_TOKEN"

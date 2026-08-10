@@ -27,17 +27,17 @@ Planning and validation for PWA behavior must start with:
 
 | Surface | Source root | Manifest | Service worker | Build output |
 |---|---|---|---|---|
-| SKUpervisor admin shell | `frontend/` | `frontend/public/manifest.webmanifest` | `frontend/public/sw.js` | `frontend/dist/` |
-| SKUpervisor app build | `frontend/apps/skupervisor/` | `frontend/apps/skupervisor/public/manifest.webmanifest` | `frontend/apps/skupervisor/public/sw.js` | `dist-apps/skupervisor/` |
-| POS | `frontend/apps/pos/` | `frontend/apps/pos/manifest.webmanifest` | `frontend/apps/pos/public/sw.js` | `dist-apps/pos/` |
-| Storefront | `frontend/apps/store/` | `frontend/apps/store/public/manifest.json` | `frontend/apps/store/public/sw.js` | `dist-apps/store/` |
+| SKUpervisor admin shell | `apps/dgfy-web/` | `apps/dgfy-web/public/manifest.webmanifest` | `apps/dgfy-web/public/sw.js` | `apps/dgfy-web/dist/` |
+| SKUpervisor app build | `apps/dgfy-web/apps/skupervisor/` | `apps/dgfy-web/apps/skupervisor/public/manifest.webmanifest` | `apps/dgfy-web/apps/skupervisor/public/sw.js` | `dist-apps/skupervisor/` |
+| POS | `apps/dgfy-web/apps/pos/` | `apps/dgfy-web/apps/pos/manifest.webmanifest` | `apps/dgfy-web/apps/pos/public/sw.js` | `dist-apps/pos/` |
+| Storefront | `apps/dgfy-web/apps/store/` | `apps/dgfy-web/apps/store/public/manifest.json` | `apps/dgfy-web/apps/store/public/sw.js` | `dist-apps/store/` |
 
 ## Admin/SKUpervisor Contract
 
 The admin/SKUpervisor PWA is installable and uses conservative caching:
 
 1. `index.html` includes manifest, theme color, Apple mobile-web-app metadata, and touch icon metadata.
-2. `frontend/src/main.jsx` registers the admin service worker in production only.
+2. `apps/dgfy-web/src/main.jsx` registers the admin service worker in production only.
 3. Service-worker registration probes `sw.js` first and requires a script-like content type before registration.
 4. Static shell resources are cacheable.
 5. Navigation requests use network-first behavior with cached fallback when available.
@@ -59,15 +59,15 @@ POS and Storefront retain their existing service-worker entrypoints.
 
 Run before rating PWA readiness as user-ready:
 
-1. `npm --prefix frontend run build`
-2. `npm --prefix frontend run build:skupervisor`
-3. `npm --prefix frontend run build:all`
-4. `node --check frontend/public/sw.js`
-5. `node --check frontend/apps/skupervisor/public/sw.js`
+1. `npm --prefix apps/dgfy-web run build`
+2. `npm --prefix apps/dgfy-web run build:skupervisor`
+3. `npm --prefix apps/dgfy-web run build:all`
+4. `node --check apps/dgfy-web/public/sw.js`
+5. `node --check apps/dgfy-web/apps/skupervisor/public/sw.js`
 6. Parse all manifest JSON files.
 7. Confirm production build output contains:
-   - `frontend/dist/manifest.webmanifest`
-   - `frontend/dist/sw.js`
+   - `apps/dgfy-web/dist/manifest.webmanifest`
+   - `apps/dgfy-web/dist/sw.js`
    - `dist-apps/skupervisor/manifest.webmanifest`
    - `dist-apps/skupervisor/sw.js`
    - `dist-apps/pos/sw.js`
@@ -98,7 +98,7 @@ Remaining work before a `10/10` rating:
 
 Generated PWA/build outputs are disposable:
 
-1. `frontend/dist/`
+1. `apps/dgfy-web/dist/`
 2. `dist-apps/`
 
-Do not delete source PWA files under `frontend/public/` or `frontend/apps/*/public/`.
+Do not delete source PWA files under `apps/dgfy-web/public/` or `apps/dgfy-web/apps/*/public/`.

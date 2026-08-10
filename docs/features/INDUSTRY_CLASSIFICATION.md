@@ -327,16 +327,16 @@ panel:
   table retired once every consumer cut over; see
   `docs/development/STORE_TEMPLATES_HANDOFF.md` §5.)
 - Admin surface: the "Registration industries" panel on the Store Template
-  Manager page (`frontend/Pages/admin/StoreTemplateManager.jsx`), and the
+  Manager page (`apps/dgfy-web/Pages/admin/StoreTemplateManager.jsx`), and the
   `GET/POST/PATCH /api/v1/admin/registration-industries*` endpoints
   behind it.
 - Merchant contract: `GET /api/v1/registration/industries` always returns
   every row — it never shortens the array — with a `hidden: boolean` field
   per entry (plus `template_modules`, the paired template's live module
   list). The merchant-facing `IndustrySelect` dropdown
-  (`frontend/src/features/registration/IndustrySelect.jsx`) filters out any
+  (`apps/dgfy-web/src/features/registration/IndustrySelect.jsx`) filters out any
   `hidden: true` entry; the admin-only `IndustryPicker`
-  (`frontend/src/features/registration/IndustryPicker.jsx`, TenantManager's
+  (`apps/dgfy-web/src/features/registration/IndustryPicker.jsx`, TenantManager's
   assisted-provisioning panel) instead annotates it "Hidden from
   registration" and leaves it selectable.
 - Server enforcement: `registerCompanyRequestUseCase.js` resolves
@@ -393,7 +393,7 @@ Either way, the merchant dropdown (`IndustrySelect.jsx`) would render
 shape beyond whatever field carries the grouping. Consequences to plan for
 when this lands:
 
-- `backend/tests/registrationIndustries.contract.test.js`'s "unique,
+- `apps/dgfy-api/tests/registrationIndustries.contract.test.js`'s "unique,
   contiguous 1-based `order` values" pin now describes the **seed
   baseline** only (ADR 0058) — a DB-level grouping feature would need its
   own contract test over the live table, independent of that pin.
@@ -422,4 +422,4 @@ that decision.
 - `packages/shared-constants/src/registrationIndustries.js` — the seed
   baseline and fail-open fallback the `registration_industries` table was
   populated from, pinned by
-  `backend/tests/registrationIndustries.contract.test.js`.
+  `apps/dgfy-api/tests/registrationIndustries.contract.test.js`.

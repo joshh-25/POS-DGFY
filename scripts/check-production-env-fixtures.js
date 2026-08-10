@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-const { validateProductionEnv } = require('../backend/src/config/productionEnvValidation.cjs');
+const { validateProductionEnv } = require('../apps/dgfy-api/src/config/productionEnvValidation.cjs');
 
 const strongSecret = (label) => `${label}_${'a'.repeat(48)}`;
 

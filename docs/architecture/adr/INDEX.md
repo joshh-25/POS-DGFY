@@ -81,6 +81,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0056 | [Store Configuration Templates and Profiles](0056-store-configuration-templates-and-profiles.md) | `amended` | store_configuration_templates_and_profiles | 2027-02-09 | 3 |
 | 0057 | [Services Fulfillment Profiles](0057-services-fulfillment-profiles.md) | `accepted` | services_fulfillment_profiles | 2027-02-09 | 5 |
 | 0058 | [Registration Industry Catalog](0058-registration-industry-catalog.md) | `accepted` | registration_industry_catalog | 2027-02-12 | 4 |
+| 0059 | [Frontend Relocation to `apps/dgfy-web`](0059-frontend-relocation-to-apps-dgfy-web.md) | `accepted` | frontend_relocation_to_apps_dgfy_web | 2027-02-06 | 2 |
 
 ## Renumbered (collision stubs)
 

@@ -59,11 +59,34 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
+  # One-shot: runs `sequelize-cli db:migrate` against `mysql` and exits.
+  # dgfy-api's entrypoint no longer does this itself (see
+  # infrastructure/docker/dgfy-api/Dockerfile) -- mirrors the
+  # dgfy-migration-runner -> dgfy-api gate in ../docker-compose.yml (prod).
+  dgfy-migration-runner:
     build:
       context: ../../..
-      dockerfile: infrastructure/docker/backend/Dockerfile
-    image: dgfy-local-test-backend:latest
+      dockerfile: infrastructure/docker/dgfy-migration-runner/Dockerfile
+    image: dgfy-local-test-migration-runner:latest
+    restart: "no"
+    env_file: .env.compose
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: sku_inventory_manager
+      DB_USER: localtest_app
+      DB_PASSWORD: localtest_app_pw
+      DB_DIALECT: mysql
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks: [dgfy_local_test]
+
+  dgfy-api:
+    build:
+      context: ../../..
+      dockerfile: infrastructure/docker/dgfy-api/Dockerfile
+    image: dgfy-local-test-api:latest
     restart: unless-stopped
     # .env.compose is .env with literal `$` doubled to `$$` — compose
     # interpolates `$VAR` syntax found inside env_file contents, and
@@ -78,11 +101,14 @@ services:
       DB_PASSWORD: localtest_app_pw
       DB_DIALECT: mysql
       REDIS_URL: redis://redis:6379
-      PORT: 5000
+      # apps/dgfy-api/src/server.js defaults PORT to 5000, but the Dockerfile
+      # EXPOSEs 5100 and ../nginx/conf.d.local-test/*.conf already proxy
+      # `dgfy-api:5100` -- must match both.
+      PORT: 5100
       # local-test/.env carries production-oriented security flags that
       # assume TLS termination — this stack is plain HTTP on 5173-5175.
       # ENFORCE_HTTPS can be safely disabled. SESSION_COOKIE_SECURE CANNOT:
-      # backend/src/config/productionEnvValidation.cjs hard-fails startup
+      # apps/dgfy-api/src/config/productionEnvValidation.cjs hard-fails startup
       # unless it's "true" whenever NODE_ENV=production. Leaving it true
       # works anyway — modern browsers treat http://localhost as a secure
       # context, so Secure cookies are still set/sent there.
@@ -110,7 +136,7 @@ services:
       SENTRY_SEND_DEFAULT_PII: ${SENTRY_SEND_DEFAULT_PII:-false}
       SENTRY_DEBUG: ${SENTRY_DEBUG:-false}
     ports:
-      - "5000:5000"
+      - "5100:5100"
     volumes:
       - ./uploads:/app/uploads
     depends_on:
@@ -118,9 +144,11 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+      dgfy-migration-runner:
+        condition: service_completed_successfully
     networks: [dgfy_local_test]
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:5000/api/v1/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:5100/api/v1/health"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -184,7 +212,7 @@ services:
       - "5174:5174"
       - "5175:5175"
     depends_on:
-      backend:
+      dgfy-api:
         condition: service_healthy
       frontend:
         condition: service_healthy
@@ -193,7 +221,14 @@ services:
       # wget (busybox), not curl -- the stock nginx:alpine image has no
       # curl installed (only relevant now that this switched from a
       # custom-built image that had curl added).
-      test: ["CMD", "wget", "-q", "-O-", "http://localhost:5173/"]
+      #
+      # 127.0.0.1, NOT localhost: `listen 5173;` binds IPv4 only, while musl
+      # (Alpine) resolves localhost to ::1 ahead of 127.0.0.1 despite
+      # /etc/hosts order. busybox wget tries ::1, gets ECONNREFUSED, and
+      # doesn't fall back to IPv4 -- so the container reports unhealthy while
+      # actually serving fine. (The dgfy-api healthcheck dodges this only
+      # because curl does fall back.)
+      test: ["CMD", "wget", "-q", "-O-", "http://127.0.0.1:5173/"]
       interval: 15s
       timeout: 5s
       retries: 5

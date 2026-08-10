@@ -51,14 +51,14 @@ more:
 
 | Lifecycle | Record | Entry points | Notes |
 |---|---|---|---|
-| **Order** | `pos_transactions` directly | POS checkout (`backend/src/modules/pos/usecases/posUseCases.js`), storefront checkout (`backend/src/modules/store/usecases/storeUseCases.js`) | The shared spine. Mode-agnostic: the checkout use case never reads `ops_workflow_mode`; F&B behavior (kitchen orders, service charge, recipes) is triggered by payload shape. |
-| **Booking → settle** | `service_bookings` → `pos_transactions` | `backend/src/modules/services/usecases/serviceUseCases.js` | Full engine: availability, holds, waitlist, reminders, idempotent settlement. Settlement can mix a stock-exempt labor line with `inventory_issue` parts lines on one receipt (service fee + parts sold together). |
-| **Folio** | hospitality folios | `backend/src/modules/hospitality/usecases/hospitalityUseCases.js` | Never settles into `pos_transactions`. |
+| **Order** | `pos_transactions` directly | POS checkout (`apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`), storefront checkout (`apps/dgfy-api/src/modules/store/usecases/storeUseCases.js`) | The shared spine. Mode-agnostic: the checkout use case never reads `ops_workflow_mode`; F&B behavior (kitchen orders, service charge, recipes) is triggered by payload shape. |
+| **Booking → settle** | `service_bookings` → `pos_transactions` | `apps/dgfy-api/src/modules/services/usecases/serviceUseCases.js` | Full engine: availability, holds, waitlist, reminders, idempotent settlement. Settlement can mix a stock-exempt labor line with `inventory_issue` parts lines on one receipt (service fee + parts sold together). |
+| **Folio** | hospitality folios | `apps/dgfy-api/src/modules/hospitality/usecases/hospitalityUseCases.js` | Never settles into `pos_transactions`. |
 
 Order methods are one shared vocabulary
 (`packages/shared-constants/src/orderMethods.js`), mirroring the
 `pos_transactions.order_method` DB ENUM and pinned by
-`backend/tests/orderMethods.crossLayer.contract.test.js`. Surfaces use
+`apps/dgfy-api/tests/orderMethods.crossLayer.contract.test.js`. Surfaces use
 declared subsets (POS writes everything except the reserved `online`;
 storefront product checkout writes neither booking method).
 
@@ -72,13 +72,13 @@ storefront product checkout writes neither booking method).
   with, presentation (storefront layout/journey, POS workflow panel),
   terminology, item-preset emphasis.
 - **Locked (never curated):** the fiscal/BIR profile (compliance-pack
-  determined, `backend/src/modules/compliance/policy/`) and the customer
+  determined, `apps/dgfy-api/src/modules/compliance/policy/`) and the customer
   access ceiling (`customerAccessPolicy.js` — effective value is the minimum
   of requested, platform max, and registration-stage max).
 
 Enforcement classes per module — `gate` (403/422 when absent), `affordance`
 (UI shape only), `locked` — are declared in the catalog and verified by
-`backend/tests/workflowCapabilities.enforcement.contract.test.js`, which
+`apps/dgfy-api/tests/workflowCapabilities.enforcement.contract.test.js`, which
 fails if any declared capability has no real reader.
 
 ## The two template dimensions
@@ -100,7 +100,7 @@ one-preset-per-industry:
 
 The canonical preset of each base mode equals the mode's own capability
 list, so materializing a preset is provably behavior-identical to the mode it
-packages (`backend/tests/capabilityModules.contract.test.js`).
+packages (`apps/dgfy-api/tests/capabilityModules.contract.test.js`).
 
 **Every workflow mode carries a native/transitional/external engine
 classification** (`WORKFLOW_MODE_ENGINE` in `workflowModes.js`, issue #178
@@ -162,7 +162,7 @@ section used to describe as open.
 
 **The merchant and admin surfaces render differently as of issue #178
 Phase 38.** `/business/grow` and `/register-company` use `IndustrySelect`
-(`frontend/src/features/registration/IndustrySelect.jsx`) — a dropdown of
+(`apps/dgfy-web/src/features/registration/IndustrySelect.jsx`) — a dropdown of
 industry names, with an (i) button opening a catalog-detail modal and a
 per-selection "What you'll get" modal, and **no engine classification
 display at all**. The admin assisted-provisioning panel keeps the original
@@ -264,7 +264,7 @@ The flexibility ladder, cheapest first:
 
 ## Runtime read-path resolver — now wired to the capability gate (issue #178 Phase 19)
 
-`backend/src/modules/settings/usecases/resolveStoreProfile.js` resolves a
+`apps/dgfy-api/src/modules/settings/usecases/resolveStoreProfile.js` resolves a
 tenant's effective Store Profile, gated by the master-admin-only
 `ops_store_profile_read` setting (default off, same governance shape as
 `ops_enabled_capabilities`). It always rebuilds the profile from the live
@@ -274,7 +274,7 @@ called for, now real rather than only tested by the equivalence harness. A
 divergent or version-stale persisted profile is never served, even with the
 flag on; a fresh rebuild is always correct by construction.
 
-**`requireWorkflowCapability` (`backend/src/middleware/workflowModeCapability.js`)
+**`requireWorkflowCapability` (`apps/dgfy-api/src/middleware/workflowModeCapability.js`)
 is this resolver's first real consumer**, and — deliberately — its only one.
 Two things had to exist before wiring the fail-closed gate could mean
 anything beyond latency: a template entity (Phase 13) and a way for a
@@ -316,7 +316,7 @@ out"). Two remain open; the third has since shipped (issue #178 Phases
 - **The public storefront doesn't see subtraction.**
   `storeUseCases.js`'s catalog listing reads only the enabled overlay from
   `resolveWorkflowCapabilitySettings()`, never the disabled one, and
-  `frontend/apps/store`'s own capability model
+  `apps/dgfy-web/apps/store`'s own capability model
   (`shared/model/workflowCapabilities.js`, `modePresentationRegistry.js`)
   has no subtractive concept at all — a counter-service tenant's backend
   and admin POS both correctly deny table/kitchen capabilities, but its
@@ -366,7 +366,7 @@ module set instead of the base mode alone.
 
 ## Frontend affordance consumers now read the Profile (issue #178 Phase 18)
 
-`frontend/src/features/settings/WorkflowModeContext.jsx` distributes the
+`apps/dgfy-web/src/features/settings/WorkflowModeContext.jsx` distributes the
 tenant's Store Profile (`profile`) and `disabledCapabilities` alongside the
 existing `workflowMode`/`enabledCapabilities`. The Profile it distributes is
 the tenant's own shadow-written `ops_store_profile` setting when present
@@ -378,7 +378,7 @@ than going through that resolver's flag/differ machinery, because a stale
 POS default is cosmetic where a stale capability grant is a security
 concern; the resolver stays reserved for Phase 19's gate flip.
 
-`frontend/src/features/pos/pages/TerminalPage.jsx` reads `profile.pos_defaults`
+`apps/dgfy-web/src/features/pos/pages/TerminalPage.jsx` reads `profile.pos_defaults`
 instead of recomputing it from `businessModeTemplates.js`'s frontend-only
 copy. Tracing every other original Phase 12 affordance candidate found two
 corrections to make while implementing, not just a flip:
@@ -431,8 +431,8 @@ its own API 403'd those routes.
 `STORE_PROFILE_VERSION` moved to 5; the re-recorded equivalence snapshot
 changes only `profile_version` across all 11 modes, proving the default
 (no-subtraction) path is unaffected.
-`backend/tests/fnbKitchenQueueTemplateGate.route.test.js` mounts the real
-`requireWorkflowCapability` exactly as `backend/src/routes/fnb.js` wires
+`apps/dgfy-api/tests/fnbKitchenQueueTemplateGate.route.test.js` mounts the real
+`requireWorkflowCapability` exactly as `apps/dgfy-api/src/routes/fnb.js` wires
 it and proves two differently-templated tenants get different real
 200/403 outcomes — the acceptance criterion Phase 19's own plan called for
 but that had only ever been covered by a mocked-middleware unit test.
@@ -466,7 +466,7 @@ a write touches `ops_workflow_mode` / `ops_enabled_capabilities` /
 `store_configuration_templates` / `store_configuration_template_modules`
 (issue #178 Phase 13, `docs/architecture/adr/0056-store-configuration-templates-and-profiles.md`)
 are landlord-DB-only tables — registered in `NON_TENANT_MODEL_EXPORTS`
-(`backend/src/utils/tenantModelFactory.js`), never cloned into a tenant
+(`apps/dgfy-api/src/utils/tenantModelFactory.js`), never cloned into a tenant
 database. A template is a versioned, curated bundle of Capability Module
 keys with a lifecycle: `draft` (module list editable) →
 `published` (frozen — editing a published template's modules is rejected at
@@ -476,13 +476,13 @@ selection against the same `validateModuleSelection()` the catalog itself
 uses.
 
 `seedCanonicalTemplatePresetsUseCase`
-(`backend/src/modules/templates/usecases/seedCanonicalTemplatePresets.js`)
+(`apps/dgfy-api/src/modules/templates/usecases/seedCanonicalTemplatePresets.js`)
 materializes `STORE_TEMPLATE_PRESETS` into rows once; re-running it never
 overwrites an existing `template_key`.
 
 **Provenance, captured once, never dereferenced again.** At tenant
 provisioning, `buildProvisioningStoreProfile`
-(`backend/src/services/tenantProvisioningService.js`) resolves a template —
+(`apps/dgfy-api/src/services/tenantProvisioningService.js`) resolves a template —
 an explicit `templateKey` if provided and it is both published and matches
 the requested mode (issue #178 Phase 17), otherwise falling back to the
 published canonical template for that mode (Phase 13's original behavior) —
@@ -496,11 +496,11 @@ mode/capability change carries the origin pointer forward and flags
 template itself (ADR 0056 clause 2). This is what makes "editing a
 published template changes zero existing tenants' Profiles" true by
 construction, not by convention — proven in
-`backend/tests/tenantProvisioningStoreProfileProvenance.test.js`.
+`apps/dgfy-api/tests/tenantProvisioningStoreProfileProvenance.test.js`.
 
 **A template's module list becomes real settings, not just a Profile.**
 `materializeTemplateModuleSelection`
-(`backend/src/modules/templates/usecases/materializeTemplateModuleSelection.js`)
+(`apps/dgfy-api/src/modules/templates/usecases/materializeTemplateModuleSelection.js`)
 diffs a template's flat `modules` list against its `base_mode`'s own
 capability list to produce `{enabledCapabilities, disabledCapabilities}` —
 the same two overlay settings `ops_enabled_capabilities` /
@@ -530,19 +530,19 @@ later fully restores whatever the previous one granted. Every write is also
 recorded in `TenantAdminAuditLog` (before/after settings snapshot), the same
 trail `PATCH /:id/capabilities` uses.
 
-Frontend: a per-tenant template picker on `frontend/Pages/admin/TenantManager.jsx`
+Frontend: a per-tenant template picker on `apps/dgfy-web/Pages/admin/TenantManager.jsx`
 (published templates only, loaded via `listStoreTemplates` from
-`frontend/src/services/adminService.js`), gated to active tenants, with the
+`apps/dgfy-web/src/services/adminService.js`), gated to active tenants, with the
 same reason-required confirmation-modal pattern the capability controls on
 the same page already use.
 
 ## Platform-admin curation surface
 
 `/api/v1/admin/templates` (issue #178 Phase 14) — Platform Master Admin
-only (`resolvePlatformAdminRoutePolicy` in `backend/src/middleware/auth.js`
+only (`resolvePlatformAdminRoutePolicy` in `apps/dgfy-api/src/middleware/auth.js`
 routes it to `masterOnly`, not a delegable page permission: a published
 template shapes what every future tenant provisions with, platform-wide).
-Frontend: `frontend/Pages/admin/StoreTemplateManager.jsx`, wired into
+Frontend: `apps/dgfy-web/Pages/admin/StoreTemplateManager.jsx`, wired into
 `AdminLayout.jsx`'s sidebar as "Store Templates".
 
 - `POST /admin/templates` — create a draft. `base_mode` must be an
@@ -590,52 +590,52 @@ grantable capability vocabulary, and fail template validation if selected.
 
 ## Verification
 
-- `backend/tests/workflowModeCapability.middleware.test.js` (issue #178
+- `apps/dgfy-api/tests/workflowModeCapability.middleware.test.js` (issue #178
   Phase 19) — the gate: grants/denies via the registry path honoring the
   disabled overlay when the flag is off; grants/denies via
   `resolveStoreProfile()` when the flag is on (subtraction actually
   enforced, not just resolvable); fails closed (never grants, always
   `next(error)`) when either resolver throws.
-- `backend/tests/workflowCapabilitySettingsCache.test.js` — the
+- `apps/dgfy-api/tests/workflowCapabilitySettingsCache.test.js` — the
   `ops_store_profile_read` flag is read in the same cached query as
   mode/enabled/disabled, so the common flag-off gate check pays no extra
   cost.
-- `frontend/src/features/settings/__tests__/WorkflowModeContext.profile.test.jsx`
+- `apps/dgfy-web/src/features/settings/__tests__/WorkflowModeContext.profile.test.jsx`
   (issue #178 Phase 18) — the context distributes the server-persisted
   profile when present and an identical local rebuild otherwise.
-- `backend/tests/storeProfile.equivalence.contract.test.js` — `pos_defaults`/
+- `apps/dgfy-api/tests/storeProfile.equivalence.contract.test.js` — `pos_defaults`/
   `terminology` byte-identical to `resolvePosDefaultsAndTerminology` directly
   (the frontend cross-check this test used before Phase 18 retired the
   second implementation it compared against).
-- `backend/tests/capabilityModules.contract.test.js` — catalog ↔ capability
+- `apps/dgfy-api/tests/capabilityModules.contract.test.js` — catalog ↔ capability
   vocabulary lockstep; per-mode bundle equivalence; preset validity.
-- `backend/tests/workflowCapabilities.enforcement.contract.test.js` — no
+- `apps/dgfy-api/tests/workflowCapabilities.enforcement.contract.test.js` — no
   decorative capabilities.
-- `backend/tests/orderMethods.crossLayer.contract.test.js` — order-method
+- `apps/dgfy-api/tests/orderMethods.crossLayer.contract.test.js` — order-method
   vocabulary ↔ DB ENUM.
-- `backend/tests/resolveStoreProfile.usecase.test.js` — the read-path
+- `apps/dgfy-api/tests/resolveStoreProfile.usecase.test.js` — the read-path
   resolver's flag/version/divergence logic, including that template
   provenance and a curated disabled-capabilities overlay never trip a false
   divergence, and that a genuine drift in the disabled overlay is still
   caught.
-- `backend/tests/workflowModes.crossLayer.contract.test.js` — the
+- `apps/dgfy-api/tests/workflowModes.crossLayer.contract.test.js` — the
   `ops_disabled_capabilities` overlay resolves identically across the
   backend and frontend copies of `resolveEffectiveCapabilities`, cannot
   reach a `locked` module, and reproduces `fnb_counter_service` exactly.
-- `backend/tests/storeProfile.equivalence.contract.test.js` — the
+- `apps/dgfy-api/tests/storeProfile.equivalence.contract.test.js` — the
   disabled-capabilities overlay reproduces both non-canonical presets
   (`fnb_counter_service`, `hospitality_guesthouse`) byte-for-byte via
   subtraction, and a subtraction breaking a `requires` edge is rejected.
-- `backend/tests/settingsUsecases.applicationResult.test.js` — the
+- `apps/dgfy-api/tests/settingsUsecases.applicationResult.test.js` — the
   `ops_disabled_capabilities` write gate (master-admin only, normalized,
   deduped) and the `CAPABILITY_SELECTION_UNBUILDABLE` rejection for both the
   bulk and single-key settings write paths.
-- `backend/tests/storeConfigurationTemplateUseCases.test.js` — template
+- `apps/dgfy-api/tests/storeConfigurationTemplateUseCases.test.js` — template
   lifecycle (draft → published → deprecated), publish-time validation, and
   published-template module immutability.
-- `backend/tests/seedCanonicalTemplatePresetsUseCase` (`seedCanonicalTemplatePresets.usecase.test.js`) —
+- `apps/dgfy-api/tests/seedCanonicalTemplatePresetsUseCase` (`seedCanonicalTemplatePresets.usecase.test.js`) —
   idempotent seeding from `STORE_TEMPLATE_PRESETS`.
-- `backend/tests/tenantProvisioningStoreProfileProvenance.test.js` — the
+- `apps/dgfy-api/tests/tenantProvisioningStoreProfileProvenance.test.js` — the
   Phase 13 acceptance criterion, proven end-to-end (Phase 23 rewrite):
   resolves a provisioned tenant's Profile through `resolveStoreProfile()`
   after its source template has been edited, and asserts both that the
@@ -643,51 +643,51 @@ grantable capability vocabulary, and fail template validation if selected.
   called during the read; Phase 17's explicit `templateKey` selection
   (mode-matching, mode-mismatched, draft, and not-found cases, each
   falling back to the pre-Phase-17 canonical lookup).
-- `backend/tests/materializeTemplateModuleSelection.test.js` — the pure
+- `apps/dgfy-api/tests/materializeTemplateModuleSelection.test.js` — the pure
   template→overlay diff: empty overlays for a canonical template, a real
   disabled overlay for a subtractive one, a real enabled overlay for an
   additive one, both non-canonical presets reproduced exactly.
-- `backend/tests/applyTemplateToTenantUseCase.test.js` — the existing-tenant
+- `apps/dgfy-api/tests/applyTemplateToTenantUseCase.test.js` — the existing-tenant
   apply-template action: settings seeded correctly for both a canonical and
   a subtractive template, the audit trail, and every rejection path (tenant
   not found/inactive, template not found/unpublished, missing reason).
-- `backend/tests/adminTenantCapabilities.transport.test.js` — apply-template
+- `apps/dgfy-api/tests/adminTenantCapabilities.transport.test.js` — apply-template
   route validation gates (`templateKey`/`reason` required, no unknown
   fields) and request/response wiring.
-- `backend/tests/adminTemplates.transport.test.js` — curation route
+- `apps/dgfy-api/tests/adminTemplates.transport.test.js` — curation route
   validation gates and request/response wiring.
-- `backend/tests/platformAdminRouteClassification.test.js` — `/admin/templates`
+- `apps/dgfy-api/tests/platformAdminRouteClassification.test.js` — `/admin/templates`
   resolves to `masterOnly` (curation, platform-wide); `/admin/tenants/:id/apply-template`
   resolves to the delegable `admin.tenants` permission (a single tenant).
-- `backend/tests/seedStoreConfigurationTemplatePresets.migration.test.js`
+- `apps/dgfy-api/tests/seedStoreConfigurationTemplatePresets.migration.test.js`
   (issue #178 Phase 20) — pins the seed migration's row-builders against
   `STORE_TEMPLATE_PRESETS` directly, and exercises `up()`/`down()`
   idempotency and FK-safe delete order against a mocked `queryInterface`.
-- `backend/tests/storeConfigurationTemplateRepository.canonical.test.js`
+- `apps/dgfy-api/tests/storeConfigurationTemplateRepository.canonical.test.js`
   (issue #178 Phase 20) — canonical resolution filters on `is_canonical`
   rather than `template_id` order, with a case where the canonical row does
   not have the lowest id.
-- `backend/tests/storeProfile.equivalence.contract.test.js` (issue #178
+- `apps/dgfy-api/tests/storeProfile.equivalence.contract.test.js` (issue #178
   Phase 21 additions) — a counter-service Profile resolves
   `pos_workflow.mode === 'counter'`; a capability additively enabled and
   then subtracted drops out of `item_taxonomy`.
-- `backend/tests/modeItemTaxonomy.contract.test.js` (issue #178 Phase 21) —
+- `apps/dgfy-api/tests/modeItemTaxonomy.contract.test.js` (issue #178 Phase 21) —
   the same additive-then-subtracted taxonomy fix at the item-validation
   layer, plus proof that disabling a base-mode (non-taxonomy-overlay)
   capability leaves taxonomy resolution unaffected.
-- `frontend/src/features/settings/__tests__/WorkflowModeContext.profile.test.jsx`
+- `apps/dgfy-web/src/features/settings/__tests__/WorkflowModeContext.profile.test.jsx`
   (issue #178 Phase 21 addition) — `hasCapability` honors the disabled
   overlay, the exact gap that let the 3-arg call survive Phase 19.
-- `backend/tests/fnbKitchenQueueTemplateGate.route.test.js` (issue #178
+- `apps/dgfy-api/tests/fnbKitchenQueueTemplateGate.route.test.js` (issue #178
   Phase 21) — mounts the real `requireWorkflowCapability` exactly as
   `routes/fnb.js` wires it; two differently-templated tenants get
   different real 200/403 outcomes.
-- `backend/tests/applyTemplateToTenantUseCase.cacheInvalidation.test.js`
+- `apps/dgfy-api/tests/applyTemplateToTenantUseCase.cacheInvalidation.test.js`
   (issue #178 Phase 22) — all three capability-related caches are cleared
   on a successful apply, cleared on nothing when the write is rejected,
   the `CAPABILITY_SELECTION_UNBUILDABLE` rejection for a materialized
   selection that isn't buildable, and `base_mode` normalization.
-- `backend/tests/settingsUsecases.applicationResult.test.js` (issue #178
+- `apps/dgfy-api/tests/settingsUsecases.applicationResult.test.js` (issue #178
   Phase 22 additions) — `CAPABILITY_SELECTION_CONTRADICTORY` rejection for
   a capability requested in both overlays at once, on both the bulk and
   single-key write paths.

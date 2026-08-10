@@ -54,14 +54,14 @@ jobs:
 
   build-and-push:
     needs: changes
-    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.backend == 'true'
+    if: needs.changes.outputs.frontend == 'true' || needs.changes.outputs.dgfy_api == 'true' || needs.changes.outputs.migration_runner == 'true'
     uses: ./.github/workflows/deployment-orchestrator.yml
     with:
       environment: DEV
       image_tags: "develop"
       publish: true
       vpn_required: true
-      build_backend: ${{ needs.changes.outputs.backend == 'true' }}
+      build_api: ${{ needs.changes.outputs.dgfy_api == 'true' || needs.changes.outputs.migration_runner == 'true' }}
       build_frontend: ${{ needs.changes.outputs.frontend == 'true' }}
       # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
       runner_labels_json: '["ubuntu-latest"]'

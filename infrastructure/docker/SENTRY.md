@@ -33,9 +33,9 @@ Behavior:
 
 **`SENTRY_ENVIRONMENT` fallback — set it explicitly, do not rely on the default.** The
 backend Docker image hard-sets `NODE_ENV=production` on every environment (dev,
-staging, beta and prod alike — see `infrastructure/docker/backend/Dockerfile`), so an
+staging, beta and prod alike — see `infrastructure/docker/dgfy-api/Dockerfile`), so an
 unset `SENTRY_ENVIRONMENT` does **not** fall back to a meaningful per-box value. The
-resolver (`resolveSentryEnvironment` in `backend/src/config/sentry.js`) is:
+resolver (`resolveSentryEnvironment` in `apps/dgfy-api/src/config/sentry.js`) is:
 
 1. `SENTRY_ENVIRONMENT` if set.
 2. Otherwise `NODE_ENV`, but only when it is not `"production"`.
@@ -45,7 +45,7 @@ resolver (`resolveSentryEnvironment` in `backend/src/config/sentry.js`) is:
 
 ### Why the backend loads Sentry via `--import`, not a plain import
 
-The backend is ESM (`"type": "module"` in `backend/package.json`, Node 22).
+The backend is ESM (`"type": "module"` in `apps/dgfy-api/package.json`, Node 22).
 `src/config/sentry.js`'s `initSentry()` registers `expressIntegration()` and
 `mysql2Integration()`, which patch those two packages' exports at *import
 time* to add spans for routes/queries. If `express`/`mysql2` are imported
@@ -56,7 +56,7 @@ them, and Sentry's instrumentation cannot retroactively attach.
 `server.js` imports ~65 application modules (including routes that
 transitively import express and mysql2) before it used to call
 `initSentry()`. To guarantee ordering, Sentry now loads from a dedicated
-`backend/src/instrument.js`, run via Node's `--import` flag *before*
+`apps/dgfy-api/src/instrument.js`, run via Node's `--import` flag *before*
 `server.js`'s own imports start evaluating:
 
 ```bash
@@ -64,7 +64,7 @@ node --import ./src/instrument.js src/server.js
 ```
 
 This is wired into `npm start`, `npm run dev` (via `nodemon --exec`), and
-`infrastructure/docker/backend/Dockerfile`'s `CMD`. Requires Node >=18.19
+`infrastructure/docker/dgfy-api/Dockerfile`'s `CMD`. Requires Node >=18.19
 for ESM `--import` support (the image is `node:22-alpine`, so this is
 satisfied). Do not move this to a `NODE_OPTIONS` env var --
 `infrastructure/docker/entrypoint.sh` runs a schema-sync script before
@@ -117,7 +117,7 @@ Tracing is **tri-state**, not a boolean. `resolveTracingMode()` picks the mode:
 
 Two non-obvious facts drive this design, both verified against the installed SDK:
 
-1. **`tracesSampleRate: 0` is not "tracing off".** Sentry's `hasSpansEnabled()` is `tracesSampleRate != null || !!tracesSampler`, so a literal `0` *enables* span support and then forces a negative sampling decision -- which the browser propagates outward as `sentry-trace: <id>-<id>-0`. Any backend that inherits that decision can then never sample, silently. So `sentryClient.js` **omits the key entirely** unless the mode is `spans`. `backend/src/config/sentry.js` does the same with `SENTRY_TRACES_SAMPLE_RATE`. Never "just set it to 0" in either place.
+1. **`tracesSampleRate: 0` is not "tracing off".** Sentry's `hasSpansEnabled()` is `tracesSampleRate != null || !!tracesSampler`, so a literal `0` *enables* span support and then forces a negative sampling decision -- which the browser propagates outward as `sentry-trace: <id>-<id>-0`. Any backend that inherits that decision can then never sample, silently. So `sentryClient.js` **omits the key entirely** unless the mode is `spans`. `apps/dgfy-api/src/config/sentry.js` does the same with `SENTRY_TRACES_SAMPLE_RATE`. Never "just set it to 0" in either place.
 2. **Header propagation does not need sampling.** `instrumentOutgoingRequests()` is called unconditionally inside `browserTracingIntegration`'s `afterAllSetup()`, outside any `hasSpansEnabled()` guard. Registering the integration is what attaches `sentry-trace`/`baggage`; sampling only decides whether *transactions* are also sent. This is why `propagate` mode delivers full frontend-to-backend error correlation at zero quota cost -- errors are never sampled out, only spans are.
 
 `instrumentPageLoad` / `instrumentNavigation` stay enabled in `propagate` mode on purpose: they are what rotate the trace id per navigation. Disabling them would pin a single trace id to an entire tab lifetime, so a POS terminal open for a 10-hour shift would hang thousands of requests off one unusable trace.
@@ -139,7 +139,7 @@ Note there is **no `trace_id` tag** on backend events. Sentry already carries th
 
 `sanitizeSentryEvent`'s existing `redactSensitiveData` is **key-name based** -- it can only redact a secret sitting under a recognisable key. A secret pasted *inside* a message string is invisible to it, which is how an OpenAI API key once reached Sentry as an issue *title* (the `openai` SDK embeds the key it tried to use in its own 401 error text).
 
-`redactSecretsInText` (duplicated in `backend/src/config/sentry.js` and `frontend/src/observability/sentryClient.js`) now scrubs `exception.values[].value`, `message`, `logentry`, and `breadcrumbs[].message` for OpenAI keys, JWTs, bearer tokens, AWS/GitHub tokens, credentialed connection-string URLs, Sentry DSNs, and explicit `api_key=`/`secret:` assignments. `exception.type`, `.stacktrace`, `.mechanism` and `event.fingerprint` are never touched, so grouping is unaffected.
+`redactSecretsInText` (duplicated in `apps/dgfy-api/src/config/sentry.js` and `frontend/src/observability/sentryClient.js`) now scrubs `exception.values[].value`, `message`, `logentry`, and `breadcrumbs[].message` for OpenAI keys, JWTs, bearer tokens, AWS/GitHub tokens, credentialed connection-string URLs, Sentry DSNs, and explicit `api_key=`/`secret:` assignments. `exception.type`, `.stacktrace`, `.mechanism` and `event.fingerprint` are never touched, so grouping is unaffected.
 
 This is a backstop, not a fix: a `[redacted:*]` placeholder appearing in Sentry means a secret is reaching an error path and should be rotated. It also only prevents *future* leaks -- already-stored events must be deleted in Sentry, and an Advanced Data Scrubbing rule on `$exception.value` is worth adding server-side to catch other SDKs.
 

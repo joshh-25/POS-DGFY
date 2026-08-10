@@ -27,7 +27,7 @@ echo "    -> ${BACKUP_DIR}/db_${DB_NAME}_${TIMESTAMP}.sql.gz"
 echo "==> Archiving uploaded files (uploads + storage)..."
 tar -czf "${BACKUP_DIR}/files_${TIMESTAMP}.tar.gz" \
   -C "$COMPOSE_DIR" \
-  data/backend/uploads data/backend/storage
+  data/dgfy-api/uploads data/dgfy-api/storage
 echo "    -> ${BACKUP_DIR}/files_${TIMESTAMP}.tar.gz"
 
 echo "==> Backup complete: ${TIMESTAMP}"
