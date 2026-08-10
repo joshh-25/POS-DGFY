@@ -19,7 +19,7 @@ npm run install:all
 - Backend environment file:
 
 ```bash
-cd backend
+cd apps/dgfy-api
 copy .env.example .env
 ```
 
@@ -58,11 +58,11 @@ VITE_STORE_BASE_PATH=/
 Start MySQL first, then run:
 
 ```bash
-cd backend
-npm run setup:db
+cd apps/dgfy-migration-runner
 npm run migrate
-npm run doctor:runtime
 npm run seed
+cd ../..
+npm run doctor:runtime
 ```
 
 Expected runtime doctor result: healthy schema with no missing migrations or
@@ -137,10 +137,9 @@ Open these browser URLs:
 - POS: `http://localhost:5174`
 - Storefront discovery: `http://localhost:5175/map-dgfy`
 
-Then run backend runtime checks:
+Then run backend runtime checks (from repo root):
 
 ```bash
-cd backend
 npm run doctor:runtime
 npm run smoke:pos-local
 ```

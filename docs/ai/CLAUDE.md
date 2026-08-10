@@ -45,9 +45,13 @@ Capability Modules rather than hard-coding one behavior set per industry.
 > **⚠️ Source of truth: `apps/dgfy-api/`.** The old `backend/` directory has been
 > removed. `apps/dgfy-api/` *is* the backend, refactored into `apps/`; the Sequelize
 > migration domain lives separately in `apps/dgfy-migration-runner/`. Path references
-> below that still say `backend/` in prose are historical. If `develop` receives
-> `backend/` changes during the transition window, absorb them via the documented
-> method in [docs/architecture/backend-absorption.md](../architecture/backend-absorption.md).
+> below that still say `backend/` in prose are historical. `frontend/` and `android/`
+> were relocated the same way, to `apps/dgfy-web/` and `apps/dgfy-android-bridge/`. For
+> the full path map and how local run/deploy commands changed, read
+> [docs/architecture/apps-layout-migration.md](../architecture/apps-layout-migration.md).
+> If `develop` receives `backend/`/`frontend/`/`android/` changes during the transition
+> window, absorb them via the documented method in
+> [docs/architecture/backend-absorption.md](../architecture/backend-absorption.md).
 
 **Tech Stack:**
 **Frontend:**

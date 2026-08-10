@@ -966,7 +966,7 @@ SCRIPTS_CHANGED_FILES="0"
 
 if [[ "$PRE_DEPLOY_COMMIT" != "$POST_PULL_COMMIT" ]]; then
     TOTAL_CHANGED_FILES="$(wc -l < "$MANIFEST_FILE" | tr -d '[:space:]')"
-    BACKEND_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^backend/' | wc -l | tr -d '[:space:]')"
+    BACKEND_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^apps/dgfy-api/' | wc -l | tr -d '[:space:]')"
     FRONTEND_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^apps/dgfy-web/' | wc -l | tr -d '[:space:]')"
     DOCS_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^docs/' | wc -l | tr -d '[:space:]')"
     SCRIPTS_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^scripts/' | wc -l | tr -d '[:space:]')"
@@ -976,7 +976,7 @@ log "Release diff summary: total=$TOTAL_CHANGED_FILES backend=$BACKEND_CHANGED_F
 
 MIGRATIONS_CHANGED="0"
 if [[ "$PRE_DEPLOY_COMMIT" != "$POST_PULL_COMMIT" ]]; then
-    if grep -E '^.[[:space:]]+backend/migrations/' "$MANIFEST_FILE" >/dev/null 2>&1; then
+    if grep -E '^.[[:space:]]+apps/dgfy-migration-runner/migrations/' "$MANIFEST_FILE" >/dev/null 2>&1; then
         MIGRATIONS_CHANGED="1"
     fi
 fi

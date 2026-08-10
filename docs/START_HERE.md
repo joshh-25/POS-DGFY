@@ -54,6 +54,9 @@ untagged clauses are `default`.
 3. Confirm planning does not rely on deprecated docs.
 4. Run `npm run check:architecture` for architecture-sensitive changes.
 5. For release, CI/CD, branch, or production-promotion work, read `docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md`.
+6. For questions about the repository layout under `apps/`, path relocations from the
+   pre-refactor `backend/`/`frontend/`/`android/` trees, or local run/deploy commands, read
+   `docs/architecture/apps-layout-migration.md`.
 
 ## Deprecated or Historical Material
 Use only for context. Do not use these as a source of architectural truth.

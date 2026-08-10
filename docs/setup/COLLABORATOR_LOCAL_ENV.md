@@ -50,15 +50,16 @@ npm run install:all
 This installs dependencies for:
 
 - Repository root
-- `backend`
+- `apps/dgfy-api`
 - `apps/dgfy-web`
+- `apps/dgfy-migration-runner`
 
 ### 3. Create Environment Files
 
 Backend:
 
 ```bash
-cd backend
+cd apps/dgfy-api
 cp .env.example .env
 ```
 
@@ -92,20 +93,21 @@ docker compose up -d mysql redis
 From the repository root:
 
 ```bash
-mysql -u root -p < backend/database-setup.sql
+mysql -u root -p < apps/dgfy-migration-runner/database-setup.sql
 ```
 
 For a default XAMPP MySQL install with no root password, this may work:
 
 ```bash
-mysql -u root < backend/database-setup.sql
+mysql -u root < apps/dgfy-migration-runner/database-setup.sql
 ```
 
 ### 6. Run Migrations
 
 ```bash
-cd backend
+cd apps/dgfy-migration-runner
 npm run migrate
+cd ../dgfy-api
 npm run doctor:runtime
 ```
 
@@ -184,7 +186,7 @@ If login data is missing, ask the project owner for a database dump or seed path
 
 ## Backend Environment
 
-Create `backend/.env` from the backend folder:
+Create `apps/dgfy-api/.env` from the backend folder:
 
 ```bash
 cp .env.example .env
@@ -331,7 +333,7 @@ sku_inventory_manager
 Create it with:
 
 ```bash
-mysql -u root -p < backend/database-setup.sql
+mysql -u root -p < apps/dgfy-migration-runner/database-setup.sql
 ```
 
 The SQL file contains:
@@ -347,15 +349,16 @@ SHOW DATABASES LIKE 'sku_inventory_manager';
 Then run migrations:
 
 ```bash
-cd backend
+cd apps/dgfy-migration-runner
 npm run migrate
+cd ../dgfy-api
 npm run doctor:runtime
 ```
 
-The project includes seeders under `backend/src/seeders`, including the local admin account and starter settings. Run seeders only after migrations are healthy:
+The project includes seeders under `apps/dgfy-migration-runner/src/seeders`, including the local admin account and starter settings. Run seeders only after migrations are healthy:
 
 ```bash
-cd backend
+cd apps/dgfy-migration-runner
 npm run seed
 ```
 
@@ -432,8 +435,8 @@ Services Mode is a first-class workflow mode. It uses normal migrations and does
 
 Use the profile-specific examples when testing deployment behavior:
 
-- `backend/.env.shared.example` for shared hosting without Redis.
-- `backend/.env.vps.example` for Redis-capable VPS deployments.
+- `apps/dgfy-api/.env.shared.example` for shared hosting without Redis.
+- `apps/dgfy-api/.env.vps.example` for Redis-capable VPS deployments.
 - `apps/dgfy-web/.env.shared.example` and `apps/dgfy-web/.env.vps.example` for matching frontend builds.
 
 Shared hosting intentionally omits Redis and uses fail-open blacklist behavior. VPS mode expects Redis and fail-closed blacklist behavior.
@@ -493,8 +496,8 @@ npm run smoke:pos-local
 
 - Keep `DB_AUTO_SYNC=false` for shared/local development.
 - Use migrations for schema changes.
-- Do not commit `backend/.env`, `apps/dgfy-web/.env`, `.env.qa.local`, or `.env.prod.local`.
-- `backend/uploads` is runtime-generated. Only `backend/uploads/.gitkeep` is source-controlled.
+- Do not commit `apps/dgfy-api/.env`, `apps/dgfy-web/.env`, `.env.qa.local`, or `.env.prod.local`.
+- `apps/dgfy-api/uploads` is runtime-generated. Only `apps/dgfy-api/uploads/.gitkeep` is source-controlled.
 - Vite must proxy both `/api` and `/uploads` to the backend for uploaded images to render in local frontend surfaces.
 
 ## First-Run Troubleshooting Guide
@@ -521,8 +524,9 @@ DB_PASSWORD=
 Run:
 
 ```bash
-cd backend
+cd apps/dgfy-migration-runner
 npm run migrate
+cd ../dgfy-api
 npm run doctor:runtime
 ```
 
@@ -558,7 +562,7 @@ The frontend must proxy `/uploads` to the backend.
 Check:
 
 - Backend is running.
-- Uploaded files exist under `backend/uploads`.
+- Uploaded files exist under `apps/dgfy-api/uploads`.
 - Frontend dev server has been restarted after env/config changes.
 - Browser cache has been hard-refreshed.
 
@@ -592,23 +596,27 @@ Check:
 - The database exists.
 - MySQL credentials are correct.
 - The MySQL user can create and alter tables.
-- `backend/.env` is present.
+- `apps/dgfy-api/.env` is present.
 
 Then retry:
 
 ```bash
-cd backend
+cd apps/dgfy-migration-runner
 npm run migrate
 ```
 
 ### Clean Local Reset
 
-Only use this for local development when data loss is acceptable:
+There is no `reset:db` script in the current `apps/` layout (it predates the refactor and
+was not carried over). Only use this for local development when data loss is acceptable:
 
 ```bash
-cd backend
-npm run reset:db
+mysql -u root -p -e "DROP DATABASE IF EXISTS sku_inventory_manager; CREATE DATABASE sku_inventory_manager CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+cd apps/dgfy-migration-runner
+npm run migrate
+npm run seed
+cd ../dgfy-api
 npm run doctor:runtime
 ```
 
-If prompted, confirm only when you are sure the local database can be recreated.
+Confirm the drop only when you are sure the local database can be recreated.

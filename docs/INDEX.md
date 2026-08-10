@@ -97,6 +97,7 @@ Canonical planning entry:
 - MapLibre Marker-vs-data-layer rendering guidance and the 2026-07-20 pin-clipping fix (Storefront order-tracking map converted to a GeoJSON symbol layer; checkout delivery-pin picker's canvas sizing consolidated onto shared helpers) are tracked in `docs/mapping/MARKER_TO_DATALAYER_MIGRATION.md`.
 
 ## Current Repository Notes
+- The repository root has no `backend/`, `frontend/`, or `android/` directory — they were relocated to `apps/dgfy-api`, `apps/dgfy-web`, and `apps/dgfy-android-bridge` respectively. See `docs/architecture/apps-layout-migration.md` for the full path map and before/after local-run commands, and `docs/architecture/backend-absorption.md` for how upstream `develop` commits to the old paths get replayed here.
 - Build artifacts are generated into `dist-apps/` and `apps/dgfy-web/dist/` and should be treated as disposable outputs.
 - Vite caches under `apps/dgfy-web/node_modules/.vite*`, repository `.tmp/` gate output, and root `logs/` runtime output are generated/local artifacts; delete only after confirming they are not needed as current evidence.
 - Local AI export temp files are runtime data under `apps/dgfy-api/storage/temp-ai-exports/`; they are private runtime artifacts, ignored by Git, and must not be moved under public `/uploads`.

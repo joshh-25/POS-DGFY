@@ -59,21 +59,24 @@ cd SKU-Inventory-Manager
 npm run install:all
 
 # 3. Backend configuration
-cd backend
+cd apps/dgfy-api
 cp .env.example .env
 # Edit .env with your MySQL credentials (see below)
+cd ..
 
-# 4. Setup database (creates DB if needed, runs migrations)
-npm run setup:db -- --seed
+# 4. Setup database (migrations + seeders live in the separate migration-runner package)
+cd dgfy-migration-runner
+npm run migrate
+npm run seed
+cd ../..
 
 # 5. Start development servers (from root directory)
-cd ..
 npm run dev
 ```
 
 ### Local Environment Variables
 
-**Backend (`backend/.env`):**
+**Backend (`apps/dgfy-api/.env`):**
 ```env
 NODE_ENV=development
 PORT=5000
@@ -170,16 +173,18 @@ sudo apt-get install nginx
 
 ```
 /var/www/skupervisor/
-├── apps/dgfy-web/     # Built static files served by Nginx
-│   └── dist/          # Production build output
-├── backend/           # Node.js API server (PM2 managed)
-│   └── .env           # Production environment variables
+├── apps/
+│   ├── dgfy-web/       # Built static files served by Nginx
+│   │   └── dist/       # Production build output
+│   ├── dgfy-api/       # Node.js API server (PM2 managed)
+│   │   └── .env        # Production environment variables
+│   └── dgfy-migration-runner/  # Migrations/seeders, run on deploy
 └── ...
 ```
 
 ### Server Environment Variables
 
-**Backend (`/var/www/skupervisor/backend/.env`):**
+**Backend (`/var/www/skupervisor/apps/dgfy-api/.env`):**
 ```env
 NODE_ENV=production
 PORT=5001              # Different port from local to avoid conflicts
@@ -356,11 +361,11 @@ cd /var/www/skupervisor
 git pull origin master
 
 # Install any new dependencies
-cd backend && npm install && cd ..
+cd apps/dgfy-api && npm install && cd ../..
 cd apps/dgfy-web && npm install && npm run build && cd ../..
 
 # Run migrations if database changes
-cd backend && npx sequelize-cli db:migrate && cd ..
+cd apps/dgfy-migration-runner && npm run migrate && cd ../..
 
 # Restart services
 pm2 restart all
@@ -394,7 +399,7 @@ pm2 logs sku-backend --lines 20
 | MySQL not starting | Start XAMPP Control Panel → MySQL Start |
 | Port 5173 in use | Kill process: `npx kill-port 5173` |
 | Port 5000 in use | Kill process: `npx kill-port 5000` |
-| CORS errors | Check `CORS_ORIGIN` in backend `.env` |
+| CORS errors | Check `CORS_ORIGIN` in `apps/dgfy-api/.env` |
 
 ### Hosting Server Issues
 
