@@ -182,3 +182,134 @@ describe('Storefront requestJson -- AbortSignal + opt-in retry', () => {
     expect(args.error.message).toBe('Upstream exploded');
   });
 });
+
+describe('Storefront requestJson -- issue #282 Phase F in-flight GET de-dup', () => {
+  beforeEach(() => {
+    vi.stubGlobal('document', {
+      cookie: 'sku_csrf_token=csrf-store-dedup'
+    });
+    vi.stubGlobal('window', {
+      location: { origin: 'https://dgfy.ph' }
+    });
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.doUnmock('../../../../src/observability/sentryClient.js');
+    vi.restoreAllMocks();
+  });
+
+  // Deferred, resolved manually so both concurrent calls are genuinely
+  // in-flight together before either settles -- not just two calls that
+  // happen to run one after another in the same microtask.
+  const makeDeferred = () => {
+    let resolve;
+    const promise = new Promise((res) => { resolve = res; });
+    return { promise, resolve };
+  };
+
+  it('collapses two concurrent identical unsignaled GETs into one fetch', async () => {
+    const { requestJson } = await freshRequestJson();
+    const deferred = makeDeferred();
+    const fetchMock = vi.fn().mockReturnValue(deferred.promise);
+    vi.stubGlobal('fetch', fetchMock);
+
+    const callA = requestJson('/api/v1/store/catalog?limit=120', { storeSlug: 'alpha' });
+    const callB = requestJson('/api/v1/store/catalog?limit=120', { storeSlug: 'alpha' });
+    deferred.resolve({ ok: true, json: async () => ({ success: true, data: { items: [1, 2, 3] } }) });
+
+    const [resultA, resultB] = await Promise.all([callA, callB]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(resultA).toEqual({ items: [1, 2, 3] });
+    expect(resultB).toBe(resultA);
+  });
+
+  it('does not de-dup requests for different stores (x-store-slug differs)', async () => {
+    const { requestJson } = await freshRequestJson();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, data: { ok: true } }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await Promise.all([
+      requestJson('/api/v1/store/catalog?limit=120', { storeSlug: 'alpha' }),
+      requestJson('/api/v1/store/catalog?limit=120', { storeSlug: 'bravo' })
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not de-dup a request that carries its own AbortSignal', async () => {
+    const { requestJson } = await freshRequestJson();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, data: { ok: true } }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const controllerA = new AbortController();
+    const controllerB = new AbortController();
+
+    await Promise.all([
+      requestJson('/api/v1/store/catalog?limit=120', { storeSlug: 'alpha', signal: controllerA.signal }),
+      requestJson('/api/v1/store/catalog?limit=120', { storeSlug: 'alpha', signal: controllerB.signal })
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not de-dup an authenticated (authToken) request', async () => {
+    const { requestJson } = await freshRequestJson();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, data: { ok: true } }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await Promise.all([
+      requestJson('/api/v1/dgfy/customer/dashboard', { authToken: 'token-123' }),
+      requestJson('/api/v1/dgfy/customer/dashboard', { authToken: 'token-123' })
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not de-dup non-GET methods even with identical bodies', async () => {
+    const { requestJson } = await freshRequestJson();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, data: { ok: true } }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await Promise.all([
+      requestJson('/api/v1/store/checkout', { method: 'POST', body: { total: 100 } }),
+      requestJson('/api/v1/store/checkout', { method: 'POST', body: { total: 100 } })
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not serve a stale shared result to a later, non-concurrent identical GET', async () => {
+    const { requestJson } = await freshRequestJson();
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, data: { ok: true } }) });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await requestJson('/api/v1/store/catalog?limit=120', { storeSlug: 'alpha' });
+    await requestJson('/api/v1/store/catalog?limit=120', { storeSlug: 'alpha' });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('shares a rejection across concurrent de-duped callers instead of one hanging', async () => {
+    const { requestJson, sentryClient } = await freshRequestJson();
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 500,
+      headers: { get: () => null },
+      json: async () => ({ message: 'boom' })
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const [resultA, resultB] = await Promise.allSettled([
+      requestJson('/api/v1/store/catalog?limit=120', { storeSlug: 'alpha' }),
+      requestJson('/api/v1/store/catalog?limit=120', { storeSlug: 'alpha' })
+    ]);
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(resultA.status).toBe('rejected');
+    expect(resultB.status).toBe('rejected');
+    expect(resultA.reason).toBe(resultB.reason);
+    // Both waiters share one failure, but it's still reported once, not
+    // once per waiter.
+    expect(sentryClient.captureRequestFailure).toHaveBeenCalledTimes(1);
+  });
+});
