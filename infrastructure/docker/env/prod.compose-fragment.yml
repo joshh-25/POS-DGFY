@@ -1,0 +1,156 @@
+# Cutover fragment for /opt/dgfy-platform/docker-compose.yml (PR #55:
+# backend/ service -> dgfy-api + dgfy-migration-runner).
+#
+# NOT a drop-in replacement, and NOT meant to be passed to `docker compose
+# -f docker-compose.yml -f prod.compose-fragment.yml` -- /opt/dgfy-platform's
+# compose file is hand-maintained, not a git checkout. This is the ONE
+# environment where a containerized nginx is part of this same compose file
+# (dev/stage front with host nginx instead) and where beta + prod share one
+# backend/mysql/redis -- see the dual-deploy note in .github/workflows/
+# build-main.yml. Two separate edits below: the service swap, and the
+# nginx service patch.
+#
+# Captured from the live server 2026-08-10 (see plan Phase 0 dump) --
+# reconcile again before applying if /opt/dgfy-platform/docker-compose.yml
+# has changed since. Confirmed in Phase 0: this file's `backend:` block and
+# this repo's infrastructure/docker/docker-compose.yml agree on every field
+# except the rename itself (no live-only tuning to preserve, unlike stage).
+#
+# =============================================================================
+# EDIT 1 of 2 -- service swap
+# =============================================================================
+# DELETE the existing `backend:` service block (below `redis:`) and PASTE
+# both services below in its place. `mysql:`, `redis:`, `frontend-beta:`,
+# `frontend:`, `certbot:`, and the top-level `networks:` block stay
+# untouched.
+#
+# No host port published for dgfy-api -- prod's containerized nginx reaches
+# it over `dgfy_internal` only, same as `backend` today. `DB_MAX_CONNECTIONS`
+# needs no fragment change: it's already set in /opt/dgfy-platform/.env
+# (confirmed present in Phase 0), which env_file: .env carries through
+# unchanged for dgfy-api same as it did for backend.
+
+services:
+  # New service: the migration domain, split out of backend/ into
+  # apps/dgfy-migration-runner. dgfy-api below depends on this completing
+  # successfully instead of migrating itself on boot.
+  dgfy-migration-runner:
+    image: ghcr.io/sieitzz/dgfy-platform/migration-runner:${IMAGE_TAG:-latest}
+    restart: "no"
+    env_file: .env
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DIALECT: mysql
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks: [dgfy_internal]
+
+  # Replaces `backend:`. Same app, same .env -- only the image, service
+  # name, internal port (5000 -> 5100), and data-volume paths
+  # (data/backend/* -> data/dgfy-api/*) change.
+  dgfy-api:
+    image: ghcr.io/sieitzz/dgfy-platform/api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DIALECT: mysql
+      REDIS_URL: redis://redis:6379
+      PORT: 5100
+    volumes:
+      - ./data/dgfy-api/uploads:/app/uploads
+      - ./data/dgfy-api/storage:/app/storage
+      - ./data/dgfy-api/logs:/app/logs
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      dgfy-migration-runner:
+        condition: service_completed_successfully
+    networks: [dgfy_internal]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5100/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+# =============================================================================
+# EDIT 2 of 2 -- nginx service patch (prod only)
+# =============================================================================
+# In the SAME file's existing `nginx:` service:
+#
+#   1. Add DGFY_API_DOMAIN to `environment:` (the branch's
+#      nginx.conf.template adds a new `server { listen 443 ssl; server_name
+#      ${DGFY_API_DOMAIN}; }` block, inserted BEFORE the
+#      ${SKUPERVISOR_DOMAIN} block. nginx treats the first block for a
+#      listen address as the DEFAULT server for unmatched Host headers --
+#      compose defaults this var to `_` (infrastructure/docker/
+#      docker-compose.yml: DGFY_API_DOMAIN: ${DGFY_API_DOMAIN:-_}), and
+#      confirmed in Phase 0 that /opt/dgfy-platform/.env currently has ZERO
+#      DGFY_API_DOMAIN= lines. Skip this and every unmatched-Host HTTPS
+#      request to prod silently starts landing on the API instead of the
+#      storefront.)
+#
+#        nginx:
+#          environment:
+#            SKUPERVISOR_DOMAIN: ${SKUPERVISOR_DOMAIN}
+#            POS_DOMAIN: ${POS_DOMAIN}
+#            STOREFRONT_DOMAIN: ${STOREFRONT_DOMAIN}
+#            STOREFRONT_ALT_DOMAIN: ${STOREFRONT_ALT_DOMAIN:-}
+#            DGFY_API_DOMAIN: ${DGFY_API_DOMAIN:-_}      # <-- ADD THIS LINE
+#            CERT_DOMAIN: ${CERT_DOMAIN}
+#            SKUPERVISOR_DOMAIN_PROD: ${SKUPERVISOR_DOMAIN_PROD}
+#            POS_DOMAIN_PROD: ${POS_DOMAIN_PROD}
+#            STOREFRONT_DOMAIN_PROD: ${STOREFRONT_DOMAIN_PROD}
+#            STOREFRONT_ALT_DOMAIN_PROD: ${STOREFRONT_ALT_DOMAIN_PROD:-}
+#            CERT_DOMAIN_PROD: ${CERT_DOMAIN_PROD}
+#
+#      ...and add the matching line to /opt/dgfy-platform/.env itself
+#      (separate from this compose edit -- see the .env delta note below).
+#
+#   2. Change `depends_on.backend` to `depends_on.dgfy-api`:
+#
+#        depends_on:
+#          dgfy-api:              # was: backend
+#            condition: service_healthy
+#          frontend-beta:
+#            condition: service_healthy
+#          frontend:
+#            condition: service_healthy
+#
+# =============================================================================
+# .env delta (prod only)
+# =============================================================================
+# Add to /opt/dgfy-platform/.env, BEFORE installing the new nginx template
+# (see docs/architecture/apps-layout-migration.md for the reconciled
+# nginx.conf.template itself -- Phase 0 confirmed the live template already
+# matches this repo's byte-for-byte except for the not-yet-deployed
+# menu-import-batch location blocks, so no live-only content needs
+# preserving on top of the branch's version):
+#
+#   DGFY_API_DOMAIN=api.dgfy.ph
+#
+# If api.dgfy.ph isn't meant to go live yet, still set this to some real,
+# non-empty, non-"_" value -- anything that isn't a Host header a real
+# client will ever send. Leaving it unset is what causes the default-vhost
+# problem in Edit 2 point 1 above; the value itself doesn't need to resolve
+# in DNS for that block to stop being the accidental default.
+
+# --- Data move (run BEFORE `docker compose up`, while the stack is down) ---
+#
+#   cd /opt/dgfy-platform
+#   ./scripts/backup.sh          # pre-cutover: still targets data/backend/* at this point
+#   docker compose down
+#   mkdir -p data/dgfy-api
+#   mv data/backend/uploads data/dgfy-api/uploads
+#   mv data/backend/storage data/dgfy-api/storage
+#   mv data/backend/logs    data/dgfy-api/logs
+#   docker compose config >/dev/null   # validates the hand-edited file
+#   docker compose up -d --remove-orphans
+#   docker compose restart nginx       # NOT reload -- template only re-renders
+#                                       # through envsubst on restart, not reload

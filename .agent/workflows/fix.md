@@ -14,7 +14,7 @@ cd ..
 
 ### 2. Frontend Lint Fix
 ```bash
-cd frontend
+cd apps/dgfy-web
 npm run lint -- --fix
-cd ..
+cd ../..
 ```

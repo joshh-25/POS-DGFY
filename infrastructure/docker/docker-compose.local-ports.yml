@@ -1,0 +1,33 @@
+# Opt-in local-dev overlay: NOT auto-loaded by plain `docker compose up`.
+# Plain HTTP, port-based local access -- localhost:5173/5174/5175 for
+# skupervisor/pos/storefront, all backed by dgfy-api. No TLS, no domains,
+# no /etc/hosts changes needed (unlike docker-compose.override.yml's
+# *.localhost + cert-bootstrap setup). See nginx.conf.local-ports.template.
+#
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml \
+#     -f docker-compose.local-ports.yml up -d nginx
+
+services:
+  dgfy-api:
+    environment:
+      # dgfy-api runs with NODE_ENV=production, where the code's generous
+      # localhost:517x dev-origin allowlist is intentionally skipped once
+      # CORS_ORIGIN is configured (see server.js resolveCorsAllowed) -- add
+      # the local nginx ports explicitly instead of relying on that
+      # allowlist, so the real CORS_ORIGIN production values stay untouched
+      # for prod. Opt-in overlay; not auto-loaded by plain compose.
+      CORS_ORIGIN: "https://skupervisor.dgfy.ph,https://pos.dgfy.ph,https://dgfy.ph,https://store.dgfy.ph,http://localhost:5173,http://localhost:5174,http://localhost:5175"
+
+  nginx:
+    volumes:
+      - ./nginx/nginx.conf.local-ports.template:/etc/nginx/templates/default.conf.template:ro
+    environment: {}
+    ports:
+      - "5173:5173"
+      - "5174:5174"
+      - "5175:5175"
+    depends_on:
+      dgfy-api:
+        condition: service_healthy
+      frontend:
+        condition: service_healthy

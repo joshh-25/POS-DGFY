@@ -66,9 +66,12 @@ on:
       frontend:
         description: '"true" when this range touches anything the frontend image is built from'
         value: ${{ jobs.detect.outputs.frontend }}
-      backend:
-        description: '"true" when this range touches anything the backend image is built from'
-        value: ${{ jobs.detect.outputs.backend }}
+      dgfy_api:
+        description: '"true" when this range touches anything the dgfy-api image is built from'
+        value: ${{ jobs.detect.outputs.dgfy_api }}
+      migration_runner:
+        description: '"true" when this range touches anything the dgfy-migration-runner image is built from'
+        value: ${{ jobs.detect.outputs.migration_runner }}
       android:
         description: '"true" when this range touches anything the Android wrapper build is built from'
         value: ${{ jobs.detect.outputs.android }}
@@ -79,7 +82,8 @@ jobs:
     timeout-minutes: 5
     outputs:
       frontend: ${{ steps.filter.outputs.frontend }}
-      backend: ${{ steps.filter.outputs.backend }}
+      dgfy_api: ${{ steps.filter.outputs.dgfy_api }}
+      migration_runner: ${{ steps.filter.outputs.migration_runner }}
       android: ${{ steps.filter.outputs.android }}
     steps:
       - uses: actions/checkout@v4
@@ -105,9 +109,9 @@ jobs:
             # computable", so fall back to building everything rather than
             # silently skipping a build.
             if [ "${BASE_SHA}" = "${NULL_SHA}" ]; then
-              REASON="base_sha is the null SHA (new branch) -- building both"
+              REASON="base_sha is the null SHA (new branch) -- building all"
             elif ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
-              REASON="base_sha ${BASE_SHA} is unreachable (force-push/rewritten history) -- building both"
+              REASON="base_sha ${BASE_SHA} is unreachable (force-push/rewritten history) -- building all"
             fi
           else
             BASE_SHA="$(git merge-base HEAD "origin/${BASE_REF}")"
@@ -116,37 +120,35 @@ jobs:
           if [ -n "${REASON}" ]; then
             FILES="(unavailable: ${REASON})"
             FRONTEND=true
-            BACKEND=true
+            DGFY_API=true
+            MIGRATION_RUNNER=true
             ANDROID=true
           else
             FILES="$(git diff --name-only "${BASE_SHA}" HEAD)"
 
-            # Deliberately not `grep -qE`: -q exits the moment it finds a
-            # match, and under `set -o pipefail` (above) that can race
-            # printf's write into a broken pipe -- printf gets SIGPIPE,
-            # the pipeline's exit status becomes non-zero even though a
-            # match WAS found, and the `|| true` below silently swallows
-            # it, leaving e.g. ANDROID=false on a PR that touches only
-            # android/. Observed live in practice, not hypothetical. Without
-            # -q, grep always reads FILES to EOF before exiting, so there's
-            # no early-exit race; matches its output to /dev/null and keeps
-            # the same 0-if-matched/1-if-not exit code.
-            matches() { printf '%s\n' "${FILES}" | grep -E "$1" > /dev/null; }
+            # Here-string rather than `printf … | grep` -- under `set -o
+            # pipefail`, grep finding no match makes the printf side of the
+            # pipe report failure too, which silently produced a false
+            # negative for a range with zero matching files.
+            matches() { grep -qE "$1" <<< "${FILES}"; }
 
             # .github/workflows/ only lists the workflows that actually affect
             # each image build, not the whole directory -- editing e.g. the PR
-            # conventional-commits check shouldn't force both Docker builds.
+            # conventional-commits check shouldn't force every Docker build.
             FRONTEND=false
-            BACKEND=false
+            DGFY_API=false
+            MIGRATION_RUNNER=false
             ANDROID=false
-            matches '^(frontend/|packages/pos-receipt/|packages/shared-constants/|infrastructure/docker/frontend/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|build-develop|build-staging|build-main)\.yml)' && FRONTEND=true || true
-            matches '^(backend/|packages/shared-constants/|infrastructure/docker/backend/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-backend|deployment-orchestrator|pr-backend-build-checks|build-develop|build-staging|build-main)\.yml)' && BACKEND=true || true
-            matches '^(android/|scripts/build-android-release\.sh|\.github/workflows/(shared-changed-paths|pr-android-build-checks|build-android-manual)\.yml)' && ANDROID=true || true
+            matches '^(apps/dgfy-web/|packages/pos-receipt/|packages/shared-constants/|infrastructure/docker/frontend/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|build-develop|build-staging|build-main)\.yml)' && FRONTEND=true || true
+            matches '^(apps/dgfy-api/|packages/shared-constants/|infrastructure/docker/dgfy-api/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|build-develop|build-staging|build-main)\.yml)' && DGFY_API=true || true
+            matches '^(apps/dgfy-migration-runner/|infrastructure/docker/dgfy-migration-runner/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-migration-runner|deployment-orchestrator|pr-migration-runner-build-checks|build-develop|build-staging|build-main)\.yml)' && MIGRATION_RUNNER=true || true
+            matches '^(apps/dgfy-android-bridge/|scripts/build-android-release\.sh|\.github/workflows/(shared-changed-paths|pr-android-build-checks|build-android-manual)\.yml)' && ANDROID=true || true
           fi
 
           {
             echo "frontend=${FRONTEND}"
-            echo "backend=${BACKEND}"
+            echo "dgfy_api=${DGFY_API}"
+            echo "migration_runner=${MIGRATION_RUNNER}"
             echo "android=${ANDROID}"
           } >> "$GITHUB_OUTPUT"
 
@@ -160,7 +162,8 @@ jobs:
             echo "| Image build | Needed |"
             echo "|-------------|--------|"
             echo "| Frontend | ${FRONTEND} |"
-            echo "| Backend | ${BACKEND} |"
+            echo "| DGFY API | ${DGFY_API} |"
+            echo "| Migration Runner | ${MIGRATION_RUNNER} |"
             echo "| Android | ${ANDROID} |"
             echo ""
             echo "<details><summary>Changed files</summary>"
@@ -214,8 +217,9 @@ jobs:
       # continue-on-error, which meant it could never block a merge; that job
       # was then removed entirely as dead weight. The result was a gap nothing
       # covered: PRs #284 and #288 (2026-08-07) each merged to develop and rode
-      # a promotion to staging with a mandatory `frontend/src/features/pos/**`
-      # impact declaration missing, and both PR descriptions asserted in good
+      # a promotion to staging with a mandatory `apps/dgfy-web/src/features/pos/**`
+      # (`frontend/src/features/pos/**` on develop) impact declaration missing,
+      # and both PR descriptions asserted in good
       # faith that "CI's compliance gate will still block merge" -- because
       # docs/ops/RELEASE_CANDIDATE_POLICY.md and
       # docs/compliance/request-time-preflight-protocol.md both still said a

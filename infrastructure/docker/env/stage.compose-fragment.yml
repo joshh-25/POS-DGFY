@@ -1,0 +1,115 @@
+# Cutover fragment for /opt/dgfy-stage/docker-compose.yml (PR #55: backend/
+# service -> dgfy-api + dgfy-migration-runner).
+#
+# NOT a drop-in replacement, and NOT meant to be passed to `docker compose
+# -f docker-compose.yml -f stage.compose-fragment.yml` -- /opt/dgfy-stage's
+# compose file is hand-maintained, not a git checkout, and is already the
+# most diverged of the three environments (no nginx service at all -- see
+# docs/ops/STAGE_CONNECTION_EXHAUSTION_AND_CSP_INCIDENT_2026-07-27.md).
+# Apply by hand: DELETE the existing `backend:` service block below `redis:`
+# and PASTE both services below in its place. `mysql:`, `redis:`,
+# `frontend:`, and the top-level `networks:` block stay untouched.
+#
+# Captured from the live server 2026-08-10 (see plan Phase 0 dump) --
+# reconcile again before applying if /opt/dgfy-stage/docker-compose.yml has
+# changed since.
+#
+# --- Carried over verbatim from the live `backend:` block, don't drop ---
+#
+# 1. Network name: `dgfy_stage` (not `dgfy_internal` -- same reasoning as
+#    dev, see dev.compose-fragment.yml).
+#
+# 2. Host-port remap: infrastructure/nginx-host/stage.dgfy.ph.conf's /api
+#    and /uploads locations proxy to 127.0.0.1:6000 (host nginx, not part
+#    of this compose file, not being changed here). Container now listens
+#    on 5100 (PORT: 5100 below) -- published port stays
+#    "127.0.0.1:6000:5100". Do NOT change to "6100:5100": breaks /api on
+#    stage AND brings the dormant api.stage.dgfy.ph vhost (already pointed
+#    at :6100, confirmed connection-refused in Phase 0) live.
+#
+# 3. `NODE_OPTIONS: --max-old-space-size=256` and the `deploy.resources.
+#    limits.memory: 350M` cap on dgfy-api -- both live-server-specific
+#    tuning from the 2026-07-27 connection-exhaustion incident, not present
+#    in the repo's own infrastructure/docker/docker-compose.yml. Keep them.
+#
+# 4. `DB_MAX_CONNECTIONS: "200"` -- must stay in sync with mysql's
+#    `--max_connections=200` (already set on this server's mysql command,
+#    unchanged by this fragment). The comment on the live server notes this
+#    var wasn't consumed by the backend image deployed at the time it was
+#    added; it is consumed now.
+#
+# `dgfy-migration-runner` has no explicit memory limit below -- it's a
+# short-lived, low-footprint one-shot process (applies migrations, exits),
+# not sized against any live incident the way dgfy-api's 350M is. Add one
+# if you have a reason to; not invented here without evidence.
+
+services:
+  # New service: the migration domain, split out of backend/ into
+  # apps/dgfy-migration-runner. dgfy-api below depends on this completing
+  # successfully instead of migrating itself on boot.
+  dgfy-migration-runner:
+    image: ghcr.io/sieitzz/dgfy-platform/migration-runner:${IMAGE_TAG:-latest}
+    restart: "no"
+    env_file: .env
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DIALECT: mysql
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks: [dgfy_stage]
+
+  # Replaces `backend:`. Same app, same .env, same connection-exhaustion-
+  # incident tuning -- only the image, service name, internal port (5000 ->
+  # 5100), and data-volume paths (data/backend/* -> data/dgfy-api/*) change.
+  dgfy-api:
+    image: ghcr.io/sieitzz/dgfy-platform/api:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DIALECT: mysql
+      REDIS_URL: redis://redis:6379
+      PORT: 5100
+      NODE_OPTIONS: --max-old-space-size=256
+      DB_MAX_CONNECTIONS: "200"
+    volumes:
+      - ./data/dgfy-api/uploads:/app/uploads
+      - ./data/dgfy-api/storage:/app/storage
+      - ./data/dgfy-api/logs:/app/logs
+    ports:
+      - "127.0.0.1:6000:5100"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      dgfy-migration-runner:
+        condition: service_completed_successfully
+    networks: [dgfy_stage]
+    deploy:
+      resources:
+        limits:
+          memory: 350M
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:5100/api/v1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+# --- Data move (run BEFORE `docker compose up`, while the stack is down) ---
+#
+#   cd /opt/dgfy-stage
+#   docker compose down
+#   mkdir -p data/dgfy-api
+#   mv data/backend/uploads data/dgfy-api/uploads
+#   mv data/backend/storage data/dgfy-api/storage
+#   mv data/backend/logs    data/dgfy-api/logs
+#   # data/dgfy-api/logs may already exist (empty, root-owned, leftover from
+#   # the earlier ADR-0032 apps/dgfy-api attempt) -- `mv` into an existing
+#   # empty dir works fine; verify it really is empty first if unsure.
+#   docker compose config >/dev/null   # validates the hand-edited file
+#   docker compose up -d --remove-orphans

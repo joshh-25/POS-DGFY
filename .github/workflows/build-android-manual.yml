@@ -10,7 +10,7 @@ name: Build Android Release (manual)
 # build a `dev` or `staging` APK straight off an unmerged feature branch --
 # install it on a real iMin device and verify hardware behavior there --
 # before that branch ever reaches `main` (which is what `prod`/`beta` are
-# routed to). See android/imin-wrapper/README.md for the full flavor table
+# routed to). See apps/dgfy-android-bridge/imin-wrapper/README.md for the flavor table
 # and the on-device verification steps.
 on:
   workflow_dispatch:

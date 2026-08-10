@@ -3,7 +3,7 @@ status: authoritative
 authority_level: authoritative
 owner: architecture
 last_reviewed: 2026-03-06
-applies_to: backend_and_api_layers
+applies_to: dgfy_api_layer
 topic: architecture_boundaries
 ---
 
@@ -28,7 +28,7 @@ Canonical planning entry is `docs/START_HERE.md`.
 2. Script gate: `npm run check:controller-boundaries`.
 3. Script gate: `npm run check:architecture-guardrails`.
 4. CI must run:
-- backend tests
+- dgfy-api tests
 - open handle diagnostics
 - index audit
 - architecture guardrail check
@@ -38,17 +38,17 @@ Canonical planning entry is `docs/START_HERE.md`.
 ## Temporary Allowlist
 Current model-importing legacy controllers are tracked in:
 
-- `backend/src/config/controllerModelImportAllowlist.js`
+- `apps/dgfy-api/src/config/controllerModelImportAllowlist.js`
 
 Entries are temporary and must be reduced each migration phase.
 
 Non-repository model-import exceptions inside modules are tracked in:
 
-- `backend/src/config/architectureModelImportAllowlist.js`
+- `apps/dgfy-api/src/config/architectureModelImportAllowlist.js`
 
 Temporary naming/usecase transition exceptions are tracked in:
 
-- `backend/src/config/architectureGuardrailsAllowlist.js`
+- `apps/dgfy-api/src/config/architectureGuardrailsAllowlist.js`
 
 Architecture process and review requirements are defined in:
 

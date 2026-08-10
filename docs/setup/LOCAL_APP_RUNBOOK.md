@@ -19,7 +19,7 @@ npm run install:all
 - Backend environment file:
 
 ```bash
-cd backend
+cd apps/dgfy-api
 copy .env.example .env
 ```
 
@@ -42,7 +42,7 @@ DB_AUTO_SYNC=false
 PAYMENTS_ENABLED=false
 ```
 
-Minimum frontend `.env` values from repo root or `frontend/.env`:
+Minimum frontend `.env` values from repo root or `apps/dgfy-web/.env`:
 
 ```env
 VITE_API_URL=http://localhost:5000/api/v1
@@ -58,11 +58,11 @@ VITE_STORE_BASE_PATH=/
 Start MySQL first, then run:
 
 ```bash
-cd backend
-npm run setup:db
+cd apps/dgfy-migration-runner
 npm run migrate
-npm run doctor:runtime
 npm run seed
+cd ../..
+npm run doctor:runtime
 ```
 
 Expected runtime doctor result: healthy schema with no missing migrations or
@@ -137,10 +137,9 @@ Open these browser URLs:
 - POS: `http://localhost:5174`
 - Storefront discovery: `http://localhost:5175/map-dgfy`
 
-Then run backend runtime checks:
+Then run backend runtime checks (from repo root):
 
 ```bash
-cd backend
 npm run doctor:runtime
 npm run smoke:pos-local
 ```
@@ -165,5 +164,5 @@ npm run smoke:pos-local
   Release (manual)** GitHub Actions workflow (or
   `bash scripts/build-android-release.sh dev`), which installs alongside the
   production app without overwriting it. See
-  `android/imin-wrapper/README.md` for the full flavor table and rollback
+  `apps/dgfy-android-bridge/imin-wrapper/README.md` for the full flavor table and rollback
   steps.

@@ -124,11 +124,11 @@ function runFrontendBuild(projectRoot, logger = console) {
   // Two-second floor absorbs filesystem timestamp precision differences.
   const buildStartedAtMs = Date.now() - 2000;
   logger.log('[frontend-budgets] Building frontend apps before budget check');
-  const buildCommand = 'npm --prefix frontend run build:all';
+  const buildCommand = 'npm --prefix apps/dgfy-web run build:all';
   const command = process.platform === 'win32' ? 'cmd.exe' : 'npm';
   const args = process.platform === 'win32'
     ? ['/d', '/s', '/c', buildCommand]
-    : ['--prefix', 'frontend', 'run', 'build:all'];
+    : ['--prefix', 'apps/dgfy-web', 'run', 'build:all'];
   const result = spawnSync(command, args, {
     cwd: projectRoot,
     stdio: 'inherit',
@@ -323,7 +323,7 @@ function checkFrontendBudgets(options = {}) {
       status,
       mode,
       project_root: projectRoot,
-      build_command: options.skipBuild ? null : 'npm --prefix frontend run build:all',
+      build_command: options.skipBuild ? null : 'npm --prefix apps/dgfy-web run build:all',
       freshness_floor: freshnessFloorMs === null ? null : new Date(freshnessFloorMs).toISOString(),
       required_asset_dirs: requiredDirs.map(({ app, dir }) => ({ app, path: path.relative(projectRoot, dir) })),
       budgets: budgetResults,

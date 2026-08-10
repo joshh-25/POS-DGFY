@@ -1,4 +1,14 @@
 {
   "version": 1,
-  "seams": []
+  "seams": [
+    {
+      "id": "db-continuity-legacy-backup",
+      "type": "db-level",
+      "status": "removed",
+      "rationale": "Non-destructively verified the legacy backup's (SOURCE_DB) domain tables remained intact during/after the database-first cutover, proving CMP-01 while dgfy-api and dgfy-migration-runner ran beside legacy. Removed: apps/dgfy-migration-runner's from-scratch data-migration CLI (verifyContinuity command and its test) was replaced with a self-contained Sequelize migrate-only runner, which has no continuity-verification surface.",
+      "tests": [],
+      "rollback": "Seam is read-only; disabling it has no data effect. Revert by removing the command and its manifest entry.",
+      "removal_criteria": "Legacy backup decommissioned (future milestone, CUT-02)."
+    }
+  ]
 }

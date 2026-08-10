@@ -42,7 +42,9 @@ export function renderPosReceiptHtml({ transaction, businessSettings = {}, recei
   const statutoryDiscount = discountType === 'senior' || discountType === 'pwd';
   const iconAlt = business ? `${business} icon` : 'Business icon';
   const itemRows = lines.map((line, index) => {
-    const name = text(line.item?.name || line.item_snapshot?.name || line.name || `Item #${line.item_id || index + 1}`);
+    // Sale-time snapshot wins over the live item join, so a later item
+    // rename/delete can never retro-change a historical receipt.
+    const name = text(line.item_name_snapshot || line.item?.name || line.item_snapshot?.name || line.name || `Item #${line.item_id || index + 1}`);
     const modifiers = Array.isArray(line.fnb_modifiers_snapshot) ? line.fnb_modifiers_snapshot : (() => { try { return JSON.parse(line.fnb_modifiers_snapshot || '[]'); } catch { return []; } })();
     const notes = [modifiers.map((modifier) => modifier.option_name || modifier.name).filter(Boolean).join(', '), line.fnb_special_instructions].filter(Boolean).join(' · ');
     return `<div class="line"><div class="grid"><strong>${escapeHtml(name)}</strong><span>${money(unitPrice(line))}</span><span>${formatQuantity(quantity(line))}</span><strong>${money(lineTotal(line))}</strong></div>${notes ? `<small>Modifiers: ${escapeHtml(notes)}</small>` : ''}</div>`;
@@ -69,5 +71,5 @@ export function renderThermalReceiptText(input = {}) {
   const rule = '-'.repeat(columns);
   const lines = Array.isArray(transaction.lines) ? transaction.lines : [];
   const pair = (label, value) => `${label}`.slice(0, columns - String(value).length - 1).padEnd(columns - String(value).length, ' ') + String(value);
-  return [text(input.businessSettings?.pos_business_name, 'DGFY POS'), rule, pair('Receipt No.', text(transaction.invoice_number)), pair('Date/Time', dateTime(transaction.created_at)), rule, ...lines.flatMap((line) => [text(line.item?.name || line.item_snapshot?.name || line.name, 'Item'), pair(`${formatQuantity(quantity(line))} x ${money(unitPrice(line))}`, money(lineTotal(line)))]), rule, pair('TOTAL AMOUNT DUE', money(transaction.total_amount)), pair('Payment', upper(transaction.payment_type)), rule, 'Thank you. Please come again.'].join('\n');
+  return [text(input.businessSettings?.pos_business_name, 'DGFY POS'), rule, pair('Receipt No.', text(transaction.invoice_number)), pair('Date/Time', dateTime(transaction.created_at)), rule, ...lines.flatMap((line) => [text(line.item_name_snapshot || line.item?.name || line.item_snapshot?.name || line.name, 'Item'), pair(`${formatQuantity(quantity(line))} x ${money(unitPrice(line))}`, money(lineTotal(line)))]), rule, pair('TOTAL AMOUNT DUE', money(transaction.total_amount)), pair('Payment', upper(transaction.payment_type)), rule, 'Thank you. Please come again.'].join('\n');
 }

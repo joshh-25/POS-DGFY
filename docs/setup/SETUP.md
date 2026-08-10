@@ -30,13 +30,19 @@ The application will be available at:
 - Frontend: http://localhost:80
 - Backend API: http://localhost:5000/api/v1
 
+> There is no `backend/`, `frontend/`, or `android/` directory at the repo root — the
+> project moved to an `apps/` layout (`apps/dgfy-api`, `apps/dgfy-web`,
+> `apps/dgfy-migration-runner`, `apps/dgfy-android-bridge`). See
+> [docs/architecture/apps-layout-migration.md](../architecture/apps-layout-migration.md)
+> for the full path map. `npm run install:all` from the repo root installs all four.
+
 ## Manual Setup (Option 2: Local Development)
 
 ### Step 1: Backend Setup
 
-1. **Navigate to backend directory**
+1. **Navigate to the API directory**
    ```bash
-   cd backend
+   cd apps/dgfy-api
    ```
 
 2. **Install dependencies**
@@ -71,40 +77,34 @@ The application will be available at:
    - Default port: 3306
 
 5. **Initialize Database**
-   
-   **Option A: Automated Setup (Recommended)**
-   ```bash
-   npm run setup:db
-   ```
-   This script will:
-   - Check if the database exists, create it if needed
-   - Run all migrations to create tables
-   - Optionally run seeders (use `npm run setup:db -- --seed`)
-   
-   **Option B: Manual Setup**
+
+   Migrations and seeders live in the separate `apps/dgfy-migration-runner` package, not
+   `apps/dgfy-api`:
    ```bash
    # Create database manually
    mysql -u root -p
    CREATE DATABASE sku_inventory_manager;
-   
-   # Run migrations
+
+   # From the repo root, run migrations
+   cd apps/dgfy-migration-runner
    npm run migrate
-   
+
    # Run seeders (optional)
    npm run seed
    ```
 
 6. **Start the backend server**
    ```bash
+   cd apps/dgfy-api
    npm run dev
    ```
    The backend will start on `http://localhost:5000`
 
 ### Step 3: Frontend Setup
 
-1. **Navigate to project root** (if not already there)
+1. **Navigate to the frontend package**
    ```bash
-   cd ..
+   cd apps/dgfy-web
    ```
 
 2. **Install dependencies**
@@ -136,11 +136,17 @@ The application will be available at:
 
 **Terminal 1 - Backend:**
 ```bash
-cd backend
+cd apps/dgfy-api
 npm run dev
 ```
 
 **Terminal 2 - Frontend:**
+```bash
+cd apps/dgfy-web
+npm run dev
+```
+
+Or, from the repo root, run both (plus the device-bridge) together:
 ```bash
 npm run dev
 ```
@@ -149,12 +155,13 @@ npm run dev
 
 **Backend:**
 ```bash
-cd backend
+cd apps/dgfy-api
 npm start
 ```
 
 **Frontend:**
 ```bash
+cd apps/dgfy-web
 npm run build
 npm run preview
 ```
@@ -191,30 +198,26 @@ See `docs/api/specification.md` for complete API documentation.
 
 **Database Connection Error:**
 - Verify MySQL is running: `mysql -u root -p`
-- Check database credentials in `.env`
+- Check database credentials in `apps/dgfy-api/.env`
 - Ensure database exists: `CREATE DATABASE sku_inventory_manager;`
 
 **Port Already in Use:**
-- Change `PORT` in backend `.env` file
+- Change `PORT` in `apps/dgfy-api/.env`
 - Or stop the process using port 5000
 
 **Migration Errors:**
-- Ensure database exists or run `npm run setup:db`
-- Use `npm run migrate:undo` to rollback last migration
+- Ensure the database exists, then run migrations from `apps/dgfy-migration-runner` (see
+  "Manual Database Operations" below)
+- Use `npm run migrate:undo` (from `apps/dgfy-migration-runner`) to rollback the last
+  migration
 - Check MySQL user has CREATE TABLE permissions
-- Verify database credentials in `.env` file
-
-**Database Setup Script Errors:**
-- Ensure MySQL server is running
-- Verify database credentials in `.env` file
-- Check MySQL user has CREATE DATABASE permissions
-- For manual setup, see "Manual Database Operations" section
+- Verify database credentials in `apps/dgfy-api/.env`
 
 ### Frontend Issues
 
 **API Connection Error:**
 - Verify backend is running on port 5000
-- Check `VITE_API_URL` in `.env` matches backend URL
+- Check `VITE_API_URL` in `apps/dgfy-web/.env` matches the backend URL
 - Check browser console for CORS errors
 
 **Build Errors:**
@@ -223,52 +226,37 @@ See `docs/api/specification.md` for complete API documentation.
 
 ## Database Management
 
-### Automated Database Setup
-```bash
-cd backend
-
-# Setup database (creates DB if needed, runs migrations)
-npm run setup:db
-
-# Setup database with seeders
-npm run setup:db -- --seed
-
-# Reset database (development only - drops and recreates)
-npm run reset:db
-
-# Reset database without confirmation (use with caution)
-npm run reset:db -- --force
-
-# Reset database without seeders
-npm run reset:db -- --no-seed
-```
-
-### Manual Database Operations
+Migrations, seeders, and the raw SQL bootstrap file live in `apps/dgfy-migration-runner`,
+not `apps/dgfy-api` — the API package deliberately has no migration CLI. There is no
+automated `setup:db`/`reset:db` script; use the manual steps below.
 
 **Run Migrations**
 ```bash
-cd backend
+cd apps/dgfy-migration-runner
 npm run migrate
 ```
 
 **Rollback Last Migration**
 ```bash
+cd apps/dgfy-migration-runner
 npm run migrate:undo
 ```
 
 **Create New Migration**
 ```bash
+cd apps/dgfy-migration-runner
 npm run migrate:create -- --name migration_name
 ```
 
 **Run Seeders**
 ```bash
+cd apps/dgfy-migration-runner
 npm run seed
 ```
 
 ### Viewing Logs
 ```bash
-cd backend
+cd apps/dgfy-api
 
 # View combined logs (real-time)
 npm run logs:view
@@ -282,21 +270,27 @@ cat logs/error.log
 
 ```
 SKU-Inventory-Manager/
-├── backend/              # Backend API (Node.js/Express)
-│   ├── src/
-│   │   ├── config/      # Database & app configuration
-│   │   ├── models/      # Sequelize models
-│   │   ├── migrations/  # Database migrations
-│   │   ├── routes/      # API routes
-│   │   ├── controllers/ # Request handlers
-│   │   ├── services/    # Business logic
-│   │   └── server.js    # Entry point
-│   └── package.json
-├── src/                 # Frontend (React/Vite)
-│   ├── services/        # API service layer
-│   ├── hooks/           # React hooks
-│   ├── store/           # State management (Zustand)
-│   └── main.jsx         # Entry point
+├── apps/
+│   ├── dgfy-api/                 # Backend API (Node.js/Express)
+│   │   ├── src/
+│   │   │   ├── config/           # Database & app configuration
+│   │   │   ├── models/           # Sequelize models
+│   │   │   ├── routes/           # API routes
+│   │   │   ├── controllers/      # Request handlers
+│   │   │   ├── services/         # Business logic
+│   │   │   └── server.js         # Entry point
+│   │   └── package.json
+│   ├── dgfy-migration-runner/    # Sequelize migrations, seeders, DB bootstrap
+│   │   ├── migrations/
+│   │   ├── src/seeders/
+│   │   └── package.json
+│   └── dgfy-web/                 # Frontend (React/Vite; skupervisor, pos, store)
+│       ├── src/
+│       │   ├── services/         # API service layer
+│       │   ├── hooks/            # React hooks
+│       │   ├── store/            # State management (Zustand)
+│       │   └── main.jsx          # Entry point
+│       └── package.json
 └── package.json
 ```
 

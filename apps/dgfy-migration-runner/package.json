@@ -1,0 +1,31 @@
+{
+  "name": "@dgfy/dgfy-migration-runner",
+  "version": "1.0.0",
+  "description": "Standalone Sequelize migration runner for dgfy-platform, extracted from backend's migration domain",
+  "type": "module",
+  "scripts": {
+    "migrate": "sequelize-cli db:migrate",
+    "migrate:undo": "sequelize-cli db:migrate:undo",
+    "migrate:create": "sequelize-cli migration:generate --name",
+    "seed": "sequelize-cli db:seed:all",
+    "seed:undo": "sequelize-cli db:seed:undo:all"
+  },
+  "keywords": [
+    "inventory",
+    "management",
+    "migrations"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@sieitzz/shared-constants": "file:../../packages/shared-constants",
+    "bcryptjs": "^2.4.3",
+    "dotenv": "^16.6.1",
+    "mysql2": "^3.6.5",
+    "sequelize": "^6.37.8",
+    "sequelize-cli": "^6.6.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

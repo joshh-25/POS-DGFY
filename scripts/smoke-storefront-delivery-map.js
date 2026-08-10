@@ -2,7 +2,7 @@
 const fs = require('fs/promises');
 const path = require('path');
 const childProcess = require('child_process');
-const playwright = require('../backend/node_modules/playwright');
+const playwright = require('../apps/dgfy-api/node_modules/playwright');
 
 const managedServerPort = Number(process.env.STOREFRONT_DELIVERY_MAP_PORT || 5185);
 const baseUrl = String(process.env.STOREFRONT_DELIVERY_MAP_URL || `http://127.0.0.1:${managedServerPort}/tenant-store/map-qa-cafe/order`);
@@ -158,8 +158,8 @@ const startManagedStorefrontServer = async () => {
   const url = new URL(baseUrl);
   if (!['127.0.0.1', 'localhost'].includes(url.hostname)) return null;
 
-  const viteBin = path.resolve(process.cwd(), 'frontend', 'node_modules', 'vite', 'bin', 'vite.js');
-  const cwd = path.resolve(process.cwd(), 'frontend');
+  const viteBin = path.resolve(process.cwd(), 'apps/dgfy-web', 'node_modules', 'vite', 'bin', 'vite.js');
+  const cwd = path.resolve(process.cwd(), 'apps/dgfy-web');
   const child = childProcess.spawn(process.execPath, [
     viteBin,
     '--config',

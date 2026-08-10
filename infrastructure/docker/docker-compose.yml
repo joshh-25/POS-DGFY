@@ -42,14 +42,14 @@ services:
     # is intentionally a scoped, non-root/non-SUPER user, so this flag is
     # needed instead.
     #
-    # max_connections: MUST stay at or above the backend's connection budget --
+    # max_connections: MUST stay at or above dgfy-api's connection budget --
     # TENANT_MAX_CACHED_CONNECTIONS x TENANT_DB_POOL_MAX + LANDLORD_DB_POOL_MAX,
     # which is 20 x 7 + 30 = 170 at the defaults in
-    # backend/src/config/connectionBudget.js. MySQL's own default is 151, i.e.
-    # BELOW that budget -- relying on it silently under-provisions the server.
-    # 200 leaves headroom for the healthcheck, migrations, and admin sessions.
-    # Keep this in sync with DB_MAX_CONNECTIONS on the backend service; the
-    # backend logs a warning at boot when the two disagree.
+    # apps/dgfy-api/src/config/connectionBudget.js. MySQL's own default is 151,
+    # i.e. BELOW that budget -- relying on it silently under-provisions the
+    # server. 200 leaves headroom for the healthcheck, migrations, and admin
+    # sessions. Keep this in sync with DB_MAX_CONNECTIONS on the dgfy-api
+    # service; dgfy-api logs a warning at boot when the two disagree.
     command: >
       mysqld
       --log-bin-trust-function-creators=1
@@ -81,8 +81,29 @@ services:
       timeout: 5s
       retries: 5
 
-  backend:
-    image: ghcr.io/sieitzz/dgfy-platform/backend:${IMAGE_TAG:-latest}
+  # One-shot: applies Sequelize migrations (apps/dgfy-migration-runner, the
+  # migration domain that used to live in backend/) against the landlord DB,
+  # then exits. dgfy-api below depends on this completing successfully instead
+  # of migrating itself on boot -- see infrastructure/docker/dgfy-migration-runner/.
+  dgfy-migration-runner:
+    image: ghcr.io/sieitzz/dgfy-platform/migration-runner:${IMAGE_TAG:-latest}
+    restart: "no"
+    env_file: .env
+    environment:
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_DIALECT: mysql
+    depends_on:
+      mysql:
+        condition: service_healthy
+    networks: [dgfy_internal]
+
+  # apps/dgfy-api is the backend, refactored into apps/ (see docs/ai/CLAUDE.md)
+  # -- now the single source of truth (backend/ removed). The migration domain
+  # runs separately in dgfy-migration-runner above, so dgfy-api no longer runs
+  # db:migrate itself.
+  dgfy-api:
+    image: ghcr.io/sieitzz/dgfy-platform/api:${IMAGE_TAG:-latest}
     restart: unless-stopped
     env_file: .env
     environment:
@@ -90,7 +111,7 @@ services:
       DB_PORT: 3306
       DB_DIALECT: mysql
       REDIS_URL: redis://redis:6379
-      PORT: 5000
+      PORT: 5100
       # Must match the mysql service's --max_connections above. The backend
       # compares its own pool budget against this at boot and warns on a
       # mismatch instead of failing later under load.
@@ -103,17 +124,19 @@ services:
       SENTRY_SEND_DEFAULT_PII: ${SENTRY_SEND_DEFAULT_PII:-false}
       SENTRY_DEBUG: ${SENTRY_DEBUG:-false}
     volumes:
-      - ./data/backend/uploads:/app/uploads
-      - ./data/backend/storage:/app/storage
-      - ./data/backend/logs:/app/logs
+      - ./data/dgfy-api/uploads:/app/uploads
+      - ./data/dgfy-api/storage:/app/storage
+      - ./data/dgfy-api/logs:/app/logs
     depends_on:
       mysql:
         condition: service_healthy
       redis:
         condition: service_healthy
+      dgfy-migration-runner:
+        condition: service_completed_successfully
     networks: [dgfy_internal]
     healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://localhost:5000/api/v1/health"]
+      test: ["CMD", "curl", "-fsS", "http://localhost:5100/api/v1/health"]
       interval: 15s
       timeout: 5s
       retries: 5
@@ -132,7 +155,7 @@ services:
       retries: 5
 
   # Reverse proxy routing SKUPERVISOR_DOMAIN / POS_DOMAIN /
-  # STOREFRONT_DOMAIN (+STOREFRONT_ALT_DOMAIN) to `backend`/`frontend` by
+  # STOREFRONT_DOMAIN (+STOREFRONT_ALT_DOMAIN) to `dgfy-api`/`frontend` by
   # Host header. Stock image, not custom-built -- nginx.conf.template is
   # bind-mounted and rendered via the official image's built-in envsubst
   # entrypoint step using the environment vars below. See
@@ -147,6 +170,7 @@ services:
       POS_DOMAIN: ${POS_DOMAIN}
       STOREFRONT_DOMAIN: ${STOREFRONT_DOMAIN}
       STOREFRONT_ALT_DOMAIN: ${STOREFRONT_ALT_DOMAIN:-}
+      DGFY_API_DOMAIN: ${DGFY_API_DOMAIN:-_}
       CERT_DOMAIN: ${CERT_DOMAIN}
     ports:
       - "80:80"
@@ -157,7 +181,7 @@ services:
       - ./data/certbot/conf:/etc/letsencrypt:ro
       - ./data/certbot/www:/var/www/certbot:ro
     depends_on:
-      backend:
+      dgfy-api:
         condition: service_healthy
       frontend:
         condition: service_healthy

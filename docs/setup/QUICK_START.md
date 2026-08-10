@@ -36,7 +36,7 @@ Before starting, ensure:
 Open **Terminal 1** (Command Prompt, Git Bash, or VS Code Terminal):
 
 ```bash
-cd backend
+cd apps/dgfy-api
 npm run dev
 ```
 
@@ -52,7 +52,7 @@ npm run dev
 
 **If you see database connection errors:**
 - Verify MySQL is running in XAMPP
-- Check `backend/.env` has correct credentials (see `backend/CREDENTIALS.md`)
+- Check `apps/dgfy-api/.env` has correct credentials (see `apps/dgfy-api/CREDENTIALS.md`)
 
 ---
 
@@ -61,7 +61,7 @@ npm run dev
 Open **Terminal 2** (new terminal window):
 
 ```bash
-# Make sure you're in the project root (not backend folder)
+cd apps/dgfy-web
 npm run dev
 ```
 
@@ -100,12 +100,13 @@ You need **2 terminal windows** running simultaneously:
 
 **Terminal 1 - Backend:**
 ```bash
-cd backend
+cd apps/dgfy-api
 npm run dev
 ```
 
 **Terminal 2 - Frontend:**
 ```bash
+cd apps/dgfy-web
 npm run dev
 ```
 
@@ -125,9 +126,10 @@ If you are working with the Antigravity AI assistant, you can skip manual termin
 
 ## Optional: Frontend Environment Configuration
 
-The frontend will work with default settings, but you can create a `.env` file in the **project root** (not backend folder) for customization:
+The frontend will work with default settings, but you can create a `.env` file in
+`apps/dgfy-web/` for customization:
 
-**Create `.env` in project root:**
+**Create `apps/dgfy-web/.env`:**
 ```env
 VITE_API_URL=http://localhost:5000/api/v1
 ```
@@ -147,7 +149,7 @@ This is optional - the frontend already defaults to `http://localhost:5000/api/v
 
 **Solutions:**
 1. Verify MySQL is running in XAMPP Control Panel
-2. Check `backend/.env` file exists and has correct credentials
+2. Check `apps/dgfy-api/.env` file exists and has correct credentials
 3. Verify database exists: Open phpMyAdmin → Check if `sku_inventory_manager` database exists
 4. Test connection manually: Try accessing http://localhost/phpmyadmin
 
@@ -163,7 +165,7 @@ Error: listen EADDRINUSE: address already in use :::5000
    netstat -ano | findstr :5000
    taskkill /PID <PID> /F
    ```
-2. Or change port in `backend/.env`: `PORT=5001` (then update frontend API URL)
+2. Or change port in `apps/dgfy-api/.env`: `PORT=5001` (then update frontend API URL)
 
 ---
 
@@ -192,7 +194,7 @@ Error: listen EADDRINUSE: address already in use :::5000
 
 **Solution:** Run migrations:
 ```bash
-cd backend
+cd apps/dgfy-migration-runner
 npm run migrate
 ```
 
@@ -200,7 +202,7 @@ npm run migrate
 
 **Solution:** Run seeders:
 ```bash
-cd backend
+cd apps/dgfy-migration-runner
 npm run seed
 ```
 
@@ -231,10 +233,10 @@ To stop the application:
 
 The POS Device Bridge is optional (ADR 0053). POS checkout, receipt preview,
 and the iMin native printer path all work without it. Set
-`DEVICE_BRIDGE_ENABLED=true` in the backend `.env` to have the backend dispatch
+`DEVICE_BRIDGE_ENABLED=true` in `apps/dgfy-api/.env` to have the backend dispatch
 print/drawer actions to it; leave it unset/`false` (the default) to run
 without any LAN-attached printer. See `POS_DEVICE_DRIVER` in
-`backend/device-bridge/README.md` for the full driver override options.
+`apps/dgfy-api/device-bridge/README.md` for the full driver override options.
 
 ---
 
@@ -264,12 +266,13 @@ To build for production:
 
 **Backend:**
 ```bash
-cd backend
+cd apps/dgfy-api
 npm start
 ```
 
 **Frontend:**
 ```bash
+cd apps/dgfy-web
 npm run build
 npm run preview
 ```

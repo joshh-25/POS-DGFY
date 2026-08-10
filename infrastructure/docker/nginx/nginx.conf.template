@@ -26,7 +26,7 @@
 # Every proxy_pass target below uses `set $var host:port; proxy_pass
 # http://$var;` instead of a bare `proxy_pass http://host:port;`. This is
 # NOT cosmetic: a bare proxy_pass resolves the hostname ONCE per nginx
-# worker (at startup/reload) and never again, but `backend`/`frontend`
+# worker (at startup/reload) and never again, but `dgfy-api`/`frontend`
 # get a NEW internal IP every time docker-compose recreates them (e.g. on
 # every deploy). Without this, nginx keeps proxying to the old, dead IP
 # after every deploy until it happens to be reloaded/restarted for some
@@ -36,7 +36,7 @@
 #
 # Production and beta share this single container: the beta domain group
 # below proxies to the `frontend-beta` service, the PRODUCTION domain group
-# further down proxies to `frontend` -- both share the same `backend`.
+# further down proxies to `frontend` -- both share the same `dgfy-api`.
 
 resolver 127.0.0.11 valid=10s;
 
@@ -66,7 +66,7 @@ server {
 # issuance and renewal), redirect everything else to HTTPS.
 server {
     listen 80;
-    server_name ${SKUPERVISOR_DOMAIN} ${POS_DOMAIN} ${STOREFRONT_DOMAIN} ${STOREFRONT_ALT_DOMAIN} ${SKUPERVISOR_DOMAIN_PROD} ${POS_DOMAIN_PROD} ${STOREFRONT_DOMAIN_PROD};
+    server_name ${SKUPERVISOR_DOMAIN} ${POS_DOMAIN} ${STOREFRONT_DOMAIN} ${STOREFRONT_ALT_DOMAIN} ${DGFY_API_DOMAIN} ${SKUPERVISOR_DOMAIN_PROD} ${POS_DOMAIN_PROD} ${STOREFRONT_DOMAIN_PROD};
 
     location /.well-known/acme-challenge/ {
         root /var/www/certbot;
@@ -79,6 +79,28 @@ server {
 
 server {
     listen 443 ssl;
+    server_name ${DGFY_API_DOMAIN};
+    client_max_body_size 8m;
+
+    ssl_certificate /etc/letsencrypt/live/${CERT_DOMAIN}/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN}/privkey.pem;
+
+    location / {
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+server {
+    listen 443 ssl;
     server_name ${SKUPERVISOR_DOMAIN};
     client_max_body_size 8m;
 
@@ -86,8 +108,8 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN}/privkey.pem;
 
     location /api {
-        set $backend_upstream backend:5000;
-        proxy_pass http://$backend_upstream;
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -107,10 +129,10 @@ server {
     # job_id -- extraction itself runs asynchronously in
     # workers/menuImportWorker.js, not inline in this request.
     location = /api/v1/items/import/menu/jobs {
-        set $backend_upstream backend:5000;
+        set $dgfy_api_upstream dgfy-api:5100;
         client_max_body_size 64m;
         proxy_read_timeout 120s;
-        proxy_pass http://$backend_upstream;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -122,8 +144,8 @@ server {
     }
 
     location /uploads {
-        set $backend_upstream backend:5000;
-        proxy_pass http://$backend_upstream;
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -219,8 +241,8 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN}/privkey.pem;
 
     location /api {
-        set $backend_upstream backend:5000;
-        proxy_pass http://$backend_upstream;
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -240,10 +262,10 @@ server {
     # job_id -- extraction itself runs asynchronously in
     # workers/menuImportWorker.js, not inline in this request.
     location = /api/v1/items/import/menu/jobs {
-        set $backend_upstream backend:5000;
+        set $dgfy_api_upstream dgfy-api:5100;
         client_max_body_size 64m;
         proxy_read_timeout 120s;
-        proxy_pass http://$backend_upstream;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -255,8 +277,8 @@ server {
     }
 
     location /uploads {
-        set $backend_upstream backend:5000;
-        proxy_pass http://$backend_upstream;
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -332,8 +354,8 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN}/privkey.pem;
 
     location /api {
-        set $backend_upstream backend:5000;
-        proxy_pass http://$backend_upstream;
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -353,10 +375,10 @@ server {
     # job_id -- extraction itself runs asynchronously in
     # workers/menuImportWorker.js, not inline in this request.
     location = /api/v1/items/import/menu/jobs {
-        set $backend_upstream backend:5000;
+        set $dgfy_api_upstream dgfy-api:5100;
         client_max_body_size 64m;
         proxy_read_timeout 120s;
-        proxy_pass http://$backend_upstream;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -368,8 +390,8 @@ server {
     }
 
     location /uploads {
-        set $backend_upstream backend:5000;
-        proxy_pass http://$backend_upstream;
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -487,7 +509,7 @@ server {
 # PRODUCTION domain group (dgfy.ph / skupervisor.dgfy.ph / pos.dgfy.ph).
 # Mirrors the beta blocks above but serves the PROD frontend container
 # (`frontend`, prod VITE_* baked in) and uses the separate ${CERT_DOMAIN_PROD}
-# certificate. /api + /uploads proxy to the SAME shared `backend:5000`.
+# certificate. /api + /uploads proxy to the SAME shared `dgfy-api:5100`.
 # ============================================================================
 
 server {
@@ -499,8 +521,8 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN_PROD}/privkey.pem;
 
     location /api {
-        set $backend_upstream backend:5000;
-        proxy_pass http://$backend_upstream;
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -520,10 +542,10 @@ server {
     # job_id -- extraction itself runs asynchronously in
     # workers/menuImportWorker.js, not inline in this request.
     location = /api/v1/items/import/menu/jobs {
-        set $backend_upstream backend:5000;
+        set $dgfy_api_upstream dgfy-api:5100;
         client_max_body_size 64m;
         proxy_read_timeout 120s;
-        proxy_pass http://$backend_upstream;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -535,8 +557,8 @@ server {
     }
 
     location /uploads {
-        set $backend_upstream backend:5000;
-        proxy_pass http://$backend_upstream;
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -620,8 +642,8 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN_PROD}/privkey.pem;
 
     location /api {
-        set $backend_upstream backend:5000;
-        proxy_pass http://$backend_upstream;
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -641,10 +663,10 @@ server {
     # job_id -- extraction itself runs asynchronously in
     # workers/menuImportWorker.js, not inline in this request.
     location = /api/v1/items/import/menu/jobs {
-        set $backend_upstream backend:5000;
+        set $dgfy_api_upstream dgfy-api:5100;
         client_max_body_size 64m;
         proxy_read_timeout 120s;
-        proxy_pass http://$backend_upstream;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -656,8 +678,8 @@ server {
     }
 
     location /uploads {
-        set $backend_upstream backend:5000;
-        proxy_pass http://$backend_upstream;
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
@@ -731,8 +753,8 @@ server {
     ssl_certificate_key /etc/letsencrypt/live/${CERT_DOMAIN_PROD}/privkey.pem;
 
     location /api {
-        set $backend_upstream backend:5000;
-        proxy_pass http://$backend_upstream;
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -752,10 +774,10 @@ server {
     # job_id -- extraction itself runs asynchronously in
     # workers/menuImportWorker.js, not inline in this request.
     location = /api/v1/items/import/menu/jobs {
-        set $backend_upstream backend:5000;
+        set $dgfy_api_upstream dgfy-api:5100;
         client_max_body_size 64m;
         proxy_read_timeout 120s;
-        proxy_pass http://$backend_upstream;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
@@ -767,8 +789,8 @@ server {
     }
 
     location /uploads {
-        set $backend_upstream backend:5000;
-        proxy_pass http://$backend_upstream;
+        set $dgfy_api_upstream dgfy-api:5100;
+        proxy_pass http://$dgfy_api_upstream;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
