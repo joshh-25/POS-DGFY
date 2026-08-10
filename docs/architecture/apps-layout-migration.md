@@ -107,6 +107,36 @@ has and commits to `backend/`/`frontend/`/`android/`** — the relocation only h
 this branch. See `backend-absorption.md` for how those upstream changes get replayed into
 the `apps/` layout without being lost.
 
+## For developers with a branch based on pre-merge `develop`
+
+This branch has now merged into `develop`. If you have an in-flight branch cut from `develop`
+*before* that merge, its commits still touch `backend/`, `frontend/`, and/or `android/` — paths
+that no longer exist. Rebasing or merging `develop` into that branch will not, by itself, corrupt
+anything, but you should know what to expect rather than be surprised by it.
+
+The mechanics here are the mirror image of what `backend-absorption.md` documents (that doc
+replayed `develop`'s `backend/`-rooted commits *into* this branch; you're now replaying your
+`backend/`-rooted commits *onto* the already-relocated `apps/` layout). Based on that doc's
+changelog of 10+ real merge cycles exercising this exact rename shape:
+
+- **Commits that modify a file that already existed** auto-merge cleanly. Git's content-based
+  rename detection follows the move without prompting — this covers the large majority of any
+  normal feature branch's diff (measured on this branch's own merge: 3106 of 3210 changed paths
+  detected as pure `R100` renames).
+- **New files your branch added inside a directory that already existed** (e.g. another file
+  dropped into what was `backend/src/modules/pos/`) usually surface as a low-friction "confirm
+  destination" prompt, correctly resolved to the new `apps/` path.
+- **New files inside a brand-new subdirectory your branch introduced** (one that didn't exist
+  before your branch created it) are the one real gap: git's directory-rename detection has no
+  signal for these. They raise **no conflict and no advisory** and will silently reappear at their
+  old, now-dead `backend/`/`frontend/`/`android/` path instead of moving to `apps/`. You have to
+  find and `git mv` these yourself — check the path map above for where they belong.
+
+Before finishing your merge/rebase: confirm `backend/`, `frontend/`, and `android/` are absent (or
+empty) from your working tree, then run `npm run check:architecture` and `npm run lint:docs`. See
+[`backend-absorption.md`](./backend-absorption.md) for the fuller, dated write-up of this failure
+mode if you hit it.
+
 ## Related documents
 
 - [`backend-absorption.md`](./backend-absorption.md) — the step-by-step procedure for

@@ -25,9 +25,12 @@ cp .env.example .env
 
 3. Update `.env` with your database credentials
 
-4. Run database migrations:
+4. Run database migrations (separate package):
 ```bash
+cd ../dgfy-migration-runner
 npm run migrate
+npm run seed   # optional, sample data
+cd ../dgfy-api
 ```
 
 5. Start development server:
@@ -42,11 +45,10 @@ npm run dev
 - `npm test` - Run tests
 - `npm run test:watch` - Run tests in watch mode
 - `npm run test:coverage` - Generate test coverage report
-- `npm run migrate` - Run database migrations
-- `npm run migrate:undo` - Rollback last migration
-- `npm run migrate:create -- --name migration_name` - Create new migration
-- `npm run seed` - Run database seeders
-- `npm run seed:undo` - Rollback seeders
+- `npm run doctor:runtime` - Verify runtime schema readiness
+
+Migrations/seeders now live in the sibling `apps/dgfy-migration-runner` package — see its README
+for `migrate`/`seed` commands.
 
 ## API Base URL
 
@@ -60,7 +62,6 @@ apps/dgfy-api/
 ├── src/
 │   ├── config/          # Configuration files
 │   ├── models/          # Sequelize models
-│   ├── migrations/     # Database migrations
 │   ├── routes/         # Express routes
 │   ├── controllers/   # Request handlers
 │   ├── services/       # Business logic

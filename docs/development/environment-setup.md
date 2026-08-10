@@ -28,29 +28,28 @@ For the complete local startup command set and port map, see
 ```bash
 # Clone repository
 git clone <repo-url>
-cd sku-inventory-manager
+cd dgfy-platform
 
 # Install all monorepo dependencies
 npm run install:all
 
-# Create backend .env file
-cd backend
+# Create the API's .env file
+cd apps/dgfy-api
 cp .env.example .env
 
 # Configure database
 # Edit .env with your MySQL credentials
 
-# Run migrations
+# Migrations and seeding live in a separate package (apps/dgfy-migration-runner)
+cd ../dgfy-migration-runner
 npm run migrate
-
-# Verify runtime schema readiness (must be healthy before starting app)
-npm run doctor:runtime
-
-# Seed initial data
 npm run seed
 
+# Verify runtime schema readiness (must be healthy before starting app)
+cd ../..
+npm run doctor:runtime
+
 # Start the full stack from repo root
-cd ..
 npm run dev
 ```
 
@@ -110,7 +109,7 @@ PAYMENTS_ENABLED=false
 - Keep `DB_AUTO_SYNC=false` for normal local + PM2 runs.
 - Do **not** rely on `sequelize.sync({ alter: true })` at server startup for schema changes.
 - Use migrations for schema evolution:
-  - `cd backend`
+  - `cd apps/dgfy-migration-runner`
   - `npm run migrate`
 - Enable `DB_AUTO_SYNC=true` only for short, controlled local experiments, then disable it again before shared testing.
 
@@ -134,8 +133,9 @@ Storefront branding contract note:
 - If storefront discovery fails with `Unknown column 'storefront_cover_image_url' in 'field list'`, run:
 
 ```bash
-cd backend
+cd apps/dgfy-migration-runner
 npm run migrate
+cd ../..
 npm run doctor:runtime
 ```
 
@@ -212,7 +212,7 @@ All frontend surfaces share the same backend API, while storefront tenant resolu
 ### Upload/Image Serving Contract (Important)
 
 - POS image overrides are served from backend static path: `/uploads/...`.
-- `backend/uploads` is runtime-generated and not source-controlled (except `backend/uploads/.gitkeep` scaffold).
+- `apps/dgfy-api/uploads` is runtime-generated and not source-controlled (except `apps/dgfy-api/uploads/.gitkeep` scaffold).
 - Vite dev/preview must proxy both:
   - `/api` -> backend
   - `/uploads` -> backend
@@ -238,24 +238,32 @@ Refer to [Database Schema](../database/schema.md) for complete schema details.
 
 ### Running Migrations
 
+Migrations and seeders live in the separate `apps/dgfy-migration-runner` package (not
+`apps/dgfy-api`) — see [its README](../../apps/dgfy-migration-runner/README.md) for the full
+env var/setup contract.
+
 ```bash
+# From repo root
+cd apps/dgfy-migration-runner
+
 # Run all pending migrations
 npm run migrate
-
-# Verify schema + migration runtime readiness
-npm run doctor:runtime
 
 # Rollback last migration
 npm run migrate:undo
 
 # Create a new migration
 npm run migrate:create -- --name your-migration-name
+
+# Verify schema + migration runtime readiness (from repo root)
+cd ../..
+npm run doctor:runtime
 ```
 
 ### Seeding Data
 
 ```bash
-# Run all seeders
+# From apps/dgfy-migration-runner
 npm run seed
 
 # Undo all seeders
@@ -299,41 +307,21 @@ redis-cli ping
 
 ### Docker Compose
 
-Create `docker-compose.yml`:
-
-```yaml
-version: '3.8'
-services:
-  mysql:
-    image: mysql:8.0
-    environment:
-      MYSQL_ROOT_PASSWORD: rootpassword
-      MYSQL_DATABASE: sku_inventory_manager
-    ports:
-      - "3306:3306"
-    volumes:
-      - mysql_data:/var/lib/mysql
-
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-
-volumes:
-  mysql_data:
-```
-
-### Running with Docker
+A full compose stack (mysql, redis, dgfy-api, dgfy-migration-runner, frontend) already exists at
+`infrastructure/docker/docker-compose.yml` — use that instead of hand-authoring a minimal one.
 
 ```bash
+cd infrastructure/docker
+cp .env.example .env   # configure as needed
+
 # Start services
-docker-compose up -d
+docker compose up -d
 
 # Stop services
-docker-compose down
+docker compose down
 
 # View logs
-docker-compose logs -f
+docker compose logs -f
 ```
 
 ---
