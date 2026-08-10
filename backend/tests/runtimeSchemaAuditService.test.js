@@ -41,10 +41,13 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260703000002-enforce-one-open-shift-per-terminal.cjs' },
         { name: '20260705000001-add-admin-provisioned-membership-source.cjs' },
         { name: '20260710000001-create-delivery-jobs.cjs' },
+        { name: '20260808000002-create-delivery-personnel-and-assignment.cjs' },
+        { name: '20260808000003-add-delivery-assignment-shift.cjs' },
         { name: '20260711000001-add-pickup-cash-collection-fields.cjs' },
         { name: '20260711000002-add-item-folder-active-contract.cjs' },
         { name: '20260711000003-repair-pickup-cash-collection-columns.cjs' },
         { name: '20260807000002-add-pos-payment-timing.cjs' },
+        { name: '20260808000001-add-pos-day-close-pin-and-z-reading-attribution.cjs' },
         { name: '20260714000002-add-pos-best-seller-contract.cjs' },
         { name: '20260724000001-enforce-one-open-shift-per-operator.cjs' },
         { name: '20260502000001-add-services-mode-booking-tables.cjs' },
@@ -84,7 +87,9 @@ const buildHealthySequelizeMock = () => ({
                     user_id: {},
                     role: {},
                     is_master_admin: {},
-                    deleted_at: {}
+                    deleted_at: {},
+                    pos_approval_pin_hash: {},
+                    pos_day_close_pin_hash: {}
                 },
                 items: {
                     item_id: {},
@@ -192,8 +197,21 @@ const buildHealthySequelizeMock = () => ({
                     delivery_job_id: {},
                     pos_transaction_id: {},
                     location_id: {},
+                    delivery_personnel_id: {},
+                    assigned_by: {},
+                    assigned_shift_id: {},
+                    assigned_at: {},
                     provider: {},
                     status: {}
+                },
+                delivery_personnel: {
+                    delivery_personnel_id: {},
+                    display_name: {},
+                    phone: {},
+                    location_id: {},
+                    is_active: {},
+                    created_by: {},
+                    updated_by: {}
                 },
                 service_booking_lines: {
                     booking_line_id: {},

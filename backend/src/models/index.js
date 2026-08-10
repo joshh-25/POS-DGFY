@@ -34,6 +34,7 @@ import DispatchOrder from './DispatchOrder.js';
 import DispatchOrderLine from './DispatchOrderLine.js';
 import PosTransaction from './PosTransaction.js';
 import DeliveryJob from './DeliveryJob.js';
+import DeliveryPersonnel from './DeliveryPersonnel.js';
 import PosTransactionLine from './PosTransactionLine.js';
 import PosDiscountRule from './PosDiscountRule.js';
 import PosTransactionDiscount from './PosTransactionDiscount.js';
@@ -76,6 +77,8 @@ import ServiceBookingLineOption from './ServiceBookingLineOption.js';
 import FnbModifierGroup from './FnbModifierGroup.js';
 import FnbModifierOption from './FnbModifierOption.js';
 import FnbItemModifierGroup from './FnbItemModifierGroup.js';
+import FnbModifierGroupLocationAvailability from './FnbModifierGroupLocationAvailability.js';
+import FnbModifierOptionLocationAvailability from './FnbModifierOptionLocationAvailability.js';
 import FnbDiningArea from './FnbDiningArea.js';
 import FnbDiningTable from './FnbDiningTable.js';
 import FnbKitchenStation from './FnbKitchenStation.js';
@@ -554,6 +557,13 @@ PosTransaction.hasMany(PosTransactionLine, { foreignKey: 'pos_transaction_id', a
 PosTransaction.hasOne(DeliveryJob, { foreignKey: 'pos_transaction_id', as: 'deliveryJob' });
 DeliveryJob.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
 DeliveryJob.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+DeliveryJob.belongsTo(DeliveryPersonnel, { foreignKey: 'delivery_personnel_id', as: 'deliveryPersonnel' });
+DeliveryJob.belongsTo(User, { foreignKey: 'assigned_by', as: 'assignedByUser' });
+DeliveryJob.belongsTo(PosTerminalShift, { foreignKey: 'assigned_shift_id', as: 'assignedShift' });
+DeliveryPersonnel.hasMany(DeliveryJob, { foreignKey: 'delivery_personnel_id', as: 'deliveryJobs' });
+DeliveryPersonnel.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+DeliveryPersonnel.belongsTo(User, { foreignKey: 'created_by', as: 'createdByUser' });
+DeliveryPersonnel.belongsTo(User, { foreignKey: 'updated_by', as: 'updatedByUser' });
 PosTransaction.hasMany(PosFiscalEvent, { foreignKey: 'pos_transaction_id', as: 'fiscalEvents' });
 PosTransaction.hasMany(PosFiscalPrintEvent, { foreignKey: 'pos_transaction_id', as: 'fiscalPrintEvents' });
 PosTransactionLine.belongsTo(PosTransaction, { foreignKey: 'pos_transaction_id', as: 'transaction' });
@@ -592,6 +602,7 @@ PosTerminalShift.belongsTo(User, { foreignKey: 'closed_by', as: 'closedByUser' }
 PosTerminalShift.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 PosTerminalShift.hasMany(PosCashDrawerEvent, { foreignKey: 'pos_terminal_shift_id', as: 'cashEvents' });
 PosTerminalShift.hasMany(PosTransaction, { foreignKey: 'shift_id', as: 'transactions' });
+PosTerminalShift.hasMany(DeliveryJob, { foreignKey: 'assigned_shift_id', as: 'assignedDeliveryJobs' });
 PosCashDrawerEvent.belongsTo(PosTerminalShift, { foreignKey: 'pos_terminal_shift_id', as: 'shift' });
 PosCashDrawerEvent.belongsTo(User, { foreignKey: 'recorded_by', as: 'recordedByUser' });
 PosShiftLocationTransition.belongsTo(PosTerminalShift, { foreignKey: 'from_shift_id', as: 'fromShift' });
@@ -689,6 +700,8 @@ ServiceWaitlistEntry.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id',
 ServiceOptionGroup.hasMany(ServiceOption, { foreignKey: 'group_id', as: 'options' });
 ServiceOption.belongsTo(ServiceOptionGroup, { foreignKey: 'group_id', as: 'group' });
 ServiceOption.belongsTo(Item, { foreignKey: 'linked_physical_item_id', as: 'linkedPhysicalItem' });
+ServiceItemOptionGroup.belongsTo(Item, { foreignKey: 'service_item_id', as: 'serviceItem' });
+ServiceItemOptionGroup.belongsTo(ServiceOptionGroup, { foreignKey: 'option_group_id', as: 'group' });
 Item.belongsToMany(ServiceOptionGroup, { through: ServiceItemOptionGroup, foreignKey: 'service_item_id', otherKey: 'option_group_id', as: 'serviceOptionGroups', uniqueKey: 'unique_svc_item_opt_grp' });
 ServiceOptionGroup.belongsToMany(Item, { through: ServiceItemOptionGroup, foreignKey: 'option_group_id', otherKey: 'service_item_id', as: 'serviceItems', uniqueKey: 'unique_svc_item_opt_grp' });
 ServiceBookingLine.hasMany(ServiceBookingLineOption, { foreignKey: 'booking_line_id', as: 'options' });
@@ -698,6 +711,12 @@ ServiceBookingLineOption.belongsTo(ServiceBookingLine, { foreignKey: 'booking_li
 FnbModifierGroup.hasMany(FnbModifierOption, { foreignKey: 'modifier_group_id', as: 'options' });
 FnbModifierOption.belongsTo(FnbModifierGroup, { foreignKey: 'modifier_group_id', as: 'group' });
 FnbModifierOption.belongsTo(Item, { foreignKey: 'sku_item_id', as: 'skuItem' });
+FnbModifierGroup.hasMany(FnbModifierGroupLocationAvailability, { foreignKey: 'modifier_group_id', as: 'locationAvailability' });
+FnbModifierGroupLocationAvailability.belongsTo(FnbModifierGroup, { foreignKey: 'modifier_group_id', as: 'modifierGroup' });
+FnbModifierGroupLocationAvailability.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+FnbModifierOption.hasMany(FnbModifierOptionLocationAvailability, { foreignKey: 'modifier_option_id', as: 'locationAvailability' });
+FnbModifierOptionLocationAvailability.belongsTo(FnbModifierOption, { foreignKey: 'modifier_option_id', as: 'modifierOption' });
+FnbModifierOptionLocationAvailability.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
 Item.belongsToMany(FnbModifierGroup, {
   through: FnbItemModifierGroup,
   foreignKey: 'item_id',
@@ -863,6 +882,7 @@ const db = {
   DispatchOrderLine,
   PosTransaction,
   DeliveryJob,
+  DeliveryPersonnel,
   PosTransactionLine,
   PosDiscountRule,
   PosTransactionDiscount,
@@ -906,6 +926,8 @@ const db = {
   FnbModifierGroup,
   FnbModifierOption,
   FnbItemModifierGroup,
+  FnbModifierGroupLocationAvailability,
+  FnbModifierOptionLocationAvailability,
   FnbDiningArea,
   FnbDiningTable,
   FnbKitchenStation,
@@ -1089,6 +1111,8 @@ export {
   FnbModifierGroup,
   FnbModifierOption,
   FnbItemModifierGroup,
+  FnbModifierGroupLocationAvailability,
+  FnbModifierOptionLocationAvailability,
   FnbDiningArea,
   FnbDiningTable,
   FnbKitchenStation,

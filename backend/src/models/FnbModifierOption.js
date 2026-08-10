@@ -34,6 +34,9 @@ const FnbModifierOption = sequelize.define('FnbModifierOption', {
     allowNull: false,
     defaultValue: true
   },
+  visible_in_pos: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  visible_in_storefront: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  is_sold_out: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
   allergen_notes: {
     type: DataTypes.JSON,
     allowNull: true
