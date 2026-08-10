@@ -11,8 +11,6 @@ export function DiscoveryHomePage({
   accountIdentityName,
   accountIdentityRawEmail,
   activeDiscoveryNavItem,
-  buildBusinessLoginUrl,
-  buildBusinessRegistrationUrl,
   desktopCategoryRailRef,
   dgfyBusinessOwnerPhoto,
   dgfyHeaderLogo,
@@ -96,7 +94,6 @@ export function DiscoveryHomePage({
         accountInitials={accountIdentityInitials}
         accountSubtitle={accountIdentityRawEmail || accountIdentityContact}
         authLabel="Log in / Sign up"
-        businessLabel="Register Your Business"
         menuOpen={isDiscoveryNavMenuOpen}
         onMenuToggle={handleDiscoveryMenuToggle}
         onItemClick={handleDiscoveryNavItemClick}
@@ -108,13 +105,13 @@ export function DiscoveryHomePage({
           }
           openCanonicalDgfyAuth('customer');
         }}
-        onBusinessClick={openBusinessRegistrationFlow}
       />
 
       {activeDiscoveryNavItem === 'Solutions' ? (
         <SolutionsPage
           logoSrc={dgfyHeaderLogo}
           onExploreClick={handleDiscoveryExploreClick}
+          isMobileViewport={isMobileViewport}
         />
       ) : (
         <>
@@ -159,8 +156,6 @@ export function DiscoveryHomePage({
           />
 
           <DiscoveryLandingSections
-            buildBusinessLoginUrl={buildBusinessLoginUrl}
-            buildBusinessRegistrationUrl={buildBusinessRegistrationUrl}
             dgfyBusinessOwnerPhoto={dgfyBusinessOwnerPhoto}
             dgfyHeaderLogo={dgfyHeaderLogo}
             dgfySymbolLogo={dgfySymbolLogo}

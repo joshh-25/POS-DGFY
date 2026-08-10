@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { App } from '../main.jsx';
 import { BrowserRouter } from 'react-router-dom';
@@ -212,13 +212,26 @@ describe('discovery header customer account actions', () => {
     document.cookie = 'sku_csrf_token=test-hint';
   };
 
-  it('shows separate customer auth and business registration actions on discovery header', async () => {
+  it('shows the customer auth action without a business registration action on discovery header', async () => {
     render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
 
     expect(screen.getByRole('button', { name: /log in \/ sign up/i })).toBeTruthy();
-    expect(screen.getAllByRole('button', { name: /register your business/i }).length).toBeGreaterThan(0);
+    expect(within(screen.getByRole('navigation')).queryByRole('button', { name: /register your business/i })).toBeNull();
+  }, 10000);
+
+  it('removes the discovery footer navigation groups while keeping the footer branding', async () => {
+    render(<BrowserRouter><App /></BrowserRouter>);
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
+
+    const footer = screen.getByRole('contentinfo');
+    expect(within(footer).queryByText('Company', { exact: true })).toBeNull();
+    expect(within(footer).queryByText('Explore', { exact: true })).toBeNull();
+    expect(within(footer).queryByText('For Business', { exact: true })).toBeNull();
+    expect(within(footer).queryByText('Contact', { exact: true })).toBeNull();
+    expect(within(footer).getByAltText('DGFY logo')).toBeTruthy();
   }, 10000);
 
   it('skips the /auth/me probe for a genuinely anonymous visitor (no token, no session-hint cookie)', async () => {
