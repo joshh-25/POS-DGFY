@@ -5,9 +5,9 @@ const path = require('path');
 const crypto = require('crypto');
 
 const DEFAULT_LOG_FILES = [
-  path.join('backend', 'logs', 'request-outcomes.log'),
-  path.join('backend', 'logs', 'error.log'),
-  path.join('backend', 'logs', 'combined.log'),
+  path.join('apps', 'dgfy-api', 'logs', 'request-outcomes.log'),
+  path.join('apps', 'dgfy-api', 'logs', 'error.log'),
+  path.join('apps', 'dgfy-api', 'logs', 'combined.log'),
   path.join('logs', 'deploy', 'deploy_*.summary.txt')
 ];
 

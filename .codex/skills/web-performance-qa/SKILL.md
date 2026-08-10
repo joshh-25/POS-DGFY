@@ -21,29 +21,29 @@ POS-DGFY is structured as a React multi-app workspace with one backend Express A
 
 * **Backend API**: `backend/` (runs on `http://localhost:5000`)
   * Resolves separate tenant databases via the `x-company-token` header.
-* **Skupervisor (IMS Admin)**: `frontend/apps/skupervisor` (runs on `http://localhost:5173`)
-  * Bootstrapped via `frontend/apps/skupervisor/src/main.jsx` (which imports `frontend/src/main.jsx`).
-* **Standalone POS (Cashier PWA)**: `frontend/apps/pos` (runs on `http://localhost:5174`)
+* **Skupervisor (IMS Admin)**: `apps/dgfy-web/apps/skupervisor` (runs on `http://localhost:5173`)
+  * Bootstrapped via `apps/dgfy-web/apps/skupervisor/src/main.jsx` (which imports `apps/dgfy-web/src/main.jsx`).
+* **Standalone POS (Cashier PWA)**: `apps/dgfy-web/apps/pos` (runs on `http://localhost:5174`)
   * Dedicated cashier shell and PWA manifest.
-* **Storefront (Customer Store)**: `frontend/apps/store` (runs on `http://localhost:5175`)
+* **Storefront (Customer Store)**: `apps/dgfy-web/apps/store` (runs on `http://localhost:5175`)
   * Public e-commerce portal (F&B / Hospitality bookings).
 * **Communication**:
-  * Shared state & tokens between Skupervisor and POS are synced via a `BroadcastChannel` named `auth-channel` (defined in `frontend/src/services/api.js`).
+  * Shared state & tokens between Skupervisor and POS are synced via a `BroadcastChannel` named `auth-channel` (defined in `apps/dgfy-web/src/services/api.js`).
   * Storefront customer session states must remain separated from staff tokens.
 
 ---
 
 ## 3. Standard Inspection Checklist
 Before modifying or debugging test specs, check:
-1. `frontend/package.json` and `backend/package.json` for script names.
-2. `frontend/apps/*/vite.config.js` for custom configs and proxy rules.
-3. `frontend/src/services/api.js` for Axios configurations and session key references.
-4. `frontend/playwright.config.js` and `.env` parameters.
+1. `apps/dgfy-web/package.json` and `backend/package.json` for script names.
+2. `apps/dgfy-web/apps/*/vite.config.js` for custom configs and proxy rules.
+3. `apps/dgfy-web/src/services/api.js` for Axios configurations and session key references.
+4. `apps/dgfy-web/playwright.config.js` and `.env` parameters.
 
 ---
 
 ## 4. Playwright E2E Testing Config
-* **Location**: All tests must be stored under `frontend/tests/e2e/`.
+* **Location**: All tests must be stored under `apps/dgfy-web/tests/e2e/`.
 * **Execution Constraint**: **Strictly Local**. Never configure GitHub Actions or cloud triggers. Use `workers: 1` locally to prevent database locks and race conditions.
 * **Fixtures**: Configure multiple base URLs through Playwright project settings or inline helpers.
 * **Target URLs**:
@@ -54,7 +54,7 @@ Before modifying or debugging test specs, check:
 
 ---
 
-## 5. Required Local scripts (in frontend/package.json)
+## 5. Required Local scripts (in apps/dgfy-web/package.json)
 ```json
 "test:e2e": "playwright test",
 "test:e2e:headed": "playwright test --headed",

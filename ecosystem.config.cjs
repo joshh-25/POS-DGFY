@@ -3,11 +3,11 @@ module.exports = {
         {
             name: 'sku-backend',
             script: './src/server.js',
-            cwd: './backend',
+            cwd: './apps/dgfy-api',
             exec_mode: 'fork',
             instances: 1,
             // Matches `npm start`'s `node --import ./src/instrument.js src/server.js`
-            // (backend/package.json). Without this, Sentry.init() runs from
+            // (apps/dgfy-api/package.json). Without this, Sentry.init() runs from
             // server.js after ~65 application imports have already loaded
             // express/mysql2, so the auto-instrumentation integrations in
             // src/config/sentry.js never patch them -- see #298.
@@ -41,7 +41,7 @@ module.exports = {
             name: 'sku-frontend',
             script: './node_modules/vite/bin/vite.js',
             args: 'preview --config apps/skupervisor/vite.config.js --host --port 5173 --strictPort',
-            cwd: './frontend',
+            cwd: './apps/dgfy-web',
             env: {
                 NODE_ENV: 'production',
             },
@@ -53,7 +53,7 @@ module.exports = {
             name: 'sku-pos-frontend',
             script: './node_modules/vite/bin/vite.js',
             args: 'preview --config apps/pos/vite.config.js --host --port 5174 --strictPort',
-            cwd: './frontend',
+            cwd: './apps/dgfy-web',
             env: {
                 NODE_ENV: 'production',
             },
@@ -65,7 +65,7 @@ module.exports = {
             name: 'sku-store-frontend',
             script: './node_modules/vite/bin/vite.js',
             args: 'preview --config apps/store/vite.config.js --host --port 5175 --strictPort',
-            cwd: './frontend',
+            cwd: './apps/dgfy-web',
             env: {
                 NODE_ENV: 'production',
             },
@@ -77,7 +77,7 @@ module.exports = {
         {
             name: 'sku-staging-backend',
             script: './src/server.js',
-            cwd: './backend',
+            cwd: './apps/dgfy-api',
             exec_mode: 'fork',
             instances: 1,
             // See sku-backend above -- same instrumentation-preload rationale.
@@ -119,7 +119,7 @@ module.exports = {
             name: 'sku-staging-frontend',
             script: './node_modules/vite/bin/vite.js',
             args: 'preview --config apps/skupervisor/vite.config.js --host --port 5183 --strictPort',
-            cwd: './frontend',
+            cwd: './apps/dgfy-web',
             env_staging: {
                 NODE_ENV: 'production',
             },

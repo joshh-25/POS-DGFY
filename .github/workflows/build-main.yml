@@ -22,11 +22,12 @@ permissions:
 #   * frontend:latest  -- built against the PROD GitHub Environment's VITE_*
 #                         (dgfy.ph auth/handoff URLs). Served by the `frontend`
 #                         container -> the *.dgfy.ph production domains.
-#   * backend:beta     -- built ONCE and shared. The backend image is
-#                         environment-agnostic (deploy-backend.yml passes no
+#   * api:beta         -- built ONCE and shared (from apps/dgfy-api, plus a
+#                         paired migration-runner:beta image). The api image
+#                         is environment-agnostic (deploy-api.yml passes no
 #                         per-env build args; its runtime config is the
 #                         server's hand-maintained .env), so there is no
-#                         separate prod backend build.
+#                         separate prod api build.
 #
 # After all three images are pushed, a SINGLE publish job SSH-deploys once
 # (docker compose pull && up -d against the server's own compose), which
@@ -35,19 +36,20 @@ permissions:
 # the 2026-07-20 cutover); BETA and PROD carry the same deploy secrets since it
 # is one server.
 #
-# NOTE (shared backend, no gate): every push to main restarts the shared
-# backend that BOTH beta and prod now depend on, with no approval gate. This is
-# the accepted interim behaviour for the dual-deploy window.
+# NOTE (shared api, no gate): every push to main restarts the shared dgfy-api
+# (+ dgfy-migration-runner) that BOTH beta and prod now depend on, with no
+# approval gate. This is the accepted interim behaviour for the dual-deploy
+# window.
 #
 # Future cleanup (Option B, out of scope here): make PROD the sole deploy
 # owner and reduce BETA to frontend-only vars. See the cutover runbook:
 # docs/deployment/2026-07-20-dgfy-ph-production-cutover-runbook.md
 
 jobs:
-  # Shared backend image (environment-agnostic; built once, tagged beta to
+  # Shared dgfy-api image (environment-agnostic; built once, tagged beta to
   # match the server's IMAGE_TAG=beta).
-  backend:
-    uses: ./.github/workflows/deploy-backend.yml
+  dgfy-api:
+    uses: ./.github/workflows/deploy-api.yml
     with:
       environment: BETA
       image_tags: "beta"
@@ -55,6 +57,18 @@ jobs:
       # out. Pin the label so jobs avoid vm-sieitzstaging (AVX-less CPU ->
       # exit 132 on native addons like @napi-rs/canvas).
       # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
+      runner_labels_json: '["ubuntu-latest"]'
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
+  # Paired one-shot migration image dgfy-api depends on at compose-up.
+  dgfy-migration-runner:
+    uses: ./.github/workflows/deploy-migration-runner.yml
+    with:
+      environment: BETA
+      image_tags: "beta"
       runner_labels_json: '["ubuntu-latest"]'
     secrets: inherit
     permissions:
@@ -93,13 +107,14 @@ jobs:
   # gate is added here) must still allow publish to proceed with whichever
   # images did build, matching deployment-orchestrator.yml's publish gate.
   publish:
-    needs: [ backend, frontend-beta, frontend-prod ]
+    needs: [ dgfy-api, dgfy-migration-runner, frontend-beta, frontend-prod ]
     if: >-
       !cancelled() &&
-      needs.backend.result != 'failure' &&
+      needs.dgfy-api.result != 'failure' &&
+      needs.dgfy-migration-runner.result != 'failure' &&
       needs.frontend-beta.result != 'failure' &&
       needs.frontend-prod.result != 'failure' &&
-      (needs.backend.result == 'success' || needs.frontend-beta.result == 'success' || needs.frontend-prod.result == 'success')
+      (needs.dgfy-api.result == 'success' || needs.dgfy-migration-runner.result == 'success' || needs.frontend-beta.result == 'success' || needs.frontend-prod.result == 'success')
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: PROD

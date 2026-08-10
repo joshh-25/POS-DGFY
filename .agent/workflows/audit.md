@@ -9,9 +9,9 @@ This workflow performs a complete check of code quality and system health.
 
 ### 1. Frontend Lint Check
 ```bash
-cd frontend
+cd apps/dgfy-web
 npm run lint
-cd ..
+cd ../..
 ```
 
 ### 2. Backend Lint Check

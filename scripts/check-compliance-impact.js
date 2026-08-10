@@ -32,127 +32,127 @@ const SURFACE_MIN_CLASSIFICATION = Object.freeze({
 
 const COMPLIANCE_SENSITIVE_RULES = [
   {
-    pattern: /^backend\/src\/modules\/pos\//,
+    pattern: /^apps\/dgfy-api\/src\/modules\/pos\//,
     surfaces: ['pos', 'terminal'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^backend\/src\/modules\/payments\//,
+    pattern: /^apps\/dgfy-api\/src\/modules\/payments\//,
     surfaces: ['payments'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^backend\/src\/modules\/settings\//,
+    pattern: /^apps\/dgfy-api\/src\/modules\/settings\//,
     surfaces: ['settings'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^backend\/src\/modules\/compliance\//,
+    pattern: /^apps\/dgfy-api\/src\/modules\/compliance\//,
     surfaces: ['compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^backend\/src\/middleware\/compliancePolicy\.js$/,
+    pattern: /^apps\/dgfy-api\/src\/middleware\/compliancePolicy\.js$/,
     surfaces: ['compliance', 'settings', 'payments', 'pos'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^backend\/src\/routes\/payments\.js$/,
+    pattern: /^apps\/dgfy-api\/src\/routes\/payments\.js$/,
     surfaces: ['payments'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^backend\/src\/routes\/pos\.js$/,
+    pattern: /^apps\/dgfy-api\/src\/routes\/pos\.js$/,
     surfaces: ['pos', 'terminal'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^backend\/src\/routes\/settings\.js$/,
+    pattern: /^apps\/dgfy-api\/src\/routes\/settings\.js$/,
     surfaces: ['settings'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^backend\/src\/routes\/compliance\.js$/,
+    pattern: /^apps\/dgfy-api\/src\/routes\/compliance\.js$/,
     surfaces: ['compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^backend\/src\/routes\/adminTenants\.js$/,
+    pattern: /^apps\/dgfy-api\/src\/routes\/adminTenants\.js$/,
     surfaces: ['settings', 'compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^backend\/src\/validators\/complianceValidator\.js$/,
+    pattern: /^apps\/dgfy-api\/src\/validators\/complianceValidator\.js$/,
     surfaces: ['compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^backend\/src\/controllers\/complianceController\.js$/,
+    pattern: /^apps\/dgfy-api\/src\/controllers\/complianceController\.js$/,
     surfaces: ['compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^backend\/src\/controllers\/adminTenantController\.js$/,
+    pattern: /^apps\/dgfy-api\/src\/controllers\/adminTenantController\.js$/,
     surfaces: ['settings', 'compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^backend\/src\/modules\/tenants\/controllers\/adminTenantHandlers\.js$/,
+    pattern: /^apps\/dgfy-api\/src\/modules\/tenants\/controllers\/adminTenantHandlers\.js$/,
     surfaces: ['settings', 'compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^backend\/src\/modules\/tenants\/usecases\/registerCompanyRequestUseCase\.js$/,
+    pattern: /^apps\/dgfy-api\/src\/modules\/tenants\/usecases\/registerCompanyRequestUseCase\.js$/,
     surfaces: ['settings', 'compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^backend\/src\/modules\/tenants\/usecases\/provisionNewTenantUseCase\.js$/,
+    pattern: /^apps\/dgfy-api\/src\/modules\/tenants\/usecases\/provisionNewTenantUseCase\.js$/,
     surfaces: ['settings', 'compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^backend\/src\/modules\/tenants\/repositories\/tenantAdminRepository\.js$/,
+    pattern: /^apps\/dgfy-api\/src\/modules\/tenants\/repositories\/tenantAdminRepository\.js$/,
     surfaces: ['settings', 'compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^frontend\/src\/features\/pos\//,
+    pattern: /^apps\/dgfy-web\/src\/features\/pos\//,
     surfaces: ['pos', 'terminal'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^frontend\/src\/features\/compliance\//,
+    pattern: /^apps\/dgfy-web\/src\/features\/compliance\//,
     surfaces: ['compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^frontend\/src\/pages\/Settings(?:\/|\.|$)/,
+    pattern: /^apps\/dgfy-web\/src\/pages\/Settings(?:\/|\.|$)/,
     surfaces: ['settings'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^frontend\/Pages\/Settings\.jsx$/,
+    pattern: /^apps\/dgfy-web\/Pages\/Settings\.jsx$/,
     surfaces: ['settings'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^frontend\/src\/services\/paymentService\.js$/,
+    pattern: /^apps\/dgfy-web\/src\/services\/paymentService\.js$/,
     surfaces: ['payments'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^frontend\/src\/services\/complianceService\.js$/,
+    pattern: /^apps\/dgfy-web\/src\/services\/complianceService\.js$/,
     surfaces: ['compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^frontend\/src\/services\/adminService\.js$/,
+    pattern: /^apps\/dgfy-web\/src\/services\/adminService\.js$/,
     surfaces: ['settings', 'compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^frontend\/Pages\/admin\/TenantManager\.jsx$/,
+    pattern: /^apps\/dgfy-web\/Pages\/admin\/TenantManager\.jsx$/,
     surfaces: ['settings', 'compliance'],
     minimumClassification: 'regulatory'
   }

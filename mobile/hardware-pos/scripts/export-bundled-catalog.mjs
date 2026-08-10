@@ -2,10 +2,10 @@ import { writeFile } from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
-import db from '../../../backend/src/models/index.js';
-import { buildVisibleWhere } from '../../../backend/src/utils/softDeletePolicy.js';
-import { resolveCatalogVisibility } from '../../../backend/src/modules/shared/utils/catalogVisibilityPolicy.js';
-import { isBarcodeScopeAllowedForSurface } from '../../../backend/src/modules/shared/utils/barcodePolicy.js';
+import db from '../../../apps/dgfy-api/src/models/index.js';
+import { buildVisibleWhere } from '../../../apps/dgfy-api/src/utils/softDeletePolicy.js';
+import { resolveCatalogVisibility } from '../../../apps/dgfy-api/src/modules/shared/utils/catalogVisibilityPolicy.js';
+import { isBarcodeScopeAllowedForSurface } from '../../../apps/dgfy-api/src/modules/shared/utils/barcodePolicy.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

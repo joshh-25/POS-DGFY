@@ -1,15 +1,25 @@
 # syntax=docker/dockerfile:1
-# Build context: repo root (contains `frontend/`)
+# Build context: repo root (contains `apps/dgfy-web/`)
 
 FROM node:22-alpine AS builder
 WORKDIR /app
-COPY frontend/package*.json ./
+COPY apps/dgfy-web/package*.json ./
+# apps/dgfy-web's file: deps point two levels up (file:../../packages/...) to
+# reach repo-root packages/ from their real, one-directory-deeper home. `npm
+# ci`'s virtual-tree loader has a bug with 2+ `../` segments in a `file:`
+# link's lockfile entry (arborist's #loadLink throws reading `.extraneous` off
+# undefined) on the npm version this base image ships -- reproducible even
+# with the actual target directory present and even after upgrading npm.
+# 1 hop resolves to the identical /packages path via WORKDIR /app (both
+# clamp at the container's filesystem root), so drop to 1 hop here, image-only
+# -- the host copy of these files is untouched and still needs 2 hops.
+RUN sed -i 's#\.\./\.\./packages/#../packages/#g' package.json package-lock.json
 COPY packages/pos-receipt /packages/pos-receipt
 COPY packages/shared-constants /packages/shared-constants
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm config set fetch-retries=5 fetch-retry-mintimeout=20000 fetch-retry-maxtimeout=120000 fetch-timeout=300000 \
     && (npm ci || (sleep 10 && npm ci) || (sleep 20 && npm ci))
-COPY frontend/ ./
+COPY apps/dgfy-web/ ./
 
 # Deliberately no VITE_API_BASE_URL / VITE_ASSET_BASE_URL build args here: this
 # single image serves 3 different public hostnames, and both env vars fall back
@@ -135,9 +145,12 @@ RUN --mount=type=secret,id=sentry_auth_token,required=false \
 
 FROM nginx:alpine AS runtime
 RUN apk add --no-cache curl
-# vite.config.js in each app resolves outDir via `../../../dist-apps/<app>`
-# relative to frontend/apps/<app>, which lands one level above the `frontend/`
-# build context (WORKDIR /app here) — i.e. at /dist-apps, not /app/dist-apps.
+# vite.config.js in each app resolves outDir via `../../../../dist-apps/<app>`
+# relative to apps/dgfy-web/apps/<app> (source root on disk). Inside this
+# image the COPY above flattens apps/dgfy-web/ into WORKDIR /app, so that
+# same __dirname sits at /app/apps/<app> regardless of the extra hop on the
+# host — path.resolve() clamps at the filesystem root either way, landing
+# at /dist-apps, not /app/dist-apps.
 COPY --from=builder /dist-apps/skupervisor /usr/share/nginx/html/skupervisor
 COPY --from=builder /dist-apps/pos /usr/share/nginx/html/pos
 COPY --from=builder /dist-apps/store /usr/share/nginx/html/store

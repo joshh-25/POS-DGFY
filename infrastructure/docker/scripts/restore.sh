@@ -55,10 +55,10 @@ gunzip -c "$DB_DUMP" | docker compose exec -T mysql sh -c \
   "mysql -u root -p\"\${MYSQL_ROOT_PASSWORD}\" \"${DB_NAME}\""
 
 echo "==> Restoring files from ${FILES_ARCHIVE}..."
-rm -rf data/backend/uploads data/backend/storage
+rm -rf data/dgfy-api/uploads data/dgfy-api/storage
 tar -xzf "$FILES_ARCHIVE" -C "$COMPOSE_DIR"
 
-echo "==> Restarting backend (re-runs pending migrations via its entrypoint)..."
-docker compose up -d backend
+echo "==> Restarting dgfy-api (its dgfy-migration-runner dependency re-runs pending migrations first)..."
+docker compose up -d dgfy-api
 
 echo "==> Restore complete."

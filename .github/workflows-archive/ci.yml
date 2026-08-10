@@ -129,12 +129,12 @@ jobs:
           cache: npm
           cache-dependency-path: |
             package-lock.json
-            backend/package-lock.json
+            apps/dgfy-api/package-lock.json
             frontend/package-lock.json
       - name: Install root dependencies
         run: npm ci
-      - name: Install backend dependencies
-        run: npm --prefix backend ci
+      - name: Install dgfy-api dependencies
+        run: npm --prefix apps/dgfy-api ci
       - name: Install frontend dependencies
         run: npm --prefix frontend ci
       - name: Validate production env fixtures
@@ -144,12 +144,12 @@ jobs:
       - name: Audit full dependency trees
         run: npm run audit:dependencies
 
-  test-backend:
+  test-dgfy-api:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     defaults:
       run:
-        working-directory: ./backend
+        working-directory: ./apps/dgfy-api
 
     services:
       mysql:
@@ -168,14 +168,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '24'
           cache: npm
-          cache-dependency-path: backend/package-lock.json
-      
+          cache-dependency-path: apps/dgfy-api/package-lock.json
+
       - name: Install dependencies
         run: npm ci
 
@@ -185,15 +185,27 @@ jobs:
       - name: Enforce controller architecture boundaries
         run: npm run check:controller-boundaries
 
+      - name: Run lint
+        run: npm run lint
+
       - name: Enforce compliance impact declarations
+        working-directory: .
         run: npm run check:compliance
 
       - name: Enforce compatibility-seam manifest gate
         working-directory: .
         run: npm run check:compat-seams
 
+      # The migration domain lives in apps/dgfy-migration-runner (dgfy-api no
+      # longer carries migrations). Prepare the test schema by applying the
+      # runner's migrations against the CI MySQL service before the suite runs.
+      - name: Install migration-runner dependencies
+        working-directory: ./apps/dgfy-migration-runner
+        run: npm ci
+
       - name: Prepare test schema
-        run: npx sequelize-cli db:migrate --env development --config src/config/sequelize.config.cjs --migrations-path migrations
+        working-directory: ./apps/dgfy-migration-runner
+        run: npx sequelize-cli db:migrate --config src/config/sequelize.config.cjs
         env:
           NODE_ENV: test
           DB_HOST: localhost
@@ -204,9 +216,10 @@ jobs:
           DB_PASSWORD: testpassword
           JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
-      
-      - name: Run backend test matrix
-        run: node ../scripts/run-backend-test-matrix.js
+
+      - name: Run dgfy-api test matrix
+        working-directory: .
+        run: node scripts/run-backend-test-matrix.js
         env:
           NODE_OPTIONS: --max-old-space-size=4096
           NODE_ENV: test
@@ -220,27 +233,14 @@ jobs:
           JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
 
-      - name: Upload backend test matrix artifacts
+      - name: Upload dgfy-api test matrix artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: backend-test-matrix-${{ github.sha }}
+          name: dgfy-api-test-matrix-${{ github.sha }}
           path: .tmp/release-gates/${{ github.sha }}/backend-test-matrix/**
           if-no-files-found: ignore
           retention-days: 5
-
-      - name: Run migrations for schema audit
-        run: npx sequelize-cli db:migrate --env development --config src/config/sequelize.config.cjs --migrations-path migrations
-        env:
-          NODE_ENV: test
-          DB_HOST: localhost
-          DB_PORT: 3306
-          DB_NAME: sku_inventory_manager_test
-          DB_NAME_TEST: sku_inventory_manager_test
-          DB_USER: root
-          DB_PASSWORD: testpassword
-          JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
-          REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
 
       - name: Audit required indexes
         run: npm run audit:indexes
@@ -254,6 +254,49 @@ jobs:
           DB_PASSWORD: testpassword
           JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
+
+  test-dgfy-migration-runner:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: ./apps/dgfy-migration-runner
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpassword
+          MYSQL_DATABASE: sku_inventory_manager_test
+        ports:
+          - 3306:3306
+        options: --health-cmd="mysqladmin ping" --health-interval=10s --health-timeout=5s --health-retries=5
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: apps/dgfy-migration-runner/package-lock.json
+      - name: Install dependencies
+        run: npm ci
+
+      # Smoke test: this is the exact command the migration-runner
+      # container runs on boot (see infrastructure/docker/
+      # dgfy-migration-runner/Dockerfile). If migrations apply cleanly to a
+      # fresh MySQL 8 instance, the migration domain is self-contained and
+      # correct -- this package has no unit tests of its own to run.
+      - name: Apply migrations against a fresh database
+        run: npx sequelize-cli db:migrate --config src/config/sequelize.config.cjs
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 3306
+          DB_NAME: sku_inventory_manager_test
+          DB_USER: root
+          DB_PASSWORD: testpassword
 
   test-frontend:
     runs-on: ubuntu-latest
@@ -292,7 +335,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     if: github.event_name == 'workflow_dispatch'
-    needs: [lint-docs, dependency-audit, test-backend, test-frontend]
+    needs: [lint-docs, dependency-audit, test-dgfy-api, test-frontend, test-dgfy-migration-runner]
     services:
       mysql:
         image: mysql:8.0
@@ -315,9 +358,13 @@ jobs:
         with:
           node-version: '24'
 
-      - name: Install backend dependencies
+      - name: Install dgfy-api dependencies
         run: npm ci
-        working-directory: ./backend
+        working-directory: ./apps/dgfy-api
+
+      - name: Install migration-runner dependencies
+        run: npm ci
+        working-directory: ./apps/dgfy-migration-runner
 
       - name: Install frontend dependencies
         run: npm ci
@@ -325,11 +372,11 @@ jobs:
 
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
-        working-directory: ./backend
+        working-directory: ./apps/dgfy-api
 
       - name: Prepare runtime schema
-        run: npx sequelize-cli db:migrate --env development --config src/config/sequelize.config.cjs --migrations-path migrations
-        working-directory: ./backend
+        run: npx sequelize-cli db:migrate --config src/config/sequelize.config.cjs
+        working-directory: ./apps/dgfy-migration-runner
         env:
           NODE_ENV: test
           DB_HOST: localhost
@@ -344,7 +391,7 @@ jobs:
 
       - name: Run core IMS->POS->Sales browser journey gate
         run: npm run test:frontend-ims-pos-sales-e2e
-        working-directory: ./backend
+        working-directory: ./apps/dgfy-api
         env:
           RUN_BROWSER_E2E: 'true'
           NODE_ENV: test
@@ -365,7 +412,7 @@ jobs:
         with:
           name: ims-pos-sales-journey-release-gate-artifacts
           path: |
-            backend/tests/artifacts/**
-            backend/test-results/**
+            apps/dgfy-api/tests/artifacts/**
+            apps/dgfy-api/test-results/**
           if-no-files-found: ignore
           retention-days: 5

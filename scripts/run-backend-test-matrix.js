@@ -5,9 +5,11 @@ const path = require('path');
 const { spawnSync } = require('child_process');
 
 const ROOT = path.resolve(__dirname, '..');
-const BACKEND_DIR = path.join(ROOT, 'backend');
-const JEST_BIN = path.join(BACKEND_DIR, 'node_modules', 'jest', 'bin', 'jest.js');
-const JEST_CONFIG = path.join(BACKEND_DIR, 'jest.config.cjs');
+// dgfy-api is the source of truth (backend/ removed). Target it by default;
+// override with TEST_MATRIX_APP_DIR if the suite ever needs to run elsewhere.
+const APP_DIR = path.join(ROOT, process.env.TEST_MATRIX_APP_DIR || 'apps/dgfy-api');
+const JEST_BIN = path.join(APP_DIR, 'node_modules', 'jest', 'bin', 'jest.js');
+const JEST_CONFIG = path.join(APP_DIR, 'jest.config.cjs');
 const DEFAULT_CHUNK_SIZE = Number.parseInt(process.env.BACKEND_TEST_MATRIX_CHUNK_SIZE || '8', 10);
 const DEFAULT_CHUNK_TIMEOUT_MS = Number.parseInt(process.env.BACKEND_TEST_MATRIX_CHUNK_TIMEOUT_MS || '600000', 10);
 const CONTINUE_ON_FAILURE = process.argv.includes('--continue-on-failure') || process.env.BACKEND_TEST_MATRIX_CONTINUE_ON_FAILURE === 'true';
@@ -90,7 +92,7 @@ function listTests() {
     JEST_CONFIG,
     '--runInBand',
     '--listTests',
-  ], { cwd: BACKEND_DIR });
+  ], { cwd: APP_DIR });
   if (result.status !== 0) {
     process.stdout.write(result.stdout || '');
     process.stderr.write(result.stderr || '');
@@ -104,7 +106,7 @@ function listTests() {
 }
 
 function relativeTestPath(testPath) {
-  return path.relative(BACKEND_DIR, testPath).replace(/\\/g, '/');
+  return path.relative(APP_DIR, testPath).replace(/\\/g, '/');
 }
 
 function classify(testPath) {
@@ -188,7 +190,7 @@ function runSchemaPreflight(evidenceDir) {
     console.log(JSON.stringify({ database: dbName, repairs }));
   `;
   const result = spawnSync(process.execPath, ['--input-type=module', '-e', script], {
-    cwd: BACKEND_DIR,
+    cwd: APP_DIR,
     encoding: 'utf8',
     maxBuffer: 32 * 1024 * 1024,
     env: { ...process.env, NODE_ENV: 'test' },
@@ -224,7 +226,7 @@ function runChunk(groupName, chunkIndex, tests, evidenceDir) {
   ];
   const started = Date.now();
   const result = run(process.execPath, args, {
-    cwd: BACKEND_DIR,
+    cwd: APP_DIR,
     timeout: DEFAULT_CHUNK_TIMEOUT_MS,
     env: { ...process.env, NODE_ENV: 'test' },
   });

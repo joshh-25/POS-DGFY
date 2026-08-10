@@ -36,7 +36,7 @@ jobs:
       # it doesn't sign or upload an APK. build-android-manual.yml stays the
       # path for an actual distributable/side-loadable build.
       - name: Build dev + staging release APKs and run unit tests
-        working-directory: android/imin-wrapper
+        working-directory: apps/dgfy-android-bridge/imin-wrapper
         run: |
           ./gradlew assembleDevRelease assembleStagingRelease \
                     testDevDebugUnitTest testStagingDebugUnitTest

@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: reference
 owner: architecture
-last_reviewed: 2026-05-07
+last_reviewed: 2026-08-09
 applies_to: workflow_modes
 topic: mode_development
 ---
@@ -195,6 +195,30 @@ Hospitality uses PMS/stay-management nouns: room types, rooms, guests, reservati
 
 Placeholder modes must not gain custom POS, Storefront, image, import/export, or recommendation defaults through one-off UI logic. Until the checklist above is complete, they inherit conservative finished-goods catalog defaults and must be labelled as conservative/default behavior in future implementation notes.
 
+## No new hard-coded verticals after the Store Template layer
+
+Issue #178's own recommendation (§8, "no new vertical should be added as a
+hard-coded mode after Phase 13 lands") was never folded into this
+playbook, even though Phase 13 (the landlord Store Template catalog) has
+shipped. It is now: a genuinely new industry vertical does not get a new
+`WORKFLOW_MODE_VALUES` entry, a new `WORKFLOW_MODE_CAPABILITIES` list, or a
+new hard-coded registry row across `businessModeTemplates.js`,
+`storefrontTemplateRegistry.js`, and the others this playbook's checklist
+above governs. It gets a **Store Template** — a curated bundle of the
+existing Capability Module catalog
+(`packages/shared-constants/src/capabilityModules.js`), composed the same
+way `fnb_counter_service` composes a subset of `fnb`'s capabilities (issue
+#178 Phases 13-17,
+`docs/features/STORE_TEMPLATES_AND_PROFILES.md`). This playbook's checklist
+still governs the rare case of a genuinely new *mode family* — a business
+shape the existing capability vocabulary cannot express at all (a new
+lifecycle beyond order/booking/folio, not a new combination of existing
+capabilities) — which remains hard-coded, engineering-owned work exactly as
+described above. For the concrete, file-by-file recipe for both cases (a
+new template needs no code; a new capability module or a new lifecycle
+each have a traced layer checklist), see
+`docs/development/STORE_TEMPLATES_HANDOFF.md`.
+
 ## Future Mode Provisioning Checklist
 
 Before implementing or promoting any future mode, complete this checklist:
@@ -206,3 +230,28 @@ Before implementing or promoting any future mode, complete this checklist:
 5. Run the mode matrix against every value in `WORKFLOW_MODE_VALUES`, including placeholder modes that inherit conservative defaults.
 6. Confirm approval and auto-approval failures restore a valid retryable landlord status (`pending` for approval paths) and drop any zombie tenant database safely.
 7. Document seed/default data requirements for first-login onboarding, including brand assets, primary storefront location, starter-item presets, customer access settings, role presets, Storefront discovery, and mode-native setup tables.
+8. Declare the mode's engine classification in `WORKFLOW_MODE_ENGINE`
+   (`packages/shared-constants/src/workflowModes.js`, issue #178
+   final-touch pass) — `native` if DGFY runs the new mode's engine
+   end-to-end, `external` if it's a registration/visibility-only vertical
+   with no Store Template authoring. See
+   `docs/development/STORE_TEMPLATES_HANDOFF.md` §4 for the full
+   native/transitional/external model and what else moves with a
+   classification change.
+9. Declare the mode's registration Industry entry — or explicitly opt out
+   with a documented reason (e.g. the mode is an internal/admin-only shape
+   never offered at signup). As of issue #316 this is an **admin action,
+   not a code change**: create the industry row via the admin "Registration
+   industries" panel (`StoreTemplateManager.jsx`,
+   `POST /api/v1/admin/registration-industries`), pointing it at the
+   mode and an existing published template. A mode with no reachable
+   industry row and no documented opt-out is unreachable from any signup
+   surface, silently — the same failure mode `micro_fnb` closed for
+   `fnb_counter_service` back when this was still a constant edit
+   (`packages/shared-constants/src/registrationIndustries.js`, now the
+   catalog's seed baseline and fail-open fallback only — ADR 0058). If the
+   mode is backed by a real preset, prefer pointing an *existing*
+   industry's `template_key` at a new preset over creating a whole new
+   registration industry row — see `docs/development/STORE_TEMPLATES_HANDOFF.md`
+   §5, "why adding a template is now usually the right move instead of
+   adding a mode."

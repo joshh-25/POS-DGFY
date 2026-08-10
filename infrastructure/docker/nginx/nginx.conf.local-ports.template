@@ -1,0 +1,165 @@
+# Opt-in local dev config: NOT part of the committed dev/prod compose chain
+# (that one is domain+TLS based, see nginx.conf.template). This is a
+# plain-HTTP, port-based variant so the three frontend surfaces are directly
+# reachable at http://localhost:5173/5174/5175, matching the ports used by
+# the removed refactor-do-not-commit/local-test rehearsal stack. All /api
+# and /uploads traffic on all three ports goes to dgfy-api -- there is no
+# backend routing here at all. See docker-compose.local-ports.yml.
+
+resolver 127.0.0.11 valid=10s;
+
+# skupervisor
+server {
+    listen 5173;
+
+    location /api {
+        set $api_upstream dgfy-api:5100;
+        proxy_pass http://$api_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https; # local dev: no real TLS, but dgfy-api's ENFORCE_HTTPS trusts this header from its reverse proxy
+    }
+
+    location /uploads {
+        set $api_upstream dgfy-api:5100;
+        proxy_pass http://$api_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https; # local dev: no real TLS, but dgfy-api's ENFORCE_HTTPS trusts this header from its reverse proxy
+    }
+
+    location /openfreemap/ {
+        set $openfreemap_upstream tiles.openfreemap.org;
+        rewrite ^/openfreemap/(.*)$ /$1 break;
+        proxy_pass https://$openfreemap_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $openfreemap_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location / {
+        set $frontend_upstream frontend:8081;
+        proxy_pass http://$frontend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+# pos
+server {
+    listen 5174;
+
+    location /api {
+        set $api_upstream dgfy-api:5100;
+        proxy_pass http://$api_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https; # local dev: no real TLS, but dgfy-api's ENFORCE_HTTPS trusts this header from its reverse proxy
+    }
+
+    location /uploads {
+        set $api_upstream dgfy-api:5100;
+        proxy_pass http://$api_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https; # local dev: no real TLS, but dgfy-api's ENFORCE_HTTPS trusts this header from its reverse proxy
+    }
+
+    location / {
+        set $frontend_upstream frontend:8082;
+        proxy_pass http://$frontend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+
+# storefront
+server {
+    listen 5175;
+
+    location /api {
+        set $api_upstream dgfy-api:5100;
+        proxy_pass http://$api_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https; # local dev: no real TLS, but dgfy-api's ENFORCE_HTTPS trusts this header from its reverse proxy
+    }
+
+    location /uploads {
+        set $api_upstream dgfy-api:5100;
+        proxy_pass http://$api_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto https; # local dev: no real TLS, but dgfy-api's ENFORCE_HTTPS trusts this header from its reverse proxy
+    }
+
+    location /openfreemap/ {
+        set $openfreemap_upstream tiles.openfreemap.org;
+        rewrite ^/openfreemap/(.*)$ /$1 break;
+        proxy_pass https://$openfreemap_upstream;
+        proxy_http_version 1.1;
+        proxy_ssl_server_name on;
+        proxy_set_header Host $openfreemap_upstream;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    location = /tenant-store {
+        return 301 /tenant-store/;
+    }
+
+    location /tenant-store/ {
+        set $frontend_upstream frontend:8083;
+        rewrite ^/tenant-store/(.*)$ /$1 break;
+        proxy_pass http://$frontend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+
+    location / {
+        set $frontend_upstream frontend:8083;
+        proxy_pass http://$frontend_upstream;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
+    }
+}

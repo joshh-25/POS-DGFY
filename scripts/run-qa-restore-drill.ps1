@@ -67,8 +67,8 @@ try {
       'set -e',
       "cd '$qaAppDir'",
       "test -f '$qaBackupFile'",
-      "bash -lc 'cd backend && npx sequelize-cli db:migrate:status || true'",
-      "bash -lc 'cd backend && npm run audit:indexes'"
+      "bash -lc 'cd apps/dgfy-migration-runner && npx sequelize-cli db:migrate:status || true'",
+      "bash -lc 'cd apps/dgfy-api && npm run audit:indexes'"
     ) -join '; '
     & ssh @sshOptions -t -p $qaSshPort "$qaSshUser@$qaSshHost" $cmd
     Add-Check 'qa.restore.apply' $true "Validated restore prerequisites and post-restore index audit for $qaBackupFile"

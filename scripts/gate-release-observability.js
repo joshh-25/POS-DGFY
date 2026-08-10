@@ -217,8 +217,8 @@ async function buildObservabilityEvidence(options = {}) {
   addCheck(
     checks,
     'structured_request_logging.configured',
-    fs.existsSync(path.join(rootDir, 'backend', 'src', 'middleware', 'requestOutcomeLogger.js')) ? 'pass' : 'fail',
-    'backend/src/middleware/requestOutcomeLogger.js'
+    fs.existsSync(path.join(rootDir, 'apps', 'dgfy-api', 'src', 'middleware', 'requestOutcomeLogger.js')) ? 'pass' : 'fail',
+    'apps/dgfy-api/src/middleware/requestOutcomeLogger.js'
   );
 
   const incidentOutputDir = path.join(evidenceDir, 'incident-bundle-probe');

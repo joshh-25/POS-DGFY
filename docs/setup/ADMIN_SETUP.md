@@ -192,7 +192,7 @@ Recommended path:
 
 Advanced local-only path:
 
-1. Edit `backend/src/seeders/20240101000000-seed-admin-user.js`.
+1. Edit `apps/dgfy-migration-runner/src/seeders/20240101000000-seed-admin-user.js`.
 2. Run the targeted seeder flow in a disposable local database.
 
 Do not use seeder edits as a production admin-creation workflow.
