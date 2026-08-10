@@ -1,5 +1,5 @@
 import React from 'react';
-import { StoresMap } from './StoresMap.jsx';
+import { StoresMap } from './StoresMapLazy.jsx';
 
 export function StorefrontExpandedMapModal({
   open,

@@ -1,5 +1,10 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
+// Issue #282, Phase E: colocated with the library import instead of a
+// blanket StorefrontApp.jsx-level import -- this file is now only reached
+// via DeliveryPinMapLazy.jsx's dynamic import(), so the CSS loads only when
+// a delivery-pin map actually renders instead of on every storefront page.
+import 'maplibre-gl/dist/maplibre-gl.css';
 
 import {
   DEFAULT_CENTER,

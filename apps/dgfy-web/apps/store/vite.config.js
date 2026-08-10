@@ -3,6 +3,12 @@ import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../sentryViteConfig.js';
+// Opt-in only (VITE_ANALYZE_BUNDLE=true) -- writes a stats.html treemap next
+// to the build output. Never runs in a normal `build:store` so it can't
+// perturb production build size/timing. See issue #282's Phase A baseline:
+// https://github.com/Sieitzz/dgfy-platform/issues/282#issuecomment-5242741151
+const shouldAnalyzeBundle = String(process.env.VITE_ANALYZE_BUNDLE || '').trim() === 'true';
+const { visualizer } = shouldAnalyzeBundle ? await import('rollup-plugin-visualizer') : { visualizer: null };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -77,7 +83,18 @@ export default defineConfig({
   root: __dirname,
   cacheDir: path.resolve(frontendRoot, 'node_modules/.vite-store'),
   base: normalizedBasePath,
-  plugins: [react(), ...buildSentryVitePlugins(appSurface)],
+  plugins: [
+    react(),
+    ...buildSentryVitePlugins(appSurface),
+    ...(shouldAnalyzeBundle
+      ? [visualizer({
+          filename: path.resolve(__dirname, '../../../../dist-apps/store/stats.html'),
+          gzipSize: true,
+          brotliSize: true,
+          template: 'treemap'
+        })]
+      : [])
+  ],
   define: {
     'import.meta.env.VITE_BUILD_STAMP': JSON.stringify(process.env.VITE_BUILD_STAMP || new Date().toISOString()),
     'import.meta.env.VITE_APP_SURFACE': JSON.stringify('store')

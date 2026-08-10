@@ -1,5 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import maplibregl from 'maplibre-gl';
+// Issue #282, Phase E: colocated with the library import instead of a
+// blanket StorefrontApp.jsx-level import -- this file is now only reached
+// via TrackingRouteMapLazy.jsx's dynamic import(), so the CSS loads only
+// when a tracking map actually renders instead of on every storefront page.
+import 'maplibre-gl/dist/maplibre-gl.css';
 import {
   ensureMapImage,
   ensureRouteLineLayer,
@@ -9,14 +14,14 @@ import {
 import { renderDeliveryPinSpriteSvg } from '../discovery/model/businessModePins.js';
 import { applyMapLibreCanvasSizing, safeResizeMap } from '../../../../src/components/maps/mapLibreShared.js';
 import { useStoreRoute } from '../shared/hooks/useStoreRoute.js';
+// Re-exported for back-compat with anything importing both the component
+// and the helper from this path (see extractTrackingMapCoordinates.js for
+// why production code should prefer importing the helper from there
+// directly instead).
+export { extractTrackingMapCoordinates } from './extractTrackingMapCoordinates.js';
 
 const TRACKING_PIN_SOURCE_ID = 'dgfy-tracking-route-pins';
 const TRACKING_PIN_LAYER_ID = 'dgfy-tracking-route-pin-symbols';
-
-const toNumberOrNull = (value) => {
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-};
 
 const hasCoordinate = (point) => (
   Number.isFinite(Number(point?.latitude))
@@ -171,29 +176,3 @@ export default function TrackingRouteMap({
 
   return <div ref={containerRef} style={{ height: resolvedHeight, borderRadius: 20, overflow: 'hidden', border: '1px solid #dbe5ee' }} />;
 }
-
-export const extractTrackingMapCoordinates = (trackingResult, selectedStore, selectedLocation) => {
-  const raw = trackingResult?.raw || {};
-  const fromTracking = {
-    storeLatitude: toNumberOrNull(trackingResult?.storeLatitude ?? raw?.location?.latitude ?? raw?.order?.location_latitude ?? raw?.order?.store_latitude),
-    storeLongitude: toNumberOrNull(trackingResult?.storeLongitude ?? raw?.location?.longitude ?? raw?.order?.location_longitude ?? raw?.order?.store_longitude),
-    customerLatitude: toNumberOrNull(trackingResult?.customerLatitude ?? raw?.delivery_latitude ?? raw?.order?.delivery_latitude),
-    customerLongitude: toNumberOrNull(trackingResult?.customerLongitude ?? raw?.delivery_longitude ?? raw?.order?.delivery_longitude)
-  };
-
-  const fromSelection = {
-    storeLatitude: toNumberOrNull(selectedLocation?.latitude ?? selectedStore?.latitude),
-    storeLongitude: toNumberOrNull(selectedLocation?.longitude ?? selectedStore?.longitude)
-  };
-
-  return {
-    storePin: (Number.isFinite(fromTracking.storeLatitude) && Number.isFinite(fromTracking.storeLongitude))
-      ? { latitude: fromTracking.storeLatitude, longitude: fromTracking.storeLongitude }
-      : (Number.isFinite(fromSelection.storeLatitude) && Number.isFinite(fromSelection.storeLongitude))
-        ? { latitude: fromSelection.storeLatitude, longitude: fromSelection.storeLongitude }
-        : null,
-    customerPin: (Number.isFinite(fromTracking.customerLatitude) && Number.isFinite(fromTracking.customerLongitude))
-      ? { latitude: fromTracking.customerLatitude, longitude: fromTracking.customerLongitude }
-      : null
-  };
-};

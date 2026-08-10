@@ -56,9 +56,12 @@ export async function fetchStorefrontAccountBranches({
 
   let discoveryRows = [];
   try {
+    // No `cache: 'no-store'` (issue #282, Phase B): this endpoint is
+    // `public, max-age=20, stale-while-revalidate=40` server-side and
+    // doesn't vary per caller, so requestJson's default `cache: 'default'`
+    // lets the browser reuse it instead of discarding it every call.
     const response = await requestJson(
-      `/api/v1/storefront/discovery?limit=${DISCOVERY_ACCOUNT_BRANCH_LOOKUP_LIMIT}`,
-      { cache: 'no-store' }
+      `/api/v1/storefront/discovery?limit=${DISCOVERY_ACCOUNT_BRANCH_LOOKUP_LIMIT}`
     );
     discoveryRows = Array.isArray(response?.stores) ? response.stores : [];
   } catch (error) {
