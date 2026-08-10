@@ -77,7 +77,7 @@ import {
     isServiceCatalogItem,
     normalizeLowStockDisplayThreshold
 } from '../utils/posCatalogAvailability.js';
-import { subscribeToPosCatalogUpdates } from '../utils/posCatalogRefresh.js';
+import { subscribeToPosCatalogUpdates, subscribeToRemotePosCatalogUpdates } from '../utils/posCatalogRefresh.js';
 import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
 import { getFolders } from '@/services/itemService.js';
 import { getAllSettings } from '@/services/settingsService';
@@ -87,7 +87,6 @@ import {
     resolveAssetUrl,
     resolveAssetVariantUrl
 } from '@/src/utils/assetUrl.js';
-import { openSkupervisorPath } from '../utils/skupervisorHandoff.js';
 import { notifyIminWebPosReady } from '../utils/iminHardwareBridge.js';
 import { usePosHardware } from '../hardware/usePosHardware.js';
 import { PosAddToCartToastContainer } from './PosAddToCartToastContainer.jsx';
@@ -99,6 +98,7 @@ const OrderPreviewView = lazyWithChunkRetry(() => import('./OrderPreviewView.jsx
 const EmployeeCreditPaymentPanel = lazyWithChunkRetry(() => import('./EmployeeCreditPaymentPanel.jsx'));
 const FnbWorkflowPanel = lazyWithChunkRetry(() => import('./FnbWorkflowPanel.jsx').then(({ FnbWorkflowPanel: Component }) => ({ default: Component })));
 const ServicesWorkflowPanel = lazyWithChunkRetry(() => import('./ServicesWorkflowPanel.jsx').then(({ ServicesWorkflowPanel: Component }) => ({ default: Component })));
+const CounterWorkflowPanel = lazyWithChunkRetry(() => import('./CounterWorkflowPanel.jsx').then(({ CounterWorkflowPanel: Component }) => ({ default: Component })));
 
 const CATALOG_GRID_GAP_PX = 8;
 const CATALOG_DESKTOP_CARD_HEIGHT_PX = 176;
@@ -825,7 +825,8 @@ export default function POSCheckoutTerminal({
     externalCatalogSearch = '',
     onExternalCatalogHydrated = null,
     fnbContext = null,
-    workflowMode = null
+    workflowMode = null,
+    effectiveCapabilities = null
 }) {
     useEffect(() => {
         notifyIminWebPosReady();
@@ -896,7 +897,17 @@ export default function POSCheckoutTerminal({
     const [posFoldersError, setPosFoldersError] = useState('');
     const [catalogLoading, setCatalogLoading] = useState(true);
     const [catalogRefreshing, setCatalogRefreshing] = useState(false);
-    const posWorkflow = useMemo(() => resolvePosWorkflow(workflowMode), [workflowMode]);
+    // Issue #178 Phase 21: effectiveCapabilities (the tenant's Store Profile
+    // modules list, when supplied by the caller) lets a curated
+    // fnb_counter_service-style store resolve the counter workflow instead
+    // of the full fnb one - without it, a template's subtraction was
+    // enforced by the API (Phase 19) but still rendered tables/kitchen
+    // buttons the API would then 403. Omitting the prop keeps every other
+    // caller (and every test) on today's mode-only behavior.
+    const posWorkflow = useMemo(
+        () => resolvePosWorkflow(workflowMode, effectiveCapabilities),
+        [workflowMode, effectiveCapabilities]
+    );
     const isFnbWorkflow = posWorkflow.mode === 'fnb';
     const [search, setSearch] = useState('');
     const [orderMethod, setOrderMethod] = useState(() => posWorkflow.allowedMethods[0] || 'dine_in');
@@ -938,6 +949,8 @@ export default function POSCheckoutTerminal({
     const [queuedCheckouts, setQueuedCheckouts] = useState([]);
     const [replayingQueuedCheckouts, setReplayingQueuedCheckouts] = useState(false);
     const [closingDay, setClosingDay] = useState(false);
+    const [zReadingCloseConfirmOpen, setZReadingCloseConfirmOpen] = useState(false);
+    const [zReadingClosePin, setZReadingClosePin] = useState('');
     const [lastReceipt, setLastReceipt] = useState(null);
     const [lastReceiptContract, setLastReceiptContract] = useState(null);
     const [historyRows, setHistoryRows] = useState([]);
@@ -970,6 +983,7 @@ export default function POSCheckoutTerminal({
     const catalogSnapshotRef = useRef([]);
     const receiptSettingsSnapshotRef = useRef({});
     const catalogHasLoadedRef = useRef(false);
+    const catalogRefreshDebounceRef = useRef(null);
 
     useEffect(() => {
         catalogSnapshotRef.current = catalog;
@@ -1735,31 +1749,11 @@ export default function POSCheckoutTerminal({
         }
     }, [activeShiftId, canVoidTransactions, historyPage, loadHistory, normalizedTerminalId]);
 
-    const buildSalesReportQuery = useCallback((row = null) => {
-        const params = new URLSearchParams();
-        params.set('source', 'POS');
-        params.set('source_context', 'pos_history');
-        if (historySearch) params.set('search', historySearch);
-        if (historyStatus !== 'all') params.set('status', historyStatus);
-        if (historyPaymentType !== 'all') params.set('payment_type', historyPaymentType);
-        if (historyOrderMethod !== 'all') params.set('order_method', historyOrderMethod);
-        if (historyOrderSource !== 'all') params.set('pos_order_source', historyOrderSource);
-        if (historyDateFrom) params.set('date_from', historyDateFrom);
-        if (historyDateTo) params.set('date_to', historyDateTo);
-        const sourceId = Number.parseInt(row?.pos_transaction_id || row?.source_id, 10);
-        if (Number.isInteger(sourceId) && sourceId > 0) {
-            params.set('source_id', String(sourceId));
-        }
-        if (row?.invoice_number || row?.reference_no) {
-            params.set('reference', String(row.invoice_number || row.reference_no));
-        }
-        return params.toString();
-    }, [historyDateFrom, historyDateTo, historyOrderMethod, historyOrderSource, historyPaymentType, historySearch, historyStatus]);
-
-    const openInSalesReport = useCallback((row = null) => {
-        const query = buildSalesReportQuery(row);
-        openSkupervisorPath('/sales', query);
-    }, [buildSalesReportQuery]);
+    const isCashierRole = String(terminalUser?.role || '').trim().toLowerCase() === 'cashier';
+    const openInPosReport = useCallback(() => {
+        setCurrentViewMode(isCashierRole ? 'history' : 'reports');
+    }, [isCashierRole, setCurrentViewMode]);
+    const posReportActionLabel = isCashierRole ? 'Open POS History' : 'Open POS Report';
 
     useEffect(() => {
         if (sessionLocked) return;
@@ -1839,13 +1833,46 @@ export default function POSCheckoutTerminal({
         loadCatalog();
     }, [catalogFiltersOpen, loadPosFolders, loadCatalog, sessionLocked]);
 
-    useEffect(() => {
-        if (sessionLocked) return undefined;
-        return subscribeToPosCatalogUpdates(() => {
+    const refreshCatalogAfterInvalidation = useCallback(() => {
+        if (catalogRefreshDebounceRef.current) {
+            window.clearTimeout(catalogRefreshDebounceRef.current);
+        }
+        catalogRefreshDebounceRef.current = window.setTimeout(() => {
+            catalogRefreshDebounceRef.current = null;
             loadPosFolders();
             loadCatalog();
-        });
-    }, [loadCatalog, loadPosFolders, sessionLocked]);
+        }, 150);
+    }, [loadCatalog, loadPosFolders]);
+
+    useEffect(() => {
+        if (sessionLocked) return undefined;
+        return subscribeToPosCatalogUpdates(refreshCatalogAfterInvalidation);
+    }, [refreshCatalogAfterInvalidation, sessionLocked]);
+
+    useEffect(() => {
+        if (sessionLocked || !canViewHistory) return undefined;
+        return subscribeToRemotePosCatalogUpdates();
+    }, [canViewHistory, sessionLocked]);
+
+    useEffect(() => {
+        if (sessionLocked || !canViewHistory) return undefined;
+        const refreshIfVisible = () => {
+            if (document.visibilityState === 'visible') refreshCatalogAfterInvalidation();
+        };
+        const refreshWhenOnline = () => refreshCatalogAfterInvalidation();
+        const fallbackRefresh = window.setInterval(refreshIfVisible, 60000);
+        document.addEventListener('visibilitychange', refreshIfVisible);
+        window.addEventListener('online', refreshWhenOnline);
+        return () => {
+            window.clearInterval(fallbackRefresh);
+            document.removeEventListener('visibilitychange', refreshIfVisible);
+            window.removeEventListener('online', refreshWhenOnline);
+            if (catalogRefreshDebounceRef.current) {
+                window.clearTimeout(catalogRefreshDebounceRef.current);
+                catalogRefreshDebounceRef.current = null;
+            }
+        };
+    }, [canViewHistory, refreshCatalogAfterInvalidation, sessionLocked]);
 
     useEffect(() => {
         let active = true;
@@ -2217,7 +2244,7 @@ export default function POSCheckoutTerminal({
         // service add regardless of what else was already in the cart, so
         // ringing up a service alongside unrelated retail lines silently
         // reclassified the whole mixed-basket transaction as an appointment.
-        if (isServiceCatalogItem(item) && cart.length === 0) {
+        if (isServiceCatalogItem(item) && cart.length === 0 && posWorkflow.allowedMethods.includes('appointment')) {
             setOrderMethod('appointment');
         }
         let stockWarning = '';
@@ -2810,6 +2837,9 @@ export default function POSCheckoutTerminal({
             order_method: orderMethod,
             customer_name: posWorkflow.mode === 'services' ? servicesClientName.trim() || undefined : undefined,
             special_instructions: posWorkflow.mode === 'services' ? servicesNotes.trim() || undefined : undefined,
+            scheduled_for: posWorkflow.mode === 'services' && servicesDateTime
+                ? new Date(servicesDateTime).toISOString()
+                : undefined,
             payment_type: paymentType,
             payment_handoff_mode: ['cash', 'employee_credit'].includes(paymentType) ? 'internal' : 'external',
             cash_received: isCashPayment ? Number(customerPaymentAmount || 0) : undefined,
@@ -3063,10 +3093,20 @@ export default function POSCheckoutTerminal({
         }
     };
 
-    const handleCloseDay = async () => {
+    const handleCloseDay = () => {
+        setZReadingClosePin('');
+        setZReadingCloseConfirmOpen(true);
+    };
+
+    const handleConfirmCloseDay = async () => {
+        if (!/^\d{4,12}$/.test(zReadingClosePin)) {
+            toast.error('Enter your 4 to 12 digit Day Close PIN.');
+            return;
+        }
         setClosingDay(true);
         try {
-            const result = await closePosDay();
+            const result = await closePosDay(null, { dayClosePin: zReadingClosePin });
+            setZReadingCloseConfirmOpen(false);
             toast.success(
                 `Z-reading generated: ${result?.summary?.transaction_count || 0} sale(s), PHP ${money(result?.summary?.total_amount)}`
             );
@@ -4298,10 +4338,10 @@ export default function POSCheckoutTerminal({
                                 type="button"
                                 variant="outline"
                                 size="sm"
-                                data-testid="pos-receipt-open-sales-report"
-                                onClick={() => openInSalesReport(lastReceipt)}
+                                data-testid="pos-receipt-open-pos-report"
+                                onClick={openInPosReport}
                             >
-                                Open in Sales Report
+                                {posReportActionLabel}
                             </Button>
                             <Button
                                 type="button"
@@ -4341,6 +4381,41 @@ export default function POSCheckoutTerminal({
                 </div>
             )}
             </section>
+
+            <Dialog open={zReadingCloseConfirmOpen} onOpenChange={(open) => {
+                setZReadingCloseConfirmOpen(open);
+                if (!open) setZReadingClosePin('');
+            }}>
+                <DialogContent className="w-[calc(100vw-2rem)] max-w-md rounded-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Close Day and generate Z-reading</DialogTitle>
+                        <DialogDescription>
+                            All cashier shifts for this branch must be closed. Enter your personal Day Close PIN to record your accountability.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2 py-2">
+                        <label htmlFor="legacy-pos-day-close-pin" className="text-sm font-semibold text-slate-800">Your Day Close PIN</label>
+                        <Input
+                            id="legacy-pos-day-close-pin"
+                            type="password"
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            value={zReadingClosePin}
+                            onChange={(event) => setZReadingClosePin(event.target.value.replace(/\D/g, '').slice(0, 12))}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Enter') handleConfirmCloseDay();
+                            }}
+                            disabled={closingDay}
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setZReadingCloseConfirmOpen(false)} disabled={closingDay}>Cancel</Button>
+                        <Button type="button" onClick={handleConfirmCloseDay} disabled={closingDay || zReadingClosePin.length < 4}>
+                            {closingDay ? 'Generating...' : 'Confirm and generate'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             <Dialog open={discountModalOpen} onOpenChange={setDiscountModalOpen}>
                 <DialogContent className="relative flex max-h-[90dvh] w-[calc(100vw-1rem)] max-w-[480px] flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white p-0 shadow-xl shadow-slate-950/20 sm:w-[calc(100vw-2rem)]">
@@ -4744,6 +4819,16 @@ export default function POSCheckoutTerminal({
                                     />
                                 </Suspense>
                             )}
+                            {posWorkflow.mode === 'counter' && (
+                                <Suspense fallback={null}>
+                                    <CounterWorkflowPanel
+                                        orderMethod={orderMethod}
+                                        setOrderMethod={setOrderMethod}
+                                        allowedMethods={posWorkflow.allowedMethods}
+                                        disabled={posActionsBlocked || checkoutLoading}
+                                    />
+                                </Suspense>
+                            )}
                             {posWorkflow.mode === 'services' && (
                                 <Suspense fallback={null}>
                                     <ServicesWorkflowPanel
@@ -5046,11 +5131,11 @@ export default function POSCheckoutTerminal({
                             <Button
                                 type="button"
                                 variant="outline"
-                                data-testid="pos-receipt-modal-open-sales-report"
+                                data-testid="pos-receipt-modal-open-pos-report"
                                 disabled={posActionsBlocked || !lastReceipt}
-                                onClick={() => openInSalesReport(lastReceipt)}
+                                onClick={openInPosReport}
                             >
-                                Open in Sales Report
+                                {posReportActionLabel}
                             </Button>
                             <Button
                                 type="button"

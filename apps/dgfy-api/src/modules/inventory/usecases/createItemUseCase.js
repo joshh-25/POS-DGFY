@@ -6,18 +6,21 @@ export const buildCreateItemUseCase = ({
     itemRepository,
     resolveWorkflowMode,
     resolveEnabledCapabilities = async () => [],
+    resolveDisabledCapabilities = async () => [],
     resolveInventoryAuthority = async () => DEFAULT_INVENTORY_AUTHORITY
 }) => {
     return async ({ itemData, userId, canManageCategories = false }) => {
-        const [workflowMode, enabledCapabilities, inventoryAuthority] = await Promise.all([
+        const [workflowMode, enabledCapabilities, disabledCapabilities, inventoryAuthority] = await Promise.all([
             resolveWorkflowMode(),
             resolveEnabledCapabilities(),
+            resolveDisabledCapabilities(),
             resolveInventoryAuthority()
         ]);
         assertTrackingModeAuthorizedForInventoryAuthority({ itemData, inventoryAuthority });
         const validation = validateItemAgainstModeTaxonomy({
             workflowMode,
             enabledCapabilities,
+            disabledCapabilities,
             itemData,
             operation: 'create'
         });

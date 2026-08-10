@@ -574,6 +574,10 @@ export const resolvePlatformAdminRoutePolicy = (req) => {
   if (/^\/api\/v1\/admin\/tenants(?:\/|$)/.test(path)) return { permissions: ['admin.tenants'] };
   if (/^\/api\/v1\/dgfy\/admin\/accounts(?:\/|$)/.test(path)) return { permissions: ['admin.dgfy_accounts'] };
   if (/^\/api\/v1\/commerce-payments\/admin(?:\/|$)/.test(path)) return { permissions: ['admin.payments'] };
+  // Store Template curation (issue #178 Phase 14, ADR 0056) is deliberately
+  // master-only, not a delegable permission: a published template shapes
+  // what every future tenant provisions with, platform-wide.
+  if (/^\/api\/v1\/admin\/templates(?:\/|$)/.test(path)) return { masterOnly: true };
   // Protected legacy admin endpoints without a visible page are deliberately
   // master-only until they are added to the checked-in permission matrix.
   return { masterOnly: true };

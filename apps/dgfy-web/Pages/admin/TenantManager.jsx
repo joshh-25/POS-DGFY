@@ -24,7 +24,8 @@ import {
     Monitor,
     ShoppingCart,
     MapPin,
-    Store
+    Store,
+    LayoutTemplate
 } from 'lucide-react';
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -36,7 +37,8 @@ import {
     TENANT_CAPABILITY_MESSAGES,
     getStorefrontAccessModeMessage
 } from '../../src/utils/tenantCapabilityMessages.js';
-import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_SELECT_VALUES } from '../../src/features/settings/workflowMode.js';
+import { WORKFLOW_MODE_LABELS } from '../../src/features/settings/workflowMode.js';
+import IndustryPicker from '../../src/features/registration/IndustryPicker.jsx';
 import StorefrontCustomDomainsModal from '../../src/features/admin/components/StorefrontCustomDomainsModal.jsx';
 import TenantRevenueSettlementPanel from '../../src/features/admin/tenantRevenue/TenantRevenueSettlementPanel.jsx';
 
@@ -465,6 +467,15 @@ export default function TenantManager() {
     const [capabilityAuditTenant, setCapabilityAuditTenant] = useState(null);
     const [capabilityAuditLogs, setCapabilityAuditLogs] = useState([]);
     const [capabilityAuditLoading, setCapabilityAuditLoading] = useState(false);
+    // Store Template application (issue #178 Phase 17) - mirrors the
+    // capability-change confirmation flow above (open/reason/loading state,
+    // same audited-write shape), separate state since the payload is a
+    // templateKey rather than a capability patch.
+    const [templates, setTemplates] = useState([]);
+    const [selectedTemplateKeyByTenant, setSelectedTemplateKeyByTenant] = useState({});
+    const [pendingTemplateApply, setPendingTemplateApply] = useState(null);
+    const [templateApplyReason, setTemplateApplyReason] = useState('');
+    const [templateApplyLoading, setTemplateApplyLoading] = useState(false);
     const [posMetadataTenant, setPosMetadataTenant] = useState(null);
     const [posMetadata, setPosMetadata] = useState(null);
     const [posMetadataForm, setPosMetadataForm] = useState({
@@ -483,7 +494,9 @@ export default function TenantManager() {
     const [assistTemporaryPassword, setAssistTemporaryPassword] = useState('');
     const [assistForm, setAssistForm] = useState({
         name: '',
+        industryKey: '',
         workflowMode: 'food_manufacturing',
+        templateKey: '',
         adminEmail: '',
         adminPhone: '',
         adminPassword: '',
@@ -548,6 +561,27 @@ export default function TenantManager() {
         loadTenants();
     }, [statusFilter]);
 
+    // Store Template application (issue #178 Phase 17): loaded once, not
+    // per-status-filter change - the published template catalog doesn't
+    // depend on which tenants are currently shown. Failure here is
+    // non-fatal: the picker just stays empty, tenant management still works.
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            try {
+                const response = await adminService.listStoreTemplates({ status: 'published' });
+                // listStoreTemplates() returns { success, data: { templates } } -
+                // response.data is the wrapper object, not the array itself (this
+                // dropped the apply-template picker silently until fixed - issue
+                // #178 final-touch hardening; matches StoreTemplateManager.jsx).
+                if (!cancelled) setTemplates(response.data?.templates || []);
+            } catch (err) {
+                console.error('Failed to load Store Templates', err);
+            }
+        })();
+        return () => { cancelled = true; };
+    }, []);
+
     async function loadTenants() {
         setLoading(true);
         setError('');
@@ -584,12 +618,14 @@ export default function TenantManager() {
                     },
                     company: {
                         name: assistForm.name,
-                        workflowMode: assistForm.workflowMode
+                        workflowMode: assistForm.workflowMode,
+                        templateKey: assistForm.templateKey || null
                     }
                 })
                 : await adminService.createAdminProvisionedTenant({
                     name: assistForm.name,
                     workflowMode: assistForm.workflowMode,
+                    templateKey: assistForm.templateKey || null,
                     adminEmail: assistForm.adminEmail,
                     adminPhone: assistForm.adminPhone,
                     adminPassword: assistForm.adminPassword,
@@ -598,7 +634,9 @@ export default function TenantManager() {
             setAssistTemporaryPassword(response.data?.temporary_password || '');
             setAssistForm({
                 name: '',
+                industryKey: '',
                 workflowMode: 'food_manufacturing',
+                templateKey: '',
                 adminEmail: '',
                 adminPhone: '',
                 adminPassword: '',
@@ -657,6 +695,48 @@ export default function TenantManager() {
             }
         } finally {
             setCapabilityLoading('');
+        }
+    };
+
+    // Store Template application (issue #178 Phase 17) - mirrors
+    // openCapabilityChange/closeCapabilityChange/handleUpdateCapabilities
+    // above exactly, for the same audited-write shape.
+    const openTemplateApply = (tenant, templateKey, label) => {
+        if (!tenant?.id || !templateKey) return;
+        setPendingTemplateApply({ tenant, templateKey, label });
+        setTemplateApplyReason('');
+    };
+
+    const closeTemplateApply = () => {
+        if (templateApplyLoading) return;
+        setPendingTemplateApply(null);
+        setTemplateApplyReason('');
+    };
+
+    const handleApplyTemplate = async (event) => {
+        event?.preventDefault?.();
+        const tenant = pendingTemplateApply?.tenant;
+        const templateKey = pendingTemplateApply?.templateKey;
+        const reason = templateApplyReason.trim();
+        if (!tenant?.id || !templateKey) return;
+        if (reason.length < 3) {
+            toast.error('Reason is required and must be at least 3 characters.');
+            return;
+        }
+        setTemplateApplyLoading(true);
+        try {
+            await adminService.applyTenantTemplate(tenant.id, { templateKey, reason });
+            await loadTenants();
+            setPendingTemplateApply(null);
+            setTemplateApplyReason('');
+            toast.success('Store Template applied');
+        } catch (err) {
+            const normalized = normalizeApiError(err);
+            if (!normalized.isGlobalCandidate) {
+                toast.error(`Failed to apply Store Template: ${normalized.message}`);
+            }
+        } finally {
+            setTemplateApplyLoading(false);
         }
     };
 
@@ -1403,13 +1483,15 @@ export default function TenantManager() {
                         <button type="button" onClick={() => setAssistMode('account_company')} className={cn('rounded-md px-3 py-1.5 text-sm', assistMode === 'account_company' ? 'bg-slate-900 text-white' : 'text-slate-600')}>DGFY + Company</button>
                     </div>
                 </div>
+                <div className="mb-3 rounded-lg border border-slate-200 p-3">
+                    <IndustryPicker
+                        idPrefix="assisted-provisioning-industry"
+                        value={assistForm.industryKey}
+                        onSelect={(entry) => setAssistForm((current) => ({ ...current, industryKey: entry.key, workflowMode: entry.workflow_mode, templateKey: entry.template_key || '' }))}
+                    />
+                </div>
                 <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                     <input required className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Company name" value={assistForm.name} onChange={(event) => updateAssistForm('name', event.target.value)} />
-                    <select className="rounded-lg border border-slate-300 px-3 py-2 text-sm" value={assistForm.workflowMode} onChange={(event) => updateAssistForm('workflowMode', event.target.value)}>
-                        {WORKFLOW_MODE_SELECT_VALUES.map((mode) => (
-                            <option key={mode} value={mode}>{WORKFLOW_MODE_LABELS[mode] || mode}</option>
-                        ))}
-                    </select>
                     <input required minLength={3} className="rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Audit reason" value={assistForm.reason} onChange={(event) => updateAssistForm('reason', event.target.value)} />
                     {assistMode === 'company' ? (
                         <>
@@ -1939,6 +2021,42 @@ export default function TenantManager() {
                                                         </p>
                                                     ) : null;
                                                 })()}
+                                                {tenant.status === 'active' && templates.length > 0 && (
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <select
+                                                            aria-label={`Apply Store Template to ${tenant.name}`}
+                                                            className="h-9 rounded-lg border border-slate-200 px-2 text-xs text-slate-700"
+                                                            value={selectedTemplateKeyByTenant[tenant.id] || ''}
+                                                            onChange={(event) => setSelectedTemplateKeyByTenant((current) => ({
+                                                                ...current,
+                                                                [tenant.id]: event.target.value
+                                                            }))}
+                                                        >
+                                                            <option value="">Apply Store Template…</option>
+                                                            {templates.map((template) => (
+                                                                <option key={template.template_key} value={template.template_key}>
+                                                                    {template.label} ({WORKFLOW_MODE_LABELS[template.base_mode] || template.base_mode})
+                                                                </option>
+                                                            ))}
+                                                        </select>
+                                                        <Button
+                                                            onClick={() => {
+                                                                const templateKey = selectedTemplateKeyByTenant[tenant.id];
+                                                                const template = templates.find((entry) => entry.template_key === templateKey);
+                                                                if (!template) return;
+                                                                openTemplateApply(tenant, templateKey, `Apply template: ${template.label}`);
+                                                            }}
+                                                            variant="outline"
+                                                            size="sm"
+                                                            disabled={!selectedTemplateKeyByTenant[tenant.id]}
+                                                            className="border-slate-300 text-slate-700 hover:bg-slate-50"
+                                                            title="Apply a published Store Template to this tenant"
+                                                        >
+                                                            <LayoutTemplate className="w-4 h-4 mr-1" />
+                                                            Apply
+                                                        </Button>
+                                                    </div>
+                                                )}
                                                 <div className="flex flex-wrap items-center gap-2">
                                                     <Button
                                                         onClick={() => openCustomDomainsModal(tenant)}
@@ -2757,6 +2875,77 @@ export default function TenantManager() {
                                     <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
                                 ) : null}
                                 Apply change
+                            </Button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            {/* Store Template Apply Confirmation Modal (issue #178 Phase 17) */}
+            {pendingTemplateApply && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                    <form
+                        onSubmit={handleApplyTemplate}
+                        className="w-full max-w-lg rounded-lg bg-white p-6 shadow-xl"
+                    >
+                        <div className="mb-4 flex items-start justify-between gap-4">
+                            <div>
+                                <h2 className="text-xl font-bold text-slate-900">Confirm Store Template application</h2>
+                                <p className="mt-1 text-sm text-slate-600">
+                                    {pendingTemplateApply.label} for {pendingTemplateApply.tenant?.name}
+                                </p>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={closeTemplateApply}
+                                className="rounded-md p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+                                aria-label="Close Store Template confirmation"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+                        <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+                            <p className="text-sm font-semibold text-amber-900">This changes what this tenant&apos;s store can do</p>
+                            <p className="mt-1 text-xs leading-5 text-amber-800">
+                                Non-destructive: hidden-domain data is never deleted, and applying a different
+                                template later restores whatever the previous one granted.
+                            </p>
+                        </div>
+                        <label className="block text-sm font-medium text-slate-700" htmlFor="template-apply-reason">
+                            Reason
+                        </label>
+                        <textarea
+                            id="template-apply-reason"
+                            value={templateApplyReason}
+                            onChange={(event) => setTemplateApplyReason(event.target.value)}
+                            rows={4}
+                            maxLength={500}
+                            className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-400 focus:ring-2 focus:ring-slate-100"
+                            placeholder="State why this Store Template is being applied."
+                            required
+                        />
+                        <div className="mt-2 flex items-center justify-between text-xs text-slate-500">
+                            <span>This reason is saved in the platform-admin audit trail.</span>
+                            <span>{templateApplyReason.trim().length}/500</span>
+                        </div>
+                        <div className="mt-6 flex justify-end gap-3">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={closeTemplateApply}
+                                disabled={templateApplyLoading}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="submit"
+                                disabled={templateApplyLoading || templateApplyReason.trim().length < 3}
+                                className="bg-slate-900 text-white hover:bg-slate-800"
+                            >
+                                {templateApplyLoading ? (
+                                    <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+                                ) : null}
+                                Apply template
                             </Button>
                         </div>
                     </form>

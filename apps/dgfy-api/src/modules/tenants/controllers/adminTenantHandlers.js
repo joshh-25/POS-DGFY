@@ -12,6 +12,7 @@ import {
     updatePricingSettingsUseCase,
     updateTenantUseCase,
     updateTenantCapabilitiesUseCase,
+    applyTemplateToTenantUseCase,
     listTenantCapabilityAuditLogsUseCase,
     listTenantPosMetadataAuditLogsUseCase,
     getTenantPosMetadataUseCase,
@@ -343,6 +344,34 @@ export const updateTenantCapabilities = async (req, res) => {
         successMetadataResolver: () => ({
             tenant_id: req.params?.id || null,
             keys: Object.keys(req.validatedData || req.body || {}).filter((key) => key !== 'reason')
+        })
+    });
+    return sendUseCaseResult(res, result);
+};
+
+export const applyTemplateToTenant = async (req, res) => {
+    const result = await applyTemplateToTenantUseCase({
+        id: req.params?.id,
+        body: req.validatedData || req.body,
+        actor: {
+            username: req.admin?.username || req.user?.username || 'platform_admin'
+        },
+        metadata: {
+            request_id: req.requestId || req.headers['x-request-id'] || null,
+            ip_address: req.ip || null,
+            user_agent: req.get?.('user-agent') || req.headers['user-agent'] || null
+        }
+    });
+    await trackProductUsageFromResult({
+        req,
+        user: req.user,
+        eventType: 'admin_tenant_template_applied',
+        surface: 'admin_tenants',
+        action: 'apply_template_to_tenant',
+        result,
+        successMetadataResolver: () => ({
+            tenant_id: req.params?.id || null,
+            template_key: (req.validatedData || req.body || {}).templateKey || null
         })
     });
     return sendUseCaseResult(res, result);

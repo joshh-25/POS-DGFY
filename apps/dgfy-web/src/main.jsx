@@ -130,6 +130,7 @@ const AdminPricing = lazy(() => import('../Pages/admin/AdminPricing.jsx'))
 const HostingStatus = lazy(() => import('../Pages/admin/HostingStatus.jsx'))
 const InvoiceManager = lazy(() => import('../Pages/admin/InvoiceManager.jsx'))
 const PlatformAdminManager = lazy(() => import('../Pages/admin/PlatformAdminManager.jsx'))
+const StoreTemplateManager = lazy(() => import('../Pages/admin/StoreTemplateManager.jsx'))
 
 function App() {
   const location = useLocation()
@@ -308,6 +309,7 @@ function App() {
           <Route path="hosting" element={<HostingStatus />} />
           <Route path="invoices" element={<InvoiceManager />} />
           <Route path="platform-admins" element={<PlatformAdminManager />} />
+          <Route path="store-templates" element={<StoreTemplateManager />} />
         </Route>
 
          {/* Legacy route - redirect to new admin portal */}

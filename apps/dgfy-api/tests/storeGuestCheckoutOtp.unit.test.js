@@ -1,4 +1,5 @@
 import { describe, expect, it } from '@jest/globals';
+import jwt from 'jsonwebtoken';
 import {
   buildRequestStoreGuestCheckoutOtpUseCase,
   buildVerifyStoreGuestCheckoutOtpUseCase
@@ -53,6 +54,31 @@ describe('Storefront guest checkout OTP', () => {
       idempotencyKey,
       proof: '',
       storeCustomer: { dgfy_account_id: 'dgfy-account-1' }
+    })).not.toThrow();
+  });
+
+  it('allows a signed guest proof to be reused after expiry only for paid finalization recovery', () => {
+    const guestProofSecret = process.env.STORE_GUEST_CHECKOUT_PROOF_SECRET
+      || `${process.env.JWT_SECRET || 'store-fallback-secret-change-me'}:store:guest-checkout-proof`;
+    const expiredProof = jwt.sign({
+      type: 'store_guest_checkout_proof',
+      tenant_id: tenantId,
+      email,
+      idempotency_key: idempotencyKey
+    }, guestProofSecret, { expiresIn: '-1s' });
+
+    expect(() => assertGuestCheckoutProof({
+      tenantId,
+      email,
+      idempotencyKey,
+      proof: expiredProof
+    })).toThrow('Verify the Gmail code');
+    expect(() => assertGuestCheckoutProof({
+      tenantId,
+      email,
+      idempotencyKey,
+      proof: expiredProof,
+      allowExpired: true
     })).not.toThrow();
   });
 });

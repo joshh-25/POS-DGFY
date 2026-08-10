@@ -11,6 +11,7 @@ import {
   fetchPosTransactionById,
   fetchCurrentTerminalShift,
   fetchTerminalTodayDashboard,
+  closePosDay,
   openPosDeviceDrawer,
   openTerminalShift,
   switchTerminalShiftLocation,
@@ -58,7 +59,6 @@ import {
 } from '@/services/browserSession.js';
 import { useWorkflowMode } from '../../settings/WorkflowModeContext.jsx';
 import { getWorkflowModeLabel, isMsmeWorkflowMode } from '../../settings/workflowMode.js';
-import { resolveBusinessModePosDefaults } from '../../settings/businessModeTemplates.js';
 import {
   POS_TERMINAL_LOGIN_ERROR_CODES,
   classifyTerminalLoginFailure,
@@ -117,9 +117,10 @@ import {
   resolveTenantSetupStepValue,
   resolveTenantSetupViewMode
 } from '../utils/setupFlow.js';
-import { openDrawerWithIminBridge, printOrderWithIminBridge } from '../utils/iminHardwareBridge.js';
+import { openDrawerWithIminBridge } from '../utils/iminHardwareBridge.js';
 import { usePosHardware } from '../hardware/usePosHardware.js';
 import ShiftCloseSummaryPrintView from '../components/ShiftCloseSummaryPrintView.jsx';
+import ZReadingPrintView from '../components/ZReadingPrintView.jsx';
 import {
   blurActiveTerminalEditor,
   restoreTerminalViewportAfterUnlock
@@ -449,7 +450,7 @@ const buildTenantSetupStateSnapshot = ({
 export default function TerminalPage() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { workflowMode, modeChangeNotice, dismissModeChangeNotice } = useWorkflowMode();
+  const { workflowMode, profile, modeChangeNotice, dismissModeChangeNotice } = useWorkflowMode();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(() => {
     const stored = localStorage.getItem('posTerminalSidebarCollapsed');
     return stored === '1';
@@ -475,6 +476,12 @@ export default function TerminalPage() {
   const [closedShiftReport, setClosedShiftReport] = useState(null);
   const [closedShiftReportOpen, setClosedShiftReportOpen] = useState(false);
   const [closedShiftReportAutoPrint, setClosedShiftReportAutoPrint] = useState(false);
+  const [zReadingReport, setZReadingReport] = useState(null);
+  const [zReadingPrintOpen, setZReadingPrintOpen] = useState(false);
+  const [zReadingPrintAutoPrint, setZReadingPrintAutoPrint] = useState(false);
+  const [zReadingPrintState, setZReadingPrintState] = useState('idle');
+  const [zReadingCloseConfirmOpen, setZReadingCloseConfirmOpen] = useState(false);
+  const [zReadingClosePin, setZReadingClosePin] = useState('');
   const [hardwareMessage, setHardwareMessage] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeTerminalId, setActiveTerminalId] = useState(() => readInitialTerminalId());
@@ -592,6 +599,7 @@ export default function TerminalPage() {
     switchLocation: false,
     cashEvent: false,
     close: false,
+    zReading: false,
     staleRecovery: false
   });
   const [locationsState, setLocationsState] = useState({
@@ -718,6 +726,12 @@ export default function TerminalPage() {
     return () => window.clearTimeout(timer);
   }, [closedShiftReport, closedShiftReportAutoPrint, closedShiftReportOpen]);
 
+  useEffect(() => {
+    if (!zReadingPrintOpen || !zReadingReport || !zReadingPrintAutoPrint || typeof window === 'undefined' || typeof window.print !== 'function') return undefined;
+    const timer = window.setTimeout(() => window.print(), 120);
+    return () => window.clearTimeout(timer);
+  }, [zReadingPrintAutoPrint, zReadingPrintOpen, zReadingReport]);
+
   const isMsmeMode = isMsmeWorkflowMode(workflowMode);
   const activeTenantId = String(terminalUser?.company?.id || '').trim();
   const offlinePosScope = useMemo(() => ({
@@ -738,9 +752,12 @@ export default function TerminalPage() {
   useEffect(() => {
     setManualSyncPolicy(getManualPosSyncPolicy(offlinePosScope));
   }, [offlinePosScope]);
+  // Issue #178 Phase 18: reads the server-resolved Store Profile instead of
+  // recomputing from the frontend's own copy of the mode->defaults mapping
+  // (businessModeTemplates.js's posDefaults, now retired - see that file).
   const modePosDefaults = useMemo(
-    () => resolveBusinessModePosDefaults(workflowMode),
-    [workflowMode]
+    () => profile?.pos_defaults || {},
+    [profile]
   );
   const activeOperationsViewModes = useMemo(() => {
     const baseModes = isMsmeMode ? MSME_OPERATIONS_VIEW_MODES : OPERATIONS_VIEW_MODES;
@@ -810,7 +827,8 @@ export default function TerminalPage() {
   const canCreateItems = hasPermission('items:create');
   const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
   const canAdminBypassShiftPrompt = hasPermission('settings:view') || dgfyAdminBypassActive;
-  const canOpenShift = canTransactPos && !canAdminBypassShiftPrompt;
+  const isMasterAdminOperator = terminalUser?.is_master_admin === true;
+  const canOpenShift = canTransactPos && (!canAdminBypassShiftPrompt || isMasterAdminOperator);
   const canEditItems = hasPermission('items:edit');
   const canDeleteItems = hasPermission('items:delete');
   const canManageCategories = hasPermission('categories:manage');
@@ -1455,6 +1473,98 @@ export default function TerminalPage() {
       return false;
     }
   }, [activeTerminalId, posHardware]);
+
+  const printZReading = useCallback(async (report, { reason = 'z_reading_close_day' } = {}) => {
+    if (!report?.business_date || !report?.location_id) return false;
+    setZReadingPrintState('printing');
+    const zReading = {
+      business: { pos_business_name: 'DGFY' },
+      z_reading: {
+        business_date: report.business_date,
+        location_id: report.location_id,
+        reading_identifier: report.reading_identifier || null,
+        generated_at: report.generated_at || null,
+        summary: report.summary || {},
+        z_counter_value: report.counters?.z_counter || 0,
+        reset_counter_value: report.counters?.reset_counter || 0,
+        lifetime_grand_total_cents: report.counters?.lifetime_grand_total_cents || 0
+      }
+    };
+
+    try {
+      const outcome = await posHardware.printZReading({
+        zReading,
+        businessDate: report.business_date,
+        locationId: report.location_id,
+        businessSettings: { pos_business_name: 'DGFY' },
+        terminalId: sanitizeTerminalId(activeTerminalId) || undefined,
+        reason,
+        idempotencyKey: createIdempotencyKey('pos-z-reading-print'),
+        copies: 1,
+        paperWidth: '80mm'
+      });
+      if (outcome?.success) {
+        setZReadingPrintState('printed');
+        setZReadingPrintAutoPrint(false);
+        toast.success(report.snapshot_reused ? 'Existing Z-reading printed again.' : 'Z-reading printed successfully.');
+        return true;
+      }
+      setZReadingPrintState('failed');
+      setZReadingPrintAutoPrint(true);
+      setZReadingPrintOpen(true);
+      toast.message(outcome?.message || 'No printer is configured. The Z-reading is available for browser printing.');
+      return false;
+    } catch (error) {
+      setZReadingPrintState('failed');
+      setZReadingPrintAutoPrint(true);
+      setZReadingPrintOpen(true);
+      toast.message(error?.response?.data?.message || 'The Z-reading was saved, but physical printing failed.');
+      return false;
+    }
+  }, [activeTerminalId, posHardware]);
+
+  const handleCloseDay = useCallback(() => {
+    if (locked || !isOnline) {
+      toast.error('Reconnect and unlock the terminal before closing the day.');
+      return false;
+    }
+    if (!canCloseDay) {
+      toast.error('You need close-day permission to generate a Z-reading.');
+      return false;
+    }
+
+    setZReadingClosePin('');
+    setZReadingCloseConfirmOpen(true);
+    return true;
+  }, [canCloseDay, isOnline, locked]);
+
+  const confirmCloseDay = useCallback(async () => {
+    if (!/^\d{4,12}$/.test(zReadingClosePin)) {
+      toast.error('Enter your 4 to 12 digit POS Day Close PIN.');
+      return false;
+    }
+
+    setShiftActionLoading((previous) => ({ ...previous, zReading: true }));
+    setZReadingPrintState('idle');
+    try {
+      const result = await closePosDay(null, { dayClosePin: zReadingClosePin });
+      if (!result?.business_date || !result?.location_id) {
+        throw new Error('The backend returned an incomplete Z-reading.');
+      }
+      setZReadingCloseConfirmOpen(false);
+      setZReadingClosePin('');
+      setZReadingReport(result);
+      setZReadingPrintAutoPrint(false);
+      setZReadingPrintOpen(true);
+      await printZReading(result);
+      return true;
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || 'Failed to close the day and generate the Z-reading.');
+      return false;
+    } finally {
+      setShiftActionLoading((previous) => ({ ...previous, zReading: false }));
+    }
+  }, [printZReading, zReadingClosePin]);
 
   const handleViewShiftSummary = useCallback(() => {
     if (!shiftState?.shift) {
@@ -3548,7 +3658,7 @@ export default function TerminalPage() {
   }, []);
 
   const handleOpenShift = async () => {
-    if (canAdminBypassShiftPrompt) {
+    if (canAdminBypassShiftPrompt && !isMasterAdminOperator) {
       toast.error('Administrator navigation is read-only. Sign in as the cashier to open the shift.');
       return;
     }
@@ -4010,6 +4120,39 @@ export default function TerminalPage() {
     return outcome;
   }, [activeTerminalId, posHardware]);
 
+  const printOnlineOrderKitchenTicket = useCallback(async (order) => {
+    const lines = Array.isArray(order?.lines) ? order.lines : [];
+    if (lines.length === 0) {
+      toast.error('The online order has no items to print for the kitchen.');
+      return false;
+    }
+
+    const outcome = await posHardware.printOrderTicket({
+      cart: lines.map((line) => ({
+        ...line,
+        item_name: line?.item_name_snapshot || line?.item?.name || line?.name,
+        quantity: line?.quantity ?? line?.qty ?? 0,
+        fnb_special_instructions: line?.fnb_special_instructions
+          || line?.special_instructions
+          || line?.notes
+          || ''
+      })),
+      terminalId: sanitizeTerminalId(activeTerminalId) || undefined,
+      orderMethod: order?.order_method,
+      orderNotes: order?.special_instructions || order?.customer_note || order?.order_notes || ''
+    });
+
+    if (outcome?.success) {
+      toast.success(outcome.message || 'Kitchen order printed.');
+    } else if (outcome?.reasonCode === 'NO_PRINTER_CONFIGURED' || outcome?.reasonCode === 'NOT_SUPPORTED') {
+      toast.error('Kitchen order printing is not available on this terminal.');
+    } else {
+      toast.error(outcome?.message || 'Failed to print the kitchen order.');
+    }
+
+    return Boolean(outcome?.success);
+  }, [activeTerminalId, posHardware]);
+
   const handleIncomingOrderStatusChange = async (posTransactionId, fulfillmentStatus, reason = null) => {
     if (!isOnline) {
       toast.error('Reconnect to the internet before changing an online order.');
@@ -4163,7 +4306,11 @@ export default function TerminalPage() {
     }
   };
 
-  const handleOpenIncomingOrderReceipt = async (posTransactionId, { printMode = false, retryPrint = false } = {}) => {
+  const handleOpenIncomingOrderReceipt = async (posTransactionId, {
+    printMode = false,
+    retryPrint = false,
+    printOrder = false
+  } = {}) => {
     if (!isOnline) {
       toast.error('Reconnect to the internet before opening or printing an online order.');
       return;
@@ -4180,6 +4327,10 @@ export default function TerminalPage() {
     try {
       const detail = await fetchPosTransactionById(normalizedId);
       setIncomingOrderDetail(detail || null);
+      if (printOrder) {
+        await printOnlineOrderKitchenTicket(detail);
+        return;
+      }
       if (retryPrint) {
         await printOnlineOrderReceiptById(normalizedId, {
           transaction: detail,
@@ -4574,7 +4725,7 @@ export default function TerminalPage() {
     && canViewPos
     && !shiftOpenPromptBlockedBySetup
     && !suppressAdminShiftPrompt
-    && !canAdminBypassShiftPrompt
+    && (!canAdminBypassShiftPrompt || isMasterAdminOperator)
   );
   const openingCashAmountText = String(openShiftForm.openingFloatAmount ?? '').trim();
   const openingCashAmountNumber = Number(openingCashAmountText);
@@ -4982,6 +5133,16 @@ function PosRestorationLoadingScreen() {
                 {renderUnlockFailurePanel()}
               </div>
               <DialogFooter className="border-t border-slate-100 px-5 py-4">
+                {cashierUnlockSession?.email && !activeShiftId && terminalUnlockMode === 'shift_start' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleLock}
+                    disabled={submitting || shiftActionLoading.open}
+                  >
+                    Back to Login
+                  </Button>
+                )}
                 {canAdminBypassShiftPrompt && !signedInShiftResume && (
                   <Button
                     type="button"
@@ -5415,6 +5576,64 @@ function PosRestorationLoadingScreen() {
             }}
           />
         )}
+        {zReadingPrintOpen && zReadingReport && (
+          <ZReadingPrintView
+            report={zReadingReport}
+            currency={terminalMeta.pettyCashSymbol || DEFAULT_CURRENCY}
+            autoPrint={zReadingPrintAutoPrint}
+            printState={zReadingPrintState}
+            onPrint={() => printZReading(zReadingReport, {
+              reason: zReadingReport.snapshot_reused ? 'z_reading_reprint' : 'z_reading_close_day'
+            })}
+            onClose={() => {
+              setZReadingPrintOpen(false);
+              setZReadingReport(null);
+              setZReadingPrintAutoPrint(false);
+              setZReadingPrintState('idle');
+            }}
+          />
+        )}
+        <Dialog open={zReadingCloseConfirmOpen} onOpenChange={(open) => {
+          if (shiftActionLoading.zReading) return;
+          setZReadingCloseConfirmOpen(open);
+          if (!open) setZReadingClosePin('');
+        }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Confirm Day Close</DialogTitle>
+              <DialogDescription>
+                This will generate the branch Z-reading after every cashier shift is closed. Enter your own Day Close PIN to record accountability.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
+                The Z-reading is branch-wide and includes financially recognized sales from all cashiers and completed online orders.
+              </div>
+              <div>
+                <Label htmlFor="z-reading-day-close-pin">Your POS Day Close PIN</Label>
+                <Input
+                  id="z-reading-day-close-pin"
+                  value={zReadingClosePin}
+                  onChange={(event) => setZReadingClosePin(event.target.value.replace(/\D/g, '').slice(0, 12))}
+                  type="password"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="4 to 12 digits"
+                  className="mt-1"
+                  disabled={shiftActionLoading.zReading}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setZReadingCloseConfirmOpen(false)} disabled={shiftActionLoading.zReading}>
+                Cancel
+              </Button>
+              <Button type="button" onClick={confirmCloseDay} disabled={shiftActionLoading.zReading}>
+                {shiftActionLoading.zReading ? 'Closing Day...' : 'Confirm & Print Z-reading'}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         <TerminalPageLayout
           key={locked ? 'terminal-layout-locked' : `terminal-layout-unlocked-${terminalLayoutEpoch}`}
           locked={locked}
@@ -5437,8 +5656,10 @@ function PosRestorationLoadingScreen() {
           itemsStockFilterPreset={itemsStockFilterPreset}
           onItemsStockFilterPresetApplied={handleItemsStockFilterPresetApplied}
           canAdjustCashDrawer={canAdjustCashDrawer}
-          canCloseDay={canCloseShift}
+          canCloseShift={canCloseShift}
+          canCloseDay={canCloseDay}
           canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
+          canOpenShift={canOpenShift}
           terminalUser={terminalUser}
           accessibleCompanies={mergeCurrentCompanyWithMemberships(terminalUser, dgfyPosState.companies)}
           companySwitching={companySwitching}
@@ -5446,6 +5667,7 @@ function PosRestorationLoadingScreen() {
           onSwitchCompany={handleCompanySwitch}
           posViewMode={posViewMode}
           workflowMode={workflowMode}
+          effectiveCapabilities={profile?.modules}
           isMsmeMode={isMsmeMode}
           shiftState={shiftState}
           incomingOrdersState={incomingOrdersState}
@@ -5489,6 +5711,7 @@ function PosRestorationLoadingScreen() {
           handleSwitchShiftLocation={handleSwitchShiftLocation}
           handleRecordCashEvent={handleRecordCashEvent}
           handleCloseShift={handleCloseShift}
+          handleCloseDay={handleCloseDay}
           handleViewShiftSummary={handleViewShiftSummary}
           refreshOperationalContext={refreshOperationalContext}
           setOperatingLocationId={setOperatingLocationId}

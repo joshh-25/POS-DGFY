@@ -45,6 +45,7 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260711000002-add-item-folder-active-contract.cjs',
     '20260711000003-repair-pickup-cash-collection-columns.cjs',
     '20260807000002-add-pos-payment-timing.cjs',
+    '20260808000001-add-pos-day-close-pin-and-z-reading-attribution.cjs',
     '20260714000002-add-pos-best-seller-contract.cjs',
     '20260724000001-enforce-one-open-shift-per-operator.cjs',
     '20260502000001-add-services-mode-booking-tables.cjs',
@@ -53,7 +54,19 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260726000003-add-entity-type-to-discovery-index.cjs',
     '20260729000001-create-employee-credit-ledger.cjs',
     '20260729000002-create-employee-directory.cjs',
-    '20260730000001-convert-employee-credit-to-outstanding-balance.cjs'
+    '20260730000001-convert-employee-credit-to-outstanding-balance.cjs',
+    '20260808183439-add-item-identity-snapshot-to-pos-transaction-lines.cjs',
+    '20260808190000-create-workflow-mode-change-log.cjs',
+    '20260809000001-create-store-configuration-templates.cjs',
+    '20260809000002-create-store-configuration-template-audit-logs.cjs',
+    '20260809000003-add-disabled-capabilities-to-workflow-mode-change-log.cjs',
+    '20260810000001-add-is-canonical-to-store-configuration-templates.cjs',
+    '20260810000002-seed-store-configuration-template-presets.cjs',
+    '20260811000001-create-registration-industry-visibility.cjs',
+    '20260812000001-create-registration-industries.cjs',
+    '20260812000002-seed-registration-industries.cjs',
+    '20260812000003-fold-registration-industry-visibility.cjs',
+    '20260812000004-drop-registration-industry-visibility.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({
@@ -74,7 +87,7 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'compliance_cycle_version',
         'compliance_revert_last_cycle_version'
     ],
-    users: ['user_id', 'role', 'is_master_admin', 'deleted_at'],
+    users: ['user_id', 'role', 'is_master_admin', 'deleted_at', 'pos_approval_pin_hash', 'pos_day_close_pin_hash'],
     items: ['item_id', 'vat_type', 'tracking_mode', 'tracking_toggle_available'],
     item_folders: ['folder_id', 'name', 'show_in_pos_filter', 'is_active'],
     pos_catalog_overrides: ['pos_catalog_override_id', 'item_id', 'pos_visible', 'pos_image_url', 'pos_always_available', 'pos_best_seller_mode'],
@@ -201,7 +214,9 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'sale_price_overridden',
         'price_override_reason',
         'stock_effect_type',
-        'stock_exempt_reason'
+        'stock_exempt_reason',
+        'item_name_snapshot',
+        'sku_snapshot'
     ],
     pos_terminal_shifts: [
         'pos_terminal_shift_id',

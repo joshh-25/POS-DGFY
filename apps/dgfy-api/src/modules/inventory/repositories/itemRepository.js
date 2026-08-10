@@ -14,7 +14,9 @@ import {
     normalizeWorkflowMode,
     resolveWorkflowModeFamily,
     ENABLED_CAPABILITIES_SETTING_KEY,
-    normalizeEnabledCapabilities
+    normalizeEnabledCapabilities,
+    DISABLED_CAPABILITIES_SETTING_KEY,
+    normalizeDisabledCapabilities
 } from '../../shared/constants/workflowModes.js';
 import { resolveStorefrontCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
 import {
@@ -41,6 +43,15 @@ import {
 
 const settingsCache = new Map();
 const SETTINGS_CACHE_TTL_MS = 5 * 60 * 1000;
+
+// Issue #178 Phase 22: an admin write that changes ops_workflow_mode /
+// ops_enabled_capabilities / ops_disabled_capabilities (a settings write,
+// applyTemplateToTenantUseCase, or tenant provisioning) should not leave
+// this 5-minute cache serving the pre-write overlay to item-taxonomy
+// validation. Exported alongside clearWorkflowCapabilitySettingsCache and
+// clearStoreProfileResolutionCache so a single write path can invalidate
+// all three caches that read these settings.
+export const clearItemRepositorySettingsCache = () => settingsCache.clear();
 const WORKFLOW_MODE_SETTING_KEY = 'ops_workflow_mode';
 const MANUFACTURING_PURCHASABLE_CATEGORIES = Object.freeze(['raw_material', 'packaging', 'supplies']);
 const MSME_PURCHASABLE_CATEGORIES = Object.freeze(['raw_material', 'packaging', 'supplies', 'product']);
@@ -252,6 +263,19 @@ export const resolveCachedWorkflowMode = async () => {
 export const resolveCachedEnabledCapabilities = async () => {
     const settings = await getCachedSettingsForTenant();
     return normalizeEnabledCapabilities(settings?.[ENABLED_CAPABILITIES_SETTING_KEY]?.value);
+};
+
+/**
+ * Resolve the tenant's disabled_capabilities overlay (issue #178 Phase 16),
+ * same cached settings object as resolveCachedEnabledCapabilities/
+ * resolveCachedWorkflowMode - no extra query. Without this, item-taxonomy
+ * validation could only ever grant taxonomy presets, never honor a
+ * template's subtraction (Phase 21): a capability additively enabled and
+ * later disabled again still granted its taxonomy presets forever.
+ */
+export const resolveCachedDisabledCapabilities = async () => {
+    const settings = await getCachedSettingsForTenant();
+    return normalizeDisabledCapabilities(settings?.[DISABLED_CAPABILITIES_SETTING_KEY]?.value);
 };
 
 const calculateThresholds = async (maxCapacity) => {

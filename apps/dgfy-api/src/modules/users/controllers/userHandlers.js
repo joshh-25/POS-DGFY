@@ -10,6 +10,7 @@ import {
   updateUserStatusUseCase,
   updateUserPermissionsUseCase,
   updatePosApprovalPinUseCase,
+  updatePosDayClosePinUseCase,
   getUserLocationGrantsUseCase,
   updateUserLocationGrantsUseCase,
   inviteUserUseCase,
@@ -425,6 +426,31 @@ export const updatePosApprovalPin = async (req, res, next) => {
   }
 };
 
+export const updatePosDayClosePin = async (req, res, next) => {
+  try {
+    const result = await updatePosDayClosePinUseCase({
+      adminUserId: req.user.user_id,
+      targetUserId: req.params.user_id,
+      pin: req.validatedData.pin,
+      clear: req.validatedData.clear === true
+    });
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: req.validatedData.clear === true
+          ? 'POS Day Close PIN cleared successfully'
+          : 'POS Day Close PIN configured successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export const getUserLocationGrants = async (req, res, next) => {
   try {
     const includeInactive = req.query?.include_inactive === 'true';
@@ -624,6 +650,7 @@ export default {
   updateUserStatus,
   updateUserPermissions,
   updatePosApprovalPin,
+  updatePosDayClosePin,
   getUserLocationGrants,
   updateUserLocationGrants,
   inviteUser,

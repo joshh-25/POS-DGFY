@@ -12,7 +12,6 @@ import { toast } from 'sonner';
 import { STYLES } from '../../../../shared/theme/storefrontStyleTokens.js';
 import { Badge, GhostButton, PrimaryButton } from '../../../../shared/components/StorefrontActionPrimitives.jsx';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
-import { CheckoutStepProgressHeader } from '../../../../shared/components/checkout/CheckoutStepProgressHeader.jsx';
 import { StorefrontReviewModal } from '../../../../shared/components/storefront/StorefrontReviewModal.jsx';
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 import { StorefrontPromoSection as SharedStorefrontPromoSection } from '../../../../shared/components/storefront/sections/StorefrontPromoSection.jsx';
@@ -28,21 +27,20 @@ import { SERVICE_CATEGORY_ICON_MAP } from '../model/serviceCategoryIconMap.jsx';
 import {
   BOOKING_FIELD_STYLE,
   buildServicePaymentOptions,
-  formatBookingReviewValue,
   shouldBookingFieldSpanFullWidth
 } from '../../booking/model/serviceBookingFields.js';
 import {
   combineDateAndTimeParts,
   formatLongDateLabel,
-  formatTimeSlotLabel,
   getPreferredBookingTimeForDate
 } from '../../booking/model/serviceBookingSchedule.js';
 import { ServiceBookingConfirmation } from '../../booking/components/ServiceBookingConfirmation.jsx';
 import { ServiceBookingEmptyState } from '../../booking/components/ServiceBookingEmptyState.jsx';
 import { ServiceBookingLocationSection } from '../../booking/components/ServiceBookingLocationSection.jsx';
-import { ServiceBookingSelectedServiceCard } from '../../booking/components/ServiceBookingSelectedServiceCard.jsx';
 import { ServiceBookingSummaryCard } from '../../booking/components/ServiceBookingSummaryCard.jsx';
-import { ServiceBookingStepOne, ServiceBookingStepTwo, ServiceBookingStepThree } from '../../booking/components/ServiceBookingSteps.jsx';
+import { ServiceBookingJourneyHeader } from '../../booking/components/ServiceBookingJourneyHeader.jsx';
+import { ServiceBookingAddOnsStep } from '../../booking/components/ServiceBookingAddOnsStep.jsx';
+import { ServiceBookingStepAccount, ServiceBookingStepFulfillment, ServiceBookingStepReviewPayment } from '../../booking/components/ServiceBookingSteps.jsx';
 import { ServicesFilterModal } from './ServicesFilterModal.jsx';
 import { ServicesPaginationBar } from './ServicesPaginationBar.jsx';
 
@@ -58,8 +56,9 @@ import { ServicesPaginationBar } from './ServicesPaginationBar.jsx';
  */
 export function StorefrontServicesCatalog({
   DeliveryPinMap,
+  accountStepComplete,
+  fulfillmentStepComplete,
   activeBookingService,
-  activeServiceLocationSummary,
   addToCart,
   bookingDateOptions,
   bookingFieldPlan,
@@ -77,9 +76,6 @@ export function StorefrontServicesCatalog({
   checkoutError,
   checkoutPromoCode,
   checkoutResult,
-  customerEmail,
-  customerName,
-  customerPhone,
   customerPin,
   deliveryLocationAction,
   deliveryLocationDisplayAddress,
@@ -100,11 +96,9 @@ export function StorefrontServicesCatalog({
   isServiceDetailsSubpage,
   isServiceFilterOpen,
   itemsToRender,
-  jumpToBookingField,
   loadingCatalog,
   missingCustomerInformation,
   missingScheduleAndServiceInfo,
-  missingStepOneAdditionalFields,
   openPreferredBookingDatePicker,
   openServiceCartEditor,
   openServiceDetail,
@@ -118,11 +112,8 @@ export function StorefrontServicesCatalog({
   renderGuestIdentityFields,
   resolvedTab,
   reviewDraft,
-  reviewServiceLines,
   routeServiceItemId,
-  selectedLocation,
   selectedSavedLocationId,
-  selectedServiceCartLineId,
   selectedServiceDatePart,
   selectedServiceDetail,
   selectedServiceTimePart,
@@ -137,12 +128,17 @@ export function StorefrontServicesCatalog({
   serviceDurationFilter,
   serviceHeroModel,
   serviceIntakeResponses,
+  serviceLineAddOns,
+  setServiceLineAddOns,
+  groupedServiceLineItems,
+  serviceSpecialInstructions,
+  setServiceSpecialInstructions,
   serviceLocationLandmarkNote,
+  serviceLocationSummaryDraft,
+  serviceOrderMethod,
+  setServiceOrderMethod,
   servicePage,
   servicePageSize,
-  servicePaymentPreviewCard,
-  servicePaymentPreviewMethod,
-  servicePaymentPreviewReceiptName,
   servicePaymentTiming,
   serviceSortOption,
   serviceUnitType,
@@ -175,15 +171,11 @@ export function StorefrontServicesCatalog({
   setServiceLocationLandmarkNote,
   setServicePage,
   setServicePageSize,
-  setServicePaymentPreviewCard,
-  setServicePaymentPreviewMethod,
-  setServicePaymentPreviewReceiptName,
   setServicePaymentTiming,
   setServiceSortOption,
   setServiceUnitType,
   setShowExpandedDeliveryMap,
   showExpandedDeliveryMap,
-  stepOneComplete,
   storefrontClosedByHours,
   storefrontClosedMessageBody,
   submitFnbItemReview,
@@ -439,134 +431,82 @@ export function StorefrontServicesCatalog({
     const confirmationReference = String(bookingConfirmation?.public_reference || checkoutResult?.tracking_pin || '').trim();
     const confirmationServiceName = confirmationLine?.variantName || confirmationLine?.name || serviceBookingSummaryTitle;
     const confirmationAmount = bookingConfirmation?.total_amount ?? ((Number(confirmationLine?.price ?? 0) || 0) * Math.max(1, Number(confirmationLine?.quantity || 1)));
-    const serviceBookingProgressSteps = [
-      { realStep: 1, displayStep: 1, label: 'Details', allow: true },
-      { realStep: 2, displayStep: 2, label: 'Review', allow: stepOneComplete },
-      { realStep: 3, displayStep: 3, label: 'Payment', allow: stepOneComplete }
-    ];
-    const reviewSections = [
-      {
-        title: 'Customer Information',
-        step: 1,
-        rows: [
-          { label: 'Customer Name', value: customerName || 'Not provided', fieldKey: 'customer_name' },
-          { label: 'Contact Number', value: customerPhone || 'Not provided', fieldKey: 'customer_phone' },
-          { label: 'Email', value: customerEmail || 'Not provided', fieldKey: 'customer_email' },
-          ...(bookingFieldPlan.requiresAddress ? [{ label: 'Service Location', value: activeServiceLocationSummary || 'Not selected', fieldKey: 'customer_address' }] : [])
-        ]
-      },
-      {
-        title: 'Schedule and Service Information',
-        step: 1,
-        rows: [
-          { label: 'Preferred Date', value: selectedServiceDatePart ? formatLongDateLabel(selectedServiceDatePart) : 'Not selected', fieldKey: 'preferred_date' },
-          { label: 'Preferred Time Slot', value: selectedServiceTimePart ? formatTimeSlotLabel(selectedServiceTimePart) : 'Not selected', fieldKey: 'preferred_time' },
-          ...(bookingFieldPlan.unitTypeField ? [{ label: bookingFieldPlan.unitTypeField.label, value: serviceUnitType || 'Not provided', fieldKey: 'unit_type' }] : []),
-          { label: bookingFieldPlan.unitCountField?.label || 'Number of Units', value: String(bookingSummaryQuantity), fieldKey: 'unit_count' }
-        ]
-      },
-      {
-        title: 'Additional Service Details',
-        step: 1,
-        rows: [
-          { label: 'Special Instructions', value: serviceIntakeResponses.special_instructions || serviceIntakeResponses.instructions || 'Not provided', fieldKey: 'special_instructions' },
-          ...bookingStepOneAdditionalFields
-            .filter(field => field.id !== 'special_instructions' && field.id !== 'instructions')
-            .map((field) => ({
-              label: field.label,
-              value: formatBookingReviewValue(field, serviceIntakeResponses[field.id]),
-              fieldKey: `intake_${field.id}`
-            }))
-        ]
+    const serviceLines = serviceBookingSummaryLineItems.map((line) => ({
+      key: line.key,
+      title: line.title,
+      hasAddOns: Boolean(line.notes)
+    }));
+    const handleEditServiceLine = (line) => {
+      if (hasServiceCart) {
+        const rawCartLine = serviceCartLines.find((cartLine) => String(cartLine.cart_line_id || cartLine.item_id || '') === line.key);
+        if (rawCartLine) openServiceCartEditor(rawCartLine);
       }
-    ];
+      setServiceBookingStep(3);
+    };
     return (
       <section style={{ display: 'grid', gap: 0, paddingTop: 0 }}>
         <div style={{
           position: 'sticky',
           top: 0,
           zIndex: 100,
-          background: '#ffffff',
-          borderBottom: '1px solid #e5e7eb',
-          boxShadow: '0 1px 4px rgba(0,0,0,0.05)',
+          borderBottom: '1px solid #e2e8f0',
+          background: '#fff',
           width: '100vw',
           marginLeft: 'calc(50% - 50vw)',
-          backdropFilter: 'blur(8px)'
+          boxSizing: 'border-box',
+          boxShadow: '0 6px 18px rgba(15,23,42,.05)'
         }}>
           <div style={{
-            maxWidth: 1320,
+            maxWidth: 1240,
             margin: '0 auto',
-            padding: isMobileViewport ? '10px 16px' : '12px 24px',
+            width: '100%',
+            padding: isMobileViewport ? '12px 16px' : '18px 40px',
             display: 'flex',
-            justifyContent: 'space-between',
             alignItems: 'center',
-            gap: 16
+            justifyContent: 'space-between',
+            gap: 16,
+            boxSizing: 'border-box'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: isMobileViewport ? 12 : 16, minWidth: 0, flex: 1 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
               <button
                 type="button"
                 onClick={goStoreCatalogPage}
-                style={{ border: 'none', background: 'transparent', cursor: 'pointer', padding: 4, display: 'flex', alignItems: 'center', color: '#0f172a' }}
+                aria-label="Back to services"
+                style={{ width: isMobileViewport ? 44 : 40, height: isMobileViewport ? 44 : 40, borderRadius: 14, border: '1px solid #e2e8f0', background: '#fff', color: '#334155', cursor: 'pointer', flexShrink: 0, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 8px rgba(15,23,42,0.06)' }}
               >
-                <ArrowLeft size={22} strokeWidth={2.5} />
+                <ArrowLeft size={18} />
               </button>
-              {serviceHeroModel.profileImageUrl ? (
-                <img
-                  src={serviceHeroModel.profileImageUrl}
-                  alt=""
-                  style={{ width: isMobileViewport ? 36 : 38, height: isMobileViewport ? 36 : 38, borderRadius: '50%', objectFit: 'cover', border: '2px solid #fff', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}
-                />
-              ) : (
-                <div style={{ width: isMobileViewport ? 36 : 38, height: isMobileViewport ? 36 : 38, borderRadius: '50%', background: '#fff', display: 'grid', placeItems: 'center', border: '1px solid #e2e8f0' }}>
-                  <ShoppingBag size={18} color="#f97316" />
+              <div style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid #dbe5ee', overflow: 'hidden', background: '#f8fafc', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
+                {serviceHeroModel.profileImageUrl ? (
+                  <img src={serviceHeroModel.profileImageUrl} alt={`${serviceHeroModel.name} profile`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#64748b' }}>Logo</span>
+                )}
+              </div>
+              <div style={{ minWidth: 0, display: 'grid', gap: 2 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+                  {serviceOrderMethod === 'pickup' ? 'Pickup order' : 'Delivery order'}
                 </div>
-              )}
-              <div style={{ fontSize: isMobileViewport ? 16 : 18, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.01em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {serviceHeroModel.name}
+                <div style={{ fontSize: isMobileViewport ? 18 : 20, fontWeight: 900, color: '#1e293b', lineHeight: 1.2, fontFamily: servicesDisplayFont, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {serviceHeroModel.name}
+                </div>
               </div>
             </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', flex: 1 }}>
-              {supportHref ? (
-                <button
-                  type="button"
-                  onClick={() => openStorefrontActionLink(supportHref)}
-                  style={{
-                    display: 'inline-flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    height: 42,
-                    padding: isMobileViewport ? '0 12px' : '0 20px',
-                    borderRadius: 12,
-                    background: '#f97316',
-                    color: '#fff',
-                    border: 'none',
-                    fontWeight: 800,
-                    fontSize: 14,
-                    cursor: 'pointer',
-                    boxShadow: '0 4px 12px rgba(249, 115, 22, 0.25)',
-                    whiteSpace: 'nowrap'
-                  }}
-                >
-                  <MessageCircle size={18} fill="currentColor" fillOpacity={0.2} />
-                  {isMobileViewport ? 'Message' : 'Message Us'}
-                </button>
-              ) : <div style={{ width: 40 }} />}
-            </div>
+            {!isMobileViewport ? (
+              <button
+                type="button"
+                onClick={() => openStorefrontActionLink(supportHref)}
+                style={{ minHeight: 44, padding: '0 20px', borderRadius: 14, border: 'none', background: servicesPrimary, color: '#fff', fontWeight: 700, fontSize: 14, cursor: 'pointer', boxShadow: `0 8px 22px ${servicesPrimaryShadow}`, flexShrink: 0, display: 'inline-flex', alignItems: 'center', gap: 7 }}
+              >
+                <MessageCircle size={16} />
+                Message Us
+              </button>
+            ) : null}
           </div>
         </div>
 
-        <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', background: '#eef4fb', padding: isMobileViewport ? '24px 0 40px' : '32px 0 56px' }}>
-          <div style={{ maxWidth: 1320, margin: '0 auto', padding: isMobileViewport ? '0 16px' : '0 24px' }}>
-            <div style={{ display: 'grid', gap: 10, marginBottom: 20 }}>
-              <h1 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, lineHeight: 1.08, fontWeight: 900, color: STYLES.colors.dark, letterSpacing: '-0.03em' }}>
-                Book Your Service
-              </h1>
-              <p style={{ margin: 0, maxWidth: 760, fontSize: isMobileViewport ? 15 : 17, lineHeight: 1.65, color: STYLES.colors.muted }}>
-                Confirm your details once, choose the schedule that works for you, review the booking, and send it to the store team.
-              </p>
-            </div>
-
+        <div style={{ width: '100vw', marginLeft: 'calc(50% - 50vw)', background: '#fff' }}>
+          <div style={{ maxWidth: 1240, margin: '0 auto', width: '100%', padding: isMobileViewport ? '24px 16px 40px' : '20px 40px 40px', boxSizing: 'border-box' }}>
             {bookingConfirmation ? (
               <ServiceBookingConfirmation
                 isMobileViewport={isMobileViewport}
@@ -587,81 +527,98 @@ export function StorefrontServicesCatalog({
               />
             ) : (
             <>
-            <div style={{ display: 'grid', gap: 24, gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.2fr) minmax(320px, 360px)', alignItems: 'start' }}>
-              <div style={{ display: 'grid', gap: 18 }}>
-                <CheckoutStepProgressHeader
-                  steps={serviceBookingProgressSteps}
-                  activeStep={serviceBookingStep}
-                  onStepClick={(item) => {
-                    if (item.allow === false) return;
-                    setServiceBookingStep(item.realStep);
-                  }}
-                  variant="connected"
-                  isMobileViewport={isMobileViewport}
-                  accentColor={servicesPrimary}
-                  accentSoft={servicesPrimarySoft}
-                  accentBorder={servicesPrimaryBorder}
-                  completeColor={servicesPrimary}
-                  activeText={servicesPrimary}
-                />
+            <div style={{ display: 'grid', gap: isMobileViewport ? 16 : 18 }}>
+              <ServiceBookingJourneyHeader
+                accentColor={servicesPrimary}
+                accentSoft={servicesPrimarySoft}
+                accentBorder={servicesPrimaryBorder}
+                completeColor={servicesPrimary}
+                displayFont={servicesDisplayFont}
+                activeStep={serviceBookingStep}
+                onStepChange={setServiceBookingStep}
+                bookingSummaryQuantity={bookingSummaryQuantity}
+                accountStepComplete={accountStepComplete}
+                fulfillmentStepComplete={fulfillmentStepComplete}
+                isMobileViewport={isMobileViewport}
+                serviceOrderMethod={serviceOrderMethod}
+              />
 
+              <div style={{ display: 'grid', gap: 14, gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.45fr) minmax(300px, 380px)', alignItems: 'start' }}>
                 <section style={{ display: 'grid', gap: 18, minWidth: 0 }}>
-                  <ServiceBookingSelectedServiceCard
-                    STYLES={STYLES}
-                    servicesPrimary={servicesPrimary}
-                    servicesPrimarySoft={servicesPrimarySoft}
-                    servicesPrimaryBorder={servicesPrimaryBorder}
-                    isMobileViewport={isMobileViewport}
-                    activeBookingService={activeBookingService}
-                    serviceBookingSummaryTitle={serviceBookingSummaryTitle}
-                    bookingSummaryQuantity={bookingSummaryQuantity}
-                    hasServiceCart={hasServiceCart}
-                    serviceCartLines={serviceCartLines}
-                    selectedServiceCartLineId={selectedServiceCartLineId}
-                    openServiceCartEditor={openServiceCartEditor}
-                  />
 
                   {serviceBookingStep === 1 && (
-                    <ServiceBookingStepOne
-                      STYLES={STYLES}
-                      BOOKING_FIELD_STYLE={BOOKING_FIELD_STYLE}
-                      StorefrontDropdown={StorefrontDropdown}
+                    <ServiceBookingStepAccount
+                      GhostButton={GhostButton}
                       PrimaryButton={PrimaryButton}
                       renderAccountOwnedIdentitySummary={renderAccountOwnedIdentitySummary}
                       renderGuestIdentityFields={renderGuestIdentityFields}
                       renderGuestCheckoutEntry={renderGuestCheckoutEntry}
-                      registerBookingFieldRef={registerBookingFieldRef}
-                      shouldBookingFieldSpanFullWidth={shouldBookingFieldSpanFullWidth}
-                      formatLongDateLabel={formatLongDateLabel}
-                      combineDateAndTimeParts={combineDateAndTimeParts}
-                      getPreferredBookingTimeForDate={getPreferredBookingTimeForDate}
-                      openPreferredBookingDatePicker={openPreferredBookingDatePicker}
+                      bookingFieldPlan={bookingFieldPlan}
                       activeBookingService={activeBookingService}
                       isMobileViewport={isMobileViewport}
                       isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
                       canUseGuestCheckoutFlow={canUseGuestCheckoutFlow}
-                      bookingFieldPlan={bookingFieldPlan}
-                      selectedServiceDatePart={selectedServiceDatePart}
-                      bookingDateOptions={bookingDateOptions}
-                      bookingPreferredDateInputRef={bookingPreferredDateInputRef}
-                      selectedServiceTimePart={selectedServiceTimePart}
-                      bookingTimeSlotOptions={bookingTimeSlotOptions}
-                      setServiceAppointmentAt={setServiceAppointmentAt}
-                      serviceUnitType={serviceUnitType}
-                      setServiceUnitType={setServiceUnitType}
-                      serviceDraftQuantity={serviceDraftQuantity}
-                      setServiceDraftQuantity={setServiceDraftQuantity}
-                      bookingStepOneAdditionalFields={bookingStepOneAdditionalFields}
-                      serviceIntakeResponses={serviceIntakeResponses}
-                      setServiceIntakeResponses={setServiceIntakeResponses}
                       missingCustomerInformation={missingCustomerInformation}
-                      missingScheduleAndServiceInfo={missingScheduleAndServiceInfo}
-                      missingStepOneAdditionalFields={missingStepOneAdditionalFields}
-                      stepOneComplete={stepOneComplete}
-                      servicesPrimary={servicesPrimary}
-                      servicesDisplayFont={servicesDisplayFont}
+                      accountStepComplete={accountStepComplete}
                       toast={toast}
+                      onBack={goStoreCatalogPage}
                       setServiceBookingStep={setServiceBookingStep}
+                    />
+                  )}
+
+                  {serviceBookingStep === 2 && (
+                    <ServiceBookingAddOnsStep
+                      STYLES={STYLES}
+                      GhostButton={GhostButton}
+                      PrimaryButton={PrimaryButton}
+                      isMobileViewport={isMobileViewport}
+                      servicesPrimary={servicesPrimary}
+                      servicesPrimarySoft={servicesPrimarySoft}
+                      servicesPrimaryBorder={servicesPrimaryBorder}
+                      serviceLines={serviceLines}
+                      onEditLine={handleEditServiceLine}
+                      serviceLineAddOns={serviceLineAddOns}
+                      setServiceLineAddOns={setServiceLineAddOns}
+                      specialInstructions={serviceSpecialInstructions}
+                      setSpecialInstructions={setServiceSpecialInstructions}
+                      setServiceBookingStep={setServiceBookingStep}
+                    />
+                  )}
+
+                  {serviceBookingStep === 3 && (
+                    <ServiceBookingStepFulfillment
+                      STYLES={STYLES}
+                      BOOKING_FIELD_STYLE={BOOKING_FIELD_STYLE}
+                      StorefrontDropdown={StorefrontDropdown}
+                      GhostButton={GhostButton}
+                      PrimaryButton={PrimaryButton}
+                      activeBookingService={activeBookingService}
+                      bookingDateOptions={bookingDateOptions}
+                      bookingFieldPlan={bookingFieldPlan}
+                      bookingPreferredDateInputRef={bookingPreferredDateInputRef}
+                      bookingStepOneAdditionalFields={bookingStepOneAdditionalFields}
+                      bookingTimeSlotOptions={bookingTimeSlotOptions}
+                      combineDateAndTimeParts={combineDateAndTimeParts}
+                      formatLongDateLabel={formatLongDateLabel}
+                      getPreferredBookingTimeForDate={getPreferredBookingTimeForDate}
+                      openPreferredBookingDatePicker={openPreferredBookingDatePicker}
+                      registerBookingFieldRef={registerBookingFieldRef}
+                      isMobileViewport={isMobileViewport}
+                      selectedServiceDatePart={selectedServiceDatePart}
+                      selectedServiceTimePart={selectedServiceTimePart}
+                      serviceDraftQuantity={serviceDraftQuantity}
+                      serviceIntakeResponses={serviceIntakeResponses}
+                      serviceUnitType={serviceUnitType}
+                      servicesPrimary={servicesPrimary}
+                      servicesPrimaryBorder={servicesPrimaryBorder}
+                      servicesPrimaryShadow={servicesPrimaryShadow}
+                      setServiceAppointmentAt={setServiceAppointmentAt}
+                      setServiceDraftQuantity={setServiceDraftQuantity}
+                      setServiceIntakeResponses={setServiceIntakeResponses}
+                      setServiceUnitType={setServiceUnitType}
+                      shouldBookingFieldSpanFullWidth={shouldBookingFieldSpanFullWidth}
+                      serviceOrderMethod={serviceOrderMethod}
+                      onOrderMethodChange={setServiceOrderMethod}
                       renderLocationSection={() => (
                         <ServiceBookingLocationSection
                           STYLES={STYLES}
@@ -693,46 +650,36 @@ export function StorefrontServicesCatalog({
                           setShowExpandedDeliveryMap={setShowExpandedDeliveryMap}
                         />
                       )}
-                    />
-                  )}
-
-                  {serviceBookingStep === 2 && (
-                    <ServiceBookingStepTwo
-                      STYLES={STYLES}
-                      GhostButton={GhostButton}
-                      PrimaryButton={PrimaryButton}
-                      isMobileViewport={isMobileViewport}
-                      servicesPrimary={servicesPrimary}
-                      servicesDisplayFont={servicesDisplayFont}
-                      reviewServiceLines={reviewServiceLines}
-                      reviewSections={reviewSections}
-                      jumpToBookingField={jumpToBookingField}
-                      selectedLocation={selectedLocation}
+                      missingScheduleAndServiceInfo={missingScheduleAndServiceInfo}
+                      fulfillmentStepComplete={fulfillmentStepComplete}
+                      toast={toast}
                       setServiceBookingStep={setServiceBookingStep}
                     />
                   )}
 
-                  {serviceBookingStep === 3 && (
-                    <ServiceBookingStepThree
+                  {serviceBookingStep === 4 && (
+                    <ServiceBookingStepReviewPayment
                       STYLES={STYLES}
                       BOOKING_FIELD_STYLE={BOOKING_FIELD_STYLE}
                       StorefrontDropdown={StorefrontDropdown}
                       GhostButton={GhostButton}
                       PrimaryButton={PrimaryButton}
                       servicesPrimary={servicesPrimary}
+                      servicesPrimarySoft={servicesPrimarySoft}
+                      servicesPrimaryBorder={servicesPrimaryBorder}
                       money={money}
                       registerBookingFieldRef={registerBookingFieldRef}
                       isMobileViewport={isMobileViewport}
+                      serviceOrderMethod={serviceOrderMethod}
+                      serviceLocationSummaryDraft={serviceLocationSummaryDraft}
+                      groupedServiceLineItems={groupedServiceLineItems}
+                      selectedServiceDatePart={selectedServiceDatePart}
+                      selectedServiceTimePart={selectedServiceTimePart}
+                      specialInstructions={serviceSpecialInstructions}
                       servicePaymentTiming={servicePaymentTiming}
                       setServicePaymentTiming={setServicePaymentTiming}
                       bookingPagePaymentOptions={bookingPagePaymentOptions}
-                      servicePaymentPreviewMethod={servicePaymentPreviewMethod}
-                      setServicePaymentPreviewMethod={setServicePaymentPreviewMethod}
                       bookingSummaryAmount={bookingSummaryAmount}
-                      servicePaymentPreviewReceiptName={servicePaymentPreviewReceiptName}
-                      setServicePaymentPreviewReceiptName={setServicePaymentPreviewReceiptName}
-                      servicePaymentPreviewCard={servicePaymentPreviewCard}
-                      setServicePaymentPreviewCard={setServicePaymentPreviewCard}
                       servicesDisplayFont={servicesDisplayFont}
                       checkoutError={checkoutError}
                       storefrontClosedByHours={storefrontClosedByHours}
@@ -744,19 +691,17 @@ export function StorefrontServicesCatalog({
                     />
                   )}
                 </section>
-              </div>
 
-              <ServiceBookingSummaryCard
-                isMobileViewport={isMobileViewport}
-                STYLES={STYLES}
-                servicesPrimary={servicesPrimary}
-                money={money}
-                bookingSummaryAmount={bookingSummaryAmount}
-                summaryRows={serviceBookingSummaryRows}
-                serviceLineItems={serviceBookingSummaryLineItems}
-                bookingPagePaymentOptions={bookingPagePaymentOptions}
-                servicePaymentTiming={servicePaymentTiming}
-              />
+                <ServiceBookingSummaryCard
+                  isMobileViewport={isMobileViewport}
+                  STYLES={STYLES}
+                  servicesPrimary={servicesPrimary}
+                  money={money}
+                  bookingSummaryAmount={bookingSummaryAmount}
+                  summaryRows={serviceBookingSummaryRows}
+                  serviceLineItems={groupedServiceLineItems}
+                />
+              </div>
             </div>
             </>
             )}

@@ -1,14 +1,46 @@
-# SKU Inventory Manager - Claude Code Specification
+# DGFY Platform - Claude Code Specification
 
 **Project Type**: Full-Stack Monorepo (React Frontend + Node.js Backend)
-**Purpose**: Comprehensive inventory management system for SKU tracking, purchase orders, job orders, and stock movements
-**Status**: Development Phase
-# CLAUDE.md - SKU Inventory Manager Context
-> **Last Updated:** Feb 20, 2026
-> **Version:** 2.5.1
+**Purpose**: Multi-vertical, multi-tenant commerce/operations platform — POS,
+inventory, storefront, bookings, and hospitality across capability-driven
+workflow modes (retail, F&B, services, hospitality, food manufacturing,
+MSME, and more), not a single-vertical SKU tool.
+**Status**: Active development
+# CLAUDE.md - DGFY Platform Context
+> **Last reviewed:** 2026-08-09 (targeted identity/navigation refresh; the
+> rest of this file predates the multi-vertical/workflow-mode architecture
+> below and is not fully current — verify anything load-bearing against the
+> docs in "Mandatory Lookup Order" and `docs/ai/CLAUDE.md`'s own later
+> sections before relying on it.)
+
+## Mandatory Lookup Order
+
+This file (`docs/ai/CLAUDE.md`) is a working-context supplement, not the
+top of the documentation hierarchy. Before implementing anything
+non-trivial, follow the same lookup order every other doc in this repo
+points to:
+
+1. `docs/START_HERE.md` — canonical entry point and folder usage guide.
+2. `docs/architecture/ARCHITECTURE_BOUNDARIES.md` and
+   `docs/architecture/ARCHITECTURE_GOVERNANCE.md`.
+3. The relevant ADR(s) under `docs/architecture/adr/` — check
+   `docs/architecture/adr/INDEX.md` first.
+4. Feature-specific playbooks/handoff docs, e.g.
+   `docs/development/MODE_DEVELOPMENT_PLAYBOOK.md` (adding/extending a
+   workflow mode) and `docs/development/STORE_TEMPLATES_HANDOFF.md`
+   (Store Templates & Capability Modules — how "industry types" are
+   actually composed today; read this before assuming a new vertical
+   needs a hard-coded mode).
 
 # 🎯 Project Overview (Critical Context)
-**SKU Inventory Manager** is a multi-tenant full-stack web application for managing inventory, purchase orders (PO), job orders (JO), and stock movements using a distributed database-per-tenant architecture. It features FIFO batch tracking, nested product recipes, and smart restock logic.
+**DGFY** is a multi-tenant, multi-vertical full-stack web application for
+managing inventory, POS, storefront, purchase orders (PO), job orders (JO),
+service bookings, hospitality stays, and stock movements using a
+distributed database-per-tenant architecture. It features FIFO batch
+tracking, nested product recipes, smart restock logic, and a
+capability-driven workflow-mode system (see "Mandatory Lookup Order"
+above) that composes what a tenant can do from a fixed vocabulary of
+Capability Modules rather than hard-coding one behavior set per industry.
 
 > **⚠️ Source of truth: `apps/dgfy-api/`.** The old `backend/` directory has been
 > removed. `apps/dgfy-api/` *is* the backend, refactored into `apps/`; the Sequelize
@@ -215,6 +247,9 @@ node apps/dgfy-api/scripts/sync-tenant-schemas.js
 - [Deployment Guide](DEPLOYMENT_GUIDE.md)
 - [Nested Products Guide](docs/features/NESTED_PRODUCTS.md)
 - [Quick Reference](docs/reference/QUICK_REFERENCE.md)
+- [Store Templates & Profiles (system reference)](docs/features/STORE_TEMPLATES_AND_PROFILES.md)
+- [Store Templates Developer Handoff (how to extend)](docs/development/STORE_TEMPLATES_HANDOFF.md)
+- [Mode Development Playbook](docs/development/MODE_DEVELOPMENT_PLAYBOOK.md)
 ```
 
 ---

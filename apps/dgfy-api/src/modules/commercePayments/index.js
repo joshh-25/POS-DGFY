@@ -1,5 +1,6 @@
 import logger from '../../config/logger.js';
 import { paymongoService } from '../../services/paymongoService.js';
+import { raiseOperationalAlert } from '../../services/operationalAlertService.js';
 import { commercePaymentRepository } from './repositories/commercePaymentRepository.js';
 import { buildHandlePayMongoCommerceWebhookUseCase } from './usecases/handlePayMongoCommerceWebhookUseCase.js';
 import {
@@ -8,6 +9,7 @@ import {
   buildGetCommercePaymentSessionUseCase,
   buildGetCommerceSettlementReportUseCase,
   buildListCommercePaymentSessionsUseCase,
+  buildReconcileCommercePaymentSessionUseCase,
   buildListTenantPaymentAccountsUseCase,
   buildOperateTenantPayMongoChildAccountUseCase,
   buildRetryCommercePaymentFinalizationUseCase,
@@ -20,7 +22,8 @@ import { recordTenantRevenueOrderFulfillmentUseCase } from '../tenantRevenue/ind
 export const handlePayMongoCommerceWebhookUseCase = buildHandlePayMongoCommerceWebhookUseCase({
   commercePaymentRepository,
   paymongoService,
-  logger
+  logger,
+  raiseOperationalAlert
 });
 
 export const listCommercePaymentSessionsUseCase = buildListCommercePaymentSessionsUseCase({
@@ -37,6 +40,11 @@ export const getCommerceSettlementReportUseCase = buildGetCommerceSettlementRepo
 
 export const retryCommercePaymentFinalizationUseCase = buildRetryCommercePaymentFinalizationUseCase({
   commercePaymentRepository
+});
+
+export const reconcileCommercePaymentSessionUseCase = buildReconcileCommercePaymentSessionUseCase({
+  commercePaymentRepository,
+  paymongoService
 });
 
 export const createCommercePaymentRefundUseCase = buildCreateCommercePaymentRefundUseCase({

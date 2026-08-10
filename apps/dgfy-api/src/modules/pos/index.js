@@ -64,6 +64,7 @@ import {
     buildGetPosDeviceStatusUseCase,
     buildPrintPosReceiptUseCase,
     buildPrintPosShiftSummaryUseCase,
+    buildPrintPosZReadingUseCase,
     buildOpenPosDrawerUseCase
 } from './usecases/posDeviceUseCases.js';
 import {
@@ -159,6 +160,10 @@ export const printPosReceiptUseCase = buildPrintPosReceiptUseCase({
     deviceDriver: posDeviceDriver
 });
 export const printPosShiftSummaryUseCase = buildPrintPosShiftSummaryUseCase({
+    posRepository,
+    deviceDriver: posDeviceDriver
+});
+export const printPosZReadingUseCase = buildPrintPosZReadingUseCase({
     posRepository,
     deviceDriver: posDeviceDriver
 });

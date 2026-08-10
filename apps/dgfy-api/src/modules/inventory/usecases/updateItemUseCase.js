@@ -6,12 +6,14 @@ export const buildUpdateItemUseCase = ({
     itemRepository,
     resolveWorkflowMode,
     resolveEnabledCapabilities = async () => [],
+    resolveDisabledCapabilities = async () => [],
     resolveInventoryAuthority = async () => DEFAULT_INVENTORY_AUTHORITY
 }) => {
     return async ({ itemId, itemData, userId, canManageCategories = false }) => {
-        const [workflowMode, enabledCapabilities, inventoryAuthority, existingItem] = await Promise.all([
+        const [workflowMode, enabledCapabilities, disabledCapabilities, inventoryAuthority, existingItem] = await Promise.all([
             resolveWorkflowMode(),
             resolveEnabledCapabilities(),
+            resolveDisabledCapabilities(),
             resolveInventoryAuthority(),
             itemRepository.getItemById(itemId)
         ]);
@@ -19,6 +21,7 @@ export const buildUpdateItemUseCase = ({
         const validation = validateItemAgainstModeTaxonomy({
             workflowMode,
             enabledCapabilities,
+            disabledCapabilities,
             itemData,
             existingItem,
             operation: 'update'

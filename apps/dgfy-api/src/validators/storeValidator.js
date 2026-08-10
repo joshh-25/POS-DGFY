@@ -1,6 +1,7 @@
 import Joi from 'joi';
+import { STOREFRONT_ORDER_METHODS } from '../modules/shared/constants/orderMethods.js';
 
-const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
+const ORDER_METHODS = STOREFRONT_ORDER_METHODS;
 const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph'];
 const FULFILLMENT_STATUSES = ['placed', 'confirmed', 'preparing', 'ready_for_pickup', 'out_for_delivery', 'completed', 'cancelled', 'rejected'];
 const TRACKING_PIN_PATTERN = /^SK-(?:[A-Z0-9]{4}|[A-Z0-9]{6})$/;

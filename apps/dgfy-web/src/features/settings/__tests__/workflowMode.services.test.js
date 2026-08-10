@@ -8,7 +8,9 @@ import {
   isWorkflowPathBlocked,
   modeHasCapability,
   normalizeWorkflowMode,
-  WORKFLOW_MODE_SELECT_VALUES
+  WORKFLOW_MODE_SELECT_VALUES,
+  TEMPLATE_AUTHORABLE_MODES,
+  WORKFLOW_MODE_LABELS
 } from '../workflowMode.js';
 import {
   PLACEHOLDER_ITEM_TAXONOMY_MODES,
@@ -28,6 +30,23 @@ describe('Services and Food Manufacturing workflow modes', () => {
     expect(WORKFLOW_MODE_SELECT_VALUES).not.toContain('manufacturing');
     expect(WORKFLOW_MODE_SELECT_VALUES).toContain('food_manufacturing');
     expect(WORKFLOW_MODE_SELECT_VALUES).toContain('fnb');
+  });
+
+  // issue #178 final-touch pass: TEMPLATE_AUTHORABLE_MODES is what the admin
+  // Store Template curation UI's base-mode dropdown offers - narrower than
+  // WORKFLOW_MODE_SELECT_VALUES (which still lists external-engine modes for
+  // registration purposes).
+  it('excludes the manufacturing alias and every external-engine mode from TEMPLATE_AUTHORABLE_MODES, but keeps transitional modes authorable', () => {
+    expect(TEMPLATE_AUTHORABLE_MODES).not.toContain('manufacturing');
+    expect(TEMPLATE_AUTHORABLE_MODES).not.toContain('healthcare');
+    expect(TEMPLATE_AUTHORABLE_MODES).not.toContain('ticketing_transport');
+    expect(TEMPLATE_AUTHORABLE_MODES).not.toContain('logistics_distribution');
+    expect(TEMPLATE_AUTHORABLE_MODES).not.toContain('education_institutions');
+    expect(TEMPLATE_AUTHORABLE_MODES).toContain('hospitality');
+    expect(TEMPLATE_AUTHORABLE_MODES).toContain('food_manufacturing');
+
+    const labels = TEMPLATE_AUTHORABLE_MODES.map((mode) => WORKFLOW_MODE_LABELS[mode]);
+    expect(labels.filter((label) => label === 'Food Manufacturing').length).toBe(1);
   });
 
   it('keeps Services navigation independent from manufacturing workflows', () => {

@@ -13,7 +13,9 @@ dotenv.config({ path: path.resolve(__dirname, '.env') });
 
 const baseURL = process.env.E2E_BASE_URL || 'http://localhost:5174';
 const apiURL = process.env.E2E_API_URL || 'http://localhost:5000';
+const storefrontURL = process.env.STOREFRONT_URL || 'http://localhost:5175';
 const isLocalRun = /^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(baseURL);
+const isLocalStorefront = /^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(storefrontURL);
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -76,5 +78,12 @@ export default defineConfig({
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },
+    ...(isLocalStorefront && process.env.E2E_START_STOREFRONT === 'true' ? [{
+      command: 'npm run dev:store',
+      cwd: __dirname,
+      url: `${storefrontURL}/`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    }] : [])
   ] : undefined,
 });

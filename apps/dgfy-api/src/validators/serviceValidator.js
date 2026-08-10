@@ -1,9 +1,13 @@
 import Joi from 'joi';
 
-const BOOKING_STATUSES = ['requested', 'confirmed', 'checked_in', 'in_service', 'completed', 'cancelled', 'no_show'];
+// Exported (not just module-local) so downstream contract tests - e.g.
+// apps/dgfy-api/tests/fulfillmentProfiles.contract.test.js (issue #178, ADR 0057)
+// - can pin against the real enums instead of a hand-copied duplicate that
+// could silently drift.
+export const BOOKING_STATUSES = ['requested', 'confirmed', 'checked_in', 'in_service', 'completed', 'cancelled', 'no_show'];
 const PAYMENT_POLICIES = ['customer_choice', 'prepaid_required', 'postpaid_only', 'deposit_allowed'];
 const PAYMENT_TIMINGS = ['prepaid', 'postpaid', 'deposit'];
-const SERVICE_AREA_TYPES = ['in_store', 'customer_location', 'online', 'hybrid'];
+export const SERVICE_AREA_TYPES = ['in_store', 'customer_location', 'online', 'hybrid'];
 const RESOURCE_TYPES = ['provider', 'room', 'equipment', 'vehicle', 'station'];
 const WAITLIST_STATUSES = ['waiting', 'notified', 'booked', 'expired', 'cancelled'];
 const REMINDER_STATUSES = ['pending', 'sent', 'failed', 'skipped'];

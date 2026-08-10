@@ -63,9 +63,10 @@ import {
     resolveCommercialPromoApplication
 } from '../../shared/utils/commercialPromoPolicy.js';
 import { resolvePaymentTiming } from '../../shared/utils/paymentTimingPolicy.js';
+import { STOREFRONT_ORDER_METHODS } from '../../shared/constants/orderMethods.js';
 
 const INVOICE_COUNTER_KEY = 'POS_OR';
-const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery'];
+const ORDER_METHODS = STOREFRONT_ORDER_METHODS;
 const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'qrph'];
 const FNB_COURSES = new Set(['appetizer', 'main', 'dessert', 'drink', 'other']);
 const ORDER_METHOD_LOCATION_SUPPORT_MAP = Object.freeze({
@@ -832,6 +833,8 @@ const prepareCheckoutLines = ({
         preparedLines.push({
             item_id: item.item_id,
             item_name: item.name,
+            item_name_snapshot: item.name || null,
+            sku_snapshot: item.sku_code || null,
             quantity: round4(quantity),
             unit_of_measure: item.unit_of_measure || null,
             cost_snapshot: descriptor.carries_cost ? (item.cost_per_unit != null ? round4(item.cost_per_unit) : null) : null,
@@ -2312,7 +2315,7 @@ export const buildStoreCheckoutUseCase = ({
     storeRepository,
     revenueSharingEnabled = tenantRevenueSharingEnabled
 }) => {
-    return async ({ tenantId, payload, storeCustomer = null }) => {
+    return async ({ tenantId, payload, storeCustomer = null, allowExpiredGuestCheckoutProof = false }) => {
         if (!isPlainObject(payload)) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
@@ -2437,7 +2440,11 @@ export const buildStoreCheckoutUseCase = ({
                 email: normalized.customer_email,
                 idempotencyKey,
                 proof: payload.guest_checkout_proof,
-                storeCustomer: normalizedStoreCustomer
+                storeCustomer: normalizedStoreCustomer,
+                allowExpired: allowExpiredGuestCheckoutProof === true
+                    && normalized.payment_type === 'qrph'
+                    && payload.payment_webhook_confirmed === true
+                    && Boolean(String(payload.payment_session_reference || '').trim())
             });
 
             const trackingPin = await generateUniqueTrackingPin(storeRepository, {
@@ -2867,6 +2874,14 @@ export const buildStoreCheckoutPaymentSessionUseCase = ({
             const resolved = await resolveCheckoutContext({
                 storeRepository,
                 payload: normalizedPayload,
+                storeCustomer
+            });
+
+            assertGuestCheckoutProof({
+                tenantId,
+                email: resolved.normalized.customer_email,
+                idempotencyKey,
+                proof: normalizedPayload.guest_checkout_proof,
                 storeCustomer
             });
 

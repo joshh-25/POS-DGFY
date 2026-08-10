@@ -261,6 +261,7 @@ describe('POS checkout F&B contracts', () => {
             findSellableItemsByIds: jest.fn().mockResolvedValue([{
                 item_id: 1,
                 name: 'Taxable Item',
+                sku_code: 'SKU-TAXABLE-1',
                 category: 'product',
                 unit_of_measure: 'pc',
                 current_stock: 5,
@@ -372,6 +373,15 @@ describe('POS checkout F&B contracts', () => {
             reference_type: 'POS',
             reference_id: '177'
         }), 12, expect.any(Object));
+        // Mode-switch hardening (issue #178 phase 5): the item's name and SKU
+        // are snapshotted on the line at sale time, independent of the live
+        // item row, so a later rename/delete can never retro-change this
+        // historical transaction.
+        expect(createdTransaction.lines).toEqual([expect.objectContaining({
+            item_id: 1,
+            item_name_snapshot: 'Taxable Item',
+            sku_snapshot: 'SKU-TAXABLE-1'
+        })]);
     });
 
     it('returns the persisted receipt contract on idempotent replay instead of inferring from invoice prefix or current policy', async () => {

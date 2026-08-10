@@ -499,6 +499,7 @@ export const getAllUsers = async (options = {}) => {
       'permissions',
       'is_master_admin',
       'pos_approval_pin_hash',
+      'pos_day_close_pin_hash',
       'invitation_status',
       'invitation_expires_at',
       'invitation_delivery_status',
@@ -526,6 +527,7 @@ export const getAllUsers = async (options = {}) => {
       permissions: resolveEffectivePermissions(user),
       is_master_admin: user.is_master_admin,
       pos_approval_pin_configured: Boolean(String(user.pos_approval_pin_hash || '').trim()),
+      pos_day_close_pin_configured: Boolean(String(user.pos_day_close_pin_hash || '').trim()),
       invitation_status: user.invitation_status || null,
       invitation_expires_at: user.invitation_expires_at || null,
       invitation_delivery_status: user.invitation_delivery_status || null,
@@ -841,6 +843,36 @@ export const updatePosApprovalPin = async (adminUserId, targetUserId, { pin = ''
     user_id: targetUser.user_id,
     username: targetUser.username,
     pos_approval_pin_configured: Boolean(posApprovalPinHash)
+  };
+};
+
+export const updatePosDayClosePin = async (adminUserId, targetUserId, { pin = '', clear = false } = {}) => {
+  const User = dbStore.get('User');
+  const [adminUser, targetUser] = await Promise.all([
+    findVisibleUserById(User, adminUserId),
+    findVisibleUserById(User, targetUserId)
+  ]);
+  if (!adminUser?.is_master_admin) {
+    throw createError('Only the Master Admin can manage POS Day Close PINs', 403);
+  }
+  if (!targetUser) {
+    throw notFoundError('Target user not found');
+  }
+  assertAcceptedUserEditable(targetUser, 'manage POS Day Close PIN');
+  if (!targetUser.is_active || !resolveEffectivePermissions(targetUser).includes('pos:close_day')) {
+    throw createError('POS Day Close PINs can only be configured for active users with close-day permission', 422);
+  }
+
+  const normalizedPin = String(pin || '').trim();
+  if (clear !== true && !/^[0-9]{4,12}$/.test(normalizedPin)) {
+    throw createError('POS Day Close PIN must contain 4 to 12 digits', 422);
+  }
+  const posDayClosePinHash = clear === true ? null : await hashPassword(normalizedPin);
+  await targetUser.update({ pos_day_close_pin_hash: posDayClosePinHash });
+  return {
+    user_id: targetUser.user_id,
+    username: targetUser.username,
+    pos_day_close_pin_configured: Boolean(posDayClosePinHash)
   };
 };
 

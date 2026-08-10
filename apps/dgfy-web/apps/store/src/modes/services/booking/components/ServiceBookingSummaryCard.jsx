@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ShieldCheck } from 'lucide-react';
+import { ImageIcon, ShieldCheck } from 'lucide-react';
 
 export function ServiceBookingSummaryCard({
   isMobileViewport,
@@ -9,13 +9,10 @@ export function ServiceBookingSummaryCard({
   bookingSummaryAmount,
   summaryRows,
   serviceLineItems,
-  bookingPagePaymentOptions,
-  servicePaymentTiming,
 }) {
   const [isMobileExpanded, setIsMobileExpanded] = useState(false);
   const shouldExpand = !isMobileViewport || isMobileExpanded;
-  const paymentLabel = bookingPagePaymentOptions.find((option) => option.value === servicePaymentTiming)?.label || 'Pending';
-  const compactRows = summaryRows.filter((row) => row.label !== 'Payment');
+  const compactRows = summaryRows.map((row) => (row.label === 'Services' ? { ...row, label: 'Service' } : row));
 
   return (
     <aside style={{ display: 'grid', gap: 16, position: isMobileViewport ? 'static' : 'sticky', top: 100 }}>
@@ -45,26 +42,6 @@ export function ServiceBookingSummaryCard({
             </div>
             <div style={{ fontSize: isMobileViewport ? 26 : 34, fontWeight: 900, color: STYLES.colors.dark, lineHeight: 1 }}>
               {money(bookingSummaryAmount)}
-            </div>
-            <div
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 8,
-                minHeight: 28,
-                width: 'fit-content',
-                borderRadius: 999,
-                border: '1px solid #dbe5ee',
-                background: '#f8fafc',
-                padding: '0 10px',
-                color: '#334155',
-                fontSize: 11,
-                fontWeight: 800,
-                letterSpacing: '0.02em',
-              }}
-            >
-              <span style={{ color: '#64748b' }}>Payment</span>
-              <span style={{ color: '#0f172a' }}>{paymentLabel}</span>
             </div>
           </div>
           {isMobileViewport ? (
@@ -121,6 +98,20 @@ export function ServiceBookingSummaryCard({
               ))}
             </div>
 
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: 12,
+                borderTop: '1px solid #e2e8f0',
+                paddingTop: 14,
+              }}
+            >
+              <span style={{ fontSize: 14, fontWeight: 900, color: STYLES.colors.dark }}>Total</span>
+              <strong style={{ fontSize: 16, fontWeight: 900, color: STYLES.colors.dark }}>{money(bookingSummaryAmount)}</strong>
+            </div>
+
             {serviceLineItems.length > 0 ? (
               <div
                 style={{
@@ -138,54 +129,49 @@ export function ServiceBookingSummaryCard({
                     {serviceLineItems.length} {serviceLineItems.length === 1 ? 'service' : 'services'}
                   </div>
                 </div>
-                {serviceLineItems.map((line) => (
+                {serviceLineItems.map((line, index) => (
                   <div
                     key={line.key}
                     style={{
-                      borderRadius: 16,
-                      border: '1px solid #e2e8f0',
-                      background: '#fcfdff',
-                      padding: isMobileViewport ? '12px 13px' : '13px 14px',
-                      display: 'grid',
-                      gap: 10,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 12,
+                      paddingTop: index === 0 ? 0 : 12,
+                      borderTop: index === 0 ? 'none' : '1px solid #e2e8f0',
                     }}
                   >
-                    <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
-                      <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', lineHeight: 1.35 }}>{line.title}</div>
-                        {line.variant ? (
-                          <div style={{ marginTop: 2, fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>{line.variant}</div>
-                        ) : null}
-                      </div>
-                      <div style={{ fontSize: 13, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap' }}>
-                        {line.amount}
-                      </div>
-                    </div>
                     <div
                       style={{
+                        width: isMobileViewport ? 40 : 44,
+                        height: isMobileViewport ? 40 : 44,
+                        borderRadius: 12,
+                        background: '#f1f5f9',
+                        border: '1px solid #e2e8f0',
                         display: 'grid',
-                        gridTemplateColumns: isMobileViewport ? '1fr' : 'repeat(2, minmax(0, 1fr))',
-                        gap: 8,
+                        placeItems: 'center',
+                        color: '#94a3b8',
+                        flexShrink: 0,
                       }}
                     >
-                      <div style={{ display: 'grid', gap: 3 }}>
-                        <span style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Schedule</span>
-                        <span style={{ fontSize: 12, color: '#334155', lineHeight: 1.5 }}>{line.schedule}</span>
-                      </div>
-                      <div style={{ display: 'grid', gap: 3 }}>
-                        <span style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Units</span>
-                        <span style={{ fontSize: 12, color: '#334155', lineHeight: 1.5 }}>{line.quantity}</span>
-                      </div>
-                      {line.duration ? (
-                        <div style={{ display: 'grid', gap: 3 }}>
-                          <span style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Duration</span>
-                          <span style={{ fontSize: 12, color: '#334155', lineHeight: 1.5 }}>{line.duration}</span>
+                      <ImageIcon size={18} />
+                    </div>
+                    <div style={{ flex: '1 1 0%', minWidth: 0, display: 'grid', gap: 6 }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', lineHeight: 1.35 }}>{line.title}</div>
+                          <div style={{ marginTop: 2, fontSize: 12, color: '#64748b', lineHeight: 1.5 }}>
+                            x {line.quantity}{line.variant ? ` · ${line.variant}` : ''}
+                          </div>
                         </div>
-                      ) : null}
-                      {line.notes ? (
-                        <div style={{ display: 'grid', gap: 3, gridColumn: isMobileViewport ? 'auto' : '1 / -1' }}>
-                          <span style={{ fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Notes</span>
-                          <span style={{ fontSize: 12, color: '#334155', lineHeight: 1.55 }}>{line.notes}</span>
+                        <div style={{ fontSize: 13, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap' }}>
+                          {line.amount}
+                        </div>
+                      </div>
+                      {line.addOns && line.addOns.length > 0 ? (
+                        <div style={{ display: 'grid', gap: 2 }}>
+                          {line.addOns.map((addOn) => (
+                            <div key={addOn.key} style={{ fontSize: 12, color: '#334155', lineHeight: 1.5 }}>+ {addOn.label}</div>
+                          ))}
                         </div>
                       ) : null}
                     </div>
@@ -209,7 +195,7 @@ export function ServiceBookingSummaryCard({
                 Secure Booking
               </div>
               <div style={{ fontSize: 12, lineHeight: 1.65, color: '#64748b' }}>
-                Your booking details and saved addresses stay consistent across supported DGFY storefronts when you are signed in.
+                Your information is safe and will only be used for this booking.
               </div>
             </div>
           </>

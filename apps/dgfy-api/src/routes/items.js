@@ -35,6 +35,7 @@ import {
 } from '../validators/itemValidator.js';
 import { authenticate, checkPermission, requireTenantAdmin } from '../middleware/auth.js';
 import { requireLocalInventoryLedgerOwnership, bodyDeclaresCurrentStock } from '../middleware/inventoryAuthorityGate.js';
+import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import { itemOperationsLimiter } from '../middleware/rateLimiter.js';
 import {
@@ -50,6 +51,10 @@ const router = express.Router();
 
 // All routes require authentication
 router.use(authenticate);
+// `catalog` is held by every mode, so this changes nothing today; it makes the
+// capability real so a Store Profile that can subtract modules has a working
+// off-switch for the whole item-catalog surface.
+router.use(requireWorkflowCapability('catalog', 'Catalog'));
 // Authenticated item traffic is exempt from generalLimiter's shared IP bucket
 // (see isAuthenticatedItemOperation in rateLimiter.js) so a busy store network
 // doesn't block ordinary inventory work. This tenant/user-scoped limiter is

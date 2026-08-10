@@ -352,6 +352,18 @@ export const updateTenantCapabilities = async (tenantId, payload = {}) => {
     return response.data;
 };
 
+// Issue #178 Phase 17: applies a published Store Template to an
+// already-provisioned tenant. Mirrors updateTenantCapabilities above -
+// same audited platform-admin write shape.
+export const applyTenantTemplate = async (tenantId, payload = {}) => {
+    const response = await adminApi.post(
+        `/admin/tenants/${tenantId}/apply-template`,
+        payload,
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
 export const listTenantCapabilityAuditLogs = async (tenantId, params = {}) => {
     const response = await adminApi.get(`/admin/tenants/${tenantId}/capabilities/audit-logs`, {
         ...requireAdminAuthConfig(),
@@ -588,6 +600,15 @@ export const createCommercePaymentRefund = async (paymentSessionId, payload = {}
 export const retryCommercePaymentFinalization = async (paymentSessionId) => {
     const response = await adminApi.post(
         `/commerce-payments/admin/payment-sessions/${paymentSessionId}/retry-finalization`,
+        {},
+        requireAdminAuthConfig()
+    );
+    return response.data;
+};
+
+export const reconcileCommercePaymentSession = async (paymentSessionId) => {
+    const response = await adminApi.post(
+        `/commerce-payments/admin/payment-sessions/${paymentSessionId}/reconcile`,
         {},
         requireAdminAuthConfig()
     );
@@ -1014,3 +1035,59 @@ export const updateTenantCompliancePeripheralVerification = async (tenantId, per
     );
     return response.data;
 };
+
+/**
+ * Store Template curation (issue #178 Phase 14, ADR 0056).
+ */
+export const listStoreTemplates = async (params = {}) => (
+    await adminApi.get('/admin/templates', { ...requireAdminAuthConfig(), params })
+).data;
+
+export const getStoreTemplate = async (templateId) => (
+    await adminApi.get(`/admin/templates/${templateId}`, requireAdminAuthConfig())
+).data;
+
+export const listStoreTemplateAuditLogs = async (templateId, params = {}) => (
+    await adminApi.get(`/admin/templates/${templateId}/audit-logs`, { ...requireAdminAuthConfig(), params })
+).data;
+
+export const createStoreTemplateDraft = async (payload) => (
+    await adminApi.post('/admin/templates', payload, requireAdminAuthConfig())
+).data;
+
+export const updateStoreTemplateModules = async (templateId, payload) => (
+    await adminApi.patch(`/admin/templates/${templateId}/modules`, payload, requireAdminAuthConfig())
+).data;
+
+export const publishStoreTemplate = async (templateId, reason) => (
+    await adminApi.post(`/admin/templates/${templateId}/publish`, { reason }, requireAdminAuthConfig())
+).data;
+
+export const deprecateStoreTemplate = async (templateId, reason) => (
+    await adminApi.post(`/admin/templates/${templateId}/deprecate`, { reason }, requireAdminAuthConfig())
+).data;
+
+/**
+ * Registration Industry catalog curation (issue #178 Phase 39 visibility;
+ * full CRUD as of issue #316) - keyed by industry key, not template id,
+ * distinct from Store Template curation above.
+ */
+export const listRegistrationIndustryVisibility = async () => (
+    await adminApi.get('/admin/registration-industries', requireAdminAuthConfig())
+).data;
+
+export const createRegistrationIndustry = async (payload) => (
+    await adminApi.post('/admin/registration-industries', payload, requireAdminAuthConfig())
+).data;
+
+export const updateRegistrationIndustry = async (industryKey, payload) => (
+    await adminApi.patch(`/admin/registration-industries/${industryKey}`, payload, requireAdminAuthConfig())
+).data;
+
+export const setRegistrationIndustryVisibility = async (industryKey, { hidden, reason }) => (
+    await adminApi.patch(`/admin/registration-industries/${industryKey}/visibility`, { hidden, reason }, requireAdminAuthConfig())
+).data;
+
+export const listRegistrationIndustryAuditLogs = async (industryKey, params = {}) => (
+    await adminApi.get(`/admin/registration-industries/${industryKey}/audit-logs`, { ...requireAdminAuthConfig(), params })
+).data;

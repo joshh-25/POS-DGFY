@@ -1,7 +1,8 @@
 import Joi from 'joi';
+import { ALL_ORDER_METHODS, POS_ORDER_METHODS } from '../modules/shared/constants/orderMethods.js';
 
-const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'appointment', 'walk_in'];
-const ORDER_METHOD_FILTERS = [...ORDER_METHODS, 'online'];
+const ORDER_METHODS = POS_ORDER_METHODS;
+const ORDER_METHOD_FILTERS = ALL_ORDER_METHODS;
 const ORDER_SOURCES = ['in_store', 'online_store'];
 const PAYMENT_TYPES = ['cash', 'gcash', 'maya', 'card', 'bank_transfer', 'employee_credit'];
 const REPORT_GRANULARITIES = ['daily', 'weekly', 'monthly', 'yearly'];
@@ -131,6 +132,7 @@ const checkoutPosSchema = Joi.object({
     buyer_business_style: Joi.string().trim().max(255).allow('', null).optional(),
     buyer_address: Joi.string().trim().max(1000).allow('', null).optional(),
     special_instructions: Joi.string().trim().max(500).allow('', null).optional(),
+    scheduled_for: Joi.date().iso().allow(null).optional(),
     discount_beneficiary: discountBeneficiarySchema.optional(),
     governed_discount: governedDiscountSchema.optional(),
     lines: Joi.array().items(checkoutLineSchema).min(1).required().messages({
@@ -295,8 +297,16 @@ const zReadingDateParamSchema = Joi.object({
     date: Joi.date().iso().required()
 });
 
+const zReadingQuerySchema = Joi.object({
+    location_id: Joi.number().integer().positive().optional()
+});
+
 const closeDaySchema = Joi.object({
-    business_date: Joi.date().iso().optional()
+    business_date: Joi.date().iso().optional(),
+    day_close_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).required().messages({
+        'any.required': 'POS Day Close PIN is required',
+        'string.pattern.base': 'POS Day Close PIN must contain 4 to 12 digits'
+    })
 });
 
 const xReadingQuerySchema = Joi.object({
@@ -441,6 +451,16 @@ const devicePrintReceiptSchema = Joi.object({
 });
 
 const devicePrintShiftSummarySchema = Joi.object({
+    idempotency_key: Joi.string().trim().min(8).max(120).optional(),
+    copies: Joi.number().integer().min(1).max(3).default(1),
+    paper_width: Joi.string().valid('80mm', '57mm').default('80mm'),
+    reason: Joi.string().trim().max(255).allow('', null).optional(),
+    terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
+    client_driver_id: Joi.string().trim().max(60).optional(),
+    client_result: deviceClientResultSchema.optional()
+});
+
+const devicePrintZReadingSchema = Joi.object({
     idempotency_key: Joi.string().trim().min(8).max(120).optional(),
     copies: Joi.number().integer().min(1).max(3).default(1),
     paper_width: Joi.string().valid('80mm', '57mm').default('80mm'),
@@ -669,6 +689,7 @@ export const validatePosTransactionIdParam = validateSchema(posTransactionIdPara
 export const validatePosCatalogOverrideParam = validateSchema(posCatalogOverrideParamSchema, 'params', 'validatedParams');
 export const validateUpdatePosCatalogOverride = validateSchema(updatePosCatalogOverrideSchema, 'body', 'validatedData');
 export const validateZReadingDateParam = validateSchema(zReadingDateParamSchema, 'params', 'validatedParams');
+export const validateZReadingQuery = validateSchema(zReadingQuerySchema, 'query', 'validatedQuery');
 export const validateCloseDayBody = validateSchema(closeDaySchema, 'body', 'validatedData');
 export const validateXReadingQuery = validateSchema(xReadingQuerySchema, 'query', 'validatedQuery');
 export const validateGovernedResetBody = validateSchema(governedResetSchema, 'body', 'validatedData');
@@ -689,6 +710,7 @@ export const validateCollectCashPickupOrder = validateSchema(collectCashPickupOr
 export const validateCollectCashDeliveryOrder = validateSchema(collectCashPickupOrderSchema, 'body', 'validatedData');
 export const validatePosDeviceReceiptPrint = validateSchema(devicePrintReceiptSchema, 'body', 'validatedData');
 export const validatePosDeviceShiftSummaryPrint = validateSchema(devicePrintShiftSummarySchema, 'body', 'validatedData');
+export const validatePosDeviceZReadingPrint = validateSchema(devicePrintZReadingSchema, 'body', 'validatedData');
 export const validatePosDeviceDrawerOpen = validateSchema(deviceOpenDrawerSchema, 'body', 'validatedData');
 export const validateFiscalPrintEvent = validateSchema(fiscalPrintEventSchema, 'body', 'validatedData');
 export const validateVoidPosTransaction = validateSchema(voidPosTransactionSchema, 'body', 'validatedData');

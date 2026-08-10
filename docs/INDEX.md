@@ -77,6 +77,7 @@ Canonical planning entry:
 - Account password policy is tracked in `docs/features/TENANT_MANAGEMENT.md`, `docs/api/specification.md`, and `docs/features/SETTINGS_INFORMATION_ARCHITECTURE.md`. Current registration, invitation acceptance, company founder registration, and Settings > Profile password-change flows enforce only a minimum of 8 characters and expose an optional readable 16-character generator.
 - Public company registration abuse limits are tracked in the same tenant/API docs and configured through `RATE_LIMIT_TENANT_REGISTRATION_WINDOW_MS` plus `RATE_LIMIT_TENANT_REGISTRATION_MAX_REQUESTS`.
 - Compliance governance, classification floors, and PH regulatory mapping are under `docs/compliance`.
+- Store Templates & Capability Configuration (ADR 0037 Axis 2) is tracked in `docs/features/STORE_TEMPLATES_AND_PROFILES.md`, governed by ADR 0037 and ADR 0056, with the integration plan and phased rollout in GitHub issue #178. It documents the three transaction lifecycles (Order/Booking-settle/Folio), the Capability Module catalog (`packages/shared-constants/src/capabilityModules.js`), the Store Profile materialization at tenant setting `ops_store_profile`, and the fixed/curated/locked module split. The developer-facing handoff guide (deploy impact, admin how-to, extension recipes for a new template/module/lifecycle) is `docs/development/STORE_TEMPLATES_HANDOFF.md`.
 - Compliance-sensitive changes are branch-gated by `npm run check:compliance`; declaration files must satisfy computed classification floors, and `major|regulatory` declarations require preflight metadata.
 - POS receipt fiscal status is explicit server contract data. Frontend receipt surfaces rely on `receipt_contract` or persisted transaction `document_type`/`document_context` and must not infer fiscal status from invoice number prefixes.
 - POS runtime schema readiness now includes the June 2026 RMO fiscal-prep migration and nullable fiscal buyer/snapshot columns. Missing `pos_transactions.buyer_tin` or related columns is deployment/migration drift, not a buyer-TIN requirement for non-compliant checkout.
@@ -98,6 +99,6 @@ Canonical planning entry:
 ## Current Repository Notes
 - Build artifacts are generated into `dist-apps/` and `apps/dgfy-web/dist/` and should be treated as disposable outputs.
 - Vite caches under `apps/dgfy-web/node_modules/.vite*`, repository `.tmp/` gate output, and root `logs/` runtime output are generated/local artifacts; delete only after confirming they are not needed as current evidence.
-- Local AI export temp files are runtime data under `backend/storage/temp-ai-exports/`; they are private runtime artifacts, ignored by Git, and must not be moved under public `/uploads`.
+- Local AI export temp files are runtime data under `apps/dgfy-api/storage/temp-ai-exports/`; they are private runtime artifacts, ignored by Git, and must not be moved under public `/uploads`.
 - Deployment state metadata is kept in `.deploy-state/` and is used by `scripts/deploy.sh` as runtime state only.
 - Historical/non-governed root docs are supplemental only; governed sources are under `docs/`.

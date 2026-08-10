@@ -3,6 +3,7 @@ import * as posController from '../controllers/posController.js';
 import * as employeeCreditController from '../modules/employeeCredit/controllers/employeeCreditHandlers.js';
 import * as employeeController from '../modules/employees/controllers/employeeHandlers.js';
 import { authenticate, checkAnyPermission, checkPermission, requirePremium, requireTenantCapability } from '../middleware/auth.js';
+import { requireWorkflowCapability } from '../middleware/workflowModeCapability.js';
 import { posLimiter } from '../middleware/rateLimiter.js';
 import { PERMISSIONS } from '../config/permissions.js';
 import { posCatalogBulkImageUpload, posCatalogImageUpload, preserveTenantContext } from '../config/uploadConfig.js';
@@ -18,6 +19,7 @@ import {
     validatePosReportsExportQuery,
     validatePosTransactionIdParam,
     validateZReadingDateParam,
+    validateZReadingQuery,
     validateCloseDayBody,
     validateXReadingQuery,
     validateGovernedResetBody,
@@ -37,6 +39,7 @@ import {
     validateUpdateOnlineOrderStatus,
     validatePosDeviceReceiptPrint,
     validatePosDeviceShiftSummaryPrint,
+    validatePosDeviceZReadingPrint,
     validatePosDeviceDrawerOpen,
     validateFiscalPrintEvent,
     validateVoidPosTransaction,
@@ -83,6 +86,11 @@ router.post(
 router.use(authenticate);
 router.use(requirePremium);
 router.use(requireTenantCapability('tenant_pos_enabled', 'POS'));
+// `pos` (the workflow capability, distinct from the landlord-level
+// tenant_pos_enabled gate above) is held by every mode, so this changes
+// nothing today; it makes the capability real so a Store Profile that can
+// subtract modules has a working off-switch for the POS surface.
+router.use(requireWorkflowCapability('pos', 'POS'));
 router.use(posLimiter);
 
 router.post('/terminal/pair', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateVerifyTerminal, posController.verifyTerminal);
@@ -92,6 +100,7 @@ router.get('/setup/cashiers', checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_
 router.post('/setup/cashiers', checkPermission(PERMISSIONS.SYSTEM.actions.MANAGE_USERS), validateSetupCashier, posController.createSetupCashier);
 
 router.get('/catalog', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosCatalogQuery, posController.listCatalog);
+router.get('/catalog/events', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.streamCatalogEvents);
 router.post('/scan', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosScan, posController.scanBarcode);
 router.get('/catalog-overrides', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validatePosCatalogOverridesQuery, posController.listCatalogOverrides);
 router.patch('/catalog-overrides/bulk', checkPermission(PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), posController.updateBulkCatalogOverrides);
@@ -138,6 +147,7 @@ router.get('/reports/export', checkPermission(PERMISSIONS.POS.actions.VIEW_POS),
 router.get('/device/status', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), posController.getDeviceStatus);
 router.post('/device/print-receipt', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), posController.requirePairedTerminal, validatePosDeviceReceiptPrint, posController.printReceipt);
 router.post('/terminal/shifts/:id/print-summary', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), validateShiftIdParam, validatePosDeviceShiftSummaryPrint, posController.printShiftSummary);
+router.post('/z-reading/:date/print', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), posController.requirePairedTerminal, validateZReadingDateParam, validatePosDeviceZReadingPrint, posController.printZReading);
 router.post('/device/open-drawer', checkPermission(PERMISSIONS.POS.actions.ADJUST_CASH_DRAWER), posController.requirePairedTerminal, validatePosDeviceDrawerOpen, posController.openDeviceDrawer);
 router.post('/transactions/:id/fiscal-print-events', checkPermission(PERMISSIONS.POS.actions.REPRINT_POS_RECEIPT), posController.requirePairedTerminal, validatePosTransactionIdParam, validateFiscalPrintEvent, posController.recordFiscalPrintEvent);
 router.post('/transactions/:id/void', checkPermission(PERMISSIONS.POS.actions.VOID_POS_TRANSACTION), posController.requirePairedTerminal, validatePosTransactionIdParam, validateVoidPosTransaction, posController.voidTransaction);
@@ -157,6 +167,6 @@ router.patch('/orders/:id/status', checkPermission(PERMISSIONS.POS.actions.TRANS
 router.post('/z-reading/close-day', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), posController.requirePairedTerminal, validateCloseDayBody, posController.closeDayZReading);
 router.post('/z-reading/governed-reset', checkPermission(PERMISSIONS.POS.actions.CLOSE_DAY_POS), posController.requirePairedTerminal, validateGovernedResetBody, posController.incrementGovernedResetCounter);
 router.get('/x-reading/current', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateXReadingQuery, posController.getCurrentXReading);
-router.get('/z-reading/:date', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateZReadingDateParam, posController.getDailyZReading);
+router.get('/z-reading/:date', checkPermission(PERMISSIONS.POS.actions.VIEW_POS), validateZReadingDateParam, validateZReadingQuery, posController.getDailyZReading);
 
 export default router;

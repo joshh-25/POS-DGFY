@@ -69,6 +69,7 @@ import ServiceBookingHold from './ServiceBookingHold.js';
 import ServiceBookingLine from './ServiceBookingLine.js';
 import ServiceWaitlistEntry from './ServiceWaitlistEntry.js';
 import ServiceReminderOutbox from './ServiceReminderOutbox.js';
+import WorkflowModeChangeLog from './WorkflowModeChangeLog.js';
 import ServiceOptionGroup from './ServiceOptionGroup.js';
 import ServiceOption from './ServiceOption.js';
 import ServiceItemOptionGroup from './ServiceItemOptionGroup.js';
@@ -119,6 +120,11 @@ import DgfyAccountFactory from './Landlord/DgfyAccount.js';
 import DgfyAccountTenantMembershipFactory from './Landlord/DgfyAccountTenantMembership.js';
 import DgfyAccountHandoffFactory from './Landlord/DgfyAccountHandoff.js';
 import DgfyAccountAdminAuditLogFactory from './Landlord/DgfyAccountAdminAuditLog.js';
+import StoreConfigurationTemplateFactory from './Landlord/StoreConfigurationTemplate.js';
+import StoreConfigurationTemplateModuleFactory from './Landlord/StoreConfigurationTemplateModule.js';
+import StoreConfigurationTemplateAuditLogFactory from './Landlord/StoreConfigurationTemplateAuditLog.js';
+import RegistrationIndustryFactory from './Landlord/RegistrationIndustry.js';
+import RegistrationIndustryAuditLogFactory from './Landlord/RegistrationIndustryAuditLog.js';
 import DgfyAccountBusinessAuditLogFactory from './Landlord/DgfyAccountBusinessAuditLog.js';
 import DgfyLegalAcknowledgementFactory from './Landlord/DgfyLegalAcknowledgement.js';
 import DgfyCustomerActivityFactory from './Landlord/DgfyCustomerActivity.js';
@@ -188,6 +194,11 @@ const DgfyAccount = DgfyAccountFactory(sequelize);
 const DgfyAccountTenantMembership = DgfyAccountTenantMembershipFactory(sequelize);
 const DgfyAccountHandoff = DgfyAccountHandoffFactory(sequelize);
 const DgfyAccountAdminAuditLog = DgfyAccountAdminAuditLogFactory(sequelize);
+const StoreConfigurationTemplate = StoreConfigurationTemplateFactory(sequelize);
+const StoreConfigurationTemplateModule = StoreConfigurationTemplateModuleFactory(sequelize);
+const StoreConfigurationTemplateAuditLog = StoreConfigurationTemplateAuditLogFactory(sequelize);
+const RegistrationIndustry = RegistrationIndustryFactory(sequelize);
+const RegistrationIndustryAuditLog = RegistrationIndustryAuditLogFactory(sequelize);
 const DgfyAccountBusinessAuditLog = DgfyAccountBusinessAuditLogFactory(sequelize);
 const DgfyLegalAcknowledgement = DgfyLegalAcknowledgementFactory(sequelize);
 const DgfyCustomerActivity = DgfyCustomerActivityFactory(sequelize);
@@ -283,6 +294,10 @@ StorefrontHandleReservation.belongsTo(Tenant, { foreignKey: 'tenant_id', as: 'te
 DgfyAccount.hasMany(DgfyAccountTenantMembership, { foreignKey: 'dgfy_account_id', as: 'tenantMemberships' });
 DgfyAccountTenantMembership.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
 DgfyAccount.hasMany(DgfyAccountHandoff, { foreignKey: 'dgfy_account_id', as: 'handoffs' });
+StoreConfigurationTemplate.hasMany(StoreConfigurationTemplateModule, { foreignKey: 'template_id', as: 'modules' });
+StoreConfigurationTemplateModule.belongsTo(StoreConfigurationTemplate, { foreignKey: 'template_id', as: 'template' });
+StoreConfigurationTemplate.hasMany(StoreConfigurationTemplateAuditLog, { foreignKey: 'template_id', as: 'auditLogs' });
+StoreConfigurationTemplateAuditLog.belongsTo(StoreConfigurationTemplate, { foreignKey: 'template_id', as: 'template' });
 DgfyAccountHandoff.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
 DgfyAccount.hasMany(DgfyAccountAdminAuditLog, { foreignKey: 'dgfy_account_id', as: 'adminAuditLogs' });
 DgfyAccountAdminAuditLog.belongsTo(DgfyAccount, { foreignKey: 'dgfy_account_id', as: 'dgfyAccount' });
@@ -899,6 +914,12 @@ const db = {
   ServiceBookingLine,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
+  WorkflowModeChangeLog,
+  StoreConfigurationTemplate,
+  StoreConfigurationTemplateModule,
+  StoreConfigurationTemplateAuditLog,
+  RegistrationIndustry,
+  RegistrationIndustryAuditLog,
   ServiceOptionGroup,
   ServiceOption,
   ServiceItemOptionGroup,
@@ -1082,6 +1103,12 @@ export {
   ServiceBookingLine,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
+  WorkflowModeChangeLog,
+  StoreConfigurationTemplate,
+  StoreConfigurationTemplateModule,
+  StoreConfigurationTemplateAuditLog,
+  RegistrationIndustry,
+  RegistrationIndustryAuditLog,
   ServiceOptionGroup,
   ServiceOption,
   ServiceItemOptionGroup,

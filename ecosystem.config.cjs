@@ -6,6 +6,12 @@ module.exports = {
             cwd: './apps/dgfy-api',
             exec_mode: 'fork',
             instances: 1,
+            // Matches `npm start`'s `node --import ./src/instrument.js src/server.js`
+            // (apps/dgfy-api/package.json). Without this, Sentry.init() runs from
+            // server.js after ~65 application imports have already loaded
+            // express/mysql2, so the auto-instrumentation integrations in
+            // src/config/sentry.js never patch them -- see #298.
+            node_args: '--import ./src/instrument.js',
             // Restart if memory exceeds 512MB (prevents OOM crash from leaks)
             max_memory_restart: '512M',
             // Stop restart loop if the process keeps crashing on startup
@@ -74,6 +80,8 @@ module.exports = {
             cwd: './apps/dgfy-api',
             exec_mode: 'fork',
             instances: 1,
+            // See sku-backend above -- same instrumentation-preload rationale.
+            node_args: '--import ./src/instrument.js',
             max_memory_restart: '512M',
             max_restarts: 10,
             min_uptime: '10s',

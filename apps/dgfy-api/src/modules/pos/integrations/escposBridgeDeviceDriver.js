@@ -5,7 +5,7 @@
 // pure rename of the seam, not a behavior change.
 export const buildEscposBridgeDeviceDriver = ({ bridgeService }) => {
     if (!bridgeService || typeof bridgeService.getStatus !== 'function') {
-        throw new Error('escposBridgeDeviceDriver requires a bridgeService with getStatus/printReceipt/printShiftSummary/openDrawer');
+        throw new Error('escposBridgeDeviceDriver requires a bridgeService with getStatus/printReceipt/printShiftSummary/printZReading/openDrawer');
     }
 
     return {
@@ -18,6 +18,9 @@ export const buildEscposBridgeDeviceDriver = ({ bridgeService }) => {
         },
         async printShiftSummary(payload) {
             return bridgeService.printShiftSummary(payload);
+        },
+        async printZReading(payload) {
+            return bridgeService.printZReading(payload);
         },
         async openDrawer(payload) {
             return bridgeService.openDrawer(payload);

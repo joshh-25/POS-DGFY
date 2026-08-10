@@ -583,6 +583,7 @@ catalog, and the phased roadmap live in
 - `docs/architecture/adr/0035-compatibility-seam-governance.md`
 - `docs/architecture/adr/0009-multi-location-inventory-ledger-and-safety-rollout.md`
 - `docs/architecture/adr/0040-weighted-average-cost-valuation-and-variance-analytics.md`
+- `docs/architecture/adr/0056-store-configuration-templates-and-profiles.md`
 - `docs/features/UNIFIED_PRODUCT_DOMAIN.md`
 - `docs/features/OFFERING_ARCHETYPES.md`
 - `docs/features/INVENTORY_TRACKING_MODES.md`
@@ -590,4 +591,278 @@ catalog, and the phased roadmap live in
 - `docs/features/FOOD_AND_BEVERAGE_MODE.md`
 - `docs/database/legacy-stock-movement-type-remap.md`
 - `docs/database/dgfy-data-migration-map.md`
+
+## Amendments (2026-08-09)
+
+### Axis 2 realized as a three-layer Capability Module / Store Template / Store Profile model
+
+GitHub issue #178 ("Store Templates & Capability Configuration") reconciled an
+uploaded proposal against this ADR and found Axis 2's "vertical preset" is the
+right shape but was never given an entity, a version, or a curation surface.
+Decision 2's Axis 2 is realized as three layers, in order of who owns them:
+
+1. **Capability Module** (fixed, engineering-owned) — the existing
+   `ALL_WORKFLOW_CAPABILITIES` vocabulary
+   (`packages/shared-constants/src/workflowModes.js`), now catalogued with
+   metadata (`label`, `enforcement`: `gate`/`affordance`/`locked`,
+   `requires`/`conflicts_with`) in
+   `packages/shared-constants/src/capabilityModules.js`. A module is composed
+   FROM by templates and profiles; it never gains a new value, column, or
+   business logic from either (binding in new ADR 0056, cited below).
+2. **Store Template** (curated, versioned bundle) — today's "industry types"
+   become presets (`STORE_TEMPLATE_PRESETS` in the same file for now; promoted
+   to real landlord tables per the phased rollout below).
+3. **Store Profile** (a tenant's materialized, independently-editable copy,
+   with provenance back to its source template that is **never dereferenced
+   at runtime** — binding in ADR 0056) — `ops_store_profile`
+   (`packages/shared-constants/src/storeProfile.js`).
+
+This replaces Decision 2's "thin preset selecting a composition of
+capabilities, not a new engineering mode" language with the concrete
+three-layer shape; the tiering (Tier 1 Native / Tier 2 Basic / Tier 3 None)
+is unaffected — it becomes a property of which templates a mode's presets
+belong to, not a separate mechanism.
+
+The **enforcement posture correction** the issue made against the uploaded
+proposal is binding here too: configuration is not uniformly "an affordance,
+not a restriction." `gate` modules fail closed at the route
+(`requireWorkflowCapability`, per ADR 0008 Decision 7's already-accepted
+route-level enforcement); only `affordance` modules are presentation-only;
+`locked` modules (fiscal profile, customer access ceiling) are
+compliance-determined and never template-selectable.
+
+### Phased rollout update
+
+Prerequisite sub-phases were folded into Phase 6 (Phase numbers 7-9 are
+already spoken for by booking generalization / external listings / external
+IMS delegation); new phases use 10+. Status as of this amendment:
+
+- **Phase 6d — Make the capability vocabulary real (shipped):** of 19
+  declared capabilities, 13 were decorative (no route guard). Each is now
+  either enforced by a real gate or intentionally split into finer-grained
+  gates (e.g. `fnbDining` into `tableService`/`kitchenQueue`/
+  `restaurantServiceCharge`); verified by
+  `backend/tests/workflowCapabilities.enforcement.contract.test.js`.
+- **Phase 6e — Fix the `order_method` divergence (shipped):** unified five
+  divergent `ORDER_METHODS` lists into `packages/shared-constants/src/orderMethods.js`,
+  pinned to the `pos_transactions.order_method` DB ENUM by
+  `backend/tests/orderMethods.crossLayer.contract.test.js`; gave
+  retail/msme/food_manufacturing a real counter-sale POS config instead of
+  silently inheriting F&B's.
+- **Phase 10 — Capability Module catalog (shipped):** frozen metadata
+  constant, not a landlord table, per the original plan; verified by
+  `backend/tests/capabilityModules.contract.test.js`.
+- **Phase 11 — Store Profile shadow-write (shipped):** materializes each
+  tenant's current effective config to `ops_store_profile` on every
+  mode/overlay change; the equivalence harness
+  (`backend/tests/storeProfile.equivalence.contract.test.js`) proves it
+  byte-identical to the registries it derives from. Nothing reads the profile
+  yet.
+- **Phase 12 — Runtime reads the Profile, module by module, behind a
+  per-tenant flag (scaffolding shipped in a first pass; consumers wired in
+  Phases 18-19):** `resolveStoreProfile.js` and the `ops_store_profile_read`
+  flag exist and are tested, including the live divergence differ. Initially
+  shipped with no consumer wired: tracing every candidate (POS defaults,
+  storefront order methods, item taxonomy, capability gating) found each
+  produced a value mathematically identical to the registries, because
+  nothing could make a tenant's Profile diverge from its mode until Phase 13
+  shipped a curation mechanism and Phase 16 gave that mechanism a
+  subtractive channel (below). Both now exist; Phase 18 flips the
+  genuinely-live affordance consumers (POS defaults, then POS workflow and
+  item taxonomy in Phase 21), Phase 19 flips the fail-closed capability
+  gate, with a permanent rebuild fallback there rather than a temporary
+  one. The storefront-order-methods candidate stays unflipped:
+  `STOREFRONT_ORDER_METHODS` is a mode-independent constant (flipping it
+  would be pure churn). Item taxonomy's "inherits subtraction for free"
+  claim in an earlier draft of this amendment turned out to be false when
+  checked: `resolveEffectiveItemTaxonomy` was fed only the raw enabled
+  overlay, so a capability additively enabled and later subtracted kept
+  granting its taxonomy presets forever. Phase 21 fixes this by feeding it
+  the full effective module set instead — see that phase's entry below.
+- **Phase 18 — Flip the POS-defaults affordance consumer (shipped):**
+  `WorkflowModeContext.jsx` now distributes the tenant's Store Profile
+  (server-persisted when present, an identical local rebuild otherwise) and
+  the disabled-capabilities overlay alongside mode + enabled capabilities.
+  `TerminalPage.jsx` reads `profile.pos_defaults` instead of recomputing it
+  from a second frontend-only registry. Two corrections to the original
+  Phase 12 candidate list, found while implementing: `terminology`
+  (`businessModeTemplates.js`'s `wizardLabels`) had zero live readers
+  anywhere in the codebase, so there was nothing to flip — the dead fields
+  were removed instead of flipped. `itemDefaults`/`productDefaults` (a
+  different shape entirely — per-field item defaults, not POS terminal
+  preferences) have no Profile equivalent and were never in scope; they stay
+  on `businessModeTemplates.js`, which is trimmed, not retired. This read
+  goes through the tenant's shadow-written `ops_store_profile` setting
+  directly (already proven correct by the equivalence harness and the
+  shadow-write's own tests) — not through `resolveStoreProfile.js`'s
+  flagged/differ-checked resolver, which stays reserved for Phase 19's
+  higher-stakes capability-gate flip.
+- **Phase 13 — Landlord template catalog (shipped):**
+  `store_configuration_templates` / `_modules`, landlord-only
+  (`NON_TENANT_MODEL_EXPORTS`). A template's module list is frozen once
+  published — editing is rejected at the use-case layer, not just
+  discouraged. Provisioning stamps a Profile's `provenance` block from a
+  published canonical template exactly once; no other code path
+  dereferences a template again.
+- **Phase 14 — Handler curation surface (shipped):** `/api/v1/admin/templates`,
+  Platform Master Admin only (not a delegable page permission — a published
+  template shapes every future tenant, platform-wide). Every write is
+  audited in a purpose-built `store_configuration_template_audit_logs`
+  table.
+- **Phase 15 — Governance for the subtractive channel (this amendment):**
+  recorded here and in ADR 0056's own amendment below.
+- **Phase 16 — Subtractive capability overlay (shipped):**
+  `ops_disabled_capabilities` mirrors `ops_enabled_capabilities`'
+  governance shape (master-admin gated, 15s tenant-scoped cache) and lets a
+  template's module list actually subtract from a mode's base capabilities,
+  not just add to it — without it, non-canonical presets like
+  `fnb_counter_service` and `hospitality_guesthouse` were rows in the
+  landlord DB no Profile could ever express. `STORE_PROFILE_VERSION` moved
+  to 4. Validated against `validateModuleSelection()`'s `requires`/
+  `conflicts_with` edges so a subtraction can never leave a store in an
+  unbuildable state, and filtered to `ALL_WORKFLOW_CAPABILITIES` so no
+  `locked` module (`fiscalProfile`, `customerAccessMode` — catalog-only,
+  never in any mode's base list) is reachable by curation either way.
+- **Phase 17 — Apply a template to a tenant (shipped):** a shared
+  materializer turns a template's module list plus its `base_mode` into
+  `{workflowMode, enabledCapabilities, disabledCapabilities}`, used both at
+  provisioning (an optional `templateKey` beyond the canonical default) and
+  by a new audited platform-admin action,
+  `POST /admin/tenants/:id/apply-template`, for already-provisioned tenants.
+  Non-destructive per ADR 0008/0019: settings only, no data migration.
+- **Phase 19 — Flip the fail-closed capability gate (shipped, last):**
+  `requireWorkflowCapability` (`backend/src/middleware/workflowModeCapability.js`)
+  now honors the disabled overlay in its permanent registry-path fallback
+  (`ops_store_profile_read` off, the default for every tenant) and, for
+  tenants explicitly opted in, gates on `resolveStoreProfile()`'s
+  resolution instead. Because that resolver never serves a divergent or
+  version-stale persisted profile, the two paths are provably equivalent
+  for every tenant today — the flag controls rollout order, not the
+  answer. Every error branch (settings read, resolver) falls through to
+  `next(error)`, never granting access — the fail-closed guarantee this
+  gate has always had is unchanged, just extended to cover the new paths.
+  The frontend's UI-only mirrors (`WorkflowModeRouteGate.jsx`, `Layout.jsx`'s
+  nav filtering, `isWorkflowPageVisible`/`isWorkflowPathBlocked`) also honor
+  the disabled overlay now — cosmetic only, since the backend gate above is
+  what actually enforces. The registries remain the differ's oracle and the
+  gate's permanent fallback; this phase does not retire them.
+- **Phase 20 — Seed the catalog, make `canonical` real (shipped):** a
+  pre-PR audit of Phases 13-19 found `seedCanonicalTemplatePresetsUseCase`
+  had zero production call sites and neither Phase 13 migration inserted a
+  row — in any real environment the template catalog was empty, so the
+  entire Phases 13-19 arc was unreachable outside a test suite. A new
+  landlord data migration seeds `STORE_TEMPLATE_PRESETS` on deploy via a
+  dynamic import of the shared-constants module (never restating its
+  content — clause 3). A new `is_canonical` column replaces
+  `findPublishedCanonicalForMode`'s previous "lowest `template_id` wins"
+  resolution, which was correct only because `Object.entries` happened to
+  list each canonical preset before its non-canonical sibling.
+- **Phase 21 — Subtraction reaches every affordance, not just the API gate
+  (shipped):** Phase 19 made the backend gate honor subtraction, but three
+  affordance paths still resolved from the base mode alone — an
+  `fnb_counter_service` tenant still rendered the full-service floor plan
+  (tables, kitchen, `dine_in` default) even though its own API 403'd those
+  routes, the render-then-403 failure Phase 5 eliminated, reintroduced.
+  `resolvePosWorkflow(mode, effectiveCapabilities)` now routes an fnb-family
+  store missing both `tableService` and `kitchenQueue` to the existing
+  `POS_WORKFLOW_CONFIGS.counter`; `WorkflowModeContext.jsx`'s
+  `hasCapability` (the sole consumer of `PosPageShell.jsx`'s panel
+  rendering) moved onto the 4-arg `modeHasCapability` call Phase 19 had
+  flipped everywhere else but this hook; and item taxonomy's false
+  "inherits subtraction for free" claim (above) is fixed by feeding
+  `resolveEffectiveItemTaxonomy` the effective module set. `STORE_PROFILE_VERSION`
+  moves to 5 — the re-recorded equivalence snapshot changes only
+  `profile_version` across all 11 modes, proving the default path is
+  untouched.
+- **Phase 22 — Cache invalidation and write-path validation (shipped):**
+  `applyTemplateToTenantUseCase` committed its settings transaction and
+  invalidated nothing, leaving the capability gate's 15s cache and
+  item-taxonomy validation's 5-minute cache serving the pre-apply overlay —
+  the same pre-existing gap in the settings write path
+  (`updateSettingsUseCase`/`updateSettingByKeyUseCase`), fixed identically.
+  The materialized `{mode, enabled, disabled}` selection is now re-validated
+  against `validateModuleSelection()` before being persisted by
+  apply-template, and a capability requested in both overlays at once is
+  now rejected (`CAPABILITY_SELECTION_CONTRADICTORY`) rather than silently
+  resolved by subtraction-wins ordering.
+- **Phase 23 — Governance (this amendment; shipped):** replaces a
+  provenance-non-dereference test that asserted only that a captured
+  JavaScript object did not mutate itself with one that exercises
+  `resolveStoreProfile()` end-to-end and asserts the template repository is
+  never called — see ADR 0056's own amendment. Corrects the stale
+  "scaffolding, not wired" language left in `resolveStoreProfile.js` and
+  `storeProfile.js` after Phase 19 shipped. Closes two of issue #178's
+  three outstanding commitments — the mode-development playbook amendment
+  (no new hard-coded vertical after Phase 13) and the last classification
+  mislabel (`StorefrontBusinessGrowPage.jsx`'s "Business Industry" ->
+  "Operating Mode"). The third, registering the first entry in
+  `docs/architecture/compatibility-seams.json`, was evaluated and
+  deliberately **not** done: that registry (ADR 0035) is for temporary
+  compatibility bridges with genuine `removal_criteria`, and
+  `requireWorkflowCapability`'s registry-path fallback is documented
+  throughout Phases 19-21 as the *permanent* flag-off path, not a bridge
+  scheduled for removal — forcing it into that framework would require a
+  fabricated removal plan and would misrepresent the architecture rather
+  than honestly describe it.
+
+### What Phase 20-23's audit found and left deliberately out
+
+Three gaps the pre-PR audit found real but chose not to close in this
+batch, recorded here so they are not silently lost (the previous version
+of this amendment referenced "the storefront blind spot" from ADR 0056's
+Rollout section without ever defining it — this section is that missing
+definition, not a new deferral):
+
+- **The storefront catalog and presentation layer do not see the
+  disabled-capabilities overlay.**
+  `backend/src/modules/store/usecases/storeUseCases.js` destructures only
+  `{ mode, enabledCapabilities }` from `resolveWorkflowCapabilitySettings()`
+  and never reads `disabledCapabilities`, even though that function
+  returns it; the storefront catalog payload it builds therefore never
+  carries subtraction. `frontend/apps/store/src/shared/model/workflowCapabilities.js`
+  (`hasServicesCapability` and friends) and its consumer
+  `frontend/apps/store/src/app/runtime/modePresentationRegistry.js` derive
+  presentation from the raw additive capability state directly, with no
+  subtractive concept at all and no path through the Profile or
+  `resolveStoreProfile()`. Net effect: a `fnb_counter_service`-templated
+  tenant's backend and admin POS both correctly deny table/kitchen
+  capabilities, but its public storefront can still present them. Left out
+  because `frontend/apps/store` is a separate app with its own capability
+  model entirely (Decision/Consequence scope of a future phase, not a
+  same-day fix), not because the gap is minor.
+- **`storefrontLayout` is declared in the catalog but never materialized
+  into the Profile.** `packages/shared-constants/src/capabilityModules.js`
+  declares `storefrontLayout` as an `affordance`-class module with
+  `enforced_by: 'frontend/apps/store storefrontTemplateRegistry.js /
+  modePresentationRegistry.js'` — but `buildStoreProfile()`
+  (`packages/shared-constants/src/storeProfile.js`) never reads either
+  file or materializes anything for this module; `profile.storefront`
+  carries only `order_methods`. This is the storefront analogue of what
+  Phase 21 fixed for `posWorkflowPanel` (POS terminal presentation) — same
+  shape of gap, not yet closed for the storefront's equivalent.
+- **`templateKey` at provisioning is reachable only from the two
+  admin-initiated endpoints**, not the funnel most real tenants actually
+  use. `POST /admin/tenants/provision` and `POST /admin-provision` both
+  thread an optional `templateKey` through to
+  `resolveProvisioningTemplateSelection` (`tenantProvisioningService.js`).
+  The organic self-signup path — `registerCompanyRequestUseCase.js` (the
+  request) and `approveTenantUseCase.js` (the approval that actually
+  provisions) — has no `templateKey`/`template_key` handling anywhere, so
+  every tenant that signs up and gets approved through the platform's own
+  public flow always falls back to the canonical template for its chosen
+  mode, with no way to request a non-canonical preset (e.g.
+  `fnb_counter_service`) at signup time. Left out as a product decision —
+  whether a self-signing business should be offered a template choice at
+  all — rather than an engineering gap; the mechanism it would plug into
+  (`buildProvisioningStoreProfile(mode, { templateKey })`) already exists
+  and needs no further backend work to wire up.
+
+The three `[binding]` cross-boundary clauses this realization needs — never
+dereferencing provenance at runtime, locked-module compliance determinism,
+and templates never adding enum values/columns/logic — are recorded in the
+new `docs/architecture/adr/0056-store-configuration-templates-and-profiles.md`
+rather than here, per ADR 0039's amendment-path guidance: this ADR is still
+`status: proposed` so a same-document amendment is sufficient for
+Decision-level content, but the binding clauses touch the already-**accepted**
+ADR 0008 and warrant their own short ADR.
 - `docs/proposals/2026-07-06-flexible-item-types-mini-tiangge-jewelry.md`

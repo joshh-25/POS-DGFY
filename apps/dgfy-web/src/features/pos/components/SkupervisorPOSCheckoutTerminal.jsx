@@ -2,6 +2,14 @@ import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } fr
 import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 import { Folder, LayoutGrid, Plus, ShoppingCart, Trash2, Utensils, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle
+} from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import { usePosCartDraft } from '../hooks/usePosCartDraft.js';
@@ -449,6 +457,8 @@ export default function POSCheckoutTerminal({
     const [queuedCheckouts, setQueuedCheckouts] = useState([]);
     const [replayingQueuedCheckouts, setReplayingQueuedCheckouts] = useState(false);
     const [closingDay, setClosingDay] = useState(false);
+    const [zReadingCloseConfirmOpen, setZReadingCloseConfirmOpen] = useState(false);
+    const [zReadingClosePin, setZReadingClosePin] = useState('');
     const [lastReceipt, setLastReceipt] = useState(null);
     const [lastReceiptContract, setLastReceiptContract] = useState(null);
     const [historyRows, setHistoryRows] = useState([]);
@@ -1560,10 +1570,20 @@ export default function POSCheckoutTerminal({
         }
     };
 
-    const handleCloseDay = async () => {
+    const handleCloseDay = () => {
+        setZReadingClosePin('');
+        setZReadingCloseConfirmOpen(true);
+    };
+
+    const handleConfirmCloseDay = async () => {
+        if (!/^\d{4,12}$/.test(zReadingClosePin)) {
+            toast.error('Enter your 4 to 12 digit Day Close PIN.');
+            return;
+        }
         setClosingDay(true);
         try {
-            const result = await closePosDay();
+            const result = await closePosDay(null, { dayClosePin: zReadingClosePin });
+            setZReadingCloseConfirmOpen(false);
             toast.success(
                 `Z-reading generated: ${result?.summary?.transaction_count || 0} sale(s), PHP ${money(result?.summary?.total_amount)}`
             );
@@ -2604,6 +2624,40 @@ export default function POSCheckoutTerminal({
                     </div>
                 </div>
             )}
+            <Dialog open={zReadingCloseConfirmOpen} onOpenChange={(open) => {
+                setZReadingCloseConfirmOpen(open);
+                if (!open) setZReadingClosePin('');
+            }}>
+                <DialogContent className="w-[calc(100vw-2rem)] max-w-md rounded-2xl">
+                    <DialogHeader>
+                        <DialogTitle>Close Day and generate Z-reading</DialogTitle>
+                        <DialogDescription>
+                            All cashier shifts for this branch must be closed. Enter your personal Day Close PIN to record your accountability.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="space-y-2 py-2">
+                        <label htmlFor="skupervisor-day-close-pin" className="text-sm font-semibold text-slate-800">Your Day Close PIN</label>
+                        <Input
+                            id="skupervisor-day-close-pin"
+                            type="password"
+                            inputMode="numeric"
+                            autoComplete="one-time-code"
+                            value={zReadingClosePin}
+                            onChange={(event) => setZReadingClosePin(event.target.value.replace(/\D/g, '').slice(0, 12))}
+                            onKeyDown={(event) => {
+                                if (event.key === 'Enter') handleConfirmCloseDay();
+                            }}
+                            disabled={closingDay}
+                        />
+                    </div>
+                    <DialogFooter>
+                        <Button type="button" variant="outline" onClick={() => setZReadingCloseConfirmOpen(false)} disabled={closingDay}>Cancel</Button>
+                        <Button type="button" onClick={handleConfirmCloseDay} disabled={closingDay || zReadingClosePin.length < 4}>
+                            {closingDay ? 'Generating...' : 'Confirm and generate'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
             <PosAddToCartToastContainer toasts={addToCartToasts} onDismiss={handleDismissToast} />
         </div>
     );

@@ -46,6 +46,7 @@ export default function TerminalPageLayout({
     canDeleteItems = false,
     canManageCategories = false,
     canAdminBypassShiftPrompt = false,
+    canOpenShift = false,
     itemsStockFilterPreset = '',
     onItemsStockFilterPresetApplied = () => {},
     canAdjustCashDrawer,
@@ -57,6 +58,7 @@ export default function TerminalPageLayout({
     onSwitchCompany = async () => {},
     posViewMode,
     workflowMode = '',
+    effectiveCapabilities = null,
     isMsmeMode = false,
     shiftState,
     incomingOrdersState,
@@ -81,6 +83,7 @@ export default function TerminalPageLayout({
     TERMINAL_SECTION_IDS,
     workspacePaneRef,
     canTransactPos,
+    canCloseShift,
     terminalMeta,
     todayDashboard,
     reportRefreshKey = 0,
@@ -97,6 +100,7 @@ export default function TerminalPageLayout({
     handleSwitchShiftLocation,
     handleRecordCashEvent,
     handleCloseShift,
+    handleCloseDay,
     handleViewShiftSummary = () => {},
     refreshOperationalContext,
     setOperatingLocationId,
@@ -687,6 +691,7 @@ export default function TerminalPageLayout({
             <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-white p-6 text-sm text-slate-500">Loading POS terminal...</div>}>
               <POSCheckoutTerminal
                 workflowMode={workflowMode}
+                effectiveCapabilities={effectiveCapabilities}
                 sessionLocked={locked}
                 isMsmeMode={isMsmeMode}
                 sidebarCollapsed={effectiveSidebarCollapsed}
@@ -752,6 +757,8 @@ export default function TerminalPageLayout({
                 itemsStockFilterPreset={itemsStockFilterPreset}
                 onItemsStockFilterPresetApplied={onItemsStockFilterPresetApplied}
                 canTransactPos={canTransactPos}
+                canOpenShift={canOpenShift}
+                canCloseShift={canCloseShift}
                 canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
                 canAdjustCashDrawer={canAdjustCashDrawer}
                 canCloseDay={canCloseDay}
@@ -767,6 +774,7 @@ export default function TerminalPageLayout({
                 handleSwitchShiftLocation={handleSwitchShiftLocation}
                 handleRecordCashEvent={handleRecordCashEvent}
                 handleCloseShift={handleCloseShift}
+                handleCloseDay={handleCloseDay}
                 handleViewShiftSummary={handleViewShiftSummary}
                 refreshOperationalContext={refreshOperationalContext}
                 locationsState={locationsState}

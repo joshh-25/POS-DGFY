@@ -731,11 +731,15 @@ import dgfyRoutes from './routes/dgfy.js';
 import geoSearchRoutes from './routes/geoSearch.js';
 import routeCalculatorRoutes from './routes/routeCalculator.js';
 import internalStorefrontDomainOperationRoutes from './routes/internalStorefrontDomainOperations.js';
+import registrationRoutes from './routes/registration.js';
 app.use('/api/v1/internal/storefront-domain-operations', internalStorefrontDomainOperationRoutes);
 app.use(csrfProtection);
 app.use('/api/v1/dgfy', tenantHandler, dgfyRoutes);
 app.use('/api/v1/geo', geoSearchRoutes);
 app.use('/api/v1/geo', routeCalculatorRoutes);
+// Public - no tenant context needed, called before any tenant exists (all
+// three signup surfaces' Industry pickers).
+app.use('/api/v1/registration', registrationRoutes);
 
 app.use(tenantHandler);
 
@@ -771,6 +775,8 @@ import adminAuthRoutes from './routes/adminAuth.js';
 import adminTenantRoutes from './routes/adminTenants.js';
 import platformAdminRoutes from './routes/platformAdmins.js';
 import adminInvoiceRoutes from './routes/adminInvoices.js';
+import adminTemplateRoutes from './routes/adminTemplates.js';
+import adminRegistrationIndustryRoutes from './routes/adminRegistrationIndustries.js';
 import complianceRoutes from './routes/compliance.js';
 import onboardingRoutes from './routes/onboarding.js';
 
@@ -812,6 +818,8 @@ app.use('/api/v1/tenant-revenue', tenantRevenueRoutes);
 app.use('/api/v1/admin/tenants', adminTenantRoutes);
 app.use('/api/v1/admin/platform-admins', platformAdminRoutes);
 app.use('/api/v1/admin/invoices', adminInvoiceRoutes);
+app.use('/api/v1/admin/templates', adminTemplateRoutes);
+app.use('/api/v1/admin/registration-industries', adminRegistrationIndustryRoutes);
 
 app.use('/api/v1/admin', adminAuthRoutes);
 app.use('/api/v1/compliance', complianceRoutes);

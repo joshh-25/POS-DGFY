@@ -51,7 +51,9 @@ describe('cache policy route contracts', () => {
             source: storeRoutes,
             method: 'get',
             routePath: '/locations',
-            requiredFragments: ['locationsReadCacheControl']
+            // storeLocationsLimiter: this route had no rate limiter at all until
+            // the discovery-page fan-out that hammered it was found (#297).
+            requiredFragments: ['storeLocationsLimiter', 'locationsReadCacheControl']
         });
         expectRouteContract({
             source: storeRoutes,

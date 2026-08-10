@@ -8,9 +8,14 @@ jest.unstable_mockModule('../src/modules/settings/index.js', () => ({
 
 let buildPrintPosReceiptUseCase;
 let buildPrintPosShiftSummaryUseCase;
+let buildPrintPosZReadingUseCase;
 
 beforeAll(async () => {
-    ({ buildPrintPosReceiptUseCase, buildPrintPosShiftSummaryUseCase } = await import('../src/modules/pos/usecases/posDeviceUseCases.js'));
+    ({
+        buildPrintPosReceiptUseCase,
+        buildPrintPosShiftSummaryUseCase,
+        buildPrintPosZReadingUseCase
+    } = await import('../src/modules/pos/usecases/posDeviceUseCases.js'));
 });
 
 const buildTransaction = () => ({
@@ -47,6 +52,21 @@ const buildPosRepositoryStub = ({ transaction = buildTransaction() } = {}) => ({
         vat_amount: 0,
         total_amount: 150,
         payment_breakdown: [{ payment_type: 'cash', count: 1, amount: 150 }]
+    }),
+    getLatestZReadingSnapshotByBusinessDate: jest.fn().mockResolvedValue({
+        pos_z_reading_snapshot_id: 12,
+        business_date: '2026-08-07',
+        location_id: 3,
+        reading_identifier: 'Z-20260807-0001',
+        generated_at: '2026-08-07T12:00:00.000Z',
+        summary: {
+            transaction_count: 2,
+            total_amount: 300,
+            payment_breakdown: [{ payment_type: 'cash', count: 2, amount: 300 }]
+        },
+        z_counter_value: 7,
+        reset_counter_value: 2,
+        lifetime_grand_total_cents: 1234500
     })
 });
 
@@ -172,6 +192,67 @@ describe('buildPrintPosShiftSummaryUseCase', () => {
             shift_summary: expect.objectContaining({
                 cash_summary: expect.objectContaining({ cash_sales_amount: 150 })
             })
+        }));
+    });
+});
+
+describe('buildPrintPosZReadingUseCase', () => {
+    it('dispatches the branch snapshot to the server printer driver', async () => {
+        const posRepository = buildPosRepositoryStub();
+        const deviceDriver = {
+            id: 'lan_escpos_bridge',
+            printZReading: jest.fn().mockResolvedValue({ ok: true, result: { copies: 1 } })
+        };
+        const useCase = buildPrintPosZReadingUseCase({ posRepository, deviceDriver });
+
+        const result = await useCase({
+            businessDateInput: '2026-08-07',
+            locationId: 3,
+            payload: { reason: 'close_day_report' },
+            user: { user_id: 1 }
+        });
+
+        expect(result.success).toBe(true);
+        expect(posRepository.getLatestZReadingSnapshotByBusinessDate).toHaveBeenCalledWith('2026-08-07', {
+            locationId: 3
+        });
+        expect(deviceDriver.printZReading).toHaveBeenCalledWith(expect.objectContaining({
+            copies: 1,
+            paper_width: '80mm',
+            z_reading: expect.objectContaining({
+                z_reading: expect.objectContaining({
+                    reading_identifier: 'Z-20260807-0001',
+                    z_counter_value: 7
+                })
+            })
+        }));
+        expect(posRepository.createAuditLog).toHaveBeenCalledWith(expect.objectContaining({
+            entity_type: 'pos_device_z_reading',
+            entity_id: 12
+        }));
+    });
+
+    it('accepts a client print result without dispatching to the server driver', async () => {
+        const posRepository = buildPosRepositoryStub();
+        const deviceDriver = { id: 'client_managed', printZReading: jest.fn() };
+        const useCase = buildPrintPosZReadingUseCase({ posRepository, deviceDriver });
+
+        const result = await useCase({
+            businessDateInput: new Date('2026-08-07T00:00:00.000Z'),
+            locationId: 3,
+            payload: {
+                client_driver_id: 'imin_native',
+                client_result: { success: true, message: 'Printed via iMin' }
+            },
+            user: { user_id: 1 }
+        });
+
+        expect(result.success).toBe(true);
+        expect(deviceDriver.printZReading).not.toHaveBeenCalled();
+        expect(result.data.bridge).toEqual(expect.objectContaining({
+            ok: true,
+            delegated: true,
+            driver: 'imin_native'
         }));
     });
 });

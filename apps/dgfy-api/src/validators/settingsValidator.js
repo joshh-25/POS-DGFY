@@ -4,8 +4,9 @@ import {
   CUSTOMER_ACCESS_MODES,
   INVENTORY_DISPLAY_MODES
 } from '../modules/shared/utils/customerAccessPolicy.js';
+import { ORDER_METHOD_FEE_METHODS } from '../modules/shared/constants/orderMethods.js';
 
-const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'online'];
+const ORDER_METHODS = ORDER_METHOD_FEE_METHODS;
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODES = ['warn', 'enforce'];
 const POS_SETTINGS_ACCESS_PIN_PATTERN = /^[0-9]{4,12}$/;
@@ -457,6 +458,16 @@ const enabledCapabilitiesSchema = Joi.array()
     'any.only': `Enabled capabilities must be one of: ${ALL_WORKFLOW_CAPABILITIES.join(', ')}`
   });
 
+// Phase 16 (issue #178): the subtractive counterpart - capabilities removed
+// from the tenant's base ops_workflow_mode list, mirroring
+// enabledCapabilitiesSchema's shape exactly.
+const disabledCapabilitiesSchema = Joi.array()
+  .items(Joi.string().trim().valid(...ALL_WORKFLOW_CAPABILITIES))
+  .max(ALL_WORKFLOW_CAPABILITIES.length)
+  .messages({
+    'any.only': `Disabled capabilities must be one of: ${ALL_WORKFLOW_CAPABILITIES.join(', ')}`
+  });
+
 // Phase 9 Axis 4 delegation switch - mirrors enabledCapabilitiesSchema's
 // governance shape (see updateSettingsUseCase.js/updateSettingByKeyUseCase.js
 // for the matching master-admin write gate).
@@ -559,7 +570,9 @@ export const updateSettingsSchema = Joi.object({
     'any.only': `Workflow mode must be one of: ${WORKFLOW_MODE_VALUES.join(', ')}`
   }),
   ops_enabled_capabilities: enabledCapabilitiesSchema.optional(),
-  inventory_authority: inventoryAuthoritySchema.optional()
+  ops_disabled_capabilities: disabledCapabilitiesSchema.optional(),
+  inventory_authority: inventoryAuthoritySchema.optional(),
+  ops_store_profile_read: Joi.boolean().optional()
 }).min(1).messages({
   'object.min': 'At least one setting must be provided'
 });
@@ -726,7 +739,9 @@ export const validateUpdateSingleSetting = (req, res, next) => {
       'any.only': `Workflow mode must be one of: ${WORKFLOW_MODE_VALUES.join(', ')}`
     }),
     ops_enabled_capabilities: enabledCapabilitiesSchema,
-    inventory_authority: inventoryAuthoritySchema
+    ops_disabled_capabilities: disabledCapabilitiesSchema,
+    inventory_authority: inventoryAuthoritySchema,
+    ops_store_profile_read: Joi.boolean()
   };
 
   if (settingKey === 'pos_order_method_fees' && value?.value && typeof value.value === 'object' && !Array.isArray(value.value)) {

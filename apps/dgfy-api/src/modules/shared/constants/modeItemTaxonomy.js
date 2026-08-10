@@ -1,5 +1,6 @@
 import { normalizeUom, getUomGroup } from '@sieitzz/shared-constants/uomConverter';
 import { resolveEffectiveItemTaxonomy } from '@sieitzz/shared-constants/modeItemTaxonomy';
+import { resolveEffectiveCapabilities } from '@sieitzz/shared-constants/workflowModes';
 
 export * from '@sieitzz/shared-constants/modeItemTaxonomy';
 
@@ -15,11 +16,23 @@ const isDraftStatus = (status) => String(status || '').trim().toLowerCase() === 
 export const validateItemAgainstModeTaxonomy = ({
     workflowMode,
     enabledCapabilities = [],
+    disabledCapabilities = [],
     itemData = {},
     existingItem = null,
     operation = 'create'
 } = {}) => {
-    const taxonomyConfig = resolveEffectiveItemTaxonomy(workflowMode, enabledCapabilities);
+    // Issue #178 Phase 21: resolve through the FULL effective capability set
+    // (base mode ∪ enabled) \ disabled, not just the raw enabled overlay.
+    // Before this, a capability that was additively enabled and later
+    // subtracted (e.g. a tenant that turned on `services` and then disabled
+    // it again) still granted that mode's item-taxonomy presets forever -
+    // resolveEffectiveItemTaxonomy only ever saw the enabled list, never the
+    // subtraction. resolveEffectiveItemTaxonomy already ignores any
+    // capability equal to the base mode itself (taxonomyMode !==
+    // baseConfig.mode), so passing the wider effective set here changes
+    // nothing for the base mode's own capabilities - only for overlay ones.
+    const effectiveCapabilities = resolveEffectiveCapabilities(workflowMode, enabledCapabilities, disabledCapabilities);
+    const taxonomyConfig = resolveEffectiveItemTaxonomy(workflowMode, effectiveCapabilities);
     if (!taxonomyConfig) return { ok: true, skipped: 'placeholder_mode' };
 
     const nextStatus = itemData.status ?? existingItem?.status ?? 'active';

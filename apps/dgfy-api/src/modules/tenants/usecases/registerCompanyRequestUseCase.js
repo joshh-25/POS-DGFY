@@ -11,6 +11,7 @@ import {
     normalizeWorkflowMode,
     WORKFLOW_MODE_VALUES
 } from '../../shared/constants/workflowModes.js';
+import { resolveRegistrationIndustry } from '../../shared/constants/registrationIndustries.js';
 import { TENANT_REGISTRATION_APPROVAL_MODES } from '../../../config/tenantRegistrationApproval.js';
 import {
     isValidTenantPlan,
@@ -53,6 +54,7 @@ export const buildRegisterCompanyRequestUseCase = ({
     trackEngagementEvent,
     addEmailTenantMapping,
     dgfyAccountRepository,
+    registrationIndustryRepository = null,
     emailService,
     idGenerator,
     getTenantRegistrationApprovalMode = () => TENANT_REGISTRATION_APPROVAL_MODES.MANUAL,
@@ -62,8 +64,9 @@ export const buildRegisterCompanyRequestUseCase = ({
         const {
             name,
             subscriptionId,
-            workflowMode,
-            industryTag
+            workflowMode: rawWorkflowMode,
+            industryTag,
+            industryKey
         } = body || {};
         const adminEmail = String(dgfyAccount?.email || '').trim().toLowerCase();
         const adminPhone = String(dgfyAccount?.phone || '').trim();
@@ -73,6 +76,51 @@ export const buildRegisterCompanyRequestUseCase = ({
         const normalizedComplianceMode = 'non_compliant';
         const requestedPlan = normalizeRequestedTenantPlan(plan);
         const normalizedPlan = resolveRegisteredTenantPlan();
+
+        // The client sends industryKey (the Industry picker's choice) OR the
+        // raw workflowMode (older/unmigrated callers) - never a raw
+        // templateKey, so no arbitrary template can ever be requested from
+        // outside. When industryKey resolves, it is the single source of
+        // truth for both workflowMode and the store template; a workflowMode
+        // sent alongside it must agree or the request is rejected below
+        // (issue #178 "templates become the Operating Mode" follow-up).
+        //
+        // Resolution is DB-first (issue #316): registrationIndustryRepository
+        // is queried for the row, with REGISTRATION_INDUSTRIES (now the seed
+        // baseline that table was populated from) as the fail-open fallback
+        // on any lookup error, when no repository is injected, or when the
+        // DB simply has no row for the key (there is no delete path for a
+        // seeded key, so this can only mean an unmigrated/unseeded
+        // environment). The row and the constant entry share field names
+        // (workflow_mode, template_key), so every derivation below is
+        // unchanged regardless of which one resolvedIndustry came from.
+        const normalizedIndustryKey = typeof industryKey === 'string' ? industryKey.trim() : '';
+        let industryRow = null;
+        if (normalizedIndustryKey && registrationIndustryRepository) {
+            try {
+                industryRow = await registrationIndustryRepository.findByKey(normalizedIndustryKey);
+            } catch (industryLookupError) {
+                logger?.warn?.('[Registration] Industry catalog lookup failed; falling back to the seed-baseline constant', {
+                    industry_key: normalizedIndustryKey,
+                    error: industryLookupError.message
+                });
+            }
+        }
+        const resolvedIndustry = normalizedIndustryKey
+            ? (industryRow || resolveRegistrationIndustry(normalizedIndustryKey))
+            : null;
+        // A constant-fallback resolution never hides an industry - only a
+        // real DB row can carry hidden: true, so this fails open by
+        // construction on every lookup-failure/absent-repository path above.
+        const industryHidden = industryRow?.hidden === true;
+        const industryKeyUnresolvable = Boolean(normalizedIndustryKey) && !resolvedIndustry;
+        const rawWorkflowModeProvided = rawWorkflowMode !== undefined && rawWorkflowMode !== null && String(rawWorkflowMode).trim() !== '';
+        const industryModeConflict = Boolean(resolvedIndustry)
+            && rawWorkflowModeProvided
+            && normalizeWorkflowMode(rawWorkflowMode) !== resolvedIndustry.workflow_mode;
+        const workflowMode = resolvedIndustry ? resolvedIndustry.workflow_mode : rawWorkflowMode;
+        const storeTemplateKey = resolvedIndustry ? resolvedIndustry.template_key : null;
+
         const normalizedWorkflowMode = normalizeWorkflowMode(workflowMode);
         const workflowModeMissing = workflowMode === undefined || workflowMode === null || String(workflowMode).trim() === '';
         // Purely descriptive — how the merchant would describe their business — kept
@@ -100,6 +148,57 @@ export const buildRegisterCompanyRequestUseCase = ({
         let validatedSubscriptionId = null;
         try {
             await tracker.attempt();
+
+            if (industryKeyUnresolvable) {
+                await tracker.failed({
+                    failureCode: 'validation_failed',
+                    failureReason: 'unknown_industry_key',
+                    httpStatus: 400,
+                    metadata: { industry_key: normalizedIndustryKey }
+                });
+
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    `industryKey "${normalizedIndustryKey}" is not a recognized business industry.`,
+                    { statusCode: 400 }
+                ));
+            }
+
+            if (industryModeConflict) {
+                await tracker.failed({
+                    failureCode: 'validation_failed',
+                    failureReason: 'industry_workflow_mode_conflict',
+                    httpStatus: 400,
+                    metadata: { industry_key: normalizedIndustryKey, workflow_mode: rawWorkflowMode }
+                });
+
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'workflowMode does not match the selected industryKey. Send only industryKey, or omit workflowMode.',
+                    { statusCode: 400 }
+                ));
+            }
+
+            // Admin hide (issue #178 Phase 39, folded into the catalog row by
+            // issue #316): an industry an admin has hidden from registration
+            // is rejected here even though the client can technically still
+            // send its key (the frontend filters it out of the picker, but
+            // nothing stops a direct API call). industryHidden was already
+            // resolved fail-open above, alongside resolvedIndustry itself.
+            if (industryHidden) {
+                await tracker.failed({
+                    failureCode: 'validation_failed',
+                    failureReason: 'hidden_industry_key',
+                    httpStatus: 400,
+                    metadata: { industry_key: normalizedIndustryKey }
+                });
+
+                return fail(new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    `industryKey "${normalizedIndustryKey}" is not currently open for registration.`,
+                    { statusCode: 400 }
+                ));
+            }
 
             const normalizedAdminPhone = normalizePhoneNumber(adminPhone);
             if (!dgfyAccount?.id || !name || !adminEmail || !normalizedAdminPhone || !adminPasswordHash || workflowModeMissing) {
@@ -311,7 +410,9 @@ export const buildRegisterCompanyRequestUseCase = ({
                         owner_dgfy_account_id: dgfyAccount.id,
                         settings: {
                             workflow_mode: normalizedWorkflowMode,
-                            industry_tag: normalizedIndustryTag
+                            industry_tag: normalizedIndustryTag,
+                            registration_industry: resolvedIndustry ? normalizedIndustryKey : null,
+                            store_template_key: storeTemplateKey
                         }
                     }, { transaction });
 
@@ -331,6 +432,8 @@ export const buildRegisterCompanyRequestUseCase = ({
                         legalAcknowledgement,
                         workflowMode: normalizedWorkflowMode,
                         industryTag: normalizedIndustryTag,
+                        registrationIndustry: resolvedIndustry ? normalizedIndustryKey : null,
+                        storeTemplateKey,
                         transaction
                     });
 
@@ -415,6 +518,8 @@ export const buildRegisterCompanyRequestUseCase = ({
                         compliance_mode_state: complianceModeState,
                         workflow_mode: normalizedWorkflowMode,
                         industry_tag: normalizedIndustryTag,
+                        registration_industry: resolvedIndustry ? normalizedIndustryKey : null,
+                        store_template_key: storeTemplateKey,
                         application_id: registrationApplication.id
                     }
                 }

@@ -4,7 +4,8 @@ import dbStore from '../../../utils/dbStore.js';
 import { buildVisibleWhere } from '../../../utils/softDeletePolicy.js';
 import { assertSettingsRepositoryContract } from '../contracts/settingsRepository.contract.js';
 import logger from '../../../config/logger.js';
-import { normalizeWorkflowMode, normalizeEnabledCapabilities, normalizeInventoryAuthority } from '../../shared/constants/workflowModes.js';
+import { normalizeWorkflowMode, normalizeEnabledCapabilities, normalizeDisabledCapabilities, normalizeInventoryAuthority } from '../../shared/constants/workflowModes.js';
+import { ORDER_METHOD_FEE_METHODS } from '../../shared/constants/orderMethods.js';
 import {
     normalizeCustomerAccessMode,
     normalizeInventoryDisplayMode,
@@ -16,7 +17,7 @@ import {
 } from '../../shared/utils/storefrontAssetPolicy.js';
 import { normalizeStorefrontBusinessHours } from '../../shared/utils/storefrontBusinessHours.js';
 
-const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'online', 'appointment'];
+const ORDER_METHODS = ORDER_METHOD_FEE_METHODS;
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const ORDER_METHOD_DEFAULT_LABELS = {
     dine_in: 'Dine In Fee',
@@ -24,7 +25,8 @@ const ORDER_METHOD_DEFAULT_LABELS = {
     pickup: 'Pickup Fee',
     delivery: 'Delivery Fee',
     online: 'Online Fee',
-    appointment: 'Appointment Fee'
+    appointment: 'Appointment Fee',
+    walk_in: 'Walk-in Fee'
 };
 const LOW_CONFIDENCE_BACKFILL_SOURCES = new Set(['active_location_fallback', 'no_resolution']);
 
@@ -322,6 +324,9 @@ const normalizeValueForSettingKey = (settingKey, value) => {
     }
     if (settingKey === 'ops_enabled_capabilities') {
         return normalizeEnabledCapabilities(value);
+    }
+    if (settingKey === 'ops_disabled_capabilities') {
+        return normalizeDisabledCapabilities(value);
     }
     if (settingKey === 'inventory_authority') {
         return normalizeInventoryAuthority(value);

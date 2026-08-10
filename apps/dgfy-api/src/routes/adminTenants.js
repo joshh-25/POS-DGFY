@@ -10,6 +10,7 @@ import {
     updatePricingSettings,
     updateTenant,
     updateTenantCapabilities,
+    applyTemplateToTenant,
     listTenantCapabilityAuditLogs,
     getTenantPosMetadata,
     listTenantPosMetadataAuditLogs,
@@ -56,6 +57,7 @@ import {
 import {
     validateTenantCapabilityAuditLogQuery,
     validateTenantCapabilityPatch,
+    validateApplyTemplateToTenant,
     validateTenantPosMetadataPatch
 } from '../validators/adminTenantValidator.js';
 import {
@@ -125,6 +127,11 @@ router.put('/:id', authenticateAdmin, updateTenant);
 // ADMIN: Update tenant product capability switches
 router.patch('/:id/capabilities', authenticateAdmin, validateTenantCapabilityPatch, updateTenantCapabilities);
 router.get('/:id/capabilities/audit-logs', authenticateAdmin, validateTenantCapabilityAuditLogQuery, listTenantCapabilityAuditLogs);
+
+// ADMIN: Apply a published Store Template to an already-provisioned tenant
+// (issue #178 Phase 17) - non-destructive, audited via the same
+// TenantAdminAuditLog trail as /:id/capabilities above.
+router.post('/:id/apply-template', authenticateAdmin, validateApplyTemplateToTenant, applyTemplateToTenant);
 router.post('/:id/owner', authenticateAdmin, assignTenantOwnerByAdmin);
 
 // ADMIN: Platform-owned DGFY POS software identity and tenant metadata approvals

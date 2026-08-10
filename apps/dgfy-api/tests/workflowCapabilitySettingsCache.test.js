@@ -32,6 +32,21 @@ describe('workflowCapabilitySettingsCache', () => {
         const result = await resolveWorkflowCapabilitySettings();
         expect(result.mode).toBe('food_manufacturing');
         expect(result.enabledCapabilities).toEqual([]);
+        expect(result.disabledCapabilities).toEqual([]);
+        expect(result.readFlagEnabled).toBe(false);
+    });
+
+    it('parses the disabled-capabilities overlay and the store-profile-read flag (issue #178 Phase 16/19)', async () => {
+        setRows([
+            { setting_key: 'ops_workflow_mode', setting_value: 'fnb', data_type: 'string' },
+            { setting_key: 'ops_disabled_capabilities', setting_value: JSON.stringify(['tableService']), data_type: 'json' },
+            { setting_key: 'ops_store_profile_read', setting_value: 'true', data_type: 'boolean' }
+        ]);
+
+        const result = await resolveWorkflowCapabilitySettings();
+        expect(result.disabledCapabilities).toEqual(['tableService']);
+        expect(result.readFlagEnabled).toBe(true);
+        expect(findAllMock).toHaveBeenCalledTimes(1);
     });
 
     it('parses both settings from a single query', async () => {

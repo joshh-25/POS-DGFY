@@ -24,6 +24,7 @@ import {
     validateImageUploadFile
 } from '../../shared/utils/imageUploadValidation.js';
 import { resolveCatalogVisibility } from '../../shared/utils/catalogVisibilityPolicy.js';
+import { POS_ORDER_METHODS } from '../../shared/constants/orderMethods.js';
 import {
     normalizeBarcodeValue,
     parseBarcodeStructuredPayload
@@ -43,6 +44,7 @@ import { hasEffectivePermission } from '../../../utils/userPermissions.js';
 import { calculatePosDiscount } from '../domain/posDiscountCalculator.js';
 import { resolvePosGovernedDiscount } from '../domain/posDiscountPolicy.js';
 import { verifyPosDiscountApprover } from '../domain/posDiscountApprovalPolicy.js';
+import { verifyPosDayCloseOperator } from '../domain/posDayClosePinPolicy.js';
 import { authorizePosShiftMutation } from '../domain/posShiftAuthorizationPolicy.js';
 import {
     authorizePosStaleShiftRecovery,
@@ -62,7 +64,7 @@ const FISCAL_LIFETIME_COUNTER_KEY = 'POS_FISCAL_LIFETIME_TOTAL_CENTS';
 const Z_READING_COUNTER_KEY = 'POS_Z_READING_COUNTER';
 const RESET_COUNTER_KEY = 'POS_RESET_COUNTER';
 const FISCAL_DOCUMENT_TEMPLATE_VERSION = 'rmo-24-2023-prep-v1';
-const ORDER_METHODS = ['dine_in', 'takeout', 'pickup', 'delivery', 'appointment', 'walk_in'];
+const ORDER_METHODS = POS_ORDER_METHODS;
 const FNB_COURSES = new Set(['appetizer', 'main', 'dessert', 'drink', 'other']);
 const ONLINE_ORDER_SOURCE = 'online_store';
 const ONLINE_FULFILLMENT_STATUSES = [
@@ -564,6 +566,47 @@ const normalizeZReadingSummary = (summary = {}) => ({
         }))
         : []
 });
+
+const buildPersistedZReadingData = ({
+    snapshot,
+    businessDate,
+    locationId,
+    snapshotReused = false
+}) => {
+    const normalizedSummary = normalizeZReadingSummary(
+        normalizeJsonObject(snapshot?.summary, {})
+    );
+    const zCounterValue = Number.parseInt(snapshot?.z_counter_value || 0, 10);
+    const resetCounterValue = Number.parseInt(snapshot?.reset_counter_value || 0, 10);
+    const lifetimeGrandTotalCents = Number.parseInt(snapshot?.lifetime_grand_total_cents || 0, 10);
+
+    return {
+        business_date: businessDate,
+        location_id: parsePositiveInt(snapshot?.location_id) || parsePositiveInt(locationId) || null,
+        generated_at: snapshot?.generated_at || snapshot?.created_at || new Date().toISOString(),
+        summary: normalizedSummary,
+        snapshot_persisted: true,
+        reading_identifier: snapshot?.reading_identifier || null,
+        snapshot_reused: snapshotReused,
+        idempotent_replay: snapshotReused,
+        replay_outcome: snapshotReused ? 'existing_snapshot' : 'new_snapshot',
+        closed_by_user_id: parsePositiveInt(snapshot?.closed_by_user_id),
+        closed_from_terminal_id: String(snapshot?.closed_from_terminal_id || '').trim() || null,
+        day_close_pin_confirmed_at: snapshot?.day_close_pin_confirmed_at || null,
+        counters: {
+            z_counter: zCounterValue,
+            reset_counter: resetCounterValue,
+            lifetime_grand_total_cents: lifetimeGrandTotalCents,
+            lifetime_grand_total: fromCurrencyCents(lifetimeGrandTotalCents)
+        }
+    };
+};
+
+const isUniqueConstraintError = (error) => (
+    error?.name === 'SequelizeUniqueConstraintError'
+    || error?.original?.code === 'ER_DUP_ENTRY'
+    || error?.parent?.code === 'ER_DUP_ENTRY'
+);
 
 const parseBooleanSetting = (value) => {
     if (typeof value === 'boolean') return value;
@@ -2302,6 +2345,11 @@ export const buildCheckoutPosUseCase = ({
             buyer_business_style: buyerFiscalDetails.business_style,
             buyer_address: buyerFiscalDetails.address,
             special_instructions: String(payload.special_instructions || '').trim() || null,
+            // Only present when supplied so request hashes of payloads without a
+            // schedule stay identical to pre-scheduled_for clients.
+            ...(payload.scheduled_for
+                ? { scheduled_for: new Date(payload.scheduled_for).toISOString() }
+                : {}),
             discount_beneficiary: isPlainObject(payload.discount_beneficiary)
                 ? {
                     category: String(payload.discount_beneficiary.category || '').trim().toLowerCase() || null,
@@ -2678,6 +2726,8 @@ export const buildCheckoutPosUseCase = ({
                 preparedLines.push({
                     item_id: item.item_id,
                     item_name: item.name,
+                    item_name_snapshot: item.name || null,
+                    sku_snapshot: item.sku_code || null,
                     quantity: round4(quantity),
                     unit_of_measure: item.unit_of_measure,
                     // Only a true service has no cost to report; an untracked/toggle
@@ -2955,6 +3005,7 @@ export const buildCheckoutPosUseCase = ({
                     buyer_business_style: isFiscalReceipt ? buyerFiscalDetails.business_style : null,
                     buyer_address: isFiscalReceipt ? buyerFiscalDetails.address : null,
                     special_instructions: transactionSpecialInstructions,
+                    scheduled_for: payload.scheduled_for ? new Date(payload.scheduled_for) : null,
                     payment_type: normalizedPaymentType,
                     payment_status: 'paid',
                     payment_collected_at: preparedEmployeeCreditDebit ? new Date() : null,
@@ -4186,18 +4237,116 @@ export const buildGetPosTransactionByIdUseCase = ({ posRepository }) => {
     };
 };
 
-export const buildCloseDayZReadingUseCase = ({ posRepository }) => {
-    return async ({ businessDateInput }) => {
+export const buildCloseDayZReadingUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosOperationalLocationScope,
+    verifyDayCloseOperator = verifyPosDayCloseOperator
+}) => {
+    return async ({ businessDateInput, dayClosePin = '', terminalId = null, user = null, locationId = null }) => {
+        const userId = parsePositiveInt(user?.user_id);
+        if (!userId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated user is required to close the POS day',
+                { statusCode: 401 }
+            ));
+        }
+
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
         let transaction = null;
+        let businessDate = null;
+        let resolvedLocationId = null;
 
         try {
             transaction = await sequelize.transaction();
-            const { businessDate, startAt, endAt } = buildBusinessDateRange(
+            const locationScope = await resolveLocationScope({
+                requestedLocationId: locationId,
+                userId,
+                transaction,
+                operationLabel: 'POS close-day Z-reading'
+            });
+            resolvedLocationId = parsePositiveInt(locationScope?.location_id);
+            if (!resolvedLocationId) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'POS close-day Z-reading requires a resolved location scope.',
+                    { statusCode: 422 }
+                );
+            }
+
+            const dateRange = buildBusinessDateRange(
                 businessDateInput || new Date()
             );
+            businessDate = dateRange.businessDate;
+
+            const operator = await posRepository.findActiveDayCloseOperatorById(userId, {
+                transaction,
+                lock: true
+            });
+            await verifyDayCloseOperator({ operator, pin: dayClosePin });
+
+            const existingSnapshot = await posRepository.getLatestZReadingSnapshotByBusinessDate(
+                businessDate,
+                {
+                    transaction,
+                    locationId: resolvedLocationId,
+                    lock: true
+                }
+            );
+            if (existingSnapshot) {
+                await posRepository.createAuditLog({
+                    user_id: userId,
+                    entity_type: 'pos_z_reading',
+                    entity_id: existingSnapshot?.pos_z_reading_snapshot_id || null,
+                    action: 'VIEW',
+                    changes: {
+                        operation: 'reprint_close_day_z_reading',
+                        business_date: businessDate,
+                        location_id: resolvedLocationId,
+                        terminal_id: String(terminalId || '').trim().toUpperCase() || null,
+                        day_close_pin_confirmed: true
+                    }
+                }, { transaction });
+                await transaction.commit();
+                return ok(buildPersistedZReadingData({
+                    snapshot: existingSnapshot,
+                    businessDate,
+                    locationId: resolvedLocationId,
+                    snapshotReused: true
+                }));
+            }
+
+            const openShifts = await posRepository.listOpenTerminalShiftsForLocation({
+                locationId: resolvedLocationId
+            }, {
+                transaction,
+                lock: true
+            });
+            if (Array.isArray(openShifts) && openShifts.length > 0) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Close every cashier shift in this branch before generating the Z-reading.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: 'Z_READING_OPEN_SHIFTS',
+                            open_shift_count: openShifts.length,
+                            open_shifts: openShifts.map((shift) => ({
+                                shift_id: parsePositiveInt(shift?.pos_terminal_shift_id),
+                                terminal_id: String(shift?.terminal_id || '').trim() || null,
+                                cashier_name: String(shift?.cashier?.username || shift?.cashier?.email || '').trim() || null
+                            }))
+                        }
+                    }
+                );
+            }
+
             const summary = normalizeZReadingSummary(
-                await posRepository.getZReadingSummary({ startAt, endAt }, { transaction })
+                await posRepository.getZReadingSummary({
+                    startAt: dateRange.startAt,
+                    endAt: dateRange.endAt,
+                    locationId: resolvedLocationId
+                }, { transaction })
             );
 
             const zCounterValue = await posRepository.incrementPersistentCounter(
@@ -4221,67 +4370,114 @@ export const buildCloseDayZReadingUseCase = ({ posRepository }) => {
             });
             const snapshot = await posRepository.createZReadingSnapshot({
                 business_date: businessDate,
+                location_id: resolvedLocationId,
                 reading_identifier: readingIdentifier,
                 z_counter_value: zCounterValue,
                 reset_counter_value: resetCounterValue,
                 lifetime_grand_total_cents: lifetimeGrandTotalCents,
-                summary
+                summary,
+                closed_by_user_id: userId,
+                closed_from_terminal_id: String(terminalId || '').trim().toUpperCase() || null,
+                day_close_pin_confirmed_at: new Date()
+            }, { transaction });
+
+            await posRepository.createAuditLog({
+                user_id: userId,
+                entity_type: 'pos_z_reading',
+                entity_id: snapshot?.pos_z_reading_snapshot_id || null,
+                action: 'CREATE',
+                changes: {
+                    operation: 'close_day_z_reading',
+                    business_date: businessDate,
+                    location_id: resolvedLocationId,
+                    terminal_id: String(terminalId || '').trim().toUpperCase() || null,
+                    day_close_pin_confirmed: true
+                }
             }, { transaction });
 
             await transaction.commit();
 
-            return ok({
-                business_date: businessDate,
-                generated_at: snapshot?.generated_at || new Date().toISOString(),
-                summary,
-                snapshot_persisted: true,
-                reading_identifier: readingIdentifier,
-                counters: {
-                    z_counter: zCounterValue,
-                    reset_counter: resetCounterValue,
-                    lifetime_grand_total_cents: lifetimeGrandTotalCents,
-                    lifetime_grand_total: fromCurrencyCents(lifetimeGrandTotalCents)
-                }
-            });
+            return ok(buildPersistedZReadingData({
+                snapshot: {
+                    ...snapshot,
+                    summary
+                },
+                businessDate,
+                locationId: resolvedLocationId
+            }));
         } catch (error) {
             if (transaction && !transaction.finished) {
                 await transaction.rollback();
             }
+
+            if (isUniqueConstraintError(error) && businessDate && resolvedLocationId) {
+                const existingSnapshot = await posRepository.getLatestZReadingSnapshotByBusinessDate(
+                    businessDate,
+                    { locationId: resolvedLocationId }
+                );
+                if (existingSnapshot) {
+                    return ok(buildPersistedZReadingData({
+                        snapshot: existingSnapshot,
+                        businessDate,
+                        locationId: resolvedLocationId,
+                        snapshotReused: true
+                    }));
+                }
+            }
+
             return fail(mapPosUseCaseError(error, 'Failed to generate daily Z-reading'));
         }
     };
 };
 
-export const buildGetDailyZReadingUseCase = ({ posRepository }) => {
-    return async ({ businessDateInput }) => {
-        try {
-            const { businessDate, startAt, endAt } = buildBusinessDateRange(businessDateInput);
-            const snapshot = await posRepository.getLatestZReadingSnapshotByBusinessDate(businessDate);
-            if (snapshot) {
-                const normalizedSummary = normalizeZReadingSummary(
-                    normalizeJsonObject(snapshot.summary, {})
-                );
-                const zCounterValue = Number.parseInt(snapshot.z_counter_value || 0, 10);
-                const resetCounterValue = Number.parseInt(snapshot.reset_counter_value || 0, 10);
-                const lifetimeGrandTotalCents = Number.parseInt(snapshot.lifetime_grand_total_cents || 0, 10);
+export const buildGetDailyZReadingUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosReadLocationScope
+}) => {
+    return async ({ businessDateInput, user = null, locationId = null }) => {
+        const userId = parsePositiveInt(user?.user_id);
+        if (!userId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated user is required to view the POS Z-reading',
+                { statusCode: 401 }
+            ));
+        }
 
-                return ok({
-                    business_date: businessDate,
-                    generated_at: snapshot.generated_at || snapshot.created_at || new Date().toISOString(),
-                    summary: normalizedSummary,
-                    snapshot_persisted: true,
-                    reading_identifier: snapshot.reading_identifier || null,
-                    counters: {
-                        z_counter: zCounterValue,
-                        reset_counter: resetCounterValue,
-                        lifetime_grand_total_cents: lifetimeGrandTotalCents,
-                        lifetime_grand_total: fromCurrencyCents(lifetimeGrandTotalCents)
-                    }
-                });
+        try {
+            const locationScope = await resolveLocationScope({
+                requestedLocationId: locationId,
+                userId,
+                operationLabel: 'POS Z-reading read'
+            });
+            const resolvedLocationId = parsePositiveInt(locationScope?.location_id);
+            if (!resolvedLocationId) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'POS Z-reading requires a resolved location scope.',
+                    { statusCode: 422 }
+                );
+            }
+
+            const { businessDate, startAt, endAt } = buildBusinessDateRange(businessDateInput);
+            const snapshot = await posRepository.getLatestZReadingSnapshotByBusinessDate(
+                businessDate,
+                { locationId: resolvedLocationId }
+            );
+            if (snapshot) {
+                return ok(buildPersistedZReadingData({
+                    snapshot,
+                    businessDate,
+                    locationId: resolvedLocationId
+                }));
             }
 
             const summary = normalizeZReadingSummary(
-                await posRepository.getZReadingSummary({ startAt, endAt })
+                await posRepository.getZReadingSummary({
+                    startAt,
+                    endAt,
+                    locationId: resolvedLocationId
+                })
             );
             const [zCounterValue, resetCounterValue, lifetimeGrandTotalCents] = await Promise.all([
                 posRepository.getPersistentCounterValue(Z_READING_COUNTER_KEY),
@@ -4291,10 +4487,14 @@ export const buildGetDailyZReadingUseCase = ({ posRepository }) => {
 
             return ok({
                 business_date: businessDate,
+                location_id: resolvedLocationId,
                 generated_at: new Date().toISOString(),
                 summary,
                 snapshot_persisted: false,
                 reading_identifier: null,
+                snapshot_reused: false,
+                idempotent_replay: false,
+                replay_outcome: 'computed_on_demand',
                 counters: {
                     z_counter: zCounterValue,
                     reset_counter: resetCounterValue,
@@ -5140,7 +5340,7 @@ export const buildOpenTerminalShiftUseCase = ({
             ));
         }
 
-        if (hasPermission(user, PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS)) {
+        if (hasPermission(user, PERMISSIONS.SYSTEM.actions.VIEW_SETTINGS) && user?.is_master_admin !== true) {
             return fail(new DomainError(
                 DomainErrorCode.AUTHORIZATION_FAILED,
                 'Administrator navigation is read-only. Sign in as the cashier to open the shift.',

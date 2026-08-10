@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../src/services/api.js';
 import {
@@ -20,7 +20,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { AlertTriangle, Building2, Eye, EyeOff, LogOut, UserRound } from 'lucide-react';
 import DgfyAuthHero from '../src/features/dgfy/components/DgfyAuthHero.jsx';
-import { WORKFLOW_MODE_LABELS, WORKFLOW_MODE_SELECT_VALUES } from '../src/features/settings/workflowMode.js';
+import IndustrySelect from '../src/features/registration/IndustrySelect.jsx';
 import { buildDgfyAuthPath, DGFY_REGISTER_COMPANY_ENTRY } from '../src/features/dgfyRouteHelpers.js';
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -204,7 +204,7 @@ export default function RegisterCompany() {
     const [resetStep, setResetStep] = useState('request');
     const [companyForm, setCompanyForm] = useState({
         companyName: '',
-        workflowMode: 'food_manufacturing',
+        industryKey: '',
         industryTag: '',
         acceptedCompanyTerms: false
     });
@@ -292,10 +292,6 @@ export default function RegisterCompany() {
         }
     }, [dgfyAccount, searchParams]);
 
-    const businessIndustryOptions = useMemo(() => WORKFLOW_MODE_SELECT_VALUES.map((mode) => ({
-        value: mode,
-        label: WORKFLOW_MODE_LABELS[mode] || mode
-    })), []);
     const accountLegalSnapshot = getFlowSnapshot(legalTerms, 'account_registration');
     const companyLegalSnapshot = getFlowSnapshot(legalTerms, 'company_registration');
     const accountLegalDocuments = getFlowDocuments(legalTerms, 'account_registration');
@@ -477,6 +473,10 @@ export default function RegisterCompany() {
             setError('Sign in with your DGFY account before registering a business.');
             return;
         }
+        if (!companyForm.industryKey) {
+            setError('Choose what kind of business this is before registering.');
+            return;
+        }
         if (!companyForm.acceptedCompanyTerms) {
             setError('Accept the DGFY company terms before registering a company.');
             return;
@@ -490,7 +490,7 @@ export default function RegisterCompany() {
         try {
             const response = await api.post('/admin/tenants/register', {
                 name: companyForm.companyName,
-                workflowMode: companyForm.workflowMode,
+                industryKey: companyForm.industryKey,
                 industryTag: companyForm.industryTag,
                 accepted_company_terms: true,
                 company_terms_version: companyLegalSnapshot.company_terms_version,
@@ -596,21 +596,12 @@ export default function RegisterCompany() {
                     </div>
 
                     <form onSubmit={handleSubmitCompany} className="space-y-5">
-                        <div>
-                            <Label htmlFor="workflowMode">Operating Mode</Label>
-                            <select
-                                id="workflowMode"
-                                value={companyForm.workflowMode}
-                                onChange={(e) => setCompanyForm({ ...companyForm, workflowMode: e.target.value })}
-                                disabled={isLoading}
-                                className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                            >
-                                {businessIndustryOptions.map((mode) => (
-                                    <option key={mode.value} value={mode.value}>{mode.label}</option>
-                                ))}
-                            </select>
-                            <p className="mt-1 text-xs text-slate-500">Configures which DGFY tools and workflows are set up for your account. You can pick the closest match — this isn&apos;t your industry.</p>
-                        </div>
+                        <IndustrySelect
+                            idPrefix="register-company-industry"
+                            value={companyForm.industryKey}
+                            disabled={isLoading}
+                            onSelect={(entry) => setCompanyForm({ ...companyForm, industryKey: entry.key })}
+                        />
 
                         <div>
                             <Label htmlFor="companyName">Company Name</Label>

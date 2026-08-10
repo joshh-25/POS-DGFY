@@ -68,6 +68,7 @@ describe('TenantManager assisted provisioning', () => {
     await waitFor(() => expect(mocks.adminService.createAdminProvisionedTenant).toHaveBeenCalledWith({
       name: 'Assisted Foods',
       workflowMode: 'food_manufacturing',
+      templateKey: null,
       adminEmail: 'OPS@EXAMPLE.TEST',
       adminPhone: '+639111111111',
       adminPassword: 'Company123!',
@@ -91,7 +92,7 @@ describe('TenantManager assisted provisioning', () => {
     expect(await screen.findByText(/OneTime123!/)).toBeTruthy();
     expect(mocks.adminService.createAdminProvisionedAccountAndTenant).toHaveBeenCalledWith(expect.objectContaining({
       dgfy_account: expect.objectContaining({ email: 'ada@example.test' }),
-      company: { name: 'Assisted Foods', workflowMode: 'food_manufacturing' }
+      company: { name: 'Assisted Foods', workflowMode: 'food_manufacturing', templateKey: null }
     }));
 
     mocks.adminService.createAdminProvisionedAccountAndTenant.mockRejectedValueOnce(new Error('duplicate account'));
@@ -105,6 +106,36 @@ describe('TenantManager assisted provisioning', () => {
     await waitFor(() => expect(screen.queryByText(/OneTime123!/)).toBeNull());
     expect(mocks.toast.error).toHaveBeenCalledWith(expect.stringContaining('duplicate account'));
   }, 15000);
+
+  // Phase 40: closes the coverage gap noted since Phase 33 - TenantManager
+  // is the one IndustryPicker consumer that reads the derived
+  // workflow_mode/template_key fields (assisted provisioning sends those
+  // directly, never industryKey, so hidden-industry enforcement in
+  // registerCompanyRequestUseCase.js can't affect it - see Phase 39).
+  it('derives workflowMode/templateKey from an Industry selection and sends no industryKey', async () => {
+    const user = userEvent.setup();
+    renderTenantManager();
+    await screen.findByText('Assisted provisioning');
+
+    await user.click(screen.getByRole('radio', { name: /Micro Food & Beverage/i }));
+    await fillShared(user);
+    await user.type(screen.getByPlaceholderText('Admin email'), 'ops@example.test');
+    await user.type(screen.getByPlaceholderText('Admin phone'), '+639111111111');
+    await user.type(screen.getByPlaceholderText('Temporary password'), 'Company123!');
+    await user.click(screen.getByRole('button', { name: 'Provision' }));
+
+    await waitFor(() => expect(mocks.adminService.createAdminProvisionedTenant).toHaveBeenCalledWith({
+      name: 'Assisted Foods',
+      workflowMode: 'fnb',
+      templateKey: 'fnb_counter_service',
+      adminEmail: 'ops@example.test',
+      adminPhone: '+639111111111',
+      adminPassword: 'Company123!',
+      reason: 'Merchant onboarding'
+    }));
+    const payload = mocks.adminService.createAdminProvisionedTenant.mock.calls[0][0];
+    expect(payload).not.toHaveProperty('industryKey');
+  });
 
   it('shows loading state and reports API validation failures without a success toast', async () => {
     const user = userEvent.setup();

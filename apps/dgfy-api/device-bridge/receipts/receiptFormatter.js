@@ -155,3 +155,47 @@ export const buildShiftSummaryLines = (payload = {}, { width = 48 } = {}) => {
 
   return lines;
 };
+
+export const buildZReadingLines = (payload = {}, { width = 48 } = {}) => {
+  const normalizedWidth = clampWidth(width);
+  const business = payload?.business || {};
+  const reading = payload?.z_reading || {};
+  const summary = reading?.summary || {};
+  const divider = '-'.repeat(normalizedWidth);
+  const lines = [
+    business.name || 'DGFY',
+    'Z-READING / CLOSE DAY',
+    reading.business_date ? `Business date: ${reading.business_date}` : '',
+    reading.location_id ? `Location: ${reading.location_id}` : '',
+    reading.reading_identifier ? `Reading: ${reading.reading_identifier}` : '',
+    reading.generated_at ? `Generated: ${new Date(reading.generated_at).toLocaleString()}` : '',
+    divider,
+    buildKeyValueLine('Transactions', String(summary.transaction_count || 0), normalizedWidth),
+    buildKeyValueLine('Subtotal', money(summary.subtotal_amount), normalizedWidth),
+    buildKeyValueLine('Discounts', money(summary.discount_amount), normalizedWidth),
+    buildKeyValueLine('VAT', money(summary.vat_amount), normalizedWidth),
+    buildKeyValueLine('Total sales', money(summary.total_amount), normalizedWidth),
+    divider,
+    'PAYMENT BREAKDOWN'
+  ].filter(Boolean);
+
+  (Array.isArray(summary.payment_breakdown) ? summary.payment_breakdown : []).forEach((entry) => {
+    lines.push(buildKeyValueLine(
+      `${entry.payment_type || 'Other'} (${entry.count || 0})`,
+      money(entry.amount),
+      normalizedWidth
+    ));
+  });
+
+  lines.push(
+    divider,
+    'FISCAL COUNTERS',
+    buildKeyValueLine('Z counter', String(reading.z_counter_value || 0), normalizedWidth),
+    buildKeyValueLine('Reset counter', String(reading.reset_counter_value || 0), normalizedWidth),
+    buildKeyValueLine('Lifetime total', money(Number(reading.lifetime_grand_total_cents || 0) / 100), normalizedWidth),
+    divider,
+    'Keep this report with the day-end close evidence.'
+  );
+
+  return lines;
+};

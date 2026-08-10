@@ -1,5 +1,11 @@
 import React from 'react';
-import { CalendarDays, Minus, Plus } from 'lucide-react';
+import { CalendarDays } from 'lucide-react';
+const formatShortDateWithYear = (dateString) => {
+  if (!dateString) return '';
+  const parsed = new Date(`${dateString}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return '';
+  return parsed.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' });
+};
 
 export function ServiceBookingDetailsForm({
   STYLES,
@@ -7,7 +13,6 @@ export function ServiceBookingDetailsForm({
   StorefrontDropdown,
   registerBookingFieldRef,
   shouldBookingFieldSpanFullWidth,
-  formatLongDateLabel,
   combineDateAndTimeParts,
   getPreferredBookingTimeForDate,
   openPreferredBookingDatePicker,
@@ -22,8 +27,6 @@ export function ServiceBookingDetailsForm({
   setServiceAppointmentAt,
   serviceUnitType,
   setServiceUnitType,
-  serviceDraftQuantity,
-  setServiceDraftQuantity,
   bookingStepOneAdditionalFields,
   serviceIntakeResponses,
   setServiceIntakeResponses,
@@ -31,33 +34,32 @@ export function ServiceBookingDetailsForm({
 }) {
   const compactFieldMinHeight = isMobileViewport ? 40 : 42;
   const compactFieldPadding = isMobileViewport ? '9px 40px 9px 11px' : '10px 42px 10px 12px';
-  const compactQuantityButtonSize = isMobileViewport ? 32 : 34;
   const extraFields = bookingStepOneAdditionalFields.filter(field => field.id !== 'special_instructions' && field.id !== 'instructions');
 
   return (
-    <section
-      style={{
-        display: 'grid',
-        gap: 18,
-        border: '1px solid #e2e8f0',
-        borderRadius: 20,
-        background: '#fff',
-        padding: isMobileViewport ? 16 : 20,
-        boxShadow: '0 18px 40px rgba(15, 23, 42, 0.04)',
-      }}
-    >
+    <div style={{ display: 'grid', gap: 18 }}>
       <div style={{ display: 'grid', gap: 16 }}>
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: isMobileViewport ? '1fr' : '1.15fr 1.05fr 1fr 0.9fr',
+            gridTemplateColumns: '1fr',
             gap: isMobileViewport ? 14 : 12,
             alignItems: 'end',
           }}
         >
           <label ref={registerBookingFieldRef('preferred_date')} style={{ display: 'grid', gap: 8, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>Schedule *</div>
-            <div style={{ position: 'relative', minWidth: 0 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>2. Handoff Schedule</div>
+            <div
+              style={{
+                ...BOOKING_FIELD_STYLE,
+                marginTop: 0,
+                minHeight: compactFieldMinHeight,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 10,
+                position: 'relative',
+              }}
+            >
               <div
                 role="button"
                 tabIndex={0}
@@ -73,20 +75,17 @@ export function ServiceBookingDetailsForm({
                   }
                 }}
                 style={{
-                  ...BOOKING_FIELD_STYLE,
-                  marginTop: 0,
-                  minHeight: compactFieldMinHeight,
                   display: 'flex',
                   alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 12,
+                  gap: 10,
+                  cursor: 'pointer',
+                  flexShrink: 0,
                   color: selectedServiceDatePart ? STYLES.colors.dark : '#94a3b8',
                   fontWeight: selectedServiceDatePart ? 700 : 500,
-                  cursor: 'pointer',
                 }}
               >
-                <span>{selectedServiceDatePart ? formatLongDateLabel(selectedServiceDatePart) : 'Pick a preferred date'}</span>
                 <CalendarDays size={18} color={servicesPrimary} />
+                <span>{selectedServiceDatePart ? formatShortDateWithYear(selectedServiceDatePart) : 'Pick a preferred date'}</span>
               </div>
               <input
                 ref={bookingPreferredDateInputRef}
@@ -98,30 +97,27 @@ export function ServiceBookingDetailsForm({
                 tabIndex={-1}
                 style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none', inset: 'auto' }}
               />
+              {selectedServiceDatePart ? (
+                <>
+                  <span style={{ color: '#94a3b8' }}>,</span>
+                  <div style={{ width: 'auto', minWidth: 0, flex: '1 1 auto' }}>
+                    <StorefrontDropdown
+                      value={selectedServiceTimePart}
+                      disabled={bookingTimeSlotOptions.length === 0}
+                      onChange={(nextValue) => setServiceAppointmentAt(combineDateAndTimeParts(selectedServiceDatePart, nextValue))}
+                      options={bookingTimeSlotOptions.map((slot) => ({
+                        value: slot.value,
+                        label: slot.label,
+                      }))}
+                      placeholder={bookingTimeSlotOptions.length === 0 ? 'No suggested time slots available' : 'Select a time slot'}
+                      triggerStyle={{ border: 'none', background: 'transparent', boxShadow: 'none', padding: '0 24px 0 0', minHeight: 'auto', color: STYLES.colors.dark, fontWeight: 700 }}
+                      menuStyle={{ borderRadius: 18 }}
+                      selectedLabelStyle={{ fontWeight: 700 }}
+                    />
+                  </div>
+                </>
+              ) : null}
             </div>
-          </label>
-
-          <label ref={registerBookingFieldRef('preferred_time')} style={{ display: 'grid', gap: 8, minWidth: 0 }}>
-            <div style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>Time *</div>
-            <StorefrontDropdown
-              value={selectedServiceTimePart}
-              disabled={!selectedServiceDatePart || bookingTimeSlotOptions.length === 0}
-              onChange={(nextValue) => setServiceAppointmentAt(combineDateAndTimeParts(selectedServiceDatePart, nextValue))}
-              options={bookingTimeSlotOptions.map((slot) => ({
-                value: slot.value,
-                label: slot.label,
-              }))}
-              placeholder={
-                !selectedServiceDatePart
-                  ? 'Choose a date first'
-                  : bookingTimeSlotOptions.length === 0
-                    ? 'No suggested time slots available'
-                    : 'Select a time slot'
-              }
-              triggerStyle={{ ...BOOKING_FIELD_STYLE, marginTop: 0, minHeight: compactFieldMinHeight, padding: compactFieldPadding }}
-              menuStyle={{ borderRadius: 18 }}
-              selectedLabelStyle={{ fontWeight: selectedServiceDatePart && bookingTimeSlotOptions.length > 0 ? 700 : 500 }}
-            />
           </label>
 
           {bookingFieldPlan.unitTypeField ? (
@@ -140,87 +136,8 @@ export function ServiceBookingDetailsForm({
                 <input value={serviceUnitType} onChange={(event) => setServiceUnitType(event.target.value)} placeholder="Specify the unit type" style={{ ...BOOKING_FIELD_STYLE, marginTop: 0, minHeight: compactFieldMinHeight, padding: isMobileViewport ? '9px 11px' : '10px 12px' }} />
               )}
             </label>
-          ) : <div />}
-
-          <label ref={registerBookingFieldRef('unit_count')} style={{ display: 'grid', gap: 8, fontSize: 12, color: '#475569', minWidth: 0 }}>
-            {bookingFieldPlan.unitCountField?.label || 'Number of Units'} *
-            <div
-              style={{
-                ...BOOKING_FIELD_STYLE,
-                marginTop: 0,
-                minHeight: compactFieldMinHeight,
-                padding: isMobileViewport ? '4px' : '5px',
-                display: 'grid',
-                gridTemplateColumns: `${compactQuantityButtonSize}px minmax(0, 1fr) ${compactQuantityButtonSize}px`,
-                alignItems: 'center',
-                gap: 6,
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => setServiceDraftQuantity(Math.max(1, Number(serviceDraftQuantity || 1) - 1))}
-                disabled={Number(serviceDraftQuantity || 1) <= 1}
-                aria-label="Decrease number of units"
-                style={{
-                  width: '100%',
-                  height: compactQuantityButtonSize,
-                  borderRadius: 12,
-                  border: '1px solid #dbe5ee',
-                  background: Number(serviceDraftQuantity || 1) <= 1 ? '#f8fafc' : '#fff',
-                  color: Number(serviceDraftQuantity || 1) <= 1 ? '#94a3b8' : STYLES.colors.dark,
-                  display: 'grid',
-                  placeItems: 'center',
-                  cursor: Number(serviceDraftQuantity || 1) <= 1 ? 'not-allowed' : 'pointer',
-                }}
-              >
-                <Minus size={16} />
-              </button>
-              <div
-                aria-live="polite"
-                style={{
-                  minWidth: 0,
-                  textAlign: 'center',
-                  fontSize: isMobileViewport ? 14 : 15,
-                  fontWeight: 800,
-                  color: STYLES.colors.dark,
-                }}
-              >
-                {Math.max(1, Number(serviceDraftQuantity || 1))}
-              </div>
-              <button
-                type="button"
-                onClick={() => setServiceDraftQuantity(Math.max(1, Number(serviceDraftQuantity || 1) + 1))}
-                aria-label="Increase number of units"
-                style={{
-                  width: '100%',
-                  height: compactQuantityButtonSize,
-                  borderRadius: 12,
-                  border: '1px solid #dbe5ee',
-                  background: '#fff',
-                  color: STYLES.colors.dark,
-                  display: 'grid',
-                  placeItems: 'center',
-                  cursor: 'pointer',
-                }}
-              >
-                <Plus size={16} />
-              </button>
-            </div>
-          </label>
+          ) : null}
         </div>
-
-        <label
-          ref={registerBookingFieldRef('special_instructions')}
-          style={{ display: 'grid', gap: 8, minWidth: 0 }}
-        >
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#334155' }}>Additional Instructions</div>
-          <textarea
-            value={serviceIntakeResponses.special_instructions || serviceIntakeResponses.instructions || ''}
-            onChange={(event) => setServiceIntakeResponses((previous) => ({ ...previous, special_instructions: event.target.value }))}
-            placeholder="Input here your instructions"
-            style={{ ...BOOKING_FIELD_STYLE, minHeight: 84, marginTop: 0, resize: 'vertical', padding: isMobileViewport ? '10px 11px' : '11px 12px' }}
-          />
-        </label>
 
         {extraFields.length > 0 && (
           <section style={{ display: 'grid', gap: 14 }}>
@@ -267,6 +184,6 @@ export function ServiceBookingDetailsForm({
           </section>
         )}
       </div>
-    </section>
+    </div>
   );
 }

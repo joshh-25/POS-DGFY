@@ -10,7 +10,7 @@ topic: frontend_relocation_to_apps_dgfy_web
 supersedes_in_part: docs/architecture/adr/0032-standalone-dgfy-api-service.md
 ---
 
-# ADR 0055: Frontend Relocation to `apps/dgfy-web`
+# ADR 0059: Frontend Relocation to `apps/dgfy-web`
 
 ## Status
 
