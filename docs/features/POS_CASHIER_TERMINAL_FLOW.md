@@ -17,6 +17,7 @@ Authoritative references:
 - `frontend/src/features/pos/pages/TerminalPage.jsx`
 - `frontend/src/features/pos/components/TerminalWorkspaceSidebar.jsx`
 - `frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`
 
 ## Before the cashier can use POS
 

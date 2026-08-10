@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-05-05
-last_reviewed: 2026-06-26
+last_reviewed: 2026-08-09
 review_by: 2026-11-05
 applies_to: architecture_decision
 topic: food_and_beverage_mode_full_service_restaurant
@@ -96,3 +96,16 @@ F&B item financial behavior follows restaurant-native presets:
 - `Packaged Beverage / Retail Item` rows show cost and selling price because they are direct sellable stock-bearing items.
 - `Ingredient` and `Packaging / To-go Supply` rows show cost for inventory valuation. They show and require selling price only if explicitly enabled for POS or Storefront.
 - Modifier deltas may add to the menu item sale price, but the base menu item must still have an explicit `default_sale_price`; Storefront and POS must not use item cost as the base customer price.
+
+## Amendments (2026-08-09)
+
+### F&B-Specific Menu Modifiers And Add-ons Contract
+
+- The F&B customer and operator experience uses the term **menu modifiers**. It must not reuse the Services Mode **Service add-ons** label or service-booking semantics.
+- A modifier group customizes a menu line through server-validated minimum and maximum selections. Variations, combo choices, and free-text special instructions remain distinct concepts and must not bypass modifier validation.
+- POS and Storefront may preview modifier totals, but the backend remains authoritative for assignment, active state, availability, selection limits, option price deltas, and final line totals.
+- Accepted F&B transactions preserve immutable group and option snapshots for kitchen, receipt, refund, reporting, and audit behavior.
+- Modifier publication and availability may vary by channel and operating location. Additive persistence must retain backward-compatible defaults and fail closed for inactive, sold-out, unpublished, or location-disabled selections.
+- Non-stock modifiers never create inventory movements. A modifier linked to a stock-bearing item or governed recipe/component consumes inventory through the existing location-scoped FIFO, completion, and idempotency contracts without double deduction.
+- The generic `menuModifiers` capability remains available where already governed; this amendment defines the F&B-specific presentation and transaction semantics without changing the binding ownership boundaries in ADR 0029.
+- `docs/features/FNB_SPECIFIC_ADD_ONS.md` is the authoritative delivery contract for Phases 14-21. Nested or conditional modifiers remain deferred until the flat group/option contract is hardened.

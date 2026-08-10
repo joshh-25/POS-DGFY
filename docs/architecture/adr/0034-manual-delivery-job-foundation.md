@@ -40,3 +40,19 @@ authenticated cashier's open shift at the order location, uses idempotent replay
 protection, and records an audit event. POS cannot mutate provider-owned jobs or
 write `failed`/`cancelled` states; courier integrations and provider lifecycle
 events remain separate follow-up work.
+
+### 2026-08-08 — Manual delivery assignment contract
+
+The manual lifecycle requires a first-class tenant-scoped delivery-person
+assignment before `picked_up`, `delivered`, or order completion. Assignment
+must record the selected person, assigning actor, location, shift, and
+timestamp. The assignment must not be represented only through
+`provider_payload`; that field remains an integration seam rather than the
+source of truth for POS assignment or accountability.
+
+Cashiers with `pos:transact` may select an active delivery person and advance a
+manual job only from an open shift at the order location. Administrator/settings
+authority owns the delivery-person registry. Provider-owned jobs remain
+read-only in POS. The detailed lifecycle, completion, payment, failure, and
+acceptance contract is maintained in
+`docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`.
