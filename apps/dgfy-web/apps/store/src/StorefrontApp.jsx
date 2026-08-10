@@ -268,7 +268,6 @@ import {
   WORKFLOW_MODE_SELECT_VALUES
 } from '../../../src/features/settings/workflowMode.js';
 import {
-  buildBusinessLoginUrl,
   buildBusinessRegistrationUrl,
   buildDgfyAuthUrl,
   buildPosAppUrl
@@ -3657,8 +3656,6 @@ export default function StorefrontApp() {
               accountIdentityName={accountIdentityName}
               accountIdentityRawEmail={accountIdentityRawEmail}
               activeDiscoveryNavItem={activeDiscoveryNavItem}
-              buildBusinessLoginUrl={buildBusinessLoginUrl}
-              buildBusinessRegistrationUrl={buildBusinessRegistrationUrl}
               desktopCategoryRailRef={desktopCategoryRailRef}
               dgfyBusinessOwnerPhoto={dgfyBusinessOwnerPhoto}
               dgfyHeaderLogo={dgfyHeaderLogo}
