@@ -6,7 +6,7 @@ import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../sentryV
 // Opt-in only (VITE_ANALYZE_BUNDLE=true) -- writes a stats.html treemap next
 // to the build output. Never runs in a normal `build:store` so it can't
 // perturb production build size/timing. See issue #282's Phase A baseline:
-// scratch/storefront-perf-baseline-282.md.
+// https://github.com/Sieitzz/dgfy-platform/issues/282#issuecomment-5242741151
 const shouldAnalyzeBundle = String(process.env.VITE_ANALYZE_BUNDLE || '').trim() === 'true';
 const { visualizer } = shouldAnalyzeBundle ? await import('rollup-plugin-visualizer') : { visualizer: null };
 

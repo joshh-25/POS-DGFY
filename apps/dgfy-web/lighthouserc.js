@@ -5,7 +5,7 @@
 // the backend API reachable at VITE_PROXY_TARGET (default 127.0.0.1:5000)
 // and `npm run build:store` already run, since the store preview server
 // only serves a build that exists on disk. See issue #282's Phase A
-// baseline: scratch/storefront-perf-baseline-282.md.
+// baseline: https://github.com/Sieitzz/dgfy-platform/issues/282#issuecomment-5242741151
 const storeSlug = String(process.env.E2E_STORE_SLUG || '').trim().toLowerCase();
 const storefrontUrls = storeSlug ? [`http://localhost:5175/${storeSlug}`] : [];
 // Both preview servers are independent vite configs (apps/store has its own
