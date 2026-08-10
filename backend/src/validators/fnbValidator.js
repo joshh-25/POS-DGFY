@@ -11,25 +11,44 @@ const includeInactiveQuerySchema = Joi.object({
 });
 
 const modifierOptionSchema = Joi.object({
+  modifier_option_id: Joi.number().integer().positive().optional(),
   name: Joi.string().trim().min(1).max(120).required(),
   price_delta: Joi.number().precision(4).default(0),
   sku_item_id: Joi.number().integer().positive().allow(null).optional(),
   is_default: Joi.boolean().default(false),
   is_active: Joi.boolean().default(true),
+  visible_in_pos: Joi.boolean().default(true),
+  visible_in_storefront: Joi.boolean().default(true),
+  is_sold_out: Joi.boolean().default(false),
   allergen_notes: Joi.array().items(Joi.string().trim().max(120)).allow(null).optional(),
-  sort_order: Joi.number().integer().min(0).optional()
+  sort_order: Joi.number().integer().min(0).optional(),
+  location_availability: Joi.array().items(Joi.object({
+    location_id: Joi.number().integer().positive().required(),
+    is_available: Joi.boolean().default(true),
+    is_sold_out: Joi.boolean().default(false)
+  })).default([])
 });
 
 const modifierGroupSchema = Joi.object({
   name: Joi.string().trim().min(1).max(120).required(),
   display_name: Joi.string().trim().max(120).allow('', null).optional(),
+  group_kind: Joi.string().valid('modifier', 'combo_choice').default('modifier'),
+  parent_modifier_option_id: Joi.number().integer().positive().allow(null).optional(),
   min_select: Joi.number().integer().min(0).default(0),
   max_select: Joi.number().integer().min(1).default(1),
   required: Joi.boolean().default(false),
   is_active: Joi.boolean().default(true),
+  visible_in_pos: Joi.boolean().default(true),
+  visible_in_storefront: Joi.boolean().default(true),
   sort_order: Joi.number().integer().min(0).default(0),
-  options: Joi.array().items(modifierOptionSchema).default([])
+  options: Joi.array().items(modifierOptionSchema).default([]),
+  location_availability: Joi.array().items(Joi.object({
+    location_id: Joi.number().integer().positive().required(),
+    is_available: Joi.boolean().default(true)
+  })).default([])
 });
+
+const modifierGroupIdParamSchema = Joi.object({ modifier_group_id: Joi.number().integer().positive().required() });
 
 const diningTableSchema = Joi.object({
   table_number: Joi.string().trim().max(40).allow('', null).optional(),
@@ -221,6 +240,8 @@ const validateSchema = (schema, source, target) => (req, res, next) => {
 
 export const validateFnbIncludeInactiveQuery = validateSchema(includeInactiveQuerySchema, 'query', 'validatedQuery');
 export const validateCreateFnbModifierGroup = validateSchema(modifierGroupSchema, 'body', 'validatedData');
+export const validateFnbModifierGroupIdParam = validateSchema(modifierGroupIdParamSchema, 'params', 'validatedParams');
+export const validateUpdateFnbModifierGroup = validateSchema(modifierGroupSchema, 'body', 'validatedData');
 export const validateCreateFnbDiningArea = validateSchema(diningAreaSchema, 'body', 'validatedData');
 export const validateFnbTableIdParam = validateSchema(tableIdParamSchema, 'params', 'validatedParams');
 export const validateUpdateFnbTableStatus = validateSchema(tableStatusSchema, 'body', 'validatedData');

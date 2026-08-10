@@ -2,6 +2,7 @@ import {
   fnbDashboardUseCase,
   listFnbModifierGroupsUseCase,
   createFnbModifierGroupUseCase,
+  updateFnbModifierGroupUseCase,
   listFnbDiningAreasUseCase,
   createFnbDiningAreaUseCase,
   updateFnbDiningTableStatusUseCase,
@@ -76,6 +77,15 @@ export const createModifierGroup = async (req, res, next) => {
   } catch (error) {
     return next(error);
   }
+};
+
+export const updateModifierGroup = async (req, res, next) => {
+  try {
+    return sendResult(req, res, await updateFnbModifierGroupUseCase({
+      modifierGroupId: req.validatedParams?.modifier_group_id || req.params.modifier_group_id,
+      payload: req.validatedData || req.body
+    }));
+  } catch (error) { return next(error); }
 };
 
 export const listDiningAreas = async (req, res, next) => {

@@ -274,10 +274,14 @@ export const buildCreateModifierGroupUseCase = ({ fnbRepository }) => async ({ p
     const groupPayload = {
       name: trim(payload.name, 120),
       display_name: trim(payload.display_name || payload.name, 120) || null,
+      group_kind: payload.group_kind === 'combo_choice' ? 'combo_choice' : 'modifier',
+      parent_modifier_option_id: toPositiveInt(payload.parent_modifier_option_id),
       min_select: toNonNegativeInt(payload.min_select, 0),
       max_select: Math.max(1, toPositiveInt(payload.max_select, 1)),
       required: normalizeBoolean(payload.required, false),
       is_active: payload.is_active !== false,
+      visible_in_pos: payload.visible_in_pos !== false,
+      visible_in_storefront: payload.visible_in_storefront !== false,
       sort_order: toNonNegativeInt(payload.sort_order, 0)
     };
     if (!groupPayload.name) {
@@ -286,23 +290,118 @@ export const buildCreateModifierGroupUseCase = ({ fnbRepository }) => async ({ p
     if (groupPayload.min_select > groupPayload.max_select) {
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'min_select cannot exceed max_select', { statusCode: 422 });
     }
+    if (groupPayload.group_kind === 'combo_choice' && (!groupPayload.required || groupPayload.min_select < 1)) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Combo choice groups must be required and select at least one option', { statusCode: 422 });
+    }
     const optionPayloads = (Array.isArray(payload.options) ? payload.options : []).map((option, index) => ({
       name: trim(option.name, 120),
       price_delta: round4(option.price_delta),
       sku_item_id: toPositiveInt(option.sku_item_id),
       is_default: normalizeBoolean(option.is_default, false),
       is_active: option.is_active !== false,
+      visible_in_pos: option.visible_in_pos !== false,
+      visible_in_storefront: option.visible_in_storefront !== false,
+      is_sold_out: normalizeBoolean(option.is_sold_out, false),
       allergen_notes: Array.isArray(option.allergen_notes) ? option.allergen_notes : null,
-      sort_order: toNonNegativeInt(option.sort_order, index)
+      sort_order: toNonNegativeInt(option.sort_order, index),
+      location_availability: option.location_availability || []
     })).filter((option) => option.name);
+
+    const defaultCount = optionPayloads.filter((option) => option.is_default).length;
+    const effectiveMinSelect = groupPayload.required ? Math.max(1, groupPayload.min_select) : groupPayload.min_select;
+    if (defaultCount > groupPayload.max_select) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Default modifier options cannot exceed max_select', { statusCode: 422 });
+    }
+    if (groupPayload.required && effectiveMinSelect > optionPayloads.filter((option) => option.is_active).length) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Required modifier group does not have enough active options', { statusCode: 422 });
+    }
+
+    const linkedItemIds = [...new Set(optionPayloads.map((option) => option.sku_item_id).filter(Boolean))];
+    if (groupPayload.parent_modifier_option_id && typeof fnbRepository.findModifierOptionById === 'function') {
+      const parentOption = await fnbRepository.findModifierOptionById(groupPayload.parent_modifier_option_id);
+      if (!parentOption || parentOption.is_active === false) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Conditional parent modifier option is unavailable', { statusCode: 422 });
+    }
+    if (linkedItemIds.length > 0 && typeof fnbRepository.findActiveItemsByIds === 'function') {
+      const linkedItems = await fnbRepository.findActiveItemsByIds(linkedItemIds);
+      const foundIds = new Set(linkedItems.map((item) => Number(item.item_id)));
+      const missingIds = linkedItemIds.filter((itemId) => !foundIds.has(Number(itemId)));
+      if (missingIds.length > 0) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'One or more linked modifier inventory items are unavailable', {
+          statusCode: 422,
+          details: { missing_sku_item_ids: missingIds }
+        });
+      }
+    }
+    const locationIds = [...new Set([...(payload.location_availability || []), ...optionPayloads.flatMap((option) => option.location_availability)].map((row) => toPositiveInt(row.location_id)).filter(Boolean))];
+    if (locationIds.length > 0 && typeof fnbRepository.findActiveLocationsByIds === 'function') {
+      const locations = await fnbRepository.findActiveLocationsByIds(locationIds);
+      const foundIds = new Set(locations.map((location) => Number(location.location_id)));
+      if (locationIds.some((locationId) => !foundIds.has(locationId))) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'One or more modifier locations are unavailable', { statusCode: 422 });
+      }
+    }
 
     const created = await withTransaction(fnbRepository, (transaction) => fnbRepository.createModifierGroup({
       group: groupPayload,
-      options: optionPayloads
+      options: optionPayloads,
+      location_availability: payload.location_availability || []
     }, { transaction }));
     return ok({ modifier_group: created }, 'Modifier group created successfully');
   } catch (error) {
     return fail(mapError(error, 'Unable to create modifier group'));
+  }
+};
+
+export const buildUpdateModifierGroupUseCase = ({ fnbRepository }) => async ({ modifierGroupId, payload = {} } = {}) => {
+  try {
+    const groupId = toPositiveInt(modifierGroupId);
+    const minSelect = toNonNegativeInt(payload.min_select, 0);
+    const maxSelect = Math.max(1, toPositiveInt(payload.max_select, 1));
+    const groupKind = payload.group_kind === 'combo_choice' ? 'combo_choice' : 'modifier';
+    const parentModifierOptionId = toPositiveInt(payload.parent_modifier_option_id);
+    if (!groupId || !trim(payload.name, 120)) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Modifier group and name are required', { statusCode: 422 });
+    if (minSelect > maxSelect) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'min_select cannot exceed max_select', { statusCode: 422 });
+    if (groupKind === 'combo_choice' && (payload.required !== true || minSelect < 1)) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Combo choice groups must be required and select at least one option', { statusCode: 422 });
+    const options = (payload.options || []).map((option, index) => ({
+      modifier_option_id: toPositiveInt(option.modifier_option_id),
+      name: trim(option.name, 120),
+      price_delta: round4(option.price_delta),
+      sku_item_id: toPositiveInt(option.sku_item_id),
+      is_default: normalizeBoolean(option.is_default, false),
+      is_active: option.is_active !== false,
+      visible_in_pos: option.visible_in_pos !== false,
+      visible_in_storefront: option.visible_in_storefront !== false,
+      is_sold_out: normalizeBoolean(option.is_sold_out, false),
+      allergen_notes: Array.isArray(option.allergen_notes) ? option.allergen_notes : null,
+      sort_order: toNonNegativeInt(option.sort_order, index),
+      location_availability: option.location_availability || []
+    })).filter((option) => option.name);
+    if (options.filter((option) => option.is_default && option.is_active).length > maxSelect) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Default modifier options cannot exceed max_select', { statusCode: 422 });
+    const linkedIds = [...new Set(options.map((option) => option.sku_item_id).filter(Boolean))];
+    const locationIds = [...new Set([...(payload.location_availability || []), ...options.flatMap((option) => option.location_availability)].map((row) => toPositiveInt(row.location_id)).filter(Boolean))];
+    const updated = await withTransaction(fnbRepository, async (transaction) => {
+      if (linkedIds.length) {
+        const found = new Set((await fnbRepository.findActiveItemsByIds(linkedIds, { transaction })).map((row) => Number(row.item_id)));
+        if (linkedIds.some((id) => !found.has(id))) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'One or more linked modifier inventory items are unavailable', { statusCode: 422 });
+      }
+      if (locationIds.length) {
+        const found = new Set((await fnbRepository.findActiveLocationsByIds(locationIds, { transaction })).map((row) => Number(row.location_id)));
+        if (locationIds.some((id) => !found.has(id))) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'One or more modifier locations are unavailable', { statusCode: 422 });
+      }
+      if (parentModifierOptionId) {
+        const parentOption = await fnbRepository.findModifierOptionById(parentModifierOptionId, { transaction });
+        if (!parentOption || parentOption.is_active === false || Number(parentOption.modifier_group_id) === groupId) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Conditional parent modifier option must belong to another active group', { statusCode: 422 });
+      }
+      return fnbRepository.updateModifierGroup(groupId, {
+        group: { name: trim(payload.name, 120), display_name: trim(payload.display_name || payload.name, 120), group_kind: groupKind, parent_modifier_option_id: parentModifierOptionId, min_select: minSelect, max_select: maxSelect, required: payload.required === true, is_active: payload.is_active !== false, visible_in_pos: payload.visible_in_pos !== false, visible_in_storefront: payload.visible_in_storefront !== false, sort_order: toNonNegativeInt(payload.sort_order, 0) },
+        options,
+        location_availability: payload.location_availability || []
+      }, { transaction });
+    });
+    if (!updated) throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Modifier group not found');
+    return ok({ modifier_group: updated }, 'Modifier group updated successfully');
+  } catch (error) {
+    return fail(mapError(error, 'Unable to update modifier group'));
   }
 };
 

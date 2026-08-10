@@ -21,7 +21,7 @@ const serviceCatalogItemSchema = Joi.object({
     description: Joi.string().trim().max(4000).allow('', null).optional(),
     service_category: Joi.string().trim().max(120).allow('', null).optional(),
     unit_of_measure: Joi.string().trim().max(50).allow('', null).optional(),
-    default_sale_price: Joi.number().min(0).precision(4).default(0),
+    default_sale_price: Joi.number().greater(0).precision(4).required(),
     cost_per_unit: Joi.number().min(0).precision(4).allow(null).optional(),
     vat_type: Joi.string().valid('vatable', 'vat_exempt', 'zero_rated').default('vatable'),
     duration_minutes: Joi.number().integer().min(1).max(1440).default(60),
@@ -40,7 +40,7 @@ const serviceCatalogItemSchema = Joi.object({
     max_capacity: Joi.number().integer().min(1).max(100000).optional()
 });
 
-const updateServiceCatalogItemSchema = serviceCatalogItemSchema.fork(['name'], (schema) => schema.optional()).keys({
+const updateServiceCatalogItemSchema = serviceCatalogItemSchema.fork(['name', 'default_sale_price'], (schema) => schema.optional()).keys({
     status: Joi.string().valid('active', 'inactive').optional()
 }).min(1);
 
@@ -221,9 +221,10 @@ const settleBookingSchema = Joi.object({
     parts: Joi.array().items(settleBookingPartSchema).max(50).optional(),
     payment_type: Joi.string().valid(...POS_PAYMENT_TYPES).default('cash'),
     cash_received: Joi.number().min(0).precision(4).allow(null).optional(),
-    change_amount: Joi.number().min(0).precision(4).allow(null).optional(),
-    terminal_id: Joi.string().trim().max(100).allow('', null).optional(),
-    location_id: Joi.number().integer().positive().allow(null).optional()
+    change_amount: Joi.forbidden().messages({ 'any.unknown': 'change_amount is calculated by the server' }),
+    shift_id: Joi.number().integer().positive().required(),
+    terminal_id: Joi.string().trim().min(1).max(100).required(),
+    location_id: Joi.number().integer().positive().required()
 });
 
 const waitlistQuerySchema = Joi.object({

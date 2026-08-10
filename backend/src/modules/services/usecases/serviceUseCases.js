@@ -207,6 +207,25 @@ const serviceDetailsPayload = (payload = {}, { includeDefaults = true } = {}) =>
     return details;
 };
 
+const assertServiceCatalogSalePriceReady = (row = {}) => {
+    const item = toPlain(row) || {};
+    const detail = item.serviceDetail || item.service_detail || {};
+    const isActive = String(item.status || 'active').trim() !== 'inactive';
+    const isCustomerVisible = detail.visible_in_pos !== false || detail.visible_in_storefront !== false;
+    const salePrice = Number(item.default_sale_price);
+
+    if (isActive && isCustomerVisible && (!Number.isFinite(salePrice) || salePrice <= 0)) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'A positive selling price is required for an active POS or Storefront service',
+            {
+                statusCode: 422,
+                details: { reason_code: 'SERVICE_SALE_PRICE_REQUIRED' }
+            }
+        );
+    }
+};
+
 const serializeCatalogItem = (row = {}, options = {}) => {
     const item = toPlain(row) || {};
     const detail = item.serviceDetail || item.service_detail || {};
@@ -216,6 +235,7 @@ const serializeCatalogItem = (row = {}, options = {}) => {
         name: item.name,
         description: item.description,
         category: 'service',
+        mode_item_preset: item.mode_item_preset || 'service',
         unit_of_measure: item.unit_of_measure || 'service',
         default_sale_price: item.default_sale_price,
         vat_type: item.vat_type || 'vatable',
@@ -802,6 +822,7 @@ export const buildCreateServiceCatalogItemUseCase = ({ serviceRepository }) => a
             name,
             category: 'service',
             product_type: null,
+            mode_item_preset: 'service',
             product_folder: null,
             description: trim(payload.description, 4000) || null,
             current_stock: 0,
@@ -817,6 +838,7 @@ export const buildCreateServiceCatalogItemUseCase = ({ serviceRepository }) => a
         }, { transaction });
         await serviceRepository.upsertServiceDetail(item.item_id, serviceDetailsPayload(payload), { transaction });
         const created = await serviceRepository.findServiceItemById(item.item_id, { transaction });
+        assertServiceCatalogSalePriceReady(created);
         await transaction.commit();
         return ok({ service: serializeCatalogItem(created) });
     } catch (error) {
@@ -847,6 +869,7 @@ export const buildUpdateServiceCatalogItemUseCase = ({ serviceRepository }) => a
         }
         itemPayload.category = 'service';
         itemPayload.product_type = null;
+        itemPayload.mode_item_preset = 'service';
         itemPayload.current_stock = 0;
         itemPayload.fifo_enabled = false;
 
@@ -856,6 +879,7 @@ export const buildUpdateServiceCatalogItemUseCase = ({ serviceRepository }) => a
         }
         await serviceRepository.upsertServiceDetail(normalizedItemId, serviceDetailsPayload(payload, { includeDefaults: false }), { transaction, lock: true });
         const service = await serviceRepository.findServiceItemById(normalizedItemId, { transaction });
+        assertServiceCatalogSalePriceReady(service);
         await transaction.commit();
         return ok({ service: serializeCatalogItem(service) });
     } catch (error) {
@@ -2534,6 +2558,11 @@ const serializeSettlementTransaction = (transaction = {}) => {
         document_context: row.document_context,
         payment_type: row.payment_type,
         payment_status: row.payment_status,
+        cash_received: row.cash_received == null ? null : row.cash_received,
+        change_amount: row.change_amount == null ? null : row.change_amount,
+        shift_id: row.shift_id || null,
+        terminal_id: row.terminal_id || null,
+        location_id: row.location_id || null,
         total_amount: row.total_amount,
         created_at: row.created_at
     };
@@ -2561,7 +2590,7 @@ const callInventoryStockCommand = async ({ inventoryCommandService, command, mov
 // separate document (ADR 0016:20) -- and is idempotent: settling an already-
 // settled booking replays the existing transaction rather than creating a
 // second one.
-export const buildSettleServiceBookingUseCase = ({ serviceRepository, inventoryCommandService }) => async ({
+export const buildSettleServiceBookingUseCase = ({ serviceRepository, inventoryCommandService, posRepository }) => async ({
     bookingId,
     payload = {},
     user = null
@@ -2583,6 +2612,32 @@ export const buildSettleServiceBookingUseCase = ({ serviceRepository, inventoryC
                 DomainErrorCode.CONFLICT,
                 `Cannot settle a booking with status ${booking.status}`,
                 { statusCode: 409 }
+            );
+        }
+
+        const normalizedShiftId = toPositiveInt(payload.shift_id);
+        const normalizedTerminalId = trim(payload.terminal_id, 100);
+        const normalizedLocationId = toPositiveInt(payload.location_id);
+        if (!normalizedUserId || !normalizedShiftId || !normalizedTerminalId || !normalizedLocationId) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Settlement requires an authenticated cashier, active shift, terminal, and location',
+                { statusCode: 422 }
+            );
+        }
+        if (typeof posRepository?.findOpenTerminalShift !== 'function') {
+            throw new DomainError(DomainErrorCode.CONFLICT, 'POS shift verification is unavailable', { statusCode: 409 });
+        }
+        const activeShift = await posRepository.findOpenTerminalShift({
+            terminalId: normalizedTerminalId,
+            cashierId: normalizedUserId,
+            locationId: normalizedLocationId
+        }, { transaction, lock: true });
+        if (!activeShift || Number(activeShift.pos_terminal_shift_id) !== normalizedShiftId) {
+            throw new DomainError(
+                DomainErrorCode.AUTHORIZATION_FAILED,
+                'Settlement requires the authenticated cashier\'s matching open POS shift',
+                { statusCode: 403 }
             );
         }
 
@@ -2672,10 +2727,27 @@ export const buildSettleServiceBookingUseCase = ({ serviceRepository, inventoryC
             lines: allLines.map((line) => ({ item_id: line.item_id, quantity: line.quantity, unit_price: line.unit_price }))
         });
         const invoiceNumber = await serviceRepository.nextSettlementInvoiceNumber({ transaction });
-        const locationId = toPositiveInt(booking.location_id) || toPositiveInt(payload.location_id) || null;
+        const bookingLocationId = toPositiveInt(booking.location_id);
+        if (bookingLocationId && bookingLocationId !== normalizedLocationId) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Booking location must match the active POS shift location',
+                { statusCode: 422 }
+            );
+        }
+        const locationId = bookingLocationId || normalizedLocationId;
         const paymentType = POS_PAYMENT_TYPES.includes(String(payload.payment_type || '').trim())
             ? String(payload.payment_type).trim()
             : 'cash';
+        const cashReceived = paymentType === 'cash' ? round4(payload.cash_received) : null;
+        if (paymentType === 'cash' && (!Number.isFinite(cashReceived) || cashReceived < totalAmount)) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Cash received must cover the settlement total',
+                { statusCode: 422, details: { total_amount: totalAmount, cash_received: cashReceived } }
+            );
+        }
+        const changeAmount = paymentType === 'cash' ? round4(cashReceived - totalAmount) : null;
 
         const { transactionId, lines: createdPosLines } = await serviceRepository.createSettlementTransaction({
             header: {
@@ -2685,7 +2757,8 @@ export const buildSettleServiceBookingUseCase = ({ serviceRepository, inventoryC
                 idempotency_key: idempotencyKey,
                 request_hash: requestHash,
                 cashier_id: normalizedUserId,
-                terminal_id: trim(payload.terminal_id, 100) || null,
+                shift_id: normalizedShiftId,
+                terminal_id: normalizedTerminalId,
                 order_source: 'in_store',
                 order_method: 'appointment',
                 fulfillment_status: 'completed',
@@ -2694,8 +2767,8 @@ export const buildSettleServiceBookingUseCase = ({ serviceRepository, inventoryC
                 customer_email: booking.customer_email || null,
                 customer_phone: booking.customer_phone || null,
                 payment_type: paymentType,
-                cash_received: payload.cash_received == null ? null : round4(payload.cash_received),
-                change_amount: payload.change_amount == null ? null : round4(payload.change_amount),
+                cash_received: cashReceived,
+                change_amount: changeAmount,
                 subtotal_amount: totalAmount,
                 vatable_sales: vatableSales,
                 vat_amount: vatAmount,

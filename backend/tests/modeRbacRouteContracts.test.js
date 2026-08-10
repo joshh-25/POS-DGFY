@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { describe, expect, it } from '@jest/globals';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,6 +21,11 @@ describe('mode RBAC route contracts', () => {
       .toBeLessThan(source.indexOf("router.get('/dashboard'"));
     expect(source).toContain('PERMISSIONS.SERVICES.actions.VIEW_BOOKINGS');
     expect(source).toContain('PERMISSIONS.POS.actions.VIEW_POS');
+    expect(source).toContain("router.get('/option-groups', modePermission(PERMISSIONS.SERVICES.actions.VIEW_CATALOG");
+    expect(source).toContain("router.post('/option-groups', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_CATALOG");
+    expect(source).toContain("router.put('/catalog/:itemId/option-groups', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_CATALOG");
+    expect(source).not.toContain('PERMISSIONS.SERVICES.actions.VIEW_SERVICES');
+    expect(source).not.toContain('PERMISSIONS.SERVICES.actions.MANAGE_SERVICES');
   });
 
   it('keeps F&B capability denial before permission checks and uses switchable fallback', () => {
@@ -45,16 +51,16 @@ describe('mode RBAC route contracts', () => {
       .filter((line) => /^router\.(get|post|put|patch|delete)\(/.test(line.trim()));
 
     // Every endpoint carries a capability guard, and it precedes modePermission.
-    expect(routeLines).toHaveLength(26);
+    expect(routeLines).toHaveLength(27);
     routeLines.forEach((line) => {
       const guard = line.includes('requireMenuModifiers') ? 'requireMenuModifiers' : 'requireFnbDining';
       expect(line).toContain(guard);
       expect(line.indexOf(guard)).toBeLessThan(line.indexOf('modePermission('));
     });
 
-    // Exactly the four modifier-management endpoints are de-gated from fnbDining.
+    // Exactly the five modifier-management endpoints are de-gated from fnbDining.
     const modifierRoutes = routeLines.filter((line) => line.includes('requireMenuModifiers'));
-    expect(modifierRoutes).toHaveLength(4);
+    expect(modifierRoutes).toHaveLength(5);
     expect(modifierRoutes.every((line) => /'\/(item-)?modifier-groups/.test(line))).toBe(true);
   });
 });

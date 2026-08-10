@@ -265,6 +265,8 @@ const buildItemFolderInclude = () => {
 const buildFnbCatalogIncludes = () => {
     const FnbModifierGroup = safeGetModel('FnbModifierGroup');
     const FnbModifierOption = safeGetModel('FnbModifierOption');
+    const FnbModifierGroupLocationAvailability = safeGetModel('FnbModifierGroupLocationAvailability');
+    const FnbModifierOptionLocationAvailability = safeGetModel('FnbModifierOptionLocationAvailability');
     const FnbItemKitchenRoute = safeGetModel('FnbItemKitchenRoute');
     const FnbKitchenStation = safeGetModel('FnbKitchenStation');
     const includes = [];
@@ -279,8 +281,17 @@ const buildFnbCatalogIncludes = () => {
             include: [{
                 model: FnbModifierOption,
                 as: 'options',
+                required: false,
+                include: FnbModifierOptionLocationAvailability ? [{
+                    model: FnbModifierOptionLocationAvailability,
+                    as: 'locationAvailability',
+                    required: false
+                }] : []
+            }, ...(FnbModifierGroupLocationAvailability ? [{
+                model: FnbModifierGroupLocationAvailability,
+                as: 'locationAvailability',
                 required: false
-            }]
+            }] : [])]
         });
     }
     if (FnbItemKitchenRoute) {
@@ -698,12 +709,36 @@ const buildTransactionInclude = () => ([
             'provider',
             'provider_delivery_id',
             'status',
+            'delivery_personnel_id',
+            'assigned_by',
+            'assigned_shift_id',
+            'assigned_at',
             'tracking_url',
             'pickup_ready_at',
             'picked_up_at',
             'delivered_at',
             'failure_reason',
             'provider_payload'
+        ],
+        include: [
+            {
+                model: dbStore.get('DeliveryPersonnel'),
+                as: 'deliveryPersonnel',
+                required: false,
+                attributes: ['delivery_personnel_id', 'display_name', 'phone', 'location_id', 'is_active']
+            },
+            {
+                model: dbStore.get('User'),
+                as: 'assignedByUser',
+                required: false,
+                attributes: ['user_id', 'username', 'email']
+            },
+            {
+                model: dbStore.get('PosTerminalShift'),
+                as: 'assignedShift',
+                required: false,
+                attributes: ['pos_terminal_shift_id', 'terminal_id', 'location_id', 'cashier_id', 'status', 'opened_at']
+            }
         ]
     },
     {
@@ -3666,6 +3701,71 @@ export const posRepository = {
         });
         if (!row) return null;
         await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    async listActiveDeliveryPersonnel({ locationId = null, transaction = null } = {}) {
+        const DeliveryPersonnel = dbStore.get('DeliveryPersonnel');
+        const normalizedLocationId = toPositiveInt(locationId);
+        const where = { is_active: true };
+        if (normalizedLocationId) {
+            where[Op.or] = [
+                { location_id: null },
+                { location_id: normalizedLocationId }
+            ];
+        }
+
+        const rows = await DeliveryPersonnel.findAll({
+            where,
+            attributes: ['delivery_personnel_id', 'display_name', 'phone', 'location_id', 'is_active'],
+            order: [['display_name', 'ASC'], ['delivery_personnel_id', 'ASC']],
+            transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    async findActiveDeliveryPersonnelById(deliveryPersonnelId, { locationId = null, transaction = null, lock = false } = {}) {
+        const DeliveryPersonnel = dbStore.get('DeliveryPersonnel');
+        const normalizedPersonnelId = toPositiveInt(deliveryPersonnelId);
+        if (!normalizedPersonnelId) return null;
+
+        const normalizedLocationId = toPositiveInt(locationId);
+        const where = {
+            delivery_personnel_id: normalizedPersonnelId,
+            is_active: true
+        };
+        if (normalizedLocationId) {
+            where[Op.or] = [
+                { location_id: null },
+                { location_id: normalizedLocationId }
+            ];
+        }
+
+        const row = await DeliveryPersonnel.findOne({
+            where,
+            attributes: ['delivery_personnel_id', 'display_name', 'phone', 'location_id', 'is_active'],
+            transaction,
+            lock: lock && transaction ? transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async assignDeliveryPersonnelToJob(orderId, payload = {}, options = {}) {
+        const DeliveryJob = dbStore.get('DeliveryJob');
+        const row = await DeliveryJob.findOne({
+            where: { pos_transaction_id: orderId },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+
+        await row.update({
+            delivery_personnel_id: payload.delivery_personnel_id,
+            assigned_by: payload.assigned_by,
+            assigned_shift_id: payload.assigned_shift_id,
+            assigned_at: payload.assigned_at,
+            ...(payload.status ? { status: payload.status } : {})
+        }, { transaction: options.transaction });
         return toPlain(row);
     }
 };

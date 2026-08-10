@@ -18,6 +18,14 @@ import {
     resolveStockBearingDescriptor
 } from '../../shared/utils/stockBearingPolicy.js';
 
+const safeGetOptionalModel = (name) => {
+    try {
+        return dbStore.get(name) || null;
+    } catch {
+        return null;
+    }
+};
+
 // Availability for an item whose descriptor says it isn't stock-tracked
 // (untracked, toggle, or capacity/service): no per-location stock row should
 // ever collapse it to "out of stock" (that was bug 5's "?? 0" conflation for
@@ -315,6 +323,8 @@ const buildStorefrontCatalogDetailIncludes = () => {
     const ItemFolder = dbStore.get('ItemFolder');
     const FnbModifierGroup = dbStore.get('FnbModifierGroup');
     const FnbModifierOption = dbStore.get('FnbModifierOption');
+    const FnbModifierGroupLocationAvailability = safeGetOptionalModel('FnbModifierGroupLocationAvailability');
+    const FnbModifierOptionLocationAvailability = safeGetOptionalModel('FnbModifierOptionLocationAvailability');
 
     if (ServiceItemDetail) {
         includes.push({
@@ -359,8 +369,17 @@ const buildStorefrontCatalogDetailIncludes = () => {
                 ? [{
                     model: FnbModifierOption,
                     as: 'options',
+                    required: false,
+                    include: FnbModifierOptionLocationAvailability ? [{
+                        model: FnbModifierOptionLocationAvailability,
+                        as: 'locationAvailability',
+                        required: false
+                    }] : []
+                }, ...(FnbModifierGroupLocationAvailability ? [{
+                    model: FnbModifierGroupLocationAvailability,
+                    as: 'locationAvailability',
                     required: false
-                }]
+                }] : [])]
                 : []
         });
     }

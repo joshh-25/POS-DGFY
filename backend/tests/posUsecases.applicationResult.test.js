@@ -1366,6 +1366,12 @@ describe('pos use-cases application result contract', () => {
                     line_id: 9,
                     item_id: 101,
                     quantity: 2,
+                    fnb_modifiers_snapshot: [{
+                        modifier_option_id: 44,
+                        option_name: 'Extra sauce',
+                        sku_item_id: 202,
+                        location_id: 3
+                    }],
                     item: { item_id: 101, category: 'product', name: 'Starter Kit' }
                 }
             ]
@@ -1412,7 +1418,7 @@ describe('pos use-cases application result contract', () => {
         }));
 
         expect(result.success).toBe(true);
-        expect(inventoryCommandService.issueStockForOnlineFulfillment).toHaveBeenCalledTimes(1);
+        expect(inventoryCommandService.issueStockForOnlineFulfillment).toHaveBeenCalledTimes(2);
         expect(inventoryCommandService.issueStockForOnlineFulfillment).toHaveBeenCalledWith(
             expect.objectContaining({
                 item_id: 101,
@@ -1421,6 +1427,16 @@ describe('pos use-cases application result contract', () => {
                 location_id: 3,
                 reference_type: 'POS',
                 reference_id: 'ONLINE:55:9'
+            }),
+            7,
+            transaction
+        );
+        expect(inventoryCommandService.issueStockForOnlineFulfillment).toHaveBeenCalledWith(
+            expect.objectContaining({
+                item_id: 202,
+                quantity: 2,
+                location_id: 3,
+                reference_id: 'ONLINE:55:9:MOD:44'
             }),
             7,
             transaction

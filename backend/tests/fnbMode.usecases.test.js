@@ -14,6 +14,7 @@ import {
   buildUpsertItemKitchenRouteUseCase,
   buildUpdateCheckStatusUseCase,
   buildUpdateKitchenTicketStatusUseCase,
+  buildUpdateModifierGroupUseCase,
   buildUpdateReservationStatusUseCase,
   buildUpdateServiceChargeSettingsUseCase
 } from '../src/modules/fnb/usecases/fnbUseCases.js';
@@ -51,6 +52,39 @@ describe('Food & Beverage mode use cases', () => {
     expect(result.success).toBe(false);
     expect(result.error.code).toBe(DomainErrorCode.VALIDATION_FAILED);
     expect(repository.beginTransaction).not.toHaveBeenCalled();
+  });
+
+  it('requires combo choice groups to select at least one option', async () => {
+    const repository = buildTransactionalRepository();
+    const result = await buildCreateModifierGroupUseCase({ fnbRepository: repository })({
+      payload: { name: 'Choose a side', group_kind: 'combo_choice', required: false, min_select: 0, max_select: 1, options: [{ name: 'Rice' }] }
+    });
+    expect(result.success).toBe(false);
+    expect(result.error.message).toBe('Combo choice groups must be required and select at least one option');
+    expect(repository.beginTransaction).not.toHaveBeenCalled();
+  });
+
+  it('updates modifier pricing, channel state, inventory links, and location availability transactionally', async () => {
+    const repository = buildTransactionalRepository({
+      findActiveItemsByIds: jest.fn().mockResolvedValue([{ item_id: 90 }]),
+      findActiveLocationsByIds: jest.fn().mockResolvedValue([{ location_id: 4 }]),
+      updateModifierGroup: jest.fn().mockResolvedValue({ modifier_group_id: 5, name: 'Extras' })
+    });
+    const result = await buildUpdateModifierGroupUseCase({ fnbRepository: repository })({
+      modifierGroupId: 5,
+      payload: {
+        name: 'Extras', min_select: 0, max_select: 2, visible_in_pos: true, visible_in_storefront: false,
+        location_availability: [{ location_id: 4, is_available: true }],
+        options: [{ modifier_option_id: 8, name: 'Extra rice', price_delta: 25, sku_item_id: 90, is_sold_out: false }]
+      }
+    });
+
+    expect(result.success).toBe(true);
+    expect(repository.updateModifierGroup).toHaveBeenCalledWith(5, expect.objectContaining({
+      group: expect.objectContaining({ visible_in_storefront: false }),
+      options: [expect.objectContaining({ modifier_option_id: 8, price_delta: 25, sku_item_id: 90 })],
+      location_availability: [{ location_id: 4, is_available: true }]
+    }), { transaction: repository.transaction });
   });
 
   it('opens a dine-in check and marks the selected table seated inside the transaction', async () => {

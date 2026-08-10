@@ -3,6 +3,7 @@ import {
   dashboard,
   listModifierGroups,
   createModifierGroup,
+  updateModifierGroup,
   listDiningAreas,
   createDiningArea,
   updateTableStatus,
@@ -34,6 +35,8 @@ import { requireWorkflowCapability } from '../middleware/workflowModeCapability.
 import {
   validateFnbIncludeInactiveQuery,
   validateCreateFnbModifierGroup,
+  validateFnbModifierGroupIdParam,
+  validateUpdateFnbModifierGroup,
   validateCreateFnbDiningArea,
   validateFnbTableIdParam,
   validateUpdateFnbTableStatus,
@@ -93,6 +96,7 @@ router.get('/dashboard', requireFnbDining, modePermission(PERMISSIONS.FNB.action
 
 router.get('/modifier-groups', requireMenuModifiers, modePermission(PERMISSIONS.FNB.actions.VIEW_MENU, PERMISSIONS.INVENTORY.actions.VIEW_ITEMS), validateFnbIncludeInactiveQuery, listModifierGroups);
 router.post('/modifier-groups', requireMenuModifiers, modePermission(PERMISSIONS.FNB.actions.MANAGE_MENU, PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateCreateFnbModifierGroup, createModifierGroup);
+router.put('/modifier-groups/:modifier_group_id', requireMenuModifiers, modePermission(PERMISSIONS.FNB.actions.MANAGE_MENU, PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateFnbModifierGroupIdParam, validateUpdateFnbModifierGroup, updateModifierGroup);
 
 router.get('/dining-areas', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.VIEW_DINING, PERMISSIONS.POS.actions.VIEW_POS), validateFnbIncludeInactiveQuery, listDiningAreas);
 router.post('/dining-areas', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.MANAGE_DINING, PERMISSIONS.POS.actions.TRANSACT_POS), validateCreateFnbDiningArea, createDiningArea);

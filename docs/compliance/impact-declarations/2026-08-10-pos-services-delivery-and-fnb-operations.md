@@ -59,3 +59,6 @@ boundaries.
 4. Storefront production build and Services booking validation tests pass.
 5. Full post-merge validation and migration status checks are required before
    handoff.
+6. Backend POS, F&B, Services, storefront repository, validation, transport,
+   settlement, and RBAC contracts are committed with their focused regression
+   tests and the repository architecture guardrails passing.

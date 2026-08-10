@@ -3,6 +3,7 @@ import {
   buildFnbDashboardUseCase,
   buildListModifierGroupsUseCase,
   buildCreateModifierGroupUseCase,
+  buildUpdateModifierGroupUseCase,
   buildListDiningAreasUseCase,
   buildCreateDiningAreaUseCase,
   buildUpdateDiningTableStatusUseCase,
@@ -31,6 +32,7 @@ import {
 export const fnbDashboardUseCase = buildFnbDashboardUseCase({ fnbRepository });
 export const listFnbModifierGroupsUseCase = buildListModifierGroupsUseCase({ fnbRepository });
 export const createFnbModifierGroupUseCase = buildCreateModifierGroupUseCase({ fnbRepository });
+export const updateFnbModifierGroupUseCase = buildUpdateModifierGroupUseCase({ fnbRepository });
 export const listFnbDiningAreasUseCase = buildListDiningAreasUseCase({ fnbRepository });
 export const createFnbDiningAreaUseCase = buildCreateDiningAreaUseCase({ fnbRepository });
 export const updateFnbDiningTableStatusUseCase = buildUpdateDiningTableStatusUseCase({ fnbRepository });

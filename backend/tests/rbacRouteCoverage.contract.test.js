@@ -177,6 +177,30 @@ describe('RBAC-01 route-to-permission coverage contracts', () => {
                 'posController.requirePairedTerminal'
             ]
         });
+        expectRouteContract({
+            source: posRoutes,
+            method: 'get',
+            routePath: '/delivery-personnel',
+            requiredFragments: [
+                'checkPermission(PERMISSIONS.POS.actions.VIEW_POS)',
+                'validateDeliveryPersonnelListQuery',
+                'posController.listActiveDeliveryPersonnel'
+            ]
+        });
+        expectRouteContract({
+            source: posRoutes,
+            method: 'patch',
+            routePath: '/orders/:id/delivery-job/assignment',
+            requiredFragments: [
+                'checkPermission(PERMISSIONS.POS.actions.TRANSACT_POS)',
+                'validatePosTransactionIdParam',
+                'validateAssignDeliveryPersonnel',
+                'posController.assignDeliveryPersonnel'
+            ],
+            forbiddenFragments: [
+                'posController.requirePairedTerminal'
+            ]
+        });
     });
 
     it('guards admin incident-review routes with admin authentication and action validation', () => {
