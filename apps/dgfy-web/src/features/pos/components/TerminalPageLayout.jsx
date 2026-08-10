@@ -107,6 +107,7 @@ export default function TerminalPageLayout({
     setQueueLocationScopeId,
     incomingOrderActionState,
     handleIncomingOrderStatusChange,
+    handleDeliveryJobStatusChange,
     handleOpenCashCollection,
     handleOpenIncomingOrderReceipt,
     incomingReceiptOpeningId,
@@ -792,6 +793,7 @@ export default function TerminalPageLayout({
                 onlineOrderSoundEnabled={onlineOrderSoundEnabled}
                 incomingOrderActionState={incomingOrderActionState}
                 handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
+                handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
                 handleOpenCashCollection={handleOpenCashCollection}
                 handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
                 incomingReceiptOpeningId={incomingReceiptOpeningId}
