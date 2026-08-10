@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, Info, Maximize, MapPin, Navigation } from 'lucide-react';
-import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMap.jsx';
+import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
 import { SimpleCheckoutExpandedMapModal } from './SimpleCheckoutExpandedMapModal.jsx';
 import { SimpleCheckoutFulfillmentChoices } from './SimpleCheckoutFulfillmentChoices.jsx';
 import { SimpleCheckoutSavedAddressesModal } from './SimpleCheckoutSavedAddressesModal.jsx';

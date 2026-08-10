@@ -42,7 +42,60 @@ const resolveStoreContextHeaders = ({ storeSlug, selectedStore, selectedLocation
   return headers;
 };
 
-export const requestJson = async (url, {
+// Issue #282, Phase F: collapses genuinely concurrent, identical, unsignaled
+// GETs into a single network request -- e.g. two components mounting in the
+// same tick that both need the same catalog/discovery data. Deliberately
+// NOT a time-based response cache: Phase B already restores real HTTP
+// caching via `cache` + the backend's Cache-Control headers, and a second,
+// app-level TTL cache here would just be a harder-to-invalidate duplicate
+// of that. Entries are removed the instant the shared request settles, so
+// this never serves a stale response to a later, non-concurrent call.
+//
+// Scoped deliberately narrow:
+// - Unsignaled GETs only. A caller that passes its own `signal` has
+//   explicit cancellation needs a shared in-flight request can't safely
+//   honor (aborting it would also cancel every other waiter), so those
+//   calls always get their own dedicated fetch, same as before this
+//   existed.
+// - Never for a bearer-token (`authToken`) request. Those are exactly the
+//   authenticated call sites this cache should not touch -- coalescing
+//   them risks a session-boundary race (e.g. a logout landing between two
+//   otherwise-identical requests) that a public, cookie-scoped storefront
+//   read doesn't have.
+const inFlightGetRequests = new Map();
+
+const buildGetDedupKey = (resolvedUrl, headers) => JSON.stringify([
+  resolvedUrl,
+  headers['x-store-slug'] || '',
+  headers['x-tenant-slug'] || '',
+  headers['x-tenant-id'] || '',
+  headers['x-location-id'] || ''
+]);
+
+export const requestJson = async (url, options = {}) => {
+  const { method = 'GET', signal, authToken = '' } = options;
+  const normalizedMethod = String(method || 'GET').toUpperCase();
+  const trimmedAuthToken = String(authToken || '').trim();
+  if (normalizedMethod !== 'GET' || signal || trimmedAuthToken) {
+    return performRequestJson(url, options);
+  }
+
+  const resolvedUrl = withApiOrigin(url);
+  const headers = resolveStoreContextHeaders(options);
+  const dedupKey = buildGetDedupKey(resolvedUrl, headers);
+
+  const existing = inFlightGetRequests.get(dedupKey);
+  if (existing) return existing;
+
+  const inFlight = performRequestJson(url, options)
+    .finally(() => {
+      if (inFlightGetRequests.get(dedupKey) === inFlight) inFlightGetRequests.delete(dedupKey);
+    });
+  inFlightGetRequests.set(dedupKey, inFlight);
+  return inFlight;
+};
+
+const performRequestJson = async (url, {
   method = 'GET',
   body,
   storeSlug,

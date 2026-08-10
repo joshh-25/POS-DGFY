@@ -3,7 +3,7 @@ import { Info, MapPin, Navigation } from 'lucide-react';
 
 import { DiscoveryMapCard } from '../../Components/store/DiscoveryResponsiveLayout.jsx';
 import { openStorefrontActionLink, sanitizeExternalLink } from '../../shared/utils/externalLinks.js';
-import { StoresMap } from './StoresMap.jsx';
+import { StoresMap } from './StoresMapLazy.jsx';
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../src/observability/analyticsEvents.js';
 
 export function DiscoveryHeroMapStage({

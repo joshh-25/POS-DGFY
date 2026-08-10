@@ -90,6 +90,7 @@ nul
 /*.txt
 /*.log
 pixel-agents/
+/scratch/
 
 # Bun
 bun.lock

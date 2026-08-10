@@ -159,7 +159,13 @@ export function useStorefrontCatalog({
 
     return {
       coverImageUrl: withAssetOrigin(heroSectionModel?.coverImageUrl),
+      // Issue #282, Phase D: passed through from the shared hero model
+      // (normalizeStorefrontPageModel.js) rather than re-derived --
+      // resolveStorefrontImageSources already resolves the asset origin
+      // internally for every URL it touches.
+      coverImageSources: heroSectionModel?.coverImageSources || null,
       profileImageUrl: withAssetOrigin(heroSectionModel?.profileImageUrl),
+      profileImageSources: heroSectionModel?.profileImageSources || null,
       name: heroSectionModel?.storeName || selectedStore?.tenant_name || 'Storefront',
       tagline: heroSectionModel?.tagline || '',
       statusLabel: heroSectionModel?.statusLabel || (selectedStore?.storefront_open ? 'Open' : 'Closed'),
@@ -306,7 +312,13 @@ export function useStorefrontCatalog({
         });
     return {
       coverImageUrl: withAssetOrigin(heroSectionModel?.coverImageUrl),
+      // Issue #282, Phase D: passed through from the shared hero model
+      // (normalizeStorefrontPageModel.js) rather than re-derived --
+      // resolveStorefrontImageSources already resolves the asset origin
+      // internally for every URL it touches.
+      coverImageSources: heroSectionModel?.coverImageSources || null,
       profileImageUrl: withAssetOrigin(heroSectionModel?.profileImageUrl),
+      profileImageSources: heroSectionModel?.profileImageSources || null,
       name: heroSectionModel?.storeName || selectedStore?.tenant_name || 'Storefront',
       tagline: heroSectionModel?.tagline || '',
       statusLabel: heroSectionModel?.statusLabel || (selectedStore?.storefront_open ? 'Open' : 'Closed'),
