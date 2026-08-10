@@ -15,10 +15,15 @@ import {
     WORKFLOW_MODE_ENGINE
 } from '../src/modules/shared/constants/workflowModes.js';
 
-// issue #178 "templates become the Operating Mode" follow-up: pins the
-// registration Industry catalog against both the mode registry and the
-// template preset catalog so the three can never silently drift apart.
-describe('registration industry catalog contracts', () => {
+// issue #178 "templates become the Operating Mode" follow-up, re-scoped by
+// issue #316: REGISTRATION_INDUSTRIES is no longer the runtime catalog (see
+// registration_industries, the DB table it now seeds - migration
+// 20260812000002-seed-registration-industries.cjs) - it is the seed
+// baseline and fail-open fallback. These pins protect that role: every
+// property they assert (mode/template pairing, base_mode match, preset
+// accounting, order) must hold of the seed data the platform ships with,
+// independent of anything an admin does to the table afterward.
+describe('registration industry seed-baseline integrity', () => {
     const offeredModes = WORKFLOW_MODE_VALUES.filter((mode) => !(mode in WORKFLOW_MODE_ALIASES));
 
     it('maps every industry to an offered, de-aliased workflow mode', () => {

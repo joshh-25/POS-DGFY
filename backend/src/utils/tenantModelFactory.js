@@ -21,11 +21,13 @@ export const NON_TENANT_MODEL_EXPORTS = new Set([
     'StoreConfigurationTemplate',
     'StoreConfigurationTemplateModule',
     'StoreConfigurationTemplateAuditLog',
-    // Landlord registration-Industry visibility store (issue #178 Phase
-    // 39): admin curation state, not a template. Never cloned into a
-    // tenant database for the same reason as the template rows above.
-    'RegistrationIndustryVisibility',
-    'RegistrationIndustryVisibilityAuditLog',
+    // Landlord registration-Industry catalog (issue #316; supersedes the
+    // Phase 39 visibility-only store, retired in the same phase): the
+    // DB-driven successor to the hardcoded REGISTRATION_INDUSTRIES
+    // constant. Admin curation state, never cloned into a tenant database
+    // for the same reason as the template rows above.
+    'RegistrationIndustry',
+    'RegistrationIndustryAuditLog',
     'DgfyAccountBusinessAuditLog',
     'DgfyLegalAcknowledgement',
     'Payment',

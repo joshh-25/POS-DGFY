@@ -61,7 +61,11 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260809000003-add-disabled-capabilities-to-workflow-mode-change-log.cjs' },
         { name: '20260810000001-add-is-canonical-to-store-configuration-templates.cjs' },
         { name: '20260810000002-seed-store-configuration-template-presets.cjs' },
-        { name: '20260811000001-create-registration-industry-visibility.cjs' }
+        { name: '20260811000001-create-registration-industry-visibility.cjs' },
+        { name: '20260812000001-create-registration-industries.cjs' },
+        { name: '20260812000002-seed-registration-industries.cjs' },
+        { name: '20260812000003-fold-registration-industry-visibility.cjs' },
+        { name: '20260812000004-drop-registration-industry-visibility.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {

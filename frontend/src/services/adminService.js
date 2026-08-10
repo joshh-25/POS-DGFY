@@ -1068,12 +1068,20 @@ export const deprecateStoreTemplate = async (templateId, reason) => (
 ).data;
 
 /**
- * Registration Industry visibility curation (issue #178 Phase 39): whether
- * an Industry is offered on merchant-facing signup surfaces. Distinct from
- * Store Template curation above - keyed by industry key, not template id.
+ * Registration Industry catalog curation (issue #178 Phase 39 visibility;
+ * full CRUD as of issue #316) - keyed by industry key, not template id,
+ * distinct from Store Template curation above.
  */
 export const listRegistrationIndustryVisibility = async () => (
     await adminApi.get('/admin/registration-industries', requireAdminAuthConfig())
+).data;
+
+export const createRegistrationIndustry = async (payload) => (
+    await adminApi.post('/admin/registration-industries', payload, requireAdminAuthConfig())
+).data;
+
+export const updateRegistrationIndustry = async (industryKey, payload) => (
+    await adminApi.patch(`/admin/registration-industries/${industryKey}`, payload, requireAdminAuthConfig())
 ).data;
 
 export const setRegistrationIndustryVisibility = async (industryKey, { hidden, reason }) => (

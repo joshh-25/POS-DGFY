@@ -10,12 +10,19 @@ topic: dgfy_industry_classification
 # DGFY Industry Classification Guide
 
 This is DGFY's own "Sample Business Niches by Industry" reference guide,
-transcribed here as the canonical source for the registration Industry
-catalog (`packages/shared-constants/src/registrationIndustries.js`, issue
-#178 Phases 31-33 — see "Registration Industry layer" in
-`docs/features/STORE_TEMPLATES_AND_PROFILES.md`). It classifies a business
-by its **main activity**, not simply the products or services it also
-offers.
+transcribed here as the source the registration Industry catalog was
+originally seeded from (issue #178 Phases 31-33 — see "Registration
+Industry layer" in `docs/features/STORE_TEMPLATES_AND_PROFILES.md`). As
+of issue #316 (ADR 0058), the catalog itself is database-owned
+(`registration_industries`, landlord-only) and admin-creatable through
+the "Registration industries" panel; `packages/shared-constants/src/registrationIndustries.js`'s
+`REGISTRATION_INDUSTRIES` is now the **seed baseline** that table was
+populated from, and the fail-open fallback if the database is
+unreachable — not the live source. This guide's classification of the 11
+industries below remains the accurate reference for what the baseline
+means; an admin authoring a new industry beyond the baseline follows the
+same classification principle. It classifies a business by its **main
+activity**, not simply the products or services it also offers.
 
 11 of the 12 industries below are modeled in the registration catalog, each
 mapped to a `workflow_mode` and (where one is registerable) a
@@ -301,42 +308,54 @@ Folio) fit it. Tracked by the draft "software sales as a new way to sell"
 GitHub issue referenced in `docs/development/STORE_TEMPLATES_HANDOFF.md`
 §6 (not yet filed — pending explicit approval).
 
-## Registration visibility (issue #178 Phase 39)
+## Registration industries: admin curation (issue #178 Phase 39; full CRUD via issue #316)
 
-An admin can hide any of the 11 modeled industries from the merchant-facing
-signup surfaces without touching this classification guide or the
-`REGISTRATION_INDUSTRIES` catalog constant — visibility is landlord-database
-curation state, not a catalog edit:
+An admin can hide, create, or edit a registration industry from the
+merchant-facing signup surfaces without touching this classification guide
+or the `REGISTRATION_INDUSTRIES` seed-baseline constant — the catalog and
+its visibility state are both landlord-database rows, curated through one
+panel:
 
-- Store: `registration_industry_visibility` (landlord-only, one row per
-  industry an admin has deliberately touched; row absence means visible).
-  `registration_industry_visibility_audit_logs` records every hide/unhide
-  with an actor and a required reason.
+- Store: `registration_industries` (landlord-only, one row per offered
+  industry — including any an admin has created beyond the 11-industry
+  baseline this guide documents) carries `hidden`/`hidden_reason` directly
+  as columns, alongside `label`/`summary`/`niches`/`workflow_mode`/
+  `template_key`/`display_order`/`is_system`. `registration_industry_audit_logs`
+  records every create/update/hide/unhide with an actor and a required
+  reason. (This supersedes the original Phase 39 store,
+  `registration_industry_visibility` — its data was folded in and the
+  table retired once every consumer cut over; see
+  `docs/development/STORE_TEMPLATES_HANDOFF.md` §5.)
 - Admin surface: the "Registration industries" panel on the Store Template
   Manager page (`frontend/Pages/admin/StoreTemplateManager.jsx`), and the
-  `GET/PATCH /api/v1/admin/registration-industries*` endpoints behind it.
+  `GET/POST/PATCH /api/v1/admin/registration-industries*` endpoints
+  behind it.
 - Merchant contract: `GET /api/v1/registration/industries` always returns
-  all 11 entries — it never shortens the array — with a `hidden: boolean`
-  field per entry. The merchant-facing `IndustrySelect` dropdown
+  every row — it never shortens the array — with a `hidden: boolean` field
+  per entry (plus `template_modules`, the paired template's live module
+  list). The merchant-facing `IndustrySelect` dropdown
   (`frontend/src/features/registration/IndustrySelect.jsx`) filters out any
   `hidden: true` entry; the admin-only `IndustryPicker`
   (`frontend/src/features/registration/IndustryPicker.jsx`, TenantManager's
   assisted-provisioning panel) instead annotates it "Hidden from
   registration" and leaves it selectable.
-- Server enforcement: `registerCompanyRequestUseCase.js` rejects a hidden
-  `industryKey` with a 400 (`hidden_industry_key`) even if the client
-  bypasses the dropdown's own filtering. Admin assisted provisioning is
-  unaffected by construction — it sends `workflowMode`/`templateKey`
-  directly, never `industryKey`.
+- Server enforcement: `registerCompanyRequestUseCase.js` resolves
+  `industryKey` against the catalog table (async, fail-open to the seed
+  constant), and rejects a hidden `industryKey` with a 400
+  (`hidden_industry_key`) even if the client bypasses the dropdown's own
+  filtering. Admin assisted provisioning is unaffected by construction —
+  it sends `workflowMode`/`templateKey` directly, never `industryKey`.
 - **Fail-open everywhere.** A landlord-DB outage never blocks or reshapes
-  registration: the catalog read degrades to `hidden: false` on every
-  entry, and the write-side rejection is skipped entirely, on any lookup
-  failure.
+  registration: the catalog read degrades to the seed-baseline constant
+  (`hidden: false` on every entry), and the write-side rejection is
+  skipped entirely, on any lookup failure.
+- **Baseline (`is_system: true`) rows are protected**: `industry_key` and
+  `workflow_mode` can never be edited on them; everything else, including
+  `template_key`, stays editable. No route hard-deletes any row — `hidden`
+  is the only removal-from-merchant-view mechanism (ADR 0058 clause 3).
 - The pre-existing `visibility` ENUM on `store_configuration_templates`
   (write-only since it shipped, never read anywhere) is **not** the
-  mechanism here — it only covers the 7 template-backed industries, and
-  four (Healthcare, Ticketing and Transport, Logistics and Distribution,
-  Education and Institutions) have no template row at all. See
+  mechanism here, and never was — see
   `docs/development/STORE_TEMPLATES_HANDOFF.md` §5 for the fuller writeup
   and that column's superseded status.
 
@@ -354,38 +373,53 @@ two industries sharing one `workflow_mode` (`fnb`) — a two-member group in
 everything but name. `retail`/`micro_retail` is the same pattern for
 retail.
 
-**Planned approach when this is built** (ADR 0057's code-owned-constant
-pattern, not a database change): a new frozen constant
-`REGISTRATION_INDUSTRY_GROUPS` in
-`packages/shared-constants/src/registrationIndustries.js`, shaped like the
-existing `CAPABILITY_MODULE_GROUPS` (`{label, order}` per group key, plus a
-`members: [industryKey, ...]` list this constant would add). The merchant
-dropdown (`IndustrySelect.jsx`) would render `<optgroup>` elements sourced
-from it — zero API change, since the public catalog response already
-carries every industry's key. Consequences to plan for when this lands:
+**Planned approach when this is built** — updated by issue #316/ADR 0058:
+since the catalog itself moved from a code-owned constant to a database
+table, grouping most naturally becomes a **column**, not a new shared
+constant. Two shapes are plausible and undecided:
+
+- A `group_key` (or `parent_key`) column directly on `registration_industries`,
+  paired with a small, still code-owned group-metadata constant (label,
+  display order per group — the group *vocabulary* can stay engineering-owned
+  even though group *membership* is now data, mirroring how `workflow_mode`
+  stays code-owned while an industry's *pairing* with one is data).
+- Or a lighter-weight approach: keep grouping purely presentational,
+  computed client-side from a naming/prefix convention over existing rows
+  (no schema change at all) — cheaper, but fragile if group membership
+  ever needs to be independent of key naming.
+
+Either way, the merchant dropdown (`IndustrySelect.jsx`) would render
+`<optgroup>` elements — no change to the public catalog response's overall
+shape beyond whatever field carries the grouping. Consequences to plan for
+when this lands:
 
 - `backend/tests/registrationIndustries.contract.test.js`'s "unique,
-  contiguous 1-based `order` values" pin
-  (`orders` must equal `[1..N]` with no gaps) needs re-scoping to
-  per-group ordering, or a second, group-level order field.
-- The visibility store above stays industry-keyed, not group-keyed — hiding
-  a whole group would mean toggling each member individually, which is
-  probably fine at 11 industries but worth revisiting if the catalog grows.
+  contiguous 1-based `order` values" pin now describes the **seed
+  baseline** only (ADR 0058) — a DB-level grouping feature would need its
+  own contract test over the live table, independent of that pin.
+- Hiding a whole group would mean toggling each member individually
+  through the existing per-row `hidden` column, which is probably fine at
+  today's catalog size but worth revisiting if it grows substantially.
 
 This is deliberately **not a phase** — documented as a roadmap item only,
-per the same "code-owned constant first, template/DB linkage only behind a
-future, separately-authorized decision" posture ADR 0057 established for
-the fulfillment-profile vocabulary.
+pending its own design and authorization, per ADR 0058's own posture that
+new mechanism (a delete affordance, a grouping column) is out of scope for
+that decision.
 
 ## See also
 
+- `docs/architecture/adr/0058-registration-industry-catalog.md` — the
+  governing decision for the DB-driven catalog: what an admin-authored
+  industry may and may not compose, and why baseline rows are protected.
 - `docs/features/STORE_TEMPLATES_AND_PROFILES.md` — the "Registration
-  Industry layer" section: how this guide becomes the registration
-  catalog, how the server derives `workflow_mode`/`store_template_key`,
-  and the two deliberately-excluded post-approval-only presets.
-- `docs/development/STORE_TEMPLATES_HANDOFF.md` §4 — the
+  Industry layer" section: how this guide originally became the
+  registration catalog, how the server derives
+  `workflow_mode`/`store_template_key`, and the two deliberately-excluded
+  post-approval-only presets.
+- `docs/development/STORE_TEMPLATES_HANDOFF.md` §4-5 — the
   native/transitional/external engine classification referenced
-  throughout the mappings above.
-- `packages/shared-constants/src/registrationIndustries.js` — the code
-  transcription of this guide, contract-tested against
+  throughout the mappings above, and the full DB-driven catalog mechanics.
+- `packages/shared-constants/src/registrationIndustries.js` — the seed
+  baseline and fail-open fallback the `registration_industries` table was
+  populated from, pinned by
   `backend/tests/registrationIndustries.contract.test.js`.

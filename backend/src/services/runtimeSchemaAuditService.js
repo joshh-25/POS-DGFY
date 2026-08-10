@@ -62,7 +62,11 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260809000003-add-disabled-capabilities-to-workflow-mode-change-log.cjs',
     '20260810000001-add-is-canonical-to-store-configuration-templates.cjs',
     '20260810000002-seed-store-configuration-template-presets.cjs',
-    '20260811000001-create-registration-industry-visibility.cjs'
+    '20260811000001-create-registration-industry-visibility.cjs',
+    '20260812000001-create-registration-industries.cjs',
+    '20260812000002-seed-registration-industries.cjs',
+    '20260812000003-fold-registration-industry-visibility.cjs',
+    '20260812000004-drop-registration-industry-visibility.cjs'
 ]);
 
 const REQUIRED_TABLE_COLUMNS = Object.freeze({

@@ -57,7 +57,7 @@ export default function IndustryPicker({ value, onSelect, disabled = false, idPr
         {industries.map((entry) => {
           const isSelected = entry.key === value;
           const isExpanded = expandedKey === entry.key;
-          const whatYoullGet = resolveWhatYoullGet(entry.template_key);
+          const whatYoullGet = resolveWhatYoullGet(entry.template_key, entry.template_modules);
 
           return (
             <div

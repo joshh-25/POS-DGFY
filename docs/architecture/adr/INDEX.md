@@ -80,6 +80,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0055 | [Tenant-Scoped POS Catalog Realtime Invalidation](0055-tenant-scoped-pos-catalog-realtime-invalidation.md) | `accepted` | tenant_scoped_pos_catalog_realtime_invalidation | 2027-02-08 | 0 |
 | 0056 | [Store Configuration Templates and Profiles](0056-store-configuration-templates-and-profiles.md) | `amended` | store_configuration_templates_and_profiles | 2027-02-09 | 3 |
 | 0057 | [Services Fulfillment Profiles](0057-services-fulfillment-profiles.md) | `accepted` | services_fulfillment_profiles | 2027-02-09 | 5 |
+| 0058 | [Registration Industry Catalog](0058-registration-industry-catalog.md) | `accepted` | registration_industry_catalog | 2027-02-12 | 4 |
 
 ## Renumbered (collision stubs)
 

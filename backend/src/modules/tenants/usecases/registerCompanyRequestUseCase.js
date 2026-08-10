@@ -54,7 +54,7 @@ export const buildRegisterCompanyRequestUseCase = ({
     trackEngagementEvent,
     addEmailTenantMapping,
     dgfyAccountRepository,
-    registrationIndustryVisibilityRepository = null,
+    registrationIndustryRepository = null,
     emailService,
     idGenerator,
     getTenantRegistrationApprovalMode = () => TENANT_REGISTRATION_APPROVAL_MODES.MANUAL,
@@ -84,8 +84,35 @@ export const buildRegisterCompanyRequestUseCase = ({
         // truth for both workflowMode and the store template; a workflowMode
         // sent alongside it must agree or the request is rejected below
         // (issue #178 "templates become the Operating Mode" follow-up).
+        //
+        // Resolution is DB-first (issue #316): registrationIndustryRepository
+        // is queried for the row, with REGISTRATION_INDUSTRIES (now the seed
+        // baseline that table was populated from) as the fail-open fallback
+        // on any lookup error, when no repository is injected, or when the
+        // DB simply has no row for the key (there is no delete path for a
+        // seeded key, so this can only mean an unmigrated/unseeded
+        // environment). The row and the constant entry share field names
+        // (workflow_mode, template_key), so every derivation below is
+        // unchanged regardless of which one resolvedIndustry came from.
         const normalizedIndustryKey = typeof industryKey === 'string' ? industryKey.trim() : '';
-        const resolvedIndustry = normalizedIndustryKey ? resolveRegistrationIndustry(normalizedIndustryKey) : null;
+        let industryRow = null;
+        if (normalizedIndustryKey && registrationIndustryRepository) {
+            try {
+                industryRow = await registrationIndustryRepository.findByKey(normalizedIndustryKey);
+            } catch (industryLookupError) {
+                logger?.warn?.('[Registration] Industry catalog lookup failed; falling back to the seed-baseline constant', {
+                    industry_key: normalizedIndustryKey,
+                    error: industryLookupError.message
+                });
+            }
+        }
+        const resolvedIndustry = normalizedIndustryKey
+            ? (industryRow || resolveRegistrationIndustry(normalizedIndustryKey))
+            : null;
+        // A constant-fallback resolution never hides an industry - only a
+        // real DB row can carry hidden: true, so this fails open by
+        // construction on every lookup-failure/absent-repository path above.
+        const industryHidden = industryRow?.hidden === true;
         const industryKeyUnresolvable = Boolean(normalizedIndustryKey) && !resolvedIndustry;
         const rawWorkflowModeProvided = rawWorkflowMode !== undefined && rawWorkflowMode !== null && String(rawWorkflowMode).trim() !== '';
         const industryModeConflict = Boolean(resolvedIndustry)
@@ -152,25 +179,12 @@ export const buildRegisterCompanyRequestUseCase = ({
                 ));
             }
 
-            // Admin visibility toggle (issue #178 Phase 39): an industry an
-            // admin has hidden from registration is rejected here even
-            // though the client can technically still send its key (the
-            // frontend filters it out of the picker, but nothing stops a
-            // direct API call). A lookup failure fails OPEN - a landlord-DB
-            // outage must never block registration, mirroring every other
-            // fail-open posture this feature already has (the catalog
-            // endpoint's own template/visibility lookups).
-            let industryHidden = false;
-            if (resolvedIndustry && registrationIndustryVisibilityRepository) {
-                try {
-                    industryHidden = await registrationIndustryVisibilityRepository.isHidden(normalizedIndustryKey);
-                } catch (visibilityError) {
-                    logger?.warn?.('[Registration] Industry visibility lookup failed; proceeding as visible', {
-                        industry_key: normalizedIndustryKey,
-                        error: visibilityError.message
-                    });
-                }
-            }
+            // Admin hide (issue #178 Phase 39, folded into the catalog row by
+            // issue #316): an industry an admin has hidden from registration
+            // is rejected here even though the client can technically still
+            // send its key (the frontend filters it out of the picker, but
+            // nothing stops a direct API call). industryHidden was already
+            // resolved fail-open above, alongside resolvedIndustry itself.
             if (industryHidden) {
                 await tracker.failed({
                     failureCode: 'validation_failed',

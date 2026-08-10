@@ -188,12 +188,22 @@ export const resolveRegistrationIndustry = (industryKey) => (
 );
 
 /**
- * The full merchant-facing entry, joined with the engine classification a
- * template-less industry still needs to be honest about (issue #178
- * final-touch pass): `engine` ('native' | 'transitional' | 'external') and
- * `engine_note` (the planned sibling-app name, transitional modes only).
- * Pure derivation - no new state, so it can never drift from
- * WORKFLOW_MODE_ENGINE.
+ * The engine classification a template-less industry still needs to be
+ * honest about (issue #178 final-touch pass): `engine`
+ * ('native' | 'transitional' | 'external') and `engine_note` (the planned
+ * sibling-app name, transitional modes only). Pure derivation over any
+ * object carrying a `workflow_mode` - no new state, so it can never drift
+ * from WORKFLOW_MODE_ENGINE. Extracted (issue #316) so a DB-driven catalog
+ * row gets the exact same join as a constant entry, not a re-implementation
+ * of it.
+ */
+export const withEngineClassification = (entry) => ({
+    engine: WORKFLOW_MODE_ENGINE[entry.workflow_mode] || 'native',
+    engine_note: WORKFLOW_MODE_ENGINE_NOTES[entry.workflow_mode] || null
+});
+
+/**
+ * The full merchant-facing entry, joined with the engine classification.
  */
 export const describeRegistrationIndustry = (industryKey) => {
     const entry = resolveRegistrationIndustry(industryKey);
@@ -201,8 +211,7 @@ export const describeRegistrationIndustry = (industryKey) => {
     return Object.freeze({
         key: industryKey,
         ...entry,
-        engine: WORKFLOW_MODE_ENGINE[entry.workflow_mode] || 'native',
-        engine_note: WORKFLOW_MODE_ENGINE_NOTES[entry.workflow_mode] || null
+        ...withEngineClassification(entry)
     });
 };
 

@@ -40,7 +40,7 @@ function IndustryInfoModal({ open, onClose, titleId, title, entries }) {
         </div>
         <div className="mt-4 grid gap-4">
           {entries.map((entry) => {
-            const modules = resolveWhatYoullGet(entry.template_key);
+            const modules = resolveWhatYoullGet(entry.template_key, entry.template_modules);
             return (
               <section key={entry.key} className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-3">
                 <h3 className="text-sm font-semibold text-slate-800">{entry.label}</h3>
@@ -159,7 +159,7 @@ export default function IndustrySelect({ value, onSelect, disabled = false, idPr
           {selectedEntry.niches?.length > 0 ? (
             <span className="mt-1 block text-xs text-slate-400">{selectedEntry.niches.slice(0, 4).join(', ')}…</span>
           ) : null}
-          {resolveWhatYoullGet(selectedEntry.template_key).length > 0 ? (
+          {resolveWhatYoullGet(selectedEntry.template_key, selectedEntry.template_modules).length > 0 ? (
             <button
               type="button"
               aria-haspopup="dialog"

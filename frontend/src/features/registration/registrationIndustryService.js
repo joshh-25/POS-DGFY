@@ -1,14 +1,17 @@
 import api from '../../services/api.js';
 import { REGISTRATION_INDUSTRIES_DESCRIBED } from '@sieitzz/shared-constants/registrationIndustries';
 
-// issue #178 "templates become the Operating Mode" follow-up. Every signup
-// surface's Industry picker reads GET /api/v1/registration/industries, but
-// - unlike DGFY legal terms, which deliberately blocks registration until
-//   loaded - a fetch failure here falls back to the local, code-owned
-//   REGISTRATION_INDUSTRIES_DESCRIBED constant rather than blocking. Both
-//   are the same catalog; the network round trip only exists so an admin's
-//   template publish/deprecate (which changes whether a template_key is
-//   live) can reach the picker without a frontend redeploy.
+// issue #178 "templates become the Operating Mode" follow-up, made
+// DB-driven by issue #316. Every signup surface's Industry picker reads
+// GET /api/v1/registration/industries, but - unlike DGFY legal terms,
+// which deliberately blocks registration until loaded - a fetch failure
+// here falls back to the local, code-owned REGISTRATION_INDUSTRIES_DESCRIBED
+// constant rather than blocking. That constant is now the seed baseline
+// the DB catalog was populated from, not the live source: it carries no
+// `hidden` field and no `template_modules` field (whatYoullGet.js falls
+// back to STORE_TEMPLATE_PRESETS for the latter), so a fetch failure shows
+// every seeded industry with no "What you'll get" for anything created
+// after the fact - fail-open, matching the backend's own posture.
 let cachedIndustries = null;
 let inFlightRequest = null;
 

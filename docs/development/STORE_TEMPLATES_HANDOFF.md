@@ -280,93 +280,126 @@ forwards the resolved `templateKey` into the same
 `templateKey` option, the gap was purely that the organic funnel never
 populated it.
 
-### The registration Industry catalog
+### The registration Industry catalog (DB-driven since issue #316)
 
-`packages/shared-constants/src/registrationIndustries.js` is the
-merchant-facing layer above Store Templates: `REGISTRATION_INDUSTRIES`,
-one entry per industry in `docs/features/INDUSTRY_CLASSIFICATION.md`
-(DGFY's own business-niche guide), each `{ order, label, summary, niches,
-workflow_mode, template_key }`. `GET /api/v1/registration/industries`
-serves it (joined against live template publish-status and, since Phase
-39, admin visibility state) to the two components in
-`frontend/src/features/registration/`: `IndustrySelect.jsx` (the merchant
-dropdown on `/business/grow` and `/register-company`, since Phase 38) and
-`IndustryPicker.jsx` (admin-only, TenantManager's assisted-provisioning
-panel — the card-based UI every signup surface used before Phase 38).
+The `registration_industries` landlord table is the merchant-facing layer
+above Store Templates and the runtime source `GET
+/api/v1/registration/industries` reads: one row per industry, each
+`{ industry_key, label, summary, niches, workflow_mode, template_key,
+display_order, hidden, is_system }`. It is seeded on deploy from
+`packages/shared-constants/src/registrationIndustries.js`'s
+`REGISTRATION_INDUSTRIES` (the 11 entries transcribed from
+`docs/features/INDUSTRY_CLASSIFICATION.md`, DGFY's own business-niche
+guide) via `20260812000002-seed-registration-industries.cjs` — idempotent
+per key, never overwriting an admin edit. **That constant is now the seed
+baseline and the read/write paths' fail-open fallback, not the runtime
+catalog** — see ADR 0058.
 
-**To add a new registration industry** (most common case — prefer this
-over adding a mode, see below):
+The endpoint (joined against live template publish-status) serves
+`frontend/src/features/registration/`'s two components: `IndustrySelect.jsx`
+(the merchant dropdown on `/business/grow` and `/register-company`, since
+Phase 38) and `IndustryPicker.jsx` (admin-only, TenantManager's
+assisted-provisioning panel).
 
-1. Add an entry to `REGISTRATION_INDUSTRIES` with the next `order` value,
-   a `label`/`summary`/`niches` transcribed from product's classification
-   guide, and either an existing `workflow_mode` + a `template_key`
-   pointing at a **published** preset whose `base_mode` matches (this is
-   contract-pinned), or `workflow_mode` with `template_key: null` if no
-   template should back it yet.
-2. If the industry needs a preset that doesn't exist, create and publish
-   one first (§5 above, "Curating templates") — then reference its key.
-3. Run `backend/tests/registrationIndustries.contract.test.js` — it will
-   fail loudly on a mismatched `base_mode`/`template_key` pairing, a
-   non-`published` template, an `order` collision, or (if the mode is
-   `external`) a non-null `template_key`.
-4. Update `docs/features/INDUSTRY_CLASSIFICATION.md` with the new
-   industry's full write-up.
+**To add a new registration industry — an admin action, no code, no PR:**
 
-No migration, no new endpoint, no frontend change beyond the constant —
-`IndustryPicker` and the catalog endpoint both derive the full list from
-`REGISTRATION_INDUSTRIES`.
+1. If the industry needs a template that doesn't exist yet, create and
+   publish one first (§5 above, "Curating templates").
+2. Open the "Registration industries" panel on the Store Template Manager
+   page (`frontend/Pages/admin/StoreTemplateManager.jsx`) and use the "New
+   industry" form: key, label, summary, niches, workflow mode, and (for
+   any non-`external`-engine mode) the published template to pair it with
+   — the panel only offers templates whose `base_mode` matches the chosen
+   mode. A reason is required and audited. The new industry starts
+   **hidden**; unhide it via the same panel once it's ready for merchants.
+3. Backend: `POST /api/v1/admin/registration-industries`
+   (`adminRegistrationIndustryUseCases.js`'s `validateModeAndTemplate()`
+   enforces the same base_mode/published/null-iff-external invariants the
+   old contract test pinned for the constant — now enforced server-side
+   for every write, seeded or admin-created).
+4. Optionally update `docs/features/INDUSTRY_CLASSIFICATION.md` with the
+   new industry's write-up for narrative/reference purposes — the catalog
+   itself no longer depends on that doc or the constant to function.
+
+`backend/tests/registrationIndustries.contract.test.js` still exists and
+still runs on every change to the constant, but its role changed: it now
+pins **seed-baseline integrity** (the 11 shipped entries stay internally
+consistent — mode/template pairing, `order` contiguity, null-iff-external)
+rather than the live registration catalog's shape.
 
 **Why adding a *template* (or a registration-catalog entry) is now
-usually the right move instead of adding a mode.** Before this arc, the
+usually the right move instead of adding a mode.** Before issue #178, the
 only way to make a new kind of business registerable was a new
-`workflow_mode` — code, migration, playbook, a new capability list. Now:
-a template is a curated bundle of existing capability modules (a UI
-action, no code); a registration-catalog entry is a constant edit (no
-migration). `micro_fnb` ("Micro Food & Beverage") is the proof: it needed
-zero new modes, zero new capabilities — only a template
-(`fnb_counter_service`, already existed) and a catalog entry pointing at
-it. Reach for a new `workflow_mode` only when the business genuinely needs
-a capability, transaction lifecycle, or POS workflow shape that no
-existing mode's capability list can express even with the additive/
-subtractive overlays — see `MODE_DEVELOPMENT_PLAYBOOK.md` for that
-heavier path, which now also requires declaring (or explicitly opting
-out of) a registration Industry entry for the new mode.
+`workflow_mode` — code, migration, playbook, a new capability list. Now: a
+template is a curated bundle of existing capability modules (a UI action,
+no code); a registration-catalog entry is likewise a UI action (an admin
+form, no code, no migration) since issue #316. `micro_fnb` ("Micro Food &
+Beverage") was the original proof of the first half: it needed zero new
+modes, zero new capabilities — only a template (`fnb_counter_service`,
+already existed) and a catalog entry pointing at it. Reach for a new
+`workflow_mode` only when the business genuinely needs a capability,
+transaction lifecycle, or POS workflow shape that no existing mode's
+capability list can express even with the additive/subtractive overlays —
+see `MODE_DEVELOPMENT_PLAYBOOK.md` for that heavier path, which now also
+requires declaring (or explicitly opting out of) a registration Industry
+entry for the new mode.
 
-### Admin visibility: hiding an industry from registration (issue #178 Phase 39)
+### Admin visibility, create, and edit (issue #178 Phase 39; full CRUD via issue #316)
 
-An admin can hide any of the 11 industries from merchant-facing signup
-without editing `REGISTRATION_INDUSTRIES` or removing anything — visibility
-is landlord-database state, curated through the "Registration industries"
-panel on the Store Template Manager page
+An admin curates the entire catalog — hide/show, create, and edit — through
+the "Registration industries" panel on the Store Template Manager page
 (`frontend/Pages/admin/StoreTemplateManager.jsx`), backed by
-`GET/PATCH /api/v1/admin/registration-industries*`.
+`GET/POST/PATCH /api/v1/admin/registration-industries*`.
 
 Mechanics:
 
-- New landlord-only tables `registration_industry_visibility` (row absence
-  = visible) and `registration_industry_visibility_audit_logs` (every
-  hide/unhide, with actor + required reason). Keyed by industry key, not a
-  template id — four industries have no template row at all.
-- `GET /api/v1/registration/industries` always returns all 11 entries,
-  each carrying `hidden: boolean`; the array is never shortened.
+- `hidden` (plus `hidden_reason`, `updated_by`) is a column on
+  `registration_industries` itself — every offered industry has a row, so
+  "row absence" no longer means anything about visibility (contrast with
+  the retired Phase 39 store below, where it did). `registration_industry_audit_logs`
+  records every create/update/hide/unhide, with actor + required reason
+  and a before/after snapshot.
+- `GET /api/v1/registration/industries` always returns every row, each
+  carrying `hidden: boolean` and (since issue #316) `template_modules`
+  (the paired template's live module list, so "What you'll get" renders
+  even for an admin-created template not in `STORE_TEMPLATE_PRESETS`); the
+  array is never shortened.
 - `IndustrySelect.jsx` filters hidden entries out; `IndustryPicker.jsx`
   (admin-only) annotates them "Hidden from registration" but leaves them
   selectable, since assisted provisioning bypasses `industryKey` entirely.
-- `registerCompanyRequestUseCase.js` rejects a hidden `industryKey`
-  server-side (400, `hidden_industry_key`) as defense in depth against a
-  direct API call bypassing the dropdown's filtering.
+- `registerCompanyRequestUseCase.js` resolves `industryKey` against the
+  catalog table first (async), falling back fail-open to the seed-baseline
+  constant on any lookup error or absent row; it rejects a hidden
+  `industryKey` server-side (400, `hidden_industry_key`) as defense in
+  depth against a direct API call bypassing the dropdown's filtering.
 - Every lookup — catalog read and registration-write enforcement alike —
   fails OPEN on a landlord-DB error: registration is never blocked by this
   feature being unavailable.
+- **Seeded (baseline) rows are protected**: `is_system: true`, set only by
+  the seed migration. Their `industry_key` and `workflow_mode` can never
+  be edited; `label`, `summary`, `niches`, `display_order`, `template_key`,
+  and `hidden` remain editable. No route performs a hard delete — matching
+  Store Templates' own no-DELETE precedent; `hidden` is the only
+  removal-from-merchant-view mechanism (ADR 0058 clause 3).
+
+**Retired: the Phase 39 `registration_industry_visibility` store.** Its
+`hidden` state and audit trail were folded into `registration_industries`
+(migration `20260812000003-fold-registration-industry-visibility.cjs`)
+and the tables themselves dropped
+(`20260812000004-drop-registration-industry-visibility.cjs`) once every
+consumer had cut over — safe because PR #311 (which shipped that store)
+had not yet reached `main`/production when issue #316 landed. The admin
+API's route shapes (`PATCH /:industryKey/visibility`, `GET
+/:industryKey/audit-logs`) are unchanged; only their backing table moved.
 
 **The pre-existing `visibility` ENUM on `store_configuration_templates`
-(shipped with the original template catalog migration, Phase 13) is
-superseded by this feature and remains dead** — it was write-only from day
-one (set on create, never read by any consumer), and even if wired up it
-would only cover the 7 template-backed industries, not the 4 preset-less
-ones (Healthcare, Ticketing and Transport, Logistics and Distribution,
-Education and Institutions). Left in place rather than removed to avoid
-churning `adminTemplateValidator.js` and three test files for zero
+(shipped with the original template catalog migration, Phase 13) remains
+dead**, now superseded twice over — first by the Phase 39 visibility
+store, now by `registration_industries.hidden` directly. It was
+write-only from day one (set on create, never read by any consumer), and
+even wired up would only ever have covered template-backed industries,
+never the mode-only ones. Left in place rather than removed to avoid
+churning `adminTemplateValidator.js` and several test files for zero
 behavioral gain; a candidate for a future cleanup migration if it's ever
 worth the churn.
 

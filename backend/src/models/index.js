@@ -123,8 +123,8 @@ import DgfyAccountAdminAuditLogFactory from './Landlord/DgfyAccountAdminAuditLog
 import StoreConfigurationTemplateFactory from './Landlord/StoreConfigurationTemplate.js';
 import StoreConfigurationTemplateModuleFactory from './Landlord/StoreConfigurationTemplateModule.js';
 import StoreConfigurationTemplateAuditLogFactory from './Landlord/StoreConfigurationTemplateAuditLog.js';
-import RegistrationIndustryVisibilityFactory from './Landlord/RegistrationIndustryVisibility.js';
-import RegistrationIndustryVisibilityAuditLogFactory from './Landlord/RegistrationIndustryVisibilityAuditLog.js';
+import RegistrationIndustryFactory from './Landlord/RegistrationIndustry.js';
+import RegistrationIndustryAuditLogFactory from './Landlord/RegistrationIndustryAuditLog.js';
 import DgfyAccountBusinessAuditLogFactory from './Landlord/DgfyAccountBusinessAuditLog.js';
 import DgfyLegalAcknowledgementFactory from './Landlord/DgfyLegalAcknowledgement.js';
 import DgfyCustomerActivityFactory from './Landlord/DgfyCustomerActivity.js';
@@ -197,8 +197,8 @@ const DgfyAccountAdminAuditLog = DgfyAccountAdminAuditLogFactory(sequelize);
 const StoreConfigurationTemplate = StoreConfigurationTemplateFactory(sequelize);
 const StoreConfigurationTemplateModule = StoreConfigurationTemplateModuleFactory(sequelize);
 const StoreConfigurationTemplateAuditLog = StoreConfigurationTemplateAuditLogFactory(sequelize);
-const RegistrationIndustryVisibility = RegistrationIndustryVisibilityFactory(sequelize);
-const RegistrationIndustryVisibilityAuditLog = RegistrationIndustryVisibilityAuditLogFactory(sequelize);
+const RegistrationIndustry = RegistrationIndustryFactory(sequelize);
+const RegistrationIndustryAuditLog = RegistrationIndustryAuditLogFactory(sequelize);
 const DgfyAccountBusinessAuditLog = DgfyAccountBusinessAuditLogFactory(sequelize);
 const DgfyLegalAcknowledgement = DgfyLegalAcknowledgementFactory(sequelize);
 const DgfyCustomerActivity = DgfyCustomerActivityFactory(sequelize);
@@ -918,8 +918,8 @@ const db = {
   StoreConfigurationTemplate,
   StoreConfigurationTemplateModule,
   StoreConfigurationTemplateAuditLog,
-  RegistrationIndustryVisibility,
-  RegistrationIndustryVisibilityAuditLog,
+  RegistrationIndustry,
+  RegistrationIndustryAuditLog,
   ServiceOptionGroup,
   ServiceOption,
   ServiceItemOptionGroup,
@@ -1107,8 +1107,8 @@ export {
   StoreConfigurationTemplate,
   StoreConfigurationTemplateModule,
   StoreConfigurationTemplateAuditLog,
-  RegistrationIndustryVisibility,
-  RegistrationIndustryVisibilityAuditLog,
+  RegistrationIndustry,
+  RegistrationIndustryAuditLog,
   ServiceOptionGroup,
   ServiceOption,
   ServiceItemOptionGroup,

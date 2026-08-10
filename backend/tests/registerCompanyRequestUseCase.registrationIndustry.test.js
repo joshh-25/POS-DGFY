@@ -23,7 +23,9 @@ const createUseCase = () => {
     trackEngagementEvent: jest.fn().mockResolvedValue({}),
     addEmailTenantMapping: jest.fn().mockResolvedValue({}),
     dgfyAccountRepository: { recordLegalAcknowledgement: jest.fn().mockResolvedValue({}), upsertPendingFounderMembership: jest.fn().mockResolvedValue({}) },
-    registrationIndustryVisibilityRepository: { isHidden: jest.fn().mockResolvedValue(false) },
+    // Default: no DB row for any key - every resolution falls back to the
+    // seed-baseline constant, matching pre-#316 behavior exactly.
+    registrationIndustryRepository: { findByKey: jest.fn().mockResolvedValue(null) },
     provisionTenant: jest.fn(),
     createPayMongoChildAccountForTenant: jest.fn(),
     shouldAutoCreatePayMongoChildAccounts: jest.fn().mockReturnValue(false),
@@ -35,15 +37,19 @@ const createUseCase = () => {
   return { deps, tenant, useCase: buildRegisterCompanyRequestUseCase(deps) };
 };
 
-// issue #178 "templates become the Operating Mode" follow-up: industryKey
-// derives both workflow_mode and the store template server-side, so a
-// signup surface using the Industry picker never sends a raw templateKey.
+// issue #178 "templates become the Operating Mode" follow-up, made
+// DB-driven by issue #316: industryKey resolves against the
+// registration_industries catalog first, falling back fail-open to the
+// REGISTRATION_INDUSTRIES seed-baseline constant. Either way it derives
+// both workflow_mode and the store template server-side, so a signup
+// surface using the Industry picker never sends a raw templateKey.
 describe('registerCompanyRequestUseCase - registration Industry catalog', () => {
   it('derives workflow_mode and store_template_key from industryKey alone', async () => {
     const { deps, useCase } = createUseCase();
     const result = await useCase({ body: { ...baseBody, industryKey: 'micro_fnb' }, dgfyAccount, correlationId: 'industry-derive' });
 
     expect(result.success).toBe(true);
+    expect(deps.registrationIndustryRepository.findByKey).toHaveBeenCalledWith('micro_fnb');
     expect(result.data.payload.data).toEqual(expect.objectContaining({
       workflow_mode: 'fnb',
       registration_industry: 'micro_fnb',
@@ -69,6 +75,7 @@ describe('registerCompanyRequestUseCase - registration Industry catalog', () => 
     const result = await useCase({ body: { ...baseBody, workflowMode: 'retail' }, dgfyAccount, correlationId: 'legacy-mode-only' });
 
     expect(result.success).toBe(true);
+    expect(deps.registrationIndustryRepository.findByKey).not.toHaveBeenCalled();
     expect(result.data.payload.data).toEqual(expect.objectContaining({
       workflow_mode: 'retail',
       registration_industry: null,
@@ -128,22 +135,44 @@ describe('registerCompanyRequestUseCase - registration Industry catalog', () => 
     }));
   });
 
-  // Phase 39: an industry an admin has hidden from registration is rejected
+  // issue #316: a DB row can describe an industry the seed-baseline
+  // constant has never heard of - an admin-created industry.
+  it('registers with an admin-created industry not present in the seed-baseline constant', async () => {
+    const { deps, useCase } = createUseCase();
+    deps.registrationIndustryRepository.findByKey.mockImplementation(async (key) => (
+      key === 'pet_grooming'
+        ? { industry_key: 'pet_grooming', workflow_mode: 'services', template_key: 'services_shop', hidden: false }
+        : null
+    ));
+
+    const result = await useCase({ body: { ...baseBody, industryKey: 'pet_grooming' }, dgfyAccount, correlationId: 'db-only-industry' });
+
+    expect(result.success).toBe(true);
+    expect(result.data.payload.data).toEqual(expect.objectContaining({
+      workflow_mode: 'services',
+      registration_industry: 'pet_grooming',
+      store_template_key: 'services_shop'
+    }));
+  });
+
+  // Admin hide (issue #178 Phase 39, folded into the catalog row by issue
+  // #316): an industry an admin has hidden from registration is rejected
   // even though the client can technically still send its key - the
   // picker filters it client-side, but nothing stops a direct API call.
-  describe('admin visibility toggle (issue #178 Phase 39)', () => {
+  describe('admin hide enforcement', () => {
     it('rejects a hidden industryKey with a 400 before touching the database', async () => {
       const { deps, useCase } = createUseCase();
-      deps.registrationIndustryVisibilityRepository.isHidden.mockImplementation(async (key) => key === 'micro_fnb');
+      deps.registrationIndustryRepository.findByKey.mockImplementation(async (key) => (
+        key === 'micro_fnb' ? { industry_key: 'micro_fnb', workflow_mode: 'fnb', template_key: 'fnb_counter_service', hidden: true } : null
+      ));
 
       const result = await useCase({ body: { ...baseBody, industryKey: 'micro_fnb' }, dgfyAccount, correlationId: 'hidden-industry' });
 
-      // Pins the exact key isHidden() is called with - a stray reference to
-      // a field the resolved catalog entry doesn't carry (e.g.
-      // resolvedIndustry.key, which resolveRegistrationIndustry() never
-      // sets) would call isHidden(undefined) and this mock would return
-      // false, silently letting a hidden industry through.
-      expect(deps.registrationIndustryVisibilityRepository.isHidden).toHaveBeenCalledWith('micro_fnb');
+      // Pins the exact key findByKey() is called with - a stray reference
+      // to a field the resolved catalog entry doesn't carry would call
+      // findByKey(undefined) and this mock would return null, silently
+      // letting a hidden industry through via the constant fallback.
+      expect(deps.registrationIndustryRepository.findByKey).toHaveBeenCalledWith('micro_fnb');
       expect(result.success).toBe(false);
       expect(result.error.statusCode).toBe(400);
       expect(deps.tenantAdminRepository.createTenant).not.toHaveBeenCalled();
@@ -152,22 +181,27 @@ describe('registerCompanyRequestUseCase - registration Industry catalog', () => 
       }));
     });
 
-    it('fails open (registration proceeds) when the visibility lookup itself rejects', async () => {
+    it('fails open (registration proceeds via the seed-baseline constant, never hidden) when the catalog lookup itself rejects', async () => {
       const { deps, useCase } = createUseCase();
-      deps.registrationIndustryVisibilityRepository.isHidden.mockRejectedValue(new Error('landlord DB unreachable'));
+      deps.registrationIndustryRepository.findByKey.mockRejectedValue(new Error('landlord DB unreachable'));
 
-      const result = await useCase({ body: { ...baseBody, industryKey: 'micro_fnb' }, dgfyAccount, correlationId: 'visibility-lookup-fails' });
+      const result = await useCase({ body: { ...baseBody, industryKey: 'micro_fnb' }, dgfyAccount, correlationId: 'catalog-lookup-fails' });
 
       expect(result.success).toBe(true);
+      expect(result.data.payload.data).toEqual(expect.objectContaining({
+        workflow_mode: 'fnb',
+        store_template_key: 'fnb_counter_service'
+      }));
       expect(deps.tenantAdminRepository.createTenant).toHaveBeenCalled();
+      expect(deps.logger.warn).toHaveBeenCalled();
     });
 
-    it('fails open (registration proceeds) when registrationIndustryVisibilityRepository is not injected at all', async () => {
+    it('fails open (registration proceeds) when registrationIndustryRepository is not injected at all', async () => {
       const { deps } = createUseCase();
-      delete deps.registrationIndustryVisibilityRepository;
+      delete deps.registrationIndustryRepository;
       const useCase = buildRegisterCompanyRequestUseCase(deps);
 
-      const result = await useCase({ body: { ...baseBody, industryKey: 'micro_fnb' }, dgfyAccount, correlationId: 'no-visibility-dep' });
+      const result = await useCase({ body: { ...baseBody, industryKey: 'micro_fnb' }, dgfyAccount, correlationId: 'no-repository-dep' });
 
       expect(result.success).toBe(true);
       expect(deps.tenantAdminRepository.createTenant).toHaveBeenCalled();

@@ -9,10 +9,23 @@ import { CAPABILITY_MODULES, STORE_TEMPLATE_PRESETS } from '@sieitzz/shared-cons
 // Extracted out of IndustryPicker.jsx (Phase 38) so the admin-only picker
 // and the merchant-facing IndustrySelect share one resolver instead of two
 // copies that could drift.
-export const resolveWhatYoullGet = (templateKey) => {
-  const preset = templateKey ? STORE_TEMPLATE_PRESETS[templateKey] : null;
-  if (!preset) return [];
-  return [...preset.modules]
+//
+// `templateModules` (issue #316): the registration catalog API now returns
+// each entry's live `template_modules` array alongside `template_key` -
+// the published template's own module list, fetched server-side regardless
+// of whether the template is one of the code-owned STORE_TEMPLATE_PRESETS
+// or an admin-created one. When present and non-empty it is authoritative
+// (it reflects the actual DB row, including admin edits); the local
+// STORE_TEMPLATE_PRESETS lookup is a fallback for two cases only: the
+// local-constant catalog fallback (registrationIndustryService.js, which
+// carries no template_modules field at all) and any caller that hasn't
+// been updated to pass the live list through yet.
+export const resolveWhatYoullGet = (templateKey, templateModules = null) => {
+  const moduleKeys = Array.isArray(templateModules) && templateModules.length > 0
+    ? templateModules
+    : (templateKey ? STORE_TEMPLATE_PRESETS[templateKey]?.modules : null);
+  if (!moduleKeys) return [];
+  return [...moduleKeys]
     .map((key) => ({ key, module: CAPABILITY_MODULES[key] }))
     .filter(({ module }) => module && module.status === 'shipped' && module.enforcement !== 'locked')
     .map(({ key, module }) => ({ key, label: module.label, description: module.description }))

@@ -120,4 +120,37 @@ describe('IndustrySelect', () => {
     const select = await screen.findByRole('combobox');
     expect(within(select).getByText('Food Manufacturing')).toBeTruthy();
   });
+
+  // issue #316: an admin-created industry can point at a template that
+  // isn't one of the code-owned STORE_TEMPLATE_PRESETS at all - the API
+  // carries that template's live module list as `template_modules` so
+  // "What you'll get" still renders. Proven a genuine regression: with
+  // resolveWhatYoullGet's templateModules parameter removed (reverting to
+  // the pre-#316 signature), this admin-created entry's template_key
+  // ("admin_custom_template") resolves to nothing in STORE_TEMPLATE_PRESETS
+  // and the button never renders - confirmed failing, then restored.
+  it('renders "What you\'ll get" for an admin-created industry via its live template_modules, not STORE_TEMPLATE_PRESETS', async () => {
+    fetchRegistrationIndustriesMock.mockResolvedValue([
+      ...REGISTRATION_INDUSTRIES_DESCRIBED,
+      {
+        key: 'pet_grooming',
+        label: 'Pet Grooming',
+        summary: 'Grooming and boarding services for pets.',
+        niches: ['Pet salon', 'Mobile grooming'],
+        workflow_mode: 'services',
+        template_key: 'admin_custom_template',
+        template_modules: ['catalog', 'pos'],
+        engine: 'native',
+        engine_note: null,
+        hidden: false
+      }
+    ]);
+    render(<IndustrySelect value="pet_grooming" onSelect={() => {}} />);
+
+    const toggle = await screen.findByRole('button', { name: /what you.?ll get/i });
+    fireEvent.click(toggle);
+
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getAllByRole('listitem').length).toBe(2);
+  });
 });

@@ -9,6 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import * as adminService from '@/services/adminService';
 import {
     TEMPLATE_AUTHORABLE_MODES,
+    WORKFLOW_MODE_VALUES,
+    WORKFLOW_MODE_ALIASES,
     WORKFLOW_MODE_LABELS,
     getWorkflowModeEngine,
     WORKFLOW_MODE_ENGINE_NOTES
@@ -19,10 +21,6 @@ import {
     CAPABILITY_MODULE_SURFACES,
     resolveModeFamilyModuleGroups
 } from '@sieitzz/shared-constants/capabilityModules';
-import {
-    REGISTRATION_INDUSTRIES,
-    REGISTRATION_EXCLUDED_TEMPLATE_KEYS
-} from '@sieitzz/shared-constants/registrationIndustries';
 
 // Only shipped, template-selectable modules are offered as curation choices
 // - `locked` modules are compliance-determined (ADR 0056 clause 1) and
@@ -58,23 +56,41 @@ const STATUS_BADGE_VARIANT = {
 // Ties template curation back to the registration Industry catalog (issue
 // #178 "templates become the Operating Mode" follow-up) so an admin editing
 // a preset can see whether it's what a merchant actually picks at signup.
-const TEMPLATE_KEY_TO_REGISTRATION_LABEL = Object.fromEntries(
-    Object.values(REGISTRATION_INDUSTRIES)
-        .filter((entry) => entry.template_key)
-        .map((entry) => [entry.template_key, entry.label])
-);
-const REGISTRATION_EXCLUDED_TEMPLATE_KEY_SET = new Set(REGISTRATION_EXCLUDED_TEMPLATE_KEYS);
-
-function RegistrationReachabilityNote({ templateKey }) {
-    const industryLabel = TEMPLATE_KEY_TO_REGISTRATION_LABEL[templateKey];
-    if (industryLabel) {
-        return <p className="mt-0.5 text-xs text-slate-400">Shown at registration as: {industryLabel}</p>;
+// Derived from the loaded registrationIndustries API state (issue #316) -
+// never from a hardcoded constant, which would silently desync the moment
+// an admin edits or creates an industry through the panel below.
+function RegistrationReachabilityNote({ templateKey, registrationIndustries }) {
+    if (!templateKey) return null;
+    const industry = registrationIndustries.find((entry) => entry.template_key === templateKey);
+    if (industry) {
+        return <p className="mt-0.5 text-xs text-slate-400">Shown at registration as: {industry.label}</p>;
     }
-    if (REGISTRATION_EXCLUDED_TEMPLATE_KEY_SET.has(templateKey)) {
-        return <p className="mt-0.5 text-xs text-slate-400">Admin-only refinement — not offered at registration</p>;
-    }
-    return null;
+    return <p className="mt-0.5 text-xs text-slate-400">Not offered at registration</p>;
 }
+
+// Every offered (non-alias) workflow mode - unlike BASE_MODE_OPTIONS below
+// (Store Templates, native/transitional only), an industry may legitimately
+// point at an external-engine mode with no template at all (mode-only
+// provisioning, e.g. healthcare) - clause 3 restricts templates, not
+// industries, to native/transitional modes.
+const INDUSTRY_MODE_OPTIONS = WORKFLOW_MODE_VALUES
+    .filter((mode) => !(mode in WORKFLOW_MODE_ALIASES))
+    .map((mode) => ({
+        value: mode,
+        label: WORKFLOW_MODE_LABELS[mode] || mode,
+        engine: getWorkflowModeEngine(mode)
+    }));
+
+const EMPTY_INDUSTRY_FORM = {
+    industry_key: '',
+    label: '',
+    summary: '',
+    niches: '',
+    workflow_mode: INDUSTRY_MODE_OPTIONS[0]?.value || '',
+    template_key: '',
+    display_order: '',
+    reason: ''
+};
 
 // is_preset/is_canonical are platform-owned provenance flags, set only by
 // the seed migration - never authored through this admin form (issue #178
@@ -199,6 +215,9 @@ export default function StoreTemplateManager() {
     const [auditLogs, setAuditLogs] = useState([]);
     const [registrationIndustries, setRegistrationIndustries] = useState([]);
     const [industriesError, setIndustriesError] = useState('');
+    const [industryForm, setIndustryForm] = useState(EMPTY_INDUSTRY_FORM);
+    const [editingIndustryKey, setEditingIndustryKey] = useState(null);
+    const [editIndustryForm, setEditIndustryForm] = useState(null);
 
     const load = useCallback(async () => {
         try {
@@ -329,6 +348,124 @@ export default function StoreTemplateManager() {
         }
     };
 
+    // Published templates whose base_mode matches the given workflow mode -
+    // the choices offered for an industry's template_key. Populated from
+    // the already-loaded `templates` state (the main table above), so no
+    // extra request is needed.
+    const publishedTemplatesForMode = useCallback(
+        (mode) => templates.filter((t) => t.status === 'published' && t.base_mode === mode),
+        [templates]
+    );
+
+    // issue #316: creating a new registration industry. Always lands
+    // hidden - an admin unhides it via the existing Hide/Show action once
+    // it's ready for merchants to see.
+    const submitIndustryCreate = async (event) => {
+        event.preventDefault();
+        const reason = industryForm.reason.trim();
+        if (!industryForm.industry_key.trim() || !industryForm.label.trim() || !industryForm.summary.trim() || reason.length < 3) {
+            setIndustriesError('Industry key, label, summary, and a reason (min 3 characters) are required.');
+            return;
+        }
+        const engine = getWorkflowModeEngine(industryForm.workflow_mode);
+        if (engine !== 'external' && !industryForm.template_key) {
+            setIndustriesError('A published template is required for a non-external workflow mode.');
+            return;
+        }
+
+        setBusy(true);
+        setIndustriesError('');
+        try {
+            await adminService.createRegistrationIndustry({
+                industry_key: industryForm.industry_key.trim(),
+                label: industryForm.label.trim(),
+                summary: industryForm.summary.trim(),
+                niches: industryForm.niches.split(',').map((n) => n.trim()).filter(Boolean),
+                workflow_mode: industryForm.workflow_mode,
+                template_key: engine === 'external' ? null : industryForm.template_key,
+                ...(industryForm.display_order ? { display_order: Number(industryForm.display_order) } : {}),
+                reason
+            });
+            setIndustryForm(EMPTY_INDUSTRY_FORM);
+            await loadRegistrationIndustries();
+        } catch (err) {
+            setIndustriesError(err.response?.data?.message || 'Failed to create industry.');
+        } finally {
+            setBusy(false);
+        }
+    };
+
+    const startEditIndustry = (industry) => {
+        setEditingIndustryKey(industry.key);
+        setEditIndustryForm({
+            label: industry.label,
+            summary: industry.summary,
+            niches: (industry.niches || []).join(', '),
+            workflow_mode: industry.workflow_mode,
+            template_key: industry.template_key || '',
+            display_order: String(industry.order ?? ''),
+            reason: ''
+        });
+        setIndustriesError('');
+    };
+
+    const cancelEditIndustry = () => {
+        setEditingIndustryKey(null);
+        setEditIndustryForm(null);
+    };
+
+    // Only ever sends the fields that actually changed (plus reason) - a
+    // system row's workflow_mode is never included even when unchanged,
+    // so a pure label/template edit on a baseline row never trips the
+    // backend's "mode is engineering-owned" guard.
+    const submitIndustryEdit = async (industry) => {
+        if (!editIndustryForm) return;
+        const reason = editIndustryForm.reason.trim();
+        if (reason.length < 3) {
+            setIndustriesError('A reason of at least 3 characters is required to save changes.');
+            return;
+        }
+
+        const payload = { reason };
+        const nextLabel = editIndustryForm.label.trim();
+        if (nextLabel !== industry.label) payload.label = nextLabel;
+        const nextSummary = editIndustryForm.summary.trim();
+        if (nextSummary !== industry.summary) payload.summary = nextSummary;
+        const nextNiches = editIndustryForm.niches.split(',').map((n) => n.trim()).filter(Boolean);
+        if (JSON.stringify(nextNiches) !== JSON.stringify(industry.niches || [])) payload.niches = nextNiches;
+        const nextOrder = editIndustryForm.display_order === '' ? null : Number(editIndustryForm.display_order);
+        if (nextOrder !== null && nextOrder !== industry.order) payload.display_order = nextOrder;
+
+        const modeChanged = !industry.is_system && editIndustryForm.workflow_mode !== industry.workflow_mode;
+        const templateChanged = editIndustryForm.template_key !== (industry.template_key || '');
+        if (modeChanged || templateChanged) {
+            const engine = getWorkflowModeEngine(editIndustryForm.workflow_mode);
+            if (engine !== 'external' && !editIndustryForm.template_key) {
+                setIndustriesError('A published template is required for a non-external workflow mode.');
+                return;
+            }
+            if (modeChanged) payload.workflow_mode = editIndustryForm.workflow_mode;
+            payload.template_key = engine === 'external' ? null : editIndustryForm.template_key;
+        }
+
+        if (Object.keys(payload).length <= 1) {
+            setIndustriesError('Change at least one field before saving.');
+            return;
+        }
+
+        setBusy(true);
+        setIndustriesError('');
+        try {
+            await adminService.updateRegistrationIndustry(industry.key, payload);
+            cancelEditIndustry();
+            await loadRegistrationIndustries();
+        } catch (err) {
+            setIndustriesError(err.response?.data?.message || 'Failed to update industry.');
+        } finally {
+            setBusy(false);
+        }
+    };
+
     const draftBaseModeEngine = getWorkflowModeEngine(draftForm.base_mode);
 
     return (
@@ -368,41 +505,266 @@ export default function StoreTemplateManager() {
                             <tr>
                                 <th className="p-3">Industry</th>
                                 <th className="p-3">Mode</th>
+                                <th className="p-3">Template</th>
                                 <th className="p-3">Registration status</th>
                                 <th className="p-3">Actions</th>
                             </tr>
                         </thead>
                         <tbody>
                             {registrationIndustries.map((industry) => (
-                                <tr className="border-t" key={industry.key}>
-                                    <td className="p-3">
-                                        <span className="block font-medium text-slate-800">{industry.label}</span>
-                                        <span className="block text-xs text-slate-500">{industry.summary}</span>
-                                    </td>
-                                    <td className="p-3">{WORKFLOW_MODE_LABELS[industry.workflow_mode] || industry.workflow_mode}</td>
-                                    <td className="p-3">
-                                        <Badge variant={industry.hidden ? 'outline' : 'default'}>
-                                            {industry.hidden ? 'Hidden' : 'Visible'}
-                                        </Badge>
-                                        {industry.hidden && (industry.hidden_reason || industry.hidden_updated_by) && (
-                                            <span className="mt-0.5 block text-xs text-slate-400">
-                                                {industry.hidden_reason}
-                                                {industry.hidden_updated_by ? ` — ${industry.hidden_updated_by}` : ''}
+                                <React.Fragment key={industry.key}>
+                                    <tr className="border-t">
+                                        <td className="p-3">
+                                            <span className="flex items-center gap-1.5">
+                                                <span className="font-medium text-slate-800">{industry.label}</span>
+                                                {industry.is_system && <Badge variant="secondary">Baseline</Badge>}
                                             </span>
-                                        )}
-                                    </td>
-                                    <td className="p-3">
-                                        <Button size="sm" variant="outline" disabled={busy} onClick={() => toggleIndustryVisibility(industry)}>
-                                            {industry.hidden ? 'Show' : 'Hide'}
-                                        </Button>
-                                    </td>
-                                </tr>
+                                            <span className="block text-xs text-slate-500">{industry.summary}</span>
+                                        </td>
+                                        <td className="p-3">{WORKFLOW_MODE_LABELS[industry.workflow_mode] || industry.workflow_mode}</td>
+                                        <td className="p-3 text-slate-600">{industry.template_key || <span className="text-slate-400">None</span>}</td>
+                                        <td className="p-3">
+                                            <Badge variant={industry.hidden ? 'outline' : 'default'}>
+                                                {industry.hidden ? 'Hidden' : 'Visible'}
+                                            </Badge>
+                                            {industry.hidden && (industry.hidden_reason || industry.hidden_updated_by) && (
+                                                <span className="mt-0.5 block text-xs text-slate-400">
+                                                    {industry.hidden_reason}
+                                                    {industry.hidden_updated_by ? ` — ${industry.hidden_updated_by}` : ''}
+                                                </span>
+                                            )}
+                                        </td>
+                                        <td className="space-x-2 p-3">
+                                            <Button
+                                                size="sm"
+                                                variant="outline"
+                                                disabled={busy}
+                                                onClick={() => (editingIndustryKey === industry.key ? cancelEditIndustry() : startEditIndustry(industry))}
+                                            >
+                                                {editingIndustryKey === industry.key ? 'Cancel' : 'Edit'}
+                                            </Button>
+                                            <Button size="sm" variant="outline" disabled={busy} onClick={() => toggleIndustryVisibility(industry)}>
+                                                {industry.hidden ? 'Show' : 'Hide'}
+                                            </Button>
+                                        </td>
+                                    </tr>
+                                    {editingIndustryKey === industry.key && editIndustryForm && (
+                                        <tr className="border-t bg-slate-50">
+                                            <td className="p-3" colSpan="5">
+                                                <div className="grid gap-3 sm:grid-cols-2">
+                                                    <div className="space-y-1">
+                                                        <Label htmlFor={`edit-industry-label-${industry.key}`}>Label</Label>
+                                                        <Input
+                                                            id={`edit-industry-label-${industry.key}`}
+                                                            value={editIndustryForm.label}
+                                                            onChange={(e) => setEditIndustryForm((f) => ({ ...f, label: e.target.value }))}
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label htmlFor={`edit-industry-order-${industry.key}`}>Display order</Label>
+                                                        <Input
+                                                            id={`edit-industry-order-${industry.key}`}
+                                                            type="number"
+                                                            min="1"
+                                                            value={editIndustryForm.display_order}
+                                                            onChange={(e) => setEditIndustryForm((f) => ({ ...f, display_order: e.target.value }))}
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1 sm:col-span-2">
+                                                        <Label htmlFor={`edit-industry-summary-${industry.key}`}>Summary</Label>
+                                                        <Textarea
+                                                            id={`edit-industry-summary-${industry.key}`}
+                                                            rows={2}
+                                                            value={editIndustryForm.summary}
+                                                            onChange={(e) => setEditIndustryForm((f) => ({ ...f, summary: e.target.value }))}
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1 sm:col-span-2">
+                                                        <Label htmlFor={`edit-industry-niches-${industry.key}`}>Niches (comma-separated)</Label>
+                                                        <Input
+                                                            id={`edit-industry-niches-${industry.key}`}
+                                                            value={editIndustryForm.niches}
+                                                            onChange={(e) => setEditIndustryForm((f) => ({ ...f, niches: e.target.value }))}
+                                                        />
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label htmlFor={`edit-industry-mode-${industry.key}`}>Workflow mode</Label>
+                                                        <Select
+                                                            value={editIndustryForm.workflow_mode}
+                                                            disabled={industry.is_system}
+                                                            onValueChange={(value) => setEditIndustryForm((f) => ({ ...f, workflow_mode: value, template_key: '' }))}
+                                                        >
+                                                            <SelectTrigger id={`edit-industry-mode-${industry.key}`}>
+                                                                <SelectValue />
+                                                            </SelectTrigger>
+                                                            <SelectContent>
+                                                                {INDUSTRY_MODE_OPTIONS.map((option) => (
+                                                                    <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                                                                ))}
+                                                            </SelectContent>
+                                                        </Select>
+                                                        {industry.is_system && (
+                                                            <p className="text-xs text-slate-400">Baseline industries&apos; mode is engineering-owned.</p>
+                                                        )}
+                                                    </div>
+                                                    <div className="space-y-1">
+                                                        <Label htmlFor={`edit-industry-template-${industry.key}`}>Template</Label>
+                                                        {getWorkflowModeEngine(editIndustryForm.workflow_mode) === 'external' ? (
+                                                            <p className="rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-xs text-slate-500">
+                                                                None — external-engine mode
+                                                            </p>
+                                                        ) : (
+                                                            <Select
+                                                                value={editIndustryForm.template_key}
+                                                                onValueChange={(value) => setEditIndustryForm((f) => ({ ...f, template_key: value }))}
+                                                            >
+                                                                <SelectTrigger id={`edit-industry-template-${industry.key}`}>
+                                                                    <SelectValue placeholder="Select a published template" />
+                                                                </SelectTrigger>
+                                                                <SelectContent>
+                                                                    {publishedTemplatesForMode(editIndustryForm.workflow_mode).map((t) => (
+                                                                        <SelectItem key={t.template_key} value={t.template_key}>{t.label} ({t.template_key})</SelectItem>
+                                                                    ))}
+                                                                </SelectContent>
+                                                            </Select>
+                                                        )}
+                                                    </div>
+                                                    <div className="space-y-1 sm:col-span-2">
+                                                        <Label htmlFor={`edit-industry-reason-${industry.key}`}>Reason (required, min 3 characters)</Label>
+                                                        <Input
+                                                            id={`edit-industry-reason-${industry.key}`}
+                                                            value={editIndustryForm.reason}
+                                                            onChange={(e) => setEditIndustryForm((f) => ({ ...f, reason: e.target.value }))}
+                                                        />
+                                                    </div>
+                                                </div>
+                                                <div className="mt-3 flex gap-2">
+                                                    <Button size="sm" disabled={busy} onClick={() => submitIndustryEdit(industry)}>Save changes</Button>
+                                                    <Button size="sm" variant="outline" disabled={busy} onClick={cancelEditIndustry}>Cancel</Button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    )}
+                                </React.Fragment>
                             ))}
                             {!registrationIndustries.length && (
-                                <tr><td className="p-6 text-slate-500" colSpan="4">No registration industries found.</td></tr>
+                                <tr><td className="p-6 text-slate-500" colSpan="5">No registration industries found.</td></tr>
                             )}
                         </tbody>
                     </table>
+                </div>
+
+                <div className="mt-4 border-t pt-4">
+                    <h3 className="text-sm font-semibold text-slate-900">New industry</h3>
+                    <p className="mt-1 text-xs text-slate-500">
+                        New industries start hidden — unhide with the action above once ready.
+                    </p>
+                    <form onSubmit={submitIndustryCreate} className="mt-3 grid gap-3 sm:grid-cols-2">
+                        <div className="space-y-1">
+                            <Label htmlFor="new-industry-key">Industry key</Label>
+                            <Input
+                                id="new-industry-key"
+                                required
+                                placeholder="pet_grooming"
+                                value={industryForm.industry_key}
+                                onChange={(e) => setIndustryForm((f) => ({ ...f, industry_key: e.target.value }))}
+                            />
+                            <p className="text-xs text-slate-500">Lowercase letters, digits, underscores; starts with a letter. Permanent once created.</p>
+                        </div>
+                        <div className="space-y-1">
+                            <Label htmlFor="new-industry-label">Label</Label>
+                            <Input
+                                id="new-industry-label"
+                                required
+                                placeholder="Pet Grooming"
+                                value={industryForm.label}
+                                onChange={(e) => setIndustryForm((f) => ({ ...f, label: e.target.value }))}
+                            />
+                        </div>
+                        <div className="space-y-1 sm:col-span-2">
+                            <Label htmlFor="new-industry-summary">Summary</Label>
+                            <Textarea
+                                id="new-industry-summary"
+                                required
+                                rows={2}
+                                placeholder="Grooming and boarding services for pets."
+                                value={industryForm.summary}
+                                onChange={(e) => setIndustryForm((f) => ({ ...f, summary: e.target.value }))}
+                            />
+                        </div>
+                        <div className="space-y-1 sm:col-span-2">
+                            <Label htmlFor="new-industry-niches">Niches (comma-separated)</Label>
+                            <Input
+                                id="new-industry-niches"
+                                placeholder="Pet salon, Mobile grooming"
+                                value={industryForm.niches}
+                                onChange={(e) => setIndustryForm((f) => ({ ...f, niches: e.target.value }))}
+                            />
+                        </div>
+                        <div className="space-y-1">
+                            <Label htmlFor="new-industry-mode">Workflow mode</Label>
+                            <Select
+                                value={industryForm.workflow_mode}
+                                onValueChange={(value) => setIndustryForm((f) => ({ ...f, workflow_mode: value, template_key: '' }))}
+                            >
+                                <SelectTrigger id="new-industry-mode">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {INDUSTRY_MODE_OPTIONS.map((option) => (
+                                        <SelectItem key={option.value} value={option.value}>
+                                            {option.label}
+                                            {option.engine === 'external' ? ' · external engine' : ''}
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-1">
+                            <Label htmlFor="new-industry-template">Template</Label>
+                            {getWorkflowModeEngine(industryForm.workflow_mode) === 'external' ? (
+                                <p className="rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-xs text-slate-500">
+                                    None — external-engine mode
+                                </p>
+                            ) : (
+                                <Select
+                                    value={industryForm.template_key}
+                                    onValueChange={(value) => setIndustryForm((f) => ({ ...f, template_key: value }))}
+                                >
+                                    <SelectTrigger id="new-industry-template">
+                                        <SelectValue placeholder="Select a published template" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {publishedTemplatesForMode(industryForm.workflow_mode).map((t) => (
+                                            <SelectItem key={t.template_key} value={t.template_key}>{t.label} ({t.template_key})</SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                        </div>
+                        <div className="space-y-1">
+                            <Label htmlFor="new-industry-order">Display order (optional)</Label>
+                            <Input
+                                id="new-industry-order"
+                                type="number"
+                                min="1"
+                                value={industryForm.display_order}
+                                onChange={(e) => setIndustryForm((f) => ({ ...f, display_order: e.target.value }))}
+                            />
+                        </div>
+                        <div className="space-y-1 sm:col-span-2">
+                            <Label htmlFor="new-industry-reason">Reason (required, min 3 characters)</Label>
+                            <Input
+                                id="new-industry-reason"
+                                required
+                                value={industryForm.reason}
+                                onChange={(e) => setIndustryForm((f) => ({ ...f, reason: e.target.value }))}
+                            />
+                        </div>
+                        <div className="sm:col-span-2">
+                            <Button type="submit" disabled={busy}>Create industry</Button>
+                        </div>
+                    </form>
                 </div>
             </div>
 
@@ -513,7 +875,7 @@ export default function StoreTemplateManager() {
                                 <td className="p-3 font-medium">{template.template_key}</td>
                                 <td className="p-3">
                                     {template.label}
-                                    <RegistrationReachabilityNote templateKey={template.template_key} />
+                                    <RegistrationReachabilityNote templateKey={template.template_key} registrationIndustries={registrationIndustries} />
                                 </td>
                                 <td className="p-3">
                                     <div className="flex flex-wrap items-center gap-1.5">
@@ -570,7 +932,7 @@ export default function StoreTemplateManager() {
                         <span>{WORKFLOW_MODE_LABELS[selected.base_mode] || selected.base_mode} • v{selected.version} • {selected.status}</span>
                         <EngineBadge baseMode={selected.base_mode} />
                     </p>
-                    <RegistrationReachabilityNote templateKey={selected.template_key} />
+                    <RegistrationReachabilityNote templateKey={selected.template_key} registrationIndustries={registrationIndustries} />
                     <div className="mb-2" />
 
                     {selected.status === 'draft' ? (

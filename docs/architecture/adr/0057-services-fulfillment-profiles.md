@@ -137,6 +137,11 @@ stated approval boundary.
 - ADR 0056 (store configuration templates and profiles) — clause 3 is the
   governing constraint this ADR's clause 3 mirrors for the services
   domain specifically.
+- ADR 0058 (registration industry catalog) — amends clause 1's listing of
+  `registrationIndustries.js` as a shared-constant exemplar: that constant
+  is now a seed baseline for a database table, not the runtime source.
+  `workflowModes.js`, `capabilityModules.js`, and this ADR's own
+  `fulfillmentProfiles.js` are unaffected by that amendment.
 - `docs/features/SERVICES_FULFILLMENT_PROFILES.md` — the merchant/developer
   reference this ADR's vocabulary is documented against, including the
   full exists-today-vs-gap matrix.
