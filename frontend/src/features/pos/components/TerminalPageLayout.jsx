@@ -42,6 +42,11 @@ export default function TerminalPageLayout({
     canViewPos,
     onboardingRestricted = false,
     canCreateItems = false,
+    canManageServiceCatalog = false,
+    canViewFnbModifiers = false,
+    canManageFnbModifiers = false,
+    serviceOperationsPermissions = {},
+    canAccessServiceOperations = false,
     canEditItems = false,
     canDeleteItems = false,
     canManageCategories = false,
@@ -106,6 +111,8 @@ export default function TerminalPageLayout({
     setQueueLocationScopeId,
     incomingOrderActionState,
     handleIncomingOrderStatusChange,
+    handleAssignDeliveryPersonnel,
+    deliveryPersonnelState,
     handleOpenCashCollection,
     handleOpenIncomingOrderReceipt,
     incomingReceiptOpeningId,
@@ -175,6 +182,7 @@ export default function TerminalPageLayout({
       history: 'History',
       reports: 'Report',
       items: 'Items',
+      services: 'Services',
       incoming_queue: 'Orders',
       location_scope: 'Settings',
       settings_profile: 'Settings',
@@ -496,6 +504,8 @@ export default function TerminalPageLayout({
               currentViewMode={posViewMode}
               canViewPos={canViewPos}
               canManageCategories={canManageCategories}
+              showServiceOperations={workflowMode === 'services'}
+              canAccessServiceOperations={canAccessServiceOperations}
               onboardingRestricted={onboardingRestricted}
               allowAdminNavigationWithoutShift={canAdminBypassShiftPrompt}
               canAdjustCashDrawer={canAdjustCashDrawer}
@@ -652,6 +662,8 @@ export default function TerminalPageLayout({
                 currentViewMode={posViewMode}
                 canViewPos={canViewPos}
                 canManageCategories={canManageCategories}
+                showServiceOperations={workflowMode === 'services'}
+                canAccessServiceOperations={canAccessServiceOperations}
                 allowAdminNavigationWithoutShift={canAdminBypassShiftPrompt}
                 canAdjustCashDrawer={canAdjustCashDrawer}
                 canCloseDay={canCloseDay}
@@ -749,6 +761,10 @@ export default function TerminalPageLayout({
                 employeeCreditReportRefreshKey={employeeCreditReportRefreshKey}
                 canViewPos={canViewPos}
                 canCreateItems={canCreateItems}
+                canManageServiceCatalog={canManageServiceCatalog}
+                canViewFnbModifiers={canViewFnbModifiers}
+                canManageFnbModifiers={canManageFnbModifiers}
+                serviceOperationsPermissions={serviceOperationsPermissions}
                 canEditItems={canEditItems}
                 canDeleteItems={canDeleteItems}
                 canManageCategories={canManageCategories}
@@ -790,6 +806,8 @@ export default function TerminalPageLayout({
                 onlineOrderSoundEnabled={onlineOrderSoundEnabled}
                 incomingOrderActionState={incomingOrderActionState}
                 handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
+                handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
+                deliveryPersonnelState={deliveryPersonnelState}
                 handleOpenCashCollection={handleOpenCashCollection}
                 handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
                 incomingReceiptOpeningId={incomingReceiptOpeningId}

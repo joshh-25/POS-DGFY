@@ -228,12 +228,13 @@ const resolveModifierSnapshot = (line = {}, modifiers = line.line_modifiers || [
             modifier_option_id: Number(option.modifier_option_id),
             group_name: group.display_name || group.name || null,
             option_name: option.name || null,
-            price_delta: round4(option.price_delta || 0)
+            price_delta: round4(option.price_delta || 0),
+            quantity: Math.min(99, Math.max(1, Number.parseInt(modifier.quantity || 1, 10) || 1))
         };
     }).filter(Boolean);
 };
 const resolveModifierDelta = (line = {}, modifiers = line.line_modifiers || []) => (
-    resolveModifierSnapshot(line, modifiers).reduce((sum, modifier) => round4(sum + Number(modifier.price_delta || 0)), 0)
+    resolveModifierSnapshot(line, modifiers).reduce((sum, modifier) => round4(sum + (Number(modifier.price_delta || 0) * Number(modifier.quantity || 1))), 0)
 );
 const buildKitchenStationSnapshot = (item = {}) => {
     const route = Array.isArray(item.fnbKitchenRoutes) ? item.fnbKitchenRoutes.find((entry) => entry?.is_primary !== false) : null;

@@ -1615,7 +1615,7 @@ export default function StorefrontApp() {
     setItemReviewInviteContext(null);
     setItemReviewSectionHighlighted(false);
   }, [resetFnbItemReviewDraft, selectedStore?.slug]);
-  const { toggleFnbDetailModifier } = useFnbProductModifiers({
+  const { toggleFnbDetailModifier, setFnbDetailModifierQuantity } = useFnbProductModifiers({
     setSelectedModifiers: setSelectedFnbLineModifiers
   });
   const hasCatalogSearchQuery = catalogSearch.trim().length > 0;
@@ -1673,7 +1673,6 @@ export default function StorefrontApp() {
     serviceIntakeResponses,
     serviceLineAddOns,
     serviceOrderMethod,
-    serviceScheduleMode,
     servicePaymentTiming,
     serviceUnitType
   });
@@ -1941,7 +1940,15 @@ export default function StorefrontApp() {
     }
   }, [storeLocations, selectedLocationId, primaryLocationId]);
 
-  const fnbProductDetailActions = useFnbProductDetailActions({ addToCart, goStoreOrderPage, item: detailPageFnbItem, quantity: selectedFnbDetailQuantity, selectedModifiers: selectedFnbLineModifiers });
+  const fnbProductDetailActions = useFnbProductDetailActions({
+    addToCart,
+    goStoreOrderPage,
+    item: detailPageFnbItem,
+    modifierGroups: detailPageFnbModifierGroups,
+    quantity: selectedFnbDetailQuantity,
+    selectedModifiers: selectedFnbLineModifiers,
+    toast
+  });
   const fnbProductDetailsReviewProps = useFnbProductDetailsReviewProps({
     customerName,
     isFnbMode,
@@ -1961,6 +1968,7 @@ export default function StorefrontApp() {
     isItemAvailable,
     isMobileViewport,
     onToggleModifier: toggleFnbDetailModifier,
+    onModifierQuantityChange: setFnbDetailModifierQuantity,
     navigation: {
       onBack: closeFnbDetail,
       onSelectRelatedItem: openFnbDetail
@@ -1974,7 +1982,8 @@ export default function StorefrontApp() {
     handleServicesCartCheckout,
     openServiceBookingPanel,
     openServiceCartEditor,
-    saveServiceBookingDraft
+    saveServiceBookingDraft,
+    syncServiceBookingDraft
   } = useServiceBookingViewModel({
     accessCapabilities,
     bookingPermitted,
@@ -2104,6 +2113,8 @@ export default function StorefrontApp() {
     setGuestDetailsEditMode(false);
     handleRequestGuestCheckoutOtp();
   }, [handleApplyGuestDetails, handleRequestGuestCheckoutOtp]);
+  const serviceAccountStepComplete = accountStepComplete
+    && (isDgfyCustomerSignedIn || guestCheckoutOtpVerified);
   const serviceCartDrawerProps = useServiceCartDrawerProps({
     cartButtonRef: serviceCartFabRef,
     cartImageErrors,
@@ -2460,6 +2471,8 @@ export default function StorefrontApp() {
     isFnbMode,
     isServicesMode,
     isSimpleMode,
+    missingCustomerInformation,
+    missingScheduleAndServiceInfo,
     normalizeStorefrontErrorMessage,
     orderMethod,
     orderSuccessAnimationTimerRef,
@@ -2904,7 +2917,7 @@ export default function StorefrontApp() {
       Number(line?.quantity || 0),
       Number(line?.price || 0),
       Array.isArray(line?.line_modifiers)
-        ? line.line_modifiers.map((entry) => `${entry?.modifier_group_id || ''}:${entry?.modifier_option_id || ''}`).join(',')
+        ? line.line_modifiers.map((entry) => `${entry?.modifier_group_id || ''}:${entry?.modifier_option_id || ''}:${entry?.quantity || 1}`).join(',')
         : ''
     ].join(':')).join('|')
   ), [cart]);
@@ -3345,7 +3358,7 @@ export default function StorefrontApp() {
     withAssetOrigin
   });
   const storefrontCatalogRouteProps = useStorefrontCatalogRouteProps({
-    accountStepComplete,
+    accountStepComplete: serviceAccountStepComplete,
     fulfillmentStepComplete,
     isServicesMode,
     servicesViewModel,
@@ -3391,9 +3404,19 @@ export default function StorefrontApp() {
     handleCheckout,
     handlePinMyLocation,
     handlePromoCardApply,
+    guestCheckoutOtpCode,
+    guestCheckoutOtpCooldownLabel,
+    guestCheckoutOtpError,
+    guestCheckoutOtpLoading,
+    guestCheckoutOtpVerified,
+    handleApplyGuestDetailsAndRequestOtp,
+    handleGuestCheckoutOtpCodeChange,
+    handleRequestGuestCheckoutOtp,
+    handleVerifyGuestCheckoutOtp,
     hasServiceCart,
     isBookingSubpage,
     isDgfyCustomerSignedIn,
+    isGuestCheckoutOtpCooldownActive,
     isMobileViewport,
     isReviewModalOpen,
     isServiceDetailsSubpage,
@@ -3493,6 +3516,7 @@ export default function StorefrontApp() {
     stepOneComplete,
     storefrontClosedByHours,
     storefrontClosedMessageBody,
+    syncServiceBookingDraft,
     submitFnbItemReview,
     viewportWidth,
     catalogState,

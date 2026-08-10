@@ -18,6 +18,8 @@ import {
   recordCashDrawerEvent,
   collectCashPickupOrder,
   collectCashDeliveryOrder,
+  fetchActiveDeliveryPersonnel,
+  assignDeliveryPersonnel,
   updateDeliveryJobStatus,
   updateOnlineOrderStatus
 } from '../services/posService';
@@ -197,16 +199,18 @@ const OPERATIONS_VIEW_MODES = [
   'close_shift',
   'reports',
   'items',
+  'services',
   'terminal_setup'
 ];
 const MSME_OPERATIONS_VIEW_MODES = ['shift_controls', 'close_shift', 'items', 'reports', 'settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates'];
 const SETTINGS_VIEW_MODES = new Set(['settings_profile', 'settings_pos', 'settings_storefront', 'settings_affiliates', 'terminal_setup']);
-const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'items', 'history']);
+const SHIFT_EXEMPT_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'reports', 'items', 'services', 'history']);
 const PIN_PROTECTED_VIEW_MODES = new Set([...SETTINGS_VIEW_MODES, 'items']);
 const CASHIER_ALLOWED_VIEW_MODES = new Set([
   ...CHECKOUT_VIEW_MODES,
   'incoming_queue',
   'items',
+  'services',
   'shift_controls',
   'cash_drawer',
   'close_shift'
@@ -221,6 +225,7 @@ const TERMINAL_SECTION_IDS = {
   incomingOrders: 'pos-section-incoming-orders',
   reports: 'pos-section-reports',
   items: 'pos-section-items',
+  services: 'pos-section-services',
   affiliates: 'pos-section-affiliates'
 };
 const RETRYABLE_TERMINAL_OPERATION_STATUS_CODES = new Set([408, 429, 500, 502, 503, 504]);
@@ -615,6 +620,12 @@ export default function TerminalPage() {
     accessState: 'idle',
     errorMessage: ''
   });
+  const [deliveryPersonnelState, setDeliveryPersonnelState] = useState({
+    loading: false,
+    personnel: [],
+    accessState: 'idle',
+    errorMessage: ''
+  });
   const [adminLocationMonitorState, setAdminLocationMonitorState] = useState({
     loading: false,
     orders: [],
@@ -759,15 +770,18 @@ export default function TerminalPage() {
   );
   const activeOperationsViewModes = useMemo(() => {
     const baseModes = isMsmeMode ? MSME_OPERATIONS_VIEW_MODES : OPERATIONS_VIEW_MODES;
+    const workflowScopedModes = workflowMode === 'services'
+      ? Array.from(new Set([...baseModes, 'services']))
+      : baseModes.filter((mode) => mode !== 'services');
     const queueScopedModes = modePosDefaults.show_online_queue !== false
-      ? baseModes
-      : baseModes.filter((mode) => mode !== 'incoming_queue');
+      ? workflowScopedModes
+      : workflowScopedModes.filter((mode) => mode !== 'incoming_queue');
     const normalizedRole = String(terminalUser?.role || '').trim().toLowerCase();
     if (normalizedRole === 'cashier') {
       return queueScopedModes.filter((mode) => CASHIER_ALLOWED_VIEW_MODES.has(mode));
     }
     return queueScopedModes;
-  }, [isMsmeMode, modePosDefaults.show_online_queue, terminalUser?.role]);
+  }, [isMsmeMode, modePosDefaults.show_online_queue, terminalUser?.role, workflowMode]);
   const activeViewModes = useMemo(
     () => [...CHECKOUT_VIEW_MODES, ...activeOperationsViewModes],
     [activeOperationsViewModes]
@@ -823,6 +837,27 @@ export default function TerminalPage() {
   const canCloseShift = hasPermission('pos:shift_close') || hasPermission('pos:close_day');
   const canCloseDay = hasPermission('pos:close_day');
   const canCreateItems = hasPermission('items:create');
+  const canManageServiceCatalog = hasPermission('services:catalog:manage');
+  const canViewFnbModifiers = hasPermission('fnb:menu:view') || hasPermission('items:view') || canViewPos;
+  const canManageFnbModifiers = hasPermission('fnb:menu:manage') || hasPermission('items:edit');
+  const serviceOperationsPermissions = useMemo(() => ({
+    viewBookings: hasPermission('services:bookings:view') || canViewPos,
+    manageBookings: hasPermission('services:bookings:manage') || canTransactPos,
+    viewResources: hasPermission('services:resources:view') || hasPermission('items:view'),
+    manageResources: hasPermission('services:resources:manage') || hasPermission('items:edit'),
+    viewWaitlist: hasPermission('services:waitlist:view') || canViewPos,
+    manageWaitlist: hasPermission('services:waitlist:manage') || canTransactPos,
+    viewReminders: hasPermission('services:reminders:view') || canViewPos,
+    manageReminders: hasPermission('services:reminders:manage') || canTransactPos,
+    viewClients: hasPermission('services:clients:view') || hasPermission('reports:view')
+  }), [canTransactPos, canViewPos, hasPermission]);
+  const canAccessServiceOperations = [
+    serviceOperationsPermissions.viewBookings,
+    serviceOperationsPermissions.viewResources,
+    serviceOperationsPermissions.viewWaitlist,
+    serviceOperationsPermissions.viewReminders,
+    serviceOperationsPermissions.viewClients
+  ].some(Boolean);
   const canAccessSettingsDirectly = hasPermission('settings:view') || dgfyAdminBypassActive;
   const canAdminBypassShiftPrompt = hasPermission('settings:view') || dgfyAdminBypassActive;
   const isMasterAdminOperator = terminalUser?.is_master_admin === true;
@@ -908,8 +943,9 @@ export default function TerminalPage() {
     if (isCashierRole && !CASHIER_ALLOWED_VIEW_MODES.has(normalizedView)) return '';
     if (normalizedView === 'incoming_queue' && !canViewPos) return '';
     if (normalizedView === 'items' && !canViewPos && !canManageCategories) return '';
+    if (normalizedView === 'services' && !canAccessServiceOperations) return '';
     return normalizedView;
-  }, [activeViewModes, canManageCategories, canViewPos, isCashierRole]);
+  }, [activeViewModes, canAccessServiceOperations, canManageCategories, canViewPos, isCashierRole]);
 
   const replaceTenantSetupQuery = useCallback((nextStep = '') => {
     const normalizedStep = resolveTenantSetupStepValue(nextStep || tenantSetupStep);
@@ -1300,6 +1336,66 @@ export default function TerminalPage() {
     });
   }, [shiftState?.shift?.location_id, shiftState?.shift?.pos_terminal_shift_id]);
 
+  const refreshDeliveryPersonnel = useCallback(async ({ silent = false } = {}) => {
+    if (locked || !canViewPos) {
+      setDeliveryPersonnelState({
+        loading: false,
+        personnel: [],
+        accessState: locked ? 'locked' : 'forbidden',
+        errorMessage: ''
+      });
+      return;
+    }
+    if (!isOnline) {
+      setDeliveryPersonnelState((previous) => ({ ...previous, loading: false }));
+      return;
+    }
+
+    const locationId = Number(shiftState?.shift?.location_id || 0);
+    if (!Number.isInteger(locationId) || locationId <= 0) {
+      setDeliveryPersonnelState({
+        loading: false,
+        personnel: [],
+        accessState: 'shift_required',
+        errorMessage: 'Open a shift before loading delivery personnel.'
+      });
+      return;
+    }
+
+    if (!silent) {
+      setDeliveryPersonnelState((previous) => ({
+        ...previous,
+        loading: true,
+        accessState: 'allowed',
+        errorMessage: ''
+      }));
+    }
+
+    try {
+      const payload = await fetchActiveDeliveryPersonnel({ location_id: locationId });
+      setDeliveryPersonnelState({
+        loading: false,
+        personnel: Array.isArray(payload?.delivery_personnel) ? payload.delivery_personnel : [],
+        accessState: 'allowed',
+        errorMessage: ''
+      });
+    } catch (error) {
+      const isForbidden = error?.response?.status === 403;
+      setDeliveryPersonnelState({
+        loading: false,
+        personnel: [],
+        accessState: isForbidden ? 'forbidden' : 'error',
+        errorMessage: isForbidden
+          ? (error?.response?.data?.message || 'You need POS view permission to load delivery personnel.')
+          : (error?.response?.data?.message || 'Failed to load active delivery personnel.')
+      });
+    }
+  }, [canViewPos, isOnline, locked, shiftState?.shift?.location_id]);
+
+  useEffect(() => {
+    refreshDeliveryPersonnel({ silent: true });
+  }, [refreshDeliveryPersonnel]);
+
   const refreshIncomingOrders = useCallback(async ({ silent = false } = {}) => {
     if (locked) {
       setIncomingOrdersState({
@@ -1362,6 +1458,7 @@ export default function TerminalPage() {
         skipGlobalErrorToast: silent === true,
         timeout: ONLINE_ORDER_POLL_TIMEOUT_MS
       });
+      await refreshDeliveryPersonnel({ silent: true });
       setIncomingOrdersState({
         loading: false,
         orders: Array.isArray(payload?.orders) ? payload.orders : [],
@@ -1387,6 +1484,7 @@ export default function TerminalPage() {
     canViewPos,
     isOnline,
     locked,
+    refreshDeliveryPersonnel,
     shiftState?.shift?.location_id,
     shiftState?.shift?.pos_terminal_shift_id
   ]);
@@ -4257,6 +4355,45 @@ export default function TerminalPage() {
     }
   };
 
+  const handleAssignDeliveryPersonnel = async (posTransactionId, deliveryPersonnelId) => {
+    if (!isOnline) {
+      toast.error('Reconnect to the internet before assigning delivery personnel.');
+      return false;
+    }
+
+    const normalizedId = Number.parseInt(posTransactionId, 10);
+    const normalizedPersonnelId = Number.parseInt(deliveryPersonnelId, 10);
+    if (!Number.isInteger(normalizedId) || normalizedId <= 0 || !Number.isInteger(normalizedPersonnelId) || normalizedPersonnelId <= 0) {
+      toast.error('Select an active delivery personnel before assigning the order.');
+      return false;
+    }
+
+    const actionKey = `delivery-assignment:${normalizedId}`;
+    setIncomingOrderActionState((prev) => ({ ...prev, [normalizedId]: actionKey }));
+    try {
+      await assignDeliveryPersonnel(normalizedId, {
+        delivery_personnel_id: normalizedPersonnelId,
+        idempotency_key: createIdempotencyKey('pos-delivery-assignment')
+      });
+      toast.success('Delivery personnel assigned.');
+      await refreshIncomingOrders({ silent: true });
+      return true;
+    } catch (error) {
+      if (isRetryableTerminalOperationError(error)) {
+        toast.error('The delivery assignment was not saved because the server connection was lost. Reconnect and try again.');
+      } else {
+        toast.error(error?.response?.data?.message || 'Failed to assign delivery personnel.');
+      }
+      return false;
+    } finally {
+      setIncomingOrderActionState((prev) => {
+        const next = { ...prev };
+        delete next[normalizedId];
+        return next;
+      });
+    }
+  };
+
   const handleOpenCashCollection = (order) => {
     if (!isOnline) {
       toast.error('Reconnect to the internet before collecting payment for an online order.');
@@ -4437,8 +4574,13 @@ export default function TerminalPage() {
       setMobileNavOpen(false);
       return;
     }
+    if (nextMode === 'services' && !canAccessServiceOperations) {
+      toast.error('Services view permission is required.');
+      setMobileNavOpen(false);
+      return;
+    }
     const isSettingsViewMode = SETTINGS_VIEW_MODES.has(nextMode);
-    const isOfflineOnlineOnlyMode = isSettingsViewMode || nextMode === 'incoming_queue';
+    const isOfflineOnlineOnlyMode = isSettingsViewMode || nextMode === 'incoming_queue' || nextMode === 'services';
     if (!isOnline && isOfflineOnlineOnlyMode) {
       toast.error('This POS area is available online only. Offline mode supports local sales, pending receipts, and history.');
       setMobileNavOpen(false);
@@ -4488,6 +4630,7 @@ export default function TerminalPage() {
     activeViewModes,
     canAccessSettingsDirectly,
     canAdminBypassShiftPrompt,
+    canAccessServiceOperations,
     canManageCategories,
     canViewPos,
     commitViewModeSelection,
@@ -4705,6 +4848,12 @@ export default function TerminalPage() {
       setPosViewMode('checkout');
     }
   }, [canManageCategories, canViewPos, posViewMode]);
+
+  useEffect(() => {
+    if (posViewMode === 'services' && !canAccessServiceOperations) {
+      setPosViewMode('checkout');
+    }
+  }, [canAccessServiceOperations, posViewMode]);
 
   useEffect(() => {
     if (!activeViewModes.includes(posViewMode)) {
@@ -5648,6 +5797,11 @@ function PosRestorationLoadingScreen() {
           canViewPos={canViewPos}
           onboardingRestricted={setupFlowActive}
           canCreateItems={canCreateItems}
+          canManageServiceCatalog={canManageServiceCatalog}
+          canViewFnbModifiers={canViewFnbModifiers}
+          canManageFnbModifiers={canManageFnbModifiers}
+          serviceOperationsPermissions={serviceOperationsPermissions}
+          canAccessServiceOperations={canAccessServiceOperations}
           canEditItems={canEditItems}
           canDeleteItems={canDeleteItems}
           canManageCategories={canManageCategories}
@@ -5716,6 +5870,8 @@ function PosRestorationLoadingScreen() {
           incomingOrderActionState={incomingOrderActionState}
           handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
           handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
+          handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
+          deliveryPersonnelState={deliveryPersonnelState}
           handleOpenCashCollection={handleOpenCashCollection}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
           incomingReceiptOpeningId={incomingReceiptOpeningId}

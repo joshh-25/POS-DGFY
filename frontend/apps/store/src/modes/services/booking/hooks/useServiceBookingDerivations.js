@@ -49,7 +49,6 @@ export function useServiceBookingDerivations({
   serviceIntakeResponses,
   serviceLineAddOns,
   serviceOrderMethod = 'delivery',
-  serviceScheduleMode = 'asap',
   servicePaymentTiming,
   serviceUnitType
 }) {
@@ -123,18 +122,15 @@ export function useServiceBookingDerivations({
     if (bookingFieldPlan.emailField?.required && !String(customerEmail || '').trim()) missing.push('Email');
     return missing;
   }, [bookingFieldPlan.emailField?.required, customerEmail, customerName, customerPhone]);
-  // Location now belongs to the Fulfillment step (only required when the customer picked
-  // Delivery); schedule is only required when they picked Schedule over NOW. Both new gates
-  // mirror F&B's fnbScheduleMode relaxation pattern used elsewhere in this app.
+  // Delivery always needs a destination, and Services currently supports scheduled
+  // appointments only. Keep both requirements fail-closed before Review and Payment.
   const missingScheduleAndServiceInfo = useMemo(() => {
     const missing = [];
-    if (isAddressRequired && serviceOrderMethod === 'delivery' && !String(serviceLocationSummaryDraft || '').trim()) {
+    if (serviceOrderMethod === 'delivery' && !String(serviceLocationSummaryDraft || '').trim()) {
       missing.push('Service Location');
     }
-    if (serviceScheduleMode === 'schedule') {
-      if (!selectedServiceDatePart) missing.push('Preferred Date');
-      if (!selectedServiceTimePart) missing.push('Preferred Time Slot');
-    }
+    if (!selectedServiceDatePart) missing.push('Preferred Date');
+    if (!selectedServiceTimePart) missing.push('Preferred Time Slot');
     if (bookingFieldPlan.unitTypeField && bookingFieldPlan.unitTypeField.required && !String(serviceUnitType || '').trim()) {
       missing.push(bookingFieldPlan.unitTypeField.label);
     }
@@ -142,7 +138,7 @@ export function useServiceBookingDerivations({
       missing.push(bookingFieldPlan.unitCountField.label);
     }
     return missing;
-  }, [bookingFieldPlan.unitCountField, bookingFieldPlan.unitTypeField, isAddressRequired, selectedServiceDatePart, selectedServiceTimePart, serviceDraftQuantity, serviceLocationSummaryDraft, serviceOrderMethod, serviceScheduleMode, serviceUnitType]);
+  }, [bookingFieldPlan.unitCountField, bookingFieldPlan.unitTypeField, selectedServiceDatePart, selectedServiceTimePart, serviceDraftQuantity, serviceLocationSummaryDraft, serviceOrderMethod, serviceUnitType]);
   const accountStepComplete = missingCustomerInformation.length === 0;
   const fulfillmentStepComplete = missingScheduleAndServiceInfo.length === 0
     && missingStepOneAdditionalFields.length === 0;

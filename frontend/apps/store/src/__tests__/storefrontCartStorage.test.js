@@ -44,14 +44,14 @@ describe('storefront cart storage', () => {
       name: 'Inasal',
       quantity: 2,
       price: '120',
-      line_modifiers: [{ modifier_group_id: 1, modifier_option_id: 2, option_name: 'Extra rice', price_delta: '15' }]
+      line_modifiers: [{ modifier_group_id: 1, modifier_option_id: 2, option_name: 'Extra rice', price_delta: '15', quantity: 3 }]
     })).toMatchObject({
       item_id: 12,
       cart_line_id: '12:default',
       name: 'Inasal',
       quantity: 2,
       price: 120,
-      line_modifiers: [{ modifier_group_id: 1, modifier_option_id: 2, option_name: 'Extra rice', price_delta: 15 }]
+      line_modifiers: [{ modifier_group_id: 1, modifier_option_id: 2, option_name: 'Extra rice', price_delta: 15, quantity: 3 }]
     });
     expect(normalizeStorefrontCartLine({ item_id: 12, quantity: 0 })).toBeNull();
   });

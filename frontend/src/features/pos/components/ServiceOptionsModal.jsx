@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -26,6 +26,11 @@ export function ServiceOptionsModal({
     () => optionGroups.filter((group) => group.group_type !== 'addon' || addonsEnabled),
     [addonsEnabled, optionGroups]
   );
+
+  useEffect(() => {
+    if (!open) return;
+    setSelectedOptionIds([]);
+  }, [open, serviceItem?.item_id]);
 
   // Flatten options from groups to compute client preview
   const allOptions = useMemo(() => {
@@ -101,7 +106,7 @@ export function ServiceOptionsModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md w-full rounded-2xl p-6 bg-white shadow-2xl">
+      <DialogContent data-testid="pos-service-options-modal" className="max-w-md w-full rounded-2xl p-6 bg-white shadow-2xl">
         <DialogHeader>
           <div className="flex items-center gap-2 text-blue-600 text-xs font-bold uppercase tracking-wider">
             <Tag className="h-4 w-4" />
@@ -203,7 +208,7 @@ export function ServiceOptionsModal({
           <Button type="button" variant="outline" size="sm" onClick={() => onOpenChange?.(false)}>
             Cancel
           </Button>
-          <Button type="button" size="sm" onClick={handleConfirm} className="bg-blue-600 hover:bg-blue-700 text-white font-bold">
+          <Button data-testid="pos-service-options-confirm" type="button" size="sm" onClick={handleConfirm} className="bg-blue-600 hover:bg-blue-700 text-white font-bold">
             <Plus className="h-4 w-4 mr-1" /> Add Service to Sale
           </Button>
         </DialogFooter>

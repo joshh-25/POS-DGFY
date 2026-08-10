@@ -140,12 +140,14 @@ export function useCartMutations({
         modifier_group_id: entry?.modifier_group_id,
         modifier_option_id: entry?.modifier_option_id,
         option_name: String(entry?.option_name || '').trim(),
-        price_delta: Number(entry?.price_delta || 0) || 0
+        price_delta: Number(entry?.price_delta || 0) || 0,
+        quantity: Math.min(99, Math.max(1, Number.parseInt(entry?.quantity || 1, 10) || 1))
       }))
       .filter((entry) => entry.modifier_group_id != null && entry.modifier_option_id != null);
     const modifierKey = JSON.stringify(lineModifiers.map((entry) => ({
       modifier_group_id: entry.modifier_group_id,
-      modifier_option_id: entry.modifier_option_id
+      modifier_option_id: entry.modifier_option_id,
+      quantity: entry.quantity
     })));
     let stockWarning = '';
     const normalizedItemId = Number(item?.item_id);
@@ -199,7 +201,8 @@ export function useCartMutations({
         Number(l.item_id) === Number(item.item_id)
         && JSON.stringify((Array.isArray(l.line_modifiers) ? l.line_modifiers : []).map((entry) => ({
           modifier_group_id: entry?.modifier_group_id,
-          modifier_option_id: entry?.modifier_option_id
+          modifier_option_id: entry?.modifier_option_id,
+          quantity: entry?.quantity
         }))) === modifierKey
       ));
       if (found) {

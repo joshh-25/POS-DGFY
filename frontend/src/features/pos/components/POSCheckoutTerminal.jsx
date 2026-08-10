@@ -54,7 +54,8 @@ import {
     fetchPosTransactionById,
     voidPosTransaction,
     fetchPosDiscountApprovers,
-    verifyPosDiscountApproval
+    verifyPosDiscountApproval,
+    fetchPosItemOptionGroups
 } from '../services/posService';
 import { fetchEmployeeCreditAccount } from '../services/employeeCreditService.js';
 import {
@@ -90,6 +91,8 @@ import {
 import { notifyIminWebPosReady } from '../utils/iminHardwareBridge.js';
 import { usePosHardware } from '../hardware/usePosHardware.js';
 import { PosAddToCartToastContainer } from './PosAddToCartToastContainer.jsx';
+import { ServiceOptionsModal } from './ServiceOptionsModal.jsx';
+import FnbModifierPickerDialog, { validateFnbModifierSelections } from './FnbModifierPickerDialog.jsx';
 import { calculateCatalogGridCapacity } from '../utils/catalogGridCapacity.js';
 import { resolvePosWorkflow } from '../utils/posWorkflowResolver.js';
 
@@ -596,12 +599,13 @@ const resolveModifierSnapshot = (line = {}, modifiers = line.line_modifiers || [
             modifier_option_id: Number(option.modifier_option_id),
             group_name: group.display_name || group.name || null,
             option_name: option.name || null,
-            price_delta: round4(option.price_delta || 0)
+            price_delta: round4(option.price_delta || 0),
+            quantity: Math.min(99, Math.max(1, Number.parseInt(modifier.quantity || 1, 10) || 1))
         };
     }).filter(Boolean);
 };
 const resolveModifierDelta = (line = {}, modifiers = line.line_modifiers || []) => (
-    resolveModifierSnapshot(line, modifiers).reduce((sum, modifier) => round4(sum + Number(modifier.price_delta || 0)), 0)
+    resolveModifierSnapshot(line, modifiers).reduce((sum, modifier) => round4(sum + (Number(modifier.price_delta || 0) * Number(modifier.quantity || 1))), 0)
 );
 const buildKitchenStationSnapshot = (item = {}) => {
     const route = Array.isArray(item.fnbKitchenRoutes) ? item.fnbKitchenRoutes.find((entry) => entry?.is_primary !== false) : null;
@@ -834,6 +838,10 @@ export default function POSCheckoutTerminal({
     const [catalog, setCatalog] = useState([]);
     const [catalogImageErrors, setCatalogImageErrors] = useState(() => new Set());
     const [catalogError, setCatalogError] = useState('');
+    const [serviceOptionsModal, setServiceOptionsModal] = useState({ open: false, item: null, groups: [] });
+    const [fnbModifierLineKey, setFnbModifierLineKey] = useState(null);
+    const [serviceOptionsLoadingItemId, setServiceOptionsLoadingItemId] = useState(null);
+    const serviceOptionsRequestRef = useRef(0);
     const [editingQuantityItemId, setEditingQuantityItemId] = useState(null);
     const [quantityInputValue, setQuantityInputValue] = useState('');
     const [addToCartToasts, setAddToCartToasts] = useState([]);
@@ -2219,6 +2227,21 @@ export default function POSCheckoutTerminal({
             toast.error(`${item.name || 'Item'} needs a selling price before it can be sold in POS.`);
             return;
         }
+        const serviceOptionIds = [...new Set((Array.isArray(options.selectedOptionIds) ? options.selectedOptionIds : [])
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0))]
+            .sort((left, right) => left - right);
+        const serviceOptionDetails = (Array.isArray(options.selectedOptionDetails) ? options.selectedOptionDetails : [])
+            .filter((option) => Number(option?.option_id) > 0)
+            .map((option) => ({
+                option_id: Number(option.option_id),
+                group_id: Number(option.group_id || 0) || null,
+                group_name: String(option.groupName || option.group_name || '').trim() || null,
+                group_type: String(option.groupType || option.group_type || 'addon').trim() || 'addon',
+                name: String(option.name || '').trim(),
+                price_adjustment_centavos: Number(option.price_adjustment_centavos) || 0,
+                duration_adjustment_minutes: Number(option.duration_adjustment_minutes) || 0
+            }));
         const modifierGroups = getFnbModifierGroups(item);
         const defaultModifiers = buildDefaultLineModifiers(item);
         const routed = buildKitchenStationSnapshot(item);
@@ -2226,7 +2249,16 @@ export default function POSCheckoutTerminal({
             modifier_groups: modifierGroups,
             line_modifiers: defaultModifiers
         };
-        const linePrice = round4(defaultPrice + resolveModifierDelta(modifierLineSeed, defaultModifiers));
+        const serviceOptionPriceDelta = serviceOptionDetails.reduce(
+            (sum, option) => sum + ((Number(option.price_adjustment_centavos) || 0) / 100),
+            0
+        );
+        const linePrice = round4(defaultPrice + resolveModifierDelta(modifierLineSeed, defaultModifiers) + serviceOptionPriceDelta);
+        if (!Number.isFinite(linePrice) || linePrice <= 0) {
+            toast.error(`${item.name || 'Service'} has an invalid price after applying its options.`);
+            return;
+        }
+        const serviceOptionSignature = serviceOptionIds.join(',');
         // Only default order_method to 'appointment' when this service is the
         // very first line in an empty basket. Previously this fired on every
         // service add regardless of what else was already in the cart, so
@@ -2237,7 +2269,16 @@ export default function POSCheckoutTerminal({
         }
         let stockWarning = '';
         setCart((prev) => {
-            const existing = modifierGroups.length > 0 ? null : prev.find((line) => line.item_id === item.item_id);
+            const existing = modifierGroups.length > 0 || serviceOptionIds.length > 0
+                ? prev.find((line) => (
+                    line.item_id === item.item_id
+                    && [...new Set((Array.isArray(line.service_option_ids) ? line.service_option_ids : [])
+                        .map((id) => Number(id))
+                        .filter((id) => Number.isInteger(id) && id > 0))]
+                        .sort((left, right) => left - right)
+                        .join(',') === serviceOptionSignature
+                ))
+                : prev.find((line) => line.item_id === item.item_id);
             if (existing) {
                 const requestedQty = Number(existing.quantity) + requestedAddQty;
                 const safeQty = Number.isFinite(maxStock) ? round4(Math.min(requestedQty, maxStock)) : round4(requestedQty);
@@ -2256,7 +2297,9 @@ export default function POSCheckoutTerminal({
                             quantity: safeQty,
                             vat_type: line.vat_type || item.vat_type || 'vatable',
                             senior_pwd_discount_eligible: isSeniorPwdDiscountEligible(item.senior_pwd_discount_eligible),
-                            scan_metadata: options.scanMetadata || line.scan_metadata || null
+                            scan_metadata: options.scanMetadata || line.scan_metadata || null,
+                            service_option_ids: serviceOptionIds.length > 0 ? serviceOptionIds : (line.service_option_ids || []),
+                            service_option_details: serviceOptionDetails.length > 0 ? serviceOptionDetails : (line.service_option_details || [])
                         }
                         : line
                 ));
@@ -2280,6 +2323,8 @@ export default function POSCheckoutTerminal({
                     fnbKitchenRoutes: isFnbWorkflow && Array.isArray(item.fnbKitchenRoutes) ? item.fnbKitchenRoutes : [],
                     modifier_groups: isFnbWorkflow ? modifierGroups : [],
                     line_modifiers: isFnbWorkflow ? defaultModifiers : [],
+                    service_option_ids: serviceOptionIds,
+                    service_option_details: serviceOptionDetails,
                     special_instructions: '',
                     scan_metadata: options.scanMetadata || null
                 }
@@ -2289,6 +2334,45 @@ export default function POSCheckoutTerminal({
             toast.error(stockWarning);
         }
         triggerAddToCartToast(item, requestedAddQty);
+    };
+
+    const addCatalogItemToCart = async (item, options = {}) => {
+        if (!isServiceCatalogItem(item)) {
+            addToCart(item, options);
+            return true;
+        }
+
+        const requestId = serviceOptionsRequestRef.current + 1;
+        serviceOptionsRequestRef.current = requestId;
+        setServiceOptionsLoadingItemId(Number(item.item_id));
+        try {
+            const response = await fetchPosItemOptionGroups(item.item_id);
+            if (requestId !== serviceOptionsRequestRef.current) return false;
+            const groups = Array.isArray(response?.groups) ? response.groups : [];
+            if (groups.length === 0) {
+                addToCart(item, options);
+                return true;
+            }
+            setServiceOptionsModal({ open: true, item, groups, quantity: options.quantity || 1 });
+            return false;
+        } catch (error) {
+            toast.error(error?.response?.data?.message || 'Unable to load service options.');
+            return false;
+        } finally {
+            if (requestId === serviceOptionsRequestRef.current) {
+                setServiceOptionsLoadingItemId(null);
+            }
+        }
+    };
+
+    const handleConfirmServiceOptions = ({ serviceItem, selectedOptionIds, selectedOptionDetails }) => {
+        const quantity = Math.max(0.0001, Number(serviceOptionsModal.quantity || 1));
+        addToCart(serviceItem, {
+            quantity,
+            selectedOptionIds,
+            selectedOptionDetails
+        });
+        setServiceOptionsModal({ open: false, item: null, groups: [] });
     };
 
     const updateCartLine = (lineKey, patch) => {
@@ -2345,7 +2429,7 @@ export default function POSCheckoutTerminal({
         }
         const existing = safeCart.find((line) => line.item_id === item.item_id);
         if (!existing) {
-            if (delta > 0) addToCart(item, { quantity: delta });
+            if (delta > 0) addCatalogItemToCart(item, { quantity: delta });
             return;
         }
         updateCartQuantity(getLineKey(existing), Number(existing.quantity || 0) + delta);
@@ -2363,7 +2447,7 @@ export default function POSCheckoutTerminal({
         if (existing) {
             updateCartQuantity(getLineKey(existing), parsedQuantity);
         } else if (parsedQuantity > 0) {
-            addToCart(item, { quantity: parsedQuantity });
+            addCatalogItemToCart(item, { quantity: parsedQuantity });
         }
     };
 
@@ -2541,6 +2625,16 @@ export default function POSCheckoutTerminal({
         setCart((prev) => prev.filter((line) => getLineKey(line) !== lineKey));
     };
 
+    const saveFnbLineModifiers = (selections) => {
+        setCart((current) => current.map((line) => {
+            if (getLineKey(line) !== fnbModifierLineKey) return line;
+            const basePrice = Number(line.base_sale_price || line.sale_price || 0);
+            const serviceDelta = (line.service_option_details || []).reduce((sum, option) => sum + ((Number(option.price_adjustment_centavos) || 0) / 100), 0);
+            return { ...line, line_modifiers: selections, sale_price: round4(basePrice + serviceDelta + resolveModifierDelta(line, selections)) };
+        }));
+        setFnbModifierLineKey(null);
+    };
+
     const toggleFolderFilter = (folderId) => {
         setSelectedFolderId((prev) => (prev === folderId ? null : folderId));
     };
@@ -2591,6 +2685,12 @@ export default function POSCheckoutTerminal({
             toast.error('Add at least one item before checkout.');
             return;
         }
+        const invalidModifierLine = safeCart.find((line) => validateFnbModifierSelections(line.modifier_groups || [], line.line_modifiers || [], selectedLocationId));
+        if (invalidModifierLine) {
+            toast.error(`${invalidModifierLine.item_name}: ${validateFnbModifierSelections(invalidModifierLine.modifier_groups || [], invalidModifierLine.line_modifiers || [], selectedLocationId)}`);
+            setFnbModifierLineKey(getLineKey(invalidModifierLine));
+            return;
+        }
         if (!isCheckoutWorkflowValid) {
             toast.error(orderMethod === 'appointment'
                 ? 'Enter the client name and appointment time before checkout.'
@@ -2609,7 +2709,7 @@ export default function POSCheckoutTerminal({
         setCustomerPaymentAmountInput('0');
         setCheckoutConfirmModalOpen(true);
         setMobileCheckoutPanelOpen(false);
-    }, [safeCart.length, checkoutBlockedReason, normalizedTerminalId, paymentType]);
+    }, [safeCart, checkoutBlockedReason, normalizedTerminalId, paymentType, selectedLocationId, isCheckoutWorkflowValid, orderMethod]);
 
     const handleSelectEmployeeCredit = async (employeeOption) => {
         const accountCode = String(employeeOption?.account_code || '').trim().toUpperCase();
@@ -2870,6 +2970,9 @@ export default function POSCheckoutTerminal({
                     special_instructions: line.special_instructions || undefined,
                     kitchen_station_id: line.kitchen_station_id || undefined
                 } : {}),
+                ...(Array.isArray(line.service_option_ids) && line.service_option_ids.length > 0
+                    ? { selected_option_ids: line.service_option_ids }
+                    : {}),
                 scan_metadata: line.scan_metadata || undefined
             }))
         };
@@ -2881,6 +2984,8 @@ export default function POSCheckoutTerminal({
             quantity: Number(line.quantity),
             sale_price: Number(line.sale_price),
             special_instructions: line.special_instructions || '',
+            selected_option_ids: Array.isArray(line.service_option_ids) ? line.service_option_ids : [],
+            service_options_snapshot: Array.isArray(line.service_option_details) ? line.service_option_details : [],
             fnb_modifiers_snapshot: resolveModifierSnapshot(line, line.line_modifiers || [])
         }));
         payload.offline_discount_snapshot = selectedDiscount
@@ -3618,35 +3723,37 @@ export default function POSCheckoutTerminal({
                                 src: posImageSrc
                             } = imageSources;
                             const hasImage = Boolean(posImageSrc) && !catalogImageErrors.has(item.item_id);
-                            const cartLineForItem = safeCart.find((line) => line.item_id === item.item_id);
-                            const cartQuantityForItem = cartLineForItem ? Number(cartLineForItem.quantity) || 0 : 0;
+                            const cartQuantityForItem = safeCart
+                                .filter((line) => line.item_id === item.item_id)
+                                .reduce((sum, line) => sum + (Number(line.quantity) || 0), 0);
                             const isEditingThisQuantity = editingQuantityItemId === item.item_id;
+                            const isLoadingServiceOptions = serviceOptionsLoadingItemId === Number(item.item_id);
                             const stockColorClassName = getCatalogStockColorClassName(item, lowStockDisplayThreshold);
                             return (
                                 <div
                                     key={item.item_id}
                                     data-pos-catalog-card="true"
-                                    onClick={(event) => {
-                                        if (isOutOfStock || posActionsBlocked) {
+                                    onClick={async (event) => {
+                                        if (isOutOfStock || posActionsBlocked || isLoadingServiceOptions) {
                                             if (posActionsBlocked) notifyPosActionBlocked();
                                             return;
                                         }
-                                        addToCart(item);
-                                        flyImageToCheckoutBar(event.currentTarget);
+                                        const addedDirectly = await addCatalogItemToCart(item);
+                                        if (addedDirectly) flyImageToCheckoutBar(event.currentTarget);
                                     }}
-                                    onKeyDown={(event) => {
-                                        if (isOutOfStock || posActionsBlocked) return;
+                                    onKeyDown={async (event) => {
+                                        if (isOutOfStock || posActionsBlocked || isLoadingServiceOptions) return;
                                         if (event.key === 'Enter' || event.key === ' ') {
                                             event.preventDefault();
-                                            addToCart(item);
-                                            flyImageToCheckoutBar(event.currentTarget);
+                                            const addedDirectly = await addCatalogItemToCart(item);
+                                            if (addedDirectly) flyImageToCheckoutBar(event.currentTarget);
                                         }
                                     }}
-                                    role={isOutOfStock || posActionsBlocked ? 'group' : 'button'}
-                                    tabIndex={isOutOfStock || posActionsBlocked ? -1 : 0}
-                                    aria-disabled={isOutOfStock || posActionsBlocked}
+                                    role={isOutOfStock || posActionsBlocked || isLoadingServiceOptions ? 'group' : 'button'}
+                                    tabIndex={isOutOfStock || posActionsBlocked || isLoadingServiceOptions ? -1 : 0}
+                                    aria-disabled={isOutOfStock || posActionsBlocked || isLoadingServiceOptions}
                                     className={`${catalogCardClassName} ${
-                                        isOutOfStock || posActionsBlocked
+                                        isOutOfStock || posActionsBlocked || isLoadingServiceOptions
                                             ? 'cursor-not-allowed opacity-75 blur-[0.5px]'
                                             : 'cursor-pointer hover:-translate-y-0.5 hover:border-blue-300 hover:shadow-md'
                                     }`}
@@ -3678,7 +3785,7 @@ export default function POSCheckoutTerminal({
                                             />
                                         ) : (
                                             <div className="flex h-full w-full items-center justify-center text-center">
-                                                <span className="px-2 text-xs font-semibold text-[#64748B]">No POS Image</span>
+                                                <span className="px-2 text-xs font-semibold text-[#64748B]">{isLoadingServiceOptions ? 'Loading options…' : 'No POS Image'}</span>
                                             </div>
                                         )}
                                         {isOutOfStock && (
@@ -3971,7 +4078,19 @@ export default function POSCheckoutTerminal({
                                     <div className="flex items-center justify-between gap-2">
                                         <div className="flex items-center gap-2.5 min-w-0">
                                             <CartItemThumbnail catalog={catalog} line={line} receiptSettings={receiptSettings} />
-                                            <p className="text-[13px] font-extrabold text-[#0F172A] truncate">{line.item_name}</p>
+                                            <div className="min-w-0">
+                                                <p className="text-[13px] font-extrabold text-[#0F172A] truncate">{line.item_name}</p>
+                                                {Array.isArray(line.service_option_details) && line.service_option_details.length > 0 ? (
+                                                    <p className="mt-0.5 truncate text-[10px] font-semibold text-blue-700">
+                                                        Options: {line.service_option_details.map((option) => option.name).filter(Boolean).join(', ')}
+                                                    </p>
+                                                ) : null}
+                                                {Array.isArray(line.modifier_groups) && line.modifier_groups.length > 0 ? (
+                                                    <button type="button" onClick={() => setFnbModifierLineKey(lineKey)} className="mt-1 text-left text-[10px] font-bold text-blue-700 underline underline-offset-2">
+                                                        {resolveModifierSnapshot(line).length > 0 ? resolveModifierSnapshot(line).map((modifier) => modifier.option_name).join(', ') : 'Choose modifiers'}
+                                                    </button>
+                                                ) : null}
+                                            </div>
                                         </div>
                                         <button
                                             type="button"
@@ -5190,6 +5309,23 @@ export default function POSCheckoutTerminal({
                     </div>
                 </div>
             ), document.body)}
+
+            <ServiceOptionsModal
+                open={serviceOptionsModal.open}
+                onOpenChange={(open) => {
+                    if (!open) setServiceOptionsModal({ open: false, item: null, groups: [] });
+                }}
+                serviceItem={serviceOptionsModal.item}
+                optionGroups={serviceOptionsModal.groups}
+                onConfirmOptions={handleConfirmServiceOptions}
+            />
+            <FnbModifierPickerDialog
+                open={Boolean(fnbModifierLineKey)}
+                line={safeCart.find((line) => getLineKey(line) === fnbModifierLineKey) || null}
+                locationId={selectedLocationId}
+                onClose={() => setFnbModifierLineKey(null)}
+                onSave={saveFnbLineModifiers}
+            />
 
             {imagePreview && (
                 <div

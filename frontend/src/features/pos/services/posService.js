@@ -1,6 +1,14 @@
 import api from '@/services/api';
 import { emitPosHardwareMessage } from '../utils/posHardwareMessageBus.js';
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../observability/analyticsEvents.js';
+import {
+    assignItemOptionGroups,
+    createServiceOptionGroup,
+    deactivateServiceOption,
+    getItemOptionGroups,
+    listServiceOptionGroups,
+    updateServiceOptionGroup
+} from '../../services/api/servicesApi.js';
 
 const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
 
@@ -16,6 +24,15 @@ export const fetchPosCatalog = async (params = {}) => {
     const response = await api.get('/pos/catalog', { params });
     return response.data?.data || [];
 };
+
+// Preserve the POS-facing names while keeping one Services API implementation
+// shared by SKUpervisor and POS.
+export const fetchPosServiceOptionGroups = listServiceOptionGroups;
+export const createPosServiceOptionGroup = createServiceOptionGroup;
+export const updatePosServiceOptionGroup = updateServiceOptionGroup;
+export const deactivatePosServiceOption = deactivateServiceOption;
+export const fetchPosItemOptionGroups = getItemOptionGroups;
+export const assignPosItemOptionGroups = assignItemOptionGroups;
 
 export const fetchPosSettingsBootstrap = async (requestConfig = {}) => {
     const response = await api.get('/mobile-pos/bootstrap/settings', requestConfig);
@@ -460,6 +477,14 @@ export const fetchIncomingOnlineOrders = async (params = {}, requestConfig = {})
     return response.data?.data;
 };
 
+export const fetchActiveDeliveryPersonnel = async (params = {}, requestConfig = {}) => {
+    const response = await api.get('/pos/delivery-personnel', {
+        params,
+        ...requestConfig
+    });
+    return response.data?.data;
+};
+
 export const fetchAdminLocationMonitor = async (params = {}, requestConfig = {}) => {
     const response = await api.get('/pos/admin/location-monitor', {
         params,
@@ -491,6 +516,11 @@ export const collectCashDeliveryOrder = async (posTransactionId, payload = {}) =
 
 export const updateDeliveryJobStatus = async (posTransactionId, payload = {}) => {
     const response = await api.patch(`/pos/orders/${posTransactionId}/delivery-job/status`, payload);
+    return response.data?.data;
+};
+
+export const assignDeliveryPersonnel = async (posTransactionId, payload = {}) => {
+    const response = await api.patch(`/pos/orders/${posTransactionId}/delivery-job/assignment`, payload);
     return response.data?.data;
 };
 
@@ -606,9 +636,11 @@ export default {
     fetchPosReportsProfitLoss,
     exportPosReportCsv,
     fetchIncomingOnlineOrders,
+    fetchActiveDeliveryPersonnel,
     collectCashPickupOrder,
     collectCashDeliveryOrder,
     updateDeliveryJobStatus,
+    assignDeliveryPersonnel,
     updateOnlineOrderStatus,
     fetchFiscalTerminalRegistrations,
     saveFiscalTerminalRegistration,

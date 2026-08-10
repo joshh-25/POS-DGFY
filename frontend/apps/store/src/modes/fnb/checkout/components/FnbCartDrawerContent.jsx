@@ -109,10 +109,10 @@ export function FnbCartDrawerContent({
                                     >
                                       <Plus size={14} color="#16a34a" />
                                       <span style={{ fontSize: 12, fontWeight: 700, color: '#15803d', minWidth: 0 }}>
-                                        {String(modifier.option_name || 'Add-on').trim() || 'Add-on'}
+                                        {String(modifier.option_name || 'Add-on').trim() || 'Add-on'}{Number(modifier.quantity || 1) > 1 ? ` ×${Number(modifier.quantity)}` : ''}
                                       </span>
                                       <span style={{ fontSize: 12, fontWeight: 800, color: '#16a34a', whiteSpace: 'nowrap' }}>
-                                        +{money(modifier.price_delta).replace('PHP ', 'PHP ')}
+                                        +{money(Number(modifier.price_delta || 0) * Number(modifier.quantity || 1)).replace('PHP ', 'PHP ')}
                                       </span>
                                     </div>
                                   ))}

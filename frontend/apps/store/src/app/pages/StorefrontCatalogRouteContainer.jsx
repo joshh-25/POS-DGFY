@@ -58,9 +58,19 @@ export function StorefrontCatalogRouteContainer(props) {
     handleCheckout,
     handlePinMyLocation,
     handlePromoCardApply,
+    guestCheckoutOtpCode,
+    guestCheckoutOtpCooldownLabel,
+    guestCheckoutOtpError,
+    guestCheckoutOtpLoading,
+    guestCheckoutOtpVerified,
+    handleApplyGuestDetailsAndRequestOtp,
+    handleGuestCheckoutOtpCodeChange,
+    handleRequestGuestCheckoutOtp,
+    handleVerifyGuestCheckoutOtp,
     hasServiceCart,
     isBookingSubpage,
     isDgfyCustomerSignedIn,
+    isGuestCheckoutOtpCooldownActive,
     isMobileViewport,
     isReviewModalOpen,
     isServiceDetailsSubpage,
@@ -160,6 +170,7 @@ export function StorefrontCatalogRouteContainer(props) {
     stepOneComplete,
     storefrontClosedByHours,
     storefrontClosedMessageBody,
+    syncServiceBookingDraft,
     submitFnbItemReview,
     viewportWidth,
     catalogState,
@@ -285,9 +296,19 @@ export function StorefrontCatalogRouteContainer(props) {
         handleCheckout={handleCheckout}
         handlePinMyLocation={handlePinMyLocation}
         handlePromoCardApply={handlePromoCardApply}
+        guestCheckoutOtpCode={guestCheckoutOtpCode}
+        guestCheckoutOtpCooldownLabel={guestCheckoutOtpCooldownLabel}
+        guestCheckoutOtpError={guestCheckoutOtpError}
+        guestCheckoutOtpLoading={guestCheckoutOtpLoading}
+        guestCheckoutOtpVerified={guestCheckoutOtpVerified}
+        onApplyGuestDetailsAndRequestOtp={handleApplyGuestDetailsAndRequestOtp}
+        onGuestCheckoutOtpCodeChange={handleGuestCheckoutOtpCodeChange}
+        onRequestGuestCheckoutOtp={handleRequestGuestCheckoutOtp}
+        onVerifyGuestCheckoutOtp={handleVerifyGuestCheckoutOtp}
         hasServiceCart={hasServiceCart}
         isBookingSubpage={isBookingSubpage}
         isDgfyCustomerSignedIn={isDgfyCustomerSignedIn}
+        isGuestCheckoutOtpCooldownActive={isGuestCheckoutOtpCooldownActive}
         isMobileViewport={isMobileViewport}
         isReviewModalOpen={isReviewModalOpen}
         isServiceDetailsSubpage={isServiceDetailsSubpage}
@@ -390,6 +411,7 @@ export function StorefrontCatalogRouteContainer(props) {
         stepOneComplete={stepOneComplete}
         storefrontClosedByHours={storefrontClosedByHours}
         storefrontClosedMessageBody={storefrontClosedMessageBody}
+        syncServiceBookingDraft={syncServiceBookingDraft}
         submitFnbItemReview={submitFnbItemReview}
         viewportWidth={viewportWidth}
       />

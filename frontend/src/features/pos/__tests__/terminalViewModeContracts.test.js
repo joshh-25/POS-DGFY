@@ -387,6 +387,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsWorkspaceContent).toContain("case 'reports'");
     expect(terminalOperationsWorkspaceContent).toContain("case 'incoming_queue'");
     expect(terminalOperationsWorkspaceContent).toContain("case 'terminal_setup'");
+    expect(terminalOperationsWorkspaceContent).toContain("case 'services'");
+    expect(terminalOperationsWorkspaceContent).toContain("title: 'Services'");
+    expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-services"');
+    expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode('services')}");
   });
 
   it('adds report navigation with horizontal report tabs', () => {

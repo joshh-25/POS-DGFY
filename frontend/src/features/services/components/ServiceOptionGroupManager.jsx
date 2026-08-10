@@ -280,7 +280,8 @@ export default function ServiceOptionGroupManager({ selectedItem = null, onClose
                       ...newGroup,
                       group_type: e.target.value,
                       selection_type: e.target.value === 'variation' ? 'single' : newGroup.selection_type,
-                      is_required: e.target.value === 'variation' ? true : newGroup.is_required
+                      is_required: e.target.value === 'variation',
+                      min_selections: e.target.value === 'variation' ? 1 : 0
                     })}
                     className="w-full px-3 py-2 border rounded-lg outline-none"
                   >

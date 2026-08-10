@@ -6,6 +6,7 @@ export const getFnbDashboard = () => api.get('/fnb/dashboard').then(unwrap);
 
 export const listFnbModifierGroups = (params = {}) => api.get('/fnb/modifier-groups', { params }).then(unwrap);
 export const createFnbModifierGroup = (payload) => api.post('/fnb/modifier-groups', payload).then(unwrap);
+export const updateFnbModifierGroup = (modifierGroupId, payload) => api.put(`/fnb/modifier-groups/${modifierGroupId}`, payload).then(unwrap);
 
 export const listFnbDiningAreas = (params = {}) => api.get('/fnb/dining-areas', { params }).then(unwrap);
 export const createFnbDiningArea = (payload) => api.post('/fnb/dining-areas', payload).then(unwrap);

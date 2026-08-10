@@ -62,3 +62,5 @@ boundaries.
 6. Backend POS, F&B, Services, storefront repository, validation, transport,
    settlement, and RBAC contracts are committed with their focused regression
    tests and the repository architecture guardrails passing.
+7. Frontend POS operational workspaces and storefront F&B/Services ordering
+   flows are committed with component, contract, model, and booking-gate tests.

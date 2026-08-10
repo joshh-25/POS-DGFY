@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
   buildFnbProductDetailMetadata,
+  buildDefaultFnbModifierSelections,
   buildFnbRelatedItems,
   resolveFnbProductDetailItem
 } from '../model/fnbProductDetailsModel.js';
@@ -37,7 +38,8 @@ export function useFnbProductDetailsRoute({
     const matchedItem = (Array.isArray(catalog) ? catalog : []).find((entry) => String(entry?.item_id) === String(routeItemId)) || null;
     setSelectedFnbDetail(matchedItem);
     setSelectedFnbDetailQuantity(1);
-    setSelectedFnbLineModifiers([]);
+    const groups = buildFnbProductDetailMetadata({ detailItem: matchedItem, selectedModifiers: [] }).modifierGroups;
+    setSelectedFnbLineModifiers(buildDefaultFnbModifierSelections(groups));
   }, [catalog, isFnbMode, routeItemId]);
 
   const detailPageFnbItem = useMemo(() => resolveFnbProductDetailItem({

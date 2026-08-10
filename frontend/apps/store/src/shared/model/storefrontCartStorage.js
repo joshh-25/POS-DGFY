@@ -43,7 +43,8 @@ const normalizeCartModifier = (entry) => {
     modifier_group_id: modifierGroupId,
     modifier_option_id: modifierOptionId,
     option_name: optionalText(entry.option_name),
-    price_delta: Number(entry.price_delta || 0) || 0
+    price_delta: Number(entry.price_delta || 0) || 0,
+    quantity: Math.min(99, Math.max(1, Number.parseInt(entry.quantity || 1, 10) || 1))
   };
 };
 

@@ -9,7 +9,6 @@ import {
   History,
   ListChecks,
   MailCheck,
-  Plus,
   RefreshCw,
   Send,
   SlidersHorizontal,
@@ -38,19 +37,18 @@ import {
   updateServiceWaitlistStatus
 } from '../api/servicesApi.js';
 import ServiceOptionGroupManager from '../components/ServiceOptionGroupManager.jsx';
+import ServiceCatalogForm from '../components/ServiceCatalogForm.jsx';
+import {
+  ServiceBookingTable
+} from '../components/ServiceOperationsPanels.jsx';
+import {
+  buildServiceCatalogPayload,
+  createServiceCatalogFormValues
+} from '../catalog/serviceCatalogFormModel.js';
 import { getAllUsers } from '../../../services/userService.js';
 
 const STATUS_FLOW = ['requested', 'confirmed', 'checked_in', 'in_service', 'completed', 'cancelled', 'no_show'];
 const ACTIVE_STATUSES = 'requested,confirmed,checked_in,in_service';
-const STATUS_TRANSITIONS = {
-  requested: ['confirmed', 'cancelled', 'no_show'],
-  confirmed: ['checked_in', 'cancelled', 'no_show'],
-  checked_in: ['in_service', 'cancelled', 'no_show'],
-  in_service: ['completed', 'cancelled'],
-  completed: [],
-  cancelled: [],
-  no_show: ['confirmed']
-};
 
 const tabs = [
   { id: 'today', label: 'Today', icon: CalendarCheck },
@@ -95,22 +93,6 @@ const toIsoOrNull = (value) => {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 };
 
-const blankCatalogForm = {
-  name: '',
-  sku_code: '',
-  service_category: '',
-  duration_minutes: 60,
-  default_sale_price: '',
-  payment_policy: 'customer_choice',
-  service_area_type: 'in_store',
-  intake_question: '',
-  intake_question_type: 'textarea',
-  intake_question_required: false,
-  bookable: true,
-  visible_in_pos: true,
-  visible_in_storefront: true,
-  addons_enabled: false
-};
 const blankResourceForm = { name: '', resource_type: 'provider', capacity: 1 };
 const blankAssignmentForm = { item_id: '', resource_id: '', user_id: '', location_id: '' };
 const blankWaitlistForm = {
@@ -133,6 +115,7 @@ const Field = ({ label, children }) => (
 const inputClass = 'w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-teal-600 focus:ring-2 focus:ring-teal-100';
 const buttonClass = 'inline-flex items-center justify-center gap-2 rounded-md border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-60';
 const primaryButtonClass = 'inline-flex items-center justify-center gap-2 rounded-md bg-teal-700 px-3 py-2 text-sm font-semibold text-white hover:bg-teal-800 disabled:opacity-60';
+
 
 const StatTile = ({ icon: Icon, label, value, hint }) => (
   <div className="rounded-lg border border-slate-200 bg-white p-4">
@@ -167,58 +150,6 @@ const PriorityTile = ({ icon: Icon, label, value, tone = 'slate' }) => {
   );
 };
 
-const StatusSelect = ({ booking, disabled, onChange }) => {
-  const options = Array.from(new Set([booking.status, ...(STATUS_TRANSITIONS[booking.status] || [])].filter(Boolean)));
-  return (
-    <select value={booking.status} disabled={disabled} onChange={(event) => onChange(booking.booking_id, event.target.value)} className="rounded-md border border-slate-300 bg-white px-2 py-1 text-xs font-semibold text-slate-700">
-      {options.map((status) => <option key={status} value={status}>{status.replace(/_/g, ' ')}</option>)}
-    </select>
-  );
-};
-
-const BookingTable = ({ bookings, updatingBookingId, onStatusChange, emptyText }) => (
-  <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-    <table className="min-w-full divide-y divide-slate-200 text-sm">
-      <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-normal text-slate-500">
-        <tr>
-          <th className="px-3 py-2">Ticket</th>
-          <th className="px-3 py-2">Service</th>
-          <th className="px-3 py-2">Client</th>
-          <th className="px-3 py-2">Schedule</th>
-          <th className="px-3 py-2">Payment</th>
-          <th className="px-3 py-2">Status</th>
-        </tr>
-      </thead>
-      <tbody className="divide-y divide-slate-100">
-        {bookings.map((booking) => (
-          <tr key={booking.booking_id} className="align-top">
-            <td className="px-3 py-3 font-semibold text-slate-900">{booking.public_reference}</td>
-            <td className="px-3 py-3">
-              <div className="font-medium text-slate-900">{booking.service_name || booking.service?.name || 'Service'}</div>
-              <div className="text-xs text-slate-500">{Number(booking.duration_minutes || booking.service?.duration_minutes || 0)} min</div>
-            </td>
-            <td className="px-3 py-3">
-              <div className="font-medium text-slate-900">{booking.customer_name || 'Guest'}</div>
-              <div className="text-xs text-slate-500">{booking.customer_email || booking.customer_phone || 'No contact saved'}</div>
-            </td>
-            <td className="px-3 py-3 text-slate-700">{formatDateTime(booking.start_at)}</td>
-            <td className="px-3 py-3">
-              <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{booking.payment_status || 'unpaid'}</span>
-              <div className="mt-1 text-xs text-slate-500">{booking.payment_timing || 'postpaid'} &middot; {money(booking.total_amount)}</div>
-            </td>
-            <td className="px-3 py-3">
-              <StatusSelect booking={booking} disabled={updatingBookingId === booking.booking_id} onChange={onStatusChange} />
-            </td>
-          </tr>
-        ))}
-        {bookings.length === 0 && (
-          <tr><td colSpan={6} className="px-3 py-8 text-center text-sm text-slate-500">{emptyText}</td></tr>
-        )}
-      </tbody>
-    </table>
-  </div>
-);
-
 export default function ServicesPage() {
   const [activeTab, setActiveTab] = useState('today');
   const [dashboard, setDashboard] = useState(null);
@@ -231,7 +162,7 @@ export default function ServicesPage() {
   const [reminders, setReminders] = useState([]);
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [catalogForm, setCatalogForm] = useState(blankCatalogForm);
+  const [catalogForm, setCatalogForm] = useState(createServiceCatalogFormValues);
   const [resourceForm, setResourceForm] = useState(blankResourceForm);
   const [assignmentForm, setAssignmentForm] = useState(blankAssignmentForm);
   const [waitlistForm, setWaitlistForm] = useState(blankWaitlistForm);
@@ -310,21 +241,8 @@ export default function ServicesPage() {
     event.preventDefault();
     setSaving('catalog');
     try {
-      const intakeQuestion = catalogForm.intake_question.trim();
-      await createServiceCatalogEntry({
-        ...catalogForm,
-        duration_minutes: Number(catalogForm.duration_minutes || 60),
-        default_sale_price: Number(catalogForm.default_sale_price || 0),
-        intake_form_schema: intakeQuestion ? {
-          fields: [{
-            id: 'intake_1',
-            label: intakeQuestion,
-            type: catalogForm.intake_question_type,
-            required: catalogForm.intake_question_required === true
-          }]
-        } : null
-      });
-      setCatalogForm(blankCatalogForm);
+      await createServiceCatalogEntry(buildServiceCatalogPayload(catalogForm));
+      setCatalogForm(createServiceCatalogFormValues());
       await loadServicesWorkspace();
       toast.success('Service created.');
     } catch (error) {
@@ -533,7 +451,7 @@ export default function ServicesPage() {
             <h2 className="text-lg font-semibold text-slate-950">Today</h2>
             <p className="text-sm text-slate-500">Use this as the daily service desk: confirm, check in, start, complete, or mark no-show.</p>
           </div>
-          <BookingTable bookings={todayBookings} updatingBookingId={updatingBookingId} onStatusChange={handleStatusChange} emptyText={loading ? 'Loading appointments...' : 'No appointments scheduled today.'} />
+          <ServiceBookingTable bookings={todayBookings} updatingBookingId={updatingBookingId} onStatusChange={handleStatusChange} emptyText={loading ? 'Loading appointments...' : 'No appointments scheduled today.'} />
         </section>
       )}
 
@@ -546,7 +464,7 @@ export default function ServicesPage() {
           {calendarGroups.map(([day, rows]) => (
             <div key={day} className="space-y-2">
               <h3 className="text-sm font-bold uppercase tracking-normal text-slate-500">{day}</h3>
-              <BookingTable bookings={rows} updatingBookingId={updatingBookingId} onStatusChange={handleStatusChange} emptyText="No appointments." />
+              <ServiceBookingTable bookings={rows} updatingBookingId={updatingBookingId} onStatusChange={handleStatusChange} emptyText="No appointments." />
             </div>
           ))}
           {!loading && calendarGroups.length === 0 && <p className="rounded-lg border border-slate-200 bg-white p-6 text-sm text-slate-500">No active appointments yet.</p>}
@@ -555,80 +473,12 @@ export default function ServicesPage() {
 
       {activeTab === 'services' && (
         <section className="grid gap-4 xl:grid-cols-[380px_minmax(0,1fr)]">
-          <form onSubmit={handleCatalogSubmit} className="rounded-lg border border-slate-200 bg-white p-4">
-            <div className="mb-3 flex items-center gap-2">
-              <Plus className="h-5 w-5 text-teal-700" />
-              <h2 className="text-lg font-semibold text-slate-950">New Service</h2>
-            </div>
-            <div className="grid gap-3">
-              <Field label="Service Name"><input required value={catalogForm.name} onChange={(event) => setCatalogForm((prev) => ({ ...prev, name: event.target.value }))} className={inputClass} /></Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Code"><input value={catalogForm.sku_code} onChange={(event) => setCatalogForm((prev) => ({ ...prev, sku_code: event.target.value }))} className={inputClass} /></Field>
-                <Field label="Category"><input value={catalogForm.service_category} onChange={(event) => setCatalogForm((prev) => ({ ...prev, service_category: event.target.value }))} className={inputClass} /></Field>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Duration"><input type="number" min="1" value={catalogForm.duration_minutes} onChange={(event) => setCatalogForm((prev) => ({ ...prev, duration_minutes: event.target.value }))} className={inputClass} /></Field>
-                <Field label="Price"><input required type="number" min="0" step="0.01" value={catalogForm.default_sale_price} onChange={(event) => setCatalogForm((prev) => ({ ...prev, default_sale_price: event.target.value }))} className={inputClass} /></Field>
-              </div>
-              <Field label="Payment Policy">
-                <select value={catalogForm.payment_policy} onChange={(event) => setCatalogForm((prev) => ({ ...prev, payment_policy: event.target.value }))} className={inputClass}>
-                  <option value="customer_choice">Customer Choice</option>
-                  <option value="prepaid_required">Prepaid Required</option>
-                  <option value="postpaid_only">Postpaid Only</option>
-                  <option value="deposit_allowed">Deposit Allowed</option>
-                </select>
-              </Field>
-              <Field label="Service Area">
-                <select value={catalogForm.service_area_type} onChange={(event) => setCatalogForm((prev) => ({ ...prev, service_area_type: event.target.value }))} className={inputClass}>
-                  <option value="in_store">In Store</option>
-                  <option value="customer_location">Customer Location</option>
-                  <option value="online">Online</option>
-                  <option value="hybrid">Hybrid</option>
-                </select>
-              </Field>
-              <Field label="Intake Question">
-                <textarea value={catalogForm.intake_question} onChange={(event) => setCatalogForm((prev) => ({ ...prev, intake_question: event.target.value }))} className={`${inputClass} min-h-[70px]`} placeholder="Example: What concern should we prepare for?" />
-              </Field>
-              <div className="grid grid-cols-2 gap-3">
-                <Field label="Answer Type">
-                  <select value={catalogForm.intake_question_type} onChange={(event) => setCatalogForm((prev) => ({ ...prev, intake_question_type: event.target.value }))} className={inputClass}>
-                    <option value="textarea">Long Answer</option>
-                    <option value="text">Short Answer</option>
-                    <option value="number">Number</option>
-                    <option value="date">Date</option>
-                    <option value="checkbox">Checkbox</option>
-                  </select>
-                </Field>
-                <label className="flex items-center gap-2 pt-6 text-sm font-semibold text-slate-700">
-                  <input type="checkbox" checked={catalogForm.intake_question_required} onChange={(event) => setCatalogForm((prev) => ({ ...prev, intake_question_required: event.target.checked }))} />
-                  Required
-                </label>
-              </div>
-              <div className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-                <span className="pr-3">
-                  <strong className="block text-sm text-slate-800">Allow Add-ons</strong>
-                  <small className="text-xs text-slate-500">Show assigned add-on groups when this service is selected.</small>
-                </span>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-label="Allow add-ons for this service"
-                  aria-checked={catalogForm.addons_enabled === true}
-                  onClick={() => setCatalogForm((previous) => ({ ...previous, addons_enabled: !previous.addons_enabled }))}
-                  className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500/20 ${
-                    catalogForm.addons_enabled === true ? 'bg-blue-600' : 'bg-slate-200'
-                  }`}
-                >
-                  <span
-                    className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${
-                      catalogForm.addons_enabled === true ? 'translate-x-5' : 'translate-x-0'
-                    }`}
-                  />
-                </button>
-              </div>
-              <button type="submit" disabled={saving === 'catalog'} className={primaryButtonClass}>{saving === 'catalog' ? 'Saving...' : 'Create Service'}</button>
-            </div>
-          </form>
+          <ServiceCatalogForm
+            values={catalogForm}
+            onChange={setCatalogForm}
+            onSubmit={handleCatalogSubmit}
+            saving={saving === 'catalog'}
+          />
 
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {catalog.map((service) => (

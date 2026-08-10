@@ -33,6 +33,7 @@ export function normalizeFnbModifierGroups(item = {}) {
             modifier_option_id: option.modifier_option_id ?? option.option_id ?? option.id ?? `option-${groupIndex}-${optionIndex}`,
             option_name: optionName,
             price_delta: Number(option.price_delta ?? option.price ?? option.default_sale_price ?? 0) || 0,
+            is_default: option.is_default === true,
           };
         })
         .filter(Boolean);
@@ -40,12 +41,44 @@ export function normalizeFnbModifierGroups(item = {}) {
       return {
         modifier_group_id: group.modifier_group_id ?? group.group_id ?? group.id ?? `group-${groupIndex}`,
         group_name: String(group.display_name || group.group_name || group.name || group.label || `Add-on Group ${groupIndex + 1}`).trim(),
+        group_kind: group.group_kind === 'combo_choice' ? 'combo_choice' : 'modifier',
+        parent_modifier_option_id: group.parent_modifier_option_id ? Number(group.parent_modifier_option_id) : null,
         min_select: Number(group.min_select ?? group.min ?? 0) || 0,
         max_select: Number(group.max_select ?? group.max ?? options.length) || options.length,
+        required: group.required === true || Number(group.min_select ?? group.min ?? 0) > 0,
         options,
       };
     })
     .filter(Boolean);
+}
+
+export function buildDefaultFnbModifierSelections(modifierGroups = []) {
+  return (Array.isArray(modifierGroups) ? modifierGroups : []).flatMap((group) => {
+    const limit = Math.max(0, Number(group?.max_select || 0));
+    const defaults = (Array.isArray(group?.options) ? group.options : []).filter((option) => option?.is_default === true);
+    return (limit > 0 ? defaults.slice(0, limit) : defaults).map((option) => ({
+      modifier_group_id: group.modifier_group_id,
+      modifier_option_id: option.modifier_option_id,
+      option_name: option.option_name,
+      price_delta: Number(option.price_delta || 0),
+      quantity: 1
+    }));
+  });
+}
+
+export function validateFnbModifierSelections(modifierGroups = [], selectedModifiers = []) {
+  const selected = Array.isArray(selectedModifiers) ? selectedModifiers : [];
+  for (const group of Array.isArray(modifierGroups) ? modifierGroups : []) {
+    if (group?.parent_modifier_option_id && !selected.some((entry) => Number(entry?.modifier_option_id) === Number(group.parent_modifier_option_id))) continue;
+    const count = selected.filter((entry) => Number(entry?.modifier_group_id) === Number(group?.modifier_group_id)).length;
+    const minimum = group?.required === true
+      ? Math.max(1, Number(group?.min_select || 0))
+      : Math.max(0, Number(group?.min_select || 0));
+    const maximum = Math.max(0, Number(group?.max_select || 0));
+    if (count < minimum) return { valid: false, groupId: group.modifier_group_id, message: `${group.group_name} requires at least ${minimum} selection${minimum === 1 ? '' : 's'}.` };
+    if (maximum > 0 && count > maximum) return { valid: false, groupId: group.modifier_group_id, message: `${group.group_name} allows at most ${maximum} selection${maximum === 1 ? '' : 's'}.` };
+  }
+  return { valid: true, groupId: null, message: '' };
 }
 
 export function buildFnbNutritionCards(item = {}) {

@@ -37,7 +37,8 @@ export const buildFnbCheckoutPayload = ({
       ? {
           line_modifiers: line.line_modifiers.map((entry) => ({
             modifier_group_id: Number(entry.modifier_group_id),
-            modifier_option_id: Number(entry.modifier_option_id)
+            modifier_option_id: Number(entry.modifier_option_id),
+            quantity: Math.min(99, Math.max(1, Number.parseInt(entry.quantity || 1, 10) || 1))
           }))
         }
       : {})
