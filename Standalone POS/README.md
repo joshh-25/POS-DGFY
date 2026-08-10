@@ -14,7 +14,7 @@ Android Studio should detect it as a Gradle Android application project.
 
 - a real Android Studio project you can open and sync
 - a React Native Android host for the standalone POS app layer
-- separate from the existing `android/imin-wrapper` project
+- separate from the existing `apps/dgfy-android-bridge/imin-wrapper` project
 
 ## Bound app layer
 

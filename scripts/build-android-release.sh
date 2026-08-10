@@ -8,7 +8,7 @@
 #   bash scripts/build-android-release.sh <dev|staging|beta|prod> [--clean] [--pos-origin URL]
 #
 # All four release build types currently reuse the debug signing config
-# (see android/imin-wrapper/app/build.gradle.kts), so the resulting APK is
+# (see apps/dgfy-android-bridge/imin-wrapper/app/build.gradle.kts), so the resulting APK is
 # already signed and installable without a separate keystore.
 #
 # --pos-origin overrides the flavor's default POS origin at build time
@@ -19,7 +19,7 @@
 set -Eeuo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-ANDROID_DIR="$PROJECT_ROOT/android/imin-wrapper"
+ANDROID_DIR="$PROJECT_ROOT/apps/dgfy-android-bridge/imin-wrapper"
 OUTPUT_DIR="$PROJECT_ROOT/releases/android"
 
 usage() {

@@ -39,14 +39,15 @@ jobs:
           cache: npm
           cache-dependency-path: |
             package-lock.json
-            backend/package-lock.json
+            apps/dgfy-api/package-lock.json
             frontend/package-lock.json
 
       - name: Install dependencies
         timeout-minutes: 12
         run: |
           npm ci
-          npm --prefix backend ci
+          npm --prefix apps/dgfy-api ci
+          npm --prefix apps/dgfy-migration-runner ci
           npm --prefix frontend ci
 
       - name: Resolve reviewed batch manifest
@@ -71,9 +72,9 @@ jobs:
           npm run audit:dependencies:prod
           npm run audit:dependencies
 
-      - name: Prepare backend test schema
-        working-directory: backend
-        run: npx sequelize-cli db:migrate --env development --config src/config/sequelize.config.cjs --migrations-path migrations
+      - name: Prepare test schema
+        working-directory: apps/dgfy-migration-runner
+        run: npx sequelize-cli db:migrate --config src/config/sequelize.config.cjs
         env:
           NODE_ENV: test
           DB_HOST: localhost
@@ -86,7 +87,7 @@ jobs:
           JWT_SECRET: ci_jwt_secret_key_for_tests_only_123456
           REFRESH_TOKEN_SECRET: ci_refresh_secret_key_for_tests_only_123
 
-      - name: Backend test matrix
+      - name: dgfy-api test matrix
         timeout-minutes: 25
         run: npm run test:backend:matrix
         env:

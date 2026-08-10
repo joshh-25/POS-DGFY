@@ -21,8 +21,8 @@ on:
         required: false
         type: boolean
         default: false
-      build_backend:
-        description: Whether to build/push the backend image. Defaults true so staging/main/manual callers are unaffected; only build-develop.yml gates this on changed paths.
+      build_api:
+        description: Whether to build/push the dgfy-api and dgfy-migration-runner images. Defaults true so staging/main/manual callers are unaffected; only build-develop.yml gates this on changed paths.
         required: false
         type: boolean
         default: true
@@ -37,19 +37,38 @@ on:
         type: string
         default: '["ubuntu-latest"]'
     outputs:
-      backend_sha_tag:
-        value: ${{ jobs.backend.outputs.sha_tag }}
       frontend_sha_tag:
         value: ${{ jobs.frontend.outputs.sha_tag }}
+      dgfy_api_sha_tag:
+        value: ${{ jobs.dgfy-api.outputs.sha_tag }}
+      migration_runner_sha_tag:
+        value: ${{ jobs.dgfy-migration-runner.outputs.sha_tag }}
 
 permissions:
   contents: read
   packages: write
 
 jobs:
-  backend:
-    if: inputs.build_backend
-    uses: ./.github/workflows/deploy-backend.yml
+  dgfy-api:
+    # The backend, refactored into apps/dgfy-api -- now the source of truth
+    # (backend/ removed). See infrastructure/docker/dgfy-api/Dockerfile.
+    if: inputs.build_api
+    uses: ./.github/workflows/deploy-api.yml
+    with:
+      environment: ${{ inputs.environment }}
+      image_tags: ${{ inputs.image_tags }}
+      runner_labels_json: ${{ inputs.runner_labels_json }}
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
+  dgfy-migration-runner:
+    # One-shot migration image the dgfy-api service depends on at compose-up
+    # (applies Sequelize migrations, then exits). Must be published alongside
+    # dgfy-api -- see infrastructure/docker/dgfy-migration-runner/Dockerfile.
+    if: inputs.build_api
+    uses: ./.github/workflows/deploy-migration-runner.yml
     with:
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.image_tags }}
@@ -75,18 +94,20 @@ jobs:
       packages: write
 
   publish:
-    needs: [ backend, frontend ]
-    # backend/frontend are conditionally skipped (build_backend/build_frontend
-    # above), and `needs.<job>.result` on a skipped job is 'skipped', not
-    # 'success' -- so this can't require both to be 'success' like it used to.
-    # `!cancelled()` is required too: without a status-check function here,
-    # a skipped need would skip this job as well. Publish goes ahead as long
-    # as neither built job actually failed and at least one of them ran.
+    needs: [ dgfy-api, dgfy-migration-runner, frontend ]
+    # dgfy-api/dgfy-migration-runner/frontend are conditionally skipped
+    # (build_api/build_frontend above), and `needs.<job>.result` on a skipped
+    # job is 'skipped', not 'success' -- so this can't require all three to be
+    # 'success' like it used to. `!cancelled()` is required too: without a
+    # status-check function here, a skipped need would skip this job as well.
+    # Publish goes ahead as long as none of the built jobs actually failed and
+    # at least one of them ran.
     if: >-
       inputs.publish && !cancelled() &&
-      needs.backend.result != 'failure' &&
+      needs.dgfy-api.result != 'failure' &&
+      needs.dgfy-migration-runner.result != 'failure' &&
       needs.frontend.result != 'failure' &&
-      (needs.backend.result == 'success' || needs.frontend.result == 'success')
+      (needs.dgfy-api.result == 'success' || needs.dgfy-migration-runner.result == 'success' || needs.frontend.result == 'success')
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: ${{ inputs.environment }}

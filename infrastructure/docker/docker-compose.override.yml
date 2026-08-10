@@ -12,13 +12,19 @@
 #   127.0.0.1 skupervisor.localhost pos.localhost localhost
 
 services:
-  backend:
-    image: dgfy-platform-backend:dev
+  dgfy-migration-runner:
+    image: dgfy-platform-migration-runner:dev
     build:
       context: ../..
-      dockerfile: infrastructure/docker/backend/Dockerfile
+      dockerfile: infrastructure/docker/dgfy-migration-runner/Dockerfile
+
+  dgfy-api:
+    image: dgfy-platform-api:dev
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/dgfy-api/Dockerfile
     ports:
-      - "5000:5000"
+      - "5100:5100"
 
   frontend:
     image: dgfy-platform-frontend:dev

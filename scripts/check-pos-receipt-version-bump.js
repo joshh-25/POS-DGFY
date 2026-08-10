@@ -28,7 +28,7 @@ const splitLines = (raw) => (
         .filter(Boolean)
 );
 
-// Mirrors backend/scripts/check-tenant-schema-registry-coverage.js's
+// Mirrors apps/dgfy-api/scripts/check-tenant-schema-registry-coverage.js's
 // resolveChangedFiles fallback chain, minus the --staged mode (not needed
 // here -- this only ever runs against a base-branch comparison).
 function resolveBaseRef() {

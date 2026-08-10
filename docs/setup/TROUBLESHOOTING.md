@@ -386,7 +386,7 @@ timeout 5 bash -c 'cat < /dev/tcp/<current-smtp-host>/465' && echo "OPEN" || ech
 - In a multi-tenant system, the backend requires the Company Token to know which database to check the refresh token against. Without it, the refresh request fails, leading to a loop of 401s.
 
 **Solution**:
-- **Fixed in Code (Phase 34)**: Updated `frontend/src/services/api.js` to explicitly attach `x-company-token` from `localStorage` during the refresh flow.
+- **Fixed in Code (Phase 34)**: Updated `apps/dgfy-web/src/services/api.js` to explicitly attach `x-company-token` from `localStorage` during the refresh flow.
 - **Verification**:
   1. Open Console.
   2. Log in as Admin.
@@ -571,7 +571,7 @@ DROP DATABASE IF EXISTS `sku_tenant_example_abc12345`;
       name: 'sku-frontend',
       script: './node_modules/.bin/vite',
       args: 'preview --host --port 5173',
-      cwd: './frontend',
+      cwd: './apps/dgfy-web',
       env: { NODE_ENV: 'production' },
       env_production: { NODE_ENV: 'production' },
   }

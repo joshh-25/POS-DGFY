@@ -1,11 +1,11 @@
 const fs = require('fs');
 const path = require('path');
-const { validateHostingProfile } = require('../backend/src/config/productionEnvValidation.cjs');
+const { validateHostingProfile } = require('../apps/dgfy-api/src/config/productionEnvValidation.cjs');
 
 const parseArgs = (argv) => {
   const args = {
     profile: null,
-    envFile: path.join('backend', '.env')
+    envFile: path.join('apps', 'dgfy-api', '.env')
   };
 
   for (let i = 0; i < argv.length; i += 1) {

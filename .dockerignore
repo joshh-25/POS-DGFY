@@ -1,6 +1,6 @@
 # Docker only reads <build context>/.dockerignore, and every image here
-# builds with `context: .` (repo root) -- backend/.dockerignore and
-# frontend/.dockerignore are never actually consulted. This supersedes them.
+# builds with `context: .` (repo root) -- apps/dgfy-api/.dockerignore and
+# apps/dgfy-web/.dockerignore are never actually consulted. This supersedes them.
 
 # VCS / editor / agent tooling
 /.git
@@ -30,7 +30,15 @@
 /skills
 
 # Dependency / build-output / local-only noise, at any depth
-node_modules
+#
+# node_modules/.env/.env.* need the explicit **/ prefix -- unlike .gitignore,
+# .dockerignore patterns are root-anchored by default, so the bare forms below
+# matched only the repo-root copies. apps/dgfy-web/node_modules (~1GB) and
+# apps/dgfy-api/node_modules (~330MB) were slipping into the build context,
+# which is also a correctness bug: the frontend Dockerfile's
+# `COPY apps/dgfy-web/ ./` (after `npm ci`) would overwrite the image's Linux
+# node_modules with the host's macOS one if it weren't excluded.
+**/node_modules
 dist
 dist-apps
 desktop-dist
@@ -40,13 +48,20 @@ bun.lock
 *.md
 
 # Local dev state not needed at build time, at any depth
-.env
-.env.*
-!.env.example
-!.env.*.example
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.*.example
 logs
 uploads
 storage
 device-bridge
 tests
 config
+
+# Local-only scratch/state dirs -- multi-GB production data snapshots and
+# Docker bind-mount state that no Dockerfile COPYs from, but which otherwise
+# get tarred into the build context on every build. See .gitignore for why
+# these exist on disk at all.
+/do-not-commit
+/infrastructure/docker/data
