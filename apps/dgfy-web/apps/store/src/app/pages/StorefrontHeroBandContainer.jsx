@@ -1,7 +1,7 @@
 import React from 'react';
 import { Badge, GhostButton, PrimaryButton } from '../../shared/components/StorefrontActionPrimitives.jsx';
 import { StorefrontHeroShell } from '../../shared/components/StorefrontHeroShell.jsx';
-import { DefaultStorefrontHero } from '../../shared/components/DefaultStorefrontHero.jsx';
+import { DefaultStorefrontHero } from '../../shared/components/DefaultStorefrontHeroLazy.jsx';
 import { buildVisibleStorefrontContactRows } from '../../shared/utils/storefrontContactPresentation.js';
 import { StorefrontExpandableBusinessHours } from '../../features/shared-storefront/components/StorefrontExpandableBusinessHours.jsx';
 import { getDeliveryPlatformLinks } from '../../features/shared-storefront/utils/storefrontDisplayUtils.jsx';
@@ -17,10 +17,10 @@ import {
   STOREFRONT_INFO_ROW_GAP,
   STYLES
 } from '../../shared/theme/storefrontStyleTokens.js';
-import { ServicesHero } from '../../modes/services/storefront/components/ServicesHero.jsx';
-import { FnbHero } from '../../modes/fnb/storefront/components/FnbHero.jsx';
-import { SimpleHero } from '../../modes/simple/storefront/components/SimpleHero.jsx';
-import HospitalityBookingPanel from '../../modes/hospitality/booking/components/HospitalityBookingPanel.jsx';
+import { ServicesHero } from '../../modes/services/storefront/components/ServicesHeroLazy.jsx';
+import { FnbHero } from '../../modes/fnb/storefront/components/FnbHeroLazy.jsx';
+import { SimpleHero } from '../../modes/simple/storefront/components/SimpleHeroLazy.jsx';
+import HospitalityBookingPanel from '../../modes/hospitality/booking/components/HospitalityBookingPanelLazy.jsx';
 
 // ZONE 1-3: Navigation & Header / Hero Branding / Location Map Snapshot + hospitality booking
 // panel — cross-mode composition (services/fnb/simple/hospitality/shared/discovery). Moved
