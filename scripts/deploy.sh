@@ -7,7 +7,12 @@
 set -Eeuo pipefail
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BACKEND_DIR="$PROJECT_ROOT/backend"
+BACKEND_DIR="$PROJECT_ROOT/apps/dgfy-api"
+# The migration domain (migrations/, sequelize-cli, .sequelizerc) lives in its
+# own package -- apps/dgfy-api itself no longer carries a migrations/ dir or
+# .sequelizerc since the apps/ split (see docs/architecture/backend-absorption.md),
+# so `sequelize-cli db:migrate` must run from here, not from $BACKEND_DIR.
+MIGRATION_RUNNER_DIR="$PROJECT_ROOT/apps/dgfy-migration-runner"
 FRONTEND_DIR="$PROJECT_ROOT/apps/dgfy-web"
 DEPLOY_LOG_DIR="$PROJECT_ROOT/logs/deploy"
 DEPLOY_STATE_DIR="$PROJECT_ROOT/.deploy-state"
@@ -89,7 +94,7 @@ while [[ $# -gt 0 ]]; do
             echo "  --verify              Run deep AI verification after deploy"
             echo ""
             echo "Environment overrides:"
-            echo "  PAYMENTS_ENABLED=true|false (read from backend/.env; default false)"
+            echo "  PAYMENTS_ENABLED=true|false (read from apps/dgfy-api/.env; default false)"
             echo "  DEPLOY_RUN_BILLING_VERIFY=auto|0|1 (default auto)"
             echo "  DEPLOY_STORE_BASE_PATH=/"
             echo "  DEPLOY_VERIFY_PUBLIC_ENDPOINTS=1"
@@ -692,7 +697,7 @@ ENV_FILE="$BACKEND_DIR/.env"
 [[ -f "$ENV_FILE" ]] || fatal "Missing backend env file: $ENV_FILE"
 
 HOSTING_PROFILE_RAW="$(env_value "$ENV_FILE" "HOSTING_PROFILE")"
-[[ -n "${HOSTING_PROFILE_RAW:-}" ]] || fatal "Missing required env variable HOSTING_PROFILE in backend/.env"
+[[ -n "${HOSTING_PROFILE_RAW:-}" ]] || fatal "Missing required env variable HOSTING_PROFILE in apps/dgfy-api/.env"
 if ! node "$PROJECT_ROOT/scripts/check-hosting-profile.js" --profile "$HOSTING_PROFILE_RAW" --env-file "$ENV_FILE"; then
     fatal "Production environment validation failed for HOSTING_PROFILE=$HOSTING_PROFILE_RAW"
 fi
@@ -702,7 +707,7 @@ REQUIRED_ENV_VARS=("DB_HOST" "DB_USER" "DB_NAME" "JWT_SECRET")
 for var in "${REQUIRED_ENV_VARS[@]}"; do
     value="$(env_value "$ENV_FILE" "$var")"
     if [[ -z "${value:-}" ]]; then
-        fatal "Missing required env variable ${var} in backend/.env"
+        fatal "Missing required env variable ${var} in apps/dgfy-api/.env"
     fi
 done
 log "Required env validation passed."
@@ -719,7 +724,7 @@ validate_paypal_env() {
     for var in "${required_paypal_vars[@]}"; do
         value="$(env_value "$ENV_FILE" "$var")"
         if [[ -z "${value:-}" ]]; then
-            fatal "Missing required PayPal env variable ${var} in backend/.env"
+            fatal "Missing required PayPal env variable ${var} in apps/dgfy-api/.env"
         fi
     done
 
@@ -735,9 +740,9 @@ validate_paypal_env() {
     paypal_premium_plan="$(env_value "$ENV_FILE" "PAYPAL_PREMIUM_PLAN_ID")"
     paypal_legacy_plan="$(env_value "$ENV_FILE" "PAYPAL_PLAN_ID")"
 
-    [[ -n "$paypal_standard_plan" ]] || fatal "Missing PAYPAL_STANDARD_PLAN_ID in backend/.env"
+    [[ -n "$paypal_standard_plan" ]] || fatal "Missing PAYPAL_STANDARD_PLAN_ID in apps/dgfy-api/.env"
     if [[ -z "$paypal_premium_plan" && -z "$paypal_legacy_plan" ]]; then
-        fatal "Missing PAYPAL_PREMIUM_PLAN_ID (or legacy PAYPAL_PLAN_ID) in backend/.env"
+        fatal "Missing PAYPAL_PREMIUM_PLAN_ID (or legacy PAYPAL_PLAN_ID) in apps/dgfy-api/.env"
     fi
     if [[ -z "$paypal_premium_plan" && -n "$paypal_legacy_plan" ]]; then
         warn "Using legacy PAYPAL_PLAN_ID fallback for premium plan. Prefer PAYPAL_PREMIUM_PLAN_ID."
@@ -771,8 +776,8 @@ validate_paymongo_env() {
 
     standard_plan="$(env_value "$ENV_FILE" "PAYMONGO_STANDARD_PLAN_ID")"
     premium_plan="$(env_value "$ENV_FILE" "PAYMONGO_PREMIUM_PLAN_ID")"
-    [[ -n "$standard_plan" ]] || fatal "Missing PAYMONGO_STANDARD_PLAN_ID in backend/.env"
-    [[ -n "$premium_plan" ]] || fatal "Missing PAYMONGO_PREMIUM_PLAN_ID in backend/.env"
+    [[ -n "$standard_plan" ]] || fatal "Missing PAYMONGO_STANDARD_PLAN_ID in apps/dgfy-api/.env"
+    [[ -n "$premium_plan" ]] || fatal "Missing PAYMONGO_PREMIUM_PLAN_ID in apps/dgfy-api/.env"
 
     generic_public="$(env_value "$ENV_FILE" "PAYMONGO_PUBLIC_KEY")"
     generic_secret="$(env_value "$ENV_FILE" "PAYMONGO_SECRET_KEY")"
@@ -849,7 +854,7 @@ if [[ "$PAYMENTS_ENABLED_NORMALIZED" == "true" ]]; then
             ;;
     esac
 else
-    log "PAYMENTS_ENABLED is not true in backend/.env; skipping payment provider validation."
+    log "PAYMENTS_ENABLED is not true in apps/dgfy-api/.env; skipping payment provider validation."
 fi
 
 case "$DEPLOY_RUN_BILLING_VERIFY_MODE" in
@@ -1022,6 +1027,7 @@ fi
 # ===========================================================================
 run_step "Installing deterministic dependencies..." run_ci_if_lockfile_exists "$PROJECT_ROOT"
 run_ci_if_lockfile_exists "$BACKEND_DIR"
+run_ci_if_lockfile_exists "$MIGRATION_RUNNER_DIR"
 run_ci_if_lockfile_exists "$FRONTEND_DIR"
 
 run_step "Running documentation governance lint..." npm run lint:docs
@@ -1037,9 +1043,9 @@ run_step "Recording frontend build manifest..." node "$PROJECT_ROOT/scripts/reco
 # ===========================================================================
 # Database migrations
 # ===========================================================================
-run_step "Running database migration status (pre-check)..." bash -lc "cd \"$BACKEND_DIR\" && npx sequelize-cli db:migrate:status || true"
-run_step "Running database migrations..." bash -lc "cd \"$BACKEND_DIR\" && npx sequelize-cli db:migrate"
-run_step "Running database migration status (post-check)..." bash -lc "cd \"$BACKEND_DIR\" && npx sequelize-cli db:migrate:status || true"
+run_step "Running database migration status (pre-check)..." bash -lc "cd \"$MIGRATION_RUNNER_DIR\" && npx sequelize-cli db:migrate:status || true"
+run_step "Running database migrations..." bash -lc "cd \"$MIGRATION_RUNNER_DIR\" && npx sequelize-cli db:migrate"
+run_step "Running database migration status (post-check)..." bash -lc "cd \"$MIGRATION_RUNNER_DIR\" && npx sequelize-cli db:migrate:status || true"
 run_step "Normalizing original legacy tenant account..." bash -lc "cd \"$BACKEND_DIR\" && node scripts/register_original_tenant.js --apply"
 if [[ "$STRICT_LEGACY_AUDIT" == "1" ]]; then
     run_step "Auditing original legacy tenant invariants (strict)..." bash -lc "cd \"$BACKEND_DIR\" && node scripts/audit_original_legacy_account.js --strict"
