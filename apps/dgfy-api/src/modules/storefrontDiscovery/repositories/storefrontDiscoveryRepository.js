@@ -14,6 +14,7 @@ import { createHash } from 'crypto';
 import { Op } from 'sequelize';
 import { assertStorefrontDiscoveryRepositoryContract } from '../contracts/storefrontDiscoveryRepository.contract.js';
 import { normalizeStorefrontAssetPath, normalizeStorefrontAssetUrl } from '../../shared/utils/storefrontAssetPolicy.js';
+import { deriveImageAssetVariantUrls } from '../../shared/utils/imageAssetStorage.js';
 import {
     getStorefrontBusinessHoursStatus,
     normalizeStorefrontBusinessHours
@@ -606,6 +607,16 @@ const toPlainEntry = (row) => {
         || (customerAccessModesEnabled ? 'catalog' : 'transaction');
     const accessCapabilities = parseJsonObject(plain.access_capabilities)
         || buildAccessCapabilities(effectiveCustomerAccessMode);
+    const coverImageUrl = sanitizeStorefrontAssetUrlFromIndex({
+        rawValue: plain.storefront_cover_image_url,
+        tenantId: plain.tenant_id,
+        assetType: 'cover'
+    });
+    const profileImageUrl = sanitizeStorefrontAssetUrlFromIndex({
+        rawValue: plain.storefront_profile_image_url,
+        tenantId: plain.tenant_id,
+        assetType: 'profile'
+    });
     return {
     tenant_id: plain.tenant_id,
     tenant_name: plain.tenant_name,
@@ -628,16 +639,19 @@ const toPlainEntry = (row) => {
     supports_dine_in: plain.supports_dine_in !== false,
     store_delivery_fee: toNumber(plain.store_delivery_fee, 0),
     catalog_count: toNumber(plain.catalog_count, 0),
-    storefront_cover_image_url: sanitizeStorefrontAssetUrlFromIndex({
-        rawValue: plain.storefront_cover_image_url,
-        tenantId: plain.tenant_id,
-        assetType: 'cover'
-    }),
-    storefront_profile_image_url: sanitizeStorefrontAssetUrlFromIndex({
-        rawValue: plain.storefront_profile_image_url,
-        tenantId: plain.tenant_id,
-        assetType: 'profile'
-    }),
+    storefront_cover_image_url: coverImageUrl,
+    // Issue #282, Phase D: exposes the AVIF/WebP/srcSet variants that
+    // already exist on disk (branding uploads go through the same
+    // storeOptimizedImageAsset pipeline as catalog items -- see
+    // storefrontAssetStorage.js), so the frontend can feed the hero cover
+    // through StorefrontResponsiveImage instead of a bare <img>. Legacy
+    // pre-v2 uploads degrade gracefully: deriveImageAssetVariantUrls
+    // returns the same URL for every variant when the asset predates the
+    // responsive pipeline, and resolveStorefrontImageSources only emits a
+    // srcSet when more than one distinct URL exists.
+    storefront_cover_image_variants: coverImageUrl ? deriveImageAssetVariantUrls({ storedUrl: coverImageUrl }) : null,
+    storefront_profile_image_url: profileImageUrl,
+    storefront_profile_image_variants: profileImageUrl ? deriveImageAssetVariantUrls({ storedUrl: profileImageUrl }) : null,
     storefront_tagline: toTrimmedString(plain.storefront_tagline, 120),
     storefront_about: toTrimmedString(plain.storefront_about, 1000),
     storefront_phone: toTrimmedString(plain.storefront_phone, 50),

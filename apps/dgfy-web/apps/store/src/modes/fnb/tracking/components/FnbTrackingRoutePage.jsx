@@ -1,7 +1,11 @@
 import React, { useMemo } from 'react';
 
 import { PickupTrackingMobileView } from '../../../../features/tracking/components/PickupTrackingMobileView.jsx';
-import TrackingRouteMap, { extractTrackingMapCoordinates } from '../../../../tracking/TrackingRouteMap.jsx';
+import TrackingRouteMap from '../../../../tracking/TrackingRouteMapLazy.jsx';
+// Issue #282, Phase E: imported from its own pure module (no maplibre-gl
+// dependency), not from TrackingRouteMap.jsx / TrackingRouteMapLazy.jsx --
+// pulling it from either would defeat the lazy-loading above.
+import { extractTrackingMapCoordinates } from '../../../../tracking/extractTrackingMapCoordinates.js';
 import { FnbTrackingActiveView } from './FnbTrackingActiveView.jsx';
 import { FnbTrackingCompletedView } from './FnbTrackingCompletedView.jsx';
 

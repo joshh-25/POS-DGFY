@@ -7,8 +7,6 @@ import { DiscoveryFooter } from './DiscoveryFooter.jsx';
 import { DiscoveryHowItWorksSection } from './DiscoveryHowItWorksSection.jsx';
 
 export function DiscoveryLandingSections({
-  buildBusinessLoginUrl,
-  buildBusinessRegistrationUrl,
   dgfyBusinessOwnerPhoto,
   dgfyHeaderLogo,
   dgfySymbolLogo,
@@ -73,8 +71,6 @@ export function DiscoveryLandingSections({
       />
 
       <DiscoveryFooter
-        buildBusinessLoginUrl={buildBusinessLoginUrl}
-        buildBusinessRegistrationUrl={buildBusinessRegistrationUrl}
         dgfyHeaderLogo={dgfyHeaderLogo}
         isMobileViewport={isMobileViewport}
       />

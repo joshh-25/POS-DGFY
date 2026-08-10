@@ -1,5 +1,5 @@
 import React from 'react';
-import { DeliveryPinMap } from '../../features/locations/components/DeliveryPinMap.jsx';
+import { DeliveryPinMap } from '../../features/locations/components/DeliveryPinMapLazy.jsx';
 import { DGFY_ACRONYM, ORDER_METHOD_OPTIONS } from '../model/storefrontConstants.js';
 import { StorefrontResponsiveImage } from './storefront/StorefrontResponsiveImage.jsx';
 import { resolveStorefrontImageSources } from '../utils/storefrontImageSources.js';

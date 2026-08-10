@@ -1,7 +1,7 @@
 import React from 'react';
 import { Badge, GhostButton, PrimaryButton } from '../../shared/components/StorefrontActionPrimitives.jsx';
 import { StorefrontHeroShell } from '../../shared/components/StorefrontHeroShell.jsx';
-import { DefaultStorefrontHero } from '../../shared/components/DefaultStorefrontHero.jsx';
+import { DefaultStorefrontHero } from '../../shared/components/DefaultStorefrontHeroLazy.jsx';
 import { buildVisibleStorefrontContactRows } from '../../shared/utils/storefrontContactPresentation.js';
 import { StorefrontExpandableBusinessHours } from '../../features/shared-storefront/components/StorefrontExpandableBusinessHours.jsx';
 import { getDeliveryPlatformLinks } from '../../features/shared-storefront/utils/storefrontDisplayUtils.jsx';
@@ -17,10 +17,10 @@ import {
   STOREFRONT_INFO_ROW_GAP,
   STYLES
 } from '../../shared/theme/storefrontStyleTokens.js';
-import { ServicesHero } from '../../modes/services/storefront/components/ServicesHero.jsx';
-import { FnbHero } from '../../modes/fnb/storefront/components/FnbHero.jsx';
-import { SimpleHero } from '../../modes/simple/storefront/components/SimpleHero.jsx';
-import HospitalityBookingPanel from '../../modes/hospitality/booking/components/HospitalityBookingPanel.jsx';
+import { ServicesHero } from '../../modes/services/storefront/components/ServicesHeroLazy.jsx';
+import { FnbHero } from '../../modes/fnb/storefront/components/FnbHeroLazy.jsx';
+import { SimpleHero } from '../../modes/simple/storefront/components/SimpleHeroLazy.jsx';
+import HospitalityBookingPanel from '../../modes/hospitality/booking/components/HospitalityBookingPanelLazy.jsx';
 
 // ZONE 1-3: Navigation & Header / Hero Branding / Location Map Snapshot + hospitality booking
 // panel — cross-mode composition (services/fnb/simple/hospitality/shared/discovery). Moved
@@ -92,11 +92,14 @@ export function StorefrontHeroBandContainer(props) {
     <>
       {selectedStore && (
         <div style={{ position: 'absolute', left: -99999, top: 'auto', width: 1, height: 1, overflow: 'hidden' }}>
+          {/* Issue #282, Phase D: off-screen SEO/a11y duplicate of images the
+              visible hero already renders -- lazy so it never competes with
+              the real hero cover for bandwidth on initial load. */}
           {selectedStore.storefront_profile_image_url ? (
-            <img alt={`${selectedStore.tenant_name} profile`} src={withAssetOrigin(selectedStore.storefront_profile_image_url)} />
+            <img alt={`${selectedStore.tenant_name} profile`} src={withAssetOrigin(selectedStore.storefront_profile_image_url)} loading="lazy" decoding="async" />
           ) : null}
           {selectedStore.storefront_cover_image_url ? (
-            <img alt={`${selectedStore.tenant_name} cover`} src={withAssetOrigin(selectedStore.storefront_cover_image_url)} />
+            <img alt={`${selectedStore.tenant_name} cover`} src={withAssetOrigin(selectedStore.storefront_cover_image_url)} loading="lazy" decoding="async" />
           ) : null}
           <div>{`Tenant page: ${routeSlug}`}</div>
           {Array.isArray(filteredCatalog) && filteredCatalog.length === 0 ? <div>Storefront items are not set up yet</div> : null}

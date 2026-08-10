@@ -7,7 +7,7 @@ import {
   MapPin,
   Maximize
 } from 'lucide-react';
-import { StoresMap } from '../../../../discovery/components/StoresMap.jsx';
+import { StoresMap } from '../../../../discovery/components/StoresMapLazy.jsx';
 import { getStorefrontContactIcon } from '../../../../features/shared-storefront/utils/storefrontDisplayUtils.jsx';
 
 const SimpleHeroMobileInfoCards = ({
