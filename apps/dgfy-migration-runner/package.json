@@ -18,6 +18,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@sieitzz/shared-constants": "file:../../packages/shared-constants",
     "bcryptjs": "^2.4.3",
     "dotenv": "^16.6.1",
     "mysql2": "^3.6.5",

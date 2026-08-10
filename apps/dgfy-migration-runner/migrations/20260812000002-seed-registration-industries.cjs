@@ -25,7 +25,7 @@ const tableExists = async (queryInterface, tableName) => {
 };
 
 const loadIndustries = async () => {
-    const module = await import('../src/modules/shared/constants/registrationIndustries.js');
+    const module = await import('@sieitzz/shared-constants/registrationIndustries');
     return module.REGISTRATION_INDUSTRIES;
 };
 

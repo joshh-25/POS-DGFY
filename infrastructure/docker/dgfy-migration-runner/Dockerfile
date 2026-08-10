@@ -11,6 +11,7 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY apps/dgfy-migration-runner/package*.json ./
+COPY packages/shared-constants /packages/shared-constants
 RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --omit=dev
 
 FROM node:22-alpine AS runtime
@@ -24,6 +25,7 @@ RUN apk add --no-cache tini su-exec \
  && addgroup -S app && adduser -S app -G app
 
 COPY --from=deps /app/node_modules ./node_modules
+COPY packages/shared-constants /packages/shared-constants
 COPY apps/dgfy-migration-runner/package*.json ./
 COPY apps/dgfy-migration-runner/.sequelizerc ./.sequelizerc
 COPY apps/dgfy-migration-runner/migrations ./migrations

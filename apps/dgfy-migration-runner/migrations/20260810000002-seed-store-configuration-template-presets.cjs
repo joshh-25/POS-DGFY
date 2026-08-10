@@ -31,7 +31,7 @@ const tableExists = async (queryInterface, tableName) => {
 };
 
 const loadPresets = async () => {
-    const module = await import('../src/modules/shared/constants/capabilityModules.js');
+    const module = await import('@sieitzz/shared-constants/capabilityModules');
     return module.STORE_TEMPLATE_PRESETS;
 };
 
