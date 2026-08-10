@@ -17,6 +17,7 @@ import {
 import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from '../../../../shared/components/storefront/hero/StorefrontHeaderNav.jsx';
 import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from '../../../../shared/components/storefront/hero/StorefrontHeroNameCluster.jsx';
 import { StorefrontShareQr as SharedStorefrontShareQr } from '../../../../shared/components/storefront/hero/StorefrontShareQr.jsx';
+import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 import { getServicesResponsiveLayout } from '../../../../shared/utils/storefrontViewport.js';
 import { ServicesHeroDesktopContactLocation } from './ServicesHeroDesktopContactLocation.jsx';
 import { ServicesHeroDesktopWhyChooseUs } from './ServicesHeroDesktopWhyChooseUs.jsx';
@@ -240,9 +241,11 @@ const ServicesHero = ({
         backgroundChildren={
           <>
             {serviceHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`) && (
-              <img
-                src={serviceHeroModel.coverImageUrl}
+              <StorefrontResponsiveImage
+                imageSources={serviceHeroModel.coverImageSources}
                 alt=""
+                loading="eager"
+                fetchPriority="high"
                 style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                 onError={() => markBrandingImageError(`hero-cover:${selectedStore.slug}`)}
               />
@@ -361,8 +364,8 @@ const ServicesHero = ({
           justifyContent: 'center'
         }}>
           {serviceHeroModel.profileImageUrl && !isBrandingImageBlocked(`hero-profile:${selectedStore.slug}`) ? (
-            <img
-              src={serviceHeroModel.profileImageUrl}
+            <StorefrontResponsiveImage
+              imageSources={serviceHeroModel.profileImageSources}
               alt={`${serviceHeroModel.name} profile`}
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               onError={() => markBrandingImageError(`hero-profile:${selectedStore.slug}`)}
@@ -497,7 +500,9 @@ const ServicesHero = ({
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10, marginTop: 2 }}>
                     {previewImages.map((url, index) => (
                       <div key={`${url}-${index}`} style={{ width: '100%', height: 72, borderRadius: 10, overflow: 'hidden', background: '#e2e8f0' }}>
-                        <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                        {/* No image_variants payload exists for gallery entries (unlike
+                            cover/profile) -- plain lazy <img> until that's added. */}
+                        <img src={url} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                       </div>
                     ))}
                   </div>

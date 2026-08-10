@@ -100,7 +100,7 @@ const ServicesHeroMobileInfoCards = ({
                 <div className="no-scrollbar" style={{ display: 'flex', gap: 10, overflowX: 'auto', paddingBottom: 4 }}>
                   {previewImages.map((url, index) => (
                     <div key={`${url}-${index}`} style={{ width: 84, minWidth: 84, height: 72, borderRadius: 10, overflow: 'hidden', position: 'relative', background: '#e2e8f0', flexShrink: 0 }}>
-                      <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      <img src={url} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     </div>
                   ))}
                 </div>
@@ -179,7 +179,7 @@ const ServicesHeroMobileInfoCards = ({
                         const badge = (
                           <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 20, flexShrink: 0 }}>
                             {platform.logoUrl ? (
-                              <img src={platform.logoUrl} alt={platform.label} style={{ maxHeight: 14, width: 'auto', display: 'block', objectFit: 'contain' }} />
+                              <img src={platform.logoUrl} alt={platform.label} loading="lazy" decoding="async" style={{ maxHeight: 14, width: 'auto', display: 'block', objectFit: 'contain' }} />
                             ) : (
                               <span style={{ fontSize: 12, fontWeight: 800, color: '#475569', whiteSpace: 'nowrap' }}>{platform.label}</span>
                             )}

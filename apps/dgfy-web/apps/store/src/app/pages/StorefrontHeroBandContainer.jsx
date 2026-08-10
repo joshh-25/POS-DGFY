@@ -92,11 +92,14 @@ export function StorefrontHeroBandContainer(props) {
     <>
       {selectedStore && (
         <div style={{ position: 'absolute', left: -99999, top: 'auto', width: 1, height: 1, overflow: 'hidden' }}>
+          {/* Issue #282, Phase D: off-screen SEO/a11y duplicate of images the
+              visible hero already renders -- lazy so it never competes with
+              the real hero cover for bandwidth on initial load. */}
           {selectedStore.storefront_profile_image_url ? (
-            <img alt={`${selectedStore.tenant_name} profile`} src={withAssetOrigin(selectedStore.storefront_profile_image_url)} />
+            <img alt={`${selectedStore.tenant_name} profile`} src={withAssetOrigin(selectedStore.storefront_profile_image_url)} loading="lazy" decoding="async" />
           ) : null}
           {selectedStore.storefront_cover_image_url ? (
-            <img alt={`${selectedStore.tenant_name} cover`} src={withAssetOrigin(selectedStore.storefront_cover_image_url)} />
+            <img alt={`${selectedStore.tenant_name} cover`} src={withAssetOrigin(selectedStore.storefront_cover_image_url)} loading="lazy" decoding="async" />
           ) : null}
           <div>{`Tenant page: ${routeSlug}`}</div>
           {Array.isArray(filteredCatalog) && filteredCatalog.length === 0 ? <div>Storefront items are not set up yet</div> : null}

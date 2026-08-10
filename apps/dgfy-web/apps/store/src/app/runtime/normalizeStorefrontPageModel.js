@@ -2,6 +2,7 @@ import { getStorefrontModeAdapter } from './modePresentationRegistry.js';
 import { getFoodBeverageStorefrontViewModel } from '../../modes/fnb/storefront/model/fnbStorefrontViewModel.js';
 import { getServicesStorefrontViewModel } from '../../modes/services/storefront/model/servicesStorefrontViewModel.js';
 import { formatStorefrontBusinessHoursDisplay, normalizeStorefrontBusinessHours } from '../../../../../src/features/settings/storefrontBusinessHours.js';
+import { resolveStorefrontImageSources } from '../../shared/utils/storefrontImageSources.js';
 
 const trimText = (value) => String(value || '').trim();
 
@@ -323,6 +324,20 @@ export const normalizeStorefrontPageModel = ({
   const tagline = trimText(selectedStore?.storefront_tagline);
   const coverImage = trimText(selectedStore?.storefront_cover_image_url || selectedStore?.storefront_cover_image_path);
   const profileImage = trimText(selectedStore?.storefront_profile_image_url || selectedStore?.storefront_profile_image_path);
+  // Issue #282, Phase D: AVIF/WebP/srcSet sources for the hero band, built
+  // once here instead of duplicated per-mode in each hero component.
+  // resolveStorefrontImageSources already handles a missing/null
+  // image_variants (falls back to the single `src`), so this degrades
+  // safely for legacy assets or the storefront_*_image_path fallback above
+  // (which carries no variants payload).
+  const coverImageSources = resolveStorefrontImageSources({
+    image_url: coverImage,
+    image_variants: selectedStore?.storefront_cover_image_variants
+  });
+  const profileImageSources = resolveStorefrontImageSources({
+    image_url: profileImage,
+    image_variants: selectedStore?.storefront_profile_image_variants
+  });
   const tempContactOverride = getStorefrontTempContactOverride(selectedStore);
   const phone = trimText(selectedStore?.storefront_phone || tempContactOverride?.phone);
   const email = trimText(selectedStore?.storefront_email);
@@ -385,7 +400,9 @@ export const normalizeStorefrontPageModel = ({
       storeName: trimText(selectedStore?.tenant_name) || 'Storefront',
       tagline,
       coverImageUrl: coverImage,
+      coverImageSources,
       profileImageUrl: profileImage,
+      profileImageSources,
       statusLabel: selectedStore?.storefront_open ? 'Open' : 'Closed',
       ratingLabel: formatRatingLabel(reviewSummary),
       modeLabel: primaryCategoryLabel,

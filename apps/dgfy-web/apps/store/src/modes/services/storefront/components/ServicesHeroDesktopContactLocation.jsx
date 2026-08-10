@@ -100,7 +100,7 @@ const ServicesHeroDesktopContactLocation = ({
                   const badge = (
                     <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', minHeight: 20, flexShrink: 0 }}>
                       {platform.logoUrl ? (
-                        <img src={platform.logoUrl} alt={platform.label} style={{ maxHeight: 14, width: 'auto', display: 'block', objectFit: 'contain' }} />
+                        <img src={platform.logoUrl} alt={platform.label} loading="lazy" decoding="async" style={{ maxHeight: 14, width: 'auto', display: 'block', objectFit: 'contain' }} />
                       ) : (
                         <span style={{ fontSize: 12, fontWeight: 800, color: '#475569', whiteSpace: 'nowrap' }}>{platform.label}</span>
                       )}

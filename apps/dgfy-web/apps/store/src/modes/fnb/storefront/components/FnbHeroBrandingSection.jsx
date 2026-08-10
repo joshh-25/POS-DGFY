@@ -4,6 +4,7 @@ import { Badge, GhostButton, PrimaryButton } from '../../../../shared/components
 import { StorefrontHeroShell } from '../../../../shared/components/StorefrontHeroShell.jsx';
 import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from '../../../../shared/components/storefront/hero/StorefrontHeroNameCluster.jsx';
 import { StorefrontShareQr as SharedStorefrontShareQr } from '../../../../shared/components/storefront/hero/StorefrontShareQr.jsx';
+import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 import { formatFnbCurrency } from '../utils/fnbCurrency.js';
 
 export const FnbHeroBrandingSection = ({
@@ -42,9 +43,11 @@ export const FnbHeroBrandingSection = ({
     backgroundChildren={
       <>
         {heroSectionModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`) && (
-          <img
-            src={heroSectionModel.coverImageUrl}
+          <StorefrontResponsiveImage
+            imageSources={heroSectionModel.coverImageSources}
             alt=""
+            loading="eager"
+            fetchPriority="high"
             style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
             onError={() => markBrandingImageError(`hero-cover:${selectedStore.slug}`)}
           />
@@ -151,8 +154,8 @@ export const FnbHeroBrandingSection = ({
       justifyContent: 'center'
     }}>
       {heroSectionModel.profileImageUrl && !isBrandingImageBlocked(profileImageKey) ? (
-        <img
-          src={heroSectionModel.profileImageUrl}
+        <StorefrontResponsiveImage
+          imageSources={heroSectionModel.profileImageSources}
           alt={`${heroSectionModel.name} profile`}
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           onError={() => markBrandingImageError(profileImageKey)}
