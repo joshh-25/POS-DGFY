@@ -1195,15 +1195,15 @@ Phase 41 is complete. The next eligible governed phase is Phase 42.
 
 ### Acceptance and Validation Evidence
 
-- [ ] All legitimate local source is committed in reviewable domain batches;
+- [x] All legitimate local source is committed in reviewable domain batches;
   credentials, generated artifacts, and prohibited markers are excluded.
-- [ ] The latest `dgfy-platform/develop` is merged and all conflicts are
+- [x] The latest `dgfy-platform/develop` is merged and all conflicts are
   resolved without dropping validated local or upstream behavior.
-- [ ] Pending migrations pass registry, forward-application, compatibility,
+- [x] Pending migrations pass registry, forward-application, compatibility,
   and isolated tenant-schema validation.
-- [ ] Architecture, documentation, backend, frontend, build, and maintained
+- [x] Architecture, documentation, backend, frontend, build, and maintained
   Playwright gates pass, or any environmental limitation is recorded honestly.
-- [ ] Matching GitHub issues contain root cause, implementation, validation,
+- [x] Matching GitHub issues contain root cause, implementation, validation,
   and pull-request traceability without duplicate issue creation.
 - [ ] The feature branch is pushed and a template-compliant draft pull request
   targets `develop` with explicit residual risks and exclusions.
@@ -1213,3 +1213,15 @@ Phase 41 is complete. The next eligible governed phase is Phase 42.
 - `docs/features/POS_RELEASE_HARDENING_PHASE_40_SCOPE.md`
 - `docs/ops/RELEASE_CANDIDATE_POLICY.md`
 - `.github/pull_request_template.md`
+- Merge commit `32c237e52` reconciles `dgfy-platform/develop` at `4f664a5f6`.
+- Focused backend validation: 12 suites and 132 tests passed, including isolated
+  tenant sales reconciliation and migration coverage.
+- Focused POS/frontend validation: 17 files and 118 tests passed after merge;
+  the full frontend run passed 272 of 290 files and 1,580 of 1,656 tests, with
+  inherited failures recorded for draft-PR follow-up rather than hidden.
+- Production builds and the frontend route budget gate passed; POS checkout is
+  149.8 KB / 154 KB and TerminalPage is 115.7 KB / 116 KB.
+- Authenticated cashier Resume Shift Playwright and deterministic desktop/mobile
+  F&B modifier Playwright passed on 2026-08-11.
+- GitHub issues: `#335`, `#336`, and `#337`; existing related issues remain the
+  canonical trace for Storefront cart, PayMongo, delivery, and printer branding.
