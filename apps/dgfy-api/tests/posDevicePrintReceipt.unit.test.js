@@ -144,6 +144,28 @@ describe('buildPrintPosReceiptUseCase — client-delegated printing', () => {
         expect(deviceDriver.printReceipt).toHaveBeenCalledTimes(1);
         expect(result.data.bridge).toEqual({ ok: true, result: { copies: 1 } });
     });
+
+    // logo_raster (issue #321): the LAN/USB bridge path pre-rasterizes the
+    // configured company icon via resolveReceiptLogoRaster (see
+    // receiptLogoRaster.unit.test.js for the encoding itself) and folds it into
+    // the receipt's business settings. This only checks the wiring -- that the
+    // field is present and null when no icon is configured -- not the encoding.
+    it('includes a null business.logo_raster when no company icon is configured', async () => {
+        const posRepository = buildPosRepositoryStub();
+        const deviceDriver = {
+            id: 'lan_escpos_bridge',
+            printReceipt: jest.fn().mockResolvedValue({ ok: true, result: { copies: 1 } })
+        };
+        const useCase = buildPrintPosReceiptUseCase({ posRepository, deviceDriver });
+
+        await useCase({
+            payload: { transaction_id: 42 },
+            user: { user_id: 1 }
+        });
+
+        const [printCall] = deviceDriver.printReceipt.mock.calls;
+        expect(printCall[0].receipt.business).toHaveProperty('logo_raster', null);
+    });
 });
 
 describe('buildPrintPosShiftSummaryUseCase', () => {

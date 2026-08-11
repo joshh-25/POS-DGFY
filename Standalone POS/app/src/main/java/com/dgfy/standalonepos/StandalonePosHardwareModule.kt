@@ -21,10 +21,14 @@ class StandalonePosHardwareModule(
 
     override fun getName(): String = "StandalonePosHardware"
 
+    // logoSource (added for issue #321) is the tenant's resolved company icon URL or
+    // a data: URI; pass "" to fall back to the bundled DGFY icon (see
+    // ReceiptLogoProvider). @ReactMethod's arity is fixed once declared, so
+    // standalonePosHardware.ts must always supply this argument, not omit it.
     @ReactMethod
-    fun printReceipt(receiptText: String, openDrawerAfterPrint: Boolean, promise: Promise) {
+    fun printReceipt(receiptText: String, openDrawerAfterPrint: Boolean, logoSource: String, promise: Promise) {
         try {
-            val result = drawerController.printReceipt(receiptText, openDrawerAfterPrint)
+            val result = drawerController.printReceipt(receiptText, openDrawerAfterPrint, logoSource)
             promise.resolve(
                 Arguments.createMap().apply {
                     putBoolean("success", result.success)
@@ -38,7 +42,7 @@ class StandalonePosHardwareModule(
 
     @ReactMethod
     fun printOrderTicket(ticketText: String, promise: Promise) {
-        printReceipt(ticketText, false, promise)
+        printReceipt(ticketText, false, "", promise)
     }
 
     @ReactMethod

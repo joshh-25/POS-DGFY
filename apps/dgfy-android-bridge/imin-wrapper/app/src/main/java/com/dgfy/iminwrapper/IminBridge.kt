@@ -76,4 +76,22 @@ class IminBridge(
             .put("diagnostics", drawerController.diagnosticsJson())
             .toString()
     }
+
+    // Added for issue #321 alongside printReceipt rather than changing it in place --
+    // this wrapper's WebView bridge and the web POS it hosts ship independently, so an
+    // APK already in the field must keep working against the old two-arg call while a
+    // newer web build feature-detects this one (see iminHardwareBridge.js).
+    // logoSource is the tenant's resolved company icon URL (or a data: URI); pass ""
+    // to fall back to the bundled DGFY icon. @JavascriptInterface only marshals
+    // primitives and String, so this can't take an options object the way the JS
+    // bridge's now-removed printBitmap attempt assumed.
+    @JavascriptInterface
+    fun printReceiptWithLogo(receiptText: String, openDrawerAfterPrint: Boolean, logoSource: String): String {
+        val result = drawerController.printReceipt(receiptText, openDrawerAfterPrint, logoSource)
+        return JSONObject()
+            .put("success", result.success)
+            .put("message", result.message)
+            .put("diagnostics", drawerController.diagnosticsJson())
+            .toString()
+    }
 }

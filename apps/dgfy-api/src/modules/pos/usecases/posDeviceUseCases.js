@@ -5,6 +5,7 @@ import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicati
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { mapPosUseCaseError } from './posUseCaseError.js';
 import { normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
+import { resolveReceiptLogoRaster } from '../utils/receiptLogoRaster.js';
 
 const POS_DEVICE_OPERATION_KEYS = Object.freeze({
     RECEIPT_PRINT: 'terminal.device_receipt_print',
@@ -179,7 +180,7 @@ const buildBusinessSettings = (settings = {}) => ({
     profile_image_url: settings?.storefront_profile_image_url?.value || ''
 });
 
-const buildReceiptPayload = ({ transaction, settings }) => {
+const buildReceiptPayload = async ({ transaction, settings }) => {
     const transactionMetadata = parseJsonObject(transaction?.special_instructions);
     const receiptContract = transactionMetadata?.receipt_contract && typeof transactionMetadata.receipt_contract === 'object'
         ? transactionMetadata.receipt_contract
@@ -189,13 +190,19 @@ const buildReceiptPayload = ({ transaction, settings }) => {
             document_context: transaction?.document_context || 'non_fiscal'
         };
 
+    // Only the receipt gets a logo -- shift summaries and Z-readings (the other
+    // buildBusinessSettings callers) stay text-only rather than paying the sharp
+    // encoding cost on every print of something that isn't a customer-facing
+    // receipt. See issue #321.
+    const logoRaster = await resolveReceiptLogoRaster({ settings });
+
     return {
         receipt_contract: {
             version: String(receiptContract?.version || '2026.04.08').trim(),
             document_type: String(receiptContract?.document_type || transaction?.document_type || 'non_fiscal_slip').trim(),
             document_context: String(receiptContract?.document_context || transaction?.document_context || 'non_fiscal').trim()
         },
-        business: buildBusinessSettings(settings),
+        business: { ...buildBusinessSettings(settings), logo_raster: logoRaster },
         transaction: {
             pos_transaction_id: transaction?.pos_transaction_id || null,
             invoice_number: transaction?.invoice_number || null,
@@ -421,7 +428,7 @@ export const buildPrintPosReceiptUseCase = ({ posRepository, deviceDriver }) => 
             }
 
             const allSettings = unwrapApplicationResultOrThrow(await getAllSettingsUseCase());
-            const receipt = { ...buildReceiptPayload({ transaction, settings: allSettings }), paper_width: paperWidth };
+            const receipt = { ...await buildReceiptPayload({ transaction, settings: allSettings }), paper_width: paperWidth };
             const bridgeResponse = clientDriverId
                 ? {
                     ok: clientResult?.success !== false,
