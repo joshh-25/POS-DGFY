@@ -1,5 +1,6 @@
 import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
+import { resolveEffectiveFnbModifierGroups } from '../../shared/utils/effectiveFnbModifierGroups.js';
 
 const toPlain = (row) => (
   row && typeof row.toJSON === 'function'
@@ -117,6 +118,21 @@ const itemModifierGroupInclude = () => ([
   }
 ]);
 
+const folderModifierGroupInclude = () => ([
+  {
+    model: dbStore.get('FnbModifierGroup'),
+    as: 'modifierGroup',
+    required: true,
+    include: modifierGroupInclude()
+  },
+  {
+    model: dbStore.get('ItemFolder'),
+    as: 'folder',
+    required: false,
+    attributes: ['folder_id', 'name', 'is_active', 'show_in_pos_filter']
+  }
+]);
+
 const reservationInclude = () => ([{
   model: dbStore.get('FnbDiningTable'),
   as: 'table',
@@ -156,6 +172,11 @@ export const fnbRepository = {
   async findModifierOptionById(modifierOptionId, options = {}) {
     const Option = dbStore.get('FnbModifierOption');
     return toPlain(await Option.findByPk(modifierOptionId, { transaction: options.transaction }));
+  },
+
+  async findModifierGroupById(modifierGroupId, options = {}) {
+    const Group = dbStore.get('FnbModifierGroup');
+    return toPlain(await Group.findByPk(modifierGroupId, { transaction: options.transaction }));
   },
 
   async listModifierGroups({ includeInactive = false } = {}, options = {}) {
@@ -496,6 +517,33 @@ export const fnbRepository = {
     return mapRows(rows);
   },
 
+  async listEffectiveItemModifierGroups({ itemId } = {}, options = {}) {
+    const Item = dbStore.get('Item');
+    const item = await Item.findByPk(itemId, {
+      attributes: ['item_id', 'folder_id'],
+      transaction: options.transaction
+    });
+    if (!item) return [];
+    const directRows = await this.listItemModifierGroups({ itemId }, options);
+    const folderRows = item.folder_id
+      ? await this.listFolderModifierGroups({ folderId: item.folder_id }, options)
+      : [];
+    return resolveEffectiveFnbModifierGroups({
+      item_id: item.item_id,
+      folder: {
+        folder_id: item.folder_id,
+        fnbModifierGroups: folderRows.map((row) => ({
+          ...(row.modifierGroup || {}),
+          FnbFolderModifierGroup: row
+        }))
+      },
+      fnbModifierGroups: directRows.map((row) => ({
+        ...(row.modifierGroup || {}),
+        FnbItemModifierGroup: row
+      }))
+    });
+  },
+
   async replaceItemModifierGroups(itemId, assignments = [], options = {}) {
     const FnbItemModifierGroup = dbStore.get('FnbItemModifierGroup');
     await FnbItemModifierGroup.destroy({
@@ -505,6 +553,7 @@ export const fnbRepository = {
     const rows = (Array.isArray(assignments) ? assignments : []).map((entry, index) => ({
       item_id: itemId,
       modifier_group_id: entry.modifier_group_id,
+      is_excluded: entry.is_excluded === true,
       is_required_override: Object.prototype.hasOwnProperty.call(entry, 'is_required_override')
         ? entry.is_required_override
         : null,
@@ -514,6 +563,47 @@ export const fnbRepository = {
       await FnbItemModifierGroup.bulkCreate(rows, { transaction: options.transaction });
     }
     return this.listItemModifierGroups({ itemId }, options);
+  },
+
+  async listFolderModifierGroups({ folderId = null } = {}, options = {}) {
+    const FnbFolderModifierGroup = dbStore.get('FnbFolderModifierGroup');
+    const where = folderId ? { folder_id: folderId } : {};
+    const rows = await FnbFolderModifierGroup.findAll({
+      where,
+      include: folderModifierGroupInclude(),
+      order: [['folder_id', 'ASC'], ['sort_order', 'ASC']],
+      transaction: options.transaction
+    });
+    return mapRows(rows);
+  },
+
+  async findActiveFolderById(folderId, options = {}) {
+    const ItemFolder = dbStore.get('ItemFolder');
+    const row = await ItemFolder.findOne({
+      where: { folder_id: folderId, is_active: true, deleted_at: null },
+      transaction: options.transaction
+    });
+    return toPlain(row);
+  },
+
+  async replaceFolderModifierGroups(folderId, assignments = [], options = {}) {
+    const FnbFolderModifierGroup = dbStore.get('FnbFolderModifierGroup');
+    await FnbFolderModifierGroup.destroy({
+      where: { folder_id: folderId },
+      transaction: options.transaction
+    });
+    const rows = (Array.isArray(assignments) ? assignments : []).map((entry, index) => ({
+      folder_id: folderId,
+      modifier_group_id: entry.modifier_group_id,
+      is_required_override: Object.prototype.hasOwnProperty.call(entry, 'is_required_override')
+        ? entry.is_required_override
+        : null,
+      sort_order: Number.parseInt(entry.sort_order, 10) >= 0 ? Number.parseInt(entry.sort_order, 10) : index
+    }));
+    if (rows.length > 0) {
+      await FnbFolderModifierGroup.bulkCreate(rows, { transaction: options.transaction });
+    }
+    return this.listFolderModifierGroups({ folderId }, options);
   },
 
   async listReservations({ status = '', tableId = null, from = null, to = null, limit = 100 } = {}, options = {}) {

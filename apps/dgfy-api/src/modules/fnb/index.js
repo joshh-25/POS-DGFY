@@ -13,6 +13,8 @@ import {
   buildUpsertItemKitchenRouteUseCase,
   buildListItemModifierGroupsUseCase,
   buildReplaceItemModifierGroupsUseCase,
+  buildListFolderModifierGroupsUseCase,
+  buildReplaceFolderModifierGroupsUseCase,
   buildListChecksUseCase,
   buildCreateCheckUseCase,
   buildAddCheckLineUseCase,
@@ -42,6 +44,8 @@ export const listFnbItemKitchenRoutesUseCase = buildListItemKitchenRoutesUseCase
 export const upsertFnbItemKitchenRouteUseCase = buildUpsertItemKitchenRouteUseCase({ fnbRepository });
 export const listFnbItemModifierGroupsUseCase = buildListItemModifierGroupsUseCase({ fnbRepository });
 export const replaceFnbItemModifierGroupsUseCase = buildReplaceItemModifierGroupsUseCase({ fnbRepository });
+export const listFnbFolderModifierGroupsUseCase = buildListFolderModifierGroupsUseCase({ fnbRepository });
+export const replaceFnbFolderModifierGroupsUseCase = buildReplaceFolderModifierGroupsUseCase({ fnbRepository });
 export const listFnbChecksUseCase = buildListChecksUseCase({ fnbRepository });
 export const createFnbCheckUseCase = buildCreateCheckUseCase({ fnbRepository });
 export const addFnbCheckLineUseCase = buildAddCheckLineUseCase({ fnbRepository });

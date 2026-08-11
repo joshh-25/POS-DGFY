@@ -78,6 +78,7 @@ import ServiceBookingLineOption from './ServiceBookingLineOption.js';
 import FnbModifierGroup from './FnbModifierGroup.js';
 import FnbModifierOption from './FnbModifierOption.js';
 import FnbItemModifierGroup from './FnbItemModifierGroup.js';
+import FnbFolderModifierGroup from './FnbFolderModifierGroup.js';
 import FnbModifierGroupLocationAvailability from './FnbModifierGroupLocationAvailability.js';
 import FnbModifierOptionLocationAvailability from './FnbModifierOptionLocationAvailability.js';
 import FnbDiningArea from './FnbDiningArea.js';
@@ -746,6 +747,20 @@ FnbModifierGroup.belongsToMany(Item, {
 });
 FnbItemModifierGroup.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 FnbItemModifierGroup.belongsTo(FnbModifierGroup, { foreignKey: 'modifier_group_id', as: 'modifierGroup' });
+ItemFolder.belongsToMany(FnbModifierGroup, {
+  through: FnbFolderModifierGroup,
+  foreignKey: 'folder_id',
+  otherKey: 'modifier_group_id',
+  as: 'fnbModifierGroups'
+});
+FnbModifierGroup.belongsToMany(ItemFolder, {
+  through: FnbFolderModifierGroup,
+  foreignKey: 'modifier_group_id',
+  otherKey: 'folder_id',
+  as: 'menuFolders'
+});
+FnbFolderModifierGroup.belongsTo(ItemFolder, { foreignKey: 'folder_id', as: 'folder' });
+FnbFolderModifierGroup.belongsTo(FnbModifierGroup, { foreignKey: 'modifier_group_id', as: 'modifierGroup' });
 FnbDiningArea.hasMany(FnbDiningTable, { foreignKey: 'dining_area_id', as: 'tables' });
 FnbDiningTable.belongsTo(FnbDiningArea, { foreignKey: 'dining_area_id', as: 'area' });
 FnbDiningTable.hasMany(FnbCheck, { foreignKey: 'table_id', as: 'checks' });
@@ -947,6 +962,7 @@ const db = {
   FnbModifierGroup,
   FnbModifierOption,
   FnbItemModifierGroup,
+  FnbFolderModifierGroup,
   FnbModifierGroupLocationAvailability,
   FnbModifierOptionLocationAvailability,
   FnbDiningArea,
@@ -1138,6 +1154,7 @@ export {
   FnbModifierGroup,
   FnbModifierOption,
   FnbItemModifierGroup,
+  FnbFolderModifierGroup,
   FnbModifierGroupLocationAvailability,
   FnbModifierOptionLocationAvailability,
   FnbDiningArea,

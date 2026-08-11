@@ -11,6 +11,14 @@ const createTableSafe = async (queryInterface, table, definition, options = {}) 
   if (!normalized.includes(table.toLowerCase())) await queryInterface.createTable(table, definition, options);
 };
 
+const addIndexIfMissing = async (queryInterface, table, fields, options = {}) => {
+  if (typeof queryInterface.showIndex === 'function') {
+    const indexes = await queryInterface.showIndex(table);
+    if (indexes.some((index) => index?.name === options.name)) return;
+  }
+  await queryInterface.addIndex(table, fields, options);
+};
+
 module.exports = {
   async up(queryInterface, Sequelize) {
     for (const table of ['fnb_modifier_groups', 'fnb_modifier_options']) {
@@ -42,10 +50,10 @@ module.exports = {
       created_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.fn('NOW') },
       updated_at: { type: Sequelize.DATE, allowNull: false, defaultValue: Sequelize.fn('NOW') }
     });
-    await queryInterface.addIndex('fnb_modifier_group_location_availability', ['modifier_group_id', 'location_id'], { unique: true, name: 'uq_fnb_modifier_group_location' }).catch(() => {});
-    await queryInterface.addIndex('fnb_modifier_group_location_availability', ['location_id'], { name: 'idx_fnb_modifier_group_location_location' }).catch(() => {});
-    await queryInterface.addIndex('fnb_modifier_option_location_availability', ['modifier_option_id', 'location_id'], { unique: true, name: 'uq_fnb_modifier_option_location' }).catch(() => {});
-    await queryInterface.addIndex('fnb_modifier_option_location_availability', ['location_id'], { name: 'idx_fnb_modifier_option_location_location' }).catch(() => {});
+    await addIndexIfMissing(queryInterface, 'fnb_modifier_group_location_availability', ['modifier_group_id', 'location_id'], { unique: true, name: 'uq_fnb_modifier_group_location' });
+    await addIndexIfMissing(queryInterface, 'fnb_modifier_group_location_availability', ['location_id'], { name: 'idx_fnb_modifier_group_location_location' });
+    await addIndexIfMissing(queryInterface, 'fnb_modifier_option_location_availability', ['modifier_option_id', 'location_id'], { unique: true, name: 'uq_fnb_modifier_option_location' });
+    await addIndexIfMissing(queryInterface, 'fnb_modifier_option_location_availability', ['location_id'], { name: 'idx_fnb_modifier_option_location_location' });
   },
 
   async down(queryInterface) {

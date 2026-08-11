@@ -91,6 +91,14 @@ const itemAssignmentQuerySchema = Joi.object({
   item_id: Joi.number().integer().positive().optional()
 });
 
+const folderIdParamSchema = Joi.object({
+  folder_id: Joi.number().integer().positive().required()
+});
+
+const folderAssignmentQuerySchema = Joi.object({
+  folder_id: Joi.number().integer().positive().optional()
+});
+
 const itemKitchenRouteSchema = Joi.object({
   kitchen_station_id: Joi.number().integer().positive().required(),
   default_course: Joi.string().valid(...COURSES).default('main')
@@ -99,11 +107,22 @@ const itemKitchenRouteSchema = Joi.object({
 const itemModifierAssignmentSchema = Joi.object({
   modifier_group_id: Joi.number().integer().positive().required(),
   is_required_override: Joi.boolean().allow(null).optional(),
+  is_excluded: Joi.boolean().optional(),
+  sort_order: Joi.number().integer().min(0).optional()
+});
+
+const folderModifierAssignmentSchema = Joi.object({
+  modifier_group_id: Joi.number().integer().positive().required(),
+  is_required_override: Joi.boolean().allow(null).optional(),
   sort_order: Joi.number().integer().min(0).optional()
 });
 
 const itemModifierGroupsSchema = Joi.object({
   modifier_groups: Joi.array().items(itemModifierAssignmentSchema).default([])
+});
+
+const folderModifierGroupsSchema = Joi.object({
+  modifier_groups: Joi.array().items(folderModifierAssignmentSchema).default([])
 });
 
 const checksQuerySchema = Joi.object({
@@ -248,8 +267,11 @@ export const validateUpdateFnbTableStatus = validateSchema(tableStatusSchema, 'b
 export const validateCreateFnbKitchenStation = validateSchema(kitchenStationSchema, 'body', 'validatedData');
 export const validateFnbItemIdParam = validateSchema(itemIdParamSchema, 'params', 'validatedParams');
 export const validateFnbItemAssignmentQuery = validateSchema(itemAssignmentQuerySchema, 'query', 'validatedQuery');
+export const validateFnbFolderIdParam = validateSchema(folderIdParamSchema, 'params', 'validatedParams');
+export const validateFnbFolderAssignmentQuery = validateSchema(folderAssignmentQuerySchema, 'query', 'validatedQuery');
 export const validateUpsertFnbItemKitchenRoute = validateSchema(itemKitchenRouteSchema, 'body', 'validatedData');
 export const validateReplaceFnbItemModifierGroups = validateSchema(itemModifierGroupsSchema, 'body', 'validatedData');
+export const validateReplaceFnbFolderModifierGroups = validateSchema(folderModifierGroupsSchema, 'body', 'validatedData');
 export const validateFnbChecksQuery = validateSchema(checksQuerySchema, 'query', 'validatedQuery');
 export const validateCreateFnbCheck = validateSchema(checkSchema, 'body', 'validatedData');
 export const validateFnbCheckIdParam = validateSchema(checkIdParamSchema, 'params', 'validatedParams');

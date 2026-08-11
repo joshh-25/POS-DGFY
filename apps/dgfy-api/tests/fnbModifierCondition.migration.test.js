@@ -32,4 +32,14 @@ describe('F&B modifier condition migration', () => {
       expect.objectContaining({ allowNull: true, onDelete: 'SET NULL' })
     );
   });
+
+  it('does not swallow index creation failures', async () => {
+    const queryInterface = {
+      describeTable: jest.fn().mockResolvedValue({}),
+      addColumn: jest.fn(),
+      addIndex: jest.fn().mockRejectedValue(new Error('index creation failed'))
+    };
+
+    await expect(migration.up(queryInterface, { INTEGER: 'INTEGER' })).rejects.toThrow('index creation failed');
+  });
 });

@@ -77,6 +77,17 @@ const normalizeBoolean = (value, fallback = false) => {
   return fallback;
 };
 
+const assertActiveModifierGroups = async (fnbRepository, assignments = [], transaction) => {
+  if (typeof fnbRepository?.listModifierGroups !== 'function') return;
+  const activeGroups = await fnbRepository.listModifierGroups({ includeInactive: false }, { transaction });
+  const activeIds = new Set((Array.isArray(activeGroups) ? activeGroups : [])
+    .map((group) => Number(group?.modifier_group_id)));
+  const invalid = assignments.find((entry) => !activeIds.has(Number(entry.modifier_group_id)));
+  if (invalid) {
+    throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Modifier group is not active or does not exist');
+  }
+};
+
 const parseJson = (value, fallback = null) => {
   if (value == null || value === '') return fallback;
   if (typeof value === 'object') return value;
@@ -124,6 +135,152 @@ const withTransaction = async (repository, callback) => {
     await transaction.rollback();
     throw error;
   }
+};
+
+const assertConditionalModifierTopology = async ({
+  fnbRepository,
+  parentModifierOptionId,
+  currentGroupId = null,
+  options = {}
+}) => {
+  let optionId = toPositiveInt(parentModifierOptionId);
+  const visitedOptionIds = new Set();
+  const visitedGroupIds = new Set();
+  while (optionId) {
+    if (visitedOptionIds.has(optionId)) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'Conditional modifier groups cannot contain a cycle',
+        { statusCode: 422 }
+      );
+    }
+    visitedOptionIds.add(optionId);
+    const parentOption = await fnbRepository.findModifierOptionById(optionId, options);
+    if (!parentOption || parentOption.is_active === false) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'Conditional parent modifier option is unavailable',
+        { statusCode: 422 }
+      );
+    }
+    const parentGroupId = toPositiveInt(parentOption.modifier_group_id);
+    if (!parentGroupId || (currentGroupId && parentGroupId === currentGroupId)) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'Conditional parent modifier option must belong to another group',
+        { statusCode: 422 }
+      );
+    }
+    if (visitedGroupIds.has(parentGroupId)) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'Conditional modifier groups cannot contain a cycle',
+        { statusCode: 422 }
+      );
+    }
+    visitedGroupIds.add(parentGroupId);
+
+    // Creation tests and older repository adapters may only expose the option
+    // lookup. In that case the first-level relationship is still validated;
+    // the production repository exposes the group lookup so the full chain is
+    // checked and nested/cyclic topology is rejected.
+    if (typeof fnbRepository.findModifierGroupById !== 'function') return;
+    const parentGroup = await fnbRepository.findModifierGroupById(parentGroupId, options);
+    if (!parentGroup) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'Conditional parent modifier group is unavailable',
+        { statusCode: 422 }
+      );
+    }
+    const nextParentOptionId = toPositiveInt(parentGroup.parent_modifier_option_id);
+    if (nextParentOptionId) {
+      throw new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'Conditional modifier groups may only be one level deep',
+        { statusCode: 422 }
+      );
+    }
+    optionId = null;
+  }
+};
+
+const resolveCheckLineModifiers = async ({ fnbRepository, itemId, modifiers, options = {} }) => {
+  if (!Array.isArray(modifiers)) return null;
+  const assignments = typeof fnbRepository.listEffectiveItemModifierGroups === 'function'
+    ? await fnbRepository.listEffectiveItemModifierGroups({ itemId }, options)
+    : (typeof fnbRepository.listItemModifierGroups === 'function'
+      ? await fnbRepository.listItemModifierGroups({ itemId }, options)
+      : []);
+  const groups = assignments
+    .map((assignment) => toPlain(assignment?.modifierGroup || assignment?.modifier_group || assignment))
+    .filter((group) => group && toPositiveInt(group.modifier_group_id));
+  const groupById = new Map(groups.map((group) => [toPositiveInt(group.modifier_group_id), group]));
+  const selectedOptionIds = new Set();
+  const selectedByGroup = new Map();
+  const snapshots = [];
+
+  for (const requested of modifiers) {
+    const groupId = toPositiveInt(requested?.modifier_group_id);
+    const optionId = toPositiveInt(requested?.modifier_option_id || requested?.option_id);
+    if (!groupId || !optionId) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'F&B modifier selections require modifier_group_id and modifier_option_id', { statusCode: 422 });
+    }
+    const group = groupById.get(groupId);
+    const option = Array.isArray(group?.options)
+      ? group.options.find((entry) => toPositiveInt(entry?.modifier_option_id) === optionId)
+      : null;
+    if (!group || group.is_active === false || !option || option.is_active === false || option.is_sold_out === true) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Selected F&B modifier option is unavailable for this item', {
+        statusCode: 422,
+        details: { item_id: itemId, modifier_group_id: groupId, modifier_option_id: optionId }
+      });
+    }
+    if (selectedOptionIds.has(optionId)) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'An F&B modifier option cannot be selected more than once', { statusCode: 422 });
+    }
+    selectedOptionIds.add(optionId);
+    const selected = selectedByGroup.get(groupId) || [];
+    selected.push(optionId);
+    selectedByGroup.set(groupId, selected);
+    const quantity = Math.min(99, Math.max(1, Number.parseInt(requested?.quantity || 1, 10) || 1));
+    const priceDelta = round4(option.price_delta || 0);
+    snapshots.push({
+      modifier_group_id: groupId,
+      modifier_option_id: optionId,
+      group_name: group.display_name || group.name || null,
+      group_kind: group.group_kind === 'combo_choice' ? 'combo_choice' : 'modifier',
+      parent_modifier_option_id: toPositiveInt(group.parent_modifier_option_id),
+      option_name: option.name || null,
+      price_delta: priceDelta,
+      quantity,
+      extended_price_delta: round4(priceDelta * quantity),
+      sku_item_id: toPositiveInt(option.sku_item_id),
+      allergen_notes: Array.isArray(option.allergen_notes) ? option.allergen_notes : null
+    });
+  }
+
+  for (const group of groups) {
+    const groupId = toPositiveInt(group.modifier_group_id);
+    const parentOptionId = toPositiveInt(group.parent_modifier_option_id);
+    const selected = selectedByGroup.get(groupId) || [];
+    if (parentOptionId && !selectedOptionIds.has(parentOptionId)) {
+      if (selected.length > 0) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `Modifier group "${group.display_name || group.name}" requires its parent option`, { statusCode: 422 });
+      }
+      continue;
+    }
+    const assignment = assignments.find((entry) => toPositiveInt(entry?.modifier_group_id) === groupId);
+    const through = assignment?.FnbItemModifierGroup || assignment?.fnbItemModifierGroup || assignment || {};
+    const required = through.is_required_override == null ? group.required === true : through.is_required_override === true;
+    const minSelect = required ? Math.max(1, toNonNegativeInt(group.min_select, 0)) : toNonNegativeInt(group.min_select, 0);
+    const maxSelect = Math.max(1, toPositiveInt(group.max_select, 1));
+    if (selected.length < minSelect || selected.length > maxSelect) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `Modifier group "${group.display_name || group.name}" requires ${minSelect}-${maxSelect} selections`, { statusCode: 422 });
+    }
+  }
+
+  return snapshots.length > 0 ? snapshots : null;
 };
 
 const reservationReference = () => `FNB-${crypto.randomBytes(4).toString('hex').toUpperCase()}`;
@@ -315,11 +472,14 @@ export const buildCreateModifierGroupUseCase = ({ fnbRepository }) => async ({ p
     if (groupPayload.required && effectiveMinSelect > optionPayloads.filter((option) => option.is_active).length) {
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Required modifier group does not have enough active options', { statusCode: 422 });
     }
+    groupPayload.min_select = effectiveMinSelect;
 
     const linkedItemIds = [...new Set(optionPayloads.map((option) => option.sku_item_id).filter(Boolean))];
     if (groupPayload.parent_modifier_option_id && typeof fnbRepository.findModifierOptionById === 'function') {
-      const parentOption = await fnbRepository.findModifierOptionById(groupPayload.parent_modifier_option_id);
-      if (!parentOption || parentOption.is_active === false) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Conditional parent modifier option is unavailable', { statusCode: 422 });
+      await assertConditionalModifierTopology({
+        fnbRepository,
+        parentModifierOptionId: groupPayload.parent_modifier_option_id
+      });
     }
     if (linkedItemIds.length > 0 && typeof fnbRepository.findActiveItemsByIds === 'function') {
       const linkedItems = await fnbRepository.findActiveItemsByIds(linkedItemIds);
@@ -376,7 +536,9 @@ export const buildUpdateModifierGroupUseCase = ({ fnbRepository }) => async ({ m
       sort_order: toNonNegativeInt(option.sort_order, index),
       location_availability: option.location_availability || []
     })).filter((option) => option.name);
+    const effectiveMinSelect = payload.required === true ? Math.max(1, minSelect) : minSelect;
     if (options.filter((option) => option.is_default && option.is_active).length > maxSelect) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Default modifier options cannot exceed max_select', { statusCode: 422 });
+    if (payload.required === true && effectiveMinSelect > options.filter((option) => option.is_active).length) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Required modifier group does not have enough active options', { statusCode: 422 });
     const linkedIds = [...new Set(options.map((option) => option.sku_item_id).filter(Boolean))];
     const locationIds = [...new Set([...(payload.location_availability || []), ...options.flatMap((option) => option.location_availability)].map((row) => toPositiveInt(row.location_id)).filter(Boolean))];
     const updated = await withTransaction(fnbRepository, async (transaction) => {
@@ -389,11 +551,15 @@ export const buildUpdateModifierGroupUseCase = ({ fnbRepository }) => async ({ m
         if (locationIds.some((id) => !found.has(id))) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'One or more modifier locations are unavailable', { statusCode: 422 });
       }
       if (parentModifierOptionId) {
-        const parentOption = await fnbRepository.findModifierOptionById(parentModifierOptionId, { transaction });
-        if (!parentOption || parentOption.is_active === false || Number(parentOption.modifier_group_id) === groupId) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Conditional parent modifier option must belong to another active group', { statusCode: 422 });
+        await assertConditionalModifierTopology({
+          fnbRepository,
+          parentModifierOptionId,
+          currentGroupId: groupId,
+          options: { transaction }
+        });
       }
       return fnbRepository.updateModifierGroup(groupId, {
-        group: { name: trim(payload.name, 120), display_name: trim(payload.display_name || payload.name, 120), group_kind: groupKind, parent_modifier_option_id: parentModifierOptionId, min_select: minSelect, max_select: maxSelect, required: payload.required === true, is_active: payload.is_active !== false, visible_in_pos: payload.visible_in_pos !== false, visible_in_storefront: payload.visible_in_storefront !== false, sort_order: toNonNegativeInt(payload.sort_order, 0) },
+        group: { name: trim(payload.name, 120), display_name: trim(payload.display_name || payload.name, 120), group_kind: groupKind, parent_modifier_option_id: parentModifierOptionId, min_select: effectiveMinSelect, max_select: maxSelect, required: payload.required === true, is_active: payload.is_active !== false, visible_in_pos: payload.visible_in_pos !== false, visible_in_storefront: payload.visible_in_storefront !== false, sort_order: toNonNegativeInt(payload.sort_order, 0) },
         options,
         location_availability: payload.location_availability || []
       }, { transaction });
@@ -548,17 +714,60 @@ export const buildReplaceItemModifierGroupsUseCase = ({ fnbRepository }) => asyn
       return {
         modifier_group_id: modifierGroupId,
         is_required_override: entry.is_required_override == null ? null : normalizeBoolean(entry.is_required_override, false),
+        is_excluded: entry.is_excluded === true,
         sort_order: toNonNegativeInt(entry.sort_order, index)
       };
     });
-    const saved = await withTransaction(fnbRepository, (transaction) => fnbRepository.replaceItemModifierGroups(
-      normalizedItemId,
-      assignments,
-      { transaction }
-    ));
+    const saved = await withTransaction(fnbRepository, async (transaction) => {
+      await assertActiveModifierGroups(fnbRepository, assignments, transaction);
+      return fnbRepository.replaceItemModifierGroups(normalizedItemId, assignments, { transaction });
+    });
     return ok({ item_modifier_groups: saved }, 'Item modifier assignments saved successfully');
   } catch (error) {
     return fail(mapError(error, 'Unable to save item modifier assignments'));
+  }
+};
+
+export const buildListFolderModifierGroupsUseCase = ({ fnbRepository }) => async ({ query = {} } = {}) => {
+  try {
+    return ok({
+      folder_modifier_groups: await fnbRepository.listFolderModifierGroups({
+        folderId: toPositiveInt(query.folder_id)
+      })
+    });
+  } catch (error) {
+    return fail(mapError(error, 'Unable to list folder modifier assignments'));
+  }
+};
+
+export const buildReplaceFolderModifierGroupsUseCase = ({ fnbRepository }) => async ({ folderId, payload = {} } = {}) => {
+  try {
+    const normalizedFolderId = toPositiveInt(folderId);
+    if (!normalizedFolderId) {
+      throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'folder_id is required', { statusCode: 422 });
+    }
+    const assignments = (Array.isArray(payload.modifier_groups) ? payload.modifier_groups : []).map((entry, index) => {
+      const modifierGroupId = toPositiveInt(entry.modifier_group_id);
+      if (!modifierGroupId) {
+        throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'modifier_group_id is required', { statusCode: 422 });
+      }
+      return {
+        modifier_group_id: modifierGroupId,
+        is_required_override: entry.is_required_override == null ? null : normalizeBoolean(entry.is_required_override, false),
+        sort_order: toNonNegativeInt(entry.sort_order, index)
+      };
+    });
+    const saved = await withTransaction(fnbRepository, async (transaction) => {
+      if (typeof fnbRepository?.findActiveFolderById === 'function'
+        && !(await fnbRepository.findActiveFolderById(normalizedFolderId, { transaction }))) {
+        throw new DomainError(DomainErrorCode.RESOURCE_NOT_FOUND, 'Active item folder not found');
+      }
+      await assertActiveModifierGroups(fnbRepository, assignments, transaction);
+      return fnbRepository.replaceFolderModifierGroups(normalizedFolderId, assignments, { transaction });
+    });
+    return ok({ folder_modifier_groups: saved }, 'Folder modifier assignments saved successfully');
+  } catch (error) {
+    return fail(mapError(error, 'Unable to save folder modifier assignments'));
   }
 };
 
@@ -618,6 +827,13 @@ export const buildAddCheckLineUseCase = ({ fnbRepository }) => async ({ checkId,
     if (!itemId) {
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'item_id is required', { statusCode: 422 });
     }
+    const modifiersSnapshot = Array.isArray(payload.modifiers)
+      ? await resolveCheckLineModifiers({
+        fnbRepository,
+        itemId,
+        modifiers: payload.modifiers
+      })
+      : null;
     const route = await fnbRepository.getPrimaryKitchenRouteForItem(itemId);
     const course = FNB_COURSES.includes(payload.course) ? payload.course : (route?.default_course || 'main');
     const line = await fnbRepository.createCheckLine({
@@ -625,7 +841,7 @@ export const buildAddCheckLineUseCase = ({ fnbRepository }) => async ({ checkId,
       item_id: itemId,
       quantity: Math.max(0.0001, Number(payload.quantity || 1)),
       course,
-      modifiers_snapshot: Array.isArray(payload.modifiers) ? payload.modifiers : null,
+      modifiers_snapshot: modifiersSnapshot,
       special_instructions: trim(payload.special_instructions, 1000) || null,
       kitchen_station_id: toPositiveInt(payload.kitchen_station_id) || toPositiveInt(route?.kitchen_station_id)
     });

@@ -12,6 +12,8 @@ import {
   upsertFnbItemKitchenRouteUseCase,
   listFnbItemModifierGroupsUseCase,
   replaceFnbItemModifierGroupsUseCase,
+  listFnbFolderModifierGroupsUseCase,
+  replaceFnbFolderModifierGroupsUseCase,
   listFnbChecksUseCase,
   createFnbCheckUseCase,
   addFnbCheckLineUseCase,
@@ -166,6 +168,25 @@ export const replaceItemModifierGroups = async (req, res, next) => {
   try {
     return sendResult(req, res, await replaceFnbItemModifierGroupsUseCase({
       itemId: req.validatedParams?.item_id || req.params.item_id,
+      payload: req.validatedData || req.body
+    }));
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const listFolderModifierGroups = async (req, res, next) => {
+  try {
+    return sendResult(req, res, await listFnbFolderModifierGroupsUseCase({ query: req.validatedQuery || req.query }));
+  } catch (error) {
+    return next(error);
+  }
+};
+
+export const replaceFolderModifierGroups = async (req, res, next) => {
+  try {
+    return sendResult(req, res, await replaceFnbFolderModifierGroupsUseCase({
+      folderId: req.validatedParams?.folder_id || req.params.folder_id,
       payload: req.validatedData || req.body
     }));
   } catch (error) {

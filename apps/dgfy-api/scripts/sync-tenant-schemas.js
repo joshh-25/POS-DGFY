@@ -70,6 +70,20 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
             sql: "ALTER TABLE `users` ADD COLUMN `pos_day_close_pin_hash` VARCHAR(255) NULL"
         })
     }),
+    pos_z_reading_snapshots: Object.freeze({
+        location_id: Object.freeze({
+            sql: "ALTER TABLE `pos_z_reading_snapshots` ADD COLUMN `location_id` INTEGER NULL"
+        }),
+        closed_by_user_id: Object.freeze({
+            sql: "ALTER TABLE `pos_z_reading_snapshots` ADD COLUMN `closed_by_user_id` INTEGER NULL"
+        }),
+        closed_from_terminal_id: Object.freeze({
+            sql: "ALTER TABLE `pos_z_reading_snapshots` ADD COLUMN `closed_from_terminal_id` VARCHAR(100) NULL"
+        }),
+        day_close_pin_confirmed_at: Object.freeze({
+            sql: "ALTER TABLE `pos_z_reading_snapshots` ADD COLUMN `day_close_pin_confirmed_at` DATETIME NULL"
+        })
+    }),
     pos_transaction_lines: Object.freeze({
         stock_effect_type: Object.freeze({
             sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `stock_effect_type` ENUM('inventory_issue','stock_exempt') NOT NULL DEFAULT 'inventory_issue' COMMENT 'Immutable checkout-time stock-effect classification'"
@@ -93,6 +107,11 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         tracking_toggle_available: Object.freeze({
             sql: "ALTER TABLE `items` ADD COLUMN `tracking_toggle_available` TINYINT(1) NULL DEFAULT 1 COMMENT 'Operator-declared availability, only meaningful when tracking_mode=toggle'"
+        })
+    }),
+    fnb_item_modifier_groups: Object.freeze({
+        is_excluded: Object.freeze({
+            sql: "ALTER TABLE `fnb_item_modifier_groups` ADD COLUMN `is_excluded` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Explicit item-level opt-out from folder-inherited modifier groups'"
         })
     }),
     item_folders: Object.freeze({
@@ -262,6 +281,21 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + " KEY `idx_fnb_modifier_option_location_location` (`location_id`),"
             + " CONSTRAINT `fk_fnb_modifier_option_location_option` FOREIGN KEY (`modifier_option_id`) REFERENCES `fnb_modifier_options` (`modifier_option_id`) ON DELETE CASCADE,"
             + " CONSTRAINT `fk_fnb_modifier_option_location_location` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE CASCADE"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    fnb_folder_modifier_groups: Object.freeze({
+        sql: "CREATE TABLE `fnb_folder_modifier_groups` ("
+            + " `folder_modifier_group_id` INT NOT NULL AUTO_INCREMENT,"
+            + " `folder_id` INT NOT NULL, `modifier_group_id` INT NOT NULL,"
+            + " `is_required_override` TINYINT(1) NULL, `sort_order` INT NOT NULL DEFAULT 0,"
+            + " `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " PRIMARY KEY (`folder_modifier_group_id`),"
+            + " UNIQUE KEY `uq_fnb_folder_modifier_groups_folder_group` (`folder_id`,`modifier_group_id`),"
+            + " KEY `idx_fnb_folder_modifier_groups_folder` (`folder_id`),"
+            + " KEY `idx_fnb_folder_modifier_groups_group` (`modifier_group_id`),"
+            + " CONSTRAINT `fk_fnb_folder_modifier_groups_folder` FOREIGN KEY (`folder_id`) REFERENCES `item_folders` (`folder_id`) ON DELETE CASCADE,"
+            + " CONSTRAINT `fk_fnb_folder_modifier_groups_group` FOREIGN KEY (`modifier_group_id`) REFERENCES `fnb_modifier_groups` (`modifier_group_id`) ON DELETE CASCADE"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
     // Created by migration 20260503000002-create-storefront-catalog-overrides.cjs but never
@@ -698,6 +732,14 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
             sql: "ALTER TABLE `pos_terminal_shifts` ADD UNIQUE INDEX `uq_pos_terminal_shifts_active_operator` (`active_operator_user_id`)"
         })
     }),
+    pos_z_reading_snapshots: Object.freeze({
+        uq_pos_z_reading_snapshots_business_date_location: Object.freeze({
+            sql: "ALTER TABLE `pos_z_reading_snapshots` ADD UNIQUE INDEX `uq_pos_z_reading_snapshots_business_date_location` (`business_date`,`location_id`)"
+        }),
+        idx_pos_z_reading_snapshots_closed_by_user: Object.freeze({
+            sql: "ALTER TABLE `pos_z_reading_snapshots` ADD INDEX `idx_pos_z_reading_snapshots_closed_by_user` (`closed_by_user_id`)"
+        })
+    }),
     pos_transaction_discounts: Object.freeze({
         idx_pos_transaction_discounts_promo_code: Object.freeze({
             sql: "ALTER TABLE `pos_transaction_discounts` ADD INDEX `idx_pos_transaction_discounts_promo_code` (`promo_code`)"
@@ -870,7 +912,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-09.2';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-11.1';
 
 export function getTenantSchemaCapabilityChecksum() {
     const manifest = {

@@ -164,6 +164,50 @@ describe('storefront F&B modifier checkout contract', () => {
     }));
   });
 
+  it('preflights linked modifier stock using the selected location and line quantity', async () => {
+    const item = {
+      ...burgerItem,
+      fnbModifierGroups: [{
+        ...burgerItem.fnbModifierGroups[0],
+        options: [{ ...burgerItem.fnbModifierGroups[0].options[0], sku_item_id: 90 }]
+      }]
+    };
+    const repository = buildRepository([item], {
+      findLocationById: jest.fn().mockResolvedValue({
+        location_id: 4,
+        name: 'Main',
+        is_active: true,
+        is_open: true,
+        supports_pickup: true,
+        supports_delivery: true,
+        supports_dine_in: true,
+        allow_out_of_stock_sales: false
+      }),
+      getLocationStocksByItemIds: jest.fn().mockResolvedValue([{ item_id: 90, quantity_on_hand: 1 }])
+    });
+
+    const result = await buildCartQuoteUseCase(repository)({
+      payload: {
+        location_id: 4,
+        order_method: 'pickup',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        lines: [{
+          item_id: 20,
+          quantity: 2,
+          line_modifiers: [{ modifier_group_id: 5, modifier_option_id: 8 }]
+        }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.details).toEqual(expect.objectContaining({
+      reason_code: 'FNB_MODIFIER_STOCK_SHORTFALL',
+      stock_violations: [expect.objectContaining({ sku_item_id: 90, available_stock: 1, requested_qty: 2 })]
+    }));
+    expect(repository.getLocationStocksByItemIds).toHaveBeenCalledWith([90], 4, expect.any(Object));
+  });
+
   it('rejects an empty selection when an assigned modifier group is required', async () => {
     const requiredBurger = {
       ...burgerItem,

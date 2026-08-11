@@ -200,7 +200,7 @@ describe('POS checkout F&B contracts', () => {
         const inventoryCommandService = {
             createStockMovement: jest.fn()
         };
-        const useCase = buildCheckoutPosUseCase({ posRepository, inventoryCommandService });
+        const useCase = buildCheckoutContractUseCase({ posRepository, inventoryCommandService });
 
         const result = await runInTenantContext(() => useCase({
             userId: 12,

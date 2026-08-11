@@ -13,6 +13,8 @@ import {
   upsertItemKitchenRoute,
   listItemModifierGroups,
   replaceItemModifierGroups,
+  listFolderModifierGroups,
+  replaceFolderModifierGroups,
   listChecks,
   createCheck,
   addCheckLine,
@@ -43,8 +45,11 @@ import {
   validateCreateFnbKitchenStation,
   validateFnbItemIdParam,
   validateFnbItemAssignmentQuery,
+  validateFnbFolderIdParam,
+  validateFnbFolderAssignmentQuery,
   validateUpsertFnbItemKitchenRoute,
   validateReplaceFnbItemModifierGroups,
+  validateReplaceFnbFolderModifierGroups,
   validateFnbChecksQuery,
   validateCreateFnbCheck,
   validateFnbCheckIdParam,
@@ -120,6 +125,8 @@ router.get('/item-kitchen-routes', requireKitchenQueue, modePermission(PERMISSIO
 router.put('/item-kitchen-routes/:item_id', requireKitchenQueue, modePermission(PERMISSIONS.FNB.actions.MANAGE_MENU, PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateFnbItemIdParam, validateUpsertFnbItemKitchenRoute, upsertItemKitchenRoute);
 router.get('/item-modifier-groups', requireMenuModifiers, modePermission(PERMISSIONS.FNB.actions.VIEW_MENU, PERMISSIONS.INVENTORY.actions.VIEW_ITEMS), validateFnbItemAssignmentQuery, listItemModifierGroups);
 router.put('/item-modifier-groups/:item_id', requireMenuModifiers, modePermission(PERMISSIONS.FNB.actions.MANAGE_MENU, PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateFnbItemIdParam, validateReplaceFnbItemModifierGroups, replaceItemModifierGroups);
+router.get('/folder-modifier-groups', requireMenuModifiers, modePermission(PERMISSIONS.FNB.actions.VIEW_MENU, PERMISSIONS.INVENTORY.actions.VIEW_ITEMS), validateFnbFolderAssignmentQuery, listFolderModifierGroups);
+router.put('/folder-modifier-groups/:folder_id', requireMenuModifiers, modePermission(PERMISSIONS.FNB.actions.MANAGE_MENU, PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateFnbFolderIdParam, validateReplaceFnbFolderModifierGroups, replaceFolderModifierGroups);
 
 router.get('/checks', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.VIEW_CHECKS, PERMISSIONS.POS.actions.VIEW_POS), validateFnbChecksQuery, listChecks);
 router.post('/checks', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.MANAGE_CHECKS, PERMISSIONS.POS.actions.TRANSACT_POS), validateCreateFnbCheck, createCheck);

@@ -226,6 +226,102 @@ describe('Food & Beverage mode use cases', () => {
     }));
   });
 
+  it('resolves F&B check-line modifier snapshots from configured options instead of trusting client pricing', async () => {
+    const repository = {
+      getCheckById: jest.fn().mockResolvedValue({ toJSON: () => ({ check_id: 16, status: 'open' }) }),
+      listItemModifierGroups: jest.fn().mockResolvedValue([{
+        item_id: 91,
+        modifier_group_id: 5,
+        modifierGroup: {
+          modifier_group_id: 5,
+          name: 'Cheese',
+          required: false,
+          min_select: 0,
+          max_select: 1,
+          options: [{
+            modifier_option_id: 8,
+            name: 'Cheddar',
+            price_delta: 15,
+            sku_item_id: 90,
+            is_active: true,
+            is_sold_out: false
+          }]
+        }
+      }]),
+      getPrimaryKitchenRouteForItem: jest.fn().mockResolvedValue({ default_course: 'main' }),
+      createCheckLine: jest.fn().mockResolvedValue({ check_line_id: 21 })
+    };
+
+    const result = await buildAddCheckLineUseCase({ fnbRepository: repository })({
+      checkId: 16,
+      payload: {
+        item_id: 91,
+        modifiers: [{
+          modifier_group_id: 5,
+          modifier_option_id: 8,
+          price_delta: 9999,
+          sku_item_id: 999,
+          quantity: 2
+        }]
+      }
+    });
+
+    expect(result.success).toBe(true);
+    expect(repository.createCheckLine).toHaveBeenCalledWith(expect.objectContaining({
+      modifiers_snapshot: [expect.objectContaining({
+        modifier_group_id: 5,
+        modifier_option_id: 8,
+        price_delta: 15,
+        extended_price_delta: 30,
+        sku_item_id: 90,
+        quantity: 2
+      })]
+    }));
+  });
+
+  it('rejects nested conditional modifier groups', async () => {
+    const repository = buildTransactionalRepository({
+      findModifierOptionById: jest.fn()
+        .mockResolvedValueOnce({ modifier_group_id: 2, is_active: true })
+        .mockResolvedValueOnce({ modifier_group_id: 3, is_active: true }),
+      findModifierGroupById: jest.fn()
+        .mockResolvedValueOnce({ modifier_group_id: 2, parent_modifier_option_id: 200 })
+        .mockResolvedValueOnce({ modifier_group_id: 3, parent_modifier_option_id: null })
+    });
+
+    const result = await buildCreateModifierGroupUseCase({ fnbRepository: repository })({
+      payload: {
+        name: 'Sauce',
+        parent_modifier_option_id: 100,
+        options: [{ name: 'Garlic' }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.message).toContain('one level deep');
+    expect(repository.beginTransaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects required modifier updates when active options cannot satisfy the minimum', async () => {
+    const repository = buildTransactionalRepository({
+      updateModifierGroup: jest.fn()
+    });
+    const result = await buildUpdateModifierGroupUseCase({ fnbRepository: repository })({
+      modifierGroupId: 5,
+      payload: {
+        name: 'Sauce',
+        required: true,
+        min_select: 2,
+        max_select: 2,
+        options: [{ name: 'Garlic', is_active: true }, { name: 'Chili', is_active: false }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.message).toContain('enough active options');
+    expect(repository.beginTransaction).not.toHaveBeenCalled();
+  });
+
   it('transfers active checks to a new table and releases the source table', async () => {
     const targetTable = {
       dining_area_id: 8,
@@ -351,6 +447,7 @@ describe('Food & Beverage mode use cases', () => {
     expect(repository.replaceItemModifierGroups).toHaveBeenCalledWith(80, [{
       modifier_group_id: 5,
       is_required_override: null,
+      is_excluded: false,
       sort_order: 0
     }], { transaction: repository.transaction });
   });
