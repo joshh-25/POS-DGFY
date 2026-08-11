@@ -62,6 +62,13 @@ jobs:
       validate_pr_metadata: true
       enforce_compliance_declarations: false
 
+  quality-checks:
+    needs: changes
+    if: needs.changes.result == 'success'
+    uses: ./.github/workflows/pr-quality-checks.yml
+    with:
+      runner_labels_json: *runner_heavy
+
   dgfy-api-build-check:
     needs: changes
     if: needs.changes.outputs.dgfy_api == 'true'
