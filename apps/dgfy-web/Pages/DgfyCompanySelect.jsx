@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { AlertTriangle, Building2, CheckCircle2, Clock, Loader2, LogOut } from 'lucide-react';
 import dgfyLogo from '../src/assets/dgfy/dgfy-logo.png';
@@ -12,6 +12,7 @@ import {
   logoutDgfyAccount,
   startDgfyTenantSession
 } from '../src/services/dgfyAuthService.js';
+import { preparePosDgfyTenantHandoff } from '../src/services/browserSession.js';
 import { buildDgfyAuthPath, DGFY_COMPANY_SELECT_ROUTE, sanitizeInternalReturnPath } from '../src/features/dgfyRouteHelpers.js';
 
 const handleDgfyLogoError = (event) => {
@@ -42,8 +43,10 @@ const isUnavailable = (company) => company?.requires_action === 'unavailable';
  * (or picks it automatically when there is exactly one, or a `tenant_id`
  * hint names one).
  */
-export default function DgfyCompanySelect() {
+export default function DgfyCompanySelect({ targetSurface = 'skupervisor' } = {}) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const destinationLabel = String(targetSurface || '').trim().toLowerCase() === 'pos' ? 'DGFY POS' : 'SKUpervisor';
   const [status, setStatus] = useState('loading'); // 'loading' | 'ready' | 'error'
   const [error, setError] = useState('');
   const [companies, setCompanies] = useState([]);
@@ -65,23 +68,33 @@ export default function DgfyCompanySelect() {
     setSelectingTenantId(tenantId);
     setActionError('');
     try {
-      await startDgfyTenantSession({ tenantId });
+      const targetPathname = String(targetPath || '').split('?')[0].trim();
+      const tenantSession = await startDgfyTenantSession({
+        tenantId,
+        ...(targetPathname === '/terminal' ? { accessScope: 'pos' } : {})
+      });
+      if (String(targetSurface || '').trim().toLowerCase() === 'pos' && targetPathname === '/terminal') {
+        preparePosDgfyTenantHandoff({
+          tenantId: tenantSession?.company?.id || tenantId
+        });
+      }
       navigate(targetPath, { replace: true });
     } catch (requestError) {
       setActionError(requestError?.response?.data?.message || 'Unable to start a session for this company. Try again.');
       setSelectingTenantId(null);
       setStatus('ready');
     }
-  }, [navigate]);
+  }, [navigate, targetSurface]);
 
   useEffect(() => {
     let cancelled = false;
 
     const bootstrap = async () => {
       const currentUrl = new URL(window.location.href);
-      const handoffToken = String(currentUrl.searchParams.get('handoff_token') || '').trim();
-      const tenantIdHint = String(currentUrl.searchParams.get('tenant_id') || '').trim();
-      const requestedNext = sanitizeInternalReturnPath(currentUrl.searchParams.get('next') || '/', {
+      const routeSearchParams = new URLSearchParams(String(location.search || '').trim() || currentUrl.search);
+      const handoffToken = String(routeSearchParams.get('handoff_token') || '').trim();
+      const tenantIdHint = String(routeSearchParams.get('tenant_id') || '').trim();
+      const requestedNext = sanitizeInternalReturnPath(routeSearchParams.get('next') || '/', {
         blockedPattern: SKUPERVISOR_AUTH_ROUTE_PATTERN
       });
       if (!cancelled) setNextPath(requestedNext);
@@ -91,7 +104,15 @@ export default function DgfyCompanySelect() {
       // apps/store/src/shared/hooks/useStorefrontSession.js - neither should
       // linger in history or leak via Referer.
       if (handoffToken) {
-        currentUrl.searchParams.delete('handoff_token');
+        routeSearchParams.delete('handoff_token');
+        const remainingSearch = routeSearchParams.toString();
+        if (currentUrl.hash.startsWith('#/')) {
+          const hashPath = currentUrl.hash.slice(1).split('?')[0] || DGFY_COMPANY_SELECT_ROUTE;
+          currentUrl.search = '';
+          currentUrl.hash = `#${hashPath}${remainingSearch ? `?${remainingSearch}` : ''}`;
+        } else {
+          currentUrl.search = remainingSearch ? `?${remainingSearch}` : '';
+        }
         window.history.replaceState({}, '', currentUrl.toString());
         try {
           // soft_fail: an expired/already-consumed token should fall through
@@ -108,7 +129,8 @@ export default function DgfyCompanySelect() {
         await fetchDgfyMe(getStoredDgfyToken());
       } catch {
         if (cancelled) return;
-        navigate(buildDgfyAuthPath({ returnTo: `${DGFY_COMPANY_SELECT_ROUTE}${currentUrl.search}` }), { replace: true });
+        const remainingSearch = routeSearchParams.toString();
+        navigate(buildDgfyAuthPath({ returnTo: `${DGFY_COMPANY_SELECT_ROUTE}${remainingSearch ? `?${remainingSearch}` : ''}` }), { replace: true });
         return;
       }
       if (cancelled) return;
@@ -133,8 +155,7 @@ export default function DgfyCompanySelect() {
 
     bootstrap();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once on mount; the URL is read directly (see useStorefrontSession.js for the same pattern)
-  }, []);
+  }, [activateCompany, loadCompanies, location.search, navigate]);
 
   const handleAcceptInvitation = async (membershipId) => {
     setAcceptingMembershipId(membershipId);
@@ -169,7 +190,7 @@ export default function DgfyCompanySelect() {
                 <img src={dgfyLogo} alt="DGFY" className="h-16 w-auto object-contain" onError={handleDgfyLogoError} />
               </span>
             </div>
-            <p className="text-slate-600 mt-2">Choose a business to open in SKUpervisor</p>
+            <p className="text-slate-600 mt-2">Choose a business to open in {destinationLabel}</p>
           </div>
 
           {status === 'loading' && (

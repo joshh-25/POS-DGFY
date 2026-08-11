@@ -81,6 +81,8 @@ function buildRuntimeSourcesFallback({ state, actions, resolvers }) {
     submitAccountReviewFromDashboard: actions?.onSubmitCustomerReview,
     handleOpenBusinessInventory: actions?.onOpenBusinessInventory,
     handleOpenBusinessPos: actions?.onOpenBusinessPos,
+    getOwnBusinessDayCloseStatus: actions?.onGetBusinessDayCloseStatus,
+    configureOwnBusinessDayClosePin: actions?.onConfigureBusinessDayClosePin,
     resolveStorefrontMetaForAccountEntry: resolvers?.resolveStorefrontMeta,
     withAssetOrigin: resolvers?.resolveBusinessAssetUrl
   };

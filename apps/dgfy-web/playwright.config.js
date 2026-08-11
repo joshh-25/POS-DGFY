@@ -31,7 +31,7 @@ export default defineConfig({
   outputDir: 'test-results',
   use: {
     baseURL,
-    headless: false,
+    headless: process.env.E2E_HEADLESS !== 'false',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
     trace: 'retain-on-failure',

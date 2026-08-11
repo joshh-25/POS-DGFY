@@ -38,6 +38,25 @@ const baseBooking = (overrides = {}) => ({
     ...overrides
 });
 
+const settlementPayload = (overrides = {}) => ({
+    shift_id: 77,
+    terminal_id: 'COUNTER-01',
+    location_id: 3,
+    payment_type: 'cash',
+    cash_received: 1000,
+    ...overrides
+});
+
+const openShiftRepository = () => ({
+    findOpenTerminalShift: jest.fn(async () => ({
+        pos_terminal_shift_id: 77,
+        cashier_id: 7,
+        terminal_id: 'COUNTER-01',
+        location_id: 3,
+        status: 'open'
+    }))
+});
+
 describe('buildSettleServiceBookingUseCase', () => {
     it('settles a booking into a linked, newly created pos_transaction', async () => {
         const tx = transaction();
@@ -69,10 +88,11 @@ describe('buildSettleServiceBookingUseCase', () => {
                 updateBookingById,
                 getPosTransactionSnapshotById
             },
-            inventoryCommandService: { issueStockForPosSale: jest.fn() }
+            inventoryCommandService: { issueStockForPosSale: jest.fn() },
+            posRepository: openShiftRepository()
         });
 
-        const result = await useCase({ bookingId: 1, payload: {}, user: { user_id: 7 } });
+        const result = await useCase({ bookingId: 1, payload: settlementPayload(), user: { user_id: 7 } });
 
         expect(result.success).toBe(true);
         expect(result.data.idempotency.idempotent_replay).toBe(false);
@@ -83,6 +103,9 @@ describe('buildSettleServiceBookingUseCase', () => {
         expect(header.total_amount).toBe(750);
         expect(header.order_method).toBe('appointment');
         expect(header.payment_status).toBe('paid');
+        expect(header.shift_id).toBe(77);
+        expect(header.cash_received).toBe(1000);
+        expect(header.change_amount).toBe(250);
         expect(lines).toHaveLength(1);
         expect(lines[0].stock_effect_type).toBe('stock_exempt');
         expect(updateBookingById).toHaveBeenCalledWith(1, expect.objectContaining({
@@ -110,10 +133,11 @@ describe('buildSettleServiceBookingUseCase', () => {
                 createSettlementTransaction,
                 getPosTransactionSnapshotById
             },
-            inventoryCommandService: { issueStockForPosSale: jest.fn() }
+            inventoryCommandService: { issueStockForPosSale: jest.fn() },
+            posRepository: openShiftRepository()
         });
 
-        const result = await useCase({ bookingId: 1, payload: {}, user: { user_id: 7 } });
+        const result = await useCase({ bookingId: 1, payload: settlementPayload(), user: { user_id: 7 } });
 
         expect(result.success).toBe(true);
         expect(result.data.idempotency.idempotent_replay).toBe(true);
@@ -140,10 +164,11 @@ describe('buildSettleServiceBookingUseCase', () => {
                 updateBookingById: jest.fn(async () => baseBooking({ pos_transaction_id: 900 })),
                 getPosTransactionSnapshotById: jest.fn(async () => ({ pos_transaction_id: 900, total_amount: 750 }))
             },
-            inventoryCommandService: { issueStockForPosSale: jest.fn() }
+            inventoryCommandService: { issueStockForPosSale: jest.fn() },
+            posRepository: openShiftRepository()
         });
 
-        const result = await useCase({ bookingId: 1, payload: {}, user: { user_id: 7 } });
+        const result = await useCase({ bookingId: 1, payload: settlementPayload(), user: { user_id: 7 } });
 
         expect(result.success).toBe(true);
         const [{ header }] = createSettlementTransaction.mock.calls[0];
@@ -178,12 +203,13 @@ describe('buildSettleServiceBookingUseCase', () => {
                 updateBookingById: jest.fn(async () => baseBooking({ pos_transaction_id: 900 })),
                 getPosTransactionSnapshotById: jest.fn(async () => ({ pos_transaction_id: 900, total_amount: 1250 }))
             },
-            inventoryCommandService: { issueStockForPosSale }
+            inventoryCommandService: { issueStockForPosSale },
+            posRepository: openShiftRepository()
         });
 
         const result = await useCase({
             bookingId: 1,
-            payload: { parts: [{ item_id: 55, quantity: 2 }] },
+            payload: settlementPayload({ parts: [{ item_id: 55, quantity: 2 }], cash_received: 2000 }),
             user: { user_id: 7 }
         });
 
@@ -214,10 +240,11 @@ describe('buildSettleServiceBookingUseCase', () => {
                 beginTransaction: jest.fn(async () => tx),
                 getBookingById: jest.fn(async () => baseBooking({ status: 'cancelled' }))
             },
-            inventoryCommandService: {}
+            inventoryCommandService: {},
+            posRepository: openShiftRepository()
         });
 
-        const result = await useCase({ bookingId: 1, payload: {}, user: { user_id: 7 } });
+        const result = await useCase({ bookingId: 1, payload: settlementPayload(), user: { user_id: 7 } });
 
         expect(result.success).toBe(false);
         expect(result.error.code).toBe('CONFLICT');
@@ -231,17 +258,61 @@ describe('buildSettleServiceBookingUseCase', () => {
                 beginTransaction: jest.fn(async () => tx),
                 getBookingById: jest.fn(async () => baseBooking())
             },
-            inventoryCommandService: {}
+            inventoryCommandService: {},
+            posRepository: openShiftRepository()
         });
 
         const result = await useCase({
             bookingId: 1,
-            payload: { parts: [{ item_id: 0, quantity: -1 }] },
+            payload: settlementPayload({ parts: [{ item_id: 0, quantity: -1 }] }),
             user: { user_id: 7 }
         });
 
         expect(result.success).toBe(false);
         expect(result.error.code).toBe('VALIDATION_FAILED');
+        expect(tx.rollback).toHaveBeenCalled();
+    });
+
+    it('rejects settlement without the authenticated cashier matching the requested open shift', async () => {
+        const tx = transaction();
+        const createSettlementTransaction = jest.fn();
+        const useCase = buildSettleServiceBookingUseCase({
+            serviceRepository: {
+                beginTransaction: jest.fn(async () => tx),
+                getBookingById: jest.fn(async () => baseBooking()),
+                createSettlementTransaction
+            },
+            inventoryCommandService: {},
+            posRepository: { findOpenTerminalShift: jest.fn(async () => null) }
+        });
+
+        const result = await useCase({ bookingId: 1, payload: settlementPayload(), user: { user_id: 7 } });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('AUTHORIZATION_FAILED');
+        expect(createSettlementTransaction).not.toHaveBeenCalled();
+        expect(tx.rollback).toHaveBeenCalled();
+    });
+
+    it('rejects insufficient cash and never trusts client-calculated change', async () => {
+        const tx = transaction();
+        const createSettlementTransaction = jest.fn();
+        const useCase = buildSettleServiceBookingUseCase({
+            serviceRepository: {
+                beginTransaction: jest.fn(async () => tx),
+                getBookingById: jest.fn(async () => baseBooking()),
+                nextSettlementInvoiceNumber: jest.fn(async () => 'SVC-000001'),
+                createSettlementTransaction
+            },
+            inventoryCommandService: {},
+            posRepository: openShiftRepository()
+        });
+
+        const result = await useCase({ bookingId: 1, payload: settlementPayload({ cash_received: 500 }), user: { user_id: 7 } });
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe('VALIDATION_FAILED');
+        expect(createSettlementTransaction).not.toHaveBeenCalled();
         expect(tx.rollback).toHaveBeenCalled();
     });
 });

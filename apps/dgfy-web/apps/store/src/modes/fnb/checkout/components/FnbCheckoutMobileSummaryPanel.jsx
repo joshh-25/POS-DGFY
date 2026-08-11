@@ -107,8 +107,8 @@ export function FnbCheckoutMobileSummaryPanel({
                           {line.line_modifiers.map((modifier, index) => (
                             <div key={`mobile-summary-modifier-${line.cart_line_id || line.item_id}-${index}`} style={{ display: 'grid', gridTemplateColumns: 'auto minmax(0, 1fr) auto', gap: 8, alignItems: 'center', borderRadius: 10, border: '1px solid #bbf7d0', background: '#f0fdf4', padding: '6px 8px' }}>
                               <Plus size={14} color="#16a34a" />
-                              <span style={{ fontSize: 13, color: '#166534', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{modifier.name}</span>
-                              <span style={{ fontSize: 13, fontWeight: 800, color: '#16a34a' }}>{money(Number(modifier.price_delta || 0))}</span>
+                              <span style={{ fontSize: 13, color: '#166534', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{modifier.option_name || modifier.name || 'Add-on'}{Number(modifier.quantity || 1) > 1 ? ` ×${Number(modifier.quantity)}` : ''}</span>
+                              <span style={{ fontSize: 13, fontWeight: 800, color: '#16a34a' }}>{money(Number(modifier.price_delta || 0) * Number(modifier.quantity || 1))}</span>
                             </div>
                           ))}
                         </div>

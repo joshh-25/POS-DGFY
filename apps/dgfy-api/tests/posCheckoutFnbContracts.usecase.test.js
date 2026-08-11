@@ -200,7 +200,7 @@ describe('POS checkout F&B contracts', () => {
         const inventoryCommandService = {
             createStockMovement: jest.fn()
         };
-        const useCase = buildCheckoutPosUseCase({ posRepository, inventoryCommandService });
+        const useCase = buildCheckoutContractUseCase({ posRepository, inventoryCommandService });
 
         const result = await runInTenantContext(() => useCase({
             userId: 12,
@@ -571,6 +571,7 @@ describe('POS checkout F&B contracts', () => {
                         modifier_option_id: 9,
                         name: 'Cheddar',
                         price_delta: 20,
+                        sku_item_id: 6,
                         is_active: true,
                         allergen_notes: ['milk']
                     }]
@@ -660,12 +661,18 @@ describe('POS checkout F&B contracts', () => {
                 modifier_group_id: 7,
                 modifier_option_id: 9,
                 group_name: 'Cheese',
+                group_kind: 'modifier',
+                parent_modifier_option_id: null,
                 option_name: 'Cheddar',
                 price_delta: 20,
+                quantity: 1,
+                extended_price_delta: 20,
+                sku_item_id: 6,
+                location_id: 3,
                 allergen_notes: ['milk']
             }]
         }));
-        expect(inventoryCommandService.createStockMovement).toHaveBeenCalledTimes(1);
+        expect(inventoryCommandService.createStockMovement).toHaveBeenCalledTimes(2);
         expect(posRepository.listProductCompositionsForItems).toHaveBeenCalledWith([1], expect.objectContaining({
             transaction: expect.any(Object),
             lock: true,
@@ -674,6 +681,14 @@ describe('POS checkout F&B contracts', () => {
         expect(inventoryCommandService.createStockMovement).toHaveBeenCalledWith(expect.objectContaining({
             item_id: 5,
             quantity: 0.4,
+            movement_type: 'goods_issue',
+            location_id: 3,
+            reference_type: 'POS',
+            reference_id: '77'
+        }), 12, expect.any(Object));
+        expect(inventoryCommandService.createStockMovement).toHaveBeenCalledWith(expect.objectContaining({
+            item_id: 6,
+            quantity: 2,
             movement_type: 'goods_issue',
             location_id: 3,
             reference_type: 'POS',
@@ -935,6 +950,91 @@ describe('POS checkout F&B contracts', () => {
             reference_type: 'POS',
             reference_id: '78'
         }), 12, expect.any(Object));
+    });
+
+    it('validates service add-on pricing and persists the selected option snapshot', async () => {
+        let createdTransaction = null;
+        const posRepository = {
+            getTerminalIdentityPolicySettings: jest.fn().mockResolvedValue(terminalIdentityPolicy()),
+            findTransactionByIdempotencyKey: jest.fn().mockResolvedValue(null),
+            findSellableItemsByIds: jest.fn().mockResolvedValue([{
+                item_id: 10,
+                name: 'Laundry Basket',
+                category: 'service',
+                unit_of_measure: 'service',
+                current_stock: 0,
+                cost_per_unit: 0,
+                default_sale_price: 5000,
+                vat_type: 'vatable'
+            }]),
+            findOpenTerminalShift: jest.fn().mockResolvedValue(createOpenShift()),
+            getTerminalShiftById: jest.fn(),
+            nextInvoiceNumber: jest.fn().mockResolvedValue('NFS-SERVICE-OPTION-001'),
+            getFnbTableById: jest.fn(),
+            createTransactionWithLines: jest.fn(async ({ header, lines }) => {
+                createdTransaction = { pos_transaction_id: 91, ...header, lines };
+                return 91;
+            }),
+            createFnbServiceChargeSnapshot: jest.fn(),
+            settleFnbCheck: jest.fn(),
+            incrementPersistentCounter: jest.fn().mockResolvedValue(1),
+            getTransactionById: jest.fn(async () => createdTransaction)
+        };
+        const inventoryCommandService = { createStockMovement: jest.fn() };
+        const calculateServiceQuoteUseCase = {
+            calculateQuote: jest.fn().mockResolvedValue({
+                success: true,
+                data: {
+                    quote: {
+                        options_price_adjustment_centavos: 2000,
+                        selected_options: [{
+                            option_id: 301,
+                            group_id: 30,
+                            group_name: 'Laundry extras',
+                            name: 'Additional detergent',
+                            price_adjustment_centavos: 2000,
+                            duration_adjustment_minutes: 0
+                        }]
+                    }
+                }
+            })
+        };
+        const useCase = buildCheckoutContractUseCase({
+            posRepository,
+            inventoryCommandService,
+            calculateServiceQuoteUseCase
+        });
+
+        const result = await runInTenantContext(() => useCase({
+            userId: 12,
+            user: { user_id: 12, permissions: [] },
+            payload: {
+                idempotency_key: 'pos-service-option-contract',
+                terminal_id: 'TERM-01',
+                location_id: 3,
+                document_context: 'non_fiscal',
+                payment_type: 'cash',
+                order_method: 'pickup',
+                lines: [{ item_id: 10, quantity: 1, sale_price: 5020, selected_option_ids: [301] }]
+            }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(calculateServiceQuoteUseCase.calculateQuote).toHaveBeenCalledWith(expect.objectContaining({
+            serviceItemId: 10,
+            selectedOptionIds: [301],
+            quantity: 1,
+            transaction: expect.any(Object)
+        }));
+        expect(createdTransaction.lines[0]).toEqual(expect.objectContaining({
+            item_id: 10,
+            sale_price: 5020,
+            fnb_modifiers_snapshot: [expect.objectContaining({
+                service_option_id: 301,
+                option_name: 'Additional detergent',
+                price_delta: 20
+            })]
+        }));
     });
 
     it('persists Always Available as an explicit POS-only stock exemption without inventory movement', async () => {

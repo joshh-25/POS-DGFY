@@ -28,9 +28,15 @@ import {
     calculateServiceQuoteUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
+import { publishCatalogChange } from '../../shared/services/catalogChangeEventBus.js';
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
+const publishCatalogInvalidation = async (req, reason, itemIds = []) => {
+    const tenantId = req.user?.tenant_id || req.tenant?.id;
+    if (!tenantId) return;
+    await publishCatalogChange({ tenantId, reason, itemIds });
+};
 
 const defaultErrorPayload = (req, res, failure) => ({
     success: false,
@@ -69,6 +75,9 @@ export const createCatalogItem = async (req, res, next) => {
         const result = await createServiceCatalogItemUseCase({
             payload: req.validatedData || req.body
         });
+        if (result.success) {
+            await publishCatalogInvalidation(req, 'service_catalog_created', [result.data?.service?.item_id]);
+        }
         return sendResult(req, res, result, { statusCode: 201, message: 'Service created successfully' });
     } catch (error) {
         next(error);
@@ -81,6 +90,9 @@ export const updateCatalogItem = async (req, res, next) => {
             itemId: req.validatedParams?.item_id || req.params.item_id,
             payload: req.validatedData || req.body
         });
+        if (result.success) {
+            await publishCatalogInvalidation(req, 'service_catalog_updated', [result.data?.service?.item_id]);
+        }
         return sendResult(req, res, result, { message: 'Service updated successfully' });
     } catch (error) {
         next(error);

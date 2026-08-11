@@ -1,4 +1,5 @@
 import { jest } from '@jest/globals';
+import jwt from 'jsonwebtoken';
 
 const resolveInvitationTenantTokenByToken = jest.fn();
 const findTenantByToken = jest.fn();
@@ -87,6 +88,34 @@ describe('tenantHandler email OTP invitation routing', () => {
     expect(resolveInvitationTenantTokenByToken).toHaveBeenCalledWith('invite-token');
     expect(req.headers['x-company-token']).toBe('tenant-token-1');
     expect(findTenantByToken).toHaveBeenCalledWith('tenant-token-1');
+    expect(req.tenant).toEqual(expect.objectContaining({ id: 'tenant-1' }));
+    expect(dbRun).toHaveBeenCalledWith(expect.objectContaining({
+      tenantId: 'tenant-1',
+      tenantToken: 'tenant-token-1'
+    }), next);
+    expect(next).toHaveBeenCalled();
+    expect(res.status).not.toHaveBeenCalled();
+  });
+
+  it('recovers tenant context from a tenant-bound bearer token for self-service Day Close PIN updates', async () => {
+    const token = jwt.sign(
+      { tenant_id: 'tenant-1', user_id: 'user-1' },
+      process.env.JWT_SECRET
+    );
+    const req = {
+      path: '/api/v1/users/me/pos-day-close-pin',
+      headers: { authorization: `Bearer ${token}` },
+      body: {}
+    };
+    const res = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    };
+    const next = jest.fn();
+
+    await tenantHandler(req, res, next);
+
+    expect(req.headers['x-company-token']).toBe('tenant-token-1');
     expect(req.tenant).toEqual(expect.objectContaining({ id: 'tenant-1' }));
     expect(dbRun).toHaveBeenCalledWith(expect.objectContaining({
       tenantId: 'tenant-1',

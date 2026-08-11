@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-07-30
+last_reviewed: 2026-08-10
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -77,18 +77,20 @@ Everything in `pr-checks.yml`, same as any other PR:
 - `changes` — resolves which image builds the diff needs, and folds in three
   advisory checks (`continue-on-error: true`, visible but never blocking): PR
   title format, PR body sections, and the POS receipt version bump.
+- `quality-checks` — blocking API matrix/open-handle diagnostics, migration
+  smoke, required-index audit, frontend lint/F&B contract tests/builds, the
+  deterministic Storefront F&B Playwright contract, architecture guardrails,
+  governed-doc lint, compatibility seams, and diff hygiene.
 - `backend-build-check` / `frontend-build-check` — the actual Docker images
   build cleanly, gated by `shared-changed-paths.yml` so an unrelated change
   doesn't force both.
 
-There is **no** `code-quality` job and no `conventional-commits` job. Both were
-removed; earlier revisions of this document listed them, which is how PRs #284
-and #288 came to state in good faith that "CI's compliance gate will still
-block merge" while nothing was in fact running. Architecture guardrails,
-controller boundaries, tenant schema coverage, lint, and the **compliance
-impact guardrail** now run only in `.husky/pre-commit`, which
-`git commit --no-verify` skips — treat all of these as developer conveniences,
-not gates.
+The former `code-quality` job was removed because it was advisory. Phases 24
+and 25 restore the required API, frontend, and deterministic browser coverage
+as a blocking reusable workflow. The
+**compliance impact guardrail** remains opt-in in `shared-changed-paths.yml`
+until the request-time preflight has a CI-safe declaration path; do not treat
+that unresolved compliance workflow as fixed by this phase.
 
 `shared-changed-paths.yml`'s `changes` job has a blocking `check:compliance`
 step wired up behind an `enforce_compliance_declarations` input, added

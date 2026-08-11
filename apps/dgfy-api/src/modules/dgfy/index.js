@@ -13,6 +13,7 @@ import {
 import {
     buildAcceptDgfyInvitationUseCase,
     buildChangeDgfyPasswordUseCase,
+    buildConfigureDgfyCompanyDayClosePinUseCase,
     buildCompleteDgfyPasswordResetUseCase,
     buildCreateDgfyHandoffUseCase,
     buildCreateDgfyInvitationUseCase,
@@ -86,7 +87,10 @@ import {
     buildDeactivateAffiliatePriceRuleUseCase
 } from './usecases/dgfyAffiliateUseCases.js';
 import { requestEmailOtp, verifyEmailOtp } from '../../services/emailOtpService.js';
-import { createTenantSessionForDgfyAccount } from '../../services/dgfyTenantSessionService.js';
+import {
+    configureTenantDayClosePinForDgfyAccount,
+    createTenantSessionForDgfyAccount
+} from '../../services/dgfyTenantSessionService.js';
 import { validateDgfyPosTerminalPolicy } from '../../services/dgfyPosTerminalPolicyService.js';
 import { findOwnedOpenShiftForCompanySwitch } from '../../services/posShiftCompanySwitchGuardService.js';
 import { sendEmail, sendAffiliateInviteEmail } from '../../services/emailService.js';
@@ -127,6 +131,11 @@ export const changeDgfyPasswordUseCase = buildChangeDgfyPasswordUseCase({
     repository: dgfyAccountRepository,
     comparePassword: bcrypt.compare,
     hashPassword: (password) => bcrypt.hash(password, 10)
+});
+
+export const configureDgfyCompanyDayClosePinUseCase = buildConfigureDgfyCompanyDayClosePinUseCase({
+    comparePassword: bcrypt.compare,
+    configureTenantDayClosePinForDgfyAccount
 });
 
 export const requestDgfyEmailVerificationUseCase = buildRequestDgfyEmailVerificationUseCase({

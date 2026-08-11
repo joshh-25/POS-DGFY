@@ -73,7 +73,7 @@ export function useFnbGuestCheckoutOtp({
     setGuestCheckoutOtpLoading(true);
     setGuestCheckoutOtpError('');
     try {
-      await requestJson(FNB_GUEST_CHECKOUT_OTP_REQUEST_ENDPOINT, {
+      const data = await requestJson(FNB_GUEST_CHECKOUT_OTP_REQUEST_ENDPOINT, {
         method: 'POST',
         storeSlug: selectedStore?.slug,
         body: {
@@ -81,6 +81,9 @@ export function useFnbGuestCheckoutOtp({
           idempotency_key: guestCheckoutIntentId,
         },
       });
+      if (String(data?.delivery_status || '').trim().toLowerCase() !== 'sent') {
+        throw new Error('Email verification code could not be delivered. Please try again later.');
+      }
       setGuestCheckoutOtpCooldownSeconds(RESEND_COOLDOWN_SECONDS);
       toast.success('Verification code sent to your email.');
       return true;

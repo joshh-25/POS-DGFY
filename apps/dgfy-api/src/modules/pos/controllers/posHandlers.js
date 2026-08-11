@@ -17,6 +17,7 @@ import {
     updateESalesReportStatusUseCase,
     upsertFiscalTerminalRegistrationUseCase,
     listFiscalTerminalRegistrationsUseCase,
+    getDayCloseReadinessUseCase,
     closeDayZReadingUseCase,
     getDailyZReadingUseCase,
     getCurrentXReadingUseCase,
@@ -38,9 +39,11 @@ import {
     forceCloseStaleTerminalShiftUseCase,
     getTerminalTodayDashboardUseCase,
     listIncomingOnlineOrdersUseCase,
+    listActiveDeliveryPersonnelUseCase,
     getAdminLocationMonitorUseCase,
     collectCashPickupOrderUseCase,
     collectCashDeliveryOrderUseCase,
+    assignDeliveryPersonnelUseCase,
     updateDeliveryJobStatusUseCase,
     updateOnlineOrderStatusUseCase,
     getPosDeviceStatusUseCase,
@@ -835,6 +838,27 @@ export const listIncomingOnlineOrders = async (req, res, next) => {
     }
 };
 
+export const listActiveDeliveryPersonnel = async (req, res, next) => {
+    try {
+        const result = await listActiveDeliveryPersonnelUseCase({
+            query: req.validatedQuery || req.query,
+            user: req.user
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const getAdminLocationMonitor = async (req, res, next) => {
     try {
         const result = await getAdminLocationMonitorUseCase({
@@ -922,6 +946,32 @@ export const collectCashDeliveryOrder = async (req, res, next) => {
                 success: true,
                 data: result.data,
                 message: 'Cash payment collected for delivery order.',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const assignDeliveryPersonnel = async (req, res, next) => {
+    try {
+        const result = await assignDeliveryPersonnelUseCase({
+            posTransactionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body,
+            user: req.user,
+            auditContext: {
+                ipAddress: req.ip,
+                userAgent: req.get('user-agent')
+            }
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Delivery personnel assigned successfully.',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -1188,6 +1238,28 @@ export const closeDayZReading = async (req, res, next) => {
     }
 };
 
+export const getDayCloseReadiness = async (req, res, next) => {
+    try {
+        const result = await getDayCloseReadinessUseCase({
+            businessDateInput: req.query?.business_date || null,
+            user: req.user,
+            locationId: req.posTerminalRegistration?.location_id || null
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const getDailyZReading = async (req, res, next) => {
     try {
         const result = await getDailyZReadingUseCase({
@@ -1426,6 +1498,7 @@ export default {
     getReportsOverview,
     exportReports,
     getTransactionById,
+    getDayCloseReadiness,
     closeDayZReading,
     getDailyZReading,
     getCurrentXReading,
@@ -1444,6 +1517,8 @@ export default {
     forceCloseStaleTerminalShift,
     getTerminalTodayDashboard,
     listIncomingOnlineOrders,
+    listActiveDeliveryPersonnel,
+    assignDeliveryPersonnel,
     updateOnlineOrderStatus,
     getDeviceStatus,
     printReceipt,

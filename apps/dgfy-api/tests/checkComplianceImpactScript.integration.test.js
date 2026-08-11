@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.join(__dirname, '..', '..');
+const repoRoot = path.join(__dirname, '..', '..', '..');
 const declarationsDir = path.join(repoRoot, 'docs', 'compliance', 'impact-declarations');
 
 const buildDeclaration = ({

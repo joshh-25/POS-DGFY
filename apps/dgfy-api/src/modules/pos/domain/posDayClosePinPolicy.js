@@ -15,7 +15,7 @@ export const verifyPosDayCloseOperator = async ({ operator, pin }) => {
 
     const pinHash = String(operator.pos_day_close_pin_hash || '').trim();
     if (!pinHash) {
-        dayCloseError('Your POS Day Close PIN is not configured. Ask the Master Admin to set it.', 'DAY_CLOSE_PIN_NOT_CONFIGURED');
+        dayCloseError('Your POS Day Close PIN is not configured. Set your personal PIN from DGFY Business before closing the day.', 'DAY_CLOSE_PIN_NOT_CONFIGURED');
     }
 
     const normalizedPin = String(pin || '').trim();

@@ -7,6 +7,7 @@ import {
     getIminHardwareDiagnostics
 } from '../../utils/iminHardwareBridge.js';
 import { reportPosDeviceClientResult } from '../../services/posService.js';
+import { emitPosHardwareMessage } from '../../utils/posHardwareMessageBus.js';
 import { normalizeHardwareResult } from '../posHardwareContract.js';
 import { resolveIminPrinterAvailability } from '../iminPrinterAvailability.js';
 
@@ -18,6 +19,43 @@ const isIminWrapper = () => {
     } catch {
         return false;
     }
+};
+
+const createClientAuditIdempotencyKey = (operation, providedKey = '') => {
+    const normalizedProvidedKey = String(providedKey || '').trim();
+    if (normalizedProvidedKey) return normalizedProvidedKey;
+    const randomPart = globalThis.crypto?.randomUUID?.()
+        || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    return `pos-${operation}-${randomPart}`.slice(0, 120);
+};
+
+const attachClientAuditConfirmation = async ({ outcome, reports = [] }) => {
+    const results = await Promise.allSettled(
+        reports.map((report) => reportPosDeviceClientResult(report))
+    );
+    const auditConfirmed = results.every((result) => result.status === 'fulfilled');
+    if (!auditConfirmed) {
+        emitPosHardwareMessage({
+            title: 'POS hardware audit not confirmed',
+            message: 'The physical action finished, but its backend audit could not be confirmed. Keep the printed evidence and reconnect before retrying.',
+            tone: 'warning',
+            source: 'POS hardware'
+        });
+    }
+    return normalizeHardwareResult({
+        handled: outcome.handled,
+        success: outcome.success,
+        driverId: outcome.driverId,
+        message: outcome.message,
+        reasonCode: !auditConfirmed && outcome.success
+            ? 'CLIENT_AUDIT_UNCONFIRMED'
+            : outcome.reasonCode,
+        auditConfirmed,
+        raw: {
+            hardware: outcome.raw,
+            audit_results: results.map((result) => result.status)
+        }
+    });
 };
 
 // Silent (no on-screen announcement) probe of the bridge's hardware
@@ -63,16 +101,23 @@ export const iminNativeDriver = {
     },
     async printReceipt({
         transaction,
+        transactionId,
         businessSettings,
         receiptContract,
         openDrawerAfterPrint,
+        shiftId,
         terminalId,
         reason,
         idempotencyKey
     } = {}) {
         let outcome;
         try {
-            const result = printReceiptWithIminBridge({ transaction, businessSettings, receiptContract, openDrawerAfterPrint });
+            const result = printReceiptWithIminBridge({
+                transaction,
+                businessSettings,
+                receiptContract,
+                openDrawerAfterPrint: Boolean(openDrawerAfterPrint && shiftId)
+            });
             if (!result.handled) return normalizeHardwareResult({ handled: false, driverId: this.id });
             outcome = normalizeHardwareResult({
                 success: result.result?.success !== false,
@@ -90,21 +135,33 @@ export const iminNativeDriver = {
             });
         }
 
-        // Printing already happened (or failed) physically and was already
-        // surfaced to the cashier above. Report it to the backend for the
-        // audit trail — best-effort, never blocks or re-surfaces as an error.
-        // This closes a real gap: iMin prints were previously never audited.
-        reportPosDeviceClientResult({
+        // The physical action is never repeated when audit confirmation fails.
+        // The awaited result below preserves the hardware outcome and reports
+        // audit confirmation separately so the cashier can retain evidence.
+        const receiptAuditKey = createClientAuditIdempotencyKey('receipt-audit', idempotencyKey);
+        const reports = [{
             operation: 'print_receipt',
-            transactionId: transaction?.pos_transaction_id,
+            transactionId: transactionId || transaction?.pos_transaction_id,
             terminalId,
             reason,
-            idempotencyKey,
+            idempotencyKey: receiptAuditKey,
             driverId: this.id,
             result: { success: outcome.success, message: outcome.message, reason_code: outcome.reasonCode }
-        });
+        }];
+        if (openDrawerAfterPrint && shiftId) {
+            reports.push({
+                operation: 'open_drawer',
+                shiftId,
+                transactionId: transactionId || transaction?.pos_transaction_id,
+                terminalId,
+                reason: `${reason || 'receipt_print'}_drawer`,
+                idempotencyKey: createClientAuditIdempotencyKey('receipt-drawer-audit'),
+                driverId: this.id,
+                result: { success: outcome.success, message: outcome.message, reason_code: outcome.reasonCode }
+            });
+        }
 
-        return outcome;
+        return attachClientAuditConfirmation({ outcome, reports });
     },
     async printOrderTicket({ cart, terminalId, orderMethod, fnbContext, orderNotes } = {}) {
         try {
@@ -146,17 +203,18 @@ export const iminNativeDriver = {
             });
         }
 
-        reportPosDeviceClientResult({
+        return attachClientAuditConfirmation({
+            outcome,
+            reports: [{
             operation: 'print_shift_summary',
             shiftId,
             terminalId,
             reason,
-            idempotencyKey,
+            idempotencyKey: createClientAuditIdempotencyKey('shift-summary-audit', idempotencyKey),
             driverId: this.id,
             result: { success: outcome.success, message: outcome.message, reason_code: outcome.reasonCode }
+            }]
         });
-
-        return outcome;
     },
     async printZReading({ zReading, businessSettings, businessDate, locationId, terminalId, reason, idempotencyKey } = {}) {
         let outcome;
@@ -179,20 +237,31 @@ export const iminNativeDriver = {
             });
         }
 
-        reportPosDeviceClientResult({
+        return attachClientAuditConfirmation({
+            outcome,
+            reports: [{
             operation: 'print_z_reading',
             businessDate,
             locationId,
             terminalId,
             reason,
-            idempotencyKey,
+            idempotencyKey: createClientAuditIdempotencyKey('z-reading-audit', idempotencyKey),
             driverId: this.id,
             result: { success: outcome.success, message: outcome.message, reason_code: outcome.reasonCode }
+            }]
         });
-
-        return outcome;
     },
     async openDrawer({ shiftId, transactionId, terminalId, reason, idempotencyKey } = {}) {
+        if (!shiftId) {
+            return normalizeHardwareResult({
+                success: false,
+                driverId: this.id,
+                message: 'Open a shift before opening the cash drawer.',
+                reasonCode: 'SHIFT_REQUIRED',
+                auditConfirmed: false
+            });
+        }
+
         let outcome;
         try {
             const result = openDrawerWithIminBridge();
@@ -213,22 +282,21 @@ export const iminNativeDriver = {
             });
         }
 
-        // See printReceipt above — ADR 0025 requires drawer opens to be
+        // See printReceipt above — ADR 0053 requires drawer opens to be
         // authorized and auditable regardless of which driver pulsed them.
-        if (shiftId) {
-            reportPosDeviceClientResult({
+        return attachClientAuditConfirmation({
+            outcome,
+            reports: [{
                 operation: 'open_drawer',
                 shiftId,
                 transactionId,
                 terminalId,
                 reason,
-                idempotencyKey,
+                idempotencyKey: createClientAuditIdempotencyKey('drawer-audit', idempotencyKey),
                 driverId: this.id,
                 result: { success: outcome.success, message: outcome.message, reason_code: outcome.reasonCode }
-            });
-        }
-
-        return outcome;
+            }]
+        });
     }
 };
 

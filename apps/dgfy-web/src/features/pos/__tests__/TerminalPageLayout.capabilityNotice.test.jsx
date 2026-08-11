@@ -94,6 +94,16 @@ describe('TerminalPageLayout capability notice', () => {
     vi.clearAllMocks();
   });
 
+  it('does not retain the previous tenant catalog behind a terminal login drawer', () => {
+    const { unmount } = renderLayoutWithProps({
+      locked: true,
+      isCheckoutWorkspaceMode: true
+    });
+
+    expect(screen.queryByText('POSCheckoutTerminal')).toBeNull();
+    unmount();
+  });
+
   it('shows POS-specific capability block events and dismisses them', async () => {
     renderLayout();
 

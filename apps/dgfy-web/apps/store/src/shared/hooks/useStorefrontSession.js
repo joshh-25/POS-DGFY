@@ -37,13 +37,15 @@ import {
 export function useStorefrontSession({ setIsAccountDrawerOpen }) {
   const [dgfyAuthTokenState, setDgfyAuthTokenState] = useState(() => readDgfyAuthToken());
   const [dgfySessionAccount, setDgfySessionAccount] = useState(null);
+  const [isDgfySessionResolved, setIsDgfySessionResolved] = useState(false);
   const storefrontVisitorId = useMemo(() => getOrCreateStorefrontVisitorId(), []);
 
   useEffect(() => {
     let cancelled = false;
 
     const bootstrapDgfyCookieSession = async () => {
-      let consumedHandoff = false;
+      try {
+        let consumedHandoff = false;
       if (typeof window !== 'undefined') {
         const currentUrl = new URL(window.location.href);
         const handoffToken = String(currentUrl.searchParams.get('handoff_token') || '').trim();
@@ -109,7 +111,7 @@ export function useStorefrontSession({ setIsAccountDrawerOpen }) {
         return;
       }
 
-      try {
+        try {
         const payload = await requestJson('/api/v1/dgfy/auth/me', { cache: 'no-store' });
         if (cancelled) return;
         const account = payload?.account || payload || null;
@@ -119,7 +121,7 @@ export function useStorefrontSession({ setIsAccountDrawerOpen }) {
           setDgfyAuthTokenState('');
           markDgfySessionActive();
         }
-      } catch {
+        } catch {
         if (cancelled) return;
         if (legacyToken && !consumedHandoff) {
           try {
@@ -140,6 +142,9 @@ export function useStorefrontSession({ setIsAccountDrawerOpen }) {
         setDgfyAuthTokenState('');
         if (cancelled) return;
         setDgfySessionAccount(null);
+        }
+      } finally {
+        if (!cancelled) setIsDgfySessionResolved(true);
       }
     };
 
@@ -186,6 +191,7 @@ export function useStorefrontSession({ setIsAccountDrawerOpen }) {
     dgfyAuthToken,
     isDgfyCustomerSignedIn,
     isStorefrontAccountAuthenticated,
+    isDgfySessionResolved,
     closeAccountDrawer
   };
 }

@@ -6,6 +6,7 @@ import { PERMISSIONS } from '../config/permissions.js';
 import {
     acceptDgfyInvitation,
     changeDgfyPassword,
+    configureDgfyCompanyDayClosePin,
     completeDgfyLegacyLink,
     completeDgfyPasswordReset,
     createDgfyHandoff,
@@ -113,6 +114,7 @@ router.post('/account/companies/:tenant_id/switch', authLimiter, authenticateDgf
 router.post('/account/companies/:tenant_id/leave', authenticateDgfyAccountOrTenantMembership, leaveDgfyCompany);
 router.post('/account/companies/:tenant_id/transfer-ownership', authLimiter, authenticateDgfyAccountOrTenantMembership, transferDgfyCompanyOwnership);
 router.post('/account/companies/:tenant_id/pos-session', authLimiter, authenticateDgfyAccount, startDgfyPosSession);
+router.put('/account/companies/:tenant_id/pos-day-close-pin', authenticateDgfyAccount, authLimiter, configureDgfyCompanyDayClosePin);
 router.get('/legacy-link/status', authenticate, getDgfyLegacyLinkStatus);
 router.post('/legacy-link/request-email-otp', authLimiter, authenticate, requestDgfyLegacyLinkEmailOtp);
 router.post('/legacy-link/complete', authLimiter, authenticate, completeDgfyLegacyLink);

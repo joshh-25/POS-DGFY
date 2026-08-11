@@ -152,6 +152,7 @@ function FnbProductDetailsState({
 
 export function FnbProductDetailsPage({
   item,
+  isEditingCartLine = false,
   loading = false,
   loadError = '',
   onRetry = null,
@@ -165,6 +166,7 @@ export function FnbProductDetailsPage({
   modifierGroups,
   modifierCounts,
   onToggleModifier,
+  onModifierQuantityChange,
   onAddToCart,
   onBuyNow,
   available,
@@ -252,7 +254,7 @@ export function FnbProductDetailsPage({
   const availabilityLabel = String(item.inventory_display?.label || (available ? 'Available' : 'Availability not provided')).trim();
 
   const selectedModifiersTotal = Array.isArray(selectedModifiers)
-    ? selectedModifiers.reduce((sum, entry) => sum + Number(entry?.price_delta || 0), 0)
+    ? selectedModifiers.reduce((sum, entry) => sum + (Number(entry?.price_delta || 0) * Number(entry?.quantity || 1)), 0)
     : 0;
 
   const desktopSummaryTop = isMobileViewport ? 'auto' : 88;
@@ -403,6 +405,7 @@ export function FnbProductDetailsPage({
                 modifierGroups={modifierGroups}
                 onToggleGroup={toggleGroupExpand}
                 onToggleModifier={onToggleModifier}
+                onModifierQuantityChange={onModifierQuantityChange}
                 selectedModifiers={selectedModifiers}
                 spacing={sp}
               />
@@ -417,6 +420,7 @@ export function FnbProductDetailsPage({
                   actionButtonBase={actionButtonBase}
                   available={available}
                   formatMoney={money}
+                  isEditingCartLine={isEditingCartLine}
                   onAddToCart={onAddToCart}
                   onBuyNow={onBuyNow}
                   selectedModifiersTotal={selectedModifiersTotal}
@@ -437,6 +441,7 @@ export function FnbProductDetailsPage({
           imageSources={imageSources}
           isOpen={isMobileSummaryOpen}
           itemName={item.name}
+          isEditingCartLine={isEditingCartLine}
           onAddToCart={onAddToCart}
           onBuyNow={onBuyNow}
           onClose={() => setIsMobileSummaryOpen(false)}

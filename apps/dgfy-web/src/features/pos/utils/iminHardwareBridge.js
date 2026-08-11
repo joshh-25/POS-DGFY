@@ -171,34 +171,22 @@ const getIminBridge = () => {
     }
 };
 
+// Native (see IminBridge.kt's printReceiptWithLogo / ReceiptLogoProvider) can only
+// fetch an absolute http(s) URL or decode a data: URI -- a root-relative path or a
+// page-scoped blob: URL means nothing outside this WebView document. resolveAssetUrl
+// already resolves root-relative uploads against the asset origin when one is
+// configured, so this only rejects what it couldn't turn into something fetchable.
+const isNativeFetchableLogoSource = (value) => /^(https?:|data:)/i.test(String(value || ''));
+
 const resolveReceiptLogoSource = (businessSettings = {}) => {
     const raw = String(
         businessSettings?.storefront_profile_image_url
         || businessSettings?.profile_image_url
         || ''
     ).trim();
-    return raw ? resolveAssetUrl(raw) : '';
-};
-
-const tryPrintReceiptBitmap = (bridge, businessSettings = {}) => {
-    if (!bridge || typeof bridge.printBitmap !== 'function') {
-        return null;
-    }
-
-    const imageSource = resolveReceiptLogoSource(businessSettings);
-    if (!imageSource) {
-        return null;
-    }
-
-    return parseBridgeResult(
-        bridge.printBitmap(imageSource, {
-            align: 'center',
-            maxWidthPx: 360,
-            dither: true,
-            feedAfter: 1
-        }),
-        'Receipt logo print command sent.'
-    );
+    if (!raw) return '';
+    const resolved = resolveAssetUrl(raw);
+    return isNativeFetchableLogoSource(resolved) ? resolved : '';
 };
 
 const resolveDocumentLabel = (transaction, receiptContract) => {
@@ -457,27 +445,24 @@ export const printReceiptWithIminBridge = ({ transaction, businessSettings = {},
         return { handled: false };
     }
 
-    const bitmapResult = tryPrintReceiptBitmap(bridge, businessSettings);
-    if (bitmapResult && !bitmapResult.success) {
-        return { handled: true, result: toHardwareFailureResult(bitmapResult) };
-    }
-    if (bitmapResult) {
-        emitPosHardwareMessage({
-            title: 'iMin receipt printer',
-            message: bitmapResult.message || 'Receipt logo print command sent.',
-            tone: 'info',
-            source: 'iMin hardware',
-            details: bitmapResult.diagnostics || null
-        });
-    }
+    const receiptText = formatIminReceiptText({ transaction, businessSettings, receiptContract });
 
-    const result = parseBridgeResult(
-        bridge.printReceipt(
-            formatIminReceiptText({ transaction, businessSettings, receiptContract }),
-            Boolean(openDrawerAfterPrint)
-        ),
-        'Receipt print command sent.'
-    );
+    // printReceiptWithLogo carries the tenant's company icon (see IminBridge.kt /
+    // ReceiptLogoProvider) in the SAME print command as the receipt text -- unlike
+    // the old two-call approach (a separate printBitmap the bridge never actually
+    // implemented), which would have landed on its own cut-off slip anyway, since
+    // printReceipt always ends the payload with a partial cut. Older field APKs
+    // without printReceiptWithLogo still print correctly via the plain printReceipt
+    // fallback, just without the company icon.
+    const raw = typeof bridge.printReceiptWithLogo === 'function'
+        ? bridge.printReceiptWithLogo(
+            receiptText,
+            Boolean(openDrawerAfterPrint),
+            resolveReceiptLogoSource(businessSettings)
+        )
+        : bridge.printReceipt(receiptText, Boolean(openDrawerAfterPrint));
+
+    const result = parseBridgeResult(raw, 'Receipt print command sent.');
 
     if (!result.success) {
         return { handled: true, result: toHardwareFailureResult(result) };
@@ -504,6 +489,10 @@ const resolveOrderTicketItemName = (cartLine, index) => safeText(
 );
 
 const formatShiftSummaryValue = (value) => Number(value || 0).toFixed(2);
+const paymentBreakdownLabel = (entry) => safeText(
+    entry?.payment_label || entry?.payment_type,
+    'Other'
+);
 
 export const formatIminShiftSummaryText = ({ shiftSummary = {}, businessSettings = {} } = {}) => {
     const shift = shiftSummary?.shift || {};
@@ -521,11 +510,12 @@ export const formatIminShiftSummaryText = ({ shiftSummary = {}, businessSettings
         pair('Discounts', formatShiftSummaryValue(sales.discount_amount)),
         pair('VAT', formatShiftSummaryValue(sales.vat_amount)),
         pair('Total sales', formatShiftSummaryValue(sales.total_amount)),
+        pair(`POS voids (${sales.void_transaction_count || 0})`, formatShiftSummaryValue(sales.void_amount)),
         line(),
         center('PAYMENT BREAKDOWN')
     ];
     (Array.isArray(sales.payment_breakdown) ? sales.payment_breakdown : []).forEach((entry) => {
-        lines.push(pair(`${entry.payment_type || 'Other'} (${entry.count || 0})`, formatShiftSummaryValue(entry.amount)));
+        lines.push(pair(`${paymentBreakdownLabel(entry)} (${entry.count || 0})`, formatShiftSummaryValue(entry.amount)));
     });
     lines.push(
         line(),
@@ -580,11 +570,12 @@ export const formatIminZReadingText = ({ zReading = {}, businessSettings = {} } 
         pair('Discounts', formatZReadingValue(summary.discount_amount)),
         pair('VAT', formatZReadingValue(summary.vat_amount)),
         pair('Total sales', formatZReadingValue(summary.total_amount)),
+        pair(`POS voids (${summary.void_transaction_count || 0})`, formatZReadingValue(summary.void_amount)),
         line(),
         center('PAYMENT BREAKDOWN')
     ];
     (Array.isArray(summary.payment_breakdown) ? summary.payment_breakdown : []).forEach((entry) => {
-        lines.push(pair(`${entry.payment_type || 'Other'} (${entry.count || 0})`, formatZReadingValue(entry.amount)));
+        lines.push(pair(`${paymentBreakdownLabel(entry)} (${entry.count || 0})`, formatZReadingValue(entry.amount)));
     });
     lines.push(
         line(),
@@ -593,6 +584,7 @@ export const formatIminZReadingText = ({ zReading = {}, businessSettings = {} } 
         pair('Reset counter', reading.reset_counter_value || 0),
         pair('Lifetime total', formatZReadingValue(Number(reading.lifetime_grand_total_cents || 0) / 100)),
         line(),
+        center('Provider refunds reconciled separately.'),
         center('Keep with day-end close evidence.')
     );
     return lines.join('\n');

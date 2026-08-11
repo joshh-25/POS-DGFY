@@ -134,7 +134,11 @@ describe('commerce payment refund use-cases', () => {
     const paymongoService = {
       createRefund: jest.fn()
     };
-    const useCase = buildCreateCommercePaymentRefundUseCase({ commercePaymentRepository, paymongoService });
+    const useCase = buildCreateCommercePaymentRefundUseCase({
+      commercePaymentRepository,
+      paymongoService,
+      revenueSharingEnabled: true
+    });
 
     const result = await useCase({
       paymentSessionId: baseSession.public_reference,

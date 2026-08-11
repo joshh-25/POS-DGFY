@@ -1,5 +1,5 @@
 /** @vitest-environment jsdom */
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
 import { toast } from 'sonner';
 import { useCustomerDashboardBusinessAccess } from '../useCustomerDashboardBusinessAccess.js';
@@ -18,7 +18,11 @@ const buildDeps = (overrides = {}) => ({
   buildSkupervisorHandoffUrl: vi.fn(({ tenantId, next, handoffToken }) => (
     `https://skupervisor.dgfy.ph/dgfy/companies?tenant_id=${tenantId}&next=${encodeURIComponent(next)}${handoffToken ? `&handoff_token=${handoffToken}` : ''}`
   )),
+  buildPosDgfyHandoffUrl: vi.fn(({ tenantId, next, handoffToken }) => (
+    `https://pos.dgfy.ph/#/dgfy/companies?tenant_id=${tenantId}&next=${encodeURIComponent(next)}${handoffToken ? `&handoff_token=${handoffToken}` : ''}`
+  )),
   createDgfyHandoff: vi.fn(),
+  startDgfyTenantSession: vi.fn(),
   buildPosAppUrl: vi.fn(() => 'https://pos.dgfy.ph/'),
   dgfySessionAccount: { id: 'dgfy-1' },
   normalizeStorefrontErrorMessage: vi.fn((_error, fallback) => fallback),
@@ -34,6 +38,10 @@ beforeEach(() => {
     writable: true,
     value: { ...originalLocation, href: '' }
   });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
 
 // Locks in the fix for the "Open business inventory" dead end: starting a
@@ -90,6 +98,125 @@ describe('useCustomerDashboardBusinessAccess handleOpenBusinessInventory', () =>
     expect(toast.error).toHaveBeenCalledWith('Business session details are unavailable.');
     expect(deps.createDgfyHandoff).not.toHaveBeenCalled();
     expect(window.location.href).toBe('');
+  });
+});
+
+describe('useCustomerDashboardBusinessAccess handleOpenBusinessPos', () => {
+  it('mints a single-use handoff and opens the selected business POS without a second login', async () => {
+    const deps = buildDeps();
+    deps.createDgfyHandoff.mockResolvedValue({ handoff_token: 'handoff-pos' });
+    const { result } = renderHook(() => useCustomerDashboardBusinessAccess(deps));
+
+    await result.current.handleOpenBusinessPos({
+      tenant_id: 'tenant-pos',
+      company: { id: 'tenant-pos' }
+    });
+
+    await waitFor(() => expect(deps.createDgfyHandoff).toHaveBeenCalledWith('dgfy-token'));
+    expect(deps.buildPosDgfyHandoffUrl).toHaveBeenCalledWith({
+      tenantId: 'tenant-pos',
+      next: '/terminal',
+      handoffToken: 'handoff-pos'
+    });
+    expect(window.location.href).toBe('https://pos.dgfy.ph/#/dgfy/companies?tenant_id=tenant-pos&next=%2Fterminal&handoff_token=handoff-pos');
+  });
+
+  it('does not route Day Close PIN setup through POS', async () => {
+    const deps = buildDeps();
+    deps.requestJson.mockResolvedValue({ configured: true });
+    const { result } = renderHook(() => useCustomerDashboardBusinessAccess(deps));
+
+    await result.current.configureOwnBusinessDayClosePin(
+      { tenant_id: 'tenant-pos' },
+      { currentPassword: 'current-password', pin: '1234' }
+    );
+
+    expect(deps.startDgfyTenantSession).not.toHaveBeenCalled();
+    expect(deps.requestJson).toHaveBeenCalledWith('/api/v1/dgfy/account/companies/tenant-pos/pos-day-close-pin', {
+      method: 'PUT',
+      authToken: 'dgfy-token',
+      body: { current_password: 'current-password', pin: '1234' },
+      cache: 'no-store'
+    });
+    expect(deps.buildPosDgfyHandoffUrl).not.toHaveBeenCalled();
+    expect(window.location.href).toBe('');
+  });
+
+  it('keeps Storefront in place and reports an error when the POS handoff token cannot be minted', async () => {
+    const deps = buildDeps();
+    deps.createDgfyHandoff.mockRejectedValue(new Error('network error'));
+    const { result } = renderHook(() => useCustomerDashboardBusinessAccess(deps));
+
+    await result.current.handleOpenBusinessPos({ tenant_id: 'tenant-pos' });
+
+    expect(deps.buildPosDgfyHandoffUrl).not.toHaveBeenCalled();
+    expect(window.location.href).toBe('');
+    expect(toast.error).toHaveBeenCalledWith('Unable to open the business POS right now.');
+  });
+
+  it('does not navigate when the handoff response lacks its one-time token', async () => {
+    const deps = buildDeps();
+    deps.createDgfyHandoff.mockResolvedValue({ handoff_token: '' });
+    const { result } = renderHook(() => useCustomerDashboardBusinessAccess(deps));
+
+    await result.current.handleOpenBusinessPos({ tenant_id: 'tenant-pos' });
+
+    expect(deps.buildPosDgfyHandoffUrl).not.toHaveBeenCalled();
+    expect(window.location.href).toBe('');
+    expect(toast.error).toHaveBeenCalledWith('Unable to open the business POS right now.');
+  });
+
+  it('opens a new tab synchronously and sends the handoff only to that tab', async () => {
+    const deps = buildDeps();
+    const targetWindow = {
+      closed: false,
+      opener: window,
+      location: { replace: vi.fn() },
+      close: vi.fn()
+    };
+    vi.spyOn(window, 'open').mockReturnValue(targetWindow);
+    deps.createDgfyHandoff.mockResolvedValue({ handoff_token: 'handoff-new-tab' });
+    const { result } = renderHook(() => useCustomerDashboardBusinessAccess(deps));
+
+    await result.current.handleOpenBusinessPos({ tenant_id: 'tenant-pos' }, { openInNewTab: true });
+
+    expect(window.open).toHaveBeenCalledWith('', '_blank');
+    expect(targetWindow.opener).toBeNull();
+    expect(targetWindow.location.replace).toHaveBeenCalledWith(
+      'https://pos.dgfy.ph/#/dgfy/companies?tenant_id=tenant-pos&next=%2Fterminal&handoff_token=handoff-new-tab'
+    );
+    expect(window.location.href).toBe('');
+  });
+
+  it('keeps Storefront in place when the browser blocks the new POS tab', async () => {
+    const deps = buildDeps();
+    vi.spyOn(window, 'open').mockReturnValue(null);
+    const { result } = renderHook(() => useCustomerDashboardBusinessAccess(deps));
+
+    await result.current.handleOpenBusinessPos({ tenant_id: 'tenant-pos' }, { openInNewTab: true });
+
+    expect(deps.createDgfyHandoff).not.toHaveBeenCalled();
+    expect(window.location.href).toBe('');
+    expect(toast.error).toHaveBeenCalledWith('Your browser blocked the POS tab. Allow pop-ups for DGFY, then try again.');
+  });
+
+  it('closes the blank POS tab instead of navigating it without a secure handoff token', async () => {
+    const deps = buildDeps();
+    const targetWindow = {
+      closed: false,
+      opener: window,
+      location: { replace: vi.fn() },
+      close: vi.fn()
+    };
+    vi.spyOn(window, 'open').mockReturnValue(targetWindow);
+    deps.createDgfyHandoff.mockRejectedValue(new Error('network error'));
+    const { result } = renderHook(() => useCustomerDashboardBusinessAccess(deps));
+
+    await result.current.handleOpenBusinessPos({ tenant_id: 'tenant-pos' }, { openInNewTab: true });
+
+    expect(targetWindow.location.replace).not.toHaveBeenCalled();
+    expect(targetWindow.close).toHaveBeenCalledTimes(1);
+    expect(toast.error).toHaveBeenCalledWith('Unable to open the business POS right now.');
   });
 });
 

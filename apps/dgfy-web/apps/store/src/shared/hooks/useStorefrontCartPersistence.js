@@ -31,12 +31,12 @@ export function useStorefrontCartPersistence({
     skipNextWriteKeyRef.current = persistenceKey;
 
     const snapshot = readStorefrontCartSnapshot(normalizedStoreSlug, { mode: normalizedMode });
-    if (!snapshot?.cart?.length) return;
 
-    setCart((currentCart) => {
-      if (Array.isArray(currentCart) && currentCart.length > 0) return currentCart;
-      return snapshot.cart;
-    });
+    // Cart state is shared by the single-page Storefront shell. When the
+    // visitor changes tenant or workflow mode, an absent snapshot means the
+    // destination scope has no cart. Replace the in-memory state so a prior
+    // store's lines cannot remain visible or be persisted under the new key.
+    setCart(snapshot?.cart || []);
   }, [enabled, normalizedMode, normalizedStoreSlug, persistenceKey, setCart]);
 
   useEffect(() => {
@@ -56,7 +56,7 @@ export function useStorefrontCartPersistence({
       return;
     }
 
-    clearStorefrontCartSnapshot(normalizedStoreSlug);
+    clearStorefrontCartSnapshot(normalizedStoreSlug, { mode: normalizedMode });
   }, [cart, enabled, normalizedMode, normalizedStoreSlug, persistenceKey]);
 
   return useCallback(() => {

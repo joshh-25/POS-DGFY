@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-06-26
+last_reviewed: 2026-08-10
 applies_to: fnb_mode
 topic: food_and_beverage
 ---
@@ -121,6 +121,6 @@ Assigned-scope operational presets require at least one active location when the
 
 ## Validation
 
-Use `npm run qa:fnb-readiness` before final F&B readiness ratings. The gate runs backend operational QA, POS/Storefront recipe checkout contracts, frontend kitchen/error contracts, production builds, architecture checks, docs lint, and diff hygiene. If the gate is not run, ratings are preliminary; if it fails, production readiness cannot be claimed above controlled-pilot confidence.
+Use `npm run qa:fnb-readiness` before final F&B readiness ratings. The gate runs backend operational QA, POS/Storefront recipe checkout contracts, modifier migration and validator contracts, frontend F&B route/API/receipt contracts, production builds, architecture checks, docs lint, and diff hygiene. Pull requests also run the blocking `quality-checks` workflow, which adds the complete backend test matrix, open-handle diagnostics, fresh migration-runner smoke coverage, frontend lint/tests/builds, index auditing, and compatibility-seam validation. If the gate is not run, ratings are preliminary; if it fails, production readiness cannot be claimed above controlled-pilot confidence.
 
 For broader release work, also use `npm run check:architecture`, `npm run lint:docs`, backend F&B use-case tests, Storefront recipe quote/checkout tests, online order completion inventory tests, frontend F&B route/registry tests, and POS checkout metadata tests for changes in this mode.

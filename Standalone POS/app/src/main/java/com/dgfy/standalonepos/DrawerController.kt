@@ -64,9 +64,13 @@ class DrawerController(
         }
     }
 
-    fun printReceipt(receiptText: String, openDrawerAfterPrint: Boolean): DrawerCommandResult {
+    fun printReceipt(
+        receiptText: String,
+        openDrawerAfterPrint: Boolean,
+        logoSource: String = ""
+    ): DrawerCommandResult {
         lastCommand = if (openDrawerAfterPrint) "print_receipt_and_open_drawer" else "print_receipt"
-        val bluetoothResult = bluetoothEscPosController.printReceipt(receiptText, openDrawerAfterPrint)
+        val bluetoothResult = bluetoothEscPosController.printReceipt(receiptText, openDrawerAfterPrint, logoSource)
         if (bluetoothResult.success) {
             lastCommandSuccess = true
             lastErrorClass = ""
@@ -104,6 +108,9 @@ class DrawerController(
             )
         }
 
+        // This fallback path (Bluetooth failed or isn't paired) stays text-only --
+        // see the matching comment in imin-wrapper's DrawerController.kt for why.
+        // The company logo still prints via the primary Bluetooth path above.
         return try {
             printerHelper.printText(
                 normalizedText + "\n\n",
@@ -155,6 +162,7 @@ class DrawerController(
             printReceiptWithBluetoothFallback(
                 receiptText = receiptText,
                 openDrawerAfterPrint = openDrawerAfterPrint,
+                logoSource = logoSource,
                 baseMessage = lastErrorMessage
             )
         }
@@ -246,9 +254,10 @@ class DrawerController(
     private fun printReceiptWithBluetoothFallback(
         receiptText: String,
         openDrawerAfterPrint: Boolean,
+        logoSource: String,
         baseMessage: String
     ): DrawerCommandResult {
-        val bluetoothResult = bluetoothEscPosController.printReceipt(receiptText, openDrawerAfterPrint)
+        val bluetoothResult = bluetoothEscPosController.printReceipt(receiptText, openDrawerAfterPrint, logoSource)
         if (bluetoothResult.success) {
             lastCommandSuccess = true
             return DrawerCommandResult(

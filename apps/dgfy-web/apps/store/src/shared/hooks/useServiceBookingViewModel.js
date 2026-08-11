@@ -92,6 +92,28 @@ export function useServiceBookingViewModel({
     }
   };
 
+  const syncServiceBookingDraft = (serviceItem = selectedServiceDetail) => {
+    const targetCartLineId = String(selectedServiceCartLineId || serviceItem?.cart_line_id || '');
+    if (!serviceItem || !targetCartLineId) return;
+
+    setCart((previous) => previous.map((line) => (
+      String(line.cart_line_id || '') === targetCartLineId
+        ? {
+          ...line,
+          quantity: Math.max(1, Number(serviceDraftQuantity || 1)),
+          service_notes: String(serviceDraftNotes || '').trim(),
+          service_schedule_at: serviceAppointmentAt,
+          payment_timing: servicePaymentTiming,
+          intake_responses: selectedServiceIntakeFields.length > 0 ? serviceIntakeResponses : null
+        }
+        : line
+    )));
+    setCheckoutError('');
+    setQuoteError('');
+    setQuoteResult(null);
+    setQuoteNeedsRefresh(true);
+  };
+
   const saveServiceBookingDraft = (serviceItem = selectedServiceDetail, nextTab = 'review') => {
     if (!serviceItem) return;
     if (storefrontClosedByHours) {
@@ -166,6 +188,7 @@ export function useServiceBookingViewModel({
     handleServicesCartCheckout,
     openServiceBookingPanel,
     openServiceCartEditor,
-    saveServiceBookingDraft
+    saveServiceBookingDraft,
+    syncServiceBookingDraft
   };
 }

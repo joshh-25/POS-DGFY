@@ -20,6 +20,7 @@ const productDetailsRoutePropsSource = () => readSource('modes/fnb/storefront/ho
 const productDetailActionsSource = () => readSource('modes/fnb/storefront/hooks/useFnbProductDetailActions.js');
 const productCardSource = () => readSource('modes/fnb/storefront/components/FnbProductCard.jsx');
 const cartMutationsHookSource = () => readSource('shared/hooks/useCartMutations.js');
+const cartDrawerSource = () => readSource('modes/fnb/checkout/components/FnbCartDrawerContent.jsx');
 const catalogRuntimeSource = () => readSource('modes/fnb/storefront/hooks/useFnbCatalogRuntime.js');
 const storefrontCatalogHookSource = () => readSource('shared/hooks/useStorefrontCatalog.js');
 const itemReviewRuntimeSource = () => readSource('modes/fnb/storefront/hooks/useFnbItemReviewRuntime.js');
@@ -114,9 +115,20 @@ describe('Food & Beverage storefront contract', () => {
     const cartMutations = cartMutationsHookSource();
 
     expect(detailActions).toContain('openCart: true');
-    expect(cartMutations).toContain('Boolean(options?.openCart) || (!isFnbMode && !isSimpleMode)');
+    expect(cartMutations).toContain('Boolean(options?.openCart) || (!isFnbMode && !isSimpleMode && !isRetailMode)');
     expect(productCard).toContain('sourceRect: getCartFlySourceRect(event)');
     expect(productCard).not.toContain('openCart: true');
+  });
+
+  it('gates required add-ons behind customization and supports cart editing', () => {
+    const productCard = productCardSource();
+    const cartDrawer = cartDrawerSource();
+    const cartMutations = cartMutationsHookSource();
+
+    expect(productCard).toContain('requiresCustomization');
+    expect(productCard).toContain('Customize');
+    expect(cartDrawer).toContain('Edit add-ons');
+    expect(cartMutations).toContain('replaceCartLine');
   });
 
   it('keeps menu metadata, modifiers, allergens, and reviews available in F&B modules', () => {
@@ -233,6 +245,13 @@ describe('Food & Beverage storefront contract', () => {
     expect(checkoutRouteMountSource()).toContain('FnbCheckoutRoutePage');
     expect(checkoutSubmissionSource()).toContain('/api/v1/store/checkout');
     expect(checkoutSubmissionSource()).toContain('goStoreTrackPage({ pin: trackingPin });');
+  });
+
+  it('keeps Services booking review out of the F&B cart drawer', () => {
+    const shellSource = cartDrawerShellContainerSource();
+
+    expect(shellSource).toContain("checkoutTab === 'review' && hasServiceCart && isServicesMode");
+    expect(shellSource).not.toContain("checkoutTab === 'review' && hasServiceCart && !isServicesMode");
   });
 
   it('keeps tracking drawer and tracking page under F&B tracking ownership', () => {

@@ -11,4 +11,13 @@ describe('DGFY tenant-session service contract', () => {
     expect(source).toContain("attributes: ['id', 'name', 'db_name', 'company_token', 'status', 'plan']");
     expect(source).toContain('tenantConnector.getConnection(tenant)');
   });
+
+  it('binds DGFY Day Close PIN setup to the accepted membership tenant user', () => {
+    const source = fs.readFileSync(sourcePath, 'utf8');
+
+    expect(source).toContain('configureTenantDayClosePinForDgfyAccount');
+    expect(source).toContain('membership.tenant_user_id');
+    expect(source).toContain("String(user.email || '').trim().toLowerCase() !== String(account.email || '').trim().toLowerCase()");
+    expect(source).toContain('updateOwnPosDayClosePinForVerifiedDgfyAccount(user.user_id');
+  });
 });

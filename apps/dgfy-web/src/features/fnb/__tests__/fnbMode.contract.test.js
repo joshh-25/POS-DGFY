@@ -21,6 +21,7 @@ describe('Food & Beverage frontend contract', () => {
     const api = read('apps/dgfy-web/src/features/fnb/api/fnbApi.js');
 
     expect(api).toContain('/fnb/modifier-groups');
+    expect(api).toContain('updateFnbModifierGroup');
     expect(api).toContain('/fnb/dining-areas');
     expect(api).toContain('/fnb/checks');
     expect(api).toContain('/fnb/kitchen-tickets/');
@@ -42,6 +43,16 @@ describe('Food & Beverage frontend contract', () => {
     expect(page).toContain('Restaurant Service Charge');
     expect(page).not.toContain('Job Order');
     expect(page).not.toContain('Dispatch Order');
+  });
+
+  it('keeps modifier management in standalone POS instead of the SKUpervisor F&B page', () => {
+    const fnbPage = read('apps/dgfy-web/src/features/fnb/pages/FnbPage.jsx');
+    const posWorkspace = read('apps/dgfy-web/src/features/pos/components/TerminalOperationsWorkspace.jsx');
+
+    expect(fnbPage).not.toContain('PosFnbModifierManager');
+    expect(fnbPage).not.toContain('FnbModifierManager');
+    expect(posWorkspace).toContain('PosFnbModifiersWorkspace');
+    expect(posWorkspace).toContain("label: 'Menu modifiers'");
   });
 
   it('attaches F&B check context to POS checkout and receipts', () => {

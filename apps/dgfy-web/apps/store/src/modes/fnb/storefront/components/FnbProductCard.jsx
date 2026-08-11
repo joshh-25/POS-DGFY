@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Plus, ShoppingCart, Sparkles } from 'lucide-react';
+import { Plus, ShoppingCart, SlidersHorizontal, Sparkles } from 'lucide-react';
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
+import { hasRequiredFnbModifierGroups } from '../model/fnbProductDetailsModel.js';
 
 const FnbProductCard = ({
   FNB_CATEGORY_ICON_MAP,
@@ -28,6 +29,7 @@ const FnbProductCard = ({
   const [isCartHovered, setIsCartHovered] = useState(false);
   const [failedImageUrl, setFailedImageUrl] = useState('');
   const detailsCopy = item.descriptionPreview || 'Menu item available in this storefront.';
+  const requiresCustomization = hasRequiredFnbModifierGroups(item);
   const cardUiFont = heroTheme.bodyFont || "'Trebuchet MS', 'Segoe UI', sans-serif";
   const cardTitleFont = heroTheme.displayFont || cardUiFont;
   const imageUrl = imageSources?.src || '';
@@ -143,11 +145,15 @@ const FnbProductCard = ({
                 onClick={(event) => {
                   event.preventDefault();
                   event.stopPropagation();
+                  if (requiresCustomization) {
+                    onViewDetails?.(item);
+                    return;
+                  }
                   addToCart(item, { sourceRect: getCartFlySourceRect(event) });
                 }}
                 disabled={!available}
                 style={{
-                  width: 38,
+                  width: requiresCustomization ? 'auto' : 38,
                   height: 38,
                   borderRadius: 12,
                   background: available ? '#16a34a' : '#e2e8f0',
@@ -157,15 +163,23 @@ const FnbProductCard = ({
                   alignItems: 'center',
                   justifyContent: 'center',
                   cursor: available ? 'pointer' : 'not-allowed',
-                  flexShrink: 0
+                  flexShrink: 0,
+                  padding: requiresCustomization ? '0 12px' : 0,
+                  gap: requiresCustomization ? 6 : 0,
+                  fontWeight: 800,
+                  fontSize: 12
                 }}
               >
-                <span style={{ position: 'relative', display: 'flex' }}>
-                  <ShoppingCart size={18} strokeWidth={2.2} />
-                  <span style={{ position: 'absolute', top: -4, right: -4, background: '#fff', color: '#16a34a', borderRadius: '50%', width: 12, height: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    <Plus size={8} strokeWidth={4} />
+                {requiresCustomization ? (
+                  <><SlidersHorizontal size={16} strokeWidth={2.2} /><span>Customize</span></>
+                ) : (
+                  <span style={{ position: 'relative', display: 'flex' }}>
+                    <ShoppingCart size={18} strokeWidth={2.2} />
+                    <span style={{ position: 'absolute', top: -4, right: -4, background: '#fff', color: '#16a34a', borderRadius: '50%', width: 12, height: 12, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                      <Plus size={8} strokeWidth={4} />
+                    </span>
                   </span>
-                </span>
+                )}
               </button>
             </div>
           </div>
@@ -337,13 +351,17 @@ const FnbProductCard = ({
             onClick={(event) => {
               event.preventDefault();
               event.stopPropagation();
+              if (requiresCustomization) {
+                onViewDetails?.(item);
+                return;
+              }
               addToCart(item, { sourceRect: getCartFlySourceRect(event) });
             }}
             disabled={!available}
             onMouseEnter={() => available && setIsCartHovered(true)}
             onMouseLeave={() => setIsCartHovered(false)}
             style={{
-              width: cartButtonWidth,
+              width: requiresCustomization ? 'auto' : cartButtonWidth,
               minHeight: actionHeight,
               height: actionHeight,
               borderRadius: isMobileViewport ? 12 : 18,
@@ -358,31 +376,35 @@ const FnbProductCard = ({
               boxShadow: 'none',
               transform: available && isCartHovered ? 'translateY(-2px)' : 'translateY(0)',
               transition: 'all 0.2s ease',
-              padding: isMobileViewport ? '0' : '0 14px',
+              padding: requiresCustomization ? '0 14px' : (isMobileViewport ? '0' : '0 14px'),
               fontFamily: cardUiFont,
               fontSize: 14,
               fontWeight: 800
             }}
           >
-            <span style={{ position: 'relative', width: isMobileViewport ? 18 : 24, height: isMobileViewport ? 18 : 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
-              <ShoppingCart size={isMobileViewport ? 16 : 20} strokeWidth={2.2} />
-              <span style={{
-                position: 'absolute',
-                top: -3,
-                right: -4,
-                width: isMobileViewport ? 10 : 14,
-                height: isMobileViewport ? 10 : 14,
-                borderRadius: 999,
-                background: '#ffffff',
-                color: available ? '#22C55E' : '#94a3b8',
-                display: 'inline-flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                boxShadow: 'none'
-              }}>
-                <Plus size={isMobileViewport ? 8 : 10} strokeWidth={3} />
+            {requiresCustomization ? (
+              <><SlidersHorizontal size={isMobileViewport ? 16 : 18} strokeWidth={2.2} /><span>Customize</span></>
+            ) : (
+              <span style={{ position: 'relative', width: isMobileViewport ? 18 : 24, height: isMobileViewport ? 18 : 24, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
+                <ShoppingCart size={isMobileViewport ? 16 : 20} strokeWidth={2.2} />
+                <span style={{
+                  position: 'absolute',
+                  top: -3,
+                  right: -4,
+                  width: isMobileViewport ? 10 : 14,
+                  height: isMobileViewport ? 10 : 14,
+                  borderRadius: 999,
+                  background: '#ffffff',
+                  color: available ? '#22C55E' : '#94a3b8',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: 'none'
+                }}>
+                  <Plus size={isMobileViewport ? 8 : 10} strokeWidth={3} />
+                </span>
               </span>
-            </span>
+            )}
           </button>
         </div>
         {!available && (

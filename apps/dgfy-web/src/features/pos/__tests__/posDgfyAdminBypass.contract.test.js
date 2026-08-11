@@ -4,7 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const terminalPageSource = fs.readFileSync(path.resolve(__dirname, '../pages/TerminalPage.jsx'), 'utf8');
+const terminalPageSource = [
+  '../pages/TerminalPage.jsx',
+  '../components/TerminalPageDialogLayer.jsx'
+].map((relativePath) => fs.readFileSync(path.resolve(__dirname, relativePath), 'utf8')).join('\n');
 const sidebarSource = fs.readFileSync(path.resolve(__dirname, '../components/TerminalWorkspaceSidebar.jsx'), 'utf8');
 
 describe('DGFY POS administrator bypass contract', () => {
@@ -12,7 +15,7 @@ describe('DGFY POS administrator bypass contract', () => {
     expect(terminalPageSource).toContain("selectedPermissionList.includes('settings:view')");
     expect(terminalPageSource).toContain('setDgfyAdminBypassActive(selectedCanAccessSettings)');
     expect(terminalPageSource).toContain('if (selectedCanAccessSettings) {');
-    expect(terminalPageSource).toContain(': fetchPosSettingsBootstrap(SUPPRESS_GLOBAL_ERROR_TOAST).catch(() => ({}))');
+    expect(terminalPageSource).toContain(': fetchPosSettingsBootstrap(SUPPRESS_GLOBAL_ERROR_TOAST)');
     expect(terminalPageSource).not.toContain("String(effectiveSelectedTenantUser?.role || '').trim().toLowerCase() === 'admin'");
   });
 

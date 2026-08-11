@@ -9,6 +9,7 @@ export function useCustomerDashboardRouteOutlet({
   routeSubpage,
   routeSlug,
   isSignedIn = false,
+  isSessionResolved = false,
   isDrawerOpen = false,
   isGuestDrawerState = false,
   isMobileViewport = false,
@@ -50,6 +51,7 @@ export function useCustomerDashboardRouteOutlet({
       <CustomerDashboardRouteHost
         isStandaloneRoute
         isSignedIn={isSignedIn}
+        isSessionResolved={isSessionResolved}
         isMobileViewport={isMobileViewport}
         onCloseStandalone={closeStandaloneAccountPage}
         onCloseDrawer={onCloseDrawer}
@@ -62,6 +64,7 @@ export function useCustomerDashboardRouteOutlet({
     guestAuth,
     isMobileViewport,
     isSignedIn,
+    isSessionResolved,
     isStandaloneAccountPage,
     onCloseDrawer,
     sources
@@ -74,6 +77,7 @@ export function useCustomerDashboardRouteOutlet({
         isDrawerOpen={isDrawerOpen}
         isStandaloneRoute={false}
         isSignedIn={isSignedIn}
+        isSessionResolved={isSessionResolved}
         isGuestDrawerState={isGuestDrawerState}
         isMobileViewport={isMobileViewport}
         onCloseStandalone={closeStandaloneAccountPage}
@@ -89,6 +93,7 @@ export function useCustomerDashboardRouteOutlet({
     isGuestDrawerState,
     isMobileViewport,
     isSignedIn,
+    isSessionResolved,
     isStandaloneAccountPage,
     onCloseDrawer,
     sources

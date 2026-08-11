@@ -50,6 +50,8 @@ function buildCustomerDashboardViewProps({
     onOpenBusinessInventory: actions.onOpenBusinessInventory,
     resolveBusinessAssetUrl: resolvers.resolveBusinessAssetUrl,
     onOpenBusinessPos: actions.onOpenBusinessPos,
+    onGetBusinessDayCloseStatus: actions.onGetBusinessDayCloseStatus,
+    onConfigureBusinessDayClosePin: actions.onConfigureBusinessDayClosePin,
     accountOrderActionReference: state.accountOrderActionReference,
     accountAddressActionId: state.accountAddressActionId,
     accountPayoutActionId: state.accountPayoutActionId,

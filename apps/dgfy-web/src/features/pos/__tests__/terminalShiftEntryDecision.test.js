@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { resolveTerminalShiftEntryDecision } from '../utils/terminalShiftEntryDecision.js';
+import {
+  resolveActiveShiftResumeDecision,
+  resolveStoredShiftUnlockMode,
+  resolveTerminalShiftEntryDecision
+} from '../utils/terminalShiftEntryDecision.js';
 
 describe('POS terminal shift entry decision', () => {
   it('resumes the authenticated cashier active shift on its existing terminal', () => {
@@ -44,5 +48,66 @@ describe('POS terminal shift entry decision', () => {
       message: 'Terminal COUNTER-01 is already in use by another cashier. Supervisor assistance is required.'
     }));
   });
-});
 
+  it('resumes an active shift only when its terminal and location remain available', () => {
+    expect(resolveActiveShiftResumeDecision({
+      currentShift: {
+        pos_terminal_shift_id: 81,
+        terminal_id: 'counter-02',
+        location_id: 9
+      },
+      terminalRegistry: [
+        { terminal_id: 'COUNTER-02', location_id: 9, is_active: true }
+      ]
+    })).toEqual({
+      mode: 'resume',
+      shiftId: 81,
+      terminalId: 'COUNTER-02',
+      locationId: 9
+    });
+  });
+
+  it.each([
+    ['missing terminal', []],
+    ['inactive terminal', [{ terminal_id: 'COUNTER-02', location_id: 9, is_active: false }]],
+    ['location mismatch', [{ terminal_id: 'COUNTER-02', location_id: 8, is_active: true }]]
+  ])('blocks an active shift with an unavailable assignment: %s', (_label, terminalRegistry) => {
+    expect(resolveActiveShiftResumeDecision({
+      currentShift: {
+        pos_terminal_shift_id: 81,
+        terminal_id: 'counter-02',
+        location_id: 9
+      },
+      terminalRegistry
+    })).toEqual(expect.objectContaining({
+      mode: 'blocked',
+      message: 'Your active shift is linked to an unavailable terminal. A supervisor must review the terminal assignment.'
+    }));
+  });
+
+  it('keeps the open-shift decision when no active shift exists', () => {
+    expect(resolveActiveShiftResumeDecision({
+      currentShift: null,
+      terminalRegistry: [{ terminal_id: 'COUNTER-01', location_id: 8, is_active: true }]
+    })).toEqual({
+      mode: 'open',
+      shiftId: null,
+      terminalId: '',
+      locationId: null
+    });
+  });
+
+  it('preserves resume mode when lock restoration runs after an active-shift handoff', () => {
+    expect(resolveStoredShiftUnlockMode({
+      lockReason: 'shift_start_required',
+      activeShift: { pos_terminal_shift_id: 81 }
+    })).toBe('resume_shift');
+  });
+
+  it('uses open-shift mode only when shift-start lock has no active shift', () => {
+    expect(resolveStoredShiftUnlockMode({
+      lockReason: 'shift_start_required',
+      activeShift: null
+    })).toBe('shift_start');
+  });
+});

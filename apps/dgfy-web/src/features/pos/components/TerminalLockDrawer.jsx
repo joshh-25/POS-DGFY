@@ -13,6 +13,7 @@ export default function TerminalLockDrawer({
   terminalRegistry = [],
   submitting,
   onSubmit,
+  onDayCloseSubmit,
   onIdentityChange,
   onUseDifferentAccount,
   onLegacySubmit
@@ -194,6 +195,22 @@ export default function TerminalLockDrawer({
               ? 'Continuing...'
               : (companySelectionActive ? 'Continue to POS' : 'Sign in')}
           </Button>
+          {companySelectionActive && onDayCloseSubmit ? (
+            <Button
+              type="button"
+              variant="outline"
+              className="h-12 w-full rounded-2xl border-[#1A4E8D] text-sm font-extrabold text-[#1A4E8D] shadow-none hover:bg-blue-50"
+              onClick={onDayCloseSubmit}
+              disabled={submitting || (hasCompanyOptions && !companySelected)}
+            >
+              Day Close / Z-reading
+            </Button>
+          ) : null}
+          {companySelectionActive && onDayCloseSubmit ? (
+            <p className="text-center text-[11px] leading-5 text-[#64748B]">
+              Opens Day Close only. It will not open a cashier shift or unlock selling.
+            </p>
+          ) : null}
         </form>
         {onLegacySubmit && (
           <div className="px-6 pb-6">

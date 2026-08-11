@@ -36,7 +36,10 @@ const REQUIRED_METHODS = [
     'listIncomingOnlineOrders',
     'getOrderByIdForLifecycle',
     'updateOrderById',
-    'updateDeliveryJobByOrderId'
+    'updateDeliveryJobByOrderId',
+    'listActiveDeliveryPersonnel',
+    'findActiveDeliveryPersonnelById',
+    'assignDeliveryPersonnelToJob'
 ];
 
 export const assertPosRepositoryContract = (repository) => {

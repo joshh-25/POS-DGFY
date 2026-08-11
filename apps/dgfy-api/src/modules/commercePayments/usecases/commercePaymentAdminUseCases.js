@@ -910,7 +910,8 @@ export const buildReconcileCommercePaymentSessionUseCase = ({
 
 export const buildCreateCommercePaymentRefundUseCase = ({
   commercePaymentRepository,
-  paymongoService
+  paymongoService,
+  revenueSharingEnabled = tenantRevenueSharingEnabled
 }) => async ({ paymentSessionId, payload = {}, actor = null }) => {
   try {
     const reference = normalizeReference(paymentSessionId);
@@ -939,7 +940,7 @@ export const buildCreateCommercePaymentRefundUseCase = ({
     if (!['proportional', 'tenant', 'dgfy', 'custom'].includes(strategy)) {
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'Invalid refund strategy', { statusCode: 422 });
     }
-    const splitRefund = tenantRevenueSharingEnabled
+    const splitRefund = revenueSharingEnabled
       ? null
       : buildSplitRefund({
         strategy,
@@ -947,13 +948,13 @@ export const buildCreateCommercePaymentRefundUseCase = ({
         session,
         customSources: Array.isArray(payload.refund_sources) ? payload.refund_sources : []
       });
-    if (!tenantRevenueSharingEnabled && strategy !== 'proportional' && (!splitRefund?.refund_sources || splitRefund.refund_sources.length === 0)) {
+    if (!revenueSharingEnabled && strategy !== 'proportional' && (!splitRefund?.refund_sources || splitRefund.refund_sources.length === 0)) {
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'split_refund refund_sources are required for this strategy', { statusCode: 422 });
     }
-    if (!tenantRevenueSharingEnabled && strategy !== 'proportional' && splitRefund.refund_sources.some((source) => !source.merchant_id || source.value <= 0)) {
+    if (!revenueSharingEnabled && strategy !== 'proportional' && splitRefund.refund_sources.some((source) => !source.merchant_id || source.value <= 0)) {
       throw new DomainError(DomainErrorCode.VALIDATION_FAILED, 'split_refund sources require merchant_id and positive value', { statusCode: 422 });
     }
-    if (!tenantRevenueSharingEnabled && strategy !== 'proportional') {
+    if (!revenueSharingEnabled && strategy !== 'proportional') {
       const sourceTotal = splitRefund.refund_sources.reduce((sum, source) => sum + Number(source.value || 0), 0);
       if (sourceTotal !== requestedAmountCentavos) {
         throw new DomainError(
@@ -980,7 +981,7 @@ export const buildCreateCommercePaymentRefundUseCase = ({
       currency: session.currency || 'PHP',
       reason: payload.reason || 'requested_by_customer',
       notes: payload.notes ? String(payload.notes).slice(0, 255) : null,
-      refund_strategy: tenantRevenueSharingEnabled ? 'proportional' : strategy,
+      refund_strategy: revenueSharingEnabled ? 'proportional' : strategy,
       split_refund_payload: splitRefund,
       status: 'created',
       requested_by: actor || null

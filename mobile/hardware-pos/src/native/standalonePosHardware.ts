@@ -6,19 +6,12 @@ interface HardwareCommandResult {
     [key: string]: unknown;
 }
 
-interface HardwareBitmapPrintOptions {
-    align?: 'left' | 'center' | 'right';
-    maxWidthPx?: number;
-    dither?: boolean;
-    feedAfter?: number;
-}
-
 interface StandalonePosHardwareModule {
-    printBitmap?(
-        imageUriOrBase64: string,
-        options?: HardwareBitmapPrintOptions
-    ): Promise<HardwareCommandResult>;
-    printReceipt(receiptText: string, openDrawerAfterPrint: boolean): Promise<HardwareCommandResult>;
+    // logoSource (added for issue #321) is the tenant's resolved company icon URL or
+    // a data: URI; pass '' to fall back to the bundled DGFY icon. The native
+    // @ReactMethod's arity is fixed once declared, so this argument is required, not
+    // optional -- see StandalonePosHardwareModule.kt.
+    printReceipt(receiptText: string, openDrawerAfterPrint: boolean, logoSource: string): Promise<HardwareCommandResult>;
     printOrderTicket(ticketText: string): Promise<HardwareCommandResult>;
     openCashDrawer(reason?: string, localTransaction?: Record<string, unknown> | null): Promise<HardwareCommandResult>;
     getHardwareDiagnostics(): Promise<Record<string, unknown>>;
@@ -34,22 +27,16 @@ const unavailableResult = (message: string): HardwareCommandResult => ({
 
 export const standalonePosHardware = {
     available: Boolean(nativeModule),
-    async printBitmap(
-        imageUriOrBase64: string,
-        options: HardwareBitmapPrintOptions = {}
+    async printReceipt(
+        receiptText: string,
+        openDrawerAfterPrint: boolean,
+        logoSource: string = ''
     ): Promise<HardwareCommandResult> {
-        if (!nativeModule || typeof nativeModule.printBitmap !== 'function') {
-            return unavailableResult('Standalone hardware bitmap bridge is not available in this runtime.');
-        }
-
-        return await nativeModule.printBitmap(imageUriOrBase64, options);
-    },
-    async printReceipt(receiptText: string, openDrawerAfterPrint: boolean): Promise<HardwareCommandResult> {
         if (!nativeModule) {
             return unavailableResult('Standalone hardware bridge is not available in this runtime.');
         }
 
-        return await nativeModule.printReceipt(receiptText, openDrawerAfterPrint);
+        return await nativeModule.printReceipt(receiptText, openDrawerAfterPrint, logoSource);
     },
     async printOrderTicket(ticketText: string): Promise<HardwareCommandResult> {
         if (!nativeModule) {

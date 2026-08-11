@@ -15,6 +15,7 @@ import {
   validateUpdateUserPermissions,
   validateUpdatePosApprovalPin,
   validateUpdatePosDayClosePin,
+  validateUpdateOwnPosDayClosePin,
   validateInviteUser,
   validateUpdateUserLocationGrants,
   validateEmailChangeOtpRequest
@@ -27,6 +28,7 @@ router.get('/me', authenticate, userController.getCurrentUser);
 router.post('/me/email-otp/request', authenticate, emailOtpLimiter, validateEmailChangeOtpRequest, userController.requestEmailChangeOtp);
 router.put('/me', authenticate, validateUpdateProfile, userController.updateProfile);
 router.put('/me/password', authenticate, validateChangePassword, userController.changePassword);
+router.put('/me/pos-day-close-pin', authenticate, validateUpdateOwnPosDayClosePin, userController.updateOwnPosDayClosePin);
 
 // Admin-only user management endpoints
 router.use(requireTenantCapability('tenant_ims_enabled', 'IMS'));

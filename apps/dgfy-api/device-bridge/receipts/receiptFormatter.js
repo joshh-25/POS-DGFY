@@ -1,4 +1,7 @@
 const money = (value) => `PHP ${Number(value || 0).toFixed(2)}`;
+const paymentBreakdownLabel = (entry) => String(
+  entry?.payment_label || entry?.payment_type || 'Other'
+).replace(/_/g, ' ');
 
 const clampWidth = (value = 48) => Math.max(32, Math.min(Number.parseInt(value, 10) || 48, 64));
 
@@ -127,13 +130,14 @@ export const buildShiftSummaryLines = (payload = {}, { width = 48 } = {}) => {
     buildKeyValueLine('Discounts', money(sales.discount_amount), normalizedWidth),
     buildKeyValueLine('VAT', money(sales.vat_amount), normalizedWidth),
     buildKeyValueLine('Total sales', money(sales.total_amount), normalizedWidth),
+    buildKeyValueLine('POS voids', money(sales.void_amount), normalizedWidth),
     divider,
     'PAYMENT BREAKDOWN'
   ].filter(Boolean);
 
   (Array.isArray(sales.payment_breakdown) ? sales.payment_breakdown : []).forEach((entry) => {
     lines.push(buildKeyValueLine(
-      `${entry.payment_type || 'Other'} (${entry.count || 0})`,
+      `${paymentBreakdownLabel(entry)} (${entry.count || 0})`,
       money(entry.amount),
       normalizedWidth
     ));
@@ -175,13 +179,14 @@ export const buildZReadingLines = (payload = {}, { width = 48 } = {}) => {
     buildKeyValueLine('Discounts', money(summary.discount_amount), normalizedWidth),
     buildKeyValueLine('VAT', money(summary.vat_amount), normalizedWidth),
     buildKeyValueLine('Total sales', money(summary.total_amount), normalizedWidth),
+    buildKeyValueLine('POS voids', money(summary.void_amount), normalizedWidth),
     divider,
     'PAYMENT BREAKDOWN'
   ].filter(Boolean);
 
   (Array.isArray(summary.payment_breakdown) ? summary.payment_breakdown : []).forEach((entry) => {
     lines.push(buildKeyValueLine(
-      `${entry.payment_type || 'Other'} (${entry.count || 0})`,
+      `${paymentBreakdownLabel(entry)} (${entry.count || 0})`,
       money(entry.amount),
       normalizedWidth
     ));
@@ -194,6 +199,7 @@ export const buildZReadingLines = (payload = {}, { width = 48 } = {}) => {
     buildKeyValueLine('Reset counter', String(reading.reset_counter_value || 0), normalizedWidth),
     buildKeyValueLine('Lifetime total', money(Number(reading.lifetime_grand_total_cents || 0) / 100), normalizedWidth),
     divider,
+    'Provider refunds are reconciled separately.',
     'Keep this report with the day-end close evidence.'
   );
 

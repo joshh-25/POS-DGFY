@@ -846,34 +846,120 @@ export const updatePosApprovalPin = async (adminUserId, targetUserId, { pin = ''
   };
 };
 
-export const updatePosDayClosePin = async (adminUserId, targetUserId, { pin = '', clear = false } = {}) => {
+export const updatePosDayClosePin = async (adminUserId, targetUserId, { clear = false } = {}) => {
   const User = dbStore.get('User');
+  const AuditLog = dbStore.get('AuditLog');
   const [adminUser, targetUser] = await Promise.all([
     findVisibleUserById(User, adminUserId),
     findVisibleUserById(User, targetUserId)
   ]);
   if (!adminUser?.is_master_admin) {
-    throw createError('Only the Master Admin can manage POS Day Close PINs', 403);
+    throw createError('Only the Master Admin can reset POS Day Close PINs', 403);
   }
   if (!targetUser) {
     throw notFoundError('Target user not found');
   }
-  assertAcceptedUserEditable(targetUser, 'manage POS Day Close PIN');
+  assertAcceptedUserEditable(targetUser, 'reset POS Day Close PIN');
   if (!targetUser.is_active || !resolveEffectivePermissions(targetUser).includes('pos:close_day')) {
-    throw createError('POS Day Close PINs can only be configured for active users with close-day permission', 422);
+    throw createError('POS Day Close PINs can only be reset for active users with close-day permission', 422);
+  }
+  if (clear !== true) {
+    throw createError('Master Admin can only reset a cashier POS Day Close PIN', 403);
   }
 
-  const normalizedPin = String(pin || '').trim();
-  if (clear !== true && !/^[0-9]{4,12}$/.test(normalizedPin)) {
-    throw createError('POS Day Close PIN must contain 4 to 12 digits', 422);
-  }
-  const posDayClosePinHash = clear === true ? null : await hashPassword(normalizedPin);
-  await targetUser.update({ pos_day_close_pin_hash: posDayClosePinHash });
+  await User.sequelize.transaction(async (transaction) => {
+    await targetUser.update({ pos_day_close_pin_hash: null }, { transaction });
+    if (!AuditLog) throw new Error('AuditLog model is unavailable');
+    await AuditLog.create({
+      user_id: adminUser.user_id,
+      entity_type: 'pos_day_close_pin',
+      entity_id: targetUser.user_id,
+      action: 'UPDATE',
+      changes: { operation: 'admin_reset', target_user_id: targetUser.user_id, pin_configured: false }
+    }, { transaction });
+  });
   return {
     user_id: targetUser.user_id,
     username: targetUser.username,
-    pos_day_close_pin_configured: Boolean(posDayClosePinHash)
+    pos_day_close_pin_configured: false
   };
+};
+
+const persistOwnPosDayClosePin = async (user, pin, {
+  credentialAuthority = 'tenant_user',
+  dgfyAccountId = null
+} = {}) => {
+  const User = dbStore.get('User');
+  const AuditLog = dbStore.get('AuditLog');
+  const normalizedPin = String(pin || '').trim();
+  if (!/^[0-9]{4,12}$/.test(normalizedPin)) {
+    throw createError('POS Day Close PIN must contain 4 to 12 digits', 422);
+  }
+
+  const posDayClosePinHash = await hashPassword(normalizedPin);
+  await User.sequelize.transaction(async (transaction) => {
+    await user.update({ pos_day_close_pin_hash: posDayClosePinHash }, { transaction });
+    if (!AuditLog) throw new Error('AuditLog model is unavailable');
+    await AuditLog.create({
+      user_id: user.user_id,
+      entity_type: 'pos_day_close_pin',
+      entity_id: user.user_id,
+      action: 'UPDATE',
+      changes: {
+        operation: 'self_service_configure',
+        pin_configured: true,
+        credential_authority: credentialAuthority,
+        ...(dgfyAccountId ? { dgfy_account_id: dgfyAccountId } : {})
+      }
+    }, { transaction });
+  });
+
+  return {
+    user_id: user.user_id,
+    username: user.username,
+    email: user.email,
+    pos_day_close_pin_configured: true
+  };
+};
+
+const findEligibleOwnDayClosePinUser = async (userId) => {
+  const User = dbStore.get('User');
+  const user = await findVisibleUserById(User, userId);
+  if (!user) throw notFoundError('User not found');
+  if (!user.is_active || !resolveEffectivePermissions(user).includes('pos:close_day')) {
+    throw createError('You need close-day permission to configure a POS Day Close PIN', 403);
+  }
+  return user;
+};
+
+export const updateOwnPosDayClosePin = async (userId, { currentPassword = '', pin = '' } = {}) => {
+  const user = await findEligibleOwnDayClosePinUser(userId);
+
+  const normalizedPassword = String(currentPassword || '');
+  const normalizedPin = String(pin || '').trim();
+  if (!/^[0-9]{4,12}$/.test(normalizedPin)) {
+    throw createError('POS Day Close PIN must contain 4 to 12 digits', 422);
+  }
+  if (!await comparePassword(normalizedPassword, user.password_hash)) {
+    throw createError('Current account password is incorrect', 401);
+  }
+
+  return persistOwnPosDayClosePin(user, normalizedPin);
+};
+
+export const updateOwnPosDayClosePinForVerifiedDgfyAccount = async (
+  userId,
+  { pin = '', dgfyAccountId = '' } = {}
+) => {
+  const normalizedDgfyAccountId = String(dgfyAccountId || '').trim();
+  if (!normalizedDgfyAccountId) {
+    throw createError('Verified DGFY account context is required', 401);
+  }
+  const user = await findEligibleOwnDayClosePinUser(userId);
+  return persistOwnPosDayClosePin(user, pin, {
+    credentialAuthority: 'dgfy_account',
+    dgfyAccountId: normalizedDgfyAccountId
+  });
 };
 
 export const getUserLocationGrants = async (adminUserId, targetUserId, options = {}) => {

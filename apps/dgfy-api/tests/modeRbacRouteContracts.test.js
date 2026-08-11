@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { describe, expect, it } from '@jest/globals';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,6 +21,11 @@ describe('mode RBAC route contracts', () => {
       .toBeLessThan(source.indexOf("router.get('/dashboard'"));
     expect(source).toContain('PERMISSIONS.SERVICES.actions.VIEW_BOOKINGS');
     expect(source).toContain('PERMISSIONS.POS.actions.VIEW_POS');
+    expect(source).toContain("router.get('/option-groups', modePermission(PERMISSIONS.SERVICES.actions.VIEW_CATALOG");
+    expect(source).toContain("router.post('/option-groups', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_CATALOG");
+    expect(source).toContain("router.put('/catalog/:itemId/option-groups', modePermission(PERMISSIONS.SERVICES.actions.MANAGE_CATALOG");
+    expect(source).not.toContain('PERMISSIONS.SERVICES.actions.VIEW_SERVICES');
+    expect(source).not.toContain('PERMISSIONS.SERVICES.actions.MANAGE_SERVICES');
   });
 
   it('keeps F&B capability denial before permission checks and uses switchable fallback', () => {
@@ -33,6 +39,9 @@ describe('mode RBAC route contracts', () => {
     // before any permission check, on every route.
     expect(source).toContain("const requireFnbDining = requireWorkflowCapability('fnbDining', 'Food & Beverage')");
     expect(source).toContain("const requireMenuModifiers = requireWorkflowCapability('menuModifiers', 'Menu Modifiers')");
+    expect(source).toContain("const requireTableService = requireWorkflowCapability('tableService', 'Table Service')");
+    expect(source).toContain("const requireKitchenQueue = requireWorkflowCapability('kitchenQueue', 'Kitchen Queue')");
+    expect(source).toContain("const requireRestaurantServiceCharge = requireWorkflowCapability('restaurantServiceCharge', 'Restaurant Service Charge')");
     expect(source).not.toContain('router.use(requireWorkflowCapability(');
     expect(source).toContain('buildModePermissionRequirements(primary, fallback)');
     expect(source).toContain('checkAnyPermission');
@@ -45,16 +54,23 @@ describe('mode RBAC route contracts', () => {
       .filter((line) => /^router\.(get|post|put|patch|delete)\(/.test(line.trim()));
 
     // Every endpoint carries a capability guard, and it precedes modePermission.
-    expect(routeLines).toHaveLength(26);
+    expect(routeLines).toHaveLength(29);
     routeLines.forEach((line) => {
-      const guard = line.includes('requireMenuModifiers') ? 'requireMenuModifiers' : 'requireFnbDining';
+      const guard = [
+        'requireMenuModifiers',
+        'requireTableService',
+        'requireKitchenQueue',
+        'requireRestaurantServiceCharge',
+        'requireFnbDining'
+      ].find((candidate) => line.includes(candidate));
+      expect(guard).toBeDefined();
       expect(line).toContain(guard);
       expect(line.indexOf(guard)).toBeLessThan(line.indexOf('modePermission('));
     });
 
-    // Exactly the four modifier-management endpoints are de-gated from fnbDining.
+    // Modifier-management endpoints are de-gated from fnbDining.
     const modifierRoutes = routeLines.filter((line) => line.includes('requireMenuModifiers'));
-    expect(modifierRoutes).toHaveLength(4);
-    expect(modifierRoutes.every((line) => /'\/(item-)?modifier-groups/.test(line))).toBe(true);
+    expect(modifierRoutes).toHaveLength(7);
+    expect(modifierRoutes.every((line) => /'\/(item-|folder-)?modifier-groups/.test(line))).toBe(true);
   });
 });

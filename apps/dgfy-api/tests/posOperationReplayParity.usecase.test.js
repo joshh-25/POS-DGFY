@@ -206,6 +206,14 @@ const buildReplayRepository = () => {
             shifts.set(Number(shiftId), next);
             return clone(next);
         },
+        async listOpenTerminalShiftsForLocation({ locationId } = {}) {
+            return Array.from(shifts.values())
+                .filter((entry) => (
+                    entry.status === 'open'
+                    && Number(entry.location_id) === Number(locationId)
+                ))
+                .map((entry) => clone(entry));
+        },
         async getOrderByIdForLifecycle(posTransactionId) {
             return clone(orders.get(Number(posTransactionId)) || null);
         },

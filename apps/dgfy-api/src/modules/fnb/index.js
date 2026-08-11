@@ -3,6 +3,7 @@ import {
   buildFnbDashboardUseCase,
   buildListModifierGroupsUseCase,
   buildCreateModifierGroupUseCase,
+  buildUpdateModifierGroupUseCase,
   buildListDiningAreasUseCase,
   buildCreateDiningAreaUseCase,
   buildUpdateDiningTableStatusUseCase,
@@ -12,6 +13,8 @@ import {
   buildUpsertItemKitchenRouteUseCase,
   buildListItemModifierGroupsUseCase,
   buildReplaceItemModifierGroupsUseCase,
+  buildListFolderModifierGroupsUseCase,
+  buildReplaceFolderModifierGroupsUseCase,
   buildListChecksUseCase,
   buildCreateCheckUseCase,
   buildAddCheckLineUseCase,
@@ -31,6 +34,7 @@ import {
 export const fnbDashboardUseCase = buildFnbDashboardUseCase({ fnbRepository });
 export const listFnbModifierGroupsUseCase = buildListModifierGroupsUseCase({ fnbRepository });
 export const createFnbModifierGroupUseCase = buildCreateModifierGroupUseCase({ fnbRepository });
+export const updateFnbModifierGroupUseCase = buildUpdateModifierGroupUseCase({ fnbRepository });
 export const listFnbDiningAreasUseCase = buildListDiningAreasUseCase({ fnbRepository });
 export const createFnbDiningAreaUseCase = buildCreateDiningAreaUseCase({ fnbRepository });
 export const updateFnbDiningTableStatusUseCase = buildUpdateDiningTableStatusUseCase({ fnbRepository });
@@ -40,6 +44,8 @@ export const listFnbItemKitchenRoutesUseCase = buildListItemKitchenRoutesUseCase
 export const upsertFnbItemKitchenRouteUseCase = buildUpsertItemKitchenRouteUseCase({ fnbRepository });
 export const listFnbItemModifierGroupsUseCase = buildListItemModifierGroupsUseCase({ fnbRepository });
 export const replaceFnbItemModifierGroupsUseCase = buildReplaceItemModifierGroupsUseCase({ fnbRepository });
+export const listFnbFolderModifierGroupsUseCase = buildListFolderModifierGroupsUseCase({ fnbRepository });
+export const replaceFnbFolderModifierGroupsUseCase = buildReplaceFolderModifierGroupsUseCase({ fnbRepository });
 export const listFnbChecksUseCase = buildListChecksUseCase({ fnbRepository });
 export const createFnbCheckUseCase = buildCreateCheckUseCase({ fnbRepository });
 export const addFnbCheckLineUseCase = buildAddCheckLineUseCase({ fnbRepository });
