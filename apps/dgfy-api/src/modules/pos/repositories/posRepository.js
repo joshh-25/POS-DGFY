@@ -20,6 +20,8 @@ import {
     normalizeBarcodeValue
 } from '../../shared/utils/barcodePolicy.js';
 import { isStockExemptServiceItem } from '../../shared/utils/stockBearingPolicy.js';
+import { resolveEffectiveFnbModifierGroups } from '../../shared/utils/effectiveFnbModifierGroups.js';
+import { normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
 
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
 const normalizeBusinessDateValue = (value) => {
@@ -252,12 +254,37 @@ const buildServiceDetailInclude = () => {
 
 const buildItemFolderInclude = () => {
     const ItemFolder = safeGetModel('ItemFolder');
+    const FnbModifierGroup = safeGetModel('FnbModifierGroup');
+    const FnbModifierOption = safeGetModel('FnbModifierOption');
+    const FnbFolderModifierGroup = safeGetModel('FnbFolderModifierGroup');
+    const FnbModifierGroupLocationAvailability = safeGetModel('FnbModifierGroupLocationAvailability');
+    const FnbModifierOptionLocationAvailability = safeGetModel('FnbModifierOptionLocationAvailability');
     return ItemFolder
         ? [{
             model: ItemFolder,
             as: 'folder',
             attributes: ['folder_id', 'name', 'is_active', 'show_in_pos_filter'],
-            required: false
+            required: false,
+            include: FnbModifierGroup && FnbFolderModifierGroup ? [{
+                model: FnbModifierGroup,
+                as: 'fnbModifierGroups',
+                required: false,
+                through: { model: FnbFolderModifierGroup, attributes: ['is_required_override', 'sort_order'] },
+                include: FnbModifierOption ? [{
+                    model: FnbModifierOption,
+                    as: 'options',
+                    required: false,
+                    include: FnbModifierOptionLocationAvailability ? [{
+                        model: FnbModifierOptionLocationAvailability,
+                        as: 'locationAvailability',
+                        required: false
+                    }] : []
+                }, ...(FnbModifierGroupLocationAvailability ? [{
+                    model: FnbModifierGroupLocationAvailability,
+                    as: 'locationAvailability',
+                    required: false
+                }] : [])] : []
+            }] : []
         }]
         : [];
 };
@@ -265,6 +292,8 @@ const buildItemFolderInclude = () => {
 const buildFnbCatalogIncludes = () => {
     const FnbModifierGroup = safeGetModel('FnbModifierGroup');
     const FnbModifierOption = safeGetModel('FnbModifierOption');
+    const FnbModifierGroupLocationAvailability = safeGetModel('FnbModifierGroupLocationAvailability');
+    const FnbModifierOptionLocationAvailability = safeGetModel('FnbModifierOptionLocationAvailability');
     const FnbItemKitchenRoute = safeGetModel('FnbItemKitchenRoute');
     const FnbKitchenStation = safeGetModel('FnbKitchenStation');
     const includes = [];
@@ -274,13 +303,22 @@ const buildFnbCatalogIncludes = () => {
             as: 'fnbModifierGroups',
             required: false,
             through: {
-                attributes: ['is_required_override', 'sort_order']
+                attributes: ['is_required_override', 'is_excluded', 'sort_order']
             },
             include: [{
                 model: FnbModifierOption,
                 as: 'options',
+                required: false,
+                include: FnbModifierOptionLocationAvailability ? [{
+                    model: FnbModifierOptionLocationAvailability,
+                    as: 'locationAvailability',
+                    required: false
+                }] : []
+            }, ...(FnbModifierGroupLocationAvailability ? [{
+                model: FnbModifierGroupLocationAvailability,
+                as: 'locationAvailability',
                 required: false
-            }]
+            }] : [])]
         });
     }
     if (FnbItemKitchenRoute) {
@@ -494,7 +532,13 @@ const loadPrimaryBarcodeMap = async (itemIds = [], options = {}) => {
 };
 
 const applyCatalogOverrides = async (items, options = {}) => {
-    const normalizedItems = (Array.isArray(items) ? items : []).map((item) => toPlain(item));
+    const normalizedItems = (Array.isArray(items) ? items : []).map((item) => {
+        const plain = toPlain(item);
+        return {
+            ...plain,
+            fnbModifierGroups: resolveEffectiveFnbModifierGroups(plain)
+        };
+    });
     const itemIds = normalizedItems.map((item) => item.item_id);
     const overrideMap = await loadCatalogOverridesMap(itemIds, options);
     const autoBestSellerItemIds = await loadBestSellerItemIds(itemIds, options);
@@ -654,6 +698,50 @@ const buildTerminalScopedSalesWhere = ({
     };
 };
 
+const buildTerminalScopedVoidWhere = ({
+    startAt,
+    endAt,
+    terminalId = null,
+    cashierId = null,
+    shiftId = null,
+    locationId = null,
+    includeOnlineStoreAcrossTerminals = false
+} = {}) => {
+    const baseWhere = {
+        status: 'voided',
+        voided_at: {
+            [Op.gte]: startAt,
+            [Op.lt]: endAt
+        }
+    };
+    if (locationId) baseWhere.location_id = locationId;
+
+    const scopedWhere = { ...baseWhere };
+    if (terminalId) scopedWhere.terminal_id = terminalId;
+    if (cashierId) scopedWhere.cashier_id = cashierId;
+    if (shiftId) scopedWhere.shift_id = shiftId;
+
+    if (!includeOnlineStoreAcrossTerminals || (!terminalId && !cashierId && !shiftId)) {
+        return scopedWhere;
+    }
+
+    return {
+        [Op.or]: [
+            {
+                ...scopedWhere,
+                [Op.or]: [
+                    { order_source: 'in_store' },
+                    { order_source: null }
+                ]
+            },
+            {
+                ...baseWhere,
+                order_source: 'online_store'
+            }
+        ]
+    };
+};
+
 const buildTransactionInclude = () => ([
     {
         model: dbStore.get('PosTransactionLine'),
@@ -698,12 +786,36 @@ const buildTransactionInclude = () => ([
             'provider',
             'provider_delivery_id',
             'status',
+            'delivery_personnel_id',
+            'assigned_by',
+            'assigned_shift_id',
+            'assigned_at',
             'tracking_url',
             'pickup_ready_at',
             'picked_up_at',
             'delivered_at',
             'failure_reason',
             'provider_payload'
+        ],
+        include: [
+            {
+                model: dbStore.get('DeliveryPersonnel'),
+                as: 'deliveryPersonnel',
+                required: false,
+                attributes: ['delivery_personnel_id', 'display_name', 'phone', 'location_id', 'is_active']
+            },
+            {
+                model: dbStore.get('User'),
+                as: 'assignedByUser',
+                required: false,
+                attributes: ['user_id', 'username', 'email']
+            },
+            {
+                model: dbStore.get('PosTerminalShift'),
+                as: 'assignedShift',
+                required: false,
+                attributes: ['pos_terminal_shift_id', 'terminal_id', 'location_id', 'cashier_id', 'status', 'opened_at']
+            }
         ]
     },
     {
@@ -2538,6 +2650,15 @@ export const posRepository = {
             locationId,
             includeOnlineStoreAcrossTerminals
         });
+        const voidWhere = buildTerminalScopedVoidWhere({
+            startAt,
+            endAt,
+            terminalId,
+            cashierId,
+            shiftId,
+            locationId,
+            includeOnlineStoreAcrossTerminals
+        });
 
         const [summaryRow] = await PosTransaction.findAll({
             where,
@@ -2565,6 +2686,15 @@ export const posRepository = {
                 [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('total_amount')), 0), 'amount']
             ],
             group: ['payment_type'],
+            raw: true,
+            transaction: options.transaction
+        });
+        const [voidSummaryRow] = await PosTransaction.findAll({
+            where: voidWhere,
+            attributes: [
+                [sequelize.fn('COUNT', sequelize.col('pos_transaction_id')), 'void_transaction_count'],
+                [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('total_amount')), 0), 'void_amount']
+            ],
             raw: true,
             transaction: options.transaction
         });
@@ -2606,6 +2736,23 @@ export const posRepository = {
             : [];
 
         const lineSummary = lineSummaryRows[0] || {};
+        const voidLineSummaryRows = PosTransactionLine
+            ? await PosTransactionLine.findAll({
+                include: [{
+                    model: PosTransaction,
+                    as: 'transaction',
+                    attributes: [],
+                    required: true,
+                    where: voidWhere
+                }],
+                attributes: [
+                    [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('quantity')), 0), 'voided_item_count']
+                ],
+                raw: true,
+                transaction: options.transaction
+            })
+            : [];
+        const voidLineSummary = voidLineSummaryRows[0] || {};
 
         const popularItemRows = PosTransactionLine
             ? await PosTransactionLine.findAll({
@@ -2658,9 +2805,20 @@ export const posRepository = {
             locationId,
             includeOnlineStoreAcrossTerminals
         });
+        const dailyVoidWhere = buildTerminalScopedVoidWhere({
+            startAt: dailyStartAt,
+            endAt,
+            terminalId,
+            cashierId,
+            shiftId,
+            locationId,
+            includeOnlineStoreAcrossTerminals
+        });
 
         const dailyTransactionBusinessDate = sequelize.literal("DATE_FORMAT(DATE_ADD(`PosTransaction`.`created_at`, INTERVAL 8 HOUR), '%Y-%m-%d')");
         const dailyLineBusinessDate = sequelize.literal("DATE_FORMAT(DATE_ADD(`transaction`.`created_at`, INTERVAL 8 HOUR), '%Y-%m-%d')");
+        const dailyVoidBusinessDate = sequelize.literal("DATE_FORMAT(DATE_ADD(`PosTransaction`.`voided_at`, INTERVAL 8 HOUR), '%Y-%m-%d')");
+        const dailyVoidLineBusinessDate = sequelize.literal("DATE_FORMAT(DATE_ADD(`transaction`.`voided_at`, INTERVAL 8 HOUR), '%Y-%m-%d')");
 
         const dailyTotalRows = await PosTransaction.findAll({
             where: dailyWhere,
@@ -2705,6 +2863,52 @@ export const posRepository = {
             String(row?.business_date || '').slice(0, 10),
             row
         ]));
+        const dailyVoidRows = await PosTransaction.findAll({
+            where: dailyVoidWhere,
+            attributes: [
+                [dailyVoidBusinessDate, 'business_date'],
+                [sequelize.fn('COUNT', sequelize.col('pos_transaction_id')), 'void_transaction_count'],
+                [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('total_amount')), 0), 'void_amount']
+            ],
+            group: [dailyVoidBusinessDate],
+            raw: true,
+            transaction: options.transaction
+        });
+        const dailyVoidLineRows = PosTransactionLine
+            ? await PosTransactionLine.findAll({
+                include: [{
+                    model: PosTransaction,
+                    as: 'transaction',
+                    attributes: [],
+                    required: true,
+                    where: dailyVoidWhere
+                }],
+                attributes: [
+                    [dailyVoidLineBusinessDate, 'business_date'],
+                    [sequelize.fn('COALESCE', sequelize.fn('SUM', sequelize.col('quantity')), 0), 'voided_item_count']
+                ],
+                group: [dailyVoidLineBusinessDate],
+                raw: true,
+                transaction: options.transaction
+            })
+            : [];
+        const dailyVoidsByDate = new Map(dailyVoidRows.map((row) => [
+            String(row?.business_date || '').slice(0, 10),
+            row
+        ]));
+        const dailyVoidLinesByDate = new Map(dailyVoidLineRows.map((row) => [
+            String(row?.business_date || '').slice(0, 10),
+            row
+        ]));
+        const dailyTotalsByDate = new Map(dailyTotalRows.map((row) => [
+            String(row?.business_date || '').slice(0, 10),
+            row
+        ]));
+        const dailyBusinessDates = Array.from(new Set([
+            ...dailyTotalsByDate.keys(),
+            ...dailyVoidsByDate.keys(),
+            ...dailyVoidLinesByDate.keys()
+        ])).filter(Boolean).sort();
 
         return {
             transaction_count: Number.parseInt(summaryRow?.transaction_count || 0, 10),
@@ -2720,21 +2924,32 @@ export const posRepository = {
             item_count: round4(lineSummary?.item_count),
             discount_item_count: round4(lineSummary?.discount_item_count),
             total_cost: round4(lineSummary?.total_cost),
+            void_transaction_count: Number.parseInt(voidSummaryRow?.void_transaction_count || 0, 10),
+            void_amount: round4(voidSummaryRow?.void_amount),
+            voided_item_count: round4(voidLineSummary?.voided_item_count),
             refund_amount: 0,
             refunded_item_count: 0,
+            provider_refunds_included: false,
             net_profit: round4(summaryRow?.total_amount) - round4(lineSummary?.total_cost),
-            daily_totals: dailyTotalRows.map((row) => ({
-                business_date: row.business_date,
+            daily_totals: dailyBusinessDates.map((businessDate) => {
+                const row = dailyTotalsByDate.get(businessDate) || {};
+                return {
+                business_date: businessDate,
                 transaction_count: Number.parseInt(row.transaction_count || 0, 10),
                 total_amount: round4(row.total_amount),
                 discount_amount: round4(row.discount_amount),
-                item_count: round4(dailyLinesByDate.get(String(row.business_date || '').slice(0, 10))?.item_count),
-                discount_item_count: round4(dailyLinesByDate.get(String(row.business_date || '').slice(0, 10))?.discount_item_count),
-                total_cost: round4(dailyLinesByDate.get(String(row.business_date || '').slice(0, 10))?.total_cost),
+                item_count: round4(dailyLinesByDate.get(businessDate)?.item_count),
+                discount_item_count: round4(dailyLinesByDate.get(businessDate)?.discount_item_count),
+                total_cost: round4(dailyLinesByDate.get(businessDate)?.total_cost),
+                void_transaction_count: Number.parseInt(dailyVoidsByDate.get(businessDate)?.void_transaction_count || 0, 10),
+                void_amount: round4(dailyVoidsByDate.get(businessDate)?.void_amount),
+                voided_item_count: round4(dailyVoidLinesByDate.get(businessDate)?.voided_item_count),
                 refund_amount: 0,
                 refunded_item_count: 0,
-                net_profit: round4(row.total_amount) - round4(dailyLinesByDate.get(String(row.business_date || '').slice(0, 10))?.total_cost)
-            })),
+                provider_refunds_included: false,
+                net_profit: round4(row.total_amount) - round4(dailyLinesByDate.get(businessDate)?.total_cost)
+                };
+            }),
             popular_items: popularItemRows.map((row) => ({
                 item_id: toPositiveInt(row.item_id),
                 item_name: row.item_name || `Item #${row.item_id}`,
@@ -2744,11 +2959,11 @@ export const posRepository = {
                 cost: round4(row.cost),
                 net_profit: round4(row.amount) - round4(row.cost)
             })),
-            payment_breakdown: paymentBreakdownRows.map((row) => ({
+            payment_breakdown: normalizePosPaymentBreakdown(paymentBreakdownRows.map((row) => ({
                 payment_type: row.payment_type,
                 count: Number.parseInt(row.count || 0, 10),
                 amount: round4(row.amount)
-            })),
+            }))),
             order_method_breakdown: orderMethodBreakdownRows.map((row) => ({
                 order_method: row.order_method,
                 count: Number.parseInt(row.count || 0, 10),
@@ -3669,6 +3884,71 @@ export const posRepository = {
         });
         if (!row) return null;
         await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    async listActiveDeliveryPersonnel({ locationId = null, transaction = null } = {}) {
+        const DeliveryPersonnel = dbStore.get('DeliveryPersonnel');
+        const normalizedLocationId = toPositiveInt(locationId);
+        const where = { is_active: true };
+        if (normalizedLocationId) {
+            where[Op.or] = [
+                { location_id: null },
+                { location_id: normalizedLocationId }
+            ];
+        }
+
+        const rows = await DeliveryPersonnel.findAll({
+            where,
+            attributes: ['delivery_personnel_id', 'display_name', 'phone', 'location_id', 'is_active'],
+            order: [['display_name', 'ASC'], ['delivery_personnel_id', 'ASC']],
+            transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    async findActiveDeliveryPersonnelById(deliveryPersonnelId, { locationId = null, transaction = null, lock = false } = {}) {
+        const DeliveryPersonnel = dbStore.get('DeliveryPersonnel');
+        const normalizedPersonnelId = toPositiveInt(deliveryPersonnelId);
+        if (!normalizedPersonnelId) return null;
+
+        const normalizedLocationId = toPositiveInt(locationId);
+        const where = {
+            delivery_personnel_id: normalizedPersonnelId,
+            is_active: true
+        };
+        if (normalizedLocationId) {
+            where[Op.or] = [
+                { location_id: null },
+                { location_id: normalizedLocationId }
+            ];
+        }
+
+        const row = await DeliveryPersonnel.findOne({
+            where,
+            attributes: ['delivery_personnel_id', 'display_name', 'phone', 'location_id', 'is_active'],
+            transaction,
+            lock: lock && transaction ? transaction.LOCK.UPDATE : undefined
+        });
+        return toPlain(row);
+    },
+
+    async assignDeliveryPersonnelToJob(orderId, payload = {}, options = {}) {
+        const DeliveryJob = dbStore.get('DeliveryJob');
+        const row = await DeliveryJob.findOne({
+            where: { pos_transaction_id: orderId },
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+
+        await row.update({
+            delivery_personnel_id: payload.delivery_personnel_id,
+            assigned_by: payload.assigned_by,
+            assigned_shift_id: payload.assigned_shift_id,
+            assigned_at: payload.assigned_at,
+            ...(payload.status ? { status: payload.status } : {})
+        }, { transaction: options.transaction });
         return toPlain(row);
     }
 };

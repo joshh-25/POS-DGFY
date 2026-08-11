@@ -4,7 +4,7 @@ const fail = (error) => ({ success: false, error });
 const ok = (data) => ({ success: true, data });
 
 export const buildCalculateServiceQuoteUseCase = ({ serviceRepository, serviceOptionRepository }) => ({
-  async calculateQuote({ serviceItemId, selectedOptionIds = [], quantity = 1, tenantId }) {
+  async calculateQuote({ serviceItemId, selectedOptionIds = [], quantity = 1, tenantId, transaction = null }) {
     const itemId = Number(serviceItemId);
     const normalizedQuantity = Number.isInteger(Number(quantity)) && Number(quantity) >= 1 ? Number(quantity) : 1;
     if (!itemId) {
@@ -12,14 +12,20 @@ export const buildCalculateServiceQuoteUseCase = ({ serviceRepository, serviceOp
     }
 
     try {
-      const serviceItem = await serviceRepository.findServiceItemById(itemId, tenantId);
+      const serviceItem = await serviceRepository.findServiceItemById(itemId, {
+        transaction,
+        lock: Boolean(transaction)
+      });
       if (!serviceItem) {
         return fail(new DomainError(DomainErrorCode.NOT_FOUND, 'Service item not found'));
       }
 
       const serviceDetail = serviceItem.serviceDetail || serviceItem.service_detail || {};
       const addonsEnabled = serviceDetail.addons_enabled === true;
-      const assignedGroups = await serviceOptionRepository.getItemOptionGroups(itemId, tenantId, { activeOnly: true });
+      const assignedGroups = await serviceOptionRepository.getItemOptionGroups(itemId, tenantId, {
+        activeOnly: true,
+        transaction
+      });
       const selectableGroups = (assignedGroups || []).filter(
         (group) => group.group_type !== 'addon' || addonsEnabled
       );
@@ -28,7 +34,7 @@ export const buildCalculateServiceQuoteUseCase = ({ serviceRepository, serviceOp
         .filter(Boolean))];
 
       const selectedOptions = normalizedOptionIds.length > 0
-        ? await serviceOptionRepository.findOptionsByIds(normalizedOptionIds, tenantId)
+        ? await serviceOptionRepository.findOptionsByIds(normalizedOptionIds, tenantId, { transaction })
         : [];
 
       // Validate selected options belong to active assigned groups

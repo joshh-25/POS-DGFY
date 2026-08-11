@@ -35,6 +35,10 @@ const FnbModifierGroup = sequelize.define('FnbModifierGroup', {
     allowNull: false,
     defaultValue: true
   },
+  visible_in_pos: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  visible_in_storefront: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: true },
+  group_kind: { type: DataTypes.STRING(24), allowNull: false, defaultValue: 'modifier' },
+  parent_modifier_option_id: { type: DataTypes.INTEGER, allowNull: true },
   sort_order: {
     type: DataTypes.INTEGER,
     allowNull: false,

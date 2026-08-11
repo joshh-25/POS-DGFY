@@ -11,6 +11,9 @@ const handlers = read('../src/modules/tenantRevenue/controllers/tenantRevenueHan
 const webhook = read(
   '../src/modules/commercePayments/usecases/handlePayMongoCommerceWebhookUseCase.js'
 );
+const verifiedPaidSession = read(
+  '../src/modules/commercePayments/usecases/processVerifiedPaidCommerceSession.js'
+);
 const feature = read('../src/config/tenantRevenueFeature.js');
 const productionValidation = read('../src/config/productionEnvValidation.cjs');
 const cryptoService = read(
@@ -43,12 +46,13 @@ describe('Tenant revenue security contracts', () => {
     const signatureVerificationIndex = handlerBody.indexOf(
       'paymongoService.verifyWebhookSignature'
     );
-    const paidRevenuePostingIndex = handlerBody.indexOf(
-      'await postPaidTenantRevenueTransactionUseCase'
+    const verifiedPaymentProcessingIndex = handlerBody.indexOf(
+      'await processVerifiedPaidCommerceSession'
     );
 
     expect(signatureVerificationIndex).toBeGreaterThanOrEqual(0);
-    expect(paidRevenuePostingIndex).toBeGreaterThan(signatureVerificationIndex);
+    expect(verifiedPaymentProcessingIndex).toBeGreaterThan(signatureVerificationIndex);
+    expect(verifiedPaidSession).toContain('await postPaidTenantRevenueTransactionUseCase');
   });
 
   it('keeps automatic payouts independently locked and rejects split plus collect-and-settle mode', () => {

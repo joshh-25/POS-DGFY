@@ -73,6 +73,7 @@ describe('TerminalLockDrawer DGFY access UI', () => {
 
   it('shows accessible companies after DGFY auth', () => {
     const setFormData = vi.fn();
+    const onDayCloseSubmit = vi.fn();
 
     render(
       <TerminalLockDrawer
@@ -91,6 +92,7 @@ describe('TerminalLockDrawer DGFY access UI', () => {
         }}
         submitting={false}
         onSubmit={vi.fn()}
+        onDayCloseSubmit={onDayCloseSubmit}
         onLegacySubmit={vi.fn()}
       />
     );
@@ -100,5 +102,8 @@ describe('TerminalLockDrawer DGFY access UI', () => {
     expect(screen.getByText(/Choose the company to continue/i)).toBeTruthy();
     expect(screen.getByText(/onboarding or terminal unlock based on company setup/i)).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Continue to POS' })).toBeTruthy();
+    expect(screen.getByText(/will not open a cashier shift or unlock selling/i)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Day Close / Z-reading' }));
+    expect(onDayCloseSubmit).toHaveBeenCalledTimes(1);
   });
 });

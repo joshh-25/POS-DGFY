@@ -43,7 +43,8 @@ const normalizeCartModifier = (entry) => {
     modifier_group_id: modifierGroupId,
     modifier_option_id: modifierOptionId,
     option_name: optionalText(entry.option_name),
-    price_delta: Number(entry.price_delta || 0) || 0
+    price_delta: Number(entry.price_delta || 0) || 0,
+    quantity: Math.min(99, Math.max(1, Number.parseInt(entry.quantity || 1, 10) || 1))
   };
 };
 
@@ -69,6 +70,7 @@ export const normalizeStorefrontCartLine = (line) => {
     max_stock: line.max_stock == null
       ? Number.POSITIVE_INFINITY
       : (Number.isFinite(Number(line.max_stock)) ? Number(line.max_stock) : Number.POSITIVE_INFINITY),
+    has_modifier_groups: line.has_modifier_groups === true,
     serviceAreaLabel: optionalText(line.serviceAreaLabel),
     durationLabel: optionalText(line.durationLabel),
     line_modifiers: (Array.isArray(line.line_modifiers) ? line.line_modifiers : [])
@@ -124,11 +126,20 @@ export const readStorefrontCartSnapshot = (storeSlug, options = {}) => {
   if (!key) return null;
   try {
     const parsed = JSON.parse(window.localStorage.getItem(key) || 'null');
+    const requestedMode = optionalText(options.mode).toLowerCase();
+    const parsedMode = optionalText(parsed?.mode).toLowerCase();
+    const isModeMismatch = Boolean(requestedMode && parsedMode && requestedMode !== parsedMode);
     const normalized = normalizeStorefrontCartSnapshot(parsed, {
       ...options,
       storeSlug
     });
-    if (!normalized && parsed) {
+    // Keep a valid snapshot for another mode so a route transition can finish
+    // loading its destination profile without destroying the original store
+    // cart. It remains unreadable until the matching mode is active.
+    const modeAgnosticSnapshot = !normalized && isModeMismatch
+      ? normalizeStorefrontCartSnapshot(parsed, { ...options, mode: '', storeSlug })
+      : null;
+    if (!normalized && parsed && !modeAgnosticSnapshot) {
       window.localStorage.removeItem(key);
     }
     return normalized;
@@ -170,9 +181,20 @@ export const writeStorefrontCartSnapshot = ({
   return snapshot;
 };
 
-export const clearStorefrontCartSnapshot = (storeSlug) => {
+export const clearStorefrontCartSnapshot = (storeSlug, options = {}) => {
   if (typeof window === 'undefined') return;
   const key = buildStorefrontCartStorageKey(storeSlug);
   if (!key) return;
+
+  const requestedMode = optionalText(options.mode).toLowerCase();
+  if (requestedMode) {
+    try {
+      const parsed = JSON.parse(window.localStorage.getItem(key) || 'null');
+      const storedMode = optionalText(parsed?.mode).toLowerCase();
+      if (storedMode && storedMode !== requestedMode) return;
+    } catch {
+      // Invalid storage is safe to remove below.
+    }
+  }
   window.localStorage.removeItem(key);
 };

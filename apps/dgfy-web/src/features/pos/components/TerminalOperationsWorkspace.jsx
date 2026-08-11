@@ -10,6 +10,7 @@ import {
   BookOpen,
   Briefcase,
   CalendarDays,
+  CalendarPlus,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -43,6 +44,7 @@ import {
   ShieldCheck,
   ShoppingBag,
   ShoppingCart,
+  SlidersHorizontal,
   Star,
   Store,
   UserRound,
@@ -111,7 +113,7 @@ import {
   updateSettings,
   uploadStorefrontAsset
 } from '@/services/settingsService.js';
-import { getAllUsers, updatePosApprovalPin, updatePosDayClosePin, updateProfile } from '@/services/userService.js';
+import { getAllUsers, updatePosApprovalPin, updatePosDayClosePin, updateProfile, updateUserPermissions } from '@/services/userService.js';
 import * as tenantLocationService from '@/services/tenantLocationService.js';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '@/src/features/pos/utils/terminalIdentity.js';
@@ -127,6 +129,8 @@ import MenuImportBatchModal from '@/Components/items/MenuImportBatchModal.jsx';
 import { isPdfMenuImportEnabled } from '@/hooks/usePdfMenuImport.js';
 import { isMenuImportBatchEnabled } from '@/services/menuImportService.js';
 import { IncomingQueueWorkspace, WorkspaceShell } from './TerminalOperationsPanels.jsx';
+import PosServicesOperationsWorkspace from './PosServicesOperationsWorkspace.jsx';
+import PosFnbModifiersWorkspace from './PosFnbModifiersWorkspace.jsx';
 import {
   fetchPosSetupCashiers,
   fetchPosCatalog,
@@ -137,6 +141,10 @@ import PosReportsAnalyticsWorkspace from './PosReportsAnalyticsWorkspace.jsx';
 import EmployeeCreditManagementPanel from './EmployeeCreditManagementPanel.jsx';
 import EmployeeManagementPanel from './EmployeeManagementPanel.jsx';
 import AffiliatesWorkspacePanel from './AffiliatesWorkspacePanel.jsx';
+import PosServiceOptionsWorkspace from './PosServiceOptionsWorkspace.jsx';
+import PosServiceCatalogCreateModal from './PosServiceCatalogCreateModal.jsx';
+import PosServiceCatalogEditModal from './PosServiceCatalogEditModal.jsx';
+import { isServiceCatalogItem } from '../utils/posCatalogAvailability.js';
 import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 
 const MapPinPicker = lazyWithChunkRetry(() => import('@/src/components/maps/MapPinPicker.jsx'));
@@ -197,6 +205,11 @@ const MODE_META = {
     icon: ClipboardList,
     title: 'Items',
     subtitle: 'Manage POS items and the categories used to organize the catalog.'
+  },
+  services: {
+    icon: CalendarDays,
+    title: 'Services',
+    subtitle: 'Manage appointments, resources, waitlist, reminders, and client activity.'
   },
   terminal_setup: {
     icon: Settings2,
@@ -719,6 +732,8 @@ function ShiftControlsWorkspace({
   canOpenShift = false,
   canCloseShift,
   canCloseDay,
+  dayCloseReadinessState = { loading: false, readiness: null, errorMessage: '' },
+  refreshDayCloseReadiness = async () => null,
   canAdminBypassShiftPrompt = false,
   closeShiftForm,
   setCloseShiftForm,
@@ -1385,21 +1400,80 @@ function ShiftControlsWorkspace({
   };
 
   const renderCloseShiftPane = () => {
+    const dayCloseReadiness = dayCloseReadinessState?.readiness || null;
+    const dayCloseOpenShiftCount = Number(dayCloseReadiness?.open_shift_count || 0);
+    const dayCloseReady = !activeShift && dayCloseReadiness?.ready === true;
+    const dayCloseActionDisabled = shiftActionLoading.zReading
+      || dayCloseReadinessState?.loading
+      || locked
+      || !isOnline
+      || !activeTerminalMatchesOperatingLocation
+      || !dayCloseReady;
     const closeDayAction = canCloseDay ? (
       <div className="mt-4 border-t border-slate-200 pt-4">
         <p className="text-[12px] font-black text-[#0F172A]">Day-end Z-reading</p>
         <p className="mt-1 text-[12px] leading-5 text-[#475569]">
           Closes the branch day report using financially recognized sales from all cashiers, then sends the Z-reading to the configured printer.
         </p>
-        <Button
-          type="button"
-          className="mt-3 h-10 rounded-lg !bg-[#1A4E8D] px-4 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#143F73]"
-          onClick={handleCloseDay}
-          disabled={shiftActionLoading.zReading || locked || !isOnline || !activeTerminalMatchesOperatingLocation}
-        >
-          <Receipt className="mr-2 h-4 w-4" />
-          {shiftActionLoading.zReading ? 'Closing Day...' : 'Close Day & Print Z-reading'}
-        </Button>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            type="button"
+            data-testid="pos-close-day-button"
+            className="h-10 rounded-lg !bg-[#1A4E8D] px-4 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#143F73] disabled:!bg-slate-300 disabled:text-slate-600"
+            onClick={handleCloseDay}
+            disabled={dayCloseActionDisabled}
+          >
+            <Receipt className="mr-2 h-4 w-4" />
+            {shiftActionLoading.zReading
+              ? 'Closing Day...'
+              : (dayCloseReadiness?.already_closed ? 'Print Z-reading' : 'Close Day & Print Z-reading')}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            data-testid="pos-close-day-refresh"
+            className="h-10 rounded-lg border-slate-300 bg-white px-4 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
+            onClick={() => void refreshDayCloseReadiness()}
+            disabled={dayCloseReadinessState?.loading || shiftActionLoading.zReading || locked || !isOnline || !activeTerminalMatchesOperatingLocation}
+          >
+            <RefreshCcw className={`mr-2 h-4 w-4 ${dayCloseReadinessState?.loading ? 'animate-spin' : ''}`} />
+            {dayCloseReadinessState?.loading ? 'Checking...' : 'Refresh Status'}
+          </Button>
+        </div>
+        <div className="mt-2" data-testid="pos-close-day-readiness">
+          {activeShift ? (
+            <p className="text-[11px] font-semibold text-amber-700">
+              Close this cashier shift before generating the branch Z-reading.
+            </p>
+          ) : dayCloseReadinessState?.loading ? (
+            <p className="text-[11px] text-slate-600">Checking whether every cashier shift is closed...</p>
+          ) : dayCloseReadinessState?.errorMessage ? (
+            <p className="text-[11px] text-rose-700">{dayCloseReadinessState.errorMessage}</p>
+          ) : dayCloseReadiness && !dayCloseReadiness.ready ? (
+            <div className="text-[11px] text-amber-700">
+              <p className="font-semibold">
+                Close every cashier shift in this branch before generating the Z-reading. {dayCloseOpenShiftCount} shift{dayCloseOpenShiftCount === 1 ? '' : 's'} remain open.
+              </p>
+              {Array.isArray(dayCloseReadiness.open_shifts) && dayCloseReadiness.open_shifts.length > 0 ? (
+                <ul className="mt-1 space-y-0.5 pl-4">
+                  {dayCloseReadiness.open_shifts.map((shift) => (
+                    <li key={shift.shift_id || `${shift.terminal_id}-${shift.cashier_name}`} className="list-disc">
+                      {shift.terminal_id || 'Terminal'} — {shift.cashier_name || 'Cashier'}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : dayCloseReady ? (
+            <p className="text-[11px] font-semibold text-emerald-700">
+              {dayCloseReadiness?.already_closed
+                ? 'The branch Z-reading is already generated and ready to print again.'
+                : 'All cashier shifts are closed. The branch Z-reading is ready to generate.'}
+            </p>
+          ) : (
+            <p className="text-[11px] text-slate-600">Check Day Close status before generating the Z-reading.</p>
+          )}
+        </div>
         {!isOnline ? <p className="mt-2 text-[11px] text-amber-700">Reconnect before closing the day.</p> : null}
       </div>
     ) : null;
@@ -1967,6 +2041,7 @@ const resolveItemWorkspacePresentation = (workflowMode = '') => {
 function ItemsWorkspace({
   canViewPos,
   canCreateItems = false,
+  canManageServiceCatalog = false,
   canEditItems = false,
   canDeleteItems = false,
   canManageCategories = false,
@@ -2027,6 +2102,8 @@ function ItemsWorkspace({
   const [itemsPage, setItemsPage] = useState(1);
   const [isMobileSearchActive, setIsMobileSearchActive] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showCreateServiceModal, setShowCreateServiceModal] = useState(false);
+  const [editingServiceItem, setEditingServiceItem] = useState(null);
   const [createForm, setCreateForm] = useState(createEmptyPosItemForm());
   const [createCategoryInput, setCreateCategoryInput] = useState('');
   const [editCategoryInput, setEditCategoryInput] = useState('');
@@ -2043,6 +2120,7 @@ function ItemsWorkspace({
   const [pendingCreateRecovery, setPendingCreateRecovery] = useState(null);
   const [postCreateSaving, setPostCreateSaving] = useState(false);
   const posItemPreset = useMemo(() => resolveSellablePosItemPreset(workflowMode), [workflowMode]);
+  const isServicesMode = normalizeWorkflowMode(workflowMode) === 'services';
   const itemWorkspacePresentation = useMemo(
     () => resolveItemWorkspacePresentation(workflowMode),
     [workflowMode]
@@ -2206,6 +2284,7 @@ function ItemsWorkspace({
       const folderId = Number(item?.folder_id);
       const folderName = String(item?.folder?.name || item?.product_folder || '').trim();
       const barcode = primaryBarcodes[String(item?.item_id)]?.code || '';
+      const isServiceItem = isServiceCatalogItem(item);
       const stockQuantity = Number(item?.current_stock || 0);
       const isAlwaysAvailable = item?.pos_always_available === true;
       const threshold = Number(item?.min_threshold);
@@ -2213,13 +2292,13 @@ function ItemsWorkspace({
       const matchesStock = (() => {
         switch (stockFilter) {
           case 'in_stock':
-            return isAlwaysAvailable || stockQuantity > lowStockThreshold;
+            return isServiceItem || isAlwaysAvailable || stockQuantity > lowStockThreshold;
           case 'low_stock':
-            return stockQuantity > 0 && stockQuantity <= lowStockThreshold;
+            return !isServiceItem && stockQuantity > 0 && stockQuantity <= lowStockThreshold;
           case 'almost_out':
-            return stockQuantity > 0 && stockQuantity <= lowStockThreshold;
+            return !isServiceItem && stockQuantity > 0 && stockQuantity <= lowStockThreshold;
           case 'out_of_stock':
-            return !isAlwaysAvailable && stockQuantity <= 0;
+            return !isServiceItem && !isAlwaysAvailable && stockQuantity <= 0;
           default:
             return true;
         }
@@ -2277,6 +2356,10 @@ function ItemsWorkspace({
   }, [selectedEditImagePreviewUrl]);
 
   const openEdit = (item) => {
+    if (isServiceCatalogItem(item)) {
+      if (canManageServiceCatalog) setEditingServiceItem(item);
+      return;
+    }
     const savedFolderId = Number(item?.folder_id || 0);
     const savedFolderName = String(item?.folder?.name || item?.product_folder || '').trim();
     const matchedActiveCategory = savedFolderId > 0
@@ -2380,7 +2463,9 @@ function ItemsWorkspace({
     const editImageFile = selectedEditImageFile;
     const name = String(editForm.name || '').trim();
     const description = String(editForm.description || '').trim();
-    const category = 'product';
+    const category = String(activeEditItem?.category || '').trim().toLowerCase() === 'service'
+      ? 'service'
+      : 'product';
     const stock = Number(String(editForm.current_stock || '0').trim());
     const price = parseMoneyValue(editForm.default_sale_price);
     const cost = parseMoneyValue(editForm.cost_per_unit);
@@ -2452,11 +2537,11 @@ function ItemsWorkspace({
           ? Number(operatingLocationId)
           : null,
         product_type: category === 'product' ? (posItemPreset.product_type || 'finished_goods') : null,
-        mode_item_preset: category === 'product' ? posItemPreset.key : undefined,
-        unit_of_measure: category === 'product' ? (posItemPreset.default_unit || 'pcs') : undefined,
-        fifo_enabled: category === 'product' ? posItemPreset.fifo_enabled !== false : undefined,
-        max_capacity: Math.max(resolvedStock, 1),
-        min_threshold: Math.min(5, Math.max(resolvedStock, 0)),
+        mode_item_preset: category === 'product' ? posItemPreset.key : 'service',
+        unit_of_measure: category === 'product' ? (posItemPreset.default_unit || 'pcs') : 'service',
+        fifo_enabled: category === 'product' ? posItemPreset.fifo_enabled !== false : false,
+        max_capacity: category === 'service' ? 1 : Math.max(resolvedStock, 1),
+        min_threshold: category === 'service' ? 0 : Math.min(5, Math.max(resolvedStock, 0)),
         default_sale_price: price,
         cost_per_unit: cost,
         senior_pwd_discount_eligible: editForm.senior_pwd_discount_eligible === true
@@ -3027,6 +3112,18 @@ function ItemsWorkspace({
                 Add Item
               </Button>
             ) : null}
+            {isServicesMode && canManageServiceCatalog ? (
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => setShowCreateServiceModal(true)}
+                disabled={locked}
+                className="h-11 rounded-xl border-teal-600/30 px-5 text-teal-700 shadow-sm hover:bg-teal-50 xl:self-end"
+              >
+                <CalendarPlus className="mr-2 h-4 w-4" />
+                Add Service
+              </Button>
+            ) : null}
             {canCreateItems && menuImportEntryEnabled ? (
               <Button
                 type="button"
@@ -3108,6 +3205,18 @@ function ItemsWorkspace({
               Add Item
             </Button>
           ) : null}
+          {isServicesMode && canManageServiceCatalog ? (
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setShowCreateServiceModal(true)}
+              disabled={locked}
+              className="mt-2 h-11 w-full rounded-xl border-teal-600/30 text-teal-700 hover:bg-teal-50"
+            >
+              <CalendarPlus className="mr-2 h-4 w-4" />
+              Add Service
+            </Button>
+          ) : null}
           {canCreateItems && menuImportEntryEnabled ? (
             <Button
               type="button"
@@ -3136,6 +3245,33 @@ function ItemsWorkspace({
           onSuccess={() => { loadItems(); }}
         />
       ) : null}
+
+      <PosServiceCatalogCreateModal
+        open={showCreateServiceModal}
+        isOnline={isOnline}
+        onClose={() => setShowCreateServiceModal(false)}
+        onCreated={async () => {
+          await loadItems();
+          notifyPosCatalogUpdated();
+        }}
+      />
+
+      <PosServiceCatalogEditModal
+        open={Boolean(editingServiceItem)}
+        serviceItem={editingServiceItem}
+        isOnline={isOnline}
+        onClose={() => setEditingServiceItem(null)}
+        onUpdated={async (updatedService) => {
+          setEditingServiceItem(null);
+          await loadItems();
+          notifyPosCatalogUpdated();
+          setSavedMessage({
+            name: updatedService?.service?.name || updatedService?.name || editingServiceItem?.name || 'Service',
+            barcode: '',
+            action: 'updated'
+          });
+        }}
+      />
 
       {error ? (
         <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
@@ -3167,6 +3303,7 @@ function ItemsWorkspace({
       ) : (
         <div className="space-y-4">
           {paginatedItems.map((item) => {
+            const isServiceItem = isServiceCatalogItem(item);
             const barcode = primaryBarcodes[String(item.item_id)]?.code || '';
             const imageUrl = resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail');
             const largeImageUrl = resolveAssetVariantUrl(item?.storefront_image_url, 'large');
@@ -3179,10 +3316,14 @@ function ItemsWorkspace({
             const threshold = Number(item?.min_threshold);
             const lowStockThreshold = Number.isFinite(threshold) && threshold > 0 ? threshold : 5;
             const almostOutOfStock = !isAlwaysAvailable && stockQuantity > 0 && stockQuantity <= lowStockThreshold;
-            const stockStatusLabel = isAlwaysAvailable
+            const stockStatusLabel = isServiceItem
+              ? 'Stock Exempt'
+              : isAlwaysAvailable
               ? 'Always Available'
               : stockQuantity <= 0 ? 'Out of Stock' : almostOutOfStock ? 'Almost Out of Stock' : 'In Stock';
-            const stockStatusClassName = isAlwaysAvailable
+            const stockStatusClassName = isServiceItem
+              ? 'border-teal-200 bg-teal-50 text-teal-700'
+              : isAlwaysAvailable
               ? 'border-blue-200 bg-blue-50 text-blue-700'
               : stockQuantity <= 0
               ? 'border-rose-200 bg-rose-50 text-rose-600'
@@ -3220,7 +3361,7 @@ function ItemsWorkspace({
                         <div className="min-h-[2.875rem]">
                           <div className="min-w-0 max-w-[15rem]">
                             <p className="truncate text-base font-black leading-5 tracking-tight text-[#0F172A]">{item.name || 'Unnamed item'}</p>
-                            <p className="mt-0.5 truncate text-[11px] font-medium leading-4 text-[#64748B]">Inventory item synced from IMS</p>
+                            <p className="mt-0.5 truncate text-[11px] font-medium leading-4 text-[#64748B]">{isServiceItem ? 'Service catalog entry' : 'Inventory item synced from IMS'}</p>
                           </div>
                         </div>
                         <div className="my-2.5 h-px bg-slate-100" />
@@ -3264,14 +3405,14 @@ function ItemsWorkspace({
                             {/* Reflects the item's food category (POS folder) - item.category is
                                 a fixed inventory enum (always "product" here), not what the Food
                                 Category field on the item form actually sets. */}
-                            <p className="mt-0.5 truncate text-xs font-bold text-[#0F172A]">{item.folder?.name || item.product_folder || 'Uncategorized'}</p>
+                            <p className="mt-0.5 truncate text-xs font-bold text-[#0F172A]">{isServiceItem ? 'Service' : (item.folder?.name || item.product_folder || 'Uncategorized')}</p>
                           </div>
                         </div>
                         <div className="grid grid-cols-2 gap-3 border-t border-slate-100 pt-2">
                           <div className="min-w-0">
                             <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">Stock</p>
                             <div className="mt-0.5 flex flex-wrap items-center gap-1.5">
-                              <p className="text-xs font-bold text-[#0F172A]">{stockQuantity}</p>
+                              <p className="text-xs font-bold text-[#0F172A]">{isServiceItem ? '—' : stockQuantity}</p>
                               <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold ${stockStatusClassName}`}>
                                 <span className="h-1.5 w-1.5 rounded-full bg-current opacity-80" />
                                 {stockStatusLabel}
@@ -3279,9 +3420,11 @@ function ItemsWorkspace({
                             </div>
                           </div>
                           <div className="min-w-0">
-                            <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">Profit</p>
+                            <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">{isServiceItem && item.cost_per_unit == null ? 'Internal Cost' : 'Profit'}</p>
                             <p className="mt-0.5 text-xs font-bold text-[#0F172A]">
-                              PHP {money(profit)} <span className="text-[#2563EB]">({Number.isFinite(profitMargin) ? profitMargin.toFixed(1) : '0.0'}%)</span>
+                              {isServiceItem && item.cost_per_unit == null
+                                ? 'Not tracked'
+                                : <>PHP {money(profit)} <span className="text-[#2563EB]">({Number.isFinite(profitMargin) ? profitMargin.toFixed(1) : '0.0'}%)</span></>}
                             </p>
                           </div>
                         </div>
@@ -3313,8 +3456,8 @@ function ItemsWorkspace({
                               <div className="min-w-0 flex-1">
                                 <p className="text-[9px] font-semibold uppercase tracking-[0.1em] text-[#64748B]">Cost</p>
                                 <div className="mt-0.5 min-w-0 leading-none">
-                                  <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-emerald-700">PHP</p>
-                                  <p className="text-[0.95rem] font-black tracking-tight text-emerald-700">{money(item.cost_per_unit)}</p>
+                                  <p className="text-[10px] font-bold uppercase tracking-[0.06em] text-emerald-700">{isServiceItem && item.cost_per_unit == null ? 'OPTIONAL' : 'PHP'}</p>
+                                  <p className="text-[0.95rem] font-black tracking-tight text-emerald-700">{isServiceItem && item.cost_per_unit == null ? 'Not tracked' : money(item.cost_per_unit)}</p>
                                 </div>
                               </div>
                             </div>
@@ -3322,12 +3465,12 @@ function ItemsWorkspace({
                         </div>
                       </div>
                       <div className="grid gap-2 sm:grid-cols-2 sm:items-stretch">
-                        {canEditItems && (
+                        {(isServiceItem ? canManageServiceCatalog : canEditItems) && (
                           <Button
                             type="button"
                             variant="outline"
                             onClick={() => openEdit(item)}
-                            disabled={locked || savingItem || deletingItem || creatingItem}
+                            disabled={locked || savingItem || deletingItem || creatingItem || (isServiceItem && !isOnline)}
                             className="h-8.5 rounded-[14px] border-[#3B82F6] bg-white px-3 text-xs font-bold text-[#2563EB] shadow-sm hover:bg-blue-50"
                             title={`Edit ${item.name || 'item'}`}
                           >
@@ -4184,35 +4327,6 @@ function ItemsWorkspace({
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">Manual Barcode (priority)</label>
-                    <Input
-                      value={editForm.manual_barcode}
-                      onChange={(event) => setEditForm((current) => ({
-                        ...current,
-                        manual_barcode: normalizeBarcodeEntry(event.target.value)
-                      }))}
-                      className="h-11 rounded-xl border-slate-200 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
-                      placeholder="Supplier or company barcode"
-                      disabled={savingItem || persistingEditAssets}
-                    />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">GTIN / UPC / EAN</label>
-                    <Input
-                      value={editForm.gtin}
-                      onChange={(event) => setEditForm((current) => ({
-                        ...current,
-                        gtin: normalizeBarcodeEntry(event.target.value)
-                      }))}
-                      className="h-11 rounded-xl border-slate-200 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
-                      placeholder="8, 12, 13, or 14 digit GTIN"
-                      disabled={savingItem || persistingEditAssets}
-                    />
-                    <p className="text-[11px] leading-normal text-slate-500">Manual barcode wins when both fields are filled. Leaving both empty preserves the current barcode.</p>
-                  </div>
-
-                  <div className="space-y-1.5">
                     <div className="flex justify-between items-center">
                       <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">Description / Notes</label>
                       <span className="text-[10px] text-slate-400 font-medium">
@@ -4231,53 +4345,84 @@ function ItemsWorkspace({
 
                 {/* Column 3: Category & QR Section */}
                 <div className="rounded-2xl border border-slate-200/80 bg-white p-4 sm:p-5 shadow-sm space-y-4 flex flex-col justify-between">
-                  <div className="space-y-1.5">
-                    <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
-                      {itemWorkspacePresentation.categoryLabel} <span className="text-rose-500">*</span>
-                    </label>
-                    {canManageCategories ? (
-                      <>
-                        <EditableFoodCategoryCombobox
-                          id="pos-items-edit-category"
-                          value={editCategoryInput}
-                          onChange={(nextValue) => {
-                            const matchedCategory = foodCategoryOptions.find((option) => (
-                              normalizeFolderNameKey(option.name) === normalizeFolderNameKey(nextValue)
-                            ));
-                            setEditCategoryInput(nextValue);
-                            setEditForm((current) => ({
-                              ...current,
-                              pos_category: matchedCategory?.value || ''
-                            }));
-                          }}
-                          onSelect={(option) => {
-                            setEditCategoryInput(option.name);
-                            setEditForm((current) => ({ ...current, pos_category: option.value }));
-                          }}
-                          options={foodCategoryOptions}
-                          disabled={savingItem || persistingEditAssets}
-                        />
-                        <p className="mt-1 text-[11px] text-slate-500 leading-normal">Select an existing category, or enter a new name to create it when this item is saved.</p>
-                      </>
-                    ) : (
-                      <>
-                        <select
-                          value={editForm.pos_category}
-                          onChange={(event) => setEditForm((current) => ({ ...current, pos_category: event.target.value }))}
-                          className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-[#0F172A] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm"
-                          disabled={savingItem || persistingEditAssets}
-                        >
-                          {!editForm.pos_category && <option value="">Select an active category</option>}
-                          {editForm.pos_category && !foodCategoryOptions.some((option) => option.value === editForm.pos_category) && (
-                            <option value={editForm.pos_category} disabled>Current category is inactive</option>
-                          )}
-                          {foodCategoryOptions.map((option) => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                          ))}
-                        </select>
-                        <p className="mt-1 text-[11px] text-slate-500 leading-normal">Inactive categories remain on existing items but cannot be selected again. Only an administrator can create new categories.</p>
-                      </>
-                    )}
+                  <div className="space-y-3.5">
+                    <div className="space-y-1.5">
+                      <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">
+                        {itemWorkspacePresentation.categoryLabel} <span className="text-rose-500">*</span>
+                      </label>
+                      {canManageCategories ? (
+                        <>
+                          <EditableFoodCategoryCombobox
+                            id="pos-items-edit-category"
+                            value={editCategoryInput}
+                            onChange={(nextValue) => {
+                              const matchedCategory = foodCategoryOptions.find((option) => (
+                                normalizeFolderNameKey(option.name) === normalizeFolderNameKey(nextValue)
+                              ));
+                              setEditCategoryInput(nextValue);
+                              setEditForm((current) => ({
+                                ...current,
+                                pos_category: matchedCategory?.value || ''
+                              }));
+                            }}
+                            onSelect={(option) => {
+                              setEditCategoryInput(option.name);
+                              setEditForm((current) => ({ ...current, pos_category: option.value }));
+                            }}
+                            options={foodCategoryOptions}
+                            disabled={savingItem || persistingEditAssets}
+                          />
+                          <p className="mt-1 text-[11px] text-slate-500 leading-normal">Select an existing category, or enter a new name to create it when this item is saved.</p>
+                        </>
+                      ) : (
+                        <>
+                          <select
+                            value={editForm.pos_category}
+                            onChange={(event) => setEditForm((current) => ({ ...current, pos_category: event.target.value }))}
+                            className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-[#0F172A] outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100 sm:text-sm"
+                            disabled={savingItem || persistingEditAssets}
+                          >
+                            {!editForm.pos_category && <option value="">Select an active category</option>}
+                            {editForm.pos_category && !foodCategoryOptions.some((option) => option.value === editForm.pos_category) && (
+                              <option value={editForm.pos_category} disabled>Current category is inactive</option>
+                            )}
+                            {foodCategoryOptions.map((option) => (
+                              <option key={option.value} value={option.value}>{option.label}</option>
+                            ))}
+                          </select>
+                          <p className="mt-1 text-[11px] text-slate-500 leading-normal">Inactive categories remain on existing items but cannot be selected again. Only an administrator can create new categories.</p>
+                        </>
+                      )}
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">Manual Barcode (priority)</label>
+                      <Input
+                        value={editForm.manual_barcode}
+                        onChange={(event) => setEditForm((current) => ({
+                          ...current,
+                          manual_barcode: normalizeBarcodeEntry(event.target.value)
+                        }))}
+                        className="h-11 rounded-xl border-slate-200 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
+                        placeholder="Supplier or company barcode"
+                        disabled={savingItem || persistingEditAssets}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <label className="text-xs sm:text-[13px] font-bold text-[#0F172A]">GTIN / UPC / EAN</label>
+                      <Input
+                        value={editForm.gtin}
+                        onChange={(event) => setEditForm((current) => ({
+                          ...current,
+                          gtin: normalizeBarcodeEntry(event.target.value)
+                        }))}
+                        className="h-11 rounded-xl border-slate-200 text-xs sm:text-sm font-medium focus:border-blue-500 focus:ring-blue-500"
+                        placeholder="8, 12, 13, or 14 digit GTIN"
+                        disabled={savingItem || persistingEditAssets}
+                      />
+                      <p className="text-[11px] leading-normal text-slate-500">Manual barcode wins when both fields are filled. Leaving both empty preserves the current barcode.</p>
+                    </div>
                   </div>
 
                   {/* QR Card Container */}
@@ -4585,12 +4730,6 @@ function CategoryManagementWorkspace() {
       });
   }, [folders, query]);
 
-  const summary = useMemo(() => ({
-    total: folders.length,
-    active: folders.filter((folder) => folder.is_active).length,
-    assignedItems: folders.reduce((total, folder) => total + folder.item_count, 0)
-  }), [folders]);
-
   const replacementFolders = useMemo(() => folders
     .filter((folder) => folder.is_active && Number(folder.folder_id) !== Number(pendingAction?.folder?.folder_id))
     .sort((left, right) => left.name.localeCompare(right.name)), [folders, pendingAction?.folder?.folder_id]);
@@ -4681,19 +4820,6 @@ function CategoryManagementWorkspace() {
           <Plus className="mr-2 h-4 w-4" />
           Add Category
         </Button>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-3">
-        {[
-          ['Total categories', summary.total, 'border-slate-200 bg-white text-[#0F172A]'],
-          ['Active for item selection', summary.active, 'border-emerald-200 bg-emerald-50 text-emerald-800'],
-          ['Assigned POS items', summary.assignedItems, 'border-blue-200 bg-blue-50 text-[#1A4E8D]']
-        ].map(([label, value, className]) => (
-          <div key={label} className={`rounded-xl border p-4 ${className}`}>
-            <p className="text-[11px] font-black uppercase tracking-[0.14em] opacity-70">{label}</p>
-            <p className="mt-1 text-2xl font-black">{value}</p>
-          </div>
-        ))}
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
@@ -4826,14 +4952,32 @@ function CategoryManagementWorkspace() {
 function ItemsCatalogWorkspace({
   canViewPos = false,
   canManageCategories = false,
+  canManageServiceCatalog = false,
+  canManageServiceOptions = false,
+  canViewFnbModifiers = false,
+  canManageFnbModifiers = false,
+  locations = [],
+  serviceOperationsPermissions = {},
+  shiftState,
+  activeTerminalId = '',
+  operatingLocationId = null,
   isOnline = true,
   sectionId,
   ...itemsWorkspaceProps
 }) {
   const availableTabs = useMemo(() => [
     ...(canViewPos ? [{ id: 'items', label: 'Items', icon: ClipboardList }] : []),
-    ...(canManageCategories ? [{ id: 'categories', label: 'Categories', icon: Tags }] : [])
-  ], [canManageCategories, canViewPos]);
+    ...(canManageCategories ? [{ id: 'categories', label: 'Categories', icon: Tags }] : []),
+    ...(normalizeWorkflowMode(itemsWorkspaceProps.workflowMode) === 'services' && canManageServiceOptions
+      ? [{ id: 'service-options', label: 'Service add-ons', icon: SlidersHorizontal }]
+      : []),
+    ...(normalizeWorkflowMode(itemsWorkspaceProps.workflowMode) === 'fnb' && canViewFnbModifiers
+      ? [{ id: 'fnb-modifiers', label: 'Menu modifiers', icon: SlidersHorizontal }]
+      : []),
+    ...(normalizeWorkflowMode(itemsWorkspaceProps.workflowMode) === 'services' && Object.values(serviceOperationsPermissions).some(Boolean)
+      ? [{ id: 'service-operations', label: 'Service operations', icon: CalendarDays }]
+      : [])
+  ], [canManageCategories, canManageServiceOptions, canViewFnbModifiers, canViewPos, itemsWorkspaceProps.workflowMode, serviceOperationsPermissions]);
   const defaultTab = canViewPos ? 'items' : 'categories';
   const [selectedTab, setSelectedTab] = useState(defaultTab);
   const activeTab = availableTabs.some((tab) => tab.id === selectedTab)
@@ -4851,10 +4995,10 @@ function ItemsCatalogWorkspace({
   return (
     <div id={sectionId} className="space-y-4">
       {availableTabs.length > 1 ? (
-        <div
-          role="tablist"
-          aria-label="Items workspace navigation"
-          className="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm shadow-slate-200/70"
+          <div
+            role="tablist"
+            aria-label="Items workspace navigation"
+            className="grid gap-2 rounded-xl border border-slate-200 bg-white p-2 shadow-sm shadow-slate-200/70 sm:grid-cols-2 lg:grid-cols-3"
         >
           {availableTabs.map((tab) => {
             const Icon = tab.icon;
@@ -4894,11 +5038,32 @@ function ItemsCatalogWorkspace({
               <p className="mt-1">Reconnect to create, edit, activate, deactivate, delete, or reassign categories.</p>
             </div>
           )
+        ) : activeTab === 'service-options' ? (
+          <PosServiceOptionsWorkspace
+            isOnline={isOnline}
+            canManageServiceOptions={canManageServiceOptions}
+            sectionId={`pos-items-${activeTab}-panel`}
+          />
+        ) : activeTab === 'fnb-modifiers' ? (
+          <PosFnbModifiersWorkspace
+            isOnline={isOnline}
+            canManage={canManageFnbModifiers}
+            locations={locations}
+            sectionId={`pos-items-${activeTab}-panel`}
+          />
+        ) : activeTab === 'service-operations' ? (
+          <PosServicesOperationsWorkspace
+            permissions={serviceOperationsPermissions}
+            isOnline={isOnline}
+            settlementContext={{ shiftId: shiftState?.shift?.pos_terminal_shift_id, terminalId: activeTerminalId, locationId: shiftState?.shift?.location_id || operatingLocationId }}
+          />
         ) : (
           <ItemsWorkspace
             {...itemsWorkspaceProps}
             canViewPos={canViewPos}
             canManageCategories={canManageCategories}
+            canManageServiceCatalog={canManageServiceCatalog}
+            operatingLocationId={operatingLocationId}
             isOnline={isOnline}
           />
         )}
@@ -4954,8 +5119,8 @@ function SettingsWorkspace({
   const [savingApprovalPin, setSavingApprovalPin] = useState(false);
   const [dayCloseOperators, setDayCloseOperators] = useState([]);
   const [dayCloseOperatorsLoading, setDayCloseOperatorsLoading] = useState(false);
+  const [dayCloseAccessSavingUserId, setDayCloseAccessSavingUserId] = useState(null);
   const [dayClosePinUser, setDayClosePinUser] = useState(null);
-  const [dayClosePin, setDayClosePin] = useState('');
   const [savingDayClosePin, setSavingDayClosePin] = useState(false);
   const [employeeDirectoryRevision, setEmployeeDirectoryRevision] = useState(0);
   const [storefrontPromoItemOptions, setStorefrontPromoItemOptions] = useState([]);
@@ -5261,7 +5426,11 @@ function SettingsWorkspace({
       const rows = await getAllUsers({ include_invitations: false });
       setDayCloseOperators((Array.isArray(rows) ? rows : [])
         .filter((user) => user?.is_active !== false && !user?.deleted_at)
-        .filter((user) => resolveUserPermissionList(user).includes('pos:close_day'))
+        .filter((user) => (
+          String(user?.role || '').trim().toLowerCase() === 'cashier'
+          || user?.is_master_admin === true
+          || resolveUserPermissionList(user).includes('pos:close_day')
+        ))
         .sort((left, right) => String(left?.username || '').localeCompare(String(right?.username || ''))));
     } catch (error) {
       if (!silent) {
@@ -5271,6 +5440,32 @@ function SettingsWorkspace({
       setDayCloseOperatorsLoading(false);
     }
   }, [canManageDayClosePins]);
+
+  const updateDayCloseAccess = useCallback(async (user, enabled) => {
+    const userId = Number(user?.user_id);
+    if (!Number.isInteger(userId) || userId <= 0 || user?.is_master_admin === true) return;
+    const permissions = resolveUserPermissionList(user);
+    const nextPermissions = enabled
+      ? Array.from(new Set([...permissions, 'pos:close_day']))
+      : permissions.filter((permission) => permission !== 'pos:close_day');
+
+    setDayCloseAccessSavingUserId(userId);
+    try {
+      const updated = await updateUserPermissions(userId, nextPermissions);
+      setDayCloseOperators((current) => current.map((entry) => (
+        Number(entry?.user_id) === userId
+          ? { ...entry, permissions: updated?.permissions || nextPermissions }
+          : entry
+      )));
+      toast.success(enabled
+        ? 'Z-reading access enabled. The cashier must create their personal PIN in DGFY Business.'
+        : 'Z-reading access disabled for this cashier.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to update cashier Z-reading access.');
+    } finally {
+      setDayCloseAccessSavingUserId(null);
+    }
+  }, []);
 
   const closeApprovalPinDialog = useCallback(() => {
     if (savingApprovalPin) return;
@@ -5305,32 +5500,26 @@ function SettingsWorkspace({
   const closeDayClosePinDialog = useCallback(() => {
     if (savingDayClosePin) return;
     setDayClosePinUser(null);
-    setDayClosePin('');
   }, [savingDayClosePin]);
 
-  const saveDayClosePin = useCallback(async ({ clear = false } = {}) => {
+  const resetDayClosePin = useCallback(async () => {
     if (!dayClosePinUser) return;
-    if (!clear && !/^\d{4,12}$/.test(dayClosePin)) {
-      toast.error('POS Day Close PIN must contain 4 to 12 digits.');
-      return;
-    }
     setSavingDayClosePin(true);
     try {
-      const updated = await updatePosDayClosePin(dayClosePinUser.user_id, { pin: dayClosePin, clear });
+      const updated = await updatePosDayClosePin(dayClosePinUser.user_id);
       setDayCloseOperators((current) => current.map((user) => (
         user.user_id === dayClosePinUser.user_id
           ? { ...user, pos_day_close_pin_configured: updated.pos_day_close_pin_configured === true }
           : user
       )));
-      toast.success(clear ? 'POS Day Close PIN cleared.' : 'POS Day Close PIN configured.');
+      toast.success('POS Day Close PIN reset. The cashier must create a new PIN from DGFY Business.');
       setDayClosePinUser(null);
-      setDayClosePin('');
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to update POS Day Close PIN.');
+      toast.error(error?.response?.data?.message || 'Failed to reset POS Day Close PIN.');
     } finally {
       setSavingDayClosePin(false);
     }
-  }, [dayClosePin, dayClosePinUser]);
+  }, [dayClosePinUser]);
 
   const loadStorefrontPromoItems = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
@@ -7107,8 +7296,8 @@ function SettingsWorkspace({
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-[12px] font-black text-[#0F172A]">POS Day Close PINs</p>
-                      <p className="mt-1 text-[11px] text-[#64748B]">Configure the write-only personal PIN each authorized cashier enters before generating the branch Z-reading.</p>
+                      <p className="text-[12px] font-black text-[#0F172A]">Day Close Access</p>
+                      <p className="mt-1 text-[11px] text-[#64748B]">Grant Z-reading access here. Each cashier creates their private PIN from DGFY Business.</p>
                     </div>
                     <Button
                       type="button"
@@ -7121,29 +7310,62 @@ function SettingsWorkspace({
                     </Button>
                   </div>
                   <div className="mt-3 grid gap-2">
-                    {dayCloseOperators.map((user) => (
-                      <div key={`day-close-operator-${user.user_id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
-                        <div className="min-w-0">
-                          <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{user.username || user.email}</p>
-                          <p className="text-[11px] capitalize text-[#64748B]">{user.role} · {user.pos_day_close_pin_configured ? 'PIN configured' : 'PIN not set'}</p>
+                    {dayCloseOperators.map((user) => {
+                      const isMasterAdmin = user?.is_master_admin === true;
+                      const hasDayCloseAccess = isMasterAdmin || resolveUserPermissionList(user).includes('pos:close_day');
+                      const isSavingAccess = Number(dayCloseAccessSavingUserId) === Number(user?.user_id);
+                      return (
+                        <div key={`day-close-operator-${user.user_id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                          <div className="min-w-0">
+                            <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{user.username || user.email}</p>
+                            <p className="truncate text-[11px] text-[#64748B]">{user.email || 'No account email'}</p>
+                            <p className="text-[11px] capitalize text-[#64748B]">
+                              {user.role} · {hasDayCloseAccess
+                                ? (user.pos_day_close_pin_configured ? 'PIN configured' : 'PIN setup pending')
+                                : 'Z-reading access off'}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-end gap-3">
+                            {isMasterAdmin ? (
+                              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-extrabold text-[#1A4E8D]">Built-in access</span>
+                            ) : (
+                              <div className="flex items-center gap-2 text-[11px] font-extrabold text-[#334155]">
+                                <span>Can generate Z-reading</span>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-label={`Can generate Z-reading for ${user.username || user.email || `user ${user.user_id}`}`}
+                                  aria-checked={hasDayCloseAccess}
+                                  onClick={() => updateDayCloseAccess(user, !hasDayCloseAccess)}
+                                  disabled={locked || loading || isSavingAccess}
+                                  className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${hasDayCloseAccess ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-slate-200'} disabled:cursor-not-allowed disabled:opacity-60`}
+                                >
+                                  <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${hasDayCloseAccess ? 'translate-x-6' : 'translate-x-1'}`} />
+                                </button>
+                              </div>
+                            )}
+                            {hasDayCloseAccess && user.pos_day_close_pin_configured ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-9 rounded-lg px-3 text-[12px] font-extrabold text-blue-700"
+                                onClick={() => {
+                                  setDayClosePinUser(user);
+                                }}
+                                disabled={locked || loading || isSavingAccess}
+                              >
+                                <KeyRound className="mr-1.5 h-4 w-4" />
+                                Reset PIN
+                              </Button>
+                            ) : hasDayCloseAccess ? (
+                              <span className="text-[11px] font-bold text-amber-700">Cashier setup pending</span>
+                            ) : null}
+                          </div>
                         </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-9 rounded-lg px-3 text-[12px] font-extrabold text-blue-700"
-                          onClick={() => {
-                            setDayClosePinUser(user);
-                            setDayClosePin('');
-                          }}
-                          disabled={locked || loading}
-                        >
-                          <KeyRound className="mr-1.5 h-4 w-4" />
-                          {user.pos_day_close_pin_configured ? 'Reset PIN' : 'Set PIN'}
-                        </Button>
-                      </div>
-                    ))}
+                      );
+                    })}
                     {!dayCloseOperatorsLoading && dayCloseOperators.length === 0 ? (
-                      <p className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-[12px] text-[#64748B]">No active users have close-day permission. Grant pos:close_day to the cashiers first.</p>
+                      <p className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-[12px] text-[#64748B]">No active cashier accounts are available. Add or activate a cashier first.</p>
                     ) : null}
                   </div>
                 </div>
@@ -8606,47 +8828,26 @@ function SettingsWorkspace({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <KeyRound className="h-5 w-5 text-blue-600" />
-              POS Day Close PIN
+              Reset POS Day Close PIN
             </DialogTitle>
             <DialogDescription>
-              This PIN is used only by this signed-in operator to confirm a branch Z-reading. It cannot be viewed after saving.
+              Reset this cashier&apos;s PIN when they forgot it. The cashier must create a new personal PIN from DGFY Business.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
               <p className="font-semibold">{dayClosePinUser?.username || dayClosePinUser?.email}</p>
               <p className="mt-1 text-xs text-slate-500">
-                {dayClosePinUser?.pos_day_close_pin_configured
-                  ? 'A Day Close PIN is configured. Enter a new PIN to replace it.'
-                  : 'Configure the personal PIN this operator will enter before closing the branch day.'}
+                {dayClosePinUser?.email || 'No account email'}
               </p>
-            </div>
-            <div>
-              <Label className="text-sm font-semibold text-slate-800">New Day Close PIN</Label>
-              <Input
-                value={dayClosePin}
-                onChange={(event) => setDayClosePin(event.target.value.replace(/\D/g, '').slice(0, 12))}
-                type="password"
-                inputMode="numeric"
-                autoComplete="new-password"
-                placeholder="4 to 12 digits"
-                className="mt-1"
-                disabled={savingDayClosePin}
-              />
             </div>
           </div>
           <DialogFooter className="mt-4 flex-row justify-between gap-2 border-t pt-4 sm:justify-between">
-            <div>
-              {dayClosePinUser?.pos_day_close_pin_configured ? (
-                <Button type="button" variant="outline" onClick={() => saveDayClosePin({ clear: true })} disabled={savingDayClosePin} className="text-rose-600">
-                  Clear PIN
-                </Button>
-              ) : null}
-            </div>
+            <div />
             <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={closeDayClosePinDialog} disabled={savingDayClosePin}>Cancel</Button>
-              <Button type="button" onClick={() => saveDayClosePin()} disabled={savingDayClosePin} className="bg-blue-600 hover:bg-blue-700">
-                {savingDayClosePin ? 'Saving...' : 'Save PIN'}
+              <Button type="button" onClick={resetDayClosePin} disabled={savingDayClosePin} className="bg-blue-600 hover:bg-blue-700">
+                {savingDayClosePin ? 'Resetting...' : 'Reset PIN'}
               </Button>
             </div>
           </DialogFooter>
@@ -8678,6 +8879,10 @@ export default function TerminalOperationsWorkspace({
   terminalRegistry = [],
   canViewPos,
   canCreateItems = false,
+  canManageServiceCatalog = false,
+  canViewFnbModifiers = false,
+  canManageFnbModifiers = false,
+  serviceOperationsPermissions = {},
   canEditItems = false,
   canDeleteItems = false,
   canManageCategories = false,
@@ -8690,6 +8895,8 @@ export default function TerminalOperationsWorkspace({
   canSwitchPosLocation = false,
   canAdjustCashDrawer,
   canCloseDay,
+  dayCloseReadinessState = { loading: false, readiness: null, errorMessage: '' },
+  refreshDayCloseReadiness = async () => null,
   openShiftForm,
   setOpenShiftForm,
   cashEventForm,
@@ -8718,6 +8925,8 @@ export default function TerminalOperationsWorkspace({
   incomingOrderActionState = {},
   handleIncomingOrderStatusChange = () => {},
   handleDeliveryJobStatusChange = () => {},
+  handleAssignDeliveryPersonnel = () => {},
+  deliveryPersonnelState = { loading: false, personnel: [], errorMessage: '' },
   handleOpenCashCollection = () => {},
   handleOpenIncomingOrderReceipt = () => {},
   incomingReceiptOpeningId = null,
@@ -8753,6 +8962,8 @@ export default function TerminalOperationsWorkspace({
           incomingOrderActionState={incomingOrderActionState}
           handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
           handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
+          handleAssignDeliveryPersonnel={handleAssignDeliveryPersonnel}
+          deliveryPersonnelState={deliveryPersonnelState}
           handleOpenCashCollection={handleOpenCashCollection}
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
           incomingReceiptOpeningId={incomingReceiptOpeningId}
@@ -8813,6 +9024,8 @@ export default function TerminalOperationsWorkspace({
           canOpenShift={canOpenShift}
           canCloseShift={canCloseShift}
           canCloseDay={canCloseDay}
+          dayCloseReadinessState={dayCloseReadinessState}
+          refreshDayCloseReadiness={refreshDayCloseReadiness}
           canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
           closeShiftForm={closeShiftForm}
           setCloseShiftForm={setCloseShiftForm}
@@ -8856,6 +9069,8 @@ export default function TerminalOperationsWorkspace({
           canOpenShift={canOpenShift}
           canCloseShift={canCloseShift}
           canCloseDay={canCloseDay}
+          dayCloseReadinessState={dayCloseReadinessState}
+          refreshDayCloseReadiness={refreshDayCloseReadiness}
           canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
           closeShiftForm={closeShiftForm}
           setCloseShiftForm={setCloseShiftForm}
@@ -8910,6 +9125,14 @@ export default function TerminalOperationsWorkspace({
           canEditItems={canEditItems}
           canDeleteItems={canDeleteItems}
           canManageCategories={canManageCategories}
+          canManageServiceCatalog={canManageServiceCatalog}
+          canManageServiceOptions={canManageServiceCatalog}
+          canViewFnbModifiers={canViewFnbModifiers}
+          canManageFnbModifiers={canManageFnbModifiers}
+          locations={locationsState?.locations || []}
+          serviceOperationsPermissions={serviceOperationsPermissions}
+          shiftState={shiftState}
+          activeTerminalId={activeTerminalId}
           stockFilterPreset={itemsStockFilterPreset}
           onStockFilterPresetApplied={onItemsStockFilterPresetApplied}
           workflowMode={workflowMode}
@@ -8920,6 +9143,15 @@ export default function TerminalOperationsWorkspace({
           storefrontSlug={terminalMeta?.storefrontSlug || ''}
           sectionId={sectionIds.items}
         />
+      );
+    case 'services':
+      return (
+        <div id={sectionIds.services}>
+          <PosServicesOperationsWorkspace
+            permissions={serviceOperationsPermissions}
+            isOnline={isOnline}
+          />
+        </div>
       );
     default:
       return (
@@ -8934,10 +9166,15 @@ export default function TerminalOperationsWorkspace({
     canOpenShift,
     canCloseShift,
     canCloseDay,
+    dayCloseReadinessState,
     canCreateItems,
     canDeleteItems,
     canEditItems,
     canManageCategories,
+    canManageServiceCatalog,
+    canManageFnbModifiers,
+    canViewFnbModifiers,
+    serviceOperationsPermissions,
     canRecoverStaleShifts,
     adminLocationMonitorState,
     adminTerminalSwitching,
@@ -8947,6 +9184,8 @@ export default function TerminalOperationsWorkspace({
     canTransactPos,
     canViewPos,
     handleDeliveryJobStatusChange,
+    handleAssignDeliveryPersonnel,
+    deliveryPersonnelState,
     cashEventForm,
     closeShiftForm,
     handleCloseShift,
@@ -8984,6 +9223,7 @@ export default function TerminalOperationsWorkspace({
     refreshIncomingOrders,
     refreshAdminLocationMonitor,
     refreshOperationalContext,
+    refreshDayCloseReadiness,
     reportRefreshKey,
     employeeCreditReportRefreshKey,
     isOnline,
@@ -8998,6 +9238,7 @@ export default function TerminalOperationsWorkspace({
     sectionIds.locationScope,
     sectionIds.reports,
     sectionIds.salesToday,
+    sectionIds.services,
     sectionIds.terminalSetup,
     activeTerminalId,
     refreshTerminalMeta,

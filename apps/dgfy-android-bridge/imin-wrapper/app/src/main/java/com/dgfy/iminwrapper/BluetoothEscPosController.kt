@@ -7,23 +7,19 @@ import android.bluetooth.BluetoothClass
 import android.bluetooth.BluetoothDevice
 import android.content.Context
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.Color
 import android.os.Build
 import android.util.Log
 import androidx.core.content.ContextCompat
 import org.json.JSONArray
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.util.UUID
-import kotlin.math.roundToInt
 
 class BluetoothEscPosController(
     private val context: Context
 ) {
     private val appContext = context.applicationContext
+    private val logoProvider = ReceiptLogoProvider(appContext)
 
     @Volatile
     private var lastAttemptedDevice = ""
@@ -50,7 +46,11 @@ class BluetoothEscPosController(
         )
     }
 
-    fun printReceipt(receiptText: String, openDrawerAfterPrint: Boolean): BluetoothCommandResult {
+    fun printReceipt(
+        receiptText: String,
+        openDrawerAfterPrint: Boolean,
+        logoSource: String = ""
+    ): BluetoothCommandResult {
         val normalizedText = receiptText.trim()
         if (normalizedText.isEmpty()) {
             return BluetoothCommandResult(false, "Receipt text is empty")
@@ -58,7 +58,10 @@ class BluetoothEscPosController(
 
         val payload = mutableListOf<Byte>()
         payload.addAll(INIT_PRINTER_BYTES.toList())
-        receiptLogoRasterBytes()?.let { logoBytes ->
+        // Resolves the tenant's configured company icon when logoSource is reachable,
+        // falling back to the bundled DGFY drawable otherwise -- see issue #321.
+        // Previously this always printed the bundled drawable regardless of branding.
+        logoProvider.resolveRasterBytes(logoSource)?.let { logoBytes ->
             payload.addAll(ALIGN_CENTER_BYTES.toList())
             payload.addAll(logoBytes.toList())
             payload.addAll(byteArrayOf(0x0A, 0x0A).toList())
@@ -234,76 +237,6 @@ class BluetoothEscPosController(
         return listOf(name, address).filter { it.isNotBlank() }.joinToString(" ")
     }
 
-    private fun receiptLogoRasterBytes(): ByteArray? {
-        val source = BitmapFactory.decodeResource(appContext.resources, R.drawable.dgfy_receipt_logo)
-            ?: return null
-        val scaled = scaleBitmapToWidth(source, RECEIPT_LOGO_WIDTH_DOTS)
-        if (scaled !== source) {
-            source.recycle()
-        }
-
-        return try {
-            bitmapToEscPosRaster(scaled)
-        } finally {
-            scaled.recycle()
-        }
-    }
-
-    private fun scaleBitmapToWidth(source: Bitmap, targetWidth: Int): Bitmap {
-        if (source.width <= 0 || source.height <= 0 || source.width == targetWidth) {
-            return source
-        }
-
-        val ratio = targetWidth.toDouble() / source.width.toDouble()
-        val targetHeight = (source.height * ratio).roundToInt().coerceAtLeast(1)
-        return Bitmap.createScaledBitmap(source, targetWidth, targetHeight, true)
-    }
-
-    private fun bitmapToEscPosRaster(bitmap: Bitmap): ByteArray {
-        val widthBytes = (bitmap.width + 7) / 8
-        val height = bitmap.height
-        val imageBytes = ByteArray(widthBytes * height)
-
-        for (y in 0 until height) {
-            for (xByte in 0 until widthBytes) {
-                var packed = 0
-                for (bit in 0 until 8) {
-                    val x = xByte * 8 + bit
-                    if (x < bitmap.width && isDarkPixel(bitmap.getPixel(x, y))) {
-                        packed = packed or (0x80 shr bit)
-                    }
-                }
-                imageBytes[y * widthBytes + xByte] = packed.toByte()
-            }
-        }
-
-        return ByteArrayOutputStream().use { output ->
-            output.write(byteArrayOf(
-                0x1D,
-                0x76,
-                0x30,
-                0x00,
-                (widthBytes and 0xFF).toByte(),
-                ((widthBytes shr 8) and 0xFF).toByte(),
-                (height and 0xFF).toByte(),
-                ((height shr 8) and 0xFF).toByte()
-            ))
-            output.write(imageBytes)
-            output.toByteArray()
-        }
-    }
-
-    private fun isDarkPixel(pixel: Int): Boolean {
-        val alpha = Color.alpha(pixel)
-        if (alpha < 64) return false
-
-        val red = Color.red(pixel)
-        val green = Color.green(pixel)
-        val blue = Color.blue(pixel)
-        val luminance = (red * 0.299) + (green * 0.587) + (blue * 0.114)
-        return luminance < 190
-    }
-
     data class BluetoothCommandResult(
         val success: Boolean,
         val message: String
@@ -317,6 +250,5 @@ class BluetoothEscPosController(
         private val ALIGN_LEFT_BYTES = byteArrayOf(0x1B, 0x61, 0x00)
         private val PARTIAL_CUT_BYTES = byteArrayOf(0x1D, 0x56, 0x42, 0x00)
         private val DRAWER_KICK_BYTES = byteArrayOf(0x10, 0x14, 0x00, 0x00, 0x00)
-        private const val RECEIPT_LOGO_WIDTH_DOTS = 256
     }
 }

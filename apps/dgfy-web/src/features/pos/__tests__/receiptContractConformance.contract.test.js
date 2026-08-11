@@ -85,6 +85,40 @@ describe('RCPT-01 receipt contract conformance fixtures', () => {
     expect(businessIcon.getAttribute('src')).toContain('/uploads/storefront-assets/t1/profile.png');
   });
 
+  it('renders no icon, and prints with no logo, when no company icon is configured (issue #321)', () => {
+    // Preview (ReceiptPrintView -> renderPosReceiptHtml) and the physical iMin print
+    // path (printReceiptWithIminBridge) both derive the logo from the same
+    // businessSettings fields, so an unset icon must be a no-op on both, never a
+    // silent fallback to a hardcoded platform icon on the print side alone.
+    renderReceipt({
+      transaction: buildTransaction(),
+      businessSettings: { pos_business_name: 'Compliance Test Store' }
+    });
+
+    expect(screen.queryByRole('img', { name: 'Compliance Test Store icon' })).toBeNull();
+
+    const printCalls = [];
+    const printReceiptWithLogo = (...args) => {
+      printCalls.push(args);
+      return { success: true, message: 'Receipt printed.' };
+    };
+    window.iMinBridge = {
+      isIminWrapper: () => true,
+      printReceiptWithLogo,
+      printReceipt: () => ({ success: true, message: 'Receipt printed.' })
+    };
+
+    const printResult = printReceiptWithIminBridge({
+      transaction: buildTransaction(),
+      businessSettings: { pos_business_name: 'Compliance Test Store' },
+      openDrawerAfterPrint: false
+    });
+
+    expect(printResult.handled).toBe(true);
+    expect(printCalls).toHaveLength(1);
+    expect(printCalls[0][2]).toBe('');
+  });
+
   it('does not infer fiscal status from an invoice number prefix', () => {
     renderReceipt({
       transaction: buildTransaction({

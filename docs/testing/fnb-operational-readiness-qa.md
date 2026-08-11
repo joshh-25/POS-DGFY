@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-05-15
+last_reviewed: 2026-08-10
 applies_to: fnb_mode
 topic: fnb_operational_readiness_qa
 ---
@@ -41,19 +41,41 @@ The gate runs:
    - recipe shortfall rejection before commit/order creation;
    - F&B modifier validation;
    - Storefront idempotent retry behavior.
-4. Frontend contract coverage:
+4. F&B integrity regression coverage:
+   - conditional modifier migration rollback/reapply and index-error propagation;
+   - Storefront modifier quantity validation before unknown-key stripping.
+5. Frontend contract coverage:
    - kitchen queue display model;
    - POS terminal mode contracts;
-   - Storefront customer-safe F&B error messages.
-5. Production builds:
+   - Storefront customer-safe F&B error messages;
+   - F&B route, API, and receipt-context contracts;
+   - POS modifier and service-options edit-session isolation contracts.
+   - folder inheritance, item precedence, and inherited-group exclusion contracts.
+6. Production builds:
    - SKUpervisor;
    - POS;
    - Storefront.
-6. Governance gates:
+7. Deterministic browser contract:
+   - Storefront F&B item detail renders through the real Vite Storefront surface;
+   - conditional modifier activation/deactivation works through keyboard input;
+   - selected modifier quantity updates the customer-visible total;
+   - the contract is checked at desktop and 390px mobile widths;
+   - page errors, console errors, failed requests, HTTP 4xx/5xx responses,
+     error-boundary text, and blank roots fail the test with retained evidence.
+8. Governance gates:
    - architecture guardrails;
    - controller boundaries;
    - governed docs lint;
    - diff whitespace hygiene.
+
+The gate is also executed as a blocking `quality-checks` reusable workflow in
+`.github/workflows/pr-checks.yml`. CI additionally runs the complete backend
+test matrix, open-handle diagnostics for F&B contracts, a fresh migration
+runner schema smoke test, frontend lint/F&B contract tests/builds, the blocking
+deterministic browser contract (`npm run test:e2e:fnb-contract`), required-index
+auditing, and compatibility-seam validation. The browser contract uses a
+dedicated Playwright configuration that starts only the Storefront Vite server;
+it does not claim live tenant, payment, or POS lifecycle evidence.
 
 ## Manual Live QA Overlay
 

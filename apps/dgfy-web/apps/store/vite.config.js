@@ -8,7 +8,6 @@ import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../sentryV
 // perturb production build size/timing. See issue #282's Phase A baseline:
 // https://github.com/Sieitzz/dgfy-platform/issues/282#issuecomment-5242741151
 const shouldAnalyzeBundle = String(process.env.VITE_ANALYZE_BUNDLE || '').trim() === 'true';
-const { visualizer } = shouldAnalyzeBundle ? await import('rollup-plugin-visualizer') : { visualizer: null };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -79,7 +78,9 @@ const proxyTargets = {
   }
 };
 
-export default defineConfig({
+export default defineConfig(async () => {
+  const { visualizer } = shouldAnalyzeBundle ? await import('rollup-plugin-visualizer') : { visualizer: null };
+  return {
   root: __dirname,
   cacheDir: path.resolve(frontendRoot, 'node_modules/.vite-store'),
   base: normalizedBasePath,
@@ -148,4 +149,5 @@ export default defineConfig({
       }
     }
   }
+  };
 });

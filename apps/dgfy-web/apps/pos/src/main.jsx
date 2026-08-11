@@ -1,4 +1,4 @@
-import React, { Suspense, useEffect } from 'react';
+import React, { lazy, Suspense, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
 import TerminalPage from '../../../src/features/pos/pages/TerminalPage.jsx';
@@ -81,6 +81,10 @@ const devAutoLoginCompanyToken = String(import.meta.env.VITE_POS_DEV_COMPANY_TOK
 const devAutoLoginEmail = String(import.meta.env.VITE_POS_DEV_EMAIL || 'admin@test.com').trim();
 const devAutoLoginPassword = String(import.meta.env.VITE_POS_DEV_PASSWORD || 'Admin123!').trim();
 const POS_DEV_SERVICE_WORKER_RESET_MARKER = 'dgfy_pos_dev_service_worker_reset_v1';
+const DgfyAuthPage = lazy(() => import('../../../Pages/DgfyAuthPage.jsx'));
+const DgfyCompanySelect = lazy(() => import('../../../Pages/DgfyCompanySelect.jsx'));
+const RegisterCompany = lazy(() => import('../../../Pages/RegisterCompany.jsx'));
+const CompanyRegistrationStatus = lazy(() => import('../../../Pages/CompanyRegistrationStatus.jsx'));
 
 initBrowserSentry({ surface: 'pos' });
 initBrowserAnalytics({ surface: 'pos' });
@@ -212,6 +216,10 @@ const mountApp = () => {
               <Toaster position="top-right" />
               <Suspense fallback={<div className="min-h-screen bg-slate-100 p-6 text-sm text-slate-500">Loading...</div>}>
                 <Routes>
+                  <Route path="/dgfy/auth" element={<DgfyAuthPage />} />
+                  <Route path="/dgfy/companies" element={<DgfyCompanySelect targetSurface="pos" />} />
+                  <Route path="/register-company" element={<RegisterCompany />} />
+                  <Route path="/register-company/status/:applicationId" element={<CompanyRegistrationStatus />} />
                   <Route
                     path="/sales"
                     element={<SkupervisorSalesRedirect />}

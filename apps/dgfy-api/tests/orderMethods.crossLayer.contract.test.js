@@ -6,7 +6,7 @@ import {
     STOREFRONT_ORDER_METHODS,
     ORDER_METHOD_FEE_METHODS
 } from '../src/modules/shared/constants/orderMethods.js';
-import { POS_WORKFLOW_CONFIGS } from '../../frontend/src/features/pos/utils/posWorkflowResolver.js';
+import { POS_WORKFLOW_CONFIGS } from '../../dgfy-web/src/features/pos/utils/posWorkflowResolver.js';
 
 describe('order method cross-layer contracts', () => {
     it('keeps ALL_ORDER_METHODS identical to the pos_transactions order_method DB enum', async () => {

@@ -95,4 +95,14 @@ describe('POS category management contract', () => {
     expect(source).toContain('Number(option?.folder_id) === savedFolderId');
     expect(source).toContain('pos_category: matchedActiveCategory?.value');
   });
+
+  it('preserves service taxonomy when an existing service item is edited in POS', () => {
+    const source = fs.readFileSync(workspacePath, 'utf8');
+
+    expect(source).toContain("String(activeEditItem?.category || '').trim().toLowerCase() === 'service'");
+    expect(source).toContain("mode_item_preset: category === 'product' ? posItemPreset.key : 'service'");
+    expect(source).toContain("unit_of_measure: category === 'product' ? (posItemPreset.default_unit || 'pcs') : 'service'");
+    expect(source).toContain("fifo_enabled: category === 'product' ? posItemPreset.fifo_enabled !== false : false");
+    expect(source).toContain("max_capacity: category === 'service' ? 1 : Math.max(resolvedStock, 1)");
+  });
 });

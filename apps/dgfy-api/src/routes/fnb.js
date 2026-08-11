@@ -3,6 +3,7 @@ import {
   dashboard,
   listModifierGroups,
   createModifierGroup,
+  updateModifierGroup,
   listDiningAreas,
   createDiningArea,
   updateTableStatus,
@@ -12,6 +13,8 @@ import {
   upsertItemKitchenRoute,
   listItemModifierGroups,
   replaceItemModifierGroups,
+  listFolderModifierGroups,
+  replaceFolderModifierGroups,
   listChecks,
   createCheck,
   addCheckLine,
@@ -34,14 +37,19 @@ import { requireWorkflowCapability } from '../middleware/workflowModeCapability.
 import {
   validateFnbIncludeInactiveQuery,
   validateCreateFnbModifierGroup,
+  validateFnbModifierGroupIdParam,
+  validateUpdateFnbModifierGroup,
   validateCreateFnbDiningArea,
   validateFnbTableIdParam,
   validateUpdateFnbTableStatus,
   validateCreateFnbKitchenStation,
   validateFnbItemIdParam,
   validateFnbItemAssignmentQuery,
+  validateFnbFolderIdParam,
+  validateFnbFolderAssignmentQuery,
   validateUpsertFnbItemKitchenRoute,
   validateReplaceFnbItemModifierGroups,
+  validateReplaceFnbFolderModifierGroups,
   validateFnbChecksQuery,
   validateCreateFnbCheck,
   validateFnbCheckIdParam,
@@ -105,6 +113,7 @@ router.get('/dashboard', requireFnbDining, modePermission(PERMISSIONS.FNB.action
 
 router.get('/modifier-groups', requireMenuModifiers, modePermission(PERMISSIONS.FNB.actions.VIEW_MENU, PERMISSIONS.INVENTORY.actions.VIEW_ITEMS), validateFnbIncludeInactiveQuery, listModifierGroups);
 router.post('/modifier-groups', requireMenuModifiers, modePermission(PERMISSIONS.FNB.actions.MANAGE_MENU, PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateCreateFnbModifierGroup, createModifierGroup);
+router.put('/modifier-groups/:modifier_group_id', requireMenuModifiers, modePermission(PERMISSIONS.FNB.actions.MANAGE_MENU, PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateFnbModifierGroupIdParam, validateUpdateFnbModifierGroup, updateModifierGroup);
 
 router.get('/dining-areas', requireTableService, modePermission(PERMISSIONS.FNB.actions.VIEW_DINING, PERMISSIONS.POS.actions.VIEW_POS), validateFnbIncludeInactiveQuery, listDiningAreas);
 router.post('/dining-areas', requireTableService, modePermission(PERMISSIONS.FNB.actions.MANAGE_DINING, PERMISSIONS.POS.actions.TRANSACT_POS), validateCreateFnbDiningArea, createDiningArea);
@@ -116,6 +125,8 @@ router.get('/item-kitchen-routes', requireKitchenQueue, modePermission(PERMISSIO
 router.put('/item-kitchen-routes/:item_id', requireKitchenQueue, modePermission(PERMISSIONS.FNB.actions.MANAGE_MENU, PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateFnbItemIdParam, validateUpsertFnbItemKitchenRoute, upsertItemKitchenRoute);
 router.get('/item-modifier-groups', requireMenuModifiers, modePermission(PERMISSIONS.FNB.actions.VIEW_MENU, PERMISSIONS.INVENTORY.actions.VIEW_ITEMS), validateFnbItemAssignmentQuery, listItemModifierGroups);
 router.put('/item-modifier-groups/:item_id', requireMenuModifiers, modePermission(PERMISSIONS.FNB.actions.MANAGE_MENU, PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateFnbItemIdParam, validateReplaceFnbItemModifierGroups, replaceItemModifierGroups);
+router.get('/folder-modifier-groups', requireMenuModifiers, modePermission(PERMISSIONS.FNB.actions.VIEW_MENU, PERMISSIONS.INVENTORY.actions.VIEW_ITEMS), validateFnbFolderAssignmentQuery, listFolderModifierGroups);
+router.put('/folder-modifier-groups/:folder_id', requireMenuModifiers, modePermission(PERMISSIONS.FNB.actions.MANAGE_MENU, PERMISSIONS.INVENTORY.actions.EDIT_ITEMS), validateFnbFolderIdParam, validateReplaceFnbFolderModifierGroups, replaceFolderModifierGroups);
 
 router.get('/checks', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.VIEW_CHECKS, PERMISSIONS.POS.actions.VIEW_POS), validateFnbChecksQuery, listChecks);
 router.post('/checks', requireFnbDining, modePermission(PERMISSIONS.FNB.actions.MANAGE_CHECKS, PERMISSIONS.POS.actions.TRANSACT_POS), validateCreateFnbCheck, createCheck);

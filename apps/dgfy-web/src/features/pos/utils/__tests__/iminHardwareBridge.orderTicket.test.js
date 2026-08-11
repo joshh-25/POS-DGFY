@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
     formatIminOrderTicketText,
+    printOrderWithIminBridge,
     printReceiptWithIminBridge
 } from '../iminHardwareBridge.js';
 
@@ -33,13 +34,13 @@ describe('iMin order-ticket and receipt identity formatting', () => {
         expect(output).toContain('Order notes: Pack sauces separately');
     });
 
-    it('sends the configured tenant business icon before printing receipt text', () => {
-        const printBitmap = vi.fn(() => ({ success: true }));
+    it('sends the configured tenant business icon in the same print command as the receipt text', () => {
+        const printReceiptWithLogo = vi.fn(() => ({ success: true }));
         const printReceipt = vi.fn(() => ({ success: true }));
         globalThis.window = {
             iMinBridge: {
                 isIminWrapper: () => true,
-                printBitmap,
+                printReceiptWithLogo,
                 printReceipt
             }
         };
@@ -47,16 +48,105 @@ describe('iMin order-ticket and receipt identity formatting', () => {
         const outcome = printReceiptWithIminBridge({
             transaction: { pos_transaction_id: 1, lines: [] },
             businessSettings: {
-                storefront_profile_image_url: '/uploads/storefront-assets/t1/business-icon.png'
+                storefront_profile_image_url: 'https://cdn.dgfy.ph/uploads/storefront-assets/t1/business-icon.png'
             },
             openDrawerAfterPrint: false
         });
 
         expect(outcome.handled).toBe(true);
         expect(outcome.result.success).toBe(true);
-        expect(printBitmap).toHaveBeenCalledTimes(1);
-        expect(printBitmap.mock.calls[0][0]).toContain('/uploads/storefront-assets/t1/business-icon.png');
-        expect(printBitmap.mock.calls[0][1]).toMatchObject({ align: 'center', dither: true });
+        expect(printReceiptWithLogo).toHaveBeenCalledTimes(1);
+        expect(printReceiptWithLogo.mock.calls[0][1]).toBe(false);
+        expect(printReceiptWithLogo.mock.calls[0][2]).toBe(
+            'https://cdn.dgfy.ph/uploads/storefront-assets/t1/business-icon.png'
+        );
+        expect(printReceipt).not.toHaveBeenCalled();
+    });
+
+    it('sends an empty logo source when no company icon is configured', () => {
+        const printReceiptWithLogo = vi.fn(() => ({ success: true }));
+        globalThis.window = {
+            iMinBridge: {
+                isIminWrapper: () => true,
+                printReceiptWithLogo,
+                printReceipt: vi.fn(() => ({ success: true }))
+            }
+        };
+
+        printReceiptWithIminBridge({
+            transaction: { pos_transaction_id: 1, lines: [] },
+            businessSettings: {},
+            openDrawerAfterPrint: false
+        });
+
+        expect(printReceiptWithLogo.mock.calls[0][2]).toBe('');
+    });
+
+    it('does not forward a logo path native cannot resolve on its own', () => {
+        // No asset origin is configured in this test environment, so a root-relative
+        // upload path stays root-relative -- native can only fetch an absolute
+        // http(s) URL or decode a data: URI (see isNativeFetchableLogoSource).
+        const printReceiptWithLogo = vi.fn(() => ({ success: true }));
+        globalThis.window = {
+            iMinBridge: {
+                isIminWrapper: () => true,
+                printReceiptWithLogo,
+                printReceipt: vi.fn(() => ({ success: true }))
+            }
+        };
+
+        printReceiptWithIminBridge({
+            transaction: { pos_transaction_id: 1, lines: [] },
+            businessSettings: {
+                storefront_profile_image_url: '/uploads/storefront-assets/t1/business-icon.png'
+            },
+            openDrawerAfterPrint: false
+        });
+
+        expect(printReceiptWithLogo.mock.calls[0][2]).toBe('');
+    });
+
+    it('falls back to the plain two-arg printReceipt on a bridge without printReceiptWithLogo', () => {
+        const printReceipt = vi.fn(() => ({ success: true }));
+        globalThis.window = {
+            iMinBridge: {
+                isIminWrapper: () => true,
+                printReceipt
+            }
+        };
+
+        const outcome = printReceiptWithIminBridge({
+            transaction: { pos_transaction_id: 1, lines: [] },
+            businessSettings: {
+                storefront_profile_image_url: 'https://cdn.dgfy.ph/uploads/storefront-assets/t1/business-icon.png'
+            },
+            openDrawerAfterPrint: true
+        });
+
+        expect(outcome.handled).toBe(true);
+        expect(outcome.result.success).toBe(true);
         expect(printReceipt).toHaveBeenCalledTimes(1);
+        expect(printReceipt.mock.calls[0][1]).toBe(true);
+    });
+
+    it('prints order tickets without a logo, via the plain printReceipt call', () => {
+        const printReceiptWithLogo = vi.fn(() => ({ success: true }));
+        const printReceipt = vi.fn(() => ({ success: true }));
+        globalThis.window = {
+            iMinBridge: {
+                isIminWrapper: () => true,
+                printReceiptWithLogo,
+                printReceipt
+            }
+        };
+
+        printOrderWithIminBridge({
+            cart: [{ item_id: 1, item_name: 'Iced Tea', quantity: 1 }],
+            terminalId: 'COUNTER-01'
+        });
+
+        expect(printReceiptWithLogo).not.toHaveBeenCalled();
+        expect(printReceipt).toHaveBeenCalledTimes(1);
+        expect(printReceipt.mock.calls[0][1]).toBe(false);
     });
 });

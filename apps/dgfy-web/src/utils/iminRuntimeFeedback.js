@@ -81,5 +81,10 @@ export const posToast = {
   error: createToastMethod('error'),
   warning: createToastMethod('warning'),
   info: createToastMethod('info'),
-  message: createToastMethod('message')
+  message: createToastMethod('message'),
+  dismiss: (toastId) => {
+    if (!isIminWrapperRuntime()) {
+      sonnerToast.dismiss(toastId);
+    }
+  }
 };

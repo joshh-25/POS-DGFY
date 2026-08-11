@@ -80,16 +80,24 @@ const updateStatus = (repository, status, idempotencyKey = null) => {
 
 describe('POS manual delivery job status', () => {
     it('advances the manual delivery lifecycle and records an idempotent replay', async () => {
-        const repository = buildRepository();
+        const repository = buildRepository({
+            deliveryJob: {
+                status: 'assigned',
+                delivery_personnel_id: 21,
+                assigned_by: 12,
+                assigned_shift_id: 9,
+                assigned_at: new Date('2026-08-08T10:00:00.000Z')
+            }
+        });
 
-        const first = await updateStatus(repository, 'assigned', 'delivery-job-001');
-        const replay = await updateStatus(repository, 'assigned', 'delivery-job-001');
+        const first = await updateStatus(repository, 'picked_up', 'delivery-job-001');
+        const replay = await updateStatus(repository, 'picked_up', 'delivery-job-001');
 
         expect(first.success).toBe(true);
-        expect(first.data.delivery_job).toMatchObject({ status: 'assigned' });
+        expect(first.data.delivery_job).toMatchObject({ status: 'picked_up' });
         expect(first.data.status_transition).toMatchObject({
-            current_status: 'pending_dispatch',
-            requested_status: 'assigned',
+            current_status: 'assigned',
+            requested_status: 'picked_up',
             outcome: 'processed'
         });
         expect(replay.success).toBe(true);
@@ -97,14 +105,22 @@ describe('POS manual delivery job status', () => {
         expect(repository.audit).toHaveLength(1);
         expect(repository.audit[0].changes).toMatchObject({
             event: 'delivery_job_status_changed',
-            previous_status: 'pending_dispatch',
-            status: 'assigned',
+            previous_status: 'assigned',
+            status: 'picked_up',
             shift_id: 9
         });
     });
 
     it('requires the guarded lifecycle order and timestamps pickup and delivery', async () => {
-        const repository = buildRepository({ deliveryJob: { status: 'assigned' } });
+        const repository = buildRepository({
+            deliveryJob: {
+                status: 'assigned',
+                delivery_personnel_id: 21,
+                assigned_by: 12,
+                assigned_shift_id: 9,
+                assigned_at: new Date('2026-08-08T10:00:00.000Z')
+            }
+        });
 
         const pickedUp = await updateStatus(repository, 'picked_up');
         expect(pickedUp.success).toBe(true);
@@ -122,7 +138,14 @@ describe('POS manual delivery job status', () => {
     });
 
     it('rejects skipping a manual delivery lifecycle state without mutating the job', async () => {
-        const repository = buildRepository();
+        const repository = buildRepository({
+            deliveryJob: {
+                delivery_personnel_id: 21,
+                assigned_by: 12,
+                assigned_shift_id: 9,
+                assigned_at: new Date('2026-08-08T10:00:00.000Z')
+            }
+        });
 
         const result = await updateStatus(repository, 'delivered');
 
@@ -149,8 +172,32 @@ describe('POS manual delivery job status', () => {
         expect(repository.deliveryJob.status).toBe('pending_dispatch');
     });
 
+    it('keeps provider-owned delivery jobs read-only in POS', async () => {
+        const repository = buildRepository({
+            deliveryJob: {
+                provider: 'provider_x',
+                status: 'assigned'
+            }
+        });
+
+        const result = await updateStatus(repository, 'picked_up');
+
+        expect(result.success).toBe(false);
+        expect(result.error.details.reason_code).toBe('MANUAL_DELIVERY_JOB_REQUIRED');
+        expect(repository.deliveryJob.status).toBe('assigned');
+        expect(repository.audit).toHaveLength(0);
+    });
+
     it('treats a repeated current status as a safe no-op', async () => {
-        const repository = buildRepository({ deliveryJob: { status: 'delivered' } });
+        const repository = buildRepository({
+            deliveryJob: {
+                status: 'delivered',
+                delivery_personnel_id: 21,
+                assigned_by: 12,
+                assigned_shift_id: 9,
+                assigned_at: new Date('2026-08-08T10:00:00.000Z')
+            }
+        });
 
         const result = await updateStatus(repository, 'delivered');
 

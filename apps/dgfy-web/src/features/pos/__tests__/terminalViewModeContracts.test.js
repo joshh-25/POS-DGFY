@@ -7,6 +7,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const terminalPagePath = path.resolve(__dirname, '../pages/TerminalPage.jsx');
+const terminalPageDialogLayerPath = path.resolve(__dirname, '../components/TerminalPageDialogLayer.jsx');
 const terminalWorkspaceSidebarPath = path.resolve(__dirname, '../components/TerminalWorkspaceSidebar.jsx');
 const terminalSidebarPanelPath = path.resolve(__dirname, '../components/TerminalSidebarPanel.jsx');
 const terminalOperationsWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
@@ -44,7 +45,9 @@ describe('POS terminal view-mode contracts', () => {
   let posServiceContent = '';
 
   beforeAll(() => {
-    terminalPageContent = fs.readFileSync(terminalPagePath, 'utf8');
+    terminalPageContent = [terminalPagePath, terminalPageDialogLayerPath]
+      .map((sourcePath) => fs.readFileSync(sourcePath, 'utf8'))
+      .join('\n');
     terminalWorkspaceSidebarContent = fs.readFileSync(terminalWorkspaceSidebarPath, 'utf8');
     terminalSidebarPanelContent = fs.readFileSync(terminalSidebarPanelPath, 'utf8');
     terminalOperationsWorkspaceContent = fs.readFileSync(terminalOperationsWorkspacePath, 'utf8');
@@ -126,7 +129,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("settingsPayload?.tenant_onboarding_state?.value || 'not_started'");
     expect(terminalPageContent).toContain("onboardingCompleted: onboardingState === 'completed'");
     expect(terminalPageContent).toContain('const setupFlowActive = tenantSetupRequestedOrRequired');
-    expect(terminalPageContent).toContain("const PosTenantSetupModal = lazyWithChunkRetry(() => import('../components/PosTenantSetupModal.jsx'));");
+    expect(terminalPageContent).toContain("const PosTenantSetupModal = lazyWithChunkRetry(() => import('./PosTenantSetupModal.jsx'));");
     expect(terminalPageContent).toContain('if (tenantSetupStep === POS_TERMINAL_SETUP_STEPS.COMPLETE) {');
     expect(terminalPageContent).toContain('clearTenantSetupQueryState();');
     expect(terminalPageContent).not.toContain('shouldForceSelectedTenantOnboarding');
@@ -189,7 +192,7 @@ describe('POS terminal view-mode contracts', () => {
   });
 
   it('gives a saved full-auth terminal lock precedence over onboarding state', () => {
-    expect(terminalPageContent).toContain("if (storedLockActiveAtStart && ['full_auth', 'shift_closed'].includes(storedReasonAtStart)) {");
+    expect(terminalPageContent).toContain("if (!dgfyTenantId && storedLockActiveAtStart && ['full_auth', 'shift_closed'].includes(storedReasonAtStart)) {");
     expect(terminalPageContent).toContain("if (storedLockReason === 'full_auth' || storedLockReason === 'shift_closed') {");
     expect(terminalPageContent).toContain('setTerminalUnlockRequired(false);');
     expect(terminalPageContent).toContain('setTerminalUnlockModalOpen(false);');
@@ -216,7 +219,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('const selectedPermissionList = parseUserPermissions(effectiveSelectedTenantUser);');
     expect(terminalPageContent).toContain("selectedPermissionList.includes('settings:view')");
     expect(terminalPageContent).toContain("selectedPermissionList.includes('users:view')");
-    expect(terminalPageContent).toContain(': fetchPosSettingsBootstrap(SUPPRESS_GLOBAL_ERROR_TOAST).catch(() => ({})),');
+    expect(terminalPageContent).toContain(': fetchPosSettingsBootstrap(SUPPRESS_GLOBAL_ERROR_TOAST),');
     expect(terminalPageContent).toContain(': Promise.resolve(effectiveSelectedTenantUser ? [effectiveSelectedTenantUser] : [])');
     expect(terminalPageContent).toContain('const selectedTenantSetupState = buildTenantSetupStateSnapshot({');
     expect(terminalPageContent).toContain('&& selectedTenantSetupStep !== POS_TERMINAL_SETUP_STEPS.COMPLETE');
@@ -267,7 +270,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain('const [drawerOpen, setDrawerOpen] = useState(() => readStoredTerminalLock());');
     expect(terminalPageContent).toContain('setStoredTerminalLock(true);');
     expect(terminalPageContent).toContain('setStoredTerminalLock(false);');
-    expect(terminalPageContent).toContain("if (storedLockActiveAtStart && ['full_auth', 'shift_closed'].includes(storedReasonAtStart)) {");
+    expect(terminalPageContent).toContain("if (!dgfyTenantId && storedLockActiveAtStart && ['full_auth', 'shift_closed'].includes(storedReasonAtStart)) {");
     expect(terminalPageContent).toContain("api.post('/auth/logout')");
     expect(terminalPageContent).toContain('logoutDgfyAccount(activeDgfyToken)');
     expect(terminalPageContent).toContain("reason: 'terminal_lock'");
@@ -364,7 +367,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("const canCloseShift = hasPermission('pos:shift_close') || hasPermission('pos:close_day');");
     expect(terminalPageContent).toContain('canCloseShift={canCloseShift}');
     expect(terminalPageContent).toContain('canCloseDay={canCloseDay}');
-    expect(terminalPageContent).toContain('const handleCloseDay = useCallback(() => {');
+    expect(terminalPageContent).toContain('const handleCloseDay = useCallback(async () => {');
     expect(terminalPageContent).toContain('setZReadingCloseConfirmOpen(true);');
     expect(terminalPageContent).toContain('closePosDay(null, { dayClosePin: zReadingClosePin })');
     expect(terminalPageContent).toContain('<ZReadingPrintView');
@@ -387,6 +390,10 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsWorkspaceContent).toContain("case 'reports'");
     expect(terminalOperationsWorkspaceContent).toContain("case 'incoming_queue'");
     expect(terminalOperationsWorkspaceContent).toContain("case 'terminal_setup'");
+    expect(terminalOperationsWorkspaceContent).toContain("case 'services'");
+    expect(terminalOperationsWorkspaceContent).toContain("title: 'Services'");
+    expect(terminalWorkspaceSidebarContent).toContain('testId="pos-nav-services"');
+    expect(terminalWorkspaceSidebarContent).toContain("onClick={() => onSelectViewMode('services')}");
   });
 
   it('adds report navigation with horizontal report tabs', () => {

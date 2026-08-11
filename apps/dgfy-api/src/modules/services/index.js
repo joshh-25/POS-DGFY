@@ -2,6 +2,7 @@ import { serviceRepository } from './repositories/serviceRepository.js';
 import { createServiceOptionRepository } from './repositories/serviceOptionRepository.js';
 import * as emailService from '../../services/emailService.js';
 import { inventoryStockCommandService } from '../inventory/index.js';
+import { posRepository } from '../pos/repositories/posRepository.js';
 import { buildManageServiceOptionGroupsUseCase } from './usecases/manageServiceOptionGroupsUseCase.js';
 import { buildCalculateServiceQuoteUseCase } from './usecases/calculateServiceQuoteUseCase.js';
 import {
@@ -51,7 +52,8 @@ export const updateServiceBookingStatusUseCase = buildUpdateServiceBookingStatus
 export const getServiceBookingByReferenceUseCase = buildGetServiceBookingByReferenceUseCase({ serviceRepository });
 export const settleServiceBookingUseCase = buildSettleServiceBookingUseCase({
     serviceRepository,
-    inventoryCommandService: inventoryStockCommandService
+    inventoryCommandService: inventoryStockCommandService,
+    posRepository
 });
 export const claimServiceBookingUseCase = buildClaimServiceBookingUseCase({ serviceRepository });
 export const serviceDashboardUseCase = buildServiceDashboardUseCase({ serviceRepository });

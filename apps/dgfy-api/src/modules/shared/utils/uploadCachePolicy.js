@@ -11,8 +11,11 @@ export const isVersionedOptimizedUpload = (filePath) => {
   const normalizedPath = String(filePath || '').trim();
   if (!normalizedPath) return false;
 
-  const filename = path.basename(normalizedPath);
-  const parentFolder = path.basename(path.dirname(normalizedPath));
+  // path.win32 accepts both '/' and '\' as separators, unlike the
+  // OS-dependent default export, so uploads recorded with Windows-style
+  // paths parse correctly on Linux CI/production runners too.
+  const filename = path.win32.basename(normalizedPath);
+  const parentFolder = path.win32.basename(path.win32.dirname(normalizedPath));
   return (
     OPTIMIZED_VARIANT_FILE_PATTERN.test(filename)
     && VERSIONED_ASSET_FOLDER_PATTERN.test(parentFolder)

@@ -9,6 +9,7 @@ describe('tenantLocationRepository permanent-delete reference guard', () => {
     });
 
     it('fails closed when a reference model is missing from the active tenant context', async () => {
+        const [firstSource] = TENANT_LOCATION_REFERENCE_SOURCES;
         jest.spyOn(dbStore, 'getStore').mockReturnValue({});
 
         await expect(
@@ -16,25 +17,35 @@ describe('tenantLocationRepository permanent-delete reference guard', () => {
         ).rejects.toMatchObject({
             name: 'TenantLocationReferenceGuardUnavailableError',
             code: 'TENANT_LOCATION_REFERENCE_GUARD_UNAVAILABLE',
-            sourceKey: 'deliveryJobs',
-            modelName: 'DeliveryJob',
+            sourceKey: firstSource.key,
+            modelName: firstSource.modelName,
             reason: 'model_missing_from_tenant_context'
         });
     });
 
     it('fails closed when a reference model cannot count rows', async () => {
-        jest.spyOn(dbStore, 'getStore').mockReturnValue({
-            DeliveryJob: { count: jest.fn().mockResolvedValue(0) },
-            ItemLocationStock: {}
-        });
+        // Build a fully working mock store from the manifest so adding a new
+        // reference source can't silently break this test by tripping the
+        // "missing from tenant context" guard before reaching the target model.
+        const targetSource = TENANT_LOCATION_REFERENCE_SOURCES.find(
+            (source) => source.key === 'itemLocationStocks'
+        );
+        const tenantModels = Object.fromEntries(
+            TENANT_LOCATION_REFERENCE_SOURCES.map((source) => [
+                source.modelName,
+                { count: jest.fn().mockResolvedValue(0) }
+            ])
+        );
+        tenantModels[targetSource.modelName] = {};
+        jest.spyOn(dbStore, 'getStore').mockReturnValue(tenantModels);
 
         await expect(
             tenantLocationRepository.countOperationalReferences(9)
         ).rejects.toMatchObject({
             name: 'TenantLocationReferenceGuardUnavailableError',
             code: 'TENANT_LOCATION_REFERENCE_GUARD_UNAVAILABLE',
-            sourceKey: 'itemLocationStocks',
-            modelName: 'ItemLocationStock',
+            sourceKey: targetSource.key,
+            modelName: targetSource.modelName,
             reason: 'model_count_unavailable'
         });
     });

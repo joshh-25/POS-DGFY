@@ -44,14 +44,16 @@ describe('storefront cart storage', () => {
       name: 'Inasal',
       quantity: 2,
       price: '120',
-      line_modifiers: [{ modifier_group_id: 1, modifier_option_id: 2, option_name: 'Extra rice', price_delta: '15' }]
+      has_modifier_groups: true,
+      line_modifiers: [{ modifier_group_id: 1, modifier_option_id: 2, option_name: 'Extra rice', price_delta: '15', quantity: 3 }]
     })).toMatchObject({
       item_id: 12,
       cart_line_id: '12:default',
       name: 'Inasal',
       quantity: 2,
       price: 120,
-      line_modifiers: [{ modifier_group_id: 1, modifier_option_id: 2, option_name: 'Extra rice', price_delta: 15 }]
+      has_modifier_groups: true,
+      line_modifiers: [{ modifier_group_id: 1, modifier_option_id: 2, option_name: 'Extra rice', price_delta: 15, quantity: 3 }]
     });
     expect(normalizeStorefrontCartLine({ item_id: 12, quantity: 0 })).toBeNull();
   });
@@ -161,7 +163,7 @@ describe('storefront cart storage', () => {
   });
 
   it('preserves services booking cart fields for refresh restore', () => {
-    installLocalStorage();
+    const { storage } = installLocalStorage();
     const written = writeStorefrontCartSnapshot({
       storeSlug: 'abeezee-bb983b',
       mode: 'services',
@@ -202,5 +204,6 @@ describe('storefront cart storage', () => {
       cart: [{ category: 'service', serviceAreaLabel: 'Iloilo City' }]
     });
     expect(readStorefrontCartSnapshot('abeezee-bb983b', { mode: 'fnb' })).toBeNull();
+    expect(storage.has(buildStorefrontCartStorageKey('abeezee-bb983b'))).toBe(true);
   });
 });

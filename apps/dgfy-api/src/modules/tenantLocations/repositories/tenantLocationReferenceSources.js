@@ -10,6 +10,14 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         where: (locationId) => ({ location_id: locationId })
     },
     {
+        key: 'deliveryPersonnel',
+        label: 'delivery personnel',
+        modelName: 'DeliveryPersonnel',
+        association: 'DeliveryPersonnel.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
         key: 'itemLocationStocks',
         label: 'item location stock rows',
         modelName: 'ItemLocationStock',
@@ -30,6 +38,22 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         label: 'FIFO batches',
         modelName: 'FIFOBatch',
         association: 'FIFOBatch.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        key: 'fnbModifierGroupLocationAvailability',
+        label: 'F&B modifier group location availability overrides',
+        modelName: 'FnbModifierGroupLocationAvailability',
+        association: 'FnbModifierGroupLocationAvailability.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        key: 'fnbModifierOptionLocationAvailability',
+        label: 'F&B modifier option location availability overrides',
+        modelName: 'FnbModifierOptionLocationAvailability',
+        association: 'FnbModifierOptionLocationAvailability.location',
         foreignKeys: ['location_id'],
         where: (locationId) => ({ location_id: locationId })
     },

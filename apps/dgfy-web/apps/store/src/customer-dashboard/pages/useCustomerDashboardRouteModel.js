@@ -68,7 +68,9 @@ export function useCustomerDashboardRouteModel({
     onOpenStorefront: actions.openStorefrontFromAccountEntry,
     onSubmitCustomerReview: actions.submitAccountReviewFromDashboard,
     onOpenBusinessInventory: actions.handleOpenBusinessInventory,
-    onOpenBusinessPos: actions.handleOpenBusinessPos
+    onOpenBusinessPos: actions.handleOpenBusinessPos,
+    onGetBusinessDayCloseStatus: actions.getOwnBusinessDayCloseStatus,
+    onConfigureBusinessDayClosePin: actions.configureOwnBusinessDayClosePin
   }), [
     actions.clearSavedCustomerDetailsForDevice,
     actions.handleAcceptDgfyCompanyInvitation,
@@ -81,6 +83,8 @@ export function useCustomerDashboardRouteModel({
     actions.handleMarkNotificationRead,
     actions.handleOpenBusinessInventory,
     actions.handleOpenBusinessPos,
+    actions.configureOwnBusinessDayClosePin,
+    actions.getOwnBusinessDayCloseStatus,
     actions.handleRejectDgfyCompanyInvitation,
     actions.handleRequestCashout,
     actions.handleSaveAccountAddress,

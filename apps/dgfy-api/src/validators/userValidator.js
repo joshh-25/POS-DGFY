@@ -120,13 +120,20 @@ export const updatePosApprovalPinSchema = Joi.object({
 });
 
 export const updatePosDayClosePinSchema = Joi.object({
-  pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).optional().messages({
-    'string.pattern.base': 'POS Day Close PIN must contain 4 to 12 digits'
+  clear: Joi.boolean().valid(true).required()
+}).messages({
+  'any.only': 'Master Admin can only reset a cashier Day Close PIN',
+  'any.required': 'PIN reset confirmation is required'
+});
+
+export const updateOwnPosDayClosePinSchema = Joi.object({
+  currentPassword: Joi.string().required().messages({
+    'any.required': 'Current account password is required'
   }),
-  clear: Joi.boolean().valid(true).optional()
-}).xor('pin', 'clear').messages({
-  'object.xor': 'Provide either pin or clear',
-  'object.missing': 'Provide either pin or clear'
+  pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).required().messages({
+    'string.pattern.base': 'POS Day Close PIN must contain 4 to 12 digits',
+    'any.required': 'POS Day Close PIN is required'
+  })
 });
 
 /**
@@ -290,6 +297,21 @@ export const validateUpdatePosApprovalPin = (req, res, next) => {
 
 export const validateUpdatePosDayClosePin = (req, res, next) => {
   const { error, value } = updatePosDayClosePinSchema.validate(req.body, { abortEarly: false });
+  if (error) {
+    return res.status(422).json({
+      success: false,
+      data: null,
+      message: 'Validation failed',
+      errors: error.details.map((detail) => ({ field: detail.path[0], message: detail.message })),
+      timestamp: new Date().toISOString()
+    });
+  }
+  req.validatedData = value;
+  next();
+};
+
+export const validateUpdateOwnPosDayClosePin = (req, res, next) => {
+  const { error, value } = updateOwnPosDayClosePinSchema.validate(req.body, { abortEarly: false });
   if (error) {
     return res.status(422).json({
       success: false,

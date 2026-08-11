@@ -11,6 +11,7 @@ let iminNativeDriver;
 beforeEach(async () => {
     vi.resetModules();
     reportPosDeviceClientResult.mockReset();
+    reportPosDeviceClientResult.mockResolvedValue({ success: true });
     delete globalThis.window;
     ({ iminNativeDriver } = await import('../iminNativeDriver.js'));
 });
@@ -91,5 +92,57 @@ describe('iminNativeDriver', () => {
         const outcome = await iminNativeDriver.printReceipt({ transaction: { pos_transaction_id: 1, lines: [] } });
 
         expect(outcome.success).toBe(true);
+        expect(outcome.auditConfirmed).toBe(true);
+    });
+
+    it('printReceipt(): records both receipt and drawer audits for a cash sale with an active shift', async () => {
+        const printReceipt = vi.fn(() => ({ success: true, message: 'Receipt print command sent.' }));
+        withBridge({ printReceipt });
+
+        const outcome = await iminNativeDriver.printReceipt({
+            transaction: { pos_transaction_id: 41, lines: [] },
+            transactionId: 41,
+            shiftId: 12,
+            terminalId: 'COUNTER-01',
+            openDrawerAfterPrint: true
+        });
+
+        expect(printReceipt).toHaveBeenCalledWith(expect.any(String), true);
+        expect(reportPosDeviceClientResult).toHaveBeenCalledTimes(2);
+        expect(reportPosDeviceClientResult).toHaveBeenNthCalledWith(1, expect.objectContaining({
+            operation: 'print_receipt',
+            transactionId: 41
+        }));
+        expect(reportPosDeviceClientResult).toHaveBeenNthCalledWith(2, expect.objectContaining({
+            operation: 'open_drawer',
+            shiftId: 12,
+            transactionId: 41
+        }));
+        expect(outcome).toEqual(expect.objectContaining({ success: true, auditConfirmed: true }));
+    });
+
+    it('printReceipt(): preserves physical success and flags an unconfirmed backend audit', async () => {
+        withBridge({
+            printReceipt: () => ({ success: true, message: 'Receipt print command sent.' })
+        });
+        reportPosDeviceClientResult.mockRejectedValue(new Error('backend unavailable'));
+
+        const outcome = await iminNativeDriver.printReceipt({ transaction: { pos_transaction_id: 1, lines: [] } });
+
+        expect(outcome.success).toBe(true);
+        expect(outcome.auditConfirmed).toBe(false);
+        expect(outcome.reasonCode).toBe('CLIENT_AUDIT_UNCONFIRMED');
+    });
+
+    it('openDrawer(): refuses to pulse without an active shift audit context', async () => {
+        const openCashDrawer = vi.fn(() => ({ success: true }));
+        withBridge({ openCashDrawer });
+
+        const outcome = await iminNativeDriver.openDrawer({ terminalId: 'COUNTER-01' });
+
+        expect(outcome.success).toBe(false);
+        expect(outcome.reasonCode).toBe('SHIFT_REQUIRED');
+        expect(outcome.auditConfirmed).toBe(false);
+        expect(openCashDrawer).not.toHaveBeenCalled();
     });
 });

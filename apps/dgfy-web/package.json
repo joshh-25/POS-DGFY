@@ -21,6 +21,7 @@
     "lint": "eslint src apps --ext .js,.jsx",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:fnb-contract": "playwright test --config=playwright.fnb-contract.config.js",
     "test:e2e:headed": "playwright test --headed",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:debug": "playwright test --debug",

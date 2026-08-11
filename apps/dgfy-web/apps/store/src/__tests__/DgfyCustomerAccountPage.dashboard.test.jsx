@@ -86,6 +86,8 @@ const renderDashboard = (props = {}) => render(
     activeOrderCount={accountPanel.orders.length}
     resolveBusinessAssetUrl={(value) => value}
     onOpenBusinessPos={vi.fn()}
+    onGetBusinessDayCloseStatus={vi.fn().mockResolvedValue({ canCloseDay: true, pinConfigured: false })}
+    onConfigureBusinessDayClosePin={vi.fn().mockResolvedValue(undefined)}
     {...props}
   />
 );
@@ -177,6 +179,50 @@ describe('DGFY customer account dashboard', () => {
     expect(screen.getByText('Cashier')).toBeTruthy();
   });
 
+  it('sets a Day Close PIN directly in the selected business dialog without opening POS', async () => {
+    const onConfigureBusinessDayClosePin = vi.fn().mockResolvedValue(undefined);
+    const onGetBusinessDayCloseStatus = vi.fn().mockResolvedValue({ canCloseDay: true, pinConfigured: false });
+    renderDashboard({ onConfigureBusinessDayClosePin, onGetBusinessDayCloseStatus });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Business Premium' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Day Close' }));
+
+    expect(await screen.findByRole('heading', { name: 'Day Close' })).toBeTruthy();
+    expect(screen.getByText('You are authorized. Set your personal PIN to confirm Z-readings.')).toBeTruthy();
+    expect(screen.queryByText('Open DGFY POS?')).toBeNull();
+    expect(screen.getByRole('button', { name: 'Set my PIN' }).disabled).toBe(true);
+    expect(screen.getByLabelText('Current account password').getAttribute('type')).toBe('password');
+    fireEvent.click(screen.getByRole('button', { name: 'Show current account password' }));
+    expect(screen.getByLabelText('Current account password').getAttribute('type')).toBe('text');
+    expect(screen.getByLabelText('New Day Close PIN').getAttribute('type')).toBe('password');
+    fireEvent.click(screen.getByRole('button', { name: 'Show new day close pin' }));
+    expect(screen.getByLabelText('New Day Close PIN').getAttribute('type')).toBe('text');
+    fireEvent.change(screen.getByLabelText('Current account password'), { target: { value: 'current-password' } });
+    expect(screen.getByLabelText('Current account password').value).toBe('current-password');
+    fireEvent.change(screen.getByLabelText('New Day Close PIN'), { target: { value: '1234' } });
+    expect(screen.getByRole('button', { name: 'Set my PIN' }).disabled).toBe(true);
+    fireEvent.change(screen.getByLabelText('Confirm new PIN'), { target: { value: '1234' } });
+    expect(screen.getByRole('button', { name: 'Set my PIN' }).disabled).toBe(false);
+    fireEvent.click(screen.getByRole('button', { name: 'Set my PIN' }));
+
+    await waitFor(() => expect(onConfigureBusinessDayClosePin).toHaveBeenCalledWith(
+      expect.objectContaining({ tenant_id: 'tenant-1' }),
+      { currentPassword: 'current-password', pin: '1234' }
+    ));
+  });
+
+  it('explains that manager authorization is required before a cashier can set a Day Close PIN', async () => {
+    const onGetBusinessDayCloseStatus = vi.fn().mockResolvedValue({ canCloseDay: false, pinConfigured: false });
+    renderDashboard({ onGetBusinessDayCloseStatus });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Business Premium' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Day Close' }));
+
+    expect((await screen.findByRole('status')).textContent).toContain('Your manager must enable Can close day and generate Z-reading before you can create a PIN.');
+    expect(screen.queryByLabelText('Current account password')).toBeNull();
+    expect(screen.queryByLabelText('New Day Close PIN')).toBeNull();
+  });
+
   it('opens notifications, marks single entries read, and marks all entries read', () => {
     const onTrackReference = vi.fn();
     const onMarkNotificationRead = vi.fn();
@@ -257,7 +303,7 @@ describe('DGFY customer account dashboard', () => {
     expect(drawer.style.zIndex).toBe('1400');
   });
 
-  it('renders the premium business grid with direct POS access and storefront assets', () => {
+  it('keeps Storefront open until the user confirms a new POS tab', () => {
     const onOpenBusinessPos = vi.fn();
     renderDashboard({
       onOpenBusinessPos,
@@ -275,7 +321,19 @@ describe('DGFY customer account dashboard', () => {
     expect(screen.getByAltText('Space Bar profile')).toBeTruthy();
 
     fireEvent.click(screen.getByRole('button', { name: 'Go to POS' }));
-    expect(onOpenBusinessPos).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: 'tenant-1' }));
+    expect(screen.getByRole('dialog', { name: 'Open DGFY POS?' })).toBeTruthy();
+    expect(onOpenBusinessPos).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Stay on Storefront' }));
+    expect(screen.queryByRole('dialog', { name: 'Open DGFY POS?' })).toBeNull();
+    expect(onOpenBusinessPos).not.toHaveBeenCalled();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Go to POS' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Open POS in new tab' }));
+    expect(onOpenBusinessPos).toHaveBeenCalledWith(
+      expect.objectContaining({ tenant_id: 'tenant-1' }),
+      { openInNewTab: true }
+    );
     expect(screen.queryByRole('button', { name: 'Go to Inventory' })).toBeNull();
   });
 });

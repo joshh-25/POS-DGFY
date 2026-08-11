@@ -10,6 +10,9 @@ import {
 import { resolvePosDeviceDriver } from './integrations/resolvePosDeviceDriver.js';
 import posTerminalPairingService from './services/posTerminalPairingService.js';
 import { employeeCreditService } from '../employeeCredit/index.js';
+import { serviceRepository } from '../services/repositories/serviceRepository.js';
+import { createServiceOptionRepository } from '../services/repositories/serviceOptionRepository.js';
+import { buildCalculateServiceQuoteUseCase } from '../services/usecases/calculateServiceQuoteUseCase.js';
 import { handleCommerceOrderLifecycleUseCase } from '../commercePayments/index.js';
 import * as userService from '../../services/userService.js';
 import * as authService from '../../services/authService.js';
@@ -31,6 +34,7 @@ import {
     buildUpdateESalesReportStatusUseCase,
     buildUpsertFiscalTerminalRegistrationUseCase,
     buildListFiscalTerminalRegistrationsUseCase,
+    buildGetDayCloseReadinessUseCase,
     buildCloseDayZReadingUseCase,
     buildGetDailyZReadingUseCase,
     buildGetCurrentXReadingUseCase,
@@ -52,9 +56,11 @@ import {
     buildForceCloseStaleTerminalShiftUseCase,
     buildGetTerminalTodayDashboardUseCase,
     buildListIncomingOnlineOrdersUseCase,
+    buildListActiveDeliveryPersonnelUseCase,
     buildGetAdminLocationMonitorUseCase,
     buildCollectCashPickupOrderUseCase,
     buildCollectCashDeliveryOrderUseCase,
+    buildAssignDeliveryPersonnelUseCase,
     buildUpdateDeliveryJobStatusUseCase,
     buildUpdateOnlineOrderStatusUseCase,
     buildVerifyPosTerminalUseCase,
@@ -80,10 +86,16 @@ import {
 
 export const listPosCatalogUseCase = buildListPosCatalogUseCase({ posRepository });
 export const scanPosBarcodeUseCase = buildScanPosBarcodeUseCase({ posRepository });
+const posServiceOptionRepository = createServiceOptionRepository();
+const posCalculateServiceQuoteUseCase = buildCalculateServiceQuoteUseCase({
+    serviceRepository,
+    serviceOptionRepository: posServiceOptionRepository
+});
 export const checkoutPosUseCase = buildCheckoutPosUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService,
-    employeeCreditService
+    employeeCreditService,
+    calculateServiceQuoteUseCase: posCalculateServiceQuoteUseCase
 });
 export const listPosDiscountApproversUseCase = buildListPosDiscountApproversUseCase({ posRepository });
 export const verifyPosDiscountApprovalUseCase = buildVerifyPosDiscountApprovalUseCase({ posRepository });
@@ -103,6 +115,7 @@ export const verifyFiscalEventLedgerUseCase = buildVerifyFiscalEventLedgerUseCas
 export const updateESalesReportStatusUseCase = buildUpdateESalesReportStatusUseCase({ posRepository });
 export const upsertFiscalTerminalRegistrationUseCase = buildUpsertFiscalTerminalRegistrationUseCase({ posRepository });
 export const listFiscalTerminalRegistrationsUseCase = buildListFiscalTerminalRegistrationsUseCase({ posRepository });
+export const getDayCloseReadinessUseCase = buildGetDayCloseReadinessUseCase({ posRepository });
 export const closeDayZReadingUseCase = buildCloseDayZReadingUseCase({ posRepository });
 export const getDailyZReadingUseCase = buildGetDailyZReadingUseCase({ posRepository });
 export const getCurrentXReadingUseCase = buildGetCurrentXReadingUseCase({ posRepository });
@@ -133,9 +146,11 @@ export const closeTerminalShiftUseCase = buildCloseTerminalShiftUseCase({ posRep
 export const forceCloseStaleTerminalShiftUseCase = buildForceCloseStaleTerminalShiftUseCase({ posRepository });
 export const getTerminalTodayDashboardUseCase = buildGetTerminalTodayDashboardUseCase({ posRepository });
 export const listIncomingOnlineOrdersUseCase = buildListIncomingOnlineOrdersUseCase({ posRepository });
+export const listActiveDeliveryPersonnelUseCase = buildListActiveDeliveryPersonnelUseCase({ posRepository });
 export const getAdminLocationMonitorUseCase = buildGetAdminLocationMonitorUseCase({ posRepository });
 export const collectCashPickupOrderUseCase = buildCollectCashPickupOrderUseCase({ posRepository });
 export const collectCashDeliveryOrderUseCase = buildCollectCashDeliveryOrderUseCase({ posRepository });
+export const assignDeliveryPersonnelUseCase = buildAssignDeliveryPersonnelUseCase({ posRepository });
 export const updateDeliveryJobStatusUseCase = buildUpdateDeliveryJobStatusUseCase({ posRepository });
 export const updateOnlineOrderStatusUseCase = buildUpdateOnlineOrderStatusUseCase({
     posRepository,

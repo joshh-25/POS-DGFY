@@ -19,6 +19,11 @@ const FnbItemModifierGroup = sequelize.define('FnbItemModifierGroup', {
     type: DataTypes.BOOLEAN,
     allowNull: true
   },
+  is_excluded: {
+    type: DataTypes.BOOLEAN,
+    allowNull: false,
+    defaultValue: false
+  },
   sort_order: {
     type: DataTypes.INTEGER,
     allowNull: false,

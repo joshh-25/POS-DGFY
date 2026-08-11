@@ -211,20 +211,22 @@ describe('serviceValidator booking schemas', () => {
     });
 
     describe('validateSettleServiceBooking (POST /services/bookings/:booking_id/settle)', () => {
-        it('accepts an empty payload and defaults payment_type to cash', () => {
+        it('rejects settlement without shift, terminal, and location context', () => {
             const req = { body: {} };
             const { res, next } = runMiddleware(validateSettleServiceBooking, req);
 
-            expect(next).toHaveBeenCalledTimes(1);
-            expect(res.statusCode).toBe(200);
-            expect(req.validatedData.payment_type).toBe('cash');
+            expect(next).not.toHaveBeenCalled();
+            expect(res.statusCode).toBe(422);
         });
 
         it('accepts a parts array for a labor + part settlement', () => {
             const req = {
                 body: {
                     parts: [{ item_id: 55, quantity: 2 }],
-                    payment_type: 'gcash'
+                    payment_type: 'gcash',
+                    shift_id: 77,
+                    terminal_id: 'COUNTER-01',
+                    location_id: 3
                 }
             };
             const { res, next } = runMiddleware(validateSettleServiceBooking, req);
@@ -236,7 +238,7 @@ describe('serviceValidator booking schemas', () => {
         });
 
         it('rejects a part missing a positive item_id', () => {
-            const req = { body: { parts: [{ quantity: 2 }] } };
+            const req = { body: { parts: [{ quantity: 2 }], shift_id: 77, terminal_id: 'COUNTER-01', location_id: 3 } };
             const { res, next } = runMiddleware(validateSettleServiceBooking, req);
 
             expect(next).not.toHaveBeenCalled();
@@ -244,7 +246,15 @@ describe('serviceValidator booking schemas', () => {
         });
 
         it('rejects an unsupported payment_type', () => {
-            const req = { body: { payment_type: 'crypto' } };
+            const req = { body: { payment_type: 'crypto', shift_id: 77, terminal_id: 'COUNTER-01', location_id: 3 } };
+            const { res, next } = runMiddleware(validateSettleServiceBooking, req);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.statusCode).toBe(422);
+        });
+
+        it('rejects client-calculated change_amount', () => {
+            const req = { body: { payment_type: 'cash', cash_received: 1000, change_amount: 250, shift_id: 77, terminal_id: 'COUNTER-01', location_id: 3 } };
             const { res, next } = runMiddleware(validateSettleServiceBooking, req);
 
             expect(next).not.toHaveBeenCalled();

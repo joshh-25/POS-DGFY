@@ -41,6 +41,7 @@ export function useStorefrontNavigation({
   setSelectedServiceDetail,
   setPreferredStoreLocationSelection,
   setIsCheckoutOpen,
+  setCheckoutTab,
   setShowFnbMobileOrderSummary,
   setFnbOrderStep,
   setSimpleOrderStep,
@@ -92,6 +93,12 @@ export function useStorefrontNavigation({
     setRouteSubpage(null);
     setRouteServiceItemId(null);
     setRouteItemId(null);
+    // Cart state is shared by the SPA shell. Close the previous store's
+    // checkout surface while the destination storefront hydrates its own cart
+    // scope so the old line cannot remain visible during the transition.
+    setIsCheckoutOpen(false);
+    setCheckoutTab?.('checkout');
+    setShowFnbMobileOrderSummary(false);
   };
   const goStoreBookingPage = ({ preserveSelectedService = false } = {}) => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
@@ -111,6 +118,7 @@ export function useStorefrontNavigation({
       setSelectedServiceDetail(null);
     }
     setIsCheckoutOpen(false);
+    setCheckoutTab?.('checkout');
   };
   const goStoreCatalogPage = () => {
     const normalized = toSlug(selectedStore?.slug || routeSlug);
@@ -125,6 +133,7 @@ export function useStorefrontNavigation({
     setRouteItemId(null);
     setShowFnbMobileOrderSummary(false);
     setIsCheckoutOpen(false);
+    setCheckoutTab?.('checkout');
     setFnbOrderStep(3);
     setSimpleOrderStep(1);
   };
@@ -146,6 +155,7 @@ export function useStorefrontNavigation({
     setCatalogError('');
     setDiscoveryAppliedFilters(null);
     setIsCheckoutOpen(false);
+    setCheckoutTab?.('checkout');
     setActiveDiscoveryNavItem('Explore');
   };
 

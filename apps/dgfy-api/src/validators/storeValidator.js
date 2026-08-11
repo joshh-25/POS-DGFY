@@ -16,7 +16,8 @@ const checkoutLineSchema = Joi.object({
         option_id: Joi.number().integer().positive().allow(null).optional(),
         group_name: Joi.string().trim().max(120).allow('', null).optional(),
         option_name: Joi.string().trim().max(120).allow('', null).optional(),
-        name: Joi.string().trim().max(120).allow('', null).optional()
+        name: Joi.string().trim().max(120).allow('', null).optional(),
+        quantity: Joi.number().integer().min(1).max(99).default(1)
     }).unknown(false)).max(30).default([]),
     modifiers: Joi.array().items(Joi.object().unknown(true)).max(30).optional()
 });

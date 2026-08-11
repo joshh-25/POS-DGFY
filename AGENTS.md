@@ -76,3 +76,24 @@ the clause being changed (ADR 0039):
 1. Confirm architecture boundary checks that apply to the planned change.
 2. Confirm documentation freshness (`last_reviewed`) for cited authoritative docs.
 3. Confirm no unresolved exception/allowlist dependency is introduced without a removal plan.
+
+## Continuous Phase Numbering
+
+1. Every governed multi-phase initiative must use one continuous repository phase sequence.
+2. Before creating a plan, find the highest phase number in the authoritative phase ledger and continue from the next number.
+3. Do not restart numbering at Phase 0 or Phase 1 for a new release, feature group, milestone, or implementation session.
+4. Releases and milestones may group phases, but they do not reset the phase sequence.
+5. Preserve historical phase numbers. Never renumber completed phases unless an explicit documentation migration is approved.
+6. Maintain the authoritative phase ledger in `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`.
+7. Every ledger entry must include:
+   - phase number;
+   - initiative and release;
+   - objective and scope;
+   - status: `planned`, `approved`, `in_progress`, `completed`, `blocked`, or `deferred`;
+   - dependencies;
+   - acceptance and validation evidence;
+   - completion date when applicable;
+   - links to relevant contracts, ADRs, tests, and implementation files.
+8. A phase may be marked `completed` only after its acceptance gates and required validation pass.
+9. Plans and completion reports must state the current phase and next eligible phase.
+10. When documentation disagrees about numbering, stop and reconcile it against the authoritative ledger before implementation.

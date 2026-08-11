@@ -5,6 +5,8 @@ import { ANALYTICS_EVENTS, trackFunnelEvent } from '../observability/analyticsEv
 
 let dgfyToken = '';
 let dgfyAccount = null;
+let pendingDgfyLegalTermsRequest = null;
+const pendingDgfyMeRequests = new Map();
 const DGFY_EXPLICIT_SIGN_OUT_KEY = 'dgfy_customer_explicit_sign_out';
 // Mirrors SESSION_COOKIE_NAMES.csrf in backend/src/utils/browserSessionCookies.js.
 const DGFY_SESSION_HINT_COOKIE = 'sku_csrf_token';
@@ -228,8 +230,13 @@ export const requestDgfyRegistrationEmailVerification = async (email) => {
 export const requestDgfySignupOtp = requestDgfyRegistrationEmailVerification;
 
 export const fetchDgfyLegalTerms = async () => {
-  const response = await api.get('/dgfy/legal-terms/current', dgfyRequestConfig(''));
-  return response.data.data;
+  if (!pendingDgfyLegalTermsRequest) {
+    pendingDgfyLegalTermsRequest = api
+      .get('/dgfy/legal-terms/current', dgfyRequestConfig(''))
+      .then((response) => response.data.data)
+      .finally(() => { pendingDgfyLegalTermsRequest = null; });
+  }
+  return pendingDgfyLegalTermsRequest;
 };
 
 export const loginDgfyAccount = async (payload) => {
@@ -242,11 +249,20 @@ export const loginDgfyAccount = async (payload) => {
 
 export const fetchDgfyMe = async (token = getStoredDgfyToken()) => {
   const normalizedToken = String(token || '').trim();
-  const response = await api.get('/dgfy/auth/me', dgfyRequestConfig(normalizedToken));
-  const data = response.data.data;
-  if (data?.account) storeDgfySession({ token: normalizedToken, account: data.account });
-  if (data?.token) storeDgfySession(data);
-  return data;
+  const requestKey = normalizedToken || 'cookie-session';
+  if (!pendingDgfyMeRequests.has(requestKey)) {
+    const request = api
+      .get('/dgfy/auth/me', dgfyRequestConfig(normalizedToken))
+      .then((response) => {
+        const data = response.data.data;
+        if (data?.account) storeDgfySession({ token: normalizedToken, account: data.account });
+        if (data?.token) storeDgfySession(data);
+        return data;
+      })
+      .finally(() => { pendingDgfyMeRequests.delete(requestKey); });
+    pendingDgfyMeRequests.set(requestKey, request);
+  }
+  return pendingDgfyMeRequests.get(requestKey);
 };
 
 export const updateDgfyProfile = async (payload, token = getStoredDgfyToken()) => {
@@ -572,11 +588,14 @@ export const activateDgfyTenantSession = (data, { emitAuthEvent = true } = {}) =
 
 export const startDgfyTenantSession = async ({
   tenantId,
-  companyToken
+  companyToken,
+  accessScope = ''
 } = {}, token = getStoredDgfyToken(), { activate = true } = {}) => {
+  const normalizedAccessScope = String(accessScope || '').trim().toLowerCase();
   const response = await api.post('/dgfy/auth/tenant-session', {
     tenant_id: tenantId,
-    company_token: companyToken
+    company_token: companyToken,
+    ...(normalizedAccessScope ? { access_scope: normalizedAccessScope } : {})
   }, dgfyRequestConfig(token));
   const data = response.data.data;
   const tenantToken = String(data?.token || '').trim();

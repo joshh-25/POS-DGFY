@@ -38,9 +38,11 @@ const mockCloseTerminalShiftUseCase = jest.fn();
 const mockForceCloseStaleTerminalShiftUseCase = jest.fn();
 const mockGetTerminalTodayDashboardUseCase = jest.fn();
 const mockListIncomingOnlineOrdersUseCase = jest.fn();
+const mockListActiveDeliveryPersonnelUseCase = jest.fn();
 const mockGetAdminLocationMonitorUseCase = jest.fn();
 const mockCollectCashPickupOrderUseCase = jest.fn();
 const mockCollectCashDeliveryOrderUseCase = jest.fn();
+const mockAssignDeliveryPersonnelUseCase = jest.fn();
 const mockUpdateDeliveryJobStatusUseCase = jest.fn();
 const mockUpdateOnlineOrderStatusUseCase = jest.fn();
 const mockGetPosDeviceStatusUseCase = jest.fn();
@@ -71,6 +73,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     upsertFiscalTerminalRegistrationUseCase: mockUpsertFiscalTerminalRegistrationUseCase,
     listFiscalTerminalRegistrationsUseCase: mockListFiscalTerminalRegistrationsUseCase,
     closeDayZReadingUseCase: mockCloseDayZReadingUseCase,
+    getDayCloseReadinessUseCase: jest.fn(),
     getDailyZReadingUseCase: mockGetDailyZReadingUseCase,
     getCurrentXReadingUseCase: mockGetCurrentXReadingUseCase,
     incrementGovernedResetCounterUseCase: mockIncrementGovernedResetCounterUseCase,
@@ -91,9 +94,11 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     forceCloseStaleTerminalShiftUseCase: mockForceCloseStaleTerminalShiftUseCase,
     getTerminalTodayDashboardUseCase: mockGetTerminalTodayDashboardUseCase,
     listIncomingOnlineOrdersUseCase: mockListIncomingOnlineOrdersUseCase,
+    listActiveDeliveryPersonnelUseCase: mockListActiveDeliveryPersonnelUseCase,
     getAdminLocationMonitorUseCase: mockGetAdminLocationMonitorUseCase,
     collectCashPickupOrderUseCase: mockCollectCashPickupOrderUseCase,
     collectCashDeliveryOrderUseCase: mockCollectCashDeliveryOrderUseCase,
+    assignDeliveryPersonnelUseCase: mockAssignDeliveryPersonnelUseCase,
     updateDeliveryJobStatusUseCase: mockUpdateDeliveryJobStatusUseCase,
     updateOnlineOrderStatusUseCase: mockUpdateOnlineOrderStatusUseCase,
     getPosDeviceStatusUseCase: mockGetPosDeviceStatusUseCase,
@@ -124,7 +129,9 @@ let recordCashDrawerEvent;
 let closeTerminalShift;
 let forceCloseStaleTerminalShift;
 let getAdminLocationMonitor;
+let listActiveDeliveryPersonnel;
 let collectCashDeliveryOrder;
+let assignDeliveryPersonnel;
 let updateDeliveryJobStatus;
 let updateOnlineOrderStatus;
 
@@ -144,7 +151,9 @@ beforeAll(async () => {
     closeTerminalShift = mod.closeTerminalShift;
     forceCloseStaleTerminalShift = mod.forceCloseStaleTerminalShift;
     getAdminLocationMonitor = mod.getAdminLocationMonitor;
+    listActiveDeliveryPersonnel = mod.listActiveDeliveryPersonnel;
     collectCashDeliveryOrder = mod.collectCashDeliveryOrder;
+    assignDeliveryPersonnel = mod.assignDeliveryPersonnel;
     updateDeliveryJobStatus = mod.updateDeliveryJobStatus;
     updateOnlineOrderStatus = mod.updateOnlineOrderStatus;
 });
@@ -906,6 +915,91 @@ describe('posHandlers transport contracts', () => {
                 replay_outcome: 'processed'
             }),
             message: 'Cash payment collected for delivery order.',
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('listActiveDeliveryPersonnel returns the scoped registry contract', async () => {
+        mockListActiveDeliveryPersonnelUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                location_id: 7,
+                delivery_personnel: [{ delivery_personnel_id: 21, display_name: 'Branch Rider' }]
+            }
+        });
+
+        const req = {
+            validatedQuery: { location_id: 7 },
+            query: {},
+            user: { user_id: 4, tenant_id: 'tenant-1' }
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await listActiveDeliveryPersonnel(req, res, next);
+
+        expect(mockListActiveDeliveryPersonnelUseCase).toHaveBeenCalledWith({
+            query: { location_id: 7 },
+            user: req.user
+        });
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: expect.objectContaining({
+                location_id: 7,
+                delivery_personnel: expect.any(Array)
+            }),
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('assignDeliveryPersonnel returns the accountable assignment contract', async () => {
+        mockAssignDeliveryPersonnelUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                idempotent_replay: false,
+                replay_outcome: 'processed',
+                delivery_job: { status: 'assigned', delivery_personnel_id: 21 },
+                assignment: { assigned_shift_id: 77 }
+            }
+        });
+
+        const req = {
+            validatedParams: { id: 89 },
+            params: { id: 89 },
+            validatedData: {
+                idempotency_key: 'delivery-assignment-20260808-89',
+                delivery_personnel_id: 21
+            },
+            body: {},
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            ip: '127.0.0.1',
+            get: jest.fn(() => 'test-agent')
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await assignDeliveryPersonnel(req, res, next);
+
+        expect(mockAssignDeliveryPersonnelUseCase).toHaveBeenCalledWith({
+            posTransactionId: 89,
+            payload: req.validatedData,
+            user: req.user,
+            auditContext: {
+                ipAddress: '127.0.0.1',
+                userAgent: 'test-agent'
+            }
+        });
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: expect.objectContaining({
+                idempotent_replay: false,
+                delivery_job: expect.objectContaining({ status: 'assigned' })
+            }),
+            message: 'Delivery personnel assigned successfully.',
             timestamp: expect.any(String)
         });
         expect(next).not.toHaveBeenCalled();

@@ -7,9 +7,9 @@ import { resolveStorefrontImageSources } from '../../../../shared/utils/storefro
  * Moved verbatim from `StorefrontApp.jsx`: the "Review Your Booking" summary
  * card previously rendered inline inside the shell's checkout drawer under
  * the `checkoutTab === 'review'` guard. The shell keeps that guard (and the
- * `hasServiceCart`/`!isServicesMode` conditions) and renders this container
- * for the body only. Placed in `modes/services/booking/pages/` since it is
- * entirely service-booking-owned.
+ * `hasServiceCart`/`isServicesMode` conditions) and renders this container for
+ * the body only. Placed in `modes/services/booking/pages/` since it is entirely
+ * service-booking-owned.
  */
 export function ServiceBookingReviewContainer({
   cartImageErrors,

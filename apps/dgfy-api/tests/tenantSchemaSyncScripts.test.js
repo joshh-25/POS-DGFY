@@ -7,6 +7,8 @@ import {
   createSyncFailureRecord,
   getTenantSchemaCapabilityChecksum,
   normalizeErrorSignature,
+  REQUIRED_TENANT_SCHEMA_COLUMNS,
+  REQUIRED_TENANT_SCHEMA_INDEXES,
   REQUIRED_TENANT_SCHEMA_TABLES,
   repairItemFolderCategoryLifecycleSchema
 } from '../scripts/sync-tenant-schemas.js';
@@ -140,6 +142,55 @@ describe('tenant schema sync script contracts', () => {
     expect(repair.sql).toContain(
       'CONSTRAINT `storefront_catalog_overrides_ibfk_1` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`)'
     );
+  });
+
+  it('registers manual delivery assignment tables and repairs for older tenants', () => {
+    expect(REQUIRED_TENANT_SCHEMA_TABLES).toHaveProperty('delivery_personnel');
+
+    const [tableRepair] = buildTenantSchemaTableRepairSql(['delivery_personnel']);
+    expect(tableRepair.sql).toContain('CREATE TABLE `delivery_personnel`');
+    expect(tableRepair.sql).toContain('idx_delivery_personnel_location_active');
+
+    const columnRepairs = buildTenantSchemaRepairSql([
+      { table: 'delivery_jobs', column: 'delivery_personnel_id' },
+      { table: 'delivery_jobs', column: 'assigned_shift_id' }
+    ]);
+    expect(columnRepairs[0].sql).toContain('ADD COLUMN `delivery_personnel_id`');
+    expect(columnRepairs[1].sql).toContain('ADD COLUMN `assigned_shift_id`');
+    expect(REQUIRED_TENANT_SCHEMA_INDEXES.delivery_jobs).toHaveProperty('idx_delivery_jobs_personnel_status');
+    expect(REQUIRED_TENANT_SCHEMA_INDEXES.delivery_jobs).toHaveProperty('idx_delivery_jobs_assignment_shift');
+  });
+
+  it('registers the complete location-scoped Z-reading snapshot contract', () => {
+    const repairs = buildTenantSchemaRepairSql([
+      { table: 'pos_z_reading_snapshots', column: 'location_id' },
+      { table: 'pos_z_reading_snapshots', column: 'closed_by_user_id' },
+      { table: 'pos_z_reading_snapshots', column: 'closed_from_terminal_id' },
+      { table: 'pos_z_reading_snapshots', column: 'day_close_pin_confirmed_at' }
+    ]);
+
+    expect(repairs).toHaveLength(4);
+    expect(repairs[0].sql).toContain('ADD COLUMN `location_id`');
+    expect(repairs[1].sql).toContain('ADD COLUMN `closed_by_user_id`');
+    expect(repairs[2].sql).toContain('ADD COLUMN `closed_from_terminal_id`');
+    expect(repairs[3].sql).toContain('ADD COLUMN `day_close_pin_confirmed_at`');
+    expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_z_reading_snapshots)
+      .toHaveProperty('uq_pos_z_reading_snapshots_business_date_location');
+    expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_z_reading_snapshots)
+      .toHaveProperty('idx_pos_z_reading_snapshots_closed_by_user');
+  });
+
+  it('registers Phase 20 F&B modifier columns and conditional-group index', () => {
+    const repairs = buildTenantSchemaRepairSql([
+      { table: 'fnb_modifier_groups', column: 'group_kind' },
+      { table: 'fnb_modifier_groups', column: 'parent_modifier_option_id' }
+    ]);
+
+    expect(repairs).toHaveLength(2);
+    expect(repairs[0].sql).toContain("DEFAULT 'modifier'");
+    expect(repairs[1].sql).toContain('ON DELETE SET NULL');
+    expect(REQUIRED_TENANT_SCHEMA_INDEXES.fnb_modifier_groups)
+      .toHaveProperty('idx_fnb_modifier_groups_parent_option');
   });
 
   it('preserves missing-column evidence in tenant sync failure records', () => {

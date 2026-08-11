@@ -1,6 +1,7 @@
 import React from 'react';
 import {
   BarChart3,
+  CalendarCheck,
   ClipboardList,
   History,
   ListChecks,
@@ -64,6 +65,8 @@ export default function TerminalWorkspaceSidebar({
   currentViewMode = 'checkout',
   canViewPos = false,
   canManageCategories = false,
+  showServiceOperations = false,
+  canAccessServiceOperations = false,
   allowAdminNavigationWithoutShift = false,
   canAdjustCashDrawer = false,
   canCloseDay = false,
@@ -247,6 +250,28 @@ export default function TerminalWorkspaceSidebar({
             }
             testId="pos-nav-items"
           />
+          {showServiceOperations && (
+            <NavButton
+              label="Services"
+              icon={CalendarCheck}
+              active={currentViewMode === 'services'}
+              onClick={() => onSelectViewMode('services')}
+              onPrefetch={() => onPrefetchViewMode('services')}
+              disabled={locked || !isOnline || onboardingRestricted || !canAccessServiceOperations}
+              caption={
+                locked
+                  ? 'Unlock terminal to continue'
+                  : (!isOnline
+                    ? 'Available online only'
+                    : (onboardingRestricted
+                      ? onboardingCaption
+                      : (!canAccessServiceOperations
+                        ? 'Services view permission required'
+                        : 'Appointments, resources, waitlist, reminders, and clients')))
+              }
+              testId="pos-nav-services"
+            />
+          )}
           {showIncomingQueue && (
             <NavButton
               label={`Orders (${incomingCount})`}

@@ -13,6 +13,8 @@ describe('TerminalPage session contract', () => {
   it('uses browserSession for protected POS auth state instead of persisted privileged tokens', () => {
     expect(terminalPageSource).toContain("from '@/services/browserSession.js';");
     expect(terminalPageSource).toContain('preparePosCompanySwitchHandoff,');
+    expect(terminalPageSource).toContain('consumePosDgfyTenantHandoff,');
+    expect(terminalPageSource).toContain('getFreshPosCompanySwitchHandoff,');
     expect(terminalPageSource).toContain('refreshBrowserSession()');
     expect(terminalPageSource).toContain('getCompanyToken()');
     expect(terminalPageSource).not.toMatch(/localStorage\.getItem\(['"`](authToken|companyToken)['"`]/);
@@ -71,10 +73,54 @@ describe('TerminalPage session contract', () => {
     );
   });
 
+  it('accepts a fresh DGFY Business POS handoff only long enough to clear stale terminal-local state and verify its tenant', () => {
+    expect(terminalPageSource).toContain('const dgfyTenantHandoff = consumePosDgfyTenantHandoff();');
+    expect(terminalPageSource).toContain('const companySwitchHandoff = getFreshPosCompanySwitchHandoff();');
+    expect(terminalPageSource).toContain("String(dgfyTenantHandoff?.tenantId || companySwitchHandoff?.tenantId || '').trim()");
+    expect(terminalPageSource).toContain("window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);");
+    expect(terminalPageSource).toContain("setActiveTerminalId('');");
+    expect(terminalPageSource).toContain('setOperatingLocationId(null);');
+    expect(terminalPageSource).toContain("setFormData((prev) => ({ ...prev, terminalId: '' }));");
+    expect(terminalPageSource).toContain("dgfyTenantId ? '' : (readStoredTerminalId() || activeTerminalId)");
+    expect(terminalPageSource).toContain("if (!dgfyTenantId && storedLockActiveAtStart && ['full_auth', 'shift_closed'].includes(storedReasonAtStart))");
+    expect(terminalPageSource).toContain("String(user?.company?.id || '').trim() !== dgfyTenantId");
+    expect(terminalPageSource).toContain("setStoredTerminalLockReason('full_auth');");
+  });
+
+  it('sends a verified DGFY cashier handoff into the same terminal shift-entry flow as direct POS login', () => {
+    expect(terminalPageSource).toContain('if (IS_DGFY_POS_SURFACE && dgfyTenantId && !userCanAccessSettings) {');
+    expect(terminalPageSource).toContain('fetchPosSettingsBootstrap(SUPPRESS_GLOBAL_ERROR_TOAST)');
+    expect(terminalPageSource).toContain('fetchCurrentTerminalShift({}, SUPPRESS_GLOBAL_ERROR_TOAST)');
+    expect(terminalPageSource).toContain("source: 'dgfy_pos'");
+    expect(terminalPageSource).toContain("setTerminalUnlockMode('resume_shift');");
+    expect(terminalPageSource).toContain("setTerminalUnlockMode('shift_start');");
+    expect(terminalPageSource).toContain("setStoredTerminalLockReason('shift_start_required');");
+    expect(terminalPageSource).toContain('setTerminalUnlockModalOpen(true);');
+  });
+
+  it('fails closed when the DGFY handoff cannot determine the cashier active shift', () => {
+    expect(terminalPageSource).toContain('resolveActiveShiftResumeDecision({');
+    expect(terminalPageSource).not.toMatch(
+      /fetchCurrentTerminalShift\(\{\}, SUPPRESS_GLOBAL_ERROR_TOAST\)\.catch/
+    );
+    expect(terminalPageSource).toContain("flow: 'terminal_session_restore'");
+    expect(terminalPageSource).toContain('throw new Error(activeShiftDecision.message);');
+    expect(terminalPageSource).toContain('throw new Error(currentShiftDecision.message);');
+    expect(terminalPageSource).toContain('throw new Error(selectedActiveShiftDecision.message);');
+  });
+
+
   it('sends onboarding handoff to the dedicated POS app origin when started from IMS', () => {
     expect(terminalPageSource).toContain('resolvePosTerminalUrl');
     expect(terminalPageSource).toContain('const posOnboardingUrl = resolvePosTerminalUrl(POS_ONBOARDING_ENTRY_SEARCH);');
     expect(terminalPageSource).toContain('if (targetUrl.origin !== window.location.origin) {');
     expect(terminalPageSource).toContain('window.location.assign(targetUrl.toString());');
+  });
+
+  it('mounts the DGFY SSO handoff routes inside the standalone POS HashRouter', () => {
+    expect(standalonePosMainSource).toContain('const DgfyAuthPage = lazy(() => import(\'../../../Pages/DgfyAuthPage.jsx\'));');
+    expect(standalonePosMainSource).toContain('const DgfyCompanySelect = lazy(() => import(\'../../../Pages/DgfyCompanySelect.jsx\'));');
+    expect(standalonePosMainSource).toContain('<Route path="/dgfy/auth" element={<DgfyAuthPage />} />');
+    expect(standalonePosMainSource).toContain('<Route path="/dgfy/companies" element={<DgfyCompanySelect targetSurface="pos" />} />');
   });
 });

@@ -1540,7 +1540,10 @@ export const useHardwarePosStore = (): HardwarePosState => {
             receipt.syncState === 'synced' ? 'Status: Synced' : 'Status: Pending Sync'
         ].join('\n');
 
-        const result = await (await import('../native/standalonePosHardware')).standalonePosHardware.printReceipt(receiptText, true);
+        // No tenant branding sync exists in this offline app yet (see issue #321) --
+        // '' falls back to the bundled DGFY icon at the native layer, same as the
+        // hardcoded 'DGFY POS' header text above.
+        const result = await (await import('../native/standalonePosHardware')).standalonePosHardware.printReceipt(receiptText, true, '');
         mergeState({ hardwareMessage: result.message });
     }, [mergeState]);
 

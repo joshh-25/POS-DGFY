@@ -40,25 +40,26 @@ describe('POS terminal pairing contract', () => {
     expect(terminalPageSource).toContain("? 'Resume Shift'");
   });
 
-  it('returns cashiers to login after a successful close shift while preserving admin navigation', () => {
+  it('keeps a successful cashier close in a secure post-shift Day Close handoff while preserving admin navigation', () => {
     const closeShiftStart = terminalPageSource.indexOf('const handleConfirmCloseShift = async () => {');
     const closeShiftEnd = terminalPageSource.indexOf('const dismissStockAlertSummary', closeShiftStart);
     const closeShiftHandler = terminalPageSource.slice(closeShiftStart, closeShiftEnd);
-    const cashierCloseStart = closeShiftHandler.indexOf("toast.success('Shift closed successfully. Sign in to start the next shift.')");
+    const cashierCloseStart = closeShiftHandler.indexOf("toast.success('Shift closed successfully. Review the branch Day Close status before leaving the terminal.')");
     const cashierCloseEnd = closeShiftHandler.indexOf('} catch (error) {', cashierCloseStart);
     const cashierCloseFlow = closeShiftHandler.slice(cashierCloseStart, cashierCloseEnd);
 
     expect(closeShiftHandler).toContain("if (preserveAdminNavigation) {");
     expect(closeShiftHandler).toContain("toast.success('Shift closed successfully.');");
     expect(closeShiftHandler).toContain('await refreshOperationalContext();');
-    expect(cashierCloseFlow).toContain('setCashierUnlockSession(null);');
-    expect(cashierCloseFlow).toContain("reason: 'shift_closed'");
-    expect(cashierCloseFlow).toContain('setStoredTerminalLock(true);');
-    expect(cashierCloseFlow).toContain("setStoredTerminalLockReason('shift_closed');");
-    expect(cashierCloseFlow).toContain('setLocked(true);');
+    expect(cashierCloseFlow).toContain('setStoredTerminalLock(false);');
+    expect(cashierCloseFlow).toContain("setStoredTerminalLockReason('');");
+    expect(cashierCloseFlow).toContain('setLocked(false);');
     expect(cashierCloseFlow).toContain('setTerminalUnlockModalOpen(false);');
-    expect(cashierCloseFlow).toContain('setDrawerOpen(true);');
-    expect(cashierCloseFlow).not.toContain('await refreshOperationalContext();');
+    expect(cashierCloseFlow).toContain('setDrawerOpen(false);');
+    expect(cashierCloseFlow).toContain("setPosViewMode('shift_controls');");
+    expect(cashierCloseFlow).toContain('await openPostShiftHandoff({');
+    expect(cashierCloseFlow).toContain('initialReadiness: closeResult?.day_close_readiness || null');
+    expect(cashierCloseFlow).not.toContain('clearClientSession({');
     expect(closeShiftHandler).not.toContain('setTerminalStartupReady(false);');
   });
 
