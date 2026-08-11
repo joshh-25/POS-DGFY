@@ -254,7 +254,7 @@ export function DgfyCustomerAccountPage({
         {views[activeNav] || views.overview}
       </CustomerDashboardShell>
       <ReviewComposerModal composer={reviewComposer} setComposer={setReviewComposer} submitting={reviewSubmitting} error={reviewError} onClose={closeReviewComposer} onSubmit={submitReviewComposer} theme={theme} />
-      <BusinessPosLaunchModal company={posLaunchRequest?.company} intent={posLaunchRequest?.intent} dayCloseLoading={posLaunchRequest?.loading === true} dayCloseStatus={posLaunchRequest?.status || null} dayCloseError={posLaunchRequest?.error || ''} onClose={closePosLaunchModal} onOpenInNewTab={openBusinessPosInNewTab} onConfigureDayClosePin={configureBusinessDayClosePin} theme={theme} />
+      <BusinessPosLaunchModal key={`${posLaunchRequest?.company?.tenant_id || posLaunchRequest?.company?.tenantId || posLaunchRequest?.company?.id || 'closed'}:${posLaunchRequest?.intent || 'pos'}`} company={posLaunchRequest?.company} intent={posLaunchRequest?.intent} dayCloseLoading={posLaunchRequest?.loading === true} dayCloseStatus={posLaunchRequest?.status || null} dayCloseError={posLaunchRequest?.error || ''} onClose={closePosLaunchModal} onOpenInNewTab={openBusinessPosInNewTab} onConfigureDayClosePin={configureBusinessDayClosePin} theme={theme} />
     </>
   );
 }

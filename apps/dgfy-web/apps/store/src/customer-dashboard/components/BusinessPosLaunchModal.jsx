@@ -7,6 +7,7 @@ export function BusinessPosLaunchModal({ company, intent = 'pos', dayCloseLoadin
   const onCloseRef = useRef(onClose);
   const companyName = String(company?.company_name || company?.name || 'this business').trim();
   const companyKey = String(company?.tenant_id || company?.tenantId || company?.id || companyName).trim();
+  const modalOpen = Boolean(company);
   const isDayClose = intent === 'day_close' || intent === 'day_close_pin';
   const canConfigureDayClosePin = isDayClose && dayCloseStatus?.canCloseDay === true;
   const [form, setForm] = useState({ currentPassword: '', pin: '', confirmation: '' });
@@ -19,18 +20,14 @@ export function BusinessPosLaunchModal({ company, intent = 'pos', dayCloseLoadin
   }, [onClose]);
 
   useEffect(() => {
-    if (!company) return undefined;
-    setForm({ currentPassword: '', pin: '', confirmation: '' });
-    setVisibleFields({ currentPassword: false, pin: false, confirmation: false });
-    setSubmitting(false);
-    setError('');
+    if (!modalOpen) return undefined;
     (canConfigureDayClosePin ? passwordInputRef : stayButtonRef).current?.focus();
     const handleKeyDown = (event) => {
       if (event.key === 'Escape') onCloseRef.current?.();
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canConfigureDayClosePin, companyKey]);
+  }, [canConfigureDayClosePin, companyKey, modalOpen]);
 
   if (!company) return null;
 
