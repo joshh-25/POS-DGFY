@@ -24,7 +24,8 @@ const installRuntimeDiagnostics = (page) => {
           return false;
         }
       })();
-      return ['/api/v1/storefront/discovery', '/api/v1/dgfy/auth/me'].includes(path)
+      return /^\/api\/v1\/storefront\/discovery(?:\/|$)/.test(path)
+        || path === '/api/v1/dgfy/auth/me'
         || isNominatimReverseLookup
         || /^\/openfreemap\//.test(path);
     }
