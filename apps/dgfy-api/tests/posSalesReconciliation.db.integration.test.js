@@ -32,7 +32,8 @@ import { sequelize as landlordSequelize } from '../src/models/index.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const backendRoot = path.join(__dirname, '..');
-const sequelizeCliPath = path.join(backendRoot, 'node_modules', 'sequelize-cli', 'lib', 'sequelize');
+const migrationRunnerRoot = path.join(backendRoot, '..', 'dgfy-migration-runner');
+const sequelizeCliPath = path.join(migrationRunnerRoot, 'node_modules', 'sequelize-cli', 'lib', 'sequelize');
 
 const dbConfig = {
   host: process.env.DB_HOST || 'localhost',
@@ -76,7 +77,7 @@ const runMigrationsForDb = (dbName) => {
     process.execPath,
     args,
     {
-      cwd: backendRoot,
+      cwd: migrationRunnerRoot,
       encoding: 'utf8',
       env: {
         ...process.env,
@@ -94,7 +95,7 @@ const runMigrationsForDb = (dbName) => {
       [
         `Migration process error for ${dbName}`,
         `command: ${process.execPath} ${args.join(' ')}`,
-        `cwd: ${backendRoot}`,
+        `cwd: ${migrationRunnerRoot}`,
         `error: ${migrationResult.error.message}`
       ].join('\n')
     );
@@ -105,7 +106,7 @@ const runMigrationsForDb = (dbName) => {
       [
         `Migration failed for ${dbName}`,
         `command: ${process.execPath} ${args.join(' ')}`,
-        `cwd: ${backendRoot}`,
+        `cwd: ${migrationRunnerRoot}`,
         `exit_status: ${migrationResult.status}`,
         `signal: ${migrationResult.signal || 'none'}`,
         `stdout:`,

@@ -1,4 +1,5 @@
 import crypto from 'crypto';
+import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
@@ -8,6 +9,8 @@ import { sequelize as landlordSequelize } from '../src/models/index.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const backendRoot = path.join(__dirname, '..');
+const migrationRunnerRoot = path.join(backendRoot, '..', 'dgfy-migration-runner');
+const sequelizeCliPath = path.join(migrationRunnerRoot, 'node_modules', 'sequelize-cli', 'lib', 'sequelize');
 
 const dbConfig = {
     host: process.env.DB_HOST || 'localhost',
@@ -21,8 +24,12 @@ const createIsolatedDbName = () => (
 );
 
 const runMigrationsForDb = (dbName, toMigration = null) => {
+    if (!fs.existsSync(sequelizeCliPath)) {
+        throw new Error(`Sequelize CLI entrypoint not found at: ${sequelizeCliPath}`);
+    }
+
     const args = [
-        'node_modules/sequelize-cli/lib/sequelize',
+        sequelizeCliPath,
         'db:migrate',
         '--env',
         'development',
@@ -39,7 +46,7 @@ const runMigrationsForDb = (dbName, toMigration = null) => {
         process.execPath,
         args,
         {
-            cwd: backendRoot,
+            cwd: migrationRunnerRoot,
             encoding: 'utf8',
             env: {
                 ...process.env,

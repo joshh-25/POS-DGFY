@@ -4,8 +4,9 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoBackendRoot = path.resolve(__dirname, '..');
-const migrationPath = path.join(repoBackendRoot, 'migrations', '20260519000001-create-commerce-payment-sessions.cjs');
+const apiRoot = path.resolve(__dirname, '..');
+const migrationRunnerRoot = path.resolve(apiRoot, '..', 'dgfy-migration-runner');
+const migrationPath = path.join(migrationRunnerRoot, 'migrations', '20260519000001-create-commerce-payment-sessions.cjs');
 
 const source = fs.readFileSync(migrationPath, 'utf8').replace(/\r\n/g, '\n');
 

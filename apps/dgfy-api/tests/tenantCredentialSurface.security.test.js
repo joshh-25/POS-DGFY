@@ -17,6 +17,8 @@ describe('Security: tenant credential storage surface', () => {
         const migrationPath = path.join(
             __dirname,
             '..',
+            '..',
+            'dgfy-migration-runner',
             'migrations',
             '20260303000003-remove-tenant-plaintext-db-credentials.cjs'
         );

@@ -10,6 +10,8 @@ describe('POS shift location remediation migration safety', () => {
         const migrationPath = path.join(
             __dirname,
             '..',
+            '..',
+            'dgfy-migration-runner',
             'migrations',
             '20260421000002-remediate-pos-shift-location-backfill.cjs'
         );

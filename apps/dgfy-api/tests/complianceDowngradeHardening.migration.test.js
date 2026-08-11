@@ -10,6 +10,8 @@ describe('Compliance downgrade hardening migration safety', () => {
         const migrationPath = path.join(
             __dirname,
             '..',
+            '..',
+            'dgfy-migration-runner',
             'migrations',
             '20260422000002-harden-compliance-downgrade-controls.cjs'
         );
