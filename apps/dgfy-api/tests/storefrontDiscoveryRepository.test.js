@@ -434,6 +434,66 @@ describe('storefrontDiscoveryRepository (index-backed search + metadata)', () =>
     );
   });
 
+  it('derives cover/profile image variants for the responsive (v2) asset pipeline', async () => {
+    const repository = await loadRepository();
+    findAllMock.mockResolvedValue([
+      makeEntry({
+        tenant_id: 'tenant-responsive',
+        storefront_cover_image_url: '/uploads/storefront-assets/tenant-responsive/cover-172000000-v2-a1b2c3d4/medium.jpg',
+        storefront_profile_image_url: '/uploads/storefront-assets/tenant-responsive/profile-172000001-v2-e5f6a7b8/medium.jpg'
+      })
+    ]);
+
+    const result = await repository.listDiscovery({ limit: 10 });
+    expect(result.rows).toHaveLength(1);
+    const [row] = result.rows;
+
+    expect(row.storefront_cover_image_variants).toEqual(expect.objectContaining({
+      thumbnail_url: '/uploads/storefront-assets/tenant-responsive/cover-172000000-v2-a1b2c3d4/thumb.jpg',
+      medium_url: '/uploads/storefront-assets/tenant-responsive/cover-172000000-v2-a1b2c3d4/medium.jpg',
+      large_url: '/uploads/storefront-assets/tenant-responsive/cover-172000000-v2-a1b2c3d4/large.jpg',
+      avif: expect.objectContaining({
+        medium_url: '/uploads/storefront-assets/tenant-responsive/cover-172000000-v2-a1b2c3d4/medium.avif'
+      }),
+      webp: expect.objectContaining({
+        medium_url: '/uploads/storefront-assets/tenant-responsive/cover-172000000-v2-a1b2c3d4/medium.webp'
+      }),
+      version: 2
+    }));
+    expect(row.storefront_profile_image_variants).toEqual(expect.objectContaining({
+      medium_url: '/uploads/storefront-assets/tenant-responsive/profile-172000001-v2-e5f6a7b8/medium.jpg',
+      avif: expect.objectContaining({
+        medium_url: '/uploads/storefront-assets/tenant-responsive/profile-172000001-v2-e5f6a7b8/medium.avif'
+      })
+    }));
+  });
+
+  it('degrades cover/profile image variants to a single URL for legacy (pre-v2) assets', async () => {
+    const repository = await loadRepository();
+    findAllMock.mockResolvedValue([
+      makeEntry({
+        tenant_id: 'tenant-legacy',
+        storefront_cover_image_url: '/uploads/storefront-assets/tenant-legacy/cover.png',
+        storefront_profile_image_url: ''
+      })
+    ]);
+
+    const result = await repository.listDiscovery({ limit: 10 });
+    expect(result.rows).toHaveLength(1);
+    const [row] = result.rows;
+
+    expect(row.storefront_cover_image_variants).toEqual({
+      thumbnail_url: '/uploads/storefront-assets/tenant-legacy/cover.png',
+      medium_url: '/uploads/storefront-assets/tenant-legacy/cover.png',
+      large_url: '/uploads/storefront-assets/tenant-legacy/cover.png'
+    });
+    // No cover.png/profile.png at all -- sanitizeStorefrontAssetUrlFromIndex
+    // returns null, and the variants field should be null too, not a
+    // deriveImageAssetVariantUrls() call against an empty string.
+    expect(row.storefront_profile_image_url).toBeNull();
+    expect(row.storefront_profile_image_variants).toBeNull();
+  });
+
   it('sanitizes unsafe delivery partner URLs from discovery index profile payload', async () => {
     const repository = await loadRepository();
     findOneMock.mockResolvedValue(makeEntry({

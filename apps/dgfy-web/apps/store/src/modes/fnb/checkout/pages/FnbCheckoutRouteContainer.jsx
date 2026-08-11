@@ -9,7 +9,7 @@ import {
   Plus,
   X
 } from 'lucide-react';
-import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMap.jsx';
+import { DeliveryPinMap } from '../../../../features/locations/components/DeliveryPinMapLazy.jsx';
 import { StorefrontDropdown } from '../../../../features/shared-storefront/components/StorefrontDropdown.jsx';
 import SavedAddressCard from '../../../../shared/components/checkout/SavedAddressCard.jsx';
 import { PaymentMethodSelectorBlock } from '../../../../shared/components/checkout/PaymentMethodSelectorBlock.jsx';

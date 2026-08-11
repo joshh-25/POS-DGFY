@@ -69,7 +69,7 @@ const FnbHeroDesktopAboutGallery = ({
                   aria-label="View store photos"
                   style={{ width: '100%', minWidth: 0, height: 72, borderRadius: 10, overflow: 'hidden', position: 'relative', background: '#e2e8f0', flexShrink: 0, border: 'none', padding: 0, cursor: 'pointer' }}
                 >
-                  <img src={url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <img src={url} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   {showOverflowOverlay && (
                     <div style={{
                       position: 'absolute',

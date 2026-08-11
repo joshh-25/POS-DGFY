@@ -206,7 +206,10 @@ describe('storefront profile launcher', () => {
     render(<BrowserRouter><App /></BrowserRouter>);
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    const profileButton = screen.getAllByRole('button', { name: /^Profile$/i })
+    // Issue #282, Phase G: the hero (and its header nav, where "Profile"
+    // lives) is now lazy-loaded -- findAllByRole waits for it instead of
+    // assuming it's already mounted synchronously after the fetch.
+    const profileButton = (await screen.findAllByRole('button', { name: /^Profile$/i }))
       .filter((button) => window.getComputedStyle(button).pointerEvents !== 'none')
       .at(-1);
     expect(profileButton).toBeTruthy();

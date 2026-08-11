@@ -12,6 +12,7 @@ import { StorefrontExpandedMapModal } from '../../../../discovery/components/Sto
 import { StorefrontHeaderNav as SharedStorefrontHeaderNav } from '../../../../shared/components/storefront/hero/StorefrontHeaderNav.jsx';
 import { StorefrontHeroNameCluster as SharedStorefrontHeroNameCluster } from '../../../../shared/components/storefront/hero/StorefrontHeroNameCluster.jsx';
 import { StorefrontShareQr as SharedStorefrontShareQr } from '../../../../shared/components/storefront/hero/StorefrontShareQr.jsx';
+import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 import { buildStorefrontQrUrl } from '../../../../shared/utils/storefrontQrUrl.js';
 import { SimpleHeroAbout } from './SimpleHeroAbout.jsx';
 import { SimpleHeroContactLocation } from './SimpleHeroContactLocation.jsx';
@@ -218,9 +219,11 @@ const SimpleHero = ({
         backgroundChildren={
           <>
             {simpleHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`) && (
-              <img
-                src={simpleHeroModel.coverImageUrl}
+              <StorefrontResponsiveImage
+                imageSources={simpleHeroModel.coverImageSources}
                 alt=""
+                loading="eager"
+                fetchPriority="high"
                 style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
                 onError={() => markBrandingImageError(`hero-cover:${selectedStore.slug}`)}
               />
@@ -337,8 +340,8 @@ const SimpleHero = ({
           justifyContent: 'center'
         }}>
           {simpleHeroModel.profileImageUrl && !isBrandingImageBlocked(`hero-profile:${selectedStore.slug}`) ? (
-            <img
-              src={simpleHeroModel.profileImageUrl}
+            <StorefrontResponsiveImage
+              imageSources={simpleHeroModel.profileImageSources}
               alt={`${simpleHeroModel.name} profile`}
               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
               onError={() => markBrandingImageError(`hero-profile:${selectedStore.slug}`)}

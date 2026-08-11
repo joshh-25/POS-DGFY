@@ -44,6 +44,44 @@ describe('normalizeStorefrontPageModel', () => {
     expect(model.sections.supporting.hasGallery).toBe(true);
   });
 
+  it('builds AVIF/WebP hero image sources from cover/profile image_variants (issue #282)', () => {
+    const model = normalizeStorefrontPageModel({
+      selectedStore: {
+        storefront_cover_image_url: '/uploads/storefront-assets/tenant-1/cover-172000000-v2-a1b2c3d4/medium.jpg',
+        storefront_cover_image_variants: {
+          thumbnail_url: '/uploads/storefront-assets/tenant-1/cover-172000000-v2-a1b2c3d4/thumb.jpg',
+          medium_url: '/uploads/storefront-assets/tenant-1/cover-172000000-v2-a1b2c3d4/medium.jpg',
+          large_url: '/uploads/storefront-assets/tenant-1/cover-172000000-v2-a1b2c3d4/large.jpg',
+          placeholder_url: '/uploads/storefront-assets/tenant-1/cover-172000000-v2-a1b2c3d4/placeholder.webp',
+          avif: {
+            thumbnail_url: '/uploads/storefront-assets/tenant-1/cover-172000000-v2-a1b2c3d4/thumb.avif',
+            medium_url: '/uploads/storefront-assets/tenant-1/cover-172000000-v2-a1b2c3d4/medium.avif',
+            large_url: '/uploads/storefront-assets/tenant-1/cover-172000000-v2-a1b2c3d4/large.avif'
+          },
+          webp: {
+            thumbnail_url: '/uploads/storefront-assets/tenant-1/cover-172000000-v2-a1b2c3d4/thumb.webp',
+            medium_url: '/uploads/storefront-assets/tenant-1/cover-172000000-v2-a1b2c3d4/medium.webp',
+            large_url: '/uploads/storefront-assets/tenant-1/cover-172000000-v2-a1b2c3d4/large.webp'
+          },
+          version: 2
+        },
+        storefront_profile_image_url: '/uploads/storefront-assets/tenant-1/profile.png',
+        storefront_profile_image_variants: null
+      },
+      catalog: []
+    });
+
+    expect(model.hero.coverImageSources.avifSrcSet).toContain('.avif');
+    expect(model.hero.coverImageSources.webpSrcSet).toContain('.webp');
+    expect(model.hero.coverImageSources.placeholderUrl).toContain('placeholder.webp');
+    expect(model.hero.coverImageSources.version).toBe(2);
+    // No variants for the legacy profile asset -- degrades to the single URL,
+    // no srcSet, no avif/webp sources.
+    expect(model.hero.profileImageSources.src).toContain('profile.png');
+    expect(model.hero.profileImageSources.avifSrcSet).toBeUndefined();
+    expect(model.hero.profileImageSources.webpSrcSet).toBeUndefined();
+  });
+
   it('uses all active commercial promos and preserves the legacy promo only as a fallback', () => {
     const model = normalizeStorefrontPageModel({
       selectedStore: {

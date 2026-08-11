@@ -9,7 +9,7 @@ import {
   Maximize,
   Sparkles
 } from 'lucide-react';
-import { StoresMap } from '../../../../discovery/components/StoresMap.jsx';
+import { StoresMap } from '../../../../discovery/components/StoresMapLazy.jsx';
 import { getStorefrontContactIcon } from '../../../../features/shared-storefront/utils/storefrontDisplayUtils.jsx';
 import { FnbHeroGalleryLightbox } from './FnbHeroGalleryLightbox.jsx';
 import { StorefrontDirectionsEta } from '../../../../shared/components/storefront/hero/StorefrontDirectionsEta.jsx';
@@ -116,7 +116,7 @@ const FnbHeroMobileInfoCards = ({
                   aria-label="View store photos"
                   style={{ width: 100, height: 80, borderRadius: 12, overflow: 'hidden', position: 'relative', flexShrink: 0, border: 'none', padding: 0, background: 'none', cursor: 'pointer' }}
                 >
-                  <img src={galleryImages[0]} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <img src={galleryImages[0]} alt="" loading="lazy" decoding="async" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   {storeDetailGalleryOverlayCount > 0 && (
                     <div style={{
                       position: 'absolute',
@@ -161,7 +161,7 @@ const FnbHeroMobileInfoCards = ({
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
                     {deliveryPlatformLinks.map((platform) => {
                       const content = platform.logoUrl ? (
-                        <img src={platform.logoUrl} alt={platform.label} style={{ height: 16, objectFit: 'contain' }} />
+                        <img src={platform.logoUrl} alt={platform.label} loading="lazy" decoding="async" style={{ height: 16, objectFit: 'contain' }} />
                       ) : <span style={{ fontSize: 12, fontWeight: 700, color: '#f97316' }}>{platform.label}</span>;
                       return platform.href ? (
                         <button

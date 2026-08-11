@@ -90,8 +90,6 @@ export function DiscoveryHeader({
   activeItem = 'Explore',
   onAuthClick,
   authLabel = 'Log in / Sign up',
-  onBusinessClick,
-  businessLabel = 'Register Your Business',
   isAuthenticated = false,
   accountLabel = 'My Account',
   menuOpen = false,
@@ -216,12 +214,6 @@ export function DiscoveryHeader({
                   )}
                 </button>
               )}
-              {!isAuthenticated && (
-                <button type="button" onClick={onBusinessClick} className={cx('discovery-header__cta', isTabletViewport && 'discovery-header__cta--tablet')}>
-                  <User size={isTabletViewport ? 14 : 15} />
-                  {businessLabel}
-                </button>
-              )}
             </>
           )}
         </div>
@@ -302,12 +294,6 @@ export function DiscoveryHeader({
                   >
                     <UserCircle2 size={16} />
                     {authLabel}
-                  </button>
-                )}
-                {!isAuthenticated && (
-                  <button type="button" onClick={onBusinessClick} className="discovery-header__menuCta">
-                    <User size={14} />
-                    {businessLabel}
                   </button>
                 )}
               </div>

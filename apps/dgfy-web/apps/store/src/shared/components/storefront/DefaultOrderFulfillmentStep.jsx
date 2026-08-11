@@ -1,5 +1,5 @@
 import { CalendarDays, ChevronLeft, ChevronRight, Clock3, MapPin, ShoppingBag, Truck, Zap } from 'lucide-react';
-import { DeliveryPinMap } from '../../../features/locations/components/DeliveryPinMap.jsx';
+import { DeliveryPinMap } from '../../../features/locations/components/DeliveryPinMapLazy.jsx';
 import { SelectableOptionCard } from '../checkout/SelectableOptionCard.jsx';
 import { SavedAddressCard } from '../checkout/SavedAddressCard.jsx';
 import { ORDER_METHOD_OPTIONS } from '../../model/storefrontConstants.js';

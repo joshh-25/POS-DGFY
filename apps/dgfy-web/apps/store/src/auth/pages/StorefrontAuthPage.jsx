@@ -1101,7 +1101,7 @@ export default function StorefrontAuthPage({ initialMode }) {
                       onChange={(e) => setAuthForm((c) => ({ ...c, lastName: e.target.value }))}
                       required disabled={isLoading} className={inputClass} />
                   </FieldGroup>
-                  <FieldGroup id="dgfyFirstName" label="First Name">
+                  <FieldGroup id="dgfyFirstName" label="Complete First Name">
                     <Input id="dgfyFirstName" placeholder="e.g. John" value={authForm.firstName}
                       onChange={(e) => setAuthForm((c) => ({ ...c, firstName: e.target.value }))}
                       required disabled={isLoading} className={inputClass} />

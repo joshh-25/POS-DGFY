@@ -124,6 +124,11 @@ export function FnbProductMediaGallery({
           sizes="(max-width: 640px) calc(100vw - 32px), 720px"
           alt={itemName}
           decoding="async"
+          // Issue #282, Phase D: this is the product-detail LCP image --
+          // fetchPriority="high" alone did nothing while
+          // StorefrontResponsiveImage's default loading="lazy" still
+          // applied underneath it.
+          loading="eager"
           fetchPriority="high"
           width={1024}
           height={768}
