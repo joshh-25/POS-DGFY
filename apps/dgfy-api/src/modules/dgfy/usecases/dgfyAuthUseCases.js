@@ -656,6 +656,71 @@ export const buildChangeDgfyPasswordUseCase = ({
     });
 };
 
+export const buildConfigureDgfyCompanyDayClosePinUseCase = ({
+    comparePassword,
+    configureTenantDayClosePinForDgfyAccount
+}) => async ({ account, tenantId, body = {} }) => {
+    const normalizedTenantId = String(tenantId || body?.tenant_id || body?.tenantId || '').trim();
+    const currentPassword = String(body?.current_password || body?.currentPassword || '');
+    const pin = String(body?.pin || '').trim();
+
+    if (!account?.id || !normalizedTenantId || !currentPassword || !pin) {
+        return fail(new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'Company, current account password, and Day Close PIN are required.',
+            { statusCode: 400 }
+        ));
+    }
+    if (!/^[0-9]{4,12}$/.test(pin)) {
+        return fail(new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'POS Day Close PIN must contain 4 to 12 digits.',
+            { statusCode: 422 }
+        ));
+    }
+
+    const passwordValid = await comparePassword(currentPassword, account.password_hash);
+    if (!passwordValid) {
+        return fail(new DomainError(
+            DomainErrorCode.AUTHENTICATION_FAILED,
+            'Current DGFY account password is incorrect.',
+            { statusCode: 401 }
+        ));
+    }
+
+    try {
+        const configured = await configureTenantDayClosePinForDgfyAccount({
+            account,
+            tenantId: normalizedTenantId,
+            pin
+        });
+        return ok({
+            payload: {
+                success: true,
+                data: configured,
+                message: 'POS Day Close PIN configured successfully.'
+            }
+        });
+    } catch (error) {
+        if (error instanceof DomainError) return fail(error);
+        const statusCode = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
+        const errorCode = statusCode === 401
+            ? DomainErrorCode.AUTHENTICATION_FAILED
+            : statusCode === 403
+                ? DomainErrorCode.AUTHORIZATION_FAILED
+                : statusCode === 404
+                    ? DomainErrorCode.RESOURCE_NOT_FOUND
+                    : statusCode < 500
+                        ? DomainErrorCode.VALIDATION_FAILED
+                        : DomainErrorCode.INTERNAL_ERROR;
+        return fail(new DomainError(
+            errorCode,
+            error?.message || 'Unable to configure the POS Day Close PIN.',
+            { statusCode, cause: error }
+        ));
+    }
+};
+
 export const buildRequestDgfyEmailVerificationUseCase = ({
     requestEmailOtp,
     emailOtpPurposes = DEFAULT_EMAIL_OTP_PURPOSES
@@ -1550,6 +1615,7 @@ export const buildStartDgfyTenantSessionUseCase = ({
 }) => async ({ account, body }) => {
     const tenantId = String(body?.tenant_id || body?.tenantId || '').trim();
     const companyToken = String(body?.company_token || body?.companyToken || '').trim();
+    const accessScope = String(body?.access_scope || body?.accessScope || '').trim().toLowerCase();
 
     if (!tenantId && !companyToken) {
         return fail(new DomainError(
@@ -1565,6 +1631,20 @@ export const buildStartDgfyTenantSessionUseCase = ({
             tenantId,
             companyToken
         });
+
+        if (accessScope === 'pos') {
+            const permissions = Array.isArray(session?.permissions) ? session.permissions : [];
+            const role = String(session?.role || '').trim().toLowerCase();
+            const hasAllowedRole = session?.is_master_admin === true || role === 'cashier' || role === 'admin';
+            if (!hasAllowedRole || (!permissions.includes('pos:view') && !permissions.includes('pos:transact'))) {
+                throw new DomainError(
+                    DomainErrorCode.AUTHORIZATION_FAILED,
+                    'This DGFY account does not have POS access for the selected company.',
+                    { statusCode: 403 }
+                );
+            }
+        }
+
         return ok({
             payload: {
                 success: true,

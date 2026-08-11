@@ -98,6 +98,20 @@ describe('dgfyAuthService cookie session rehydration', () => {
     expect(apiGet).toHaveBeenNthCalledWith(2, '/dgfy/auth/me', dgfyCookieConfig);
   });
 
+  it('deduplicates concurrent legal-terms and cookie-session reads', async () => {
+    apiGet
+      .mockResolvedValueOnce({ data: { data: { flows: {} } } })
+      .mockResolvedValueOnce({ data: { data: { account: { id: 'acct-cookie' } } } });
+
+    const service = await import('../dgfyAuthService.js');
+    await Promise.all([service.fetchDgfyLegalTerms(), service.fetchDgfyLegalTerms()]);
+    await Promise.all([service.fetchDgfyMe(''), service.fetchDgfyMe('')]);
+
+    expect(apiGet).toHaveBeenCalledTimes(2);
+    expect(apiGet).toHaveBeenNthCalledWith(1, '/dgfy/legal-terms/current', dgfyCookieConfig);
+    expect(apiGet).toHaveBeenNthCalledWith(2, '/dgfy/auth/me', dgfyCookieConfig);
+  });
+
   it('suppresses duplicate global tenant error toasts for DGFY login submissions', async () => {
     apiPost.mockResolvedValueOnce({
       data: {
@@ -297,6 +311,29 @@ describe('dgfyAuthService cookie session rehydration', () => {
     );
     expect(candidate.token).toBe('candidate-pos-token');
     expect(setBrowserSessionMock).not.toHaveBeenCalled();
+  });
+
+  it('sends the POS access scope when bootstrapping a terminal handoff', async () => {
+    apiPost.mockResolvedValueOnce({
+      data: {
+        data: {
+          token: 'candidate-pos-scope-token',
+          company: { token: 'candidate-pos-scope-company-token' }
+        }
+      }
+    });
+
+    const service = await import('../dgfyAuthService.js');
+    await service.startDgfyTenantSession({
+      tenantId: 'tenant-cookie',
+      accessScope: 'pos'
+    }, '', { activate: false });
+
+    expect(apiPost).toHaveBeenCalledWith(
+      '/dgfy/auth/tenant-session',
+      { tenant_id: 'tenant-cookie', company_token: undefined, access_scope: 'pos' },
+      dgfyCookieConfig
+    );
   });
 
   it('rejects incomplete tenant-session responses without replacing the active browser session', async () => {

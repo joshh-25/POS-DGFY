@@ -25,7 +25,8 @@ export function useCustomerDashboardRuntime({
   deriveAccountActivityCollections, readDgfyAuthToken, readStoreAuthToken,
   clearDgfyAuthToken, clearStoreAuthToken, rememberDgfySignedOutEmail,
   markDgfyExplicitSignOut, clearCheckoutAuthResumeDraft, buildSkupervisorHandoffUrl,
-  createDgfyHandoff, buildPosAppUrl, startDgfyPosSession, getGoStoreTrackPage,
+  buildPosDgfyHandoffUrl,
+  createDgfyHandoff, buildPosAppUrl, startDgfyPosSession, startDgfyTenantSession, getGoStoreTrackPage,
   onTrackedActivityUpdated
 }) {
   const accountPanelRefreshInFlightRef = useRef(false);
@@ -76,7 +77,8 @@ export function useCustomerDashboardRuntime({
   });
   const business = useCustomerDashboardBusinessAccess({
     handleLoadAccountPanel, requestJson, readDgfyAuthToken, buildSkupervisorHandoffUrl,
-    createDgfyHandoff, buildPosAppUrl, startDgfyPosSession, dgfySessionAccount,
+    buildPosDgfyHandoffUrl,
+    createDgfyHandoff, buildPosAppUrl, startDgfyPosSession, startDgfyTenantSession, dgfySessionAccount,
     normalizeStorefrontErrorMessage
   });
   const session = useCustomerDashboardSessionActions({

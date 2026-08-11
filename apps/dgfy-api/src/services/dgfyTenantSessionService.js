@@ -11,6 +11,7 @@ import {
 } from './authService.js';
 import { onboardingRepository } from '../modules/onboarding/repositories/onboardingRepository.js';
 import { resolveEffectivePermissions } from '../utils/userPermissions.js';
+import { updateOwnPosDayClosePinForVerifiedDgfyAccount } from './userService.js';
 
 const findAcceptedMembership = async ({ account, tenantId, companyToken }) => {
   const where = {
@@ -112,6 +113,7 @@ export const createTenantSessionForDgfyAccount = async ({
       phone_number: user.phone_number || null,
       role: user.role,
       permissions: resolveEffectivePermissions(user),
+      pos_day_close_pin_configured: Boolean(String(user.pos_day_close_pin_hash || '').trim()),
       is_master_admin: user.is_master_admin || false,
       onboarding,
       token,
@@ -124,6 +126,61 @@ export const createTenantSessionForDgfyAccount = async ({
         plan: tenant.plan || null
       }
     };
+  });
+};
+
+export const configureTenantDayClosePinForDgfyAccount = async ({
+  account,
+  tenantId = '',
+  pin = ''
+} = {}) => {
+  if (!account?.id) {
+    const error = new Error('DGFY account authentication is required.');
+    error.statusCode = 401;
+    throw error;
+  }
+
+  const membership = await findAcceptedMembership({ account, tenantId });
+  const tenant = membership?.tenant;
+  if (!membership || !tenant?.company_token || tenant.status !== 'active') {
+    const error = new Error('No active company membership is available for this DGFY account.');
+    error.statusCode = 403;
+    throw error;
+  }
+
+  const sequelize = await tenantConnector.getConnection(tenant);
+  const tenantModels = getTenantModels(sequelize);
+  const context = {
+    sequelize,
+    tenantId: tenant.id,
+    tenantToken: tenant.company_token,
+    tenantName: tenant.name,
+    tenantPlan: tenant.plan,
+    ...tenantModels
+  };
+
+  return dbStore.run(context, async () => {
+    const User = dbStore.get('User');
+    const tenantUserId = Number.parseInt(membership.tenant_user_id, 10);
+    const user = Number.isInteger(tenantUserId) && tenantUserId > 0
+      ? await User.findByPk(tenantUserId)
+      : null;
+
+    if (!user || String(user.email || '').trim().toLowerCase() !== String(account.email || '').trim().toLowerCase()) {
+      const error = new Error('The DGFY account is not linked to a tenant user for this company.');
+      error.statusCode = 403;
+      throw error;
+    }
+    if (!user.is_active || user.deleted_at) {
+      const error = new Error('The linked tenant user is inactive.');
+      error.statusCode = 403;
+      throw error;
+    }
+
+    return updateOwnPosDayClosePinForVerifiedDgfyAccount(user.user_id, {
+      pin,
+      dgfyAccountId: account.id
+    });
   });
 };
 

@@ -40,6 +40,8 @@ export function buildCustomerDashboardRouteBindings({
   submitAccountReviewFromDashboard,
   handleOpenBusinessInventory,
   handleOpenBusinessPos,
+  getOwnBusinessDayCloseStatus,
+  configureOwnBusinessDayClosePin,
   resolveStorefrontMetaForAccountEntry,
   withAssetOrigin
 }) {
@@ -87,7 +89,9 @@ export function buildCustomerDashboardRouteBindings({
       openStorefrontFromAccountEntry,
       submitAccountReviewFromDashboard,
       handleOpenBusinessInventory,
-      handleOpenBusinessPos
+      handleOpenBusinessPos,
+      getOwnBusinessDayCloseStatus,
+      configureOwnBusinessDayClosePin
     },
     resolvers: {
       resolveStorefrontMetaForAccountEntry,

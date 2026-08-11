@@ -107,9 +107,27 @@ describe('standalone POS browser session bootstrap', () => {
     const session = await import('../browserSession.js');
 
     expect(session.canRefreshBrowserSession()).toBe(true);
+    expect(session.getFreshPosCompanySwitchHandoff()).toEqual({ tenantId: 'tenant-switched' });
     await expect(session.refreshBrowserSession()).resolves.toBe('refreshed-access-token');
     expect(globalThis.fetch).toHaveBeenCalledTimes(2);
     expect(globalThis.window.sessionStorage.getItem('pos_company_switch_handoff_v1')).toBeNull();
+  });
+
+  it('creates and consumes a short-lived, credential-free DGFY Business handoff for a selected POS company', async () => {
+    const session = await import('../browserSession.js');
+    session.setBrowserSession({
+      token: 'dgfy-tenant-access-token',
+      companyToken: 'dgfy-tenant-company-token'
+    });
+
+    session.preparePosDgfyTenantHandoff({ tenantId: 'tenant-from-business' });
+
+    const stored = globalThis.window.sessionStorage.getItem('pos_dgfy_tenant_handoff_v1');
+    expect(JSON.parse(stored)).toMatchObject({ tenantId: 'tenant-from-business' });
+    expect(stored).not.toContain('dgfy-tenant-access-token');
+    expect(stored).not.toContain('dgfy-tenant-company-token');
+    expect(session.consumePosDgfyTenantHandoff()).toEqual({ tenantId: 'tenant-from-business' });
+    expect(globalThis.window.sessionStorage.getItem('pos_dgfy_tenant_handoff_v1')).toBeNull();
   });
 
   it('requires explicit login again after the POS session is cleared', async () => {

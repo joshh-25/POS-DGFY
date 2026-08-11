@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { DgfyCustomerAuthModal } from '../components/DgfyCustomerAuthModal.jsx';
 import { CustomerDashboardRouteMount } from './CustomerDashboardRouteMount.jsx';
 
@@ -6,6 +6,7 @@ export function CustomerDashboardRouteHost({
   isStandaloneRoute = false,
   isDrawerOpen = false,
   isSignedIn = false,
+  isSessionResolved = false,
   isGuestDrawerState = false,
   isMobileViewport = false,
   onCloseStandalone,
@@ -13,6 +14,10 @@ export function CustomerDashboardRouteHost({
   sources,
   guestAuth
 }) {
+  useEffect(() => {
+    if (isStandaloneRoute && isSessionResolved && !isSignedIn) guestAuth?.onOpenAuth?.();
+  }, [guestAuth?.onOpenAuth, isSessionResolved, isSignedIn, isStandaloneRoute]);
+
   if (isStandaloneRoute && isSignedIn) {
     return (
       <CustomerDashboardRouteMount
@@ -24,6 +29,10 @@ export function CustomerDashboardRouteHost({
         sources={sources}
       />
     );
+  }
+
+  if (isStandaloneRoute) {
+    return <main role="status" aria-live="polite">{isSessionResolved ? 'Redirecting to sign in...' : 'Checking account access...'}</main>;
   }
 
   if (!isDrawerOpen) return null;

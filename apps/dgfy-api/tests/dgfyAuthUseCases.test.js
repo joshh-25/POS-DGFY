@@ -3,6 +3,7 @@ import jwt from 'jsonwebtoken';
 import {
     buildAcceptDgfyInvitationUseCase,
     buildChangeDgfyPasswordUseCase,
+    buildConfigureDgfyCompanyDayClosePinUseCase,
     buildCompleteDgfyPasswordResetUseCase,
     buildCreateDgfyInvitationUseCase,
     buildCreateDgfyHandoffUseCase,
@@ -594,6 +595,44 @@ describe('dgfyAuthUseCases', () => {
             companyToken: 'token-tenant-1'
         });
         expect(result.data.payload.data).toEqual(session);
+    });
+
+    it('requires POS access when a tenant session is requested for the POS route', async () => {
+        const session = {
+            token: 'tenant-pos-token',
+            role: 'cashier',
+            permissions: ['pos:view'],
+            company: { id: 'tenant-1', token: 'token-tenant-1' }
+        };
+        const createTenantSessionForDgfyAccount = jest.fn().mockResolvedValue(session);
+        const useCase = buildStartDgfyTenantSessionUseCase({ createTenantSessionForDgfyAccount });
+
+        const result = await useCase({
+            account: createAccount({ id: 'dgfy-pos-entry' }),
+            body: { tenant_id: 'tenant-1', access_scope: 'pos' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data.payload.data).toEqual(session);
+    });
+
+    it('fails closed when a POS-scoped tenant session lacks POS permission', async () => {
+        const createTenantSessionForDgfyAccount = jest.fn().mockResolvedValue({
+            token: 'tenant-no-pos-token',
+            role: 'staff',
+            permissions: ['items:view'],
+            company: { id: 'tenant-1', token: 'token-tenant-1' }
+        });
+        const useCase = buildStartDgfyTenantSessionUseCase({ createTenantSessionForDgfyAccount });
+
+        const result = await useCase({
+            account: createAccount({ id: 'dgfy-no-pos-entry' }),
+            body: { tenant_id: 'tenant-1', access_scope: 'pos' }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(403);
+        expect(result.error.message).toBe('This DGFY account does not have POS access for the selected company.');
     });
 
     it('requires company identity before starting a SKUpervisor tenant session', async () => {
@@ -1292,6 +1331,75 @@ describe('dgfyAuthUseCases', () => {
         expect(updatePassword).toHaveBeenCalledWith(account, 'hashed-new-password', {
             temporary_password_active: false
         });
+    });
+
+    it('configures a company Day Close PIN after validating the global DGFY password', async () => {
+        const account = createAccount({ id: 'dgfy-cashier-1', password_hash: 'global-account-hash' });
+        const comparePassword = jest.fn().mockResolvedValue(true);
+        const configureTenantDayClosePinForDgfyAccount = jest.fn().mockResolvedValue({
+            user_id: 17,
+            email: account.email,
+            pos_day_close_pin_configured: true
+        });
+        const useCase = buildConfigureDgfyCompanyDayClosePinUseCase({
+            comparePassword,
+            configureTenantDayClosePinForDgfyAccount
+        });
+
+        const result = await useCase({
+            account,
+            tenantId: 'tenant-laundry',
+            body: { current_password: 'global-password', pin: '1234' }
+        });
+
+        expect(result.success).toBe(true);
+        expect(comparePassword).toHaveBeenCalledWith('global-password', 'global-account-hash');
+        expect(configureTenantDayClosePinForDgfyAccount).toHaveBeenCalledWith({
+            account,
+            tenantId: 'tenant-laundry',
+            pin: '1234'
+        });
+        expect(result.data.payload.data.pos_day_close_pin_configured).toBe(true);
+    });
+
+    it('rejects an incorrect global DGFY password before opening tenant context', async () => {
+        const comparePassword = jest.fn().mockResolvedValue(false);
+        const configureTenantDayClosePinForDgfyAccount = jest.fn();
+        const useCase = buildConfigureDgfyCompanyDayClosePinUseCase({
+            comparePassword,
+            configureTenantDayClosePinForDgfyAccount
+        });
+
+        const result = await useCase({
+            account: createAccount({ password_hash: 'global-account-hash' }),
+            tenantId: 'tenant-laundry',
+            body: { current_password: 'incorrect-password', pin: '1234' }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(401);
+        expect(result.error.message).toBe('Current DGFY account password is incorrect.');
+        expect(configureTenantDayClosePinForDgfyAccount).not.toHaveBeenCalled();
+    });
+
+    it('rejects an invalid Day Close PIN before checking any credential', async () => {
+        const comparePassword = jest.fn();
+        const configureTenantDayClosePinForDgfyAccount = jest.fn();
+        const useCase = buildConfigureDgfyCompanyDayClosePinUseCase({
+            comparePassword,
+            configureTenantDayClosePinForDgfyAccount
+        });
+
+        const result = await useCase({
+            account: createAccount(),
+            tenantId: 'tenant-laundry',
+            body: { current_password: 'global-password', pin: '12ab' }
+        });
+
+        expect(result.success).toBe(false);
+        expect(result.error.statusCode).toBe(422);
+        expect(comparePassword).not.toHaveBeenCalled();
+        expect(configureTenantDayClosePinForDgfyAccount).not.toHaveBeenCalled();
     });
 
     it('requests DGFY password reset generically but only sends OTP for active accounts', async () => {

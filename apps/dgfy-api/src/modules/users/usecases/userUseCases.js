@@ -262,7 +262,7 @@ export const buildUpdatePosApprovalPinUseCase = ({ userService }) => {
 };
 
 export const buildUpdatePosDayClosePinUseCase = ({ userService }) => {
-  return async ({ adminUserId, targetUserId, pin, clear }) => {
+  return async ({ adminUserId, targetUserId, clear }) => {
     const normalizedAdminUserId = parsePositiveInt(adminUserId);
     const normalizedTargetUserId = parsePositiveInt(targetUserId);
     if (!normalizedAdminUserId || !normalizedTargetUserId) {
@@ -272,14 +272,39 @@ export const buildUpdatePosDayClosePinUseCase = ({ userService }) => {
         { statusCode: 400 }
       ));
     }
+    if (clear !== true) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'Master Admin can only reset a cashier POS Day Close PIN',
+        { statusCode: 422 }
+      ));
+    }
     try {
       return ok(await userService.updatePosDayClosePin(
         normalizedAdminUserId,
         normalizedTargetUserId,
-        { pin, clear }
+        { clear: true }
       ));
     } catch (error) {
       return fail(mapUserUseCaseError(error, 'Failed to update POS Day Close PIN'));
+    }
+  };
+};
+
+export const buildUpdateOwnPosDayClosePinUseCase = ({ userService }) => {
+  return async ({ userId, currentPassword, pin }) => {
+    const normalizedUserId = parsePositiveInt(userId);
+    if (!normalizedUserId || !currentPassword || !pin) {
+      return fail(new DomainError(
+        DomainErrorCode.VALIDATION_FAILED,
+        'userId, currentPassword, and pin are required',
+        { statusCode: 400 }
+      ));
+    }
+    try {
+      return ok(await userService.updateOwnPosDayClosePin(normalizedUserId, { currentPassword, pin }));
+    } catch (error) {
+      return fail(mapUserUseCaseError(error, 'Failed to configure POS Day Close PIN'));
     }
   };
 };

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Calculator, Crown, MoreVertical, Store } from 'lucide-react';
+import { Calculator, Crown, KeyRound, MoreVertical, Store } from 'lucide-react';
 
 export function BusinessSection({
   isMobileViewport,
@@ -16,6 +16,7 @@ export function BusinessSection({
   submitBusinessStepUpAction,
   onRegisterBusiness,
   onOpenBusinessPos,
+  onOpenBusinessDayClose,
   resolveBusinessAssetUrl,
   getBusinessCoverUrl,
   getBusinessProfileUrl,
@@ -98,6 +99,10 @@ export function BusinessSection({
                   <div style={{ flex: 1, minHeight: 24 }} />
 
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10, marginTop: 'auto' }}>
+                    <button type="button" disabled={businessActionLoading} onClick={() => onOpenBusinessDayClose?.(company)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 40, borderRadius: 10, border: `1px solid ${theme.primary}`, background: '#fff', color: theme.primary, fontWeight: 700, fontSize: 13, cursor: businessActionLoading ? 'not-allowed' : 'pointer', padding: '0 8px' }}>
+                      <KeyRound size={16} />
+                      Day Close
+                    </button>
                     <button type="button" disabled={businessActionLoading} onClick={() => onOpenBusinessPos?.(company)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 44, borderRadius: 10, border: 'none', background: theme.primary, color: '#fff', fontWeight: 700, fontSize: 13, cursor: businessActionLoading ? 'not-allowed' : 'pointer', boxShadow: '0 4px 12px rgba(26,78,141,0.2)', padding: '0 8px' }}>
                       <Calculator size={16} />
                       Go to POS
