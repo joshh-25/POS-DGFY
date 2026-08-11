@@ -504,6 +504,10 @@ const resolveOrderTicketItemName = (cartLine, index) => safeText(
 );
 
 const formatShiftSummaryValue = (value) => Number(value || 0).toFixed(2);
+const paymentBreakdownLabel = (entry) => safeText(
+    entry?.payment_label || entry?.payment_type,
+    'Other'
+);
 
 export const formatIminShiftSummaryText = ({ shiftSummary = {}, businessSettings = {} } = {}) => {
     const shift = shiftSummary?.shift || {};
@@ -521,11 +525,12 @@ export const formatIminShiftSummaryText = ({ shiftSummary = {}, businessSettings
         pair('Discounts', formatShiftSummaryValue(sales.discount_amount)),
         pair('VAT', formatShiftSummaryValue(sales.vat_amount)),
         pair('Total sales', formatShiftSummaryValue(sales.total_amount)),
+        pair(`POS voids (${sales.void_transaction_count || 0})`, formatShiftSummaryValue(sales.void_amount)),
         line(),
         center('PAYMENT BREAKDOWN')
     ];
     (Array.isArray(sales.payment_breakdown) ? sales.payment_breakdown : []).forEach((entry) => {
-        lines.push(pair(`${entry.payment_type || 'Other'} (${entry.count || 0})`, formatShiftSummaryValue(entry.amount)));
+        lines.push(pair(`${paymentBreakdownLabel(entry)} (${entry.count || 0})`, formatShiftSummaryValue(entry.amount)));
     });
     lines.push(
         line(),
@@ -547,6 +552,10 @@ export const printShiftSummaryWithIminBridge = ({ shiftSummary, businessSettings
     const bridge = getIminBridge();
     if (!bridge || typeof bridge.printReceipt !== 'function') {
         return { handled: false };
+    }
+    const bitmapResult = tryPrintReceiptBitmap(bridge, businessSettings);
+    if (bitmapResult && !bitmapResult.success) {
+        return { handled: true, result: toHardwareFailureResult(bitmapResult) };
     }
     const result = parseBridgeResult(
         bridge.printReceipt(formatIminShiftSummaryText({ shiftSummary, businessSettings }), false),
@@ -580,11 +589,12 @@ export const formatIminZReadingText = ({ zReading = {}, businessSettings = {} } 
         pair('Discounts', formatZReadingValue(summary.discount_amount)),
         pair('VAT', formatZReadingValue(summary.vat_amount)),
         pair('Total sales', formatZReadingValue(summary.total_amount)),
+        pair(`POS voids (${summary.void_transaction_count || 0})`, formatZReadingValue(summary.void_amount)),
         line(),
         center('PAYMENT BREAKDOWN')
     ];
     (Array.isArray(summary.payment_breakdown) ? summary.payment_breakdown : []).forEach((entry) => {
-        lines.push(pair(`${entry.payment_type || 'Other'} (${entry.count || 0})`, formatZReadingValue(entry.amount)));
+        lines.push(pair(`${paymentBreakdownLabel(entry)} (${entry.count || 0})`, formatZReadingValue(entry.amount)));
     });
     lines.push(
         line(),
@@ -593,6 +603,7 @@ export const formatIminZReadingText = ({ zReading = {}, businessSettings = {} } 
         pair('Reset counter', reading.reset_counter_value || 0),
         pair('Lifetime total', formatZReadingValue(Number(reading.lifetime_grand_total_cents || 0) / 100)),
         line(),
+        center('Provider refunds reconciled separately.'),
         center('Keep with day-end close evidence.')
     );
     return lines.join('\n');
@@ -602,6 +613,10 @@ export const printZReadingWithIminBridge = ({ zReading, businessSettings = {} })
     const bridge = getIminBridge();
     if (!bridge || typeof bridge.printReceipt !== 'function') {
         return { handled: false };
+    }
+    const bitmapResult = tryPrintReceiptBitmap(bridge, businessSettings);
+    if (bitmapResult && !bitmapResult.success) {
+        return { handled: true, result: toHardwareFailureResult(bitmapResult) };
     }
     const result = parseBridgeResult(
         bridge.printReceipt(formatIminZReadingText({ zReading, businessSettings }), false),

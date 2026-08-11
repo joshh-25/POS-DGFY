@@ -56,6 +56,7 @@ import {
     STOREFRONT_PROMOS_SETTING_KEY,
     buildCommercialPromoUsageUpdate
 } from '../../shared/utils/commercialPromoPolicy.js';
+import { normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
@@ -132,6 +133,7 @@ const POS_OPERATION_KEYS = Object.freeze({
     ORDER_STATUS_UPDATE: 'terminal.order_status_update',
     PICKUP_CASH_COLLECTION: 'terminal.pickup_cash_collection',
     DELIVERY_CASH_COLLECTION: 'terminal.delivery_cash_collection',
+    DELIVERY_JOB_ASSIGNMENT: 'terminal.delivery_job_assignment',
     DELIVERY_JOB_STATUS_UPDATE: 'terminal.delivery_job_status_update'
 });
 const TERMINAL_POLICY_MODES = new Set(['warn', 'enforce']);
@@ -523,8 +525,12 @@ const normalizeZReadingSummary = (summary = {}) => ({
     item_count: round4(summary?.item_count),
     discount_item_count: round4(summary?.discount_item_count),
     total_cost: round4(summary?.total_cost),
+    void_transaction_count: Number.parseInt(summary?.void_transaction_count || 0, 10),
+    void_amount: round4(summary?.void_amount),
+    voided_item_count: round4(summary?.voided_item_count),
     refund_amount: round4(summary?.refund_amount),
     refunded_item_count: round4(summary?.refunded_item_count),
+    provider_refunds_included: summary?.provider_refunds_included === true,
     net_profit: round4(summary?.net_profit),
     daily_totals: Array.isArray(summary?.daily_totals)
         ? summary.daily_totals.map((entry) => ({
@@ -535,8 +541,12 @@ const normalizeZReadingSummary = (summary = {}) => ({
             item_count: round4(entry?.item_count),
             discount_item_count: round4(entry?.discount_item_count),
             total_cost: round4(entry?.total_cost),
+            void_transaction_count: Number.parseInt(entry?.void_transaction_count || 0, 10),
+            void_amount: round4(entry?.void_amount),
+            voided_item_count: round4(entry?.voided_item_count),
             refund_amount: round4(entry?.refund_amount),
             refunded_item_count: round4(entry?.refunded_item_count),
+            provider_refunds_included: entry?.provider_refunds_included === true,
             net_profit: round4(entry?.net_profit)
         }))
         : [],
@@ -551,13 +561,7 @@ const normalizeZReadingSummary = (summary = {}) => ({
             net_profit: round4(entry?.net_profit)
         }))
         : [],
-    payment_breakdown: Array.isArray(summary?.payment_breakdown)
-        ? summary.payment_breakdown.map((entry) => ({
-            payment_type: entry?.payment_type || null,
-            count: Number.parseInt(entry?.count || 0, 10),
-            amount: round4(entry?.amount)
-        }))
-        : [],
+    payment_breakdown: normalizePosPaymentBreakdown(summary?.payment_breakdown),
     order_method_breakdown: Array.isArray(summary?.order_method_breakdown)
         ? summary.order_method_breakdown.map((entry) => ({
             order_method: entry?.order_method || null,
@@ -599,6 +603,37 @@ const buildPersistedZReadingData = ({
             lifetime_grand_total_cents: lifetimeGrandTotalCents,
             lifetime_grand_total: fromCurrencyCents(lifetimeGrandTotalCents)
         }
+    };
+};
+
+const serializeOpenDayCloseShifts = (openShifts = []) => (
+    Array.isArray(openShifts)
+        ? openShifts.map((shift) => ({
+            shift_id: parsePositiveInt(shift?.pos_terminal_shift_id),
+            terminal_id: String(shift?.terminal_id || '').trim() || null,
+            cashier_name: String(shift?.cashier?.username || shift?.cashier?.email || '').trim() || null,
+            opened_at: shift?.opened_at || null
+        }))
+        : []
+);
+
+const buildDayCloseReadinessData = ({
+    businessDate,
+    locationId,
+    openShifts = [],
+    existingSnapshot = null
+}) => {
+    const serializedOpenShifts = serializeOpenDayCloseShifts(openShifts);
+    const alreadyClosed = Boolean(existingSnapshot);
+    return {
+        business_date: businessDate,
+        location_id: parsePositiveInt(locationId),
+        ready: alreadyClosed || serializedOpenShifts.length === 0,
+        already_closed: alreadyClosed,
+        open_shift_count: serializedOpenShifts.length,
+        open_shifts: serializedOpenShifts,
+        reading_identifier: existingSnapshot?.reading_identifier || null,
+        generated_at: existingSnapshot?.generated_at || existingSnapshot?.created_at || null
     };
 };
 
@@ -1084,7 +1119,8 @@ const validateOnlineOrderTransition = ({ currentStatus, nextStatus, orderMethod 
 };
 
 const assertDeliveryCompletionReadiness = (order) => {
-    const deliveryJobStatus = String(order?.deliveryJob?.status || '').trim().toLowerCase();
+    const deliveryJob = order?.deliveryJob || {};
+    const deliveryJobStatus = String(deliveryJob.status || '').trim().toLowerCase();
     if (deliveryJobStatus !== 'delivered') {
         throw new DomainError(
             DomainErrorCode.CONFLICT,
@@ -1099,6 +1135,30 @@ const assertDeliveryCompletionReadiness = (order) => {
                 }
             }
         );
+    }
+
+    const deliveryProvider = String(deliveryJob.provider || 'manual').trim().toLowerCase();
+    if (deliveryProvider === 'manual') {
+        const hasAssignment = Boolean(
+            parsePositiveInt(deliveryJob.delivery_personnel_id)
+            && parsePositiveInt(deliveryJob.assigned_by)
+            && parsePositiveInt(deliveryJob.assigned_shift_id)
+            && deliveryJob.assigned_at
+        );
+        if (!hasAssignment) {
+            throw new DomainError(
+                DomainErrorCode.CONFLICT,
+                'Manual delivery orders require a delivery-person assignment before completion.',
+                {
+                    statusCode: 409,
+                    details: {
+                        order_lifecycle: {
+                            reason_code: 'DELIVERY_ASSIGNMENT_REQUIRED'
+                        }
+                    }
+                }
+            );
+        }
     }
 
     const paymentStatus = String(order?.payment_status || '').trim().toLowerCase();
@@ -1547,6 +1607,20 @@ const buildOnlineOrderStockMovements = async ({ order = {}, posRepository, optio
         // trusted directly on the persisted line rather than recomputed from
         // category, since the checkout path that created this line now sets it
         // correctly for every mode (untracked/toggle/service alike).
+        const modifierMovements = (Array.isArray(line?.fnb_modifiers_snapshot)
+            ? line.fnb_modifiers_snapshot
+            : [])
+            .map((modifier) => ({
+                item_id: parsePositiveInt(modifier?.sku_item_id),
+                quantity: Number(line?.quantity) * Math.min(99, Math.max(1, Number.parseInt(modifier?.quantity || 1, 10) || 1)),
+                movement_type: 'goods_issue',
+                location_id: parsePositiveInt(modifier?.location_id) || order.location_id || null,
+                reference_type: 'POS',
+                reference_id: `ONLINE:${orderId}:${lineReference}:MOD:${parsePositiveInt(modifier?.modifier_option_id) || parsePositiveInt(modifier?.sku_item_id)}`,
+                notes: `Online F&B modifier consumption for ${modifier?.option_name || `item ${modifier?.sku_item_id}`} on ${order.invoice_number || `#${orderId}`}${order.tracking_pin ? ` (${order.tracking_pin})` : ''}`
+            }))
+            .filter((movement) => movement.item_id && Number.isFinite(movement.quantity) && movement.quantity > 0);
+
         if (recipeMovements.length > 0) {
             if (!itemId) {
                 throw new DomainError(
@@ -1555,7 +1629,7 @@ const buildOnlineOrderStockMovements = async ({ order = {}, posRepository, optio
                     { statusCode: 409 }
                 );
             }
-            return recipeMovements.map((movement) => ({
+            return [...recipeMovements.map((movement) => ({
                 item_id: movement.ingredient_item_id,
                 quantity: movement.quantity,
                 movement_type: 'goods_issue',
@@ -1563,13 +1637,13 @@ const buildOnlineOrderStockMovements = async ({ order = {}, posRepository, optio
                 reference_type: 'POS',
                 reference_id: `ONLINE:${orderId}:${lineReference}:ING:${movement.ingredient_item_id}`,
                 notes: `Online F&B recipe consumption for ${movement.product_name || `item ${itemId}`} on ${order.invoice_number || `#${orderId}`}${order.tracking_pin ? ` (${order.tracking_pin})` : ''}`
-            }));
+            })), ...modifierMovements];
         }
 
         const isStockExemptLine = line?.stock_effect_type
             ? line.stock_effect_type === 'stock_exempt'
             : !isStockBearingItem(buildLineStockPolicySubject(line));
-        if (isStockExemptLine) return [];
+        if (isStockExemptLine) return modifierMovements;
 
         const quantity = Number(line?.quantity);
         if (!itemId || !Number.isFinite(quantity) || quantity <= 0) {
@@ -1588,7 +1662,7 @@ const buildOnlineOrderStockMovements = async ({ order = {}, posRepository, optio
             reference_type: 'POS',
             reference_id: `ONLINE:${orderId}:${lineReference}`,
             notes: `Online order completion ${order.invoice_number || `#${orderId}`}${order.tracking_pin ? ` (${order.tracking_pin})` : ''}`
-        }];
+        }, ...modifierMovements];
     });
 };
 
@@ -1735,7 +1809,11 @@ const normalizeFnbModifiersSnapshot = (value) => {
                 modifier_option_id: parsePositiveInt(modifier.modifier_option_id),
                 group_name: groupName || null,
                 option_name: optionName || null,
-                price_delta: round4(modifier.price_delta || 0)
+                price_delta: round4(modifier.price_delta || 0),
+                quantity: Math.min(99, Math.max(1, Number.parseInt(modifier.quantity || 1, 10) || 1)),
+                sku_item_id: parsePositiveInt(modifier.sku_item_id),
+                location_id: parsePositiveInt(modifier.location_id),
+                allergen_notes: Array.isArray(modifier.allergen_notes) ? modifier.allergen_notes : null
             };
         })
         .filter((modifier) => (
@@ -1746,11 +1824,38 @@ const normalizeFnbModifiersSnapshot = (value) => {
                 || modifier.group_name
                 || modifier.option_name
                 || modifier.price_delta
+                || modifier.sku_item_id
             )
         ));
 };
 
-const resolveFnbLineModifiers = ({ item, line, hasFnbCheckoutContext }) => {
+const normalizeServiceOptionIds = (value) => (
+    [...new Set((Array.isArray(value) ? value : [])
+        .map((optionId) => parsePositiveInt(optionId))
+        .filter(Boolean))]
+);
+
+const buildServiceOptionsSnapshot = (selectedOptions = []) => (
+    (Array.isArray(selectedOptions) ? selectedOptions : [])
+        .map((option) => ({
+            service_option_id: parsePositiveInt(option?.option_id),
+            service_option_group_id: parsePositiveInt(option?.group_id),
+            group_name: String(option?.group_name || '').trim() || null,
+            option_name: String(option?.name || '').trim() || null,
+            price_delta: round4((Number(option?.price_adjustment_centavos) || 0) / 100),
+            duration_delta_minutes: Number.parseInt(option?.duration_adjustment_minutes || 0, 10) || 0
+        }))
+        .filter((option) => option.service_option_id && option.option_name)
+);
+
+const findModifierLocationOverride = (entry, locationId) => {
+    const normalizedLocationId = parsePositiveInt(locationId);
+    if (!normalizedLocationId) return null;
+    const rows = Array.isArray(entry?.locationAvailability) ? entry.locationAvailability : [];
+    return rows.find((row) => parsePositiveInt(row?.location_id) === normalizedLocationId) || null;
+};
+
+const resolveFnbLineModifiers = ({ item, line, hasFnbCheckoutContext, locationId }) => {
     const requestedModifiers = normalizeFnbModifiersSnapshot(line.line_modifiers || line.modifiers) || [];
     const groups = Array.isArray(item.fnbModifierGroups) ? item.fnbModifierGroups : [];
     if (!hasFnbCheckoutContext && requestedModifiers.length === 0) {
@@ -1785,16 +1890,43 @@ const resolveFnbLineModifiers = ({ item, line, hasFnbCheckoutContext }) => {
             );
         }
         const entries = requestedByGroup.get(groupId) || [];
+        if (entries.includes(optionId)) {
+            throw new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                `Modifier option ${optionId} was selected more than once for "${item.name}"`,
+                { statusCode: 422, details: { item_id: item.item_id, modifier_group_id: groupId, modifier_option_id: optionId } }
+            );
+        }
         entries.push(optionId);
         requestedByGroup.set(groupId, entries);
     }
 
     const snapshots = [];
     let modifierPriceDelta = 0;
+    const requestedOptionIds = new Set(requestedModifiers.map((entry) => parsePositiveInt(entry.modifier_option_id)).filter(Boolean));
     for (const group of groups) {
         const groupId = parsePositiveInt(group.modifier_group_id);
+        const parentOptionId = parsePositiveInt(group.parent_modifier_option_id);
+        if (parentOptionId && !requestedOptionIds.has(parentOptionId)) {
+            if ((requestedByGroup.get(groupId) || []).length > 0) throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `Modifier group "${group.display_name || group.name}" requires its parent option`, { statusCode: 422, details: { item_id: item.item_id, modifier_group_id: groupId, parent_modifier_option_id: parentOptionId } });
+            requestedByGroup.delete(groupId);
+            continue;
+        }
+        const groupLocation = findModifierLocationOverride(group, locationId);
+        if (group.is_active === false || group.visible_in_pos === false || groupLocation?.is_available === false) {
+            if ((requestedByGroup.get(groupId) || []).length > 0) {
+                throw new DomainError(DomainErrorCode.VALIDATION_FAILED, `Modifier group "${group.display_name || group.name}" is unavailable at this POS location`, {
+                    statusCode: 422,
+                    details: { item_id: item.item_id, modifier_group_id: groupId, location_id: parsePositiveInt(locationId) }
+                });
+            }
+            requestedByGroup.delete(groupId);
+            continue;
+        }
         const through = group.FnbItemModifierGroup || group.fnbItemModifierGroup || {};
-        const required = through.is_required_override == null ? group.required === true : through.is_required_override === true;
+        const required = through.is_required_override == null
+            ? group.required === true || Number.parseInt(group.min_select || 0, 10) > 0
+            : through.is_required_override === true;
         const minSelect = required ? Math.max(1, Number.parseInt(group.min_select || 0, 10) || 0) : Number.parseInt(group.min_select || 0, 10) || 0;
         const maxSelect = Math.max(1, Number.parseInt(group.max_select || 1, 10) || 1);
         const selectedOptionIds = requestedByGroup.get(groupId) || [];
@@ -1817,7 +1949,9 @@ const resolveFnbLineModifiers = ({ item, line, hasFnbCheckoutContext }) => {
         const options = Array.isArray(group.options) ? group.options : [];
         for (const optionId of selectedOptionIds) {
             const option = options.find((entry) => Number(entry.modifier_option_id) === Number(optionId));
-            if (!option || option.is_active === false) {
+            const optionLocation = findModifierLocationOverride(option, locationId);
+            if (!option || option.is_active === false || option.visible_in_pos === false || option.is_sold_out === true
+                || optionLocation?.is_available === false || optionLocation?.is_sold_out === true) {
                 throw new DomainError(
                     DomainErrorCode.VALIDATION_FAILED,
                     `Selected modifier option is not active for "${item.name}"`,
@@ -1828,13 +1962,21 @@ const resolveFnbLineModifiers = ({ item, line, hasFnbCheckoutContext }) => {
                 );
             }
             const priceDelta = round4(option.price_delta || 0);
-            modifierPriceDelta = round4(modifierPriceDelta + priceDelta);
+            const requestedQuantity = requestedModifiers.find((entry) => parsePositiveInt(entry.modifier_option_id) === optionId)?.quantity;
+            const selectedQuantity = Math.min(99, Math.max(1, Number.parseInt(requestedQuantity || 1, 10) || 1));
+            modifierPriceDelta = round4(modifierPriceDelta + (priceDelta * selectedQuantity));
             snapshots.push({
                 modifier_group_id: groupId,
                 modifier_option_id: optionId,
                 group_name: group.display_name || group.name || null,
+                group_kind: group.group_kind === 'combo_choice' ? 'combo_choice' : 'modifier',
+                parent_modifier_option_id: parentOptionId,
                 option_name: option.name || null,
                 price_delta: priceDelta,
+                quantity: selectedQuantity,
+                extended_price_delta: round4(priceDelta * selectedQuantity),
+                sku_item_id: parsePositiveInt(option.sku_item_id),
+                location_id: parsePositiveInt(locationId),
                 allergen_notes: Array.isArray(option.allergen_notes) ? option.allergen_notes : null
             });
         }
@@ -2228,6 +2370,7 @@ export const buildCheckoutPosUseCase = ({
     posRepository,
     inventoryCommandService,
     employeeCreditService,
+    calculateServiceQuoteUseCase = null,
     resolveIdentityStatus = resolvePosOperatorIdentityStatus,
     resolveLocationScope = resolvePosOperationalLocationScope
 }) => {
@@ -2391,6 +2534,9 @@ export const buildCheckoutPosUseCase = ({
                     line_modifiers: normalizeFnbModifiersSnapshot(line.line_modifiers || line.modifiers) || [],
                     special_instructions: String(line.special_instructions || '').trim() || null,
                     kitchen_station_id: parsePositiveInt(line.kitchen_station_id),
+                    ...(normalizeServiceOptionIds(line.selected_option_ids).length > 0
+                        ? { selected_option_ids: normalizeServiceOptionIds(line.selected_option_ids) }
+                        : {}),
                     scan_metadata: isPlainObject(line.scan_metadata) ? line.scan_metadata : null
                 }))
                 .sort((a, b) => a.item_id - b.item_id)
@@ -2685,9 +2831,52 @@ export const buildCheckoutPosUseCase = ({
                     );
                 }
 
-                const modifierResolution = resolveFnbLineModifiers({ item, line, hasFnbCheckoutContext });
+                const modifierResolution = resolveFnbLineModifiers({
+                    item,
+                    line,
+                    hasFnbCheckoutContext,
+                    locationId: enforcedCheckoutLocationId
+                });
+                const selectedServiceOptionIds = normalizeServiceOptionIds(line.selected_option_ids);
+                let serviceOptionResolution = {
+                    priceDelta: 0,
+                    snapshot: null
+                };
+                const isServiceLine = isStockExemptServiceItem(item);
+                if (selectedServiceOptionIds.length > 0 && !isServiceLine) {
+                    throw new DomainError(
+                        DomainErrorCode.VALIDATION_FAILED,
+                        `Service options can only be selected for service item ${item.item_id}`,
+                        { statusCode: 422, details: { item_id: item.item_id } }
+                    );
+                }
+                if (isServiceLine && typeof calculateServiceQuoteUseCase?.calculateQuote === 'function') {
+                    const quoteResult = await calculateServiceQuoteUseCase.calculateQuote({
+                        serviceItemId: item.item_id,
+                        selectedOptionIds: selectedServiceOptionIds,
+                        quantity,
+                        tenantId,
+                        transaction
+                    });
+                    if (!quoteResult?.success) {
+                        throw quoteResult?.error || new DomainError(
+                            DomainErrorCode.VALIDATION_FAILED,
+                            `Unable to validate service options for "${item.name}"`,
+                            { statusCode: 422 }
+                        );
+                    }
+                    const quote = quoteResult.data?.quote || {};
+                    serviceOptionResolution = {
+                        priceDelta: round4((Number(quote.options_price_adjustment_centavos) || 0) / 100),
+                        snapshot: buildServiceOptionsSnapshot(quote.selected_options)
+                    };
+                }
                 const baseSalePrice = requireExplicitSalePrice(item, 'POS checkout');
-                const defaultSalePrice = round4(baseSalePrice + modifierResolution.modifierPriceDelta);
+                const defaultSalePrice = round4(
+                    baseSalePrice
+                    + modifierResolution.modifierPriceDelta
+                    + serviceOptionResolution.priceDelta
+                );
                 const resolvedPrice = line.sale_price == null
                     ? defaultSalePrice
                     : Number(line.sale_price);
@@ -2744,7 +2933,9 @@ export const buildCheckoutPosUseCase = ({
                     vat_rate_snapshot: VAT_RATE,
                     senior_pwd_discount_eligible: isSeniorPwdDiscountEligible(item.senior_pwd_discount_eligible),
                     fnb_course_snapshot: normalizeFnbCourse(line.course),
-                    fnb_modifiers_snapshot: modifierResolution.modifiersSnapshot,
+                    fnb_modifiers_snapshot: serviceOptionResolution.snapshot?.length > 0
+                        ? serviceOptionResolution.snapshot
+                        : modifierResolution.modifiersSnapshot,
                     fnb_special_instructions: String(line.special_instructions || '').trim().slice(0, 1000) || null,
                     fnb_kitchen_station_snapshot: parsePositiveInt(line.kitchen_station_id)
                         ? { kitchen_station_id: parsePositiveInt(line.kitchen_station_id) }
@@ -3224,26 +3415,43 @@ export const buildCheckoutPosUseCase = ({
                             transaction
                         });
                     }
-                    continue;
+                } else if (line.stock_effect_type !== 'stock_exempt') {
+                    await executeInventoryStockCommand({
+                        inventoryCommandService: stockCommands,
+                        command: 'issueStockForPosSale',
+                        movementData: {
+                            item_id: line.item_id,
+                            quantity: Number(line.quantity),
+                            movement_type: 'goods_issue',
+                            location_id: enforcedCheckoutLocationId,
+                            reference_type: 'POS',
+                            reference_id: String(posTransactionId),
+                            notes: `POS checkout ${invoiceNumber}`
+                        },
+                        userId: normalizedUserId,
+                        transaction
+                    });
                 }
-                if (line.stock_effect_type === 'stock_exempt') {
-                    continue;
+
+                for (const modifier of line.fnb_modifiers_snapshot || []) {
+                    const linkedItemId = parsePositiveInt(modifier?.sku_item_id);
+                    if (!linkedItemId) continue;
+                    await executeInventoryStockCommand({
+                        inventoryCommandService: stockCommands,
+                        command: 'issueStockForPosSale',
+                        movementData: {
+                            item_id: linkedItemId,
+                            quantity: Number(line.quantity) * Math.min(99, Math.max(1, Number.parseInt(modifier?.quantity || 1, 10) || 1)),
+                            movement_type: 'goods_issue',
+                            location_id: parsePositiveInt(modifier?.location_id) || enforcedCheckoutLocationId,
+                            reference_type: 'POS',
+                            reference_id: String(posTransactionId),
+                            notes: `F&B modifier consumption for ${modifier.option_name || `item ${linkedItemId}`} on POS checkout ${invoiceNumber}`
+                        },
+                        userId: normalizedUserId,
+                        transaction
+                    });
                 }
-                await executeInventoryStockCommand({
-                    inventoryCommandService: stockCommands,
-                    command: 'issueStockForPosSale',
-                    movementData: {
-                        item_id: line.item_id,
-                        quantity: Number(line.quantity),
-                        movement_type: 'goods_issue',
-                        location_id: enforcedCheckoutLocationId,
-                        reference_type: 'POS',
-                        reference_id: String(posTransactionId),
-                        notes: `POS checkout ${invoiceNumber}`
-                    },
-                    userId: normalizedUserId,
-                    transaction
-                });
             }
 
             const totalAmountCents = toCurrencyCents(totalAmount);
@@ -4233,6 +4441,56 @@ export const buildGetPosTransactionByIdUseCase = ({ posRepository }) => {
             });
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to retrieve POS transaction'));
+        }
+    };
+};
+
+export const buildGetDayCloseReadinessUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => {
+    return async ({ businessDateInput, user = null, locationId = null }) => {
+        const userId = parsePositiveInt(user?.user_id);
+        if (!userId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated user is required to check POS day-close readiness',
+                { statusCode: 401 }
+            ));
+        }
+
+        try {
+            const locationScope = await resolveLocationScope({
+                requestedLocationId: locationId,
+                userId,
+                operationLabel: 'POS day-close readiness'
+            });
+            const resolvedLocationId = parsePositiveInt(locationScope?.location_id);
+            if (!resolvedLocationId) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'POS day-close readiness requires a resolved location scope.',
+                    { statusCode: 422 }
+                );
+            }
+
+            const { businessDate } = buildBusinessDateRange(businessDateInput || new Date());
+            const [openShifts, existingSnapshot] = await Promise.all([
+                posRepository.listOpenTerminalShiftsForLocation({ locationId: resolvedLocationId }),
+                posRepository.getLatestZReadingSnapshotByBusinessDate(
+                    businessDate,
+                    { locationId: resolvedLocationId }
+                )
+            ]);
+
+            return ok(buildDayCloseReadinessData({
+                businessDate,
+                locationId: resolvedLocationId,
+                openShifts,
+                existingSnapshot
+            }));
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to check POS day-close readiness'));
         }
     };
 };
@@ -6291,6 +6549,13 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                 transaction,
                 lock: true
             });
+            const shiftLocationId = parsePositiveInt(shiftPayload?.location_id);
+            const remainingOpenShifts = shiftLocationId
+                ? await posRepository.listOpenTerminalShiftsForLocation(
+                    { locationId: shiftLocationId },
+                    { transaction, lock: true }
+                )
+                : [];
             const replayPayload = {
                 compliance_decision: complianceDecision,
                 shift_authorization: shiftAuthorization,
@@ -6301,7 +6566,12 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                     expected_cash_amount: expectedCashAmount,
                     cash_variance_amount: variance
                 },
-                sales_summary: salesSummary
+                sales_summary: salesSummary,
+                day_close_readiness: buildDayCloseReadinessData({
+                    businessDate: buildBusinessDateRange(new Date()).businessDate,
+                    locationId: shiftLocationId,
+                    openShifts: remainingOpenShifts
+                })
             };
             await createShiftAuditLog({
                 posRepository,
@@ -6973,6 +7243,319 @@ export const buildCollectCashDeliveryOrderUseCase = ({ posRepository }) => build
     fulfillmentLabel: 'out for delivery'
 });
 
+export const buildListActiveDeliveryPersonnelUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosReadLocationScope
+}) => {
+    return async ({ query = {}, user = {} } = {}) => {
+        if (!isPlainObject(query)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'query must be an object',
+                { statusCode: 400 }
+            ));
+        }
+
+        const userId = parsePositiveInt(user?.user_id);
+        if (!userId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated user is required to view delivery personnel',
+                { statusCode: 401 }
+            ));
+        }
+
+        const requestedLocationId = query.location_id == null
+            ? null
+            : parsePositiveInt(query.location_id);
+        if (query.location_id != null && !requestedLocationId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'location_id must be a positive integer',
+                { statusCode: 422 }
+            ));
+        }
+
+        try {
+            const locationScope = await resolveLocationScope({
+                requestedLocationId,
+                userId,
+                operationLabel: 'POS delivery personnel read'
+            });
+            const personnel = await posRepository.listActiveDeliveryPersonnel({
+                locationId: locationScope.location_id
+            });
+            return ok({
+                location_id: locationScope.location_id,
+                delivery_personnel: toSerializable(personnel)
+            });
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to list delivery personnel'));
+        }
+    };
+};
+
+export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
+    return async ({ posTransactionId, payload = {}, user = {}, auditContext = {} } = {}) => {
+        const orderId = parsePositiveInt(posTransactionId);
+        const cashierId = parsePositiveInt(user?.user_id);
+        const deliveryPersonnelId = parsePositiveInt(payload?.delivery_personnel_id);
+        const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
+        const requestHash = hashPayload({
+            pos_transaction_id: orderId,
+            delivery_personnel_id: deliveryPersonnelId
+        });
+
+        if (!orderId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'posTransactionId must be a positive integer',
+                { statusCode: 400 }
+            ));
+        }
+        if (!cashierId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated POS user is required',
+                { statusCode: 401 }
+            ));
+        }
+        if (!deliveryPersonnelId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'delivery_personnel_id must be a positive integer',
+                { statusCode: 422 }
+            ));
+        }
+        if (!idempotencyKey) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'idempotency_key is required for delivery assignment',
+                { statusCode: 422 }
+            ));
+        }
+
+        let transaction = null;
+        try {
+            const replay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DELIVERY_JOB_ASSIGNMENT,
+                idempotencyKey,
+                requestHash
+            });
+            if (replay) return ok(replay);
+
+            const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
+            transaction = await sequelize.transaction();
+            const transactionReplay = await findOperationReplayEntry({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DELIVERY_JOB_ASSIGNMENT,
+                idempotencyKey,
+                requestHash,
+                transaction
+            });
+            if (transactionReplay) {
+                await transaction.commit();
+                return ok(transactionReplay);
+            }
+
+            const order = await posRepository.getOrderByIdForLifecycle(orderId, {
+                transaction,
+                lock: true
+            });
+            if (!order || order.order_source !== ONLINE_ORDER_SOURCE || order.order_method !== 'delivery') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Delivery assignment is available only for online delivery orders.',
+                    {
+                        statusCode: 409,
+                        details: { reason_code: 'DELIVERY_ORDER_REQUIRED' }
+                    }
+                );
+            }
+            if (String(order.fulfillment_status || '').trim() !== 'out_for_delivery') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Delivery assignment is available only when the order is out for delivery.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: 'DELIVERY_ORDER_OUT_FOR_DELIVERY_REQUIRED',
+                            fulfillment_status: order.fulfillment_status || null
+                        }
+                    }
+                );
+            }
+            const orderLocationId = parsePositiveInt(order.location_id);
+            if (!orderLocationId) {
+                throw buildLocationScopeDeniedError({
+                    message: 'Delivery order is missing a valid location scope.',
+                    reasonCode: LOCATION_SCOPE_REASON_CODES.LOCATION_SCOPE_UNRESOLVED,
+                    statusCode: 422,
+                    details: { pos_transaction_id: orderId }
+                });
+            }
+
+            const deliveryJob = order.deliveryJob;
+            if (!deliveryJob) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'This delivery order does not have a delivery job.',
+                    {
+                        statusCode: 409,
+                        details: { reason_code: 'DELIVERY_JOB_REQUIRED' }
+                    }
+                );
+            }
+            if (String(deliveryJob.provider || '').trim().toLowerCase() !== 'manual') {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Only manual delivery jobs can be assigned from POS.',
+                    {
+                        statusCode: 409,
+                        details: { reason_code: 'MANUAL_DELIVERY_JOB_REQUIRED' }
+                    }
+                );
+            }
+
+            const currentStatus = String(deliveryJob.status || '').trim().toLowerCase();
+            if (!['pending_dispatch', 'assigned'].includes(currentStatus)) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Delivery personnel cannot be changed after pickup has started.',
+                    {
+                        statusCode: 409,
+                        details: {
+                            reason_code: 'DELIVERY_ASSIGNMENT_LOCKED',
+                            current_status: currentStatus || null
+                        }
+                    }
+                );
+            }
+
+            const activeShift = await assertOpenShiftForPosMutation({
+                posRepository,
+                cashierId,
+                locationId: orderLocationId,
+                transaction,
+                lock: true
+            });
+            const personnel = await posRepository.findActiveDeliveryPersonnelById(deliveryPersonnelId, {
+                locationId: orderLocationId,
+                transaction,
+                lock: true
+            });
+            if (!personnel) {
+                throw new DomainError(
+                    DomainErrorCode.RESOURCE_NOT_FOUND,
+                    'Active delivery personnel was not found for the order location.',
+                    {
+                        statusCode: 404,
+                        details: { reason_code: 'DELIVERY_PERSONNEL_NOT_AVAILABLE' }
+                    }
+                );
+            }
+
+            const assignedAt = new Date();
+            const nextStatus = 'assigned';
+            const updatedDeliveryJob = await posRepository.assignDeliveryPersonnelToJob(orderId, {
+                delivery_personnel_id: personnel.delivery_personnel_id,
+                assigned_by: cashierId,
+                assigned_shift_id: activeShift.pos_terminal_shift_id,
+                assigned_at: assignedAt,
+                status: nextStatus
+            }, {
+                transaction,
+                lock: true
+            });
+            if (!updatedDeliveryJob) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'The delivery assignment could not be saved.',
+                    {
+                        statusCode: 409,
+                        details: { reason_code: 'DELIVERY_ASSIGNMENT_UPDATE_FAILED' }
+                    }
+                );
+            }
+
+            await posRepository.createAuditLog({
+                user_id: cashierId,
+                entity_type: 'delivery_job',
+                entity_id: parsePositiveInt(deliveryJob.delivery_job_id) || null,
+                action: 'UPDATE',
+                changes: {
+                    event: 'delivery_personnel_assigned',
+                    pos_transaction_id: orderId,
+                    provider: deliveryJob.provider,
+                    previous_status: currentStatus,
+                    status: nextStatus,
+                    previous_delivery_personnel_id: parsePositiveInt(deliveryJob.delivery_personnel_id) || null,
+                    delivery_personnel_id: personnel.delivery_personnel_id,
+                    assigned_by: cashierId,
+                    assigned_shift_id: activeShift.pos_terminal_shift_id,
+                    location_id: orderLocationId,
+                    assigned_at: assignedAt.toISOString()
+                },
+                ip_address: auditContext.ipAddress || null,
+                user_agent: auditContext.userAgent || null
+            }, { transaction });
+
+            const updatedOrder = {
+                ...order,
+                deliveryJob: updatedDeliveryJob
+            };
+            const responsePayload = {
+                order: toSerializable(updatedOrder),
+                delivery_job: toSerializable(updatedDeliveryJob),
+                assignment: {
+                    delivery_personnel: toSerializable(personnel),
+                    assigned_by: cashierId,
+                    assigned_shift_id: activeShift.pos_terminal_shift_id,
+                    assigned_at: assignedAt.toISOString(),
+                    outcome: currentStatus === nextStatus ? 'reassigned' : 'assigned'
+                },
+                idempotency: {
+                    key: idempotencyKey,
+                    request_fingerprint: requestHash,
+                    outcome: 'processed',
+                    idempotent_replay: false
+                }
+            };
+            await persistOperationReplay({
+                posRepository,
+                operationKey: POS_OPERATION_KEYS.DELIVERY_JOB_ASSIGNMENT,
+                idempotencyKey,
+                requestHash,
+                replayStatus: OPERATION_REPLAY_STATUS.PROCESSED,
+                responsePayload,
+                createdBy: cashierId,
+                transaction
+            });
+            await transaction.commit();
+            return ok({
+                ...responsePayload,
+                idempotent_replay: false,
+                replay_outcome: 'processed'
+            });
+        } catch (error) {
+            if (transaction && !transaction.finished) await transaction.rollback();
+            if (error instanceof DomainError && idempotencyKey) {
+                await persistOperationReplay({
+                    posRepository,
+                    operationKey: POS_OPERATION_KEYS.DELIVERY_JOB_ASSIGNMENT,
+                    idempotencyKey,
+                    requestHash,
+                    replayStatus: OPERATION_REPLAY_STATUS.BLOCKED,
+                    responsePayload: serializeReplayFailure(error),
+                    createdBy: cashierId
+                });
+            }
+            return fail(mapPosUseCaseError(error, 'Failed to assign delivery personnel'));
+        }
+    };
+};
+
 export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
     return async ({ posTransactionId, payload = {}, user = {}, auditContext = {} } = {}) => {
         const orderId = parsePositiveInt(posTransactionId);
@@ -7057,6 +7640,15 @@ export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
                     }
                 );
             }
+            const orderLocationId = parsePositiveInt(order.location_id);
+            if (!orderLocationId) {
+                throw buildLocationScopeDeniedError({
+                    message: 'Delivery order is missing a valid location scope.',
+                    reasonCode: LOCATION_SCOPE_REASON_CODES.LOCATION_SCOPE_UNRESOLVED,
+                    statusCode: 422,
+                    details: { pos_transaction_id: orderId }
+                });
+            }
             const deliveryJob = order.deliveryJob;
             if (!deliveryJob) {
                 throw new DomainError(
@@ -7082,11 +7674,27 @@ export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
             const activeShift = await assertOpenShiftForPosMutation({
                 posRepository,
                 cashierId,
-                locationId: order.location_id || null,
+                locationId: orderLocationId,
                 transaction,
                 lock: true
             });
             const currentStatus = String(deliveryJob.status || '').trim().toLowerCase();
+            const hasAssignment = Boolean(
+                parsePositiveInt(deliveryJob.delivery_personnel_id)
+                && parsePositiveInt(deliveryJob.assigned_by)
+                && parsePositiveInt(deliveryJob.assigned_shift_id)
+                && deliveryJob.assigned_at
+            );
+            if (!hasAssignment && ['assigned', 'picked_up', 'delivered'].includes(requestedStatus)) {
+                throw new DomainError(
+                    DomainErrorCode.CONFLICT,
+                    'Delivery personnel must be assigned before the delivery job can advance.',
+                    {
+                        statusCode: 409,
+                        details: { reason_code: 'DELIVERY_ASSIGNMENT_REQUIRED' }
+                    }
+                );
+            }
             if (!DELIVERY_JOB_STATUS_VALUES.includes(currentStatus)) {
                 throw new DomainError(
                     DomainErrorCode.CONFLICT,
@@ -7158,7 +7766,7 @@ export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
                         previous_status: currentStatus,
                         status: requestedStatus,
                         shift_id: activeShift.pos_terminal_shift_id,
-                        location_id: order.location_id || null,
+                        location_id: orderLocationId,
                         applied_at: mutationTimestamp.toISOString()
                     },
                     ip_address: auditContext.ipAddress || null,

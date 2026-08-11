@@ -3,7 +3,7 @@ status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-06-29
-last_reviewed: 2026-08-08
+last_reviewed: 2026-08-11
 review_by: 2026-12-28
 applies_to: architecture_decision
 topic: pos_terminal_pairing_and_shift_safe_navigation
@@ -151,3 +151,32 @@ profiles inside the selected tenant, not a separate credential authority.
 1. A tenant user who already has `pos:close_day` may be assigned a personal, write-only Day Close PIN for confirming a Z-reading. This PIN is a step-up confirmation for the already authenticated DGFY tenant user; it must not unlock the POS, establish a session, open a shift, or replace DGFY membership and authorization.
 2. The PIN is stored only as a password hash and never returned by an API. The master administrator may configure or clear it only for an active user who already holds `pos:close_day`.
 3. The close-day operation verifies the current authenticated user against their own PIN, records the operator and terminal on the immutable Z-reading snapshot, and must reject closure while any shift remains open at that location.
+
+### 2026-08-10: Cashier-Owned Day-Close PIN Setup
+
+1. An active tenant user with `pos:close_day` may create or replace only their own Day Close PIN from the current company's authenticated account profile after verifying their current account password. This action remains tenant-scoped and must not be placed on a global DGFY account as a cross-company PIN.
+2. Master Admin can view the eligible operator's safe identity fields and PIN configured status, and may reset a PIN when recovery is needed. Master Admin must not set or view a cashier's personal Day Close PIN.
+3. PIN creation and reset must write tenant audit evidence without storing or returning the PIN or account password. The existing Z-reading confirmation remains the final per-operator accountability event.
+
+### 2026-08-10: DGFY Business To POS Cashier Handoff
+
+1. When DGFY Business opens the standalone POS for a selected company, POS may consume a short-lived, credential-free browser-session marker only to discard prior tenant terminal-lock and terminal-identity state before it validates the newly issued tenant session.
+2. The marker is valid only for the selected tenant and never establishes authentication, replaces API session verification, enables cookie refresh, or bypasses a normal terminal lock when absent, expired, malformed, or tenant-mismatched.
+3. POS must clear its browser session and restore the full-auth lock if the validated tenant does not match the handoff tenant, preventing cross-company terminal state from being used after a handoff.
+4. A Storefront-initiated POS launch must fail closed when it cannot mint a non-empty single-use handoff token. It must keep Storefront open (and close any blank provisional POS tab) rather than navigate to POS with only a tenant hint.
+5. Consuming a verified handoff must clear both persistent and already-in-memory terminal and operating-location state before POS checks the selected tenant's registry. The former tenant's terminal must never cause a newly authenticated tenant session to re-lock.
+
+### 2026-08-11: Day-Close PIN Credential Authority
+
+- Clause amended: 2026-08-10 Cashier-Owned Day-Close PIN Setup, clause 1 (`default`).
+- When PIN setup starts from authenticated DGFY Business, the current-password step verifies the landlord-scoped DGFY account credential. The backend must then resolve the selected company's accepted membership and linked tenant user before writing that user's company-scoped PIN.
+- Direct tenant/POS self-service may continue to verify the tenant-local staff credential. The two credential authorities must not be synchronized, copied, or inferred from matching email alone.
+- Both paths retain the same tenant-local `pos:close_day` authorization, write-only PIN hash, and audit requirements. A DGFY password check does not grant access to a company without an accepted membership.
+- Reason: DGFY password changes and tenant-local password changes have independent lifecycles. Treating a DGFY-authenticated Business form as a tenant-password form rejects valid DGFY credentials and misstates which account is being verified.
+
+### 2026-08-11: Z-Reading POS Void And Provider Refund Boundary
+
+- Financially recognized Z-reading sales continue to include completed POS transactions only. A transaction later marked `voided` is excluded from recognized sales and is reported in separate `void_transaction_count`, `void_amount`, and `voided_item_count` fields using its `voided_at` business date.
+- POS void amounts are disclosure metrics and must not be subtracted a second time from the already void-exclusive recognized sales total.
+- Payment-provider refunds are not POS voids. Their settlement and reconciliation remain in the commerce/provider ledger governed by ADR 0042 and ADR 0052; close reports must explicitly state that provider refunds are reconciled separately.
+- Existing immutable Z-reading snapshots remain readable. Missing newly introduced disclosure fields normalize to zero/false and do not rewrite historical snapshots.

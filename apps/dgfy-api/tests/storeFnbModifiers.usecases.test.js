@@ -139,26 +139,140 @@ describe('storefront F&B modifier checkout contract', () => {
           quantity: 2,
           line_modifiers: [{
             modifier_group_id: 5,
-            modifier_option_id: 8
+            modifier_option_id: 8,
+            quantity: 3
           }]
         }]
       }
     });
 
     expect(result.success).toBe(true);
-    expect(result.data.subtotal_amount).toBe(230);
-    expect(result.data.service_fee_amount).toBe(2.3);
-    expect(result.data.total_amount).toBe(232.3);
+    expect(result.data.subtotal_amount).toBe(290);
+    expect(result.data.service_fee_amount).toBe(2.9);
+    expect(result.data.total_amount).toBe(292.9);
     expect(result.data.lines[0]).toEqual(expect.objectContaining({
-      sale_price: 115,
-      line_subtotal: 230,
+      sale_price: 145,
+      line_subtotal: 290,
       fnb_modifiers_snapshot: [expect.objectContaining({
         modifier_group_id: 5,
         modifier_option_id: 8,
         option_name: 'Cheddar',
-        price_delta: 15
+        price_delta: 15,
+        quantity: 3,
+        extended_price_delta: 45
       })]
     }));
+  });
+
+  it('preflights linked modifier stock using the selected location and line quantity', async () => {
+    const item = {
+      ...burgerItem,
+      fnbModifierGroups: [{
+        ...burgerItem.fnbModifierGroups[0],
+        options: [{ ...burgerItem.fnbModifierGroups[0].options[0], sku_item_id: 90 }]
+      }]
+    };
+    const repository = buildRepository([item], {
+      findLocationById: jest.fn().mockResolvedValue({
+        location_id: 4,
+        name: 'Main',
+        is_active: true,
+        is_open: true,
+        supports_pickup: true,
+        supports_delivery: true,
+        supports_dine_in: true,
+        allow_out_of_stock_sales: false
+      }),
+      getLocationStocksByItemIds: jest.fn().mockResolvedValue([{ item_id: 90, quantity_on_hand: 1 }])
+    });
+
+    const result = await buildCartQuoteUseCase(repository)({
+      payload: {
+        location_id: 4,
+        order_method: 'pickup',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        lines: [{
+          item_id: 20,
+          quantity: 2,
+          line_modifiers: [{ modifier_group_id: 5, modifier_option_id: 8 }]
+        }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.details).toEqual(expect.objectContaining({
+      reason_code: 'FNB_MODIFIER_STOCK_SHORTFALL',
+      stock_violations: [expect.objectContaining({ sku_item_id: 90, available_stock: 1, requested_qty: 2 })]
+    }));
+    expect(repository.getLocationStocksByItemIds).toHaveBeenCalledWith([90], 4, expect.any(Object));
+  });
+
+  it('rejects an empty selection when an assigned modifier group is required', async () => {
+    const requiredBurger = {
+      ...burgerItem,
+      fnbModifierGroups: [{
+        ...burgerItem.fnbModifierGroups[0],
+        required: true,
+        min_select: 1
+      }]
+    };
+    const result = await buildCartQuoteUseCase(buildRepository([requiredBurger]))({
+      payload: {
+        location_id: 4,
+        order_method: 'pickup',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        lines: [{ item_id: 20, quantity: 1, line_modifiers: [] }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.message).toContain('requires at least 1 option');
+  });
+
+  it('enforces required conditional groups only when the parent option is selected', async () => {
+    const conditionalBurger = { ...burgerItem, fnbModifierGroups: [burgerItem.fnbModifierGroups[0], {
+      modifier_group_id: 6, name: 'Sauce', required: true, min_select: 1, max_select: 1,
+      parent_modifier_option_id: 8, is_active: true,
+      options: [{ modifier_option_id: 9, name: 'Garlic', price_delta: 5, is_active: true }]
+    }] };
+    const useCase = buildCartQuoteUseCase(buildRepository([conditionalBurger]));
+    const withoutParent = await useCase({ payload: { location_id: 4, order_method: 'pickup', customer_name: 'Ana', customer_phone: '09170000000', lines: [{ item_id: 20, quantity: 1, line_modifiers: [] }] } });
+    expect(withoutParent.success).toBe(true);
+    const withParentOnly = await useCase({ payload: { location_id: 4, order_method: 'pickup', customer_name: 'Ana', customer_phone: '09170000000', lines: [{ item_id: 20, quantity: 1, line_modifiers: [{ modifier_group_id: 5, modifier_option_id: 8 }] }] } });
+    expect(withParentOnly.success).toBe(false);
+    expect(withParentOnly.error.message).toContain('requires at least 1 option');
+  });
+
+  it.each([
+    ['hidden from Storefront', { visible_in_storefront: false }],
+    ['globally sold out', { is_sold_out: true }],
+    ['sold out at the selected location', { locationAvailability: [{ location_id: 4, is_available: true, is_sold_out: true }] }]
+  ])('rejects a modifier option that is %s', async (_label, optionState) => {
+    const unavailableBurger = {
+      ...burgerItem,
+      fnbModifierGroups: [{
+        ...burgerItem.fnbModifierGroups[0],
+        options: [{ ...burgerItem.fnbModifierGroups[0].options[0], ...optionState }]
+      }]
+    };
+    const result = await buildCartQuoteUseCase(buildRepository([unavailableBurger]))({
+      payload: {
+        location_id: 4,
+        order_method: 'pickup',
+        customer_name: 'Ana',
+        customer_phone: '09170000000',
+        lines: [{
+          item_id: 20,
+          quantity: 1,
+          line_modifiers: [{ modifier_group_id: 5, modifier_option_id: 8 }]
+        }]
+      }
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error.message).toContain('Modifier option is not available');
   });
 
   it('blocks product quote outside configured storefront business hours', async () => {

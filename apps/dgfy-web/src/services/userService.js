@@ -110,13 +110,23 @@ export const updateUserStatus = async (userId, isActive) => {
   return response.data.data;
 };
 
+export const updateUserPermissions = async (userId, permissions = []) => {
+  const response = await api.put(`/users/${userId}/permissions`, { permissions });
+  return response.data.data;
+};
+
 export const updatePosApprovalPin = async (userId, { pin, clear = false } = {}) => {
   const response = await api.put(`/users/${userId}/pos-approval-pin`, clear ? { clear: true } : { pin });
   return response.data.data;
 };
 
-export const updatePosDayClosePin = async (userId, { pin, clear = false } = {}) => {
-  const response = await api.put(`/users/${userId}/pos-day-close-pin`, clear ? { clear: true } : { pin });
+export const updatePosDayClosePin = async (userId) => {
+  const response = await api.put(`/users/${userId}/pos-day-close-pin`, { clear: true });
+  return response.data.data;
+};
+
+export const updateOwnPosDayClosePin = async ({ currentPassword, pin } = {}) => {
+  const response = await api.put('/users/me/pos-day-close-pin', { currentPassword, pin });
   return response.data.data;
 };
 

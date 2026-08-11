@@ -11,6 +11,7 @@ import {
   updateUserPermissionsUseCase,
   updatePosApprovalPinUseCase,
   updatePosDayClosePinUseCase,
+  updateOwnPosDayClosePinUseCase,
   getUserLocationGrantsUseCase,
   updateUserLocationGrantsUseCase,
   inviteUserUseCase,
@@ -431,17 +432,44 @@ export const updatePosDayClosePin = async (req, res, next) => {
     const result = await updatePosDayClosePinUseCase({
       adminUserId: req.user.user_id,
       targetUserId: req.params.user_id,
-      pin: req.validatedData.pin,
-      clear: req.validatedData.clear === true
+      clear: true
     });
     return sendUseCaseResult(res, result, {
       successStatusCodeResolver: () => 200,
       successPayloadResolver: () => ({
         success: true,
         data: result.data,
-        message: req.validatedData.clear === true
-          ? 'POS Day Close PIN cleared successfully'
-          : 'POS Day Close PIN configured successfully',
+        message: 'POS Day Close PIN reset successfully',
+        timestamp: timestamp()
+      }),
+      errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+export const updateOwnPosDayClosePin = async (req, res, next) => {
+  try {
+    const result = await updateOwnPosDayClosePinUseCase({
+      userId: req.user.user_id,
+      currentPassword: req.validatedData.currentPassword,
+      pin: req.validatedData.pin
+    });
+    await trackProductUsageFromResult({
+      req,
+      user: req.user,
+      eventType: 'pos_day_close_pin_configured',
+      surface: 'pos',
+      action: 'self_service_configure_day_close_pin',
+      result
+    });
+    return sendUseCaseResult(res, result, {
+      successStatusCodeResolver: () => 200,
+      successPayloadResolver: () => ({
+        success: true,
+        data: result.data,
+        message: 'POS Day Close PIN configured successfully',
         timestamp: timestamp()
       }),
       errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -651,6 +679,7 @@ export default {
   updateUserPermissions,
   updatePosApprovalPin,
   updatePosDayClosePin,
+  updateOwnPosDayClosePin,
   getUserLocationGrants,
   updateUserLocationGrants,
   inviteUser,

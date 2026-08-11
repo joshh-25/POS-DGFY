@@ -2,7 +2,7 @@ export const getCartLineQuantity = (line) => Math.max(1, Number(line?.quantity |
 
 export const getLineModifiersTotal = (line) => (
   (Array.isArray(line?.line_modifiers) ? line.line_modifiers : []).reduce(
-    (sum, entry) => sum + (Number(entry?.price_delta || 0) || 0),
+    (sum, entry) => sum + ((Number(entry?.price_delta || 0) || 0) * Math.min(99, Math.max(1, Number.parseInt(entry?.quantity || 1, 10) || 1))),
     0
   )
 );

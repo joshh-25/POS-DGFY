@@ -48,6 +48,8 @@ export function useCheckoutSubmission({
   isFnbMode,
   isServicesMode,
   isSimpleMode,
+  missingCustomerInformation,
+  missingScheduleAndServiceInfo,
   normalizeStorefrontErrorMessage,
   orderMethod,
   orderSuccessAnimationTimerRef,
@@ -191,6 +193,18 @@ export function useCheckoutSubmission({
     }
     if (!hasServiceCart && (isServicesMode && activeBookingService) && !serviceAppointmentAt) {
       const message = 'Choose an appointment date and time before booking.';
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (isServicesMode && missingCustomerInformation.length > 0) {
+      const message = `Complete "${missingCustomerInformation[0]}" before booking.`;
+      setCheckoutError(message);
+      toast.error(message);
+      return;
+    }
+    if (isServicesMode && missingScheduleAndServiceInfo.length > 0) {
+      const message = `Complete "${missingScheduleAndServiceInfo[0]}" before booking.`;
       setCheckoutError(message);
       toast.error(message);
       return;

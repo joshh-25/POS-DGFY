@@ -7,12 +7,15 @@ import {
   ORDER_METHOD_LABELS,
   PAYMENT_TYPE_LABELS,
   DELIVERY_JOB_STATUS_LABELS,
+  hasCompleteDeliveryAssignment,
+  isManualDeliveryJob,
   getDeliveryJobActionLabel,
   getFulfillmentActionLabel,
   getIncomingOrderUtilityActions,
   getNextDeliveryJobStatus,
   getNextStatusActions
 } from './orderFulfillmentUi.js';
+import DeliveryAssignmentControl from './DeliveryAssignmentControl.jsx';
 
 const parseDeliveryCoords = (order = {}) => {
   if (
@@ -74,6 +77,8 @@ function IncomingQueueWorkspace({
   incomingOrderActionState,
   handleIncomingOrderStatusChange,
   handleDeliveryJobStatusChange,
+  handleAssignDeliveryPersonnel,
+  deliveryPersonnelState,
   handleOpenCashCollection,
   handleOpenIncomingOrderReceipt,
   incomingReceiptOpeningId,
@@ -204,6 +209,8 @@ function IncomingQueueWorkspace({
               );
             const deliveryCoords = parseDeliveryCoords(order);
             const deliveryJob = order.deliveryJob || null;
+            const manualDeliveryJob = Boolean(deliveryJob) && isManualDeliveryJob(deliveryJob);
+            const hasDeliveryAssignment = hasCompleteDeliveryAssignment(deliveryJob || {});
             const cashierName = order.cashier?.username || order.acceptedByUser?.username || '-';
             const mapLink = deliveryCoords
               ? `https://maps.google.com/?q=${deliveryCoords.latitude},${deliveryCoords.longitude}`
@@ -224,7 +231,7 @@ function IncomingQueueWorkspace({
                 </Button>
               );
             }
-            if (nextDeliveryJobStatus) {
+            if (nextDeliveryJobStatus && nextDeliveryJobStatus !== 'assigned' && manualDeliveryJob && hasDeliveryAssignment) {
               const deliveryJobActionKey = `delivery-job:${nextDeliveryJobStatus}`;
               buttons.push(
                 <Button
@@ -454,6 +461,21 @@ function IncomingQueueWorkspace({
                             <span className="text-xs font-semibold text-slate-900 break-words flex-1">{deliveryJob?.provider || 'Manual'} · {DELIVERY_JOB_STATUS_LABELS[deliveryJob?.status] || deliveryJob?.status || 'Pending Dispatch'}</span>
                           </div>
                         </div>
+                      )}
+
+                      {order.order_method === 'delivery' && manualDeliveryJob && (
+                        <DeliveryAssignmentControl
+                          orderId={order.pos_transaction_id}
+                          deliveryJob={deliveryJob}
+                          canAssignOrder={order.fulfillment_status === 'out_for_delivery'}
+                          deliveryPersonnelState={deliveryPersonnelState}
+                          actionLoading={actionLoading}
+                          canTransactPos={canTransactPos}
+                          locked={locked}
+                          isOnline={isOnline}
+                          hasActiveShift={hasActiveShift}
+                          onAssign={handleAssignDeliveryPersonnel}
+                        />
                       )}
 
                       <div className="flex items-center gap-3 py-1.5">

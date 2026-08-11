@@ -6,6 +6,7 @@ export const getFnbDashboard = () => api.get('/fnb/dashboard').then(unwrap);
 
 export const listFnbModifierGroups = (params = {}) => api.get('/fnb/modifier-groups', { params }).then(unwrap);
 export const createFnbModifierGroup = (payload) => api.post('/fnb/modifier-groups', payload).then(unwrap);
+export const updateFnbModifierGroup = (modifierGroupId, payload) => api.put(`/fnb/modifier-groups/${modifierGroupId}`, payload).then(unwrap);
 
 export const listFnbDiningAreas = (params = {}) => api.get('/fnb/dining-areas', { params }).then(unwrap);
 export const createFnbDiningArea = (payload) => api.post('/fnb/dining-areas', payload).then(unwrap);
@@ -17,6 +18,8 @@ export const listFnbItemKitchenRoutes = (params = {}) => api.get('/fnb/item-kitc
 export const upsertFnbItemKitchenRoute = (itemId, payload) => api.put(`/fnb/item-kitchen-routes/${itemId}`, payload).then(unwrap);
 export const listFnbItemModifierGroups = (params = {}) => api.get('/fnb/item-modifier-groups', { params }).then(unwrap);
 export const replaceFnbItemModifierGroups = (itemId, payload) => api.put(`/fnb/item-modifier-groups/${itemId}`, payload).then(unwrap);
+export const listFnbFolderModifierGroups = (params = {}) => api.get('/fnb/folder-modifier-groups', { params }).then(unwrap);
+export const replaceFnbFolderModifierGroups = (folderId, payload) => api.put(`/fnb/folder-modifier-groups/${folderId}`, payload).then(unwrap);
 
 export const listFnbChecks = (params = {}) => api.get('/fnb/checks', { params }).then(unwrap);
 export const createFnbCheck = (payload) => api.post('/fnb/checks', payload).then(unwrap);

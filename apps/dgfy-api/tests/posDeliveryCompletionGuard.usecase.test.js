@@ -26,7 +26,14 @@ const buildRepository = (seed = {}) => {
         fulfillment_status: 'out_for_delivery',
         total_amount: 150,
         location_id: 7,
-        deliveryJob: { status: 'delivered' },
+        deliveryJob: {
+            provider: 'manual',
+            status: 'delivered',
+            delivery_personnel_id: 21,
+            assigned_by: 12,
+            assigned_shift_id: 9,
+            assigned_at: '2026-08-07T03:00:00.000Z'
+        },
         lines: [],
         ...seed
     };
@@ -123,6 +130,29 @@ describe('POS delivery completion guard', () => {
         });
         expect(repository.updateOrderById).not.toHaveBeenCalled();
         expect(inventoryCommandService.issueStockForOnlineFulfillment).not.toHaveBeenCalled();
+    });
+
+    it('blocks manual delivery completion when assignment evidence is missing', async () => {
+        const repository = buildRepository({
+            deliveryJob: {
+                provider: 'manual',
+                status: 'delivered',
+                delivery_personnel_id: null,
+                assigned_by: null,
+                assigned_shift_id: null,
+                assigned_at: null
+            },
+            payment_type: 'qrph',
+            payment_timing: 'upfront',
+            payment_status: 'paid'
+        });
+
+        const result = await complete(repository);
+
+        expect(result.success).toBe(false);
+        expect(result.error.message).toMatch(/require a delivery-person assignment before completion/i);
+        expect(result.error.details.order_lifecycle.reason_code).toBe('DELIVERY_ASSIGNMENT_REQUIRED');
+        expect(repository.updateOrderById).not.toHaveBeenCalled();
     });
 
     it('requires verified payment for prepaid delivery completion', async () => {

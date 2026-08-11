@@ -62,6 +62,18 @@ jobs:
       validate_pr_metadata: true
       enforce_compliance_declarations: false
 
+  quality-checks:
+    needs: changes
+    # Temporarily disabled: dgfy-api-quality's first-ever complete run took
+    # ~14 min, and unlike every build-check job below it isn't path-filtered
+    # (needs.changes.outputs.*), so it would run on every PR unconditionally.
+    # Paused here -- pr-quality-checks.yml itself is untouched -- while
+    # optimization is analyzed. See #345 and #339.
+    if: false && needs.changes.result == 'success'
+    uses: ./.github/workflows/pr-quality-checks.yml
+    with:
+      runner_labels_json: *runner_heavy
+
   dgfy-api-build-check:
     needs: changes
     if: needs.changes.outputs.dgfy_api == 'true'

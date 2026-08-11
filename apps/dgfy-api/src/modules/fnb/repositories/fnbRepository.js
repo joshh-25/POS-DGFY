@@ -1,5 +1,6 @@
 import { Op } from 'sequelize';
 import dbStore from '../../../utils/dbStore.js';
+import { resolveEffectiveFnbModifierGroups } from '../../shared/utils/effectiveFnbModifierGroups.js';
 
 const toPlain = (row) => (
   row && typeof row.toJSON === 'function'
@@ -9,13 +10,34 @@ const toPlain = (row) => (
 
 const mapRows = (rows = []) => (Array.isArray(rows) ? rows.map(toPlain) : []);
 
-const modifierGroupInclude = () => ([{
-  model: dbStore.get('FnbModifierOption'),
-  as: 'options',
-  required: false,
-  separate: true,
-  order: [['sort_order', 'ASC'], ['name', 'ASC']]
-}]);
+const safeGetOptionalModel = (name) => {
+  try {
+    return dbStore.get(name) || null;
+  } catch {
+    return null;
+  }
+};
+
+const modifierGroupInclude = () => {
+  const optionLocationModel = safeGetOptionalModel('FnbModifierOptionLocationAvailability');
+  const groupLocationModel = safeGetOptionalModel('FnbModifierGroupLocationAvailability');
+  const includes = [{
+    model: dbStore.get('FnbModifierOption'),
+    as: 'options',
+    required: false,
+    separate: true,
+    order: [['sort_order', 'ASC'], ['name', 'ASC']],
+    include: optionLocationModel ? [{
+      model: optionLocationModel,
+      as: 'locationAvailability',
+      required: false
+    }] : []
+  }];
+  if (groupLocationModel) {
+    includes.push({ model: groupLocationModel, as: 'locationAvailability', required: false });
+  }
+  return includes;
+};
 
 const diningAreaInclude = () => ([{
   model: dbStore.get('FnbDiningTable'),
@@ -96,6 +118,21 @@ const itemModifierGroupInclude = () => ([
   }
 ]);
 
+const folderModifierGroupInclude = () => ([
+  {
+    model: dbStore.get('FnbModifierGroup'),
+    as: 'modifierGroup',
+    required: true,
+    include: modifierGroupInclude()
+  },
+  {
+    model: dbStore.get('ItemFolder'),
+    as: 'folder',
+    required: false,
+    attributes: ['folder_id', 'name', 'is_active', 'show_in_pos_filter']
+  }
+]);
+
 const reservationInclude = () => ([{
   model: dbStore.get('FnbDiningTable'),
   as: 'table',
@@ -123,6 +160,25 @@ export const fnbRepository = {
     return sequelize.transaction();
   },
 
+  async findActiveItemsByIds(itemIds = [], options = {}) {
+    const Item = dbStore.get('Item');
+    return mapRows(await Item.findAll({
+      where: { item_id: { [Op.in]: itemIds }, is_active: true },
+      attributes: ['item_id'],
+      transaction: options.transaction
+    }));
+  },
+
+  async findModifierOptionById(modifierOptionId, options = {}) {
+    const Option = dbStore.get('FnbModifierOption');
+    return toPlain(await Option.findByPk(modifierOptionId, { transaction: options.transaction }));
+  },
+
+  async findModifierGroupById(modifierGroupId, options = {}) {
+    const Group = dbStore.get('FnbModifierGroup');
+    return toPlain(await Group.findByPk(modifierGroupId, { transaction: options.transaction }));
+  },
+
   async listModifierGroups({ includeInactive = false } = {}, options = {}) {
     const FnbModifierGroup = dbStore.get('FnbModifierGroup');
     const where = includeInactive ? {} : { is_active: true };
@@ -139,13 +195,22 @@ export const fnbRepository = {
     const FnbModifierGroup = dbStore.get('FnbModifierGroup');
     const FnbModifierOption = dbStore.get('FnbModifierOption');
     const group = await FnbModifierGroup.create(payload.group, { transaction: options.transaction });
-    const optionsPayload = (payload.options || []).map((entry) => ({
-      ...entry,
-      modifier_group_id: group.modifier_group_id
-    }));
+    const optionLocations = [];
+    const optionsPayload = (payload.options || []).map((entry) => {
+      const { location_availability: locations = [], ...values } = entry;
+      optionLocations.push(locations);
+      return { ...values, modifier_group_id: group.modifier_group_id };
+    });
     if (optionsPayload.length > 0) {
-      await FnbModifierOption.bulkCreate(optionsPayload, { transaction: options.transaction });
+      const createdOptions = await FnbModifierOption.bulkCreate(optionsPayload, { transaction: options.transaction, returning: true });
+      const OptionLocation = safeGetOptionalModel('FnbModifierOptionLocationAvailability');
+      if (OptionLocation) {
+        const rows = createdOptions.flatMap((option, index) => optionLocations[index].map((location) => ({ ...location, modifier_option_id: option.modifier_option_id })));
+        if (rows.length) await OptionLocation.bulkCreate(rows, { transaction: options.transaction });
+      }
     }
+    const GroupLocation = safeGetOptionalModel('FnbModifierGroupLocationAvailability');
+    if (GroupLocation && payload.location_availability?.length) await GroupLocation.bulkCreate(payload.location_availability.map((location) => ({ ...location, modifier_group_id: group.modifier_group_id })), { transaction: options.transaction });
     return this.getModifierGroupById(group.modifier_group_id, options);
   },
 
@@ -157,6 +222,44 @@ export const fnbRepository = {
       lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
     });
     return toPlain(row);
+  },
+
+  async updateModifierGroup(modifierGroupId, payload = {}, options = {}) {
+    const Group = dbStore.get('FnbModifierGroup');
+    const Option = dbStore.get('FnbModifierOption');
+    const group = await Group.findByPk(modifierGroupId, { transaction: options.transaction });
+    if (!group) return null;
+    await group.update(payload.group, { transaction: options.transaction });
+    const existing = await Option.findAll({ where: { modifier_group_id: modifierGroupId }, transaction: options.transaction });
+    const existingById = new Map(existing.map((row) => [Number(row.modifier_option_id), row]));
+    const retainedIds = [];
+    for (const entry of payload.options || []) {
+      const { modifier_option_id: optionId, location_availability: locations = [], ...values } = entry;
+      let option = optionId ? existingById.get(Number(optionId)) : null;
+      if (optionId && !option) throw new Error('Modifier option does not belong to this group');
+      if (option) await option.update(values, { transaction: options.transaction });
+      else option = await Option.create({ ...values, modifier_group_id: modifierGroupId }, { transaction: options.transaction });
+      retainedIds.push(Number(option.modifier_option_id));
+      const OptionLocation = safeGetOptionalModel('FnbModifierOptionLocationAvailability');
+      if (OptionLocation) {
+        await OptionLocation.destroy({ where: { modifier_option_id: option.modifier_option_id }, transaction: options.transaction });
+        if (locations.length) await OptionLocation.bulkCreate(locations.map((location) => ({ ...location, modifier_option_id: option.modifier_option_id })), { transaction: options.transaction });
+      }
+    }
+    for (const row of existing) {
+      if (!retainedIds.includes(Number(row.modifier_option_id))) await row.update({ is_active: false }, { transaction: options.transaction });
+    }
+    const GroupLocation = safeGetOptionalModel('FnbModifierGroupLocationAvailability');
+    if (GroupLocation) {
+      await GroupLocation.destroy({ where: { modifier_group_id: modifierGroupId }, transaction: options.transaction });
+      if (payload.location_availability?.length) await GroupLocation.bulkCreate(payload.location_availability.map((location) => ({ ...location, modifier_group_id: modifierGroupId })), { transaction: options.transaction });
+    }
+    return this.getModifierGroupById(modifierGroupId, options);
+  },
+
+  async findActiveLocationsByIds(locationIds = [], options = {}) {
+    const TenantLocation = dbStore.get('TenantLocation');
+    return mapRows(await TenantLocation.findAll({ where: { location_id: { [Op.in]: locationIds }, is_active: true }, attributes: ['location_id'], transaction: options.transaction }));
   },
 
   async listDiningAreas({ includeInactive = false } = {}, options = {}) {
@@ -414,6 +517,33 @@ export const fnbRepository = {
     return mapRows(rows);
   },
 
+  async listEffectiveItemModifierGroups({ itemId } = {}, options = {}) {
+    const Item = dbStore.get('Item');
+    const item = await Item.findByPk(itemId, {
+      attributes: ['item_id', 'folder_id'],
+      transaction: options.transaction
+    });
+    if (!item) return [];
+    const directRows = await this.listItemModifierGroups({ itemId }, options);
+    const folderRows = item.folder_id
+      ? await this.listFolderModifierGroups({ folderId: item.folder_id }, options)
+      : [];
+    return resolveEffectiveFnbModifierGroups({
+      item_id: item.item_id,
+      folder: {
+        folder_id: item.folder_id,
+        fnbModifierGroups: folderRows.map((row) => ({
+          ...(row.modifierGroup || {}),
+          FnbFolderModifierGroup: row
+        }))
+      },
+      fnbModifierGroups: directRows.map((row) => ({
+        ...(row.modifierGroup || {}),
+        FnbItemModifierGroup: row
+      }))
+    });
+  },
+
   async replaceItemModifierGroups(itemId, assignments = [], options = {}) {
     const FnbItemModifierGroup = dbStore.get('FnbItemModifierGroup');
     await FnbItemModifierGroup.destroy({
@@ -423,6 +553,7 @@ export const fnbRepository = {
     const rows = (Array.isArray(assignments) ? assignments : []).map((entry, index) => ({
       item_id: itemId,
       modifier_group_id: entry.modifier_group_id,
+      is_excluded: entry.is_excluded === true,
       is_required_override: Object.prototype.hasOwnProperty.call(entry, 'is_required_override')
         ? entry.is_required_override
         : null,
@@ -432,6 +563,47 @@ export const fnbRepository = {
       await FnbItemModifierGroup.bulkCreate(rows, { transaction: options.transaction });
     }
     return this.listItemModifierGroups({ itemId }, options);
+  },
+
+  async listFolderModifierGroups({ folderId = null } = {}, options = {}) {
+    const FnbFolderModifierGroup = dbStore.get('FnbFolderModifierGroup');
+    const where = folderId ? { folder_id: folderId } : {};
+    const rows = await FnbFolderModifierGroup.findAll({
+      where,
+      include: folderModifierGroupInclude(),
+      order: [['folder_id', 'ASC'], ['sort_order', 'ASC']],
+      transaction: options.transaction
+    });
+    return mapRows(rows);
+  },
+
+  async findActiveFolderById(folderId, options = {}) {
+    const ItemFolder = dbStore.get('ItemFolder');
+    const row = await ItemFolder.findOne({
+      where: { folder_id: folderId, is_active: true, deleted_at: null },
+      transaction: options.transaction
+    });
+    return toPlain(row);
+  },
+
+  async replaceFolderModifierGroups(folderId, assignments = [], options = {}) {
+    const FnbFolderModifierGroup = dbStore.get('FnbFolderModifierGroup');
+    await FnbFolderModifierGroup.destroy({
+      where: { folder_id: folderId },
+      transaction: options.transaction
+    });
+    const rows = (Array.isArray(assignments) ? assignments : []).map((entry, index) => ({
+      folder_id: folderId,
+      modifier_group_id: entry.modifier_group_id,
+      is_required_override: Object.prototype.hasOwnProperty.call(entry, 'is_required_override')
+        ? entry.is_required_override
+        : null,
+      sort_order: Number.parseInt(entry.sort_order, 10) >= 0 ? Number.parseInt(entry.sort_order, 10) : index
+    }));
+    if (rows.length > 0) {
+      await FnbFolderModifierGroup.bulkCreate(rows, { transaction: options.transaction });
+    }
+    return this.listFolderModifierGroups({ folderId }, options);
   },
 
   async listReservations({ status = '', tableId = null, from = null, to = null, limit = 100 } = {}, options = {}) {

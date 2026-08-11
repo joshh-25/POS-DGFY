@@ -17,7 +17,10 @@ const MOBILE_CHECKPOINT_VERSION = 'mobile-pos.v1';
 const MOBILE_SETTINGS_KEYS = [
     'ops_workflow_mode',
     'store_tenant_slug',
+    'pos_registered_name',
     'pos_business_name',
+    'pos_business_style',
+    'pos_taxpayer_type',
     'pos_address',
     'pos_tin_branch',
     'pos_ptu_number',
@@ -27,6 +30,7 @@ const MOBILE_SETTINGS_KEYS = [
     'pos_software_version',
     'pos_software_serial_number',
     'pos_receipt_footer_message',
+    'storefront_profile_image_url',
     'pos_petty_cash_symbol',
     'pos_petty_cash_amount',
     'pos_discount_profiles',

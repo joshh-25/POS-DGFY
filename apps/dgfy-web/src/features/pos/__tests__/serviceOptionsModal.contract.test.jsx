@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import React from 'react';
+import React, { useState } from 'react';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, cleanup } from '@testing-library/react';
 import { ServiceOptionsModal } from '../components/ServiceOptionsModal.jsx';
@@ -102,5 +102,31 @@ describe('ServiceOptionsModal Contract', () => {
     expect(screen.getByText('Duration & Package')).toBeDefined();
     expect(screen.queryByText('Add-on Treatments')).toBeNull();
     expect(screen.queryByText('Hair Conditioning')).toBeNull();
+  });
+
+  it('starts a fresh option session when the active service changes', () => {
+    function SessionHarness() {
+      const [service, setService] = useState(dummyServiceItem);
+      return (
+        <>
+          <button type="button" onClick={() => setService({ ...dummyServiceItem, item_id: 202, name: 'Express Styling', default_sale_price: 500, duration_minutes: 30 })}>Switch service</button>
+          <ServiceOptionsModal
+            key={service.item_id}
+            open
+            onOpenChange={() => {}}
+            serviceItem={service}
+            optionGroups={dummyOptionGroups}
+          />
+        </>
+      );
+    }
+
+    render(<SessionHarness />);
+    fireEvent.click(screen.getByText('Extended (60 mins)'));
+    expect(screen.getByText('₱450.00')).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: 'Switch service' }));
+    expect(screen.getByText('Express Styling')).toBeDefined();
+    expect(screen.getByText('₱500.00')).toBeDefined();
+    expect(screen.getByText('30 mins')).toBeDefined();
   });
 });

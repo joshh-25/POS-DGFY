@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { fetchStorefrontAccountBranches } from '../model/storefrontAccountBranches.js';
 
 const EMPTY_BRANCHES = [];
-const INITIAL_STATE = { branches: EMPTY_BRANCHES, loading: false };
+const INITIAL_STATE = { branches: EMPTY_BRANCHES, loading: false, lookupKey: '' };
 
 /**
  * Loads the other stores the signed-in DGFY account owns that share the current
@@ -23,6 +23,13 @@ export function useStorefrontAccountBranches({ isStorefrontAccountAuthenticated,
   // Edge case: industry/type missing on the current store — nothing reliable to
   // filter by, so don't show the switcher rather than guessing.
   const isEligibleForLookup = Boolean(isStorefrontAccountAuthenticated && tenantId && slug && workflowMode);
+  const lookupKey = `${tenantId}::${slug}::${workflowMode.toLowerCase()}`;
+  const visibleBranches = isEligibleForLookup && state.lookupKey === lookupKey
+    ? state.branches
+    : EMPTY_BRANCHES;
+  const visibleLoading = isEligibleForLookup && state.lookupKey === lookupKey
+    ? state.loading
+    : isEligibleForLookup;
 
   useEffect(() => {
     if (!isEligibleForLookup) {
@@ -31,7 +38,7 @@ export function useStorefrontAccountBranches({ isStorefrontAccountAuthenticated,
       return undefined;
     }
     let cancelled = false;
-    setState((prev) => ({ ...prev, loading: true }));
+    setState({ branches: EMPTY_BRANCHES, loading: true, lookupKey });
     fetchStorefrontAccountBranches({
       currentTenantId: tenantId,
       currentSlug: slug,
@@ -43,20 +50,20 @@ export function useStorefrontAccountBranches({ isStorefrontAccountAuthenticated,
         if (cancelled) return;
         // Edge case: fetch failed — fetchStorefrontAccountBranches already resolves
         // to [] on any error, so the switcher simply stays hidden.
-        setState({ branches: Array.isArray(result) ? result : EMPTY_BRANCHES, loading: false });
+        setState({ branches: Array.isArray(result) ? result : EMPTY_BRANCHES, loading: false, lookupKey });
       })
       .catch(() => {
-        if (!cancelled) setState({ branches: EMPTY_BRANCHES, loading: false });
+        if (!cancelled) setState({ branches: EMPTY_BRANCHES, loading: false, lookupKey });
       });
     return () => {
       cancelled = true;
     };
-  }, [isEligibleForLookup, tenantId, slug, workflowMode, tenantName, profileImageUrl]);
+  }, [isEligibleForLookup, lookupKey, tenantId, slug, workflowMode, tenantName, profileImageUrl]);
 
   return {
-    accountBranches: state.branches,
-    accountBranchesLoading: state.loading,
+    accountBranches: visibleBranches,
+    accountBranchesLoading: visibleLoading,
     // Edge case: only 1 store matches (itself) — hide the switcher.
-    hasMultipleAccountBranches: state.branches.length > 1
+    hasMultipleAccountBranches: visibleBranches.length > 1
   };
 }

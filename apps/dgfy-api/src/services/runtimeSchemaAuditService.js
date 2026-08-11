@@ -41,6 +41,8 @@ export const REQUIRED_RUNTIME_MIGRATIONS = Object.freeze([
     '20260703000002-enforce-one-open-shift-per-terminal.cjs',
     '20260705000001-add-admin-provisioned-membership-source.cjs',
     '20260710000001-create-delivery-jobs.cjs',
+    '20260808000002-create-delivery-personnel-and-assignment.cjs',
+    '20260808000003-add-delivery-assignment-shift.cjs',
     '20260711000001-add-pickup-cash-collection-fields.cjs',
     '20260711000002-add-item-folder-active-contract.cjs',
     '20260711000003-repair-pickup-cash-collection-columns.cjs',
@@ -176,8 +178,21 @@ const REQUIRED_TABLE_COLUMNS = Object.freeze({
         'delivery_job_id',
         'pos_transaction_id',
         'location_id',
+        'delivery_personnel_id',
+        'assigned_by',
+        'assigned_shift_id',
+        'assigned_at',
         'provider',
         'status'
+    ],
+    delivery_personnel: [
+        'delivery_personnel_id',
+        'display_name',
+        'phone',
+        'location_id',
+        'is_active',
+        'created_by',
+        'updated_by'
     ],
     service_booking_lines: [
         'booking_line_id',

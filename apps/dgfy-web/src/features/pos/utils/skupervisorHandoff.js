@@ -1,5 +1,6 @@
 const DEFAULT_LOCAL_SKUPERVISOR_ORIGIN = 'http://localhost:5173';
 const DEFAULT_PUBLIC_SKUPERVISOR_ORIGIN = 'https://skupervisor.dgfy.ph';
+const DEFAULT_PUBLIC_POS_ORIGIN = 'https://pos.dgfy.ph';
 
 const normalizePath = (path = '/') => {
   const raw = String(path || '').trim();
@@ -107,3 +108,56 @@ export const buildSkupervisorHandoffUrl = ({ tenantId = '', next = '/', handoffT
   return buildSkupervisorPath('/dgfy/companies', `?${params.toString()}`);
 };
 
+// The standalone POS app uses HashRouter and runs on its own origin. Keep this
+// builder separate from buildSkupervisorHandoffUrl so inventory/IMS links
+// continue to land on SKUpervisor while Business -> POS links land on DGFY POS.
+const resolvePosOrigin = () => {
+  const configured = String(import.meta.env?.VITE_POS_TERMINAL_URL || '').trim();
+  if (configured) {
+    try {
+      return new URL(configured, DEFAULT_PUBLIC_POS_ORIGIN).origin;
+    } catch {
+      // Invalid optional configuration falls through to runtime derivation.
+    }
+  }
+
+  if (typeof window === 'undefined') return DEFAULT_PUBLIC_POS_ORIGIN;
+
+  const { protocol, hostname } = window.location;
+  const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1';
+  if (isLocalHost) {
+    const localPort = String(import.meta.env?.VITE_POS_DEV_PORT || '5174').trim() || '5174';
+    return `${protocol}//${hostname}:${localPort}`;
+  }
+
+  if (hostname.startsWith('skupervisor.')) {
+    return `${protocol}//${hostname.replace(/^skupervisor\./, 'pos.')}`;
+  }
+
+  if (hostname.startsWith('store.')) {
+    return `${protocol}//${hostname.replace(/^store\./, 'pos.')}`;
+  }
+
+  if (hostname.startsWith('pos.')) {
+    return `${protocol}//${hostname}`;
+  }
+
+  return hostname ? `${protocol}//pos.${hostname}` : DEFAULT_PUBLIC_POS_ORIGIN;
+};
+
+export const getPosOrigin = () => resolvePosOrigin();
+
+export const buildPosDgfyHandoffUrl = ({ tenantId = '', next = '/', handoffToken = '' } = {}) => {
+  const params = new URLSearchParams();
+  const normalizedTenantId = String(tenantId || '').trim();
+  const normalizedHandoffToken = String(handoffToken || '').trim();
+  if (normalizedTenantId) params.set('tenant_id', normalizedTenantId);
+  params.set('next', normalizePath(next));
+  if (normalizedHandoffToken) params.set('handoff_token', normalizedHandoffToken);
+
+  const target = new URL('/', getPosOrigin());
+  // apps/pos uses HashRouter; putting the query inside the hash makes it
+  // available to the POS route without leaking it into the server request.
+  target.hash = `/dgfy/companies?${params.toString()}`;
+  return target.toString();
+};

@@ -1,6 +1,7 @@
 import { jest } from '@jest/globals';
 import {
     buildCloseDayZReadingUseCase,
+    buildGetDayCloseReadinessUseCase,
     buildGetCurrentXReadingUseCase,
     buildGetDailyZReadingUseCase,
     buildIncrementGovernedResetCounterUseCase
@@ -13,6 +14,74 @@ describe('POS readings usecases', () => {
         commit: jest.fn().mockResolvedValue(undefined),
         rollback: jest.fn().mockResolvedValue(undefined),
         finished: false
+    });
+
+    it('buildGetDayCloseReadinessUseCase reports the remaining branch shifts without requiring a PIN', async () => {
+        const posRepository = {
+            listOpenTerminalShiftsForLocation: jest.fn().mockResolvedValue([
+                {
+                    pos_terminal_shift_id: 31,
+                    terminal_id: 'COUNTER-02',
+                    opened_at: '2026-08-11T08:00:00.000Z',
+                    cashier: { username: 'Cashier Two' }
+                }
+            ]),
+            getLatestZReadingSnapshotByBusinessDate: jest.fn().mockResolvedValue(null)
+        };
+        const resolveLocationScope = jest.fn().mockResolvedValue({ location_id: 7 });
+        const useCase = buildGetDayCloseReadinessUseCase({ posRepository, resolveLocationScope });
+
+        const result = await useCase({
+            businessDateInput: '2026-08-11',
+            user: { user_id: 11 },
+            locationId: 7
+        });
+
+        expect(result.success).toBe(true);
+        expect(resolveLocationScope).toHaveBeenCalledWith({
+            requestedLocationId: 7,
+            userId: 11,
+            operationLabel: 'POS day-close readiness'
+        });
+        expect(result.data).toEqual(expect.objectContaining({
+            business_date: '2026-08-11',
+            location_id: 7,
+            ready: false,
+            already_closed: false,
+            open_shift_count: 1,
+            open_shifts: [expect.objectContaining({
+                shift_id: 31,
+                terminal_id: 'COUNTER-02',
+                cashier_name: 'Cashier Two'
+            })]
+        }));
+    });
+
+    it('buildGetDayCloseReadinessUseCase allows an existing Z-reading to be printed again', async () => {
+        const posRepository = {
+            listOpenTerminalShiftsForLocation: jest.fn().mockResolvedValue([]),
+            getLatestZReadingSnapshotByBusinessDate: jest.fn().mockResolvedValue({
+                reading_identifier: 'ZR-20260811-00000003',
+                generated_at: '2026-08-11T16:00:00.000Z'
+            })
+        };
+        const useCase = buildGetDayCloseReadinessUseCase({
+            posRepository,
+            resolveLocationScope: jest.fn().mockResolvedValue({ location_id: 7 })
+        });
+
+        const result = await useCase({
+            businessDateInput: '2026-08-11',
+            user: { user_id: 11 },
+            locationId: 7
+        });
+
+        expect(result.success).toBe(true);
+        expect(result.data).toEqual(expect.objectContaining({
+            ready: true,
+            already_closed: true,
+            reading_identifier: 'ZR-20260811-00000003'
+        }));
     });
 
     it('buildCloseDayZReadingUseCase scopes the snapshot to the authorized branch', async () => {
@@ -282,7 +351,15 @@ describe('POS readings usecases', () => {
             }),
             summary: expect.objectContaining({
                 transaction_count: 5,
-                total_amount: 900
+                total_amount: 900,
+                payment_breakdown: [
+                    { payment_type: 'cash', payment_label: 'Cash', count: 5, amount: 900 },
+                    { payment_type: 'gcash', payment_label: 'GCash', count: 0, amount: 0 },
+                    { payment_type: 'maya', payment_label: 'Maya', count: 0, amount: 0 },
+                    { payment_type: 'card', payment_label: 'Card (Credit/Debit)', count: 0, amount: 0 },
+                    { payment_type: 'employee_credit', payment_label: 'Employee Credit', count: 0, amount: 0 },
+                    { payment_type: 'other', payment_label: 'Other', count: 0, amount: 0 }
+                ]
             })
         }));
     });

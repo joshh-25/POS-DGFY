@@ -31,6 +31,21 @@ const steps = [
     args: ['--prefix', 'apps/dgfy-api', 'test', '--', 'storeFnbModifiers.usecases.test.js', '--runInBand']
   },
   {
+    label: 'Backend F&B modifier migration contracts',
+    command: npmCommand,
+    args: ['--prefix', 'apps/dgfy-api', 'test', '--', 'fnbModifierCondition.migration.test.js', '--runInBand']
+  },
+  {
+    label: 'Backend folder modifier inheritance contracts',
+    command: npmCommand,
+    args: ['--prefix', 'apps/dgfy-api', 'test', '--', 'effectiveFnbModifierGroups.test.js', 'fnbFolderModifierAssignments.migration.test.js', '--runInBand']
+  },
+  {
+    label: 'Backend Storefront modifier validator contracts',
+    command: npmCommand,
+    args: ['--prefix', 'apps/dgfy-api', 'test', '--', 'storeValidator.fnbModifiers.test.js', '--runInBand']
+  },
+  {
     label: 'Frontend F&B kitchen queue display contract',
     command: npmCommand,
     args: ['--prefix', 'apps/dgfy-web', 'test', '--', 'kitchenQueueDisplay.test.js']
@@ -44,6 +59,26 @@ const steps = [
     label: 'Frontend Storefront error-message contract',
     command: npmCommand,
     args: ['--prefix', 'apps/dgfy-web', 'test', '--', 'storefrontErrorMessages.test.js']
+  },
+  {
+    label: 'Frontend F&B mode contract',
+    command: npmCommand,
+    args: ['--prefix', 'apps/dgfy-web', 'test', '--', 'fnbMode.contract.test.js']
+  },
+  {
+    label: 'Frontend POS edit-session contracts',
+    command: npmCommand,
+    args: ['--prefix', 'apps/dgfy-web', 'test', '--', 'FnbModifierPickerDialog.test.jsx', 'posFnbModifierManager.session.test.jsx', 'serviceOptionsModal.contract.test.jsx']
+  },
+  {
+    label: 'Frontend POS folder modifier assignment contract',
+    command: npmCommand,
+    args: ['--prefix', 'apps/dgfy-web', 'test', '--', 'PosFnbModifiersWorkspace.test.jsx']
+  },
+  {
+    label: 'Frontend F&B deterministic browser contract',
+    command: npmCommand,
+    args: ['--prefix', 'apps/dgfy-web', 'run', 'test:e2e:fnb-contract']
   },
   {
     label: 'Skupervisor production build',

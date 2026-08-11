@@ -20,17 +20,27 @@ export function useFnbProductModifiers({ setSelectedModifiers }) {
       if (maxSelect === 1) {
         return [
           ...normalized.filter((entry) => Number(entry.modifier_group_id) !== Number(groupId)),
-          { modifier_group_id: groupId, modifier_option_id: optionId, option_name: option.option_name, price_delta: Number(option.price_delta || 0) }
+          { modifier_group_id: groupId, modifier_option_id: optionId, option_name: option.option_name, price_delta: Number(option.price_delta || 0), quantity: 1 }
         ];
       }
       const groupSelections = normalized.filter((entry) => Number(entry.modifier_group_id) === Number(groupId));
       if (maxSelect > 0 && groupSelections.length >= maxSelect) return normalized;
       return [
         ...normalized,
-        { modifier_group_id: groupId, modifier_option_id: optionId, option_name: option.option_name, price_delta: Number(option.price_delta || 0) }
+        { modifier_group_id: groupId, modifier_option_id: optionId, option_name: option.option_name, price_delta: Number(option.price_delta || 0), quantity: 1 }
       ];
     });
   }, [setSelectedModifiers]);
 
-  return { toggleFnbDetailModifier };
+  const setFnbDetailModifierQuantity = useCallback((group, option, quantity) => {
+    const normalizedQuantity = Math.min(99, Math.max(1, Number.parseInt(quantity || 1, 10) || 1));
+    setSelectedModifiers((previous) => (Array.isArray(previous) ? previous : []).map((entry) => (
+      Number(entry.modifier_group_id) === Number(group?.modifier_group_id)
+      && Number(entry.modifier_option_id) === Number(option?.modifier_option_id)
+        ? { ...entry, quantity: normalizedQuantity }
+        : entry
+    )));
+  }, [setSelectedModifiers]);
+
+  return { toggleFnbDetailModifier, setFnbDetailModifierQuantity };
 }

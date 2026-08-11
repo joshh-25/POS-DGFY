@@ -70,6 +70,20 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
             sql: "ALTER TABLE `users` ADD COLUMN `pos_day_close_pin_hash` VARCHAR(255) NULL"
         })
     }),
+    pos_z_reading_snapshots: Object.freeze({
+        location_id: Object.freeze({
+            sql: "ALTER TABLE `pos_z_reading_snapshots` ADD COLUMN `location_id` INTEGER NULL"
+        }),
+        closed_by_user_id: Object.freeze({
+            sql: "ALTER TABLE `pos_z_reading_snapshots` ADD COLUMN `closed_by_user_id` INTEGER NULL"
+        }),
+        closed_from_terminal_id: Object.freeze({
+            sql: "ALTER TABLE `pos_z_reading_snapshots` ADD COLUMN `closed_from_terminal_id` VARCHAR(100) NULL"
+        }),
+        day_close_pin_confirmed_at: Object.freeze({
+            sql: "ALTER TABLE `pos_z_reading_snapshots` ADD COLUMN `day_close_pin_confirmed_at` DATETIME NULL"
+        })
+    }),
     pos_transaction_lines: Object.freeze({
         stock_effect_type: Object.freeze({
             sql: "ALTER TABLE `pos_transaction_lines` ADD COLUMN `stock_effect_type` ENUM('inventory_issue','stock_exempt') NOT NULL DEFAULT 'inventory_issue' COMMENT 'Immutable checkout-time stock-effect classification'"
@@ -93,6 +107,11 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
         }),
         tracking_toggle_available: Object.freeze({
             sql: "ALTER TABLE `items` ADD COLUMN `tracking_toggle_available` TINYINT(1) NULL DEFAULT 1 COMMENT 'Operator-declared availability, only meaningful when tracking_mode=toggle'"
+        })
+    }),
+    fnb_item_modifier_groups: Object.freeze({
+        is_excluded: Object.freeze({
+            sql: "ALTER TABLE `fnb_item_modifier_groups` ADD COLUMN `is_excluded` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Explicit item-level opt-out from folder-inherited modifier groups'"
         })
     }),
     item_folders: Object.freeze({
@@ -172,9 +191,48 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
             sql: "ALTER TABLE `service_item_details` ADD COLUMN `addons_enabled` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Per-service switch controlling add-on option availability'"
         })
     }),
+    fnb_modifier_groups: Object.freeze({
+        visible_in_pos: Object.freeze({
+            sql: "ALTER TABLE `fnb_modifier_groups` ADD COLUMN `visible_in_pos` TINYINT(1) NOT NULL DEFAULT 1"
+        }),
+        visible_in_storefront: Object.freeze({
+            sql: "ALTER TABLE `fnb_modifier_groups` ADD COLUMN `visible_in_storefront` TINYINT(1) NOT NULL DEFAULT 1"
+        }),
+        group_kind: Object.freeze({
+            sql: "ALTER TABLE `fnb_modifier_groups` ADD COLUMN `group_kind` VARCHAR(24) NOT NULL DEFAULT 'modifier'"
+        }),
+        parent_modifier_option_id: Object.freeze({
+            sql: "ALTER TABLE `fnb_modifier_groups` ADD COLUMN `parent_modifier_option_id` INT NULL, ADD CONSTRAINT `fk_fnb_modifier_groups_parent_option` FOREIGN KEY (`parent_modifier_option_id`) REFERENCES `fnb_modifier_options` (`modifier_option_id`) ON DELETE SET NULL"
+        })
+    }),
+    fnb_modifier_options: Object.freeze({
+        visible_in_pos: Object.freeze({
+            sql: "ALTER TABLE `fnb_modifier_options` ADD COLUMN `visible_in_pos` TINYINT(1) NOT NULL DEFAULT 1"
+        }),
+        visible_in_storefront: Object.freeze({
+            sql: "ALTER TABLE `fnb_modifier_options` ADD COLUMN `visible_in_storefront` TINYINT(1) NOT NULL DEFAULT 1"
+        }),
+        is_sold_out: Object.freeze({
+            sql: "ALTER TABLE `fnb_modifier_options` ADD COLUMN `is_sold_out` TINYINT(1) NOT NULL DEFAULT 0"
+        })
+    }),
     pos_transaction_discounts: Object.freeze({
         promo_code: Object.freeze({
             sql: "ALTER TABLE `pos_transaction_discounts` ADD COLUMN `promo_code` VARCHAR(40) NULL COMMENT 'Commercial promo code validated by the server at checkout'"
+        })
+    }),
+    delivery_jobs: Object.freeze({
+        delivery_personnel_id: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `delivery_personnel_id` INT NULL"
+        }),
+        assigned_by: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `assigned_by` INT NULL"
+        }),
+        assigned_at: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `assigned_at` DATETIME NULL"
+        }),
+        assigned_shift_id: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD COLUMN `assigned_shift_id` INT NULL"
         })
     }),
     // Added by migration 20260809000003-add-disabled-capabilities-to-workflow-mode-change-log.cjs
@@ -196,6 +254,50 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
 // (column types, defaults, keys, FK constraints) — declaration order matters, since later tables
 // have foreign keys pointing at earlier ones.
 export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
+    fnb_modifier_group_location_availability: Object.freeze({
+        sql: "CREATE TABLE `fnb_modifier_group_location_availability` ("
+            + " `modifier_group_location_availability_id` INT NOT NULL AUTO_INCREMENT,"
+            + " `modifier_group_id` INT NOT NULL, `location_id` INT NOT NULL,"
+            + " `is_available` TINYINT(1) NOT NULL DEFAULT 1,"
+            + " `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " PRIMARY KEY (`modifier_group_location_availability_id`),"
+            + " UNIQUE KEY `uq_fnb_modifier_group_location` (`modifier_group_id`,`location_id`),"
+            + " KEY `idx_fnb_modifier_group_location_location` (`location_id`),"
+            + " CONSTRAINT `fk_fnb_modifier_group_location_group` FOREIGN KEY (`modifier_group_id`) REFERENCES `fnb_modifier_groups` (`modifier_group_id`) ON DELETE CASCADE,"
+            + " CONSTRAINT `fk_fnb_modifier_group_location_location` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE CASCADE"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    fnb_modifier_option_location_availability: Object.freeze({
+        sql: "CREATE TABLE `fnb_modifier_option_location_availability` ("
+            + " `modifier_option_location_availability_id` INT NOT NULL AUTO_INCREMENT,"
+            + " `modifier_option_id` INT NOT NULL, `location_id` INT NOT NULL,"
+            + " `is_available` TINYINT(1) NOT NULL DEFAULT 1,"
+            + " `is_sold_out` TINYINT(1) NOT NULL DEFAULT 0,"
+            + " `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " PRIMARY KEY (`modifier_option_location_availability_id`),"
+            + " UNIQUE KEY `uq_fnb_modifier_option_location` (`modifier_option_id`,`location_id`),"
+            + " KEY `idx_fnb_modifier_option_location_location` (`location_id`),"
+            + " CONSTRAINT `fk_fnb_modifier_option_location_option` FOREIGN KEY (`modifier_option_id`) REFERENCES `fnb_modifier_options` (`modifier_option_id`) ON DELETE CASCADE,"
+            + " CONSTRAINT `fk_fnb_modifier_option_location_location` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE CASCADE"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    fnb_folder_modifier_groups: Object.freeze({
+        sql: "CREATE TABLE `fnb_folder_modifier_groups` ("
+            + " `folder_modifier_group_id` INT NOT NULL AUTO_INCREMENT,"
+            + " `folder_id` INT NOT NULL, `modifier_group_id` INT NOT NULL,"
+            + " `is_required_override` TINYINT(1) NULL, `sort_order` INT NOT NULL DEFAULT 0,"
+            + " `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,"
+            + " PRIMARY KEY (`folder_modifier_group_id`),"
+            + " UNIQUE KEY `uq_fnb_folder_modifier_groups_folder_group` (`folder_id`,`modifier_group_id`),"
+            + " KEY `idx_fnb_folder_modifier_groups_folder` (`folder_id`),"
+            + " KEY `idx_fnb_folder_modifier_groups_group` (`modifier_group_id`),"
+            + " CONSTRAINT `fk_fnb_folder_modifier_groups_folder` FOREIGN KEY (`folder_id`) REFERENCES `item_folders` (`folder_id`) ON DELETE CASCADE,"
+            + " CONSTRAINT `fk_fnb_folder_modifier_groups_group` FOREIGN KEY (`modifier_group_id`) REFERENCES `fnb_modifier_groups` (`modifier_group_id`) ON DELETE CASCADE"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
     // Created by migration 20260503000002-create-storefront-catalog-overrides.cjs but never
     // added to this registry at the time — that drift sat harmless (no repair-apply ever needed
     // to touch a tenant missing the whole table) until 20260801000001-add-image-lifecycle-metadata
@@ -361,6 +463,26 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `pos_transaction_discounts_ibfk_1` FOREIGN KEY (`transaction_id`) REFERENCES `pos_transactions` (`pos_transaction_id`) ON DELETE CASCADE,\n"
             + "  CONSTRAINT `pos_transaction_discounts_ibfk_2` FOREIGN KEY (`discount_rule_id`) REFERENCES `pos_discount_rules` (`id`) ON DELETE SET NULL,\n"
             + "  CONSTRAINT `pos_transaction_discounts_ibfk_3` FOREIGN KEY (`manager_approval_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    delivery_personnel: Object.freeze({
+        sql: "CREATE TABLE `delivery_personnel` (\n"
+            + "  `delivery_personnel_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `display_name` varchar(255) NOT NULL,\n"
+            + "  `phone` varchar(40) DEFAULT NULL,\n"
+            + "  `location_id` int DEFAULT NULL,\n"
+            + "  `is_active` tinyint(1) NOT NULL DEFAULT '1',\n"
+            + "  `notes` text,\n"
+            + "  `created_by` int DEFAULT NULL,\n"
+            + "  `updated_by` int DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`delivery_personnel_id`),\n"
+            + "  KEY `idx_delivery_personnel_name` (`display_name`),\n"
+            + "  KEY `idx_delivery_personnel_location_active` (`location_id`,`is_active`),\n"
+            + "  CONSTRAINT `delivery_personnel_ibfk_1` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `delivery_personnel_ibfk_2` FOREIGN KEY (`created_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT,\n"
+            + "  CONSTRAINT `delivery_personnel_ibfk_3` FOREIGN KEY (`updated_by`) REFERENCES `users` (`user_id`) ON DELETE SET NULL ON UPDATE RESTRICT\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     }),
     delivery_jobs: Object.freeze({
@@ -610,9 +732,38 @@ export const REQUIRED_TENANT_SCHEMA_INDEXES = Object.freeze({
             sql: "ALTER TABLE `pos_terminal_shifts` ADD UNIQUE INDEX `uq_pos_terminal_shifts_active_operator` (`active_operator_user_id`)"
         })
     }),
+    pos_z_reading_snapshots: Object.freeze({
+        uq_pos_z_reading_snapshots_business_date_location: Object.freeze({
+            sql: "ALTER TABLE `pos_z_reading_snapshots` ADD UNIQUE INDEX `uq_pos_z_reading_snapshots_business_date_location` (`business_date`,`location_id`)"
+        }),
+        idx_pos_z_reading_snapshots_closed_by_user: Object.freeze({
+            sql: "ALTER TABLE `pos_z_reading_snapshots` ADD INDEX `idx_pos_z_reading_snapshots_closed_by_user` (`closed_by_user_id`)"
+        })
+    }),
     pos_transaction_discounts: Object.freeze({
         idx_pos_transaction_discounts_promo_code: Object.freeze({
             sql: "ALTER TABLE `pos_transaction_discounts` ADD INDEX `idx_pos_transaction_discounts_promo_code` (`promo_code`)"
+        })
+    }),
+    delivery_personnel: Object.freeze({
+        idx_delivery_personnel_name: Object.freeze({
+            sql: "ALTER TABLE `delivery_personnel` ADD INDEX `idx_delivery_personnel_name` (`display_name`)"
+        }),
+        idx_delivery_personnel_location_active: Object.freeze({
+            sql: "ALTER TABLE `delivery_personnel` ADD INDEX `idx_delivery_personnel_location_active` (`location_id`,`is_active`)"
+        })
+    }),
+    delivery_jobs: Object.freeze({
+        idx_delivery_jobs_personnel_status: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD INDEX `idx_delivery_jobs_personnel_status` (`delivery_personnel_id`,`status`)"
+        }),
+        idx_delivery_jobs_assignment_shift: Object.freeze({
+            sql: "ALTER TABLE `delivery_jobs` ADD INDEX `idx_delivery_jobs_assignment_shift` (`assigned_shift_id`)"
+        })
+    }),
+    fnb_modifier_groups: Object.freeze({
+        idx_fnb_modifier_groups_parent_option: Object.freeze({
+            sql: "ALTER TABLE `fnb_modifier_groups` ADD INDEX `idx_fnb_modifier_groups_parent_option` (`parent_modifier_option_id`)"
         })
     })
 });
@@ -761,7 +912,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-09.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-11.1';
 
 export function getTenantSchemaCapabilityChecksum() {
     const manifest = {

@@ -64,6 +64,17 @@ export const DELIVERY_JOB_STATUS_LABELS = Object.freeze({
   cancelled: 'Cancelled'
 });
 
+export const isManualDeliveryJob = (deliveryJob = {}) => (
+  String(deliveryJob?.provider || 'manual').trim().toLowerCase() === 'manual'
+);
+
+export const hasCompleteDeliveryAssignment = (deliveryJob = {}) => Boolean(
+  Number(deliveryJob?.delivery_personnel_id) > 0
+  && Number(deliveryJob?.assigned_by) > 0
+  && Number(deliveryJob?.assigned_shift_id) > 0
+  && deliveryJob?.assigned_at
+);
+
 const DELIVERY_JOB_TRANSITIONS = Object.freeze({
   pending_dispatch: 'assigned',
   assigned: 'picked_up',

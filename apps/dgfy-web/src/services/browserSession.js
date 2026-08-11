@@ -3,6 +3,8 @@ const IS_STANDALONE_POS_SURFACE = String(import.meta.env.VITE_APP_SURFACE || '')
 const POS_BROWSER_SESSION_STORAGE_KEY = 'pos_browser_session_v1';
 const POS_COMPANY_SWITCH_HANDOFF_STORAGE_KEY = 'pos_company_switch_handoff_v1';
 const POS_COMPANY_SWITCH_HANDOFF_MAX_AGE_MS = 60_000;
+const POS_DGFY_TENANT_HANDOFF_STORAGE_KEY = 'pos_dgfy_tenant_handoff_v1';
+const POS_DGFY_TENANT_HANDOFF_MAX_AGE_MS = 60_000;
 
 let accessToken = '';
 let companyToken = '';
@@ -45,7 +47,7 @@ const writePosSessionStorage = ({ active } = {}) => {
   }));
 };
 
-const hasFreshPosCompanySwitchHandoff = () => {
+const readFreshPosCompanySwitchHandoff = () => {
   if (!IS_STANDALONE_POS_SURFACE || typeof window === 'undefined') return false;
 
   try {
@@ -59,17 +61,43 @@ const hasFreshPosCompanySwitchHandoff = () => {
 
     if (!isFresh) {
       window.sessionStorage.removeItem(POS_COMPANY_SWITCH_HANDOFF_STORAGE_KEY);
+      return null;
     }
-    return isFresh;
+    return { tenantId };
   } catch {
     window.sessionStorage.removeItem(POS_COMPANY_SWITCH_HANDOFF_STORAGE_KEY);
-    return false;
+    return null;
   }
 };
+
+const hasFreshPosCompanySwitchHandoff = () => Boolean(readFreshPosCompanySwitchHandoff());
 
 const consumePosCompanySwitchHandoff = () => {
   if (!IS_STANDALONE_POS_SURFACE || typeof window === 'undefined') return;
   window.sessionStorage.removeItem(POS_COMPANY_SWITCH_HANDOFF_STORAGE_KEY);
+};
+
+const readFreshPosDgfyTenantHandoff = () => {
+  if (!IS_STANDALONE_POS_SURFACE || typeof window === 'undefined') return null;
+
+  try {
+    const parsed = JSON.parse(window.sessionStorage.getItem(POS_DGFY_TENANT_HANDOFF_STORAGE_KEY) || 'null');
+    const createdAt = Number(parsed?.createdAt || 0);
+    const tenantId = String(parsed?.tenantId || '').trim();
+    const isFresh = Boolean(tenantId)
+      && Number.isFinite(createdAt)
+      && createdAt > 0
+      && Date.now() - createdAt <= POS_DGFY_TENANT_HANDOFF_MAX_AGE_MS;
+
+    if (!isFresh) {
+      window.sessionStorage.removeItem(POS_DGFY_TENANT_HANDOFF_STORAGE_KEY);
+      return null;
+    }
+    return { tenantId };
+  } catch {
+    window.sessionStorage.removeItem(POS_DGFY_TENANT_HANDOFF_STORAGE_KEY);
+    return null;
+  }
 };
 
 const bootstrapStandalonePosSession = () => {
@@ -188,6 +216,36 @@ export const preparePosCompanySwitchHandoff = ({ tenantId } = {}) => {
     tenantId: normalizedTenantId,
     createdAt: Date.now()
   }));
+};
+
+// Unlike the consuming refresh helper, TerminalPage needs to read the target
+// tenant before refresh so it can discard prior-company UI state first.
+export const getFreshPosCompanySwitchHandoff = () => readFreshPosCompanySwitchHandoff();
+
+// DGFY Business has already authenticated the account and selected a company
+// before it reaches the standalone POS HashRouter. This short-lived marker
+// contains no credential; it only lets POS discard stale terminal-local state
+// before validating the freshly installed tenant session with the API.
+export const preparePosDgfyTenantHandoff = ({ tenantId } = {}) => {
+  if (!IS_STANDALONE_POS_SURFACE || typeof window === 'undefined') return;
+
+  const normalizedTenantId = String(tenantId || '').trim();
+  if (!normalizedTenantId || !accessToken || !companyToken) {
+    throw new Error('The selected DGFY company session could not be prepared for POS.');
+  }
+
+  window.sessionStorage.setItem(POS_DGFY_TENANT_HANDOFF_STORAGE_KEY, JSON.stringify({
+    tenantId: normalizedTenantId,
+    createdAt: Date.now()
+  }));
+};
+
+export const consumePosDgfyTenantHandoff = () => {
+  const handoff = readFreshPosDgfyTenantHandoff();
+  if (handoff && typeof window !== 'undefined') {
+    window.sessionStorage.removeItem(POS_DGFY_TENANT_HANDOFF_STORAGE_KEY);
+  }
+  return handoff;
 };
 
 export const getAccessToken = () => accessToken;

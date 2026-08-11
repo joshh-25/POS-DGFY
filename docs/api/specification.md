@@ -2821,6 +2821,44 @@ List incoming online orders for POS fulfillment queue.
 1. Returns orders still in operational queue (`placed`, `confirmed`, `preparing`, `ready_for_pickup`, `out_for_delivery`).
 2. Completed, cancelled, and rejected orders are excluded from this queue endpoint.
 
+### GET /pos/delivery-personnel
+List active delivery personnel available to the authenticated POS location.
+
+**Permission**: `pos:view`
+**Plan Gate**: Premium (`requirePremium`)
+
+**Query Parameters**
+| Name | Type | Description |
+|------|------|-------------|
+| `location_id` | number | Optional location scope; server validates the user’s access |
+
+**Response Notes**
+1. Returns active personnel assigned to the requested location plus global personnel with no location assignment.
+2. Inactive personnel and personnel outside the authorized location are excluded.
+3. Registry creation, editing, activation, and deactivation are not part of this POS endpoint.
+
+### PATCH /pos/orders/:id/delivery-job/assignment
+Assign or reassign an active delivery person before pickup begins.
+
+**Permission**: `pos:transact`
+**Plan Gate**: Premium (`requirePremium`)
+
+**Request Body**
+```json
+{
+  "idempotency_key": "delivery-assignment-20260808-789",
+  "delivery_personnel_id": 21
+}
+```
+
+**Transition Notes**
+1. The associated online order must already be `out_for_delivery` and have a `manual` delivery job.
+2. The authenticated user must own an open shift at the order location.
+3. The selected person must be active and global or assigned to the order location.
+4. The assignment atomically records the person, assigning user, assigning shift, timestamp, and `pending_dispatch -> assigned` transition.
+5. Assignment can be changed while the job is `pending_dispatch` or `assigned`; it is locked after pickup begins.
+6. Replayed requests with the same idempotency key and payload return the original result without a duplicate audit event.
+
 ### PATCH /pos/orders/:id/status
 Update online order fulfillment status from POS terminal operations.
 
@@ -2877,7 +2915,7 @@ Advance the manual delivery job for an online delivery order from the POS queue.
 - `delivered`
 
 **Transition Notes**
-1. The server allows only `pending_dispatch -> assigned -> picked_up -> delivered`.
+1. The server allows only `pending_dispatch -> assigned -> picked_up -> delivered`; assignment must be completed through the assignment endpoint before `assigned`, `picked_up`, or `delivered`.
 2. The associated online order must already be `out_for_delivery`.
 3. The delivery job provider must be `manual`; provider-owned jobs are not writable through POS.
 4. Each successful transition records the acting cashier, shift/location context, timestamp, and audit evidence.
@@ -3396,7 +3434,7 @@ Storefront quote and checkout line payloads may include additive F&B modifier me
 }
 ```
 
-The backend validates selected modifier options against the item's published F&B modifier groups and computes modifier price deltas from database state. Public clients must not treat client-sent modifier price values as authoritative.
+The backend validates selected modifier options against the item's published F&B modifier groups and computes modifier price deltas from database state. Public clients must not treat client-sent modifier price values as authoritative. Modifier groups and options now carry backward-compatible `visible_in_pos` and `visible_in_storefront` flags (default `true`); options also carry `is_sold_out` (default `false`). Location-specific group/option availability is stored in normalized F&B modifier availability tables. Checkout revalidates the selected channel and location, rejects duplicate or unavailable selections, and enforces required groups even when the submitted selection list is empty. Accepted snapshots include the server-owned linked `sku_item_id` and operating `location_id` when applicable.
 
 ### Storefront Services Endpoints
 
@@ -3525,6 +3563,12 @@ Services Mode IMS/POS operator routes live under `/api/v1/services`. They requir
 | `GET`/`POST`/`PATCH` | `/services/waitlist` | `services:waitlist:view` / `services:waitlist:manage` | Manage waitlist entries |
 | `GET` | `/services/clients` | `services:clients:view` | Client history, repeat-client, no-show, and spend signals |
 | `GET`/`POST` | `/services/reminders` | `services:reminders:view` / `services:reminders:manage` | List reminder outbox rows and queue/process due reminders |
+
+**Service Catalog Mutation Contract**
+- `POST /services/catalog` persists the item-backed service and service details atomically. New rows are normalized to `category=service`, `product_type=null`, `mode_item_preset=service`, `current_stock=0`, and `fifo_enabled=false`.
+- Active service rows require a positive `default_sale_price`; the customer-facing price never falls back to internal service cost.
+- Catalog mutation responses expose `mode_item_preset=service` and successful create/update mutations publish tenant-scoped POS catalog invalidation after the transaction commits.
+- Variation/add-on routes use `services:catalog:view` and `services:catalog:manage` as their primary mode-native permissions. Generic item permissions remain compatibility fallback only while `MODE_RBAC_GENERIC_FALLBACK_ENABLED` is enabled.
 
 **Lifecycle Contract**
 - Booking statuses are `requested`, `confirmed`, `checked_in`, `in_service`, `completed`, `cancelled`, and `no_show`.
@@ -3890,6 +3934,7 @@ Food & Beverage endpoints are authenticated tenant routes under `/api/v1/fnb`. T
 | `GET` | `/fnb/dashboard` | `fnb:dashboard:view` | Load F&B dashboard counts and active floor/kitchen/reservation summaries |
 | `GET` | `/fnb/modifier-groups` | `fnb:menu:view` | List menu modifier groups and options |
 | `POST` | `/fnb/modifier-groups` | `fnb:menu:manage` | Create a modifier group with options and selection rules |
+| `PUT` | `/fnb/modifier-groups/:modifier_group_id` | `fnb:menu:manage` | Update group rules, options, prices, channel/sold-out state, inventory links, ordering, activation, and location availability; omitted historical options are deactivated |
 | `GET` | `/fnb/dining-areas` | `fnb:dining:view` | List dining areas and tables |
 | `POST` | `/fnb/dining-areas` | `fnb:dining:manage` | Create a dining area and optional initial tables |
 | `PATCH` | `/fnb/tables/:table_id/status` | `fnb:dining:manage` | Update table status (`available`, `seated`, `held`, `out_of_service`) |
@@ -3949,7 +3994,7 @@ POS checkout accepts these additive fields when F&B context is attached:
 }
 ```
 
-F&B checkout validation uses database modifier assignments and active modifier options for `line_modifiers`; submitted `price_delta`, `group_name`, and `option_name` are treated as display hints only and are re-snapshotted from server state. POS can send line-level `kitchen_station_id` overrides from active F&B kitchen stations; otherwise item kitchen routes provide the default station/course snapshot. If `restaurant_service_charge.taxable=true`, POS includes the restaurant service charge in VATable gross for `vatable_sales`/`vat_amount` while keeping `service_fee_amount` reserved for the DGFY convenience fee. For F&B menu items with `product_composition` ingredient rows, checkout deducts ingredient stock through POS `goods_issue` movements.
+F&B checkout validation uses database modifier assignments and active modifier options for `line_modifiers`; submitted `price_delta`, `group_name`, and `option_name` are treated as display hints only and are re-snapshotted from server state. POS additionally rejects groups/options hidden from POS, globally sold-out options, and group/option overrides unavailable at the active shift location. POS can send line-level `kitchen_station_id` overrides from active F&B kitchen stations; otherwise item kitchen routes provide the default station/course snapshot. If `restaurant_service_charge.taxable=true`, POS includes the restaurant service charge in VATable gross for `vatable_sales`/`vat_amount` while keeping `service_fee_amount` reserved for the DGFY convenience fee. For F&B menu items with `product_composition` ingredient rows, checkout deducts ingredient stock through POS `goods_issue` movements. Linked modifier inventory identity is snapshotted in Phase 15; posting its dedicated FIFO movement remains governed by the Phase 19 downstream-integration gate so recipe/direct-item double deduction is not introduced prematurely.
 
 Restaurant service charge snapshots are stored separately from the DGFY convenience fee. `service_fee_amount` remains DGFY-only.
 

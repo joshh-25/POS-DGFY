@@ -9,6 +9,7 @@ const mockBlacklistToken = jest.fn();
 jest.unstable_mockModule('../src/modules/dgfy/index.js', () => ({
   acceptDgfyInvitationUseCase: jest.fn(),
   changeDgfyPasswordUseCase: jest.fn(),
+  configureDgfyCompanyDayClosePinUseCase: jest.fn(),
   completeDgfyPasswordResetUseCase: jest.fn(),
   createDgfyHandoffUseCase: jest.fn(),
   createDgfyInvitationUseCase: jest.fn(),

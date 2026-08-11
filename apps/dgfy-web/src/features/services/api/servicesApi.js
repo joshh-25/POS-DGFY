@@ -24,8 +24,14 @@ export const updateServiceAssignment = (assignmentId, payload) => (
 
 export const listServiceBookings = (params = {}) => api.get('/services/bookings', { params }).then((response) => response.data?.data ?? response.data);
 
+export const createServiceBooking = (payload) => api.post('/services/bookings', payload).then((response) => response.data?.data ?? response.data);
+
 export const updateServiceBookingStatus = (bookingId, payload) => (
   api.patch(`/services/bookings/${bookingId}/status`, payload).then((response) => response.data?.data ?? response.data)
+);
+
+export const settleServiceBooking = (bookingId, payload) => (
+  api.post(`/services/bookings/${bookingId}/settle`, payload).then((response) => response.data?.data ?? response.data)
 );
 
 export const listServiceWaitlist = (params = {}) => api.get('/services/waitlist', { params }).then((response) => response.data?.data ?? response.data);

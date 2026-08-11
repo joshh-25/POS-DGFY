@@ -3,6 +3,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { spawnSync } from 'child_process';
+import { afterAll, beforeAll, describe, expect, it } from '@jest/globals';
 import { Op, Sequelize } from 'sequelize';
 import dbStore from '../src/utils/dbStore.js';
 import { getTenantModels } from '../src/utils/tenantModelFactory.js';
@@ -371,6 +372,12 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     return `${tz.getFullYear()}-${String(tz.getMonth() + 1).padStart(2, '0')}-${String(tz.getDate()).padStart(2, '0')}`;
   };
 
+  const getRepositoryZReadingForDate = async (businessDate) => {
+    const startAt = new Date(`${businessDate}T00:00:00.000+08:00`);
+    const endAt = new Date(startAt.getTime() + (24 * 60 * 60 * 1000));
+    return runInTenantContext(() => posRepository.getZReadingSummary({ startAt, endAt }));
+  };
+
   const createOpenTerminalShift = async ({
     cashierId,
     terminalId = `COUNTER-${crypto.randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase()}`,
@@ -563,7 +570,9 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     const businessDate = todayInManila();
 
     const zResult = await runInTenantContext(() => getDailyZReadingUseCase({
-      businessDateInput: businessDate
+      businessDateInput: businessDate,
+      user: cashier,
+      locationId: tx.location_id
     }));
     expect(zResult.success).toBe(true);
     expect(money4(zResult.data.summary.total_amount)).toBe(txTotal);
@@ -899,7 +908,9 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
 
     const businessDate = todayInManila();
     const zResult = await runInTenantContext(() => getDailyZReadingUseCase({
-      businessDateInput: businessDate
+      businessDateInput: businessDate,
+      user: cashier,
+      locationId: checkout.data.transaction.location_id
     }));
     expect(zResult.success).toBe(true);
     expect(money4(zResult.data.summary.service_fee_total)).toBe(0);
@@ -917,6 +928,47 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     expect(money4(salesResult.data.summary.service_fee_total)).toBe(0);
   });
 
+  itRuntimeReady('reports POS voids separately without double-subtracting recognized Z-reading sales', async () => {
+    const cashier = await createCashier();
+    const item = await createFinishedGood({
+      vat_type: 'vatable',
+      default_sale_price: 125,
+      cost_per_unit: 40
+    });
+    const businessDate = todayInManila();
+
+    const baseline = await getRepositoryZReadingForDate(businessDate);
+
+    const transaction = await runInTenantContext(() => createInStoreTerminalTransaction({
+      item,
+      cashierId: cashier.user_id,
+      totalAmount: 125
+    }));
+    const afterSale = await getRepositoryZReadingForDate(businessDate);
+    expect(money4(afterSale.total_amount - baseline.total_amount)).toBe(125);
+
+    await runInTenantContext(() => transaction.update({
+      status: 'voided',
+      voided_at: new Date(),
+      voided_by: cashier.user_id,
+      void_reason: 'Phase 41 Z-reading void reconciliation test'
+    }));
+
+    const afterVoid = await getRepositoryZReadingForDate(businessDate);
+    expect(money4(afterVoid.total_amount)).toBe(money4(baseline.total_amount));
+    expect(afterVoid.void_transaction_count - baseline.void_transaction_count).toBe(1);
+    expect(money4(afterVoid.void_amount - baseline.void_amount)).toBe(125);
+    expect(afterVoid.voided_item_count - baseline.voided_item_count).toBe(1);
+    expect(afterVoid.provider_refunds_included).toBe(false);
+    expect(afterVoid.daily_totals).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        business_date: businessDate,
+        void_transaction_count: expect.any(Number),
+        provider_refunds_included: false
+      })
+    ]));
+  });
+
   itRuntimeReady('counts only financially recognized online orders in z-reading and unified sales', async () => {
     const cashier = await createCashier();
     const item = await createFinishedGood({
@@ -927,9 +979,18 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
 
     await setSetting('pos_strict_compliance_enabled', 'false', 'boolean');
 
+    const location = await createTenantLocation();
+    await models.UserLocationGrant.create({
+      user_id: cashier.user_id,
+      location_id: location.location_id,
+      created_by: cashier.user_id
+    });
+
     const businessDate = todayInManila();
     const baselineZ = await runInTenantContext(() => getDailyZReadingUseCase({
-      businessDateInput: businessDate
+      businessDateInput: businessDate,
+      user: cashier,
+      locationId: location.location_id
     }));
     expect(baselineZ.success).toBe(true);
 
@@ -952,25 +1013,28 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
         payment_type: 'cash',
         order_method: 'dine_in',
         lines: [{ item_id: item.item_id, quantity: 1, sale_price: 100 }]
-      })
+      }, { locationId: location.location_id })
     }));
     expect(inStoreCheckout.success).toBe(true);
 
     const onlinePlaced = await runInTenantContext(() => createOnlineOrderTransaction({
       item,
       cashierId: cashier.user_id,
+      locationId: location.location_id,
       fulfillmentStatus: 'placed',
       totalAmount: 110
     }));
     const onlineRejected = await runInTenantContext(() => createOnlineOrderTransaction({
       item,
       cashierId: cashier.user_id,
+      locationId: location.location_id,
       fulfillmentStatus: 'rejected',
       totalAmount: 130
     }));
     const onlineCompleted = await runInTenantContext(() => createOnlineOrderTransaction({
       item,
       cashierId: cashier.user_id,
+      locationId: location.location_id,
       fulfillmentStatus: 'completed',
       totalAmount: 150
     }));
@@ -980,7 +1044,9 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     );
 
     const zResult = await runInTenantContext(() => getDailyZReadingUseCase({
-      businessDateInput: businessDate
+      businessDateInput: businessDate,
+      user: cashier,
+      locationId: location.location_id
     }));
     expect(zResult.success).toBe(true);
     expect(
@@ -1019,6 +1085,11 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       cost_per_unit: 35
     });
     const location = await createTenantLocation();
+    await models.UserLocationGrant.create({
+      user_id: cashier.user_id,
+      location_id: location.location_id,
+      created_by: cashier.user_id
+    });
 
     const businessDate = todayInManila();
     const terminalId = 'COUNTER-01';
@@ -1087,6 +1158,11 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       default_sale_price: 40
     });
     const location = await createTenantLocation();
+    await models.UserLocationGrant.create({
+      user_id: cashier.user_id,
+      location_id: location.location_id,
+      created_by: cashier.user_id
+    });
     await seedItemLocationStock({
       itemId: item.item_id,
       locationId: location.location_id,
@@ -1224,6 +1300,11 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       default_sale_price: 120
     });
     const location = await createTenantLocation();
+    await models.UserLocationGrant.create({
+      user_id: cashier.user_id,
+      location_id: location.location_id,
+      created_by: cashier.user_id
+    });
     await seedItemLocationStock({
       itemId: item.item_id,
       locationId: location.location_id,
@@ -1232,7 +1313,9 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
 
     const businessDate = todayInManila();
     const baselineZ = await runInStoreTenantContext(() => getDailyZReadingUseCase({
-      businessDateInput: businessDate
+      businessDateInput: businessDate,
+      user: cashier,
+      locationId: location.location_id
     }));
     expect(baselineZ.success).toBe(true);
 
@@ -1338,7 +1421,9 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     expect(Number(movements[0].quantity)).toBe(-2);
 
     const zAfter = await runInStoreTenantContext(() => getDailyZReadingUseCase({
-      businessDateInput: businessDate
+      businessDateInput: businessDate,
+      user: cashier,
+      locationId: location.location_id
     }));
     expect(zAfter.success).toBe(true);
     expect(
@@ -1422,8 +1507,15 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     );
 
     const businessDate = todayInManila();
+    await models.UserLocationGrant.create({
+      user_id: cashier.user_id,
+      location_id: location.location_id,
+      created_by: cashier.user_id
+    });
     const baselineZ = await runInStoreTenantContext(() => getDailyZReadingUseCase({
-      businessDateInput: businessDate
+      businessDateInput: businessDate,
+      user: cashier,
+      locationId: location.location_id
     }));
     expect(baselineZ.success).toBe(true);
 
@@ -1539,7 +1631,9 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     expect(Number(movements[0].quantity)).toBe(-2);
 
     const zAfter = await runInStoreTenantContext(() => getDailyZReadingUseCase({
-      businessDateInput: businessDate
+      businessDateInput: businessDate,
+      user: cashier,
+      locationId: location.location_id
     }));
     expect(zAfter.success).toBe(true);
     expect(

@@ -8,6 +8,7 @@ export function FnbProductMobilePurchaseSummary({
   displayFont,
   formatMoney,
   imageSources,
+  isEditingCartLine = false,
   isOpen,
   itemName,
   onAddToCart,
@@ -76,7 +77,7 @@ export function FnbProductMobilePurchaseSummary({
               opacity: available ? 1 : 0.65
             }}
           >
-            Buy Now - {formatMoney(totalPrice)}
+            {isEditingCartLine ? 'Save changes' : `Buy Now - ${formatMoney(totalPrice)}`}
           </button>
         </div>
       </div>
@@ -179,7 +180,7 @@ export function FnbProductMobilePurchaseSummary({
                   disabled={!available}
                   style={{ ...actionButtonBase, minHeight: 44, minWidth: 0, padding: '0 16px', borderRadius: 12, border: 'none', background: available ? '#16a34a' : '#cbd5e1', color: '#ffffff', boxShadow: 'none', opacity: available ? 1 : 0.65, fontSize: 14 }}
                 >
-                  Confirm & Add to Cart
+                  {isEditingCartLine ? 'Save changes' : 'Confirm & Add to Cart'}
                 </button>
               </div>
             </div>

@@ -88,9 +88,19 @@ export function StorefrontServicesCatalog({
   handleCheckout,
   handlePinMyLocation,
   handlePromoCardApply,
+  guestCheckoutOtpCode,
+  guestCheckoutOtpCooldownLabel,
+  guestCheckoutOtpError,
+  guestCheckoutOtpLoading,
+  guestCheckoutOtpVerified,
+  onApplyGuestDetailsAndRequestOtp,
+  onGuestCheckoutOtpCodeChange,
+  onRequestGuestCheckoutOtp,
+  onVerifyGuestCheckoutOtp,
   hasServiceCart,
   isBookingSubpage,
   isDgfyCustomerSignedIn,
+  isGuestCheckoutOtpCooldownActive,
   isMobileViewport,
   isReviewModalOpen,
   isServiceDetailsSubpage,
@@ -178,6 +188,7 @@ export function StorefrontServicesCatalog({
   showExpandedDeliveryMap,
   storefrontClosedByHours,
   storefrontClosedMessageBody,
+  syncServiceBookingDraft,
   submitFnbItemReview,
   viewportWidth
 }) {
@@ -560,6 +571,17 @@ export function StorefrontServicesCatalog({
                       canUseGuestCheckoutFlow={canUseGuestCheckoutFlow}
                       missingCustomerInformation={missingCustomerInformation}
                       accountStepComplete={accountStepComplete}
+                      guestCheckoutOtpCode={guestCheckoutOtpCode}
+                      guestCheckoutOtpCooldownLabel={guestCheckoutOtpCooldownLabel}
+                      guestCheckoutOtpError={guestCheckoutOtpError}
+                      guestCheckoutOtpLoading={guestCheckoutOtpLoading}
+                      guestCheckoutOtpVerified={guestCheckoutOtpVerified}
+                      isGuestCheckoutOtpCooldownActive={isGuestCheckoutOtpCooldownActive}
+                      onApplyGuestDetailsAndRequestOtp={onApplyGuestDetailsAndRequestOtp}
+                      onGuestCheckoutOtpCodeChange={onGuestCheckoutOtpCodeChange}
+                      onRequestGuestCheckoutOtp={onRequestGuestCheckoutOtp}
+                      onVerifyGuestCheckoutOtp={onVerifyGuestCheckoutOtp}
+                      servicesBodyFont={servicesBodyFont}
                       toast={toast}
                       onBack={goStoreCatalogPage}
                       setServiceBookingStep={setServiceBookingStep}
@@ -653,6 +675,7 @@ export function StorefrontServicesCatalog({
                       missingScheduleAndServiceInfo={missingScheduleAndServiceInfo}
                       fulfillmentStepComplete={fulfillmentStepComplete}
                       toast={toast}
+                      syncServiceBookingDraft={syncServiceBookingDraft}
                       setServiceBookingStep={setServiceBookingStep}
                     />
                   )}

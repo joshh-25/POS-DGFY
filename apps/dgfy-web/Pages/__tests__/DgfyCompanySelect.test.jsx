@@ -2,7 +2,7 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { HashRouter, MemoryRouter, Route, Routes } from 'react-router-dom';
 
 const dgfyAuthMock = vi.hoisted(() => ({
   acceptDgfyInvitation: vi.fn(),
@@ -13,8 +13,12 @@ const dgfyAuthMock = vi.hoisted(() => ({
   logoutDgfyAccount: vi.fn(),
   startDgfyTenantSession: vi.fn()
 }));
+const browserSessionMock = vi.hoisted(() => ({
+  preparePosDgfyTenantHandoff: vi.fn()
+}));
 
 vi.mock('../../src/services/dgfyAuthService.js', () => dgfyAuthMock);
+vi.mock('../../src/services/browserSession.js', () => browserSessionMock);
 
 import DgfyCompanySelect from '../DgfyCompanySelect.jsx';
 
@@ -30,13 +34,9 @@ const ownedCompany = (overrides = {}) => ({
   ...overrides
 });
 
-// DgfyCompanySelect reads the handoff/next/tenant_id params off the real
-// `window.location` (not React Router's location) so it can strip
-// `handoff_token` via `history.replaceState` regardless of which router
-// hosts it - same pattern as
-// apps/store/src/shared/hooks/useStorefrontSession.js. MemoryRouter keeps
-// its own virtual history, so the real window location has to be pushed to
-// match before each render, same as discoveryHeaderAccount.integration.test.jsx.
+// MemoryRouter keeps its own virtual history, so the real window location has
+// to be pushed to match before each render, same as
+// discoveryHeaderAccount.integration.test.jsx.
 const renderRoutes = (initialEntries = ['/dgfy/companies']) => {
   window.history.pushState({}, '', initialEntries[0]);
   return render(
@@ -45,14 +45,31 @@ const renderRoutes = (initialEntries = ['/dgfy/companies']) => {
         <Route path="/dgfy/companies" element={<DgfyCompanySelect />} />
         <Route path="/dgfy/auth" element={<div>DGFY sign-in screen</div>} />
         <Route path="/items" element={<div>Items screen</div>} />
+        <Route path="/terminal" element={<div>POS terminal screen</div>} />
         <Route path="/register-company" element={<div>Register company screen</div>} />
       </Routes>
     </MemoryRouter>
   );
 };
 
+const renderHashRoutes = (initialEntry = '/dgfy/companies') => {
+  window.history.pushState({}, '', `/#${initialEntry}`);
+  return render(
+    <HashRouter>
+      <Routes>
+        <Route path="/dgfy/companies" element={<DgfyCompanySelect targetSurface="pos" />} />
+        <Route path="/dgfy/auth" element={<div>DGFY sign-in screen</div>} />
+        <Route path="/items" element={<div>Items screen</div>} />
+        <Route path="/terminal" element={<div>POS terminal screen</div>} />
+        <Route path="/register-company" element={<div>Register company screen</div>} />
+      </Routes>
+    </HashRouter>
+  );
+};
+
 beforeEach(() => {
   Object.values(dgfyAuthMock).forEach((mockFn) => mockFn.mockReset());
+  browserSessionMock.preparePosDgfyTenantHandoff.mockReset();
   dgfyAuthMock.getStoredDgfyToken.mockReturnValue('dgfy-token');
   dgfyAuthMock.fetchDgfyMe.mockResolvedValue({ account: { id: 'dgfy-1' } });
   dgfyAuthMock.startDgfyTenantSession.mockResolvedValue({ token: 'tenant-token', company: { id: 'tenant-1', token: 'company-token-1' } });
@@ -137,6 +154,35 @@ describe('DgfyCompanySelect', () => {
 
     await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalledWith({ tenantId: 'tenant-2' }));
     expect(await screen.findByText('Items screen')).toBeTruthy();
+  });
+
+  it('requests POS-scoped authorization before opening the terminal route', async () => {
+    dgfyAuthMock.listDgfyAccountCompanies.mockResolvedValue({ companies: [ownedCompany()] });
+
+    renderRoutes(['/dgfy/companies?tenant_id=tenant-1&next=%2Fterminal']);
+
+    await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      accessScope: 'pos'
+    }));
+    expect(browserSessionMock.preparePosDgfyTenantHandoff).not.toHaveBeenCalled();
+    expect(await screen.findByText('POS terminal screen')).toBeTruthy();
+  });
+
+  it('supports the standalone POS HashRouter handoff and removes the token from the hash', async () => {
+    dgfyAuthMock.exchangeDgfyHandoff.mockResolvedValue({ token: 'dgfy-token', account: { id: 'dgfy-1' } });
+    dgfyAuthMock.listDgfyAccountCompanies.mockResolvedValue({ companies: [ownedCompany()] });
+
+    renderHashRoutes('/dgfy/companies?tenant_id=tenant-1&next=%2Fterminal&handoff_token=pos-handoff');
+
+    await waitFor(() => expect(dgfyAuthMock.exchangeDgfyHandoff).toHaveBeenCalledWith('pos-handoff', { softFail: true }));
+    await waitFor(() => expect(dgfyAuthMock.startDgfyTenantSession).toHaveBeenCalledWith({
+      tenantId: 'tenant-1',
+      accessScope: 'pos'
+    }));
+    expect(browserSessionMock.preparePosDgfyTenantHandoff).toHaveBeenCalledWith({ tenantId: 'tenant-1' });
+    expect(await screen.findByText('POS terminal screen')).toBeTruthy();
+    expect(window.location.hash).not.toContain('handoff_token');
   });
 
   it('shows an empty state with a link to register a business when there are zero memberships', async () => {

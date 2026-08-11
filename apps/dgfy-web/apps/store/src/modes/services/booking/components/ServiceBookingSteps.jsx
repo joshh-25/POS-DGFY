@@ -2,6 +2,7 @@ import React from 'react';
 import { CalendarDays, CheckCircle2, Clock3, MapPin, MessageSquare, Truck } from 'lucide-react';
 import { ServiceBookingDetailsForm } from './ServiceBookingDetailsForm.jsx';
 import { ServiceBookingFulfillmentChoices } from './ServiceBookingFulfillmentChoices.jsx';
+import { ServiceBookingGuestEmailVerification } from './ServiceBookingGuestEmailVerification.jsx';
 import { formatTimeSlotLabel } from '../model/serviceBookingSchedule.js';
 
 const formatShortDateWithYear = (dateString) => {
@@ -17,13 +18,23 @@ export function ServiceBookingStepAccount({
   renderAccountOwnedIdentitySummary,
   renderGuestIdentityFields,
   renderGuestCheckoutEntry,
-  bookingFieldPlan,
   activeBookingService,
   isMobileViewport,
   isDgfyCustomerSignedIn,
   canUseGuestCheckoutFlow,
   missingCustomerInformation,
   accountStepComplete,
+  guestCheckoutOtpCode,
+  guestCheckoutOtpCooldownLabel,
+  guestCheckoutOtpError,
+  guestCheckoutOtpLoading,
+  guestCheckoutOtpVerified,
+  isGuestCheckoutOtpCooldownActive,
+  onApplyGuestDetailsAndRequestOtp,
+  onGuestCheckoutOtpCodeChange,
+  onRequestGuestCheckoutOtp,
+  onVerifyGuestCheckoutOtp,
+  servicesBodyFont,
   toast,
   onBack,
   setServiceBookingStep,
@@ -44,13 +55,32 @@ export function ServiceBookingStepAccount({
             }) : renderGuestIdentityFields({
               title: 'Customer Details',
               subtitle: 'We will use these details for your booking.',
-              requireEmail: bookingFieldPlan.emailField?.required === true,
+              requireEmail: true,
               includeAddress: false,
               addressLabel: 'Service Address',
               addressPlaceholder: 'Use the map and saved-location picker in the next step.',
               addressRequired: false,
+              layoutVariant: 'fnbGuest',
+              savedDetailsApplyLabel: 'Send Code and Apply Details',
+              onSavedDetailsApply: onApplyGuestDetailsAndRequestOtp,
             })}
           </div>
+
+          {!isDgfyCustomerSignedIn && (
+            <ServiceBookingGuestEmailVerification
+              bodyFont={servicesBodyFont}
+              code={guestCheckoutOtpCode}
+              cooldownActive={isGuestCheckoutOtpCooldownActive}
+              cooldownLabel={guestCheckoutOtpCooldownLabel}
+              error={guestCheckoutOtpError}
+              isMobileViewport={isMobileViewport}
+              loading={guestCheckoutOtpLoading}
+              onCodeChange={onGuestCheckoutOtpCodeChange}
+              onRequestCode={onRequestGuestCheckoutOtp}
+              onVerifyCode={onVerifyGuestCheckoutOtp}
+              verified={guestCheckoutOtpVerified}
+            />
+          )}
 
           {missingCustomerInformation.length > 0 && (
             <div style={{ fontSize: 13, color: '#b91c1c', border: '1px solid #fecaca', background: '#fff1f2', borderRadius: 14, padding: '10px 12px', lineHeight: 1.6 }}>
@@ -60,9 +90,12 @@ export function ServiceBookingStepAccount({
           <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 12 }}>
             <GhostButton onClick={onBack} style={{ minHeight: isMobileViewport ? 38 : 44, fontSize: isMobileViewport ? 14 : 15 }}>Back</GhostButton>
             <PrimaryButton
+              disabled={!accountStepComplete}
               onClick={() => {
                 if (!accountStepComplete) {
-                  toast.error(missingCustomerInformation[0] ? `Complete "${missingCustomerInformation[0]}" before continuing.` : 'Complete the required customer details before continuing.');
+                  toast.error(missingCustomerInformation[0]
+                    ? `Complete "${missingCustomerInformation[0]}" before continuing.`
+                    : 'Verify your email before continuing.');
                   return;
                 }
                 setServiceBookingStep(2);
@@ -122,6 +155,7 @@ export function ServiceBookingStepFulfillment({
   missingScheduleAndServiceInfo,
   fulfillmentStepComplete,
   toast,
+  syncServiceBookingDraft,
   setServiceBookingStep,
 }) {
   return (
@@ -184,6 +218,7 @@ export function ServiceBookingStepFulfillment({
                 toast.error(missingScheduleAndServiceInfo[0] ? `Complete "${missingScheduleAndServiceInfo[0]}" before continuing.` : 'Complete the required fulfillment details before continuing.');
                 return;
               }
+              syncServiceBookingDraft(activeBookingService);
               setServiceBookingStep(4);
             }}
             style={{ minHeight: isMobileViewport ? 38 : 44, fontSize: isMobileViewport ? 14 : 15 }}

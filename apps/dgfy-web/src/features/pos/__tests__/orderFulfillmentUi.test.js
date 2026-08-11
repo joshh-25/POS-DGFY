@@ -3,7 +3,9 @@ import {
   getFulfillmentActionLabel,
   getDeliveryJobActionLabel,
   getIncomingOrderUtilityActions,
+  hasCompleteDeliveryAssignment,
   getNextDeliveryJobStatus,
+  isManualDeliveryJob,
   ORDER_METHOD_LABELS,
   PAYMENT_TYPE_LABELS
 } from '../components/orderFulfillmentUi.js';
@@ -66,5 +68,17 @@ describe('orderFulfillmentUi queue action mapping', () => {
       deliveryJob: { status: 'pending_dispatch' }
     })).toBe(null);
     expect(getDeliveryJobActionLabel('delivered')).toBe('Mark Delivered');
+  });
+
+  it('identifies the assignment evidence required before lifecycle actions', () => {
+    expect(isManualDeliveryJob({ provider: 'manual' })).toBe(true);
+    expect(isManualDeliveryJob({ provider: 'provider_x' })).toBe(false);
+    expect(hasCompleteDeliveryAssignment({
+      delivery_personnel_id: 4,
+      assigned_by: 7,
+      assigned_shift_id: 11,
+      assigned_at: '2026-08-08T08:00:00.000Z'
+    })).toBe(true);
+    expect(hasCompleteDeliveryAssignment({ delivery_personnel_id: 4 })).toBe(false);
   });
 });

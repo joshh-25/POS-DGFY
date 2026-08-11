@@ -1,6 +1,7 @@
 import {
     acceptDgfyInvitationUseCase,
     changeDgfyPasswordUseCase,
+    configureDgfyCompanyDayClosePinUseCase,
     completeDgfyPasswordResetUseCase,
     createDgfyHandoffUseCase,
     createDgfyInvitationUseCase,
@@ -239,6 +240,17 @@ export const changeDgfyPassword = async (req, res) => {
     });
     return sendUseCaseResult(res, result, {
         fallbackErrorMessage: 'DGFY password change failed'
+    });
+};
+
+export const configureDgfyCompanyDayClosePin = async (req, res) => {
+    const result = await configureDgfyCompanyDayClosePinUseCase({
+        account: req.dgfyAccount,
+        tenantId: req.params?.tenant_id,
+        body: req.body
+    });
+    return sendUseCaseResult(res, result, {
+        fallbackErrorMessage: 'DGFY Day Close PIN configuration failed'
     });
 };
 

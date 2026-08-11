@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChefHat, ChevronRight, Minus, Plus, Trash2 } from 'lucide-react';
+import { ChefHat, ChevronRight, Minus, Pencil, Plus, Trash2 } from 'lucide-react';
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 
@@ -21,6 +21,7 @@ export function FnbCartDrawerContent({
   isDesktopCheckout,
   isMobileViewport,
   money,
+  onEditCartLine,
   removeCartItem,
   renderPromoCodePanel,
   servicesBodyFont,
@@ -109,14 +110,37 @@ export function FnbCartDrawerContent({
                                     >
                                       <Plus size={14} color="#16a34a" />
                                       <span style={{ fontSize: 12, fontWeight: 700, color: '#15803d', minWidth: 0 }}>
-                                        {String(modifier.option_name || 'Add-on').trim() || 'Add-on'}
+                                        {String(modifier.option_name || 'Add-on').trim() || 'Add-on'}{Number(modifier.quantity || 1) > 1 ? ` ×${Number(modifier.quantity)}` : ''}
                                       </span>
                                       <span style={{ fontSize: 12, fontWeight: 800, color: '#16a34a', whiteSpace: 'nowrap' }}>
-                                        +{money(modifier.price_delta).replace('PHP ', 'PHP ')}
+                                        +{money(Number(modifier.price_delta || 0) * Number(modifier.quantity || 1)).replace('PHP ', 'PHP ')}
                                       </span>
                                     </div>
                                   ))}
                                 </div>
+                              ) : null}
+                              {(line.has_modifier_groups === true || (Array.isArray(line.line_modifiers) && line.line_modifiers.length > 0)) ? (
+                                <button
+                                  type="button"
+                                  aria-label={`Edit add-ons for ${line.name}`}
+                                  onClick={() => onEditCartLine?.(line)}
+                                  style={{
+                                    justifySelf: 'start',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: 6,
+                                    border: 'none',
+                                    background: 'transparent',
+                                    color: '#15803d',
+                                    padding: 0,
+                                    fontSize: 12,
+                                    fontWeight: 800,
+                                    cursor: 'pointer'
+                                  }}
+                                >
+                                  <Pencil size={13} />
+                                  Edit add-ons
+                                </button>
                               ) : null}
                               <div style={{ display: 'flex', justifyContent: 'flex-start', paddingTop: 2 }}>
                                 <div style={{ display: 'inline-grid', gridTemplateColumns: '32px minmax(24px, auto) 32px', alignItems: 'center', justifyItems: 'center', borderRadius: 999, border: '1px solid #e2e8f0', background: '#ffffff', boxShadow: '0 4px 10px rgba(15,23,42,0.04)', padding: '2px 4px', gap: 4 }}>

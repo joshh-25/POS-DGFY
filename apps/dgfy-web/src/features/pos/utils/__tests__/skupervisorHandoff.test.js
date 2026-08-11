@@ -1,6 +1,11 @@
 /** @vitest-environment jsdom */
 import { afterEach, describe, expect, it } from 'vitest';
-import { buildSkupervisorHandoffUrl, getSkupervisorOrigin } from '../skupervisorHandoff.js';
+import {
+  buildPosDgfyHandoffUrl,
+  buildSkupervisorHandoffUrl,
+  getPosOrigin,
+  getSkupervisorOrigin
+} from '../skupervisorHandoff.js';
 
 const originalLocation = window.location;
 
@@ -74,5 +79,35 @@ describe('buildSkupervisorHandoffUrl', () => {
     setLocation({ hostname: 'dgfy.ph' });
     expect(new URL(buildSkupervisorHandoffUrl({ tenantId: 't1' })).searchParams.get('next')).toBe('/');
     expect(new URL(buildSkupervisorHandoffUrl({ tenantId: 't1', next: 'items' })).searchParams.get('next')).toBe('/items');
+  });
+});
+
+describe('getPosOrigin and buildPosDgfyHandoffUrl', () => {
+  it('maps the storefront apex to the standalone POS origin', () => {
+    setLocation({ hostname: 'dgfy.ph' });
+    expect(getPosOrigin()).toBe('https://pos.dgfy.ph');
+  });
+
+  it('maps local storefront development to port 5174', () => {
+    setLocation({ protocol: 'http:', hostname: 'localhost', port: '5175' });
+    expect(getPosOrigin()).toBe('http://localhost:5174');
+  });
+
+  it('uses the POS hash route and carries the tenant handoff parameters', () => {
+    setLocation({ protocol: 'http:', hostname: 'localhost', port: '5175' });
+    const url = buildPosDgfyHandoffUrl({
+      tenantId: 'tenant-pos',
+      next: '/terminal',
+      handoffToken: 'handoff-pos'
+    });
+    const parsed = new URL(url);
+    const hash = new URL(`http://pos.test${parsed.hash.slice(1)}`);
+
+    expect(parsed.origin).toBe('http://localhost:5174');
+    expect(parsed.pathname).toBe('/');
+    expect(hash.pathname).toBe('/dgfy/companies');
+    expect(hash.searchParams.get('tenant_id')).toBe('tenant-pos');
+    expect(hash.searchParams.get('next')).toBe('/terminal');
+    expect(hash.searchParams.get('handoff_token')).toBe('handoff-pos');
   });
 });
