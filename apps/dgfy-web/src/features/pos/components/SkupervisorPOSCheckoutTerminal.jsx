@@ -1510,17 +1510,20 @@ export default function POSCheckoutTerminal({
                 if (posHardware.driverId === 'imin_native') {
                     const completedTransaction = data?.transaction || null;
                     const receiptContract = inferReceiptContract(completedTransaction, data?.receipt_contract);
+                    const isCashPayment = String(completedTransaction?.payment_type || paymentType).trim().toLowerCase() === 'cash';
                     const printOutcome = await posHardware.printReceipt({
                         transaction: completedTransaction,
                         businessSettings: receiptSettings,
                         receiptContract,
-                        openDrawerAfterPrint: true,
+                        openDrawerAfterPrint: isCashPayment,
+                        shiftId: activeShiftId,
+                        transactionId: completedTransaction?.pos_transaction_id,
                         terminalId: normalizedTerminalId,
                         reason: 'checkout_auto_print'
                     });
                     if (printOutcome.success) {
-                        toast.success('Receipt printed and cash drawer opened.');
-                    } else {
+                        toast.success(isCashPayment ? 'Receipt printed and cash drawer opened.' : 'Receipt printed.');
+                    } else if (isCashPayment) {
                         const drawerOutcome = await posHardware.openDrawer({
                             shiftId: activeShiftId,
                             transactionId: completedTransaction?.pos_transaction_id,
@@ -1604,11 +1607,13 @@ export default function POSCheckoutTerminal({
 
         setReceiptPrinting(true);
         try {
+            const shouldOpenDrawer = String(transaction?.payment_type || '').trim().toLowerCase() === 'cash';
             const outcome = await posHardware.printReceipt({
                 transaction,
                 businessSettings: receiptSettings,
                 receiptContract: inferReceiptContract(transaction),
-                openDrawerAfterPrint: true,
+                openDrawerAfterPrint: shouldOpenDrawer,
+                shiftId: activeShiftId,
                 transactionId,
                 terminalId: normalizedTerminalId || undefined,
                 reason,
@@ -1617,7 +1622,7 @@ export default function POSCheckoutTerminal({
 
             if (outcome.success) {
                 toast.success(
-                    outcome.driverId === 'imin_native'
+                    shouldOpenDrawer && outcome.driverId === 'imin_native'
                         ? 'Receipt printed and cash drawer opened.'
                         : (outcome.message || 'Receipt printed.')
                 );
@@ -1629,7 +1634,7 @@ export default function POSCheckoutTerminal({
         } finally {
             setReceiptPrinting(false);
         }
-    }, [normalizedTerminalId, posHardware, receiptSettings]);
+    }, [activeShiftId, normalizedTerminalId, posHardware, receiptSettings]);
 
     const handlePrintOrder = useCallback(async () => {
         if (cart.length === 0) {

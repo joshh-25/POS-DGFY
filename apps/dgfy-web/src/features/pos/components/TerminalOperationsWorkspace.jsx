@@ -113,7 +113,7 @@ import {
   updateSettings,
   uploadStorefrontAsset
 } from '@/services/settingsService.js';
-import { getAllUsers, updatePosApprovalPin, updatePosDayClosePin, updateProfile } from '@/services/userService.js';
+import { getAllUsers, updatePosApprovalPin, updatePosDayClosePin, updateProfile, updateUserPermissions } from '@/services/userService.js';
 import * as tenantLocationService from '@/services/tenantLocationService.js';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '@/src/features/pos/utils/terminalIdentity.js';
@@ -732,6 +732,8 @@ function ShiftControlsWorkspace({
   canOpenShift = false,
   canCloseShift,
   canCloseDay,
+  dayCloseReadinessState = { loading: false, readiness: null, errorMessage: '' },
+  refreshDayCloseReadiness = async () => null,
   canAdminBypassShiftPrompt = false,
   closeShiftForm,
   setCloseShiftForm,
@@ -1398,21 +1400,80 @@ function ShiftControlsWorkspace({
   };
 
   const renderCloseShiftPane = () => {
+    const dayCloseReadiness = dayCloseReadinessState?.readiness || null;
+    const dayCloseOpenShiftCount = Number(dayCloseReadiness?.open_shift_count || 0);
+    const dayCloseReady = !activeShift && dayCloseReadiness?.ready === true;
+    const dayCloseActionDisabled = shiftActionLoading.zReading
+      || dayCloseReadinessState?.loading
+      || locked
+      || !isOnline
+      || !activeTerminalMatchesOperatingLocation
+      || !dayCloseReady;
     const closeDayAction = canCloseDay ? (
       <div className="mt-4 border-t border-slate-200 pt-4">
         <p className="text-[12px] font-black text-[#0F172A]">Day-end Z-reading</p>
         <p className="mt-1 text-[12px] leading-5 text-[#475569]">
           Closes the branch day report using financially recognized sales from all cashiers, then sends the Z-reading to the configured printer.
         </p>
-        <Button
-          type="button"
-          className="mt-3 h-10 rounded-lg !bg-[#1A4E8D] px-4 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#143F73]"
-          onClick={handleCloseDay}
-          disabled={shiftActionLoading.zReading || locked || !isOnline || !activeTerminalMatchesOperatingLocation}
-        >
-          <Receipt className="mr-2 h-4 w-4" />
-          {shiftActionLoading.zReading ? 'Closing Day...' : 'Close Day & Print Z-reading'}
-        </Button>
+        <div className="mt-3 flex flex-wrap gap-2">
+          <Button
+            type="button"
+            data-testid="pos-close-day-button"
+            className="h-10 rounded-lg !bg-[#1A4E8D] px-4 text-[13px] font-extrabold text-white shadow-sm shadow-blue-900/20 hover:!bg-[#143F73] disabled:!bg-slate-300 disabled:text-slate-600"
+            onClick={handleCloseDay}
+            disabled={dayCloseActionDisabled}
+          >
+            <Receipt className="mr-2 h-4 w-4" />
+            {shiftActionLoading.zReading
+              ? 'Closing Day...'
+              : (dayCloseReadiness?.already_closed ? 'Print Z-reading' : 'Close Day & Print Z-reading')}
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            data-testid="pos-close-day-refresh"
+            className="h-10 rounded-lg border-slate-300 bg-white px-4 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
+            onClick={() => void refreshDayCloseReadiness()}
+            disabled={dayCloseReadinessState?.loading || shiftActionLoading.zReading || locked || !isOnline || !activeTerminalMatchesOperatingLocation}
+          >
+            <RefreshCcw className={`mr-2 h-4 w-4 ${dayCloseReadinessState?.loading ? 'animate-spin' : ''}`} />
+            {dayCloseReadinessState?.loading ? 'Checking...' : 'Refresh Status'}
+          </Button>
+        </div>
+        <div className="mt-2" data-testid="pos-close-day-readiness">
+          {activeShift ? (
+            <p className="text-[11px] font-semibold text-amber-700">
+              Close this cashier shift before generating the branch Z-reading.
+            </p>
+          ) : dayCloseReadinessState?.loading ? (
+            <p className="text-[11px] text-slate-600">Checking whether every cashier shift is closed...</p>
+          ) : dayCloseReadinessState?.errorMessage ? (
+            <p className="text-[11px] text-rose-700">{dayCloseReadinessState.errorMessage}</p>
+          ) : dayCloseReadiness && !dayCloseReadiness.ready ? (
+            <div className="text-[11px] text-amber-700">
+              <p className="font-semibold">
+                Close every cashier shift in this branch before generating the Z-reading. {dayCloseOpenShiftCount} shift{dayCloseOpenShiftCount === 1 ? '' : 's'} remain open.
+              </p>
+              {Array.isArray(dayCloseReadiness.open_shifts) && dayCloseReadiness.open_shifts.length > 0 ? (
+                <ul className="mt-1 space-y-0.5 pl-4">
+                  {dayCloseReadiness.open_shifts.map((shift) => (
+                    <li key={shift.shift_id || `${shift.terminal_id}-${shift.cashier_name}`} className="list-disc">
+                      {shift.terminal_id || 'Terminal'} — {shift.cashier_name || 'Cashier'}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
+            </div>
+          ) : dayCloseReady ? (
+            <p className="text-[11px] font-semibold text-emerald-700">
+              {dayCloseReadiness?.already_closed
+                ? 'The branch Z-reading is already generated and ready to print again.'
+                : 'All cashier shifts are closed. The branch Z-reading is ready to generate.'}
+            </p>
+          ) : (
+            <p className="text-[11px] text-slate-600">Check Day Close status before generating the Z-reading.</p>
+          )}
+        </div>
         {!isOnline ? <p className="mt-2 text-[11px] text-amber-700">Reconnect before closing the day.</p> : null}
       </div>
     ) : null;
@@ -4669,12 +4730,6 @@ function CategoryManagementWorkspace() {
       });
   }, [folders, query]);
 
-  const summary = useMemo(() => ({
-    total: folders.length,
-    active: folders.filter((folder) => folder.is_active).length,
-    assignedItems: folders.reduce((total, folder) => total + folder.item_count, 0)
-  }), [folders]);
-
   const replacementFolders = useMemo(() => folders
     .filter((folder) => folder.is_active && Number(folder.folder_id) !== Number(pendingAction?.folder?.folder_id))
     .sort((left, right) => left.name.localeCompare(right.name)), [folders, pendingAction?.folder?.folder_id]);
@@ -4765,19 +4820,6 @@ function CategoryManagementWorkspace() {
           <Plus className="mr-2 h-4 w-4" />
           Add Category
         </Button>
-      </div>
-
-      <div className="grid gap-3 sm:grid-cols-3">
-        {[
-          ['Total categories', summary.total, 'border-slate-200 bg-white text-[#0F172A]'],
-          ['Active for item selection', summary.active, 'border-emerald-200 bg-emerald-50 text-emerald-800'],
-          ['Assigned POS items', summary.assignedItems, 'border-blue-200 bg-blue-50 text-[#1A4E8D]']
-        ].map(([label, value, className]) => (
-          <div key={label} className={`rounded-xl border p-4 ${className}`}>
-            <p className="text-[11px] font-black uppercase tracking-[0.14em] opacity-70">{label}</p>
-            <p className="mt-1 text-2xl font-black">{value}</p>
-          </div>
-        ))}
       </div>
 
       <div className="rounded-2xl border border-slate-200 bg-white shadow-sm shadow-slate-200/70">
@@ -4916,6 +4958,9 @@ function ItemsCatalogWorkspace({
   canManageFnbModifiers = false,
   locations = [],
   serviceOperationsPermissions = {},
+  shiftState,
+  activeTerminalId = '',
+  operatingLocationId = null,
   isOnline = true,
   sectionId,
   ...itemsWorkspaceProps
@@ -5018,6 +5063,7 @@ function ItemsCatalogWorkspace({
             canViewPos={canViewPos}
             canManageCategories={canManageCategories}
             canManageServiceCatalog={canManageServiceCatalog}
+            operatingLocationId={operatingLocationId}
             isOnline={isOnline}
           />
         )}
@@ -5073,8 +5119,8 @@ function SettingsWorkspace({
   const [savingApprovalPin, setSavingApprovalPin] = useState(false);
   const [dayCloseOperators, setDayCloseOperators] = useState([]);
   const [dayCloseOperatorsLoading, setDayCloseOperatorsLoading] = useState(false);
+  const [dayCloseAccessSavingUserId, setDayCloseAccessSavingUserId] = useState(null);
   const [dayClosePinUser, setDayClosePinUser] = useState(null);
-  const [dayClosePin, setDayClosePin] = useState('');
   const [savingDayClosePin, setSavingDayClosePin] = useState(false);
   const [employeeDirectoryRevision, setEmployeeDirectoryRevision] = useState(0);
   const [storefrontPromoItemOptions, setStorefrontPromoItemOptions] = useState([]);
@@ -5380,7 +5426,11 @@ function SettingsWorkspace({
       const rows = await getAllUsers({ include_invitations: false });
       setDayCloseOperators((Array.isArray(rows) ? rows : [])
         .filter((user) => user?.is_active !== false && !user?.deleted_at)
-        .filter((user) => resolveUserPermissionList(user).includes('pos:close_day'))
+        .filter((user) => (
+          String(user?.role || '').trim().toLowerCase() === 'cashier'
+          || user?.is_master_admin === true
+          || resolveUserPermissionList(user).includes('pos:close_day')
+        ))
         .sort((left, right) => String(left?.username || '').localeCompare(String(right?.username || ''))));
     } catch (error) {
       if (!silent) {
@@ -5390,6 +5440,32 @@ function SettingsWorkspace({
       setDayCloseOperatorsLoading(false);
     }
   }, [canManageDayClosePins]);
+
+  const updateDayCloseAccess = useCallback(async (user, enabled) => {
+    const userId = Number(user?.user_id);
+    if (!Number.isInteger(userId) || userId <= 0 || user?.is_master_admin === true) return;
+    const permissions = resolveUserPermissionList(user);
+    const nextPermissions = enabled
+      ? Array.from(new Set([...permissions, 'pos:close_day']))
+      : permissions.filter((permission) => permission !== 'pos:close_day');
+
+    setDayCloseAccessSavingUserId(userId);
+    try {
+      const updated = await updateUserPermissions(userId, nextPermissions);
+      setDayCloseOperators((current) => current.map((entry) => (
+        Number(entry?.user_id) === userId
+          ? { ...entry, permissions: updated?.permissions || nextPermissions }
+          : entry
+      )));
+      toast.success(enabled
+        ? 'Z-reading access enabled. The cashier must create their personal PIN in DGFY Business.'
+        : 'Z-reading access disabled for this cashier.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to update cashier Z-reading access.');
+    } finally {
+      setDayCloseAccessSavingUserId(null);
+    }
+  }, []);
 
   const closeApprovalPinDialog = useCallback(() => {
     if (savingApprovalPin) return;
@@ -5424,32 +5500,26 @@ function SettingsWorkspace({
   const closeDayClosePinDialog = useCallback(() => {
     if (savingDayClosePin) return;
     setDayClosePinUser(null);
-    setDayClosePin('');
   }, [savingDayClosePin]);
 
-  const saveDayClosePin = useCallback(async ({ clear = false } = {}) => {
+  const resetDayClosePin = useCallback(async () => {
     if (!dayClosePinUser) return;
-    if (!clear && !/^\d{4,12}$/.test(dayClosePin)) {
-      toast.error('POS Day Close PIN must contain 4 to 12 digits.');
-      return;
-    }
     setSavingDayClosePin(true);
     try {
-      const updated = await updatePosDayClosePin(dayClosePinUser.user_id, { pin: dayClosePin, clear });
+      const updated = await updatePosDayClosePin(dayClosePinUser.user_id);
       setDayCloseOperators((current) => current.map((user) => (
         user.user_id === dayClosePinUser.user_id
           ? { ...user, pos_day_close_pin_configured: updated.pos_day_close_pin_configured === true }
           : user
       )));
-      toast.success(clear ? 'POS Day Close PIN cleared.' : 'POS Day Close PIN configured.');
+      toast.success('POS Day Close PIN reset. The cashier must create a new PIN from DGFY Business.');
       setDayClosePinUser(null);
-      setDayClosePin('');
     } catch (error) {
-      toast.error(error?.response?.data?.message || 'Failed to update POS Day Close PIN.');
+      toast.error(error?.response?.data?.message || 'Failed to reset POS Day Close PIN.');
     } finally {
       setSavingDayClosePin(false);
     }
-  }, [dayClosePin, dayClosePinUser]);
+  }, [dayClosePinUser]);
 
   const loadStorefrontPromoItems = useCallback(async ({ silent = false } = {}) => {
     if (!silent) {
@@ -7226,8 +7296,8 @@ function SettingsWorkspace({
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div>
-                      <p className="text-[12px] font-black text-[#0F172A]">POS Day Close PINs</p>
-                      <p className="mt-1 text-[11px] text-[#64748B]">Configure the write-only personal PIN each authorized cashier enters before generating the branch Z-reading.</p>
+                      <p className="text-[12px] font-black text-[#0F172A]">Day Close Access</p>
+                      <p className="mt-1 text-[11px] text-[#64748B]">Grant Z-reading access here. Each cashier creates their private PIN from DGFY Business.</p>
                     </div>
                     <Button
                       type="button"
@@ -7240,29 +7310,62 @@ function SettingsWorkspace({
                     </Button>
                   </div>
                   <div className="mt-3 grid gap-2">
-                    {dayCloseOperators.map((user) => (
-                      <div key={`day-close-operator-${user.user_id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
-                        <div className="min-w-0">
-                          <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{user.username || user.email}</p>
-                          <p className="text-[11px] capitalize text-[#64748B]">{user.role} · {user.pos_day_close_pin_configured ? 'PIN configured' : 'PIN not set'}</p>
+                    {dayCloseOperators.map((user) => {
+                      const isMasterAdmin = user?.is_master_admin === true;
+                      const hasDayCloseAccess = isMasterAdmin || resolveUserPermissionList(user).includes('pos:close_day');
+                      const isSavingAccess = Number(dayCloseAccessSavingUserId) === Number(user?.user_id);
+                      return (
+                        <div key={`day-close-operator-${user.user_id}`} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2.5">
+                          <div className="min-w-0">
+                            <p className="truncate text-[13px] font-extrabold text-[#0F172A]">{user.username || user.email}</p>
+                            <p className="truncate text-[11px] text-[#64748B]">{user.email || 'No account email'}</p>
+                            <p className="text-[11px] capitalize text-[#64748B]">
+                              {user.role} · {hasDayCloseAccess
+                                ? (user.pos_day_close_pin_configured ? 'PIN configured' : 'PIN setup pending')
+                                : 'Z-reading access off'}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap items-center justify-end gap-3">
+                            {isMasterAdmin ? (
+                              <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-extrabold text-[#1A4E8D]">Built-in access</span>
+                            ) : (
+                              <div className="flex items-center gap-2 text-[11px] font-extrabold text-[#334155]">
+                                <span>Can generate Z-reading</span>
+                                <button
+                                  type="button"
+                                  role="switch"
+                                  aria-label={`Can generate Z-reading for ${user.username || user.email || `user ${user.user_id}`}`}
+                                  aria-checked={hasDayCloseAccess}
+                                  onClick={() => updateDayCloseAccess(user, !hasDayCloseAccess)}
+                                  disabled={locked || loading || isSavingAccess}
+                                  className={`relative inline-flex h-7 w-12 shrink-0 items-center rounded-full border transition-colors ${hasDayCloseAccess ? 'border-blue-600 bg-blue-600' : 'border-slate-300 bg-slate-200'} disabled:cursor-not-allowed disabled:opacity-60`}
+                                >
+                                  <span className={`inline-block h-5 w-5 rounded-full bg-white shadow-sm transition-transform ${hasDayCloseAccess ? 'translate-x-6' : 'translate-x-1'}`} />
+                                </button>
+                              </div>
+                            )}
+                            {hasDayCloseAccess && user.pos_day_close_pin_configured ? (
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-9 rounded-lg px-3 text-[12px] font-extrabold text-blue-700"
+                                onClick={() => {
+                                  setDayClosePinUser(user);
+                                }}
+                                disabled={locked || loading || isSavingAccess}
+                              >
+                                <KeyRound className="mr-1.5 h-4 w-4" />
+                                Reset PIN
+                              </Button>
+                            ) : hasDayCloseAccess ? (
+                              <span className="text-[11px] font-bold text-amber-700">Cashier setup pending</span>
+                            ) : null}
+                          </div>
                         </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-9 rounded-lg px-3 text-[12px] font-extrabold text-blue-700"
-                          onClick={() => {
-                            setDayClosePinUser(user);
-                            setDayClosePin('');
-                          }}
-                          disabled={locked || loading}
-                        >
-                          <KeyRound className="mr-1.5 h-4 w-4" />
-                          {user.pos_day_close_pin_configured ? 'Reset PIN' : 'Set PIN'}
-                        </Button>
-                      </div>
-                    ))}
+                      );
+                    })}
                     {!dayCloseOperatorsLoading && dayCloseOperators.length === 0 ? (
-                      <p className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-[12px] text-[#64748B]">No active users have close-day permission. Grant pos:close_day to the cashiers first.</p>
+                      <p className="rounded-lg border border-dashed border-slate-200 bg-white px-3 py-3 text-[12px] text-[#64748B]">No active cashier accounts are available. Add or activate a cashier first.</p>
                     ) : null}
                   </div>
                 </div>
@@ -8725,47 +8828,26 @@ function SettingsWorkspace({
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <KeyRound className="h-5 w-5 text-blue-600" />
-              POS Day Close PIN
+              Reset POS Day Close PIN
             </DialogTitle>
             <DialogDescription>
-              This PIN is used only by this signed-in operator to confirm a branch Z-reading. It cannot be viewed after saving.
+              Reset this cashier&apos;s PIN when they forgot it. The cashier must create a new personal PIN from DGFY Business.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
               <p className="font-semibold">{dayClosePinUser?.username || dayClosePinUser?.email}</p>
               <p className="mt-1 text-xs text-slate-500">
-                {dayClosePinUser?.pos_day_close_pin_configured
-                  ? 'A Day Close PIN is configured. Enter a new PIN to replace it.'
-                  : 'Configure the personal PIN this operator will enter before closing the branch day.'}
+                {dayClosePinUser?.email || 'No account email'}
               </p>
-            </div>
-            <div>
-              <Label className="text-sm font-semibold text-slate-800">New Day Close PIN</Label>
-              <Input
-                value={dayClosePin}
-                onChange={(event) => setDayClosePin(event.target.value.replace(/\D/g, '').slice(0, 12))}
-                type="password"
-                inputMode="numeric"
-                autoComplete="new-password"
-                placeholder="4 to 12 digits"
-                className="mt-1"
-                disabled={savingDayClosePin}
-              />
             </div>
           </div>
           <DialogFooter className="mt-4 flex-row justify-between gap-2 border-t pt-4 sm:justify-between">
-            <div>
-              {dayClosePinUser?.pos_day_close_pin_configured ? (
-                <Button type="button" variant="outline" onClick={() => saveDayClosePin({ clear: true })} disabled={savingDayClosePin} className="text-rose-600">
-                  Clear PIN
-                </Button>
-              ) : null}
-            </div>
+            <div />
             <div className="flex gap-2">
               <Button type="button" variant="outline" onClick={closeDayClosePinDialog} disabled={savingDayClosePin}>Cancel</Button>
-              <Button type="button" onClick={() => saveDayClosePin()} disabled={savingDayClosePin} className="bg-blue-600 hover:bg-blue-700">
-                {savingDayClosePin ? 'Saving...' : 'Save PIN'}
+              <Button type="button" onClick={resetDayClosePin} disabled={savingDayClosePin} className="bg-blue-600 hover:bg-blue-700">
+                {savingDayClosePin ? 'Resetting...' : 'Reset PIN'}
               </Button>
             </div>
           </DialogFooter>
@@ -8813,6 +8895,8 @@ export default function TerminalOperationsWorkspace({
   canSwitchPosLocation = false,
   canAdjustCashDrawer,
   canCloseDay,
+  dayCloseReadinessState = { loading: false, readiness: null, errorMessage: '' },
+  refreshDayCloseReadiness = async () => null,
   openShiftForm,
   setOpenShiftForm,
   cashEventForm,
@@ -8940,6 +9024,8 @@ export default function TerminalOperationsWorkspace({
           canOpenShift={canOpenShift}
           canCloseShift={canCloseShift}
           canCloseDay={canCloseDay}
+          dayCloseReadinessState={dayCloseReadinessState}
+          refreshDayCloseReadiness={refreshDayCloseReadiness}
           canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
           closeShiftForm={closeShiftForm}
           setCloseShiftForm={setCloseShiftForm}
@@ -8983,6 +9069,8 @@ export default function TerminalOperationsWorkspace({
           canOpenShift={canOpenShift}
           canCloseShift={canCloseShift}
           canCloseDay={canCloseDay}
+          dayCloseReadinessState={dayCloseReadinessState}
+          refreshDayCloseReadiness={refreshDayCloseReadiness}
           canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
           closeShiftForm={closeShiftForm}
           setCloseShiftForm={setCloseShiftForm}
@@ -9043,6 +9131,8 @@ export default function TerminalOperationsWorkspace({
           canManageFnbModifiers={canManageFnbModifiers}
           locations={locationsState?.locations || []}
           serviceOperationsPermissions={serviceOperationsPermissions}
+          shiftState={shiftState}
+          activeTerminalId={activeTerminalId}
           stockFilterPreset={itemsStockFilterPreset}
           onStockFilterPresetApplied={onItemsStockFilterPresetApplied}
           workflowMode={workflowMode}
@@ -9076,6 +9166,7 @@ export default function TerminalOperationsWorkspace({
     canOpenShift,
     canCloseShift,
     canCloseDay,
+    dayCloseReadinessState,
     canCreateItems,
     canDeleteItems,
     canEditItems,
@@ -9132,6 +9223,7 @@ export default function TerminalOperationsWorkspace({
     refreshIncomingOrders,
     refreshAdminLocationMonitor,
     refreshOperationalContext,
+    refreshDayCloseReadiness,
     reportRefreshKey,
     employeeCreditReportRefreshKey,
     isOnline,
@@ -9146,6 +9238,7 @@ export default function TerminalOperationsWorkspace({
     sectionIds.locationScope,
     sectionIds.reports,
     sectionIds.salesToday,
+    sectionIds.services,
     sectionIds.terminalSetup,
     activeTerminalId,
     refreshTerminalMeta,

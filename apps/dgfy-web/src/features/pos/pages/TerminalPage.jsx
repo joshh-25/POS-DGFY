@@ -10,6 +10,7 @@ import {
   fetchPosSettingsBootstrap,
   fetchPosTransactionById,
   fetchCurrentTerminalShift,
+  fetchPosDayCloseReadiness,
   fetchTerminalTodayDashboard,
   closePosDay,
   openPosDeviceDrawer,
@@ -48,12 +49,14 @@ import { getAllSettings, getCompanyInfo, verifyPosSettingsAccessPin } from '@/se
 import { createItem } from '@/services/itemService.js';
 import { completeOnboarding } from '@/services/onboardingService.js';
 import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
-import { getAllUsers } from '@/services/userService.js';
+import { getAllUsers, updateOwnPosDayClosePin } from '@/services/userService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
 import api, { onApiOutcome } from '@/services/api.js';
 import { clearClientSession } from '@/services/sessionCleanup.js';
 import {
   clearBrowserSession,
+  consumePosDgfyTenantHandoff,
+  getFreshPosCompanySwitchHandoff,
   getAccessToken,
   getCompanyToken,
   preparePosCompanySwitchHandoff,
@@ -100,7 +103,11 @@ import {
   sanitizeTerminalId
 } from '../utils/terminalIdentity.js';
 import { isShiftOwnedByUser } from '../utils/shiftOwnership.js';
-import { resolveTerminalShiftEntryDecision } from '../utils/terminalShiftEntryDecision.js';
+import {
+  resolveActiveShiftResumeDecision,
+  resolveStoredShiftUnlockMode,
+  resolveTerminalShiftEntryDecision
+} from '../utils/terminalShiftEntryDecision.js';
 import {
   buildTenantSetupSearch,
   clearTenantSetupSearch,
@@ -170,6 +177,23 @@ const QUEUE_HISTORY_LIMIT = 250;
 const TERMINAL_OPERATION_MAX_RETRIES = 5;
 const TERMINAL_OPERATION_REPLAY_BATCH_SIZE = 25;
 const DESKTOP_TERMINAL_BREAKPOINT_PX = IS_DGFY_POS_SURFACE ? 1024 : 1280;
+
+const buildTerminalBusinessSettings = (settings = {}) => ({
+  pos_registered_name: String(settings?.pos_registered_name?.value || '').trim(),
+  pos_business_name: String(settings?.pos_business_name?.value || 'DGFY').trim() || 'DGFY',
+  pos_business_style: String(settings?.pos_business_style?.value || '').trim(),
+  pos_taxpayer_type: String(settings?.pos_taxpayer_type?.value || '').trim(),
+  pos_address: String(settings?.pos_address?.value || '').trim(),
+  pos_tin_branch: String(settings?.pos_tin_branch?.value || '').trim(),
+  pos_ptu_number: String(settings?.pos_ptu_number?.value || '').trim(),
+  pos_min_number: String(settings?.pos_min_number?.value || '').trim(),
+  pos_accreditation_number: String(settings?.pos_accreditation_number?.value || '').trim(),
+  pos_software_name: String(settings?.pos_software_name?.value || '').trim(),
+  pos_software_version: String(settings?.pos_software_version?.value || '').trim(),
+  pos_software_serial_number: String(settings?.pos_software_serial_number?.value || '').trim(),
+  pos_receipt_footer_message: String(settings?.pos_receipt_footer_message?.value || '').trim(),
+  storefront_profile_image_url: String(settings?.storefront_profile_image_url?.value || '').trim()
+});
 
 const normalizeAccessibleCompanies = (payload = {}) => {
   const candidates = [
@@ -487,6 +511,15 @@ export default function TerminalPage() {
   const [zReadingPrintState, setZReadingPrintState] = useState('idle');
   const [zReadingCloseConfirmOpen, setZReadingCloseConfirmOpen] = useState(false);
   const [zReadingClosePin, setZReadingClosePin] = useState('');
+  const [postShiftHandoff, setPostShiftHandoff] = useState(null);
+  const [dayCloseReadinessState, setDayCloseReadinessState] = useState({
+    loading: false,
+    readiness: null,
+    errorMessage: ''
+  });
+  const [myDayClosePinOpen, setMyDayClosePinOpen] = useState(false);
+  const [myDayClosePinForm, setMyDayClosePinForm] = useState({ currentPassword: '', pin: '', confirmation: '' });
+  const [myDayClosePinSaving, setMyDayClosePinSaving] = useState(false);
   const [hardwareMessage, setHardwareMessage] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [activeTerminalId, setActiveTerminalId] = useState(() => readInitialTerminalId());
@@ -499,6 +532,7 @@ export default function TerminalPage() {
     activeDiscountCount: 0,
     enabledFeeMethods: [],
     storefrontSlug: '',
+    businessSettings: buildTerminalBusinessSettings(),
     locationBindingReadiness: null,
     settingsAccessPinEnabled: false
   });
@@ -640,6 +674,7 @@ export default function TerminalPage() {
   const [incomingReceiptOpeningId, setIncomingReceiptOpeningId] = useState(null);
   const [receiptReturnViewMode, setReceiptReturnViewMode] = useState(null);
   const [historyRequestQuery, setHistoryRequestQuery] = useState('');
+  const shiftClosedToastIdRef = useRef(null);
   const [incomingOrderModalOpen, setIncomingOrderModalOpen] = useState(false);
   const [incomingOrderReceiptOpen, setIncomingOrderReceiptOpen] = useState(false);
   const [incomingOrderDetail, setIncomingOrderDetail] = useState(null);
@@ -1168,6 +1203,7 @@ export default function TerminalPage() {
         activeDiscountCount,
         enabledFeeMethods,
         storefrontSlug: String(allSettings?.store_tenant_slug?.value || '').trim().toLowerCase(),
+        businessSettings: buildTerminalBusinessSettings(allSettings),
         locationBindingReadiness: null,
         settingsAccessPinEnabled: allSettings?.pos_settings_access_pin_enabled?.value === true
       });
@@ -1538,7 +1574,10 @@ export default function TerminalPage() {
     refreshAdminLocationMonitor({ silent: true });
   }, [refreshAdminLocationMonitor]);
 
-  const printClosedShiftSummary = useCallback(async (closeResult, { reason = 'shift_close_report' } = {}) => {
+  const printClosedShiftSummary = useCallback(async (closeResult, {
+    reason = 'shift_close_report',
+    openBrowserFallback = true
+  } = {}) => {
     const report = closeResult || null;
     const shiftId = Number(report?.shift?.pos_terminal_shift_id || 0);
     if (!report || !Number.isInteger(shiftId) || shiftId <= 0) return false;
@@ -1547,7 +1586,7 @@ export default function TerminalPage() {
       const outcome = await posHardware.printShiftSummary({
         shiftId,
         shiftSummary: report,
-        businessSettings: { pos_business_name: 'DGFY' },
+        businessSettings: terminalMeta.businessSettings,
         terminalId: sanitizeTerminalId(activeTerminalId) || report?.shift?.terminal_id || undefined,
         reason,
         idempotencyKey: createIdempotencyKey('pos-shift-summary-print'),
@@ -1558,25 +1597,36 @@ export default function TerminalPage() {
         toast.success('Cashier shift sales summary printed.');
         return true;
       }
-      setClosedShiftReportAutoPrint(true);
-      setClosedShiftReport(report);
-      setClosedShiftReportOpen(true);
-      toast.message(outcome?.message || 'No printer is configured. The shift sales summary is opening for browser printing.');
+      if (openBrowserFallback) {
+        setClosedShiftReportAutoPrint(true);
+        setClosedShiftReport(report);
+        setClosedShiftReportOpen(true);
+      }
+      toast.message(outcome?.message || (openBrowserFallback
+        ? 'No printer is configured. The shift sales summary is opening for browser printing.'
+        : 'No printer is configured. Use Print Shift Summary from the post-shift screen.'));
       return false;
     } catch (error) {
-      setClosedShiftReportAutoPrint(true);
-      setClosedShiftReport(report);
-      setClosedShiftReportOpen(true);
-      toast.message(error?.response?.data?.message || 'Shift closed. The sales summary is available for browser printing.');
+      if (openBrowserFallback) {
+        setClosedShiftReportAutoPrint(true);
+        setClosedShiftReport(report);
+        setClosedShiftReportOpen(true);
+      }
+      toast.message(error?.response?.data?.message || (openBrowserFallback
+        ? 'Shift closed. The sales summary is available for browser printing.'
+        : 'Shift closed. Use Print Shift Summary from the post-shift screen.'));
       return false;
     }
-  }, [activeTerminalId, posHardware]);
+  }, [activeTerminalId, posHardware, terminalMeta.businessSettings]);
 
   const printZReading = useCallback(async (report, { reason = 'z_reading_close_day' } = {}) => {
     if (!report?.business_date || !report?.location_id) return false;
     setZReadingPrintState('printing');
     const zReading = {
-      business: { pos_business_name: 'DGFY' },
+      business: {
+        name: terminalMeta.businessSettings?.pos_business_name || 'DGFY',
+        profile_image_url: terminalMeta.businessSettings?.storefront_profile_image_url || ''
+      },
       z_reading: {
         business_date: report.business_date,
         location_id: report.location_id,
@@ -1594,7 +1644,7 @@ export default function TerminalPage() {
         zReading,
         businessDate: report.business_date,
         locationId: report.location_id,
-        businessSettings: { pos_business_name: 'DGFY' },
+        businessSettings: terminalMeta.businessSettings,
         terminalId: sanitizeTerminalId(activeTerminalId) || undefined,
         reason,
         idempotencyKey: createIdempotencyKey('pos-z-reading-print'),
@@ -1619,9 +1669,157 @@ export default function TerminalPage() {
       toast.message(error?.response?.data?.message || 'The Z-reading was saved, but physical printing failed.');
       return false;
     }
-  }, [activeTerminalId, posHardware]);
+  }, [activeTerminalId, posHardware, terminalMeta.businessSettings]);
 
-  const handleCloseDay = useCallback(() => {
+  const refreshPostShiftDayCloseReadiness = useCallback(async () => {
+    if (!canCloseDay) {
+      setPostShiftHandoff((current) => current ? ({
+        ...current,
+        loading: false,
+        errorMessage: '',
+        readiness: {
+          authorized: false,
+          ready: false,
+          already_closed: false,
+          open_shift_count: null,
+          open_shifts: []
+        }
+      }) : current);
+      return null;
+    }
+    if (!isOnline) {
+      setPostShiftHandoff((current) => current ? ({
+        ...current,
+        loading: false,
+        errorMessage: 'Reconnect to check whether every branch shift is closed.'
+      }) : current);
+      return null;
+    }
+
+    setPostShiftHandoff((current) => current ? ({ ...current, loading: true, errorMessage: '' }) : current);
+    try {
+      const readiness = await fetchPosDayCloseReadiness();
+      setPostShiftHandoff((current) => current ? ({
+        ...current,
+        loading: false,
+        errorMessage: '',
+        readiness: { ...readiness, authorized: true }
+      }) : current);
+      return readiness;
+    } catch (error) {
+      const errorMessage = error?.response?.data?.message || 'Unable to check Day Close readiness right now.';
+      setPostShiftHandoff((current) => current ? ({ ...current, loading: false, errorMessage }) : current);
+      return null;
+    }
+  }, [canCloseDay, isOnline]);
+
+  const openPostShiftHandoff = useCallback(async ({
+    source = 'shift_close',
+    closeResult = null,
+    initialReadiness = null,
+    authorized = canCloseDay
+  } = {}) => {
+    setPostShiftHandoff({
+      source,
+      closeResult,
+      readiness: initialReadiness ? { ...initialReadiness, authorized } : null,
+      loading: !initialReadiness && authorized,
+      errorMessage: ''
+    });
+    if (!authorized) {
+      setPostShiftHandoff((current) => current ? ({
+        ...current,
+        loading: false,
+        readiness: {
+          authorized: false,
+          ready: false,
+          already_closed: false,
+          open_shift_count: null,
+          open_shifts: []
+        }
+      }) : current);
+      return;
+    }
+    if (!initialReadiness) {
+      if (!isOnline) {
+        setPostShiftHandoff((current) => current ? ({
+          ...current,
+          loading: false,
+          errorMessage: 'Reconnect to check whether every branch shift is closed.'
+        }) : current);
+        return;
+      }
+      try {
+        const readiness = await fetchPosDayCloseReadiness();
+        setPostShiftHandoff((current) => current ? ({
+          ...current,
+          loading: false,
+          readiness: { ...readiness, authorized: true }
+        }) : current);
+      } catch (error) {
+        setPostShiftHandoff((current) => current ? ({
+          ...current,
+          loading: false,
+          errorMessage: error?.response?.data?.message || 'Unable to check Day Close readiness right now.'
+        }) : current);
+      }
+    }
+  }, [canCloseDay, isOnline]);
+
+  const refreshDayCloseReadiness = useCallback(async ({ silent = false } = {}) => {
+    if (!canCloseDay) {
+      setDayCloseReadinessState({ loading: false, readiness: null, errorMessage: '' });
+      return null;
+    }
+    if (locked) {
+      setDayCloseReadinessState({
+        loading: false,
+        readiness: null,
+        errorMessage: 'Unlock the terminal before checking Day Close status.'
+      });
+      return null;
+    }
+    if (!isOnline) {
+      const errorMessage = 'Reconnect to check whether every branch shift is closed.';
+      setDayCloseReadinessState({ loading: false, readiness: null, errorMessage });
+      if (!silent) toast.error(errorMessage);
+      return null;
+    }
+    if (!sanitizeTerminalId(activeTerminalId)) {
+      const errorMessage = 'Select a registered terminal before checking Day Close status.';
+      setDayCloseReadinessState({ loading: false, readiness: null, errorMessage });
+      if (!silent) toast.error(errorMessage);
+      return null;
+    }
+
+    setDayCloseReadinessState((current) => ({ ...current, loading: true, errorMessage: '' }));
+    try {
+      const readiness = await fetchPosDayCloseReadiness();
+      setDayCloseReadinessState({ loading: false, readiness, errorMessage: '' });
+      return readiness;
+    } catch (error) {
+      const errorMessage = error?.response?.data?.message || 'Unable to check Day Close readiness right now.';
+      setDayCloseReadinessState({ loading: false, readiness: null, errorMessage });
+      if (!silent) toast.error(errorMessage);
+      return null;
+    }
+  }, [activeTerminalId, canCloseDay, isOnline, locked]);
+
+  useEffect(() => {
+    const isDayCloseSurface = posViewMode === 'shift_controls' || posViewMode === 'close_shift';
+    if (!isDayCloseSurface || locked || !canCloseDay) return;
+    void refreshDayCloseReadiness({ silent: true });
+  }, [
+    activeTerminalId,
+    canCloseDay,
+    isOnline,
+    locked,
+    posViewMode,
+    refreshDayCloseReadiness,
+    shiftState?.shift?.pos_terminal_shift_id
+  ]);
+
+  const handleCloseDay = useCallback(async () => {
     if (locked || !isOnline) {
       toast.error('Reconnect and unlock the terminal before closing the day.');
       return false;
@@ -1631,10 +1829,55 @@ export default function TerminalPage() {
       return false;
     }
 
+    const readiness = await refreshDayCloseReadiness();
+    if (!readiness?.ready) {
+      const openShiftCount = Number(readiness?.open_shift_count || 0);
+      if (openShiftCount > 0) {
+        toast.error(`Close every cashier shift in this branch before generating the Z-reading. ${openShiftCount} shift${openShiftCount === 1 ? '' : 's'} remain open.`);
+      }
+      return false;
+    }
+
     setZReadingClosePin('');
     setZReadingCloseConfirmOpen(true);
     return true;
-  }, [canCloseDay, isOnline, locked]);
+  }, [canCloseDay, isOnline, locked, refreshDayCloseReadiness]);
+
+  const openMyDayClosePin = useCallback(() => {
+    if (!canCloseDay) {
+      toast.error('You need close-day permission to configure a Day Close PIN.');
+      return;
+    }
+    setMyDayClosePinForm({ currentPassword: '', pin: '', confirmation: '' });
+    setMyDayClosePinOpen(true);
+  }, [canCloseDay]);
+
+  const saveMyDayClosePin = useCallback(async () => {
+    const { currentPassword, pin, confirmation } = myDayClosePinForm;
+    if (!currentPassword) {
+      toast.error('Enter your current account password.');
+      return;
+    }
+    if (!/^\d{4,12}$/.test(pin)) {
+      toast.error('Enter a 4 to 12 digit Day Close PIN.');
+      return;
+    }
+    if (pin !== confirmation) {
+      toast.error('Day Close PIN confirmation does not match.');
+      return;
+    }
+    setMyDayClosePinSaving(true);
+    try {
+      await updateOwnPosDayClosePin({ currentPassword, pin });
+      setMyDayClosePinOpen(false);
+      setMyDayClosePinForm({ currentPassword: '', pin: '', confirmation: '' });
+      toast.success('Your POS Day Close PIN is ready.');
+    } catch (error) {
+      toast.error(error?.response?.data?.message || 'Failed to configure your POS Day Close PIN.');
+    } finally {
+      setMyDayClosePinSaving(false);
+    }
+  }, [myDayClosePinForm]);
 
   const confirmCloseDay = useCallback(async () => {
     if (!/^\d{4,12}$/.test(zReadingClosePin)) {
@@ -1645,6 +1888,15 @@ export default function TerminalPage() {
     setShiftActionLoading((previous) => ({ ...previous, zReading: true }));
     setZReadingPrintState('idle');
     try {
+      const readiness = await refreshDayCloseReadiness();
+      if (!readiness?.ready) {
+        const openShiftCount = Number(readiness?.open_shift_count || 0);
+        if (openShiftCount > 0) {
+          toast.error(`Day Close stopped because ${openShiftCount} cashier shift${openShiftCount === 1 ? '' : 's'} remain open.`);
+        }
+        return false;
+      }
+
       const result = await closePosDay(null, { dayClosePin: zReadingClosePin });
       if (!result?.business_date || !result?.location_id) {
         throw new Error('The backend returned an incomplete Z-reading.');
@@ -1658,11 +1910,14 @@ export default function TerminalPage() {
       return true;
     } catch (error) {
       toast.error(error?.response?.data?.message || error?.message || 'Failed to close the day and generate the Z-reading.');
+      if (error?.response?.status === 409) {
+        await refreshDayCloseReadiness({ silent: true });
+      }
       return false;
     } finally {
       setShiftActionLoading((previous) => ({ ...previous, zReading: false }));
     }
-  }, [printZReading, zReadingClosePin]);
+  }, [printZReading, refreshDayCloseReadiness, zReadingClosePin]);
 
   const handleViewShiftSummary = useCallback(() => {
     if (!shiftState?.shift) {
@@ -1909,9 +2164,28 @@ export default function TerminalPage() {
   }, [refreshTerminalOperationQueue]);
 
   const hydrateUser = useCallback(async ({ suppressGlobalErrors = false } = {}) => {
+    const dgfyTenantHandoff = consumePosDgfyTenantHandoff();
+    const companySwitchHandoff = getFreshPosCompanySwitchHandoff();
+    const dgfyTenantId = String(dgfyTenantHandoff?.tenantId || companySwitchHandoff?.tenantId || '').trim();
     const storedLockActiveAtStart = readStoredTerminalLock();
     const storedReasonAtStart = readStoredTerminalLockReason();
-    if (storedLockActiveAtStart && ['full_auth', 'shift_closed'].includes(storedReasonAtStart)) {
+    if (dgfyTenantId) {
+      // A company session was just issued by DGFY Business or the POS company
+      // switcher. Terminal state is tenant-owned, so it cannot leak into the
+      // new company. The session itself is still verified below before unlock.
+      setStoredTerminalLock(false);
+      if (typeof window !== 'undefined') {
+        window.localStorage.removeItem(TERMINAL_ID_STORAGE_KEY);
+      }
+      // React state was initialized before the handoff marker was consumed.
+      // Clear that stale terminal too: otherwise a previous company's ID can
+      // be validated against an empty new-tenant registry and re-lock POS.
+      setActiveTerminalId('');
+      setOperatingLocationId(null);
+      setFormData((prev) => ({ ...prev, terminalId: '' }));
+      setTerminalUnlockForm((prev) => ({ ...prev, terminalId: '' }));
+    }
+    if (!dgfyTenantId && storedLockActiveAtStart && ['full_auth', 'shift_closed'].includes(storedReasonAtStart)) {
       clearBrowserSession();
       resetSettingsAccessPinState();
       setTerminalUser(null);
@@ -1962,7 +2236,23 @@ export default function TerminalPage() {
         setDrawerOpen(true);
         return;
       }
-      const storedTerminalId = sanitizeTerminalId(readStoredTerminalId() || activeTerminalId);
+      if (dgfyTenantId && String(user?.company?.id || '').trim() !== dgfyTenantId) {
+        clearBrowserSession();
+        setStoredTerminalLock(true);
+        setStoredTerminalLockReason('full_auth');
+        resetSettingsAccessPinState();
+        setTerminalUser(null);
+        setDgfyAdminBypassActive(false);
+        setLocked(true);
+        setDrawerOpen(true);
+        setTerminalUnlockRequired(false);
+        setTerminalUnlockModalOpen(false);
+        resetSentryIdentity();
+        return;
+      }
+      const storedTerminalId = sanitizeTerminalId(
+        dgfyTenantId ? '' : (readStoredTerminalId() || activeTerminalId)
+      );
       const storedReason = readStoredTerminalLockReason();
       const storedLockActive = readStoredTerminalLock();
       const userCanAccessSettings = user?.is_master_admin === true
@@ -1970,6 +2260,100 @@ export default function TerminalPage() {
 
       setTerminalUser(user);
       setDgfyAdminBypassActive(userCanAccessSettings && !storedLockActive);
+
+      // DGFY Business has already authenticated this cashier, but a fresh
+      // company handoff intentionally has no persisted terminal selection.
+      // Recreate the same terminal/shift-entry decision used by direct POS
+      // login so a cashier is sent to Resume Shift or Open Shift, never left
+      // on an unlocked catalog with no way to start work.
+      if (IS_DGFY_POS_SURFACE && dgfyTenantId && !userCanAccessSettings) {
+        const [tenantSettings, currentShiftResult] = await Promise.all([
+          fetchPosSettingsBootstrap(SUPPRESS_GLOBAL_ERROR_TOAST),
+          fetchCurrentTerminalShift({}, SUPPRESS_GLOBAL_ERROR_TOAST)
+        ]);
+        const tenantRegistry = normalizeTerminalRegistry(tenantSettings?.pos_terminal_registry?.value || []);
+        const tenantRegistryModeRaw = String(tenantSettings?.pos_terminal_registry_mode?.value || '')
+          .trim()
+          .toLowerCase();
+        const tenantRegistryMode = TERMINAL_REGISTRY_MODES.has(tenantRegistryModeRaw)
+          ? tenantRegistryModeRaw
+          : 'warn';
+        const activeTenantRegistry = tenantRegistry.filter((entry) => entry?.is_active !== false);
+        const activeShift = currentShiftResult?.shift || null;
+        const activeShiftDecision = resolveActiveShiftResumeDecision({
+          currentShift: activeShift,
+          terminalRegistry: tenantRegistry
+        });
+
+        setTerminalRegistry(tenantRegistry);
+        setTerminalRegistryMode(tenantRegistryMode);
+
+        if (activeShiftDecision.mode === 'blocked') {
+          throw new Error(activeShiftDecision.message);
+        }
+        if (activeShiftDecision.mode === 'resume') {
+          const activeShiftTerminalId = activeShiftDecision.terminalId;
+          const activeShiftLocationId = activeShiftDecision.locationId;
+          setActiveTerminalId(activeShiftTerminalId);
+          setOperatingLocationId(activeShiftLocationId);
+          setFormData((prev) => ({ ...prev, terminalId: activeShiftTerminalId }));
+          setTerminalUnlockForm((prev) => ({ ...prev, terminalId: activeShiftTerminalId }));
+          setCashierUnlockSession({
+            source: 'dgfy_pos',
+            email: String(user?.email || user?.username || '').trim(),
+            userId: user?.user_id || user?.id || null,
+            role: user?.role || 'cashier',
+            permissions: Array.isArray(user?.permissions) ? user.permissions : [],
+            tenantId: String(user?.company?.id || '').trim(),
+            companyToken: getCompanyToken() || '',
+            terminalId: activeShiftTerminalId,
+            activeShift
+          });
+          setStoredTerminalLock(true);
+          setStoredTerminalLockReason('shift_start_required');
+          setTerminalUnlockMode('resume_shift');
+          setTerminalUnlockRequired(true);
+          setLocked(true);
+          setDrawerOpen(false);
+          setTerminalUnlockModalOpen(true);
+          return;
+        }
+
+        const selectedTerminalId = resolvePreferredTerminalId(
+          activeTenantRegistry,
+          '',
+          { registryMode: tenantRegistryMode }
+        );
+        const selectedTerminal = activeTenantRegistry.find(
+          (entry) => sanitizeTerminalId(entry?.terminal_id) === selectedTerminalId
+        );
+        const selectedLocationId = Number(selectedTerminal?.location_id || 0);
+        if (selectedTerminalId && Number.isInteger(selectedLocationId) && selectedLocationId > 0) {
+          setActiveTerminalId(selectedTerminalId);
+          setOperatingLocationId(selectedLocationId);
+          setFormData((prev) => ({ ...prev, terminalId: selectedTerminalId }));
+          setTerminalUnlockForm((prev) => ({ ...prev, terminalId: selectedTerminalId }));
+          setCashierUnlockSession({
+            source: 'dgfy_pos',
+            email: String(user?.email || user?.username || '').trim(),
+            userId: user?.user_id || user?.id || null,
+            role: user?.role || 'cashier',
+            permissions: Array.isArray(user?.permissions) ? user.permissions : [],
+            tenantId: String(user?.company?.id || '').trim(),
+            companyToken: getCompanyToken() || '',
+            terminalId: selectedTerminalId,
+            activeShift: null
+          });
+          setStoredTerminalLock(true);
+          setStoredTerminalLockReason('shift_start_required');
+          setTerminalUnlockMode('shift_start');
+          setTerminalUnlockRequired(true);
+          setLocked(true);
+          setDrawerOpen(false);
+          setTerminalUnlockModalOpen(true);
+          return;
+        }
+      }
 
       if (storedLockActive) {
         resetSettingsAccessPinState();
@@ -1996,47 +2380,42 @@ export default function TerminalPage() {
         }
         if (storedReason === 'shift_start_required') {
           const [currentShiftResult, currentSettings] = await Promise.all([
-            fetchCurrentTerminalShift({}, SUPPRESS_GLOBAL_ERROR_TOAST).catch(() => ({ shift: null })),
-            fetchPosSettingsBootstrap(SUPPRESS_GLOBAL_ERROR_TOAST).catch(() => ({}))
+            fetchCurrentTerminalShift({}, SUPPRESS_GLOBAL_ERROR_TOAST),
+            fetchPosSettingsBootstrap(SUPPRESS_GLOBAL_ERROR_TOAST)
           ]);
           const currentRegistry = normalizeTerminalRegistry(currentSettings?.pos_terminal_registry?.value || []);
-          const currentActiveRegistry = currentRegistry.filter((entry) => entry?.is_active !== false);
           if (currentRegistry.length > 0) {
             setTerminalRegistry(currentRegistry);
           }
           const currentShift = currentShiftResult?.shift || null;
-          if (currentShift) {
-            const currentShiftTerminalId = sanitizeTerminalId(currentShift?.terminal_id);
-            const currentShiftLocationId = Number(currentShift?.location_id || 0);
-            const currentShiftRegistryEntry = currentActiveRegistry.find(
-              (entry) => sanitizeTerminalId(entry?.terminal_id) === currentShiftTerminalId
-            );
-            if (
-              currentShiftTerminalId
-              && currentShiftRegistryEntry
-              && Number.isInteger(currentShiftLocationId)
-              && currentShiftLocationId > 0
-              && Number(currentShiftRegistryEntry?.location_id || 0) === currentShiftLocationId
-            ) {
-              setCashierUnlockSession({
-                source: 'dgfy_pos',
-                email: String(user?.email || user?.username || '').trim(),
-                userId: user?.user_id || user?.id || null,
-                role: user?.role || 'cashier',
-                permissions: parseUserPermissions(user),
-                tenantId: String(user?.company?.id || '').trim(),
-                companyToken: getCompanyToken() || '',
-                terminalId: currentShiftTerminalId,
-                activeShift: currentShift
-              });
-              setOperatingLocationId(currentShiftLocationId);
-              setTerminalUnlockForm((prev) => ({ ...prev, terminalId: currentShiftTerminalId }));
-              setTerminalUnlockMode('resume_shift');
-              setTerminalUnlockRequired(true);
-              setTerminalUnlockModalOpen(true);
-              setDrawerOpen(false);
-              return;
-            }
+          const currentShiftDecision = resolveActiveShiftResumeDecision({
+            currentShift,
+            terminalRegistry: currentRegistry
+          });
+          if (currentShiftDecision.mode === 'blocked') {
+            throw new Error(currentShiftDecision.message);
+          }
+          if (currentShiftDecision.mode === 'resume') {
+            const currentShiftTerminalId = currentShiftDecision.terminalId;
+            const currentShiftLocationId = currentShiftDecision.locationId;
+            setCashierUnlockSession({
+              source: 'dgfy_pos',
+              email: String(user?.email || user?.username || '').trim(),
+              userId: user?.user_id || user?.id || null,
+              role: user?.role || 'cashier',
+              permissions: parseUserPermissions(user),
+              tenantId: String(user?.company?.id || '').trim(),
+              companyToken: getCompanyToken() || '',
+              terminalId: currentShiftTerminalId,
+              activeShift: currentShift
+            });
+            setOperatingLocationId(currentShiftLocationId);
+            setTerminalUnlockForm((prev) => ({ ...prev, terminalId: currentShiftTerminalId }));
+            setTerminalUnlockMode('resume_shift');
+            setTerminalUnlockRequired(true);
+            setTerminalUnlockModalOpen(true);
+            setDrawerOpen(false);
+            return;
           }
           setTerminalUnlockMode('shift_start');
           setTerminalUnlockRequired(true);
@@ -2101,7 +2480,21 @@ export default function TerminalPage() {
           }
         }
       }
-    } catch {
+    } catch (error) {
+      const message = resolveTerminalLoginErrorMessage(error);
+      const { kind, status, requestPath } = classifyTerminalLoginFailure(error);
+      const method = String(error?.config?.method || '').toUpperCase() || '';
+      const ref = createTerminalErrorRef();
+      toast.error(message);
+      setUnlockFailure({ message, method, requestPath, status, ref });
+      captureTerminalFlowFailure({
+        error,
+        flow: 'terminal_session_restore',
+        ref,
+        requestPath,
+        status,
+        kind
+      });
       resetSettingsAccessPinState();
       setTerminalUser(null);
       setLocked(true);
@@ -2303,7 +2696,10 @@ export default function TerminalPage() {
       return;
     }
 
-    setTerminalUnlockMode(storedLockReason === 'terminal_reunlock' ? 'cashier_resume' : 'shift_start');
+    setTerminalUnlockMode(resolveStoredShiftUnlockMode({
+      lockReason: storedLockReason,
+      activeShift: cashierUnlockSession?.activeShift || null
+    }));
     setTerminalUnlockRequired(storedLockReason === 'shift_start_required');
     setTerminalUnlockForm((prev) => ({
       terminalId: sanitizeTerminalId(prev.terminalId) || sanitizeTerminalId(activeTerminalId) || readInitialTerminalId(),
@@ -2315,7 +2711,7 @@ export default function TerminalPage() {
     }));
     setTerminalUnlockModalOpen(true);
     setDrawerOpen(false);
-  }, [activeTerminalId, cashierResumeContext?.shiftId, locked]);
+  }, [activeTerminalId, cashierResumeContext?.shiftId, cashierUnlockSession?.activeShift, locked]);
 
   useEffect(() => {
     if (locked || !canViewPos) {
@@ -2797,8 +3193,9 @@ export default function TerminalPage() {
     }
   };
 
-  const handleDgfyPosLogin = async (event) => {
-    event.preventDefault();
+  const handleDgfyPosLogin = async (event, { intent = 'shift' } = {}) => {
+    event?.preventDefault?.();
+    const entryIntent = intent === 'day_close' ? 'day_close' : 'shift';
     const email = String(formData.email || '').trim();
     const password = String(formData.password || '');
     const continuingAfterCompanyPicker = dgfyPosState.authenticated === true;
@@ -2894,6 +3291,8 @@ export default function TerminalPage() {
       setTerminalUnlockMode('shift_start');
       activateDgfyTenantSession(selectedTenantSession);
       const selectedPermissionList = parseUserPermissions(effectiveSelectedTenantUser);
+      const selectedCanCloseDay = effectiveSelectedTenantUser?.is_master_admin === true
+        || selectedPermissionList.includes('pos:close_day');
       const selectedCanAccessSettings = effectiveSelectedTenantUser?.is_master_admin === true
         || selectedPermissionList.includes('settings:view');
       const selectedCanViewUsers = effectiveSelectedTenantUser?.is_master_admin === true
@@ -2903,11 +3302,11 @@ export default function TerminalPage() {
           ? getAllSettings({
             force: true,
             requestConfig: SUPPRESS_GLOBAL_ERROR_TOAST
-          }).catch(() => ({}))
-          : fetchPosSettingsBootstrap(SUPPRESS_GLOBAL_ERROR_TOAST).catch(() => ({})),
+          })
+          : fetchPosSettingsBootstrap(SUPPRESS_GLOBAL_ERROR_TOAST),
         listTenantLocations({ include_inactive: false }).catch(() => []),
         fetchPosCatalog({ limit: 200 }).catch(() => []),
-        fetchCurrentTerminalShift({}, SUPPRESS_GLOBAL_ERROR_TOAST).catch(() => ({ shift: null, cash_summary: null }))
+        fetchCurrentTerminalShift({}, SUPPRESS_GLOBAL_ERROR_TOAST)
       ]);
       const [selectedTenantCompany, selectedTenantUsers] = await Promise.all([
         selectedCanAccessSettings ? getCompanyInfo().catch(() => null) : Promise.resolve(null),
@@ -2946,8 +3345,16 @@ export default function TerminalPage() {
         : 'warn';
       const selectedTenantActiveRegistry = selectedTenantRegistry.filter((entry) => entry?.is_active !== false);
       const selectedActiveShift = selectedCurrentShiftResult?.shift || null;
+      const selectedActiveShiftDecision = resolveActiveShiftResumeDecision({
+        currentShift: selectedActiveShift,
+        terminalRegistry: selectedTenantRegistry
+      });
       setTerminalRegistry(selectedTenantRegistry);
       setTerminalRegistryMode(selectedTenantRegistryMode);
+      setTerminalMeta((previous) => ({
+        ...previous,
+        businessSettings: buildTerminalBusinessSettings(selectedTenantSettings || {})
+      }));
       blurActiveTerminalEditor();
       setTerminalStartupReady(false);
       setDrawerOpen(false);
@@ -2984,23 +3391,17 @@ export default function TerminalPage() {
         return;
       }
       if (selectedActiveShift) {
-        const activeShiftTerminalId = sanitizeTerminalId(selectedActiveShift?.terminal_id);
-        const activeShiftLocationId = Number(selectedActiveShift?.location_id || 0);
-        const activeShiftRegistryEntry = selectedTenantActiveRegistry.find(
-          (entry) => sanitizeTerminalId(entry?.terminal_id) === activeShiftTerminalId
-        );
-        if (
-          !activeShiftTerminalId
-          || !activeShiftRegistryEntry
-          || !Number.isInteger(activeShiftLocationId)
-          || activeShiftLocationId <= 0
-          || Number(activeShiftRegistryEntry?.location_id || 0) !== activeShiftLocationId
-        ) {
+        if (entryIntent === 'day_close') {
+          toast.error('Your cashier shift is still open. Resume and close it before generating the Z-reading.');
+        }
+        if (selectedActiveShiftDecision.mode === 'blocked') {
           setTerminalUnlockRequired(false);
           setTerminalUnlockModalOpen(false);
           setDrawerOpen(true);
-          throw new Error('Your active shift is linked to an unavailable terminal. A supervisor must review the terminal assignment.');
+          throw new Error(selectedActiveShiftDecision.message);
         }
+        const activeShiftTerminalId = selectedActiveShiftDecision.terminalId;
+        const activeShiftLocationId = selectedActiveShiftDecision.locationId;
         setOperatingLocationId(activeShiftLocationId);
         setCashierUnlockSession({
           source: 'dgfy_pos',
@@ -3018,6 +3419,57 @@ export default function TerminalPage() {
         setTerminalUnlockRequired(true);
         setTerminalUnlockModalOpen(true);
         setLocked(true);
+        return;
+      }
+      if (entryIntent === 'day_close') {
+        if (!selectedCanCloseDay) {
+          throw new Error('This account is not authorized to generate the branch Z-reading. Ask the manager to enable Day Close access.');
+        }
+        const selectedTerminalId = resolvePreferredTerminalId(
+          selectedTenantActiveRegistry,
+          sanitizeTerminalId(formData.terminalId) || readStoredTerminalId(),
+          { registryMode: selectedTenantRegistryMode }
+        );
+        const selectedTenantRegistryEntry = selectedTenantActiveRegistry.find(
+          (entry) => String(entry?.terminal_id || '') === selectedTerminalId
+        );
+        if (selectedTenantActiveRegistry.length === 0) {
+          throw new Error('No active terminal is configured for this company.');
+        }
+        if (!selectedTerminalId || !selectedTenantRegistryEntry) {
+          throw new Error('Select an active terminal before opening Day Close.');
+        }
+        const selectedLocationId = Number(selectedTenantRegistryEntry?.location_id || 0);
+        if (!Number.isInteger(selectedLocationId) || selectedLocationId <= 0) {
+          throw new Error('This terminal has no assigned store location. Set the location in POS Setup first.');
+        }
+        if (typeof window !== 'undefined') {
+          window.localStorage.setItem(TERMINAL_ID_STORAGE_KEY, selectedTerminalId);
+        }
+        setActiveTerminalId(selectedTerminalId);
+        setOperatingLocationId(selectedLocationId);
+        setCashierUnlockSession({
+          source: 'dgfy_pos_day_close',
+          email: String(effectiveSelectedTenantUser?.email || email).trim(),
+          userId: effectiveSelectedTenantUser?.user_id || selectedTenantSession?.user_id || null,
+          role: effectiveSelectedTenantUser?.role || selectedTenantSession?.role || 'cashier',
+          permissions: selectedPermissionList,
+          tenantId: selectedTenantId,
+          companyToken: selectedTenantSession?.company?.token || getCompanyToken() || '',
+          terminalId: selectedTerminalId,
+          activeShift: null
+        });
+        setTerminalUnlockForm((previous) => ({ ...previous, terminalId: selectedTerminalId }));
+        setStoredTerminalLock(false);
+        setStoredTerminalLockReason('');
+        setLocked(false);
+        setDrawerOpen(false);
+        setTerminalUnlockRequired(false);
+        setTerminalUnlockMode('shift_start');
+        setTerminalUnlockModalOpen(false);
+        setPosViewMode('shift_controls');
+        await openPostShiftHandoff({ source: 'day_close_login', authorized: selectedCanCloseDay });
+        toast.success('Day Close opened without starting a cashier shift.');
         return;
       }
       if (selectedCanAccessSettings) {
@@ -3454,20 +3906,16 @@ export default function TerminalPage() {
 
         const currentShiftResult = await fetchCurrentTerminalShift({}, SUPPRESS_GLOBAL_ERROR_TOAST);
         const currentShift = currentShiftResult?.shift || null;
-        const currentShiftDecision = resolveTerminalShiftEntryDecision({ currentShift });
+        const currentShiftDecision = resolveActiveShiftResumeDecision({
+          currentShift,
+          terminalRegistry
+        });
+        if (currentShiftDecision.mode === 'blocked') {
+          throw new Error(currentShiftDecision.message);
+        }
         if (currentShiftDecision.mode === 'resume') {
           const currentShiftTerminalId = currentShiftDecision.terminalId;
           const currentShiftLocationId = currentShiftDecision.locationId;
-          const currentShiftRegistryEntry = terminalRegistryLookup.get(currentShiftTerminalId);
-          if (
-            !currentShiftTerminalId
-            || !currentShiftRegistryEntry
-            || !Number.isInteger(currentShiftLocationId)
-            || currentShiftLocationId <= 0
-            || Number(currentShiftRegistryEntry?.location_id || 0) !== currentShiftLocationId
-          ) {
-            throw new Error('Your active shift is linked to an unavailable terminal. A supervisor must review the terminal assignment.');
-          }
           await completeTerminalUnlock(currentShiftTerminalId, {
             operatingLocationIdOverride: currentShiftLocationId
           });
@@ -3598,6 +4046,7 @@ export default function TerminalPage() {
     const activeCompanyToken = String(getCompanyToken() || '').trim();
     const activeDgfyToken = String(getStoredDgfyToken() || '').trim();
     resetSettingsAccessPinState();
+    setPostShiftHandoff(null);
     setDgfyAdminBypassActive(false);
     setAdminShiftPromptSkipped(false);
 
@@ -3739,6 +4188,13 @@ export default function TerminalPage() {
     setTerminalUnlockMode('shift_start');
     setTerminalUnlockModalOpen(false);
     setStockAlertSummary({ open: false, almostOutOfStock: [], outOfStock: [] });
+  };
+
+  const handlePostShiftReturnToLogin = async () => {
+    setPostShiftHandoff(null);
+    setZReadingCloseConfirmOpen(false);
+    setZReadingClosePin('');
+    await handleLock();
   };
 
   const dismissStockAlertSummary = useCallback(() => {
@@ -4032,7 +4488,9 @@ export default function TerminalPage() {
     setShiftActionLoading((prev) => ({ ...prev, close: true }));
     try {
       const closeResult = await closeTerminalShift(activeShiftId, payload);
-      await printClosedShiftSummary(closeResult);
+      await printClosedShiftSummary(closeResult, {
+        openBrowserFallback: preserveAdminNavigation
+      });
       if (preserveAdminNavigation) {
         toast.success('Shift closed successfully.');
         setCloseShiftConfirmOpen(false);
@@ -4050,7 +4508,7 @@ export default function TerminalPage() {
         setPosViewMode('shift_controls');
         return;
       }
-      toast.success('Shift closed successfully. Sign in to start the next shift.');
+      toast.success('Shift closed successfully. Review the branch Day Close status before leaving the terminal.');
       setCloseShiftConfirmOpen(false);
       setCloseShiftForm({ closingCashAmount: '', closingNote: '' });
       setShiftState({
@@ -4059,20 +4517,13 @@ export default function TerminalPage() {
         cashSummary: null,
         salesSummary: null
       });
-      setCashierUnlockSession(null);
       setCashierResumeContext(null);
       setCashierResumeForm({ identifier: '', password: '' });
-      clearClientSession({
-        reason: 'shift_closed',
-        broadcast: true,
-        emitAuthEvents: true,
-        redirectTo: null
-      });
       setTerminalUnlockRequired(false);
       setTerminalUnlockMode('shift_start');
-      setStoredTerminalLock(true);
-      setStoredTerminalLockReason('shift_closed');
-      setLocked(true);
+      setStoredTerminalLock(false);
+      setStoredTerminalLockReason('');
+      setLocked(false);
       setDgfyAdminBypassActive(false);
       setTerminalUnlockForm({
         terminalId: sanitizeTerminalId(activeTerminalId) || resolveSelectedLoginTerminalId(),
@@ -4083,9 +4534,14 @@ export default function TerminalPage() {
         openingNote: ''
       });
       setTerminalUnlockModalOpen(false);
-      setDrawerOpen(true);
+      setDrawerOpen(false);
       setMobileNavOpen(false);
-      setPosViewMode('checkout');
+      setPosViewMode('shift_controls');
+      await openPostShiftHandoff({
+        source: 'shift_close',
+        closeResult,
+        initialReadiness: closeResult?.day_close_readiness || null
+      });
     } catch (error) {
       if (isRetryableTerminalOperationError(error)) {
         await enqueueTerminalOperationIntent(queueEntry, 'network_failure');
@@ -4198,7 +4654,7 @@ export default function TerminalPage() {
 
     const outcome = await posHardware.printReceipt({
       transaction: detail,
-      businessSettings: { pos_business_name: 'DGFY' },
+      businessSettings: terminalMeta.businessSettings,
       receiptContract: null,
       openDrawerAfterPrint: false,
       transactionId: normalizedId,
@@ -4216,7 +4672,7 @@ export default function TerminalPage() {
       toast.success('Online order receipt printed.');
     }
     return outcome;
-  }, [activeTerminalId, posHardware]);
+  }, [activeTerminalId, posHardware, terminalMeta.businessSettings]);
 
   const printOnlineOrderKitchenTicket = useCallback(async (order) => {
     const lines = Array.isArray(order?.lines) ? order.lines : [];
@@ -4609,7 +5065,10 @@ export default function TerminalPage() {
       }
     }
     if (requiresOpenShift && !isSettingsViewMode && !isShiftExemptViewMode && !canAdminBypassShiftPrompt) {
-      toast.error('You cannot use the POS because the shift is closed.');
+      const shiftClosedToastId = toast.error('You cannot use the POS because the shift is closed.');
+      if (shiftClosedToastId) {
+        shiftClosedToastIdRef.current = shiftClosedToastId;
+      }
       setMobileNavOpen(false);
       return;
     }
@@ -4626,6 +5085,10 @@ export default function TerminalPage() {
         setMobileNavOpen(false);
         return;
       }
+    }
+    if (isShiftExemptViewMode && shiftClosedToastIdRef.current) {
+      toast.dismiss(shiftClosedToastIdRef.current);
+      shiftClosedToastIdRef.current = null;
     }
     commitViewModeSelection(nextMode);
   }, [
@@ -4870,6 +5333,7 @@ export default function TerminalPage() {
     !drawerOpen
     && !terminalUnlockModalOpen
     && !terminalUnlockRequired
+    && !postShiftHandoff
     && requiresOpenShift
     && canViewPos
     && !shiftOpenPromptBlockedBySetup
@@ -5713,6 +6177,7 @@ function PosRestorationLoadingScreen() {
           <ShiftCloseSummaryPrintView
             report={closedShiftReport}
             currency={terminalMeta.pettyCashSymbol || DEFAULT_CURRENCY}
+            businessSettings={terminalMeta.businessSettings}
             autoPrint={closedShiftReportAutoPrint}
             title={closedShiftReportAutoPrint ? 'Cashier Shift Sales Summary' : 'Current Shift Sales Summary'}
             onPrint={() => printClosedShiftSummary(closedShiftReport, {
@@ -5725,10 +6190,121 @@ function PosRestorationLoadingScreen() {
             }}
           />
         )}
+        <Dialog open={Boolean(postShiftHandoff)} onOpenChange={(open) => {
+          if (!open && !shiftActionLoading.zReading) {
+            void handlePostShiftReturnToLogin();
+          }
+        }}>
+          <DialogContent className="max-w-lg border border-slate-200 p-0 shadow-2xl">
+            <DialogHeader className="border-b border-slate-100 px-5 py-4">
+              <DialogTitle className="text-lg font-extrabold text-[#0F172A]">
+                {postShiftHandoff?.source === 'shift_close' ? 'Shift Closed Successfully' : 'Day Close / Z-reading'}
+              </DialogTitle>
+              <DialogDescription className="text-sm leading-6 text-slate-600">
+                Selling is locked until a new cashier shift is opened. Review the branch status before leaving this terminal.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3 px-5 py-5">
+              {postShiftHandoff?.closeResult ? (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                  Your cashier shift is closed and its sales summary is saved. This does not close the branch business day.
+                </div>
+              ) : (
+                <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+                  Day Close was opened without starting a cashier shift or unlocking checkout.
+                </div>
+              )}
+
+              {postShiftHandoff?.loading ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-4 py-3 text-sm font-semibold text-slate-600" role="status">
+                  Checking all cashier shifts in this branch...
+                </div>
+              ) : null}
+
+              {postShiftHandoff?.errorMessage ? (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700" role="alert">
+                  {postShiftHandoff.errorMessage}
+                </div>
+              ) : null}
+
+              {postShiftHandoff?.readiness?.authorized === false ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  Your shift is closed, but this account cannot generate a Z-reading. An authorized cashier or manager can use Day Close from the terminal login screen.
+                </div>
+              ) : null}
+
+              {postShiftHandoff?.readiness?.authorized !== false && postShiftHandoff?.readiness?.ready ? (
+                <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+                  {postShiftHandoff.readiness.already_closed
+                    ? `The Z-reading is already generated${postShiftHandoff.readiness.reading_identifier ? ` (${postShiftHandoff.readiness.reading_identifier})` : ''}. You may print it again.`
+                    : 'All cashier shifts are closed. The branch Z-reading is ready to generate.'}
+                </div>
+              ) : null}
+
+              {postShiftHandoff?.readiness?.authorized !== false && postShiftHandoff?.readiness && !postShiftHandoff.readiness.ready ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                  <p className="font-extrabold">
+                    Z-reading unavailable: {Number(postShiftHandoff.readiness.open_shift_count || 0)} cashier shift{Number(postShiftHandoff.readiness.open_shift_count || 0) === 1 ? '' : 's'} still open.
+                  </p>
+                  {Array.isArray(postShiftHandoff.readiness.open_shifts) && postShiftHandoff.readiness.open_shifts.length > 0 ? (
+                    <ul className="mt-2 space-y-1 text-xs">
+                      {postShiftHandoff.readiness.open_shifts.map((shift) => (
+                        <li key={shift.shift_id || `${shift.terminal_id}-${shift.cashier_name}`}>
+                          {shift.terminal_id || 'Unknown terminal'} — {shift.cashier_name || 'Unknown cashier'}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                </div>
+              ) : null}
+            </div>
+            <DialogFooter className="flex flex-wrap gap-2 border-t border-slate-100 px-5 py-4 sm:justify-end">
+              {postShiftHandoff?.closeResult ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => printClosedShiftSummary(postShiftHandoff.closeResult, { reason: 'post_shift_summary_reprint' })}
+                  disabled={shiftActionLoading.zReading}
+                >
+                  Print Shift Summary
+                </Button>
+              ) : null}
+              {postShiftHandoff?.readiness?.authorized !== false ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={refreshPostShiftDayCloseReadiness}
+                  disabled={postShiftHandoff?.loading || shiftActionLoading.zReading || !isOnline}
+                >
+                  {postShiftHandoff?.loading ? 'Checking...' : 'Refresh Status'}
+                </Button>
+              ) : null}
+              <Button type="button" variant="outline" onClick={handlePostShiftReturnToLogin} disabled={shiftActionLoading.zReading}>
+                Return to Login
+              </Button>
+              {postShiftHandoff?.readiness?.authorized !== false ? (
+                <Button
+                  type="button"
+                  onClick={handleCloseDay}
+                  disabled={
+                    postShiftHandoff?.loading
+                    || shiftActionLoading.zReading
+                    || !postShiftHandoff?.readiness?.ready
+                    || !isOnline
+                  }
+                  className="bg-emerald-600 text-white hover:bg-emerald-700"
+                >
+                  {postShiftHandoff?.readiness?.already_closed ? 'Reprint Z-reading' : 'Generate Z-reading'}
+                </Button>
+              ) : null}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
         {zReadingPrintOpen && zReadingReport && (
           <ZReadingPrintView
             report={zReadingReport}
             currency={terminalMeta.pettyCashSymbol || DEFAULT_CURRENCY}
+            businessSettings={terminalMeta.businessSettings}
             autoPrint={zReadingPrintAutoPrint}
             printState={zReadingPrintState}
             onPrint={() => printZReading(zReadingReport, {
@@ -5739,6 +6315,9 @@ function PosRestorationLoadingScreen() {
               setZReadingReport(null);
               setZReadingPrintAutoPrint(false);
               setZReadingPrintState('idle');
+              if (postShiftHandoff) {
+                void handlePostShiftReturnToLogin();
+              }
             }}
           />
         )}
@@ -5758,6 +6337,21 @@ function PosRestorationLoadingScreen() {
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800">
                 The Z-reading is branch-wide and includes financially recognized sales from all cashiers and completed online orders.
               </div>
+              {dayCloseReadinessState.loading ? (
+                <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-600" role="status">
+                  Rechecking every cashier shift before Day Close...
+                </div>
+              ) : null}
+              {dayCloseReadinessState.errorMessage ? (
+                <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700" role="alert">
+                  {dayCloseReadinessState.errorMessage}
+                </div>
+              ) : null}
+              {dayCloseReadinessState.readiness && !dayCloseReadinessState.readiness.ready ? (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
+                  Close every cashier shift in this branch before generating the Z-reading.
+                </div>
+              ) : null}
               <div>
                 <Label htmlFor="z-reading-day-close-pin">Your POS Day Close PIN</Label>
                 <Input
@@ -5769,7 +6363,7 @@ function PosRestorationLoadingScreen() {
                   autoComplete="one-time-code"
                   placeholder="4 to 12 digits"
                   className="mt-1"
-                  disabled={shiftActionLoading.zReading}
+                  disabled={shiftActionLoading.zReading || dayCloseReadinessState.loading || dayCloseReadinessState.readiness?.ready !== true}
                 />
               </div>
             </div>
@@ -5777,9 +6371,51 @@ function PosRestorationLoadingScreen() {
               <Button type="button" variant="outline" onClick={() => setZReadingCloseConfirmOpen(false)} disabled={shiftActionLoading.zReading}>
                 Cancel
               </Button>
-              <Button type="button" onClick={confirmCloseDay} disabled={shiftActionLoading.zReading}>
+              <Button
+                type="button"
+                data-testid="pos-close-day-confirm"
+                onClick={confirmCloseDay}
+                disabled={
+                  shiftActionLoading.zReading
+                  || dayCloseReadinessState.loading
+                  || dayCloseReadinessState.readiness?.ready !== true
+                  || !/^\d{4,12}$/.test(zReadingClosePin)
+                }
+              >
                 {shiftActionLoading.zReading ? 'Closing Day...' : 'Confirm & Print Z-reading'}
               </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+        <Dialog open={myDayClosePinOpen} onOpenChange={(open) => {
+          if (myDayClosePinSaving) return;
+          setMyDayClosePinOpen(open);
+          if (!open) setMyDayClosePinForm({ currentPassword: '', pin: '', confirmation: '' });
+        }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>My POS Day Close PIN</DialogTitle>
+              <DialogDescription>
+                This personal PIN is used only to confirm a Z-reading for the current company. Your Master Admin can see its status but cannot view the PIN.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div>
+                <Label htmlFor="my-day-close-current-password">Current account password</Label>
+                <Input id="my-day-close-current-password" value={myDayClosePinForm.currentPassword} onChange={(event) => setMyDayClosePinForm((current) => ({ ...current, currentPassword: event.target.value }))} type="password" autoComplete="current-password" className="mt-1" disabled={myDayClosePinSaving} />
+              </div>
+              <div>
+                <Label htmlFor="my-day-close-pin">New Day Close PIN</Label>
+                <Input id="my-day-close-pin" value={myDayClosePinForm.pin} onChange={(event) => setMyDayClosePinForm((current) => ({ ...current, pin: event.target.value.replace(/\D/g, '').slice(0, 12) }))} type="password" inputMode="numeric" autoComplete="new-password" placeholder="4 to 12 digits" className="mt-1" disabled={myDayClosePinSaving} />
+              </div>
+              <div>
+                <Label htmlFor="my-day-close-pin-confirmation">Confirm new Day Close PIN</Label>
+                <Input id="my-day-close-pin-confirmation" value={myDayClosePinForm.confirmation} onChange={(event) => setMyDayClosePinForm((current) => ({ ...current, confirmation: event.target.value.replace(/\D/g, '').slice(0, 12) }))} type="password" inputMode="numeric" autoComplete="new-password" placeholder="Re-enter PIN" className="mt-1" disabled={myDayClosePinSaving} />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => setMyDayClosePinOpen(false)} disabled={myDayClosePinSaving}>Cancel</Button>
+              <Button type="button" onClick={saveMyDayClosePin} disabled={myDayClosePinSaving}>{myDayClosePinSaving ? 'Saving...' : 'Save PIN'}</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -5812,6 +6448,9 @@ function PosRestorationLoadingScreen() {
           canAdjustCashDrawer={canAdjustCashDrawer}
           canCloseShift={canCloseShift}
           canCloseDay={canCloseDay}
+          dayCloseReadinessState={dayCloseReadinessState}
+          refreshDayCloseReadiness={refreshDayCloseReadiness}
+          onOpenMyDayClosePin={openMyDayClosePin}
           canAdminBypassShiftPrompt={canAdminBypassShiftPrompt}
           canOpenShift={canOpenShift}
           terminalUser={terminalUser}
@@ -5922,6 +6561,7 @@ function PosRestorationLoadingScreen() {
           emailCompanyLookup={emailCompanyLookup}
           submitting={submitting}
           handleLogin={handleDgfyPosLogin}
+          handleDayCloseLogin={(event) => handleDgfyPosLogin(event, { intent: 'day_close' })}
           handleIdentityChange={handleDgfyPosIdentityChange}
           handleUseDifferentAccount={handleUseDifferentDgfyAccount}
           handleLegacyLogin={handleLogin}

@@ -364,7 +364,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("const canCloseShift = hasPermission('pos:shift_close') || hasPermission('pos:close_day');");
     expect(terminalPageContent).toContain('canCloseShift={canCloseShift}');
     expect(terminalPageContent).toContain('canCloseDay={canCloseDay}');
-    expect(terminalPageContent).toContain('const handleCloseDay = useCallback(() => {');
+    expect(terminalPageContent).toContain('const handleCloseDay = useCallback(async () => {');
     expect(terminalPageContent).toContain('setZReadingCloseConfirmOpen(true);');
     expect(terminalPageContent).toContain('closePosDay(null, { dayClosePin: zReadingClosePin })');
     expect(terminalPageContent).toContain('<ZReadingPrintView');

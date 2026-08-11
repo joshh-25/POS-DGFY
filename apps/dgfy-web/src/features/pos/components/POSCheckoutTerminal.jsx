@@ -3137,6 +3137,8 @@ export default function POSCheckoutTerminal({
                         businessSettings: receiptSettings,
                         receiptContract,
                         openDrawerAfterPrint: isCashPayment,
+                        shiftId: activeShiftId,
+                        transactionId: completedTransaction?.pos_transaction_id,
                         terminalId: normalizedTerminalId,
                         reason: 'checkout_auto_print'
                     });
@@ -3237,6 +3239,7 @@ export default function POSCheckoutTerminal({
                 businessSettings: receiptSettings,
                 receiptContract: inferReceiptContract(transaction),
                 openDrawerAfterPrint: shouldOpenDrawer,
+                shiftId: activeShiftId,
                 transactionId,
                 terminalId: normalizedTerminalId || undefined,
                 reason,
@@ -3257,7 +3260,7 @@ export default function POSCheckoutTerminal({
         } finally {
             setReceiptPrinting(false);
         }
-    }, [normalizedTerminalId, posHardware, receiptSettings]);
+    }, [activeShiftId, normalizedTerminalId, posHardware, receiptSettings]);
 
     const handlePrintOrder = useCallback(async () => {
         if (safeCart.length === 0) {
@@ -5336,6 +5339,7 @@ export default function POSCheckoutTerminal({
             ), document.body)}
 
             <ServiceOptionsModal
+                key={`${serviceOptionsModal.open ? 'open' : 'closed'}:${serviceOptionsModal.item?.item_id || 'none'}`}
                 open={serviceOptionsModal.open}
                 onOpenChange={(open) => {
                     if (!open) setServiceOptionsModal({ open: false, item: null, groups: [] });
@@ -5345,6 +5349,7 @@ export default function POSCheckoutTerminal({
                 onConfirmOptions={handleConfirmServiceOptions}
             />
             <FnbModifierPickerDialog
+                key={fnbModifierLineKey || 'closed'}
                 open={Boolean(fnbModifierLineKey)}
                 line={safeCart.find((line) => getLineKey(line) === fnbModifierLineKey) || null}
                 locationId={selectedLocationId}

@@ -56,6 +56,7 @@ import {
     STOREFRONT_PROMOS_SETTING_KEY,
     buildCommercialPromoUsageUpdate
 } from '../../shared/utils/commercialPromoPolicy.js';
+import { normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
 
 const VAT_RATE = 0.12;
 const INVOICE_COUNTER_KEY = 'POS_OR';
@@ -524,8 +525,12 @@ const normalizeZReadingSummary = (summary = {}) => ({
     item_count: round4(summary?.item_count),
     discount_item_count: round4(summary?.discount_item_count),
     total_cost: round4(summary?.total_cost),
+    void_transaction_count: Number.parseInt(summary?.void_transaction_count || 0, 10),
+    void_amount: round4(summary?.void_amount),
+    voided_item_count: round4(summary?.voided_item_count),
     refund_amount: round4(summary?.refund_amount),
     refunded_item_count: round4(summary?.refunded_item_count),
+    provider_refunds_included: summary?.provider_refunds_included === true,
     net_profit: round4(summary?.net_profit),
     daily_totals: Array.isArray(summary?.daily_totals)
         ? summary.daily_totals.map((entry) => ({
@@ -536,8 +541,12 @@ const normalizeZReadingSummary = (summary = {}) => ({
             item_count: round4(entry?.item_count),
             discount_item_count: round4(entry?.discount_item_count),
             total_cost: round4(entry?.total_cost),
+            void_transaction_count: Number.parseInt(entry?.void_transaction_count || 0, 10),
+            void_amount: round4(entry?.void_amount),
+            voided_item_count: round4(entry?.voided_item_count),
             refund_amount: round4(entry?.refund_amount),
             refunded_item_count: round4(entry?.refunded_item_count),
+            provider_refunds_included: entry?.provider_refunds_included === true,
             net_profit: round4(entry?.net_profit)
         }))
         : [],
@@ -552,13 +561,7 @@ const normalizeZReadingSummary = (summary = {}) => ({
             net_profit: round4(entry?.net_profit)
         }))
         : [],
-    payment_breakdown: Array.isArray(summary?.payment_breakdown)
-        ? summary.payment_breakdown.map((entry) => ({
-            payment_type: entry?.payment_type || null,
-            count: Number.parseInt(entry?.count || 0, 10),
-            amount: round4(entry?.amount)
-        }))
-        : [],
+    payment_breakdown: normalizePosPaymentBreakdown(summary?.payment_breakdown),
     order_method_breakdown: Array.isArray(summary?.order_method_breakdown)
         ? summary.order_method_breakdown.map((entry) => ({
             order_method: entry?.order_method || null,
@@ -600,6 +603,37 @@ const buildPersistedZReadingData = ({
             lifetime_grand_total_cents: lifetimeGrandTotalCents,
             lifetime_grand_total: fromCurrencyCents(lifetimeGrandTotalCents)
         }
+    };
+};
+
+const serializeOpenDayCloseShifts = (openShifts = []) => (
+    Array.isArray(openShifts)
+        ? openShifts.map((shift) => ({
+            shift_id: parsePositiveInt(shift?.pos_terminal_shift_id),
+            terminal_id: String(shift?.terminal_id || '').trim() || null,
+            cashier_name: String(shift?.cashier?.username || shift?.cashier?.email || '').trim() || null,
+            opened_at: shift?.opened_at || null
+        }))
+        : []
+);
+
+const buildDayCloseReadinessData = ({
+    businessDate,
+    locationId,
+    openShifts = [],
+    existingSnapshot = null
+}) => {
+    const serializedOpenShifts = serializeOpenDayCloseShifts(openShifts);
+    const alreadyClosed = Boolean(existingSnapshot);
+    return {
+        business_date: businessDate,
+        location_id: parsePositiveInt(locationId),
+        ready: alreadyClosed || serializedOpenShifts.length === 0,
+        already_closed: alreadyClosed,
+        open_shift_count: serializedOpenShifts.length,
+        open_shifts: serializedOpenShifts,
+        reading_identifier: existingSnapshot?.reading_identifier || null,
+        generated_at: existingSnapshot?.generated_at || existingSnapshot?.created_at || null
     };
 };
 
@@ -1890,7 +1924,9 @@ const resolveFnbLineModifiers = ({ item, line, hasFnbCheckoutContext, locationId
             continue;
         }
         const through = group.FnbItemModifierGroup || group.fnbItemModifierGroup || {};
-        const required = through.is_required_override == null ? group.required === true : through.is_required_override === true;
+        const required = through.is_required_override == null
+            ? group.required === true || Number.parseInt(group.min_select || 0, 10) > 0
+            : through.is_required_override === true;
         const minSelect = required ? Math.max(1, Number.parseInt(group.min_select || 0, 10) || 0) : Number.parseInt(group.min_select || 0, 10) || 0;
         const maxSelect = Math.max(1, Number.parseInt(group.max_select || 1, 10) || 1);
         const selectedOptionIds = requestedByGroup.get(groupId) || [];
@@ -4409,6 +4445,56 @@ export const buildGetPosTransactionByIdUseCase = ({ posRepository }) => {
     };
 };
 
+export const buildGetDayCloseReadinessUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosOperationalLocationScope
+}) => {
+    return async ({ businessDateInput, user = null, locationId = null }) => {
+        const userId = parsePositiveInt(user?.user_id);
+        if (!userId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated user is required to check POS day-close readiness',
+                { statusCode: 401 }
+            ));
+        }
+
+        try {
+            const locationScope = await resolveLocationScope({
+                requestedLocationId: locationId,
+                userId,
+                operationLabel: 'POS day-close readiness'
+            });
+            const resolvedLocationId = parsePositiveInt(locationScope?.location_id);
+            if (!resolvedLocationId) {
+                throw new DomainError(
+                    DomainErrorCode.VALIDATION_FAILED,
+                    'POS day-close readiness requires a resolved location scope.',
+                    { statusCode: 422 }
+                );
+            }
+
+            const { businessDate } = buildBusinessDateRange(businessDateInput || new Date());
+            const [openShifts, existingSnapshot] = await Promise.all([
+                posRepository.listOpenTerminalShiftsForLocation({ locationId: resolvedLocationId }),
+                posRepository.getLatestZReadingSnapshotByBusinessDate(
+                    businessDate,
+                    { locationId: resolvedLocationId }
+                )
+            ]);
+
+            return ok(buildDayCloseReadinessData({
+                businessDate,
+                locationId: resolvedLocationId,
+                openShifts,
+                existingSnapshot
+            }));
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to check POS day-close readiness'));
+        }
+    };
+};
+
 export const buildCloseDayZReadingUseCase = ({
     posRepository,
     resolveLocationScope = resolvePosOperationalLocationScope,
@@ -6463,6 +6549,13 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                 transaction,
                 lock: true
             });
+            const shiftLocationId = parsePositiveInt(shiftPayload?.location_id);
+            const remainingOpenShifts = shiftLocationId
+                ? await posRepository.listOpenTerminalShiftsForLocation(
+                    { locationId: shiftLocationId },
+                    { transaction, lock: true }
+                )
+                : [];
             const replayPayload = {
                 compliance_decision: complianceDecision,
                 shift_authorization: shiftAuthorization,
@@ -6473,7 +6566,12 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                     expected_cash_amount: expectedCashAmount,
                     cash_variance_amount: variance
                 },
-                sales_summary: salesSummary
+                sales_summary: salesSummary,
+                day_close_readiness: buildDayCloseReadinessData({
+                    businessDate: buildBusinessDateRange(new Date()).businessDate,
+                    locationId: shiftLocationId,
+                    openShifts: remainingOpenShifts
+                })
             };
             await createShiftAuditLog({
                 posRepository,

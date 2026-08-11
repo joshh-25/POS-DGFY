@@ -34,6 +34,7 @@ import {
     buildUpdateESalesReportStatusUseCase,
     buildUpsertFiscalTerminalRegistrationUseCase,
     buildListFiscalTerminalRegistrationsUseCase,
+    buildGetDayCloseReadinessUseCase,
     buildCloseDayZReadingUseCase,
     buildGetDailyZReadingUseCase,
     buildGetCurrentXReadingUseCase,
@@ -114,6 +115,7 @@ export const verifyFiscalEventLedgerUseCase = buildVerifyFiscalEventLedgerUseCas
 export const updateESalesReportStatusUseCase = buildUpdateESalesReportStatusUseCase({ posRepository });
 export const upsertFiscalTerminalRegistrationUseCase = buildUpsertFiscalTerminalRegistrationUseCase({ posRepository });
 export const listFiscalTerminalRegistrationsUseCase = buildListFiscalTerminalRegistrationsUseCase({ posRepository });
+export const getDayCloseReadinessUseCase = buildGetDayCloseReadinessUseCase({ posRepository });
 export const closeDayZReadingUseCase = buildCloseDayZReadingUseCase({ posRepository });
 export const getDailyZReadingUseCase = buildGetDailyZReadingUseCase({ posRepository });
 export const getCurrentXReadingUseCase = buildGetCurrentXReadingUseCase({ posRepository });

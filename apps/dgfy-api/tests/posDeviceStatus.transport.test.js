@@ -25,6 +25,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     upsertFiscalTerminalRegistrationUseCase: jest.fn(),
     listFiscalTerminalRegistrationsUseCase: jest.fn(),
     closeDayZReadingUseCase: jest.fn(),
+    getDayCloseReadinessUseCase: jest.fn(),
     getDailyZReadingUseCase: jest.fn(),
     getCurrentXReadingUseCase: jest.fn(),
     incrementGovernedResetCounterUseCase: jest.fn(),

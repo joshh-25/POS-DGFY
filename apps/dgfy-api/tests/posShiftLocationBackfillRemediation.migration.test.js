@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { describe, expect, it } from '@jest/globals';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -10,6 +11,8 @@ describe('POS shift location remediation migration safety', () => {
         const migrationPath = path.join(
             __dirname,
             '..',
+            '..',
+            'dgfy-migration-runner',
             'migrations',
             '20260421000002-remediate-pos-shift-location-backfill.cjs'
         );
@@ -22,5 +25,6 @@ describe('POS shift location remediation migration safety', () => {
         expect(content).toContain('migration_tag');
         expect(content).toContain('resolveShiftLocationCandidate');
         expect(content).toContain('LOW_CONFIDENCE_RESOLUTION_SOURCES');
+        expect(content).not.toContain("import('../src/modules/pos/utils/shiftLocationResolution.js')");
     });
 });

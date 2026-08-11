@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-08-04
-last_reviewed: 2026-08-04
+last_reviewed: 2026-08-11
 review_by: 2027-02-04
 applies_to: pos_hardware_device_integration
 topic: pluggable_pos_hardware_device_drivers
@@ -14,7 +14,7 @@ supersedes_in_part: docs/architecture/adr/0025-pos-application-shells-and-lan-ho
 
 ## Status
 
-Accepted (2026-08-04)
+Amended (2026-08-11)
 
 ## Context
 
@@ -160,4 +160,10 @@ required since behavior for existing hardware is unchanged.
 
 ## Amendments
 
-None yet.
+### 2026-08-11: Awaited Client-Driver Audit Confirmation
+
+- Clause amended: Decision clause 7 (`default`).
+- A client driver that physically executes a receipt print, report print, or drawer pulse must await the backend audit response before returning its final command result. Transient network/server failures may retry the audit request with the same idempotency key; they must never repeat the physical action.
+- Physical success and audit confirmation are separate result dimensions. If hardware succeeds but audit confirmation is exhausted, the result keeps `success: true`, sets `auditConfirmed: false`, and shows an actionable warning so the operator retains the physical evidence and reconnects instead of printing again.
+- A drawer pulse requires an active shift identifier before the hardware call. Receipt printing may proceed without a drawer pulse, but a requested drawer action with no auditable shift context must fail closed before physical execution.
+- A receipt that also opens the drawer produces distinct receipt-print and drawer-open audit records because the two physical actions have separate accountability semantics.

@@ -17,6 +17,7 @@ import {
     updateESalesReportStatusUseCase,
     upsertFiscalTerminalRegistrationUseCase,
     listFiscalTerminalRegistrationsUseCase,
+    getDayCloseReadinessUseCase,
     closeDayZReadingUseCase,
     getDailyZReadingUseCase,
     getCurrentXReadingUseCase,
@@ -1237,6 +1238,28 @@ export const closeDayZReading = async (req, res, next) => {
     }
 };
 
+export const getDayCloseReadiness = async (req, res, next) => {
+    try {
+        const result = await getDayCloseReadinessUseCase({
+            businessDateInput: req.query?.business_date || null,
+            user: req.user,
+            locationId: req.posTerminalRegistration?.location_id || null
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const getDailyZReading = async (req, res, next) => {
     try {
         const result = await getDailyZReadingUseCase({
@@ -1475,6 +1498,7 @@ export default {
     getReportsOverview,
     exportReports,
     getTransactionById,
+    getDayCloseReadiness,
     closeDayZReading,
     getDailyZReading,
     getCurrentXReading,

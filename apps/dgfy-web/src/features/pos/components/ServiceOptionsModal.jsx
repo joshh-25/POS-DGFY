@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   Dialog,
@@ -26,11 +26,6 @@ export function ServiceOptionsModal({
     () => optionGroups.filter((group) => group.group_type !== 'addon' || addonsEnabled),
     [addonsEnabled, optionGroups]
   );
-
-  useEffect(() => {
-    if (!open) return;
-    setSelectedOptionIds([]);
-  }, [open, serviceItem?.item_id]);
 
   // Flatten options from groups to compute client preview
   const allOptions = useMemo(() => {

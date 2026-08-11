@@ -4,6 +4,7 @@ import { ok, fail } from '../../shared/contracts/applicationResult.js';
 import { unwrapApplicationResultOrThrow } from '../../shared/contracts/applicationResultHelpers.js';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 import { mapPosUseCaseError } from './posUseCaseError.js';
+import { normalizePosPaymentBreakdown } from '../utils/paymentBreakdown.js';
 
 const POS_DEVICE_OPERATION_KEYS = Object.freeze({
     RECEIPT_PRINT: 'terminal.device_receipt_print',
@@ -166,12 +167,16 @@ const buildAuditMetadata = (auditContext = {}) => ({
 
 const buildBusinessSettings = (settings = {}) => ({
     name: settings?.pos_business_name?.value || 'DGFY',
+    registered_name: settings?.pos_registered_name?.value || '',
+    business_style: settings?.pos_business_style?.value || '',
+    taxpayer_type: settings?.pos_taxpayer_type?.value || '',
     address: settings?.pos_address?.value || '',
     tin_branch: settings?.pos_tin_branch?.value || '',
     ptu_number: settings?.pos_ptu_number?.value || '',
     min_number: settings?.pos_min_number?.value || '',
     accreditation_number: settings?.pos_accreditation_number?.value || '',
-    footer_message: settings?.pos_receipt_footer_message?.value || ''
+    footer_message: settings?.pos_receipt_footer_message?.value || '',
+    profile_image_url: settings?.storefront_profile_image_url?.value || ''
 });
 
 const buildReceiptPayload = ({ transaction, settings }) => {
@@ -291,6 +296,11 @@ const buildShiftSummaryPayload = async ({ posRepository, shift, settings, transa
             ...eventSummary
         },
         sales_summary: salesSummary
+            ? {
+                ...salesSummary,
+                payment_breakdown: normalizePosPaymentBreakdown(salesSummary.payment_breakdown)
+            }
+            : null
     };
 };
 
@@ -732,6 +742,7 @@ export const buildPrintPosZReadingUseCase = ({ posRepository, deviceDriver }) =>
             }
 
             const allSettings = unwrapApplicationResultOrThrow(await getAllSettingsUseCase());
+            const snapshotSummary = parseJsonObject(snapshot.summary);
             const zReading = {
                 business: buildBusinessSettings(allSettings),
                 z_reading: {
@@ -740,7 +751,12 @@ export const buildPrintPosZReadingUseCase = ({ posRepository, deviceDriver }) =>
                     location_id: snapshot.location_id || locationId,
                     reading_identifier: snapshot.reading_identifier || null,
                     generated_at: snapshot.generated_at || snapshot.created_at || null,
-                    summary: parseJsonObject(snapshot.summary),
+                    summary: {
+                        ...snapshotSummary,
+                        payment_breakdown: normalizePosPaymentBreakdown(
+                            snapshotSummary?.payment_breakdown
+                        )
+                    },
                     z_counter_value: Number.parseInt(snapshot.z_counter_value || 0, 10),
                     reset_counter_value: Number.parseInt(snapshot.reset_counter_value || 0, 10),
                     lifetime_grand_total_cents: Number.parseInt(snapshot.lifetime_grand_total_cents || 0, 10)

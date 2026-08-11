@@ -161,6 +161,25 @@ describe('tenant schema sync script contracts', () => {
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.delivery_jobs).toHaveProperty('idx_delivery_jobs_assignment_shift');
   });
 
+  it('registers the complete location-scoped Z-reading snapshot contract', () => {
+    const repairs = buildTenantSchemaRepairSql([
+      { table: 'pos_z_reading_snapshots', column: 'location_id' },
+      { table: 'pos_z_reading_snapshots', column: 'closed_by_user_id' },
+      { table: 'pos_z_reading_snapshots', column: 'closed_from_terminal_id' },
+      { table: 'pos_z_reading_snapshots', column: 'day_close_pin_confirmed_at' }
+    ]);
+
+    expect(repairs).toHaveLength(4);
+    expect(repairs[0].sql).toContain('ADD COLUMN `location_id`');
+    expect(repairs[1].sql).toContain('ADD COLUMN `closed_by_user_id`');
+    expect(repairs[2].sql).toContain('ADD COLUMN `closed_from_terminal_id`');
+    expect(repairs[3].sql).toContain('ADD COLUMN `day_close_pin_confirmed_at`');
+    expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_z_reading_snapshots)
+      .toHaveProperty('uq_pos_z_reading_snapshots_business_date_location');
+    expect(REQUIRED_TENANT_SCHEMA_INDEXES.pos_z_reading_snapshots)
+      .toHaveProperty('idx_pos_z_reading_snapshots_closed_by_user');
+  });
+
   it('registers Phase 20 F&B modifier columns and conditional-group index', () => {
     const repairs = buildTenantSchemaRepairSql([
       { table: 'fnb_modifier_groups', column: 'group_kind' },

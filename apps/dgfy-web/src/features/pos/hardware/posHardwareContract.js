@@ -23,8 +23,9 @@ export const normalizeHardwareResult = ({
     driverId = null,
     message = null,
     reasonCode = null,
-    raw = null
-} = {}) => ({ handled, success, driverId, message, reasonCode, raw });
+    raw = null,
+    auditConfirmed = null
+} = {}) => ({ handled, success, driverId, message, reasonCode, raw, auditConfirmed });
 
 export const NO_PRINTER_REASON_CODE = 'NO_PRINTER_CONFIGURED';
 

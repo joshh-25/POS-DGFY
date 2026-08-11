@@ -39,6 +39,9 @@ describe('mode RBAC route contracts', () => {
     // before any permission check, on every route.
     expect(source).toContain("const requireFnbDining = requireWorkflowCapability('fnbDining', 'Food & Beverage')");
     expect(source).toContain("const requireMenuModifiers = requireWorkflowCapability('menuModifiers', 'Menu Modifiers')");
+    expect(source).toContain("const requireTableService = requireWorkflowCapability('tableService', 'Table Service')");
+    expect(source).toContain("const requireKitchenQueue = requireWorkflowCapability('kitchenQueue', 'Kitchen Queue')");
+    expect(source).toContain("const requireRestaurantServiceCharge = requireWorkflowCapability('restaurantServiceCharge', 'Restaurant Service Charge')");
     expect(source).not.toContain('router.use(requireWorkflowCapability(');
     expect(source).toContain('buildModePermissionRequirements(primary, fallback)');
     expect(source).toContain('checkAnyPermission');
@@ -51,16 +54,23 @@ describe('mode RBAC route contracts', () => {
       .filter((line) => /^router\.(get|post|put|patch|delete)\(/.test(line.trim()));
 
     // Every endpoint carries a capability guard, and it precedes modePermission.
-    expect(routeLines).toHaveLength(27);
+    expect(routeLines).toHaveLength(29);
     routeLines.forEach((line) => {
-      const guard = line.includes('requireMenuModifiers') ? 'requireMenuModifiers' : 'requireFnbDining';
+      const guard = [
+        'requireMenuModifiers',
+        'requireTableService',
+        'requireKitchenQueue',
+        'requireRestaurantServiceCharge',
+        'requireFnbDining'
+      ].find((candidate) => line.includes(candidate));
+      expect(guard).toBeDefined();
       expect(line).toContain(guard);
       expect(line.indexOf(guard)).toBeLessThan(line.indexOf('modePermission('));
     });
 
-    // Exactly the five modifier-management endpoints are de-gated from fnbDining.
+    // Modifier-management endpoints are de-gated from fnbDining.
     const modifierRoutes = routeLines.filter((line) => line.includes('requireMenuModifiers'));
-    expect(modifierRoutes).toHaveLength(5);
-    expect(modifierRoutes.every((line) => /'\/(item-)?modifier-groups/.test(line))).toBe(true);
+    expect(modifierRoutes).toHaveLength(7);
+    expect(modifierRoutes.every((line) => /'\/(item-|folder-)?modifier-groups/.test(line))).toBe(true);
   });
 });

@@ -39,3 +39,40 @@ export const resolveTerminalShiftEntryDecision = ({
   };
 };
 
+export const resolveActiveShiftResumeDecision = ({
+  currentShift = null,
+  terminalRegistry = []
+} = {}) => {
+  const decision = resolveTerminalShiftEntryDecision({ currentShift });
+  if (decision.mode !== 'resume') return decision;
+
+  const activeRegistryEntry = (Array.isArray(terminalRegistry) ? terminalRegistry : [])
+    .filter((entry) => entry?.is_active !== false)
+    .find((entry) => normalizeTerminalId(entry?.terminal_id) === decision.terminalId);
+  const registryLocationId = normalizePositiveInteger(activeRegistryEntry?.location_id);
+
+  if (
+    !decision.terminalId
+    || !decision.shiftId
+    || !decision.locationId
+    || !activeRegistryEntry
+    || registryLocationId !== decision.locationId
+  ) {
+    return {
+      ...decision,
+      mode: 'blocked',
+      message: 'Your active shift is linked to an unavailable terminal. A supervisor must review the terminal assignment.'
+    };
+  }
+
+  return decision;
+};
+
+export const resolveStoredShiftUnlockMode = ({
+  lockReason = '',
+  activeShift = null
+} = {}) => {
+  if (lockReason === 'terminal_reunlock') return 'cashier_resume';
+  if (lockReason === 'shift_start_required' && activeShift) return 'resume_shift';
+  return 'shift_start';
+};

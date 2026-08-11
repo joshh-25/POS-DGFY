@@ -258,10 +258,17 @@ export const openPosDeviceDrawer = async (payload = {}, { silent = false } = {})
     }
 };
 
-// Reports a client-driver-executed hardware outcome to the backend for audit,
-// without surfacing any UI feedback (the physical action's own driver already
-// did that) and without letting an audit-call failure look like a print/drawer
-// failure to the cashier. Fire-and-forget by design.
+const CLIENT_RESULT_AUDIT_MAX_ATTEMPTS = 3;
+
+const shouldRetryClientResultAudit = (error) => {
+    const status = Number(error?.response?.status || 0);
+    return status === 0 || status >= 500;
+};
+
+// Reports a client-driver-executed hardware outcome to the backend for audit.
+// The client driver awaits this confirmation before returning its final result.
+// Transient failures are retried with the same idempotency key so a lost
+// response cannot create duplicate audit rows.
 export const reportPosDeviceClientResult = async ({
     operation,
     transactionId,
@@ -274,9 +281,9 @@ export const reportPosDeviceClientResult = async ({
     driverId,
     result
 }) => {
-    try {
+    const submit = async () => {
         if (operation === 'open_drawer') {
-            await openPosDeviceDrawer({
+            return openPosDeviceDrawer({
                 idempotency_key: idempotencyKey,
                 shift_id: shiftId,
                 transaction_id: transactionId || undefined,
@@ -285,22 +292,20 @@ export const reportPosDeviceClientResult = async ({
                 client_driver_id: driverId,
                 client_result: result
             }, { silent: true });
-            return;
         }
 
         if (operation === 'print_shift_summary') {
-            await printPosShiftSummary(shiftId, {
+            return printPosShiftSummary(shiftId, {
                 idempotency_key: idempotencyKey,
                 terminal_id: terminalId || undefined,
                 reason: reason || 'client_driver_report',
                 client_driver_id: driverId,
                 client_result: result
             }, { silent: true });
-            return;
         }
 
         if (operation === 'print_z_reading') {
-            await printPosZReading(businessDate, {
+            return printPosZReading(businessDate, {
                 idempotency_key: idempotencyKey,
                 terminal_id: terminalId || undefined,
                 location_id: locationId || undefined,
@@ -308,10 +313,9 @@ export const reportPosDeviceClientResult = async ({
                 client_driver_id: driverId,
                 client_result: result
             }, { silent: true });
-            return;
         }
 
-        await printPosReceipt({
+        return printPosReceipt({
             idempotency_key: idempotencyKey,
             transaction_id: transactionId,
             terminal_id: terminalId || undefined,
@@ -319,11 +323,21 @@ export const reportPosDeviceClientResult = async ({
             client_driver_id: driverId,
             client_result: result
         }, { silent: true });
-    } catch {
-        // Best-effort audit trail. The physical action already happened (or
-        // didn't) and was already reported to the cashier by its own driver;
-        // losing the backend audit row here must not surface as a failure.
+    };
+
+    let lastError = null;
+    for (let attempt = 1; attempt <= CLIENT_RESULT_AUDIT_MAX_ATTEMPTS; attempt += 1) {
+        try {
+            return await submit();
+        } catch (error) {
+            lastError = error;
+            if (!shouldRetryClientResultAudit(error) || attempt === CLIENT_RESULT_AUDIT_MAX_ATTEMPTS) {
+                break;
+            }
+        }
     }
+
+    throw lastError || new Error('The POS hardware audit result could not be confirmed.');
 };
 
 export const closePosDay = async (businessDate = null, { dayClosePin = '' } = {}) => {
@@ -332,6 +346,14 @@ export const closePosDay = async (businessDate = null, { dayClosePin = '' } = {}
         day_close_pin: dayClosePin
     };
     const response = await api.post('/pos/z-reading/close-day', payload, {
+        headers: getRegisteredTerminalHeaders()
+    });
+    return response.data?.data;
+};
+
+export const fetchPosDayCloseReadiness = async (businessDate = null) => {
+    const response = await api.get('/pos/z-reading/close-readiness', {
+        params: businessDate ? { business_date: businessDate } : undefined,
         headers: getRegisteredTerminalHeaders()
     });
     return response.data?.data;
