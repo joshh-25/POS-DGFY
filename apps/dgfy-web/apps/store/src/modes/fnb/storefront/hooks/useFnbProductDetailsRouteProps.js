@@ -27,6 +27,7 @@ export function useFnbProductDetailsRouteProps({
       branchLabel: selectedLocation?.name || selectedStore?.location_name || 'Main Branch',
       isMobileViewport,
       item,
+      isEditingCartLine: actions?.isEditingCartLine === true,
       modifierCounts: detailRuntime?.detailPageFnbModifierCounts || {},
       modifierGroups: detailRuntime?.detailPageFnbModifierGroups || [],
       nutritionCards: detailRuntime?.detailPageFnbNutritionCards || [],

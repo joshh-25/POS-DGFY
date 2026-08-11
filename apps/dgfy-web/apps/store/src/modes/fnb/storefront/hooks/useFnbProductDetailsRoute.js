@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   buildFnbProductDetailMetadata,
   buildDefaultFnbModifierSelections,
@@ -15,6 +15,7 @@ export function useFnbProductDetailsRoute({
   catalog,
   filteredCatalog,
   filteredFnbViewModel,
+  editingCartLine = null,
   isFnbMode,
   isSimpleMode,
   routeItemId
@@ -22,6 +23,7 @@ export function useFnbProductDetailsRoute({
   const [selectedFnbDetail, setSelectedFnbDetail] = useState(null);
   const [selectedFnbDetailQuantity, setSelectedFnbDetailQuantity] = useState(1);
   const [selectedFnbLineModifiers, setSelectedFnbLineModifiers] = useState([]);
+  const appliedEditKeyRef = useRef('');
 
   useEffect(() => {
     if (!isFnbMode) return;
@@ -33,14 +35,28 @@ export function useFnbProductDetailsRoute({
       setSelectedFnbDetailQuantity(1);
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedFnbLineModifiers([]);
+      appliedEditKeyRef.current = '';
       return;
     }
     const matchedItem = (Array.isArray(catalog) ? catalog : []).find((entry) => String(entry?.item_id) === String(routeItemId)) || null;
     setSelectedFnbDetail(matchedItem);
+    const isEditingThisLine = editingCartLine
+      && String(editingCartLine.item_id) === String(routeItemId)
+      && String(editingCartLine.cart_line_id || '').trim();
+    if (isEditingThisLine) {
+      const editKey = `${editingCartLine.cart_line_id}:${routeItemId}`;
+      if (appliedEditKeyRef.current !== editKey) {
+        setSelectedFnbDetailQuantity(Math.max(1, Number(editingCartLine.quantity || 1)));
+        setSelectedFnbLineModifiers(Array.isArray(editingCartLine.line_modifiers) ? editingCartLine.line_modifiers : []);
+        appliedEditKeyRef.current = editKey;
+      }
+      return;
+    }
+    appliedEditKeyRef.current = '';
     setSelectedFnbDetailQuantity(1);
     const groups = buildFnbProductDetailMetadata({ detailItem: matchedItem, selectedModifiers: [] }).modifierGroups;
     setSelectedFnbLineModifiers(buildDefaultFnbModifierSelections(groups));
-  }, [catalog, isFnbMode, routeItemId]);
+  }, [catalog, editingCartLine, isFnbMode, routeItemId]);
 
   const detailPageFnbItem = useMemo(() => resolveFnbProductDetailItem({
     selectedDetail: selectedFnbDetail,
@@ -74,6 +90,7 @@ export function useFnbProductDetailsRoute({
     detailPageFnbNutritionCards: detailPageFnbMetadata.nutritionCards,
     detailPageFnbRelatedItems,
     selectedFnbDetail,
+    editingFnbCartLine: editingCartLine,
     selectedFnbDetailQuantity,
     selectedFnbLineModifiers,
     setSelectedFnbDetail,

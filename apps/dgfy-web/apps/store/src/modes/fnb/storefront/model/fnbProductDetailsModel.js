@@ -52,6 +52,14 @@ export function normalizeFnbModifierGroups(item = {}) {
     .filter(Boolean);
 }
 
+export function hasRequiredFnbModifierGroups(item = {}) {
+  return asArray(item?.fnb_modifier_groups).some((group) => (
+    group
+    && typeof group === 'object'
+    && (group.required === true || Number(group.min_select ?? group.min ?? 0) > 0)
+  ));
+}
+
 export function buildDefaultFnbModifierSelections(modifierGroups = []) {
   return (Array.isArray(modifierGroups) ? modifierGroups : []).flatMap((group) => {
     const limit = Math.max(0, Number(group?.max_select || 0));

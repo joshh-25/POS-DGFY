@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-08-09
+last_reviewed: 2026-08-10
 review_by: 2027-02-09
 applies_to: fnb_menu_modifiers
 topic: fnb_specific_add_ons
@@ -87,6 +87,7 @@ The existing modifier groups, options, item assignments, POS validation, Storefr
 | 19 | Kitchen, receipt, inventory, refund, and reporting integration | Every downstream surface uses the accepted snapshot and inventory movements remain accurate and idempotent. |
 | 20 | Advanced modifier capabilities | Governed quantities, combo choices, and nested/conditional behavior are implemented only after the flat model is stable. |
 | 21 | Final hardening and release evidence | RBAC, accessibility, responsive behavior, concurrency, regression, migration, rollback, and Playwright evidence pass. |
+| 27 | Folder-scoped modifier inheritance | POS folder assignments inherit to menu items, with item-level precedence and explicit opt-out; POS and Storefront consume the same resolved assignment. |
 
 Each phase requires separate approval. Planning a later phase does not authorize its implementation.
 
@@ -212,3 +213,13 @@ Recursive conditional modifier trees remain intentionally unsupported. The `item
 - Shared backend validation, Storefront publication, server-owned pricing, immutable snapshots, and linked inventory behavior are unchanged.
 
 Phase 22 rollback removes the POS workspace tab and components only. It does not delete modifier definitions, item assignments, accepted snapshots, or inventory movements.
+
+## Phase 27 Folder-Scoped Modifier Inheritance
+
+- Operators may assign modifier groups to an `ItemFolder` from standalone POS. Every active item in that folder inherits the assignment through the shared catalog contract.
+- Existing item assignments remain authoritative for that item. An item-level assignment replaces the folder metadata for the same group, while `is_excluded = true` explicitly opts the item out of an inherited group.
+- Folder assignments are additive and non-destructive. Removing a folder assignment does not alter existing item assignments or accepted transaction snapshots.
+- POS and Storefront resolve the same effective groups server-side, including required-state overrides, ordering, channel/location availability, combo metadata, and one-level conditional metadata. Clients never merge folder and item rows independently for checkout authority.
+- Folder inheritance is one level only. Parent-folder recursion and implicit cross-folder inheritance remain unsupported until a separate governed phase.
+
+Phase 27 rollback removes the folder-assignment API and management controls only after confirming no active catalog depends on them. The additive folder table and item exclusion column may be rolled back before production use; accepted transaction snapshots and posted inventory movements must remain immutable and are never recalculated or deleted.

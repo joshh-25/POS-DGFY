@@ -51,4 +51,24 @@ describe('useFnbProductDetailActions modifier gating', () => {
     act(() => result.current.addDetailToCart());
     expect(props.addToCart).toHaveBeenCalledWith(props.item, expect.objectContaining({ line_modifiers: selectedModifiers }));
   });
+
+  it('replaces an existing cart line when editing add-ons', () => {
+    const selectedModifiers = [{ modifier_group_id: 1, modifier_option_id: 2, option_name: 'Regular', price_delta: 0 }];
+    const props = buildProps({
+      editingCartLineId: '10:old',
+      replaceCartLine: vi.fn(() => true),
+      onEditComplete: vi.fn(),
+      selectedModifiers
+    });
+    const { result } = renderHook(() => useFnbProductDetailActions(props));
+
+    act(() => result.current.addDetailToCart());
+
+    expect(props.replaceCartLine).toHaveBeenCalledWith('10:old', props.item, expect.objectContaining({
+      quantity: 1,
+      line_modifiers: selectedModifiers
+    }));
+    expect(props.onEditComplete).toHaveBeenCalledTimes(1);
+    expect(props.addToCart).not.toHaveBeenCalled();
+  });
 });

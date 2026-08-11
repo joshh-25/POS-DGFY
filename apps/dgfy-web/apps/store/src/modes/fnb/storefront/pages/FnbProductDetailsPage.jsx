@@ -152,6 +152,7 @@ function FnbProductDetailsState({
 
 export function FnbProductDetailsPage({
   item,
+  isEditingCartLine = false,
   loading = false,
   loadError = '',
   onRetry = null,
@@ -419,6 +420,7 @@ export function FnbProductDetailsPage({
                   actionButtonBase={actionButtonBase}
                   available={available}
                   formatMoney={money}
+                  isEditingCartLine={isEditingCartLine}
                   onAddToCart={onAddToCart}
                   onBuyNow={onBuyNow}
                   selectedModifiersTotal={selectedModifiersTotal}
@@ -439,6 +441,7 @@ export function FnbProductDetailsPage({
           imageSources={imageSources}
           isOpen={isMobileSummaryOpen}
           itemName={item.name}
+          isEditingCartLine={isEditingCartLine}
           onAddToCart={onAddToCart}
           onBuyNow={onBuyNow}
           onClose={() => setIsMobileSummaryOpen(false)}

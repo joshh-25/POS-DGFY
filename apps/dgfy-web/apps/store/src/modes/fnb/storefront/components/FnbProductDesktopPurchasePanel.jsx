@@ -5,6 +5,7 @@ export function FnbProductDesktopPurchasePanel({
   actionButtonBase,
   available,
   formatMoney,
+  isEditingCartLine = false,
   onAddToCart,
   onBuyNow,
   selectedModifiersTotal,
@@ -33,7 +34,7 @@ export function FnbProductDesktopPurchasePanel({
           style={{ ...actionButtonBase, border: 'none', background: available ? '#26884c' : '#cbd5e1', color: '#fff', boxShadow: 'none', opacity: available ? 1 : 0.65 }}
         >
           <ShoppingCart size={16} />
-          Add to Cart
+          {isEditingCartLine ? 'Save changes' : 'Add to Cart'}
         </button>
         <button
           type="button"
@@ -42,7 +43,7 @@ export function FnbProductDesktopPurchasePanel({
           style={{ ...actionButtonBase, border: 'none', background: available ? '#f97316' : '#cbd5e1', color: '#fff', boxShadow: 'none', opacity: available ? 1 : 0.65 }}
         >
           <Zap size={16} />
-          Buy Now
+          {isEditingCartLine ? 'Save & view cart' : 'Buy Now'}
         </button>
       </div>
 

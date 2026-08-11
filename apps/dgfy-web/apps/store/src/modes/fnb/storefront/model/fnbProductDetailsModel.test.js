@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { buildDefaultFnbModifierSelections, normalizeFnbModifierGroups, validateFnbModifierSelections } from './fnbProductDetailsModel.js';
+import {
+  buildDefaultFnbModifierSelections,
+  hasRequiredFnbModifierGroups,
+  normalizeFnbModifierGroups,
+  validateFnbModifierSelections
+} from './fnbProductDetailsModel.js';
 
 describe('normalizeFnbModifierGroups', () => {
   it('prefers the customer-facing display name over an internal group name', () => {
@@ -36,6 +41,11 @@ describe('F&B modifier selection contract', () => {
 
   it('builds deterministic default selections', () => {
     expect(buildDefaultFnbModifierSelections(groups)).toEqual([expect.objectContaining({ modifier_group_id: 1, modifier_option_id: 2 })]);
+  });
+
+  it('detects required modifier groups for catalog quick-add gating', () => {
+    expect(hasRequiredFnbModifierGroups({ fnb_modifier_groups: [{ min_select: 1 }] })).toBe(true);
+    expect(hasRequiredFnbModifierGroups({ fnb_modifier_groups: [{ required: false, min_select: 0 }] })).toBe(false);
   });
 
   it('blocks missing required selections', () => {

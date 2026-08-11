@@ -1,24 +1,69 @@
 import { expect, test } from '@playwright/test';
 
-const storefrontURL = String(process.env.STOREFRONT_URL || 'http://localhost:5175').replace(/\/$/, '');
+const storefrontURL = String(process.env.E2E_CONTRACT_BASE_URL || process.env.STOREFRONT_URL || 'http://127.0.0.1:5175').replace(/\/$/, '');
 const storeSlug = 'phase-20-conditional-modifiers';
 
 const installRuntimeDiagnostics = (page) => {
   const diagnostics = [];
-  page.on('pageerror', (error) => diagnostics.push(`pageerror: ${error.stack || error.message}`));
+  const pathFor = (url) => {
+    try {
+      return new URL(url).pathname;
+    } catch {
+      return String(url || '');
+    }
+  };
+  const isExpected = (entry) => {
+    const path = pathFor(entry.url);
+    if (entry.type === 'http' && entry.status === 404 && path === '/api/v1/store/domain-context') return true;
+    if (entry.type === 'requestfailed' && entry.error === 'net::ERR_ABORTED') {
+      const isNominatimReverseLookup = (() => {
+        try {
+          const url = new URL(entry.url);
+          return url.hostname === 'nominatim.openstreetmap.org' && path === '/reverse';
+        } catch {
+          return false;
+        }
+      })();
+      return ['/api/v1/storefront/discovery', '/api/v1/dgfy/auth/me'].includes(path)
+        || isNominatimReverseLookup
+        || /^\/openfreemap\//.test(path);
+    }
+    return false;
+  };
+
+  page.on('pageerror', (error) => diagnostics.push({
+    type: 'pageerror', message: error.message, stack: error.stack || null, url: page.url()
+  }));
   page.on('console', (message) => {
-    if (message.type() === 'error') diagnostics.push(`console.error: ${message.text()}`);
+    if (message.type() === 'error') diagnostics.push({
+      type: 'console.error', message: message.text(), url: page.url()
+    });
   });
   page.on('requestfailed', (request) => {
-    const path = new URL(request.url()).pathname;
-    const failure = request.failure()?.errorText || '';
-    if (failure === 'net::ERR_ABORTED' && path === '/api/v1/storefront/discovery') return;
-    diagnostics.push(`requestfailed: ${request.method()} ${request.url()} ${failure}`);
+    const entry = {
+      type: 'requestfailed', method: request.method(), url: request.url(),
+      error: request.failure()?.errorText || 'unknown request failure'
+    };
+    if (!isExpected(entry)) diagnostics.push(entry);
   });
   page.on('response', (response) => {
-    if (response.status() >= 500) diagnostics.push(`http5xx: ${response.status()} ${response.url()}`);
+    if (response.status() >= 400) {
+      const entry = {
+        type: 'http', status: response.status(), method: response.request().method(), url: response.url()
+      };
+      if (!isExpected(entry)) diagnostics.push(entry);
+    }
   });
-  return diagnostics;
+
+  const assertHealthy = async (checkpoint) => {
+    await expect(page.locator('#root')).toBeVisible();
+    await expect(page.locator('#root')).not.toBeEmpty();
+    await expect(page.getByText(/Something went wrong|Unexpected error|Application error|ReferenceError/i)).toHaveCount(0);
+    expect(diagnostics, `Runtime diagnostics after ${checkpoint}: ${JSON.stringify(diagnostics, null, 2)}`).toEqual([]);
+    diagnostics.length = 0;
+  };
+
+  return { diagnostics, assertHealthy };
 };
 
 const installDeterministicStorefront = async (page) => {
@@ -53,13 +98,13 @@ const installDeterministicStorefront = async (page) => {
         max_select: 1,
         required: true,
         options: [
-          { modifier_option_id: 702, name: 'Cola', price_delta: 0, is_active: true }
+          { modifier_option_id: 702, name: 'Cola', price_delta: 25, is_active: true }
         ]
       }
     ]
   };
 
-  await page.route('**/api/v1/storefront/discovery/**', (route) => route.fulfill({
+  await page.route(/\/api\/v1\/storefront\/discovery(?:\/|\?|$)/, (route) => route.fulfill({
     status: 200,
     contentType: 'application/json',
     body: JSON.stringify({ success: true, data: {
@@ -95,11 +140,15 @@ const installDeterministicStorefront = async (page) => {
     contentType: 'application/json',
     body: JSON.stringify({ success: true, data: { reviews: [], summary: { score: 0, total_count: 0 } } })
   }));
+  await page.route('**/api/v1/dgfy/customer/reviews/public**', (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({ success: true, data: { reviews: [], summary: { score: 0, total_count: 0 } } })
+  }));
 };
 
-const assertConditionalFlow = async (page, onConditionalSelection = null) => {
-  await expect(page.locator('#root')).not.toBeEmpty();
-  await expect(page.getByText(/Something went wrong|Unexpected error|Application error/i)).toHaveCount(0);
+const assertConditionalFlow = async (page, runtime, onConditionalSelection = null) => {
+  await runtime.assertHealthy('initial F&B item render');
   await expect(page.getByRole('heading', { name: 'Phase 20 Burger' })).toBeVisible();
   await expect(page.getByText('Meal Upgrade', { exact: true })).toBeVisible();
   await expect(page.getByText('Drink', { exact: true })).toHaveCount(0);
@@ -125,6 +174,12 @@ const assertConditionalFlow = async (page, onConditionalSelection = null) => {
   await childOption.focus();
   await page.keyboard.press('Space');
   await expect(childOption).toBeChecked();
+  const childQuantity = page.getByLabel('Cola quantity');
+  await expect(childQuantity).toHaveValue('1');
+  await childQuantity.fill('3');
+  await expect(childQuantity).toHaveValue('3');
+  await expect(page.getByText(/PHP 305\.00/).first()).toBeVisible();
+  await runtime.assertHealthy('conditional modifier quantity update');
 
   const unlabeledInputs = await page.locator('input').evaluateAll((inputs) => inputs.filter((input) => {
     const id = input.getAttribute('id');
@@ -141,32 +196,36 @@ const assertConditionalFlow = async (page, onConditionalSelection = null) => {
   await page.keyboard.press('Space');
   await expect(parentOption).not.toBeChecked();
   await expect(page.getByText('Drink', { exact: true })).toHaveCount(0);
+  await expect(page.getByLabel('Cola quantity')).toHaveCount(0);
+  await runtime.assertHealthy('conditional modifier deactivation');
 };
 
-test('conditional F&B modifier is accessible and responsive on desktop and mobile @fnb @modifiers @phase21', async ({ page }, testInfo) => {
-  const diagnostics = installRuntimeDiagnostics(page);
+test('conditional F&B modifier is accessible and responsive on desktop and mobile @fnb @modifiers @phase25', async ({ page }, testInfo) => {
+  const runtime = installRuntimeDiagnostics(page);
   await installDeterministicStorefront(page);
 
   await page.goto(`${storefrontURL}/tenant-store/${storeSlug}/item?item=501`, { waitUntil: 'domcontentloaded' });
-  await assertConditionalFlow(page, async () => testInfo.attach('phase21-conditional-desktop', {
+  await assertConditionalFlow(page, runtime, async () => testInfo.attach('phase25-conditional-desktop', {
       body: await page.screenshot({ fullPage: true }),
       contentType: 'image/png'
     }));
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.reload({ waitUntil: 'domcontentloaded' });
-  await assertConditionalFlow(page, async () => {
+  await assertConditionalFlow(page, runtime, async () => {
     const viewportWidth = await page.evaluate(() => document.documentElement.clientWidth);
     const renderedWidth = await page.evaluate(() => document.documentElement.scrollWidth);
     expect(renderedWidth).toBeLessThanOrEqual(viewportWidth);
-    await testInfo.attach('phase21-conditional-mobile', {
+    await testInfo.attach('phase25-conditional-mobile', {
       body: await page.screenshot({ fullPage: true }),
       contentType: 'image/png'
     });
   });
 
-  if (diagnostics.length > 0) {
-    await testInfo.attach('runtime-diagnostics', { body: diagnostics.join('\n'), contentType: 'text/plain' });
+  if (runtime.diagnostics.length > 0) {
+    await testInfo.attach('runtime-diagnostics', {
+      body: JSON.stringify(runtime.diagnostics, null, 2), contentType: 'application/json'
+    });
   }
-  expect(diagnostics, diagnostics.join('\n')).toEqual([]);
+  expect(runtime.diagnostics).toEqual([]);
 });

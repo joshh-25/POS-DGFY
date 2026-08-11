@@ -7,10 +7,13 @@ import { validateFnbModifierSelections } from '../model/fnbProductDetailsModel.j
  */
 export function useFnbProductDetailActions({
   addToCart,
+  editingCartLineId = '',
   goStoreOrderPage,
   item,
   modifierGroups,
+  onEditComplete,
   quantity,
+  replaceCartLine,
   selectedModifiers,
   toast
 }) {
@@ -26,11 +29,14 @@ export function useFnbProductDetailActions({
   );
   const detailTotalPrice = (detailUnitPrice + modifiersTotal) * Math.max(1, Number(quantity || 1));
 
-  const addDetailToCart = useCallback(() => {
-    const validation = validateFnbModifierSelections(modifierGroups, normalizedModifiers);
-    if (!validation.valid) {
-      toast?.error(validation.message);
-      return false;
+  const saveDetailCartLine = useCallback(() => {
+    if (editingCartLineId && replaceCartLine) {
+      const replaced = replaceCartLine(editingCartLineId, item, {
+        quantity,
+        line_modifiers: normalizedModifiers
+      });
+      if (replaced) onEditComplete?.();
+      return replaced;
     }
     addToCart(item, {
       quantity,
@@ -38,7 +44,16 @@ export function useFnbProductDetailActions({
       openCart: true
     });
     return true;
-  }, [addToCart, item, modifierGroups, normalizedModifiers, quantity, toast]);
+  }, [addToCart, editingCartLineId, item, normalizedModifiers, onEditComplete, quantity, replaceCartLine]);
+
+  const addDetailToCart = useCallback(() => {
+    const validation = validateFnbModifierSelections(modifierGroups, normalizedModifiers);
+    if (!validation.valid) {
+      toast?.error(validation.message);
+      return false;
+    }
+    return saveDetailCartLine();
+  }, [modifierGroups, normalizedModifiers, saveDetailCartLine, toast]);
 
   const buyDetailNow = useCallback(() => {
     const validation = validateFnbModifierSelections(modifierGroups, normalizedModifiers);
@@ -46,14 +61,10 @@ export function useFnbProductDetailActions({
       toast?.error(validation.message);
       return false;
     }
-    addToCart(item, {
-      quantity,
-      line_modifiers: normalizedModifiers,
-      openCart: true
-    });
-    goStoreOrderPage({ initialTab: 'cart' });
-    return true;
-  }, [addToCart, goStoreOrderPage, item, modifierGroups, normalizedModifiers, quantity, toast]);
+    const saved = saveDetailCartLine();
+    if (saved && !editingCartLineId) goStoreOrderPage({ initialTab: 'cart' });
+    return saved;
+  }, [editingCartLineId, goStoreOrderPage, modifierGroups, normalizedModifiers, saveDetailCartLine, toast]);
 
   const quickAddRelatedItem = useCallback((relatedItem) => {
     addToCart(relatedItem, { openCart: true });
@@ -64,6 +75,7 @@ export function useFnbProductDetailActions({
     buyDetailNow,
     detailTotalPrice,
     detailUnitPrice,
+    isEditingCartLine: Boolean(editingCartLineId),
     quickAddRelatedItem
   };
 }

@@ -46,8 +46,8 @@ describe('Food & Beverage frontend contract', () => {
   });
 
   it('keeps modifier management in standalone POS instead of the SKUpervisor F&B page', () => {
-    const fnbPage = read('frontend/src/features/fnb/pages/FnbPage.jsx');
-    const posWorkspace = read('frontend/src/features/pos/components/TerminalOperationsWorkspace.jsx');
+    const fnbPage = read('apps/dgfy-web/src/features/fnb/pages/FnbPage.jsx');
+    const posWorkspace = read('apps/dgfy-web/src/features/pos/components/TerminalOperationsWorkspace.jsx');
 
     expect(fnbPage).not.toContain('PosFnbModifierManager');
     expect(fnbPage).not.toContain('FnbModifierManager');

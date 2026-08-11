@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -71,7 +71,9 @@ export default function FnbModifierPickerDialog({
   onClose,
   onSave,
 }) {
-  const [selections, setSelections] = useState([]);
+  const [selections, setSelections] = useState(() => (
+    Array.isArray(line?.line_modifiers) ? line.line_modifiers : []
+  ));
   const groups = useMemo(
     () =>
       (line?.modifier_groups || []).filter((group) =>
@@ -79,12 +81,6 @@ export default function FnbModifierPickerDialog({
       ),
     [line, locationId],
   );
-  useEffect(() => {
-    if (open)
-      setSelections(
-        Array.isArray(line?.line_modifiers) ? line.line_modifiers : [],
-      );
-  }, [open, line]);
   const visibleGroups = groups.filter(
     (group) =>
       !group.parent_modifier_option_id ||
