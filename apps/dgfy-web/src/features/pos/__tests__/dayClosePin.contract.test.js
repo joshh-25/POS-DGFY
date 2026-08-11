@@ -9,7 +9,10 @@ const readSource = (relativePath) => fs.readFileSync(
 
 describe('POS Day Close PIN contract', () => {
   it('requires a personal Day Close PIN before the terminal submits close day', () => {
-    const terminalPageSource = readSource('src/features/pos/pages/TerminalPage.jsx');
+    const terminalPageSource = [
+      readSource('src/features/pos/pages/TerminalPage.jsx'),
+      readSource('src/features/pos/components/TerminalPageDialogLayer.jsx')
+    ].join('\n');
     const posServiceSource = readSource('src/features/pos/services/posService.js');
 
     expect(terminalPageSource).toContain('Your POS Day Close PIN');
@@ -23,7 +26,10 @@ describe('POS Day Close PIN contract', () => {
 
   it('shows the cashier account and keeps PIN creation self-service', () => {
     const workspaceSource = readSource('src/features/pos/components/TerminalOperationsWorkspace.jsx');
-    const terminalPageSource = readSource('src/features/pos/pages/TerminalPage.jsx');
+    const terminalPageSource = [
+      readSource('src/features/pos/pages/TerminalPage.jsx'),
+      readSource('src/features/pos/components/TerminalPageDialogLayer.jsx')
+    ].join('\n');
     const userServiceSource = readSource('src/services/userService.js');
 
     expect(workspaceSource).toContain('Day Close Access');
@@ -40,7 +46,10 @@ describe('POS Day Close PIN contract', () => {
   });
 
   it('gates every Shift-screen Day Close attempt on fresh branch readiness', () => {
-    const terminalPageSource = readSource('src/features/pos/pages/TerminalPage.jsx');
+    const terminalPageSource = [
+      readSource('src/features/pos/pages/TerminalPage.jsx'),
+      readSource('src/features/pos/components/TerminalPageDialogLayer.jsx')
+    ].join('\n');
     const layoutSource = readSource('src/features/pos/components/TerminalPageLayout.jsx');
     const workspaceSource = readSource('src/features/pos/components/TerminalOperationsWorkspace.jsx');
 
