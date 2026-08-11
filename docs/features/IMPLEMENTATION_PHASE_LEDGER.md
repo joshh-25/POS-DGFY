@@ -1229,3 +1229,40 @@ Phase 41 is complete. The next eligible governed phase is Phase 42.
 - Draft pull request: `https://github.com/Sieitzz/dgfy-platform/pull/338`.
 
 Phase 42 is complete. The next eligible governed phase is Phase 43.
+
+## Phase 43 PR 338 CI Contract Repair (In Progress)
+
+### Objective and Scope
+
+- Repair the two blocking PR quality jobs without weakening lint, security,
+  migration, build, or browser gates.
+- Keep Storefront bundle analysis opt-in, reset the DGFY Business POS modal by
+  component lifecycle, and align security contracts with centralized payment
+  processing and migration ownership.
+
+### Status
+
+- `in_progress`
+
+### Dependencies
+
+- Phase 42 Release Integration, Traceability, And Develop PR.
+- Draft pull request `https://github.com/Sieitzz/dgfy-platform/pull/338`.
+
+### Acceptance and Validation Evidence
+
+- [x] Frontend lint has zero errors and the normal Storefront build passes.
+- [x] DGFY Business modal tests pass without synchronous effect state resets.
+- [x] PayMongo revenue security verifies signature ordering through the
+  verified paid-session use case.
+- [x] Tenant credential security resolves the authoritative migration-runner
+  migration path.
+- [ ] Updated commits are pushed and both blocking GitHub Actions jobs pass.
+
+### Implementation Links
+
+- `apps/dgfy-web/apps/store/vite.config.js`
+- `apps/dgfy-web/apps/store/src/customer-dashboard/components/BusinessPosLaunchModal.jsx`
+- `apps/dgfy-api/tests/tenantRevenue.security.contract.test.js`
+- `apps/dgfy-api/tests/tenantCredentialSurface.security.test.js`
+- `docs/compliance/impact-declarations/2026-08-11-pr338-ci-contract-repair.md`
