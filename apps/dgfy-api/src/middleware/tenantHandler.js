@@ -129,6 +129,11 @@ const isDgfyTenantAuthenticatedBusinessRequest = (path) => (
     /^\/api\/v1\/dgfy\/account\b/i.test(path)
     || /^\/api\/v1\/dgfy\/accounts\/search\b/i.test(path)
     || /^\/api\/v1\/dgfy\/invitations(?:\/|$)/i.test(path)
+    // The Storefront Day Close PIN form first creates a tenant-bound session,
+    // then saves the PIN through the standard self-service users route.  This
+    // route must recover the same tenant context from that bearer token before
+    // `authenticate` validates the token-to-tenant binding.
+    || /^\/api\/v1\/users\/me\/pos-day-close-pin\b/i.test(path)
 );
 
 export const invalidateTenantLookupCache = ({ companyToken = null, tenantId = null } = {}) => {

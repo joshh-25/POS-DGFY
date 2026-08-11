@@ -17,6 +17,7 @@ import {
     isStockExemptServiceItem,
     resolveStockBearingDescriptor
 } from '../../shared/utils/stockBearingPolicy.js';
+import { resolveEffectiveFnbModifierGroups } from '../../shared/utils/effectiveFnbModifierGroups.js';
 
 const safeGetOptionalModel = (name) => {
     try {
@@ -325,6 +326,7 @@ const buildStorefrontCatalogDetailIncludes = () => {
     const FnbModifierOption = dbStore.get('FnbModifierOption');
     const FnbModifierGroupLocationAvailability = safeGetOptionalModel('FnbModifierGroupLocationAvailability');
     const FnbModifierOptionLocationAvailability = safeGetOptionalModel('FnbModifierOptionLocationAvailability');
+    const FnbFolderModifierGroup = safeGetOptionalModel('FnbFolderModifierGroup');
 
     if (ServiceItemDetail) {
         includes.push({
@@ -355,7 +357,29 @@ const buildStorefrontCatalogDetailIncludes = () => {
             model: ItemFolder,
             as: 'folder',
             attributes: ['folder_id', 'name'],
-            required: false
+            required: false,
+            include: FnbModifierGroup && FnbFolderModifierGroup ? [{
+                model: FnbModifierGroup,
+                as: 'fnbModifierGroups',
+                required: false,
+                through: { model: FnbFolderModifierGroup, attributes: ['is_required_override', 'sort_order'] },
+                include: FnbModifierOption
+                    ? [{
+                        model: FnbModifierOption,
+                        as: 'options',
+                        required: false,
+                        include: FnbModifierOptionLocationAvailability ? [{
+                            model: FnbModifierOptionLocationAvailability,
+                            as: 'locationAvailability',
+                            required: false
+                        }] : []
+                    }, ...(FnbModifierGroupLocationAvailability ? [{
+                        model: FnbModifierGroupLocationAvailability,
+                        as: 'locationAvailability',
+                        required: false
+                    }] : [])]
+                    : []
+            }] : []
         });
     }
 
@@ -364,7 +388,7 @@ const buildStorefrontCatalogDetailIncludes = () => {
             model: FnbModifierGroup,
             as: 'fnbModifierGroups',
             required: false,
-            through: { attributes: ['is_required_override', 'sort_order'] },
+            through: { attributes: ['is_required_override', 'is_excluded', 'sort_order'] },
             include: FnbModifierOption
                 ? [{
                     model: FnbModifierOption,
@@ -619,7 +643,11 @@ export const storeRepository = {
                 ]
             });
             const catalogRows = rows
-                .map(toPlain)
+                .map((row) => {
+                    const plain = toPlain(row);
+                    const effectiveGroups = resolveEffectiveFnbModifierGroups(plain);
+                    return { ...plain, fnbModifierGroups: effectiveGroups, fnb_modifier_groups: effectiveGroups };
+                })
                 .filter((row) => mapStorefrontCatalogVisibility(row));
             const locationAvailability = await loadStorefrontLocationAvailabilityMap(
                 catalogRows.map((row) => Number(row.item_id)),
@@ -652,7 +680,11 @@ export const storeRepository = {
                 include: legacyInclude
             });
             const catalogRows = rows
-                .map(toPlain)
+                .map((row) => {
+                    const plain = toPlain(row);
+                    const effectiveGroups = resolveEffectiveFnbModifierGroups(plain);
+                    return { ...plain, fnbModifierGroups: effectiveGroups, fnb_modifier_groups: effectiveGroups };
+                })
                 .filter((row) => isCatalogItemVisible(row) && hasExplicitSalePrice(row));
             const locationAvailability = await loadStorefrontLocationAvailabilityMap(
                 catalogRows.map((row) => Number(row.item_id)),
@@ -721,7 +753,13 @@ export const storeRepository = {
         const catalogDetailIncludes = buildStorefrontCatalogDetailIncludes();
 
         const mapCatalogRows = (rows, { allowLegacyPosFallback = false } = {}) => rows
-            .map(toPlain)
+            .map((row) => {
+                const plain = toPlain(row);
+                return {
+                    ...plain,
+                    fnbModifierGroups: resolveEffectiveFnbModifierGroups(plain)
+                };
+            })
             .filter((row) => isStorefrontPublicCatalogReady(row, { allowLegacyPosFallback }))
             .map((row) => ({
                 item_id: row.item_id,

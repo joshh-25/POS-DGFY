@@ -234,7 +234,7 @@ export function StorefrontCartDrawerShellContainer(props) {
         >
             <FnbCheckoutRouteContainer {...fnbCheckoutRouteProps} />
 
-            {checkoutTab === 'review' && hasServiceCart && !isServicesMode && (
+            {checkoutTab === 'review' && hasServiceCart && isServicesMode && (
               <ServiceBookingReviewContainer {...serviceBookingReviewProps} />
             )}
 

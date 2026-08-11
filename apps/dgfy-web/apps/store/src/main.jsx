@@ -25,6 +25,7 @@ import {
 } from './app/routing/storefrontRouting.js';
 
 const rootElement = document.getElementById('root');
+const STOREFRONT_ROOT_KEY = '__dgfyStorefrontReactRoot__';
 
 initBrowserSentry({ surface: 'store' });
 initBrowserAnalytics({ surface: 'store', consent: getStoredAnalyticsConsent() === true });
@@ -132,7 +133,9 @@ function StoreRoot() {
 }
 
 if (rootElement) {
-  ReactDOM.createRoot(rootElement).render(
+  const storefrontRoot = rootElement[STOREFRONT_ROOT_KEY]
+    || (rootElement[STOREFRONT_ROOT_KEY] = ReactDOM.createRoot(rootElement));
+  storefrontRoot.render(
     <React.StrictMode>
       <ErrorBoundary>
         <StoreRoot />

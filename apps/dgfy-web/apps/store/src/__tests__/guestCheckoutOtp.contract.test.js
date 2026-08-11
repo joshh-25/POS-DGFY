@@ -27,7 +27,7 @@ describe('Storefront guest checkout OTP contract', () => {
     const submissionSource = readAppSource('modes/fnb/checkout/hooks/useFnbCheckoutSubmission.js');
     const sharedSubmissionSource = readAppSource('shared/hooks/useCheckoutSubmission.js');
     const checkoutRouteContainerSource = readAppSource('modes/fnb/checkout/pages/FnbCheckoutRouteContainer.jsx');
-    const simpleCheckoutSource = readAppSource('modes/simple/checkout/pages/SimpleCheckoutRoutePage.jsx');
+    const simpleCustomerStepSource = readAppSource('modes/simple/checkout/components/SimpleCheckoutCustomerStep.jsx');
     const serviceValidatorSource = readRepoSource('apps/dgfy-api/src/validators/serviceValidator.js');
     const serviceUseCaseSource = readRepoSource('apps/dgfy-api/src/modules/services/usecases/serviceUseCases.js');
 
@@ -37,6 +37,8 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(modelSource).toContain('RESEND_COOLDOWN_SECONDS = 60');
     expect(hookSource).toContain('RESEND_COOLDOWN_SECONDS');
     expect(hookSource).toContain('guestCheckoutProof');
+    expect(hookSource).toContain('delivery_status');
+    expect(hookSource).toContain('Email verification code could not be delivered. Please try again later.');
     expect(componentSource).toContain('Verify your email');
     expect(componentSource).toContain('Send verification code');
     expect(componentSource).toContain('Send again in');
@@ -48,7 +50,7 @@ describe('Storefront guest checkout OTP contract', () => {
     expect(checkoutRouteContainerSource).toContain('FnbGuestEmailVerification');
     expect(sharedSubmissionSource).toContain('guest_checkout_proof');
     expect(sharedSubmissionSource).toContain('Verify your email before placing this order.');
-    expect(simpleCheckoutSource).toContain('GuestEmailVerification');
+    expect(simpleCustomerStepSource).toContain('SimpleCheckoutGuestEmailVerification');
     expect(serviceValidatorSource).toContain('guest_checkout_proof');
     expect(serviceUseCaseSource).toContain('assertGuestCheckoutProof');
   });

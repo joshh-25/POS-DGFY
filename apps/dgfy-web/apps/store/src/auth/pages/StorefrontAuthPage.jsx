@@ -853,6 +853,7 @@ export default function StorefrontAuthPage({ initialMode }) {
 
   const handleLogin = async (event) => {
     event.preventDefault();
+    if (isLoading) return;
     setError(''); setNotice('');
     setIsLoading(true);
     try {

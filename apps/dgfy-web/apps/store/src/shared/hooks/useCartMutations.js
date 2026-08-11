@@ -10,6 +10,31 @@ import { createStorefrontIdempotencyKey } from '../utils/idempotency.js';
 import { resolveStorefrontImageSources } from '../utils/storefrontImageSources.js';
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../src/observability/analyticsEvents.js';
 
+const normalizeCartLineModifiers = (entries = []) => (
+  (Array.isArray(entries) ? entries : [])
+    .map((entry) => ({
+      modifier_group_id: entry?.modifier_group_id,
+      modifier_option_id: entry?.modifier_option_id,
+      option_name: String(entry?.option_name || '').trim(),
+      price_delta: Number(entry?.price_delta || 0) || 0,
+      quantity: Math.min(99, Math.max(1, Number.parseInt(entry?.quantity || 1, 10) || 1))
+    }))
+    .filter((entry) => entry.modifier_group_id != null && entry.modifier_option_id != null)
+);
+
+const buildCartModifierKey = (entries = []) => JSON.stringify(
+  normalizeCartLineModifiers(entries)
+    .map((entry) => ({
+      modifier_group_id: entry.modifier_group_id,
+      modifier_option_id: entry.modifier_option_id,
+      quantity: entry.quantity
+    }))
+    .sort((left, right) => (
+      `${left.modifier_group_id}:${left.modifier_option_id}:${left.quantity}`
+        .localeCompare(`${right.modifier_group_id}:${right.modifier_option_id}:${right.quantity}`)
+    ))
+);
+
 /**
  * Moved verbatim from `StorefrontApp.jsx`: cart-mutation handlers
  * (`addToCart`/`updateQty`/`removeCartItem`), the cart-fly-to-FAB animation
@@ -135,20 +160,8 @@ export function useCartMutations({
       return;
     }
     const requestedQuantity = Math.max(1, Number(options?.quantity || 1));
-    const lineModifiers = (Array.isArray(options?.line_modifiers) ? options.line_modifiers : [])
-      .map((entry) => ({
-        modifier_group_id: entry?.modifier_group_id,
-        modifier_option_id: entry?.modifier_option_id,
-        option_name: String(entry?.option_name || '').trim(),
-        price_delta: Number(entry?.price_delta || 0) || 0,
-        quantity: Math.min(99, Math.max(1, Number.parseInt(entry?.quantity || 1, 10) || 1))
-      }))
-      .filter((entry) => entry.modifier_group_id != null && entry.modifier_option_id != null);
-    const modifierKey = JSON.stringify(lineModifiers.map((entry) => ({
-      modifier_group_id: entry.modifier_group_id,
-      modifier_option_id: entry.modifier_option_id,
-      quantity: entry.quantity
-    })));
+    const lineModifiers = normalizeCartLineModifiers(options?.line_modifiers);
+    const modifierKey = buildCartModifierKey(lineModifiers);
     let stockWarning = '';
     const normalizedItemId = Number(item?.item_id);
     if (Number.isFinite(normalizedItemId)) {
@@ -180,7 +193,8 @@ export function useCartMutations({
       max_stock: maxStock,
       serviceAreaLabel: item.serviceAreaLabel || '',
       durationLabel: item.durationLabel || '',
-      line_modifiers: lineModifiers
+      line_modifiers: lineModifiers,
+      has_modifier_groups: Array.isArray(item?.fnb_modifier_groups) && item.fnb_modifier_groups.length > 0
     };
     setCart((prev) => {
       if (isServiceCatalogItem(item)) {
@@ -199,11 +213,7 @@ export function useCartMutations({
       }
       const found = prev.find((l) => (
         Number(l.item_id) === Number(item.item_id)
-        && JSON.stringify((Array.isArray(l.line_modifiers) ? l.line_modifiers : []).map((entry) => ({
-          modifier_group_id: entry?.modifier_group_id,
-          modifier_option_id: entry?.modifier_option_id,
-          quantity: entry?.quantity
-        }))) === modifierKey
+        && buildCartModifierKey(l.line_modifiers) === modifierKey
       ));
       if (found) {
         const requestedQty = Number(found.quantity) + requestedQuantity;
@@ -253,6 +263,56 @@ export function useCartMutations({
       quantity: requestedQuantity,
       category: isServiceCatalogItem(item) ? 'service' : item?.category
     });
+  };
+
+  const replaceCartLine = (cartLineId, item, options = {}) => {
+    const targetLineId = String(cartLineId || '').trim();
+    const targetLine = cart.find((line) => String(line.cart_line_id || '') === targetLineId);
+    if (!targetLine || !item || !targetLineId) return false;
+
+    const requestedQuantity = Math.max(1, Number(options?.quantity || 1));
+    const lineModifiers = normalizeCartLineModifiers(options?.line_modifiers);
+    const modifierKey = buildCartModifierKey(lineModifiers);
+    const duplicateLine = cart.find((line) => (
+      String(line.cart_line_id || '') !== targetLineId
+      && Number(line.item_id) === Number(item.item_id)
+      && buildCartModifierKey(line.line_modifiers) === modifierKey
+    ));
+    const price = Number(item.default_sale_price ?? targetLine.price ?? 0);
+    const maxStock = isItemAvailable(item) ? Number.POSITIVE_INFINITY : 0;
+    const safeQuantity = Math.max(0, Math.min(requestedQuantity, maxStock));
+    const imageSources = resolveStorefrontImageSources(item, { preferred: 'thumbnail' });
+    const updatedLine = {
+      ...targetLine,
+      item_id: item.item_id,
+      name: item.name,
+      variantName: item.variantName || '',
+      category: String(item.category || targetLine.category || '').trim().toLowerCase(),
+      quantity: safeQuantity,
+      price,
+      image_url: imageSources.largeUrl || imageSources.src || null,
+      thumbnail_url: imageSources.thumbnailUrl || imageSources.src || null,
+      image_variants: item?.image_variants && typeof item.image_variants === 'object' ? item.image_variants : null,
+      unit_of_measure: item.unit_of_measure || '',
+      max_stock: maxStock,
+      line_modifiers: lineModifiers,
+      has_modifier_groups: Array.isArray(item?.fnb_modifier_groups) && item.fnb_modifier_groups.length > 0
+    };
+
+    setCart((previous) => {
+      if (duplicateLine) {
+        const mergedQuantity = Math.max(0, Math.min(Number(duplicateLine.quantity || 0) + safeQuantity, maxStock));
+        return previous
+          .filter((line) => String(line.cart_line_id || '') !== targetLineId)
+          .map((line) => String(line.cart_line_id || '') === String(duplicateLine.cart_line_id || '')
+            ? { ...line, quantity: mergedQuantity, max_stock: maxStock }
+            : line);
+      }
+      return previous.map((line) => (
+        String(line.cart_line_id || '') === targetLineId ? updatedLine : line
+      ));
+    });
+    return true;
   };
 
   const removeCartItem = (itemId, cartLineId = '') => {
@@ -340,6 +400,7 @@ export function useCartMutations({
     hasMixedServiceCart,
     hasServiceCart,
     productCartLines,
+    replaceCartLine,
     removeCartItem,
     serviceCartCount,
     serviceCartFlyAnimations,

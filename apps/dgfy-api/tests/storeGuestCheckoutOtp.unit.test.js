@@ -9,6 +9,7 @@ import {
   generateStoreGuestCheckoutProof,
   verifyStoreGuestCheckoutProof
 } from '../src/modules/store/utils/storeJwtToken.js';
+import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
 
 const tenantId = 'a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d';
 const email = 'guest@example.com';
@@ -33,18 +34,37 @@ describe('Storefront guest checkout OTP', () => {
     const verifications = [];
     const emailOtpService = {
       EMAIL_OTP_PURPOSES: { STOREFRONT_GUEST_CHECKOUT: 'storefront_guest_checkout' },
-      requestEmailOtp: async (input) => requests.push(input),
+      requestEmailOtp: async (input) => {
+        requests.push(input);
+        return { delivery_status: 'sent' };
+      },
       verifyEmailOtp: async (input) => verifications.push(input)
     };
     const request = buildRequestStoreGuestCheckoutOtpUseCase({ emailOtpService });
     const verify = buildVerifyStoreGuestCheckoutOtpUseCase({ emailOtpService });
 
-    expect((await request({ tenantId, payload: { email, idempotency_key: idempotencyKey } })).success).toBe(true);
+    const requested = await request({ tenantId, payload: { email, idempotency_key: idempotencyKey } });
+    expect(requested.success).toBe(true);
+    expect(requested.data).toMatchObject({ delivery_status: 'sent' });
     const verified = await verify({ tenantId, payload: { email, code: '123456', idempotency_key: idempotencyKey } });
 
     expect(requests[0]).toMatchObject({ purpose: 'storefront_guest_checkout', tenantId, email });
     expect(verifications[0]).toMatchObject({ purpose: 'storefront_guest_checkout', tenantId, email, code: '123456' });
     expect(verifyStoreGuestCheckoutProof(verified.data.guest_checkout_proof)).toMatchObject({ tenant_id: tenantId, email, idempotency_key: idempotencyKey });
+  });
+
+  it('fails closed when the OTP service records a local or failed delivery', async () => {
+    const emailOtpService = {
+      EMAIL_OTP_PURPOSES: { STOREFRONT_GUEST_CHECKOUT: 'storefront_guest_checkout' },
+      requestEmailOtp: async () => ({ delivery_status: 'recorded' })
+    };
+    const request = buildRequestStoreGuestCheckoutOtpUseCase({ emailOtpService });
+
+    const result = await request({ tenantId, payload: { email, idempotency_key: idempotencyKey } });
+
+    expect(result.success).toBe(false);
+    expect(result.error.code).toBe(DomainErrorCode.SERVICE_UNAVAILABLE);
+    expect(result.error.statusCode).toBe(503);
   });
 
   it('does not require a guest proof for a DGFY-linked customer', () => {

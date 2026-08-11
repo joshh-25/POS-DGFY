@@ -619,6 +619,7 @@ const resolveStorefrontLineModifiers = ({ item, line, locationId }) => {
             && findStorefrontModifierLocationOverride(group, locationId)?.is_available !== false)
         .map((group) => ({
             ...group,
+            assignment: group.FnbItemModifierGroup || group.fnbItemModifierGroup || {},
             options: (Array.isArray(group.options) ? group.options : [])
                 .filter((option) => option?.is_active !== false
                     && option?.visible_in_storefront !== false
@@ -687,7 +688,10 @@ const resolveStorefrontLineModifiers = ({ item, line, locationId }) => {
             continue;
         }
         const count = Number(selectedCounts.get(group.modifier_group_id) || 0);
-        const minSelect = group.required === true ? Math.max(1, Number(group.min_select || 0)) : Number(group.min_select || 0);
+        const required = group.assignment.is_required_override == null
+            ? group.required === true || Number(group.min_select || 0) > 0
+            : group.assignment.is_required_override === true;
+        const minSelect = required ? Math.max(1, Number(group.min_select || 0)) : Number(group.min_select || 0);
         const maxSelect = Number(group.max_select || 0);
         if (minSelect > 0 && count < minSelect) {
             throw new DomainError(
@@ -706,6 +710,54 @@ const resolveStorefrontLineModifiers = ({ item, line, locationId }) => {
     }
 
     return { priceDelta, snapshot };
+};
+
+const assertModifierInventoryAvailability = async ({
+    storeRepository,
+    preparedLines = [],
+    locationId = null,
+    allowOutOfStockSales = false,
+    options = {}
+}) => {
+    if (allowOutOfStockSales || typeof storeRepository?.getLocationStocksByItemIds !== 'function') return;
+    const requestedByItemId = new Map();
+    for (const line of preparedLines) {
+        for (const modifier of (Array.isArray(line.fnb_modifiers_snapshot) ? line.fnb_modifiers_snapshot : [])) {
+            const itemId = Number.parseInt(modifier?.sku_item_id, 10);
+            if (!Number.isInteger(itemId) || itemId <= 0) continue;
+            const quantity = Math.min(99, Math.max(1, Number.parseInt(modifier?.quantity || 1, 10) || 1));
+            const requested = Number(line.quantity || 0) * quantity;
+            requestedByItemId.set(itemId, round4((requestedByItemId.get(itemId) || 0) + requested));
+        }
+    }
+    const itemIds = [...requestedByItemId.keys()];
+    if (itemIds.length === 0) return;
+    const rows = await storeRepository.getLocationStocksByItemIds(itemIds, locationId, options);
+    const stockByItemId = new Map((Array.isArray(rows) ? rows : []).map((row) => [
+        Number.parseInt(row?.item_id, 10),
+        Math.max(0, Number(row?.quantity_on_hand || 0))
+    ]));
+    const violations = itemIds
+        .map((itemId) => ({
+            sku_item_id: itemId,
+            available_stock: round4(stockByItemId.get(itemId) || 0),
+            requested_qty: round4(requestedByItemId.get(itemId) || 0)
+        }))
+        .filter((entry) => entry.available_stock + 0.000001 < entry.requested_qty);
+    if (violations.length > 0) {
+        throw new DomainError(
+            DomainErrorCode.VALIDATION_FAILED,
+            'Insufficient stock for one or more selected F&B modifiers',
+            {
+                statusCode: 422,
+                details: {
+                    reason_code: 'FNB_MODIFIER_STOCK_SHORTFALL',
+                    location_id: Number.parseInt(locationId, 10) || null,
+                    stock_violations: violations
+                }
+            }
+        );
+    }
 };
 
 const prepareCheckoutLines = ({
@@ -968,9 +1020,16 @@ const serializeStorefrontModifierGroups = (value, locationId = null) => (
                 modifier_group_id: group.modifier_group_id,
                 name: group.name,
                 display_name: group.display_name || group.name,
+                group_kind: group.group_kind === 'combo_choice' ? 'combo_choice' : 'modifier',
+                parent_modifier_option_id: Number(group.parent_modifier_option_id) || null,
                 min_select: Number(group.min_select || 0),
                 max_select: Number(group.max_select || 1),
-                required: group.required === true || Number(group.min_select || 0) > 0,
+                required: (() => {
+                    const through = group.FnbItemModifierGroup || group.fnbItemModifierGroup || {};
+                    return through.is_required_override == null
+                        ? group.required === true || Number(group.min_select || 0) > 0
+                        : through.is_required_override === true;
+                })(),
                 options: (Array.isArray(group.options) ? group.options : [])
                     .filter((option) => option?.is_active !== false
                         && option?.visible_in_storefront !== false
@@ -1432,6 +1491,13 @@ const resolveCheckoutContext = async ({
         recipeItemIds: recipePlan.recipeItemIds,
         affiliateSellingPriceRule: affiliatePricing?.sellingPriceRule || null,
         locationId: normalized.location_id
+    });
+    await assertModifierInventoryAvailability({
+        storeRepository,
+        preparedLines: prepared.preparedLines,
+        locationId: normalized.location_id,
+        allowOutOfStockSales,
+        options
     });
     const promoApplication = resolveStorefrontPromoApplication({
         settings,
@@ -2305,13 +2371,21 @@ export const buildRequestStoreGuestCheckoutOtpUseCase = ({ emailOtpService }) =>
             const normalizedTenantId = ensureTenantContext(tenantId);
             const email = String(payload?.email || '').trim().toLowerCase();
             const idempotencyKey = String(payload?.idempotency_key || '').trim();
-            await emailOtpService.requestEmailOtp({
+            const delivery = await emailOtpService.requestEmailOtp({
                 purpose: emailOtpService.EMAIL_OTP_PURPOSES.STOREFRONT_GUEST_CHECKOUT,
                 email,
                 tenantId: normalizedTenantId,
                 metadata: { checkout_idempotency_key: idempotencyKey }
             });
-            return ok({ email, idempotency_key: idempotencyKey });
+            const deliveryStatus = String(delivery?.delivery_status || '').trim().toLowerCase();
+            if (deliveryStatus !== 'sent') {
+                throw new DomainError(
+                    DomainErrorCode.SERVICE_UNAVAILABLE,
+                    'Email verification code could not be delivered. Please try again later.',
+                    { details: { delivery_status: deliveryStatus } }
+                );
+            }
+            return ok({ email, idempotency_key: idempotencyKey, delivery_status: deliveryStatus });
         } catch (error) {
             return fail(mapStoreUseCaseError(error, 'Failed to send guest checkout verification code'));
         }

@@ -276,9 +276,13 @@ import {
 import { resolveStorefrontAccountUrl } from '../../../src/features/dgfyRouteHelpers.js';
 import {
   createDgfyHandoff,
-  startDgfyPosSession
+  startDgfyPosSession,
+  startDgfyTenantSession
 } from '../../../src/services/dgfyAuthService.js';
-import { buildSkupervisorHandoffUrl } from '../../../src/features/pos/utils/skupervisorHandoff.js';
+import {
+  buildPosDgfyHandoffUrl,
+  buildSkupervisorHandoffUrl
+} from '../../../src/features/pos/utils/skupervisorHandoff.js';
 import {
   clearDgfyAuthToken,
   clearStoreAuthToken,
@@ -592,6 +596,7 @@ export default function StorefrontApp() {
 
   const [selectedServiceDetail, setSelectedServiceDetail] = useState(null);
   const [selectedServiceCartLineId, setSelectedServiceCartLineId] = useState('');
+  const [editingFnbCartLine, setEditingFnbCartLine] = useState(null);
   const [serviceDraftQuantity, setServiceDraftQuantity] = useState(1);
   const [serviceDraftNotes, setServiceDraftNotes] = useState('');
   const [isReviewModalOpen, setIsReviewModalOpen] = useState(false);
@@ -770,6 +775,7 @@ export default function StorefrontApp() {
     dgfyAuthToken,
     isDgfyCustomerSignedIn,
     isStorefrontAccountAuthenticated,
+    isDgfySessionResolved,
     closeAccountDrawer
   } = useStorefrontSession({ setIsAccountDrawerOpen });
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -865,6 +871,7 @@ export default function StorefrontApp() {
   } = fnbCatalogRuntime;
   const fnbProductDetailsRuntime = useFnbProductDetailsRoute({
     catalog,
+    editingCartLine: editingFnbCartLine,
     filteredCatalog,
     filteredFnbViewModel,
     isFnbMode,
@@ -921,7 +928,10 @@ export default function StorefrontApp() {
     enabled: isFnbMode || isServicesMode,
     mode: isFnbMode ? 'fnb' : (isServicesMode ? 'services' : ''),
     setCart,
-    storeSlug: selectedStore?.slug || routeSlug
+    // Route state changes synchronously when another storefront is selected.
+    // Prefer it over the previous async profile so cart hydration/clearing
+    // targets the destination store immediately.
+    storeSlug: routeSlug || selectedStore?.slug
   });
   const isStandaloneTrackingPage = isTrackSubpage || (isOrderSubpage && checkoutTab === 'track');
   const canUseGuestCheckoutFlow = !isDgfyCustomerSignedIn && guestCheckoutUnlocked;
@@ -1027,7 +1037,9 @@ export default function StorefrontApp() {
     refreshAccountAddresses,
     handleStorefrontSignOut,
     handleOpenBusinessInventory,
-    handleOpenBusinessPos
+    handleOpenBusinessPos,
+    getOwnBusinessDayCloseStatus,
+    configureOwnBusinessDayClosePin
   } = useCustomerDashboardRuntime({
     EMPTY_ACCOUNT_PANEL,
     selectedStore,
@@ -1078,9 +1090,11 @@ export default function StorefrontApp() {
     markDgfyExplicitSignOut,
     clearCheckoutAuthResumeDraft,
     buildSkupervisorHandoffUrl,
+    buildPosDgfyHandoffUrl,
     createDgfyHandoff,
     buildPosAppUrl,
     startDgfyPosSession,
+    startDgfyTenantSession,
     getGoStoreTrackPage: () => goStoreTrackPage,
     onTrackedActivityUpdated: (activity) => {
       const normalizedReference = String(activity?.reference || '').trim().toUpperCase();
@@ -1286,18 +1300,13 @@ export default function StorefrontApp() {
   }, [routeSlug]);
 
   useEffect(() => {
-    if (!isFnbMode) return;
-    if (!routeItemId) {
-      setSelectedFnbDetail(null);
-      setSelectedFnbDetailQuantity(1);
-      setSelectedFnbLineModifiers([]);
-      return;
+    if (
+      editingFnbCartLine
+      && (!isFnbDetailsSubpage || String(editingFnbCartLine.item_id) !== String(routeItemId))
+    ) {
+      setEditingFnbCartLine(null);
     }
-    const matchedItem = catalog.find((entry) => String(entry?.item_id) === String(routeItemId)) || null;
-    setSelectedFnbDetail(matchedItem);
-    setSelectedFnbDetailQuantity(1);
-    setSelectedFnbLineModifiers([]);
-  }, [catalog, isFnbMode, routeItemId]);
+  }, [editingFnbCartLine, isFnbDetailsSubpage, routeItemId]);
 
   const {
     isAboutExpanded,
@@ -1446,6 +1455,7 @@ export default function StorefrontApp() {
     hasMixedServiceCart,
     hasServiceCart,
     productCartLines,
+    replaceCartLine,
     removeCartItem,
     serviceCartCount,
     serviceCartFlyAnimations,
@@ -1467,6 +1477,25 @@ export default function StorefrontApp() {
     setCheckoutTab,
     setIsCheckoutOpen
   });
+
+  const handleFnbCartLineEdited = useCallback(() => {
+    setEditingFnbCartLine(null);
+    closeFnbDetail();
+    setCheckoutTab('cart');
+    setIsCheckoutOpen(true);
+  }, [closeFnbDetail, setCheckoutTab, setIsCheckoutOpen]);
+
+  const handleEditFnbCartLine = useCallback((line) => {
+    const item = (Array.isArray(catalog) ? catalog : []).find((entry) => Number(entry?.item_id) === Number(line?.item_id));
+    if (!item) {
+      toast.error('This menu item is no longer available to edit.');
+      return;
+    }
+    setEditingFnbCartLine(line);
+    setIsCheckoutOpen(false);
+    openFnbDetail(item);
+  }, [catalog, openFnbDetail, setIsCheckoutOpen]);
+
   const hasDiscoverySearch = debouncedDiscoverySearch.trim().length > 0;
   const { discoveryInteractiveAreaRef } = useDiscoveryExplorationOutsideClick({
     hasDiscoveryExplorationStarted,
@@ -1942,10 +1971,13 @@ export default function StorefrontApp() {
 
   const fnbProductDetailActions = useFnbProductDetailActions({
     addToCart,
+    editingCartLineId: editingFnbCartLine?.cart_line_id || '',
     goStoreOrderPage,
     item: detailPageFnbItem,
     modifierGroups: detailPageFnbModifierGroups,
+    onEditComplete: handleFnbCartLineEdited,
     quantity: selectedFnbDetailQuantity,
+    replaceCartLine,
     selectedModifiers: selectedFnbLineModifiers,
     toast
   });
@@ -2639,6 +2671,7 @@ export default function StorefrontApp() {
     setSelectedServiceDetail,
     setPreferredStoreLocationSelection,
     setIsCheckoutOpen,
+    setCheckoutTab,
     setShowFnbMobileOrderSummary,
     setFnbOrderStep,
     setSimpleOrderStep,
@@ -2670,6 +2703,7 @@ export default function StorefrontApp() {
     isCheckoutOpen,
     isMobileViewport,
     money,
+    onEditCartLine: handleEditFnbCartLine,
     removeCartItem,
     renderPromoCodePanel,
     servicesBodyFont,
@@ -3223,6 +3257,8 @@ export default function StorefrontApp() {
     submitAccountReviewFromDashboard,
     handleOpenBusinessInventory,
     handleOpenBusinessPos,
+    getOwnBusinessDayCloseStatus,
+    configureOwnBusinessDayClosePin,
     resolveStorefrontMetaForAccountEntry,
     withAssetOrigin,
     savedCustomerDetails,
@@ -3239,6 +3275,7 @@ export default function StorefrontApp() {
     routeSubpage,
     routeSlug,
     isSignedIn: isDgfyCustomerSignedIn,
+    isSessionResolved: isDgfySessionResolved,
     isDrawerOpen: isAccountDrawerOpen,
     isGuestDrawerState: isGuestAccountDrawerState,
     isMobileViewport,
