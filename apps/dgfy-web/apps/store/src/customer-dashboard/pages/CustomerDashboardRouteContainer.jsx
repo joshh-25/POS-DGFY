@@ -48,6 +48,7 @@ function buildCustomerDashboardViewProps({
     onSubmitCustomerReview: actions.onSubmitCustomerReview,
     resolveStorefrontMeta: resolvers.resolveStorefrontMeta,
     onOpenBusinessInventory: actions.onOpenBusinessInventory,
+    onGoDiscovery: actions.onGoDiscovery,
     resolveBusinessAssetUrl: resolvers.resolveBusinessAssetUrl,
     onOpenBusinessPos: actions.onOpenBusinessPos,
     onGetBusinessDayCloseStatus: actions.onGetBusinessDayCloseStatus,

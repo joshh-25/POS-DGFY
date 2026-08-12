@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Edit2, Landmark, Smartphone, Star, Trash2 } from 'lucide-react';
+import { CUSTOMER_DASHBOARD_TYPOGRAPHY } from '../model/customerDashboardPresentation.jsx';
 
 /**
  * PayoutMethodCard
@@ -69,7 +70,9 @@ export function PayoutMethodCard({
     border: 'none',
     background: 'transparent',
     padding: 0,
-    fontSize: 12,
+    minHeight: 40,
+    paddingInline: 6,
+    fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction,
     fontWeight: 700,
     cursor: isBusy ? 'not-allowed' : 'pointer',
     display: 'inline-flex',
@@ -84,15 +87,15 @@ export function PayoutMethodCard({
     <div style={containerStyle} onMouseEnter={() => setIsHovered(true)} onMouseLeave={() => setIsHovered(false)}>
       {method.isDefault ? (
         <div style={{ position: 'absolute', top: 12, right: 12 }}>
-          <span style={{ background: '#dbeafe', color: themeColor, borderRadius: 999, padding: '3px 8px', fontSize: 10, fontWeight: 800, lineHeight: 1.4, userSelect: 'none', boxShadow: '0 6px 16px rgba(37,99,235,0.12)' }}>Default</span>
+          <span style={{ background: '#dbeafe', color: themeColor, borderRadius: 999, padding: '3px 8px', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.badge, fontWeight: 800, lineHeight: 1.4, userSelect: 'none', boxShadow: '0 6px 16px rgba(37,99,235,0.12)' }}>Default</span>
         </div>
       ) : null}
 
       <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12, paddingRight: method.isDefault ? 64 : 0 }}>
         <div style={iconCircleStyle}><Icon size={16} strokeWidth={2} /></div>
         <div style={{ minWidth: 0, flex: 1, paddingTop: 2 }}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', lineHeight: 1.3, margin: 0 }}>{method.title}</p>
-          {method.subtitle ? <p style={{ fontSize: 11, fontWeight: 400, color: '#64748b', lineHeight: 1.4, marginTop: 2, margin: 0 }}>{method.subtitle}</p> : null}
+          <p style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.secondary, fontWeight: 700, color: '#0f172a', lineHeight: 1.3, margin: 0 }}>{method.title}</p>
+          {method.subtitle ? <p style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.caption, fontWeight: 400, color: '#64748b', lineHeight: 1.4, marginTop: 2, margin: 0 }}>{method.subtitle}</p> : null}
         </div>
       </div>
 
@@ -123,7 +126,7 @@ export function PayoutMethodCard({
 
 export function PayoutMethodCardEmpty({ message = 'No payout methods yet. Add a bank account or e-wallet below.' }) {
   return (
-    <div style={{ borderRadius: 16, border: '1px dashed #cbd5e1', background: '#f8fafc', padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 12, minHeight: 64, color: '#64748b', fontSize: 13, fontWeight: 600 }}>
+    <div style={{ borderRadius: 16, border: '1px dashed #cbd5e1', background: '#f8fafc', padding: '16px 18px', display: 'flex', alignItems: 'center', gap: 12, minHeight: 64, color: '#64748b', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.secondary, fontWeight: 600 }}>
       <Landmark size={18} color="#94a3b8" />
       {message}
     </div>
