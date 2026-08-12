@@ -86,6 +86,30 @@ describe('AccountSettingsSection responsive composition', () => {
     }
   });
 
+  it('centers account change modals on mobile', () => {
+    render(<AccountSettingsSection isMobileViewport theme={theme} accountIdentityInitials="HS" accountIdentityName="Henndry Sy" accountPanel={{ me: { is_email_verified: true, email: 'customer@example.com', phone: '+639123456789' } }} overviewPhone="+639123456789" overviewEmail="customer@example.com" profileVerification={profileVerification} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Change Password Password' }));
+
+    const modal = screen.getByTestId('account-settings-change-modal');
+    expect(modal.style.alignItems).toBe('center');
+    expect(screen.getByRole('dialog', { name: 'Change Password' })).toBeTruthy();
+  });
+
+  it('gives the longer mobile submit actions more room than Cancel', () => {
+    render(<AccountSettingsSection isMobileViewport theme={theme} accountIdentityInitials="HS" accountIdentityName="Henndry Sy" accountPanel={{ me: { is_email_verified: true, email: 'customer@example.com', phone: '+639123456789' } }} overviewPhone="+639123456789" overviewEmail="customer@example.com" profileVerification={profileVerification} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Change Phone Number' }));
+
+    const modal = screen.getByTestId('account-settings-change-modal');
+    const submitButton = screen.getByRole('button', { name: 'Verify & Update Phone' });
+    const footer = submitButton.parentElement;
+    expect(footer.style.gridTemplateColumns).toBe('minmax(0, 0.68fr) minmax(0, 1.32fr)');
+    expect(submitButton.style.padding).toBe('0px 16px');
+    expect(footer.querySelector('button[type="button"]').style.padding).toBe('0px 10px');
+    expect(modal.style.alignItems).toBe('center');
+  });
+
   it('uses the authenticated password-change endpoint for the password modal', async () => {
     changeDgfyPassword.mockResolvedValue({ success: true });
     render(<AccountSettingsSection isMobileViewport={false} theme={theme} accountIdentityInitials="HS" accountIdentityName="Henndry Sy" accountPanel={{ me: { is_email_verified: true, email: 'customer@example.com', phone: '+639123456789' } }} overviewPhone="+639123456789" overviewEmail="customer@example.com" profileVerification={profileVerification} />);

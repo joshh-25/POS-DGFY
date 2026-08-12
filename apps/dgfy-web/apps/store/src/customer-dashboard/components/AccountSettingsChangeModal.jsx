@@ -109,7 +109,7 @@ export function AccountSettingsChangeModal({ mode, isMobileViewport, theme, acco
   };
 
   return (
-    <div data-testid="account-settings-change-modal" data-modal-mode={mode} style={{ position: 'fixed', inset: 0, zIndex: 100000, display: 'flex', alignItems: isMobileViewport ? 'flex-end' : 'center', justifyContent: 'center', padding: isMobileViewport ? 12 : 24 }}>
+    <div data-testid="account-settings-change-modal" data-modal-mode={mode} style={{ position: 'fixed', inset: 0, zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: isMobileViewport ? 12 : 24 }}>
       <div aria-hidden="true" style={{ position: 'absolute', inset: 0, background: 'rgba(15,23,42,0.28)', backdropFilter: 'blur(3px)' }} />
       <section role="dialog" aria-modal="true" aria-labelledby="account-settings-change-title" style={{ position: 'relative', width: '100%', maxWidth: 420, maxHeight: 'calc(100dvh - 24px)', overflowY: 'auto', boxSizing: 'border-box', borderRadius: isMobileViewport ? '16px 16px 12px 12px' : 16, background: theme.surface, padding: isMobileViewport ? 16 : 20, boxShadow: '0 20px 50px rgba(15,23,42,0.22)', display: 'grid', gap: 14 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
@@ -160,9 +160,9 @@ export function AccountSettingsChangeModal({ mode, isMobileViewport, theme, acco
           )}
 
           {feedback && <div role="status" style={{ borderRadius: 7, background: theme.infoBg, color: theme.primary, padding: '8px 10px', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.micro, lineHeight: 1.4 }}>{feedback}</div>}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, borderTop: `1px solid ${theme.border}`, paddingTop: 12 }}>
-            <button type="button" onClick={onClose} style={{ minHeight: isMobileViewport ? 44 : 40, border: `1px solid ${theme.border}`, borderRadius: 7, background: '#fff', color: theme.text, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.action, fontWeight: 700, cursor: 'pointer' }}>Cancel</button>
-            <button type="submit" disabled={isSubmitting} style={{ minHeight: isMobileViewport ? 44 : 40, border: 0, borderRadius: 7, background: theme.primary, color: '#fff', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.action, fontWeight: 700, cursor: isSubmitting ? 'wait' : 'pointer', opacity: isSubmitting ? 0.7 : 1 }}>{isSubmitting ? 'Updating...' : copy.submitLabel}</button>
+          <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? 'minmax(0, 0.68fr) minmax(0, 1.32fr)' : '1fr 1fr', gap: 8, borderTop: `1px solid ${theme.border}`, paddingTop: 12 }}>
+            <button type="button" onClick={onClose} style={{ minHeight: isMobileViewport ? 44 : 40, border: `1px solid ${theme.border}`, borderRadius: 7, background: '#fff', color: theme.text, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.action, fontWeight: 700, cursor: 'pointer', padding: '0 10px' }}>Cancel</button>
+            <button type="submit" disabled={isSubmitting} style={{ minHeight: isMobileViewport ? 44 : 40, border: 0, borderRadius: 7, background: theme.primary, color: '#fff', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.action, fontWeight: 700, cursor: isSubmitting ? 'wait' : 'pointer', opacity: isSubmitting ? 0.7 : 1, padding: '0 16px' }}>{isSubmitting ? 'Updating...' : copy.submitLabel}</button>
           </div>
         </form>
       </section>
