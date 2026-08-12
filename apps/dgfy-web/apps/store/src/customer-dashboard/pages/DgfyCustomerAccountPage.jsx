@@ -14,12 +14,14 @@ import {
   ACTIVE_CUSTOMER_ORDER_STATUSES,
   COMPLETED_CUSTOMER_ORDER_STATUSES
 } from '../model/customerOrderStatus.js';
+import { getCustomerBookingBucket } from '../model/customerBookingStatus.js';
 import {
   getCustomerBusinessCoverUrl,
   getCustomerBusinessProfileUrl,
   getCustomerBusinessRoleLabel,
   getCustomerBusinessStatusLabel
 } from '../model/customerBusinessAssets.js';
+import { getCustomerProfileVerification } from '../model/customerProfileVerification.js';
 import {
   CUSTOMER_DASHBOARD_THEME,
   CustomerDashboardEmptyState,
@@ -70,6 +72,7 @@ export function DgfyCustomerAccountPage({
   onOpenBusinessPos,
   onGetBusinessDayCloseStatus,
   onConfigureBusinessDayClosePin,
+  onGoDiscovery,
   accountAddressActionId = '',
   accountPayoutActionId = '',
   accountCashoutActionId = ''
@@ -77,6 +80,8 @@ export function DgfyCustomerAccountPage({
   const theme = CUSTOMER_DASHBOARD_THEME;
   const allOrders = Array.isArray(accountPanel?.orders) ? accountPanel.orders : [];
   const allBookings = Array.isArray(accountPanel?.bookings) ? accountPanel.bookings : [];
+  const activeBookings = allBookings.filter((booking) => getCustomerBookingBucket(booking) === 'active');
+  const pastBookings = allBookings.filter((booking) => getCustomerBookingBucket(booking) === 'past');
   const allAddresses = Array.isArray(accountPanel?.addresses) ? accountPanel.addresses : [];
   const notifications = Array.isArray(accountPanel?.notifications) ? accountPanel.notifications : [];
   const unreadNotificationCount = Math.max(0, Number(accountPanel?.unreadNotificationCount || 0));
@@ -84,6 +89,7 @@ export function DgfyCustomerAccountPage({
   const contactParts = String(accountIdentityContact || '').split(' | ').map((value) => String(value || '').trim());
   const overviewPhone = String(accountPanel?.me?.phone || contactParts[0] || '').trim();
   const overviewEmail = String(accountPanel?.me?.email || contactParts[1] || '').trim();
+  const profileVerification = getCustomerProfileVerification(accountPanel);
   const loyalty = accountPanel?.loyalty || { balance: 0, transactions: [] };
   const loyaltyTransactions = Array.isArray(loyalty?.transactions) ? loyalty.transactions.slice(0, 3) : [];
   const affiliateEnrollments = Array.isArray(accountPanel?.affiliateEnrollments) ? accountPanel.affiliateEnrollments : [];
@@ -98,6 +104,7 @@ export function DgfyCustomerAccountPage({
   const [activeNav, setActiveNav] = useState('overview');
   const [activeActivityTab, setActiveActivityTab] = useState('active_orders');
   const [activeOrdersTab, setActiveOrdersTab] = useState('active');
+  const [activeBookingsTab, setActiveBookingsTab] = useState('active');
   const [businessStepUpAction, setBusinessStepUpAction] = useState(null);
   const [businessEmailOtpCode, setBusinessEmailOtpCode] = useState('');
   const [businessActionLoading, setBusinessActionLoading] = useState(false);
@@ -238,13 +245,13 @@ export function DgfyCustomerAccountPage({
   const businessStatusLabel = (company) => getCustomerBusinessStatusLabel(company, prettyCustomerStatus);
 
   const views = {
-    overview: <DashboardOverviewSection isMobileViewport={isMobileViewport} theme={theme} accountIdentityInitials={accountIdentityInitials} accountIdentityName={accountIdentityName} accountPanel={accountPanel} isAccountPanelLoading={Boolean(accountPanel?.loading)} overviewPhone={overviewPhone} overviewEmail={overviewEmail} inProgressOrders={inProgressOrders} completedOrders={completedOrders} allBookings={allBookings} allAddresses={allAddresses} loyalty={loyalty} activeActivityTab={activeActivityTab} setActiveActivityTab={setActiveActivityTab} enrichedActiveOrders={enrichedActiveOrders} reviewEligibleOrders={reviewEligibleOrders} defaultAddress={defaultAddress} EmptyState={EmptyState} StatusBadge={StatusBadge} getStoreLogoUrl={getCustomerStoreLogoUrl} formatDate={formatCustomerDate} handleOpenStorefront={handleOpenStorefront} onTrackReference={onTrackReference} openReviewComposer={openReviewComposer} setActiveNav={setActiveNav} onRegisterBusiness={onRegisterBusiness} onHelp={onHelp} />,
+    overview: <DashboardOverviewSection isMobileViewport={isMobileViewport} theme={theme} accountIdentityInitials={accountIdentityInitials} accountIdentityName={accountIdentityName} accountPanel={accountPanel} profileVerification={profileVerification} isAccountPanelLoading={Boolean(accountPanel?.loading)} overviewPhone={overviewPhone} overviewEmail={overviewEmail} inProgressOrders={inProgressOrders} completedOrders={completedOrders} allBookings={allBookings} allAddresses={allAddresses} loyalty={loyalty} activeActivityTab={activeActivityTab} setActiveActivityTab={setActiveActivityTab} enrichedActiveOrders={enrichedActiveOrders} reviewEligibleOrders={reviewEligibleOrders} defaultAddress={defaultAddress} EmptyState={EmptyState} StatusBadge={StatusBadge} getStoreLogoUrl={getCustomerStoreLogoUrl} formatDate={formatCustomerDate} handleOpenStorefront={handleOpenStorefront} onTrackReference={onTrackReference} openReviewComposer={openReviewComposer} setActiveNav={setActiveNav} onGoDiscovery={onGoDiscovery} onHelp={onHelp} />,
     orders: <OrdersSection activeTab={activeOrdersTab} setActiveTab={setActiveOrdersTab} inProgressOrders={inProgressOrders} completedOrders={completedOrders} reviews={accountReviewHistory} isMobileViewport={isMobileViewport} customerTrackLoadingReference={customerTrackLoadingReference} onTrackReference={onTrackReference} onOpenStorefront={handleOpenStorefront} onOpenReview={openReviewComposer} EmptyState={EmptyState} StatusBadge={StatusBadge} getStoreLogoUrl={getCustomerStoreLogoUrl} formatDate={formatCustomerDate} money={formatCustomerMoney} prettyStatus={prettyCustomerStatus} theme={theme} />,
-    bookings: <BookingsSection bookings={allBookings} EmptyState={EmptyState} StatusBadge={StatusBadge} formatDate={formatCustomerDate} theme={theme} />,
+    bookings: <BookingsSection activeTab={activeBookingsTab} setActiveTab={setActiveBookingsTab} activeBookings={activeBookings} pastBookings={pastBookings} reviews={accountReviewHistory} isMobileViewport={isMobileViewport} EmptyState={EmptyState} StatusBadge={StatusBadge} formatDate={formatCustomerDate} theme={theme} />,
     addresses: <AddressesSection addresses={allAddresses} isMobileViewport={isMobileViewport} onSaveAddress={onSaveAddress} onDeleteAddress={onDeleteAddress} onSetDefaultAddress={onSetDefaultAddress} onUseAddressForCheckout={onUseAddressForCheckout} renderAddressPinEditor={renderAddressPinEditor} accountAddressActionId={accountAddressActionId} theme={theme} />,
-    loyalty: <LoyaltySection loyalty={loyalty} transactions={loyaltyTransactions} EmptyState={EmptyState} formatDate={formatCustomerDate} prettyStatus={prettyCustomerStatus} theme={theme} />,
+    loyalty: <LoyaltySection isMobileViewport={isMobileViewport} loyalty={loyalty} transactions={loyaltyTransactions} EmptyState={EmptyState} formatDate={formatCustomerDate} prettyStatus={prettyCustomerStatus} theme={theme} />,
     affiliate: <AffiliateSection enrollments={affiliateEnrollments} earnings={affiliateEarnings} earningsByStore={affiliateEarningsByStore} payoutMethods={affiliatePayoutMethods} onSavePayoutMethod={onSavePayoutMethod} onDeletePayoutMethod={onDeletePayoutMethod} onSetDefaultPayoutMethod={onSetDefaultPayoutMethod} accountPayoutActionId={accountPayoutActionId} cashouts={affiliateCashouts} onRequestCashout={onRequestCashout} onCancelCashout={onCancelCashout} accountCashoutActionId={accountCashoutActionId} isMobileViewport={isMobileViewport} EmptyState={EmptyState} StatusBadge={StatusBadge} money={formatCustomerMoney} formatDate={formatCustomerDate} theme={theme} />,
-    account: <AccountSettingsSection isMobileViewport={isMobileViewport} theme={theme} accountIdentityInitials={accountIdentityInitials} accountIdentityName={accountIdentityName} accountPanel={accountPanel} overviewPhone={overviewPhone} overviewEmail={overviewEmail} />,
+    account: <AccountSettingsSection isMobileViewport={isMobileViewport} theme={theme} accountIdentityInitials={accountIdentityInitials} accountIdentityName={accountIdentityName} accountPanel={accountPanel} overviewPhone={overviewPhone} overviewEmail={overviewEmail} profileVerification={profileVerification} />,
     business: <BusinessSection isMobileViewport={isMobileViewport} theme={theme} businessCompanies={businessCompanies} businessMemberships={businessMemberships} businessActionError={businessActionError} businessActionLoading={businessActionLoading} businessStepUpAction={businessStepUpAction} businessEmailOtpCode={businessEmailOtpCode} setBusinessEmailOtpCode={setBusinessEmailOtpCode} setBusinessStepUpAction={setBusinessStepUpAction} startBusinessAction={startBusinessAction} submitBusinessStepUpAction={submitBusinessStepUpAction} onRegisterBusiness={onRegisterBusiness} onOpenBusinessPos={(company, options = {}) => setPosLaunchRequest({ company, intent: options.intent || 'pos' })} onOpenBusinessDayClose={openBusinessDayClose} resolveBusinessAssetUrl={resolveBusinessAssetUrl} getBusinessCoverUrl={getCustomerBusinessCoverUrl} getBusinessProfileUrl={getCustomerBusinessProfileUrl} getBusinessRoleLabel={(company) => getCustomerBusinessRoleLabel(company, prettyCustomerStatus)} getBusinessStatusLabel={businessStatusLabel} />
   };
 

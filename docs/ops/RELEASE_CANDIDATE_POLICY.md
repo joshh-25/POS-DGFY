@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: release
-last_reviewed: 2026-08-10
+last_reviewed: 2026-08-12
 applies_to: development_to_production_release_flow
 topic: release_candidate_policy
 ---
@@ -112,6 +112,17 @@ on `release/* -> main` is a real process decision (what evidence is
 mandatory, who reviews it, whether it blocks merge) and is deliberately left
 as a follow-up, not assumed here.
 
+## The pre-promotion local gate
+
+`quality-checks` (described above as blocking) is currently disabled in
+`pr-checks.yml` (`if: false`, paused since 2026-08-11 over #345's ~14min
+unfiltered run) — see "Known gaps" below. Until that's resolved, the human
+supplement is `npm run gate:release:local`, run by hand before a
+`staging`/`main` promotion. It is documented in
+`docs/testing/release-go-no-go-checklist.md`, which is the authoritative
+runbook for that gate — see #375. Do not propose rebuilding it (#345, #330);
+invoke it.
+
 ## Known gaps (tracked, not solved by this document)
 
 - `release-controller/config/controller.example.json` still lists
@@ -119,6 +130,10 @@ as a follow-up, not assumed here.
   checks for a controller that was never installed. Reconciling or removing
   it is a separate decision.
 - No live RC gate beyond the PR checks above (see previous section).
+- `quality-checks` is currently short-circuited with `if: false` in
+  `pr-checks.yml` (see #345), so the "blocking" description above is
+  aspirational until that's re-enabled. `npm run gate:release:local` (see
+  above) is the only place the full test matrix runs meanwhile.
 - `develop` and `staging` have drifted before without a backport in the
   other direction — the compliance bypass this document depends on
   (`scripts/check-compliance-impact.js`'s `PROMOTION_HEAD_BY_BASE`) existed

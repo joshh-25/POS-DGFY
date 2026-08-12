@@ -21,13 +21,17 @@ export function DeliveryPinMap({
   highlighted = false,
   highlightColor = '#f97316',
   highlightGlow = 'rgba(249,115,22,0.14)',
+  showAttributionControl = true,
+  pinInstruction = '',
   overlayControls = null
 }) {
   const frameRef = useRef(null);
   const ref = useRef(null);
   const mapRef = useRef(null);
   const markerRef = useRef(null);
+  const pinInstructionTimerRef = useRef(null);
   const [mapUnavailable, setMapUnavailable] = useState(false);
+  const [showPinInstruction, setShowPinInstruction] = useState(false);
   const resolvedHeight = typeof height === 'number' ? `${height}px` : String(height || '260px');
 
   const scheduleMapResize = useCallback((reason = 'layout') => {
@@ -71,7 +75,8 @@ export function DeliveryPinMap({
         style: TILING_SERVER,
         transformRequest: tileTransformRequest,
         center: [DEFAULT_CENTER.longitude, DEFAULT_CENTER.latitude],
-        zoom: 13
+        zoom: 13,
+        attributionControl: showAttributionControl
       });
     } catch (error) {
       console.warn('[DeliveryPinMap] MapLibre init unavailable', error);
@@ -99,10 +104,11 @@ export function DeliveryPinMap({
         markerRef.current.remove();
         markerRef.current = null;
       }
+      window.clearTimeout(pinInstructionTimerRef.current);
       map.remove();
       mapRef.current = null;
     };
-  }, [scheduleMapResize]);
+  }, [scheduleMapResize, showAttributionControl]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -118,6 +124,22 @@ export function DeliveryPinMap({
       const lng = Number(pin.longitude);
       if (Number.isFinite(lat) && Number.isFinite(lng)) {
         const el = makeUserLocationElement();
+        if (pinInstruction) {
+          el.setAttribute('title', pinInstruction);
+          el.setAttribute('aria-label', pinInstruction);
+          const revealPinInstruction = () => setShowPinInstruction(true);
+          const hidePinInstruction = () => setShowPinInstruction(false);
+          el.addEventListener('mouseenter', revealPinInstruction);
+          el.addEventListener('mouseleave', hidePinInstruction);
+          el.addEventListener('focus', revealPinInstruction);
+          el.addEventListener('blur', hidePinInstruction);
+          el.addEventListener('click', (event) => {
+            event.stopPropagation();
+            revealPinInstruction();
+            window.clearTimeout(pinInstructionTimerRef.current);
+            pinInstructionTimerRef.current = window.setTimeout(hidePinInstruction, 2200);
+          });
+        }
         markerRef.current = new maplibregl.Marker({ element: el, anchor: 'bottom', draggable: !disabled })
           .setLngLat([lng, lat])
           .addTo(map);
@@ -140,7 +162,7 @@ export function DeliveryPinMap({
         map.flyTo({ center: [lng, lat], zoom: Math.max(map.getZoom(), 15) });
       }
     }
-  }, [disabled, onPinChange, pin]);
+  }, [disabled, onPinChange, pin, pinInstruction]);
 
   useEffect(() => {
     const map = mapRef.current;
@@ -257,6 +279,11 @@ export function DeliveryPinMap({
           }}
         >
           {overlayControls}
+        </div>
+      )}
+      {pinInstruction && showPinInstruction && (
+        <div role="status" data-testid="delivery-map-pin-instruction" style={{ position: 'absolute', left: '50%', bottom: 12, transform: 'translateX(-50%)', zIndex: 11, borderRadius: 999, padding: '6px 10px', background: 'rgba(15,23,42,0.86)', color: '#fff', fontSize: 11, fontWeight: 700, whiteSpace: 'nowrap', pointerEvents: 'none' }}>
+          {pinInstruction}
         </div>
       )}
       {disabled && (
