@@ -17,7 +17,7 @@ export function useCustomerDashboardRuntime({
   setDeliveryLocationAction, setSelectedSavedLocationId, setPinLocationError,
   setResolvedDeliveryAddress, setCustomerAddress, setCustomerPin, DeliveryPinMap,
   createAddressPinEditorRenderer, reverseGeocodeDeliveryPin, normalizeCoordinatePair,
-  buildPinnedDeliveryAddress, isMobileViewport, servicesBodyFont, servicesDisplayFont,
+  buildPinnedDeliveryAddress, isMobileViewport,
   getFetchTrackingPayload, getBuildTrackedOrderEntryFromTrackingPayload,
   mapAccountActivityToTrackedOrderEntry, mergeTrackedOrderEntries,
   mergeAccountPanelActivity, resolveStorefrontRouteSlug, toSlug, storePath,
@@ -65,7 +65,7 @@ export function useCustomerDashboardRuntime({
     setSelectedSavedLocationId, setPinLocationError, setResolvedDeliveryAddress,
     setCustomerAddress, setCustomerPin, createAddressPinEditorRenderer,
     DeliveryPinMap, reverseGeocodeDeliveryPin, buildPinnedDeliveryAddress,
-    isMobileViewport, servicesBodyFont, servicesDisplayFont
+    isMobileViewport
   });
   const payouts = useCustomerDashboardPayouts({
     accountPanel, setAccountPanel, handleLoadAccountPanel, dgfySessionAccount,

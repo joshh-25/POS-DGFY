@@ -1,10 +1,9 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 
-export function useCustomerDashboardAddresses({ accountPanel, setAccountPanel, handleLoadAccountPanel, dgfySessionAccount, isDgfyCustomerSignedIn, requestJson, readDgfyAuthToken, normalizeCoordinatePair, normalizeStorefrontErrorMessage, setDeliveryLocationAction, setSelectedSavedLocationId, setPinLocationError, setResolvedDeliveryAddress, setCustomerAddress, setCustomerPin, createAddressPinEditorRenderer, DeliveryPinMap, reverseGeocodeDeliveryPin, buildPinnedDeliveryAddress, isMobileViewport, servicesBodyFont, servicesDisplayFont }) {
+export function useCustomerDashboardAddresses({ accountPanel, setAccountPanel, handleLoadAccountPanel, dgfySessionAccount, isDgfyCustomerSignedIn, requestJson, readDgfyAuthToken, normalizeCoordinatePair, normalizeStorefrontErrorMessage, setDeliveryLocationAction, setSelectedSavedLocationId, setPinLocationError, setResolvedDeliveryAddress, setCustomerAddress, setCustomerPin, createAddressPinEditorRenderer, DeliveryPinMap, reverseGeocodeDeliveryPin, buildPinnedDeliveryAddress, isMobileViewport }) {
   const [accountAddressActionId, setAccountAddressActionId] = useState('');
   const [pinAction, setPinAction] = useState({ mode: '', loading: false, error: '' });
-  const [expandedMapMode, setExpandedMapMode] = useState('');
   const pinRequestRef = useRef(0);
   const useAccountAddressForCheckout = useCallback((address) => {
     if (!address) return;
@@ -37,7 +36,7 @@ export function useCustomerDashboardAddresses({ accountPanel, setAccountPanel, h
     setPinAction({ mode, loading: true, error: '' });
     navigator.geolocation.getCurrentPosition(({ coords }) => applyPin({ pin: { latitude: coords.latitude, longitude: coords.longitude }, onChange, mode }), () => setPinAction({ mode, loading: false, error: 'Unable to get your current location. Pin the address on the map instead.' }), { enableHighAccuracy: true, timeout: 10000 });
   }, [applyPin]);
-  const renderAddressPinEditor = useMemo(() => createAddressPinEditorRenderer({ DeliveryPinMap, accountAddressPinAction: pinAction, applyAccountAddressPin: applyPin, expandedAccountAddressMapMode: expandedMapMode, handleAccountAddressCurrentLocation: useCurrentLocation, isMobileViewport, normalizeCoordinatePair, servicesBodyFont, servicesDisplayFont, setExpandedAccountAddressMapMode: setExpandedMapMode }), [DeliveryPinMap, applyPin, createAddressPinEditorRenderer, expandedMapMode, isMobileViewport, normalizeCoordinatePair, pinAction, servicesBodyFont, servicesDisplayFont, useCurrentLocation]);
+  const renderAddressPinEditor = useMemo(() => createAddressPinEditorRenderer({ DeliveryPinMap, accountAddressPinAction: pinAction, applyAccountAddressPin: applyPin, handleAccountAddressCurrentLocation: useCurrentLocation, isMobileViewport, normalizeCoordinatePair }), [DeliveryPinMap, applyPin, createAddressPinEditorRenderer, isMobileViewport, normalizeCoordinatePair, pinAction, useCurrentLocation]);
   const handleSaveAccountAddress = useCallback(async (draft = {}, existingAddress = null) => {
     const token = readDgfyAuthToken();
     const addressLine = String(draft.address_line || '').trim();

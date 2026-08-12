@@ -70,7 +70,8 @@ export function useCustomerDashboardRouteModel({
     onOpenBusinessInventory: actions.handleOpenBusinessInventory,
     onOpenBusinessPos: actions.handleOpenBusinessPos,
     onGetBusinessDayCloseStatus: actions.getOwnBusinessDayCloseStatus,
-    onConfigureBusinessDayClosePin: actions.configureOwnBusinessDayClosePin
+    onConfigureBusinessDayClosePin: actions.configureOwnBusinessDayClosePin,
+    onGoDiscovery: actions.onGoDiscovery
   }), [
     actions.clearSavedCustomerDetailsForDevice,
     actions.handleAcceptDgfyCompanyInvitation,
@@ -94,6 +95,7 @@ export function useCustomerDashboardRouteModel({
     actions.handleStorefrontSignOut,
     actions.handleTrackCustomerReference,
     actions.openBusinessRegistrationFlow,
+    actions.onGoDiscovery,
     actions.openStorefrontFromAccountEntry,
     actions.renderAddressPinEditor,
     actions.requestDgfyBusinessSecurityCode,

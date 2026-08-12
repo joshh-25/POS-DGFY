@@ -268,6 +268,7 @@ Historical note:
 - Legacy receive-token verification notes were archived to `docs/archive/testing/2026-02/receive-token-fix-evaluation.md`.
 - Legacy SKU expansion manual walkthrough notes were archived to `docs/archive/testing/2026-03/sku-expansion-manual-test-runbook-2026-03-31.md`.
 - Dated release go/no-go snapshot was archived to `docs/archive/testing/2026-04/release-go-no-go-checklist-2026-04-21.md`.
+- `docs/testing/release-go-no-go-checklist.md`'s historical evidence log was archived to `docs/archive/testing/2026-08/release-go-no-go-checklist-2026-08-12.md`; the live doc is now the `npm run gate:release:local` runbook (#375).
 - Active POS readiness source of truth is `docs/testing/pos-readiness-status.md`; historical run logs remain evidence-only and must not be used as current behavior contracts.
 - Latest DGFY POS/SKUpervisor surface split review and post-fix ratings are recorded in section `3.24` of `docs/testing/pos-readiness-status.md`.
 

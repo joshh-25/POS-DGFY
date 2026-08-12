@@ -16,7 +16,7 @@ export function CustomerDashboardRouteHost({
 }) {
   useEffect(() => {
     if (isStandaloneRoute && isSessionResolved && !isSignedIn) guestAuth?.onOpenAuth?.();
-  }, [guestAuth?.onOpenAuth, isSessionResolved, isSignedIn, isStandaloneRoute]);
+  }, [guestAuth, isSessionResolved, isSignedIn, isStandaloneRoute]);
 
   if (isStandaloneRoute && isSignedIn) {
     return (

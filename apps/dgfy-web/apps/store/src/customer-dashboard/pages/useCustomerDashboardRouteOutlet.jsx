@@ -28,6 +28,7 @@ export function useCustomerDashboardRouteOutlet({
     currentPathSubpage,
     routeSubpage
   });
+  const dashboardSources = useMemo(() => ({ ...(sources || {}), onGoDiscovery }), [onGoDiscovery, sources]);
 
   const { closeStandaloneAccountPage } = useCustomerDashboardRoutePresentation({
     currentPathname,
@@ -55,19 +56,19 @@ export function useCustomerDashboardRouteOutlet({
         isMobileViewport={isMobileViewport}
         onCloseStandalone={closeStandaloneAccountPage}
         onCloseDrawer={onCloseDrawer}
-        sources={sources}
+        sources={dashboardSources}
         guestAuth={guestAuth}
       />
     );
   }, [
     closeStandaloneAccountPage,
+    dashboardSources,
     guestAuth,
     isMobileViewport,
     isSignedIn,
     isSessionResolved,
     isStandaloneAccountPage,
-    onCloseDrawer,
-    sources
+    onCloseDrawer
   ]);
 
   const drawerRouteNode = useMemo(() => {
@@ -82,12 +83,13 @@ export function useCustomerDashboardRouteOutlet({
         isMobileViewport={isMobileViewport}
         onCloseStandalone={closeStandaloneAccountPage}
         onCloseDrawer={onCloseDrawer}
-        sources={sources}
+        sources={dashboardSources}
         guestAuth={guestAuth}
       />
     );
   }, [
     closeStandaloneAccountPage,
+    dashboardSources,
     guestAuth,
     isDrawerOpen,
     isGuestDrawerState,
@@ -95,8 +97,7 @@ export function useCustomerDashboardRouteOutlet({
     isSignedIn,
     isSessionResolved,
     isStandaloneAccountPage,
-    onCloseDrawer,
-    sources
+    onCloseDrawer
   ]);
 
   return useMemo(
