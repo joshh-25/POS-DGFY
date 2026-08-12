@@ -29,15 +29,46 @@ export const CUSTOMER_DASHBOARD_THEME = {
   orangeBg: '#FEF3F2'
 };
 
+export const CUSTOMER_DASHBOARD_TYPOGRAPHY = {
+  pageTitle: { desktop: 26, mobile: 22 },
+  pageTitleWeight: 700,
+  headerTitle: { desktop: 20, mobile: 16 },
+  headerTitleWeight: 700,
+  pageSubtitle: 14,
+  sectionTitle: { desktop: 16, mobile: 15 },
+  sectionTitleWeight: 700,
+  subsectionTitle: { desktop: 20, mobile: 18 },
+  subsectionTitleWeight: 700,
+  identityName: { desktop: 24, mobile: 16 },
+  body: 14,
+  secondary: 13,
+  label: 13,
+  caption: 12,
+  micro: 12,
+  cardTitle: 16,
+  badge: 12,
+  action: 14,
+  compactAction: 13,
+  tab: { desktop: 14, mobile: 13 },
+  metric: { desktop: 22, mobile: 18 },
+  heroMetric: { desktop: 28, mobile: 24 },
+  storeMark: { desktop: 12, mobile: 18 },
+  modalTitle: 20,
+  modalTitleWeight: 700,
+  modalHeroTitle: { desktop: 24, mobile: 22 },
+  controlHeight: { desktop: 40, mobile: 44 },
+  iconControlSize: { desktop: 36, mobile: 40 }
+};
+
 export const CUSTOMER_DASHBOARD_NAV_ITEMS = [
   { id: 'overview', label: 'Overview', icon: Home },
   { id: 'orders', label: 'Orders', icon: Package },
   { id: 'bookings', label: 'Bookings', icon: CalendarDays },
   { id: 'addresses', label: 'Addresses', icon: MapPin },
-  { id: 'loyalty', label: 'Loyalty', icon: Award },
+  { id: 'loyalty', label: 'Loyalty', icon: Award, visible: false },
   { id: 'affiliate', label: 'Affiliate', icon: Percent },
   { id: 'account', label: 'Account', icon: User },
-  { id: 'business', label: 'Business', icon: Store, premium: true }
+  { id: 'business', label: 'Business', icon: Store }
 ];
 
 export const formatCustomerMoney = (value) => {
@@ -70,8 +101,8 @@ export const getCustomerStoreLogoUrl = (entry = {}) => (
 
 export const CustomerDashboardEmptyState = ({ title, desc, isMobileViewport }) => (
   <div style={{ border: `1px dashed ${CUSTOMER_DASHBOARD_THEME.border}`, borderRadius: 14, padding: isMobileViewport ? 22 : 30, textAlign: 'center', background: CUSTOMER_DASHBOARD_THEME.bg }}>
-    <div style={{ fontSize: 16, fontWeight: 700, color: CUSTOMER_DASHBOARD_THEME.text }}>{title}</div>
-    {desc ? <div style={{ marginTop: 6, fontSize: 14, color: CUSTOMER_DASHBOARD_THEME.muted }}>{desc}</div> : null}
+    <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.cardTitle, fontWeight: 700, color: CUSTOMER_DASHBOARD_THEME.text }}>{title}</div>
+    {desc ? <div style={{ marginTop: 6, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.body, color: CUSTOMER_DASHBOARD_THEME.muted }}>{desc}</div> : null}
   </div>
 );
 
@@ -89,5 +120,5 @@ export const CustomerDashboardStatusBadge = ({ status }) => {
     color = CUSTOMER_DASHBOARD_THEME.orange;
     background = CUSTOMER_DASHBOARD_THEME.orangeBg;
   }
-  return <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 999, fontSize: 12, fontWeight: 600, color, background }}>{prettyCustomerStatus(status)}</span>;
+  return <span style={{ display: 'inline-flex', alignItems: 'center', padding: '2px 8px', borderRadius: 999, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.badge, fontWeight: 600, color, background }}>{prettyCustomerStatus(status)}</span>;
 };

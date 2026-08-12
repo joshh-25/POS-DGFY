@@ -1,10 +1,10 @@
 ﻿import React from 'react';
 import { CalendarDays, ChevronRight, ShoppingBag, Star } from 'lucide-react';
-import { CustomerDashboardEmptyState } from '../model/customerDashboardPresentation.jsx';
+import { CUSTOMER_DASHBOARD_TYPOGRAPHY, CustomerDashboardEmptyState } from '../model/customerDashboardPresentation.jsx';
 export function OverviewActivityPanel({ isMobileViewport, theme, activeActivityTab, setActiveActivityTab, isAccountPanelLoading, enrichedActiveOrders, allBookings, reviewEligibleOrders, StatusBadge, getStoreLogoUrl, formatDate, handleOpenStorefront, onTrackReference, openReviewComposer, setActiveNav }) {
   return (
     <div style={{ background: theme.surface, borderRadius: isMobileViewport ? 20 : 16, border: `1px solid ${theme.border}`, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ display: 'flex', borderBottom: isMobileViewport ? 'none' : `1px solid ${theme.border}`, padding: isMobileViewport ? '12px 12px 0' : '0 24px', gap: isMobileViewport ? 8 : 0 }}>
+      <div data-testid="customer-overview-activity-tabs" style={{ display: 'flex', flexWrap: 'nowrap', borderBottom: `1px solid ${theme.border}`, padding: isMobileViewport ? '0 12px 4px' : '0 24px', gap: isMobileViewport ? 8 : 0, overflowX: 'auto', overscrollBehaviorX: 'contain', scrollbarWidth: 'thin' }}>
         {[
           { id: 'active_orders', label: isMobileViewport ? 'Orders' : 'Active Orders', icon: ShoppingBag },
           { id: 'upcoming_bookings', label: isMobileViewport ? 'Bookings' : 'Upcoming Bookings', icon: CalendarDays },
@@ -13,7 +13,7 @@ export function OverviewActivityPanel({ isMobileViewport, theme, activeActivityT
           const isActive = activeActivityTab === tab.id;
           const Icon = tab.icon;
           return (
-            <button key={tab.id} onClick={() => setActiveActivityTab(tab.id)} style={{ background: isMobileViewport ? (isActive ? theme.infoBg : 'transparent') : 'transparent', border: 'none', borderBottom: isMobileViewport ? 'none' : (isActive ? `2px solid ${theme.primary}` : '2px solid transparent'), color: isActive ? theme.primary : theme.muted, fontSize: isMobileViewport ? 12 : 14, fontWeight: isActive ? 600 : 500, padding: isMobileViewport ? '9px 10px' : '20px 16px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', transition: 'all 200ms', borderRadius: isMobileViewport ? 999 : 0, flex: 1, justifyContent: 'center' }}>
+            <button key={tab.id} onClick={() => setActiveActivityTab(tab.id)} style={{ background: 'transparent', border: 'none', borderBottom: isActive ? `2px solid ${theme.primary}` : '2px solid transparent', color: isActive ? theme.primary : theme.muted, fontSize: isMobileViewport ? CUSTOMER_DASHBOARD_TYPOGRAPHY.tab.mobile : CUSTOMER_DASHBOARD_TYPOGRAPHY.tab.desktop, fontWeight: isActive ? 600 : 500, minHeight: isMobileViewport ? CUSTOMER_DASHBOARD_TYPOGRAPHY.controlHeight.mobile : CUSTOMER_DASHBOARD_TYPOGRAPHY.controlHeight.desktop, padding: '0 16px', display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer', transition: 'all 200ms', borderRadius: 0, flexShrink: 0, justifyContent: 'center', whiteSpace: 'nowrap' }}>
               <Icon size={isMobileViewport ? 14 : 16} /> {tab.label}
             </button>
           );
@@ -34,7 +34,7 @@ export function OverviewActivityPanel({ isMobileViewport, theme, activeActivityT
                   display: 'grid',
                   placeItems: 'center',
                   color: theme.muted,
-                  fontSize: 14,
+                  fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.body,
                   fontWeight: 600
                 }}
               >
@@ -46,8 +46,8 @@ export function OverviewActivityPanel({ isMobileViewport, theme, activeActivityT
               <>
                 {isMobileViewport ? (
                   <div>
-                    <div style={{ fontSize: 22, fontWeight: 700, color: theme.text, lineHeight: 1.15 }}>Active Orders</div>
-                    <div style={{ fontSize: 14, color: theme.muted, marginTop: 4 }}>
+                    <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.subsectionTitle.mobile, fontWeight: 700, color: theme.text, lineHeight: 1.15 }}>Active Orders</div>
+                    <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.body, color: theme.muted, marginTop: 4 }}>
                       You have {enrichedActiveOrders.length} active order{enrichedActiveOrders.length === 1 ? '' : 's'}
                     </div>
                   </div>
@@ -59,24 +59,24 @@ export function OverviewActivityPanel({ isMobileViewport, theme, activeActivityT
                         <div style={{ border: `1px solid ${theme.border}`, borderRadius: 18, padding: 14, display: 'grid', gap: 14, background: theme.surface, width: '100%', minWidth: 0, boxSizing: 'border-box' }}>
                           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', alignItems: 'flex-start', gap: 12, width: '100%', minWidth: 0 }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0, flex: 1 }}>
-                              <button type="button" onClick={() => handleOpenStorefront(order)} style={{ width: 56, height: 56, borderRadius: '50%', background: theme.text, color: '#FFF', display: 'grid', placeItems: 'center', fontSize: 18, fontWeight: 700, textAlign: 'center', lineHeight: 1.1, flexShrink: 0, overflow: 'hidden', padding: 0, border: 'none', cursor: order.store_slug ? 'pointer' : 'default' }}>
+                              <button type="button" onClick={() => handleOpenStorefront(order)} style={{ width: 56, height: 56, borderRadius: '50%', background: theme.text, color: '#FFF', display: 'grid', placeItems: 'center', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.storeMark.mobile, fontWeight: 700, textAlign: 'center', lineHeight: 1.1, flexShrink: 0, overflow: 'hidden', padding: 0, border: 'none', cursor: order.store_slug ? 'pointer' : 'default' }}>
                                 {getStoreLogoUrl(order) ? <img src={getStoreLogoUrl(order)} alt={`${order.store_name || 'Store'} logo`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (order.store_name ? order.store_name.substring(0, 4).toUpperCase() : 'STORE')}
                               </button>
                               <button type="button" onClick={() => handleOpenStorefront(order)} style={{ minWidth: 0, flex: 1, background: 'transparent', border: 'none', padding: 0, textAlign: 'left', cursor: order.store_slug ? 'pointer' : 'default' }}>
-                                <div style={{ fontSize: 15, fontWeight: 700, color: theme.text, lineHeight: 1.25 }}>{order.store_name || 'DGFY Store'}</div>
-                                <div style={{ fontSize: 12, color: theme.primary, marginTop: 5 }}>#{order.reference}</div>
+                                <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.cardTitle, fontWeight: 700, color: theme.text, lineHeight: 1.25 }}>{order.store_name || 'DGFY Store'}</div>
+                                <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.caption, color: theme.primary, marginTop: 5 }}>#{order.reference}</div>
                               </button>
                             </div>
                             <div style={{ textAlign: 'right', flexShrink: 0, display: 'grid', gap: 6, justifyItems: 'end' }}>
                               <StatusBadge status={order.status_label || order.status} />
-                              <div style={{ fontSize: 12, color: theme.muted }}>{formatDate(order.occurred_at)}</div>
+                              <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.caption, color: theme.muted }}>{formatDate(order.occurred_at)}</div>
                             </div>
                           </div>
                           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 82px', alignItems: 'center', gap: 8, width: '100%', minWidth: 0 }}>
-                            <button onClick={() => onTrackReference(order)} style={{ background: theme.primary, border: `1px solid ${theme.primary}`, borderRadius: 11, padding: '8px 10px', minHeight: 38, fontSize: 13, fontWeight: 600, color: '#FFF', cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: 1.1 }}>
+                            <button onClick={() => onTrackReference(order)} style={{ background: theme.primary, border: `1px solid ${theme.primary}`, borderRadius: 11, padding: '0 10px', minHeight: isMobileViewport ? CUSTOMER_DASHBOARD_TYPOGRAPHY.controlHeight.mobile : CUSTOMER_DASHBOARD_TYPOGRAPHY.controlHeight.desktop, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, fontWeight: 600, color: '#FFF', cursor: 'pointer', whiteSpace: 'nowrap', lineHeight: 1.1 }}>
                               Track Order
                             </button>
-                            <button onClick={() => setActiveNav('orders')} style={{ background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 11, padding: '8px 10px', minHeight: 38, fontSize: 13, fontWeight: 600, color: theme.primary, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, whiteSpace: 'nowrap', width: 82, lineHeight: 1.1, textAlign: 'center' }}>
+                            <button onClick={() => setActiveNav('orders')} style={{ background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 11, padding: '0 10px', minHeight: isMobileViewport ? CUSTOMER_DASHBOARD_TYPOGRAPHY.controlHeight.mobile : CUSTOMER_DASHBOARD_TYPOGRAPHY.controlHeight.desktop, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, fontWeight: 600, color: theme.primary, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, whiteSpace: 'nowrap', width: 82, lineHeight: 1.1, textAlign: 'center' }}>
                               <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, width: '100%' }}>
                                 <span>View</span>
                                 <ChevronRight size={14} />
@@ -88,24 +88,24 @@ export function OverviewActivityPanel({ isMobileViewport, theme, activeActivityT
                     ) : (
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 24, width: '100%', minWidth: 0, boxSizing: 'border-box' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 14, minWidth: 0, flex: '1 1 auto' }}>
-                          <button type="button" onClick={() => handleOpenStorefront(order)} style={{ width: 48, height: 48, borderRadius: '50%', background: theme.text, color: '#FFF', display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 700, textAlign: 'center', lineHeight: 1.1, flexShrink: 0, overflow: 'hidden', border: 'none', padding: 0, cursor: order.store_slug ? 'pointer' : 'default' }}>
+                          <button type="button" onClick={() => handleOpenStorefront(order)} style={{ width: 48, height: 48, borderRadius: '50%', background: theme.text, color: '#FFF', display: 'grid', placeItems: 'center', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.storeMark.desktop, fontWeight: 700, textAlign: 'center', lineHeight: 1.1, flexShrink: 0, overflow: 'hidden', border: 'none', padding: 0, cursor: order.store_slug ? 'pointer' : 'default' }}>
                             {getStoreLogoUrl(order) ? <img src={getStoreLogoUrl(order)} alt={`${order.store_name || 'Store'} logo`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : (order.store_name ? order.store_name.substring(0, 4).toUpperCase() : 'STORE')}
                           </button>
                           <button type="button" onClick={() => handleOpenStorefront(order)} style={{ minWidth: 0, background: 'transparent', border: 'none', padding: 0, textAlign: 'left', cursor: order.store_slug ? 'pointer' : 'default' }}>
-                            <div style={{ fontSize: 15, fontWeight: 700, color: theme.text }}>{order.store_name || 'DGFY Store'}</div>
-                            <div style={{ fontSize: 13, color: theme.primary, marginTop: 4 }}>#{order.reference}</div>
+                            <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.cardTitle, fontWeight: 700, color: theme.text }}>{order.store_name || 'DGFY Store'}</div>
+                            <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.secondary, color: theme.primary, marginTop: 4 }}>#{order.reference}</div>
                           </button>
                         </div>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 28, minWidth: 0, flexShrink: 0, marginLeft: 24 }}>
                           <div style={{ textAlign: 'right', minWidth: 132, flexShrink: 0 }}>
                             <StatusBadge status={order.status_label || order.status} />
-                            <div style={{ fontSize: 12, color: theme.muted, marginTop: 6 }}>{formatDate(order.occurred_at)}</div>
+                            <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.caption, color: theme.muted, marginTop: 6 }}>{formatDate(order.occurred_at)}</div>
                           </div>
                           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: 12, minWidth: 0, flexShrink: 0 }}>
-                            <button onClick={() => onTrackReference(order)} style={{ background: theme.primary, border: `1px solid ${theme.primary}`, borderRadius: 12, padding: '8px 20px', fontSize: 13, fontWeight: 600, color: '#FFF', cursor: 'pointer', whiteSpace: 'nowrap' }}>
+                            <button onClick={() => onTrackReference(order)} style={{ background: theme.primary, border: `1px solid ${theme.primary}`, borderRadius: 12, padding: '0 20px', minHeight: CUSTOMER_DASHBOARD_TYPOGRAPHY.controlHeight.desktop, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, fontWeight: 600, color: '#FFF', cursor: 'pointer', whiteSpace: 'nowrap' }}>
                               Track Order
                             </button>
-                            <button onClick={() => setActiveNav('orders')} style={{ background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 12, padding: '8px 16px', fontSize: 13, fontWeight: 600, color: theme.primary, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, whiteSpace: 'nowrap' }}>
+                            <button onClick={() => setActiveNav('orders')} style={{ background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 12, padding: '0 16px', minHeight: CUSTOMER_DASHBOARD_TYPOGRAPHY.controlHeight.desktop, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, fontWeight: 600, color: theme.primary, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, whiteSpace: 'nowrap' }}>
                               View <ChevronRight size={16} />
                             </button>
                           </div>
@@ -117,7 +117,7 @@ export function OverviewActivityPanel({ isMobileViewport, theme, activeActivityT
               </>
             )}
             <div style={{ textAlign: 'center', marginTop: isMobileViewport ? 4 : 8, paddingTop: isMobileViewport ? 2 : 0 }}>
-              <button onClick={() => setActiveNav('orders')} style={{ background: 'transparent', border: 'none', color: theme.primary, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+              <button onClick={() => setActiveNav('orders')} style={{ background: 'transparent', border: 'none', color: theme.primary, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.action, fontWeight: 600, cursor: 'pointer' }}>
                 View all active orders
               </button>
             </div>
@@ -135,16 +135,16 @@ export function OverviewActivityPanel({ isMobileViewport, theme, activeActivityT
                       <CalendarDays size={20} />
                     </div>
                     <div>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: theme.text }}>{booking.store_name || 'DGFY Service'}</div>
-                      <div style={{ fontSize: 13, color: theme.muted }}>{booking.reference}</div>
+                      <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.cardTitle, fontWeight: 700, color: theme.text }}>{booking.store_name || 'DGFY Service'}</div>
+                      <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.secondary, color: theme.muted }}>{booking.reference}</div>
                     </div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
                     <StatusBadge status={booking.status_label || booking.status} />
-                    <div style={{ fontSize: 12, color: theme.muted, marginTop: 4 }}>{formatDate(booking.occurred_at)}</div>
+                    <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.caption, color: theme.muted, marginTop: 4 }}>{formatDate(booking.occurred_at)}</div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                    <button onClick={() => alert('Booking details will be available soon.')} style={{ background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 8, padding: '8px 16px', fontSize: 13, fontWeight: 600, color: theme.primary, cursor: 'pointer' }}>
+                    <button onClick={() => alert('Booking details will be available soon.')} style={{ background: 'transparent', border: `1px solid ${theme.border}`, borderRadius: 8, padding: '0 16px', minHeight: isMobileViewport ? CUSTOMER_DASHBOARD_TYPOGRAPHY.controlHeight.mobile : CUSTOMER_DASHBOARD_TYPOGRAPHY.controlHeight.desktop, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, fontWeight: 600, color: theme.primary, cursor: 'pointer' }}>
                       View Details
                     </button>
                     <ChevronRight size={16} color={theme.muted} />
@@ -153,7 +153,7 @@ export function OverviewActivityPanel({ isMobileViewport, theme, activeActivityT
               ))
             )}
             <div style={{ textAlign: 'center', marginTop: 8 }}>
-              <button onClick={() => setActiveNav('bookings')} style={{ background: 'transparent', border: 'none', color: theme.primary, fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+              <button onClick={() => setActiveNav('bookings')} style={{ background: 'transparent', border: 'none', color: theme.primary, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.action, fontWeight: 600, cursor: 'pointer' }}>
                 View all upcoming bookings
               </button>
             </div>
@@ -169,11 +169,11 @@ export function OverviewActivityPanel({ isMobileViewport, theme, activeActivityT
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
                       <button type="button" onClick={() => handleOpenStorefront(order)} style={{ width: 44, height: 44, borderRadius: '50%', background: theme.text, color: '#FFF', display: 'grid', placeItems: 'center', overflow: 'hidden', border: 'none', padding: 0, flexShrink: 0, cursor: order.store_slug ? 'pointer' : 'default' }}>
-                        {getStoreLogoUrl(order) ? <img src={getStoreLogoUrl(order)} alt={`${order.store_name || 'Store'} logo`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: 11, fontWeight: 700 }}>{order.store_name ? order.store_name.substring(0, 4).toUpperCase() : 'SHOP'}</span>}
+                        {getStoreLogoUrl(order) ? <img src={getStoreLogoUrl(order)} alt={`${order.store_name || 'Store'} logo`} style={{ width: '100%', height: '100%', objectFit: 'cover' }} /> : <span style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.micro, fontWeight: 700 }}>{order.store_name ? order.store_name.substring(0, 4).toUpperCase() : 'SHOP'}</span>}
                       </button>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 15, fontWeight: 700, color: theme.text }}>{order.store_name || 'DGFY Store'}</div>
-                        <div style={{ fontSize: 12, color: theme.muted, marginTop: 4 }}>
+                        <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.cardTitle, fontWeight: 700, color: theme.text }}>{order.store_name || 'DGFY Store'}</div>
+                        <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.caption, color: theme.muted, marginTop: 4 }}>
                           Completed order #{order.reference}
                         </div>
                       </div>
@@ -181,10 +181,10 @@ export function OverviewActivityPanel({ isMobileViewport, theme, activeActivityT
                     <StatusBadge status={order.status_label || order.status || 'Completed'} />
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
-                    <div style={{ fontSize: 13, color: theme.muted }}>
+                    <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.secondary, color: theme.muted }}>
                       {Array.isArray(order.review_targets) ? order.review_targets.length : 0} item review{Array.isArray(order.review_targets) && order.review_targets.length === 1 ? '' : 's'} available
                     </div>
-                    <button type="button" onClick={() => openReviewComposer(order)} style={{ background: theme.primary, border: 'none', color: '#FFF', borderRadius: 10, padding: '10px 14px', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}>
+                    <button type="button" onClick={() => openReviewComposer(order)} style={{ background: theme.primary, border: 'none', color: '#FFF', borderRadius: 10, padding: '0 14px', minHeight: isMobileViewport ? CUSTOMER_DASHBOARD_TYPOGRAPHY.controlHeight.mobile : CUSTOMER_DASHBOARD_TYPOGRAPHY.controlHeight.desktop, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, fontWeight: 700, cursor: 'pointer' }}>
                       Write Review
                     </button>
                   </div>

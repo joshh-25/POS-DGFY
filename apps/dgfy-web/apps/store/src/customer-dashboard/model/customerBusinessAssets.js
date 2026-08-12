@@ -5,6 +5,57 @@ const compactStrings = (values = []) => values
 const compactLowercaseStrings = (values = []) => compactStrings(values)
   .map((value) => value.toLowerCase());
 
+const normalizeIndustryToken = (value) => String(value || '')
+  .trim()
+  .toLowerCase()
+  .replace(/&/g, ' and ')
+  .replace(/[^a-z0-9]+/g, '_')
+  .replace(/^_+|_+$/g, '');
+
+const getBusinessIndustryValues = (company = {}) => compactStrings([
+  company?.business_industry,
+  company?.industry_key,
+  company?.industryKey,
+  company?.industry_tag,
+  company?.industryTag,
+  company?.workflow_mode,
+  company?.workflowMode,
+  company?.business_mode,
+  company?.businessMode,
+  company?.category_label,
+  company?.business_category,
+  company?.category,
+  company?.company?.industry_key,
+  company?.company?.industry_tag,
+  company?.company?.workflow_mode,
+  company?.company?.business_mode,
+  company?.company?.category_label,
+  company?.company?.business_category,
+  company?.company?.category,
+  company?.tenant?.industry_key,
+  company?.tenant?.industry_tag,
+  company?.tenant?.workflow_mode,
+  company?.tenant?.business_mode,
+  company?.tenant?.category_label,
+  company?.tenant?.business_category,
+  company?.tenant?.category
+].map(normalizeIndustryToken));
+
+export const CUSTOMER_BUSINESS_INDUSTRY_TABS = Object.freeze([
+  { id: 'food_beverage', label: 'Food & Beverage' },
+  { id: 'retail', label: 'Retail' },
+  { id: 'micro_retail', label: 'Micro Retail' }
+]);
+
+export const getCustomerBusinessIndustry = (company = {}) => {
+  const values = getBusinessIndustryValues(company);
+  if (values.some((value) => value === 'micro_fnb' || value === 'micro_food_beverage' || value === 'fnb_counter_service')) return 'food_beverage';
+  if (values.some((value) => value === 'fnb' || value === 'food_and_beverage' || value === 'food_beverage' || value === 'food_service')) return 'food_beverage';
+  if (values.some((value) => value === 'micro_retail' || value === 'msme' || value === 'msme_simple' || value === 'simple_msme')) return 'micro_retail';
+  if (values.some((value) => value === 'retail' || value === 'retail_store')) return 'retail';
+  return '';
+};
+
 const findMatchingStore = (company = {}, knownStores = []) => {
   const companyTokens = compactStrings([
     company?.company_token,
@@ -64,6 +115,7 @@ export const mapCustomerBusinessCompanies = (companies = [], knownStores = []) =
     const matchedStore = findMatchingStore(company, Array.isArray(knownStores) ? knownStores : []);
     return {
       ...company,
+      business_industry: getCustomerBusinessIndustry({ ...matchedStore, ...company }),
       storefront_profile_image_url:
         matchedStore?.storefront_profile_image_url
         || matchedStore?.storefront_profile_image
