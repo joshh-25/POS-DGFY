@@ -31,6 +31,27 @@ sprints loses the ability to span sprints.
 
 A fourth axis, **`area:*` labels**, answers *what part of the system does this touch?* — see below.
 
+### Roadmap dates go on epics only
+
+The project's **Roadmap** view is driven by `Start date` / `Target date`. Set these on **epics**,
+not on leaf issues — the roadmap answers "what are we doing this quarter", and populating it with
+individual tickets makes it unreadable. Sprint-level detail belongs on the board via `Iteration`.
+
+### Where the fields actually live (this is not obvious)
+
+`Priority`, `Start date`, `Target date`, and `Effort` are **repo-level issue fields**, not project
+fields. The columns of the same name on project #10 are *mirrors*.
+
+Consequences worth knowing before you waste an afternoon:
+
+- The project-level `Priority` field reports **zero options** and rejects writes with
+  *"Only custom fields can be updated"*. It is not broken and its options do not need creating —
+  you are looking at the mirror.
+- Set them via the `updateIssueFieldValue` GraphQL mutation against the **issue** node, using field
+  IDs from `repository.issueFields`, not `projectV2.field`.
+- Do not "fix" the empty project Priority field by deleting and recreating it. Three saved views
+  depend on it (**Board** sorts by it, **Current iteration** groups by it, **My items** shows it).
+
 ---
 
 ## What qualifies as an epic
@@ -49,6 +70,20 @@ Every epic must have:
 - A **`## Definition of done`** section stating what "finished" means
 - The `epic` label
 - At least two children (one child is just an issue with extra steps)
+
+### If two candidate epics share a dependency chain, they are one epic
+
+This rule was learned the expensive way. "Transactional email" (#177, #279) and "observability
+accounts" (#222, #229) looked like two clean epics by topic. They are not: email-failure alerting
+raises a `Sentry.captureException` (ADR 0054), so the email work depends on the Sentry account the
+observability work is migrating. Splitting them would have produced two two-child epics that each
+break if the other moves.
+
+They became one epic (#364) whose through-line is a *condition* — "external services are on
+temporary, personal, or incorrect footing" — not a topic. Prefer that framing. **Topic similarity
+is a weak signal for grouping; a shared dependency or a shared done state is a strong one.**
+
+Splitting work to satisfy the "at least two children" rule is the failure this guards against.
 
 Epics are marked with the `epic` label rather than a custom issue type, because `createIssueType`
 requires the `admin:org` token scope which we do not currently grant. If that scope is ever added,
