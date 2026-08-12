@@ -1,25 +1,22 @@
 import React from 'react';
-import { Maximize, Navigation, X } from 'lucide-react';
+import { CheckCircle2, Navigation } from 'lucide-react';
+import { DEFAULT_CENTER } from '../../../app/runtime/storefrontMapRuntime.js';
 
 export function createAddressPinEditorRenderer(ctx) {
   const {
     DeliveryPinMap,
     accountAddressPinAction,
     applyAccountAddressPin,
-    expandedAccountAddressMapMode,
     handleAccountAddressCurrentLocation,
     isMobileViewport,
-    normalizeCoordinatePair,
-    servicesBodyFont,
-    servicesDisplayFont,
-    setExpandedAccountAddressMapMode
+    normalizeCoordinatePair
   } = ctx;
 
-  return function AddressPinEditorRenderer({ draft = {}, onChange, mode = 'address', renderFormRow = null }) {
-    const pin = normalizeCoordinatePair(draft);
+  return function AddressPinEditorRenderer({ draft = {}, onChange, mode = 'address', renderFormRow = null, showDefaultAddressNote = false }) {
+    const storedPin = normalizeCoordinatePair(draft);
+    const pin = storedPin || DEFAULT_CENTER;
     const isBusy = accountAddressPinAction.loading && accountAddressPinAction.mode === mode;
     const errorMessage = accountAddressPinAction.mode === mode ? accountAddressPinAction.error : '';
-    const isExpanded = expandedAccountAddressMapMode === mode;
     const stopMapOverlayInteraction = (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -59,102 +56,39 @@ export function createAddressPinEditorRenderer(ctx) {
       </button>
     );
     const renderOverlayControls = () => (
-      <>
-        <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 11 }}>
-          {useLocationButton}
-        </div>
-        <button
-          type="button"
-          onMouseDown={stopMapOverlayInteraction}
-          onPointerDown={stopMapOverlayInteraction}
-          onTouchStart={stopMapOverlayInteraction}
-          onClick={(event) => {
-            stopMapOverlayInteraction(event);
-            setExpandedAccountAddressMapMode(isExpanded ? '' : mode);
-          }}
-          aria-label={isExpanded ? 'Collapse address map' : 'Expand address map'}
-          style={{
-            position: 'absolute',
-            top: 12,
-            right: 12,
-            width: 42,
-            height: 42,
-            borderRadius: 14,
-            border: '1px solid #cbd5e1',
-            background: '#fff',
-            color: '#334155',
-            display: 'grid',
-            placeItems: 'center',
-            boxShadow: '0 8px 20px rgba(15,23,42,0.12)',
-            pointerEvents: 'auto',
-            cursor: 'pointer',
-            zIndex: 11
-          }}
-        >
-          {isExpanded ? <X size={18} /> : <Maximize size={18} />}
-        </button>
-      </>
+      <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 11 }}>
+        {useLocationButton}
+      </div>
     );
 
     return (
       <>
-        <div style={{ display: 'grid', gap: 10, border: '1px solid #dbe5ee', borderRadius: 14, background: '#f8fafc', padding: 10 }}>
-          <div style={{ display: 'grid', gap: 10 }}>
-            <div><strong>Location Pin</strong><div style={{ fontSize: 12, color: '#64748b' }}>Pin your exact location on the map. The selected address will fill in below.</div></div>
+        <div style={{ display: 'grid', gap: isMobileViewport ? 8 : 10, border: '1px solid #dbe5ee', borderRadius: 12, background: '#f8fafc', padding: isMobileViewport ? 8 : 10 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
+            <div style={{ minWidth: 0 }}>
+              <strong>Location Pin</strong>
+              {!isMobileViewport && <div style={{ fontSize: 12, color: '#64748b' }}>Pin your exact location on the map. The selected address will fill in below.</div>}
+            </div>
+            {showDefaultAddressNote && (
+              <div style={{ display: 'inline-flex', alignItems: 'center', gap: 7, borderRadius: 10, padding: '7px 11px', background: '#afe8f4', color: '#1a4e8d', fontSize: 11, fontWeight: 700, lineHeight: 1.2, whiteSpace: 'nowrap' }}>
+                <CheckCircle2 size={14} style={{ flexShrink: 0 }} />
+                This will be set as your default address automatically.
+              </div>
+            )}
           </div>
           <DeliveryPinMap
             pin={pin}
             onPinChange={(nextPin) => applyAccountAddressPin({ pin: nextPin, onChange, mode })}
             disabled={isBusy}
-            height={180}
-            highlighted={Boolean(pin)}
+            height={isMobileViewport ? 'clamp(220px, 34svh, 320px)' : 'clamp(300px, 48vh, 460px)'}
+            highlighted={Boolean(storedPin)}
+            pinInstruction="Drag to pin location"
+            showAttributionControl={false}
             overlayControls={renderOverlayControls()}
           />
           {typeof renderFormRow === 'function' ? renderFormRow({ isExpanded: false }) : null}
           {errorMessage ? <div style={{ fontSize: 12, color: '#b91c1c' }}>{errorMessage}</div> : null}
         </div>
-        {isExpanded ? (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 2100, background: 'rgba(15,23,42,0.46)', padding: isMobileViewport ? 12 : 24 }}>
-            <div
-              style={{
-                width: '100%',
-                height: '100%',
-                maxWidth: isMobileViewport ? '100%' : 'min(1280px, calc(100vw - 48px))',
-                maxHeight: '100%',
-                margin: '0 auto',
-                overflow: 'hidden',
-                borderRadius: isMobileViewport ? 18 : 22,
-                background: '#fff',
-                border: '1px solid #dbe5ee',
-                boxShadow: '0 26px 60px rgba(15,23,42,0.22)',
-                padding: isMobileViewport ? 16 : 20,
-                display: 'grid',
-                gridTemplateRows: 'auto minmax(0, 1fr) auto auto',
-                gap: 12
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
-                <div style={{ display: 'grid', gap: 4 }}>
-                  <div style={{ fontSize: 16, fontWeight: 800, color: '#1e293b', fontFamily: servicesDisplayFont }}>Large Map</div>
-                  <div style={{ fontSize: 12, color: '#64748b' }}>Tap or drag the pin to select the exact address.</div>
-                </div>
-                <button type="button" onClick={() => setExpandedAccountAddressMapMode('')} style={{ minHeight: 40, borderRadius: 12, border: '1px solid #cbd5e1', background: '#fff', color: '#334155', padding: '0 14px', fontWeight: 700, cursor: 'pointer', fontFamily: servicesBodyFont }}>
-                  Close
-                </button>
-              </div>
-              <DeliveryPinMap
-                pin={pin}
-                onPinChange={(nextPin) => applyAccountAddressPin({ pin: nextPin, onChange, mode })}
-                disabled={isBusy}
-                height="100%"
-                highlighted={Boolean(pin)}
-                overlayControls={renderOverlayControls()}
-              />
-              {typeof renderFormRow === 'function' ? renderFormRow({ isExpanded: true }) : null}
-              {errorMessage ? <div style={{ fontSize: 12, color: '#b91c1c' }}>{errorMessage}</div> : null}
-            </div>
-          </div>
-        ) : null}
       </>
     );
   };

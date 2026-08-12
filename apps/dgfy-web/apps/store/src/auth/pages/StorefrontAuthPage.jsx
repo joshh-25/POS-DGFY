@@ -24,6 +24,7 @@ import {
 } from '../../../../../src/services/dgfyAuthService.js';
 import DgfyAuthHero from '../../../../../src/features/dgfy/components/DgfyAuthHero.jsx';
 import DgfyLegalAcknowledgementBox from '../../../../../src/features/dgfy/components/DgfyLegalAcknowledgementBox.jsx';
+import { getCustomerProfileVerificationReminder } from '../../customer-dashboard/model/customerProfileVerification.js';
 import DgfyPasswordInput from '../../../../../src/features/dgfy/components/DgfyPasswordInput.jsx';
 import dgfyLogo from '../../../../../src/assets/dgfy/dgfy-logo.png';
 import phFlag from '../../../../../src/assets/flags/ph.svg';
@@ -52,6 +53,23 @@ const storefrontHomeUrl = '/';
 const RESET_PASSWORD_ROUTE = '/reset-password';
 const STOREFRONT_SAVED_DETAILS_STORAGE_KEY = 'dgfy_store_saved_customer_details_v1';
 const EMAIL_SUGGESTION_DOMAINS = ['gmail.com', 'yahoo.com', 'icloud.com'];
+
+const showIncompleteVerificationToast = (account) => {
+  if (!account || typeof account !== 'object') return;
+  const reminder = getCustomerProfileVerificationReminder({ me: account });
+  if (!reminder) return;
+
+  toast.warning(reminder.title, {
+    description: reminder.description,
+    duration: 5000,
+    style: {
+      width: 'min(356px, calc(100vw - 24px))',
+      maxWidth: 'calc(100vw - 24px)',
+      boxSizing: 'border-box'
+    }
+  });
+};
+
 const handleDgfyLogoError = (event) => {
   const image = event.currentTarget;
   image.style.display = 'none';
@@ -653,7 +671,10 @@ export default function StorefrontAuthPage({ initialMode }) {
     const token = session?.token || getStoredDgfyToken();
     if (token) writeDgfyAuthToken(token);
     markDgfySessionActive();
-    try { await fetchDgfyMe(token).catch(() => null); }
+    try {
+      const meData = await fetchDgfyMe(token).catch(() => null);
+      showIncompleteVerificationToast(meData?.account || session?.account);
+    }
     finally { navigate(returnPath, { replace: true }); }
   }, [navigate, returnPath, routeParams.intent]);
 

@@ -1,7 +1,6 @@
 ﻿import React from 'react';
 import {
   ArrowRight,
-  Building2,
   CalendarCheck2,
   ShieldCheck,
   ShoppingBag,
@@ -9,6 +8,7 @@ import {
   User,
   X
 } from 'lucide-react';
+import { CUSTOMER_DASHBOARD_TYPOGRAPHY } from '../model/customerDashboardPresentation.jsx';
 
 const PRIMARY = '#1A4E8D';
 const PRIMARY_DARK = '#1A4586';
@@ -63,7 +63,7 @@ function PrimaryButton({ children, onClick, disabled, style = {} }) {
         border: 'none',
         background: disabled ? '#7BA7D6' : `linear-gradient(135deg, ${PRIMARY} 0%, ${PRIMARY_DARK} 100%)`,
         color: '#FFFFFF',
-        fontSize: 15,
+        fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.action,
         fontWeight: 700,
         letterSpacing: '0.01em',
         cursor: disabled ? 'wait' : 'pointer',
@@ -117,8 +117,8 @@ export function DgfyCustomerAuthModal({
                 <User size={22} strokeWidth={2.2} />
               </div>
               <div style={{ minWidth: 0 }}>
-                <div style={{ fontSize: isMobileViewport ? 17 : 19, fontWeight: 800, color: TEXT, lineHeight: 1.1, letterSpacing: '-0.02em' }}>DGFY Account</div>
-                <div style={{ marginTop: 3, fontSize: 13, color: MUTED, lineHeight: 1.3 }}>Continue your orders, bookings, and saved activity.</div>
+                <div style={{ fontSize: isMobileViewport ? CUSTOMER_DASHBOARD_TYPOGRAPHY.headerTitle.mobile : CUSTOMER_DASHBOARD_TYPOGRAPHY.headerTitle.desktop, fontWeight: 800, color: TEXT, lineHeight: 1.1, letterSpacing: '-0.02em' }}>DGFY Account</div>
+                <div style={{ marginTop: 3, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.body, color: MUTED, lineHeight: 1.3 }}>Continue your orders, bookings, and saved activity.</div>
               </div>
             </div>
             <button type="button" onClick={onClose} aria-label="Close DGFY account modal" style={{ width: 36, height: 36, borderRadius: 10, border: `1px solid ${BORDER}`, background: '#F8FAFD', color: MUTED, display: 'grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0 }}>
@@ -134,26 +134,26 @@ export function DgfyCustomerAuthModal({
                     <User size={18} strokeWidth={2.1} />
                   </div>
                   <div>
-                    <div style={{ fontSize: 16, fontWeight: 800, color: TEXT }}>You are currently browsing as Guest</div>
-                    <div style={{ marginTop: 4, fontSize: 13, lineHeight: 1.55, color: MUTED }}>Use one DGFY account for orders, bookings, saved details, tracking, and business ownership.</div>
+                    <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.cardTitle, fontWeight: 800, color: TEXT }}>You are currently browsing as Guest</div>
+                    <div style={{ marginTop: 4, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.secondary, lineHeight: 1.55, color: MUTED }}>Use one DGFY account for orders, bookings, saved details, tracking, and business ownership.</div>
                   </div>
                 </div>
               </div>
 
               {hasSavedCustomerDetails ? (
                 <div style={{ display: 'grid', gap: 10 }}>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: TEXT, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Saved Details</div>
+                  <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.label, fontWeight: 800, color: TEXT, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Saved Details</div>
                   <div style={{ borderRadius: 18, border: `1px solid ${BORDER}`, background: '#fff', padding: 18, display: 'grid', gap: 14 }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-                      <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #d9f3fb, #c1e7f9)', color: PRIMARY, display: 'grid', placeItems: 'center', fontSize: 28, fontWeight: 800, flexShrink: 0 }}>{savedInitials}</div>
+                      <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'linear-gradient(135deg, #d9f3fb, #c1e7f9)', color: PRIMARY, display: 'grid', placeItems: 'center', fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.heroMetric.desktop, fontWeight: 800, flexShrink: 0 }}>{savedInitials}</div>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>{savedName}</div>
-                        {savedContact ? <div style={{ marginTop: 4, fontSize: 13, color: MUTED }}>{savedContact}</div> : null}
+                        <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.cardTitle, fontWeight: 800, color: TEXT }}>{savedName}</div>
+                        {savedContact ? <div style={{ marginTop: 4, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.secondary, color: MUTED }}>{savedContact}</div> : null}
                       </div>
                     </div>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                      <div style={{ fontSize: 12, color: MUTED }}>{savedAgeLabel}</div>
-                      <button type="button" onClick={onClearSavedDetails} style={{ border: 'none', background: 'transparent', color: DANGER, fontSize: 13, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.caption, color: MUTED }}>{savedAgeLabel}</div>
+                      <button type="button" onClick={onClearSavedDetails} style={{ border: 'none', background: 'transparent', color: DANGER, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                         Clear details <Trash2 size={14} />
                       </button>
                     </div>
@@ -174,8 +174,8 @@ export function DgfyCustomerAuthModal({
                         <Icon size={18} strokeWidth={2.1} />
                       </div>
                       <div style={{ minWidth: 0 }}>
-                        <div style={{ fontSize: 15, fontWeight: 800, color: TEXT }}>{entry.title}</div>
-                        <div style={{ marginTop: 3, fontSize: 13, lineHeight: 1.45, color: MUTED }}>{entry.body}</div>
+                        <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.cardTitle, fontWeight: 800, color: TEXT }}>{entry.title}</div>
+                        <div style={{ marginTop: 3, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.secondary, lineHeight: 1.45, color: MUTED }}>{entry.body}</div>
                       </div>
                     </div>
                   );
@@ -185,16 +185,16 @@ export function DgfyCustomerAuthModal({
 
             <section style={{ padding: isMobileViewport ? '20px 18px 24px' : '28px 36px 30px', display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 22, background: SURFACE }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                <div style={{ fontSize: isMobileViewport ? 22 : 24, fontWeight: 800, color: TEXT, lineHeight: 1.1, letterSpacing: '-0.025em' }}>Sign in once. Continue everywhere.</div>
-                <div style={{ fontSize: 14, lineHeight: 1.6, color: MUTED }}>Use your DGFY account for storefront activity today, then use the same account later if you decide to register a business.</div>
+                <div style={{ fontSize: isMobileViewport ? CUSTOMER_DASHBOARD_TYPOGRAPHY.modalHeroTitle.mobile : CUSTOMER_DASHBOARD_TYPOGRAPHY.modalHeroTitle.desktop, fontWeight: 800, color: TEXT, lineHeight: 1.1, letterSpacing: '-0.025em' }}>Sign in once. Continue everywhere.</div>
+                <div style={{ fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.body, lineHeight: 1.6, color: MUTED }}>Use your DGFY account for storefront activity today, then use the same account later if you decide to register a business.</div>
               </div>
               <div style={{ display: 'grid', gap: 12 }}>
                 <PrimaryButton onClick={onOpenAuth}>Sign in / Create Account</PrimaryButton>
-                <button type="button" onClick={onOpenRegisterBusiness} style={{ width: '100%', height: 44, borderRadius: 10, border: `1px solid ${PRIMARY}`, background: '#fff', color: PRIMARY, fontSize: 15, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                <button type="button" onClick={onOpenRegisterBusiness} style={{ width: '100%', height: 44, borderRadius: 10, border: `1px solid ${PRIMARY}`, background: '#fff', color: PRIMARY, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.action, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                   Register Your Business
                 </button>
               </div>
-              <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 16, fontSize: 13, lineHeight: 1.55, color: MUTED }}>
+              <div style={{ borderTop: `1px solid ${BORDER}`, paddingTop: 16, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.secondary, lineHeight: 1.55, color: MUTED }}>
                 Password recovery is handled on the DGFY auth page so you can return to the same customer or business flow after reset.
               </div>
             </section>
