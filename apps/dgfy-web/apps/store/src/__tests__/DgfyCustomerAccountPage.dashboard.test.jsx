@@ -473,7 +473,12 @@ describe('DGFY customer account dashboard', () => {
     expect(screen.getByTestId('customer-business-status-dot-membership-inactive').getAttribute('aria-label')).toBe('Inactive Business inactive');
     expect(screen.queryByText('Accepted - Active')).toBeNull();
     expect(screen.getByTestId('customer-business-add-action').style.justifyContent).toBe('flex-end');
-    expect(screen.getByRole('button', { name: 'Go to POS for Space Bar' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Day Close for Space Bar' })).toBeTruthy();
+    const mobilePosButton = screen.getByRole('button', { name: 'Go to POS for Space Bar' });
+    expect(mobilePosButton).toBeTruthy();
+    expect(mobilePosButton.style.minHeight).toBe('40px');
+    expect(mobilePosButton.style.background).toBe('rgb(26, 78, 141)');
+    expect(mobilePosButton.style.color).toBe('rgb(255, 255, 255)');
     const mobileBusinessName = within(screen.getAllByTestId('customer-business-card-mobile')[0]).getByRole('heading', { name: 'Space Bar' });
     expect(mobileBusinessName.style.whiteSpace).toBe('normal');
     expect(mobileBusinessName.style.display).toBe('-webkit-box');
@@ -712,6 +717,8 @@ describe('DGFY customer account dashboard', () => {
     expect(screen.getByText('Business Owner')).toBeTruthy();
     expect(screen.getByAltText('Space Bar cover')).toBeTruthy();
     expect(screen.getByAltText('Space Bar profile')).toBeTruthy();
+    const desktopBusinessCard = screen.getByTestId('customer-business-card-desktop');
+    expect(within(desktopBusinessCard).getByRole('button', { name: 'Day Close' }).parentElement.style.gridTemplateColumns).toBe('repeat(2, minmax(0, 1fr))');
 
     fireEvent.click(screen.getByRole('button', { name: 'Go to POS' }));
     expect(screen.getByRole('dialog', { name: 'Open DGFY POS?' })).toBeTruthy();

@@ -116,15 +116,21 @@ export function BusinessSection({
                       </div>
                       <p style={{ margin: 0, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.secondary, fontWeight: 500, color: theme.muted }}>{owned ? 'Company you own' : 'Company membership'}</p>
                     </div>
-                    <div style={{ alignSelf: 'stretch', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'space-between', gap: 8 }}>
+                    <div style={{ alignSelf: 'stretch', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', justifyContent: 'flex-start', gap: 8 }}>
                       <button type="button" style={{ border: 'none', background: 'transparent', cursor: 'pointer', color: theme.muted, padding: 0, minWidth: CUSTOMER_DASHBOARD_TYPOGRAPHY.iconControlSize.mobile, minHeight: CUSTOMER_DASHBOARD_TYPOGRAPHY.iconControlSize.mobile, display: 'flex', alignItems: 'center', justifyContent: 'center' }} aria-label={`Business options for ${name}`}>
                         <MoreVertical size={20} />
                       </button>
-                      <button type="button" aria-label={`Go to POS for ${name}`} disabled={businessActionLoading} onClick={() => onOpenBusinessPos?.(company)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6, minHeight: 40, borderRadius: 9, border: `1px solid ${theme.primary}`, background: '#fff', color: theme.primary, fontWeight: 700, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, cursor: businessActionLoading ? 'not-allowed' : 'pointer', padding: '0 10px', whiteSpace: 'nowrap' }}>
-                        <Calculator size={15} />
-                        Go to POS
-                      </button>
                     </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8, marginTop: 12 }}>
+                    <button type="button" aria-label={`Day Close for ${name}`} disabled={businessActionLoading} onClick={() => onOpenBusinessDayClose?.(company)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, minWidth: 0, minHeight: 40, borderRadius: 9, border: `1px solid ${theme.primary}`, background: '#fff', color: theme.primary, fontWeight: 700, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, cursor: businessActionLoading ? 'not-allowed' : 'pointer', padding: '0 8px', whiteSpace: 'nowrap' }}>
+                      <KeyRound size={15} />
+                      Day Close
+                    </button>
+                    <button type="button" aria-label={`Go to POS for ${name}`} disabled={businessActionLoading} onClick={() => onOpenBusinessPos?.(company)} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 5, minWidth: 0, minHeight: 40, borderRadius: 9, border: 'none', background: theme.primary, color: '#fff', fontWeight: 700, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, cursor: businessActionLoading ? 'not-allowed' : 'pointer', boxShadow: '0 3px 8px rgba(26,78,141,0.18)', padding: '0 8px', whiteSpace: 'nowrap' }}>
+                      <Calculator size={15} />
+                      Go to POS
+                    </button>
                   </div>
                 </article>
               ) : (
@@ -166,7 +172,7 @@ export function BusinessSection({
 
                     <div style={{ flex: 1, minHeight: 24 }} />
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 10, marginTop: 'auto' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 10, marginTop: 'auto' }}>
                       <button type="button" disabled={businessActionLoading} onClick={() => onOpenBusinessDayClose?.(company)} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8, minHeight: 40, borderRadius: 10, border: `1px solid ${theme.primary}`, background: '#fff', color: theme.primary, fontWeight: 700, fontSize: CUSTOMER_DASHBOARD_TYPOGRAPHY.compactAction, cursor: businessActionLoading ? 'not-allowed' : 'pointer', padding: '0 8px' }}>
                         <KeyRound size={16} />
                         Day Close
