@@ -25,6 +25,7 @@ Canonical planning entry:
 - `docs/images`
 - `docs/mapping`
 - `docs/ops`
+- `docs/process`
 - `docs/setup`
 - `docs/reference`
 - `docs/templates`
