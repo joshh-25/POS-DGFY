@@ -29,6 +29,7 @@ export function DefaultProductCartDrawer({
   cartTotal = 0,
   goStoreCatalogPage,
   isMobileViewport = false,
+  isRetailMode = false,
   isOpen = false,
   money,
   onCheckout,
@@ -88,7 +89,7 @@ export function DefaultProductCartDrawer({
             {isMobileViewport ? (
               <div style={{ width: 56, height: 5, borderRadius: 999, background: '#d1d5db', margin: '0 auto 10px' }} />
             ) : null}
-            <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a' }}>Your Cart ({cartCount})</div>
+            <div style={{ fontSize: isRetailMode && isMobileViewport ? 20 : 24, fontWeight: isRetailMode ? 700 : 900, color: '#0f172a', fontFamily: servicesBodyFont }}>Your Cart ({cartCount})</div>
             <div style={{ fontSize: 13, color: '#64748b' }}>Review your items before checkout.</div>
           </div>
           <button
@@ -114,6 +115,7 @@ export function DefaultProductCartDrawer({
                 key={`default-cart-line-${line.item_id}`}
                 cartImageErrors={cartImageErrors}
                 isMobileViewport={isMobileViewport}
+                isRetailMode={isRetailMode}
                 line={line}
                 money={money}
                 onImageError={onImageError}
@@ -171,10 +173,10 @@ export function DefaultProductCartDrawer({
 
           <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ display: 'grid', gap: 6 }}>
-              <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Total</div>
+              <div style={{ fontSize: 18, fontWeight: isRetailMode ? 700 : 900, color: '#0f172a' }}>Total</div>
               <div style={{ fontSize: 13, color: '#64748b' }}>{cartCount} item{cartCount === 1 ? '' : 's'}</div>
             </div>
-            <div style={{ fontSize: isMobileViewport ? 26 : 32, fontWeight: 900, color: '#0f172a', textAlign: 'right' }}>{money(cartTotal)}</div>
+            <div style={{ fontSize: isRetailMode ? (isMobileViewport ? 24 : 30) : (isMobileViewport ? 26 : 32), fontWeight: isRetailMode ? 700 : 900, color: '#0f172a', textAlign: 'right' }}>{money(cartTotal)}</div>
           </div>
 
           <button
@@ -182,13 +184,13 @@ export function DefaultProductCartDrawer({
             onClick={() => onCheckout?.()}
             disabled={cart.length === 0}
             style={{
-              minHeight: isMobileViewport ? 48 : 54,
-              borderRadius: 18,
+              minHeight: isRetailMode ? (isMobileViewport ? 44 : 50) : (isMobileViewport ? 48 : 54),
+              borderRadius: isRetailMode ? 12 : 18,
               border: 'none',
               background: cart.length === 0 ? '#cbd5e1' : `linear-gradient(135deg,${DEFAULT_BRAND},${DEFAULT_BRAND_DARK})`,
               color: '#fff',
-              fontSize: 16,
-              fontWeight: 900,
+              fontSize: isRetailMode ? (isMobileViewport ? 14 : 15) : 16,
+              fontWeight: isRetailMode ? 700 : 900,
               cursor: cart.length === 0 ? 'not-allowed' : 'pointer',
               boxShadow: cart.length === 0 ? 'none' : `0 14px 30px ${DEFAULT_BRAND_SHADOW_STRONG}`
             }}

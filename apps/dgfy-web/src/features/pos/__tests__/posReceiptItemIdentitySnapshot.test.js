@@ -68,4 +68,18 @@ describe('pos-receipt item identity snapshot precedence', () => {
     expect(text).toContain('Snapshot Name');
     expect(text).not.toContain('Live Name');
   });
+
+  it('renders a persisted mixed-tender breakdown in HTML and thermal receipts', () => {
+    const transaction = {
+      ...baseTransaction,
+      payment_type: 'cash',
+      payment_breakdown: [
+        { payment_type: 'cash', payment_label: 'Cash', amount: 50 },
+        { payment_type: 'gcash', payment_label: 'GCash', amount: 50 }
+      ]
+    };
+    expect(renderPosReceiptHtml({ transaction })).toContain('Payment Breakdown');
+    expect(renderPosReceiptHtml({ transaction })).toContain('GCash');
+    expect(renderThermalReceiptText({ transaction })).toContain('GCash 50.00');
+  });
 });

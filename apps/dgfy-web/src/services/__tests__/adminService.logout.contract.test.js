@@ -1,47 +1,31 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { adminApi, login, logout } from '../adminService.js';
-
-const sessionStorageMock = (() => {
-  const store = {};
-  return {
-    getItem: (k) => store[k] ?? null,
-    setItem: (k, v) => { store[k] = String(v); },
-    removeItem: (k) => { delete store[k]; },
-    clear: () => { Object.keys(store).forEach((k) => delete store[k]); }
-  };
-})();
-
-Object.defineProperty(globalThis, 'sessionStorage', {
-  value: sessionStorageMock,
-  writable: true
-});
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { adminApi, isAuthenticated, login, logout } from '../adminService.js';
 
 describe('adminService logout contract', () => {
-  beforeEach(() => {
-    sessionStorage.clear();
-  });
-
   afterEach(() => {
     vi.restoreAllMocks();
   });
 
-  it('posts best-effort admin revoke then clears memory token', async () => {
+  it('posts best-effort admin revoke then clears the cookie session', async () => {
     const postSpy = vi.spyOn(adminApi, 'post')
-      .mockResolvedValueOnce({ data: { success: true, token: 'admin-jwt-token' } })
+      .mockResolvedValueOnce({ data: { success: true } })
       .mockResolvedValueOnce({ data: {} });
 
     await login('admin', 'password');
+    expect(isAuthenticated()).toBe(true);
 
     logout();
 
+    // Admin sessions are cookie-based (ADR 0026); the cookie-session marker
+    // is what getToken() returns while authenticated, not a real credential.
     expect(postSpy).toHaveBeenCalledWith(
       '/admin/logout',
       {},
       expect.objectContaining({
-        headers: { Authorization: 'Bearer admin-jwt-token' },
+        headers: { Authorization: 'Bearer cookie-session' },
         skipGlobalErrorToast: true
       })
     );
-    expect(sessionStorage.getItem('admin_token')).toBeNull();
+    expect(isAuthenticated()).toBe(false);
   });
 });

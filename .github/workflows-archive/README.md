@@ -12,9 +12,13 @@ keeping it reviewable and trivially restorable (`git mv` back into
 `.github/workflows/`).
 
 These are not being maintained going forward. The actively maintained set is
-`build-*.yml`, `deploy-*.yml`, `deployment-orchestrator.yml`, `pr-*.yml`,
+`deploy.yml`, `deploy-*.yml`, `deployment-orchestrator.yml`, `pr-*.yml`,
 `publish-platform.yml`, and `publish-pos-receipt.yml`, all still in
-`.github/workflows/`.
+`.github/workflows/`. (The `build-*.yml` naming this note originally used --
+`build-develop.yml`, `build-staging.yml`, `build-manual.yml`,
+`build-beta-manual.yml`, `build-main.yml` -- is gone as of 2026-08-14 (#417):
+every push-triggered build/deploy was removed and consolidated into
+`deploy.yml`; `build-main.yml` was renamed to `deploy-main.yml`.)
 
 | File | Was triggered by | What it did |
 |---|---|---|
@@ -40,10 +44,15 @@ These are not being maintained going forward. The actively maintained set is
   `docs/ops/DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md` are marked superseded in
   this same change (see `docs/ops/RELEASE_CANDIDATE_POLICY.md`) precisely
   because they described this now-archived flow as still enforced.
-- `deploy-production.yml` is kept (still in `.github/workflows/`), but its
-  `workflow_run` trigger keyed on "Exact Master SHA Qualification" is now
-  unreachable and was removed in the same change that created this archive --
-  it runs via `workflow_dispatch` only going forward.
+- `deploy-production.yml` was kept (still in `.github/workflows/`) at the
+  time of this archive, with its `workflow_run` trigger (keyed on "Exact
+  Master SHA Qualification", now unreachable) removed in this same change --
+  it ran via `workflow_dispatch` only from that point. **Update, 2026-08-14
+  (#417): deleted outright.** It still checked out `ref: master` and would
+  have failed immediately at the SHA-resolution step on any dispatch, since
+  no `master` branch has ever existed in this repository (the same problem
+  this archive already flagged for its `exact-master-sha-qualification.yml`
+  companion) -- there was nothing left to keep dispatchable.
 - `scripts/promote-staging-to-master.js` and the
   `npm run promote:staging-to-master` script still work; they just no longer
   run automatically after a staging qualification success.

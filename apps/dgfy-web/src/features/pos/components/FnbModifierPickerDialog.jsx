@@ -8,61 +8,14 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import {
+  getFnbModifierGroupMinimum,
+  isAvailableFnbModifierGroup,
+  isAvailableFnbModifierOption,
+  validateFnbModifierSelections,
+} from "../utils/fnbModifierValidation.js";
 
-const locationOverride = (entry, locationId) =>
-  (entry?.locationAvailability || []).find(
-    (row) => Number(row.location_id) === Number(locationId),
-  );
-const availableGroup = (group, locationId) =>
-  group?.is_active !== false &&
-  group?.visible_in_pos !== false &&
-  locationOverride(group, locationId)?.is_available !== false;
-const availableOption = (option, locationId) =>
-  option?.is_active !== false &&
-  option?.visible_in_pos !== false &&
-  option?.is_sold_out !== true &&
-  locationOverride(option, locationId)?.is_available !== false &&
-  locationOverride(option, locationId)?.is_sold_out !== true;
-const groupMin = (group) => {
-  const through =
-    group.FnbItemModifierGroup || group.fnbItemModifierGroup || {};
-  const required =
-    through.is_required_override == null
-      ? group.required === true
-      : through.is_required_override === true;
-  return required
-    ? Math.max(1, Number(group.min_select || 0))
-    : Number(group.min_select || 0);
-};
-
-export const validateFnbModifierSelections = (
-  groups = [],
-  selections = [],
-  locationId = null,
-) => {
-  for (const group of groups.filter((entry) =>
-    availableGroup(entry, locationId),
-  )) {
-    if (
-      group.parent_modifier_option_id &&
-      !selections.some(
-        (entry) =>
-          Number(entry.modifier_option_id) ===
-          Number(group.parent_modifier_option_id),
-      )
-    )
-      continue;
-    const count = selections.filter(
-      (entry) =>
-        Number(entry.modifier_group_id) === Number(group.modifier_group_id),
-    ).length;
-    const min = groupMin(group);
-    const max = Math.max(1, Number(group.max_select || 1));
-    if (count < min || count > max)
-      return `${group.display_name || group.name} requires ${min}–${max} selection${max === 1 ? "" : "s"}.`;
-  }
-  return "";
-};
+export { validateFnbModifierSelections } from "../utils/fnbModifierValidation.js";
 
 export default function FnbModifierPickerDialog({
   open,
@@ -77,7 +30,7 @@ export default function FnbModifierPickerDialog({
   const groups = useMemo(
     () =>
       (line?.modifier_groups || []).filter((group) =>
-        availableGroup(group, locationId),
+        isAvailableFnbModifierGroup(group, locationId),
       ),
     [line, locationId],
   );
@@ -155,7 +108,7 @@ export default function FnbModifierPickerDialog({
         </DialogHeader>
         <div className="space-y-4">
         {visibleGroups.map((group) => {
-            const min = groupMin(group);
+            const min = getFnbModifierGroupMinimum(group);
             const max = Math.max(1, Number(group.max_select || 1));
             return (
               <fieldset
@@ -170,7 +123,7 @@ export default function FnbModifierPickerDialog({
                 </legend>
                 <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   {(group.options || [])
-                    .filter((option) => availableOption(option, locationId))
+                    .filter((option) => isAvailableFnbModifierOption(option, locationId))
                     .map((option) => {
                       const selection = selections.find(
                         (entry) =>

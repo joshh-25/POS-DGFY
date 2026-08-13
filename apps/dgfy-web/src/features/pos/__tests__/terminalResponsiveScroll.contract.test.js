@@ -8,6 +8,7 @@ const __dirname = path.dirname(__filename);
 
 const terminalLayoutPath = path.resolve(__dirname, '../components/TerminalPageLayout.jsx');
 const posCheckoutPath = path.resolve(__dirname, '../components/POSCheckoutTerminal.jsx');
+const posCurrentSaleActionsPath = path.resolve(__dirname, '../components/PosCurrentSaleActions.jsx');
 const posHistoryPath = path.resolve(__dirname, '../components/POSTransactionHistoryPanel.jsx');
 const terminalSidebarPath = path.resolve(__dirname, '../components/TerminalWorkspaceSidebar.jsx');
 const appStylesPath = path.resolve(__dirname, '../../../index.css');
@@ -15,6 +16,7 @@ const appStylesPath = path.resolve(__dirname, '../../../index.css');
 describe('POS terminal responsive scroll contracts', () => {
   let terminalLayoutContent = '';
   let posCheckoutContent = '';
+  let posCurrentSaleActionsContent = '';
   let posHistoryContent = '';
   let terminalSidebarContent = '';
   let appStylesContent = '';
@@ -22,6 +24,7 @@ describe('POS terminal responsive scroll contracts', () => {
   beforeAll(() => {
     terminalLayoutContent = fs.readFileSync(terminalLayoutPath, 'utf8');
     posCheckoutContent = fs.readFileSync(posCheckoutPath, 'utf8');
+    posCurrentSaleActionsContent = fs.readFileSync(posCurrentSaleActionsPath, 'utf8');
     posHistoryContent = fs.readFileSync(posHistoryPath, 'utf8');
     terminalSidebarContent = fs.readFileSync(terminalSidebarPath, 'utf8');
     appStylesContent = fs.readFileSync(appStylesPath, 'utf8');
@@ -81,7 +84,7 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(posCheckoutContent).toContain("if (event.pointerType !== 'pen') return;");
     expect(posCheckoutContent).not.toContain('setPointerCapture');
     expect(posCheckoutContent).not.toContain('releasePointerCapture');
-    expect(posCheckoutContent).toContain('addToCart(item);');
+    expect(posCheckoutContent).toContain('addCatalogItemToCart(item');
   });
 
   it('keeps current-sale actions and mobile sheet behavior intact', () => {
@@ -93,35 +96,36 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(posCheckoutContent).toContain('data-testid="pos-current-sale-items"');
     expect(posCheckoutContent).toContain('data-testid="pos-current-sale-totals"');
     expect(posCheckoutContent).toContain('md:h-[clamp(18rem,46vh,26rem)] md:flex-none');
-    expect(posCheckoutContent).toContain('data-testid="pos-current-sale-actions"');
-    expect(posCheckoutContent).toContain('dgfy-pos-current-sale-actions grid shrink-0 grid-cols-2 sm:grid-cols-3');
-    expect(posCheckoutContent).toContain('flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center');
+    expect(posCheckoutContent).toContain('<PosCurrentSaleActions');
+    expect(posCheckoutContent).toContain('presentationBundle={posPresentationBundle}');
+    expect(posCurrentSaleActionsContent).toContain('data-testid="pos-current-sale-actions"');
+    expect(posCurrentSaleActionsContent).toContain('data-has-parked-sale-controls={showParkedSaleControls');
+    expect(posCurrentSaleActionsContent).toContain('dgfy-pos-current-sale-actions grid shrink-0 grid-cols-2');
+    expect(posCurrentSaleActionsContent).toContain('flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center');
     expect(posCheckoutContent).not.toContain('max-h-[25rem] overflow-y-auto');
-    expect(posCheckoutContent).toContain('Checkout');
-    expect(posCheckoutContent).toContain('Close Day / Z-Reading');
-    expect(posCheckoutContent).toContain('Print Last Receipt');
-    expect(posCheckoutContent).toContain('Open Cash Drawer');
+    expect(posCurrentSaleActionsContent).toContain('Checkout');
+    expect(posCurrentSaleActionsContent).toContain('Open Cash Drawer');
+    expect(posCurrentSaleActionsContent).not.toContain('Close Day / Z-Reading');
+    expect(posCurrentSaleActionsContent).not.toContain('Print Last Receipt');
   });
 
   it('collects workflow and payment settings inside checkout confirmation', () => {
     const currentSaleIndex = posCheckoutContent.indexOf('data-testid="pos-current-sale-panel"');
     const checkoutDialogIndex = posCheckoutContent.indexOf('<Dialog open={checkoutConfirmModalOpen}');
     const confirmationSettingsIndex = posCheckoutContent.indexOf('data-testid="pos-checkout-order-settings"');
-    const fnbWorkflowIndex = posCheckoutContent.indexOf('<FnbWorkflowPanel', confirmationSettingsIndex);
-    const servicesWorkflowIndex = posCheckoutContent.indexOf('<ServicesWorkflowPanel', confirmationSettingsIndex);
+    const workflowSlotIndex = posCheckoutContent.indexOf('<PosCheckoutDetailsSlot', confirmationSettingsIndex);
     const currentSaleSection = posCheckoutContent.slice(currentSaleIndex, checkoutDialogIndex);
     const checkoutDialogSection = posCheckoutContent.slice(checkoutDialogIndex);
 
     expect(currentSaleIndex).toBeGreaterThan(-1);
     expect(checkoutDialogIndex).toBeGreaterThan(currentSaleIndex);
     expect(confirmationSettingsIndex).toBeGreaterThan(checkoutDialogIndex);
-    expect(fnbWorkflowIndex).toBeGreaterThan(confirmationSettingsIndex);
-    expect(servicesWorkflowIndex).toBeGreaterThan(confirmationSettingsIndex);
+    expect(workflowSlotIndex).toBeGreaterThan(confirmationSettingsIndex);
     expect(currentSaleSection).not.toContain('<FnbWorkflowPanel');
     expect(currentSaleSection).not.toContain('<ServicesWorkflowPanel');
     expect(currentSaleSection).not.toContain('Payment Type');
-    expect(checkoutDialogSection).toContain("posWorkflow.mode === 'services'");
-    expect(checkoutDialogSection).toContain('clientName={servicesClientName}');
+    expect(checkoutDialogSection).toContain('presentationBundle={posPresentationBundle}');
+    expect(checkoutDialogSection).toContain('servicesClientName={servicesClientName}');
     expect(checkoutDialogSection).toContain('onClick={handlePrintOrder}');
     expect(checkoutDialogSection).toContain('Print Order');
     expect(checkoutDialogSection).toContain('grid grid-cols-3 gap-2');
@@ -160,15 +164,17 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(appStylesContent).toContain('.dgfy-pos-current-sale-panel-scroll:hover,');
     expect(appStylesContent).toContain('.dgfy-pos-current-sale-panel-scroll:hover::-webkit-scrollbar-thumb,');
     expect(appStylesContent).toContain('.dgfy-pos-current-sale-panel-scroll::-webkit-scrollbar {');
-    expect(appStylesContent).toContain('@media (max-height: 720px)');
-    expect(appStylesContent).toContain('.dgfy-pos-current-sale-actions {');
+    expect(appStylesContent).toContain('@media (min-width: 768px) and (max-height: 720px)');
+    expect(appStylesContent).toContain(".dgfy-pos-current-sale-actions[data-has-parked-sale-controls='true'] {");
     expect(appStylesContent).toContain('grid-template-columns: repeat(3, minmax(0, 1fr));');
   });
 
   it('keeps history filters and table scrolling inside the history panel', () => {
     expect(posHistoryContent).toContain('grid grid-cols-2 gap-4 xl:grid-cols-4');
-    expect(posHistoryContent).toContain('min-h-0 flex-1 overflow-hidden border-t border-slate-200');
-    expect(posHistoryContent).toContain('dgfy-pos-scrollbar-hidden h-full overflow-auto');
+    // The panel collapsed its former two-layer clip+scroll wrapper into one
+    // scrollable container.
+    expect(posHistoryContent).toContain('dgfy-pos-scrollbar-hidden min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y');
+    expect(posHistoryContent).toContain('overflow-x-auto border-t border-slate-200');
     expect(posHistoryContent).toContain('aria-label="POS transaction history table"');
   });
 

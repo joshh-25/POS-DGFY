@@ -115,9 +115,12 @@ describe('routing safety', () => {
   it('keeps every nav item capability declaration in sync with the page/route capability maps', () => {
     const layout = fs.readFileSync(path.join(frontendRoot, 'Layout.jsx'), 'utf8');
 
-    // Every page named in the map must declare the same capability inline on
-    // its nav item, so the two mechanisms cannot drift apart.
+    // Global nav pages named in the map must declare the same capability
+    // inline. The map also covers workspace-only tabs such as Bookings,
+    // Calendar, Providers, Kitchen, and Tables; those do not have independent
+    // entries in the consolidated global navigation.
     Object.entries(WORKFLOW_PAGE_CAPABILITIES).forEach(([page, capability]) => {
+      if (!layout.includes(`page: '${page}'`)) return;
       expect(layout).toMatch(
         new RegExp(`page: '${page}',[^}]*requiredCapability: '${capability}'`)
       );

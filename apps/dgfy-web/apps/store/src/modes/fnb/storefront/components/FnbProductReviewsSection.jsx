@@ -39,9 +39,14 @@ function FractionalStars({ value = 0, size = 16, gap = 4 }) {
 }
 
 export function FnbProductReviewsSection({
+  accentColor = '#0F6FFF',
+  accentSoft = '#eff6ff',
   actionButtonBase,
   canWriteReview,
+  displayFont = FNB_DISPLAY_FONT,
   isMobileViewport,
+  compactTypography = false,
+  itemNoun = 'item',
   onOpenWriteReview,
   ratingScore,
   reviewCount,
@@ -74,8 +79,8 @@ export function FnbProductReviewsSection({
     >
       <div style={{ display: 'flex', alignItems: isMobileViewport ? 'stretch' : 'center', justifyContent: 'space-between', gap: 16, flexDirection: isMobileViewport ? 'column' : 'row' }}>
         <div style={{ display: 'grid', gap: 6 }}>
-          <h3 style={{ margin: 0, fontSize: 18, fontWeight: 800, color: '#0f172a', fontFamily: FNB_DISPLAY_FONT }}>Reviews & Ratings</h3>
-          <div style={{ fontSize: 13, color: '#64748b' }}>Verified customer feedback for this menu item.</div>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: compactTypography ? 700 : 800, color: '#0f172a', fontFamily: displayFont }}>Reviews & Ratings</h3>
+          <div style={{ fontSize: 13, color: '#64748b' }}>Verified customer feedback for this {itemNoun}.</div>
         </div>
         {canWriteReview ? (
           <button
@@ -87,8 +92,8 @@ export function FnbProductReviewsSection({
               padding: '0 18px',
               borderRadius: 14,
               border: '1px solid #bfdbfe',
-              background: '#eff6ff',
-              color: '#0F6FFF',
+              background: accentSoft,
+              color: accentColor,
               boxShadow: '0 10px 24px rgba(15,111,255,0.08)'
             }}
           >
@@ -132,7 +137,7 @@ export function FnbProductReviewsSection({
                 return (
                   <article key={`review-card-${entry?.review_id || `${reviewerName}-${entry?.submitted_at || ''}`}`} style={{ border: '1px solid rgba(226, 232, 240, 0.8)', borderRadius: 20, background: '#fff', padding: 18, display: 'grid', gap: 12, boxShadow: '0 12px 26px rgba(15,23,42,0.04)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-                      <div style={{ width: 42, height: 42, borderRadius: '50%', background: '#eff6ff', color: '#0F6FFF', display: 'grid', placeItems: 'center', fontSize: 14, fontWeight: 800, flexShrink: 0 }}>{initials}</div>
+                      <div style={{ width: 42, height: 42, borderRadius: '50%', background: accentSoft, color: accentColor, display: 'grid', placeItems: 'center', fontSize: 14, fontWeight: 800, flexShrink: 0 }}>{initials}</div>
                       <div style={{ minWidth: 0, display: 'grid', gap: 4 }}>
                         <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{reviewerName}</div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>

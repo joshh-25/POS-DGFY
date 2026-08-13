@@ -28,8 +28,9 @@ describe('POS close-report payment breakdown', () => {
             { payment_type: 'gcash', payment_label: 'GCash', count: 2, amount: 200 },
             { payment_type: 'maya', payment_label: 'Maya', count: 1, amount: 150 },
             { payment_type: 'card', payment_label: 'Card (Credit/Debit)', count: 1, amount: 300 },
+            { payment_type: 'bank_transfer', payment_label: 'Bank Transfer', count: 2, amount: 120 },
             { payment_type: 'employee_credit', payment_label: 'Employee Credit', count: 1, amount: 75 },
-            { payment_type: 'other', payment_label: 'Other', count: 4, amount: 225 }
+            { payment_type: 'other', payment_label: 'Other', count: 2, amount: 105 }
         ]);
         expect(result.reduce((total, entry) => total + entry.amount, 0)).toBe(1050);
     });
@@ -45,7 +46,7 @@ describe('POS close-report payment breakdown', () => {
             { payment_type: 'cash', count: 2, amount: 250 }
         ]);
 
-        expect(firstPass).toHaveLength(6);
+        expect(firstPass).toHaveLength(7);
         expect(firstPass[1]).toEqual({
             payment_type: 'gcash',
             payment_label: 'GCash',
@@ -79,8 +80,9 @@ describe('POS close-report payment breakdown', () => {
         });
 
         expect(shiftLines).toContainEqual(expect.stringContaining('Card (Credit/Debit) (1)'));
+        expect(shiftLines).toContainEqual(expect.stringContaining('Bank Transfer (2)'));
         expect(shiftLines).toContainEqual(expect.stringContaining('Employee Credit (1)'));
-        expect(shiftLines).toContainEqual(expect.stringContaining('Other (4)'));
+        expect(shiftLines).toContainEqual(expect.stringContaining('Other (2)'));
         expect(zReadingLines).toContainEqual(expect.stringContaining('GCash (2)'));
         expect(zReadingLines).toContainEqual(expect.stringContaining('Maya (1)'));
         expect(shiftLines).toContainEqual(expect.stringContaining('POS voids'));

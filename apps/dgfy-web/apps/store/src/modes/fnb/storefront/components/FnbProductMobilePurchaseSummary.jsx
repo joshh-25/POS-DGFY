@@ -3,11 +3,14 @@ import { ChefHat, ShoppingCart, X } from 'lucide-react';
 import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
 
 export function FnbProductMobilePurchaseSummary({
+  accentColor = '#f97316',
+  accentDark = '#15803d',
   actionButtonBase,
   available,
   displayFont,
   formatMoney,
   imageSources,
+  compactTypography = false,
   isEditingCartLine = false,
   isOpen,
   itemName,
@@ -50,9 +53,9 @@ export function FnbProductMobilePurchaseSummary({
               minWidth: 0,
               padding: '0 16px',
               borderRadius: 14,
-              border: '1.5px solid #22C55E',
+              border: `1.5px solid ${accentColor}`,
               background: '#ffffff',
-              color: '#15803d',
+              color: accentColor,
               boxShadow: 'none',
               opacity: available ? 1 : 0.65
             }}
@@ -71,7 +74,7 @@ export function FnbProductMobilePurchaseSummary({
               padding: '0 18px',
               borderRadius: 14,
               border: 'none',
-              background: available ? '#f97316' : '#cbd5e1',
+              background: available ? accentColor : '#cbd5e1',
               color: '#fff',
               boxShadow: 'none',
               opacity: available ? 1 : 0.65
@@ -144,7 +147,7 @@ export function FnbProductMobilePurchaseSummary({
                   <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{itemName}</div>
                   <div style={{ fontSize: 14, color: '#64748b' }}>Quantity: {quantity}</div>
                 </div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: '#f97316', whiteSpace: 'nowrap' }}>{formatMoney(totalPrice)}</div>
+                <div style={{ fontSize: 18, fontWeight: compactTypography ? 700 : 800, color: accentColor, whiteSpace: 'nowrap' }}>{formatMoney(totalPrice)}</div>
               </div>
 
               <div style={{ borderTop: '1px solid rgba(226,232,240,0.8)', paddingTop: spacing(1.5), display: 'grid', gap: 10 }}>
@@ -164,7 +167,7 @@ export function FnbProductMobilePurchaseSummary({
                 </div>
               </div>
 
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#22C55E', textAlign: 'center' }}>Get cashback from this item!</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: accentColor, textAlign: 'center' }}>Get cashback from this item!</div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: 10 }}>
                 <button
@@ -178,7 +181,7 @@ export function FnbProductMobilePurchaseSummary({
                   type="button"
                   onClick={(event) => { onClose(); onAddToCart?.(event); }}
                   disabled={!available}
-                  style={{ ...actionButtonBase, minHeight: 44, minWidth: 0, padding: '0 16px', borderRadius: 12, border: 'none', background: available ? '#16a34a' : '#cbd5e1', color: '#ffffff', boxShadow: 'none', opacity: available ? 1 : 0.65, fontSize: 14 }}
+                  style={{ ...actionButtonBase, minHeight: 44, minWidth: 0, padding: '0 16px', borderRadius: 12, border: 'none', background: available ? accentDark : '#cbd5e1', color: '#ffffff', boxShadow: 'none', opacity: available ? 1 : 0.65, fontSize: 14 }}
                 >
                   {isEditingCartLine ? 'Save changes' : 'Confirm & Add to Cart'}
                 </button>

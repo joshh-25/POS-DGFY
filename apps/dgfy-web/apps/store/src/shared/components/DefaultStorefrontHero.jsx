@@ -16,9 +16,9 @@ import { useStorefrontAccountBranches } from '../hooks/useStorefrontAccountBranc
 // Every non-fnb/services/simple industry (hospitality, healthcare, retail,
 // food_manufacturing, ticketing_transport, logistics_distribution,
 // education_institutions, ...) renders through this component. It intentionally
-// reuses FnbHero's own building blocks verbatim (imported, never modified) so the
-// header/hero-band/gallery/contact+map/why-choose-us structure matches F&B exactly
-// for every other industry, while each industry's own product/menu catalog (Zone 4,
+// reuses FnbHero's own building blocks with mode-owned theme tokens so the
+// header/hero-band/gallery/contact+map/why-choose-us structure stays consistent
+// without leaking F&B colors into other industries. Each industry's product/menu catalog (Zone 4,
 // rendered separately by StorefrontCatalogRouteContainer) is completely untouched.
 // `buildFnbHeroViewModel` is a pure data-shaping function, not F&B-specific in what
 // it reads — the "Fnb" prefix is only a historical naming artifact from where it was
@@ -64,6 +64,8 @@ const DefaultStorefrontHero = ({
   const { HERO_CANVAS_MAX_WIDTH, MAX_STOREFRONT_WHY_CHOOSE_US, MOBILE_DROPDOWN_MENU_STYLE, MOBILE_DROPDOWN_OPTION_STYLE, MOBILE_NATIVE_SELECT_STYLE, STOREFRONT_CONTACT_INFO_COLUMNS, STOREFRONT_INFO_ICON_COLUMN, STOREFRONT_INFO_PANEL_MAX_WIDTH, STOREFRONT_INFO_ROW_GAP, STYLES } = heroStyles;
   const [isExpandedMapOpen, setIsExpandedMapOpen] = useState(false);
   const heroTheme = modeAdapter.heroTheme || {};
+  const isRetailTheme = Boolean(heroTheme.palette?.retailHighlight);
+  const retailPageBackground = heroTheme.palette?.pageBackground || '#F8FAFC';
   const { accountBranches, hasMultipleAccountBranches } = useStorefrontAccountBranches({
     isStorefrontAccountAuthenticated,
     selectedStore
@@ -136,7 +138,7 @@ const DefaultStorefrontHero = ({
   ].filter(Boolean);
 
   return (
-    <section style={{ marginBottom: 40 }}>
+    <section style={{ marginBottom: 40, background: isRetailTheme ? retailPageBackground : undefined }}>
       <SharedStorefrontHeaderNav
         isMobileViewport={isMobileViewport}
         bodyFont={heroTheme.bodyFont}
@@ -215,8 +217,8 @@ const DefaultStorefrontHero = ({
             handleFollowAction={handleFollowAction}
             heroSectionModel={heroSectionModel}
             heroTheme={heroTheme}
-            mobileHeroMetaItems={mobileHeroMetaItems}
             modeAdapter={modeAdapter}
+            mobileHeroMetaItems={mobileHeroMetaItems}
             openStorefrontActionLink={openStorefrontActionLink}
           />
           <FnbHeroMobileInfoCards
@@ -236,6 +238,7 @@ const DefaultStorefrontHero = ({
             hasWhyChooseUs={hasWhyChooseUs}
             heroSectionModel={heroSectionModel}
             heroTheme={heroTheme}
+            modeAdapter={modeAdapter}
             mapSelectedKey={mapSelectedKey}
             mapStores={mapStores}
             openStorefrontActionLink={openStorefrontActionLink}
@@ -253,9 +256,9 @@ const DefaultStorefrontHero = ({
           margin: '64px auto 36px',
           padding: 24,
           background: '#ffffff',
-          border: '1px solid #e8edf3',
+          border: `1px solid ${isRetailTheme ? (heroTheme.palette?.secondary || '#A9DCE8') : '#e8edf3'}`,
           borderRadius: 24,
-          boxShadow: '0 18px 42px rgba(15, 23, 42, 0.07)',
+          boxShadow: isRetailTheme ? '0 6px 18px rgba(26,78,141,0.05)' : '0 18px 42px rgba(15, 23, 42, 0.07)',
           display: 'grid',
           gridTemplateColumns: desktopColumns,
           gap: 24

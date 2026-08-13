@@ -20,6 +20,7 @@ export function useDefaultProductCartDrawerProps({
   goStoreOrderPage,
   isCheckoutOpen,
   isMobileViewport,
+  isRetailMode = false,
   money,
   removeCartItem,
   renderPromoCodePanel,
@@ -55,6 +56,7 @@ export function useDefaultProductCartDrawerProps({
       fabRef: serviceCartFabRef,
       isOpen: isCheckoutOpen,
       isMobileViewport,
+      isRetailMode,
       onToggle: toggleDrawer
     },
     drawerSurfaceProps: {
@@ -66,6 +68,7 @@ export function useDefaultProductCartDrawerProps({
       cartTotal,
       goStoreCatalogPage,
       isMobileViewport,
+      isRetailMode,
       isOpen: isCheckoutOpen,
       money,
       onCheckout: goStoreOrderPage,
@@ -90,6 +93,7 @@ export function useDefaultProductCartDrawerProps({
     handleImageError,
     isCheckoutOpen,
     isMobileViewport,
+    isRetailMode,
     money,
     removeCartItem,
     renderPromoCodePanel,

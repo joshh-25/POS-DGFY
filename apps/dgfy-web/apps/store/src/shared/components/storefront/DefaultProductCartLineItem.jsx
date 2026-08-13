@@ -14,6 +14,7 @@ const DEFAULT_BRAND = '#1a4e8d';
 export function DefaultProductCartLineItem({
   cartImageErrors,
   isMobileViewport = false,
+  isRetailMode = false,
   line,
   money,
   onImageError,
@@ -46,14 +47,14 @@ export function DefaultProductCartLineItem({
         <div style={{ minWidth: 0, display: 'grid', gap: 8 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto', alignItems: 'start', gap: 10 }}>
             <div style={{ minWidth: 0, display: 'grid', gap: 4 }}>
-              <div style={{ fontSize: isMobileViewport ? 15 : 16, fontWeight: 900, color: '#0f172a', lineHeight: 1.15 }}>
+              <div style={{ fontSize: isRetailMode && isMobileViewport ? 14 : (isMobileViewport ? 15 : 16), fontWeight: isRetailMode ? 700 : 900, color: '#0f172a', lineHeight: isRetailMode ? 1.2 : 1.15 }}>
                 {line.name}
               </div>
               <div style={{ fontSize: 12, color: '#64748b' }}>
                 {line.unit_of_measure ? `Per ${line.unit_of_measure}` : 'Per item'}
               </div>
             </div>
-            <div style={{ fontSize: isMobileViewport ? 14 : 15, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap', alignSelf: 'center' }}>
+            <div style={{ fontSize: isMobileViewport ? 14 : 15, fontWeight: isRetailMode ? 700 : 900, color: '#0f172a', whiteSpace: 'nowrap', alignSelf: 'center' }}>
               {money(lineTotal)}
             </div>
             <button

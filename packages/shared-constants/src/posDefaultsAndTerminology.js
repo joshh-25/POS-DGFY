@@ -39,7 +39,7 @@ export const POS_DEFAULTS_AND_TERMINOLOGY_REGISTRY = Object.freeze({
         { item_create_label: 'Create Retail SKU' }
     ),
     services: buildEntry(
-        { preferred_order_method: 'appointment', show_online_queue: true },
+        { preferred_order_method: 'appointment', show_online_queue: false },
         { item_create_label: 'Create Service', product_create_label: 'Create Service Package', pos_workspace_label: 'Services POS' }
     ),
     manufacturing: buildEntry(

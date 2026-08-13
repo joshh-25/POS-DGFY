@@ -1,0 +1,121 @@
+name: Deploy
+
+# Consolidated manual-dispatch build+deploy for DEV/STAGING/BETA, replacing
+# build-develop.yml, build-staging.yml, build-manual.yml, and
+# build-beta-manual.yml (all deleted 2026-08-14, #417). PROD stays on its
+# own workflow -- see deploy-main.yml -- rather than being folded in here:
+# a mistake there restarts the shared dgfy-api that BOTH beta.dgfy.ph and
+# dgfy.ph depend on, with no approval gate available on GitHub Free, so it
+# gets a separate, more deliberate dispatch entry rather than a dropdown
+# option buried in this one.
+#
+# Every push-triggered build/deploy in the repo is gone as of #419. Pat's
+# own framing: "we'll remove the auto-triggers. We'll manually trigger them
+# and choose which platforms and environment to deploy. This way, we can
+# FULLY DECIDE when to build and deploy." Breaking `develop` is explicitly
+# acceptable under this model -- accountability is on-demand (via
+# scripts/integrate-prs.js or whoever's manual build fails), not automatic.
+#
+# `components` originally had a fourth option, `auto`, that read a revision
+# label off the currently-deployed image and rebuilt only what changed since
+# then. Dropped 2026-08-14 (#420) -- Pat's own pushback: "why do we still
+# have change detection on the manual deploy, when we're supposed to be able
+# to pick which platforms to build and push?" Right call -- that mode
+# reintroduced exactly the kind of automatic decide-for-you logic this
+# workflow exists to remove, added three extra jobs and an
+# `imagetools inspect`/GHCR-label read that was never actually verified
+# against a real deployed image, and wasn't something Pat asked for. If a
+# self-healing/auto-detect mode is wanted later, design it as its own
+# explicit thing, not folded quietly into "manual."
+#
+# IMPORTANT, unverified until a human runs it end-to-end: the SSH deploy
+# path (publish-platform.yml) has not had a confirmed successful run since
+# the 2026-08-13 self-hosted cutover.
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: Which environment to build/deploy against
+        type: choice
+        options:
+          - DEV
+          - STAGING
+          - BETA
+        required: true
+      components:
+        description: >-
+          Which images to build/push. backend = api + migration-runner
+          together, never separately -- compose's depends_on:
+          service_completed_successfully means a mismatched pair (new api
+          schema expectations against an old migration set, or vice versa)
+          is a real failure mode, not just caution.
+        type: choice
+        options:
+          - all
+          - backend
+          - frontend
+        default: all
+      deploy:
+        description: SSH-deploy to the server after images are pushed
+        type: boolean
+        default: true
+      allow_ref_mismatch:
+        description: >-
+          Skip the guard that fails this run if the selected branch (the ref
+          you dispatched from) doesn't match the selected environment. Only
+          for a deliberate cross-branch build -- leaving this off is what
+          stops "selector left on develop, picked STAGING" from silently
+          shipping the wrong code.
+        type: boolean
+        default: false
+
+concurrency:
+  group: deploy-${{ inputs.environment }}
+  # false, matching build-develop.yml's original reasoning: this is a manual
+  # action now, not a push burst, so there's no "queue instead of losing a
+  # diff" pressure -- but cancelling a real in-flight deploy mid-SSH because
+  # someone fat-fingered a second dispatch is worse than making the second
+  # one wait.
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  guard-ref:
+    runs-on: ['self-hosted']
+    timeout-minutes: 2
+    steps:
+      - name: Assert selected branch matches selected environment
+        if: ${{ !inputs.allow_ref_mismatch }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          declare -A EXPECT=([DEV]=develop [STAGING]=staging [BETA]=main)
+          expected="${EXPECT[${{ inputs.environment }}]}"
+          actual="${{ github.ref_name }}"
+          if [ "$actual" != "$expected" ]; then
+            echo "::error::Dispatched from branch '$actual' but environment '${{ inputs.environment }}' expects '$expected'. Re-run this workflow with the branch selector set to '$expected', or check allow_ref_mismatch if this is a deliberate cross-branch build."
+            exit 1
+          fi
+          echo "OK: branch '$actual' matches environment '${{ inputs.environment }}'."
+
+  build-and-push:
+    needs: guard-ref
+    uses: ./.github/workflows/deployment-orchestrator.yml
+    with:
+      environment: ${{ inputs.environment }}
+      image_tags: ${{ inputs.environment == 'DEV' && 'develop' || inputs.environment == 'STAGING' && 'staging' || 'beta' }}
+      publish: ${{ inputs.deploy }}
+      # The self-hosted runner already sits on the DEV/STAGING network and,
+      # for DEV/STAGING, IS the deploy target -- the OpenVPN hop hosted
+      # runners needed would have it tunnel into itself.
+      vpn_required: false
+      build_api: ${{ inputs.components == 'all' || inputs.components == 'backend' }}
+      build_frontend: ${{ inputs.components == 'all' || inputs.components == 'frontend' }}
+      runner_labels_json: '["self-hosted"]'
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write

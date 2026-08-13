@@ -11,7 +11,7 @@ describe('browser entrypoint session helper contract', () => {
     const imMain = readSource('src/main.jsx');
     const posMain = readSource('apps/pos/src/main.jsx');
 
-    expect(imMain).toContain("import { login as loginTenantSession } from './services/authService.js'");
+    expect(imMain).toContain("import { login as loginTenantSession, getCurrentUser } from './services/authService.js'");
     expect(posMain).toContain("import { login as loginTenantSession } from '../../../src/services/authService.js'");
     expect(imMain).toContain('await loginTenantSession({');
     expect(posMain).toContain('await loginTenantSession({');

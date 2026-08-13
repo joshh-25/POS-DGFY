@@ -18,9 +18,15 @@ Key runbooks:
 10. `docs/ops/BETA_TENANT_PROVISIONING_INCIDENT_2026-07-04.md`
 11. `docs/ops/STOREFRONT_TRACKING_POLL_RATE_LIMIT_INVESTIGATION.md`
 12. `docs/ops/MENU_IMPORT_BATCH_ENABLEMENT.md`
+13. `docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md` — planned production secrets
+    cutover (ADR 0060), not yet executed; see that ADR for the decision and
+    this runbook for the phased plan + rollback.
 
-Merging into `main` deploys production directly (`build-main.yml` on push);
-see `docs/ops/RELEASE_CANDIDATE_POLICY.md` for the actual `develop -> staging
+Production deploys only on a manual dispatch of `deploy-main.yml` (renamed
+from `build-main.yml`, which lost its `push: [main]` trigger 2026-08-14,
+#417 — every auto-build/auto-deploy trigger in the repo was removed the same
+day). Merging into `main` no longer deploys by itself. See
+`docs/ops/RELEASE_CANDIDATE_POLICY.md` for the actual `develop -> staging
 -> release/* -> main` flow and what gates it. `docs/ops/
 DEVELOPMENT_TO_PRODUCTION_WORKFLOW.md` and ADR 0030 describe an external
 signed release controller that was never built for this repository and are

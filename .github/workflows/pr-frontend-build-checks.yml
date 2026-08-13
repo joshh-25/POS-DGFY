@@ -7,7 +7,7 @@ on:
         description: JSON array passed to runs-on for this job
         required: false
         type: string
-        default: '["ubuntu-latest"]'
+        default: '["self-hosted"]'
 
 jobs:
   build-check:
@@ -24,10 +24,11 @@ jobs:
       # vars.* and aren't needed just to prove the build succeeds -- the
       # Dockerfile's own ARG defaults are fine here. Reads the canonical
       # `frontend` cache scope that deploy-frontend.yml writes (usually warm
-      # from the last develop/staging/main build), but writes to a PR-scoped
-      # cache so a broken PR build can never poison the canonical scope -- and
-      # repeated pushes to the same PR still hit cache. GitHub evicts the
-      # PR-scoped cache automatically once the PR closes.
+      # from the last develop/staging/main build). Deliberately no cache-to:
+      # a per-PR mode=max cache write is full-size and nothing ever reads it
+      # back (each PR only reads the canonical scope), so it was pure
+      # eviction pressure against the repo's 10GB Actions cache quota --
+      # see #412.
       - name: Build frontend image (no push)
         uses: docker/build-push-action@v6
         with:
@@ -35,4 +36,3 @@ jobs:
           file: infrastructure/docker/frontend/Dockerfile
           push: false
           cache-from: type=gha,scope=frontend
-          cache-to: type=gha,mode=max,scope=frontend-pr-${{ github.event.pull_request.number }}

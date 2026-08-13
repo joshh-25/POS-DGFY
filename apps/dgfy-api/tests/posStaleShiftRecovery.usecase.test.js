@@ -1,5 +1,6 @@
 import { jest } from '@jest/globals';
 import dbStore from '../src/utils/dbStore.js';
+import { DomainErrorCode } from '../src/modules/shared/contracts/domainErrors.js';
 
 const mockAssertComplianceOperationAllowed = jest.fn(async () => ({
     success: true,
@@ -56,12 +57,16 @@ const buildRepository = () => {
     };
     const auditLogs = [];
     let closeCount = 0;
+    let activeParkedSaleCount = 0;
 
     return {
         shift,
         auditLogs,
         get closeCount() {
             return closeCount;
+        },
+        setActiveParkedSaleCount(value) {
+            activeParkedSaleCount = Math.max(0, Number.parseInt(value, 10) || 0);
         },
         async findOperationReplayByKey({ operationKey, idempotencyKey }) {
             return clone(replays.get(`${operationKey}::${idempotencyKey}`) || null);
@@ -86,6 +91,12 @@ const buildRepository = () => {
                 { event_type: 'cash_in', amount: 10 },
                 { event_type: 'cash_out', amount: 5 }
             ];
+        },
+        async countActiveParkedSalesForShift() {
+            return activeParkedSaleCount;
+        },
+        async listUnresolvedFundedPaymentSessionsForShift() {
+            return [];
         },
         async closeTerminalShift(shiftId, payload) {
             closeCount += 1;
@@ -159,6 +170,42 @@ describe('POS stale shift recovery use case', () => {
         }));
         expect(transaction.commit).toHaveBeenCalledTimes(1);
         expect(transaction.rollback).not.toHaveBeenCalled();
+    });
+
+    it('blocks stale recovery while active parked sales remain unresolved', async () => {
+        const repository = buildRepository();
+        repository.setActiveParkedSaleCount(1);
+        const transaction = createTransaction();
+        const useCase = buildForceCloseStaleTerminalShiftUseCase({
+            posRepository: repository,
+            now: () => new Date('2026-07-23T13:00:00.000Z'),
+            staleAfterHours: 12
+        });
+
+        const result = await runInTenantContext(
+            { transaction: jest.fn(async () => transaction) },
+            () => useCase({
+                shiftId: 51,
+                payload: {
+                    idempotency_key: 'recovery-request-parked-block',
+                    closing_cash_amount: 145,
+                    reason: 'Operator left without closing'
+                },
+                user: {
+                    user_id: 1,
+                    is_master_admin: true
+                }
+            })
+        );
+
+        expect(result.success).toBe(false);
+        expect(result.error.code).toBe(DomainErrorCode.CONFLICT);
+        expect(result.error.details).toEqual(expect.objectContaining({
+            reason_code: 'POS_PARKED_SALES_UNRESOLVED',
+            active_parked_sale_count: 1
+        }));
+        expect(repository.closeCount).toBe(0);
+        expect(transaction.rollback).toHaveBeenCalledTimes(1);
     });
 
     it('returns the durable replay without closing the shift twice', async () => {

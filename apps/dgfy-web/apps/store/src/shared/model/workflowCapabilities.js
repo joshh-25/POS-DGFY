@@ -8,11 +8,20 @@
 // whose scalar workflow_mode is literally 'services'.
 export const buildWorkflowCapabilityStorePatch = (catalogData = null) => {
   if (!catalogData || typeof catalogData !== 'object') return null;
-  if (catalogData.workflow_mode == null && !Array.isArray(catalogData.enabled_capabilities)) return null;
-  return {
-    workflow_mode: catalogData.workflow_mode,
-    enabled_capabilities: Array.isArray(catalogData.enabled_capabilities) ? catalogData.enabled_capabilities : []
-  };
+  const patch = {};
+  const workflowMode = typeof catalogData.workflow_mode === 'string'
+    ? catalogData.workflow_mode.trim()
+    : catalogData.workflow_mode;
+
+  // Catalog responses from older or partially configured tenants may omit
+  // workflow_mode. Do not let an absent overlay field erase the mode already
+  // resolved from the storefront profile (services, retail, or msme).
+  if (workflowMode) patch.workflow_mode = workflowMode;
+  if (Array.isArray(catalogData.enabled_capabilities)) {
+    patch.enabled_capabilities = catalogData.enabled_capabilities;
+  }
+
+  return Object.keys(patch).length > 0 ? patch : null;
 };
 
 export const hasEnabledCapability = (store = null, capability) => (

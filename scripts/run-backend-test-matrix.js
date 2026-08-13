@@ -13,10 +13,14 @@ const JEST_CONFIG = path.join(APP_DIR, 'jest.config.cjs');
 const DEFAULT_CHUNK_SIZE = Number.parseInt(process.env.BACKEND_TEST_MATRIX_CHUNK_SIZE || '8', 10);
 const DEFAULT_CHUNK_TIMEOUT_MS = Number.parseInt(process.env.BACKEND_TEST_MATRIX_CHUNK_TIMEOUT_MS || '600000', 10);
 const CONTINUE_ON_FAILURE = process.argv.includes('--continue-on-failure') || process.env.BACKEND_TEST_MATRIX_CONTINUE_ON_FAILURE === 'true';
-const SKIP_SCHEMA_PREFLIGHT = process.env.BACKEND_TEST_MATRIX_SKIP_SCHEMA_PREFLIGHT === 'true';
+const SKIP_SCHEMA_PREFLIGHT = process.argv.includes('--skip-schema-preflight')
+  || process.env.BACKEND_TEST_MATRIX_SKIP_SCHEMA_PREFLIGHT === 'true';
 
 const groupFilterArgIndex = process.argv.indexOf('--group');
 const groupFilter = groupFilterArgIndex >= 0 ? String(process.argv[groupFilterArgIndex + 1] || '').trim() : '';
+const chunkFilterArgIndex = process.argv.indexOf('--chunk');
+const chunkFilterValue = chunkFilterArgIndex >= 0 ? String(process.argv[chunkFilterArgIndex + 1] || '').trim() : '';
+const chunkFilter = chunkFilterValue ? Number.parseInt(chunkFilterValue, 10) : null;
 
 const GROUPS = [
   {
@@ -259,6 +263,12 @@ function main() {
   if (!fs.existsSync(JEST_BIN)) {
     throw new Error(`Jest binary not found at ${JEST_BIN}`);
   }
+  if (chunkFilter !== null && (!Number.isInteger(chunkFilter) || chunkFilter < 1)) {
+    throw new Error('--chunk must be a positive 1-based integer');
+  }
+  if (chunkFilter !== null && !groupFilter) {
+    throw new Error('--chunk requires --group so the selected chunk is deterministic');
+  }
 
   const targetSha = getTargetSha();
   const evidenceRoot = path.join(ROOT, '.tmp', 'release-gates', targetSha, 'backend-test-matrix');
@@ -291,16 +301,19 @@ function main() {
   for (const group of selectedGroups) {
     const testChunks = chunk(group.tests, DEFAULT_CHUNK_SIZE);
     console.log(`[backend-test-matrix] group=${group.name} tests=${group.tests.length} chunks=${testChunks.length}`);
-    for (let index = 0; index < testChunks.length; index += 1) {
+    if (chunkFilter !== null && chunkFilter > testChunks.length) {
+      throw new Error(`Group ${group.name} has ${testChunks.length} chunks; cannot run chunk ${chunkFilter}`);
+    }
+    const selectedChunkIndexes = chunkFilter === null
+      ? testChunks.map((_, index) => index)
+      : [chunkFilter - 1];
+    for (const index of selectedChunkIndexes) {
       const result = runChunk(group.name, index, testChunks[index], evidenceRoot);
       chunks.push(result);
       console.log(`[backend-test-matrix] ${result.status.toUpperCase()} group=${group.name} chunk=${result.chunk_index}/${testChunks.length} tests=${result.test_count} duration_ms=${result.duration_ms} log=${result.log_file}`);
       if (result.status !== 'pass') {
         failed = true;
-        if (!CONTINUE_ON_FAILURE) {
-          index = testChunks.length;
-          break;
-        }
+        if (!CONTINUE_ON_FAILURE) break;
       }
     }
     if (failed && !CONTINUE_ON_FAILURE) break;
@@ -315,6 +328,8 @@ function main() {
     active_test_count: activeTests.length,
     selected_group_count: selectedGroups.length,
     chunk_size: DEFAULT_CHUNK_SIZE,
+    selected_group: groupFilter || null,
+    selected_chunk: chunkFilter,
     chunk_timeout_ms: DEFAULT_CHUNK_TIMEOUT_MS,
     continue_on_failure: CONTINUE_ON_FAILURE,
     schema_preflight: schemaPreflight,

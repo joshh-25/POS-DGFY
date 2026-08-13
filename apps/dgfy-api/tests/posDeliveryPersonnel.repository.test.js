@@ -78,6 +78,7 @@ describe('POS delivery personnel repository', () => {
 
             expect(row.update).toHaveBeenCalledWith({
                 delivery_personnel_id: 2,
+                delivery_personnel_name: null,
                 assigned_by: 12,
                 assigned_shift_id: 77,
                 status: 'assigned',

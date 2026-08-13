@@ -357,6 +357,7 @@ describe('POS readings usecases', () => {
                     { payment_type: 'gcash', payment_label: 'GCash', count: 0, amount: 0 },
                     { payment_type: 'maya', payment_label: 'Maya', count: 0, amount: 0 },
                     { payment_type: 'card', payment_label: 'Card (Credit/Debit)', count: 0, amount: 0 },
+                    { payment_type: 'bank_transfer', payment_label: 'Bank Transfer', count: 0, amount: 0 },
                     { payment_type: 'employee_credit', payment_label: 'Employee Credit', count: 0, amount: 0 },
                     { payment_type: 'other', payment_label: 'Other', count: 0, amount: 0 }
                 ]

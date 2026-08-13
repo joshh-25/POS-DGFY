@@ -27,8 +27,8 @@ pending_dispatch -> assigned -> picked_up -> delivered -> completed
 
 | State | Required condition | Allowed next action | Can complete order? |
 | --- | --- | --- | --- |
-| `pending_dispatch` | Delivery job exists; no delivery person is assigned yet | Assign an active delivery person | No |
-| `assigned` | An active delivery person, assignment actor, and assignment timestamp exist | Mark picked up | No |
+| `pending_dispatch` | Delivery job exists; no delivery person is assigned yet | Assign a registered person or enter a third-party courier name | No |
+| `assigned` | A registered person or typed third-party courier name, assignment actor, and assignment timestamp exist | Mark picked up | No |
 | `picked_up` | The assigned delivery person collected the order | Mark delivered | No |
 | `delivered` | Delivery confirmation was recorded by an authorized POS actor | Complete the online order | Yes, after payment rules pass |
 | `completed` | Delivery job is delivered and order completion succeeds | None | Final |
@@ -48,7 +48,7 @@ Each active person must have:
 
 Each delivery job assignment must record:
 
-- the selected delivery-person identifier;
+- either the selected delivery-person identifier or a trimmed third-party courier name;
 - the user who assigned the job; and
 - the assignment timestamp.
 
@@ -79,24 +79,24 @@ transition in one transaction.
 The POS Incoming Online Queue now provides the operator workflow for the API
 boundary:
 
-- active delivery personnel are loaded for the active shift location;
-- manual delivery orders show a personnel selector and an auditable assign or
-  reassign action;
+- manual delivery orders show a typed courier-name field and an auditable assign
+  or reassign action;
 - lifecycle actions are hidden until assignment evidence is present;
 - provider-owned delivery jobs are explicitly read-only in POS;
 - assignment and lifecycle controls are disabled while locked, offline, without
   an open shift, or without `pos:transact` permission;
 - the compact queue continues to show the delivery provider and current status.
 
-The frontend refreshes personnel during queue refreshes so newly registered
-active personnel can be selected without restarting the terminal.
+Registered personnel remain supported for existing assignments, but cashier
+assignment no longer depends on a registry lookup or a personnel dropdown.
 
 ## Phase 5 regression hardening
 
 The automated POS regression suite must keep the following invariants covered:
 
 - completion of a manual delivery requires complete assignment evidence
-  (`delivery_personnel_id`, assigning actor, open-shift reference, and timestamp)
+  (a registered `delivery_personnel_id` or `delivery_personnel_name`, assigning
+  actor, open-shift reference, and timestamp)
   in addition to `delivery_job.status=delivered` and the applicable payment
   evidence;
 - assignment is rejected before `out_for_delivery`, for provider-owned jobs,
@@ -114,12 +114,14 @@ npm --prefix backend test -- --runInBand --runTestsByPath tests/posDeliveryAssig
 ## Permissions and ownership
 
 - `pos:view` may read delivery status and assignment details.
-- `pos:transact` may assign an active delivery person and advance the manual
+- `pos:transact` may assign a registered delivery person or type a third-party
+  courier name and advance the manual
   delivery lifecycle when the authenticated user owns an open shift at the
   order location.
 - Delivery-person registry creation, editing, activation, and deactivation
-  belong to an administrator/settings authority. Cashiers may select an active
-  person but may not change the registry.
+  belong to an administrator/settings authority. Cashiers may use registered
+  personnel but may also assign an unregistered third-party courier by name;
+  this does not create or modify the registry.
 - Provider-owned delivery jobs remain read-only in POS.
 - Every mutation records the authenticated actor, tenant, location, shift,
   previous state, new state, and timestamp.
@@ -129,7 +131,7 @@ npm --prefix backend test -- --runInBand --runTestsByPath tests/posDeliveryAssig
 The existing completion guard remains mandatory:
 
 - delivery job status must be `delivered`;
-- a delivery person must be assigned;
+- a registered delivery person or third-party courier name must be assigned;
 - delivery confirmation actor and timestamp must exist; and
 - cash-on-delivery orders must contain server-recorded cash evidence before
   completion.
