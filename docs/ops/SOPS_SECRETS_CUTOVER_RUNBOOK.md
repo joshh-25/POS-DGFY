@@ -29,8 +29,11 @@ unverified — do not treat the unverified commands as tested.
 - `.env` is `pat:docker`, mode `0660` — `pat` can read and write it directly.
 - `docker` group members (effectively root): `pat`, `gha`, `josh`,
   `sieitz-radney`. Any of these can read the age key once it exists.
-- `sops`/`age` are **not installed**. `gpg` is present but unused by this
-  design.
+- `sops`/`age` are **not installed** as of 2026-08-13. Checksum-verified
+  binaries are staged (not yet installed — no `sudo` run yet) at
+  `/tmp/sops-age-install/` on the server from that session; re-run Phase 1's
+  download step if that directory is gone or stale by the time this
+  actually executes. `gpg` is present but unused by this design.
 - Running containers (2026-08-13): `dgfy-api` (beta tag), `frontend` (latest),
   `frontend-beta` (beta), `nginx`, `redis`, `mysql`, `certbot`.
 - **`docker-compose.yml` on the server has drifted from the repo** — see
@@ -122,36 +125,55 @@ requires GitHub Environment access to confirm the exact identity.)*
 
 ## Phase 1 — Install sops + age on the server
 
-*(Unverified — not yet run on `dgfy`.)* No current Ubuntu apt package for
-`sops`; install both from GitHub release binaries pinned to a specific
-version (do not float `latest` in a script that runs unattended later):
+*(Download/verify half ✅ verified 2026-08-13 — actually run on `dgfy`, no
+sudo needed for this part. The `sudo install`/keygen half below is
+unverified — needs an interactive `sudo` password, which this session
+cannot supply non-interactively; run it yourself.)* No current Ubuntu apt
+package for `sops`; install both from GitHub release binaries pinned to a
+specific version (do not float `latest` in a script that runs unattended
+later). **Confirm the current release tags before reusing this block** —
+checked against the GitHub API 2026-08-13, current at that date were age
+`v1.3.1` and sops `v3.13.3` (not the older `v1.2.1`/`v3.9.4` this runbook
+originally cited from memory — verify, don't trust a stale pin here):
 
 ```bash
 ssh dgfy '
   set -euo pipefail
-  cd /tmp
-  curl -fsSLo age.tar.gz https://github.com/FiloSottile/age/releases/download/v1.2.1/age-v1.2.1-linux-amd64.tar.gz
+  mkdir -p /tmp/sops-age-install && cd /tmp/sops-age-install
+
+  curl -fsSLo age.tar.gz https://github.com/FiloSottile/age/releases/download/v1.3.1/age-v1.3.1-linux-amd64.tar.gz
   tar xzf age.tar.gz
-  sudo install -m 0755 age/age age/age-keygen /usr/local/bin/
+  ./age/age --version
 
-  curl -fsSLo sops https://github.com/getsops/sops/releases/download/v3.9.4/sops-v3.9.4.linux.amd64
-  sudo install -m 0755 sops /usr/local/bin/sops
-
-  sops --version && age --version
+  curl -fsSLo sops-v3.13.3.linux.amd64 https://github.com/getsops/sops/releases/download/v3.13.3/sops-v3.13.3.linux.amd64
+  curl -fsSLo sops-checksums.txt https://github.com/getsops/sops/releases/download/v3.13.3/sops-v3.13.3.checksums.txt
+  grep "sops-v3.13.3.linux.amd64" sops-checksums.txt | sha256sum -c -
+  cp sops-v3.13.3.linux.amd64 sops && chmod +x sops
+  ./sops --version
 '
 ```
 
-Generate the key directly at its final location, root-owned, group-readable
-by `docker`:
+Everything above stages binaries in `/tmp/sops-age-install/` under your own
+user — no root needed. The install + keygen below is where `sudo` is
+actually required, so it has to be run interactively (you will be prompted
+for your password once, then it is cached for the rest of the script):
 
 ```bash
-ssh dgfy '
-  sudo mkdir -p /etc/dgfy/age
-  sudo age-keygen -o /etc/dgfy/age/keys.txt
-  sudo chown root:docker /etc/dgfy/age/keys.txt
-  sudo chmod 0640 /etc/dgfy/age/keys.txt
-  grep "public key:" /etc/dgfy/age/keys.txt   # safe to echo — paste into .sops.yaml
-'
+ssh dgfy   # then paste the block below at the prompt
+```
+```bash
+cd /tmp/sops-age-install
+sudo install -m 0755 age/age age/age-keygen /usr/local/bin/
+sudo install -m 0755 sops /usr/local/bin/sops
+sops --version && age --version
+
+sudo mkdir -p /etc/dgfy/age
+sudo age-keygen -o /etc/dgfy/age/keys.txt
+sudo chown root:docker /etc/dgfy/age/keys.txt
+sudo chmod 0640 /etc/dgfy/age/keys.txt
+sudo grep "public key:" /etc/dgfy/age/keys.txt   # safe to echo — paste into .sops.yaml
+
+rm -rf /tmp/sops-age-install   # done with the staged binaries
 ```
 
 **Escrow before continuing.** Copy the file's contents into a Bitwarden
