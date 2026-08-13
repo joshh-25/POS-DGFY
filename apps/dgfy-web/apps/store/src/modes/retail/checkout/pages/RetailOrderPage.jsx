@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import { hasCustomerName, hasPrimaryContact } from '../../../../checkout/checkoutValidation.js';
-import { buildCartTotals } from '../../../../shared/model/storefrontCartModel.js';
 import { RetailOrderAccountStep } from '../components/RetailOrderAccountStep.jsx';
 import { RetailOrderFulfillmentStep } from '../components/RetailOrderFulfillmentStep.jsx';
 import { RetailOrderJourneyHeader } from '../components/RetailOrderJourneyHeader.jsx';
@@ -74,11 +73,13 @@ export function RetailOrderPage({
   onImageError,
   onSelectAddress,
   orderMethod = 'delivery',
+  promoDiscountSummaryRow = null,
   pinLocationError = '',
   pinLocationLoading = false,
   renderAccountOwnedIdentitySummary,
   renderGuestCheckoutEntry,
   renderGuestIdentityFields,
+  renderPromoCodePanel,
   renderStorefrontClosedNotice,
   servicesBodyFont,
   servicesDisplayFont,
@@ -86,6 +87,7 @@ export function RetailOrderPage({
   selectedSavedLocationId = '',
   setCustomerPin,
   storefrontClosedByHours = false,
+  totalsForDisplay = {},
   setDeliveryLocationAction,
   setOrderMethod,
   setPinLocationError,
@@ -110,13 +112,7 @@ export function RetailOrderPage({
   const retailCustomerStepComplete = hasCustomerName(customerName)
     && hasPrimaryContact({ phone: customerPhone, email: customerEmail })
     && guestCheckoutOtpVerified;
-  const cartTotals = buildCartTotals(cart);
-  const totals = {
-    subtotal_amount: cartTotals.subtotal,
-    delivery_fee: 0,
-    service_fee_amount: 0,
-    total_amount: cartTotals.total
-  };
+  const totals = totalsForDisplay;
   const scheduleLabel = scheduleMode === 'schedule' && scheduledFor
     ? new Date(scheduledFor).toLocaleString()
     : 'NOW';
@@ -140,7 +136,7 @@ export function RetailOrderPage({
   };
 
   return (
-    <div style={{ display: 'grid', gap: 18, maxWidth: '100%', width: '100%', padding: isMobileViewport ? '0px 0px 18px' : '0px 0px 28px' }}>
+    <div style={{ display: 'grid', gap: 18, maxWidth: '100%', width: '100%', padding: isMobileViewport ? '0px 0px 18px' : '0px 0px 28px', fontFamily: servicesBodyFont || "'Avenir Next', 'Segoe UI', sans-serif", color: '#0f172a' }}>
       <RetailOrderStoreHeader
         brandColor={RETAIL_ACCENT}
         brandShadow={RETAIL_ACCENT_SHADOW}
@@ -200,6 +196,8 @@ export function RetailOrderPage({
                 isSticky
                 money={money}
                 onImageError={onImageError}
+                promoDiscountSummaryRow={promoDiscountSummaryRow}
+                promoPanel={renderPromoCodePanel?.({ compact: true, accentColor: RETAIL_ACCENT, bodyFont: servicesBodyFont })}
                 scheduleLabel={scheduleLabel}
                 totals={totals}
                 withAssetOrigin={withAssetOrigin}
@@ -263,6 +261,8 @@ export function RetailOrderPage({
                 isSticky
                 money={money}
                 onImageError={onImageError}
+                promoDiscountSummaryRow={promoDiscountSummaryRow}
+                promoPanel={renderPromoCodePanel?.({ compact: true, accentColor: RETAIL_ACCENT, bodyFont: servicesBodyFont })}
                 scheduleLabel={scheduleLabel}
                 totals={totals}
                 withAssetOrigin={withAssetOrigin}
@@ -300,6 +300,8 @@ export function RetailOrderPage({
                 isSticky
                 money={money}
                 onImageError={onImageError}
+                promoDiscountSummaryRow={promoDiscountSummaryRow}
+                promoPanel={renderPromoCodePanel?.({ compact: true, accentColor: RETAIL_ACCENT, bodyFont: servicesBodyFont })}
                 scheduleLabel={scheduleLabel}
                 totals={totals}
                 withAssetOrigin={withAssetOrigin}
@@ -319,6 +321,8 @@ export function RetailOrderPage({
             onBackToCatalog={onBackToCatalog}
             onCheckout={onCheckout}
             onImageError={onImageError}
+            promoDiscountSummaryRow={promoDiscountSummaryRow}
+            promoPanel={renderPromoCodePanel?.({ compact: true, accentColor: RETAIL_ACCENT, bodyFont: servicesBodyFont, isMobile: true })}
             onStepChange={setStep}
             orderStep={step}
             scheduleLabel={scheduleLabel}

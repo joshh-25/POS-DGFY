@@ -1,3 +1,4 @@
+import React from 'react';
 import { ChevronDown, ChevronLeft, ChevronRight, ShoppingBag, X } from 'lucide-react';
 
 const RETAIL_ACCENT = '#1a4e8d';
@@ -20,6 +21,8 @@ export function RetailOrderMobileSummaryPanel({
   onBackToCatalog,
   onCheckout,
   onImageError,
+  promoDiscountSummaryRow = null,
+  promoPanel = null,
   onStepChange,
   orderStep,
   scheduleLabel = 'NOW',
@@ -87,10 +90,12 @@ export function RetailOrderMobileSummaryPanel({
                   </div>
                 ))}
               </div>
+              {promoPanel}
               <div style={{ display: 'grid', gap: 10, borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
                 <SummaryRow label="Subtotal" value={money(totals.subtotal_amount)} />
                 <SummaryRow label="Delivery Fee" value={money(totals.delivery_fee)} />
-                <SummaryRow label="Fees & Taxes" value={money(totals.service_fee_amount)} />
+                {promoDiscountSummaryRow ? <SummaryRow label={promoDiscountSummaryRow.label} value={promoDiscountSummaryRow.value} /> : null}
+                <SummaryRow label="Fees & Taxes" value={money(Number(totals.service_fee_amount || 0) + Number(totals.vat_amount || 0))} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingTop: 10, borderTop: '1px solid #e2e8f0', fontSize: 18, color: '#0f172a' }}>
                   <span style={{ fontWeight: 700 }}>Total</span>
                   <strong style={{ fontWeight: 800 }}>{money(totals.total_amount)}</strong>
@@ -142,7 +147,7 @@ function SummaryRow({ label, value }) {
 }
 
 const secondaryButtonStyle = {
-  minHeight: 38,
+  minHeight: 44,
   borderRadius: 16,
   border: '1px solid #cbd5e1',
   background: '#fff',
@@ -157,11 +162,11 @@ const secondaryButtonStyle = {
 };
 
 const primaryButtonStyle = {
-  minHeight: 38,
+  minHeight: 44,
   border: 'none',
   borderRadius: 16,
   color: '#fff',
-  fontWeight: 900,
+  fontWeight: 800,
   fontSize: 14,
   cursor: 'pointer',
   display: 'inline-flex',
