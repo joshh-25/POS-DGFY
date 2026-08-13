@@ -1224,14 +1224,17 @@ describe('storefront discovery integration flow', () => {
     await user.type(screen.getByPlaceholderText('Search products, services or stores nearby...'), 'space');
     await user.click(screen.getByRole('button', { name: /^Search$/i }));
     await waitFor(() => expect(screen.getAllByText('Space Bar').length).toBeGreaterThan(1));
-    expect(screen.getByRole('button', { name: /Hide Results/i })).toBeTruthy();
+    // Search results render inline (map + list) by default; the results
+    // panel toggle starts collapsed ("View Results") rather than expanded,
+    // matching every other search-driven test in this file.
+    expect(await screen.findByRole('button', { name: /View Results/i })).toBeTruthy();
 
     await user.click(screen.getAllByRole('button', { name: 'Order Now' })[0]);
 
     await waitFor(() => {
-      expect(window.location.pathname).toBe('/space-bar-8ddb33');
+      expect(window.location.pathname).toBe('/tenant-store/space-bar-8ddb33');
     });
-    expect(window.location.pathname).not.toBe('/space-bar-8ddb33/order');
+    expect(window.location.pathname).not.toBe('/tenant-store/space-bar-8ddb33/order');
   });
 
   it('opens a marker preview first and routes the card action with the pinned location id', async () => {
@@ -1590,14 +1593,22 @@ describe('storefront discovery integration flow', () => {
     await waitFor(() => expect(getMapApis().filter((api) => api?.container?.isConnected).length).toBe(1));
     expect(screen.getByText('2 Stores Found')).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: /collapse results panel/i }));
-    expect(screen.getByRole('button', { name: /View Results \(2\)/i })).toBeTruthy();
+    // Collapsing clears the cluster selection (clearDiscoveryClusterResults),
+    // and with no active text search to fall back to, the interactive results
+    // stage unmounts entirely in favor of the default hero/map exploration
+    // view -- there's no "N results" toggle to reopen, just the hero map.
+    await waitFor(() => {
+      expect(screen.queryByText('Stores At This Pin')).toBeNull();
+      expect(screen.queryByRole('button', { name: /View Results/i })).toBeNull();
+    });
+    expect(await screen.findByText('Live Map')).toBeTruthy();
     expect(screen.getAllByText('Alpha Foods').length).toBeGreaterThan(0);
     expect(screen.getAllByText('Beta Foods').length).toBeGreaterThan(0);
     expect(screen.queryByRole('button', { name: /Select Alpha Foods at Main Branch/i })).toBeNull();
     expect(screen.queryByRole('dialog', { name: /Alpha Foods location preview/i })).toBeNull();
   });
 
-  it('keeps indexed discovery coordinates when tenant location enrichment is reused from another store', async () => {
+  it('keeps indexed discovery coordinates without a per-store location enrichment fan-out', async () => {
     fetchMock.mockImplementation(async (url) => {
       const normalized = String(url);
       if (normalized.includes('/api/v1/storefront/discovery?')) {
@@ -1657,18 +1668,22 @@ describe('storefront discovery integration flow', () => {
 
     render(<BrowserRouter><App /></BrowserRouter>);
     await waitFor(() => expect(screen.getByText(/Alpha Foods/i)).toBeTruthy());
-    await waitFor(() => {
-      const locationRequests = fetchMock.mock.calls
-        .map(([url]) => String(url))
-        .filter((url) => url.includes('/api/v1/store/locations'));
-      expect(locationRequests.length).toBeGreaterThanOrEqual(2);
-    });
 
     expect(screen.queryByRole('button', { name: /2 storefronts at this location/i })).toBeNull();
     const features = await waitForDiscoveryPinFeatures(2);
     const coordinates = features.map((feature) => feature.geometry.coordinates.map((value) => Number(value).toFixed(6)));
     expect(coordinates).toContainEqual(['122.505141', '10.726869']);
     expect(coordinates).toContainEqual(['122.562100', '10.720200']);
+
+    // #297: branch-location enrichment used to fan out one GET
+    // /api/v1/store/locations per store (up to 100 simultaneous requests),
+    // which exhausted the tenant connection cache in production. It is now
+    // a pure client-side derivation from the discovery response, so no
+    // enrichment request should ever fire.
+    const locationRequests = fetchMock.mock.calls
+      .map(([url]) => String(url))
+      .filter((url) => url.includes('/api/v1/store/locations'));
+    expect(locationRequests).toHaveLength(0);
   });
 
   it('does not cluster storefronts at the default center when coordinate data is missing', async () => {

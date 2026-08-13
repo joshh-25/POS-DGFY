@@ -6,6 +6,10 @@ import { describe, expect, it } from 'vitest';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const terminalPageSource = fs.readFileSync(path.resolve(__dirname, '../pages/TerminalPage.jsx'), 'utf8');
 const posServiceSource = fs.readFileSync(path.resolve(__dirname, '../services/posService.js'), 'utf8');
+// The unlock/resume modal markup was extracted out of TerminalPage.jsx into
+// its own lazily-loaded component (bundle-size split); its rendered text
+// and mode-switch logic live here now.
+const terminalPageDialogLayerSource = fs.readFileSync(path.resolve(__dirname, '../components/TerminalPageDialogLayer.jsx'), 'utf8');
 
 describe('POS terminal pairing contract', () => {
   it('uses registered terminal identity headers without restoring legacy pairing dependency', () => {
@@ -18,26 +22,26 @@ describe('POS terminal pairing contract', () => {
 
   it('opens normal shifts from an active logical terminal without a reusable terminal password', () => {
     expect(terminalPageSource).toContain('const selectedRegistryEntry = terminalRegistryLookup.get(selectedTerminalId);');
-    expect(terminalPageSource).toContain('Authorized DGFY users can open shifts from any logged-in device');
+    expect(terminalPageDialogLayerSource).toContain('Authorized DGFY users can open shifts from any logged-in device');
     expect(terminalPageSource).not.toContain('This physical POS device must be paired by the company master admin');
     expect(terminalPageSource).not.toContain('terminal_password: terminalPassword');
-    expect(terminalPageSource).toContain("'Unlock POS'");
+    expect(terminalPageDialogLayerSource).toContain("'Unlock POS'");
   });
 
   it('resumes a locked open shift through the DGFY POS session instead of a tenant-local cashier password', () => {
     expect(terminalPageSource).toContain("setTerminalUnlockMode('cashier_resume')");
-    expect(terminalPageSource).toContain('cashierResumeUnlock ? handleCashierResumeSubmit : handleTerminalUnlockSubmit');
-    expect(terminalPageSource).toContain('Terminal password is not required.');
+    expect(terminalPageDialogLayerSource).toContain('cashierResumeUnlock ? handleCashierResumeSubmit : handleTerminalUnlockSubmit');
+    expect(terminalPageDialogLayerSource).toContain('Terminal password is not required.');
     expect(terminalPageSource).toContain('loginDgfyAccount({');
     expect(terminalPageSource).toContain('startDgfyPosSession({');
     expect(terminalPageSource).toContain('const tenantId = String(cashierResumeContext.tenantId ||');
     expect(terminalPageSource).not.toContain('loginCashierWithCredentials');
     expect(terminalPageSource).not.toContain('authenticateCashierCredentials');
-    expect(terminalPageSource).toContain('Only the cashier who owns this open shift can continue it.');
+    expect(terminalPageDialogLayerSource).toContain('Only the cashier who owns this open shift can continue it.');
     expect(terminalPageSource).toContain('authenticatedCashierId !== expectedCashierId');
-    expect(terminalPageSource).toContain("!cashierResumeUnlock && terminalUnlockMode === 'shift_start'");
+    expect(terminalPageDialogLayerSource).toContain("!cashierResumeUnlock && terminalUnlockMode === 'shift_start'");
     expect(terminalPageSource).toContain("const signedInShiftResume = terminalUnlockMode === 'resume_shift'");
-    expect(terminalPageSource).toContain("? 'Resume Shift'");
+    expect(terminalPageDialogLayerSource).toContain("? 'Resume Shift'");
   });
 
   it('keeps a successful cashier close in a secure post-shift Day Close handoff while preserving admin navigation', () => {

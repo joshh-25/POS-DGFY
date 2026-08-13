@@ -1,7 +1,7 @@
 /** @vitest-environment jsdom */
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter } from 'react-router-dom';
 import TenantManager from '../../../Pages/admin/TenantManager.jsx';
@@ -42,7 +42,10 @@ describe('TenantManager assisted provisioning', () => {
 
     expect(screen.queryByText('+ Add Tenant')).toBeNull();
     expect(screen.queryByRole('heading', { name: 'Add New Tenant' })).toBeNull();
-    expect(screen.getByRole('button', { name: 'Refresh' })).toBeTruthy();
+    // The tenant-revenue workspace card below also has its own Refresh
+    // button, so scope to the page header card that owns this one.
+    const header = screen.getByRole('heading', { name: 'Tenant Management' }).closest('div.bg-white');
+    expect(within(header).getByRole('button', { name: 'Refresh' })).toBeTruthy();
     expect(screen.getByPlaceholderText('Search tenants, tokens, plans, or capabilities')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Company only' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'DGFY + Company' })).toBeTruthy();

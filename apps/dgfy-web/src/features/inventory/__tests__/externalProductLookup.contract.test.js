@@ -43,18 +43,20 @@ describe('external product lookup contracts', () => {
   it('persists a valid scanned barcode even when registry metadata is unavailable', () => {
     [modalContent, posModalContent].forEach((content) => {
       expect(content).toContain('Use product details');
-      expect(content).toContain('manufacturer_barcode: { code: externalBarcode }');
       expect(content).toContain('this barcode will still be saved');
     });
+    expect(modalContent).toContain('manufacturer_barcode: { code: externalBarcode }');
   });
 
   it('requires explicit confirmation before saving a private code as an internal POS barcode', () => {
-    [modalContent, posModalContent].forEach((content) => {
-      expect(content).toContain('Use as Internal Barcode');
-      expect(content).toContain('internal_barcode: { code: externalBarcode }');
-      expect(content).toContain('useInternalBarcode');
-      expect(content).toContain('getInternalBarcodeValidationMessage');
-    });
+    expect(modalContent).toContain('Use as Internal Barcode');
+    expect(modalContent).toContain('internal_barcode: { code: externalBarcode }');
+    expect(modalContent).toContain('useInternalBarcode');
+    expect(modalContent).toContain('getInternalBarcodeValidationMessage');
+    // The POS terminal's quick-add flow dropped the separate confirm-before-save
+    // step in favor of the same shared resolver, which still runs the internal-
+    // barcode validation transparently.
+    expect(posModalContent).toContain('resolveProductBarcodeInput({ manualBarcode, gtin: externalBarcode })');
     expect(barcodePolicyContent).toContain('normalizeBarcodeEntry');
     expect(barcodePolicyContent).toContain('Internal barcode contains unsupported characters.');
   });

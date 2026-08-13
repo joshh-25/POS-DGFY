@@ -81,7 +81,7 @@ describe('POS terminal responsive scroll contracts', () => {
     expect(posCheckoutContent).toContain("if (event.pointerType !== 'pen') return;");
     expect(posCheckoutContent).not.toContain('setPointerCapture');
     expect(posCheckoutContent).not.toContain('releasePointerCapture');
-    expect(posCheckoutContent).toContain('addToCart(item);');
+    expect(posCheckoutContent).toContain('addToCart(item, options);');
   });
 
   it('keeps current-sale actions and mobile sheet behavior intact', () => {
@@ -167,8 +167,10 @@ describe('POS terminal responsive scroll contracts', () => {
 
   it('keeps history filters and table scrolling inside the history panel', () => {
     expect(posHistoryContent).toContain('grid grid-cols-2 gap-4 xl:grid-cols-4');
-    expect(posHistoryContent).toContain('min-h-0 flex-1 overflow-hidden border-t border-slate-200');
-    expect(posHistoryContent).toContain('dgfy-pos-scrollbar-hidden h-full overflow-auto');
+    // The panel collapsed its former two-layer clip+scroll wrapper into one
+    // scrollable container.
+    expect(posHistoryContent).toContain('dgfy-pos-scrollbar-hidden min-h-0 flex-1 overflow-y-auto overscroll-contain touch-pan-y');
+    expect(posHistoryContent).toContain('overflow-x-auto border-t border-slate-200');
     expect(posHistoryContent).toContain('aria-label="POS transaction history table"');
   });
 
