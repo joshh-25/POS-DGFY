@@ -41,7 +41,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0016 | [Services Mode Independent Booking And Ticketing](0016-services-mode-independent-booking-and-ticketing.md) | `accepted` | services_mode_independent_booking_and_ticketing | 2026-11-02 | 0 |
 | 0017 | [Customer Access Modes And Inventory Display Controls](0017-customer-access-modes-and-inventory-display.md) | `accepted` | customer_access_modes_and_inventory_display | 2026-11-03 | 5 |
 | 0018 | [Barcode Identity, Labels, And Scan Routing](0018-barcode-identity-labels-and-scan-routing.md) | `accepted` | barcode_identity_labels_and_scan_routing | 2026-11-05 | 0 |
-| 0019 | [Food & Beverage Mode Full-Service Restaurant Workflow](0019-food-and-beverage-mode-full-service-restaurant.md) | `accepted` | food_and_beverage_mode_full_service_restaurant | 2026-11-05 | 0 |
+| 0019 | [Food & Beverage Mode Full-Service Restaurant Workflow](0019-food-and-beverage-mode-full-service-restaurant.md) | `amended` | food_and_beverage_mode_full_service_restaurant | 2026-11-05 | 0 |
 | 0020 | [Mode-Aware RBAC And Role Presets](0020-mode-aware-rbac-and-role-presets.md) | `accepted` | mode_aware_rbac_and_role_presets | 2026-11-06 | 0 |
 | 0021 | [Email OTP Verification For Account Email Ownership](0021-email-otp-verification-for-account-email-ownership.md) | `amended` | email_otp_verification | 2026-11-17 | 0 |
 | 0022 | [Global DGFY Account For Business Registration](0022-global-dgfy-account-business-registration.md) | `accepted` | global_dgfy_account_business_registration | 2027-01-08 | 0 |
@@ -82,6 +82,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0057 | [Services Fulfillment Profiles](0057-services-fulfillment-profiles.md) | `accepted` | services_fulfillment_profiles | 2027-02-09 | 5 |
 | 0058 | [Registration Industry Catalog](0058-registration-industry-catalog.md) | `accepted` | registration_industry_catalog | 2027-02-12 | 4 |
 | 0059 | [Frontend Relocation to `apps/dgfy-web`](0059-frontend-relocation-to-apps-dgfy-web.md) | `accepted` | frontend_relocation_to_apps_dgfy_web | 2027-02-06 | 2 |
+| 0060 | [SOPS+age Encrypted Secrets At Rest](0060-sops-age-encrypted-secrets-at-rest.md) | `accepted` | sops_age_encrypted_secrets_at_rest | 2027-02-13 | 0 |
 
 ## Renumbered (collision stubs)
 
