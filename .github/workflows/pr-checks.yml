@@ -59,11 +59,15 @@ env:
 # and shared-changed-paths.yml's `enforce_compliance_declarations` input are
 # left in place so re-enabling is a one-line change, not a redo.
 #
-# android-build-check is the exception to "fold it in": it's a real Gradle
-# build (see #254, a merged PR that broke every dev/staging Android build
-# because nothing compiled android/ on PR), not a few seconds of git/bash,
-# so it earns its own job and billing floor rather than being folded into
-# `changes`.
+# quality-checks and android-build-check used to be jobs here, gated
+# `if: false` (see #345 and #254 respectively for why each was paused, not
+# deleted). A permanently-skipped job is still a row in every PR's Checks
+# tab with nothing to say -- pure clutter, and it invites the false read
+# that something is actually being checked. Removed outright 2026-08-14
+# (#416); both reusable workflows are untouched and still runnable by hand
+# from the Actions tab (pr-quality-checks.yml / pr-android-build-checks.yml,
+# now `workflow_dispatch`-triggered) whenever a full test run or an Android
+# build-check is actually wanted, without paying for either on every PR.
 jobs:
   changes:
     # Drafts aren't merge candidates -- skip the whole pipeline rather than
@@ -76,18 +80,6 @@ jobs:
       runner_labels_json: *runner_light
       validate_pr_metadata: true
       enforce_compliance_declarations: false
-
-  quality-checks:
-    needs: changes
-    # Temporarily disabled: dgfy-api-quality's first-ever complete run took
-    # ~14 min, and unlike every build-check job below it isn't path-filtered
-    # (needs.changes.outputs.*), so it would run on every PR unconditionally.
-    # Paused here -- pr-quality-checks.yml itself is untouched -- while
-    # optimization is analyzed. See #345 and #339.
-    if: false && needs.changes.result == 'success'
-    uses: ./.github/workflows/pr-quality-checks.yml
-    with:
-      runner_labels_json: *runner_heavy
 
   dgfy-api-build-check:
     needs: changes
@@ -107,16 +99,5 @@ jobs:
     needs: changes
     if: needs.changes.outputs.frontend == 'true'
     uses: ./.github/workflows/pr-frontend-build-checks.yml
-    with:
-      runner_labels_json: *runner_heavy
-
-  android-build-check:
-    needs: changes
-    # Disabled: vm-sieitzstaging (the online self-hosted runner) has no
-    # Android SDK installed, so this fails with "SDK location not found"
-    # regardless of changed paths. Re-enable once the SDK is set up there,
-    # or point runner_labels_json back at a hosted runner for this job only.
-    if: false && needs.changes.outputs.android == 'true'
-    uses: ./.github/workflows/pr-android-build-checks.yml
     with:
       runner_labels_json: *runner_heavy

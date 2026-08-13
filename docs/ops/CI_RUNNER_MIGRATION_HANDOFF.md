@@ -27,11 +27,13 @@ The AVX warning that justified the pin (`vm-sieitzstaging`'s CPU lacks
 AVX-family instructions → `exit 132`/SIGILL loading `@napi-rs/canvas`, see
 `apps/dgfy-api/src/services/menuPdfRasterService.js`) does **not** apply to
 the active CI job set — those are buildx builds, Gradle, and git/bash, none
-of which load that addon. The one job that would (`quality-checks`) is
-disabled (`if: false` in `pr-checks.yml`). **Re-check this before ever
-re-enabling `quality-checks`** — if it lands on `vm-sieitzstaging` it will
-need the label narrowed back to `sieitz-ubuntu-runner`, or the AVX-lacking
-runner excluded some other way.
+of which load that addon. The one job that would (`quality-checks`) is no
+longer wired into `pr-checks.yml` at all (removed 2026-08-14, #416; was
+`if: false` there before that) — it's now only reachable by manually
+dispatching `pr-quality-checks.yml` from the Actions tab. **Re-check this
+before ever running `quality-checks`, manually or wired back in** — if it
+lands on `vm-sieitzstaging` it will need the label narrowed back to
+`sieitz-ubuntu-runner`, or the AVX-lacking runner excluded some other way.
 
 **The one-line switch-back claim in the 2026-08-01 section below is no
 longer accurate.** Beyond the `runner_labels_json` sites it documents, this
