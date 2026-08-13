@@ -12,8 +12,13 @@ export const FnbHeroMobileOverview = ({
   mobileHeroMetaItems,
   modeAdapter,
   openStorefrontActionLink
-}) => (
-  <div style={{ background: '#fff' }}>
+}) => {
+  const hasRetailPalette = Boolean(heroTheme.palette?.retailHighlight);
+  const surfaceAccent = heroTheme.palette?.primary || '#f97316';
+  const pageBackground = hasRetailPalette ? (heroTheme.palette?.pageBackground || '#F8FAFC') : '#fff';
+
+  return (
+  <div style={{ background: pageBackground }}>
     <div style={{ padding: '14px 16px 10px' }}>
       <div style={{ display: 'flex', minHeight: 38, marginLeft: 118, gap: 8, marginBottom: 12, marginRight: 2 }}>
         {heroSectionModel.actions?.canMessage && (
@@ -23,7 +28,7 @@ export const FnbHeroMobileOverview = ({
           </GhostButton>
         )}
         {heroSectionModel.actions?.canCall && (
-          <PrimaryButton onClick={() => openStorefrontActionLink(heroSectionModel.actions.callHref)} style={{ flex: 1, background: '#f97316', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, border: 'none', fontWeight: 600, fontSize: 13, fontFamily: heroTheme.bodyFont }}>
+          <PrimaryButton onClick={() => openStorefrontActionLink(heroSectionModel.actions.callHref)} style={{ flex: 1, background: surfaceAccent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, border: 'none', ...(hasRetailPalette ? { boxShadow: '0 3px 10px rgba(26,78,141,0.14)' } : {}), fontWeight: 600, fontSize: 13, fontFamily: heroTheme.bodyFont }}>
             <Phone size={16} />
             Call
           </PrimaryButton>
@@ -35,12 +40,13 @@ export const FnbHeroMobileOverview = ({
           textColor="#0f172a"
           fontSize={24}
           fontFamily={heroTheme.displayFont}
+          accentColor={surfaceAccent}
           followEnabled={followEnabled}
           followState={followState}
           handleFollowAction={handleFollowAction}
         />
         {heroSectionModel.tagline ? (
-          <p style={{ margin: 0, color: '#f97316', fontSize: 14, fontWeight: 600, fontStyle: 'italic', fontFamily: heroTheme.bodyFont }}>{heroSectionModel.tagline}</p>
+          <p style={{ margin: 0, color: surfaceAccent, fontSize: 14, fontWeight: 600, fontStyle: 'italic', fontFamily: heroTheme.bodyFont }}>{heroSectionModel.tagline}</p>
         ) : (
           <p style={{ margin: 0, color: '#475569', fontSize: 13, lineHeight: 1.5, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
         )}
@@ -57,4 +63,5 @@ export const FnbHeroMobileOverview = ({
       </div>
     </div>
   </div>
-);
+  );
+};

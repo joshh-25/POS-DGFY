@@ -2,8 +2,12 @@ import { ArrowLeft, MapPin, Store } from 'lucide-react';
 
 /** Provides the F&B product-detail navigation and storefront identity header. */
 export function FnbProductNavigationHeader({
+  accentColor = '#15803d',
+  bodyFont,
   branchLabel,
+  displayFont,
   isMobileViewport,
+  isRetailPresentation = false,
   onBack,
   spacing,
   storeLogoUrl,
@@ -17,7 +21,7 @@ export function FnbProductNavigationHeader({
             type="button"
             onClick={onBack}
             aria-label="Back to menu"
-            style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid rgba(226, 232, 240, 0.8)', background: '#fff', color: '#15803d', display: 'inline-grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.02)', transition: 'all 120ms ease' }}
+            style={{ width: 40, height: 40, borderRadius: '50%', border: '1px solid rgba(226, 232, 240, 0.8)', background: '#fff', color: accentColor, display: 'inline-grid', placeItems: 'center', cursor: 'pointer', flexShrink: 0, boxShadow: '0 2px 8px rgba(0,0,0,0.02)', transition: 'all 120ms ease' }}
           >
             <ArrowLeft size={16} />
           </button>
@@ -25,8 +29,8 @@ export function FnbProductNavigationHeader({
             <StoreLogo size={34} storeLogoUrl={storeLogoUrl} />
           ) : (
             <div style={{ display: 'grid', gap: 2, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>Back to Menu</div>
-              <div style={{ fontSize: 12, color: '#64748b' }}>Review before adding to cart</div>
+              <div style={{ fontSize: 14, fontWeight: isRetailPresentation ? 700 : 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: displayFont }}>Back to Menu</div>
+              <div style={{ fontSize: 12, color: '#64748b', fontFamily: bodyFont }}>Review before adding to cart</div>
             </div>
           )}
         </div>
@@ -34,7 +38,7 @@ export function FnbProductNavigationHeader({
         {!isMobileViewport ? (
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, justifyContent: 'center', minWidth: 0 }}>
             <StoreLogo size={36} storeLogoUrl={storeLogoUrl} />
-            <div style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', letterSpacing: '-0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{storeName}</div>
+            <div style={{ fontSize: 20, fontWeight: isRetailPresentation ? 700 : 800, color: '#0f172a', letterSpacing: isRetailPresentation ? '-0.015em' : '-0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: displayFont }}>{storeName}</div>
           </div>
         ) : null}
 

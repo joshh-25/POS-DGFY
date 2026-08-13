@@ -5,7 +5,10 @@ const FNB_DISPLAY_FONT = '"Outfit", "Avenir Next", "Segoe UI", sans-serif';
 
 /** Renders F&B product identity, review summary, and expandable description. */
 export function FnbProductInfoHeader({
+  accentColor = '#22C55E',
   description,
+  displayFont = FNB_DISPLAY_FONT,
+  isRetailPresentation = false,
   isMobileViewport,
   itemName,
   ratingScore,
@@ -27,7 +30,7 @@ export function FnbProductInfoHeader({
     <div style={{ display: 'grid', gap: spacing(1) }}>
       <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16 }}>
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 12 }}>
-          <h1 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, lineHeight: 1.15, fontWeight: 900, color: '#0f172a', letterSpacing: '-0.025em', display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, fontFamily: FNB_DISPLAY_FONT }}>
+          <h1 style={{ margin: 0, fontSize: isMobileViewport ? 24 : 32, lineHeight: 1.15, fontWeight: isRetailPresentation ? 700 : 900, color: '#0f172a', letterSpacing: isRetailPresentation ? '-0.015em' : '-0.025em', display: 'inline-flex', alignItems: 'center', flexWrap: 'wrap', gap: 12, fontFamily: displayFont }}>
             {itemName}
             {hasReviewSummary ? (
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 14, fontWeight: 800, color: '#b45309', background: '#fef3c7', padding: '4px 8px', borderRadius: 12, lineHeight: 1 }}>
@@ -62,7 +65,7 @@ export function FnbProductInfoHeader({
             <button
               type="button"
               onClick={() => setIsDescriptionExpanded((previous) => !previous)}
-              style={{ background: 'transparent', border: 'none', padding: '4px 0', fontSize: 12, fontWeight: 700, color: '#22C55E', cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, width: 'fit-content' }}
+              style={{ background: 'transparent', border: 'none', padding: '4px 0', fontSize: 12, fontWeight: 700, color: accentColor, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 4, width: 'fit-content' }}
             >
               {isDescriptionExpanded ? 'Read less' : 'Read more'}
               <ChevronDown size={16} style={{ transform: isDescriptionExpanded ? 'rotate(180deg)' : 'none', transition: 'transform 120ms' }} />

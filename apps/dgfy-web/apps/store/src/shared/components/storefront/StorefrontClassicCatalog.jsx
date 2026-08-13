@@ -476,10 +476,10 @@ export function StorefrontClassicCatalog({
                                   onClick={() => setFnbPage(pageNumber)}
                                   style={{
                                     ...paginationButtonBaseStyle,
-                                    border: `1px solid ${pageNumber === resolvedFnbPage ? '#f97316' : '#e5e7eb'}`,
-                                    background: pageNumber === resolvedFnbPage ? '#f97316' : '#fff',
+                                    border: `1px solid ${pageNumber === resolvedFnbPage ? (modeAdapter.isRetailMode ? (modeAdapter.heroTheme?.accent || '#1A4E8D') : '#f97316') : '#e5e7eb'}`,
+                                    background: pageNumber === resolvedFnbPage ? (modeAdapter.isRetailMode ? (modeAdapter.heroTheme?.accent || '#1A4E8D') : '#f97316') : '#fff',
                                     color: pageNumber === resolvedFnbPage ? '#fff' : STYLES.colors.dark,
-                                    boxShadow: pageNumber === resolvedFnbPage ? '0 8px 18px rgba(249,115,22,0.22)' : 'none'
+                                    boxShadow: pageNumber === resolvedFnbPage ? `0 8px 18px ${modeAdapter.isRetailMode ? 'rgba(26,78,141,0.22)' : 'rgba(249,115,22,0.22)'}` : 'none'
                                   }}
                                 >
                                   {pageNumber}
@@ -549,10 +549,10 @@ export function StorefrontClassicCatalog({
                                 onClick={() => setFnbPage(pageNumber)}
                                 style={{
                                   ...paginationButtonBaseStyle,
-                                  border: `1px solid ${pageNumber === resolvedFnbPage ? '#f97316' : '#e5e7eb'}`,
-                                  background: pageNumber === resolvedFnbPage ? '#f97316' : '#fff',
+                                  border: `1px solid ${pageNumber === resolvedFnbPage ? (modeAdapter.isRetailMode ? (modeAdapter.heroTheme?.accent || '#1A4E8D') : '#f97316') : '#e5e7eb'}`,
+                                  background: pageNumber === resolvedFnbPage ? (modeAdapter.isRetailMode ? (modeAdapter.heroTheme?.accent || '#1A4E8D') : '#f97316') : '#fff',
                                   color: pageNumber === resolvedFnbPage ? '#fff' : STYLES.colors.dark,
-                                  boxShadow: pageNumber === resolvedFnbPage ? '0 8px 18px rgba(249,115,22,0.22)' : 'none'
+                                  boxShadow: pageNumber === resolvedFnbPage ? `0 8px 18px ${modeAdapter.isRetailMode ? 'rgba(26,78,141,0.22)' : 'rgba(249,115,22,0.22)'}` : 'none'
                                 }}
                               >
                                 {pageNumber}
@@ -677,7 +677,7 @@ export function StorefrontClassicCatalog({
               items={promoSectionModel}
               isMobileViewport={isMobileViewport}
               layoutVariant="feature"
-              palette="teal"
+              palette={isRetailMode ? 'retail' : 'teal'}
               titleFontFamily={modeAdapter.heroTheme?.displayFont}
               bodyFontFamily={modeAdapter.heroTheme?.bodyFont}
               titleSize={isMobileViewport ? 28 : 36}

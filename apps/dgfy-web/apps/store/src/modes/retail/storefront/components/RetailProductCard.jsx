@@ -30,18 +30,18 @@ const RetailProductCard = ({
   onViewDetails
 }) => {
   const sectionVisualMeta = item.sectionVisualMeta || {};
-  const accent = heroTheme.accent || '#ea580c';
-  const accentDeep = heroTheme.accentDark || '#9a3412';
+  const accent = heroTheme.accent || '#1A4E8D';
+  const accentDeep = heroTheme.accentDark || '#1A4586';
   const cardSurface = '#ffffff';
-  // Card border/shadow tones are F&B's own literal values (not retail's heroTheme.borderSoft),
-  // per explicit instruction to carry those four specific treatments over unchanged.
-  const cardBorder = '#edd4bc';
-  const cardTextPrimary = heroTheme.textPrimary || '#0f172a';
+  const cardBorder = heroTheme.borderSoft || '#E2E8F0';
+  const cardTextPrimary = heroTheme.textPrimary || '#0F172A';
+  const retailHighlight = heroTheme.palette?.retailHighlight || '#FF7A1A';
   const CategoryIcon = FNB_CATEGORY_ICON_MAP[sectionVisualMeta.iconToken] || Sparkles;
   const [isHovered, setIsHovered] = useState(false);
   const [isCartHovered, setIsCartHovered] = useState(false);
   const [failedImageUrl, setFailedImageUrl] = useState('');
   const detailsCopy = item.descriptionPreview || 'Item available in this storefront.';
+  const categoryLabel = item.sectionLabel || item.productKind || 'Everyday';
   const cardUiFont = heroTheme.bodyFont || "'Avenir Next', 'Segoe UI', sans-serif";
   const cardTitleFont = heroTheme.displayFont || cardUiFont;
   const imageUrl = imageSources?.src || '';
@@ -66,9 +66,7 @@ const RetailProductCard = ({
           width: 'calc(100% - 8px)',
           maxWidth: 'calc(100% - 8px)',
           margin: '0 auto',
-          height: 148,
-          minHeight: 148,
-          maxHeight: 148,
+          minHeight: 154,
           boxSizing: 'border-box'
         }}
       >
@@ -94,12 +92,12 @@ const RetailProductCard = ({
             </div>
           )}
           {item.affiliate_price_applied && (
-            <div style={{ position: 'absolute', top: 6, left: 6, background: '#7c3aed', color: '#fff', fontSize: 9, fontWeight: 800, borderRadius: 999, padding: '2px 6px', lineHeight: 1 }}>
+            <div style={{ position: 'absolute', top: 6, left: 6, background: retailHighlight, color: '#fff', fontSize: 9, fontWeight: 800, borderRadius: 999, padding: '2px 6px', lineHeight: 1 }}>
               Affiliate price
             </div>
           )}
 
-          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(35,23,18,0.0) 40%, rgba(32,20,15,0.2) 100%)', pointerEvents: 'none' }} />
+          <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.0) 40%, rgba(15,23,42,0.2) 100%)', pointerEvents: 'none' }} />
           <div style={{
             position: 'absolute',
             right: 6,
@@ -109,8 +107,8 @@ const RetailProductCard = ({
             padding: '6px 9px',
             borderRadius: 999,
             fontSize: 12,
-            fontWeight: 900,
-            boxShadow: '0 4px 12px rgba(217,119,6,0.3)',
+            fontWeight: 700,
+            boxShadow: '0 4px 12px rgba(26,78,141,0.24)',
             fontFamily: cardUiFont,
             lineHeight: 1
           }}>
@@ -120,7 +118,7 @@ const RetailProductCard = ({
 
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', height: '100%', padding: '2px 0', minWidth: 0 }}>
           <div style={{ display: 'grid', gap: 4 }}>
-            <h4 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: cardTextPrimary, lineHeight: 1.15, fontFamily: cardTitleFont, display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+            <h4 style={{ margin: 0, fontSize: 16, fontWeight: 700, color: cardTextPrimary, lineHeight: 1.15, fontFamily: cardTitleFont, display: '-webkit-box', WebkitLineClamp: 1, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
               {item.name}
             </h4>
             <p style={{ margin: 0, fontSize: 14, color: '#64748b', lineHeight: 1.4, fontFamily: cardUiFont, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
@@ -139,7 +137,7 @@ const RetailProductCard = ({
               disabled={!available}
               style={{
                 width: '100%',
-                height: 38,
+                minHeight: 44,
                 borderRadius: 10,
                 border: 'none',
                 background: available ? accent : '#e2e8f0',
@@ -168,9 +166,9 @@ const RetailProductCard = ({
     );
   }
 
-  const cardTitleFontSize = isMobileViewport ? 16 : 22;
-  const imageHeight = isMobileViewport ? 140 : 214;
-  const actionHeight = isMobileViewport ? 36 : 46;
+  const cardTitleFontSize = isMobileViewport ? 17 : 18;
+  const imageHeight = isMobileViewport ? 168 : 204;
+  const actionHeight = isMobileViewport ? 44 : 48;
 
   return (
     <article
@@ -179,7 +177,7 @@ const RetailProductCard = ({
         background: cardSurface,
         borderRadius: 10,
         padding: 0,
-        boxShadow: isHovered ? '0 22px 44px rgba(73, 38, 20, 0.14)' : '0 14px 32px rgba(73, 38, 20, 0.09)',
+        boxShadow: isHovered ? '0 16px 32px rgba(15,23,42,0.12)' : '0 6px 18px rgba(15,23,42,0.07)',
         border: `1px solid ${cardBorder}`,
         overflow: 'hidden',
         position: 'relative',
@@ -197,7 +195,7 @@ const RetailProductCard = ({
       onMouseLeave={() => setIsHovered(false)}
     >
       <div
-        style={{ position: 'relative', width: '100%', height: imageHeight, overflow: 'hidden', borderRadius: isMobileViewport ? '0 0 16px 16px' : '0 0 22px 22px', cursor: 'pointer' }}
+        style={{ position: 'relative', width: '100%', height: imageHeight, overflow: 'hidden', cursor: 'pointer' }}
         onClick={() => onViewDetails?.(item)}
       >
         {canRenderImage ? (
@@ -233,32 +231,52 @@ const RetailProductCard = ({
                 display: 'inline-flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                boxShadow: '0 12px 24px rgba(73,38,20,0.08)'
+                boxShadow: '0 12px 24px rgba(15,23,42,0.08)'
               }}>
                 <CategoryIcon size={isMobileViewport ? 24 : 28} />
               </div>
-              <div style={{ fontSize: 14, letterSpacing: '-0.01em', display: isMobileViewport ? 'none' : 'block' }}>{item.sectionLabel || item.productKind || 'Item'}</div>
             </div>
           </div>
         )}
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(35,23,18,0.02) 0%, rgba(35,23,18,0.08) 100%)', pointerEvents: 'none' }} />
-        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(255,255,255,0) 44%, rgba(32,20,15,0.22) 100%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.02) 0%, rgba(15,23,42,0.08) 100%)', pointerEvents: 'none' }} />
+        <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(255,255,255,0) 44%, rgba(15,23,42,0.22) 100%)', pointerEvents: 'none' }} />
         {item.affiliate_price_applied && (
-          <div style={{ position: 'absolute', top: isMobileViewport ? 10 : 16, left: isMobileViewport ? 10 : 16, background: '#7c3aed', color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 999, padding: '3px 8px', lineHeight: 1 }}>
+          <div style={{ position: 'absolute', top: isMobileViewport ? 10 : 16, left: isMobileViewport ? 10 : 16, background: retailHighlight, color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 999, padding: '3px 8px', lineHeight: 1 }}>
             Affiliate price
           </div>
         )}
         <div style={{
           position: 'absolute',
+          left: isMobileViewport ? 10 : 12,
+          bottom: isMobileViewport ? 10 : 12,
+          maxWidth: 'calc(100% - 132px)',
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+          background: '#fff',
+          color: accentDeep,
+          padding: isMobileViewport ? '5px 9px' : '6px 11px',
+          borderRadius: 8,
+          border: `1px solid ${cardBorder}`,
+          fontSize: isMobileViewport ? 11 : 12,
+          fontWeight: 700,
+          fontFamily: cardUiFont,
+          lineHeight: 1,
+          boxShadow: '0 4px 12px rgba(15,23,42,0.08)'
+        }}>
+          {categoryLabel}
+        </div>
+        <div style={{
+          position: 'absolute',
           right: isMobileViewport ? 10 : 16,
-          bottom: isMobileViewport ? 10 : 16,
+          bottom: isMobileViewport ? 10 : 12,
           background: accent,
           color: buttonTextOnAccent,
-          padding: isMobileViewport ? '6px 10px' : '9px 16px',
-          borderRadius: 999,
-          fontSize: isMobileViewport ? 13 : 15,
-          fontWeight: 900,
-          boxShadow: isHovered ? '0 12px 26px rgba(217,119,6,0.32)' : '0 10px 22px rgba(217,119,6,0.24)',
+          padding: isMobileViewport ? '7px 10px' : '8px 12px',
+          borderRadius: 8,
+          fontSize: isMobileViewport ? 13 : 14,
+          fontWeight: 700,
+          boxShadow: isHovered ? '0 12px 26px rgba(26,78,141,0.28)' : '0 10px 22px rgba(26,78,141,0.18)',
           transform: isHovered ? 'translateY(-2px)' : 'translateY(0)',
           transition: 'all 0.2s ease',
           fontFamily: cardUiFont,
@@ -267,31 +285,24 @@ const RetailProductCard = ({
           {money(item.default_sale_price ?? 0)}
         </div>
       </div>
-      <div style={{ padding: isMobileViewport ? '12px 12px 12px' : '18px 18px 16px', flex: 1, display: 'grid', gap: isMobileViewport ? 8 : 14 }}>
-        <div style={{ display: 'grid', gap: isMobileViewport ? 4 : 8 }}>
-          <h4 style={{ margin: 0, fontSize: cardTitleFontSize, fontWeight: 800, lineHeight: 1.15, color: cardTextPrimary, fontFamily: cardTitleFont, letterSpacing: '-0.025em', display: '-webkit-box', WebkitLineClamp: isMobileViewport ? 1 : 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.name}</h4>
-          <div style={{ position: 'relative', maxHeight: 40, overflow: 'hidden' }}>
-            <p style={{
-              margin: 0,
-              fontSize: 14,
-              lineHeight: 1.4,
-              color: '#475569',
-              fontFamily: cardUiFont
-            }}>
-              {detailsCopy}
-            </p>
-            <div style={{
-              position: 'absolute',
-              bottom: 0,
-              left: 0,
-              right: 0,
-              height: 24,
-              background: `linear-gradient(to top, ${cardSurface} 0%, transparent 100%)`,
-              pointerEvents: 'none'
-            }} />
-          </div>
+      <div style={{ padding: isMobileViewport ? 14 : '16px 18px 18px', flex: 1, display: 'grid', gap: isMobileViewport ? 12 : 16 }}>
+        <div style={{ display: 'grid', gap: 6 }}>
+          <h4 style={{ margin: 0, fontSize: cardTitleFontSize, fontWeight: 700, lineHeight: 1.15, color: cardTextPrimary, fontFamily: cardTitleFont, letterSpacing: '-0.015em', display: '-webkit-box', WebkitLineClamp: isMobileViewport ? 1 : 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.name}</h4>
+          <p style={{
+            margin: 0,
+            fontSize: 14,
+            lineHeight: 1.5,
+            color: '#64748b',
+            fontFamily: cardUiFont,
+            display: '-webkit-box',
+            WebkitLineClamp: 2,
+            WebkitBoxOrient: 'vertical',
+            overflow: 'hidden'
+          }}>
+            {detailsCopy}
+          </p>
         </div>
-        <div style={{ marginTop: 'auto', paddingTop: 8 }}>
+        <div style={{ marginTop: 'auto' }}>
           <button
             type="button"
             onClick={(event) => {
@@ -319,8 +330,8 @@ const RetailProductCard = ({
               transform: available && isCartHovered ? 'translateY(-2px)' : 'translateY(0)',
               transition: 'all 0.2s ease',
               fontFamily: cardUiFont,
-              fontSize: isMobileViewport ? 13 : 15,
-              fontWeight: 800
+              fontSize: isMobileViewport ? 14 : 15,
+              fontWeight: 700
             }}
           >
             <span style={{ position: 'relative', width: isMobileViewport ? 18 : 22, height: isMobileViewport ? 18 : 22, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>

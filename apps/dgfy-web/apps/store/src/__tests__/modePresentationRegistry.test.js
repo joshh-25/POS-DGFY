@@ -39,8 +39,37 @@ describe('modePresentationRegistry', () => {
     expect(adapter.catalogHeading).toBe('What are you looking for?');
     expect(adapter.primaryActionLabel).toBe('Browse Products');
     expect(adapter.pin.label).toBe('Retail');
+    expect(adapter.pin.color).toBe('#ea580c');
     expect(adapter.catalogCardVariant).toBe('product_simple');
     expect(adapter.journeyVariant).toBe('order');
+    expect(adapter.heroTheme.palette).toEqual({
+      primary: '#1A4E8D',
+      primaryHover: '#1A4586',
+      secondary: '#A9DCE8',
+      accent: '#1A4E8D',
+      accentHighlight: '#FF7A1A',
+      accentSoft: '#EEF4FB',
+      pageBackground: '#F8FAFC',
+      surface: '#FFFFFF',
+      surfaceSubtle: '#EFF4F9',
+      textPrimary: '#0F172A',
+      textSecondary: '#475569',
+      textMuted: '#64748B',
+      border: '#E2E8F0',
+      borderStrong: '#CBD8E6',
+      retailHighlight: '#FF7A1A',
+      mapPin: '#EA580C',
+      success: '#16A34A',
+      warning: '#F59E0B',
+      error: '#DC2626'
+    });
+    expect(adapter.storefrontTemplate.tokens).toEqual({
+      navigationAccent: '#1A4E8D',
+      heroAccent: '#1A4E8D',
+      promoAccent: '#1A4E8D',
+      reviewAccent: '#1A4E8D',
+      footerAccent: '#0F172A'
+    });
   });
 
   it('returns menu-first copy for food and beverage tenants', () => {

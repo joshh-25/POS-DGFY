@@ -3,8 +3,13 @@ import { StorefrontResponsiveImage } from '../../../../shared/components/storefr
 import { resolveStorefrontImageSources } from '../../../../shared/utils/storefrontImageSources.js';
 
 export const FnbRecommendedPairings = ({
+  accentColor = '#f97316',
+  accentSoft = '#f0fdf4',
+  borderSoft = '#86efac',
+  displayFont,
   formatMoney,
   isMobileViewport,
+  isRetailPresentation = false,
   onQuickAdd,
   onSelectRelatedItem,
   relatedItems
@@ -23,9 +28,9 @@ export const FnbRecommendedPairings = ({
         width: size,
         height: size,
         borderRadius: '50%',
-        background: '#f0fdf4',
-        border: size > 30 ? '1.5px solid #86efac' : '1px solid #86efac',
-        color: '#15803d',
+        background: accentSoft,
+        border: `${size > 30 ? 1.5 : 1}px solid ${borderSoft}`,
+        color: accentColor,
         display: 'grid',
         placeItems: 'center',
         cursor: 'pointer',
@@ -39,7 +44,7 @@ export const FnbRecommendedPairings = ({
   if (isMobileViewport) {
     return (
       <div style={{ borderTop: '1px solid rgba(226, 232, 240, 0.6)', paddingTop: 24, marginTop: 24 }}>
-        <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: 800, color: '#0f172a' }}>Recommended Pairings</h3>
+        <h3 style={{ margin: '0 0 16px', fontSize: 16, fontWeight: isRetailPresentation ? 700 : 800, color: '#0f172a', fontFamily: displayFont }}>Recommended Pairings</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           {relatedItems.slice(0, 5).map((recommended) => {
             const imageSources = resolveStorefrontImageSources(recommended, { preferred: 'thumbnail' });
@@ -53,7 +58,7 @@ export const FnbRecommendedPairings = ({
                 <div style={{ flex: 1, minWidth: 0, display: 'grid', gap: 3 }}>
                   <div style={{ fontSize: 14, fontWeight: 700, color: '#0f172a', lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{recommended.name}</div>
                   {category ? <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600 }}>{category}</div> : null}
-                  <div style={{ fontSize: 13, fontWeight: 800, color: '#f97316', marginTop: 2 }}>{formatMoney(recommended.default_sale_price)}</div>
+                  <div style={{ fontSize: 13, fontWeight: isRetailPresentation ? 700 : 800, color: accentColor, marginTop: 2 }}>{formatMoney(recommended.default_sale_price)}</div>
                 </div>
                 {renderAddButton(recommended, 36)}
               </div>
@@ -66,7 +71,7 @@ export const FnbRecommendedPairings = ({
 
   return (
     <div style={{ borderTop: '1px solid rgba(226, 232, 240, 0.6)', paddingTop: 24, marginTop: 24, display: 'grid', gap: 16 }}>
-      <h3 style={{ margin: 0, fontSize: 16, fontWeight: 800, color: '#0f172a' }}>Recommended Pairings</h3>
+      <h3 style={{ margin: 0, fontSize: 16, fontWeight: isRetailPresentation ? 700 : 800, color: '#0f172a', fontFamily: displayFont }}>Recommended Pairings</h3>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
         {relatedItems.slice(0, 3).map((recommended) => {
           const imageSources = resolveStorefrontImageSources(recommended, { preferred: 'thumbnail' });
@@ -79,7 +84,7 @@ export const FnbRecommendedPairings = ({
               <div style={{ display: 'flex', flexDirection: 'column', gap: 4, minWidth: 0, flexGrow: 1 }}>
                 <div style={{ fontSize: 14, fontWeight: 700, color: '#1e293b', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{recommended.name}</div>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 4, marginTop: 'auto' }}>
-                  <div style={{ fontSize: 12, fontWeight: 800, color: '#f97316' }}>{formatMoney(recommended.default_sale_price)}</div>
+                  <div style={{ fontSize: 12, fontWeight: isRetailPresentation ? 700 : 800, color: accentColor }}>{formatMoney(recommended.default_sale_price)}</div>
                   {renderAddButton(recommended, 28)}
                 </div>
               </div>

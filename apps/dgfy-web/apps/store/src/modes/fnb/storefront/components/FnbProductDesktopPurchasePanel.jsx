@@ -2,9 +2,12 @@ import React from 'react';
 import { Lock, ShoppingCart, Zap } from 'lucide-react';
 
 export function FnbProductDesktopPurchasePanel({
+  accentColor = '#f97316',
+  accentDark = '#26884c',
   actionButtonBase,
   available,
   formatMoney,
+  isRetailPresentation = false,
   isEditingCartLine = false,
   onAddToCart,
   onBuyNow,
@@ -22,7 +25,7 @@ export function FnbProductDesktopPurchasePanel({
           {selectedModifiersTotal > 0 ? (
             <div style={{ fontSize: 12, fontWeight: 700, color: '#15803d' }}>+{formatMoney(selectedModifiersTotal)}</div>
           ) : null}
-          <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a', lineHeight: 1.1, letterSpacing: '-0.02em' }}>{formatMoney(totalPrice)}</div>
+          <div style={{ fontSize: 24, fontWeight: isRetailPresentation ? 700 : 900, color: '#0f172a', lineHeight: 1.1, letterSpacing: isRetailPresentation ? '-0.015em' : '-0.02em' }}>{formatMoney(totalPrice)}</div>
         </div>
       </div>
 
@@ -31,7 +34,7 @@ export function FnbProductDesktopPurchasePanel({
           type="button"
           onClick={(event) => onAddToCart?.(event)}
           disabled={!available}
-          style={{ ...actionButtonBase, border: 'none', background: available ? '#26884c' : '#cbd5e1', color: '#fff', boxShadow: 'none', opacity: available ? 1 : 0.65 }}
+          style={{ ...actionButtonBase, border: 'none', background: available ? accentDark : '#cbd5e1', color: '#fff', boxShadow: 'none', opacity: available ? 1 : 0.65 }}
         >
           <ShoppingCart size={16} />
           {isEditingCartLine ? 'Save changes' : 'Add to Cart'}
@@ -40,7 +43,7 @@ export function FnbProductDesktopPurchasePanel({
           type="button"
           onClick={(event) => onBuyNow?.(event)}
           disabled={!available}
-          style={{ ...actionButtonBase, border: 'none', background: available ? '#f97316' : '#cbd5e1', color: '#fff', boxShadow: 'none', opacity: available ? 1 : 0.65 }}
+          style={{ ...actionButtonBase, border: 'none', background: available ? accentColor : '#cbd5e1', color: '#fff', boxShadow: 'none', opacity: available ? 1 : 0.65 }}
         >
           <Zap size={16} />
           {isEditingCartLine ? 'Save & view cart' : 'Buy Now'}

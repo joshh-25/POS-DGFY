@@ -185,8 +185,25 @@ export function FnbProductDetailsPage({
   reviewsLoading = false,
   canWriteReview = false,
   onOpenWriteReview = null,
-  reviewSectionHighlighted = false
+  reviewSectionHighlighted = false,
+  presentation = {}
 }) {
+  const isRetailPresentation = presentation.isRetail === true;
+  const detailAccent = presentation.accent || '#f97316';
+  const detailAccentDark = presentation.accentDark || '#26884c';
+  const detailAccentSoft = presentation.accentSoft || '#f0fdf4';
+  const detailBorderSoft = presentation.borderSoft || '#86efac';
+  const detailBodyFont = presentation.bodyFont || FNB_BODY_FONT;
+  const detailDisplayFont = presentation.displayFont || FNB_DISPLAY_FONT;
+  const detailItemNoun = presentation.itemNoun || 'item';
+  const detailActionButtonBase = isRetailPresentation ? {
+    ...actionButtonBase,
+    fontFamily: detailBodyFont,
+    minHeight: isMobileViewport ? 44 : 46,
+    borderRadius: 12,
+    fontSize: isMobileViewport ? 14 : 15,
+    fontWeight: 700
+  } : actionButtonBase;
   const [isMobileSummaryOpen, setIsMobileSummaryOpen] = React.useState(false);
   const [expandedGroups, setExpandedGroups] = React.useState(() => {
     const initial = {};
@@ -266,8 +283,13 @@ export function FnbProductDetailsPage({
 
   const renderRecommendedPairings = () => (
     <FnbRecommendedPairings
+      accentColor={detailAccent}
+      accentSoft={detailAccentSoft}
+      borderSoft={detailBorderSoft}
+      displayFont={detailDisplayFont}
       formatMoney={money}
       isMobileViewport={isMobileViewport}
+      isRetailPresentation={isRetailPresentation}
       onQuickAdd={onQuickAdd}
       onSelectRelatedItem={onSelectRelatedItem}
       relatedItems={relatedItems}
@@ -276,9 +298,14 @@ export function FnbProductDetailsPage({
 
   const renderReviewsSection = () => (
     <FnbProductReviewsSection
-      actionButtonBase={actionButtonBase}
+      accentColor={detailAccent}
+      accentSoft={detailAccentSoft}
+      actionButtonBase={detailActionButtonBase}
       canWriteReview={canWriteReview}
+      displayFont={detailDisplayFont}
       isMobileViewport={isMobileViewport}
+      isRetailPresentation={isRetailPresentation}
+      itemNoun={detailItemNoun}
       onOpenWriteReview={onOpenWriteReview}
       ratingScore={ratingScore}
       reviewCount={reviewCount}
@@ -299,7 +326,7 @@ export function FnbProductDetailsPage({
 
   return (
     <section style={{
-      fontFamily: FNB_BODY_FONT,
+      fontFamily: detailBodyFont,
       width: '100vw',
       marginLeft: 'calc(50% - 50vw)',
       background: '#ffffff',
@@ -309,8 +336,12 @@ export function FnbProductDetailsPage({
     }}>
 
       <FnbProductNavigationHeader
+        accentColor={detailAccent}
+        bodyFont={detailBodyFont}
         branchLabel={branchLabel}
+        displayFont={detailDisplayFont}
         isMobileViewport={isMobileViewport}
+        isRetailPresentation={isRetailPresentation}
         onBack={onBack}
         spacing={sp}
         storeLogoUrl={storeLogoUrl}
@@ -330,11 +361,11 @@ export function FnbProductDetailsPage({
           aria-label="breadcrumb"
           style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: sp(2), fontSize: 12, color: '#64748b', fontWeight: 600 }}
         >
-          <span style={{ color: '#64748b' }}>Menu</span>
+          <span style={{ color: '#64748b' }}>{isRetailPresentation ? 'Products' : 'Menu'}</span>
           <span aria-hidden="true" style={{ color: '#cbd5e1', fontSize: 14 }}>{'>'}</span>
           <span style={{ color: '#64748b' }}>{sectionLabel}</span>
           <span aria-hidden="true" style={{ color: '#cbd5e1', fontSize: 14 }}>{'>'}</span>
-          <span style={{ color: '#15803d' }} aria-current="page">{item.name}</span>
+          <span style={{ color: detailAccent }} aria-current="page">{item.name}</span>
         </nav>
 
         {/* -- Main 2-col grid -- */}
@@ -349,8 +380,12 @@ export function FnbProductDetailsPage({
           <div style={{ display: 'grid', gap: sp(2) }}>
 
             <FnbProductMediaGallery
+              accentColor={detailAccent}
+              accentSoft={detailAccentSoft}
               available={available}
               availabilityLabel={availabilityLabel}
+              borderSoft={detailBorderSoft}
+              bodyFont={detailBodyFont}
               imageSources={imageSources}
               imageUrl={imageUrl}
               itemName={item.name}
@@ -375,8 +410,11 @@ export function FnbProductDetailsPage({
               gap: sp(2)
             }}>
               <FnbProductInfoHeader
+                accentColor={detailAccent}
                 description={description}
+                displayFont={detailDisplayFont}
                 isMobileViewport={isMobileViewport}
+                isRetailPresentation={isRetailPresentation}
                 itemName={item.name}
                 ratingScore={ratingScore}
                 reviewCount={reviewCount}
@@ -384,8 +422,10 @@ export function FnbProductDetailsPage({
               />
 
               <FnbProductPriceQuantitySelector
+                accentColor={detailAccent}
                 formatMoney={money}
                 isMobileViewport={isMobileViewport}
+                isRetailPresentation={isRetailPresentation}
                 quantity={quantity}
                 setQuantity={setQuantity}
                 spacing={sp}
@@ -417,9 +457,12 @@ export function FnbProductDetailsPage({
               {/* Total + CTA buttons */}
               {!isMobileViewport ? (
                 <FnbProductDesktopPurchasePanel
-                  actionButtonBase={actionButtonBase}
+                  accentColor={detailAccent}
+                  accentDark={detailAccentDark}
+                  actionButtonBase={detailActionButtonBase}
                   available={available}
                   formatMoney={money}
+                  isRetailPresentation={isRetailPresentation}
                   isEditingCartLine={isEditingCartLine}
                   onAddToCart={onAddToCart}
                   onBuyNow={onBuyNow}
@@ -434,12 +477,15 @@ export function FnbProductDetailsPage({
 
       {isMobileViewport ? (
         <FnbProductMobilePurchaseSummary
-          actionButtonBase={actionButtonBase}
+          accentColor={detailAccent}
+          accentDark={detailAccentDark}
+          actionButtonBase={detailActionButtonBase}
           available={available}
-          displayFont={FNB_DISPLAY_FONT}
+          displayFont={detailDisplayFont}
           formatMoney={money}
           imageSources={imageSources}
           isOpen={isMobileSummaryOpen}
+          isRetailPresentation={isRetailPresentation}
           itemName={item.name}
           isEditingCartLine={isEditingCartLine}
           onAddToCart={onAddToCart}
