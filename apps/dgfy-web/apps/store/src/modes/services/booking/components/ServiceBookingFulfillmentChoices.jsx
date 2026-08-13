@@ -1,4 +1,7 @@
-import { Check, ShoppingBag, Truck } from 'lucide-react';
+import { Check, Package, ShoppingBag, Truck } from 'lucide-react';
+import {
+  getServicesLocalFlowOptions
+} from '../model/servicesLocalFlow.js';
 
 /**
  * Services' own handoff chooser: pick up items and deliver to the customer's address, or
@@ -19,10 +22,7 @@ import { Check, ShoppingBag, Truck } from 'lucide-react';
  * composition, never an API/database field). Display copy and `value`s
  * are unchanged from before this file referenced the vocabulary.
  */
-const HANDOFF_OPTIONS = [
-  { profileKey: 'item_pickup_return', value: 'delivery', label: 'Pick up and deliver', Icon: Truck },
-  { profileKey: 'item_pickup_collection', value: 'pickup', label: "Pick up and I'll collect", Icon: ShoppingBag }
-];
+const ICONS = { package: Package, 'shopping-bag': ShoppingBag, truck: Truck };
 function HandoffOptionCard({ active, icon, label, onClick, servicesPrimary, servicesPrimaryShadow, minHeight }) {
   return (
     <button
@@ -66,23 +66,29 @@ export function ServiceBookingFulfillmentChoices({
   servicesPrimaryShadow
 }) {
   const minHeight = isMobileViewport ? 64 : 68;
+  const options = getServicesLocalFlowOptions({ includePlanned: false });
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
-      <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>1. Handoff</div>
+      <div style={{ display: 'grid', gap: 5 }}>
+        <div style={{ fontSize: 15, fontWeight: 700, color: '#1e293b' }}>1. Service flow</div>
+      </div>
       <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : '1fr 1fr', gap: 16 }}>
-        {HANDOFF_OPTIONS.map(({ profileKey, value, label, Icon }) => (
+        {options.map(({ profileKey, method, label, icon }) => {
+          const Icon = ICONS[icon] || Package;
+          return (
           <HandoffOptionCard
             key={profileKey}
-            active={serviceOrderMethod === value}
+            active={serviceOrderMethod === method}
             icon={<Icon size={20} />}
             label={label}
-            onClick={() => onOrderMethodChange(value)}
+            onClick={() => onOrderMethodChange(method)}
             servicesPrimary={servicesPrimary}
             servicesPrimaryShadow={servicesPrimaryShadow}
             minHeight={minHeight}
           />
-        ))}
+          );
+        })}
       </div>
     </div>
   );

@@ -36,6 +36,7 @@ export function StorefrontCatalogRouteContainer(props) {
     bookingSummaryAmount,
     bookingSummaryQuantity,
     bookingTimeSlotOptions,
+    getPreferredBookingTimeForDate,
     canAddPinnedLocation,
     canUseGuestCheckoutFlow,
     catalog,
@@ -54,6 +55,7 @@ export function StorefrontCatalogRouteContainer(props) {
     applySavedDeliveryLocation,
     getCartFlySourceRect,
     goStoreCatalogPage,
+    goStoreTrackPage,
     handleAddPinnedLocation,
     handleCheckout,
     handlePinMyLocation,
@@ -112,8 +114,6 @@ export function StorefrontCatalogRouteContainer(props) {
     serviceDurationFilter,
     serviceHeroModel,
     serviceIntakeResponses,
-    serviceLineAddOns,
-    setServiceLineAddOns,
     groupedServiceLineItems,
     serviceSpecialInstructions,
     setServiceSpecialInstructions,
@@ -273,6 +273,7 @@ export function StorefrontCatalogRouteContainer(props) {
         bookingSummaryAmount={bookingSummaryAmount}
         bookingSummaryQuantity={bookingSummaryQuantity}
         bookingTimeSlotOptions={bookingTimeSlotOptions}
+        getPreferredBookingTimeForDate={getPreferredBookingTimeForDate}
         canAddPinnedLocation={canAddPinnedLocation}
         canUseGuestCheckoutFlow={canUseGuestCheckoutFlow}
         catalog={catalog}
@@ -292,6 +293,7 @@ export function StorefrontCatalogRouteContainer(props) {
         filteredCatalog={filteredCatalog}
         getCartFlySourceRect={getCartFlySourceRect}
         goStoreCatalogPage={goStoreCatalogPage}
+        goStoreTrackPage={goStoreTrackPage}
         handleAddPinnedLocation={handleAddPinnedLocation}
         handleCheckout={handleCheckout}
         handlePinMyLocation={handlePinMyLocation}
@@ -321,7 +323,6 @@ export function StorefrontCatalogRouteContainer(props) {
         missingStepOneAdditionalFields={missingStepOneAdditionalFields}
         openPreferredBookingDatePicker={openPreferredBookingDatePicker}
         openServiceCartEditor={openServiceCartEditor}
-        openServiceDetail={openServiceDetail}
         pinLocationError={pinLocationError}
         pinLocationLoading={pinLocationLoading}
         promoSectionModel={promoSectionModel}
@@ -352,8 +353,6 @@ export function StorefrontCatalogRouteContainer(props) {
         serviceDurationFilter={serviceDurationFilter}
         serviceHeroModel={serviceHeroModel}
         serviceIntakeResponses={serviceIntakeResponses}
-        serviceLineAddOns={serviceLineAddOns}
-        setServiceLineAddOns={setServiceLineAddOns}
         groupedServiceLineItems={groupedServiceLineItems}
         serviceSpecialInstructions={serviceSpecialInstructions}
         setServiceSpecialInstructions={setServiceSpecialInstructions}

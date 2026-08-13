@@ -1,3 +1,5 @@
+import React from 'react';
+
 export function CheckoutStepProgressHeader({
   steps = [],
   activeStep,
@@ -11,9 +13,55 @@ export function CheckoutStepProgressHeader({
   inactiveBorder = '#e2e8f0',
   inactiveText = '#334155',
   mutedText = '#64748b',
-  activeText = null
+  activeText = null,
+  referenceStyle = false
 }) {
   if (variant === 'connected') {
+    if (referenceStyle) {
+      return (
+        <div style={{ display: 'flex', alignItems: 'flex-start', gap: 0, padding: 0, width: '100%' }}>
+          {steps.map((item, index) => {
+            const displayStep = Number(item.displayStep || index + 1);
+            const isActive = activeStep === item.realStep;
+            const done = Number(activeStep) > Number(item.realStep);
+            const canContinue = item.allow !== false;
+            const stepTextColor = isActive ? (activeText || accentColor) : mutedText;
+            return (
+              <React.Fragment key={item.key || `checkout-step-${item.realStep}`}>
+                <button
+                  type="button"
+                  onClick={() => onStepClick?.(item)}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: stepTextColor,
+                    padding: '0 0',
+                    minWidth: isMobileViewport ? 58 : 80,
+                    flex: isMobileViewport ? '0 1 80px' : '0 0 80px',
+                    fontSize: 12.8,
+                    fontWeight: 700,
+                    cursor: !canContinue ? 'not-allowed' : 'pointer',
+                    display: 'grid',
+                    justifyItems: displayStep === 1 ? 'start' : (displayStep === steps.length ? 'end' : 'center'),
+                    gap: 8,
+                    opacity: canContinue ? 1 : 0.72,
+                  }}
+                  disabled={!canContinue}
+                >
+                  <span style={{ width: 24, height: 24, borderRadius: '50%', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, lineHeight: '19.2px', fontWeight: 700, border: `1px solid ${isActive ? accentColor : (done || canContinue ? accentBorder : '#cce8ee')}`, background: isActive ? accentColor : (done ? accentSoft : (canContinue ? accentSoft : '#fff')), color: isActive ? '#fff' : (done || canContinue ? accentColor : mutedText) }}>
+                    {displayStep}
+                  </span>
+                  <span style={{ textAlign: displayStep === 1 ? 'left' : (displayStep === steps.length ? 'right' : 'center'), lineHeight: 1.6, whiteSpace: displayStep === steps.length ? 'normal' : 'nowrap' }}>
+                    {item.label}
+                  </span>
+                </button>
+                {index < steps.length - 1 ? <span aria-hidden="true" style={{ height: 2, flex: '1 1 0%', minWidth: 12, margin: '12px 8px 0', borderRadius: 999, background: done || isActive ? completeColor : '#bae6fd' }} /> : null}
+              </React.Fragment>
+            );
+          })}
+        </div>
+      );
+    }
     return (
       <div style={{ display: 'grid', gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))`, gap: 18, alignItems: 'start', padding: '4px 0 10px' }}>
         {steps.map((item, index) => {

@@ -1,5 +1,6 @@
 import React from 'react';
 import { CalendarDays } from 'lucide-react';
+import { formatTimeSlotLabel } from '../model/serviceBookingSchedule.js';
 const formatShortDateWithYear = (dateString) => {
   if (!dateString) return '';
   const parsed = new Date(`${dateString}T00:00:00`);
@@ -35,6 +36,7 @@ export function ServiceBookingDetailsForm({
   const compactFieldMinHeight = isMobileViewport ? 40 : 42;
   const compactFieldPadding = isMobileViewport ? '9px 40px 9px 11px' : '10px 42px 10px 12px';
   const extraFields = bookingStepOneAdditionalFields.filter(field => field.id !== 'special_instructions' && field.id !== 'instructions');
+  const recommendedDate = bookingDateOptions.find((option) => option.recommended) || null;
 
   return (
     <div style={{ display: 'grid', gap: 18 }}>
@@ -92,7 +94,14 @@ export function ServiceBookingDetailsForm({
                 type="date"
                 value={selectedServiceDatePart}
                 min={bookingDateOptions[0]?.value || undefined}
-                onChange={(event) => setServiceAppointmentAt(combineDateAndTimeParts(event.target.value, getPreferredBookingTimeForDate(activeBookingService, event.target.value, selectedServiceTimePart)))}
+                onChange={(event) => setServiceAppointmentAt(combineDateAndTimeParts(
+                  event.target.value,
+                  getPreferredBookingTimeForDate(
+                    activeBookingService,
+                    event.target.value,
+                    event.target.value === selectedServiceDatePart ? selectedServiceTimePart : ''
+                  )
+                ))}
                 aria-hidden="true"
                 tabIndex={-1}
                 style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none', inset: 'auto' }}
@@ -118,6 +127,11 @@ export function ServiceBookingDetailsForm({
                 </>
               ) : null}
             </div>
+            {recommendedDate ? (
+              <div style={{ marginTop: 6, fontSize: 12, color: servicesPrimary, lineHeight: 1.5 }}>
+                Suggested next slot: {recommendedDate.label}, {formatTimeSlotLabel(recommendedDate.recommendedTime)}
+              </div>
+            ) : null}
           </label>
 
           {bookingFieldPlan.unitTypeField ? (

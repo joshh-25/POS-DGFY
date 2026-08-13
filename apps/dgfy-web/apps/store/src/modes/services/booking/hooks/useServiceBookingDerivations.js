@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   buildServiceBookingFieldPlan,
   buildServicePaymentOptions,
@@ -9,11 +9,13 @@ import {
   buildServiceDateOptions,
   buildServiceTimeSlotOptions,
   getDatePartFromAppointment,
+  getPreferredBookingTimeForDate as resolvePreferredBookingTimeForDate,
   getTimePartFromAppointment
 } from '../model/serviceBookingSchedule.js';
 import { buildServiceBookingSummaryModel } from '../model/serviceBookingSummary.js';
 import { buildPinnedDeliveryAddress } from '../../../../features/locations/utils/pinnedDeliveryAddress.js';
 import { trimAddressCountrySuffix } from '../../../../shared/model/storefrontCatalogModel.js';
+import { getServicesLocalFlowDefinition } from '../model/servicesLocalFlow.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the service-booking derivations
@@ -38,6 +40,7 @@ export function useServiceBookingDerivations({
   customerPhone,
   customerPin,
   hasServiceCart,
+  isServicesMode = false,
   money,
   resolvedDeliveryAddress,
   selectedServiceCartLineId,
@@ -47,11 +50,17 @@ export function useServiceBookingDerivations({
   serviceCartTotal,
   serviceDraftQuantity,
   serviceIntakeResponses,
-  serviceLineAddOns,
   serviceOrderMethod = 'delivery',
   servicePaymentTiming,
-  serviceUnitType
+  serviceUnitType,
+  storefrontHours
 }) {
+  const [scheduleNow, setScheduleNow] = useState(() => new Date());
+  useEffect(() => {
+    if (!isServicesMode) return undefined;
+    const intervalId = window.setInterval(() => setScheduleNow(new Date()), 60 * 1000);
+    return () => window.clearInterval(intervalId);
+  }, [isServicesMode]);
   const firstServiceLine = serviceCartLines[0] || null;
   const activeServiceCartLine = useMemo(() => {
     if (!hasServiceCart) return null;
@@ -87,6 +96,7 @@ export function useServiceBookingDerivations({
     buildServicePaymentOptions(selectedServicePaymentPolicy)
   ), [selectedServicePaymentPolicy]);
   const activeBookingService = activeServiceCartLine || selectedServiceDetail || null;
+  const serviceFlow = getServicesLocalFlowDefinition(serviceOrderMethod);
   const bookingPageIntakeFields = hasServiceCart ? serviceIntakeFields : selectedServiceIntakeFields;
   const bookingPageMissingRequiredIntake = hasServiceCart ? missingRequiredIntake : missingRequiredSelectedServiceIntake;
   const bookingPagePaymentOptions = hasServiceCart ? servicePaymentOptions : selectedServicePaymentOptions;
@@ -101,8 +111,16 @@ export function useServiceBookingDerivations({
   ), [bookingFieldPlan.instructionField, bookingFieldPlan.remainingFields]);
   const selectedServiceDatePart = getDatePartFromAppointment(serviceAppointmentAt);
   const selectedServiceTimePart = getTimePartFromAppointment(serviceAppointmentAt);
-  const bookingDateOptions = useMemo(() => buildServiceDateOptions(activeBookingService), [activeBookingService]);
-  const bookingTimeSlotOptions = useMemo(() => buildServiceTimeSlotOptions(activeBookingService, selectedServiceDatePart), [activeBookingService, selectedServiceDatePart]);
+  const scheduleOptions = useMemo(() => ({ storefrontHours, now: scheduleNow }), [scheduleNow, storefrontHours]);
+  const bookingDateOptions = useMemo(() => (
+    isServicesMode ? buildServiceDateOptions(activeBookingService, 7, scheduleOptions) : []
+  ), [activeBookingService, isServicesMode, scheduleOptions]);
+  const bookingTimeSlotOptions = useMemo(() => (
+    isServicesMode ? buildServiceTimeSlotOptions(activeBookingService, selectedServiceDatePart, scheduleOptions) : []
+  ), [activeBookingService, isServicesMode, scheduleOptions, selectedServiceDatePart]);
+  const getPreferredBookingTimeForDate = useCallback((serviceItem, dateString, currentTime = '') => (
+    resolvePreferredBookingTimeForDate(serviceItem, dateString, currentTime, scheduleOptions)
+  ), [scheduleOptions]);
   const missingStepOneAdditionalFields = useMemo(() => (
     bookingStepOneAdditionalFields.filter((field) => !isBookingFieldComplete(field, serviceIntakeResponses[field.id]))
   ), [bookingStepOneAdditionalFields, serviceIntakeResponses]);
@@ -126,11 +144,11 @@ export function useServiceBookingDerivations({
   // appointments only. Keep both requirements fail-closed before Review and Payment.
   const missingScheduleAndServiceInfo = useMemo(() => {
     const missing = [];
-    if (serviceOrderMethod === 'delivery' && !String(serviceLocationSummaryDraft || '').trim()) {
+    if (serviceFlow.requiresAddress && !String(serviceLocationSummaryDraft || '').trim()) {
       missing.push('Service Location');
     }
-    if (!selectedServiceDatePart) missing.push('Preferred Date');
-    if (!selectedServiceTimePart) missing.push('Preferred Time Slot');
+    if (serviceFlow.requiresSchedule && !selectedServiceDatePart) missing.push('Preferred Date');
+    if (serviceFlow.requiresSchedule && !selectedServiceTimePart) missing.push('Preferred Time Slot');
     if (bookingFieldPlan.unitTypeField && bookingFieldPlan.unitTypeField.required && !String(serviceUnitType || '').trim()) {
       missing.push(bookingFieldPlan.unitTypeField.label);
     }
@@ -138,12 +156,12 @@ export function useServiceBookingDerivations({
       missing.push(bookingFieldPlan.unitCountField.label);
     }
     return missing;
-  }, [bookingFieldPlan.unitCountField, bookingFieldPlan.unitTypeField, selectedServiceDatePart, selectedServiceTimePart, serviceDraftQuantity, serviceLocationSummaryDraft, serviceOrderMethod, serviceUnitType]);
+  }, [bookingFieldPlan.unitCountField, bookingFieldPlan.unitTypeField, selectedServiceDatePart, selectedServiceTimePart, serviceDraftQuantity, serviceFlow.requiresAddress, serviceFlow.requiresSchedule, serviceLocationSummaryDraft, serviceUnitType]);
   const accountStepComplete = missingCustomerInformation.length === 0;
   const fulfillmentStepComplete = missingScheduleAndServiceInfo.length === 0
     && missingStepOneAdditionalFields.length === 0;
   const stepOneComplete = accountStepComplete && fulfillmentStepComplete;
-  const paymentStepComplete = Boolean(servicePaymentTiming);
+  const paymentStepComplete = serviceFlow.requiresPayment ? Boolean(servicePaymentTiming) : true;
   const reviewStepReady = stepOneComplete;
   const {
     bookingSummaryAmount,
@@ -165,7 +183,6 @@ export function useServiceBookingDerivations({
     serviceCartTotal,
     serviceDraftQuantity,
     serviceIntakeResponses,
-    serviceLineAddOns,
     serviceOrderMethod
   }), [
     activeBookingService,
@@ -176,7 +193,6 @@ export function useServiceBookingDerivations({
     serviceCartTotal,
     serviceDraftQuantity,
     serviceIntakeResponses,
-    serviceLineAddOns,
     serviceOrderMethod
   ]);
 
@@ -215,6 +231,8 @@ export function useServiceBookingDerivations({
     serviceBookingSummaryTitle,
     serviceIntakeFields,
     serviceLocationSummaryDraft,
+    serviceFlow,
+    getPreferredBookingTimeForDate,
     servicePaymentOptions,
     stepOneComplete
   };

@@ -20,8 +20,6 @@ export function ServiceBookingLocationSection({
   applySavedDeliveryLocation,
   customerPin,
   setCustomerPin,
-  serviceLocationLandmarkNote,
-  setServiceLocationLandmarkNote,
   handlePinMyLocation,
   pinLocationLoading,
   deliveryLocationAction,
@@ -326,7 +324,7 @@ export function ServiceBookingLocationSection({
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.45fr) minmax(220px, 0.8fr) auto',
+                  gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1fr) auto',
                   gap: 10,
                   alignItems: 'center',
                 }}
@@ -346,31 +344,13 @@ export function ServiceBookingLocationSection({
                     minWidth: 0,
                   }}
                 >
-                  <span style={{ width: 28, height: 28, borderRadius: '50%', background: '#eff6ff', color: servicesPrimary, display: 'inline-grid', placeItems: 'center', flexShrink: 0 }}>
+                  <span style={{ width: 28, height: 28, borderRadius: '50%', background: servicesPrimarySoft, color: servicesPrimary, display: 'inline-grid', placeItems: 'center', flexShrink: 0 }}>
                     <MapPin size={15} />
                   </span>
                   <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%', fontWeight: 600 }}>
                     {deliveryLocationDisplayAddress || 'Selected service address will appear here.'}
                   </span>
                 </div>
-                <input
-                  type="text"
-                  value={serviceLocationLandmarkNote}
-                  onChange={(event) => setServiceLocationLandmarkNote(event.target.value)}
-                  placeholder="Landmark / Unit / Notes (optional)"
-                  style={{
-                    minHeight: compactRowControlHeight,
-                    width: '100%',
-                    borderRadius: 16,
-                    border: '1px solid #dbe5ee',
-                    background: '#fff',
-                    padding: '0 13px',
-                    color: '#334155',
-                    fontSize: 13,
-                    outline: 'none',
-                    boxSizing: 'border-box',
-                  }}
-                />
                 <button
                   type="button"
                   onClick={handleAddPinnedLocation}
@@ -504,30 +484,12 @@ export function ServiceBookingLocationSection({
               )}
             />
 
-            <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1.45fr) minmax(220px, 0.8fr) auto', gap: 10, alignItems: 'center' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: isMobileViewport ? '1fr' : 'minmax(0, 1fr) auto', gap: 10, alignItems: 'center' }}>
               <div style={{ minHeight: compactRowControlHeight, borderRadius: 14, border: `1px solid ${deliveryLocationDisplayAddress ? '#99f6e4' : '#dbe5ee'}`, background: '#fff', padding: '0 13px', display: 'flex', alignItems: 'center', color: deliveryLocationDisplayAddress ? '#334155' : '#94a3b8', fontSize: 13, minWidth: 0 }}>
                 <span style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', width: '100%' }}>
                   {deliveryLocationDisplayAddress || 'Selected service address will appear here.'}
                 </span>
               </div>
-              <input
-                type="text"
-                value={serviceLocationLandmarkNote}
-                onChange={(event) => setServiceLocationLandmarkNote(event.target.value)}
-                placeholder="Landmark / Unit / Notes (optional)"
-                style={{
-                  minHeight: compactRowControlHeight,
-                  borderRadius: 14,
-                  border: '1px solid #dbe5ee',
-                  background: '#fff',
-                  padding: '0 13px',
-                  color: '#334155',
-                  fontSize: 13,
-                  outline: 'none',
-                  boxSizing: 'border-box',
-                  width: '100%',
-                }}
-              />
               <button type="button" onClick={handleAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ minHeight: compactRowControlHeight, borderRadius: 14, border: `1px solid ${servicesPrimary}`, background: canAddPinnedLocation ? servicesPrimary : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', boxShadow: canAddPinnedLocation ? '0 14px 28px rgba(15,118,110,0.18)' : 'none' }}>
                 {isDgfyCustomerSignedIn ? 'Save Address' : 'Add Location'}
               </button>

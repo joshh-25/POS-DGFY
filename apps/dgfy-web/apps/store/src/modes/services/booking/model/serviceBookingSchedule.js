@@ -1,4 +1,5 @@
-const SERVICE_FALLBACK_TIME_SLOTS = ['09:00', '11:00', '13:00', '15:00', '17:00'];
+import { normalizeStorefrontBusinessHours } from '../../../../shared/model/storefrontHoursModel.js';
+
 const DAY_LABELS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const DAY_KEY_ALIASES = {
   0: ['0', 'sun', 'sunday'],
@@ -9,10 +10,97 @@ const DAY_KEY_ALIASES = {
   5: ['5', 'fri', 'friday'],
   6: ['6', 'sat', 'saturday']
 };
+const STORE_DAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+const DEFAULT_MAX_LOOKAHEAD_DAYS = 30;
 
 const pad2 = (value) => String(value).padStart(2, '0');
 
-const formatLocalDateInputValue = (date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+const parseJsonLoose = (value) => {
+  if (value == null || typeof value === 'object') return value;
+  if (typeof value !== 'string') return null;
+  try {
+    const parsed = JSON.parse(value);
+    return typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+  } catch {
+    return null;
+  }
+};
+
+const parseCalendarDate = (dateString) => {
+  const match = String(dateString || '').trim().match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
+  if (date.getUTCFullYear() !== year || date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
+  return { year, month, day, date, dayIndex: date.getUTCDay() };
+};
+
+const formatCalendarDate = (date) => `${date.getUTCFullYear()}-${pad2(date.getUTCMonth() + 1)}-${pad2(date.getUTCDate())}`;
+
+const formatCalendarDateForLocale = (dateString, options) => {
+  const parsed = parseCalendarDate(dateString);
+  if (!parsed) return '';
+  return parsed.date.toLocaleDateString('en-PH', { ...options, timeZone: 'UTC' });
+};
+
+const toValidDate = (value) => {
+  const date = value instanceof Date ? new Date(value.getTime()) : new Date(value || Date.now());
+  return Number.isNaN(date.getTime()) ? new Date() : date;
+};
+
+const getTimeZoneClock = (value, timeZone = 'Asia/Manila') => {
+  const date = toValidDate(value);
+  const getParts = (zone) => {
+    const parts = new Intl.DateTimeFormat('en-US', {
+      timeZone: zone,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      weekday: 'short',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23'
+    }).formatToParts(date).reduce((result, part) => {
+      if (part.type !== 'literal') result[part.type] = part.value;
+      return result;
+    }, {});
+    const year = Number(parts.year);
+    const month = Number(parts.month);
+    const day = Number(parts.day);
+    const hour = Number(parts.hour);
+    const minute = Number(parts.minute);
+    const second = Number(parts.second);
+    const parsedDate = new Date(Date.UTC(year, month - 1, day, 12, 0, 0, 0));
+    const dayIndex = parsedDate.getUTCDay();
+    return {
+      dateString: `${String(year).padStart(4, '0')}-${pad2(month)}-${pad2(day)}`,
+      dayIndex,
+      minutes: (hour * 60) + minute + (second / 60),
+      hour,
+      minute,
+      second,
+      timeZone: zone
+    };
+  };
+
+  try {
+    return getParts(timeZone);
+  } catch {
+    return getParts(undefined);
+  }
+};
+
+const getScheduleOptions = (options = {}) => {
+  const resolved = options && typeof options === 'object' ? options : {};
+  return {
+    storefrontHours: resolved.storefrontHours,
+    now: toValidDate(resolved.now),
+    maxLookaheadDays: Math.max(1, Number(resolved.maxLookaheadDays || DEFAULT_MAX_LOOKAHEAD_DAYS))
+  };
+};
 
 export const formatServiceAppointmentSummary = (appointmentAt) => {
   const raw = String(appointmentAt || '').trim();
@@ -30,16 +118,12 @@ export const formatServiceAppointmentSummary = (appointmentAt) => {
 
 export const formatLongDateLabel = (dateString) => {
   if (!dateString) return 'Pick a date';
-  const parsed = new Date(`${dateString}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return 'Pick a date';
-  return parsed.toLocaleDateString('en-PH', { month: 'long', day: 'numeric', year: 'numeric' });
+  return formatCalendarDateForLocale(dateString, { month: 'long', day: 'numeric', year: 'numeric' }) || 'Pick a date';
 };
 
 export const formatShortDateLabel = (dateString) => {
   if (!dateString) return 'Pick a date';
-  const parsed = new Date(`${dateString}T00:00:00`);
-  if (Number.isNaN(parsed.getTime())) return 'Pick a date';
-  return parsed.toLocaleDateString('en-PH', { month: 'short', day: 'numeric' });
+  return formatCalendarDateForLocale(dateString, { month: 'short', day: 'numeric' }) || 'Pick a date';
 };
 
 export const formatTimeSlotLabel = (timeString) => {
@@ -101,7 +185,7 @@ const parseWeeklyAvailabilitySlot = (entry) => {
   return null;
 };
 
-const getServiceWeeklyAvailability = (serviceItem) => (
+const getServiceWeeklyAvailability = (serviceItem) => parseJsonLoose(
   serviceItem?.service_resources?.weekly_availability
   || serviceItem?.service_detail?.service_resources?.weekly_availability
   || serviceItem?.service_detail?.weekly_availability
@@ -113,15 +197,21 @@ const getServiceDurationMinutes = (serviceItem) => {
   return Number.isFinite(duration) && duration > 0 ? duration : 120;
 };
 
+const getServiceLeadTimeMinutes = (serviceItem) => {
+  const leadTime = Number(serviceItem?.service_detail?.lead_time_minutes || serviceItem?.lead_time_minutes || 0);
+  return Number.isFinite(leadTime) && leadTime > 0 ? leadTime : 0;
+};
+
 const getNormalizedWeeklyAvailabilityByDay = (serviceItem) => {
   const raw = getServiceWeeklyAvailability(serviceItem);
+  const source = raw?.weekly && typeof raw.weekly === 'object' ? raw.weekly : raw;
   const resolved = {};
   for (let dayIndex = 0; dayIndex <= 6; dayIndex += 1) {
     let dayValue = null;
     const aliases = DAY_KEY_ALIASES[dayIndex] || [];
     for (const alias of aliases) {
-      if (raw && Object.prototype.hasOwnProperty.call(raw, alias)) {
-        dayValue = raw[alias];
+      if (source && Object.prototype.hasOwnProperty.call(source, alias)) {
+        dayValue = source[alias];
         break;
       }
     }
@@ -133,53 +223,153 @@ const getNormalizedWeeklyAvailabilityByDay = (serviceItem) => {
   return resolved;
 };
 
-export const buildServiceDateOptions = (serviceItem, maxOptions = 7) => {
-  const dayMap = getNormalizedWeeklyAvailabilityByDay(serviceItem);
-  const hasAvailabilityRules = Object.values(dayMap).some((entries) => entries.length > 0);
-  const leadTimeMinutes = Math.max(0, Number(serviceItem?.service_detail?.lead_time_minutes || 0));
-  const firstAllowed = new Date(Date.now() + (leadTimeMinutes * 60 * 1000));
-  const options = [];
-  for (let offset = 0; offset < 30 && options.length < maxOptions; offset += 1) {
-    const candidate = new Date(firstAllowed);
-    candidate.setHours(0, 0, 0, 0);
-    candidate.setDate(candidate.getDate() + offset);
-    const daySlots = dayMap[candidate.getDay()] || [];
-    if (hasAvailabilityRules && daySlots.length === 0) continue;
-    options.push({
-      value: formatLocalDateInputValue(candidate),
-      label: formatShortDateLabel(formatLocalDateInputValue(candidate)),
-      weekday: DAY_LABELS[candidate.getDay()],
-      hasAvailability: daySlots.length > 0
-    });
-  }
-  return options;
+const getNormalizedStorefrontWeeklyHours = (storefrontHours) => {
+  const normalized = normalizeStorefrontBusinessHours(storefrontHours);
+  return {
+    timezone: normalized.timezone || 'Asia/Manila',
+    weekly: STORE_DAY_KEYS.reduce((result, dayKey, dayIndex) => {
+      const day = normalized.weekly?.[dayKey];
+      result[dayIndex] = day?.enabled === true
+        ? (day.intervals || []).map((interval) => ({
+          start: normalizeSlotClockValue(interval?.open),
+          end: normalizeSlotClockValue(interval?.close)
+        })).filter((interval) => interval.start && interval.end)
+        : [];
+      return result;
+    }, {})
+  };
 };
 
-export const buildServiceTimeSlotOptions = (serviceItem, dateString) => {
-  if (!dateString) return [];
-  const selectedDate = new Date(`${dateString}T00:00:00`);
-  if (Number.isNaN(selectedDate.getTime())) return [];
-  const dayMap = getNormalizedWeeklyAvailabilityByDay(serviceItem);
-  const daySlots = dayMap[selectedDate.getDay()] || [];
-  if (daySlots.length === 0) {
-    return SERVICE_FALLBACK_TIME_SLOTS.map((value) => ({ value, label: formatTimeSlotLabel(value), source: 'fallback' }));
-  }
-  const intervalMinutes = Math.max(60, Math.min(120, getServiceDurationMinutes(serviceItem)));
+const getIntervalRangesForDay = (dayMap, dayIndex) => {
+  const currentEntries = dayMap[dayIndex] || [];
+  const previousEntries = dayMap[(dayIndex + 6) % 7] || [];
+  const ranges = [];
+  const appendEntry = (entry, part) => {
+    const start = toMinutesFromClock(entry.start);
+    const end = toMinutesFromClock(entry.end);
+    if (start == null || end == null) return;
+    if (start === end) {
+      ranges.push([0, 1440]);
+      return;
+    }
+    if (end > start) {
+      if (part === 'current') ranges.push([start, end]);
+      return;
+    }
+    if (part === 'current') ranges.push([start, 1440]);
+    if (part === 'previous') ranges.push([0, end]);
+  };
+  currentEntries.forEach((entry) => appendEntry(entry, 'current'));
+  previousEntries.forEach((entry) => appendEntry(entry, 'previous'));
+  return ranges
+    .filter(([start, end]) => end > start)
+    .sort((first, second) => first[0] - second[0]);
+};
+
+const intersectScheduleRanges = (serviceRanges, storeRanges) => {
+  if (serviceRanges == null) return storeRanges;
+  if (storeRanges == null) return serviceRanges;
+  return serviceRanges.flatMap(([serviceStart, serviceEnd]) => storeRanges
+    .map(([storeStart, storeEnd]) => [Math.max(serviceStart, storeStart), Math.min(serviceEnd, storeEnd)])
+    .filter(([start, end]) => end > start));
+};
+
+const getAvailableScheduleRanges = (serviceItem, dateString, storefrontHours) => {
+  const parsedDate = parseCalendarDate(dateString);
+  if (!parsedDate) return [];
+  const serviceDayMap = getNormalizedWeeklyAvailabilityByDay(serviceItem);
+  const hasServiceRules = Object.values(serviceDayMap).some((entries) => entries.length > 0);
+  const serviceRanges = hasServiceRules ? getIntervalRangesForDay(serviceDayMap, parsedDate.dayIndex) : null;
+  const storefrontSchedule = getNormalizedStorefrontWeeklyHours(storefrontHours);
+  const storeRanges = getIntervalRangesForDay(storefrontSchedule.weekly, parsedDate.dayIndex);
+  return intersectScheduleRanges(serviceRanges, storeRanges);
+};
+
+const getDateAfterOffset = (dateString, offset) => {
+  const parsed = parseCalendarDate(dateString);
+  if (!parsed) return '';
+  const next = new Date(parsed.date.getTime());
+  next.setUTCDate(next.getUTCDate() + offset);
+  return formatCalendarDate(next);
+};
+
+const getTimeSlotStepMinutes = (serviceItem) => Math.max(60, Math.min(120, getServiceDurationMinutes(serviceItem)));
+
+const buildTimeSlotOptionsForDate = (serviceItem, dateString, options = {}) => {
+  const parsedDate = parseCalendarDate(dateString);
+  if (!parsedDate) return [];
+  const { storefrontHours, now } = getScheduleOptions(options);
+  const storefrontSchedule = getNormalizedStorefrontWeeklyHours(storefrontHours);
+  const nowClock = getTimeZoneClock(now, storefrontSchedule.timezone);
+  if (dateString < nowClock.dateString) return [];
+  const minimumStartMinutes = dateString === nowClock.dateString
+    ? nowClock.minutes + getServiceLeadTimeMinutes(serviceItem)
+    : Number.NEGATIVE_INFINITY;
+  const durationMinutes = getServiceDurationMinutes(serviceItem);
+  const intervalMinutes = getTimeSlotStepMinutes(serviceItem);
+  const ranges = getAvailableScheduleRanges(serviceItem, dateString, storefrontHours);
   const values = [];
-  daySlots.forEach((slot) => {
-    const startMinutes = toMinutesFromClock(slot.start);
-    const endMinutes = toMinutesFromClock(slot.end);
-    if (startMinutes == null || endMinutes == null || endMinutes <= startMinutes) return;
-    for (let minute = startMinutes; minute < endMinutes; minute += intervalMinutes) {
+
+  ranges.forEach(([startMinutes, endMinutes]) => {
+    for (let minute = startMinutes; minute + durationMinutes <= endMinutes; minute += intervalMinutes) {
+      if (minute <= minimumStartMinutes) continue;
       const clockValue = `${pad2(Math.floor(minute / 60))}:${pad2(minute % 60)}`;
       values.push(clockValue);
     }
   });
-  return [...new Set(values)].map((value) => ({ value, label: formatTimeSlotLabel(value), source: 'availability' }));
+
+  return [...new Set(values)].sort().map((value, index) => ({
+    value,
+    label: formatTimeSlotLabel(value),
+    source: 'availability',
+    recommended: index === 0
+  }));
 };
 
-export const getPreferredBookingTimeForDate = (serviceItem, dateString, currentTime = '') => {
-  const availableSlots = buildServiceTimeSlotOptions(serviceItem, dateString);
+export const buildServiceDateOptions = (serviceItem, maxOptions = 7, options = {}) => {
+  const resolvedMaxOptions = typeof maxOptions === 'object' ? 7 : maxOptions;
+  const resolvedOptions = typeof maxOptions === 'object' ? maxOptions : options;
+  const { storefrontHours, now, maxLookaheadDays } = getScheduleOptions(resolvedOptions);
+  const storefrontSchedule = getNormalizedStorefrontWeeklyHours(storefrontHours);
+  const nowClock = getTimeZoneClock(now, storefrontSchedule.timezone);
+  const dateOptions = [];
+
+  for (let offset = 0; offset < maxLookaheadDays && dateOptions.length < Math.max(1, Number(resolvedMaxOptions || 7)); offset += 1) {
+    const dateString = getDateAfterOffset(nowClock.dateString, offset);
+    const timeSlots = buildTimeSlotOptionsForDate(serviceItem, dateString, { storefrontHours, now });
+    if (timeSlots.length === 0) continue;
+    const parsedDate = parseCalendarDate(dateString);
+    dateOptions.push({
+      value: dateString,
+      label: formatShortDateLabel(dateString),
+      weekday: DAY_LABELS[parsedDate.dayIndex],
+      hasAvailability: true,
+      recommended: dateOptions.length === 0,
+      recommendedTime: timeSlots[0]?.value || ''
+    });
+  }
+  return dateOptions;
+};
+
+export const buildServiceTimeSlotOptions = (serviceItem, dateString, options = {}) => {
+  if (!dateString) return [];
+  return buildTimeSlotOptionsForDate(serviceItem, dateString, options);
+};
+
+export const getPreferredBookingTimeForDate = (serviceItem, dateString, currentTime = '', options = {}) => {
+  const availableSlots = buildServiceTimeSlotOptions(serviceItem, dateString, options);
   if (currentTime && availableSlots.some((slot) => slot.value === currentTime)) return currentTime;
-  return availableSlots[0]?.value || '09:00';
+  return availableSlots[0]?.value || '';
+};
+
+export const getServiceScheduleRecommendation = (serviceItem, options = {}) => {
+  const dateOptions = buildServiceDateOptions(serviceItem, 7, options);
+  const date = dateOptions[0] || null;
+  if (!date || !date.recommendedTime) return null;
+  return {
+    date: date.value,
+    dateLabel: date.label,
+    time: date.recommendedTime,
+    timeLabel: formatTimeSlotLabel(date.recommendedTime)
+  };
 };

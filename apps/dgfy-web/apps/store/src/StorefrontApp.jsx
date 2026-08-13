@@ -195,15 +195,7 @@ import {
   isBookingFieldComplete,
   normalizeServiceFormFields
 } from './modes/services/booking/model/serviceBookingFields.js';
-import {
-  buildServiceDateOptions,
-  buildServiceTimeSlotOptions,
-  combineDateAndTimeParts,
-  formatServiceAppointmentSummary,
-  getDatePartFromAppointment,
-  getPreferredBookingTimeForDate,
-  getTimePartFromAppointment
-} from './modes/services/booking/model/serviceBookingSchedule.js';
+import { combineDateAndTimeParts } from './modes/services/booking/model/serviceBookingSchedule.js';
 import { buildServiceBookingSummaryModel } from './modes/services/booking/model/serviceBookingSummary.js';
 import { useServiceBookingDerivations } from './modes/services/booking/hooks/useServiceBookingDerivations.js';
 import { useServiceBookingFieldFocus } from './modes/services/booking/hooks/useServiceBookingFieldFocus.js';
@@ -245,13 +237,27 @@ import {
   getCompletedTrackingLabel,
   getTrackingFlowForOrderMethod
 } from './modes/fnb/tracking/model/fnbTrackingAdapter.js';
+import { serviceTrackingAdapter } from './modes/services/tracking/model/serviceTrackingAdapter.js';
+import { buildServicesTrackingRouteProps } from './modes/services/tracking/model/buildServicesTrackingRouteProps.js';
+import { ServicesTrackingRouteContainer } from './modes/services/tracking/pages/ServicesTrackingRouteContainer.jsx';
+import {
+  advanceServicesLocalSimulation as advanceLocalServicesSimulation,
+  createServicesLocalSimulation
+} from './modes/services/tracking/model/servicesLocalSimulation.js';
+import {
+  getServicesLocalFlowDefinition,
+  isServicesLocalSimulationMethod,
+  SERVICES_LOCAL_SIMULATION_ENABLED
+} from './modes/services/booking/model/servicesLocalFlow.js';
 import {
   mergeTrackedOrderEntries,
   normalizeTrackedOrderEntry,
   readLastTrackingPinForStore,
+  readServiceHandoffForBooking,
   readTrackedOrdersForStore,
   TERMINAL_TRACKING_STATUSES,
-  writeLastTrackingPinForStore
+  writeLastTrackingPinForStore,
+  writeServiceHandoffForBooking
 } from './tracking/storage.js';
 import {
   deriveAccountActivityCollections,
@@ -633,7 +639,6 @@ export default function StorefrontApp() {
   const [serviceBookingStep, setServiceBookingStep] = useState(1);
   const [serviceOrderMethod, setServiceOrderMethod] = useState('delivery');
   const [serviceScheduleMode, setServiceScheduleMode] = useState('schedule');
-  const [serviceLineAddOns, setServiceLineAddOns] = useState({});
   const [serviceSpecialInstructions, setServiceSpecialInstructions] = useState('');
   const {
     bookingPreferredDateInputRef,
@@ -918,6 +923,7 @@ export default function StorefrontApp() {
     toSlug
   });
   const isFnbOrderSubpage = isFnbMode && (isOrderSubpage || isTrackSubpage);
+  const isServicesTrackingPage = isServicesMode && isTrackSubpage;
   // checkoutTab only gets set to 'track' as a side effect of goStoreTrackPage() (e.g. after a
   // successful checkout). A direct/cold load of the track route (a refresh, or a bookmarked
   // tracking link) never calls that function, so checkoutTab would stay at its 'checkout'
@@ -953,7 +959,7 @@ export default function StorefrontApp() {
   });
   const trackingMode = isFnbMode ? 'fnb' : (isServicesMode ? 'services' : 'simple');
   const trackingAdapterRegistry = useMemo(
-    () => createTrackingAdapterRegistry([fnbTrackingAdapter]),
+    () => createTrackingAdapterRegistry([fnbTrackingAdapter, serviceTrackingAdapter]),
     []
   );
   const {
@@ -978,7 +984,7 @@ export default function StorefrontApp() {
     // tracking view through its checkout drawer (isFnbOrderSubpage), while retail and MSME reach
     // it through their own dedicated /order routes (isTrackSubpage, no drawer involved the same
     // way F&B's is) -- all three need to activate the same shared polling effect.
-    isFnbOrderSubpage: isFnbOrderSubpage || ((isRetailMode || isSimpleMode) && isTrackSubpage),
+    isFnbOrderSubpage: isFnbOrderSubpage || isServicesTrackingPage || ((isRetailMode || isSimpleMode) && isTrackSubpage),
     normalizeErrorMessage: normalizeStorefrontErrorMessage,
     requestJson,
     routeSlug,
@@ -987,10 +993,18 @@ export default function StorefrontApp() {
     trackingAdapterRegistry,
     trackingMode
   });
+  const advanceServicesLocalTracking = useCallback((reference) => {
+    const storeSlug = selectedStore?.slug || routeSlug;
+    const updated = advanceLocalServicesSimulation(storeSlug, reference);
+    if (!updated) return;
+    setTrackingPinInput(updated.tracking_pin);
+    setSelectedTrackingPin(updated.tracking_pin);
+    void handleTrack();
+  }, [handleTrack, routeSlug, selectedStore?.slug, setSelectedTrackingPin, setTrackingPinInput]);
   const servicesPrimary = modeAdapter?.heroTheme?.accent || '#0f766e';
   const servicesPrimaryDark = modeAdapter?.heroTheme?.accentDark || '#134e4a';
   const servicesPrimarySoft = modeAdapter?.heroTheme?.accentSoft || '#ecfeff';
-  const servicesBodyFont = modeAdapter?.heroTheme?.bodyFont || "'Avenir Next', 'Segoe UI', sans-serif";
+  const servicesBodyFont = modeAdapter?.heroTheme?.bodyFont || "'Source Sans 3', 'Segoe UI', sans-serif";
   const servicesDisplayFont = modeAdapter?.heroTheme?.displayFont || servicesBodyFont;
   const servicesPrimaryBorder = `${servicesPrimary}33`;
   const servicesPrimaryShadow = 'rgba(15,118,110,0.24)';
@@ -1152,6 +1166,7 @@ export default function StorefrontApp() {
     guestTrackedOrders,
     handleLoadAccountPanel,
     isDgfyCustomerSignedIn,
+    isServicesMode,
     isStorePage,
     routeSlug,
     selectedStore,
@@ -1197,6 +1212,9 @@ export default function StorefrontApp() {
     isMobileViewport,
     servicesBodyFont,
     servicesDisplayFont,
+    checkoutAccent: isServicesMode ? servicesPrimary : undefined,
+    checkoutAccentDark: isServicesMode ? servicesPrimaryDark : undefined,
+    checkoutAccentShadow: isServicesMode ? servicesPrimaryShadow : undefined,
     customerAddress,
     setCustomerAddress,
     setRememberCustomerDetails,
@@ -1329,7 +1347,7 @@ export default function StorefrontApp() {
   });
 
   useEffect(() => {
-    if (!isFnbOrderSubpage) return;
+    if (!isFnbOrderSubpage && !isServicesTrackingPage) return;
     const resolvedSlug = toSlug(selectedStore?.slug || routeSlug);
     const persistedTrackedOrders = readTrackedOrdersForStore(resolvedSlug).filter((entry) => !TERMINAL_TRACKING_STATUSES.has(String(entry.status || '').trim().toLowerCase()));
     const persistedTrackingPin = readLastTrackingPinForStore(resolvedSlug);
@@ -1344,7 +1362,7 @@ export default function StorefrontApp() {
     setCheckoutTab(preferredTab);
     setPendingOrderInitialTab('');
     setIsCheckoutOpen(false);
-  }, [currentPathSubpage, isFnbOrderSubpage, pendingOrderInitialTab, routeSlug, routeSubpage, selectedStore?.slug, trackingPinInput, selectedTrackingPin]);
+  }, [currentPathSubpage, isFnbOrderSubpage, isServicesTrackingPage, pendingOrderInitialTab, routeSlug, routeSubpage, selectedStore?.slug, selectedTrackingPin, setSelectedTrackingPin, setTrackingPinInput, trackingPinInput]);
 
   useEffect(() => {
     const isSignedIn = Boolean(readStoreAuthToken() || readDgfyAuthToken() || dgfySessionAccount?.id);
@@ -1422,7 +1440,7 @@ export default function StorefrontApp() {
     setCheckoutTab(resolvedInitialTab);
     setIsCheckoutOpen(false);
   };
-  const goStoreTrackPage = ({ pin = '', storeSlug = '' } = {}) => {
+  const goStoreTrackPage = ({ pin = '', storeSlug = '', serviceHandoff = '' } = {}) => {
     const normalized = toSlug(storeSlug || selectedStore?.slug || routeSlug);
     if (!normalized || typeof window === 'undefined') return;
     const normalizedPin = String(pin || selectedTrackingPin || trackingPinInput || readLastTrackingPinForStore(normalized) || '').trim().toUpperCase();
@@ -1442,6 +1460,9 @@ export default function StorefrontApp() {
       setSelectedTrackingPin(normalizedPin);
       setTrackingPinInput(normalizedPin);
       writeLastTrackingPinForStore(normalized, normalizedPin);
+      if (isServicesMode) {
+        writeServiceHandoffForBooking(normalized, normalizedPin, serviceHandoff);
+      }
     }
     setFnbOrderStep(checkoutResult ? 4 : 3);
     setSimpleOrderStep(checkoutResult ? 4 : 1);
@@ -1685,7 +1706,9 @@ export default function StorefrontApp() {
     serviceBookingSummaryTitle,
     serviceIntakeFields,
     serviceLocationSummaryDraft,
+    serviceFlow,
     servicePaymentOptions,
+    getPreferredBookingTimeForDate,
     stepOneComplete
   } = useServiceBookingDerivations({
     customerAddress,
@@ -1694,6 +1717,7 @@ export default function StorefrontApp() {
     customerPhone,
     customerPin,
     hasServiceCart,
+    isServicesMode,
     money,
     resolvedDeliveryAddress,
     selectedServiceCartLineId,
@@ -1703,10 +1727,10 @@ export default function StorefrontApp() {
     serviceCartTotal,
     serviceDraftQuantity,
     serviceIntakeResponses,
-    serviceLineAddOns,
     serviceOrderMethod,
     servicePaymentTiming,
-    serviceUnitType
+    serviceUnitType,
+    storefrontHours: selectedStore?.storefront_hours
   });
   const isDesktopCheckout = isDesktopViewport;
   const isStorefrontV2 = parseBooleanFlag(selectedStore?.storefront_ui_v2_enabled, false);
@@ -1760,6 +1784,7 @@ export default function StorefrontApp() {
     quoteNeedsRefresh,
     quoteResult,
     selectedStore,
+    serviceAppointmentAt,
     serviceCartLines,
     storefrontClosedByHours
   });
@@ -1938,11 +1963,29 @@ export default function StorefrontApp() {
     serviceUnitType
   ]);
   useEffect(() => {
-    if (!isBookingSubpage || !activeBookingService || selectedServiceDatePart) return;
+    if (!isBookingSubpage || !activeBookingService || !serviceFlow.requiresSchedule) return;
     const firstDate = bookingDateOptions[0]?.value || '';
-    if (!firstDate) return;
-    setServiceAppointmentAt(combineDateAndTimeParts(firstDate, getPreferredBookingTimeForDate(activeBookingService, firstDate, selectedServiceTimePart)));
-  }, [isBookingSubpage, activeBookingService, bookingDateOptions, selectedServiceDatePart, selectedServiceTimePart]);
+    if (!firstDate) {
+      if (serviceAppointmentAt) setServiceAppointmentAt('');
+      return;
+    }
+    const currentDateIsValid = bookingDateOptions.some((option) => option.value === selectedServiceDatePart);
+    const currentTimeIsValid = bookingTimeSlotOptions.some((option) => option.value === selectedServiceTimePart);
+    if (currentDateIsValid && currentTimeIsValid) return;
+    const nextTime = getPreferredBookingTimeForDate(activeBookingService, firstDate, selectedServiceTimePart);
+    const nextAppointment = combineDateAndTimeParts(firstDate, nextTime);
+    if (nextAppointment !== serviceAppointmentAt) setServiceAppointmentAt(nextAppointment);
+  }, [
+    isBookingSubpage,
+    activeBookingService,
+    bookingDateOptions,
+    bookingTimeSlotOptions,
+    getPreferredBookingTimeForDate,
+    selectedServiceDatePart,
+    selectedServiceTimePart,
+    serviceAppointmentAt,
+    serviceFlow.requiresSchedule
+  ]);
   useEffect(() => {
     if (!isServiceDetailsSubpage) return;
     if (!routeServiceItemId) {
@@ -2037,6 +2080,7 @@ export default function StorefrontApp() {
     serviceDraftNotes,
     serviceDraftQuantity,
     serviceIntakeResponses,
+    serviceRequiresSchedule: getServicesLocalFlowDefinition(serviceOrderMethod).requiresSchedule,
     servicePaymentOptions,
     servicePaymentTiming,
     setCart,
@@ -2073,6 +2117,8 @@ export default function StorefrontApp() {
     serviceIntakeResponses,
     servicePaymentOptions,
     servicePaymentTiming,
+    servicesPrimary,
+    servicesPrimaryDark,
     setCartImageErrors,
     setCheckoutTab,
     withAssetOrigin
@@ -2150,32 +2196,6 @@ export default function StorefrontApp() {
   }, [handleApplyGuestDetails, handleRequestGuestCheckoutOtp]);
   const serviceAccountStepComplete = accountStepComplete
     && (isDgfyCustomerSignedIn || guestCheckoutOtpVerified);
-  const serviceCartDrawerProps = useServiceCartDrawerProps({
-    cartButtonRef: serviceCartFabRef,
-    cartImageErrors,
-    handleServicesCartCheckout,
-    hasMixedServiceCart,
-    hasServiceCart,
-    isCheckoutOpen,
-    isMobileViewport,
-    money,
-    openServiceCartEditor,
-    productCartLines,
-    removeCartItem,
-    serviceCartCount,
-    serviceCartLines,
-    serviceCartTotal,
-    servicesDisplayFont,
-    servicesPrimary,
-    servicesPrimaryDark,
-    servicesPrimaryShadow,
-    servicesPrimaryShadowStrong,
-    setCartImageErrors,
-    setIsCheckoutOpen,
-    updateQty,
-    withAssetOrigin
-  });
-
   const {
     buildPayload: checkoutPayload,
     handlePromoCardApply,
@@ -2465,6 +2485,35 @@ export default function StorefrontApp() {
     setCheckoutPromoCode
   });
 
+  const serviceCartDrawerProps = useServiceCartDrawerProps({
+    cartButtonRef: serviceCartFabRef,
+    cartImageErrors,
+    handleServicesCartCheckout,
+    hasMixedServiceCart,
+    hasServiceCart,
+    isCheckoutOpen,
+    isMobileViewport,
+    money,
+    openServiceCartEditor,
+    productCartLines,
+    renderPromoCodePanel,
+    removeCartItem,
+    serviceCartCount,
+    serviceCartLines,
+    serviceCartTotal,
+    servicesDisplayFont,
+    servicesPrimary,
+    servicesPrimaryDark,
+    servicesPrimarySoft,
+    servicesPrimaryBorder,
+    servicesPrimaryShadow,
+    servicesPrimaryShadowStrong,
+    setCartImageErrors,
+    setIsCheckoutOpen,
+    updateQty,
+    withAssetOrigin
+  });
+
   const copyTextToClipboard = useCallback((value, successMessage = 'Copied.') => (
     copyTextToClipboardUtil(toast, value, successMessage)
   ), []);
@@ -2524,6 +2573,10 @@ export default function StorefrontApp() {
     routeSlug,
     selectedLocationId,
     selectedStore,
+    serviceOrderMethod,
+    servicesLocalSimulationEnabled: SERVICES_LOCAL_SIMULATION_ENABLED,
+    isServicesLocalSimulationMethod,
+    createServicesLocalSimulation,
     serviceAppointmentAt,
     serviceCartLines,
     serviceCartValidationIssues,
@@ -3332,6 +3385,41 @@ export default function StorefrontApp() {
     trackingResult,
     withAssetOrigin
   });
+  const servicesTrackingRouteProps = buildServicesTrackingRouteProps({
+    accountIdentityInitials,
+    accountIdentityName,
+    accountIdentityRawEmail,
+    advanceServicesLocalTracking,
+    catalog,
+    copyTextToClipboard,
+    formatTicketDate,
+    goStoreCatalogPage,
+    goStoreTrackPage,
+    handleTrack,
+    isMobileViewport,
+    isTrackingRefreshing,
+    money,
+    openAccountPanel: openStorefrontHeaderAccount,
+    servicesBodyFont,
+    servicesDisplayFont,
+    servicesPrimary,
+    servicesPrimaryBorder,
+    servicesPrimaryDark,
+    servicesPrimarySoft,
+    selectedLocation,
+    serviceHandoff: readServiceHandoffForBooking(
+      selectedStore?.slug || routeSlug,
+      trackingResult?.tracking_pin || trackingPinInput
+    ) || serviceOrderMethod,
+    selectedStore,
+    setTrackingPinInput,
+    tileTransformRequest,
+    tilingServer: TILING_SERVER,
+    trackingError,
+    trackingPinInput,
+    trackingResult,
+    withAssetOrigin
+  });
   const storefrontCheckoutSummaryProps = useStorefrontCheckoutSummaryProps({
     accessCapabilities,
     activeOrderMethodLabel,
@@ -3440,6 +3528,7 @@ export default function StorefrontApp() {
     applySavedDeliveryLocation,
     getCartFlySourceRect,
     goStoreCatalogPage,
+    goStoreTrackPage,
     handleAddPinnedLocation,
     handleCheckout,
     handlePinMyLocation,
@@ -3498,8 +3587,6 @@ export default function StorefrontApp() {
     serviceDurationFilter,
     serviceHeroModel,
     serviceIntakeResponses,
-    serviceLineAddOns,
-    setServiceLineAddOns,
     groupedServiceLineItems,
     serviceSpecialInstructions,
     setServiceSpecialInstructions,
@@ -3612,8 +3699,7 @@ export default function StorefrontApp() {
     setCatalogSearch,
     goDiscovery,
     goStore,
-    hasServiceCart,
-    goStoreBookingPage,
+    goStoreCatalogPage,
     cartCount,
     modeAdapter,
     isBrandingImageBlocked,
@@ -3702,7 +3788,7 @@ export default function StorefrontApp() {
   if (isStandaloneAccountPage) return customerDashboardStandaloneRouteNode;
 
   return (
-    <main style={{ fontFamily: isFnbMode ? (modeAdapter.heroTheme?.bodyFont || "'Inter', 'Segoe UI', sans-serif") : (isServicesMode ? servicesBodyFont : STYLES.fonts.body), background: isStorePage ? (isFnbMode ? '#fff' : 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)') : '#ffffff', minHeight: '100vh', color: '#0f172a', overflowX: 'clip' }}>
+    <main style={{ fontFamily: isFnbMode ? (modeAdapter.heroTheme?.bodyFont || "'Inter', 'Segoe UI', sans-serif") : (isServicesMode ? servicesBodyFont : STYLES.fonts.body), background: isStorePage ? (isFnbMode ? '#fff' : (isServicesMode ? 'radial-gradient(circle at 20% 0%, #ecfeff 0%, #f8fafc 48%, #ffffff 100%)' : 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)')) : '#ffffff', minHeight: '100vh', color: '#0f172a', overflowX: 'clip' }}>
       <div style={{
         maxWidth: 1320,
         width: '100%',
@@ -3800,6 +3886,9 @@ export default function StorefrontApp() {
                     GhostButton={GhostButton}
                     PrimaryButton={PrimaryButton}
                     STYLES={STYLES}
+                    servicesPrimary={servicesPrimary}
+                    servicesPrimaryDark={servicesPrimaryDark}
+                    servicesPrimaryShadow={servicesPrimaryShadow}
                     checkoutError={checkoutError}
                     closeServiceDetail={closeServiceDetail}
                     isBookingSubpage={isBookingSubpage}
@@ -3831,13 +3920,16 @@ export default function StorefrontApp() {
 
         {isStorePage && (
           <>
-            {!isFnbDetailsSubpage && (
+            {isServicesTrackingPage ? (
+              <ServicesTrackingRouteContainer {...servicesTrackingRouteProps} />
+            ) : null}
+            {!isServicesTrackingPage && !isFnbDetailsSubpage && (
               <StorefrontHeroBandContainer {...storefrontHeroBandProps} />
             )}
 
 
             {/* ZONE 4: Catalog Grid with Sidebar */}
-            {(isFnbDetailsSubpage || (catalogPermitted && selectedStore)) && (
+            {!isServicesTrackingPage && (isFnbDetailsSubpage || (catalogPermitted && selectedStore)) && (
               <StorefrontCatalogRouteContainer {...storefrontCatalogRouteProps} />
             )}
           </>
@@ -3845,7 +3937,7 @@ export default function StorefrontApp() {
 
       </div>
 
-  { isStorePage && (checkoutPermitted || bookingPermitted || productCartPermitted) && (
+  { isStorePage && !isServicesTrackingPage && (checkoutPermitted || bookingPermitted || productCartPermitted) && (
     <StorefrontCartDrawerShellContainer {...storefrontCartDrawerShellProps} />
   )}
       {customerDashboardDrawerRouteNode}

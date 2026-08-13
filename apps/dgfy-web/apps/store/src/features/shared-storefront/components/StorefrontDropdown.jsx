@@ -34,6 +34,7 @@ export function StorefrontDropdown({
   optionStyle = {},
   selectedLabelStyle = {},
   labelStyle = {},
+  chevronSize = 18,
   compactLabel = false
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -139,7 +140,7 @@ export function StorefrontDropdown({
           </span>
         ) : null}
         <ChevronDown
-          size={18}
+          size={chevronSize}
           color={disabled ? '#cbd5e1' : '#475569'}
           style={{
             position: 'absolute',

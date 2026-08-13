@@ -147,19 +147,21 @@ export function StorefrontCartDrawerShellContainer(props) {
       />
       )}
 
-        <FnbCartDrawerSurface
-          cartCount={cartCount}
-          cartDrawerProps={fnbCartDrawerRouteProps}
-          isDesktop={isDesktopCheckout}
-          isMobileViewport={isMobileViewport}
-          isOpen={isFnbCartDrawerSurfaceOpen}
-          onClose={() => setIsCheckoutOpen(false)}
-        />
+        {isFnbMode ? (
+          <FnbCartDrawerSurface
+            cartCount={cartCount}
+            cartDrawerProps={fnbCartDrawerRouteProps}
+            isDesktop={isDesktopCheckout}
+            isMobileViewport={isMobileViewport}
+            isOpen={isFnbCartDrawerSurfaceOpen}
+            onClose={() => setIsCheckoutOpen(false)}
+          />
+        ) : null}
 
         <StorefrontCheckoutDrawerFrame
           compactMode={isFnbMode || isSimpleMode}
           desktop={isDesktopCheckout}
-          disabled={isFnbCartDrawerSurfaceOpen || isServicesCartDrawerMode || isSimpleCartSurfaceMode || isDefaultCartSurfaceMode || (isSimpleMode && isResolvedOrderSubpage)}
+          disabled={isFnbCartDrawerSurfaceOpen || isServicesCartDrawerMode || isSimpleCartSurfaceMode || isDefaultCartSurfaceMode || isBookingSubpage || (isSimpleMode && isResolvedOrderSubpage)}
           fullPage={isFnbOrderSubpage}
           headerContent={(
             <div>

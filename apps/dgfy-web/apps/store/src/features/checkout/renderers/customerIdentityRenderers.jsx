@@ -13,6 +13,9 @@ export function createCustomerIdentityRenderers({
   isMobileViewport,
   servicesBodyFont,
   servicesDisplayFont,
+  checkoutAccent = '#1a4e8d',
+  checkoutAccentDark = '#1a4e8d',
+  checkoutAccentShadow = 'rgba(26,78,141,.18)',
   customerName,
   customerFirstName,
   customerLastName,
@@ -49,7 +52,8 @@ export function createCustomerIdentityRenderers({
     layoutVariant = 'default',
     savedDetailsTitle = 'Saved Details',
     savedDetailsApplyLabel = 'Apply Details',
-    onSavedDetailsApply = handleApplyGuestDetails
+    onSavedDetailsApply = handleApplyGuestDetails,
+    showSingleNameField = true
   } = {}) => {
     const rememberDetailsControl = (
       <label style={{ display: layoutVariant === 'fnbGuest' ? 'grid' : 'flex', gridTemplateColumns: layoutVariant === 'fnbGuest' ? 'auto minmax(0, 1fr)' : undefined, alignItems: layoutVariant === 'fnbGuest' ? 'start' : 'center', gap: layoutVariant === 'fnbGuest' ? '3px 9px' : 8, fontSize: 12, color: '#334155' }}>
@@ -70,7 +74,7 @@ export function createCustomerIdentityRenderers({
         subtitle={hasSavedCustomerDetails && showSavedDetailsCard ? '' : subtitle}
         requireEmail={requireEmail}
         includeAddress={includeAddress}
-        showSingleNameField
+        showSingleNameField={showSingleNameField}
         addressLabel={addressLabel}
         addressPlaceholder={addressPlaceholder}
         addressRequired={addressRequired}
@@ -158,51 +162,56 @@ export function createCustomerIdentityRenderers({
   const renderGuestCheckoutEntry = ({
     title = 'Continue to your order',
     description = 'Create an account or continue as guest to continue your order.',
-    resumeTarget = {}
-  } = {}) => (
-    <section style={{ border: '1px solid #e2e8f0', borderRadius: 16, background: '#fff', padding: isMobileViewport ? 16 : 20, display: 'grid', gap: 14 }}>
-      <div style={{ textAlign: 'center', display: 'grid', gap: 6 }}>
-        <div style={{ fontSize: isMobileViewport ? 28 : 34, fontWeight: 900, color: '#0f172a', lineHeight: 1.05 }}>{title}</div>
-        <div style={{ fontSize: 14, color: '#64748b' }}>{description}</div>
+    resumeTarget = {},
+    layoutVariant = 'default'
+  } = {}) => {
+    const isServicesReference = layoutVariant === 'services-reference';
+    return (
+    <section style={{ border: '1px solid #e2e8f0', borderRadius: isServicesReference ? 18 : 16, background: '#fff', padding: isServicesReference ? (isMobileViewport ? 22 : 32) : (isMobileViewport ? 16 : 20), display: 'grid', gap: isServicesReference ? 16 : 14 }}>
+      <div style={{ textAlign: isServicesReference ? 'left' : 'center', display: 'grid', gap: isServicesReference ? 4 : 6 }}>
+        <div style={{ fontSize: isServicesReference ? 20 : (isMobileViewport ? 28 : 34), fontWeight: isServicesReference ? 700 : 900, color: '#101010', lineHeight: isServicesReference ? 1.25 : 1.05, fontFamily: isServicesReference ? servicesDisplayFont : undefined }}>{title}</div>
+        <div style={{ fontSize: isServicesReference ? 14.4 : 14, lineHeight: isServicesReference ? 1.6 : undefined, color: '#58717a' }}>{description}</div>
       </div>
       <button
         type="button"
         onClick={() => openCheckoutAuthFlow('create-account', resumeTarget)}
-        style={{ minHeight: 48, borderRadius: 12, border: 'none', background: '#1a4e8d', color: '#fff', fontWeight: 700, cursor: 'pointer', boxShadow: '0 10px 24px rgba(26,78,141,.18)', fontFamily: servicesBodyFont }}
+        style={{ minHeight: isServicesReference ? 51 : 48, borderRadius: 12, border: isServicesReference ? `1px solid ${checkoutAccent}` : 'none', background: isServicesReference ? checkoutAccent : `linear-gradient(135deg, ${checkoutAccent}, ${checkoutAccentDark})`, color: '#fff', fontWeight: isServicesReference ? 800 : 700, fontSize: isServicesReference ? 16 : undefined, cursor: 'pointer', boxShadow: isServicesReference ? 'none' : `0 10px 24px ${checkoutAccentShadow}`, fontFamily: servicesBodyFont }}
       >
         Create DGFY Account
       </button>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, color: '#58717a' }}>
         <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
-        <span style={{ fontSize: 12, fontWeight: 700, color: '#94a3b8' }}>or</span>
+        <span style={{ fontSize: 12, fontWeight: 700, color: '#58717a' }}>{isServicesReference ? 'OR' : 'or'}</span>
         <div style={{ flex: 1, height: 1, background: '#e2e8f0' }} />
       </div>
       <button
         type="button"
         onClick={() => setGuestCheckoutUnlocked(true)}
-        style={{ minHeight: 46, borderRadius: 12, border: '1px solid #1a4e8d', background: '#fff', color: '#1a4e8d', fontWeight: 700, cursor: 'pointer', fontFamily: servicesBodyFont }}
+        style={{ minHeight: isServicesReference ? 51 : 46, borderRadius: 12, border: `1px solid ${checkoutAccent}`, background: '#fff', color: checkoutAccent, fontWeight: isServicesReference ? 800 : 700, fontSize: isServicesReference ? 16 : undefined, cursor: 'pointer', fontFamily: servicesBodyFont }}
       >
         Continue as Guest
       </button>
-      <div style={{ textAlign: 'center', fontSize: 13, color: '#64748b' }}>
+      {!isServicesReference ? <div style={{ textAlign: 'center', fontSize: 13, color: '#64748b' }}>
         Already have an account?{' '}
         <button
           type="button"
           onClick={() => openCheckoutAuthFlow('sign-in', resumeTarget)}
-          style={{ border: 'none', background: 'transparent', color: '#1a4e8d', fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: servicesBodyFont }}
+          style={{ border: 'none', background: 'transparent', color: checkoutAccent, fontWeight: 700, cursor: 'pointer', padding: 0, fontFamily: servicesBodyFont }}
         >
           Log in
         </button>
-      </div>
+      </div> : null}
     </section>
-  );
+    );
+  };
 
   const renderAccountOwnedIdentitySummary = ({
     title = 'Account Details',
     subtitle = 'Your DGFY account details will be used for this order.',
-    showVerifiedBadge = true
+    showVerifiedBadge = true,
+    layoutVariant = 'default'
   } = {}) => (
-    <CustomerIdentityCard
+      <CustomerIdentityCard
       title={title}
       subtitle={subtitle}
       showVerifiedBadge={showVerifiedBadge}
@@ -210,9 +219,10 @@ export function createCustomerIdentityRenderers({
       phone={String(accountIdentityRawPhone || customerPhone || '').trim()}
       email={String(accountIdentityRawEmail || customerEmail || '').trim()}
       isMobileViewport={isMobileViewport}
-      bodyFont={servicesBodyFont}
-      displayFont={servicesDisplayFont}
-    />
+        bodyFont={servicesBodyFont}
+        displayFont={servicesDisplayFont}
+        layoutVariant={layoutVariant}
+      />
   );
 
   return {

@@ -1,5 +1,5 @@
 import React from 'react';
-import { StorefrontResponsiveImage } from '../../../../shared/components/storefront/StorefrontResponsiveImage.jsx';
+import { ServiceImage } from '../../ServiceImage.jsx';
 
 export function ServiceProductCard({
   item,
@@ -17,7 +17,6 @@ export function ServiceProductCard({
   getCartFlySourceRect,
   onViewDetails
 }) {
-  const imageUrl = imageSources?.src || '';
   return (
     <div style={{
       background: '#fff', borderRadius: 20, border: `1px solid ${styles.colors.border}`,
@@ -25,20 +24,17 @@ export function ServiceProductCard({
       boxShadow: styles.shadow.sm, cursor: 'pointer'
     }} onClick={() => onViewDetails(item)} data-cart-fly-origin="true">
       <div style={{ width: '100%', height: 184, minHeight: 184, maxHeight: 184, background: styles.colors.bg, position: 'relative', overflow: 'hidden' }}>
-        {imageUrl ? (
-          <StorefrontResponsiveImage
-            imageSources={imageSources}
-            sizes="(max-width: 1199px) 50vw, 330px"
-            alt={item.name}
-            loading="lazy"
-            decoding="async"
-            width={400}
-            height={300}
-            style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
-          />
-        ) : (
-          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: styles.colors.muted }}>No image</div>
-        )}
+        <ServiceImage
+          imageSources={imageSources}
+          sizes="(max-width: 1199px) 50vw, 330px"
+          alt={item.name}
+          loading="lazy"
+          decoding="async"
+          fallbackLabel="No service image"
+          width={400}
+          height={300}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+        />
         <div style={{ position: 'absolute', top: 12, right: 12 }}>
           <Badge background="rgba(255,255,255,0.9)" color={styles.colors.dark} border={styles.colors.border}>{item.service_detail?.service_area === 'onsite' ? 'Home Visit' : 'In-Store'}</Badge>
         </div>
@@ -58,7 +54,7 @@ export function ServiceProductCard({
           <div style={{ fontSize: 20, fontWeight: 900, color: servicesPrimaryDark, marginBottom: 12 }}>{money(item.default_sale_price ?? 0)}</div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
             <GhostButton style={{ padding: '8px', minHeight: 40, fontSize: 13 }} onClick={(e) => { e.stopPropagation(); onViewDetails(item); }}>Details</GhostButton>
-            <PrimaryButton style={{ padding: '8px', minHeight: 40, fontSize: 13 }} onClick={(e) => { e.stopPropagation(); addToCart(item, { sourceRect: getCartFlySourceRect(e) }); }} disabled={!available}>Add</PrimaryButton>
+            <PrimaryButton accentColor={servicesPrimary} accentDarkColor={servicesPrimaryDark} shadowColor="rgba(15,118,110,0.24)" style={{ padding: '8px', minHeight: 40, fontSize: 13 }} onClick={(e) => { e.stopPropagation(); addToCart(item, { sourceRect: getCartFlySourceRect(e) }); }} disabled={!available}>Add</PrimaryButton>
           </div>
         </div>
       </div>

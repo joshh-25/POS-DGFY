@@ -1,6 +1,12 @@
 import { normalizeStorefrontErrorMessage } from '../shared/model/storefrontErrorMessages.js';
+import { resolveServiceBookingScheduleAt } from '../shared/model/serviceBookingScheduleResolver.js';
 
 const getLineQuantity = (line) => Math.max(1, Number(line?.quantity || 1));
+
+const getSelectedServiceOptionIds = (line) => [...new Set([
+  ...(Array.isArray(line?.selected_option_ids) ? line.selected_option_ids : []),
+  ...(Array.isArray(line?.selected_options) ? line.selected_options.map((option) => option?.option_id) : [])
+].map(Number).filter((optionId) => Number.isInteger(optionId) && optionId > 0))];
 
 const buildServiceNotes = ({ line, bookingFieldPlan, customerAddress }) => (
   [
@@ -23,16 +29,18 @@ export const buildSingleServiceBookingPayload = ({
   bookingPageIntakeFields,
   customerAddress,
   bookingFieldPlan,
+  fallbackScheduleAt,
   createIdempotencyKey,
 }) => ({
   service_item_id: Number(line.item_id),
-  start_at: new Date(line.service_schedule_at).toISOString(),
+  start_at: new Date(resolveServiceBookingScheduleAt(line, fallbackScheduleAt)).toISOString(),
   customer_name: customerName,
   customer_email: customerEmail,
   customer_phone: customerPhone,
   location_id: selectedLocationId ?? storeLocationId,
   payment_timing: paymentTiming,
   quantity: getLineQuantity(line),
+  selected_option_ids: getSelectedServiceOptionIds(line),
   intake_responses: bookingPageIntakeFields.length > 0 ? serviceIntakeResponses : null,
   idempotency_key: createIdempotencyKey('store-service'),
   notes: buildServiceNotes({
@@ -47,11 +55,12 @@ export const buildSingleServiceBookingPayload = ({
 // notes, payment timing, and intake responses (captured at add-to-cart time in
 // useServiceBookingViewModel.js), so drafts read directly off the line rather
 // than shared booking-page form state.
-const buildServiceBookingDraft = ({ line, bookingFieldPlan, customerAddress }) => ({
+const buildServiceBookingDraft = ({ line, bookingFieldPlan, customerAddress, fallbackScheduleAt }) => ({
   service_item_id: Number(line.item_id),
-  start_at: new Date(line.service_schedule_at).toISOString(),
+  start_at: new Date(resolveServiceBookingScheduleAt(line, fallbackScheduleAt)).toISOString(),
   quantity: getLineQuantity(line),
   payment_timing: line.payment_timing,
+  selected_option_ids: getSelectedServiceOptionIds(line),
   intake_responses: line?.intake_responses && typeof line.intake_responses === 'object' ? line.intake_responses : null,
   notes: buildServiceNotes({ line, bookingFieldPlan, customerAddress })
 });
@@ -65,6 +74,7 @@ export const buildServiceBookingBatchPayload = ({
   storeLocationId,
   customerAddress,
   bookingFieldPlan,
+  fallbackScheduleAt,
   createIdempotencyKey,
 }) => ({
   customer_name: customerName,
@@ -72,7 +82,12 @@ export const buildServiceBookingBatchPayload = ({
   customer_phone: customerPhone,
   location_id: selectedLocationId ?? storeLocationId,
   idempotency_key: createIdempotencyKey('store-service-batch'),
-  bookings: serviceCartLines.map((line) => buildServiceBookingDraft({ line, bookingFieldPlan, customerAddress }))
+  bookings: serviceCartLines.map((line) => buildServiceBookingDraft({
+    line,
+    bookingFieldPlan,
+    customerAddress,
+    fallbackScheduleAt
+  }))
 });
 
 export const resolveServicesBookingSubmitContract = ({
@@ -89,6 +104,7 @@ export const resolveServicesBookingSubmitContract = ({
   bookingPageIntakeFields,
   customerAddress,
   bookingFieldPlan,
+  serviceAppointmentAt,
   createIdempotencyKey,
 }) => {
   const lines = hasServiceCart ? serviceCartLines : (serviceBookingLine ? [serviceBookingLine] : []);
@@ -113,6 +129,7 @@ export const resolveServicesBookingSubmitContract = ({
         storeLocationId,
         customerAddress,
         bookingFieldPlan,
+        fallbackScheduleAt: serviceAppointmentAt,
         createIdempotencyKey,
       }),
       line: lines[0]
@@ -135,6 +152,7 @@ export const resolveServicesBookingSubmitContract = ({
       bookingPageIntakeFields,
       customerAddress,
       bookingFieldPlan,
+      fallbackScheduleAt: serviceAppointmentAt,
       createIdempotencyKey,
     }),
     line

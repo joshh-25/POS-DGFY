@@ -33,6 +33,8 @@ const DefaultStorefrontHero = ({
   isMobileViewport,
   cartCount,
   setIsCheckoutOpen,
+  primaryActionLabel,
+  onPrimaryAction,
   goDiscovery,
   goStore,
   hasMultipleStoreBranches,
@@ -108,6 +110,18 @@ const DefaultStorefrontHero = ({
     visibleContactRows,
     visibleWhyChooseUs
   } = heroViewModel;
+  const resolvedPrimaryActionLabel = primaryActionLabel || orderLabel;
+  const handlePrimaryAction = () => {
+    if (typeof onPrimaryAction === 'function') {
+      onPrimaryAction();
+      return;
+    }
+    if (cartCount > 0) {
+      setIsCheckoutOpen(true);
+      return;
+    }
+    document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  };
   const desktopHeroMetaItems = [
     heroSectionModel.ratingLabel ? (
       <span key="rating" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0, whiteSpace: 'nowrap' }}>
@@ -186,20 +200,14 @@ const DefaultStorefrontHero = ({
         followEnabled={followEnabled}
         followState={followState}
         handleFollowAction={handleFollowAction}
-        heroSectionModel={{ ...heroSectionModel, orderLabel }}
+        heroSectionModel={{ ...heroSectionModel, orderLabel: resolvedPrimaryActionLabel }}
         heroTheme={heroTheme}
         HERO_CANVAS_MAX_WIDTH={HERO_CANVAS_MAX_WIDTH}
         isBrandingImageBlocked={isBrandingImageBlocked}
         isMobileViewport={isMobileViewport}
         markBrandingImageError={markBrandingImageError}
         modeAdapter={modeAdapter}
-        onBrowseMenu={() => {
-          if (cartCount > 0) {
-            setIsCheckoutOpen(true);
-            return;
-          }
-          document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }}
+        onBrowseMenu={handlePrimaryAction}
         openStorefrontActionLink={openStorefrontActionLink}
         profileImageKey={profileImageKey}
         selectedStore={selectedStore}

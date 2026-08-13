@@ -56,10 +56,16 @@ export const ModePresentationRegistry = Object.freeze({
   services: Object.freeze({
     heroEyebrow: 'Services storefront',
     heroDescription: 'Book service families, answer intake questions, and keep one ticket for the full appointment journey.',
-    catalogHeading: 'Book Services',
-    catalogSubtitle: 'Choose a service family, pick a service type, then complete the booking details in the cart.',
+    catalogEyebrow: 'Service Catalog',
+    catalogHeading: 'Choose the care you need',
+    catalogSubtitle: '',
     catalogSearchPlaceholder: 'Search services...',
-    primaryActionLabel: 'Book a Service',
+    catalogAddActionLabel: 'Add service',
+    catalogUnavailableLabel: 'Unavailable',
+    catalogMissingImageLabel: 'No service image',
+    catalogMaxWidth: 1216,
+    catalogToolbarVariant: 'services-compact',
+    primaryActionLabel: 'Browse Services',
     trackHeading: 'Track Booking or Order',
     trackDescription: 'Enter a booking reference or order tracking PIN to check the latest status without leaving the sheet.',
     supportsServiceGrouping: true,
@@ -72,7 +78,7 @@ export const ModePresentationRegistry = Object.freeze({
       }),
       hero: Object.freeze({
         eyebrow: 'Services storefront template',
-        primaryActionLabel: 'Book a Service',
+        primaryActionLabel: 'Browse Services',
         secondaryActionLabel: 'See Service Areas',
         tertiaryActionLabel: 'Talk to Support',
         supportBadge: 'Best baseline for shared storefront structure'
@@ -95,12 +101,13 @@ export const ModePresentationRegistry = Object.freeze({
       })
     }),
     heroTheme: Object.freeze({
-      displayFont: "'Avenir Next', 'Segoe UI', sans-serif",
-      bodyFont: "'Avenir Next', 'Segoe UI', sans-serif",
+      displayFont: "'Lexend', 'Segoe UI', Arial, sans-serif",
+      bodyFont: "'Source Sans 3', 'Segoe UI', sans-serif",
       accent: '#0f766e',
       accentDark: '#134e4a',
       accentSoft: '#ecfeff',
-      surface: '#172033'
+      surface: '#0f172a',
+      borderSoft: 'rgba(15,118,110,0.2)'
     })
   }),
   msme: Object.freeze({
