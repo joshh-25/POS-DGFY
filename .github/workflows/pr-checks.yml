@@ -10,11 +10,19 @@ on:
       - opened
       - synchronize
       - reopened
-      - edited
+      - ready_for_review
 
 concurrency:
   group: pr-checks-${{ github.event.pull_request.number }}
   cancel-in-progress: true
+
+# `edited` (title/body edits) used to be in `types:` above. On a single-
+# concurrency self-hosted runner that's pure queue waste: a prose-only edit
+# cancels an in-flight run and requeues both Docker build-checks behind it
+# for zero code-signal (see #412, and #194's older billing-era version of the
+# same finding). Dropped. `ready_for_review` replaces it instead -- without
+# it, a PR opened as a draft and later marked ready never gets checked unless
+# someone also pushes a commit.
 
 env:
   # GHA billing is exhausted (spending limit / failed payment), so every job
@@ -58,6 +66,11 @@ env:
 # `changes`.
 jobs:
   changes:
+    # Drafts aren't merge candidates -- skip the whole pipeline rather than
+    # pay a runner slot for them. Every job below depends on `changes`, and a
+    # skipped job's outputs are the empty string, so `== 'true'` is false and
+    # they all skip cleanly with no further changes needed.
+    if: github.event.pull_request.draft == false
     uses: ./.github/workflows/shared-changed-paths.yml
     with:
       runner_labels_json: *runner_light
