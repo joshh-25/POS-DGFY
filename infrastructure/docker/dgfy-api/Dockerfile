@@ -11,6 +11,15 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY apps/dgfy-api/package*.json ./
+# apps/ lives one directory deeper than the repo root, so this file: dep
+# points two levels up (file:../../packages/shared-constants). `npm ci`'s
+# virtual-tree loader has a bug with 2+ `../` segments in a file: link's
+# lockfile entry -- see the longer explanation in
+# infrastructure/docker/frontend/Dockerfile, which hits the same bug. 1 hop
+# resolves to the identical /packages path via WORKDIR /app (both clamp at
+# the container's filesystem root), so drop to 1 hop here, image-only -- the
+# host copy of these files is untouched and still needs 2 hops.
+RUN sed -i 's#\.\./\.\./packages/#../packages/#g' package.json package-lock.json
 COPY packages/shared-constants /packages/shared-constants
 RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --omit=dev
 

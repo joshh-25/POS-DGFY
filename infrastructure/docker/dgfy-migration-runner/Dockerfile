@@ -11,6 +11,9 @@
 FROM node:22-alpine AS deps
 WORKDIR /app
 COPY apps/dgfy-migration-runner/package*.json ./
+# Same 2-hop -> 1-hop normalization as infrastructure/docker/dgfy-api/
+# Dockerfile; see the comment there for why.
+RUN sed -i 's#\.\./\.\./packages/#../packages/#g' package.json package-lock.json
 COPY packages/shared-constants /packages/shared-constants
 RUN --mount=type=cache,target=/root/.npm,sharing=locked npm ci --omit=dev
 
