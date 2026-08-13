@@ -7,7 +7,7 @@ classification: major
 surfaces: pos,terminal
 reason_codes_impacted: ALLOWED
 policy_version: 2026.08.13
-verification_evidence: changed-file DO NOT COMMIT scan,git diff whitespace check,tenant schema registry coverage,repository pre-commit guardrails
+verification_evidence: changed-file forbidden-marker scan,git diff whitespace check,tenant schema registry coverage,repository pre-commit guardrails
 rollback_note: Revert the POS application commits in reverse dependency order; do not reverse additive tenant migrations until dependent code is removed and retained payment and parked-sale data is assessed.
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
@@ -45,7 +45,7 @@ tenant, location, terminal, cashier, or fiscal-document boundaries.
 
 ## Verification Evidence
 
-1. The changed-file `DO NOT COMMIT` scan passed before staging.
+1. The changed-file forbidden-marker scan passed before staging.
 2. `git diff --check` reported no whitespace errors before staging.
 3. The tenant schema registry coverage pre-commit check passed for all seven new migrations.
 4. Repository pre-commit compliance and architecture guardrails must pass for the committed change set.

@@ -3920,3 +3920,70 @@ parked-sale replay and shift-close resolution.
 
 - Phase 85 is complete. Phase 86 is the next eligible repository phase and
   requires separate approval.
+
+## Phase 86 - POS Release Reconciliation and Merge Readiness
+
+### Initiative and Release
+
+- Initiative: POS release hardening for Parked Sales, Split Payment, terminal
+  workflows, and shared receipt behavior.
+- Release: `codex/pos-development-reconciled` targeting `develop`.
+
+### Objective and Scope
+
+- Reconcile the approved POS feature work with the current `develop` branch.
+- Restore deterministic frontend and backend release validation.
+- Bring POS checkout and terminal route chunks back within governed budgets.
+- Repair backend archive loading, tenant-location deletion guards, dependency
+  audit portability, and stale test contracts exposed by the release matrix.
+- Record the compliance declaration and shared receipt package version required
+  for review and promotion.
+
+### Status
+
+- `completed`
+- User approval received on 2026-08-13.
+- Completed on 2026-08-13.
+
+### Dependencies and Governance Note
+
+- ADR 0053 Pluggable POS Hardware Device Drivers.
+- ADR 0061 POS Parked Sales and Cashier Ownership.
+- ADR 0062 POS Split Tender and Manual Walk-in Payment Recording.
+- `docs/features/POS_CASHIER_TERMINAL_FLOW.md`.
+- `docs/features/POS_PARKED_SALES_CONTRACT.md`.
+- `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
+- Compliance declaration:
+  `docs/compliance/impact-declarations/2026-08-13-pos-parked-sales-split-tender-and-reconciliation.md`.
+
+### Acceptance and Validation Evidence
+
+- [x] Frontend suite passes: 313 files and 1,784 tests.
+- [x] Governed backend matrix passes across all 509 active test files.
+- [x] POS checkout route is 152.98 KB against a 154 KB budget.
+- [x] SKUpervisor terminal route is 115.99 KB against a 116 KB budget.
+- [x] Production dependency audit passes across all four package trees with no
+  unsuppressed vulnerabilities; tracked React Router exceptions remain in
+  issue #389.
+- [x] Architecture guardrails pass across 47 modules and 467 code files; all 86
+  controller files preserve model boundaries.
+- [x] Compliance, tenant schema coverage, documentation, and all 69 ADR checks
+  pass.
+- [x] Tenant-location deletion guards cover merchant tender reconciliations and
+  contain no duplicate F&B availability references.
+- [x] Shared POS receipt package is versioned at 0.1.2.
+
+### Implementation Links
+
+- `apps/dgfy-web/src/features/pos/components/POSCheckoutTerminal.jsx`
+- `apps/dgfy-web/src/features/pos/components/POSSplitPaymentWorkflow.jsx`
+- `apps/dgfy-web/src/features/pos/pages/TerminalPage.jsx`
+- `apps/dgfy-api/src/modules/tenantLocations/repositories/tenantLocationReferenceSources.js`
+- `apps/dgfy-api/src/services/csvExportService.js`
+- `scripts/audit-dependencies.js`
+- `packages/pos-receipt/package.json`
+
+### Completion Record (2026-08-13)
+
+- Phase 86 is complete. Phase 87 is the next eligible repository phase and
+  requires separate approval.
