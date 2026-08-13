@@ -38,6 +38,20 @@ const TREES = [
 
 const SEVERITY_ORDER = ['critical', 'high', 'moderate', 'low', 'info'];
 
+function resolveNpmInvocation({
+  platform = process.platform,
+  npmExecPath = process.env.npm_execpath,
+  nodeExecPath = process.execPath,
+} = {}) {
+  if (platform === 'win32' && npmExecPath && /\.(?:c?js|mjs)$/i.test(npmExecPath)) {
+    return { command: nodeExecPath, argsPrefix: [npmExecPath], shell: false };
+  }
+  if (platform === 'win32') {
+    return { command: 'npm.cmd', argsPrefix: [], shell: true };
+  }
+  return { command: 'npm', argsPrefix: [], shell: false };
+}
+
 function loadAllowlist() {
   if (!fs.existsSync(ALLOWLIST_PATH)) return [];
   const raw = fs.readFileSync(ALLOWLIST_PATH, 'utf8');
@@ -63,14 +77,15 @@ function isAllowlisted(allowlist, treeName, packageName) {
 }
 
 function runNpmAudit(tree, omitDev) {
-  const args = ['audit', '--json'];
+  const invocation = resolveNpmInvocation();
+  const args = [...invocation.argsPrefix, 'audit', '--json'];
   if (omitDev) args.push('--omit=dev');
   const cwd = path.join(ROOT, tree.dir);
-  const result = spawnSync('npm', args, {
+  const result = spawnSync(invocation.command, args, {
     cwd,
     encoding: 'utf8',
     maxBuffer: 64 * 1024 * 1024,
-    shell: false,
+    shell: invocation.shell,
     env: process.env,
   });
 
@@ -191,4 +206,5 @@ module.exports = {
   isAllowlisted,
   auditTree,
   summarizeCounts,
+  resolveNpmInvocation,
 };
