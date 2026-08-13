@@ -4,11 +4,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { ServiceBookingFulfillmentChoices } from '../ServiceBookingFulfillmentChoices.jsx';
 
-// issue #178 follow-up, ADR 0057: the two handoff options are now sourced
-// from the fulfillment-profile vocabulary (item_pickup_return /
-// item_pickup_collection), but the rendered copy, values, and click
-// behavior must stay byte-identical to what shipped before this change -
-// ADR 0057 forbids this vocabulary from reaching the booking payload.
+// Services currently exposes only the two pickup handoff choices in this step.
 describe('ServiceBookingFulfillmentChoices', () => {
   afterEach(cleanup);
 
@@ -18,7 +14,7 @@ describe('ServiceBookingFulfillmentChoices', () => {
     servicesPrimaryShadow: 'rgba(15, 118, 110, 0.2)'
   };
 
-  it('renders exactly the two pre-existing handoff options, in order, with unchanged copy', () => {
+  it('renders only pickup/return and pickup/collection choices', () => {
     render(
       <ServiceBookingFulfillmentChoices
         {...baseProps}
@@ -31,6 +27,8 @@ describe('ServiceBookingFulfillmentChoices', () => {
     expect(buttons).toHaveLength(2);
     expect(buttons[0].textContent).toContain('Pick up and deliver');
     expect(buttons[1].textContent).toContain("Pick up and I'll collect");
+    expect(screen.queryByText('Drop off and collect')).toBeNull();
+    expect(screen.queryByText('Request a quote')).toBeNull();
   });
 
   it('marks the option matching serviceOrderMethod as active and calls onOrderMethodChange with the unchanged value on click', () => {

@@ -11,7 +11,7 @@ vi.mock('./ServiceBookingFulfillmentChoices.jsx', () => ({
   ServiceBookingFulfillmentChoices: () => <div>Fulfillment choices</div>
 }));
 
-import { ServiceBookingStepAccount, ServiceBookingStepFulfillment } from './ServiceBookingSteps.jsx';
+import { ServiceBookingStepAccount, ServiceBookingStepFulfillment, ServiceBookingStepReviewPayment } from './ServiceBookingSteps.jsx';
 
 const Button = ({ children, ...props }) => <button type="button" {...props}>{children}</button>;
 
@@ -165,5 +165,45 @@ describe('ServiceBookingStepFulfillment', () => {
     expect(syncServiceBookingDraft).not.toHaveBeenCalled();
     expect(setServiceBookingStep).not.toHaveBeenCalledWith(4);
     expect(toast.error).toHaveBeenCalledWith('Complete "Preferred Date" before continuing.');
+  });
+});
+
+describe('ServiceBookingStepReviewPayment', () => {
+  it('renders payment method before fulfillment information', () => {
+    render(
+      <ServiceBookingStepReviewPayment
+        STYLES={{ colors: { dark: '#0f172a', muted: '#64748b' } }}
+        BOOKING_FIELD_STYLE={{}}
+        StorefrontDropdown={({ value }) => <div>Payment selector: {value}</div>}
+        GhostButton={Button}
+        PrimaryButton={Button}
+        primaryButtonProps={{}}
+        servicesPrimary="#0f766e"
+        servicesPrimarySoft="#ecfeff"
+        servicesPrimaryBorder="#99f6e4"
+        money={(value) => String(value)}
+        registerBookingFieldRef={() => undefined}
+        isMobileViewport={false}
+        serviceOrderMethod="delivery"
+        serviceLocationSummaryDraft=""
+        groupedServiceLineItems={[]}
+        selectedServiceDatePart="2026-08-10"
+        selectedServiceTimePart="09:00"
+        specialInstructions=""
+        servicePaymentTiming="postpaid"
+        setServicePaymentTiming={vi.fn()}
+        bookingPagePaymentOptions={[{ value: 'postpaid', label: 'Pay Later' }]}
+        bookingSummaryAmount={100}
+        servicesDisplayFont="Arial"
+        checkoutError=""
+        setServiceBookingStep={vi.fn()}
+        toast={{ error: vi.fn() }}
+        handleCheckout={vi.fn()}
+      />
+    );
+
+    const payment = screen.getByText('Payment Method');
+    const fulfillment = screen.getByText('Fulfillment Information');
+    expect(payment.compareDocumentPosition(fulfillment) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
