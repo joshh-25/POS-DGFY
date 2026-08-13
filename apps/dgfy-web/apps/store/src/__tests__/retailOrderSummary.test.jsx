@@ -37,8 +37,8 @@ describe('retail checkout order summary', () => {
     render(<RetailOrderSummaryContent {...sharedProps} />);
 
     expect(screen.getByRole('button', { name: 'Apply discount or voucher' })).toBeTruthy();
-    expect(screen.getByText('Retail Promo')).toBeTruthy();
-    expect(screen.getByText('- PHP 39.90')).toBeTruthy();
+    expect(screen.getByText('Retail Promo').parentElement.style.color).toBe('rgb(21, 128, 61)');
+    expect(screen.getByText('- PHP 39.90').parentElement.style.color).toBe('rgb(21, 128, 61)');
     expect(screen.getByText('Delivery Fee').compareDocumentPosition(screen.getByText('Retail Promo')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getAllByText('PHP 403.09').length).toBeGreaterThan(0);
   });
@@ -58,8 +58,8 @@ describe('retail checkout order summary', () => {
     );
 
     expect(screen.getByRole('button', { name: 'Apply discount or voucher' })).toBeTruthy();
-    expect(screen.getByText('Retail Promo')).toBeTruthy();
-    expect(screen.getByText('- PHP 39.90')).toBeTruthy();
+    expect(screen.getByText('Retail Promo').parentElement.style.color).toBe('rgb(21, 128, 61)');
+    expect(screen.getByText('- PHP 39.90').parentElement.style.color).toBe('rgb(21, 128, 61)');
     expect(screen.getByText('Delivery Fee').compareDocumentPosition(screen.getByText('Retail Promo')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.getAllByText('PHP 403.09').length).toBeGreaterThan(0);
   });

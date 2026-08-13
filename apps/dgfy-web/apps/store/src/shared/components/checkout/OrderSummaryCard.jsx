@@ -50,7 +50,7 @@ export function OrderSummaryCard({
       {totalsRows.length > 0 && (
         <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 12, display: 'grid', gap: 10 }}>
           {totalsRows.map((row) => (
-            <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: row.emphasis ? 16 : 13, color: '#334155', paddingTop: row.borderTop ? 8 : 0, borderTop: row.borderTop ? '1px solid #e2e8f0' : 'none' }}>
+            <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', gap: 10, fontSize: row.emphasis ? 16 : 13, color: row.color || '#334155', paddingTop: row.borderTop ? 8 : 0, borderTop: row.borderTop ? '1px solid #e2e8f0' : 'none' }}>
               <span style={{ fontWeight: row.emphasis ? 700 : 400, fontFamily: row.emphasis ? displayFont : bodyFont }}>{row.label}</span>
               <strong style={{ fontWeight: row.emphasis ? 800 : 700, fontFamily: row.emphasis ? displayFont : bodyFont }}>{row.value}</strong>
             </div>

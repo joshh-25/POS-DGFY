@@ -60,7 +60,7 @@ export function RetailOrderSummaryContent({
   const totalsRows = [
     { label: 'Subtotal', value: money(totals.subtotal_amount) },
     { label: 'Delivery Fee', value: money(totals.delivery_fee) },
-    ...(promoDiscountSummaryRow ? [promoDiscountSummaryRow] : []),
+    ...(promoDiscountSummaryRow ? [{ ...promoDiscountSummaryRow, color: '#15803d' }] : []),
     { label: 'Fees & Taxes', value: money(Number(totals.service_fee_amount || 0) + Number(totals.vat_amount || 0)) },
     { label: 'Total', value: money(totals.total_amount), emphasis: true, borderTop: true }
   ];

@@ -94,7 +94,7 @@ export function RetailOrderMobileSummaryPanel({
               <div style={{ display: 'grid', gap: 10, borderTop: '1px solid #e2e8f0', paddingTop: 14 }}>
                 <SummaryRow label="Subtotal" value={money(totals.subtotal_amount)} />
                 <SummaryRow label="Delivery Fee" value={money(totals.delivery_fee)} />
-                {promoDiscountSummaryRow ? <SummaryRow label={promoDiscountSummaryRow.label} value={promoDiscountSummaryRow.value} /> : null}
+                {promoDiscountSummaryRow ? <SummaryRow label={promoDiscountSummaryRow.label} value={promoDiscountSummaryRow.value} color="#15803d" /> : null}
                 <SummaryRow label="Fees & Taxes" value={money(Number(totals.service_fee_amount || 0) + Number(totals.vat_amount || 0))} />
                 <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, paddingTop: 10, borderTop: '1px solid #e2e8f0', fontSize: 18, color: '#0f172a' }}>
                   <span style={{ fontWeight: 700 }}>Total</span>
@@ -142,8 +142,8 @@ export function RetailOrderMobileSummaryPanel({
   );
 }
 
-function SummaryRow({ label, value }) {
-  return <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, color: '#334155' }}><span>{label}</span><strong>{value}</strong></div>;
+function SummaryRow({ label, value, color = '#334155' }) {
+  return <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, fontSize: 14, color }}><span>{label}</span><strong>{value}</strong></div>;
 }
 
 const secondaryButtonStyle = {
