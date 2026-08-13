@@ -1,13 +1,23 @@
 name: PR Quality Checks
 
+# No longer wired into pr-checks.yml (removed 2026-08-14, #416 -- it was
+# permanently `if: false` there since #338/#345 found its first full run
+# took ~14min and it isn't path-filtered, so it would run unconditionally on
+# every PR). Kept runnable by hand from the Actions tab via workflow_dispatch
+# for whenever a full lint+test pass against a branch is actually wanted,
+# without paying for it on every PR. `workflow_call` stays too, in case a
+# future caller wants it path-gated or otherwise conditional again -- see
+# #345's reframe for the current thinking on when/whether that should happen.
 on:
   workflow_call:
-    inputs:
+    inputs: &runner_labels_input
       runner_labels_json:
         description: JSON array passed to runs-on for quality jobs
         required: false
         type: string
         default: '["self-hosted"]'
+  workflow_dispatch:
+    inputs: *runner_labels_input
 
 jobs:
   dgfy-api-quality:
@@ -272,7 +282,13 @@ jobs:
       - name: Run compatibility-seam contract gate
         run: npm run check:compat-seams
 
+      # PR-context only: github.event.pull_request.{base,head}.sha don't
+      # exist under a plain workflow_dispatch run (this workflow is no
+      # longer called with pull_request context by default -- see the on:
+      # block comment above), so skip cleanly there instead of diffing two
+      # empty SHAs.
       - name: Check changed-file whitespace
+        if: github.event_name == 'pull_request'
         shell: bash
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}

@@ -1,8 +1,17 @@
 name: PR Android Build Check
 
+# No longer wired into pr-checks.yml (removed 2026-08-14, #416 -- it was
+# permanently `if: false` there since the self-hosted cutover, because
+# vm-sieitzstaging has no Android SDK installed and this workflow's default
+# runner is billing-blocked ubuntu-latest). Kept runnable by hand from the
+# Actions tab via workflow_dispatch for whenever an Android build-check is
+# actually wanted against a branch, without paying for it (or failing it) on
+# every PR. `workflow_call` stays too, in case a future caller wants it
+# path-gated or otherwise conditional again -- e.g. once an Android SDK is
+# set up on a self-hosted runner.
 on:
   workflow_call:
-    inputs:
+    inputs: &runner_labels_input
       runner_labels_json:
         description: JSON array passed to runs-on for this job
         required: false
@@ -10,6 +19,8 @@ on:
         # Not self-hosted like the other reusables: needs a preinstalled
         # Android SDK, which the online self-hosted runner doesn't have.
         default: '["ubuntu-latest"]'
+  workflow_dispatch:
+    inputs: *runner_labels_input
 
 jobs:
   build-check:
