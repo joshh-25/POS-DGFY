@@ -44,9 +44,14 @@ Buttons vary by role, permission, business mode, active shift, terminal pairing,
 
 ### Orders
 
-**Purpose:** Displays incoming online/storefront orders. Shown only when the incoming queue is available.
+**Purpose:** Displays incoming online/storefront orders and their operational
+history. Shown only for eligible retail, F&B, and counter workflows when the
+incoming queue is available. Services uses its booking workspace and does not
+show or poll this queue.
 
 - **Orders (count)** — opens the incoming order queue. The count is the current number of incoming orders.
+- **Active Queue** — shows orders that still need fulfillment action (`placed`, `confirmed`, `preparing`, `ready_for_pickup`, or `out_for_delivery`).
+- **Order History** — shows rejected, cancelled, and completed-but-unpaid online orders that are intentionally excluded from Sales History.
 
 ### Shift
 
@@ -138,12 +143,16 @@ Buttons vary by role, permission, business mode, active shift, terminal pairing,
 
 ## History workflow
 
-**Purpose:** Searches and audits recorded standalone POS transactions.
+**Purpose:** Searches and audits financially recognized standalone POS sales;
+voided transactions remain available through the dedicated voided view, while
+local pending-sync transactions stay visible from the terminal queue.
 
 - **Sync Pending Transactions** — retries local/offline transactions waiting to reach the backend.
 - **Reset** — clears all history filters.
 - **Apply Filters** — reloads history using date, location, cashier, store/source, and search filters.
-- **View Receipt** — opens the selected transaction receipt.
+- **View Receipt** — opens the selected transaction receipt; receipt printing
+  remains a separate action inside the receipt view and is not a sales-list
+  status.
 - **Row** — opens/selects the row in compact layouts.
 - **First (`«`)** — moves to the first history page.
 - **Previous (`‹`)** — moves to the previous page.
@@ -205,9 +214,15 @@ Buttons vary by role, permission, business mode, active shift, terminal pairing,
 
 **Purpose:** Accepts, rejects, and advances online orders.
 
+- **Active Queue** — switches to active fulfillment orders.
+- **Order History** — switches to the read-only operational history of rejected, cancelled, and unpaid online orders.
 - **Refresh Orders** — reloads incoming orders.
+- **Refresh History** — reloads Order History using the selected filters.
+- **Apply Filters** — searches Order History by invoice number, fulfillment status, and payment status.
+- **Previous/Next order history page** — moves through the paginated exception-order list while preserving the active filters.
 - **Accept/Reject/status action** — changes the selected order to the chosen valid status.
 - **Open Receipt** — opens the order receipt.
+- **View Order** — opens the selected historical order details without changing its status or payment state.
 - **Open History** — opens transaction history for the order.
 - **Order row/card** — selects or expands the order where supported.
 
@@ -341,7 +356,8 @@ Buttons vary by role, permission, business mode, active shift, terminal pairing,
 1. **Start work:** Unlock Terminal → Shift → enter Opening Float → Open Shift.
 2. **Make a sale:** Sell → search/scan/select POS Item → adjust Current Sale → optional Apply Discount → Checkout → select payment → Complete Sale → Print Receipt/Open Drawer.
 3. **Review a sale:** History → set filters → Apply Filters → View Receipt → Print Receipt.
-4. **Handle online order:** Orders → Refresh → select order → Accept/Reject/advance status → Open Receipt or History.
+4. **Handle online order:** Orders → Active Queue → Refresh → select order → Accept/Reject/advance status → Open Receipt or History.
+5. **Review an unpaid or rejected online order:** Orders → Order History → set filters → Apply Filters → View Order.
 5. **Adjust drawer cash:** Shift → Cash Drawer → select event type → enter amount/reason → Record Cash Event.
 6. **End work:** Shift → Close Shift → enter closing cash/note → Close Shift → Confirm Close Shift.
 7. **Configure terminal:** Settings → POS Setup → Add Terminal → Save and Pair → configure discounts/receipt/PIN → Save POS Settings.
@@ -352,6 +368,7 @@ Buttons vary by role, permission, business mode, active shift, terminal pairing,
 - Admin shift bypass allows browsing but does not make checkout valid.
 - Cashiers do not see the Report module and cannot use privileged item/settings actions.
 - POS view, transact, close-day, cash-drawer, location-switch, and settings permissions independently control actions.
-- Incoming Orders appears only when the tenant/storefront mode supports the queue.
+- Incoming Orders appears only when the tenant/storefront mode supports the
+  queue. It is intentionally absent in Services, where appointments and
+  walk-ins use the Services booking lifecycle.
 - The standalone `/sales` route and **Open in Sales Report** intentionally hand off to SKUpervisor; no SKUpervisor functions are included here.
-

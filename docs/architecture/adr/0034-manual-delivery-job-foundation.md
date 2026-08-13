@@ -56,3 +56,12 @@ authority owns the delivery-person registry. Provider-owned jobs remain
 read-only in POS. The detailed lifecycle, completion, payment, failure, and
 acceptance contract is maintained in
 `docs/features/POS_MANUAL_DELIVERY_WORKFLOW.md`.
+
+### 2026-08-12 — Third-party courier name assignment
+
+Manual POS delivery assignment may use either an active registered
+`delivery_personnel_id` or a trimmed first-class `delivery_personnel_name` for
+third-party couriers that are not registered in the tenant POS. The assignment
+still requires the authenticated cashier, open shift, location scope, audit
+record, idempotency key, and the guarded delivery lifecycle. The typed name is
+stored on `delivery_jobs` and is not placed only in `provider_payload`.
