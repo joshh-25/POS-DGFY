@@ -113,8 +113,8 @@ describe('POS Services operations workspace', () => {
     });
 
     render(<PosServicesOperationsWorkspace permissions={allPermissions} isOnline />);
-    await waitFor(() => expect(screen.getByText('SVC-SOONER')).toBeTruthy());
     fireEvent.click(screen.getByRole('tab', { name: 'Calendar' }));
+    await waitFor(() => expect(screen.getByText('SVC-SOONER')).toBeTruthy());
 
     const statusControls = screen.getAllByRole('combobox', { name: /^Status for/ });
     expect(statusControls.map((control) => control.getAttribute('aria-label'))).toEqual([

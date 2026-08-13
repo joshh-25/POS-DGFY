@@ -49,4 +49,5 @@ tenant, location, terminal, cashier, or fiscal-document boundaries.
 2. `git diff --check` reported no whitespace errors before staging.
 3. The tenant schema registry coverage pre-commit check passed for all seven new migrations.
 4. Repository pre-commit compliance and architecture guardrails must pass for the committed change set.
-5. Runtime and integration tests are included with the implementation, but no unexecuted test suite is represented here as passed.
+5. Post-rebase frontend validation passed 321 test files and 1,807 tests, including the time-independent service Calendar lifecycle test.
+6. Final reconciliation also covers the whitespace-only cleanup in `posCurrentSaleActions.behavior.test.jsx` and `PosCheckoutDetailsSlot.jsx`; neither cleanup changes runtime behavior.

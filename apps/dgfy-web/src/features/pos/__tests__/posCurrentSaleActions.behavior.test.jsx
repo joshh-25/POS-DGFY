@@ -102,4 +102,3 @@ describe('PosCurrentSaleActions', () => {
     expect(screen.getByText('Checkout (0 Items)')).toBeDefined();
   });
 });
-
