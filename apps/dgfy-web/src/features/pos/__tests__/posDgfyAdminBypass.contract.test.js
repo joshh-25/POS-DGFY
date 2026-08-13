@@ -36,7 +36,8 @@ describe('DGFY POS administrator bypass contract', () => {
 
   it('restores permission-backed bypass on refresh but not across manual lock', () => {
     expect(terminalPageSource).toContain('const [dgfyAdminBypassActive, setDgfyAdminBypassActive] = useState(false);');
-    expect(terminalPageSource).toContain("parseUserPermissions(user).includes('settings:view')");
+    expect(terminalPageSource).toContain('const userPermissions = parseUserPermissions(user);');
+    expect(terminalPageSource).toContain("userPermissions.includes('settings:view')");
     expect(terminalPageSource).toContain('setDgfyAdminBypassActive(userCanAccessSettings && !storedLockActive);');
     expect(terminalPageSource).toContain('&& !userCanAccessSettings');
     expect(terminalPageSource).toContain('const adminLock = terminalUser?.is_master_admin === true || dgfyAdminBypassActive;');

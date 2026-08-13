@@ -1,4 +1,4 @@
-import { jest } from '@jest/globals';
+import { beforeAll, beforeEach, describe, expect, it, jest } from '@jest/globals';
 
 const mockGetPosDeviceStatusUseCase = jest.fn();
 
@@ -46,6 +46,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     forceCloseStaleTerminalShiftUseCase: jest.fn(),
     getTerminalTodayDashboardUseCase: jest.fn(),
     listIncomingOnlineOrdersUseCase: jest.fn(),
+    listOnlineOrderHistoryUseCase: jest.fn(),
     listActiveDeliveryPersonnelUseCase: jest.fn(),
     getAdminLocationMonitorUseCase: jest.fn(),
     collectCashPickupOrderUseCase: jest.fn(),
@@ -59,6 +60,22 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     printPosZReadingUseCase: jest.fn(),
     openPosDrawerUseCase: jest.fn(),
     getPairedPosTerminalUseCase: jest.fn(),
+    createPosParkedSaleUseCase: jest.fn(),
+    listPosParkedSalesUseCase: jest.fn(),
+    claimPosParkedSaleUseCase: jest.fn(),
+    reparkPosParkedSaleUseCase: jest.fn(),
+    cancelPosParkedSaleUseCase: jest.fn(),
+    createPosPaymentSessionUseCase: jest.fn(),
+    getPosPaymentSessionUseCase: jest.fn(),
+    getActivePosPaymentSessionUseCase: jest.fn(),
+    addPosPaymentAllocationUseCase: jest.fn(),
+    cancelPosPaymentAllocationUseCase: jest.fn(),
+    confirmPosPaymentAllocationUseCase: jest.fn(),
+    reconcilePosPaymentAllocationUseCase: jest.fn(),
+    cancelPosPaymentSessionUseCase: jest.fn(),
+    completePosPaymentSessionUseCase: jest.fn(),
+    getMerchantTenderReconciliationUseCase: jest.fn(),
+    reviewMerchantTenderReconciliationUseCase: jest.fn(),
     posTerminalPairingMaxAgeMs: 300000
 }));
 

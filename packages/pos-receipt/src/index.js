@@ -20,6 +20,15 @@ const documentInfo = (transaction, receiptContract) => {
   const context = String(receiptContract?.document_context || transaction?.document_context || (type === 'fiscal_invoice' ? 'fiscal' : 'non_fiscal')).toLowerCase();
   return { fiscal: type === 'fiscal_invoice', training: context === 'training_test' };
 };
+const parsePaymentBreakdown = (value) => {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string') return [];
+  try { const parsed = JSON.parse(value); return Array.isArray(parsed) ? parsed : []; } catch { return []; }
+};
+const paymentBreakdownRows = (transaction) => parsePaymentBreakdown(transaction?.payment_breakdown)
+  .filter((entry) => Number(entry?.amount || 0) > 0)
+  .map((entry) => `<p><span>${escapeHtml(text(entry?.payment_label || entry?.payment_type, 'Payment'))}</span><span>${money(entry.amount)}</span></p>`)
+  .join('');
 
 export const normalizePaperWidth = (value) => value === '57mm' ? '57mm' : '80mm';
 
@@ -27,7 +36,7 @@ export const normalizePaperWidth = (value) => value === '57mm' ? '57mm' : '80mm'
  * Escaped, dependency-free HTML shared by browser POS and Expo DOM receipt preview.
  * Inputs are intentionally plain data so no platform imports leak across runtimes.
  */
-export function renderPosReceiptHtml({ transaction, businessSettings = {}, receiptContract = null, paperWidth = '80mm' } = {}) {
+function renderPosReceiptHtmlBase({ transaction, businessSettings = {}, receiptContract = null, paperWidth = '80mm' } = {}) {
   if (!transaction) return '';
   const width = normalizePaperWidth(paperWidth);
   const { fiscal, training } = documentInfo(transaction, receiptContract);
@@ -64,7 +73,17 @@ export function renderPosReceiptHtml({ transaction, businessSettings = {}, recei
   </style><article class="dgfy-receipt" data-paper-width="${width}"><header class="head">${icon ? `<img class="logo" src="${escapeHtml(icon)}" alt="${escapeHtml(iconAlt)}">` : ''}${registered ? `<strong>${escapeHtml(registered.toUpperCase())}</strong>` : ''}${business && business.toLowerCase() !== 'dgfy' ? `<div>${escapeHtml(business.toUpperCase())}</div>` : ''}${businessSettings.pos_address ? `<div>${escapeHtml(businessSettings.pos_address)}</div>` : ''}<h3>${label}</h3>${!fiscal ? `<div class="notice ${training ? 'training' : ''}"><strong>NOT A FISCAL RECEIPT</strong><br>${training ? 'Training/Test mode only' : 'Non-fiscal document'}</div>` : fiscalHeaderRows}${fiscal ? `<div class="buyer"><strong>SOLD TO:</strong><p>Customer/Registered Name: ${escapeHtml(text(transaction.customer_name || transaction.buyer_name, '________________'))}</p><p>TIN: ${escapeHtml(text(transaction.buyer_tin, '________________'))}</p><p>Business Address: ${escapeHtml(text(transaction.buyer_address, '____________________'))}</p>${transaction.buyer_business_style ? `<p>Business Style: ${escapeHtml(transaction.buyer_business_style)}</p>` : ''}</div>` : ''}<div class="meta"><p><span>Receipt No.</span><span>${escapeHtml(text(transaction.invoice_number))}</span></p><p><span>Date/Time</span><span>${escapeHtml(dateTime(transaction.created_at))}</span></p><p><span>Terminal</span><span>${escapeHtml(text(transaction.terminal_id))}</span></p><p><span>Cashier</span><span>${escapeHtml(text(transaction.cashier?.username || transaction.acceptedByUser?.username))}</span></p></div></header><section>${lines.length ? `<div class="columns"><span>Item</span><span>Unit Price</span><span>Qty</span><span>Line</span></div>${itemRows}` : ''}</section><section class="summary"><p><strong>TOTAL SALES</strong><span>${money(transaction.subtotal_amount)}</span></p>${governedRows}${fiscalRows}<p><span>Discount${transaction.discount_label_snapshot ? ` (${escapeHtml(transaction.discount_label_snapshot)})` : ''}</span><span>${money(transaction.discount_amount)}</span></p><p><span>${escapeHtml(transaction.service_fee_label_snapshot || 'DGFY convenience fee')}${transaction.service_fee_method_snapshot ? ` (${escapeHtml(transaction.service_fee_method_snapshot)})` : ''}</span><span>${money(transaction.service_fee_amount)}</span></p>${Number(transaction.restaurant_service_charge_amount || 0) ? `<p><span>${escapeHtml(transaction.restaurant_service_charge_label_snapshot || 'Restaurant service charge')}</span><span>${money(transaction.restaurant_service_charge_amount)}</span></p>` : ''}${Number(transaction.delivery_fee || 0) ? `<p><span>Delivery Fee</span><span>${money(transaction.delivery_fee)}</span></p>` : ''}<p class="total"><span>TOTAL AMOUNT DUE</span><span>${money(transaction.total_amount)}</span></p></section><section class="payment"><p><span>Payment Method:</span><span>${escapeHtml(upper(transaction.payment_type))}</span></p><p><span>Payment Status:</span><span>${escapeHtml(upper(transaction.payment_status))}</span></p>${transaction.payment_reference ? `<p><span>Payment Reference:</span><span>${escapeHtml(transaction.payment_reference)}</span></p>` : ''}${transaction.payment_type === 'cash' ? `<p><span>Cash Received:</span><span>${money(transaction.cash_received)}</span></p><p><span>Change:</span><span>${money(transaction.change_amount)}</span></p>` : ''}${statutoryReceiptFields}</section><footer class="footer"><p><strong>${fiscal ? 'FISCAL RECEIPT' : 'NON-FISCAL RECEIPT'}</strong></p><p>${fiscal ? 'Includes tax breakdown and fiscal identifiers.' : 'This document is not an official tax receipt.'}</p>${businessSettings.pos_receipt_footer_message ? `<p>${escapeHtml(businessSettings.pos_receipt_footer_message)}</p>` : ''}<p>Thank you. Please come again.</p><p><strong>Powered by DGFY POS</strong></p></footer></article>`;
 }
 
-export function renderThermalReceiptText(input = {}) {
+export function renderPosReceiptHtml(input = {}) {
+  const html = renderPosReceiptHtmlBase(input);
+  const breakdown = paymentBreakdownRows(input?.transaction);
+  if (!breakdown || !html) return html;
+  return html.replace(
+    '</section><footer class="footer">',
+    `<p><strong>Payment Breakdown</strong><span></span></p>${breakdown}</section><footer class="footer">`
+  );
+}
+
+function renderThermalReceiptTextBase(input = {}) {
   const transaction = input.transaction || {};
   const width = normalizePaperWidth(input.paperWidth);
   const columns = width === '57mm' ? 32 : 42;
@@ -72,4 +91,16 @@ export function renderThermalReceiptText(input = {}) {
   const lines = Array.isArray(transaction.lines) ? transaction.lines : [];
   const pair = (label, value) => `${label}`.slice(0, columns - String(value).length - 1).padEnd(columns - String(value).length, ' ') + String(value);
   return [text(input.businessSettings?.pos_business_name, 'DGFY POS'), rule, pair('Receipt No.', text(transaction.invoice_number)), pair('Date/Time', dateTime(transaction.created_at)), rule, ...lines.flatMap((line) => [text(line.item_name_snapshot || line.item?.name || line.item_snapshot?.name || line.name, 'Item'), pair(`${formatQuantity(quantity(line))} x ${money(unitPrice(line))}`, money(lineTotal(line)))]), rule, pair('TOTAL AMOUNT DUE', money(transaction.total_amount)), pair('Payment', upper(transaction.payment_type)), rule, 'Thank you. Please come again.'].join('\n');
+}
+
+export function renderThermalReceiptText(input = {}) {
+  const rendered = renderThermalReceiptTextBase(input);
+  const transaction = input.transaction || {};
+  const breakdown = parsePaymentBreakdown(transaction.payment_breakdown).filter((entry) => Number(entry?.amount || 0) > 0);
+  if (!breakdown.length) return rendered;
+  const columns = normalizePaperWidth(input.paperWidth) === '57mm' ? 32 : 42;
+  const pair = (label, value) => `${label}`.slice(0, columns - String(value).length - 1).padEnd(columns - String(value).length, ' ') + String(value);
+  const paymentLine = pair('Payment', upper(transaction.payment_type));
+  const rows = breakdown.map((entry) => `${entry.payment_label || upper(entry.payment_type)} ${money(entry.amount)}`).join('\n');
+  return rendered.replace(paymentLine, `${paymentLine}\n${rows}`);
 }

@@ -79,6 +79,12 @@ describe('orderFulfillmentUi queue action mapping', () => {
       assigned_shift_id: 11,
       assigned_at: '2026-08-08T08:00:00.000Z'
     })).toBe(true);
+    expect(hasCompleteDeliveryAssignment({
+      delivery_personnel_name: 'Third Party Courier',
+      assigned_by: 7,
+      assigned_shift_id: 11,
+      assigned_at: '2026-08-08T08:00:00.000Z'
+    })).toBe(true);
     expect(hasCompleteDeliveryAssignment({ delivery_personnel_id: 4 })).toBe(false);
   });
 });

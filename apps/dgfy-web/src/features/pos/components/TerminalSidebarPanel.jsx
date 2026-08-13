@@ -625,11 +625,6 @@ export default function TerminalSidebarPanel({
                       Payment: <span className="font-semibold text-slate-900">{PAYMENT_TYPE_LABELS[order.payment_type] || order.payment_type || '-'}</span>
                     </p>
                     <p className="text-[11px] text-slate-600">
-                      Receipt: <span className={`font-semibold ${order.receipt_print_status === 'printed' ? 'text-emerald-700' : order.receipt_print_status === 'failed' ? 'text-rose-700' : 'text-amber-700'}`}>
-                        {order.receipt_print_status === 'printed' ? 'Printed' : order.receipt_print_status === 'failed' ? 'Print failed' : 'Not printed'}
-                      </span>
-                    </p>
-                    <p className="text-[11px] text-slate-600">
                       Mode: <span className="font-semibold text-slate-900">{ORDER_METHOD_LABELS[order.order_method] || order.order_method || '-'}</span>
                     </p>
                     <p className="text-[11px] text-slate-600">

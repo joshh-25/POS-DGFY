@@ -26,6 +26,22 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         where: (locationId) => ({ location_id: locationId })
     },
     {
+        key: 'fnbModifierGroupLocationAvailability',
+        label: 'F&B modifier group location availability rows',
+        modelName: 'FnbModifierGroupLocationAvailability',
+        association: 'FnbModifierGroupLocationAvailability.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        key: 'fnbModifierOptionLocationAvailability',
+        label: 'F&B modifier option location availability rows',
+        modelName: 'FnbModifierOptionLocationAvailability',
+        association: 'FnbModifierOptionLocationAvailability.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
         key: 'storefrontLocationItemOverrides',
         label: 'storefront branch item overrides',
         modelName: 'StorefrontLocationItemOverride',
@@ -76,6 +92,30 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         label: 'POS transactions',
         modelName: 'PosTransaction',
         association: 'PosTransaction.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        key: 'posParkedSales',
+        label: 'POS parked sales',
+        modelName: 'PosParkedSale',
+        association: 'PosParkedSale.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        key: 'posPaymentSessions',
+        label: 'POS split-payment sessions',
+        modelName: 'PosPaymentSession',
+        association: 'PosPaymentSession.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        key: 'posPaymentAllocations',
+        label: 'POS split-payment allocations',
+        modelName: 'PosPaymentAllocation',
+        association: 'PosPaymentAllocation.location',
         foreignKeys: ['location_id'],
         where: (locationId) => ({ location_id: locationId })
     },

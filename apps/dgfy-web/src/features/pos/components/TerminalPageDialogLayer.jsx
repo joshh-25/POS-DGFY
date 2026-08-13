@@ -38,6 +38,7 @@ export default function TerminalPageDialogLayer({ model }) {
     cashierResumeForm,
     cashierResumeUnlock,
     cashierUnlockSession,
+    closeShiftBlocker,
     closeShiftConfirmOpen,
     closedShiftReport,
     closedShiftReportAutoPrint,
@@ -751,9 +752,23 @@ export default function TerminalPageDialogLayer({ model }) {
                 Are you sure you want to close this shift?
               </DialogDescription>
             </DialogHeader>
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-950">
-              Confirm the cash count and note before closing. Offline or retryable failures will still be queued for replay.
-            </div>
+            {closeShiftBlocker ? (
+              <div className="rounded-lg border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold leading-6 text-rose-900" role="alert" data-testid="pos-close-shift-blocker">
+                <p>Resolve the following before closing this shift:</p>
+                <ul className="mt-1 list-disc space-y-1 pl-5">
+                  {Number(closeShiftBlocker.activeParkedSaleCount || 0) > 0 && (
+                    <li>{Number(closeShiftBlocker.activeParkedSaleCount)} active parked sale{Number(closeShiftBlocker.activeParkedSaleCount) === 1 ? '' : 's'} on the server. Resume or cancel each one.</li>
+                  )}
+                  {Number(closeShiftBlocker.pendingParkedSaleCount || 0) > 0 && (
+                    <li>{Number(closeShiftBlocker.pendingParkedSaleCount)} offline parked sale{Number(closeShiftBlocker.pendingParkedSaleCount) === 1 ? '' : 's'} waiting for Sync. Reconnect and sync before closing.</li>
+                  )}
+                </ul>
+              </div>
+            ) : (
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-semibold leading-6 text-amber-950">
+                Confirm the cash count and note before closing. Offline or retryable failures will still be queued for replay.
+              </div>
+            )}
             <DialogFooter className="gap-2 sm:gap-2">
               <Button
                 type="button"

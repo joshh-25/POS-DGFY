@@ -66,6 +66,7 @@ export default function TerminalWorkspaceSidebar({
   canViewPos = false,
   canManageCategories = false,
   showServiceOperations = false,
+  showIncomingQueue = true,
   canAccessServiceOperations = false,
   allowAdminNavigationWithoutShift = false,
   canAdjustCashDrawer = false,
@@ -89,7 +90,7 @@ export default function TerminalWorkspaceSidebar({
     : 0;
   const normalizedRole = String(terminalUser?.role || '').trim().toLowerCase();
   const isCashierRole = normalizedRole === 'cashier';
-  const showIncomingQueue = !isMsmeMode;
+  const shouldShowIncomingQueue = showIncomingQueue && !isMsmeMode;
   const hasActiveShift = Boolean(shiftState?.shift);
   const navigationShiftReady = hasActiveShift || allowAdminNavigationWithoutShift;
   const canAccessItemsWorkspace = canViewPos || canManageCategories;
@@ -272,7 +273,7 @@ export default function TerminalWorkspaceSidebar({
               testId="pos-nav-services"
             />
           )}
-          {showIncomingQueue && (
+          {shouldShowIncomingQueue && (
             <NavButton
               label={`Orders (${incomingCount})`}
               icon={Truck}

@@ -1139,8 +1139,12 @@ const assertDeliveryCompletionReadiness = (order) => {
 
     const deliveryProvider = String(deliveryJob.provider || 'manual').trim().toLowerCase();
     if (deliveryProvider === 'manual') {
-        const hasAssignment = Boolean(
+        const hasPersonnel = Boolean(
             parsePositiveInt(deliveryJob.delivery_personnel_id)
+            || String(deliveryJob.delivery_personnel_name || '').trim()
+        );
+        const hasAssignment = Boolean(
+            hasPersonnel
             && parsePositiveInt(deliveryJob.assigned_by)
             && parsePositiveInt(deliveryJob.assigned_shift_id)
             && deliveryJob.assigned_at
@@ -2371,6 +2375,7 @@ export const buildCheckoutPosUseCase = ({
     inventoryCommandService,
     employeeCreditService,
     calculateServiceQuoteUseCase = null,
+    completeClaimedPosParkedSaleUseCase = null,
     resolveIdentityStatus = resolvePosOperatorIdentityStatus,
     resolveLocationScope = resolvePosOperationalLocationScope
 }) => {
@@ -2382,7 +2387,14 @@ export const buildCheckoutPosUseCase = ({
     // properly-wired port does for a tenant that has delegated inventory
     // authority to an external system.
     const stockCommands = inventoryCommandService;
-    return async ({ payload, userId, user }) => {
+    return async ({
+        payload,
+        userId,
+        user,
+        transaction: providedTransaction = null,
+        beforeCommit = null,
+        quoteOnly = false
+    }) => {
         const normalizedUserId = parsePositiveInt(userId);
         if (!normalizedUserId) {
             return fail(new DomainError(
@@ -2437,6 +2449,14 @@ export const buildCheckoutPosUseCase = ({
         }
 
         const requestedTerminalId = sanitizeTerminalId(payload.terminal_id);
+        const parkedSaleId = payload.parked_sale_id == null ? null : parsePositiveInt(payload.parked_sale_id);
+        if (payload.parked_sale_id != null && !parkedSaleId) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'parked_sale_id must be a positive integer when provided',
+                { statusCode: 422 }
+            ));
+        }
         const fnbCheckId = parsePositiveInt(payload.fnb_check_id || payload.check_id);
         const fnbTableId = parsePositiveInt(payload.fnb_table_id || payload.table_id);
         const fnbGuestCount = parsePositiveInt(payload.fnb_guest_count || payload.guest_count);
@@ -2461,6 +2481,7 @@ export const buildCheckoutPosUseCase = ({
         const normalizedRequestPayload = {
             terminal_id: requestedTerminalId || null,
             location_id: requestedLocationId,
+            ...(parkedSaleId ? { parked_sale_id: parkedSaleId } : {}),
             order_method: normalizedOrderMethod,
             payment_type: payload.payment_type || 'cash',
             ...(String(payload.payment_type || 'cash').trim().toLowerCase() === 'employee_credit'
@@ -2542,8 +2563,9 @@ export const buildCheckoutPosUseCase = ({
                 .sort((a, b) => a.item_id - b.item_id)
         };
 
+        const ownsTransaction = !providedTransaction;
         const sequelize = dbStore.getStore()?.sequelize || dbStore.get('sequelize');
-        const transaction = await sequelize.transaction();
+        const transaction = providedTransaction || await sequelize.transaction();
 
         try {
             const tenantId = String(dbStore.getStore()?.tenantId || '').trim();
@@ -2596,6 +2618,31 @@ export const buildCheckoutPosUseCase = ({
                     statusCode: 422
                 });
             }
+            const runCheckoutBeforeCommit = async ({ transactionId, idempotentReplay }) => {
+                if (parkedSaleId) {
+                    if (typeof completeClaimedPosParkedSaleUseCase !== 'function') {
+                        throw new DomainError(
+                            DomainErrorCode.CONFLICT,
+                            'Parked-sale checkout completion is unavailable.',
+                            { statusCode: 503, details: { reason_code: 'PARKED_SALE_COMPLETION_UNAVAILABLE' } }
+                        );
+                    }
+                    await completeClaimedPosParkedSaleUseCase({
+                        parkedSaleId,
+                        payload: {
+                            shift_id: payload.shift_id,
+                            terminal_id: normalizedTerminalId,
+                            location_id: enforcedCheckoutLocationId
+                        },
+                        user,
+                        transactionId,
+                        transaction
+                    });
+                }
+                if (typeof beforeCommit === 'function') {
+                    await beforeCommit({ transaction, transactionId, idempotentReplay });
+                }
+            };
             const requestHash = hashPayload({
                 ...normalizedRequestPayload,
                 terminal_id: normalizedTerminalId || null,
@@ -2684,7 +2731,11 @@ export const buildCheckoutPosUseCase = ({
                     );
                 }
 
-                await transaction.commit();
+                await runCheckoutBeforeCommit({
+                    transactionId: existing.pos_transaction_id,
+                    idempotentReplay: true
+                });
+                if (ownsTransaction) await transaction.commit();
                 const replayDocumentType = String(existing.document_type || '').trim().toLowerCase() === 'fiscal_invoice'
                     ? 'fiscal_invoice'
                     : 'non_fiscal_slip';
@@ -3048,7 +3099,26 @@ export const buildCheckoutPosUseCase = ({
             });
             const restaurantServiceChargeAmount = round4(restaurantServiceChargeResolution.restaurantServiceChargeAmount);
             const totalAmount = round4(netItemsTotal + serviceFeeAmount + restaurantServiceChargeAmount);
+
+            if (quoteOnly) {
+                if (ownsTransaction) await transaction.commit();
+                return ok({
+                    quote: {
+                        subtotal_amount: subtotalAmount,
+                        discount_amount: discountAmount,
+                        service_fee_amount: serviceFeeAmount,
+                        restaurant_service_charge_amount: restaurantServiceChargeAmount,
+                        total_amount: totalAmount
+                    }
+                });
+            }
+
             const normalizedPaymentType = String(payload.payment_type || 'cash').trim().toLowerCase();
+            const paymentBreakdown = normalizePosPaymentBreakdown(
+                String(payload.payment_session_reference || '').trim() && Array.isArray(payload.payment_breakdown)
+                    ? payload.payment_breakdown
+                    : [{ payment_type: normalizedPaymentType, count: 1, amount: totalAmount }]
+            );
             let preparedEmployeeCreditDebit = null;
             if (normalizedPaymentType === 'employee_credit') {
                 if (!employeeCreditService) {
@@ -3203,6 +3273,10 @@ export const buildCheckoutPosUseCase = ({
                     payment_collected_by: preparedEmployeeCreditDebit ? normalizedUserId : null,
                     payment_collected_shift_id: preparedEmployeeCreditDebit ? (normalizedShiftId || null) : null,
                     payment_collected_terminal_id: preparedEmployeeCreditDebit ? (normalizedTerminalId || null) : null,
+                    payment_reference: String(payload.payment_reference || '').trim() || null,
+                    payment_provider: String(payload.payment_provider || '').trim() || null,
+                    payment_session_reference: String(payload.payment_session_reference || '').trim() || null,
+                    payment_breakdown: paymentBreakdown,
                     cash_received: normalizedPaymentType === 'cash' && payload.cash_received != null
                         ? round4(payload.cash_received)
                         : null,
@@ -3468,7 +3542,11 @@ export const buildCheckoutPosUseCase = ({
                 { transaction }
             );
 
-            await transaction.commit();
+            await runCheckoutBeforeCommit({
+                transactionId: posTransactionId,
+                idempotentReplay: false
+            });
+            if (ownsTransaction) await transaction.commit();
 
             // Best-effort, post-commit: the enrollment was already validated pre-commit above, so
             // this only writes bookkeeping (attribution + earned commission) and must never fail
@@ -3499,7 +3577,7 @@ export const buildCheckoutPosUseCase = ({
                 transaction: toSerializable(created)
             });
         } catch (error) {
-            if (!transaction.finished) {
+            if (ownsTransaction && !transaction.finished) {
                 await transaction.rollback();
             }
             return fail(mapPosUseCaseError(error, 'Failed to complete POS checkout'));
@@ -6441,6 +6519,55 @@ export const buildRecordCashDrawerEventUseCase = ({ posRepository }) => {
     };
 };
 
+const assertNoUnresolvedParkedSalesForShift = async ({ posRepository, shiftId, transaction }) => {
+    const activeParkedSaleCount = await posRepository.countActiveParkedSalesForShift(shiftId, {
+        transaction,
+        lock: true
+    });
+    if (Number(activeParkedSaleCount || 0) <= 0) return;
+
+    throw new DomainError(
+        DomainErrorCode.CONFLICT,
+        `Resolve ${activeParkedSaleCount} active parked sale${Number(activeParkedSaleCount) === 1 ? '' : 's'} before closing this shift.`,
+        {
+            statusCode: 409,
+            details: {
+                reason_code: 'POS_PARKED_SALES_UNRESOLVED',
+                active_parked_sale_count: Number(activeParkedSaleCount),
+                shift_id: Number(shiftId)
+            }
+        }
+    );
+};
+
+const assertNoUnresolvedFundedPaymentSessionsForShift = async ({ posRepository, shiftId, transaction }) => {
+    const sessions = await posRepository.listUnresolvedFundedPaymentSessionsForShift(shiftId, {
+        transaction,
+        lock: true
+    });
+    if (sessions.length === 0) return;
+
+    throw new DomainError(
+        DomainErrorCode.CONFLICT,
+        `Resolve ${sessions.length} funded split-payment session${sessions.length === 1 ? '' : 's'} before closing this shift.`,
+        {
+            statusCode: 409,
+            details: {
+                reason_code: 'POS_PAYMENT_SESSIONS_FUNDED_UNRESOLVED',
+                active_payment_session_count: sessions.length,
+                shift_id: Number(shiftId),
+                sessions: sessions.map((session) => ({
+                    pos_payment_session_id: Number(session.pos_payment_session_id),
+                    session_reference: session.session_reference,
+                    status: session.status,
+                    paid_amount: Number(session.paid_amount || 0),
+                    remaining_amount: Number(session.remaining_amount || 0)
+                }))
+            }
+        }
+    );
+};
+
 export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
     return async ({ shiftId, payload, user }) => {
         const normalizedUserId = parsePositiveInt(user?.user_id);
@@ -6515,6 +6642,17 @@ export const buildCloseTerminalShiftUseCase = ({ posRepository }) => {
                     terminal_action: 'close_shift'
                 },
                 user
+            });
+
+            await assertNoUnresolvedParkedSalesForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction
+            });
+            await assertNoUnresolvedFundedPaymentSessionsForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction
             });
 
             const shiftPayload = toSerializable(shift);
@@ -6708,6 +6846,17 @@ export const buildForceCloseStaleTerminalShiftUseCase = ({
                     terminal_action: 'force_close_stale_shift'
                 },
                 user
+            });
+
+            await assertNoUnresolvedParkedSalesForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction
+            });
+            await assertNoUnresolvedFundedPaymentSessionsForShift({
+                posRepository,
+                shiftId: normalizedShiftId,
+                transaction
             });
 
             const shiftPayload = toSerializable(shift);
@@ -6973,6 +7122,49 @@ export const buildListIncomingOnlineOrdersUseCase = ({
             });
         } catch (error) {
             return fail(mapPosUseCaseError(error, 'Failed to list incoming online orders'));
+        }
+    };
+};
+
+export const buildListOnlineOrderHistoryUseCase = ({
+    posRepository,
+    resolveLocationScope = resolvePosReadLocationScope
+}) => {
+    return async ({ query, user }) => {
+        if (query !== undefined && !isPlainObject(query)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'query must be an object',
+                { statusCode: 400 }
+            ));
+        }
+
+        const normalizedUserId = parsePositiveInt(user?.user_id);
+        if (!normalizedUserId) {
+            return fail(new DomainError(
+                DomainErrorCode.AUTHENTICATION_FAILED,
+                'Authenticated user is required to view online order history',
+                { statusCode: 401 }
+            ));
+        }
+
+        try {
+            const locationScope = await resolveLocationScope({
+                requestedLocationId: query?.location_id,
+                userId: normalizedUserId,
+                operationLabel: 'POS online order history read'
+            });
+            const history = await posRepository.listOnlineOrderHistory({
+                locationId: locationScope.location_id,
+                search: query?.search,
+                fulfillmentStatus: query?.fulfillment_status,
+                paymentStatus: query?.payment_status,
+                page: query?.page,
+                limit: query?.limit
+            });
+            return ok(history);
+        } catch (error) {
+            return fail(mapPosUseCaseError(error, 'Failed to list online order history'));
         }
     };
 };
@@ -7300,10 +7492,14 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
         const orderId = parsePositiveInt(posTransactionId);
         const cashierId = parsePositiveInt(user?.user_id);
         const deliveryPersonnelId = parsePositiveInt(payload?.delivery_personnel_id);
+        const deliveryPersonnelName = String(payload?.delivery_personnel_name || '').trim();
+        const hasRegisteredPersonnel = Boolean(deliveryPersonnelId);
+        const hasThirdPartyPersonnel = Boolean(deliveryPersonnelName);
         const idempotencyKey = normalizeOptionalIdempotencyKey(payload?.idempotency_key);
         const requestHash = hashPayload({
             pos_transaction_id: orderId,
-            delivery_personnel_id: deliveryPersonnelId
+            delivery_personnel_id: deliveryPersonnelId,
+            delivery_personnel_name: deliveryPersonnelName || null
         });
 
         if (!orderId) {
@@ -7320,10 +7516,17 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
                 { statusCode: 401 }
             ));
         }
-        if (!deliveryPersonnelId) {
+        if (deliveryPersonnelName.length > 255) {
             return fail(new DomainError(
                 DomainErrorCode.VALIDATION_FAILED,
-                'delivery_personnel_id must be a positive integer',
+                'delivery_personnel_name must be 255 characters or fewer',
+                { statusCode: 422 }
+            ));
+        }
+        if ((hasRegisteredPersonnel && hasThirdPartyPersonnel) || (!hasRegisteredPersonnel && !hasThirdPartyPersonnel)) {
+            return fail(new DomainError(
+                DomainErrorCode.VALIDATION_FAILED,
+                'Provide either a positive delivery_personnel_id or a delivery_personnel_name',
                 { statusCode: 422 }
             ));
         }
@@ -7440,26 +7643,39 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
                 transaction,
                 lock: true
             });
-            const personnel = await posRepository.findActiveDeliveryPersonnelById(deliveryPersonnelId, {
-                locationId: orderLocationId,
-                transaction,
-                lock: true
-            });
-            if (!personnel) {
-                throw new DomainError(
-                    DomainErrorCode.RESOURCE_NOT_FOUND,
-                    'Active delivery personnel was not found for the order location.',
-                    {
-                        statusCode: 404,
-                        details: { reason_code: 'DELIVERY_PERSONNEL_NOT_AVAILABLE' }
-                    }
-                );
+            let personnel = null;
+            if (hasRegisteredPersonnel) {
+                personnel = await posRepository.findActiveDeliveryPersonnelById(deliveryPersonnelId, {
+                    locationId: orderLocationId,
+                    transaction,
+                    lock: true
+                });
+                if (!personnel) {
+                    throw new DomainError(
+                        DomainErrorCode.RESOURCE_NOT_FOUND,
+                        'Active delivery personnel was not found for the order location.',
+                        {
+                            statusCode: 404,
+                            details: { reason_code: 'DELIVERY_PERSONNEL_NOT_AVAILABLE' }
+                        }
+                    );
+                }
+            } else {
+                personnel = {
+                    delivery_personnel_id: null,
+                    display_name: deliveryPersonnelName,
+                    phone: null,
+                    location_id: orderLocationId,
+                    is_active: true,
+                    is_third_party: true
+                };
             }
 
             const assignedAt = new Date();
             const nextStatus = 'assigned';
             const updatedDeliveryJob = await posRepository.assignDeliveryPersonnelToJob(orderId, {
-                delivery_personnel_id: personnel.delivery_personnel_id,
+                delivery_personnel_id: hasRegisteredPersonnel ? personnel.delivery_personnel_id : null,
+                delivery_personnel_name: hasThirdPartyPersonnel ? deliveryPersonnelName : null,
                 assigned_by: cashierId,
                 assigned_shift_id: activeShift.pos_terminal_shift_id,
                 assigned_at: assignedAt,
@@ -7491,7 +7707,9 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
                     previous_status: currentStatus,
                     status: nextStatus,
                     previous_delivery_personnel_id: parsePositiveInt(deliveryJob.delivery_personnel_id) || null,
-                    delivery_personnel_id: personnel.delivery_personnel_id,
+                    previous_delivery_personnel_name: String(deliveryJob.delivery_personnel_name || '').trim() || null,
+                    delivery_personnel_id: hasRegisteredPersonnel ? personnel.delivery_personnel_id : null,
+                    delivery_personnel_name: hasThirdPartyPersonnel ? deliveryPersonnelName : null,
                     assigned_by: cashierId,
                     assigned_shift_id: activeShift.pos_terminal_shift_id,
                     location_id: orderLocationId,
@@ -7510,6 +7728,7 @@ export const buildAssignDeliveryPersonnelUseCase = ({ posRepository }) => {
                 delivery_job: toSerializable(updatedDeliveryJob),
                 assignment: {
                     delivery_personnel: toSerializable(personnel),
+                    delivery_personnel_name: hasThirdPartyPersonnel ? deliveryPersonnelName : null,
                     assigned_by: cashierId,
                     assigned_shift_id: activeShift.pos_terminal_shift_id,
                     assigned_at: assignedAt.toISOString(),
@@ -7679,8 +7898,12 @@ export const buildUpdateDeliveryJobStatusUseCase = ({ posRepository }) => {
                 lock: true
             });
             const currentStatus = String(deliveryJob.status || '').trim().toLowerCase();
-            const hasAssignment = Boolean(
+            const hasPersonnel = Boolean(
                 parsePositiveInt(deliveryJob.delivery_personnel_id)
+                || String(deliveryJob.delivery_personnel_name || '').trim()
+            );
+            const hasAssignment = Boolean(
+                hasPersonnel
                 && parsePositiveInt(deliveryJob.assigned_by)
                 && parsePositiveInt(deliveryJob.assigned_shift_id)
                 && deliveryJob.assigned_at

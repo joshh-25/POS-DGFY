@@ -51,6 +51,7 @@ export default function TerminalPageLayout({
     canDeleteItems = false,
     canManageCategories = false,
     canAdminBypassShiftPrompt = false,
+    showIncomingQueue = true,
     canOpenShift = false,
     itemsStockFilterPreset = '',
     onItemsStockFilterPresetApplied = () => {},
@@ -70,6 +71,7 @@ export default function TerminalPageLayout({
     isMsmeMode = false,
     shiftState,
     incomingOrdersState,
+    orderHistoryState = { loading: false, orders: [], pagination: null },
     adminLocationMonitorState = { loading: false, orders: [], terminalShifts: [], errorMessage: '' },
     adminTerminalSwitching = false,
     onSelectAdminTerminal = async () => false,
@@ -122,10 +124,12 @@ export default function TerminalPageLayout({
     handleOpenIncomingOrderReceipt,
     incomingReceiptOpeningId,
     refreshIncomingOrders,
+    refreshOrderHistory,
     activeShiftId,
     checkoutBlockedReason,
     offlineSnapshotScope = {},
     onQueueOfflineItemDraft = async () => '',
+    onQueueOfflineOperation = async () => null,
     onManualUniversalSync = async () => ({ allowed: false }),
     manualSyncPolicy = {},
     refreshTerminalUser = async () => {},
@@ -180,7 +184,11 @@ export default function TerminalPageLayout({
   const actionableQueueCount = queueCount + blockedQueueCount;
   const queueTotalCount = Number(queueSummary?.total || actionableQueueCount);
   const normalizedActiveTerminalId = String(activeTerminalId || '').trim();
-  const incomingOrders = Array.isArray(incomingOrdersState?.orders) ? incomingOrdersState.orders : [];
+  const incomingOrders = useMemo(() => (
+    showIncomingQueue && Array.isArray(incomingOrdersState?.orders)
+      ? incomingOrdersState.orders
+      : []
+  ), [incomingOrdersState, showIncomingQueue]);
   const activeHeaderTitle = useMemo(() => {
     const titles = {
       checkout: 'POS Catalog',
@@ -529,6 +537,7 @@ export default function TerminalPageLayout({
               canViewPos={canViewPos}
               canManageCategories={canManageCategories}
               showServiceOperations={workflowMode === 'services'}
+              showIncomingQueue={showIncomingQueue}
               canAccessServiceOperations={canAccessServiceOperations}
               onboardingRestricted={onboardingRestricted}
               allowAdminNavigationWithoutShift={canAdminBypassShiftPrompt}
@@ -687,12 +696,14 @@ export default function TerminalPageLayout({
                 canViewPos={canViewPos}
                 canManageCategories={canManageCategories}
                 showServiceOperations={workflowMode === 'services'}
+                showIncomingQueue={showIncomingQueue}
                 canAccessServiceOperations={canAccessServiceOperations}
                 allowAdminNavigationWithoutShift={canAdminBypassShiftPrompt}
                 canAdjustCashDrawer={canAdjustCashDrawer}
                 canCloseDay={canCloseDay}
                 shiftState={shiftState}
                 incomingOrdersState={incomingOrdersState}
+                orderHistoryState={orderHistoryState}
                 locationsState={locationsState}
                 operatingLocationId={operatingLocationId}
                 accessibleCompanies={accessibleCompanies}
@@ -742,6 +753,7 @@ export default function TerminalPageLayout({
                 universalPendingSyncCount={queueCount + blockedQueueCount}
                 offlineSnapshotScope={offlineSnapshotScope}
                 onQueueOfflineItemDraft={onQueueOfflineItemDraft}
+                onQueueOfflineOperation={onQueueOfflineOperation}
                 onCheckoutCompleted={handleCheckoutCompleted}
                 viewMode={posViewMode}
                 onViewModeChange={setPosViewMode}
@@ -840,6 +852,7 @@ export default function TerminalPageLayout({
                 handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
                 incomingReceiptOpeningId={incomingReceiptOpeningId}
                 refreshIncomingOrders={refreshIncomingOrders}
+                refreshOrderHistory={refreshOrderHistory}
                 queueStatusFilter={queueStatusFilter}
                 setQueueStatusFilter={setQueueStatusFilter}
                 queueSummary={queueSummary}
