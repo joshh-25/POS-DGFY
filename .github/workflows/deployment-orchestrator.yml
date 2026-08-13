@@ -35,7 +35,7 @@ on:
         description: JSON array passed to runs-on for build/publish jobs
         required: false
         type: string
-        default: '["ubuntu-latest"]'
+        default: '["self-hosted"]'
     outputs:
       frontend_sha_tag:
         value: ${{ jobs.frontend.outputs.sha_tag }}

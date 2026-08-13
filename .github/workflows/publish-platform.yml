@@ -33,7 +33,7 @@ on:
         description: JSON array passed to runs-on for the publish job
         required: false
         type: string
-        default: '["ubuntu-latest"]'
+        default: '["self-hosted"]'
 
 permissions:
   contents: read
@@ -104,3 +104,12 @@ jobs:
              { echo \"\$COMPOSE_IMAGES\" | grep -q 'dgfy-platform/api' && echo \"\$COMPOSE_IMAGES\" | grep -q 'dgfy-platform/migration-runner'; } || { echo \"::error::\$(pwd) compose has no dgfy-api/migration-runner image reference -- server compose is stale, refusing to deploy.\" >&2; exit 1; } && \
              docker compose pull && docker compose up -d --remove-orphans && docker logout ghcr.io" \
             <<< "$GITHUB_TOKEN"
+
+      # Hosted runners are ephemeral and threw these away for free. On a
+      # persistent self-hosted runner (vm-sieitzstaging), a deploy key and
+      # OpenVPN config written to disk would otherwise survive on a box that
+      # also serves DEV/STAGING traffic -- clean up regardless of outcome.
+      - name: Clean up deploy credentials
+        if: always()
+        run: |
+          rm -f ~/.ssh/deploy_key /tmp/client.ovpn

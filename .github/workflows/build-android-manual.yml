@@ -42,7 +42,9 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    # GHA billing exhausted -- running on self-hosted (vm-sieitzstaging).
+    # runs-on: ubuntu-latest  # revert to this when hosted runners are back
+    runs-on: [self-hosted]
     steps:
       - name: Checkout
         uses: actions/checkout@v4

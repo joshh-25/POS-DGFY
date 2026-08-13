@@ -35,11 +35,10 @@ jobs:
     uses: ./.github/workflows/publish-pos-receipt.yml
     with:
       before_sha: ${{ github.event.before }}
-      # Switch back to the free self-hosted runners if Actions minutes run
-      # out. Pin the label so jobs avoid vm-sieitzstaging (AVX-less CPU ->
-      # exit 132 on native addons like @napi-rs/canvas).
-      # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
-      runner_labels_json: '["ubuntu-slim"]'
+      # GHA billing exhausted -- running on self-hosted (vm-sieitzstaging).
+      # Switch back to # runner_labels_json: '["ubuntu-slim"]' once hosted
+      # runners are available again.
+      runner_labels_json: '["self-hosted"]'
     secrets: inherit
     permissions:
       contents: read
@@ -49,8 +48,8 @@ jobs:
     uses: ./.github/workflows/shared-changed-paths.yml
     with:
       base_sha: ${{ github.event.before }}
-      # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
-      runner_labels_json: '["ubuntu-slim"]'
+      # runner_labels_json: '["ubuntu-slim"]'  # revert to this when hosted runners are back
+      runner_labels_json: '["self-hosted"]'
 
   build-and-push:
     needs: changes
@@ -60,11 +59,15 @@ jobs:
       environment: DEV
       image_tags: "develop"
       publish: true
-      vpn_required: true
+      # The self-hosted runner (vm-sieitzstaging) already sits on the DEV/
+      # STAGING network, so the OpenVPN hop that hosted runners needed is
+      # unnecessary here -- and running it would have the runner open a VPN
+      # tunnel into itself and rewrite its own routing on every deploy.
+      vpn_required: false
       build_api: ${{ needs.changes.outputs.dgfy_api == 'true' || needs.changes.outputs.migration_runner == 'true' }}
       build_frontend: ${{ needs.changes.outputs.frontend == 'true' }}
-      # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
-      runner_labels_json: '["ubuntu-latest"]'
+      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
+      runner_labels_json: '["self-hosted"]'
     secrets: inherit
     permissions:
       contents: read

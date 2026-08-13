@@ -24,6 +24,10 @@ jobs:
       environment: BETA
       image_tags: "beta"
       publish: true
+      # GHA billing exhausted -- running on self-hosted (vm-sieitzstaging).
+      # Omitting this used to silently default to ubuntu-latest; pin it
+      # explicitly so this workflow doesn't drift back to hosted on its own.
+      runner_labels_json: '["self-hosted"]'
     secrets: inherit
     permissions:
       contents: read

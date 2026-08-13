@@ -19,12 +19,14 @@ jobs:
       environment: STAGING
       image_tags: "staging"
       publish: true
-      vpn_required: true
-      # Switch back to the free self-hosted runners if Actions minutes run
-      # out. Pin the label so jobs avoid vm-sieitzstaging (AVX-less CPU ->
-      # exit 132 on native addons like @napi-rs/canvas).
-      # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
-      runner_labels_json: '["ubuntu-latest"]'
+      # The self-hosted runner (vm-sieitzstaging) already sits on the DEV/
+      # STAGING network, so the OpenVPN hop that hosted runners needed is
+      # unnecessary here -- and running it would have the runner open a VPN
+      # tunnel into itself and rewrite its own routing on every deploy.
+      vpn_required: false
+      # GHA billing exhausted -- running on self-hosted (vm-sieitzstaging).
+      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
+      runner_labels_json: '["self-hosted"]'
     secrets: inherit
     permissions:
       contents: read
