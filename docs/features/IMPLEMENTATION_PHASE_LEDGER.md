@@ -3958,7 +3958,7 @@ parked-sale replay and shift-close resolution.
 
 ### Acceptance and Validation Evidence
 
-- [x] Frontend suite passes: 313 files and 1,784 tests.
+- [x] Post-rebase frontend suite passes: 321 files and 1,807 tests.
 - [x] Governed backend matrix passes across all 509 active test files.
 - [x] POS checkout route is 152.98 KB against a 154 KB budget.
 - [x] SKUpervisor terminal route is 115.99 KB against a 116 KB budget.
