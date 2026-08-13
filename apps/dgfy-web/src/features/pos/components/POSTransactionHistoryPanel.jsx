@@ -10,6 +10,10 @@ import {
     DialogTitle
 } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
+import {
+    getPaymentStatusClassName,
+    getPaymentStatusLabel
+} from '../utils/posHistoryStatus.js';
 
 const money = (value) => Number(value || 0).toFixed(2);
 const toDateInput = (value) => value ? new Date(value).toISOString().slice(0, 10) : '';
@@ -198,9 +202,9 @@ export default function POSTransactionHistoryPanel({
                             From swap can't disturb anything else's position; only applied when
                             isTabletViewport, so mobile (max-sm:order-*) and desktop (unordered,
                             default flow) are untouched. */}
-                        <SelectField label="Status" className={`max-sm:order-2 ${isTabletViewport ? 'order-1' : ''}`} value={historyStatus} onChange={(event) => setHistoryStatus(event.target.value)}>
-                            <option value="all">All Status</option>
-                            <option value="completed">Completed</option>
+                        <SelectField label="Sales View" className={`max-sm:order-2 ${isTabletViewport ? 'order-1' : ''}`} value={historyStatus} onChange={(event) => setHistoryStatus(event.target.value)}>
+                            <option value="all">Paid Sales</option>
+                            <option value="completed">Completed Sales</option>
                             <option value="pending_sync">Pending Sync</option>
                             <option value="voided">Voided</option>
                         </SelectField>
@@ -299,7 +303,7 @@ export default function POSTransactionHistoryPanel({
 
                 <div className="overflow-x-auto border-t border-slate-200" aria-busy={historyLoading}>
                     <table className={`w-full text-[13px] ${isTabletViewport ? 'min-w-[820px]' : 'min-w-[1220px]'}`} aria-label="POS transaction history table">
-                            <caption className="sr-only">POS transaction history with receipt and sales report actions</caption>
+                            <caption className="sr-only">POS transaction history with payment status and separate receipt actions</caption>
                             <thead>
                                 <tr className="border-b border-slate-200 bg-white text-[#0F172A]">
                                     <th scope="col" className="px-6 py-4 text-left text-[13px] font-black">Invoice</th>
@@ -334,11 +338,6 @@ export default function POSTransactionHistoryPanel({
                                             <tr className="border-b border-slate-100 text-slate-700 transition hover:bg-slate-50/70">
                                                 <td className="px-6 py-4 text-[13px] font-black text-[#0F172A]">
                                                     <div>{row.invoice_number}</div>
-                                                    {row.order_source === 'online_store' && (
-                                                        <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${row.receipt_print_status === 'printed' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : row.receipt_print_status === 'failed' ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
-                                                            Receipt {row.receipt_print_status === 'printed' ? 'Printed' : row.receipt_print_status === 'failed' ? 'Failed' : 'Pending'}
-                                                        </span>
-                                                    )}
                                                     {isOfflinePending && (
                                                         <span className="mt-1 inline-flex rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-wide text-amber-700">
                                                             Pending Sync
@@ -355,7 +354,15 @@ export default function POSTransactionHistoryPanel({
                                                         {ORDER_SOURCE_LABELS[sourceKey]}
                                                     </span>
                                                 </td>
-                                                <td className="px-4 py-4 text-[#334155] capitalize">{row.payment_type}</td>
+                                                <td className="px-4 py-4 text-[#334155]">
+                                                    <div className="capitalize">{row.payment_type || '-'}</div>
+                                                    <span
+                                                        className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${getPaymentStatusClassName(row.payment_status)}`}
+                                                        title={`Payment status: ${getPaymentStatusLabel(row.payment_status)}`}
+                                                    >
+                                                        {getPaymentStatusLabel(row.payment_status)}
+                                                    </span>
+                                                </td>
                                                 {!isTabletViewport && <td className="px-4 py-4 text-[#334155]">{row.cashier?.username || row.acceptedByUser?.username || '-'}</td>}
                                                 {!isTabletViewport && (
                                                     <td className="px-4 py-4 text-[#334155]">

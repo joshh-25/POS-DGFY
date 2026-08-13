@@ -76,6 +76,19 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).toContain("'reports'");
   });
 
+  it('keeps the retail/F&B online queue out of Services navigation, restoration, notifications, and polling', () => {
+    expect(terminalPageContent).toContain('isPosOnlineOrderQueueEnabled');
+    expect(terminalPageContent).toContain('workflowMode,\n    posDefaults: modePosDefaults');
+    expect(terminalPageContent).toContain("workflowScopedModes.filter((mode) => mode !== 'incoming_queue')");
+    expect(terminalPageContent).toContain('if (!onlineOrderQueueEnabled) return undefined;');
+    expect(terminalPageContent).toContain("accessState: 'not_applicable'");
+    expect(terminalPageContent).toContain('showIncomingQueue={onlineOrderQueueEnabled}');
+    expect(terminalPageLayoutContent).toContain('showIncomingQueue={showIncomingQueue}');
+    expect(terminalPageLayoutContent).toContain('showIncomingQueue && Array.isArray(incomingOrdersState?.orders)');
+    expect(terminalWorkspaceSidebarContent).toContain('const shouldShowIncomingQueue = showIncomingQueue && !isMsmeMode;');
+    expect(terminalWorkspaceSidebarContent).toContain('{shouldShowIncomingQueue && (');
+  });
+
   it('keeps MSME configuration views accessible instead of redirecting them to Shift', () => {
     const restrictedModes = terminalOperationsWorkspaceContent.match(
       /const restrictedMsmeModes = new Set\(\[([^\]]*)\]\);/
@@ -375,7 +388,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsWorkspaceContent).toContain('handleCloseDay');
     expect(posCheckoutTerminalContent).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason);');
     expect(posCheckoutTerminalContent).toContain('notifyPosActionBlocked');
-    expect(posCheckoutTerminalContent).toContain('disabled={posActionsBlocked || safeCart.length === 0}');
+    expect(posCheckoutTerminalContent).toContain('checkoutDisabled={posActionsBlocked || checkoutLoading || safeCart.length === 0}');
     expect(skupervisorCheckoutTerminalContent).toContain('const posActionsBlocked = Boolean(checkoutBlockedReason);');
     expect(skupervisorCheckoutTerminalContent).toContain('notifyPosActionBlocked');
     expect(skupervisorCheckoutTerminalContent).toContain('disabled={posActionsBlocked || cart.length === 0}');
@@ -472,8 +485,25 @@ describe('POS terminal view-mode contracts', () => {
     expect(posHistoryPanelContent).toContain('Online Store');
     expect(posHistoryPanelContent).not.toContain('Online (Legacy)');
     expect(posHistoryPanelContent).toContain('aria-label={`View receipt for ${row.invoice_number || row.pos_transaction_id}`}');
-    expect(posHistoryPanelContent).toContain('<caption className="sr-only">POS transaction history with receipt and sales report actions</caption>');
+    expect(posHistoryPanelContent).toContain('<caption className="sr-only">POS transaction history with payment status and separate receipt actions</caption>');
     expect(posHistoryPanelContent).toContain('event.stopPropagation();');
+  });
+
+  it('keeps receipt print state out of the primary POS sales list', () => {
+    expect(posHistoryPanelContent).not.toContain('receipt_print_status');
+    expect(posHistoryPanelContent).toContain('aria-label={`View receipt for ${row.invoice_number || row.pos_transaction_id}`}');
+  });
+
+  it('keeps receipt print state out of online-order detail panels', () => {
+    for (const source of [terminalOperationsPanelsContent, terminalSidebarPanelContent]) {
+      expect(source).not.toContain('Not printed');
+      expect(source).not.toContain('Print failed');
+      expect(source).not.toContain('Receipt: <span');
+    }
+    expect(terminalOperationsPanelsContent).toContain('Payment Status');
+    expect(terminalOperationsPanelsContent).toContain('Print Receipt');
+    expect(terminalSidebarPanelContent).toContain('Payment:');
+    expect(terminalSidebarPanelContent).toContain('Print Receipt');
   });
 
   it('opens active queue orders in TerminalPage without routing them through receipt history', () => {
@@ -483,8 +513,19 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalPageContent).not.toContain('handleOpenIncomingOrderHistory');
   });
 
+  it('keeps unpaid and rejected online orders in POS Order History', () => {
+    expect(terminalOperationsPanelsContent).toContain('Active Queue');
+    expect(terminalOperationsPanelsContent).toContain('Order History');
+    expect(terminalOperationsPanelsContent).toContain('Rejected, cancelled, and unpaid online orders');
+    expect(terminalOperationsPanelsContent).toContain('Completed paid sales move to Sales History.');
+    expect(terminalOperationsPanelsContent).toContain('Previous order history page');
+    expect(terminalOperationsPanelsContent).toContain('Next order history page');
+    expect(posServiceContent).toContain("api.get('/pos/order-history'");
+    expect(terminalPageContent).toContain('fetchOnlineOrderHistory');
+  });
+
   it('separates active order details from the printable non-fiscal order receipt', () => {
-    expect(onlineOrderDetailsModalContent).toContain('Review the active customer order details.');
+    expect(onlineOrderDetailsModalContent).toContain('Review the customer order details.');
     expect(onlineOrderDetailsModalContent).not.toContain('Print Order');
     expect(onlineOrderReceiptModalContent).toContain('Non-Fiscal Order Receipt');
     expect(onlineOrderReceiptModalContent).toContain('Print Receipt');
@@ -522,6 +563,21 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsWorkspaceContent).toContain('View Shift Summary');
     expect(terminalOperationsWorkspaceContent).toContain('shiftState.salesSummary?.total_amount');
     expect(terminalSidebarPanelContent).toContain('View Shift Summary');
+  });
+
+  it('keeps browser printing explicit after automatic shift close', () => {
+    const closeShiftStart = terminalPageContent.indexOf('const handleConfirmCloseShift = async () => {');
+    const closeShiftEnd = terminalPageContent.indexOf('const dismissStockAlertSummary', closeShiftStart);
+    const closeShiftHandler = terminalPageContent.slice(closeShiftStart, closeShiftEnd);
+    const replayStart = terminalPageContent.indexOf('const replayQueuedTerminalOperations = useCallback');
+    const replayEnd = terminalPageContent.indexOf('const handleConfirmCloseShift = async () => {', replayStart);
+    const replayFlow = terminalPageContent.slice(replayStart, replayEnd);
+
+    expect(closeShiftHandler).toContain('openBrowserFallback: false');
+    expect(closeShiftHandler).not.toContain('openBrowserFallback: preserveAdminNavigation');
+    expect(replayFlow).toContain('openBrowserFallback: false');
+    expect(terminalPageContent).toContain("reason: 'post_shift_summary_reprint'");
+    expect(terminalPageContent).toContain('Print Shift Summary');
   });
 
   it('sorts active incoming orders locally and shows lifecycle guidance only for an empty queue', () => {

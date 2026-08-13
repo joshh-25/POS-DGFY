@@ -6,10 +6,6 @@ const getAssignedPersonnel = (deliveryJob = {}) => (
   deliveryJob?.deliveryPersonnel || deliveryJob?.delivery_personnel || null
 );
 
-const getPersonnelId = (personnel = {}) => Number(
-  personnel?.delivery_personnel_id || personnel?.id || 0
-);
-
 export default function DeliveryAssignmentControl({
   orderId,
   deliveryJob = null,
@@ -24,13 +20,12 @@ export default function DeliveryAssignmentControl({
 }) {
   const normalizedOrderId = Number(orderId || 0);
   const assignedPersonnel = getAssignedPersonnel(deliveryJob || {});
-  const assignedPersonnelId = Number(deliveryJob?.delivery_personnel_id || getPersonnelId(assignedPersonnel));
-  const [selectedPersonnelId, setSelectedPersonnelId] = React.useState(
-    assignedPersonnelId > 0 ? String(assignedPersonnelId) : ''
+  const assignedPersonnelName = String(
+    deliveryJob?.delivery_personnel_name || assignedPersonnel?.display_name || ''
+  ).trim();
+  const [selectedPersonnelName, setSelectedPersonnelName] = React.useState(
+    assignedPersonnelName
   );
-  const personnel = Array.isArray(deliveryPersonnelState?.personnel)
-    ? deliveryPersonnelState.personnel
-    : [];
   const status = String(deliveryJob?.status || 'pending_dispatch').trim().toLowerCase();
   const assignmentActionKey = `delivery-assignment:${normalizedOrderId}`;
   const assignmentSaving = actionLoading === assignmentActionKey;
@@ -38,8 +33,8 @@ export default function DeliveryAssignmentControl({
   const assignmentLocked = ['picked_up', 'delivered', 'failed', 'cancelled'].includes(status);
 
   React.useEffect(() => {
-    setSelectedPersonnelId(assignedPersonnelId > 0 ? String(assignedPersonnelId) : '');
-  }, [assignedPersonnelId]);
+    setSelectedPersonnelName(assignedPersonnelName);
+  }, [assignedPersonnelName]);
 
   if (!isManualDeliveryJob(deliveryJob || {})) {
     return (
@@ -60,18 +55,15 @@ export default function DeliveryAssignmentControl({
   if (assignmentLocked) {
     return (
       <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-600">
-        {assignedPersonnel?.display_name
-          ? `Assigned to ${assignedPersonnel.display_name}. Assignment is locked after pickup starts.`
+        {assignedPersonnelName
+          ? `Assigned to ${assignedPersonnelName}. Assignment is locked after pickup starts.`
           : (assignmentComplete ? 'Delivery personnel assigned. Assignment is locked after pickup starts.' : 'Assignment is locked for this delivery state.')}
       </p>
     );
   }
 
-  const selectablePersonnel = [...personnel];
-  if (assignedPersonnel && assignedPersonnelId > 0 && !selectablePersonnel.some((person) => getPersonnelId(person) === assignedPersonnelId)) {
-    selectablePersonnel.unshift(assignedPersonnel);
-  }
-  const disabled = locked || !isOnline || !canTransactPos || !hasActiveShift || !canAssignOrder || !selectedPersonnelId || selectablePersonnel.length === 0;
+  const normalizedPersonnelName = selectedPersonnelName.trim();
+  const disabled = locked || !isOnline || !canTransactPos || !hasActiveShift || !canAssignOrder || !normalizedPersonnelName;
   const errorMessage = String(deliveryPersonnelState?.errorMessage || '').trim();
 
   return (
@@ -83,38 +75,28 @@ export default function DeliveryAssignmentControl({
         </span>
       </div>
       <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-        <select
+        <input
+          type="text"
           aria-label={`Delivery personnel for order ${normalizedOrderId}`}
-          value={selectedPersonnelId}
-          onChange={(event) => setSelectedPersonnelId(event.target.value)}
-          disabled={locked || !isOnline || !canTransactPos || !hasActiveShift || !canAssignOrder || assignmentSaving || deliveryPersonnelState?.loading}
+          placeholder="Enter delivery personnel name"
+          value={selectedPersonnelName}
+          maxLength={255}
+          autoComplete="off"
+          onChange={(event) => setSelectedPersonnelName(event.target.value)}
+          disabled={locked || !isOnline || !canTransactPos || !hasActiveShift || !canAssignOrder || assignmentSaving}
           className="h-9 min-w-0 flex-1 rounded-md border border-blue-200 bg-white px-2 text-sm font-semibold text-slate-800 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
-        >
-          <option value="">Select delivery personnel</option>
-          {selectablePersonnel.map((person) => {
-            const personId = getPersonnelId(person);
-            return (
-              <option key={`delivery-personnel-${personId}`} value={personId}>
-                {person.display_name}{person.phone ? ` · ${person.phone}` : ''}
-              </option>
-            );
-          })}
-        </select>
+        />
         <Button
           type="button"
           size="sm"
           disabled={disabled || assignmentSaving}
-          onClick={() => onAssign(normalizedOrderId, Number(selectedPersonnelId))}
+          onClick={() => onAssign(normalizedOrderId, normalizedPersonnelName)}
           className="h-9 shrink-0 !bg-[#2563EB] px-3 text-white hover:!bg-[#1D4ED8]"
         >
           {assignmentSaving ? 'Saving...' : assignmentComplete ? 'Reassign' : 'Assign Delivery'}
         </Button>
       </div>
-      {deliveryPersonnelState?.loading ? (
-        <p className="mt-2 text-[11px] text-slate-600">Loading active delivery personnel...</p>
-      ) : selectablePersonnel.length === 0 ? (
-        <p className="mt-2 text-[11px] text-amber-700">No active delivery personnel is registered for this location.</p>
-      ) : null}
+      <p className="mt-2 text-[11px] text-slate-600">Third-party courier name; registration is not required.</p>
       {!hasActiveShift ? (
         <p className="mt-2 text-[11px] text-amber-700">Open a shift before assigning delivery personnel.</p>
       ) : null}

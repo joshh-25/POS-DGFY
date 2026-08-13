@@ -4,7 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const terminalPageSource = fs.readFileSync(path.resolve(__dirname, '../pages/TerminalPage.jsx'), 'utf8');
+const terminalPageSource = [
+  '../pages/TerminalPage.jsx',
+  '../components/TerminalPageDialogLayer.jsx'
+].map((relativePath) => fs.readFileSync(path.resolve(__dirname, relativePath), 'utf8')).join('\n');
 const posServiceSource = fs.readFileSync(path.resolve(__dirname, '../services/posService.js'), 'utf8');
 
 describe('POS terminal pairing contract', () => {
@@ -49,6 +52,8 @@ describe('POS terminal pairing contract', () => {
     const cashierCloseFlow = closeShiftHandler.slice(cashierCloseStart, cashierCloseEnd);
 
     expect(closeShiftHandler).toContain("if (preserveAdminNavigation) {");
+    expect(closeShiftHandler).toContain('openBrowserFallback: false');
+    expect(closeShiftHandler).not.toContain('openBrowserFallback: preserveAdminNavigation');
     expect(closeShiftHandler).toContain("toast.success('Shift closed successfully.');");
     expect(closeShiftHandler).toContain('await refreshOperationalContext();');
     expect(cashierCloseFlow).toContain('setStoredTerminalLock(false);');
@@ -64,10 +69,14 @@ describe('POS terminal pairing contract', () => {
   });
 
   it('restores an open shift on refresh while queued close still returns to login', () => {
+    const replayStart = terminalPageSource.indexOf('const replayQueuedTerminalOperations = useCallback');
+    const replayEnd = terminalPageSource.indexOf('const handleConfirmCloseShift = async () => {', replayStart);
+    const replayFlow = terminalPageSource.slice(replayStart, replayEnd);
+
     expect(terminalPageSource).toContain('allowWhileLocked = false');
     expect(terminalPageSource).toContain('const storedLockActive = readStoredTerminalLock();');
     expect(terminalPageSource).toContain("storedReason !== 'terminal_reunlock'");
-    expect(terminalPageSource).toContain('const storedRegistryEntry = terminalRegistryLookup.get(storedTerminalId);');
+    expect(terminalPageSource).toContain('const storedRegistryEntry = restoreTerminalRegistry.find(');
     expect(terminalPageSource).toContain('if (!storedRegistryEntry || !Number.isInteger(storedLocationId) || storedLocationId <= 0) {');
     expect(terminalPageSource).toContain('allowWhileLocked: true');
     expect(terminalPageSource).toContain('if (operationalContext?.shift) {');
@@ -75,6 +84,7 @@ describe('POS terminal pairing contract', () => {
     expect(terminalPageSource).toContain("setStoredTerminalLockReason('shift_closed')");
     expect(terminalPageSource).toContain("reason: 'shift_close_queued'");
     expect(terminalPageSource).toContain('Cashier login is required for the next shift');
+    expect(replayFlow).toContain('openBrowserFallback: false');
     expect(terminalPageSource).toContain('setTerminalUnlockModalOpen(false);');
     expect(terminalPageSource).toContain('setDrawerOpen(true);');
   });

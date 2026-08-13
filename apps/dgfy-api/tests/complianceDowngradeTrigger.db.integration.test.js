@@ -7,7 +7,7 @@ import { sequelize as landlordSequelize } from '../src/models/index.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const backendRoot = path.join(__dirname, '..');
+const migrationRunnerRoot = path.join(__dirname, '..', '..', 'dgfy-migration-runner');
 
 const dbConfig = {
     host: process.env.DB_HOST || 'localhost',
@@ -39,7 +39,7 @@ const runMigrationsForDb = (dbName, toMigration = null) => {
         process.execPath,
         args,
         {
-            cwd: backendRoot,
+            cwd: migrationRunnerRoot,
             encoding: 'utf8',
             env: {
                 ...process.env,

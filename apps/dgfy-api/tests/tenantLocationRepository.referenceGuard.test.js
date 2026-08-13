@@ -25,6 +25,7 @@ describe('tenantLocationRepository permanent-delete reference guard', () => {
     it('fails closed when a reference model cannot count rows', async () => {
         jest.spyOn(dbStore, 'getStore').mockReturnValue({
             DeliveryJob: { count: jest.fn().mockResolvedValue(0) },
+            DeliveryPersonnel: { count: jest.fn().mockResolvedValue(0) },
             ItemLocationStock: {}
         });
 

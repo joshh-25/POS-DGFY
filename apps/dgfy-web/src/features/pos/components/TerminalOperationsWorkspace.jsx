@@ -135,7 +135,9 @@ import {
   fetchPosSetupCashiers,
   fetchPosCatalog,
   fetchPosTransactions,
-  fetchTerminalTodayDashboard
+  fetchTerminalTodayDashboard,
+  fetchMerchantTenderReconciliation,
+  reviewMerchantTenderReconciliation
 } from '../services/posService.js';
 import PosReportsAnalyticsWorkspace from './PosReportsAnalyticsWorkspace.jsx';
 import EmployeeCreditManagementPanel from './EmployeeCreditManagementPanel.jsx';
@@ -714,6 +716,111 @@ const parseIsoDateTime = (value) => {
   if (!Number.isFinite(date.getTime())) return '-';
   return date.toLocaleString();
 };
+
+const MERCHANT_TENDER_METHODS = [
+  { key: 'gcash', label: 'GCash' },
+  { key: 'maya', label: 'Maya' },
+  { key: 'card', label: 'Card terminal' },
+  { key: 'bank_transfer', label: 'Bank transfer' }
+];
+
+function MerchantTenderReconciliationPanel({ shiftId, disabled = false }) {
+  const emptyObserved = { gcash: '', maya: '', card: '', bank_transfer: '' };
+  const [state, setState] = useState({ loading: true, saving: false, data: null, error: '' });
+  const [observed, setObserved] = useState(emptyObserved);
+  const [reviewNote, setReviewNote] = useState('');
+
+  const load = useCallback(async () => {
+    if (!shiftId) return;
+    setState((previous) => ({ ...previous, loading: true, error: '' }));
+    try {
+      const data = await fetchMerchantTenderReconciliation(shiftId);
+      const latestObserved = data?.latest_reconciliation?.observed_breakdown;
+      setObserved(Object.fromEntries(MERCHANT_TENDER_METHODS.map(({ key }) => [
+        key,
+        latestObserved?.[key] != null
+          ? String(Number(latestObserved[key]).toFixed(2))
+          : String(Number(data?.expected?.breakdown?.[key]?.amount || 0).toFixed(2))
+      ])));
+      setReviewNote(data?.latest_reconciliation?.review_note || '');
+      setState({ loading: false, saving: false, data, error: '' });
+    } catch (error) {
+      setState({ loading: false, saving: false, data: null, error: error?.response?.data?.message || 'Unable to load merchant tender totals.' });
+    }
+  }, [shiftId]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const variances = Object.fromEntries(MERCHANT_TENDER_METHODS.map(({ key }) => [
+    key,
+    Number(observed[key] || 0) - Number(state.data?.expected?.breakdown?.[key]?.amount || 0)
+  ]));
+  const hasVariance = MERCHANT_TENDER_METHODS.some(({ key }) => Math.abs(variances[key]) > 0.0001);
+
+  const save = async () => {
+    if (hasVariance && reviewNote.trim().length < 8) {
+      toast.error('Add a manager note of at least 8 characters for the variance.');
+      return;
+    }
+    setState((previous) => ({ ...previous, saving: true, error: '' }));
+    try {
+      const data = await reviewMerchantTenderReconciliation(shiftId, {
+        idempotency_key: `merchant-tender:${shiftId}:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`,
+        observed_breakdown: Object.fromEntries(MERCHANT_TENDER_METHODS.map(({ key }) => [key, Number(observed[key] || 0)])),
+        review_note: reviewNote.trim() || undefined
+      });
+      setState({ loading: false, saving: false, data, error: '' });
+      toast.success(hasVariance ? 'Tender variance reviewed and recorded.' : 'Merchant tenders reconciled with no variance.');
+    } catch (error) {
+      setState((previous) => ({ ...previous, saving: false, error: error?.response?.data?.message || 'Unable to save the reconciliation.' }));
+    }
+  };
+
+  return (
+    <div className="rounded-xl border border-blue-200 bg-blue-50/60 p-3" data-testid="merchant-tender-reconciliation">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="text-[12px] font-black text-[#0F172A]">Store-owned tender reconciliation</p>
+          <p className="mt-1 text-[11px] leading-4 text-[#475569]">Compare the POS ledger with the store QR, card terminal, and bank account. This review never calls PayMongo or changes sales.</p>
+        </div>
+        <Button type="button" variant="outline" className="h-8 bg-white px-3 text-[11px] font-bold" onClick={() => void load()} disabled={state.loading || state.saving || disabled}>
+          <RefreshCcw className={`mr-1.5 h-3.5 w-3.5 ${state.loading ? 'animate-spin' : ''}`} /> Refresh
+        </Button>
+      </div>
+      {state.error ? <p className="mt-3 rounded-md border border-rose-200 bg-rose-50 px-2.5 py-2 text-[11px] text-rose-700">{state.error}</p> : null}
+      {state.loading ? <p className="mt-3 text-[11px] text-slate-600">Loading expected tender totals...</p> : (
+        <>
+          {state.data?.is_stale ? <p className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-2 text-[11px] font-semibold text-amber-800">New tender activity exists since the last review. Submit a new review; the old record will remain in the audit trail.</p> : null}
+          <div className="mt-3 overflow-x-auto">
+            <table className="w-full min-w-[520px] text-left text-[11px]">
+              <thead><tr className="text-slate-500"><th className="pb-2">Tender</th><th className="pb-2">POS expected</th><th className="pb-2">Observed</th><th className="pb-2 text-right">Variance</th></tr></thead>
+              <tbody>
+                {MERCHANT_TENDER_METHODS.map(({ key, label }) => (
+                  <tr key={key} className="border-t border-blue-100">
+                    <td className="py-2 font-bold text-slate-800">{label}</td>
+                    <td className="py-2">PHP {money(state.data?.expected?.breakdown?.[key]?.amount)}</td>
+                    <td className="py-2"><Input aria-label={`${label} observed total`} type="number" min="0" step="0.01" className="h-8 w-32 bg-white text-[11px]" value={observed[key]} onChange={(event) => setObserved((previous) => ({ ...previous, [key]: event.target.value }))} disabled={state.saving || disabled} /></td>
+                    <td className={`py-2 text-right font-bold ${Math.abs(variances[key]) > 0.0001 ? 'text-amber-800' : 'text-emerald-700'}`}>PHP {money(variances[key])}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <Label className="mt-3 block text-[11px] font-bold text-slate-700">Manager review note {hasVariance ? '(required)' : '(optional)'}</Label>
+          <Input className="mt-1 h-9 bg-white text-[11px]" value={reviewNote} onChange={(event) => setReviewNote(event.target.value)} placeholder="Explain any difference from the POS ledger" disabled={state.saving || disabled} />
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-[11px] text-slate-600">Latest: {state.data?.latest_reconciliation ? `${String(state.data.latest_reconciliation.status || '').replace(/_/g, ' ')} · ${parseIsoDateTime(state.data.latest_reconciliation.reviewed_at)}` : 'Not reviewed yet'}</p>
+            <Button type="button" className="h-9 !bg-[#1A4E8D] px-4 text-[11px] font-extrabold text-white" onClick={() => void save()} disabled={state.saving || disabled || (hasVariance && reviewNote.trim().length < 8)}>
+              <ShieldCheck className="mr-1.5 h-3.5 w-3.5" /> {state.saving ? 'Recording...' : 'Record Manager Review'}
+            </Button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
 function ShiftControlsWorkspace({
   shiftState,
   terminalMeta,
@@ -1542,6 +1649,12 @@ function ShiftControlsWorkspace({
             <p className="text-xs text-slate-600">
               Expected Cash: <span className="font-semibold text-slate-900">{terminalMeta.pettyCashSymbol} {money(shiftState.cashSummary?.expected_cash_amount)}</span>
             </p>
+            {canCloseDay ? (
+              <MerchantTenderReconciliationPanel
+                shiftId={activeShift.pos_terminal_shift_id}
+                disabled={locked || !isOnline}
+              />
+            ) : null}
             <Label className="text-[12px] font-black text-[#0F172A]">Closing Cash ({terminalMeta.pettyCashSymbol})</Label>
             <Input
               className="h-11 rounded-lg border-slate-200 text-[13px] font-medium text-[#0F172A] placeholder:text-[#64748B] focus-visible:border-[#2563EB] focus-visible:ring-2 focus-visible:ring-[#DBEAFE]"
@@ -8916,6 +9029,7 @@ export default function TerminalOperationsWorkspace({
   setOperatingLocationId = () => {},
   queueLocationScopeId = null,
   incomingOrdersState = { loading: false, orders: [] },
+  orderHistoryState = { loading: false, orders: [], pagination: null },
   adminLocationMonitorState = { loading: false, orders: [], terminalShifts: [], errorMessage: '' },
   adminTerminalSwitching = false,
   onSelectAdminTerminal = async () => false,
@@ -8931,6 +9045,7 @@ export default function TerminalOperationsWorkspace({
   handleOpenIncomingOrderReceipt = () => {},
   incomingReceiptOpeningId = null,
   refreshIncomingOrders = () => {},
+  refreshOrderHistory = () => {},
   onlineOrderSoundEnabled = true,
   setOnlineOrderSoundEnabled = () => {},
   queuedTerminalOperations = [],
@@ -8959,6 +9074,7 @@ export default function TerminalOperationsWorkspace({
           canTransactPos={canTransactPos}
           shiftState={shiftState}
           incomingOrdersState={incomingOrdersState}
+          orderHistoryState={orderHistoryState}
           incomingOrderActionState={incomingOrderActionState}
           handleIncomingOrderStatusChange={handleIncomingOrderStatusChange}
           handleDeliveryJobStatusChange={handleDeliveryJobStatusChange}
@@ -8968,6 +9084,7 @@ export default function TerminalOperationsWorkspace({
           handleOpenIncomingOrderReceipt={handleOpenIncomingOrderReceipt}
           incomingReceiptOpeningId={incomingReceiptOpeningId}
           refreshIncomingOrders={refreshIncomingOrders}
+          refreshOrderHistory={refreshOrderHistory}
           locationsState={locationsState}
           queueLocationScopeId={queueLocationScopeId}
           locked={locked}
@@ -9201,6 +9318,7 @@ export default function TerminalOperationsWorkspace({
     handleRecordCashEvent,
     incomingOrderActionState,
     incomingOrdersState,
+    orderHistoryState,
     isOnline,
     locationsState,
     locked,
@@ -9221,6 +9339,7 @@ export default function TerminalOperationsWorkspace({
     openShiftForm,
     queueLocationScopeId,
     refreshIncomingOrders,
+    refreshOrderHistory,
     refreshAdminLocationMonitor,
     refreshOperationalContext,
     refreshDayCloseReadiness,

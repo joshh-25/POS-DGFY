@@ -1577,7 +1577,14 @@ describe('pos use-cases application result contract', () => {
             fulfillment_status: currentStatus,
             location_id: 5,
             lines: [],
-            deliveryJob: { status: 'delivered' }
+            deliveryJob: {
+                status: 'delivered',
+                provider: 'manual',
+                delivery_personnel_id: 21,
+                assigned_by: 9,
+                assigned_shift_id: 13,
+                assigned_at: new Date('2026-08-11T08:00:00.000Z')
+            }
         };
         const updatedOrder = {
             ...existingOrder,

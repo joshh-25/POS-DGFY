@@ -10,6 +10,8 @@ describe('Billing anchor backfill migration safety', () => {
         const migrationPath = path.join(
             __dirname,
             '..',
+            '..',
+            'dgfy-migration-runner',
             'migrations',
             '20260303000005-backfill-missing-billing-anchor.cjs'
         );
@@ -23,4 +25,3 @@ describe('Billing anchor backfill migration safety', () => {
         expect(content).toContain('DAY(current_period_end)');
     });
 });
-

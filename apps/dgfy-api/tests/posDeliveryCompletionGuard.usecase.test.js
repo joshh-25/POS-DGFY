@@ -194,4 +194,23 @@ describe('POS delivery completion guard', () => {
         expect(result.success).toBe(true);
         expect(repository.order.fulfillment_status).toBe('completed');
     });
+
+    it('completes a third-party courier delivery with a typed name assignment', async () => {
+        const repository = buildRepository({
+            deliveryJob: {
+                provider: 'manual',
+                status: 'delivered',
+                delivery_personnel_id: null,
+                delivery_personnel_name: 'Juan Dela Cruz',
+                assigned_by: 12,
+                assigned_shift_id: 9,
+                assigned_at: '2026-08-07T03:00:00.000Z'
+            }
+        });
+
+        const result = await complete(repository);
+
+        expect(result.success).toBe(true);
+        expect(repository.order.fulfillment_status).toBe('completed');
+    });
 });

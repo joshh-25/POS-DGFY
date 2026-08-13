@@ -12,7 +12,6 @@ import {
     Delete,
     Filter,
     Folder,
-    Gauge,
     Info,
     Lock,
     MessageSquare,
@@ -32,8 +31,7 @@ import {
     ArrowLeft,
     Utensils,
     Trash2,
-    LayoutGrid,
-    ShoppingCart
+    LayoutGrid
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -49,13 +47,17 @@ import { posToast as toast } from '@/src/utils/iminRuntimeFeedback.js';
 import {
     fetchPosCatalog,
     createPosCheckout,
-    closePosDay,
+    createPosParkedSale,
+    reparkPosParkedSale,
     fetchPosTransactions,
     fetchPosTransactionById,
     voidPosTransaction,
     fetchPosDiscountApprovers,
     verifyPosDiscountApproval,
-    fetchPosItemOptionGroups
+    fetchPosItemOptionGroups,
+    fetchPosPaymentSession,
+    fetchActivePosPaymentSession,
+    cancelPosPaymentSession
 } from '../services/posService';
 import { fetchEmployeeCreditAccount } from '../services/employeeCreditService.js';
 import {
@@ -71,6 +73,14 @@ import {
 } from '../services/terminalOperationQueueStore.js';
 import { loadOfflinePosSnapshot, saveOfflinePosSnapshot } from '../services/offlinePosSnapshotStore.js';
 import { usePosCartDraft } from '../hooks/usePosCartDraft.js';
+import { clearPosCartDraft } from '../services/posCartDraftStore.js';
+import {
+    buildPosSplitPaymentStorageKey,
+    clearPosSplitPaymentSessionPointer,
+    isTerminalPosPaymentSession,
+    persistPosSplitPaymentSessionPointer,
+    readPosSplitPaymentSessionPointer
+} from '../services/posSplitPaymentSessionStore.js';
 import {
     DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD,
     getCatalogStockColorClassName,
@@ -79,6 +89,8 @@ import {
     normalizeLowStockDisplayThreshold
 } from '../utils/posCatalogAvailability.js';
 import { subscribeToPosCatalogUpdates, subscribeToRemotePosCatalogUpdates } from '../utils/posCatalogRefresh.js';
+import { buildPosHistoryQuery } from '../utils/posHistoryQuery.js';
+import { buildResumedCartLines, formatParkedSaleDisplayName, validateParkedSaleResume } from '../utils/posParkedSaleResume.js';
 import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
 import { getFolders } from '@/services/itemService.js';
 import { getAllSettings } from '@/services/settingsService';
@@ -91,17 +103,19 @@ import {
 import { notifyIminWebPosReady } from '../utils/iminHardwareBridge.js';
 import { usePosHardware } from '../hardware/usePosHardware.js';
 import { PosAddToCartToastContainer } from './PosAddToCartToastContainer.jsx';
+import POSParkedSalesDialog from './POSParkedSalesDialog.jsx';
+import POSSplitPaymentDialog from './POSSplitPaymentDialog.jsx';
 import FnbModifierPickerDialog, { validateFnbModifierSelections } from './FnbModifierPickerDialog.jsx';
 import { calculateCatalogGridCapacity } from '../utils/catalogGridCapacity.js';
 import { resolvePosWorkflow } from '../utils/posWorkflowResolver.js';
+import { resolvePosPresentationBundle } from '../utils/posPresentationBundle.js';
+import { PosCheckoutDetailsSlot } from './PosCheckoutDetailsSlot.jsx';
+import { PosCurrentSaleActions } from './PosCurrentSaleActions.jsx';
 
 const ReceiptPrintView = lazyWithChunkRetry(() => import('./ReceiptPrintView'));
 const OrderPreviewView = lazyWithChunkRetry(() => import('./OrderPreviewView.jsx'));
 const EmployeeCreditPaymentPanel = lazyWithChunkRetry(() => import('./EmployeeCreditPaymentPanel.jsx'));
 const ServiceOptionsModal = lazyWithChunkRetry(() => import('./ServiceOptionsModal.jsx').then(({ ServiceOptionsModal: Component }) => ({ default: Component })));
-const FnbWorkflowPanel = lazyWithChunkRetry(() => import('./FnbWorkflowPanel.jsx').then(({ FnbWorkflowPanel: Component }) => ({ default: Component })));
-const ServicesWorkflowPanel = lazyWithChunkRetry(() => import('./ServicesWorkflowPanel.jsx').then(({ ServicesWorkflowPanel: Component }) => ({ default: Component })));
-const CounterWorkflowPanel = lazyWithChunkRetry(() => import('./CounterWorkflowPanel.jsx').then(({ CounterWorkflowPanel: Component }) => ({ default: Component })));
 
 const CATALOG_GRID_GAP_PX = 8;
 const CATALOG_DESKTOP_CARD_HEIGHT_PX = 176;
@@ -815,6 +829,7 @@ export default function POSCheckoutTerminal({
     onCheckoutCompleted = null,
     checkoutBlockedReason = '',
     onManualUniversalSync = async () => ({ allowed: false }),
+    onQueueOfflineOperation = async () => null,
     manualSyncPolicy = {},
     universalPendingSyncCount = 0,
     complianceBlockerDetails = null,
@@ -916,6 +931,10 @@ export default function POSCheckoutTerminal({
         () => resolvePosWorkflow(workflowMode, effectiveCapabilities),
         [workflowMode, effectiveCapabilities]
     );
+    const posPresentationBundle = useMemo(
+        () => resolvePosPresentationBundle(posWorkflow),
+        [posWorkflow]
+    );
     const isFnbWorkflow = posWorkflow.mode === 'fnb';
     const [search, setSearch] = useState('');
     const [orderMethod, setOrderMethod] = useState(() => posWorkflow.allowedMethods[0] || 'dine_in');
@@ -953,12 +972,14 @@ export default function POSCheckoutTerminal({
     const [affiliateCodeInput, setAffiliateCodeInput] = useState('');
     const [showDiscountPin, setShowDiscountPin] = useState(false);
     const [cart, setCart] = useState([]);
+    const [activeParkedSale, setActiveParkedSale] = useState(null);
     const [checkoutLoading, setCheckoutLoading] = useState(false);
+    const [parkLoading, setParkLoading] = useState(false);
+    const [parkedSalesDialogOpen, setParkedSalesDialogOpen] = useState(false);
+    const [parkSaleNameDialogOpen, setParkSaleNameDialogOpen] = useState(false);
+    const [parkSaleNameInput, setParkSaleNameInput] = useState('');
     const [queuedCheckouts, setQueuedCheckouts] = useState([]);
     const [replayingQueuedCheckouts, setReplayingQueuedCheckouts] = useState(false);
-    const [closingDay, setClosingDay] = useState(false);
-    const [zReadingCloseConfirmOpen, setZReadingCloseConfirmOpen] = useState(false);
-    const [zReadingClosePin, setZReadingClosePin] = useState('');
     const [lastReceipt, setLastReceipt] = useState(null);
     const [lastReceiptContract, setLastReceiptContract] = useState(null);
     const [historyRows, setHistoryRows] = useState([]);
@@ -1030,16 +1051,170 @@ export default function POSCheckoutTerminal({
         };
     }, [receiptPreviewModalOpen, lastReceipt]);
     const [checkoutConfirmModalOpen, setCheckoutConfirmModalOpen] = useState(false);
+    const [splitPaymentDialogOpen, setSplitPaymentDialogOpen] = useState(false);
+    const [splitPaymentSessionState, setSplitPaymentSessionState] = useState({
+        active: false,
+        recovered: false,
+        session: null,
+        recoveryError: ''
+    });
+    const [splitPaymentRecoveryPending, setSplitPaymentRecoveryPending] = useState(false);
+    const [splitPaymentDiscarding, setSplitPaymentDiscarding] = useState(false);
     const [mobileCheckoutPanelOpen, setMobileCheckoutPanelOpen] = useState(false);
+
+    const splitPaymentStorageScopeKey = useMemo(() => (
+        [
+            providedOfflineSnapshotScope?.tenantId || 'tenant',
+            terminalUser?.user_id || terminalUser?.id || terminalUser?.email || 'cashier',
+            terminalId || 'terminal',
+            activeShiftId || 'shift',
+            selectedLocationId || 'location'
+        ].map((value) => String(value)).join(':')
+    ), [
+        activeShiftId,
+        terminalId,
+        providedOfflineSnapshotScope?.tenantId,
+        selectedLocationId,
+        terminalUser?.email,
+        terminalUser?.id,
+        terminalUser?.user_id
+    ]);
+    const splitPaymentStorageKey = useMemo(
+        () => buildPosSplitPaymentStorageKey(splitPaymentStorageScopeKey),
+        [splitPaymentStorageScopeKey]
+    );
+
+    useEffect(() => {
+        if (!splitPaymentStorageKey) return undefined;
+        let mounted = true;
+
+        const recoverSavedSession = async () => {
+            const stored = readPosSplitPaymentSessionPointer(splitPaymentStorageKey);
+            if (!stored?.sessionId) {
+                if (!activeShiftId || !String(terminalId || '').trim()) {
+                    clearPosSplitPaymentSessionPointer(splitPaymentStorageKey);
+                    setSplitPaymentSessionState({ active: false, recovered: false, session: null, recoveryError: '' });
+                    setSplitPaymentRecoveryPending(false);
+                    return;
+                }
+                try {
+                    const activeSession = await fetchActivePosPaymentSession({
+                        shift_id: activeShiftId,
+                        terminal_id: String(terminalId || '').trim().toUpperCase(),
+                        location_id: selectedLocationId || undefined
+                    });
+                    if (!mounted) return;
+                    if (activeSession) {
+                        persistPosSplitPaymentSessionPointer(splitPaymentStorageKey, {
+                            session_id: Number(activeSession.pos_payment_session_id || activeSession.id),
+                            idempotency_key: ''
+                        });
+                        setSplitPaymentSessionState({ active: true, recovered: true, session: activeSession, recoveryError: '' });
+                        return;
+                    }
+                } catch (requestError) {
+                    if (!mounted) return;
+                    setSplitPaymentSessionState({
+                        active: false,
+                        recovered: false,
+                        session: null,
+                        recoveryError: requestError?.response?.data?.message || requestError?.message || 'Unable to check for an active split payment.'
+                    });
+                    return;
+                } finally {
+                    if (mounted) setSplitPaymentRecoveryPending(false);
+                }
+                clearPosSplitPaymentSessionPointer(splitPaymentStorageKey);
+                setSplitPaymentSessionState({ active: false, recovered: false, session: null, recoveryError: '' });
+                return;
+            }
+
+            setSplitPaymentRecoveryPending(true);
+            try {
+                const session = await fetchPosPaymentSession(stored.sessionId, {
+                    shift_id: activeShiftId,
+                    terminal_id: String(terminalId || '').trim().toUpperCase(),
+                    location_id: selectedLocationId || undefined
+                });
+                if (!mounted) return;
+                if (isTerminalPosPaymentSession(session)) {
+                    clearPosSplitPaymentSessionPointer(splitPaymentStorageKey);
+                    setSplitPaymentSessionState({ active: false, recovered: false, session: null, recoveryError: '' });
+                    return;
+                }
+                setSplitPaymentSessionState({ active: true, recovered: true, session, recoveryError: '' });
+            } catch (requestError) {
+                if (!mounted) return;
+                if (requestError?.response?.status === 404) {
+                    clearPosSplitPaymentSessionPointer(splitPaymentStorageKey);
+                    setSplitPaymentSessionState({ active: false, recovered: false, session: null, recoveryError: '' });
+                    return;
+                }
+                setSplitPaymentSessionState({
+                    active: true,
+                    recovered: true,
+                    session: null,
+                    recoveryError: requestError?.response?.data?.message || requestError?.message || 'Unable to verify the saved payment session.'
+                });
+            } finally {
+                if (mounted) setSplitPaymentRecoveryPending(false);
+            }
+        };
+
+        recoverSavedSession();
+        return () => {
+            mounted = false;
+        };
+    }, [activeShiftId, selectedLocationId, splitPaymentStorageKey, terminalId]);
+
+    const splitPaymentSession = splitPaymentSessionState.session;
+    const splitPaymentAllocations = Array.isArray(splitPaymentSession?.allocations)
+        ? splitPaymentSession.allocations
+        : [];
+    const canDiscardUnpaidSplitPayment = splitPaymentSessionState.active
+        && Number(splitPaymentSession?.paid_amount || 0) === 0
+        && splitPaymentAllocations.every((allocation) => (
+            ['failed', 'cancelled', 'reversed'].includes(String(allocation?.status || '').toLowerCase())
+        ));
+
+    const handleDiscardUnpaidSplitPayment = useCallback(async () => {
+        const sessionId = Number(splitPaymentSession?.pos_payment_session_id || splitPaymentSession?.id || 0);
+        if (!sessionId || !canDiscardUnpaidSplitPayment || splitPaymentDiscarding) return;
+
+        setSplitPaymentDiscarding(true);
+        try {
+            await cancelPosPaymentSession(sessionId, {
+                shift_id: activeShiftId,
+                terminal_id: terminalId,
+                location_id: selectedLocationId || undefined,
+                reason: 'Cashier discarded unpaid split-payment draft.'
+            });
+            clearPosSplitPaymentSessionPointer(splitPaymentStorageKey);
+            setSplitPaymentSessionState({ active: false, recovered: false, session: null, recoveryError: '' });
+            toast.message('Unpaid split payment discarded.');
+        } catch (requestError) {
+            toast.error(requestError?.response?.data?.message || requestError?.message || 'Unable to discard the unpaid split payment.');
+        } finally {
+            setSplitPaymentDiscarding(false);
+        }
+    }, [
+        activeShiftId,
+        canDiscardUnpaidSplitPayment,
+        selectedLocationId,
+        splitPaymentDiscarding,
+        splitPaymentSession,
+        splitPaymentStorageKey,
+        terminalId
+    ]);
 
     useEffect(() => {
         if (typeof document === 'undefined') return undefined;
-        const shouldLockModalScroll = receiptPreviewModalOpen || checkoutConfirmModalOpen || discountModalOpen || mobileCheckoutPanelOpen;
+        const shouldLockModalScroll = receiptPreviewModalOpen || checkoutConfirmModalOpen || splitPaymentDialogOpen || discountModalOpen || mobileCheckoutPanelOpen;
         document.body.classList.toggle('pos-modal-scroll-lock', shouldLockModalScroll);
         return () => {
             document.body.classList.remove('pos-modal-scroll-lock');
         };
-    }, [checkoutConfirmModalOpen, discountModalOpen, mobileCheckoutPanelOpen, receiptPreviewModalOpen]);
+    }, [checkoutConfirmModalOpen, discountModalOpen, mobileCheckoutPanelOpen, receiptPreviewModalOpen, splitPaymentDialogOpen]);
 
     const [customerPaymentAmountInput, setCustomerPaymentAmountInput] = useState('');
     const [currentSaleHelpOpen, setCurrentSaleHelpOpen] = useState(false);
@@ -1346,11 +1521,13 @@ export default function POSCheckoutTerminal({
 
     usePosCartDraft({
         activeShiftId,
+        activeParkedSale,
         cart,
         catalog,
         catalogReady: !catalogLoading,
         enabled: !sessionLocked && Boolean(activeShiftId),
         scope: offlineSnapshotScope,
+        setActiveParkedSale,
         setCart
     });
 
@@ -1459,19 +1636,31 @@ export default function POSCheckoutTerminal({
         }
         setHistoryLoading(true);
         try {
-            const result = await fetchPosTransactions({
+            const historyQuery = buildPosHistoryQuery({
+                historyStatus,
                 page,
                 limit: 20,
                 search: historySearch || undefined,
-                status: historyStatus === 'all' ? undefined : historyStatus,
-                payment_type: historyPaymentType === 'all' ? undefined : historyPaymentType,
-                order_method: historyOrderMethod === 'all' ? undefined : historyOrderMethod,
-                order_source: historyOrderSource === 'all' ? undefined : historyOrderSource,
-                cashier_id: historyCashierId || undefined,
-                date_from: historyDateFrom || undefined,
-                date_to: historyDateTo || undefined,
-                location_id: selectedLocationId || undefined
+                paymentType: historyPaymentType === 'all' ? undefined : historyPaymentType,
+                orderMethod: historyOrderMethod === 'all' ? undefined : historyOrderMethod,
+                orderSource: historyOrderSource === 'all' ? undefined : historyOrderSource,
+                cashierId: historyCashierId || undefined,
+                dateFrom: historyDateFrom || undefined,
+                dateTo: historyDateTo || undefined,
+                locationId: selectedLocationId || undefined
             });
+            if (!historyQuery) {
+                setHistoryRows([]);
+                setHistoryPagination({
+                    page,
+                    limit: 20,
+                    total: 0,
+                    totalPages: 1
+                });
+                setHistoryPage(page);
+                return;
+            }
+            const result = await fetchPosTransactions(historyQuery);
             const rows = Array.isArray(result?.transactions) ? result.transactions : [];
             setHistoryRows(rows);
             setHistoryPagination(result?.pagination || null);
@@ -2110,6 +2299,68 @@ export default function POSCheckoutTerminal({
     const normalizedFnbContext = useMemo(() => (
         fnbContext && typeof fnbContext === 'object' ? fnbContext : null
     ), [fnbContext]);
+
+    const splitPaymentCheckoutSnapshot = useMemo(() => ({
+        schema_version: 1,
+        order_method: orderMethod,
+        customer_name: posWorkflow.mode === 'services' ? servicesClientName.trim() || null : null,
+        special_instructions: posWorkflow.mode === 'services' ? servicesNotes.trim() || null : null,
+        scheduled_for: posWorkflow.mode === 'services' && servicesDateTime
+            ? new Date(servicesDateTime).toISOString()
+            : null,
+        discount_mode: appliedDiscount
+            ? 'amount'
+            : (selectedDiscount ? 'preset' : (manualDiscountAmount > 0 ? manualDiscountMode : 'none')),
+        discount_amount: Number(calculatedDiscountAmount || 0),
+        discount_profile_name: appliedDiscount ? null : (selectedDiscount?.name || null),
+        discount_rate: appliedDiscount
+            ? null
+            : selectedDiscount
+                ? Number(selectedDiscount.percentage || 0)
+                : (manualDiscountMode === 'percentage' && manualDiscountRate > 0 ? Number(manualDiscountRate) : null),
+        discount_beneficiary: appliedDiscount && ['senior', 'pwd'].includes(appliedDiscount.type)
+            ? {
+                category: appliedDiscount.type,
+                name: appliedDiscount.customer_name,
+                id_number: appliedDiscount.id_number
+            }
+            : null,
+        governed_discount: appliedDiscount ? { ...appliedDiscount } : null,
+        affiliate_code: affiliateCodeInput.trim() || null,
+        fnb_check_id: normalizedFnbContext?.fnb_check_id || null,
+        fnb_table_id: normalizedFnbContext?.fnb_table_id || null,
+        fnb_table_label_snapshot: normalizedFnbContext?.fnb_table_label_snapshot || null,
+        fnb_guest_count: normalizedFnbContext?.fnb_guest_count || null,
+        fnb_server_id: normalizedFnbContext?.fnb_server_id || null,
+        restaurant_service_charge: normalizedFnbContext?.restaurant_service_charge || null,
+        lines: safeCart.map((line) => ({
+            item_id: Number(line?.item_id),
+            quantity: Number(line?.quantity),
+            sale_price: Number(line?.sale_price),
+            price_override_reason: String(line?.price_override_reason || '').trim() || null,
+            course: line?.course || normalizedFnbContext?.default_course || null,
+            line_modifiers: Array.isArray(line?.line_modifiers) ? line.line_modifiers : [],
+            special_instructions: String(line?.special_instructions || '').trim() || null,
+            kitchen_station_id: line?.kitchen_station_id || null,
+            selected_option_ids: Array.isArray(line?.service_option_ids) ? line.service_option_ids : [],
+            scan_metadata: line?.scan_metadata || null
+        }))
+    }), [
+        affiliateCodeInput,
+        appliedDiscount,
+        calculatedDiscountAmount,
+        manualDiscountAmount,
+        manualDiscountMode,
+        manualDiscountRate,
+        normalizedFnbContext,
+        orderMethod,
+        posWorkflow.mode,
+        safeCart,
+        selectedDiscount,
+        servicesClientName,
+        servicesDateTime,
+        servicesNotes
+    ]);
 
     const restaurantServiceChargeAmount = useMemo(() => {
         const charge = normalizedFnbContext?.restaurant_service_charge;
@@ -2903,6 +3154,313 @@ export default function POSCheckoutTerminal({
         }
     };
 
+    const resetCurrentSaleForNewSale = useCallback(() => {
+        setCart([]);
+        setOrderMethod(posWorkflow.allowedMethods[0] || (posWorkflow.mode === 'services' ? 'walk_in' : 'dine_in'));
+        setTableNumber('');
+        setKitchenNotes('');
+        setServicesClientName('');
+        setServicesDateTime('');
+        setServicesProvider('');
+        setServicesResource('');
+        setServicesNotes('');
+        setPaymentType('cash');
+        setEmployeeCreditAccountCode('');
+        setEmployeeCreditAccount(null);
+        setSelectedEmployeeCreditOption(null);
+        setEmployeeCreditLookupLoading(false);
+        employeeCreditValidationSequenceRef.current += 1;
+        setSelectedDiscountProfile('');
+        setManualDiscountMode('none');
+        setManualDiscountRateInput('');
+        setManualDiscountAmountInput('');
+        setAppliedDiscount(null);
+        setDiscountDraft(EMPTY_DISCOUNT_DRAFT);
+        setDiscountModalOpen(false);
+        setShowDiscountPin(false);
+        setAffiliateCodeInput('');
+        setCustomerPaymentAmountInput('');
+        setCheckoutConfirmModalOpen(false);
+        setFnbModifierLineKey(null);
+        setServiceOptionsModal({ open: false, item: null, groups: [] });
+    }, [posWorkflow]);
+
+    const validateParkedSaleForResume = useCallback((parkedSale) => {
+        const validation = validateParkedSaleResume({
+            parkedSale,
+            catalog: safeCatalog,
+            locationId: selectedLocationId,
+            allowedOrderMethods: posWorkflow.allowedMethods,
+            discountProfiles: safeDiscountProfiles,
+            commercialPromoConfig: safeCommercialPromoConfig,
+            modifierValidator: ({ item, line, locationId }) => {
+                const currentGroups = getFnbModifierGroups(item);
+                const savedModifiers = toArray(line?.line_modifiers);
+                if (savedModifiers.length > 0 && currentGroups.length === 0) {
+                    return 'modifier selections are no longer available.';
+                }
+                const currentOptionIds = new Set(currentGroups.flatMap((group) => getActiveModifierOptions(group).map((option) => Number(option?.modifier_option_id))));
+                if (savedModifiers.some((modifier) => !currentOptionIds.has(Number(modifier?.modifier_option_id)))) {
+                    return 'one or more modifier selections are no longer available.';
+                }
+                return validateFnbModifierSelections(currentGroups, savedModifiers, locationId);
+            }
+        });
+        if (activeParkedSale?.pos_parked_sale_id
+            && Number(activeParkedSale.pos_parked_sale_id) !== Number(parkedSale?.pos_parked_sale_id)) {
+            return {
+                ok: false,
+                message: 'Finish, update, or cancel the currently resumed parked sale before opening another one.'
+            };
+        }
+        if (safeCart.length > 0) {
+            return {
+                ok: false,
+                message: 'Start with an empty sale before resuming a parked sale. Park or complete the current cart first.'
+            };
+        }
+        if (!validation.ok) {
+            return {
+                ok: false,
+                message: `This parked sale needs review before it can be resumed: ${validation.conflicts.slice(0, 3).join(' ')}`
+            };
+        }
+        return { ok: true };
+    }, [activeParkedSale?.pos_parked_sale_id, posWorkflow, safeCart.length, safeCatalog, safeCommercialPromoConfig, safeDiscountProfiles, selectedLocationId]);
+
+    const handleParkedSaleClaimed = useCallback((claimedSale) => {
+        const snapshot = claimedSale?.snapshot && typeof claimedSale.snapshot === 'object'
+            ? claimedSale.snapshot
+            : {};
+        const resumedLines = buildResumedCartLines({ parkedSale: claimedSale, catalog: safeCatalog });
+        const services = snapshot.services && typeof snapshot.services === 'object' ? snapshot.services : {};
+        const discountContext = snapshot.discount_context && typeof snapshot.discount_context === 'object'
+            ? snapshot.discount_context
+            : {};
+        const selectedProfile = discountContext.selected_profile && typeof discountContext.selected_profile === 'object'
+            ? discountContext.selected_profile
+            : null;
+        const applied = discountContext.applied && typeof discountContext.applied === 'object'
+            ? discountContext.applied
+            : null;
+        const defaultOrderMethod = posWorkflow.allowedMethods[0] || (posWorkflow.mode === 'services' ? 'walk_in' : 'dine_in');
+        const resumedOrderMethod = posWorkflow.allowedMethods.includes(snapshot.order_method)
+            ? snapshot.order_method
+            : defaultOrderMethod;
+
+        setCart(resumedLines);
+        setOrderMethod(resumedOrderMethod);
+        setTableNumber(String(snapshot.table_number || ''));
+        setKitchenNotes(String(snapshot.kitchen_notes || ''));
+        setServicesClientName(String(services.client_name || ''));
+        setServicesDateTime(String(services.scheduled_for || '').slice(0, 16));
+        setServicesProvider(String(services.provider || ''));
+        setServicesResource(String(services.resource || ''));
+        setServicesNotes(String(services.notes || ''));
+        setPaymentType('cash');
+        setEmployeeCreditAccountCode('');
+        setEmployeeCreditAccount(null);
+        setSelectedEmployeeCreditOption(null);
+        setEmployeeCreditLookupLoading(false);
+        employeeCreditValidationSequenceRef.current += 1;
+        setCustomerPaymentAmountInput('');
+        setAffiliateCodeInput('');
+        setCheckoutConfirmModalOpen(false);
+        setMobileCheckoutPanelOpen(false);
+        setFnbModifierLineKey(null);
+        setServiceOptionsModal({ open: false, item: null, groups: [] });
+        setActiveParkedSale({
+            pos_parked_sale_id: Number(claimedSale?.pos_parked_sale_id),
+            park_reference: claimedSale?.park_reference || null,
+            revision: Number(claimedSale?.revision || 1),
+            parked_sale_name: String(snapshot.parked_sale_name || '').trim() || null
+        });
+
+        let approvalResetMessage = '';
+        if (applied && ['employee', 'manual'].includes(String(applied.type || '').toLowerCase())) {
+            setAppliedDiscount(null);
+            setDiscountDraft({ ...EMPTY_DISCOUNT_DRAFT, ...applied, manager_pin: '' });
+            setSelectedDiscountProfile('');
+            setManualDiscountMode('none');
+            setManualDiscountRateInput('');
+            setManualDiscountAmountInput('');
+            approvalResetMessage = ' Re-enter discount approval before checkout.';
+        } else if (applied) {
+            const safeApplied = { ...applied, manager_pin: '' };
+            setAppliedDiscount(safeApplied);
+            setDiscountDraft({ ...EMPTY_DISCOUNT_DRAFT, ...safeApplied, manager_pin: '' });
+            setSelectedDiscountProfile('');
+            setManualDiscountMode('none');
+            setManualDiscountRateInput('');
+            setManualDiscountAmountInput('');
+        } else if (selectedProfile?.name) {
+            setAppliedDiscount(null);
+            setDiscountDraft(EMPTY_DISCOUNT_DRAFT);
+            setSelectedDiscountProfile(String(selectedProfile.name));
+            setManualDiscountMode('none');
+            setManualDiscountRateInput('');
+            setManualDiscountAmountInput('');
+        } else {
+            setAppliedDiscount(null);
+            setDiscountDraft(EMPTY_DISCOUNT_DRAFT);
+            setSelectedDiscountProfile('');
+            setManualDiscountMode(String(discountContext.manual_mode || 'none'));
+            setManualDiscountRateInput(discountContext.manual_rate ? String(discountContext.manual_rate) : '');
+            setManualDiscountAmountInput(discountContext.manual_amount ? String(discountContext.manual_amount) : '');
+        }
+
+        setCurrentViewMode('checkout');
+        toast.success(`Resumed ${formatParkedSaleDisplayName(claimedSale)}. Review the cart before checkout.${approvalResetMessage}`);
+    }, [posWorkflow, safeCatalog, setCurrentViewMode]);
+
+    const openParkSaleNameDialog = () => {
+        const suggestedName = activeParkedSale?.parked_sale_name
+            || servicesClientName.trim()
+            || (tableNumber.trim() ? `Table ${tableNumber.trim()}` : '');
+        setParkSaleNameInput(suggestedName);
+        setParkSaleNameDialogOpen(true);
+    };
+
+    const handleParkAndNewSale = async () => {
+        const parkedSaleName = parkSaleNameInput.trim();
+        if (!parkedSaleName) {
+            toast.error('Enter a customer or order name before parking this sale.');
+            return;
+        }
+        if (checkoutBlockedReason) {
+            toast.error(checkoutBlockedReason);
+            return;
+        }
+        if (!activeShiftId) {
+            toast.error('Open a POS shift before parking a sale.');
+            return;
+        }
+        if (!normalizedTerminalId) {
+            toast.error('Select a terminal ID before parking a sale.');
+            return;
+        }
+        if (safeCart.length === 0) {
+            toast.error('Add at least one item before parking a sale.');
+            return;
+        }
+        const snapshot = {
+            schema_version: 1,
+            parked_sale_name: parkedSaleName,
+            order_method: orderMethod,
+            table_number: tableNumber.trim() || null,
+            kitchen_notes: kitchenNotes.trim() || null,
+            services: posWorkflow.mode === 'services'
+                ? {
+                    client_name: servicesClientName.trim() || null,
+                    scheduled_for: servicesDateTime || null,
+                    provider: servicesProvider.trim() || null,
+                    resource: servicesResource.trim() || null,
+                    notes: servicesNotes.trim() || null
+                }
+                : null,
+            fnb_context: normalizedFnbContext || null,
+            discount_context: {
+                selected_profile: selectedDiscount ? {
+                    name: selectedDiscount.name || null,
+                    percentage: Number(selectedDiscount.percentage || 0)
+                } : null,
+                manual_mode: manualDiscountMode,
+                manual_rate: Number(manualDiscountRate || 0),
+                manual_amount: Number(manualDiscountAmount || 0),
+                applied: appliedDiscount ? {
+                    type: appliedDiscount.type || null,
+                    label: appliedDiscount.label || null,
+                    method: appliedDiscount.method || null,
+                    rate: Number(appliedDiscount.rate || 0),
+                    amount: appliedDiscount.amount == null ? null : Number(appliedDiscount.amount),
+                    customer_name: appliedDiscount.customer_name || null,
+                    id_number: appliedDiscount.id_number || null,
+                    approver_user_id: appliedDiscount.approver_user_id || null,
+                    approver_name: appliedDiscount.approver_name || null,
+                    promo_code: appliedDiscount.promo_code || null,
+                    eligible_item_ids: toArray(appliedDiscount.eligible_item_ids),
+                    eligible_items: toArray(appliedDiscount.eligible_items)
+                } : null
+            },
+            lines: safeCart.map((line) => ({
+                line_key: line.line_key || null,
+                item_id: Number(line.item_id),
+                item_name: line.item_name || null,
+                quantity: Number(line.quantity),
+                base_sale_price: Number(line.base_sale_price || 0),
+                sale_price: Number(line.sale_price),
+                price_override_reason: line.price_override_reason || null,
+                unit_of_measure: line.unit_of_measure || null,
+                category: line.category || null,
+                vat_type: line.vat_type || null,
+                senior_pwd_discount_eligible: line.senior_pwd_discount_eligible === true,
+                course: line.course || null,
+                kitchen_station_id: line.kitchen_station_id || null,
+                service_option_ids: toArray(line.service_option_ids),
+                service_option_details: toArray(line.service_option_details),
+                modifier_groups: toArray(line.modifier_groups),
+                line_modifiers: toArray(line.line_modifiers),
+                special_instructions: line.special_instructions || null,
+                scan_metadata: line.scan_metadata || null
+            }))
+        };
+
+        const parkPayload = {
+            idempotency_key: createIdempotencyKey('pos-parked-sale'),
+            shift_id: Number(activeShiftId),
+            terminal_id: normalizedTerminalId,
+            location_id: selectedLocationId ? Number(selectedLocationId) : undefined,
+            snapshot,
+            subtotal_amount: Number(cartSubtotal || 0),
+            total_amount: Number(cartTotal || 0)
+        };
+        const offlinePark = typeof navigator !== 'undefined' && navigator.onLine === false;
+
+        if (offlinePark && activeParkedSale?.pos_parked_sale_id) {
+            toast.error('Reconnect before parking this resumed sale again. Your cart is still open.');
+            return;
+        }
+
+        setParkLoading(true);
+        try {
+            if (offlinePark) {
+                const queuedIntentId = await onQueueOfflineOperation({
+                    intent_id: parkPayload.idempotency_key,
+                    operation: 'parked_sale',
+                    shift_id: Number(activeShiftId),
+                    payload: parkPayload
+                }, 'offline_parked_sale');
+                if (!queuedIntentId) {
+                    throw new Error('Offline parked-sale queue is unavailable. Your current cart is still open.');
+                }
+                clearPosCartDraft(offlineSnapshotScope, activeShiftId);
+                resetCurrentSaleForNewSale();
+                setParkSaleNameDialogOpen(false);
+                setParkSaleNameInput('');
+                toast.message('Sale saved locally as a pending parked sale. Press Sync after reconnecting to send it.');
+                return;
+            }
+
+            const parkedSale = activeParkedSale?.pos_parked_sale_id
+                ? await reparkPosParkedSale(activeParkedSale.pos_parked_sale_id, {
+                    ...parkPayload,
+                    idempotency_key: undefined,
+                    expected_revision: Number(activeParkedSale.revision)
+                })
+                : await createPosParkedSale(parkPayload);
+            clearPosCartDraft(offlineSnapshotScope, activeShiftId);
+            setActiveParkedSale(null);
+            resetCurrentSaleForNewSale();
+            setParkSaleNameDialogOpen(false);
+            setParkSaleNameInput('');
+            toast.success(`${formatParkedSaleDisplayName(parkedSale)} ${activeParkedSale ? 'updated' : 'saved'}. New sale ready.`);
+        } catch (error) {
+            toast.error(error?.response?.data?.message || error?.message || 'Sale was not parked. Your current cart is still open.');
+        } finally {
+            setParkLoading(false);
+        }
+    };
+
     const handleCheckout = async () => {
         if (checkoutBlockedReason) {
             toast.error(checkoutBlockedReason);
@@ -2925,6 +3483,10 @@ export default function POSCheckoutTerminal({
             return;
         }
         const offlineCheckout = typeof navigator !== 'undefined' && navigator.onLine === false;
+        if (offlineCheckout && activeParkedSale?.pos_parked_sale_id) {
+            toast.error('Reconnect before checking out this resumed parked sale. Your cart is still open.');
+            return;
+        }
         if (offlineCheckout && !isCashPayment) {
             toast.error('Only cash transactions can be recorded offline. Reconnect before using an external payment method.');
             return;
@@ -2968,6 +3530,7 @@ export default function POSCheckoutTerminal({
             } : undefined,
             affiliate_code: affiliateCodeInput.trim() || undefined,
             shift_id: activeShiftId || undefined,
+            parked_sale_id: activeParkedSale?.pos_parked_sale_id || undefined,
             fnb_check_id: normalizedFnbContext?.fnb_check_id || undefined,
             fnb_table_id: normalizedFnbContext?.fnb_table_id || undefined,
             fnb_table_label_snapshot: normalizedFnbContext?.fnb_table_label_snapshot || undefined,
@@ -3071,6 +3634,7 @@ export default function POSCheckoutTerminal({
             setCatalog(nextCatalog);
             saveCatalogSnapshot(nextCatalog);
             setCart([]);
+            setActiveParkedSale(null);
             setSelectedDiscountProfile('');
             setManualDiscountRateInput('');
             setManualDiscountAmountInput('');
@@ -3112,6 +3676,7 @@ export default function POSCheckoutTerminal({
             setLastReceipt(data?.transaction || null);
             setLastReceiptContract(inferReceiptContract(data?.transaction, data?.receipt_contract));
             setCart([]);
+            setActiveParkedSale(null);
             setSelectedDiscountProfile('');
             setManualDiscountRateInput('');
             setManualDiscountAmountInput('');
@@ -3197,30 +3762,6 @@ export default function POSCheckoutTerminal({
             }
         } finally {
             setCheckoutLoading(false);
-        }
-    };
-
-    const handleCloseDay = () => {
-        setZReadingClosePin('');
-        setZReadingCloseConfirmOpen(true);
-    };
-
-    const handleConfirmCloseDay = async () => {
-        if (!/^\d{4,12}$/.test(zReadingClosePin)) {
-            toast.error('Enter your 4 to 12 digit Day Close PIN.');
-            return;
-        }
-        setClosingDay(true);
-        try {
-            const result = await closePosDay(null, { dayClosePin: zReadingClosePin });
-            setZReadingCloseConfirmOpen(false);
-            toast.success(
-                `Z-reading generated: ${result?.summary?.transaction_count || 0} sale(s), PHP ${money(result?.summary?.total_amount)}`
-            );
-        } catch (error) {
-            toast.error(error?.response?.data?.message || 'Failed to generate Z-reading');
-        } finally {
-            setClosingDay(false);
         }
     };
 
@@ -4078,6 +4619,14 @@ export default function POSCheckoutTerminal({
                         </button>
                         </div>
                     </div>
+                    {activeParkedSale?.pos_parked_sale_id && (
+                        <div
+                            data-testid="pos-active-parked-sale"
+                            className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-bold text-amber-900"
+                        >
+                            Editing {formatParkedSaleDisplayName(activeParkedSale)} · changes will update this same parked sale
+                        </div>
+                    )}
                     {currentSaleHelpOpen && (
                         <div className="absolute right-0 top-9 z-20 w-full max-w-[16rem] rounded-lg border border-amber-200 bg-white p-3 text-[12px] leading-5 text-slate-700 shadow-xl shadow-slate-900/10">
                             <p className="break-words font-semibold text-slate-800">Review cart, VAT, and total before checkout.</p>
@@ -4089,6 +4638,62 @@ export default function POSCheckoutTerminal({
                 <div className="col-span-2 flex min-h-0 flex-col overflow-hidden md:h-[clamp(18rem,46vh,26rem)] md:flex-none">
                 <div className="min-h-0 flex-1 overflow-hidden border-b border-slate-200 pb-2">
                     <div data-testid="pos-current-sale-items" className={`space-y-2.5 ${currentSaleItemsListClassName}`}>
+                        {(splitPaymentRecoveryPending || splitPaymentSessionState.active) && (
+                            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 shadow-sm shadow-blue-100/70" data-testid="pos-current-sale-payment-in-progress">
+                                <div className="flex items-center justify-between gap-2">
+                                    <p className="text-[13px] font-black text-[#0F172A]">
+                                        {splitPaymentRecoveryPending ? 'Checking saved payment…' : 'Saved split payment'}
+                                    </p>
+                                    <span className="rounded-md border border-blue-200 bg-white px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-blue-700">
+                                        {splitPaymentRecoveryPending ? 'Checking' : 'Saved'}
+                                    </span>
+                                </div>
+                                {!splitPaymentRecoveryPending && splitPaymentSessionState.recoveryError ? (
+                                    <p className="mt-2 text-[12px] font-semibold leading-5 text-rose-700">
+                                        {splitPaymentSessionState.recoveryError} Resume the payment to try again.
+                                    </p>
+                                ) : !splitPaymentRecoveryPending && splitPaymentSession ? (
+                                    <>
+                                        <p className="mt-2 text-[12px] font-semibold leading-5 text-slate-700">
+                                            {Number(splitPaymentSession.paid_amount || 0) > 0
+                                                ? `PHP ${money(splitPaymentSession.paid_amount)} is already recorded. Resume this payment to finish the sale.`
+                                                : 'No money is recorded. Resume this payment or discard the unpaid draft.'}
+                                        </p>
+                                        <div className="mt-2 flex items-center justify-between rounded-md border border-blue-100 bg-white px-2.5 py-2 text-[11px]">
+                                            <span className="font-semibold text-slate-600">
+                                                {Number(splitPaymentSession?.line_count || splitPaymentSession?.snapshot?.lines?.length || 0)} saved item(s)
+                                            </span>
+                                            <span className="font-black text-[#1A4E8D]">PHP {money(splitPaymentSession?.total_amount)}</span>
+                                        </div>
+                                    </>
+                                ) : null}
+                                {!splitPaymentRecoveryPending && (
+                                    <div className={`mt-3 grid gap-2 ${canDiscardUnpaidSplitPayment ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                                        <Button
+                                            type="button"
+                                            onClick={() => setSplitPaymentDialogOpen(true)}
+                                            disabled={splitPaymentDiscarding}
+                                            className="h-9 bg-[#1A4E8D] text-xs font-extrabold text-white hover:bg-[#143F73]"
+                                            data-testid="pos-resume-split-payment"
+                                        >
+                                            Resume Payment
+                                        </Button>
+                                        {canDiscardUnpaidSplitPayment && (
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                onClick={handleDiscardUnpaidSplitPayment}
+                                                disabled={splitPaymentDiscarding}
+                                                className="h-9 border-slate-300 bg-white text-xs font-extrabold text-slate-700"
+                                                data-testid="pos-discard-unpaid-split-payment"
+                                            >
+                                                {splitPaymentDiscarding ? 'Discarding…' : 'Discard Unpaid'}
+                                            </Button>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
                         {safeCart.length > 0 ? safeCart.map((line) => {
                             const lineKey = getLineKey(line);
                             return (
@@ -4343,73 +4948,50 @@ export default function POSCheckoutTerminal({
                     </div>
                 )}
 
-                <div data-testid="pos-current-sale-actions" className="dgfy-pos-current-sale-actions grid shrink-0 grid-cols-2 sm:grid-cols-3 gap-2 border-t border-slate-200 pt-2">
-                    <Button
-                        type="button"
-                        onClick={openCheckoutConfirmModal}
-                        disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0}
-                        className="flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-xl bg-[#0B449C] p-1.5 text-center text-white shadow-md shadow-blue-900/15 transition hover:bg-blue-800 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60"
+                {Number(universalPendingSyncCount || 0) > 0 && (
+                    <div
+                        className="flex shrink-0 items-center justify-between gap-3 border-t border-slate-200 pt-2"
+                        data-testid="pos-pending-sync-banner"
                     >
-                        <ShoppingCart size={14} className="mb-0.5 shrink-0" />
-                        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">
-                            {checkoutLoading ? 'Processing...' : `Checkout (${safeCart.length} ${safeCart.length === 1 ? 'Item' : 'Items'})`}
-                        </span>
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handlePrintOrder}
-                        disabled={posActionsBlocked || safeCart.length === 0 || !isPrinterAvailable}
-                        title={isPrinterAvailable ? undefined : 'No printer detected on this device.'}
-                        className="flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border border-slate-200 bg-white p-1.5 text-center text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                        <Printer size={14} className="mb-0.5 shrink-0" />
-                        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">Print Order</span>
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleCloseDay}
-                        disabled={closingDay}
-                        className="flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border border-[#1A4E8D] bg-white p-1.5 text-center text-[#1A4E8D] hover:bg-blue-50"
-                    >
-                        <Gauge size={14} className="mb-0.5 shrink-0" />
-                        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">{closingDay ? 'Generating...' : 'Close Day / Z-Reading'}</span>
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => handlePrintReceipt(lastReceipt, 'last_receipt_panel')}
-                        disabled={posActionsBlocked || !lastReceipt || receiptPrinting || lastReceiptPendingSync || !isPrinterAvailable}
-                        title={isPrinterAvailable ? undefined : 'No printer is configured for this terminal. The receipt stays available for on-screen preview.'}
-                        className="flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border p-1.5 text-center disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                        <Printer size={14} className="mb-0.5 shrink-0" />
-                        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">{receiptPrinting ? 'Printing...' : 'Print Last Receipt'}</span>
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        onClick={() => handleOpenDrawer({
-                            transactionId: Number(lastReceipt?.pos_transaction_id) || null,
-                            reason: 'manual_drawer_panel'
-                        })}
-                        disabled={!activeShiftId || drawerOpening}
-                        title={isPrinterAvailable ? undefined : 'No cash drawer is configured for this terminal.'}
-                        className="flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border p-1.5 text-center"
-                    >
-                        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">{drawerOpening ? 'Opening...' : 'Open Cash Drawer'}</span>
-                    </Button>
-                    <Button
-                        type="button"
-                        variant="outline"
-                        className="flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border border-[#1A4E8D] bg-white p-1.5 text-center text-[#1A4E8D] hover:bg-blue-50"
-                        onClick={openDiscountModal}
-                        disabled={posActionsBlocked || safeCart.length === 0}
-                    >
-                        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">Apply Discount</span>
-                    </Button>
-                </div>
+                        <div className="min-w-0 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-[12px] font-semibold leading-5 text-blue-900">
+                            {Number(universalPendingSyncCount)} pending POS record{Number(universalPendingSyncCount) === 1 ? '' : 's'} waiting to sync. Reconnect, then press Sync.
+                        </div>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleManualUniversalSync}
+                            disabled={sessionLocked || manualSyncPolicy?.remaining <= 0 || (typeof navigator !== 'undefined' && navigator.onLine === false)}
+                            className="shrink-0 border-blue-300 bg-white text-[11px] font-extrabold text-blue-800 hover:bg-blue-100"
+                        >
+                            Sync
+                        </Button>
+                    </div>
+                )}
+
+                <PosCurrentSaleActions
+                    presentationBundle={posPresentationBundle}
+                    onOpenParkedSales={() => setParkedSalesDialogOpen(true)}
+                    openParkedSalesDisabled={sessionLocked || !canViewHistory || !activeShiftId}
+                    onParkAndNewSale={openParkSaleNameDialog}
+                    parkSaleDisabled={posActionsBlocked || checkoutLoading || parkLoading || safeCart.length === 0 || !activeShiftId || !normalizedTerminalId}
+                    parkLoading={parkLoading}
+                    activeParkedSale={activeParkedSale}
+                    onCheckout={openCheckoutConfirmModal}
+                    checkoutDisabled={posActionsBlocked || checkoutLoading || safeCart.length === 0}
+                    checkoutLoading={checkoutLoading}
+                    itemCount={safeCart.length}
+                    onPrintOrder={handlePrintOrder}
+                    printOrderDisabled={posActionsBlocked || safeCart.length === 0 || !isPrinterAvailable}
+                    printerAvailable={isPrinterAvailable}
+                    onOpenCashDrawer={() => handleOpenDrawer({
+                        transactionId: Number(lastReceipt?.pos_transaction_id) || null,
+                        reason: 'manual_drawer_panel'
+                    })}
+                    cashDrawerDisabled={!activeShiftId || drawerOpening}
+                    drawerOpening={drawerOpening}
+                    onApplyDiscount={openDiscountModal}
+                    discountDisabled={posActionsBlocked || safeCart.length === 0}
+                />
                     </div>
             </section>
             </aside>
@@ -4503,41 +5085,6 @@ export default function POSCheckoutTerminal({
                 </div>
             )}
             </section>
-
-            <Dialog open={zReadingCloseConfirmOpen} onOpenChange={(open) => {
-                setZReadingCloseConfirmOpen(open);
-                if (!open) setZReadingClosePin('');
-            }}>
-                <DialogContent className="w-[calc(100vw-2rem)] max-w-md rounded-2xl">
-                    <DialogHeader>
-                        <DialogTitle>Close Day and generate Z-reading</DialogTitle>
-                        <DialogDescription>
-                            All cashier shifts for this branch must be closed. Enter your personal Day Close PIN to record your accountability.
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-2 py-2">
-                        <label htmlFor="legacy-pos-day-close-pin" className="text-sm font-semibold text-slate-800">Your Day Close PIN</label>
-                        <Input
-                            id="legacy-pos-day-close-pin"
-                            type="password"
-                            inputMode="numeric"
-                            autoComplete="one-time-code"
-                            value={zReadingClosePin}
-                            onChange={(event) => setZReadingClosePin(event.target.value.replace(/\D/g, '').slice(0, 12))}
-                            onKeyDown={(event) => {
-                                if (event.key === 'Enter') handleConfirmCloseDay();
-                            }}
-                            disabled={closingDay}
-                        />
-                    </div>
-                    <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => setZReadingCloseConfirmOpen(false)} disabled={closingDay}>Cancel</Button>
-                        <Button type="button" onClick={handleConfirmCloseDay} disabled={closingDay || zReadingClosePin.length < 4}>
-                            {closingDay ? 'Generating...' : 'Confirm and generate'}
-                        </Button>
-                    </DialogFooter>
-                </DialogContent>
-            </Dialog>
 
             <Dialog open={discountModalOpen} onOpenChange={setDiscountModalOpen}>
                 <DialogContent className="relative flex max-h-[90dvh] w-[calc(100vw-1rem)] max-w-[480px] flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white p-0 shadow-xl shadow-slate-950/20 sm:w-[calc(100vw-2rem)]">
@@ -4925,51 +5472,27 @@ export default function POSCheckoutTerminal({
 
                     <div className="pos-modal-scroll-content min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
                         <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-3" data-testid="pos-checkout-order-settings">
-                            <p className="text-[11px] font-black uppercase tracking-wide text-[#64748B]">
-                                {posWorkflow.mode === 'services' ? 'Service details' : 'Order details'}
-                            </p>
-                            {posWorkflow.mode === 'fnb' && (
-                                <Suspense fallback={null}>
-                                    <FnbWorkflowPanel
-                                        orderMethod={orderMethod}
-                                        setOrderMethod={setOrderMethod}
-                                        tableNumber={tableNumber}
-                                        setTableNumber={setTableNumber}
-                                        kitchenNotes={kitchenNotes}
-                                        setKitchenNotes={setKitchenNotes}
-                                        disabled={posActionsBlocked || checkoutLoading}
-                                    />
-                                </Suspense>
-                            )}
-                            {posWorkflow.mode === 'counter' && (
-                                <Suspense fallback={null}>
-                                    <CounterWorkflowPanel
-                                        orderMethod={orderMethod}
-                                        setOrderMethod={setOrderMethod}
-                                        allowedMethods={posWorkflow.allowedMethods}
-                                        disabled={posActionsBlocked || checkoutLoading}
-                                    />
-                                </Suspense>
-                            )}
-                            {posWorkflow.mode === 'services' && (
-                                <Suspense fallback={null}>
-                                    <ServicesWorkflowPanel
-                                        visitType={orderMethod}
-                                        setVisitType={setOrderMethod}
-                                        clientName={servicesClientName}
-                                        setClientName={setServicesClientName}
-                                        appointmentDateTime={servicesDateTime}
-                                        setAppointmentDateTime={setServicesDateTime}
-                                        provider={servicesProvider}
-                                        setProvider={setServicesProvider}
-                                        resource={servicesResource}
-                                        setResource={setServicesResource}
-                                        serviceNotes={servicesNotes}
-                                        setServiceNotes={setServicesNotes}
-                                        disabled={posActionsBlocked || checkoutLoading}
-                                    />
-                                </Suspense>
-                            )}
+                            <PosCheckoutDetailsSlot
+                                presentationBundle={posPresentationBundle}
+                                posWorkflow={posWorkflow}
+                                orderMethod={orderMethod}
+                                setOrderMethod={setOrderMethod}
+                                tableNumber={tableNumber}
+                                setTableNumber={setTableNumber}
+                                kitchenNotes={kitchenNotes}
+                                setKitchenNotes={setKitchenNotes}
+                                servicesClientName={servicesClientName}
+                                setServicesClientName={setServicesClientName}
+                                servicesDateTime={servicesDateTime}
+                                setServicesDateTime={setServicesDateTime}
+                                servicesProvider={servicesProvider}
+                                setServicesProvider={setServicesProvider}
+                                servicesResource={servicesResource}
+                                setServicesResource={setServicesResource}
+                                servicesNotes={servicesNotes}
+                                setServicesNotes={setServicesNotes}
+                                disabled={posActionsBlocked || checkoutLoading}
+                            />
                             <label className="block text-[11px] font-medium text-slate-500">
                                 Payment Type
                                 <select
@@ -4993,6 +5516,23 @@ export default function POSCheckoutTerminal({
                                     <option value="employee_credit">Employee Credit</option>
                                 </select>
                             </label>
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => {
+                                    setCheckoutConfirmModalOpen(false);
+                                    setSplitPaymentDialogOpen(true);
+                                }}
+                                disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || Boolean(appliedDiscount) || isEmployeeCreditPayment}
+                                title={appliedDiscount
+                                    ? 'Governed discounts require the standard single-tender checkout.'
+                                    : (isEmployeeCreditPayment ? 'Employee Credit cannot be combined with split tender.' : undefined)}
+                                data-testid="pos-open-split-payment"
+                                className="h-10 w-full rounded-lg border-[#1A4E8D] text-sm font-extrabold text-[#1A4E8D] hover:bg-blue-50"
+                            >
+                                <CreditCard className="mr-2 h-4 w-4" aria-hidden="true" />
+                                Split Payment
+                            </Button>
                         </div>
 
                         {!isEmployeeCreditPayment && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px]">
@@ -5145,6 +5685,41 @@ export default function POSCheckoutTerminal({
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
+
+            <POSSplitPaymentDialog
+                open={splitPaymentDialogOpen}
+                onOpenChange={setSplitPaymentDialogOpen}
+                cart={safeCart}
+                catalog={safeCatalog}
+                subtotalAmount={cartSubtotal}
+                totalAmount={cartTotal}
+                shiftId={activeShiftId}
+                locationId={selectedLocationId}
+                terminalId={normalizedTerminalId}
+                parkedSaleId={activeParkedSale?.pos_parked_sale_id || null}
+                storageScopeKey={splitPaymentStorageScopeKey}
+                isMsmeMode={isMsmeMode}
+                checkoutSnapshot={splitPaymentCheckoutSnapshot}
+                onSessionStateChange={setSplitPaymentSessionState}
+                onCompleted={(result) => {
+                    const transaction = result?.transaction || null;
+                    setLastReceipt(transaction);
+                    setLastReceiptContract(inferReceiptContract(transaction, result?.receipt_contract));
+                    setCart([]);
+                    setActiveParkedSale(null);
+                    setSelectedDiscountProfile('');
+                    setManualDiscountRateInput('');
+                    setManualDiscountAmountInput('');
+                    setAppliedDiscount(null);
+                    setAffiliateCodeInput('');
+                    setCustomerPaymentAmountInput('');
+                    setReceiptPreviewSource('order_preview');
+                    setReceiptPreviewModalOpen(true);
+                    loadCatalog();
+                    loadHistory(historyPage);
+                    if (typeof onCheckoutCompleted === 'function') onCheckoutCompleted(transaction);
+                }}
+            />
 
             <Dialog open={receiptPreviewModalOpen} onOpenChange={(open) => {
                 if (!open) {
@@ -5338,6 +5913,78 @@ export default function POSCheckoutTerminal({
                 </div>
             ), document.body)}
 
+            {posPresentationBundle.currentSaleActions.showParkedSaleControls && (
+                <POSParkedSalesDialog
+                    open={parkedSalesDialogOpen}
+                    onOpenChange={setParkedSalesDialogOpen}
+                    activeShiftId={activeShiftId}
+                    selectedLocationId={selectedLocationId}
+                    terminalId={normalizedTerminalId}
+                    cartHasItems={safeCart.length > 0}
+                    canView={canViewHistory && !sessionLocked}
+                    canTransact={!posActionsBlocked}
+                    onBeforeClaim={validateParkedSaleForResume}
+                    onClaimed={handleParkedSaleClaimed}
+                    onCancelled={(cancelledSale) => {
+                        if (Number(cancelledSale?.pos_parked_sale_id) !== Number(activeParkedSale?.pos_parked_sale_id)) return;
+                        clearPosCartDraft(offlineSnapshotScope, activeShiftId);
+                        setActiveParkedSale(null);
+                        resetCurrentSaleForNewSale();
+                    }}
+                />
+            )}
+            <Dialog
+                open={parkSaleNameDialogOpen}
+                onOpenChange={(nextOpen) => {
+                    if (parkLoading) return;
+                    setParkSaleNameDialogOpen(nextOpen);
+                }}
+            >
+                <DialogContent className="w-[calc(100vw-1.5rem)] max-w-md rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:w-full" data-testid="pos-park-sale-name-dialog">
+                    <DialogHeader className="border-b border-slate-200 px-5 py-4 text-left">
+                        <DialogTitle className="text-lg font-black text-slate-900">Name Parked Sale</DialogTitle>
+                        <DialogDescription className="text-sm text-slate-600">
+                            Enter the customer or order name so staff know who this parked sale belongs to.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="px-5 py-4">
+                        <label className="block text-xs font-bold text-slate-700" htmlFor="parked-sale-name">
+                            Customer / Order Name <span className="text-rose-600">*</span>
+                        </label>
+                        <Input
+                            id="parked-sale-name"
+                            value={parkSaleNameInput}
+                            onChange={(event) => setParkSaleNameInput(event.target.value)}
+                            maxLength={100}
+                            autoFocus
+                            disabled={parkLoading}
+                            placeholder="e.g., Maria Santos or Table 4"
+                            className="mt-2 h-11"
+                            data-testid="pos-park-sale-name-input"
+                        />
+                        <p className="mt-1.5 text-right text-[11px] text-slate-500">{parkSaleNameInput.length}/100</p>
+                    </div>
+                    <DialogFooter className="border-t border-slate-200 px-5 py-4 sm:justify-end">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setParkSaleNameDialogOpen(false)}
+                            disabled={parkLoading}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={handleParkAndNewSale}
+                            disabled={parkLoading || !parkSaleNameInput.trim()}
+                            className="bg-[#1A4E8D] hover:bg-[#143F73]"
+                            data-testid="pos-confirm-park-sale"
+                        >
+                            {parkLoading ? 'Parking Sale…' : 'Park & Start New Sale'}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
             <ServiceOptionsModal
                 key={`${serviceOptionsModal.open ? 'open' : 'closed'}:${serviceOptionsModal.item?.item_id || 'none'}`}
                 open={serviceOptionsModal.open}

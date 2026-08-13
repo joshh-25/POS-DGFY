@@ -69,7 +69,7 @@ export const isManualDeliveryJob = (deliveryJob = {}) => (
 );
 
 export const hasCompleteDeliveryAssignment = (deliveryJob = {}) => Boolean(
-  Number(deliveryJob?.delivery_personnel_id) > 0
+  (Number(deliveryJob?.delivery_personnel_id) > 0 || String(deliveryJob?.delivery_personnel_name || '').trim())
   && Number(deliveryJob?.assigned_by) > 0
   && Number(deliveryJob?.assigned_shift_id) > 0
   && deliveryJob?.assigned_at

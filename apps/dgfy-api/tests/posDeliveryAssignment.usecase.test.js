@@ -105,7 +105,9 @@ describe('POS delivery personnel assignment', () => {
     });
 
     it('assigns personnel, records shift accountability, and replays safely', async () => {
-        const repository = buildAssignmentRepository();
+        const repository = buildAssignmentRepository({
+            deliveryJob: { delivery_personnel_id: 21 }
+        });
         const useCase = buildAssignDeliveryPersonnelUseCase({ posRepository: repository });
         const payload = {
             delivery_personnel_id: 21,
@@ -144,6 +146,67 @@ describe('POS delivery personnel assignment', () => {
             assigned_shift_id: 9,
             delivery_personnel_id: 21
         });
+    });
+
+    it('assigns an unregistered third-party courier name without a registry lookup', async () => {
+        const repository = buildAssignmentRepository({ deliveryJob: { delivery_personnel_id: 21 } });
+        repository.findActiveDeliveryPersonnelById = jest.fn();
+        const useCase = buildAssignDeliveryPersonnelUseCase({ posRepository: repository });
+
+        const result = await run(() => useCase({
+            posTransactionId: 44,
+            payload: {
+                delivery_personnel_name: '  Juan Dela Cruz  ',
+                idempotency_key: 'delivery-assignment-001-third-party'
+            },
+            user: { user_id: 12 }
+        }));
+
+        expect(result.success).toBe(true);
+        expect(repository.findActiveDeliveryPersonnelById).not.toHaveBeenCalled();
+        expect(result.data.delivery_job).toMatchObject({
+            status: 'assigned',
+            delivery_personnel_id: null,
+            delivery_personnel_name: 'Juan Dela Cruz',
+            assigned_by: 12,
+            assigned_shift_id: 9
+        });
+        expect(result.data.assignment).toMatchObject({
+            delivery_personnel_name: 'Juan Dela Cruz',
+            delivery_personnel: {
+                display_name: 'Juan Dela Cruz',
+                is_third_party: true
+            }
+        });
+        expect(repository.audit[0].changes).toMatchObject({
+            delivery_personnel_id: null,
+            delivery_personnel_name: 'Juan Dela Cruz'
+        });
+    });
+
+    it('rejects an assignment without exactly one personnel identifier or name', async () => {
+        const repository = buildAssignmentRepository();
+        const useCase = buildAssignDeliveryPersonnelUseCase({ posRepository: repository });
+
+        const missing = await run(() => useCase({
+            posTransactionId: 44,
+            payload: { idempotency_key: 'delivery-assignment-missing' },
+            user: { user_id: 12 }
+        }));
+        const both = await run(() => useCase({
+            posTransactionId: 44,
+            payload: {
+                delivery_personnel_id: 21,
+                delivery_personnel_name: 'Juan Dela Cruz',
+                idempotency_key: 'delivery-assignment-both'
+            },
+            user: { user_id: 12 }
+        }));
+
+        expect(missing.success).toBe(false);
+        expect(missing.error.code).toBe('VALIDATION_FAILED');
+        expect(both.success).toBe(false);
+        expect(both.error.code).toBe('VALIDATION_FAILED');
     });
 
     it('blocks lifecycle status changes when assignment evidence is missing', async () => {

@@ -6,6 +6,7 @@ const DeliveryJob = sequelize.define('DeliveryJob', {
   pos_transaction_id: { type: DataTypes.INTEGER, allowNull: false, unique: true },
   location_id: { type: DataTypes.INTEGER, allowNull: true },
   delivery_personnel_id: { type: DataTypes.INTEGER, allowNull: true },
+  delivery_personnel_name: { type: DataTypes.STRING(255), allowNull: true },
   assigned_by: { type: DataTypes.INTEGER, allowNull: true },
   assigned_shift_id: { type: DataTypes.INTEGER, allowNull: true },
   assigned_at: { type: DataTypes.DATE, allowNull: true },
