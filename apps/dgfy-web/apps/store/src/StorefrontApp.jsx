@@ -3309,7 +3309,6 @@ export default function StorefrontApp() {
     goStoreCatalogPage,
     goStoreOrderPage,
     isAccountTracking: isDgfyCustomerSignedIn,
-    isRetailMode,
     isMobileViewport,
     isOpen: isGuestTrackingDrawerOpen,
     isStandaloneTrackingPage,

@@ -7,7 +7,7 @@ export function FnbProductNavigationHeader({
   branchLabel,
   displayFont,
   isMobileViewport,
-  isRetailPresentation = false,
+  compactTypography = false,
   onBack,
   spacing,
   storeLogoUrl,
@@ -29,7 +29,7 @@ export function FnbProductNavigationHeader({
             <StoreLogo size={34} storeLogoUrl={storeLogoUrl} />
           ) : (
             <div style={{ display: 'grid', gap: 2, minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: isRetailPresentation ? 700 : 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: displayFont }}>Back to Menu</div>
+              <div style={{ fontSize: 14, fontWeight: compactTypography ? 700 : 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: displayFont }}>Back to Menu</div>
               <div style={{ fontSize: 12, color: '#64748b', fontFamily: bodyFont }}>Review before adding to cart</div>
             </div>
           )}
@@ -38,7 +38,7 @@ export function FnbProductNavigationHeader({
         {!isMobileViewport ? (
           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 8, justifyContent: 'center', minWidth: 0 }}>
             <StoreLogo size={36} storeLogoUrl={storeLogoUrl} />
-            <div style={{ fontSize: 20, fontWeight: isRetailPresentation ? 700 : 800, color: '#0f172a', letterSpacing: isRetailPresentation ? '-0.015em' : '-0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: displayFont }}>{storeName}</div>
+            <div style={{ fontSize: 20, fontWeight: compactTypography ? 700 : 800, color: '#0f172a', letterSpacing: compactTypography ? '-0.015em' : '-0.02em', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontFamily: displayFont }}>{storeName}</div>
           </div>
         ) : null}
 

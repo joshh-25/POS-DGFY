@@ -36,7 +36,8 @@ export function useFnbProductDetailsRouteProps({
         bodyFont: modeAdapter?.heroTheme?.bodyFont || '"Source Sans 3", "Segoe UI", sans-serif',
         borderSoft: modeAdapter?.heroTheme?.borderSoft || '#86efac',
         displayFont: modeAdapter?.heroTheme?.displayFont || '"Outfit", "Avenir Next", "Segoe UI", sans-serif',
-        isRetail: modeAdapter?.isRetailMode === true,
+        compactTypography: modeAdapter?.productDetailsPresentation?.compactTypography === true,
+        catalogLabel: modeAdapter?.productDetailsPresentation?.catalogLabel || 'Menu',
         itemNoun: modeAdapter?.catalogItemNounSingular || 'item'
       },
       modifierCounts: detailRuntime?.detailPageFnbModifierCounts || {},

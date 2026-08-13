@@ -1,6 +1,7 @@
 import React from 'react';
 import { Sparkles } from 'lucide-react';
 import { FnbProductDetailsRoute } from '../../modes/fnb/storefront/pages/FnbProductDetailsRoute.jsx';
+import { RetailProductDetailsRoute } from '../../modes/retail/storefront/pages/RetailProductDetailsRoute.jsx';
 import { StorefrontServicesCatalog } from '../../modes/services/storefront/components/StorefrontServicesCatalog.jsx';
 import { StorefrontClassicCatalog } from '../../shared/components/storefront/StorefrontClassicCatalog.jsx';
 import { SERVICE_CATEGORY_ICON_MAP } from '../../modes/services/storefront/model/serviceCategoryIconMap.jsx';
@@ -245,8 +246,9 @@ export function StorefrontCatalogRouteContainer(props) {
   const ActiveServiceGroupIcon = activeGroupMeta?.iconToken ? (SERVICE_CATEGORY_ICON_MAP[activeGroupMeta.iconToken] || Sparkles) : Sparkles;
 
   if (isFnbDetailsSubpage) {
+    const ProductDetailsRoute = isRetailMode ? RetailProductDetailsRoute : FnbProductDetailsRoute;
     return (
-      <FnbProductDetailsRoute
+      <ProductDetailsRoute
         isActive
         {...fnbProductDetailsRouteProps}
         loadError={catalogError}

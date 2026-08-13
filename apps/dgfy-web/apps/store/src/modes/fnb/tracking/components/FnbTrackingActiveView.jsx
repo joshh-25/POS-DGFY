@@ -30,7 +30,7 @@ export function FnbTrackingActiveView({ actions, formatters, isMobileViewport, m
     dgfySoftText,
     finalStatusLabel,
     isPickup,
-    isRetailPresentation,
+    presentation,
     pickupBranchAddress,
     pickupBranchName,
     resolvedTrackingDeliveryAddress,
@@ -44,7 +44,7 @@ export function FnbTrackingActiveView({ actions, formatters, isMobileViewport, m
   } = viewModel;
   const { copyTextToClipboard, goStoreCatalogPage, setCheckoutTab } = actions;
   const { formatTicketDate, money } = formatters;
-  const handleBackToItems = () => {
+  const handleBackToCatalog = () => {
     goStoreCatalogPage();
     window.setTimeout(() => {
       document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -206,7 +206,7 @@ export function FnbTrackingActiveView({ actions, formatters, isMobileViewport, m
                         />
 
                         {/* Footer Badges */}
-                        {!isRetailPresentation && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, background: '#f8fafc', padding: 20, borderRadius: 16 }}>
+                        {presentation.showTrustStrip && <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 16, background: '#f8fafc', padding: 20, borderRadius: 16 }}>
                            <div style={{ display: 'flex', gap: 12 }}>
                               <div style={{ width: 24, height: 24, borderRadius: '50%', background: dgfyPrimary, color: '#fff', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
                                 <Check size={14} strokeWidth={4} />
@@ -238,8 +238,8 @@ export function FnbTrackingActiveView({ actions, formatters, isMobileViewport, m
 
                         {/* Bottom Actions */}
                         <div style={{ display: 'flex', gap: 12, justifyContent: 'center', marginTop: 8 }}>
-                          <button type="button" onClick={isRetailPresentation ? handleBackToItems : () => setCheckoutTab('menu')} style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 12, padding: '12px 32px', fontSize: 15, fontWeight: 700, color: '#334155', cursor: 'pointer', fontFamily: servicesBodyFont }}>
-                            {isRetailPresentation ? 'Back to Items' : 'Back to Menu'}
+                          <button type="button" onClick={presentation.returnToCatalog ? handleBackToCatalog : () => setCheckoutTab('menu')} style={{ background: '#fff', border: '1px solid #cbd5e1', borderRadius: 12, padding: '12px 32px', fontSize: 15, fontWeight: 700, color: '#334155', cursor: 'pointer', fontFamily: servicesBodyFont }}>
+                            {presentation.backLabel}
                           </button>
                         </div>
                       </div>

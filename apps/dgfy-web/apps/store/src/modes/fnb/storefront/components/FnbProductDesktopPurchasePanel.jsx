@@ -7,7 +7,7 @@ export function FnbProductDesktopPurchasePanel({
   actionButtonBase,
   available,
   formatMoney,
-  isRetailPresentation = false,
+  compactTypography = false,
   isEditingCartLine = false,
   onAddToCart,
   onBuyNow,
@@ -25,7 +25,7 @@ export function FnbProductDesktopPurchasePanel({
           {selectedModifiersTotal > 0 ? (
             <div style={{ fontSize: 12, fontWeight: 700, color: '#15803d' }}>+{formatMoney(selectedModifiersTotal)}</div>
           ) : null}
-          <div style={{ fontSize: 24, fontWeight: isRetailPresentation ? 700 : 900, color: '#0f172a', lineHeight: 1.1, letterSpacing: isRetailPresentation ? '-0.015em' : '-0.02em' }}>{formatMoney(totalPrice)}</div>
+          <div style={{ fontSize: 24, fontWeight: compactTypography ? 700 : 900, color: '#0f172a', lineHeight: 1.1, letterSpacing: compactTypography ? '-0.015em' : '-0.02em' }}>{formatMoney(totalPrice)}</div>
         </div>
       </div>
 

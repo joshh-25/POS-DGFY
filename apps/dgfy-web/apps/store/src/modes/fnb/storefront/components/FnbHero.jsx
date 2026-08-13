@@ -206,8 +206,8 @@ export const FnbHero = ({
             handleFollowAction={handleFollowAction}
             heroSectionModel={heroSectionModel}
             heroTheme={heroTheme}
-            mobileHeroMetaItems={mobileHeroMetaItems}
             modeAdapter={modeAdapter}
+            mobileHeroMetaItems={mobileHeroMetaItems}
             openStorefrontActionLink={openStorefrontActionLink}
           />
           <FnbHeroMobileInfoCards
@@ -227,6 +227,7 @@ export const FnbHero = ({
             hasWhyChooseUs={hasWhyChooseUs}
             heroSectionModel={heroSectionModel}
             heroTheme={heroTheme}
+            modeAdapter={modeAdapter}
             mapSelectedKey={mapSelectedKey}
             mapStores={mapStores}
             openStorefrontActionLink={openStorefrontActionLink}

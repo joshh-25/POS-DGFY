@@ -24,7 +24,7 @@ describe('retail product-details presentation', () => {
           description="Reliable batteries for everyday household devices."
           displayFont="Avenir Next"
           isMobileViewport={false}
-          isRetailPresentation
+          compactTypography
           itemName="AA Batteries 2-Pack"
           ratingScore={0}
           reviewCount={0}
@@ -34,7 +34,7 @@ describe('retail product-details presentation', () => {
           accentColor="#1A4E8D"
           formatMoney={(value) => `PHP ${Number(value).toFixed(2)}`}
           isMobileViewport={false}
-          isRetailPresentation
+          compactTypography
           quantity={1}
           setQuantity={vi.fn()}
           spacing={(value) => value * 8}
@@ -56,7 +56,7 @@ describe('retail product-details presentation', () => {
         actionButtonBase={actionButtonBase}
         available
         formatMoney={(value) => `PHP ${Number(value).toFixed(2)}`}
-        isRetailPresentation
+        compactTypography
         onAddToCart={vi.fn()}
         onBuyNow={vi.fn()}
         selectedModifiersTotal={0}

@@ -160,6 +160,11 @@ export const ModePresentationRegistry = Object.freeze({
     })
   }),
   retail: Object.freeze({
+    productDetailsPresentation: Object.freeze({
+      catalogLabel: 'Products',
+      compactTypography: true
+    }),
+    usesConnectedHeroSurface: true,
     heroEyebrow: 'Retail storefront',
     heroDescription: 'Browse shelf items, weighed goods, and refills, then check out or reserve for pickup.',
     catalogEyebrow: 'Item Catalog',
@@ -238,6 +243,10 @@ export const ModePresentationRegistry = Object.freeze({
     })
   }),
   fnb: Object.freeze({
+    productDetailsPresentation: Object.freeze({
+      catalogLabel: 'Menu',
+      compactTypography: false
+    }),
     heroEyebrow: 'Food and beverage storefront',
     heroDescription: 'Browse the live menu, compare food and drink sections, and build an order from product cards designed for ready-to-serve items.',
     catalogEyebrow: 'Curated Menu',

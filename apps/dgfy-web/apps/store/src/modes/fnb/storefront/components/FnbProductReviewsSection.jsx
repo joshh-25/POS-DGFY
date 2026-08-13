@@ -45,7 +45,7 @@ export function FnbProductReviewsSection({
   canWriteReview,
   displayFont = FNB_DISPLAY_FONT,
   isMobileViewport,
-  isRetailPresentation = false,
+  compactTypography = false,
   itemNoun = 'item',
   onOpenWriteReview,
   ratingScore,
@@ -79,7 +79,7 @@ export function FnbProductReviewsSection({
     >
       <div style={{ display: 'flex', alignItems: isMobileViewport ? 'stretch' : 'center', justifyContent: 'space-between', gap: 16, flexDirection: isMobileViewport ? 'column' : 'row' }}>
         <div style={{ display: 'grid', gap: 6 }}>
-          <h3 style={{ margin: 0, fontSize: 18, fontWeight: isRetailPresentation ? 700 : 800, color: '#0f172a', fontFamily: displayFont }}>Reviews & Ratings</h3>
+          <h3 style={{ margin: 0, fontSize: 18, fontWeight: compactTypography ? 700 : 800, color: '#0f172a', fontFamily: displayFont }}>Reviews & Ratings</h3>
           <div style={{ fontSize: 13, color: '#64748b' }}>Verified customer feedback for this {itemNoun}.</div>
         </div>
         {canWriteReview ? (

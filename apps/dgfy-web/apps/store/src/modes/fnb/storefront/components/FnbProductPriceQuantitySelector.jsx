@@ -5,7 +5,7 @@ export function FnbProductPriceQuantitySelector({
   accentColor = '#f97316',
   formatMoney,
   isMobileViewport,
-  isRetailPresentation = false,
+  compactTypography = false,
   quantity,
   setQuantity,
   spacing,
@@ -16,7 +16,7 @@ export function FnbProductPriceQuantitySelector({
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 16, paddingTop: spacing(2) }}>
-      <div style={{ fontSize: isMobileViewport ? 24 : 32, fontWeight: isRetailPresentation ? 700 : 900, color: accentColor, lineHeight: 1, letterSpacing: isRetailPresentation ? '-0.015em' : '-0.02em' }}>
+      <div style={{ fontSize: isMobileViewport ? 24 : 32, fontWeight: compactTypography ? 700 : 900, color: accentColor, lineHeight: 1, letterSpacing: compactTypography ? '-0.015em' : '-0.02em' }}>
         {formatMoney(unitPrice)}
       </div>
 

@@ -10,7 +10,7 @@ export function FnbProductMobilePurchaseSummary({
   displayFont,
   formatMoney,
   imageSources,
-  isRetailPresentation = false,
+  compactTypography = false,
   isEditingCartLine = false,
   isOpen,
   itemName,
@@ -147,7 +147,7 @@ export function FnbProductMobilePurchaseSummary({
                   <div style={{ fontSize: 16, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{itemName}</div>
                   <div style={{ fontSize: 14, color: '#64748b' }}>Quantity: {quantity}</div>
                 </div>
-                <div style={{ fontSize: 18, fontWeight: isRetailPresentation ? 700 : 800, color: accentColor, whiteSpace: 'nowrap' }}>{formatMoney(totalPrice)}</div>
+                <div style={{ fontSize: 18, fontWeight: compactTypography ? 700 : 800, color: accentColor, whiteSpace: 'nowrap' }}>{formatMoney(totalPrice)}</div>
               </div>
 
               <div style={{ borderTop: '1px solid rgba(226,232,240,0.8)', paddingTop: spacing(1.5), display: 'grid', gap: 10 }}>

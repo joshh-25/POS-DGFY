@@ -26,7 +26,7 @@ export function FnbTrackingRoutePage({
   getCompletedTrackingLabel,
   getTrackingFlowForOrderMethod,
   isMobileViewport,
-  isRetailMode,
+  presentation,
   primaryLocationId,
   selectedLocationId,
   selectedStore,
@@ -114,7 +114,11 @@ export function FnbTrackingRoutePage({
       hasServiceFee: Number.isFinite(trackingResult.serviceFeeAmount) && trackingResult.serviceFeeAmount > 0,
       hasSubtotal: Number.isFinite(trackingResult.subtotalAmount),
       isMatchingTrackingPin,
-      isRetailPresentation: Boolean(isRetailMode),
+      presentation: {
+        backLabel: presentation?.backLabel || 'Back to Menu',
+        returnToCatalog: presentation?.returnToCatalog === true,
+        showTrustStrip: presentation?.showTrustStrip !== false,
+      },
       isPickup,
       orderTypeLabel: isPickup ? 'Pickup' : 'Delivery',
       pickupBranchAddress,
@@ -141,7 +145,7 @@ export function FnbTrackingRoutePage({
       trackingResult,
       trackingSteps,
     };
-  }, [formatters, getCompletedTrackingLabel, getTrackingFlowForOrderMethod, isRetailMode, primaryLocationId, selectedLocationId, selectedStore, selectedTrackingPin, storeLocations, trackingPinInput, trackingResult, withAssetOrigin]);
+  }, [formatters, getCompletedTrackingLabel, getTrackingFlowForOrderMethod, presentation, primaryLocationId, selectedLocationId, selectedStore, selectedTrackingPin, storeLocations, trackingPinInput, trackingResult, withAssetOrigin]);
 
   if (!viewModel.isMatchingTrackingPin) {
     return selectedTrackingPin && !trackingError ? <FnbTrackingLoadingState selectedTrackingPin={selectedTrackingPin} /> : null;

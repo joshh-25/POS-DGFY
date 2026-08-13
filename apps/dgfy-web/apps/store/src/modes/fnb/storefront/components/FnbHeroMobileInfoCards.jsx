@@ -30,6 +30,7 @@ const FnbHeroMobileInfoCards = ({
   hasMobileStoreDetailsSummary,
   hasWhyChooseUs,
   heroTheme,
+  modeAdapter,
   mapSelectedKey,
   mapStores,
   openStorefrontActionLink,
@@ -41,12 +42,12 @@ const FnbHeroMobileInfoCards = ({
 }) => {
   const [expandedMobileCard, setExpandedMobileCard] = useState(null);
   const mobileInfoCardWidth = 'calc(100% - 32px)';
-  const hasRetailPalette = Boolean(heroTheme.palette?.retailHighlight);
+  const usesConnectedHeroSurface = modeAdapter?.usesConnectedHeroSurface === true;
   const surfaceAccent = heroTheme.palette?.primary || '#f97316';
   const surfaceAccentSoft = heroTheme.palette?.accentSoft || '#fff7ed';
   const infoCardBorder = heroTheme.palette?.secondary || '#ffedd5';
-  const pageBackground = hasRetailPalette ? (heroTheme.palette?.pageBackground || '#F8FAFC') : 'transparent';
-  const infoCardShadow = hasRetailPalette
+  const pageBackground = usesConnectedHeroSurface ? (heroTheme.palette?.pageBackground || '#F8FAFC') : 'transparent';
+  const infoCardShadow = usesConnectedHeroSurface
     ? '0 3px 12px rgba(26,78,141,0.05)'
     : '0 8px 24px rgba(249,115,22,0.08)';
   // Mobile merges the gallery into the store-detail hero image instead of showing a
@@ -275,12 +276,12 @@ const FnbHeroMobileInfoCards = ({
             ))}
           </div>
           {visibleWhyChooseUs.length > 2 && expandedMobileCard !== 'why' && (
-            <button type="button" onClick={() => setExpandedMobileCard('why')} style={{ background: hasRetailPalette ? surfaceAccentSoft : 'none', border: hasRetailPalette ? `1px solid ${infoCardBorder}` : 'none', padding: hasRetailPalette ? '5px 9px' : 0, borderRadius: hasRetailPalette ? 8 : 0, color: surfaceAccent, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
+            <button type="button" onClick={() => setExpandedMobileCard('why')} style={{ background: usesConnectedHeroSurface ? surfaceAccentSoft : 'none', border: usesConnectedHeroSurface ? `1px solid ${infoCardBorder}` : 'none', padding: usesConnectedHeroSurface ? '5px 9px' : 0, borderRadius: usesConnectedHeroSurface ? 8 : 0, color: surfaceAccent, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
               See all <ChevronDown size={14} />
             </button>
           )}
           {expandedMobileCard === 'why' && (
-            <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: hasRetailPalette ? surfaceAccentSoft : 'none', border: hasRetailPalette ? `1px solid ${infoCardBorder}` : 'none', padding: hasRetailPalette ? '5px 9px' : 0, borderRadius: hasRetailPalette ? 8 : 0, color: surfaceAccent, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
+            <button type="button" onClick={() => setExpandedMobileCard(null)} style={{ background: usesConnectedHeroSurface ? surfaceAccentSoft : 'none', border: usesConnectedHeroSurface ? `1px solid ${infoCardBorder}` : 'none', padding: usesConnectedHeroSurface ? '5px 9px' : 0, borderRadius: usesConnectedHeroSurface ? 8 : 0, color: surfaceAccent, fontSize: 13, fontWeight: 700, marginTop: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, width: 'max-content' }}>
               Show less <ChevronUp size={14} />
             </button>
           )}

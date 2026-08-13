@@ -24,7 +24,7 @@ const fnbTheme = {
   displayFont: "'Bree Serif', serif"
 };
 
-const renderOverview = (heroTheme) => render(
+const renderOverview = (heroTheme, modeAdapter = { heroDescription: '' }) => render(
   <FnbHeroMobileOverview
     followEnabled={false}
     followState={{}}
@@ -36,12 +36,12 @@ const renderOverview = (heroTheme) => render(
     }}
     heroTheme={heroTheme}
     mobileHeroMetaItems={[]}
-    modeAdapter={{ heroDescription: '' }}
+    modeAdapter={modeAdapter}
     openStorefrontActionLink={vi.fn()}
   />
 );
 
-const renderAboutCard = (heroTheme) => render(
+const renderAboutCard = (heroTheme, modeAdapter) => render(
   <FnbHeroMobileInfoCards
     aboutText="A neighborhood retail store with everyday essentials and convenient pickup."
     addressText=""
@@ -57,6 +57,7 @@ const renderAboutCard = (heroTheme) => render(
     hasMobileStoreDetailsSummary={false}
     hasWhyChooseUs={false}
     heroTheme={heroTheme}
+    modeAdapter={modeAdapter}
     mapSelectedKey=""
     mapStores={[]}
     openStorefrontActionLink={vi.fn()}
@@ -72,7 +73,7 @@ afterEach(cleanup);
 
 describe('retail hero palette isolation', () => {
   it('uses retail blue on mobile hero actions and tagline', () => {
-    const { container } = renderOverview(retailTheme);
+    const { container } = renderOverview(retailTheme, { heroDescription: '', usesConnectedHeroSurface: true });
 
     const callButton = screen.getByRole('button', { name: 'Call' });
     expect(callButton.style.background).toBe('rgb(26, 78, 141)');
@@ -82,7 +83,7 @@ describe('retail hero palette isolation', () => {
   });
 
   it('uses the retail soft blue treatment on mobile information controls', () => {
-    renderAboutCard(retailTheme);
+    renderAboutCard(retailTheme, { usesConnectedHeroSurface: true });
 
     const aboutCard = screen.getByText('About Us').parentElement;
     const cardsSurface = aboutCard.parentElement;

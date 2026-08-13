@@ -1,24 +1,29 @@
 import fs from 'node:fs';
-import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import { buildFnbTrackingRouteProps } from '../modes/fnb/tracking/model/buildFnbTrackingRouteProps.js';
 
-const source = (relativePath) => fs.readFileSync(path.resolve(process.cwd(), 'apps/dgfy-web/apps/store/src', relativePath), 'utf8');
+const source = (relativePath) => fs.readFileSync(new URL(`../${relativePath}`, import.meta.url), 'utf8');
 
 describe('retail tracking presentation', () => {
-  it('passes the retail presentation flag to the tracking page contract', () => {
-    const props = buildFnbTrackingRouteProps({ checkoutTab: 'track', isRetailMode: true });
+  it('keeps the F&B tracking contract on its default presentation', () => {
+    const props = buildFnbTrackingRouteProps({ checkoutTab: 'track' });
 
-    expect(props.page.isRetailMode).toBe(true);
-    expect(props.route.isRetailMode).toBeUndefined();
+    expect(props.page.presentation).toEqual({
+      backLabel: 'Back to Menu',
+      returnToCatalog: false,
+      showTrustStrip: true,
+    });
   });
 
-  it('hides the shared hardcoded trust strip only for retail', () => {
+  it('keeps Retail tracking choices in the Retail-owned route', () => {
+    const retailRoute = source('modes/retail/tracking/pages/RetailTrackingRouteContainer.jsx');
     const activeView = source('modes/fnb/tracking/components/FnbTrackingActiveView.jsx');
 
-    expect(activeView).toContain('!isRetailPresentation && <div');
-    expect(activeView).toContain("{isRetailPresentation ? 'Back to Items' : 'Back to Menu'}");
+    expect(retailRoute).toContain("backLabel: 'Back to Items'");
+    expect(retailRoute).toContain('showTrustStrip: false');
+    expect(retailRoute).toContain('returnToCatalog: true');
+    expect(activeView).not.toContain('isRetailPresentation');
   });
 
   it('returns to the current storefront catalog and focuses its items section', () => {

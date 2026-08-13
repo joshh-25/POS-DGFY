@@ -20,6 +20,7 @@ import { SimpleCheckoutRoutePage } from '../../../modes/simple/checkout/pages/Si
 import { DefaultOrderPage } from './DefaultOrderPage.jsx';
 import { RetailOrderPage } from '../../../modes/retail/checkout/pages/RetailOrderPage.jsx';
 import { FnbTrackingRouteContainer } from '../../../modes/fnb/tracking/pages/FnbTrackingRouteContainer.jsx';
+import { RetailTrackingRouteContainer } from '../../../modes/retail/tracking/pages/RetailTrackingRouteContainer.jsx';
 import { SERVICE_CATEGORY_ICON_MAP } from '../../../modes/services/storefront/model/serviceCategoryIconMap.jsx';
 import { ServiceProductCard } from '../../../modes/services/storefront/components/ServiceProductCard.jsx';
 import { ServicesPerformanceSidebar } from '../../../modes/services/storefront/components/ServicesPerformanceSidebar.jsx';
@@ -589,7 +590,7 @@ export function StorefrontClassicCatalog({
         {isDefaultLikeMode && isResolvedOrderSubpage && defaultStorefrontModel && (
           isRetailMode
             ? (isTrackSubpage
-              ? <FnbTrackingRouteContainer {...fnbTrackingRouteProps} visible renderDrawer={false} />
+              ? <RetailTrackingRouteContainer {...fnbTrackingRouteProps} visible renderDrawer={false} />
               : <RetailOrderPage {...retailOrderRouteProps} />)
             : <DefaultOrderPage {...defaultOrderRouteProps} />
         )}

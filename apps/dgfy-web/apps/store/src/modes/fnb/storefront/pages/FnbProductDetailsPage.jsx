@@ -188,7 +188,8 @@ export function FnbProductDetailsPage({
   reviewSectionHighlighted = false,
   presentation = {}
 }) {
-  const isRetailPresentation = presentation.isRetail === true;
+  const compactTypography = presentation.compactTypography === true;
+  const catalogLabel = presentation.catalogLabel || 'Menu';
   const detailAccent = presentation.accent || '#f97316';
   const detailAccentDark = presentation.accentDark || '#26884c';
   const detailAccentSoft = presentation.accentSoft || '#f0fdf4';
@@ -196,7 +197,7 @@ export function FnbProductDetailsPage({
   const detailBodyFont = presentation.bodyFont || FNB_BODY_FONT;
   const detailDisplayFont = presentation.displayFont || FNB_DISPLAY_FONT;
   const detailItemNoun = presentation.itemNoun || 'item';
-  const detailActionButtonBase = isRetailPresentation ? {
+  const detailActionButtonBase = compactTypography ? {
     ...actionButtonBase,
     fontFamily: detailBodyFont,
     minHeight: isMobileViewport ? 44 : 46,
@@ -289,7 +290,7 @@ export function FnbProductDetailsPage({
       displayFont={detailDisplayFont}
       formatMoney={money}
       isMobileViewport={isMobileViewport}
-      isRetailPresentation={isRetailPresentation}
+      compactTypography={compactTypography}
       onQuickAdd={onQuickAdd}
       onSelectRelatedItem={onSelectRelatedItem}
       relatedItems={relatedItems}
@@ -304,7 +305,7 @@ export function FnbProductDetailsPage({
       canWriteReview={canWriteReview}
       displayFont={detailDisplayFont}
       isMobileViewport={isMobileViewport}
-      isRetailPresentation={isRetailPresentation}
+      compactTypography={compactTypography}
       itemNoun={detailItemNoun}
       onOpenWriteReview={onOpenWriteReview}
       ratingScore={ratingScore}
@@ -341,7 +342,7 @@ export function FnbProductDetailsPage({
         branchLabel={branchLabel}
         displayFont={detailDisplayFont}
         isMobileViewport={isMobileViewport}
-        isRetailPresentation={isRetailPresentation}
+        compactTypography={compactTypography}
         onBack={onBack}
         spacing={sp}
         storeLogoUrl={storeLogoUrl}
@@ -361,7 +362,7 @@ export function FnbProductDetailsPage({
           aria-label="breadcrumb"
           style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 8, marginBottom: sp(2), fontSize: 12, color: '#64748b', fontWeight: 600 }}
         >
-          <span style={{ color: '#64748b' }}>{isRetailPresentation ? 'Products' : 'Menu'}</span>
+          <span style={{ color: '#64748b' }}>{catalogLabel}</span>
           <span aria-hidden="true" style={{ color: '#cbd5e1', fontSize: 14 }}>{'>'}</span>
           <span style={{ color: '#64748b' }}>{sectionLabel}</span>
           <span aria-hidden="true" style={{ color: '#cbd5e1', fontSize: 14 }}>{'>'}</span>
@@ -414,7 +415,7 @@ export function FnbProductDetailsPage({
                 description={description}
                 displayFont={detailDisplayFont}
                 isMobileViewport={isMobileViewport}
-                isRetailPresentation={isRetailPresentation}
+                compactTypography={compactTypography}
                 itemName={item.name}
                 ratingScore={ratingScore}
                 reviewCount={reviewCount}
@@ -425,7 +426,7 @@ export function FnbProductDetailsPage({
                 accentColor={detailAccent}
                 formatMoney={money}
                 isMobileViewport={isMobileViewport}
-                isRetailPresentation={isRetailPresentation}
+                compactTypography={compactTypography}
                 quantity={quantity}
                 setQuantity={setQuantity}
                 spacing={sp}
@@ -462,7 +463,7 @@ export function FnbProductDetailsPage({
                   actionButtonBase={detailActionButtonBase}
                   available={available}
                   formatMoney={money}
-                  isRetailPresentation={isRetailPresentation}
+                  compactTypography={compactTypography}
                   isEditingCartLine={isEditingCartLine}
                   onAddToCart={onAddToCart}
                   onBuyNow={onBuyNow}
@@ -485,7 +486,7 @@ export function FnbProductDetailsPage({
           formatMoney={money}
           imageSources={imageSources}
           isOpen={isMobileSummaryOpen}
-          isRetailPresentation={isRetailPresentation}
+          compactTypography={compactTypography}
           itemName={item.name}
           isEditingCartLine={isEditingCartLine}
           onAddToCart={onAddToCart}

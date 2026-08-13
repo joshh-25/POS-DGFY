@@ -13,9 +13,9 @@ export const FnbHeroMobileOverview = ({
   modeAdapter,
   openStorefrontActionLink
 }) => {
-  const hasRetailPalette = Boolean(heroTheme.palette?.retailHighlight);
+  const usesConnectedHeroSurface = modeAdapter?.usesConnectedHeroSurface === true;
   const surfaceAccent = heroTheme.palette?.primary || '#f97316';
-  const pageBackground = hasRetailPalette ? (heroTheme.palette?.pageBackground || '#F8FAFC') : '#fff';
+  const pageBackground = usesConnectedHeroSurface ? (heroTheme.palette?.pageBackground || '#F8FAFC') : '#fff';
 
   return (
   <div style={{ background: pageBackground }}>
@@ -28,7 +28,7 @@ export const FnbHeroMobileOverview = ({
           </GhostButton>
         )}
         {heroSectionModel.actions?.canCall && (
-          <PrimaryButton onClick={() => openStorefrontActionLink(heroSectionModel.actions.callHref)} style={{ flex: 1, background: surfaceAccent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, border: 'none', ...(hasRetailPalette ? { boxShadow: '0 3px 10px rgba(26,78,141,0.14)' } : {}), fontWeight: 600, fontSize: 13, fontFamily: heroTheme.bodyFont }}>
+          <PrimaryButton onClick={() => openStorefrontActionLink(heroSectionModel.actions.callHref)} style={{ flex: 1, background: surfaceAccent, color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, border: 'none', ...(usesConnectedHeroSurface ? { boxShadow: '0 3px 10px rgba(26,78,141,0.14)' } : {}), fontWeight: 600, fontSize: 13, fontFamily: heroTheme.bodyFont }}>
             <Phone size={16} />
             Call
           </PrimaryButton>
