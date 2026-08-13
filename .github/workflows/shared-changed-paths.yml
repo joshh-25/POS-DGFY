@@ -2,10 +2,13 @@ name: Shared Changed Paths
 
 # Tells callers which image builds a given range of commits actually needs, so
 # a backend-only change doesn't spend a runner rebuilding the frontend image
-# (and vice versa). Used both by pr-checks.yml (PR mode) and deploy.yml's
-# components:auto mode (base_sha mode, diffing against the currently deployed
-# revision rather than a push event -- see deploy.yml's header comment; every
-# push-triggered build/deploy was removed 2026-08-14, #417).
+# (and vice versa). Used by pr-checks.yml (PR mode) -- the only remaining
+# caller since every push-triggered build/deploy was removed 2026-08-14
+# (#417) and deploy.yml's build_sha-diffing "auto" mode was removed 2026-08-14
+# (#420, same day -- Pat's own pushback: manual dispatch should mean you pick,
+# not something detecting for you). `base_sha` (push mode) is now unused by
+# any live caller but kept -- cheap to keep, and a future reusable-workflow
+# caller diffing a push range is a reasonable thing to want again.
 #
 # Deliberately does this with plain git rather than a third-party
 # paths-filter action -- the same `git merge-base`/`git diff --name-only`

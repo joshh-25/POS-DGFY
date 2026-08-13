@@ -22,12 +22,12 @@ on:
         type: boolean
         default: false
       build_api:
-        description: Whether to build/push the dgfy-api and dgfy-migration-runner images. Defaults true so deploy-main.yml's all-components dispatch is unaffected; deploy.yml gates this on changed paths (components:auto) or the caller's own choice.
+        description: Whether to build/push the dgfy-api and dgfy-migration-runner images. Defaults true so deploy-main.yml's all-components dispatch is unaffected; deploy.yml sets this from its own explicit components input.
         required: false
         type: boolean
         default: true
       build_frontend:
-        description: Whether to build/push the frontend image. Defaults true so deploy-main.yml's all-components dispatch is unaffected; deploy.yml gates this on changed paths (components:auto) or the caller's own choice.
+        description: Whether to build/push the frontend image. Defaults true so deploy-main.yml's all-components dispatch is unaffected; deploy.yml sets this from its own explicit components input.
         required: false
         type: boolean
         default: true

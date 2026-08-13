@@ -12,14 +12,18 @@ longer triggers anything in this repo. `build-develop.yml`, `build-staging.yml`,
 `build-manual.yml`, and `build-beta-manual.yml` (referenced by those names
 throughout the rest of this doc, below — historical narrative, left as
 written) are **deleted**, superseded by one consolidated `deploy.yml`
-(`workflow_dispatch`, environment + component selection, `components: auto`
-resolves what changed since the currently-deployed revision via the OCI
-labels added in #415). `build-main.yml` is **renamed to `deploy-main.yml`**
-and lost its `push: [main]` trigger — production now deploys only on manual
-dispatch. `publish-pos-receipt.yml` is the one exception, kept on a real
-(now path-filtered) `push: [develop]` trigger — see its own header comment
-for why. This is orthogonal to self-hosted-vs-hosted: whichever runner type
-is active, nothing fires without a human dispatching it.
+(`workflow_dispatch`, explicit environment + component selection:
+`all`/`backend`/`frontend`, no automatic detection). `deploy.yml` briefly had
+a fourth `auto` option that read the OCI labels added in #415 to rebuild
+only what changed since the currently-deployed revision -- removed the same
+day (#420) on Pat's own pushback: manual dispatch should mean you pick, not
+something deciding for you. `build-main.yml` is **renamed to
+`deploy-main.yml`** and lost its `push: [main]` trigger — production now
+deploys only on manual dispatch. `publish-pos-receipt.yml` is the one
+exception, kept on a real (now path-filtered) `push: [develop]` trigger —
+see its own header comment for why. This is orthogonal to
+self-hosted-vs-hosted: whichever runner type is active, nothing fires
+without a human dispatching it.
 
 ## Status as of 2026-08-13 — switched back to self-hosted (GHA billing exhausted)
 

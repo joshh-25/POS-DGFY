@@ -9,17 +9,28 @@ name: Deploy
 # gets a separate, more deliberate dispatch entry rather than a dropdown
 # option buried in this one.
 #
-# Every push-triggered build/deploy in the repo is gone as of this PR. Pat's
+# Every push-triggered build/deploy in the repo is gone as of #419. Pat's
 # own framing: "we'll remove the auto-triggers. We'll manually trigger them
 # and choose which platforms and environment to deploy. This way, we can
 # FULLY DECIDE when to build and deploy." Breaking `develop` is explicitly
 # acceptable under this model -- accountability is on-demand (via
 # scripts/integrate-prs.js or whoever's manual build fails), not automatic.
 #
-# IMPORTANT, unverified until a human runs it: the SSH deploy path
-# (publish-platform.yml) has not had a confirmed successful run since the
-# 2026-08-13 self-hosted cutover. Dispatch this once with deploy:true against
-# DEV before relying on it under pressure.
+# `components` originally had a fourth option, `auto`, that read a revision
+# label off the currently-deployed image and rebuilt only what changed since
+# then. Dropped 2026-08-14 (#420) -- Pat's own pushback: "why do we still
+# have change detection on the manual deploy, when we're supposed to be able
+# to pick which platforms to build and push?" Right call -- that mode
+# reintroduced exactly the kind of automatic decide-for-you logic this
+# workflow exists to remove, added three extra jobs and an
+# `imagetools inspect`/GHCR-label read that was never actually verified
+# against a real deployed image, and wasn't something Pat asked for. If a
+# self-healing/auto-detect mode is wanted later, design it as its own
+# explicit thing, not folded quietly into "manual."
+#
+# IMPORTANT, unverified until a human runs it end-to-end: the SSH deploy
+# path (publish-platform.yml) has not had a confirmed successful run since
+# the 2026-08-13 self-hosted cutover.
 on:
   workflow_dispatch:
     inputs:
@@ -33,22 +44,17 @@ on:
         required: true
       components:
         description: >-
-          auto = build only what changed since the currently-deployed
-          revision (reads the org.opencontainers.image.revision label off
-          the live :<tag> image; falls back to "all" if that label is
-          missing/unreadable, e.g. the very first run after this lands).
-          backend = api + migration-runner together, never separately --
-          compose's depends_on: service_completed_successfully means a
-          mismatched pair (new api schema expectations against an old
-          migration set, or vice versa) is a real failure mode, not just
-          caution.
+          Which images to build/push. backend = api + migration-runner
+          together, never separately -- compose's depends_on:
+          service_completed_successfully means a mismatched pair (new api
+          schema expectations against an old migration set, or vice versa)
+          is a real failure mode, not just caution.
         type: choice
         options:
-          - auto
           - all
           - backend
           - frontend
-        default: auto
+        default: all
       deploy:
         description: SSH-deploy to the server after images are pushed
         type: boolean
@@ -95,119 +101,8 @@ jobs:
           fi
           echo "OK: branch '$actual' matches environment '${{ inputs.environment }}'."
 
-  resolve-components:
-    needs: guard-ref
-    runs-on: ['self-hosted']
-    timeout-minutes: 5
-    outputs:
-      build_api: ${{ steps.resolve.outputs.build_api }}
-      build_frontend: ${{ steps.resolve.outputs.build_frontend }}
-      base_sha: ${{ steps.resolve.outputs.base_sha }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Log in to GHCR
-        if: inputs.components == 'auto'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Resolve selection
-        id: resolve
-        shell: bash
-        env:
-          COMPONENTS: ${{ inputs.components }}
-          ENV_TAG: ${{ inputs.environment == 'DEV' && 'develop' || inputs.environment == 'STAGING' && 'staging' || 'beta' }}
-        run: |
-          set -euo pipefail
-
-          if [ "$COMPONENTS" = "all" ]; then
-            echo "build_api=true" >> "$GITHUB_OUTPUT"
-            echo "build_frontend=true" >> "$GITHUB_OUTPUT"
-            echo "base_sha=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [ "$COMPONENTS" = "backend" ]; then
-            echo "build_api=true" >> "$GITHUB_OUTPUT"
-            echo "build_frontend=false" >> "$GITHUB_OUTPUT"
-            echo "base_sha=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          if [ "$COMPONENTS" = "frontend" ]; then
-            echo "build_api=false" >> "$GITHUB_OUTPUT"
-            echo "build_frontend=true" >> "$GITHUB_OUTPUT"
-            echo "base_sha=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # auto: read the revision label off the currently-deployed api
-          # image for this environment's tag. api is the reference component
-          # (no per-environment build args, unlike frontend) -- unverified
-          # until this actually runs: whether `imagetools inspect` can read
-          # OCI annotations authenticated with this job's default
-          # GITHUB_TOKEN login, vs. needing a PAT with read:packages. Falls
-          # back to "build everything" on any failure, including the very
-          # first run after the labels (#415) start landing on real images.
-          REVISION=""
-          if INSPECT_JSON="$(docker buildx imagetools inspect "ghcr.io/sieitzz/dgfy-platform/api:${ENV_TAG}" --format '{{json .Image.Config.Labels}}' 2>/dev/null)"; then
-            REVISION="$(echo "$INSPECT_JSON" | node -e 'let d="";process.stdin.on("data",c=>d+=c);process.stdin.on("end",()=>{try{const l=JSON.parse(d)||{};process.stdout.write(l["org.opencontainers.image.revision"]||"")}catch{}})' 2>/dev/null || true)"
-          fi
-
-          if [ -z "$REVISION" ] || ! git cat-file -e "${REVISION}^{commit}" 2>/dev/null; then
-            echo "::warning::Could not resolve a deployed revision for api:${ENV_TAG} (missing label, unreadable image, or unrecognized SHA) -- falling back to building everything. This is expected on the first auto run after the traceability labels (#415) land."
-            echo "build_api=true" >> "$GITHUB_OUTPUT"
-            echo "build_frontend=true" >> "$GITHUB_OUTPUT"
-            echo "base_sha=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "Resolved deployed revision for api:${ENV_TAG} -> ${REVISION}"
-          echo "base_sha=${REVISION}" >> "$GITHUB_OUTPUT"
-          # build_api/build_frontend get filled in by the `changes` job below
-          # once base_sha is known -- placeholders here are overwritten by
-          # compute-flags.
-          echo "build_api=pending" >> "$GITHUB_OUTPUT"
-          echo "build_frontend=pending" >> "$GITHUB_OUTPUT"
-
-  changes:
-    needs: resolve-components
-    if: inputs.components == 'auto' && needs.resolve-components.outputs.base_sha != ''
-    uses: ./.github/workflows/shared-changed-paths.yml
-    with:
-      base_sha: ${{ needs.resolve-components.outputs.base_sha }}
-      runner_labels_json: '["self-hosted"]'
-
-  compute-flags:
-    needs: [ resolve-components, changes ]
-    if: always() && needs.resolve-components.result == 'success'
-    runs-on: ['self-hosted']
-    timeout-minutes: 1
-    outputs:
-      build_api: ${{ steps.compute.outputs.build_api }}
-      build_frontend: ${{ steps.compute.outputs.build_frontend }}
-    steps:
-      - name: Merge auto-detect result (or pass through a manual choice)
-        id: compute
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [ "${{ needs.resolve-components.outputs.build_api }}" = "pending" ]; then
-            echo "build_api=${{ needs.changes.outputs.dgfy_api == 'true' || needs.changes.outputs.migration_runner == 'true' }}" >> "$GITHUB_OUTPUT"
-            echo "build_frontend=${{ needs.changes.outputs.frontend == 'true' }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "build_api=${{ needs.resolve-components.outputs.build_api }}" >> "$GITHUB_OUTPUT"
-            echo "build_frontend=${{ needs.resolve-components.outputs.build_frontend }}" >> "$GITHUB_OUTPUT"
-          fi
-
   build-and-push:
-    needs: compute-flags
-    if: needs.compute-flags.outputs.build_api == 'true' || needs.compute-flags.outputs.build_frontend == 'true'
+    needs: guard-ref
     uses: ./.github/workflows/deployment-orchestrator.yml
     with:
       environment: ${{ inputs.environment }}
@@ -217,18 +112,10 @@ jobs:
       # for DEV/STAGING, IS the deploy target -- the OpenVPN hop hosted
       # runners needed would have it tunnel into itself.
       vpn_required: false
-      build_api: ${{ needs.compute-flags.outputs.build_api == 'true' }}
-      build_frontend: ${{ needs.compute-flags.outputs.build_frontend == 'true' }}
+      build_api: ${{ inputs.components == 'all' || inputs.components == 'backend' }}
+      build_frontend: ${{ inputs.components == 'all' || inputs.components == 'frontend' }}
       runner_labels_json: '["self-hosted"]'
     secrets: inherit
     permissions:
       contents: read
       packages: write
-
-  nothing-to-build:
-    needs: compute-flags
-    if: needs.compute-flags.outputs.build_api != 'true' && needs.compute-flags.outputs.build_frontend != 'true'
-    runs-on: ['self-hosted']
-    timeout-minutes: 1
-    steps:
-      - run: echo "::notice::components:auto found nothing changed since the deployed revision -- nothing built, nothing deployed. Use components:all to force a full build."

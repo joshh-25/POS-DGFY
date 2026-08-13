@@ -17,7 +17,7 @@
 # see the flags below.
 #
 # Usage:
-#   scripts/deploy-local.sh --env DEV --components auto|all|backend|frontend \
+#   scripts/deploy-local.sh --env DEV --components all|backend|frontend \
 #     [--push] [--deploy] [--ssh-target user@host] [--docker-dir /opt/dgfy-platform]
 #
 # --push requires `docker login ghcr.io` already done locally (your own PAT
@@ -25,13 +25,18 @@
 # --deploy requires --ssh-target (or $DEPLOY_SSH_TARGET) reachable with your
 #          own SSH key/agent, and --docker-dir (or $DEPLOY_DOCKER_DIR,
 #          default /opt/dgfy-platform) on that host.
+#
+# --components used to also accept `auto` (read the deployed revision's OCI
+# label, build only what changed since then). Dropped 2026-08-14 (#420) for
+# the same reason deploy.yml's auto mode was dropped: this script exists so
+# you explicitly pick what to build, not so something decides for you.
 set -Eeuo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
 ENVIRONMENT=""
-COMPONENTS="auto"
+COMPONENTS="all"
 DO_PUSH=false
 DO_DEPLOY=false
 SSH_TARGET="${DEPLOY_SSH_TARGET:-}"
@@ -65,49 +70,6 @@ REGISTRY="ghcr.io/sieitzz/dgfy-platform"
 REVISION="$(git rev-parse HEAD)"
 
 echo "== deploy-local: environment=$ENVIRONMENT tag=$TAG components=$COMPONENTS revision=$REVISION =="
-
-resolve_components() {
-  if [ "$COMPONENTS" != "auto" ]; then
-    return
-  fi
-  echo "Resolving deployed revision for auto mode (reads the same OCI label deploy.yml's components:auto uses)..."
-  if ! command -v docker >/dev/null; then
-    echo "::error:: docker not found -- required even for --components auto resolution." >&2
-    exit 1
-  fi
-  INSPECT_JSON="$(docker buildx imagetools inspect "$REGISTRY/api:$TAG" --format '{{json .Image.Config.Labels}}' 2>/dev/null || true)"
-  BASE_SHA=""
-  if [ -n "$INSPECT_JSON" ]; then
-    BASE_SHA="$(node -e '
-      let d = "";
-      process.stdin.on("data", c => d += c);
-      process.stdin.on("end", () => {
-        try { const l = JSON.parse(d) || {}; process.stdout.write(l["org.opencontainers.image.revision"] || ""); }
-        catch { process.stdout.write(""); }
-      });
-    ' <<< "$INSPECT_JSON")"
-  fi
-  if [ -z "$BASE_SHA" ] || ! git cat-file -e "${BASE_SHA}^{commit}" 2>/dev/null; then
-    echo "Could not resolve a deployed revision -- falling back to building everything (same fallback deploy.yml uses)."
-    COMPONENTS="all"
-    return
-  fi
-  echo "Deployed revision: $BASE_SHA"
-  CHANGED="$(git diff --name-only "$BASE_SHA" HEAD)"
-  BUILD_API=false
-  BUILD_FRONTEND=false
-  grep -qE '^(apps/dgfy-api/|apps/dgfy-migration-runner/|packages/shared-constants/|infrastructure/docker/dgfy-api/|infrastructure/docker/dgfy-migration-runner/)' <<< "$CHANGED" && BUILD_API=true
-  grep -qE '^(apps/dgfy-web/|packages/pos-receipt/|packages/shared-constants/|infrastructure/docker/frontend/)' <<< "$CHANGED" && BUILD_FRONTEND=true
-  if $BUILD_API && $BUILD_FRONTEND; then COMPONENTS="all"
-  elif $BUILD_API; then COMPONENTS="backend"
-  elif $BUILD_FRONTEND; then COMPONENTS="frontend"
-  else
-    echo "Nothing changed since the deployed revision -- nothing to build."
-    COMPONENTS="none"
-  fi
-}
-
-resolve_components
 
 build_backend() {
   echo "-- building api (tag: $TAG, sha-$( echo "$REVISION" | cut -c1-7)) --"
@@ -152,11 +114,10 @@ case "$COMPONENTS" in
   all) build_backend; build_frontend ;;
   backend) build_backend ;;
   frontend) build_frontend ;;
-  none) echo "Nothing to build." ;;
-  *) echo "::error:: --components must be auto, all, backend, or frontend (got '$COMPONENTS')." >&2; exit 1 ;;
+  *) echo "::error:: --components must be all, backend, or frontend (got '$COMPONENTS')." >&2; exit 1 ;;
 esac
 
-if $DO_PUSH && [ "$COMPONENTS" != "none" ]; then
+if $DO_PUSH; then
   echo "== pushing (requires docker login ghcr.io already done locally) =="
   if [ "$COMPONENTS" = "all" ] || [ "$COMPONENTS" = "backend" ]; then
     docker push "$REGISTRY/api:$TAG"
