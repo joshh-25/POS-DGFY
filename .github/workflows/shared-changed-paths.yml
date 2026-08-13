@@ -205,6 +205,18 @@ jobs:
             exit 1
           fi
 
+      - name: Set up Node
+        if: inputs.validate_pr_metadata
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # This step exited 127 ("node: command not found") on every run before
+      # the setup-node step above was added -- continue-on-error swallowed
+      # it silently, so the check had been effectively not running since the
+      # self-hosted cutover. An advisory check that always fails is worse
+      # than none (see the compliance-guardrail comment below for why this
+      # repo takes that seriously) -- see #412.
       - name: Enforce pos-receipt package version bump on source changes
         if: inputs.validate_pr_metadata
         continue-on-error: true

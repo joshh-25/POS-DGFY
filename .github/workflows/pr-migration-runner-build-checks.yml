@@ -8,6 +8,17 @@ on:
         required: false
         type: string
         default: '["self-hosted"]'
+      platforms:
+        description: >-
+          Comma-separated platforms to build for this check. Defaults to
+          amd64-only: this is a discarded (push:false) proof-of-build, and
+          arm64-only breakage still gets caught one step later by the real
+          publish build in deploy-migration-runner.yml, which keeps
+          dual-arch. Pass "linux/amd64,linux/arm64" to opt a PR back into
+          the full check (e.g. when touching Dockerfile/base-image pins).
+        required: false
+        type: string
+        default: linux/amd64
 
 jobs:
   build-check:
@@ -21,18 +32,18 @@ jobs:
       - uses: docker/setup-buildx-action@v3
 
       # Same build as deploy-migration-runner.yml, minus the push -- proves the
-      # image builds cleanly for both arches off this PR's code. Reads the
-      # canonical `migration-runner` cache scope that deploy-migration-runner.yml
-      # writes (usually warm from the last develop/staging/main build), but
-      # writes to a PR-scoped cache so a broken PR build can never poison the
-      # canonical scope -- and repeated pushes to the same PR still hit cache.
-      # GitHub evicts the PR-scoped cache automatically once the PR closes.
+      # image builds cleanly off this PR's code. Reads the canonical
+      # `migration-runner` cache scope that deploy-migration-runner.yml writes
+      # (usually warm from the last develop/staging/main build). Deliberately
+      # no cache-to: a per-PR mode=max cache write is full-size and nothing
+      # ever reads it back (each PR only reads the canonical scope), so it
+      # was pure eviction pressure against the repo's 10GB Actions cache
+      # quota -- see #412.
       - name: Build migration-runner image (no push)
         uses: docker/build-push-action@v6
         with:
           context: .
           file: infrastructure/docker/dgfy-migration-runner/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          platforms: ${{ inputs.platforms }}
           push: false
           cache-from: type=gha,scope=migration-runner
-          cache-to: type=gha,mode=max,scope=migration-runner-pr-${{ github.event.pull_request.number }}
