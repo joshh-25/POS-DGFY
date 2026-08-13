@@ -9,7 +9,7 @@ applies_to: architecture_decision
 topic: pos_parked_sale_lifecycle_and_shift_safe_resume
 ---
 
-# ADR 0060: POS Parked Sale Lifecycle and Shift-Safe Resume
+# ADR 0061: POS Parked Sale Lifecycle and Shift-Safe Resume
 
 ## Status
 

@@ -1403,7 +1403,7 @@ events, receipts, Z-reading sales, or Unified Sales rows until the one atomic
 completion transition creates the authoritative POS transaction. The full
 behavioral contract is in
 [`docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`](../features/POS_SPLIT_PAYMENT_CONTRACT.md)
-and ADR 0061.
+and ADR 0062.
 
 ## Commerce Payment Sessions Addendum (2026-05-19)
 

@@ -24,7 +24,7 @@ correction, the Phase 82 sequential cashier-flow simplification, and the Phase
 83 Cash-and-GCash two-field cashier flow, and the Phase 84 configurable
 payment-row cashier flow.
 The governing architecture decision is
-[ADR 0062](../architecture/adr/0062-pos-split-tender-and-manual-walk-in-payment-recording.md).
+[ADR 0063](../architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md).
 
 ## Goal
 
@@ -140,7 +140,7 @@ cash, create a second transaction, or create a second inventory movement.
   replace allocation rows as the financial source of truth.
 - `employee_credit` remains governed by ADR 0051 and is not accepted as one
   leg of a V1 split session.
-- Parked carts remain non-financial snapshots under ADR 0060. Resuming a
+- Parked carts remain non-financial snapshots under ADR 0061. Resuming a
   parked cart into split collection is explicit and must not merge carts.
 - Split collection is online-only until a separate offline contract is
   approved.
@@ -180,7 +180,7 @@ completed sale or inventory effect by itself.
 
 ## Acceptance gates for Phase 57
 
-- [x] ADR 0061 accepted and linked from the feature contract.
+- [x] ADR 0062 accepted and linked from the feature contract.
 - [x] V1 method scope and deferred capabilities are explicit.
 - [x] Session/allocation lifecycle and server invariants are explicit.
 - [x] Existing checkout, parked-sale, offline, Employee Credit, receipt, and

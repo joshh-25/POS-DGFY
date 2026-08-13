@@ -1723,7 +1723,7 @@ Phase 51 is complete. The next eligible governed phase is Phase 52.
 ### Acceptance and Validation Evidence
 
 - [x] The parked-sale lifecycle and manual-resume contract are recorded in
-  ADR 0060.
+  ADR 0061.
 - [x] Parked carts are explicitly excluded from financial, inventory, receipt,
   Z-reading, and unified Sales effects until checkout.
 - [x] Tenant, location, cashier, terminal, and shift ownership boundaries are
@@ -1734,12 +1734,12 @@ Phase 51 is complete. The next eligible governed phase is Phase 52.
 
 ### Implementation Links
 
-- `docs/architecture/adr/0060-pos-parked-sale-lifecycle-and-shift-safe-resume.md`
+- `docs/architecture/adr/0061-pos-parked-sale-lifecycle-and-shift-safe-resume.md`
 - `docs/features/IMPLEMENTATION_PHASE_LEDGER.md`
 
 ### Completion Record (2026-08-12)
 
-- Added ADR 0060 defining the manual `Park & New Sale` contract, explicit
+- Added ADR 0061 defining the manual `Park & New Sale` contract, explicit
   lifecycle states, cashier/terminal/location/shift scope, idempotency,
   revalidation, offline replay, shift-close handling, and no-financial-effect
   boundaries before checkout.
@@ -1777,7 +1777,7 @@ Parked Sale Backend and Data Foundation.
 ### Dependencies and Governance Note
 
 - Phase 52 POS parked-sale lifecycle and shift-safe resume contract.
-- `docs/architecture/adr/0060-pos-parked-sale-lifecycle-and-shift-safe-resume.md`
+- `docs/architecture/adr/0061-pos-parked-sale-lifecycle-and-shift-safe-resume.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
 - `docs/api/specification.md`
@@ -1855,7 +1855,7 @@ Parked Sale Backend and Data Foundation.
 ### Dependencies and Governance Note
 
 - Phase 53 Durable Parked Sale Backend and Data Foundation.
-- `docs/architecture/adr/0060-pos-parked-sale-lifecycle-and-shift-safe-resume.md`
+- `docs/architecture/adr/0061-pos-parked-sale-lifecycle-and-shift-safe-resume.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
 - `docs/api/specification.md`
@@ -1927,7 +1927,7 @@ parked-sale list, resume, and claim workflow.
 
 - Phase 54 POS Park button and add-only cashier flow.
 - Phase 53 Durable Parked Sale Backend and Data Foundation.
-- `docs/architecture/adr/0060-pos-parked-sale-lifecycle-and-shift-safe-resume.md`
+- `docs/architecture/adr/0061-pos-parked-sale-lifecycle-and-shift-safe-resume.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
 - `docs/api/specification.md`
@@ -2008,7 +2008,7 @@ parked-sale replay and shift-close resolution.
 - Phase 54 additive Park and new-sale flow.
 - Phase 55 explicit parked-sale list, resume, and exclusive claim workflow.
 - Existing terminal operation queue and manual Sync policy.
-- `docs/architecture/adr/0060-pos-parked-sale-lifecycle-and-shift-safe-resume.md`
+- `docs/architecture/adr/0061-pos-parked-sale-lifecycle-and-shift-safe-resume.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
 
@@ -2080,17 +2080,17 @@ parked-sale replay and shift-close resolution.
 ### Dependencies and Governance Note
 
 - Phase 56 Offline Parked-Sale Replay and Shift-Close Resolution.
-- `docs/architecture/adr/0061-pos-split-tender-collection-and-payment-allocation.md`
+- `docs/architecture/adr/0062-pos-split-tender-collection-and-payment-allocation.md`
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
 - `docs/api/specification.md`
 - `docs/database/schema.md`
-- ADR 0042, ADR 0045, ADR 0051, and ADR 0060.
+- ADR 0042, ADR 0045, ADR 0051, and ADR 0061.
 
 ### Acceptance and Validation Evidence
 
-- [x] ADR 0061 establishes the split-tender architecture, money-integrity
+- [x] ADR 0062 establishes the split-tender architecture, money-integrity
   invariants, scope/permission rules, idempotency, and deferred capabilities.
 - [x] The POS split-payment feature contract documents the cashier flow,
   operation semantics, lifecycle states, compatibility boundaries, and close
@@ -2104,7 +2104,7 @@ parked-sale replay and shift-close resolution.
 
 ### Implementation Links
 
-- `docs/architecture/adr/0061-pos-split-tender-collection-and-payment-allocation.md`
+- `docs/architecture/adr/0062-pos-split-tender-collection-and-payment-allocation.md`
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`
 - `docs/api/specification.md`
 - `docs/database/schema.md`
@@ -2138,7 +2138,7 @@ parked-sale replay and shift-close resolution.
 ### Dependencies and Governance Note
 
 - Phase 57 POS Split-Tender Architecture and Payment Contract.
-- `docs/architecture/adr/0061-pos-split-tender-collection-and-payment-allocation.md`
+- `docs/architecture/adr/0062-pos-split-tender-collection-and-payment-allocation.md`
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
@@ -2197,7 +2197,7 @@ parked-sale replay and shift-close resolution.
 ### Dependencies and Governance Note
 
 - Phase 58 Durable Split-Payment Persistence Foundation.
-- `docs/architecture/adr/0061-pos-split-tender-collection-and-payment-allocation.md`
+- `docs/architecture/adr/0062-pos-split-tender-collection-and-payment-allocation.md`
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
@@ -2258,7 +2258,7 @@ parked-sale replay and shift-close resolution.
 ### Dependencies and Governance Note
 
 - Phase 59 Server Split-Payment Payment Engine and Transport Contract.
-- `docs/architecture/adr/0061-pos-split-tender-collection-and-payment-allocation.md`
+- `docs/architecture/adr/0062-pos-split-tender-collection-and-payment-allocation.md`
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
@@ -2314,7 +2314,7 @@ parked-sale replay and shift-close resolution.
 ### Dependencies and Governance Note
 
 - Phase 60 Cashier Split-Payment Collection UI.
-- `docs/architecture/adr/0061-pos-split-tender-collection-and-payment-allocation.md`
+- `docs/architecture/adr/0062-pos-split-tender-collection-and-payment-allocation.md`
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
@@ -2378,7 +2378,7 @@ parked-sale replay and shift-close resolution.
 ### Dependencies and Governance Note
 
 - Phase 61 Atomic Split-Payment Checkout Completion and Inventory Posting.
-- `docs/architecture/adr/0061-pos-split-tender-collection-and-payment-allocation.md`
+- `docs/architecture/adr/0062-pos-split-tender-collection-and-payment-allocation.md`
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
@@ -2452,7 +2452,7 @@ parked-sale replay and shift-close resolution.
 ### Dependencies and Governance Note
 
 - Phase 62 Provider-Confirmed Digital Allocation Completion and Mixed-Tender Reporting.
-- `docs/architecture/adr/0061-pos-split-tender-collection-and-payment-allocation.md`
+- `docs/architecture/adr/0062-pos-split-tender-collection-and-payment-allocation.md`
   (2026-08-12 amendment authorizes bounded read-only PayMongo reconciliation).
 - `docs/architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md`
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`
@@ -2526,8 +2526,8 @@ parked-sale replay and shift-close resolution.
 ### Dependencies and Governance Note
 
 - Phase 63 PayMongo Allocation Reconciliation and Refund-Safe Replay.
-- `docs/architecture/adr/0062-pos-split-tender-and-manual-walk-in-payment-recording.md`
-  supersedes ADR 0061 because cashier attestation changes the previous binding
+- `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`
+  supersedes ADR 0062 because cashier attestation changes the previous binding
   provider-confirmation rule for walk-in non-cash tender.
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
@@ -2556,7 +2556,7 @@ parked-sale replay and shift-close resolution.
 - `apps/dgfy-api/tests/posSplitPayment.usecases.test.js`
 - `apps/dgfy-web/src/features/pos/components/POSSplitPaymentDialog.jsx`
 - `apps/dgfy-web/src/features/pos/__tests__/posSplitPaymentUi.contract.test.js`
-- `docs/architecture/adr/0062-pos-split-tender-and-manual-walk-in-payment-recording.md`
+- `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`
 
 ### Completion Record (2026-08-13)
@@ -2587,7 +2587,7 @@ parked-sale replay and shift-close resolution.
 ### Dependencies and Governance Note
 
 - Phase 64 Manual Walk-in Digital Tender Recording.
-- `docs/architecture/adr/0062-pos-split-tender-and-manual-walk-in-payment-recording.md`
+- `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`
   (2026-08-13 amendment).
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
@@ -2666,7 +2666,7 @@ parked-sale replay and shift-close resolution.
 
 - Phase 64 Manual Walk-in Digital Tender Recording.
 - Phase 65 Merchant-owned Tender Reconciliation and Manager Variance Review.
-- `docs/architecture/adr/0062-pos-split-tender-and-manual-walk-in-payment-recording.md`
+- `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
@@ -2726,7 +2726,7 @@ parked-sale replay and shift-close resolution.
 - Phase 61 Atomic Split-Payment Completion.
 - Phase 64 Manual Walk-in Digital Tender Recording.
 - Phase 66 Quick Two-Way Split Cashier Entry.
-- `docs/architecture/adr/0062-pos-split-tender-and-manual-walk-in-payment-recording.md`
+- `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
@@ -2789,7 +2789,7 @@ parked-sale replay and shift-close resolution.
 
 - Phase 61 Atomic Split-Payment Completion.
 - Phase 67 Split-Payment Refresh Recovery and Sale Lock.
-- `docs/architecture/adr/0062-pos-split-tender-and-manual-walk-in-payment-recording.md`
+- `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
@@ -2852,7 +2852,7 @@ parked-sale replay and shift-close resolution.
 - Phase 61 Atomic Split-Payment Completion.
 - Phase 67 Split-Payment Refresh Recovery and Sale Lock.
 - Phase 68 MariaDB Payment Snapshot Serialization Recovery.
-- `docs/architecture/adr/0062-pos-split-tender-and-manual-walk-in-payment-recording.md`
+- `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
@@ -3088,8 +3088,8 @@ parked-sale replay and shift-close resolution.
 - Phase 72 Cashier-Friendly Parked-Sale Naming.
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
-- `docs/architecture/adr/0060-pos-parked-sale-lifecycle-and-shift-safe-resume.md`
-- Classification: `default-clause-amendment`; ADR 0060 Decision clauses 1 and
+- `docs/architecture/adr/0061-pos-parked-sale-lifecycle-and-shift-safe-resume.md`
+- Classification: `default-clause-amendment`; ADR 0061 Decision clauses 1 and
   3 are amended in the same change to permit an explicit, revision-protected
   snapshot replacement on the same claimed parked-sale identity.
 - No architecture exception or allowlist entry is introduced.
@@ -3160,7 +3160,7 @@ parked-sale replay and shift-close resolution.
 - Phase 61 Atomic Split-Payment Completion.
 - Phase 67 Split-Payment Refresh Recovery and Sale Lock.
 - Phase 69 Automatic Split Finalization and Unblocked Sell Flow.
-- `docs/architecture/adr/0062-pos-split-tender-and-manual-walk-in-payment-recording.md`
+- `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md`
 - `docs/architecture/ARCHITECTURE_GOVERNANCE.md`
@@ -3362,7 +3362,7 @@ parked-sale replay and shift-close resolution.
 - `docs/architecture/adr/0016-services-mode-independent-booking-and-ticketing.md`
 - `docs/architecture/adr/0019-food-and-beverage-mode-full-service-restaurant.md`
 - `docs/architecture/adr/0056-store-configuration-templates-and-profiles.md`
-- `docs/architecture/adr/0060-pos-parked-sale-lifecycle-and-shift-safe-resume.md`
+- `docs/architecture/adr/0061-pos-parked-sale-lifecycle-and-shift-safe-resume.md`
 - Classification: `within-existing-boundary`; this changes workflow-specific
   frontend affordances only. It does not change a binding parked-sale
   invariant, Store Profile persistence, API, database schema, permission,
@@ -3585,8 +3585,8 @@ parked-sale replay and shift-close resolution.
 
 ### Dependencies and Governance Note
 
-- ADR 0061 POS Split Tender Collection and Payment Allocation.
-- ADR 0062 POS Split Tender and Manual Walk-in Payment Recording.
+- ADR 0062 POS Split Tender Collection and Payment Allocation.
+- ADR 0063 POS Split Tender and Manual Walk-in Payment Recording.
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
 - `docs/architecture/ARCHITECTURE_BOUNDARIES.md` and
   `docs/architecture/ARCHITECTURE_GOVERNANCE.md`.
@@ -3666,8 +3666,8 @@ parked-sale replay and shift-close resolution.
 
 ### Dependencies and Governance Note
 
-- ADR 0060 POS Parked-Sale Lifecycle and Shift-Safe Resume.
-- ADR 0061 POS Split Tender Collection and Payment Allocation.
+- ADR 0061 POS Parked-Sale Lifecycle and Shift-Safe Resume.
+- ADR 0062 POS Split Tender Collection and Payment Allocation.
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
 - Classification: `binding-contract-conformance`; the customer/order label is
   stored in the existing parked snapshot and introduces no schema migration or
@@ -3721,8 +3721,8 @@ parked-sale replay and shift-close resolution.
 
 ### Dependencies and Governance Note
 
-- ADR 0061 POS Split Tender Collection and Payment Allocation.
-- ADR 0062 POS Split Tender and Manual Walk-in Payment Recording.
+- ADR 0062 POS Split Tender Collection and Payment Allocation.
+- ADR 0063 POS Split Tender and Manual Walk-in Payment Recording.
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
 - Classification: `snapshot-implementation-simplification`; no persistence,
   transport, payment ownership, or cross-boundary decision changed.
@@ -3774,7 +3774,7 @@ parked-sale replay and shift-close resolution.
 
 ### Dependencies and Governance Note
 
-- ADR 0062 POS Split Tender and Manual Walk-in Payment Recording.
+- ADR 0063 POS Split Tender and Manual Walk-in Payment Recording.
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
 - Classification: `snapshot-implementation-simplification`; server-owned
   allocations, idempotency, digital attestation, cash change, and completion
@@ -3829,7 +3829,7 @@ parked-sale replay and shift-close resolution.
 
 ### Dependencies and Governance Note
 
-- ADR 0062 POS Split Tender and Manual Walk-in Payment Recording.
+- ADR 0063 POS Split Tender and Manual Walk-in Payment Recording.
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
 - Classification: `snapshot-implementation-simplification`; payment methods,
   server-owned allocation persistence, idempotency, digital attestation, cash
@@ -3949,7 +3949,7 @@ parked-sale replay and shift-close resolution.
 
 - ADR 0053 Pluggable POS Hardware Device Drivers.
 - ADR 0061 POS Parked Sales and Cashier Ownership.
-- ADR 0062 POS Split Tender and Manual Walk-in Payment Recording.
+- ADR 0063 POS Split Tender and Manual Walk-in Payment Recording.
 - `docs/features/POS_CASHIER_TERMINAL_FLOW.md`.
 - `docs/features/POS_PARKED_SALES_CONTRACT.md`.
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.

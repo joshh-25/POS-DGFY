@@ -7,14 +7,14 @@ last_reviewed: 2026-08-13
 review_by: 2027-02-12
 applies_to: architecture_decision
 topic: pos_split_tender_collection
-superseded_by: 0062-pos-split-tender-and-manual-walk-in-payment-recording.md
+superseded_by: 0063-pos-split-tender-and-manual-walk-in-payment-recording.md
 ---
 
-# ADR 0061: POS Split-Tender Collection and Payment Allocation
+# ADR 0062: POS Split-Tender Collection and Payment Allocation
 
 ## Status
 
-Superseded on 2026-08-13 by ADR 0062. Use ADR 0062 for current split-tender
+Superseded on 2026-08-13 by ADR 0063. Use ADR 0063 for current split-tender
 and store-owned walk-in payment decisions.
 
 ## Context
@@ -27,7 +27,7 @@ browser to become the financial source of truth.
 
 The change crosses POS checkout, payment evidence, cash accountability,
 receipts, reporting, and fiscal output. It must also preserve the parked-sale
-boundary from ADR 0060: parking and an unfinished payment collection must not
+boundary from ADR 0061: parking and an unfinished payment collection must not
 create inventory, a completed-sale row, a receipt, or a Z-reading sale total.
 
 ## Decision
@@ -129,5 +129,5 @@ remain unchanged.
 - `docs/architecture/adr/0042-bir-rmo-24-2023-fiscal-document-and-accreditation-closure.md`
 - `docs/architecture/adr/0045-shared-pos-receipt-renderer.md`
 - `docs/architecture/adr/0051-pos-employee-credit-tender-and-ledger.md`
-- `docs/architecture/adr/0060-pos-parked-sale-lifecycle-and-shift-safe-resume.md`
+- `docs/architecture/adr/0061-pos-parked-sale-lifecycle-and-shift-safe-resume.md`
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`

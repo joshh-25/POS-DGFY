@@ -9,11 +9,11 @@ applies_to: architecture_decision
 topic: pos_split_tender_collection
 ---
 
-# ADR 0062: POS Split Tender and Manual Walk-in Payment Recording
+# ADR 0063: POS Split Tender and Manual Walk-in Payment Recording
 
 ## Status
 
-Amended (2026-08-13). This ADR supersedes ADR 0061. Read the Amendments
+Amended (2026-08-13). This ADR supersedes ADR 0062. Read the Amendments
 section last.
 
 ## Context
@@ -59,7 +59,7 @@ financial store or provider integration.
    may not expose a usable transaction reference at the counter. When entered,
    it is an audit aid, not proof that DGFY verified payment. `[default]`
 8. Explicit PayMongo allocations retain server-to-server verification from
-   ADR 0061's Phase 63 amendment: paid status, PHP currency, exact amount,
+   ADR 0062's Phase 63 amendment: paid status, PHP currency, exact amount,
    method, payment identity, session/allocation metadata, and replay evidence
    must match before success. Manual attestation cannot relabel or bypass a
    PayMongo allocation. `[binding]`
@@ -129,6 +129,6 @@ tenant-local manager review record:
 - `docs/architecture/adr/0045-shared-pos-receipt-renderer.md`
 - `docs/architecture/adr/0051-pos-employee-credit-tender-and-ledger.md`
 - `docs/architecture/adr/0052-tenant-revenue-collection-ledger-and-settlement.md`
-- `docs/architecture/adr/0060-pos-parked-sale-lifecycle-and-shift-safe-resume.md`
-- `docs/architecture/adr/0061-pos-split-tender-collection-and-payment-allocation.md`
+- `docs/architecture/adr/0061-pos-parked-sale-lifecycle-and-shift-safe-resume.md`
+- `docs/architecture/adr/0062-pos-split-tender-collection-and-payment-allocation.md`
 - `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`
