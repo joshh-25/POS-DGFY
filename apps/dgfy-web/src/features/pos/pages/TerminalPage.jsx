@@ -125,6 +125,7 @@ import {
   resolveTenantSetupViewMode
 } from '../utils/setupFlow.js';
 import { openDrawerWithIminBridge } from '../utils/iminHardwareBridge.js';
+import { notifyIminWebPosReady } from '../utils/iminHardwareBridge.js';
 import { usePosHardware } from '../hardware/usePosHardware.js';
 import {
   blurActiveTerminalEditor,
@@ -951,6 +952,20 @@ export default function TerminalPage() {
     && terminalUser?.is_master_admin === true
     && setupFlowState.loading
   );
+  // Tell the iMin Android wrapper the POS shell is interactive as soon as
+  // startup resolves -- not only once a cashier is logged in and the
+  // checkout terminal happens to mount (POSCheckoutTerminal.jsx's own
+  // notifyIminWebPosReady() call). The wrapper shows a full-screen "POS
+  // startup timeout" overlay after 10s of silence (WebPosActivity.kt); on a
+  // cold APK launch the terminal always boots locked (sessionStorage is
+  // cleared when the WebView process restarts), so without this the login
+  // screen never gets a chance to render and the terminal is unusable. The
+  // native handler is idempotent, so this and the checkout-mount call can
+  // both fire safely.
+  useEffect(() => {
+    if (terminalStartupLoading) return;
+    notifyIminWebPosReady();
+  }, [terminalStartupLoading]);
   const posLastViewStorageKey = useMemo(() => buildPosLastViewStorageKey({
     userId: terminalUser?.user_id || terminalUser?.id || terminalUser?.email,
     companyToken: getCompanyToken(),
