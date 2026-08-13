@@ -928,8 +928,8 @@ export default function StorefrontApp() {
   }, [isTrackSubpage, checkoutTab]);
   useStorefrontCartPersistence({
     cart,
-    enabled: isFnbMode || isServicesMode,
-    mode: isFnbMode ? 'fnb' : (isServicesMode ? 'services' : ''),
+    enabled: isFnbMode || isServicesMode || isRetailMode,
+    mode: isFnbMode ? 'fnb' : (isServicesMode ? 'services' : (isRetailMode ? 'retail' : '')),
     setCart,
     // Route state changes synchronously when another storefront is selected.
     // Prefer it over the previous async profile so cart hydration/clearing
