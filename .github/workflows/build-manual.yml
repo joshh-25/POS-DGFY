@@ -33,12 +33,14 @@ jobs:
       environment: ${{ inputs.environment }}
       image_tags: ${{ inputs.environment == 'DEV' && 'develop' || inputs.environment == 'STAGING' && 'staging' || inputs.environment == 'BETA' && 'beta' || 'latest' }}
       publish: ${{ inputs.publish }}
-      vpn_required: ${{ inputs.environment == 'DEV' || inputs.environment == 'STAGING' }}
-      # Switch back to the free self-hosted runners if Actions minutes run
-      # out. Pin the label so jobs avoid vm-sieitzstaging (AVX-less CPU ->
-      # exit 132 on native addons like @napi-rs/canvas).
-      # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
-      runner_labels_json: '["ubuntu-latest"]'
+      # DEV/STAGING used to need this to reach the office-network VPN from a
+      # hosted runner. The self-hosted runner (vm-sieitzstaging) already sits
+      # on that network, so the hop is unnecessary for every environment now
+      # -- and running it would have the runner open a VPN tunnel into itself.
+      vpn_required: false
+      # GHA billing exhausted -- running on self-hosted (vm-sieitzstaging).
+      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
+      runner_labels_json: '["self-hosted"]'
     secrets: inherit
     permissions:
       contents: read

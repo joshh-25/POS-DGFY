@@ -11,14 +11,14 @@ on:
         description: JSON array passed to runs-on for the publish job.
         required: false
         type: string
-        default: '["ubuntu-slim"]'
+        default: '["self-hosted"]'
   workflow_dispatch:
     inputs:
       runner_labels_json:
         description: JSON array passed to runs-on for the manual publish job.
         required: false
         type: string
-        default: '["ubuntu-slim"]'
+        default: '["self-hosted"]'
 
 permissions:
   contents: read

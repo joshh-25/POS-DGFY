@@ -7,7 +7,7 @@ on:
         description: JSON array passed to runs-on for quality jobs
         required: false
         type: string
-        default: '["ubuntu-latest"]'
+        default: '["self-hosted"]'
 
 jobs:
   dgfy-api-quality:

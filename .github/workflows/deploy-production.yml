@@ -24,7 +24,9 @@ env:
 
 jobs:
   candidate-bundle:
-    runs-on: ubuntu-latest
+    # GHA billing exhausted -- running on self-hosted (vm-sieitzstaging).
+    # runs-on: ubuntu-latest  # revert to this when hosted runners are back
+    runs-on: [self-hosted]
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4

@@ -17,11 +17,13 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  # Light jobs: git/bash only, well under ubuntu-slim's 15-minute cap.
-  RUNNER_LIGHT_JSON: &runner_light '["ubuntu-slim"]'
-  # Heavy jobs: ubuntu-slim runs unprivileged (no Docker-in-Docker), so buildx
-  # needs a full VM.
-  RUNNER_HEAVY_JSON: &runner_heavy '["ubuntu-latest"]'
+  # GHA billing is exhausted (spending limit / failed payment), so every job
+  # runs on self-hosted for now. Keep the light/heavy split -- it costs
+  # nothing on self-hosted and makes it a one-line revert if/when hosted
+  # runners come back (just swap the value, not the anchor name -- see
+  # scripts/check-pr-quality-workflow.js, which asserts *runner_heavy).
+  RUNNER_LIGHT_JSON: &runner_light '["self-hosted"]'
+  RUNNER_HEAVY_JSON: &runner_heavy '["self-hosted"]'
 
 # Deliberately just `changes` plus one build-check job per deployable (this
 # repo splits `apps/dgfy-api` from `apps/dgfy-migration-runner`, so that's
@@ -97,7 +99,11 @@ jobs:
 
   android-build-check:
     needs: changes
-    if: needs.changes.outputs.android == 'true'
+    # Disabled: vm-sieitzstaging (the online self-hosted runner) has no
+    # Android SDK installed, so this fails with "SDK location not found"
+    # regardless of changed paths. Re-enable once the SDK is set up there,
+    # or point runner_labels_json back at a hosted runner for this job only.
+    if: false && needs.changes.outputs.android == 'true'
     uses: ./.github/workflows/pr-android-build-checks.yml
     with:
       runner_labels_json: *runner_heavy
