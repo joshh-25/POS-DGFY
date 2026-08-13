@@ -42,9 +42,11 @@ permissions:
 
 jobs:
   build:
-    # GHA billing exhausted -- running on self-hosted (vm-sieitzstaging).
-    # runs-on: ubuntu-latest  # revert to this when hosted runners are back
-    runs-on: [self-hosted]
+    # Stays hosted: vm-sieitzstaging (the online self-hosted runner) has no
+    # Android SDK installed, so a Gradle build fails there regardless of
+    # billing status ("SDK location not found"). Revisit once the SDK is
+    # set up on that box.
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
