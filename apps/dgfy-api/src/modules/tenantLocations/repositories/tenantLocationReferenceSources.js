@@ -58,22 +58,6 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         where: (locationId) => ({ location_id: locationId })
     },
     {
-        key: 'fnbModifierGroupLocationAvailability',
-        label: 'F&B modifier group location availability overrides',
-        modelName: 'FnbModifierGroupLocationAvailability',
-        association: 'FnbModifierGroupLocationAvailability.location',
-        foreignKeys: ['location_id'],
-        where: (locationId) => ({ location_id: locationId })
-    },
-    {
-        key: 'fnbModifierOptionLocationAvailability',
-        label: 'F&B modifier option location availability overrides',
-        modelName: 'FnbModifierOptionLocationAvailability',
-        association: 'FnbModifierOptionLocationAvailability.location',
-        foreignKeys: ['location_id'],
-        where: (locationId) => ({ location_id: locationId })
-    },
-    {
         key: 'stockMovements',
         label: 'stock movements',
         modelName: 'StockMovement',
@@ -116,6 +100,14 @@ export const TENANT_LOCATION_REFERENCE_SOURCES = Object.freeze([
         label: 'POS split-payment allocations',
         modelName: 'PosPaymentAllocation',
         association: 'PosPaymentAllocation.location',
+        foreignKeys: ['location_id'],
+        where: (locationId) => ({ location_id: locationId })
+    },
+    {
+        key: 'posMerchantTenderReconciliations',
+        label: 'POS merchant tender reconciliations',
+        modelName: 'PosMerchantTenderReconciliation',
+        association: 'PosMerchantTenderReconciliation.location',
         foreignKeys: ['location_id'],
         where: (locationId) => ({ location_id: locationId })
     },

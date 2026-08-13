@@ -89,6 +89,7 @@ describe('AI Cost Control Integration Test', () => {
     beforeAll(async () => {
         await sequelize.authenticate();
         await ensureColumn('users', 'role_preset_key', 'VARCHAR(120) NULL', 'role');
+        await ensureColumn('users', 'pos_day_close_pin_hash', 'VARCHAR(255) NULL');
         await User.destroy({ where: { username: 'ai_user' } }).catch(() => null);
         await User.destroy({ where: { email } }).catch(() => null);
 
