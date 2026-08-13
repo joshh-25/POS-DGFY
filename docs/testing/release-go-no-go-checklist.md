@@ -128,9 +128,12 @@ The authoritative document for release flow is `docs/ops/RELEASE_CANDIDATE_POLIC
 feature branch -> develop -> staging -> release/<label> -> main
 ```
 
-A push to `main` **is** the production deploy (`build-main.yml` fires on `push: [main]` and
-dual-deploys `beta.dgfy.ph` + `dgfy.ph` immediately — no separate approval step). Treat every PR into
-`main` accordingly.
+Merging a PR into `main` no longer deploys production by itself (as of 2026-08-14, #417) —
+production deploys only when someone manually dispatches `deploy-main.yml` (renamed from
+`build-main.yml`, which lost its `push: [main]` trigger) from the Actions tab. There is still no
+separate approval step beyond dispatch access. Treat every PR into `main` as "the next
+`deploy-main.yml` dispatch will ship this," and run this checklist before that dispatch, not before
+the merge.
 
 `.github/workflows/pr-checks.yml`'s `quality-checks` job — the blocking API/frontend test coverage —
 is currently hard-disabled (`if: false`, paused over #345's ~14min unfiltered run). Today a PR is
@@ -175,8 +178,8 @@ Date-specific snapshots are archived under:
 
 ## Known gaps (tracked elsewhere, not fixed by this document)
 
-- `.github/workflows/deploy-production.yml` targets a `master` branch that does not exist in this
-  repository (#339) and cannot currently run.
+- `.github/workflows/deploy-production.yml`, which targeted a `master` branch that never existed in
+  this repository (#339), was deleted 2026-08-14 (#417) — no longer applicable.
 - `docs/ops/RELEASE_CANDIDATE_POLICY.md` still describes `quality-checks` as blocking (it isn't,
   currently — see above); worth a follow-up correction there.
 - `docs/ops/NO_STAGING_RELEASE_STANDARD.md` still assumes the ADR-0030 signed controller model.

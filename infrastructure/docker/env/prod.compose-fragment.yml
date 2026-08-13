@@ -7,8 +7,8 @@
 # environment where a containerized nginx is part of this same compose file
 # (dev/stage front with host nginx instead) and where beta + prod share one
 # backend/mysql/redis -- see the dual-deploy note in .github/workflows/
-# build-main.yml. Two separate edits below: the service swap, and the
-# nginx service patch.
+# deploy-main.yml (renamed from build-main.yml 2026-08-14, #417). Two
+# separate edits below: the service swap, and the nginx service patch.
 #
 # Captured from the live server 2026-08-10 (see plan Phase 0 dump) --
 # reconcile again before applying if /opt/dgfy-platform/docker-compose.yml

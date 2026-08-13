@@ -2,9 +2,10 @@ name: Shared Changed Paths
 
 # Tells callers which image builds a given range of commits actually needs, so
 # a backend-only change doesn't spend a runner rebuilding the frontend image
-# (and vice versa). Used both by pr-checks.yml (PR mode) and build-develop.yml
-# (push mode), so every push to develop is gated the same way a PR already is
-# instead of unconditionally rebuilding both images every time.
+# (and vice versa). Used both by pr-checks.yml (PR mode) and deploy.yml's
+# components:auto mode (base_sha mode, diffing against the currently deployed
+# revision rather than a push event -- see deploy.yml's header comment; every
+# push-triggered build/deploy was removed 2026-08-14, #417).
 #
 # Deliberately does this with plain git rather than a third-party
 # paths-filter action -- the same `git merge-base`/`git diff --name-only`
@@ -139,9 +140,9 @@ jobs:
             DGFY_API=false
             MIGRATION_RUNNER=false
             ANDROID=false
-            matches '^(apps/dgfy-web/|packages/pos-receipt/|packages/shared-constants/|infrastructure/docker/frontend/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|build-develop|build-staging|build-main)\.yml)' && FRONTEND=true || true
-            matches '^(apps/dgfy-api/|packages/shared-constants/|infrastructure/docker/dgfy-api/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|build-develop|build-staging|build-main)\.yml)' && DGFY_API=true || true
-            matches '^(apps/dgfy-migration-runner/|infrastructure/docker/dgfy-migration-runner/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-migration-runner|deployment-orchestrator|pr-migration-runner-build-checks|build-develop|build-staging|build-main)\.yml)' && MIGRATION_RUNNER=true || true
+            matches '^(apps/dgfy-web/|packages/pos-receipt/|packages/shared-constants/|infrastructure/docker/frontend/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|pr-frontend-build-checks|deploy|deploy-main)\.yml)' && FRONTEND=true || true
+            matches '^(apps/dgfy-api/|packages/shared-constants/|infrastructure/docker/dgfy-api/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-api|deployment-orchestrator|pr-dgfy-api-build-checks|deploy|deploy-main)\.yml)' && DGFY_API=true || true
+            matches '^(apps/dgfy-migration-runner/|infrastructure/docker/dgfy-migration-runner/|\.dockerignore|\.github/workflows/(shared-changed-paths|deploy-migration-runner|deployment-orchestrator|pr-migration-runner-build-checks|deploy|deploy-main)\.yml)' && MIGRATION_RUNNER=true || true
             matches '^(apps/dgfy-android-bridge/|scripts/build-android-release\.sh|\.github/workflows/(shared-changed-paths|pr-android-build-checks|build-android-manual)\.yml)' && ANDROID=true || true
           fi
 

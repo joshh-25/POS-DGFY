@@ -93,7 +93,7 @@ Apply to the storefront/POS/skupervisor blocks for both the beta and prod domain
 
 ### The deploy pipeline does not sync this file automatically
 
-Confirmed: `infrastructure/docker/docker-compose.yml`'s own header comment states the `nginx/` directory must be **manually copied** alongside the compose file — no CI workflow does this. Merging an `nginx.conf.template` change to `main` will build and push new backend/frontend images and (per `deploy-production.yml`) deploy them, but the **nginx container will keep running its old, already-copied config** until someone manually re-copies the file and reloads. This is the same class of gap that produced the stage host-nginx surprise, just for the containerized case. Not fixing the pipeline itself here — documenting the required manual step:
+Confirmed: `infrastructure/docker/docker-compose.yml`'s own header comment states the `nginx/` directory must be **manually copied** alongside the compose file — no CI workflow does this. Dispatching `deploy-main.yml` (manual-only as of 2026-08-14, #417; formerly `build-main.yml` on `push: [main]`) after an `nginx.conf.template` change will build and push new backend/frontend images and deploy them, but the **nginx container will keep running its old, already-copied config** until someone manually re-copies the file and reloads. This is the same class of gap that produced the stage host-nginx surprise, just for the containerized case. Not fixing the pipeline itself here — documenting the required manual step:
 
 ```bash
 # after infrastructure/docker/nginx/nginx.conf.template changes land on main:
