@@ -259,15 +259,18 @@ TENANT_REGISTRATION_APPROVAL_MODE=manual
 CUSTOMER_ACCESS_MODES_ENABLED=true
 CUSTOMER_ACCESS_MODES_ENABLED_TENANTS=
 
-# PayMongo test/sandbox values from the local development env
+# PayMongo test/sandbox values from the local development env.
+# These are placeholders -- get your own sandbox keys from the PayMongo
+# dashboard (https://dashboard.paymongo.com, Developers > API Keys, test mode).
+# Never commit real keys here, even test-mode ones (#239).
 PAYMONGO_MODE=test
-PAYMONGO_PUBLIC_KEY=pk_test_92M4xczP1CrP5kjuA1dKdRM6
-PAYMONGO_SECRET_KEY=sk_test_w9HdQZVpYd6H5u2FTWk2GQkc
-PAYMONGO_WEBHOOK_SECRET=whsk_uLpjZvdYrZ1myDX5rJsU8u8b
+PAYMONGO_PUBLIC_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxx
+PAYMONGO_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxxxx
+PAYMONGO_WEBHOOK_SECRET=whsk_xxxxxxxxxxxxxxxxxxxxxxxx
 PAYMONGO_STANDARD_PLAN_ID=source_xxx_standard
 PAYMONGO_PREMIUM_PLAN_ID=source_xxx_premium
-PAYMONGO_TEST_PUBLIC_KEY=pk_test_92M4xczP1CrP5kjuA1dKdRM6
-PAYMONGO_TEST_SECRET_KEY=sk_test_w9HdQZVpYd6H5u2FTWk2GQkc
+PAYMONGO_TEST_PUBLIC_KEY=pk_test_xxxxxxxxxxxxxxxxxxxxxxxx
+PAYMONGO_TEST_SECRET_KEY=sk_test_xxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 Generate stronger local JWT secrets if preferred:
