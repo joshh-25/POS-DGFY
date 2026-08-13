@@ -20,28 +20,27 @@ name: Deploy
 # label off the currently-deployed image and rebuilt only what changed since
 # then. Dropped 2026-08-14 (#420) -- Pat's own pushback: "why do we still
 # have change detection on the manual deploy, when we're supposed to be able
-# to pick which platforms to build and push?" Right call -- that mode
-# reintroduced exactly the kind of automatic decide-for-you logic this
-# workflow exists to remove, added three extra jobs and an
-# `imagetools inspect`/GHCR-label read that was never actually verified
-# against a real deployed image, and wasn't something Pat asked for. If a
-# self-healing/auto-detect mode is wanted later, design it as its own
-# explicit thing, not folded quietly into "manual."
+# to pick which platforms to build and push?"
 #
-# IMPORTANT, unverified until a human runs it end-to-end: the SSH deploy
-# path (publish-platform.yml) has not had a confirmed successful run since
-# the 2026-08-13 self-hosted cutover.
+# There used to be a separate `environment` choice input (DEV/STAGING/BETA)
+# alongside the branch selector every workflow_dispatch already has, plus a
+# `guard-ref` job whose only purpose was catching the two disagreeing (e.g.
+# selector left on `develop`, environment picked `BETA`). Removed 2026-08-14
+# (#423, same day) -- Pat's own pushback: the branch<->environment mapping
+# below is already 1:1, so the second selection was pure redundancy that
+# only existed to be picked wrong. `resolve-environment` derives it from
+# the branch instead, which eliminates the mismatch class rather than
+# detecting it. There is deliberately no override for dispatching one
+# branch's code against another environment's secrets/target -- that
+# pathway (previously `allow_ref_mismatch`) is gone; a genuine cross-branch
+# build need is rare enough to handle by pushing to the target branch first.
+#
+# CONFIRMED end-to-end 2026-08-13: DEV via run 31724177658 (build + SSH
+# publish all succeeded, deployed revision label matched develop HEAD) and
+# STAGING via run 31726388197 (same, against staging HEAD).
 on:
   workflow_dispatch:
     inputs:
-      environment:
-        description: Which environment to build/deploy against
-        type: choice
-        options:
-          - DEV
-          - STAGING
-          - BETA
-        required: true
       components:
         description: >-
           Which images to build/push. backend = api + migration-runner
@@ -59,18 +58,9 @@ on:
         description: SSH-deploy to the server after images are pushed
         type: boolean
         default: true
-      allow_ref_mismatch:
-        description: >-
-          Skip the guard that fails this run if the selected branch (the ref
-          you dispatched from) doesn't match the selected environment. Only
-          for a deliberate cross-branch build -- leaving this off is what
-          stops "selector left on develop, picked STAGING" from silently
-          shipping the wrong code.
-        type: boolean
-        default: false
 
 concurrency:
-  group: deploy-${{ inputs.environment }}
+  group: deploy-${{ github.ref_name }}
   # false, matching build-develop.yml's original reasoning: this is a manual
   # action now, not a push burst, so there's no "queue instead of losing a
   # diff" pressure -- but cancelling a real in-flight deploy mid-SSH because
@@ -83,30 +73,35 @@ permissions:
   packages: write
 
 jobs:
-  guard-ref:
+  resolve-environment:
     runs-on: ['self-hosted']
     timeout-minutes: 2
+    outputs:
+      environment: ${{ steps.resolve.outputs.environment }}
     steps:
-      - name: Assert selected branch matches selected environment
-        if: ${{ !inputs.allow_ref_mismatch }}
+      - name: Derive environment from the dispatched branch
+        id: resolve
         shell: bash
         run: |
           set -euo pipefail
-          declare -A EXPECT=([DEV]=develop [STAGING]=staging [BETA]=main)
-          expected="${EXPECT[${{ inputs.environment }}]}"
-          actual="${{ github.ref_name }}"
-          if [ "$actual" != "$expected" ]; then
-            echo "::error::Dispatched from branch '$actual' but environment '${{ inputs.environment }}' expects '$expected'. Re-run this workflow with the branch selector set to '$expected', or check allow_ref_mismatch if this is a deliberate cross-branch build."
-            exit 1
-          fi
-          echo "OK: branch '$actual' matches environment '${{ inputs.environment }}'."
+          case "${{ github.ref_name }}" in
+            develop) ENV=DEV ;;
+            staging) ENV=STAGING ;;
+            main) ENV=BETA ;;
+            *)
+              echo "::error::No environment is mapped to branch '${{ github.ref_name }}'. Deploy only recognizes develop (DEV), staging (STAGING), and main (BETA) -- dispatch from one of those branches using the branch selector above."
+              exit 1
+              ;;
+          esac
+          echo "environment=$ENV" >> "$GITHUB_OUTPUT"
+          echo "OK: branch '${{ github.ref_name }}' -> environment '$ENV'."
 
   build-and-push:
-    needs: guard-ref
+    needs: resolve-environment
     uses: ./.github/workflows/deployment-orchestrator.yml
     with:
-      environment: ${{ inputs.environment }}
-      image_tags: ${{ inputs.environment == 'DEV' && 'develop' || inputs.environment == 'STAGING' && 'staging' || 'beta' }}
+      environment: ${{ needs.resolve-environment.outputs.environment }}
+      image_tags: ${{ needs.resolve-environment.outputs.environment == 'DEV' && 'develop' || needs.resolve-environment.outputs.environment == 'STAGING' && 'staging' || 'beta' }}
       publish: ${{ inputs.deploy }}
       # The self-hosted runner already sits on the DEV/STAGING network and,
       # for DEV/STAGING, IS the deploy target -- the OpenVPN hop hosted
