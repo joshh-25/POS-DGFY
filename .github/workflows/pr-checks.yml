@@ -10,18 +10,28 @@ on:
       - opened
       - synchronize
       - reopened
-      - edited
+      - ready_for_review
 
 concurrency:
   group: pr-checks-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
+# `edited` (title/body edits) used to be in `types:` above. On a single-
+# concurrency self-hosted runner that's pure queue waste: a prose-only edit
+# cancels an in-flight run and requeues both Docker build-checks behind it
+# for zero code-signal (see #412, and #194's older billing-era version of the
+# same finding). Dropped. `ready_for_review` replaces it instead -- without
+# it, a PR opened as a draft and later marked ready never gets checked unless
+# someone also pushes a commit.
+
 env:
-  # Light jobs: git/bash only, well under ubuntu-slim's 15-minute cap.
-  RUNNER_LIGHT_JSON: &runner_light '["ubuntu-slim"]'
-  # Heavy jobs: ubuntu-slim runs unprivileged (no Docker-in-Docker), so buildx
-  # needs a full VM.
-  RUNNER_HEAVY_JSON: &runner_heavy '["ubuntu-latest"]'
+  # GHA billing is exhausted (spending limit / failed payment), so every job
+  # runs on self-hosted for now. Keep the light/heavy split -- it costs
+  # nothing on self-hosted and makes it a one-line revert if/when hosted
+  # runners come back (just swap the value, not the anchor name -- see
+  # scripts/check-pr-quality-workflow.js, which asserts *runner_heavy).
+  RUNNER_LIGHT_JSON: &runner_light '["self-hosted"]'
+  RUNNER_HEAVY_JSON: &runner_heavy '["self-hosted"]'
 
 # Deliberately just `changes` plus one build-check job per deployable (this
 # repo splits `apps/dgfy-api` from `apps/dgfy-migration-runner`, so that's
@@ -49,30 +59,27 @@ env:
 # and shared-changed-paths.yml's `enforce_compliance_declarations` input are
 # left in place so re-enabling is a one-line change, not a redo.
 #
-# android-build-check is the exception to "fold it in": it's a real Gradle
-# build (see #254, a merged PR that broke every dev/staging Android build
-# because nothing compiled android/ on PR), not a few seconds of git/bash,
-# so it earns its own job and billing floor rather than being folded into
-# `changes`.
+# quality-checks and android-build-check used to be jobs here, gated
+# `if: false` (see #345 and #254 respectively for why each was paused, not
+# deleted). A permanently-skipped job is still a row in every PR's Checks
+# tab with nothing to say -- pure clutter, and it invites the false read
+# that something is actually being checked. Removed outright 2026-08-14
+# (#416); both reusable workflows are untouched and still runnable by hand
+# from the Actions tab (pr-quality-checks.yml / pr-android-build-checks.yml,
+# now `workflow_dispatch`-triggered) whenever a full test run or an Android
+# build-check is actually wanted, without paying for either on every PR.
 jobs:
   changes:
+    # Drafts aren't merge candidates -- skip the whole pipeline rather than
+    # pay a runner slot for them. Every job below depends on `changes`, and a
+    # skipped job's outputs are the empty string, so `== 'true'` is false and
+    # they all skip cleanly with no further changes needed.
+    if: github.event.pull_request.draft == false
     uses: ./.github/workflows/shared-changed-paths.yml
     with:
       runner_labels_json: *runner_light
       validate_pr_metadata: true
       enforce_compliance_declarations: false
-
-  quality-checks:
-    needs: changes
-    # Temporarily disabled: dgfy-api-quality's first-ever complete run took
-    # ~14 min, and unlike every build-check job below it isn't path-filtered
-    # (needs.changes.outputs.*), so it would run on every PR unconditionally.
-    # Paused here -- pr-quality-checks.yml itself is untouched -- while
-    # optimization is analyzed. See #345 and #339.
-    if: false && needs.changes.result == 'success'
-    uses: ./.github/workflows/pr-quality-checks.yml
-    with:
-      runner_labels_json: *runner_heavy
 
   dgfy-api-build-check:
     needs: changes
@@ -92,12 +99,5 @@ jobs:
     needs: changes
     if: needs.changes.outputs.frontend == 'true'
     uses: ./.github/workflows/pr-frontend-build-checks.yml
-    with:
-      runner_labels_json: *runner_heavy
-
-  android-build-check:
-    needs: changes
-    if: needs.changes.outputs.android == 'true'
-    uses: ./.github/workflows/pr-android-build-checks.yml
     with:
       runner_labels_json: *runner_heavy

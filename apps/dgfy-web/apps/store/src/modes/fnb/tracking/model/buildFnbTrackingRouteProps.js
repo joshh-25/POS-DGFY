@@ -59,6 +59,11 @@ export function buildFnbTrackingRouteProps({
       getCompletedTrackingLabel,
       getTrackingFlowForOrderMethod,
       isMobileViewport,
+      presentation: {
+        backLabel: 'Back to Menu',
+        returnToCatalog: false,
+        showTrustStrip: true,
+      },
       primaryLocationId,
       selectedLocationId,
       selectedStore,

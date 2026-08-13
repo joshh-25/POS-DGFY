@@ -39,6 +39,7 @@ import {
     forceCloseStaleTerminalShiftUseCase,
     getTerminalTodayDashboardUseCase,
     listIncomingOnlineOrdersUseCase,
+    listOnlineOrderHistoryUseCase,
     listActiveDeliveryPersonnelUseCase,
     getAdminLocationMonitorUseCase,
     collectCashPickupOrderUseCase,
@@ -51,7 +52,23 @@ import {
     printPosShiftSummaryUseCase,
     printPosZReadingUseCase,
     openPosDrawerUseCase,
-    getPairedPosTerminalUseCase
+    getPairedPosTerminalUseCase,
+    createPosParkedSaleUseCase,
+    listPosParkedSalesUseCase,
+    claimPosParkedSaleUseCase,
+    reparkPosParkedSaleUseCase,
+    cancelPosParkedSaleUseCase,
+    createPosPaymentSessionUseCase,
+    getPosPaymentSessionUseCase,
+    getActivePosPaymentSessionUseCase,
+    addPosPaymentAllocationUseCase,
+    cancelPosPaymentAllocationUseCase,
+    confirmPosPaymentAllocationUseCase,
+    reconcilePosPaymentAllocationUseCase,
+    cancelPosPaymentSessionUseCase,
+    completePosPaymentSessionUseCase,
+    getMerchantTenderReconciliationUseCase,
+    reviewMerchantTenderReconciliationUseCase
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
@@ -150,7 +167,7 @@ export const createSetupCashier = async (req, res, next) => {
             user: req.user
         });
         return sendUseCaseResult(res, result, {
-            successStatusCodeResolver: () => 201,
+            successStatusCodeResolver: () => result.data?.idempotent_replay ? 200 : 201,
             successPayloadResolver: () => ({
                 success: true,
                 data: result.data,
@@ -439,6 +456,313 @@ export const checkout = async (req, res, next) => {
     }
 };
 
+export const createParkedSale = async (req, res, next) => {
+    try {
+        const result = await createPosParkedSaleUseCase({
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 201,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS sale parked',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const listParkedSales = async (req, res, next) => {
+    try {
+        const result = await listPosParkedSalesUseCase({
+            query: req.validatedQuery || req.query || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Parked POS sales retrieved',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const claimParkedSale = async (req, res, next) => {
+    try {
+        const result = await claimPosParkedSaleUseCase({
+            parkedSaleId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Parked POS sale claimed',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const cancelParkedSale = async (req, res, next) => {
+    try {
+        const result = await cancelPosParkedSaleUseCase({
+            parkedSaleId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Parked POS sale cancelled',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const reparkParkedSale = async (req, res, next) => {
+    try {
+        const result = await reparkPosParkedSaleUseCase({
+            parkedSaleId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Parked POS sale updated',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const createPaymentSession = async (req, res, next) => {
+    try {
+        const result = await createPosPaymentSessionUseCase({
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 201,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS payment session created',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getPaymentSession = async (req, res, next) => {
+    try {
+        const result = await getPosPaymentSessionUseCase({
+            paymentSessionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedQuery || req.query || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS payment session retrieved',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getActivePaymentSession = async (req, res, next) => {
+    try {
+        const result = await getActivePosPaymentSessionUseCase({
+            payload: req.validatedQuery || req.query || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: result.data ? 'Active POS payment session retrieved' : 'No active POS payment session',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const addPaymentAllocation = async (req, res, next) => {
+    try {
+        const result = await addPosPaymentAllocationUseCase({
+            paymentSessionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 201,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS payment allocation recorded',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const cancelPaymentAllocation = async (req, res, next) => {
+    try {
+        const result = await cancelPosPaymentAllocationUseCase({
+            paymentSessionId: req.validatedParams?.id || req.params.id,
+            allocationId: req.validatedParams?.allocation_id || req.params.allocation_id,
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS payment allocation cancelled',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const confirmPaymentAllocation = async (req, res, next) => {
+    try {
+        const result = await confirmPosPaymentAllocationUseCase({
+            paymentSessionId: req.validatedParams?.id || req.params.id,
+            allocationId: req.validatedParams?.allocation_id || req.params.allocation_id,
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS payment allocation provider-confirmed',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const reconcilePaymentAllocation = async (req, res, next) => {
+    try {
+        const result = await reconcilePosPaymentAllocationUseCase({
+            paymentSessionId: req.validatedParams?.id || req.params.id,
+            allocationId: req.validatedParams?.allocation_id || req.params.allocation_id,
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS payment allocation provider-reconciled',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const cancelPaymentSession = async (req, res, next) => {
+    try {
+        const result = await cancelPosPaymentSessionUseCase({
+            paymentSessionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS payment session cancelled',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const completePaymentSession = async (req, res, next) => {
+    try {
+        const result = await completePosPaymentSessionUseCase({
+            paymentSessionId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'POS split payment sale completed',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
 export const recordFiscalPrintEvent = async (req, res, next) => {
     try {
         const result = await recordFiscalPrintEventUseCase({
@@ -618,6 +942,62 @@ export const getCurrentTerminalShift = async (req, res, next) => {
             successPayloadResolver: () => ({
                 success: true,
                 data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const getMerchantTenderReconciliation = async (req, res, next) => {
+    try {
+        const result = await getMerchantTenderReconciliationUseCase({
+            shiftId: req.validatedParams?.id || req.params.id,
+            user: req.user
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Merchant tender reconciliation loaded',
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const reviewMerchantTenderReconciliation = async (req, res, next) => {
+    try {
+        const result = await reviewMerchantTenderReconciliationUseCase({
+            shiftId: req.validatedParams?.id || req.params.id,
+            payload: req.validatedData || req.body || {},
+            user: req.user
+        });
+        await trackProductUsageFromResult({
+            req,
+            user: req.user,
+            eventType: 'pos_merchant_tender_reconciliation_reviewed',
+            surface: 'pos_terminal',
+            action: 'review_merchant_tender_reconciliation',
+            result,
+            successMetadataResolver: (data) => ({
+                shift_id: data?.reconciliation?.shift_id || null,
+                reconciliation_status: data?.reconciliation?.status || null,
+                has_variance: Math.abs(Number(data?.reconciliation?.variance_total || 0)) > 0.0001
+            })
+        });
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 201,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                message: 'Merchant tender reconciliation reviewed',
                 timestamp: timestamp()
             }),
             errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
@@ -820,6 +1200,27 @@ export const getTerminalTodayDashboard = async (req, res, next) => {
 export const listIncomingOnlineOrders = async (req, res, next) => {
     try {
         const result = await listIncomingOnlineOrdersUseCase({
+            query: req.validatedQuery || req.query,
+            user: req.user
+        });
+
+        return sendUseCaseResult(res, result, {
+            successStatusCodeResolver: () => 200,
+            successPayloadResolver: () => ({
+                success: true,
+                data: result.data,
+                timestamp: timestamp()
+            }),
+            errorPayloadResolver: (failure) => defaultErrorPayload(req, res, failure)
+        });
+    } catch (error) {
+        next(error);
+    }
+};
+
+export const listOnlineOrderHistory = async (req, res, next) => {
+    try {
+        const result = await listOnlineOrderHistoryUseCase({
             query: req.validatedQuery || req.query,
             user: req.user
         });

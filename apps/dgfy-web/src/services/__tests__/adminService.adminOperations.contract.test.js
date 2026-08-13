@@ -2,21 +2,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import MockAdapter from 'axios-mock-adapter';
 import * as adminService from '../adminService.js';
 
-const sessionStorageMock = (() => {
-  const store = {};
-  return {
-    getItem: (key) => store[key] ?? null,
-    setItem: (key, value) => { store[key] = String(value); },
-    removeItem: (key) => { delete store[key]; },
-    clear: () => { Object.keys(store).forEach((key) => delete store[key]); }
-  };
-})();
-
-Object.defineProperty(globalThis, 'sessionStorage', {
-  value: sessionStorageMock,
-  writable: true
-});
-
 Object.defineProperty(globalThis, 'document', {
   value: {
     cookie: 'sku_csrf_token=csrf-admin-contract'
@@ -24,20 +9,22 @@ Object.defineProperty(globalThis, 'document', {
   writable: true
 });
 
-const ADMIN_TOKEN = 'admin-contract-token';
-
 describe('adminService admin operation contracts', () => {
   let mockAdminApi;
 
-  beforeEach(() => {
-    sessionStorage.clear();
-    sessionStorage.setItem('admin_token', ADMIN_TOKEN);
+  beforeEach(async () => {
     mockAdminApi = new MockAdapter(adminService.adminApi);
+    // Admin sessions are cookie-based (ADR 0026): there is no bearer token
+    // to arrange, only an authenticated adminApi cookie session established
+    // through login(). getToken()'s "Bearer cookie-session" marker never
+    // reaches the wire -- adminApi's request interceptor strips it.
+    mockAdminApi.onPost('/admin/login').reply(200, { success: true });
+    await adminService.login('admin', 'password');
+    mockAdminApi.resetHistory();
   });
 
   afterEach(() => {
     mockAdminApi.restore();
-    sessionStorage.clear();
   });
 
   it.each([
@@ -76,10 +63,13 @@ describe('adminService admin operation contracts', () => {
     ['createCommercePaymentRefund', 'post', '/commerce-payments/admin/payment-sessions/PAY-123/refunds', () => adminService.createCommercePaymentRefund('PAY-123', { amount: 25 })],
     ['reconcileCommercePaymentSession', 'post', '/commerce-payments/admin/payment-sessions/PAY-123/reconcile', () => adminService.reconcileCommercePaymentSession('PAY-123')],
     ['retryCommercePaymentFinalization', 'post', '/commerce-payments/admin/payment-sessions/PAY-123/retry-finalization', () => adminService.retryCommercePaymentFinalization('PAY-123')]
-  ])('%s sends %s %s with the admin bearer token and CSRF header for unsafe methods', async (_name, method, path, callService) => {
+  ])('%s sends %s %s over the cookie session with CSRF header for unsafe methods', async (_name, method, path, callService) => {
     mockAdminApi.onAny(path).reply((config) => {
       expect(config.method).toBe(method);
-      expect(config.headers.Authorization).toBe(`Bearer ${ADMIN_TOKEN}`);
+      // Cookie session (ADR 0026): no bearer credential on the wire, auth
+      // rides the browser cookie via withCredentials.
+      expect(config.headers.Authorization).toBeUndefined();
+      expect(config.withCredentials).toBe(true);
       if (['post', 'put', 'patch', 'delete'].includes(method)) {
         expect(config.headers['x-csrf-token']).toBe('csrf-admin-contract');
       } else {
@@ -93,7 +83,9 @@ describe('adminService admin operation contracts', () => {
   });
 
   it('requires admin authentication for the new operation wrappers', async () => {
-    sessionStorage.clear();
+    mockAdminApi.onPost('/admin/logout').reply(200, {});
+    adminService.logout();
+    expect(adminService.isAuthenticated()).toBe(false);
 
     await expect(adminService.listDgfyAccounts()).rejects.toThrow('Admin authentication required');
     expect(mockAdminApi.history.get).toHaveLength(0);

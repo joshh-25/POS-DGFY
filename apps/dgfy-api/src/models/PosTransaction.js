@@ -179,6 +179,10 @@ const PosTransaction = sequelize.define('PosTransaction', {
         type: DataTypes.STRING(40),
         allowNull: true
     },
+    payment_breakdown: {
+        type: DataTypes.JSON,
+        allowNull: true
+    },
     employee_credit_account_id: { type: DataTypes.INTEGER, allowNull: true },
     employee_credit_user_id: { type: DataTypes.INTEGER, allowNull: true },
     employee_credit_employee_id: { type: DataTypes.INTEGER, allowNull: true },

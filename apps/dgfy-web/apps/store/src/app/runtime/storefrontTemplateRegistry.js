@@ -54,11 +54,11 @@ const MODE_TEMPLATE_OVERRIDES = Object.freeze({
     catalogCardVariant: 'product_simple',
     journeyVariant: 'order',
     tokens: Object.freeze({
-      navigationAccent: '#0f172a',
-      heroAccent: '#ea580c',
-      promoAccent: '#ea580c',
-      reviewAccent: '#0f766e',
-      footerAccent: '#9a3412'
+      navigationAccent: '#1A4E8D',
+      heroAccent: '#1A4E8D',
+      promoAccent: '#1A4E8D',
+      reviewAccent: '#1A4E8D',
+      footerAccent: '#0F172A'
     })
   }),
   services: Object.freeze({

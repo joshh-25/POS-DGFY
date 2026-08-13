@@ -27,7 +27,13 @@ export const FnbHeroBrandingSection = ({
   shareEnabled,
   storefrontShareUrl,
   STYLES
-}) => (
+}) => {
+  const heroTaglineColor = heroTheme.palette?.secondary || '#fb923c';
+  const heroAccentShadow = heroTheme.palette?.primary
+    ? 'rgba(26,78,141,0.3)'
+    : 'rgba(249,115,22,0.3)';
+
+  return (
   <StorefrontHeroShell
     fullBleed
     isMobileViewport={isMobileViewport}
@@ -100,12 +106,13 @@ export const FnbHeroBrandingSection = ({
               textColor="#fff"
               fontSize={50}
               fontFamily={heroTheme.displayFont}
+              accentColor={heroTheme.accent || '#f97316'}
               followEnabled={followEnabled}
               followState={followState}
               handleFollowAction={handleFollowAction}
             />
             {heroSectionModel.tagline ? (
-              <p style={{ margin: 0, color: '#fb923c', fontSize: 20, fontWeight: 700, lineHeight: 1.3, fontFamily: heroTheme.bodyFont }}>{heroSectionModel.tagline}</p>
+              <p style={{ margin: 0, color: heroTaglineColor, fontSize: 20, fontWeight: 700, lineHeight: 1.3, fontFamily: heroTheme.bodyFont }}>{heroSectionModel.tagline}</p>
             ) : (
               <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: 16, maxWidth: 620, lineHeight: 1.6, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
             )}
@@ -129,7 +136,7 @@ export const FnbHeroBrandingSection = ({
                 Call
               </GhostButton>
             )}
-            <PrimaryButton onClick={onBrowseMenu} style={{ minWidth: 150, background: heroTheme.accent || '#f97316', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: '0 10px 25px rgba(249,115,22,0.3)', border: 'none', fontWeight: 800, fontFamily: heroTheme.bodyFont }}>
+            <PrimaryButton onClick={onBrowseMenu} style={{ minWidth: 150, background: heroTheme.accent || '#f97316', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: `0 10px 25px ${heroAccentShadow}`, border: 'none', fontWeight: 800, fontFamily: heroTheme.bodyFont }}>
               <MousePointer2 size={18} />
               {heroSectionModel.orderLabel}
             </PrimaryButton>
@@ -165,4 +172,5 @@ export const FnbHeroBrandingSection = ({
       )}
     </div>
   </StorefrontHeroShell>
-);
+  );
+};

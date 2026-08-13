@@ -56,6 +56,7 @@ import {
     buildForceCloseStaleTerminalShiftUseCase,
     buildGetTerminalTodayDashboardUseCase,
     buildListIncomingOnlineOrdersUseCase,
+    buildListOnlineOrderHistoryUseCase,
     buildListActiveDeliveryPersonnelUseCase,
     buildGetAdminLocationMonitorUseCase,
     buildCollectCashPickupOrderUseCase,
@@ -83,6 +84,32 @@ import {
     buildSyncMobilePosHardwareEventsUseCase,
     buildAcknowledgeMobilePosCheckpointUseCase
 } from './usecases/mobilePosUseCases.js';
+import {
+    buildCreatePosParkedSaleUseCase,
+    buildListPosParkedSalesUseCase,
+    buildClaimPosParkedSaleUseCase,
+    buildReparkPosParkedSaleUseCase,
+    buildCompleteClaimedPosParkedSaleUseCase,
+    buildCancelPosParkedSaleUseCase
+} from './usecases/parkedSaleUseCases.js';
+import {
+    buildCreatePosPaymentSessionUseCase,
+    buildGetPosPaymentSessionUseCase,
+    buildGetActivePosPaymentSessionUseCase,
+    buildAddPosPaymentAllocationUseCase,
+    buildCancelPosPaymentAllocationUseCase,
+    buildConfirmPosPaymentAllocationUseCase,
+    buildReconcilePosPaymentAllocationUseCase,
+    buildCancelPosPaymentSessionUseCase,
+    buildCompletePosPaymentSessionUseCase
+} from './usecases/splitPaymentUseCases.js';
+import { createPosPaymentProviderConfirmationVerifier } from './services/posPaymentProviderConfirmation.js';
+import { createPosPayMongoReconciler } from './services/posPayMongoReconciliation.js';
+import {
+    buildGetMerchantTenderReconciliationUseCase,
+    buildReviewMerchantTenderReconciliationUseCase
+} from './usecases/merchantTenderReconciliationUseCases.js';
+import { paymongoService } from '../../services/paymongoService.js';
 
 export const listPosCatalogUseCase = buildListPosCatalogUseCase({ posRepository });
 export const scanPosBarcodeUseCase = buildScanPosBarcodeUseCase({ posRepository });
@@ -91,15 +118,45 @@ const posCalculateServiceQuoteUseCase = buildCalculateServiceQuoteUseCase({
     serviceRepository,
     serviceOptionRepository: posServiceOptionRepository
 });
+const completeClaimedPosParkedSaleUseCase = buildCompleteClaimedPosParkedSaleUseCase({ posRepository });
 export const checkoutPosUseCase = buildCheckoutPosUseCase({
     posRepository,
     inventoryCommandService: inventoryStockCommandService,
     employeeCreditService,
-    calculateServiceQuoteUseCase: posCalculateServiceQuoteUseCase
+    calculateServiceQuoteUseCase: posCalculateServiceQuoteUseCase,
+    completeClaimedPosParkedSaleUseCase
 });
 export const listPosDiscountApproversUseCase = buildListPosDiscountApproversUseCase({ posRepository });
 export const verifyPosDiscountApprovalUseCase = buildVerifyPosDiscountApprovalUseCase({ posRepository });
 export const listPosTransactionsUseCase = buildListPosTransactionsUseCase({ posRepository });
+export const createPosParkedSaleUseCase = buildCreatePosParkedSaleUseCase({ posRepository });
+export const listPosParkedSalesUseCase = buildListPosParkedSalesUseCase({ posRepository });
+export const claimPosParkedSaleUseCase = buildClaimPosParkedSaleUseCase({ posRepository });
+export const reparkPosParkedSaleUseCase = buildReparkPosParkedSaleUseCase({ posRepository });
+export const cancelPosParkedSaleUseCase = buildCancelPosParkedSaleUseCase({ posRepository });
+export const createPosPaymentSessionUseCase = buildCreatePosPaymentSessionUseCase({
+    posRepository,
+    quotePosCheckoutUseCase: checkoutPosUseCase
+});
+export const getPosPaymentSessionUseCase = buildGetPosPaymentSessionUseCase({ posRepository });
+export const getActivePosPaymentSessionUseCase = buildGetActivePosPaymentSessionUseCase({ posRepository });
+export const addPosPaymentAllocationUseCase = buildAddPosPaymentAllocationUseCase({ posRepository });
+export const cancelPosPaymentAllocationUseCase = buildCancelPosPaymentAllocationUseCase({ posRepository });
+export const confirmPosPaymentAllocationUseCase = buildConfirmPosPaymentAllocationUseCase({
+    posRepository,
+    providerConfirmationVerifier: createPosPaymentProviderConfirmationVerifier()
+});
+export const reconcilePosPaymentAllocationUseCase = buildReconcilePosPaymentAllocationUseCase({
+    posRepository,
+    providerReconciler: createPosPayMongoReconciler({ paymongoService })
+});
+export const cancelPosPaymentSessionUseCase = buildCancelPosPaymentSessionUseCase({ posRepository });
+export const completePosPaymentSessionUseCase = buildCompletePosPaymentSessionUseCase({
+    posRepository,
+    checkoutPosUseCase
+});
+export const getMerchantTenderReconciliationUseCase = buildGetMerchantTenderReconciliationUseCase({ posRepository });
+export const reviewMerchantTenderReconciliationUseCase = buildReviewMerchantTenderReconciliationUseCase({ posRepository });
 export const getPosReportsOverviewUseCase = buildGetPosReportsOverviewUseCase({ posRepository });
 export const exportPosReportsUseCase = buildExportPosReportsUseCase({ posRepository });
 export const getPosTransactionByIdUseCase = buildGetPosTransactionByIdUseCase({ posRepository });
@@ -146,6 +203,7 @@ export const closeTerminalShiftUseCase = buildCloseTerminalShiftUseCase({ posRep
 export const forceCloseStaleTerminalShiftUseCase = buildForceCloseStaleTerminalShiftUseCase({ posRepository });
 export const getTerminalTodayDashboardUseCase = buildGetTerminalTodayDashboardUseCase({ posRepository });
 export const listIncomingOnlineOrdersUseCase = buildListIncomingOnlineOrdersUseCase({ posRepository });
+export const listOnlineOrderHistoryUseCase = buildListOnlineOrderHistoryUseCase({ posRepository });
 export const listActiveDeliveryPersonnelUseCase = buildListActiveDeliveryPersonnelUseCase({ posRepository });
 export const getAdminLocationMonitorUseCase = buildGetAdminLocationMonitorUseCase({ posRepository });
 export const collectCashPickupOrderUseCase = buildCollectCashPickupOrderUseCase({ posRepository });

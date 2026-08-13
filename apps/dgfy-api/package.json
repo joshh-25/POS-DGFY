@@ -89,7 +89,7 @@
     "@napi-rs/canvas": "^0.1.80",
     "@sieitzz/shared-constants": "file:../../packages/shared-constants",
     "archiver": "^7.0.1",
-    "axios": "^1.16.1",
+    "axios": "^1.18.1",
     "bcryptjs": "^2.4.3",
     "compression": "^1.8.1",
     "cors": "^2.8.5",
@@ -101,7 +101,7 @@
     "joi": "^17.11.0",
     "jsonwebtoken": "^9.0.2",
     "mammoth": "^1.12.0",
-    "morgan": "^1.10.0",
+    "morgan": "^1.11.0",
     "multer": "^2.1.1",
     "mysql2": "^3.6.5",
     "node-cron": "^4.2.1",
@@ -127,7 +127,7 @@
     },
     "@xmldom/xmldom": "0.8.13",
     "ajv": "6.14.0",
-    "brace-expansion": "2.0.3",
+    "brace-expansion": "2.1.4",
     "dottie": "2.0.7",
     "eslint": {
       "minimatch": "10.2.5"
@@ -148,7 +148,7 @@
       "uuid": "11.1.1"
     },
     "underscore": "1.13.8",
-    "js-yaml": "4.3.0"
+    "js-yaml": "4.3.1"
   },
   "devDependencies": {
     "@babel/core": "^7.29.7",

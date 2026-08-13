@@ -93,6 +93,16 @@ describe('store profile equivalence harness (issue #178 Phase 11)', () => {
         }
     });
 
+    it('keeps Services bookings out of the retail/F&B online Orders queue default', () => {
+        const servicesProfile = buildStoreProfile({ workflowMode: 'services' });
+        const fnbProfile = buildStoreProfile({ workflowMode: 'fnb' });
+        const retailProfile = buildStoreProfile({ workflowMode: 'retail' });
+
+        expect(servicesProfile.pos_defaults.show_online_queue).toBe(false);
+        expect(fnbProfile.pos_defaults.show_online_queue).toBe(true);
+        expect(retailProfile.pos_defaults.show_online_queue).toBe(true);
+    });
+
     it('applies the enabled-capabilities overlay exactly as the runtime does', () => {
         const profile = buildStoreProfile({ workflowMode: 'retail', enabledCapabilities: ['services'] });
         expect(profile.modules).toEqual([...resolveEffectiveCapabilities('retail', ['services'])].sort());

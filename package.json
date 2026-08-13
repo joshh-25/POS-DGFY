@@ -29,8 +29,8 @@
     "test:frontend:contracts": "cd apps/dgfy-web && npx vitest run contract.test integration.test",
     "test:backend": "cd apps/dgfy-api && npm test",
     "test:backend:matrix": "node scripts/run-backend-test-matrix.js",
-    "audit:dependencies": "npm audit --json && npm --prefix apps/dgfy-api audit --json && npm --prefix apps/dgfy-web audit --json",
-    "audit:dependencies:prod": "npm audit --omit=dev --json && npm --prefix apps/dgfy-api audit --omit=dev --json && npm --prefix apps/dgfy-web audit --omit=dev --json",
+    "audit:dependencies": "node scripts/audit-dependencies.js",
+    "audit:dependencies:prod": "node scripts/audit-dependencies.js --omit-dev",
     "lint:docs": "node scripts/lint-docs.js && npm run check:adr",
     "check:adr": "node scripts/check-adr.js --strict",
     "generate:adr-index": "node scripts/check-adr.js --write-index",
@@ -143,10 +143,5 @@
   "engines": {
     "node": ">=18.0.0",
     "npm": ">=9.0.0"
-  },
-  "dependencies": {
-    "axios": "^1.16.1",
-    "bcrypt": "^6.0.0",
-    "jsonwebtoken": "^9.0.3"
   }
 }

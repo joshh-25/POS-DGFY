@@ -3,6 +3,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import TenantManager from '../../../Pages/admin/TenantManager.jsx';
 
 const mocks = vi.hoisted(() => ({
@@ -23,7 +24,9 @@ const mocks = vi.hoisted(() => ({
     updateTenantCompliancePeripheralVerification: vi.fn(),
     acknowledgeTenantComplianceSecurityIncident: vi.fn(),
     resolveTenantComplianceSecurityIncident: vi.fn(),
-    updateComplianceFinalReviewDocumentReview: vi.fn()
+    updateComplianceFinalReviewDocumentReview: vi.fn(),
+    listStoreTemplates: vi.fn(),
+    getTenantRevenueDashboard: vi.fn()
   },
   toastMock: {
     success: vi.fn(),
@@ -50,6 +53,8 @@ describe('TenantManager edit plan flow', () => {
       ]
     });
     mocks.adminServiceMock.updateTenant.mockResolvedValue({ success: true });
+    mocks.adminServiceMock.listStoreTemplates.mockResolvedValue({ success: true, data: { templates: [] } });
+    mocks.adminServiceMock.getTenantRevenueDashboard.mockResolvedValue({ data: null });
   });
 
   afterEach(() => {
@@ -58,9 +63,9 @@ describe('TenantManager edit plan flow', () => {
 
   it('does not submit plan metadata from the admin edit modal', async () => {
     const user = userEvent.setup();
-    render(<TenantManager />);
+    render(<MemoryRouter><TenantManager /></MemoryRouter>);
 
-    await screen.findByText('Policy Sietiz');
+    await screen.findByRole('heading', { name: 'Policy Sietiz' });
     await user.click(screen.getByRole('button', { name: /^Edit$/i }));
 
     await screen.findByRole('heading', { name: 'Edit Tenant' });

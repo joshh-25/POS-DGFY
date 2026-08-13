@@ -38,6 +38,7 @@ const mockCloseTerminalShiftUseCase = jest.fn();
 const mockForceCloseStaleTerminalShiftUseCase = jest.fn();
 const mockGetTerminalTodayDashboardUseCase = jest.fn();
 const mockListIncomingOnlineOrdersUseCase = jest.fn();
+const mockListOnlineOrderHistoryUseCase = jest.fn();
 const mockListActiveDeliveryPersonnelUseCase = jest.fn();
 const mockGetAdminLocationMonitorUseCase = jest.fn();
 const mockCollectCashPickupOrderUseCase = jest.fn();
@@ -52,6 +53,22 @@ const mockPrintPosZReadingUseCase = jest.fn();
 const mockOpenPosDrawerUseCase = jest.fn();
 const mockVerifyPosTerminalUseCase = jest.fn();
 const mockGetPairedPosTerminalUseCase = jest.fn();
+const mockCreatePosParkedSaleUseCase = jest.fn();
+const mockListPosParkedSalesUseCase = jest.fn();
+const mockClaimPosParkedSaleUseCase = jest.fn();
+const mockReparkPosParkedSaleUseCase = jest.fn();
+const mockCancelPosParkedSaleUseCase = jest.fn();
+const mockCreatePosPaymentSessionUseCase = jest.fn();
+const mockGetPosPaymentSessionUseCase = jest.fn();
+const mockGetActivePosPaymentSessionUseCase = jest.fn();
+const mockAddPosPaymentAllocationUseCase = jest.fn();
+const mockCancelPosPaymentAllocationUseCase = jest.fn();
+const mockConfirmPosPaymentAllocationUseCase = jest.fn();
+const mockReconcilePosPaymentAllocationUseCase = jest.fn();
+const mockCancelPosPaymentSessionUseCase = jest.fn();
+const mockCompletePosPaymentSessionUseCase = jest.fn();
+const mockGetMerchantTenderReconciliationUseCase = jest.fn();
+const mockReviewMerchantTenderReconciliationUseCase = jest.fn();
 const mockTrackProductUsageFromResult = jest.fn();
 
 jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
@@ -94,6 +111,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     forceCloseStaleTerminalShiftUseCase: mockForceCloseStaleTerminalShiftUseCase,
     getTerminalTodayDashboardUseCase: mockGetTerminalTodayDashboardUseCase,
     listIncomingOnlineOrdersUseCase: mockListIncomingOnlineOrdersUseCase,
+    listOnlineOrderHistoryUseCase: mockListOnlineOrderHistoryUseCase,
     listActiveDeliveryPersonnelUseCase: mockListActiveDeliveryPersonnelUseCase,
     getAdminLocationMonitorUseCase: mockGetAdminLocationMonitorUseCase,
     collectCashPickupOrderUseCase: mockCollectCashPickupOrderUseCase,
@@ -108,6 +126,22 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     openPosDrawerUseCase: mockOpenPosDrawerUseCase,
     verifyPosTerminalUseCase: mockVerifyPosTerminalUseCase,
     getPairedPosTerminalUseCase: mockGetPairedPosTerminalUseCase,
+    createPosParkedSaleUseCase: mockCreatePosParkedSaleUseCase,
+    listPosParkedSalesUseCase: mockListPosParkedSalesUseCase,
+    claimPosParkedSaleUseCase: mockClaimPosParkedSaleUseCase,
+    reparkPosParkedSaleUseCase: mockReparkPosParkedSaleUseCase,
+    cancelPosParkedSaleUseCase: mockCancelPosParkedSaleUseCase,
+    createPosPaymentSessionUseCase: mockCreatePosPaymentSessionUseCase,
+    getPosPaymentSessionUseCase: mockGetPosPaymentSessionUseCase,
+    getActivePosPaymentSessionUseCase: mockGetActivePosPaymentSessionUseCase,
+    addPosPaymentAllocationUseCase: mockAddPosPaymentAllocationUseCase,
+    cancelPosPaymentAllocationUseCase: mockCancelPosPaymentAllocationUseCase,
+    confirmPosPaymentAllocationUseCase: mockConfirmPosPaymentAllocationUseCase,
+    reconcilePosPaymentAllocationUseCase: mockReconcilePosPaymentAllocationUseCase,
+    cancelPosPaymentSessionUseCase: mockCancelPosPaymentSessionUseCase,
+    completePosPaymentSessionUseCase: mockCompletePosPaymentSessionUseCase,
+    getMerchantTenderReconciliationUseCase: mockGetMerchantTenderReconciliationUseCase,
+    reviewMerchantTenderReconciliationUseCase: mockReviewMerchantTenderReconciliationUseCase,
     posTerminalPairingMaxAgeMs: 300000
 }));
 
@@ -130,6 +164,7 @@ let closeTerminalShift;
 let forceCloseStaleTerminalShift;
 let getAdminLocationMonitor;
 let listActiveDeliveryPersonnel;
+let listOnlineOrderHistory;
 let collectCashDeliveryOrder;
 let assignDeliveryPersonnel;
 let updateDeliveryJobStatus;
@@ -152,6 +187,7 @@ beforeAll(async () => {
     forceCloseStaleTerminalShift = mod.forceCloseStaleTerminalShift;
     getAdminLocationMonitor = mod.getAdminLocationMonitor;
     listActiveDeliveryPersonnel = mod.listActiveDeliveryPersonnel;
+    listOnlineOrderHistory = mod.listOnlineOrderHistory;
     collectCashDeliveryOrder = mod.collectCashDeliveryOrder;
     assignDeliveryPersonnel = mod.assignDeliveryPersonnel;
     updateDeliveryJobStatus = mod.updateDeliveryJobStatus;
@@ -282,6 +318,86 @@ describe('posHandlers transport contracts', () => {
             error_code: 'VALIDATION_FAILED',
             errors: null,
             request_id: 'req-pos-list',
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('listOnlineOrderHistory returns the paginated POS history payload', async () => {
+        mockListOnlineOrderHistoryUseCase.mockResolvedValue({
+            success: true,
+            data: {
+                orders: [{ pos_transaction_id: 44, fulfillment_status: 'rejected', payment_status: 'unpaid' }],
+                pagination: { page: 2, limit: 25, total: 26, totalPages: 2 }
+            }
+        });
+
+        const req = {
+            query: {},
+            validatedQuery: {
+                location_id: 7,
+                search: 'INV-000044',
+                fulfillment_status: 'rejected',
+                payment_status: 'unpaid',
+                page: 2,
+                limit: 25
+            },
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-order-history'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await listOnlineOrderHistory(req, res, next);
+
+        expect(mockListOnlineOrderHistoryUseCase).toHaveBeenCalledWith({
+            query: req.validatedQuery,
+            user: req.user
+        });
+        expect(res.status).toHaveBeenCalledWith(200);
+        expect(res.json).toHaveBeenCalledWith({
+            success: true,
+            data: expect.objectContaining({
+                orders: expect.arrayContaining([
+                    expect.objectContaining({ pos_transaction_id: 44, fulfillment_status: 'rejected' })
+                ]),
+                pagination: { page: 2, limit: 25, total: 26, totalPages: 2 }
+            }),
+            timestamp: expect.any(String)
+        });
+        expect(next).not.toHaveBeenCalled();
+    });
+
+    it('listOnlineOrderHistory preserves the standardized failure payload', async () => {
+        mockListOnlineOrderHistoryUseCase.mockResolvedValue({
+            success: false,
+            error: {
+                code: 'AUTHORIZATION_FAILED',
+                message: 'POS view permission is required',
+                details: null,
+                statusCode: 403
+            }
+        });
+
+        const req = {
+            query: {},
+            validatedQuery: {},
+            user: { user_id: 4, tenant_id: 'tenant-1' },
+            requestId: 'req-pos-order-history-forbidden'
+        };
+        const res = createRes();
+        const next = jest.fn();
+
+        await listOnlineOrderHistory(req, res, next);
+
+        expect(res.status).toHaveBeenCalledWith(403);
+        expect(res.json).toHaveBeenCalledWith({
+            success: false,
+            data: null,
+            message: 'POS view permission is required',
+            error_code: 'AUTHORIZATION_FAILED',
+            errors: null,
+            request_id: 'req-pos-order-history-forbidden',
             timestamp: expect.any(String)
         });
         expect(next).not.toHaveBeenCalled();

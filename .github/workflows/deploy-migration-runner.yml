@@ -14,7 +14,7 @@ on:
         description: JSON array passed to runs-on for this build job
         required: false
         type: string
-        default: '["ubuntu-latest"]'
+        default: '["self-hosted"]'
     outputs:
       sha_tag:
         value: ${{ jobs.build-and-push.outputs.sha_tag }}
@@ -71,6 +71,10 @@ jobs:
       # cache-from without ever writing back to it.
       - uses: docker/setup-buildx-action@v3
 
+      # Revision label is what makes "what SHA is actually deployed?"
+      # answerable after builds stop being tied to a push event -- read back
+      # with `docker buildx imagetools inspect <image>:<tag>` without needing
+      # to correlate the mutable tag to a sha-<short> tag by hand.
       - name: Build and push migration-runner image
         uses: docker/build-push-action@v6
         with:
@@ -79,8 +83,20 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
-          cache-from: type=gha,scope=migration-runner
-          cache-to: type=gha,mode=max,scope=migration-runner
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          # gha scope stays the fast/default cache. Registry cache is the
+          # portable second target -- same cache reachable from either
+          # runner type. Costs extra GHCR blob traffic; GHCR has hit its
+          # secondary rate limit at least once already (2026-08-13), so
+          # watch for that before trusting this on a busy day.
+          cache-from: |
+            type=gha,scope=migration-runner
+            type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
+          cache-to: |
+            type=gha,mode=max,scope=migration-runner
+            type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
 
       # The migration-runner is a one-shot CLI, not a compose service, so there
       # is no server pull/restart in publish-platform.yml -- publishing to GHCR

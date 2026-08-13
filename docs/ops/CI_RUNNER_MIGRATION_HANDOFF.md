@@ -1,10 +1,113 @@
-# Handoff: CI runner migration (PR #118)
+# CI runner migration handoff
 
-Context for whoever (human or AI) picks this branch back up. Delete this file
-when PR #118 finally merges — it exists only to survive context loss across
-sessions while the PR sits open.
+Living doc, not scoped to a single PR — promoted out of `.github/` on
+2026-08-13 when the repo switched back to self-hosted (see below), reversing
+this doc's own original 2026-08-01 decision. Keep it updated; don't delete it
+on the next flip.
 
-## Status as of 2026-08-01
+## Status as of 2026-08-14 — every auto-build/auto-deploy trigger removed
+
+Separate from the runner-hosting question below: as of #417, `push` no
+longer triggers anything in this repo. `build-develop.yml`, `build-staging.yml`,
+`build-manual.yml`, and `build-beta-manual.yml` (referenced by those names
+throughout the rest of this doc, below — historical narrative, left as
+written) are **deleted**, superseded by one consolidated `deploy.yml`
+(`workflow_dispatch`, explicit environment + component selection:
+`all`/`backend`/`frontend`, no automatic detection). `deploy.yml` briefly had
+a fourth `auto` option that read the OCI labels added in #415 to rebuild
+only what changed since the currently-deployed revision -- removed the same
+day (#420) on Pat's own pushback: manual dispatch should mean you pick, not
+something deciding for you. `build-main.yml` is **renamed to
+`deploy-main.yml`** and lost its `push: [main]` trigger — production now
+deploys only on manual dispatch. `publish-pos-receipt.yml` is the one
+exception, kept on a real (now path-filtered) `push: [develop]` trigger —
+see its own header comment for why. This is orthogonal to
+self-hosted-vs-hosted: whichever runner type is active, nothing fires
+without a human dispatching it.
+
+## Status as of 2026-08-13 — switched back to self-hosted (GHA billing exhausted)
+
+GitHub Actions billing/spending-limit failed; every job was dispatching and
+failing in ~4s with *"recent account payments have failed or your spending
+limit needs to be increased."* No CI ran at all. Runner inventory at the time
+(`gh api /repos/Sieitzz/dgfy-platform/actions/runners`):
+
+| Runner | Status | Labels |
+|---|---|---|
+| `vm-sieitzstaging` | online | `self-hosted, Linux, X64` |
+| `vm-openproject` | **offline** | `self-hosted, Linux, X64, sieitz-ubuntu-runner` |
+
+**This flip used bare `["self-hosted"]`, not the `sieitz-ubuntu-runner` pin**
+the 2026-08-01 section below tells you to use. The pin only matches
+`vm-openproject`, which was offline — using it would have queued every job
+forever. Bare `self-hosted` matches whichever runner is up, including
+`vm-openproject` if it comes back online later with no further edits needed.
+
+The AVX warning that justified the pin (`vm-sieitzstaging`'s CPU lacks
+AVX-family instructions → `exit 132`/SIGILL loading `@napi-rs/canvas`, see
+`apps/dgfy-api/src/services/menuPdfRasterService.js`) does **not** apply to
+the active CI job set — those are buildx builds, Gradle, and git/bash, none
+of which load that addon. The one job that would (`quality-checks`) is no
+longer wired into `pr-checks.yml` at all (removed 2026-08-14, #416; was
+`if: false` there before that) — it's now only reachable by manually
+dispatching `pr-quality-checks.yml` from the Actions tab. **Re-check this
+before ever running `quality-checks`, manually or wired back in** — if it
+lands on `vm-sieitzstaging` it will need the label narrowed back to
+`sieitz-ubuntu-runner`, or the AVX-lacking runner excluded some other way.
+
+**The one-line switch-back claim in the 2026-08-01 section below is no
+longer accurate.** Beyond the `runner_labels_json` sites it documents, this
+flip also had to touch:
+
+- **`pr-checks.yml`** has no commented fallback at all — its five jobs are
+  driven by two YAML anchors (`&runner_light`, `&runner_heavy`) in the
+  workflow-level `env:` block. Change the anchor **values**, never the
+  names — `scripts/check-pr-quality-workflow.js` hard-asserts the literal
+  string `runner_labels_json: *runner_heavy` exists in this file.
+- **`build-beta-manual.yml`** passed no `runner_labels_json` at all,
+  silently inheriting the orchestrator's hosted default. Now pinned
+  explicitly so it can't drift back to hosted on its own.
+- **`build-android-manual.yml`** and **`deploy-production.yml`** hardcode
+  `runs-on: ubuntu-latest` directly (no `runner_labels_json` indirection).
+- **Every reusable workflow's `runner_labels_json` input default** changed
+  from `'["ubuntu-latest"]'`/`'["ubuntu-slim"]'` to `'["self-hosted"]'`, so
+  the repo fails safe (self-hosted) rather than fails to billing if a caller
+  ever omits the input.
+- **`vpn_required` flipped to `false`** on all DEV/STAGING callers
+  (`build-develop.yml`, `build-staging.yml`, `build-manual.yml`). The
+  OpenVPN→SSH hop in `publish-platform.yml` exists so a *hosted* runner can
+  reach the office-network DEV/STAGING servers. A self-hosted runner
+  (`vm-sieitzstaging`) already sits on that network *and is itself the
+  target* — leaving VPN on would have it tunnel into itself and rewrite its
+  own routing/DNS on every deploy.
+- **`publish-platform.yml` gained a credential cleanup step** (`if:
+  always()`, removes `~/.ssh/deploy_key` and `/tmp/client.ovpn` after every
+  run). Hosted runners threw these away for free by being ephemeral;
+  `vm-sieitzstaging` is persistent and also serves live DEV/STAGING traffic,
+  so a deploy key (including the **PROD** key, via `build-main.yml`) left on
+  disk there is a real exposure.
+
+**Every active `runner_labels_json`/`runs-on` line carries a commented
+revert line directly above it** (e.g. `# runner_labels_json:
+'["ubuntu-latest"]'  # revert to this when hosted runners are back`) —
+flipping back to GitHub-hosted once billing is restored is comment/uncomment
+per site, same mechanism the 2026-08-01 migration used. The `vpn_required`
+and credential-cleanup changes are not part of that toggle and would need
+re-evaluating on the way back to hosted, not just re-flipping.
+
+**Not yet verified on this flip (do before trusting it fully):**
+- `docker/setup-qemu-action@v3` (used by `deploy-migration-runner.yml` /
+  `pr-migration-runner-build-checks.yml` for the `linux/amd64,linux/arm64`
+  build) needs privileged Docker on the runner to register binfmt handlers —
+  confirm `vm-sieitzstaging` can do this.
+- Disk headroom on `vm-sieitzstaging` — its ~39GB root already hit "no space
+  left on device" mid-build once before (see git history, `31d0bb2e`), and it
+  also runs the live DEV/STAGING compose stacks.
+- Whether a burst of pushes to `develop` queues badly — `build-develop.yml`
+  deliberately sets `cancel-in-progress: false`, and there is currently only
+  one online runner.
+
+## Status as of 2026-08-01 (superseded above, kept for history)
 
 **No longer blocked on billing — the user decided to fully retire
 self-hosted and accept the GitHub-hosted minute cost.** A measured cost
@@ -132,8 +235,10 @@ billing data (`gh api .../actions/runs/<id>/jobs`, `gh api
 
 **Verified (static, safe to trust):**
 - `actionlint` clean across all 19 active workflow files.
-- No functional `self-hosted` runner-label references remain in
-  `.github/workflows/` (only two explanatory comments).
+- ~~No functional `self-hosted` runner-label references remain in
+  `.github/workflows/` (only two explanatory comments).~~ **Stale as of
+  2026-08-13** — see the section above; the repo is back on self-hosted
+  everywhere.
 - Every internal `uses: ./.github/workflows/...` reference resolves to a file
   that still exists after the archive move.
 - `scripts/collect-github-actions-unavailability.test.js`,

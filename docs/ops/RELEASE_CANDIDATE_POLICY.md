@@ -26,13 +26,23 @@ actually gates a release today, not an aspirational model.
 
 ## The one fact that matters
 
-**A push to `main` deploys production.** `build-main.yml` fires on `push:
-[main]` and immediately builds and dual-deploys both `beta.dgfy.ph` and
-`dgfy.ph` (shared backend, two frontend builds from two GitHub Environments'
-`VITE_*` vars). There is no separate production-deploy approval step, no
-external signed authorization, and no environment reviewer gate — GitHub Free
-does not support any of those. Merging a PR into `main` **is** the deploy.
-Treat every PR into `main` accordingly.
+**Merging a PR into `main` no longer deploys production by itself.**
+`build-main.yml` (`push: [main]`) was renamed to `deploy-main.yml` and lost
+its push trigger 2026-08-14 (#417), as part of removing every
+auto-build/auto-deploy trigger repo-wide — Pat's explicit ask, to fully
+control when a build/deploy happens rather than have it follow automatically
+from a merge. **Production now deploys only when someone manually dispatches
+`deploy-main.yml`** from the Actions tab, with the branch selector on `main`.
+
+This changes what a merge into `main` means, but does not add any safety net
+that wasn't already missing: there is still no separate production-deploy
+approval step, no external signed authorization, and no environment reviewer
+gate — GitHub Free does not support any of those, and dispatch access is the
+only real gate now. Whoever merges into `main` should still treat it as
+"the next `deploy-main.yml` dispatch will ship this," since nothing else
+distinguishes a reviewed PR from an unreviewed one at merge time (#330
+finding 1). What changed is *when* that ships, not *whether* it's gated on
+anything beyond dispatch access.
 
 ## Flow
 
@@ -80,7 +90,11 @@ Everything in `pr-checks.yml`, same as any other PR:
 - `quality-checks` — blocking API matrix/open-handle diagnostics, migration
   smoke, required-index audit, frontend lint/F&B contract tests/builds, the
   deterministic Storefront F&B Playwright contract, architecture guardrails,
-  governed-doc lint, compatibility seams, and diff hygiene.
+  governed-doc lint, compatibility seams, and diff hygiene. **Removed from
+  `pr-checks.yml` 2026-08-14 (#416)** — it had been permanently `if: false`
+  there since 2026-08-11 (#345), so this was dead wiring, not a live check.
+  The workflow itself (`pr-quality-checks.yml`) is untouched and still
+  `workflow_dispatch`-runnable by hand from the Actions tab.
 - `backend-build-check` / `frontend-build-check` — the actual Docker images
   build cleanly, gated by `shared-changed-paths.yml` so an unrelated change
   doesn't force both.
@@ -114,10 +128,11 @@ as a follow-up, not assumed here.
 
 ## The pre-promotion local gate
 
-`quality-checks` (described above as blocking) is currently disabled in
-`pr-checks.yml` (`if: false`, paused since 2026-08-11 over #345's ~14min
-unfiltered run) — see "Known gaps" below. Until that's resolved, the human
-supplement is `npm run gate:release:local`, run by hand before a
+`quality-checks` (described above as blocking) is not wired into
+`pr-checks.yml` at all — removed 2026-08-14 (#416) after sitting disabled
+(`if: false`, since 2026-08-11 over #345's ~14min unfiltered run) with no
+path back in decided yet — see "Known gaps" below. Until that's resolved,
+the human supplement is `npm run gate:release:local`, run by hand before a
 `staging`/`main` promotion. It is documented in
 `docs/testing/release-go-no-go-checklist.md`, which is the authoritative
 runbook for that gate — see #375. Do not propose rebuilding it (#345, #330);
@@ -130,9 +145,10 @@ invoke it.
   checks for a controller that was never installed. Reconciling or removing
   it is a separate decision.
 - No live RC gate beyond the PR checks above (see previous section).
-- `quality-checks` is currently short-circuited with `if: false` in
-  `pr-checks.yml` (see #345), so the "blocking" description above is
-  aspirational until that's re-enabled. `npm run gate:release:local` (see
+- `quality-checks` is not wired into `pr-checks.yml` at all (removed
+  2026-08-14, #416; was short-circuited with `if: false` since #345 before
+  that), so the "blocking" description above is aspirational until a path
+  back in is decided. `npm run gate:release:local` (see
   above) is the only place the full test matrix runs meanwhile.
 - `develop` and `staging` have drifted before without a backport in the
   other direction — the compliance bypass this document depends on

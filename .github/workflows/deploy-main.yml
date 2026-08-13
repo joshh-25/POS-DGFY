@@ -1,12 +1,31 @@
-name: Build Images (main)
+name: Deploy Main (BETA + PROD dual-deploy)
 
+# Renamed from "Build Images (main)"/build-main.yml 2026-08-14 as part of
+# removing every auto-build/auto-deploy trigger repo-wide (see deploy.yml's
+# header comment for the full rationale). No push trigger anymore -- dispatch
+# this by hand from the Actions tab, with the branch selector left on `main`
+# (this workflow file must exist on `main` to be dispatchable against it; it
+# reaches there the normal way, by being promoted from develop -> staging ->
+# main like any other change).
 on:
-  push:
-    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      components:
+        description: Which images to build. backend = api + migration-runner together (see deploy.yml for why they're never split).
+        type: choice
+        options:
+          - all
+          - backend
+          - frontend
+        default: all
+      deploy:
+        description: SSH-deploy to the server after images are pushed
+        type: boolean
+        default: true
 
 concurrency:
-  group: build-main-${{ github.ref }}
-  cancel-in-progress: true
+  group: deploy-main-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
@@ -14,7 +33,8 @@ permissions:
 
 # DUAL-DEPLOY (2026-07-20): dgfy.ph went live in production alongside
 # beta.dgfy.ph, both domain groups sharing ONE backend/MySQL/Redis on the same
-# server. A push to main now builds BOTH frontends and deploys them together:
+# server. Dispatching this with components:all (the default) builds BOTH
+# frontends and deploys them together:
 #
 #   * frontend:beta    -- built against the BETA GitHub Environment's VITE_*
 #                         (beta.dgfy.ph auth/handoff URLs). Served by the
@@ -36,10 +56,10 @@ permissions:
 # the 2026-07-20 cutover); BETA and PROD carry the same deploy secrets since it
 # is one server.
 #
-# NOTE (shared api, no gate): every push to main restarts the shared dgfy-api
-# (+ dgfy-migration-runner) that BOTH beta and prod now depend on, with no
-# approval gate. This is the accepted interim behaviour for the dual-deploy
-# window.
+# NOTE (shared api, no gate): a components:all/backend dispatch restarts the
+# shared dgfy-api (+ dgfy-migration-runner) that BOTH beta and prod now
+# depend on, with no approval gate beyond whoever has dispatch access. This
+# is the accepted interim behaviour for the dual-deploy window.
 #
 # Future cleanup (Option B, out of scope here): make PROD the sole deploy
 # owner and reduce BETA to frontend-only vars. See the cutover runbook:
@@ -47,17 +67,19 @@ permissions:
 
 jobs:
   # Shared dgfy-api image (environment-agnostic; built once, tagged beta to
-  # match the server's IMAGE_TAG=beta).
+  # match the server's IMAGE_TAG=beta). backend = api + migration-runner
+  # together, never separately -- see deploy.yml's comment on the same
+  # coupling (compose's depends_on: service_completed_successfully means a
+  # mismatched pair is a schema/code mismatch waiting to happen).
   dgfy-api:
+    if: inputs.components == 'all' || inputs.components == 'backend'
     uses: ./.github/workflows/deploy-api.yml
     with:
       environment: BETA
       image_tags: "beta"
-      # Switch back to the free self-hosted runners if Actions minutes run
-      # out. Pin the label so jobs avoid vm-sieitzstaging (AVX-less CPU ->
-      # exit 132 on native addons like @napi-rs/canvas).
-      # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
-      runner_labels_json: '["ubuntu-latest"]'
+      # GHA billing exhausted -- running on self-hosted (vm-sieitzstaging).
+      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
+      runner_labels_json: '["self-hosted"]'
     secrets: inherit
     permissions:
       contents: read
@@ -65,11 +87,13 @@ jobs:
 
   # Paired one-shot migration image dgfy-api depends on at compose-up.
   dgfy-migration-runner:
+    if: inputs.components == 'all' || inputs.components == 'backend'
     uses: ./.github/workflows/deploy-migration-runner.yml
     with:
       environment: BETA
       image_tags: "beta"
-      runner_labels_json: '["ubuntu-latest"]'
+      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
+      runner_labels_json: '["self-hosted"]'
     secrets: inherit
     permissions:
       contents: read
@@ -77,12 +101,13 @@ jobs:
 
   # Beta frontend image (beta.dgfy.ph VITE_* baked in).
   frontend-beta:
+    if: inputs.components == 'all' || inputs.components == 'frontend'
     uses: ./.github/workflows/deploy-frontend.yml
     with:
       environment: BETA
       image_tags: "beta"
-      # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
-      runner_labels_json: '["ubuntu-latest"]'
+      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
+      runner_labels_json: '["self-hosted"]'
     secrets: inherit
     permissions:
       contents: read
@@ -90,12 +115,13 @@ jobs:
 
   # Prod frontend image (dgfy.ph VITE_* baked in).
   frontend-prod:
+    if: inputs.components == 'all' || inputs.components == 'frontend'
     uses: ./.github/workflows/deploy-frontend.yml
     with:
       environment: PROD
       image_tags: "latest"
-      # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
-      runner_labels_json: '["ubuntu-latest"]'
+      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
+      runner_labels_json: '["self-hosted"]'
     secrets: inherit
     permissions:
       contents: read
@@ -109,7 +135,7 @@ jobs:
   publish:
     needs: [ dgfy-api, dgfy-migration-runner, frontend-beta, frontend-prod ]
     if: >-
-      !cancelled() &&
+      inputs.deploy && !cancelled() &&
       needs.dgfy-api.result != 'failure' &&
       needs.dgfy-migration-runner.result != 'failure' &&
       needs.frontend-beta.result != 'failure' &&
@@ -118,8 +144,8 @@ jobs:
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: PROD
-      # runner_labels_json: '["self-hosted","sieitz-ubuntu-runner"]'
-      runner_labels_json: '["ubuntu-latest"]'
+      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
+      runner_labels_json: '["self-hosted"]'
     secrets: inherit
     permissions:
       contents: read

@@ -15,6 +15,21 @@
 # nginx/ have already been copied to /opt/dgfy-platform on the target
 # server (see that file's header comment) and, for a fresh server,
 # ./nginx/init-letsencrypt.sh has been run once manually.
+#
+# PLANNED, NOT YET LIVE: ADR 0060 (docs/architecture/adr/
+# 0060-sops-age-encrypted-secrets-at-rest.md) and docs/ops/
+# SOPS_SECRETS_CUTOVER_RUNBOOK.md describe a cutover that will replace the
+# "filled-in .env" assumption above with a smaller non-secret .env plus
+# SOPS-encrypted secrets/*.env, decrypted by a ./deploy-sops.sh wrapper on
+# the server. When that cutover ships, the final two commands of the "Pull
+# and restart platform containers" step below (`docker compose pull &&
+# docker compose up -d --remove-orphans`) become a call to that wrapper,
+# with the staleness guard staying exactly where it is today (it only
+# inspects IMAGE_TAG, which stays in plaintext .env and needs no secret
+# access). No new GitHub secret is required for that change. Do not make
+# this edit until the runbook's Phases 1-4 have actually run on the server
+# -- deploy-sops.sh and secrets/ do not exist there yet, so flipping this
+# workflow ahead of that would break the next deploy.
 name: Publish Platform (SSH Deploy)
 
 on:
@@ -33,7 +48,7 @@ on:
         description: JSON array passed to runs-on for the publish job
         required: false
         type: string
-        default: '["ubuntu-latest"]'
+        default: '["self-hosted"]'
 
 permissions:
   contents: read
@@ -104,3 +119,12 @@ jobs:
              { echo \"\$COMPOSE_IMAGES\" | grep -q 'dgfy-platform/api' && echo \"\$COMPOSE_IMAGES\" | grep -q 'dgfy-platform/migration-runner'; } || { echo \"::error::\$(pwd) compose has no dgfy-api/migration-runner image reference -- server compose is stale, refusing to deploy.\" >&2; exit 1; } && \
              docker compose pull && docker compose up -d --remove-orphans && docker logout ghcr.io" \
             <<< "$GITHUB_TOKEN"
+
+      # Hosted runners are ephemeral and threw these away for free. On a
+      # persistent self-hosted runner (vm-sieitzstaging), a deploy key and
+      # OpenVPN config written to disk would otherwise survive on a box that
+      # also serves DEV/STAGING traffic -- clean up regardless of outcome.
+      - name: Clean up deploy credentials
+        if: always()
+        run: |
+          rm -f ~/.ssh/deploy_key /tmp/client.ovpn

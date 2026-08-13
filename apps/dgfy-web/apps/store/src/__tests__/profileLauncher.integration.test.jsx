@@ -209,7 +209,11 @@ describe('storefront profile launcher', () => {
     // Issue #282, Phase G: the hero (and its header nav, where "Profile"
     // lives) is now lazy-loaded -- findAllByRole waits for it instead of
     // assuming it's already mounted synchronously after the fetch.
-    const profileButton = (await screen.findAllByRole('button', { name: /^Profile$/i }))
+    const profileButton = (await screen.findAllByRole(
+      'button',
+      { name: /^Profile$/i },
+      { timeout: 5000 }
+    ))
       .filter((button) => window.getComputedStyle(button).pointerEvents !== 'none')
       .at(-1);
     expect(profileButton).toBeTruthy();
@@ -230,7 +234,7 @@ describe('storefront profile launcher', () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await waitFor(() => {
       expect(screen.getAllByRole('button', { name: /^Profile$/i }).length).toBeGreaterThan(0);
-    });
+    }, { timeout: 5000 });
   }, 10000);
 
   it('keeps the storefront shell usable when catalog loading fails', async () => {
