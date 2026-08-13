@@ -84,7 +84,7 @@ describe('settings deep-link contract', () => {
     expect(settingsContent).toContain('Fiscal Ledger Integrity');
     expect(settingsContent).toContain('eSales Reporting Packages');
     expect(posContent).not.toContain('window.prompt');
-    expect(posContent).toContain('Print Last Receipt');
+    expect(posContent).toContain('Send to Printer');
     expect(posContent).toContain('handlePrintReceipt');
     expect(posContent).toContain('lastReceiptPendingSync');
   });

@@ -6,11 +6,9 @@ import {
   forceCloseStaleTerminalShift,
   fetchAdminLocationMonitor,
   fetchIncomingOnlineOrders,
-  fetchOnlineOrderHistory,
   fetchPosCatalog,
   fetchPosSettingsBootstrap,
   fetchPosTransactionById,
-  createPosParkedSale,
   fetchPosParkedSales,
   fetchCurrentTerminalShift,
   fetchPosDayCloseReadiness,
@@ -48,9 +46,6 @@ import {
 import { resolvePosTerminalUrl, resolveStorefrontAccountUrl } from '@/src/features/dgfyRouteHelpers.js';
 import { mergeCurrentCompanyWithMemberships } from '@/src/utils/companySwitcherRows.js';
 import { getAllSettings, getCompanyInfo, verifyPosSettingsAccessPin } from '@/services/settingsService.js';
-import { createItem } from '@/services/itemService.js';
-import { completeOnboarding } from '@/services/onboardingService.js';
-import { updatePosCatalogOverride } from '@/services/posCatalogService.js';
 import { getAllUsers, updateOwnPosDayClosePin } from '@/services/userService.js';
 import { listTenantLocations } from '@/services/tenantLocationService.js';
 import api, { onApiOutcome } from '@/services/api.js';
@@ -80,21 +75,7 @@ import {
   resetSentryIdentity,
   setSentryContext
 } from '../../../observability/sentryClient.js';
-import {
-  TERMINAL_QUEUE_STATUS,
-  enqueueTerminalOperationIntent as persistTerminalOperationIntent,
-  getReplayCandidateEntries,
-  getTerminalOperationQueueSummary,
-  hydrateTerminalOperationQueueStore,
-  listTerminalOperationQueueEntries,
-  markTerminalOperationFailedManualResolution,
-  markTerminalOperationQueued,
-  markTerminalOperationReplayed,
-  markTerminalOperationReplaying,
-  markTerminalOperationResolved,
-  markTerminalOperationRetryScheduled,
-  pruneTerminalOperationHistory
-} from '../services/terminalOperationQueueStore.js';
+import { TERMINAL_QUEUE_STATUS } from '../utils/terminalOperationQueueConstants.js';
 import { consumeManualPosSyncAttempt, getManualPosSyncPolicy } from '../services/manualPosSyncPolicyStore.js';
 import {
   DEFAULT_TERMINAL_ID_OPTIONS,
@@ -140,6 +121,7 @@ import { lazyWithChunkRetry } from '../../../utils/chunkLoadRecovery.js';
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const TerminalPageLayout = lazyWithChunkRetry(() => import('../components/TerminalPageLayout.jsx'));
 const TerminalPageDialogLayer = lazyWithChunkRetry(() => import('../components/TerminalPageDialogLayer.jsx'));
+const loadTerminalOperationQueueStore = () => import('../services/terminalOperationQueueStore.js');
 
 const DEFAULT_CURRENCY = 'PHP';
 const TERMINAL_ID_STORAGE_KEY = 'pos_terminal_identity_v1';
@@ -181,21 +163,6 @@ const buildTerminalBusinessSettings = (settings = {}) => ({
   storefront_profile_image_url: String(settings?.storefront_profile_image_url?.value || '').trim()
 });
 
-const normalizeAccessibleCompanies = (payload = {}) => {
-  const candidates = [
-    ...(Array.isArray(payload?.companies) ? payload.companies : []),
-    ...(Array.isArray(payload?.owned_companies) ? payload.owned_companies : []),
-    ...(Array.isArray(payload?.invited_companies) ? payload.invited_companies : [])
-  ];
-  const seenTenantIds = new Set();
-
-  return candidates.filter((company) => {
-    const tenantId = String(company?.tenant_id || '').trim();
-    if (!tenantId || seenTenantIds.has(tenantId)) return false;
-    seenTenantIds.add(tenantId);
-    return true;
-  });
-};
 const CHECKOUT_VIEW_MODES = ['checkout', 'history', 'receipt'];
 const OPERATIONS_VIEW_MODES = [
   'incoming_queue',
@@ -355,39 +322,8 @@ const isRetryableTerminalOperationError = (error) => {
   return RETRYABLE_TERMINAL_OPERATION_STATUS_CODES.has(status);
 };
 
-const resolveTerminalOperationErrorDetails = (error) => ({
-  message: String(error?.response?.data?.message || error?.message || 'Operation replay failed').trim(),
-  code: String(error?.response?.data?.error_code || error?.code || '').trim() || undefined,
-  status: Number(error?.response?.status || 0) || undefined
-});
-
-const computeRetryBackoffMs = (attemptCount = 1) => {
-  const baseMs = 1500;
-  const jitterMs = Math.floor(Math.random() * 250);
-  return Math.min(90_000, (baseMs * (2 ** Math.max(0, attemptCount - 1))) + jitterMs);
-};
-
-const SUPPRESS_GLOBAL_ERROR_TOAST = Object.freeze({ skipGlobalErrorToast: true });
+const SUPPRESS_GLOBAL_ERROR_TOAST = { skipGlobalErrorToast: true };
 const POS_ONBOARDING_ENTRY_SEARCH = buildTenantSetupSearch('', POS_TERMINAL_SETUP_STEPS.PROFILE);
-
-const lookupCompanyToken = async (email, preferredCompanyToken = '') => {
-  const response = await api.post('/auth/lookup', { email }, { skipGlobalErrorToast: true });
-  const tenants = normalizeLookupTenantOptions(response?.data?.data);
-  const normalizedPreferred = String(preferredCompanyToken || '').trim();
-  if (normalizedPreferred && tenants.some((tenant) => tenant?.company_token === normalizedPreferred)) {
-    return normalizedPreferred;
-  }
-  if (tenants.length === 1) {
-    return tenants[0]?.company_token || null;
-  }
-  if (tenants.length > 1) {
-    throw createTerminalLoginError(
-      'This email belongs to multiple companies. Sign in from SKUpervisor once, then reopen POS for the selected company.',
-      POS_TERMINAL_LOGIN_ERROR_CODES.MULTIPLE_TENANTS
-    );
-  }
-  return null;
-};
 
 const parseUserPermissions = (user) => {
   if (!user) return [];
@@ -429,37 +365,6 @@ const parseUserPermissions = (user) => {
     return flattened;
   }
   return [];
-};
-
-const buildTenantSetupStateSnapshot = ({
-  settingsPayload = {},
-  companyPayload = {},
-  usersPayload = [],
-  locationsPayload = [],
-  itemsPayload = []
-} = {}) => {
-  const profileRequirements = resolveProfileSetupReadiness(companyPayload, settingsPayload);
-  const posRequirements = resolvePosSetupReadiness(settingsPayload, usersPayload);
-  const storefrontRequirements = resolveStorefrontSetupReadiness(settingsPayload, locationsPayload);
-  const starterItemRequirements = resolveStarterItemSetupReadiness(itemsPayload);
-  const onboardingState = String(
-    settingsPayload?.tenant_onboarding_state?.value || 'not_started'
-  ).trim().toLowerCase();
-
-  return {
-    loading: false,
-    onboardingState,
-    onboardingCompleted: onboardingState === 'completed',
-    profileReady: profileRequirements.ready,
-    posSetupReady: posRequirements.ready,
-    storefrontSetupReady: storefrontRequirements.ready,
-    starterItemReady: starterItemRequirements.ready,
-    profileRequirements,
-    posRequirements,
-    storefrontRequirements,
-    starterItemRequirements,
-    tenantUsers: Array.isArray(usersPayload) ? usersPayload : []
-  };
 };
 
 export default function TerminalPage() {
@@ -908,7 +813,9 @@ export default function TerminalPage() {
     let cancelled = false;
     setDgfyPosState((previous) => ({ ...previous, loadingCompanies: true }));
     listDgfyAccountCompaniesForTenantSession()
-      .then((payload) => {
+      .then(async (payload) => {
+        if (cancelled) return;
+        const { normalizeAccessibleCompanies } = await import('../utils/posTerminalCompanyAccess.js');
         if (cancelled) return;
         setDgfyPosState((previous) => ({
           ...previous,
@@ -1093,6 +1000,10 @@ export default function TerminalPage() {
   }, [locked, terminalUser?.is_master_admin]);
 
   const refreshTerminalOperationQueue = useCallback(async ({ keepResolved = true } = {}) => {
+    const {
+      getTerminalOperationQueueSummary,
+      listTerminalOperationQueueEntries
+    } = await loadTerminalOperationQueueStore();
     const entries = await listTerminalOperationQueueEntries({
       includeResolved: keepResolved,
       scope: offlinePosScope,
@@ -1106,6 +1017,10 @@ export default function TerminalPage() {
   const enqueueTerminalOperationIntent = useCallback(async (entry, source = 'manual') => {
     const intentId = String(entry?.intent_id || entry?.payload?.idempotency_key || '').trim();
     if (!intentId) return null;
+    const {
+      enqueueTerminalOperationIntent: persistTerminalOperationIntent,
+      pruneTerminalOperationHistory
+    } = await loadTerminalOperationQueueStore();
     await persistTerminalOperationIntent({
       ...entry,
       queue_scope: offlinePosScope,
@@ -1512,37 +1427,6 @@ export default function TerminalPage() {
     paymentStatus = '',
     page = 1
   } = {}) => {
-    if (locked) {
-      setOrderHistoryState({
-        loading: false,
-        orders: [],
-        pagination: null,
-        accessState: 'locked',
-        errorMessage: ''
-      });
-      return;
-    }
-
-    if (!canViewPos) {
-      setOrderHistoryState({
-        loading: false,
-        orders: [],
-        pagination: null,
-        accessState: 'forbidden',
-        errorMessage: 'You need POS view permission to access online order history.'
-      });
-      return;
-    }
-    if (!isOnline) {
-      setOrderHistoryState((previous) => ({
-        ...previous,
-        loading: false,
-        accessState: 'offline',
-        errorMessage: 'Reconnect to view online order history.'
-      }));
-      return;
-    }
-
     if (!silent) {
       setOrderHistoryState((previous) => ({
         ...previous,
@@ -1551,39 +1435,19 @@ export default function TerminalPage() {
         errorMessage: ''
       }));
     }
-
-    try {
-      const locationId = Number(queueLocationScopeId || operatingLocationId || shiftState?.shift?.location_id || 0);
-      const payload = await fetchOnlineOrderHistory({
-        ...(locationId > 0 ? { location_id: locationId } : {}),
-        ...(String(search || '').trim() ? { search: String(search).trim() } : {}),
-        ...(fulfillmentStatus ? { fulfillment_status: fulfillmentStatus } : {}),
-        ...(paymentStatus ? { payment_status: paymentStatus } : {}),
-        page: Math.max(1, Number.parseInt(page, 10) || 1),
-        limit: 100
-      });
-      setOrderHistoryState({
-        loading: false,
-        orders: Array.isArray(payload?.orders) ? payload.orders : [],
-        pagination: payload?.pagination || null,
-        accessState: 'allowed',
-        errorMessage: ''
-      });
-    } catch (error) {
-      const offline = typeof navigator !== 'undefined' && navigator.onLine === false;
-      setOrderHistoryState({
-        loading: false,
-        orders: [],
-        pagination: null,
-        accessState: offline ? 'offline' : 'error',
-        errorMessage: offline
-          ? 'You are offline. Online order history is temporarily unavailable.'
-          : (error?.response?.data?.message || 'Failed to load online order history.')
-      });
-      if (!silent && !offline) {
-        toast.error(error?.response?.data?.message || 'Failed to load online order history.');
-      }
-    }
+    const { loadPosOrderHistoryState } = await import('../utils/posOrderHistoryLoader.js');
+    const result = await loadPosOrderHistoryState({
+      locked,
+      canViewPos,
+      isOnline,
+      locationId: Number(queueLocationScopeId || operatingLocationId || shiftState?.shift?.location_id || 0),
+      search,
+      fulfillmentStatus,
+      paymentStatus,
+      page
+    });
+    setOrderHistoryState(result.state);
+    if (!silent && result.toastMessage) toast.error(result.toastMessage);
   }, [canViewPos, isOnline, locked, operatingLocationId, queueLocationScopeId, shiftState?.shift?.location_id]);
 
   const refreshAdminLocationMonitor = useCallback(async ({ silent = false } = {}) => {
@@ -1999,6 +1863,11 @@ export default function TerminalPage() {
     if (locked || replayingQueueRef.current) return;
     if (!force && !isOnline) return;
 
+    const {
+      getReplayCandidateEntries,
+      pruneTerminalOperationHistory
+    } = await loadTerminalOperationQueueStore();
+
     const candidates = (await getReplayCandidateEntries({
       scope: offlinePosScope,
       limit: TERMINAL_OPERATION_REPLAY_BATCH_SIZE
@@ -2014,125 +1883,24 @@ export default function TerminalPage() {
 
     replayingQueueRef.current = true;
     setReplayingQueuedTerminalOperations(true);
-    let replayedCount = 0;
-    let retryScheduledCount = 0;
-    let failedManualCount = 0;
-    let shouldRefreshOperational = false;
-    let shouldRefreshIncoming = false;
 
     try {
-      for (const candidate of candidates) {
-        const intentId = String(candidate?.intent_id || '').trim();
-        const operation = String(candidate?.operation || '').trim();
-        const payload = candidate?.payload && typeof candidate.payload === 'object'
-          ? candidate.payload
-          : {};
-
-        if (!intentId || !operation) {
-          await markTerminalOperationFailedManualResolution(intentId, {
-            error: {
-              message: 'Queued operation is malformed and requires manual resolution.',
-              code: 'POS_QUEUE_MALFORMED_ENTRY'
-            }
-          });
-          failedManualCount += 1;
-          continue;
-        }
-
-        await markTerminalOperationReplaying(intentId);
-        try {
-          if (operation === 'shift_open') {
-            await markTerminalOperationFailedManualResolution(intentId, {
-              error: {
-                message: 'Opening a shift requires an online server confirmation.',
-                code: 'POS_SHIFT_OPEN_ONLINE_REQUIRED'
-              }
-            });
-            failedManualCount += 1;
-            continue;
-          } else if (operation === 'cash_event') {
-            const shiftId = Number.parseInt(candidate?.shift_id || payload?.shift_id, 10);
-            if (!Number.isInteger(shiftId) || shiftId <= 0) {
-              throw new Error('Missing shift_id for queued cash event replay.');
-            }
-            await recordCashDrawerEvent(shiftId, payload);
-            shouldRefreshOperational = true;
-          } else if (operation === 'shift_close') {
-            const shiftId = Number.parseInt(candidate?.shift_id || payload?.shift_id, 10);
-            if (!Number.isInteger(shiftId) || shiftId <= 0) {
-              throw new Error('Missing shift_id for queued shift-close replay.');
-            }
-            const closeResult = await closeTerminalShift(shiftId, payload);
-            await printClosedShiftSummary(closeResult, {
-              openBrowserFallback: false
-            });
-            shouldRefreshOperational = true;
-          } else if (operation === 'parked_sale') {
-            await createPosParkedSale(payload);
-            shouldRefreshOperational = true;
-          } else if (operation === 'order_status_update') {
-            await markTerminalOperationFailedManualResolution(intentId, {
-              error: {
-                message: 'Online-order status changes require a live server connection.',
-                code: 'POS_ONLINE_ORDER_ACTION_ONLINE_REQUIRED'
-              }
-            });
-            failedManualCount += 1;
-            continue;
-          } else if (operation === 'item_create') {
-            const itemPayload = { ...payload };
-            const posAlwaysAvailable = itemPayload.pos_always_available === true;
-            delete itemPayload.offline_draft_intent_id;
-            delete itemPayload.pos_always_available;
-            const createdItem = await createItem(itemPayload);
-            const itemId = Number(createdItem?.item_id || createdItem?.id || 0);
-            if (!Number.isInteger(itemId) || itemId <= 0) {
-              throw new Error('Offline item draft synced without a valid item ID.');
-            }
-            if (posAlwaysAvailable) {
-              await updatePosCatalogOverride(itemId, { pos_always_available: true });
-            }
-          } else {
-            throw new Error(`Unsupported queued operation '${operation}'.`);
-          }
-
-          await markTerminalOperationReplayed(intentId);
-          replayedCount += 1;
-        } catch (error) {
-          const errorDetails = resolveTerminalOperationErrorDetails(error);
-          if (operation === 'item_create') {
-            await markTerminalOperationFailedManualResolution(intentId, { error: errorDetails });
-            failedManualCount += 1;
-            continue;
-          }
-          if (!isRetryableTerminalOperationError(error)) {
-            await markTerminalOperationFailedManualResolution(intentId, { error: errorDetails });
-            failedManualCount += 1;
-            continue;
-          }
-
-          const nextAttemptCount = (Number(candidate?.attempt_count) || 0) + 1;
-          if (nextAttemptCount >= TERMINAL_OPERATION_MAX_RETRIES) {
-            await markTerminalOperationFailedManualResolution(intentId, { error: errorDetails });
-            failedManualCount += 1;
-            continue;
-          }
-
-          const nextRetryAt = Date.now() + computeRetryBackoffMs(nextAttemptCount);
-          await markTerminalOperationRetryScheduled(intentId, {
-            attemptCount: nextAttemptCount,
-            nextRetryAt,
-            error: errorDetails
-          });
-          retryScheduledCount += 1;
-        }
-      }
+      const { replayTerminalOperationCandidates } = await import('../utils/posTerminalQueueReplay.js');
+      const {
+        replayedCount,
+        retryScheduledCount,
+        failedManualCount,
+        shouldRefreshOperational
+      } = await replayTerminalOperationCandidates({
+        candidates,
+        maxRetries: TERMINAL_OPERATION_MAX_RETRIES,
+        printClosedShiftSummary: (closeResult) => printClosedShiftSummary(closeResult, {
+          openBrowserFallback: false
+        })
+      });
 
       if (shouldRefreshOperational) {
         await refreshOperationalContext();
-      }
-      if (shouldRefreshIncoming) {
-        await refreshIncomingOrders({ silent: true });
       }
 
       await pruneTerminalOperationHistory({ keep: QUEUE_HISTORY_LIMIT });
@@ -2163,7 +1931,6 @@ export default function TerminalPage() {
     isOnline,
     locked,
     offlinePosScope,
-    refreshIncomingOrders,
     refreshOperationalContext,
     refreshTerminalOperationQueue,
     printClosedShiftSummary,
@@ -2177,6 +1944,7 @@ export default function TerminalPage() {
   const handleRetryQueuedOperation = useCallback(async (intentId) => {
     const normalizedIntentId = String(intentId || '').trim();
     if (!normalizedIntentId) return;
+    const { markTerminalOperationQueued } = await loadTerminalOperationQueueStore();
     await markTerminalOperationQueued(normalizedIntentId, { preserveAttempts: true });
     await refreshTerminalOperationQueue();
     toast.message('Queued operation is ready. Press Sync to send it when you are online.');
@@ -2189,6 +1957,7 @@ export default function TerminalPage() {
       return { allowed: false };
     }
 
+    const { getReplayCandidateEntries } = await loadTerminalOperationQueueStore();
     const pendingCandidates = await getReplayCandidateEntries({
       scope: offlinePosScope,
       limit: 1
@@ -2221,6 +1990,10 @@ export default function TerminalPage() {
   const handleResolveQueuedOperation = useCallback(async (intentId) => {
     const normalizedIntentId = String(intentId || '').trim();
     if (!normalizedIntentId) return;
+    const {
+      markTerminalOperationResolved,
+      pruneTerminalOperationHistory
+    } = await loadTerminalOperationQueueStore();
     await markTerminalOperationResolved(normalizedIntentId);
     await pruneTerminalOperationHistory({ keep: QUEUE_HISTORY_LIMIT });
     await refreshTerminalOperationQueue();
@@ -3401,6 +3174,7 @@ export default function TerminalPage() {
           ? getAllUsers({ include_invitations: true }).catch(() => [])
           : Promise.resolve(effectiveSelectedTenantUser ? [effectiveSelectedTenantUser] : [])
       ]);
+      const { buildTenantSetupStateSnapshot } = await import('../utils/posTenantSetupSnapshot.js');
       const selectedTenantSetupState = buildTenantSetupStateSnapshot({
         settingsPayload: selectedTenantSettings || {},
         companyPayload: selectedTenantCompany || {},
@@ -3689,6 +3463,7 @@ export default function TerminalPage() {
       return cachedCompanyToken;
     }
     try {
+      const { lookupCompanyToken } = await import('../utils/posTerminalCompanyAccess.js');
       return String(await lookupCompanyToken(normalizedIdentifier, currentCompanyToken) || '').trim();
     } catch (lookupError) {
       if (!currentCompanyToken || !shouldFallbackToCurrentCompanyTokenAfterLookupError(lookupError)) {
@@ -4503,37 +4278,19 @@ export default function TerminalPage() {
   };
 
   const getShiftCloseResolutionState = useCallback(async ({ shiftId = activeShiftId } = {}) => {
-    const normalizedShiftId = Number.parseInt(shiftId, 10);
-    if (!Number.isInteger(normalizedShiftId) || normalizedShiftId <= 0) {
-      return { activeParkedSaleCount: 0, pendingParkedSaleCount: 0 };
-    }
-
-    const localEntries = await listTerminalOperationQueueEntries({
-      includeResolved: false,
-      scope: offlinePosScope
+    const [{ loadShiftCloseResolution }, { listTerminalOperationQueueEntries }] = await Promise.all([
+      import('../utils/posShiftCloseResolution.js'),
+      loadTerminalOperationQueueStore()
+    ]);
+    return loadShiftCloseResolution({
+      shiftId,
+      offlineScope: offlinePosScope,
+      isOnline,
+      locationId: Number(shiftState?.shift?.location_id || operatingLocationId || 0),
+      listQueueEntries: listTerminalOperationQueueEntries,
+      fetchParkedSales: fetchPosParkedSales
     });
-    const pendingParkedSaleCount = localEntries.filter((entry) => (
-      String(entry?.operation || '').trim() === 'parked_sale'
-      && Number.parseInt(entry?.shift_id || entry?.payload?.shift_id, 10) === normalizedShiftId
-    )).length;
-
-    if (!isOnline) {
-      return { activeParkedSaleCount: 0, pendingParkedSaleCount };
-    }
-
-    const result = await fetchPosParkedSales({
-      shift_id: normalizedShiftId,
-      location_id: Number(shiftState?.shift?.location_id || operatingLocationId || 0) || undefined,
-      limit: 100
-    });
-    const activeServerSales = Array.isArray(result?.parked_sales)
-      ? result.parked_sales.filter((sale) => ['parked', 'claimed'].includes(String(sale?.status || '').toLowerCase()))
-      : [];
-    return {
-      activeParkedSaleCount: activeServerSales.length,
-      pendingParkedSaleCount
-    };
-    }, [activeShiftId, isOnline, offlinePosScope, operatingLocationId, shiftState?.shift?.location_id]);
+  }, [activeShiftId, isOnline, offlinePosScope, operatingLocationId, shiftState?.shift?.location_id]);
 
   const handleConfirmCloseShift = async () => {
     if (!activeShiftId) {
@@ -5333,6 +5090,7 @@ export default function TerminalPage() {
     tenantSetupCompletionInFlightRef.current = true;
     setTenantSetupFinishing(true);
     try {
+      const { completeOnboarding } = await import('@/services/onboardingService.js');
       const completion = await completeOnboarding();
       if (String(completion?.tenant_onboarding_state || '').trim().toLowerCase() !== 'completed') {
         throw new Error('Onboarding completion was not confirmed by the server.');
@@ -5420,6 +5178,10 @@ export default function TerminalPage() {
   useEffect(() => {
     let active = true;
     const bootstrapQueueStore = async () => {
+      const {
+        hydrateTerminalOperationQueueStore,
+        pruneTerminalOperationHistory
+      } = await loadTerminalOperationQueueStore();
       await hydrateTerminalOperationQueueStore();
       await pruneTerminalOperationHistory({ keep: QUEUE_HISTORY_LIMIT });
       if (!active) return;

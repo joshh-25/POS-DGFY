@@ -37,7 +37,7 @@ describe('POS parked-sales manual resume contract', () => {
 
     it('blocks claim when the active cart is not empty and claims only after preflight', () => {
         const cartGuard = dialogSource.indexOf('if (cartHasItems) {');
-        const preflight = dialogSource.indexOf('const preflight = onBeforeClaim(row) || {};');
+        const preflight = dialogSource.indexOf('const preflight = await onBeforeClaim(row) || {};');
         const claimRequest = dialogSource.indexOf('const claimed = await claimPosParkedSale');
 
         expect(cartGuard).toBeGreaterThan(-1);

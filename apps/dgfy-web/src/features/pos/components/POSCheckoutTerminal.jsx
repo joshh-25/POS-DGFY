@@ -54,10 +54,7 @@ import {
     voidPosTransaction,
     fetchPosDiscountApprovers,
     verifyPosDiscountApproval,
-    fetchPosItemOptionGroups,
-    fetchPosPaymentSession,
-    fetchActivePosPaymentSession,
-    cancelPosPaymentSession
+    fetchPosItemOptionGroups
 } from '../services/posService';
 import { fetchEmployeeCreditAccount } from '../services/employeeCreditService.js';
 import {
@@ -75,13 +72,6 @@ import { loadOfflinePosSnapshot, saveOfflinePosSnapshot } from '../services/offl
 import { usePosCartDraft } from '../hooks/usePosCartDraft.js';
 import { clearPosCartDraft } from '../services/posCartDraftStore.js';
 import {
-    buildPosSplitPaymentStorageKey,
-    clearPosSplitPaymentSessionPointer,
-    isTerminalPosPaymentSession,
-    persistPosSplitPaymentSessionPointer,
-    readPosSplitPaymentSessionPointer
-} from '../services/posSplitPaymentSessionStore.js';
-import {
     DEFAULT_LOW_STOCK_DISPLAY_THRESHOLD,
     getCatalogStockColorClassName,
     isSellAvailableCatalogItem,
@@ -90,7 +80,7 @@ import {
 } from '../utils/posCatalogAvailability.js';
 import { subscribeToPosCatalogUpdates, subscribeToRemotePosCatalogUpdates } from '../utils/posCatalogRefresh.js';
 import { buildPosHistoryQuery } from '../utils/posHistoryQuery.js';
-import { buildResumedCartLines, formatParkedSaleDisplayName, validateParkedSaleResume } from '../utils/posParkedSaleResume.js';
+import { formatParkedSaleDisplayName } from '../utils/posParkedSaleDisplay.js';
 import { allowsDecimalQuantity } from '@/src/utils/uomConverter.js';
 import { getFolders } from '@/services/itemService.js';
 import { getAllSettings } from '@/services/settingsService';
@@ -102,20 +92,21 @@ import {
 } from '@/src/utils/assetUrl.js';
 import { notifyIminWebPosReady } from '../utils/iminHardwareBridge.js';
 import { usePosHardware } from '../hardware/usePosHardware.js';
-import { PosAddToCartToastContainer } from './PosAddToCartToastContainer.jsx';
-import POSParkedSalesDialog from './POSParkedSalesDialog.jsx';
-import POSSplitPaymentDialog from './POSSplitPaymentDialog.jsx';
-import FnbModifierPickerDialog, { validateFnbModifierSelections } from './FnbModifierPickerDialog.jsx';
 import { calculateCatalogGridCapacity } from '../utils/catalogGridCapacity.js';
 import { resolvePosWorkflow } from '../utils/posWorkflowResolver.js';
 import { resolvePosPresentationBundle } from '../utils/posPresentationBundle.js';
-import { PosCheckoutDetailsSlot } from './PosCheckoutDetailsSlot.jsx';
-import { PosCurrentSaleActions } from './PosCurrentSaleActions.jsx';
+import { COMMON_POS_ITEM_IMAGE_MAP } from '../utils/posItemImageMap.js';
 
 const ReceiptPrintView = lazyWithChunkRetry(() => import('./ReceiptPrintView'));
 const OrderPreviewView = lazyWithChunkRetry(() => import('./OrderPreviewView.jsx'));
 const EmployeeCreditPaymentPanel = lazyWithChunkRetry(() => import('./EmployeeCreditPaymentPanel.jsx'));
 const ServiceOptionsModal = lazyWithChunkRetry(() => import('./ServiceOptionsModal.jsx').then(({ ServiceOptionsModal: Component }) => ({ default: Component })));
+const POSParkedSalesDialog = lazyWithChunkRetry(() => import('./POSParkedSalesDialog.jsx'));
+const POSSplitPaymentWorkflow = lazyWithChunkRetry(() => import('./POSSplitPaymentWorkflow.jsx'));
+const FnbModifierPickerDialog = lazyWithChunkRetry(() => import('./FnbModifierPickerDialog.jsx'));
+const PosAddToCartToastContainer = lazyWithChunkRetry(() => import('./PosAddToCartToastContainer.jsx').then(({ PosAddToCartToastContainer: Component }) => ({ default: Component })));
+const PosCheckoutDetailsSlot = lazyWithChunkRetry(() => import('./PosCheckoutDetailsSlot.jsx').then(({ PosCheckoutDetailsSlot: Component }) => ({ default: Component })));
+const PosCurrentSaleActions = lazyWithChunkRetry(() => import('./PosCurrentSaleActions.jsx').then(({ PosCurrentSaleActions: Component }) => ({ default: Component })));
 
 const CATALOG_GRID_GAP_PX = 8;
 const CATALOG_DESKTOP_CARD_HEIGHT_PX = 176;
@@ -128,19 +119,13 @@ const POSTransactionHistoryPanel = lazyWithChunkRetry(() => import('./POSTransac
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
 const POS_ITEM_FALLBACK_IMAGE = '/dgfy-horizontal_logo-removebg-preview.png';
 const POS_ITEM_IMAGE_MAP = [
-    { match: ['coffee'], src: '/pos-items/coffee.jpg' },
-    { match: ['juice'], src: '/pos-items/juice.jpg' },
+    ...COMMON_POS_ITEM_IMAGE_MAP.slice(0, 2),
     { match: ['mango float', 'mangofloat'], src: '/pos-items/mangofloat.jpg' },
     { match: ['siomai pork', 'siomai'], src: '/pos-items/siomai%20Pork.jpg' },
     { match: ['baked macaroni', 'macaroni'], src: '/pos-items/baked%20macaroni.jpg' },
     { match: ['cheese stick', 'cheese sticks'], src: '/pos-items/cheese%20Stick.jpg' },
     { match: ['pork sisig', 'sisig'], src: '/pos-items/pork%20sisig.jpg' },
-    { match: ['sandwich', 'sandwitch'], src: '/pos-items/sandwich.jpg' },
-    { match: ['ginger tea', 'ginger'], src: '/pos-items/ginger-tea.jpg' },
-    { match: ['herbal tea', 'herbal'], src: '/pos-items/herbal-tea.jpg' },
-    { match: ['burger'], src: '/pos-items/burger.jpg' },
-    { match: ['chicken wings', 'wings'], src: '/pos-items/chicken%20wings.jpg' },
-    { match: ['chicken tenders', 'tenders'], src: '/pos-items/chicken%20Tenders.jpg' }
+    ...COMMON_POS_ITEM_IMAGE_MAP.slice(2)
 ];
 const POS_FORM_INPUT_CLASS = 'mt-1 focus-visible:border-blue-400 focus-visible:ring-blue-500';
 const POS_FORM_SELECT_CLASS = 'focus:border-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2';
@@ -164,20 +149,6 @@ const sanitizeQuantityInput = (rawValue, allowDecimal) => {
 const toArray = (value) => (Array.isArray(value) ? value : []);
 const isSeniorPwdDiscountEligible = (value) => value === true || value === 1 || value === '1';
 const normalizePromoCode = (value) => String(value || '').trim().toUpperCase().slice(0, 40);
-const normalizeCommercialPromoConfigs = (settings = {}) => {
-    const promos = Array.isArray(settings?.storefront_promos?.value) ? settings.storefront_promos.value : [];
-    const legacyPromo = settings?.storefront_promo?.value;
-    const normalized = promos
-        .filter((entry) => entry && typeof entry === 'object' && !Array.isArray(entry))
-        .map((entry) => ({ ...entry, promo_code: normalizePromoCode(entry.promo_code) }));
-    if (legacyPromo && typeof legacyPromo === 'object' && !Array.isArray(legacyPromo)) {
-        const legacyCode = normalizePromoCode(legacyPromo.promo_code);
-        if (legacyCode && !normalized.some((entry) => normalizePromoCode(entry.promo_code) === legacyCode)) {
-            normalized.push({ ...legacyPromo, promo_code: legacyCode });
-        }
-    }
-    return normalized;
-};
 const resolveCompanyIconFallbackUrl = (settings = {}) => (
     resolveAssetUrl(settings?.storefront_profile_image_url || settings?.profile_image_url || '')
     || resolveAppAssetUrl(POS_ITEM_FALLBACK_IMAGE)
@@ -342,50 +313,6 @@ const buildMissingFieldsMessage = (error) => {
         || [];
     if (!Array.isArray(missingFields) || missingFields.length === 0) return null;
     return `Missing POS setup fields: ${missingFields.join(', ')}`;
-};
-const buildFnbRecipeBlockerMessage = (error) => {
-    const details = error?.response?.data?.errors || error?.response?.data?.details || {};
-    const reasonCode = String(details?.reason_code || '').trim().toUpperCase();
-    if (reasonCode === 'FNB_RECIPE_INGREDIENT_SHORTFALL') {
-        const product = details.product_name || 'Selected menu item';
-        const ingredient = details.ingredient_name || `ingredient ${details.ingredient_item_id || ''}`.trim();
-        const unit = details.unit_of_measure ? ` ${details.unit_of_measure}` : '';
-        const location = details.location_id ? ` at location ${details.location_id}` : '';
-        return `${product}: ${ingredient} short${location}. Avail ${details.available ?? 0}${unit}; req ${details.requested ?? ''}${unit}.`;
-    }
-    if (reasonCode === 'FNB_RECIPE_UOM_INCOMPATIBLE') {
-        const product = details.product_name || 'Selected menu item';
-        const ingredient = details.ingredient_name || `ingredient ${details.ingredient_item_id || ''}`.trim();
-        return `${product}: ${ingredient} unit mismatch (${details.recipe_uom || 'recipe'} to ${details.ingredient_uom || 'stock'}). Update UOM.`;
-    }
-    if (reasonCode === 'FNB_KITCHEN_ORDER_UNAVAILABLE') {
-        return 'Kitchen order unavailable. Refresh F&B setup.';
-    }
-    return null;
-};
-const buildValidationDetailMessage = (error) => {
-    const fnbRecipeBlocker = buildFnbRecipeBlockerMessage(error);
-    if (fnbRecipeBlocker) return fnbRecipeBlocker;
-    if (error?.response?.status !== 422) return null;
-
-    const validationErrors = error?.response?.data?.errors;
-    if (Array.isArray(validationErrors) && validationErrors.length > 0) {
-        const summarized = validationErrors
-            .map((entry) => {
-                const field = String(entry?.field || '').trim();
-                const message = String(entry?.message || '').trim();
-                if (!message) return null;
-                return field ? `${field}: ${message}` : message;
-            })
-            .filter(Boolean);
-
-        if (summarized.length > 0) {
-            return summarized.slice(0, 2).join(' | ');
-        }
-    }
-
-    const fallback = String(error?.response?.data?.message || '').trim();
-    return fallback || null;
 };
 const COMPLIANCE_ACTION_TARGET_BY_REASON = Object.freeze({
     BSP_OPS_REGISTRATION_REQUIRED: '/settings?tab=compliance#section-profile',
@@ -1052,14 +979,6 @@ export default function POSCheckoutTerminal({
     }, [receiptPreviewModalOpen, lastReceipt]);
     const [checkoutConfirmModalOpen, setCheckoutConfirmModalOpen] = useState(false);
     const [splitPaymentDialogOpen, setSplitPaymentDialogOpen] = useState(false);
-    const [splitPaymentSessionState, setSplitPaymentSessionState] = useState({
-        active: false,
-        recovered: false,
-        session: null,
-        recoveryError: ''
-    });
-    const [splitPaymentRecoveryPending, setSplitPaymentRecoveryPending] = useState(false);
-    const [splitPaymentDiscarding, setSplitPaymentDiscarding] = useState(false);
     const [mobileCheckoutPanelOpen, setMobileCheckoutPanelOpen] = useState(false);
 
     const splitPaymentStorageScopeKey = useMemo(() => (
@@ -1079,134 +998,6 @@ export default function POSCheckoutTerminal({
         terminalUser?.id,
         terminalUser?.user_id
     ]);
-    const splitPaymentStorageKey = useMemo(
-        () => buildPosSplitPaymentStorageKey(splitPaymentStorageScopeKey),
-        [splitPaymentStorageScopeKey]
-    );
-
-    useEffect(() => {
-        if (!splitPaymentStorageKey) return undefined;
-        let mounted = true;
-
-        const recoverSavedSession = async () => {
-            const stored = readPosSplitPaymentSessionPointer(splitPaymentStorageKey);
-            if (!stored?.sessionId) {
-                if (!activeShiftId || !String(terminalId || '').trim()) {
-                    clearPosSplitPaymentSessionPointer(splitPaymentStorageKey);
-                    setSplitPaymentSessionState({ active: false, recovered: false, session: null, recoveryError: '' });
-                    setSplitPaymentRecoveryPending(false);
-                    return;
-                }
-                try {
-                    const activeSession = await fetchActivePosPaymentSession({
-                        shift_id: activeShiftId,
-                        terminal_id: String(terminalId || '').trim().toUpperCase(),
-                        location_id: selectedLocationId || undefined
-                    });
-                    if (!mounted) return;
-                    if (activeSession) {
-                        persistPosSplitPaymentSessionPointer(splitPaymentStorageKey, {
-                            session_id: Number(activeSession.pos_payment_session_id || activeSession.id),
-                            idempotency_key: ''
-                        });
-                        setSplitPaymentSessionState({ active: true, recovered: true, session: activeSession, recoveryError: '' });
-                        return;
-                    }
-                } catch (requestError) {
-                    if (!mounted) return;
-                    setSplitPaymentSessionState({
-                        active: false,
-                        recovered: false,
-                        session: null,
-                        recoveryError: requestError?.response?.data?.message || requestError?.message || 'Unable to check for an active split payment.'
-                    });
-                    return;
-                } finally {
-                    if (mounted) setSplitPaymentRecoveryPending(false);
-                }
-                clearPosSplitPaymentSessionPointer(splitPaymentStorageKey);
-                setSplitPaymentSessionState({ active: false, recovered: false, session: null, recoveryError: '' });
-                return;
-            }
-
-            setSplitPaymentRecoveryPending(true);
-            try {
-                const session = await fetchPosPaymentSession(stored.sessionId, {
-                    shift_id: activeShiftId,
-                    terminal_id: String(terminalId || '').trim().toUpperCase(),
-                    location_id: selectedLocationId || undefined
-                });
-                if (!mounted) return;
-                if (isTerminalPosPaymentSession(session)) {
-                    clearPosSplitPaymentSessionPointer(splitPaymentStorageKey);
-                    setSplitPaymentSessionState({ active: false, recovered: false, session: null, recoveryError: '' });
-                    return;
-                }
-                setSplitPaymentSessionState({ active: true, recovered: true, session, recoveryError: '' });
-            } catch (requestError) {
-                if (!mounted) return;
-                if (requestError?.response?.status === 404) {
-                    clearPosSplitPaymentSessionPointer(splitPaymentStorageKey);
-                    setSplitPaymentSessionState({ active: false, recovered: false, session: null, recoveryError: '' });
-                    return;
-                }
-                setSplitPaymentSessionState({
-                    active: true,
-                    recovered: true,
-                    session: null,
-                    recoveryError: requestError?.response?.data?.message || requestError?.message || 'Unable to verify the saved payment session.'
-                });
-            } finally {
-                if (mounted) setSplitPaymentRecoveryPending(false);
-            }
-        };
-
-        recoverSavedSession();
-        return () => {
-            mounted = false;
-        };
-    }, [activeShiftId, selectedLocationId, splitPaymentStorageKey, terminalId]);
-
-    const splitPaymentSession = splitPaymentSessionState.session;
-    const splitPaymentAllocations = Array.isArray(splitPaymentSession?.allocations)
-        ? splitPaymentSession.allocations
-        : [];
-    const canDiscardUnpaidSplitPayment = splitPaymentSessionState.active
-        && Number(splitPaymentSession?.paid_amount || 0) === 0
-        && splitPaymentAllocations.every((allocation) => (
-            ['failed', 'cancelled', 'reversed'].includes(String(allocation?.status || '').toLowerCase())
-        ));
-
-    const handleDiscardUnpaidSplitPayment = useCallback(async () => {
-        const sessionId = Number(splitPaymentSession?.pos_payment_session_id || splitPaymentSession?.id || 0);
-        if (!sessionId || !canDiscardUnpaidSplitPayment || splitPaymentDiscarding) return;
-
-        setSplitPaymentDiscarding(true);
-        try {
-            await cancelPosPaymentSession(sessionId, {
-                shift_id: activeShiftId,
-                terminal_id: terminalId,
-                location_id: selectedLocationId || undefined,
-                reason: 'Cashier discarded unpaid split-payment draft.'
-            });
-            clearPosSplitPaymentSessionPointer(splitPaymentStorageKey);
-            setSplitPaymentSessionState({ active: false, recovered: false, session: null, recoveryError: '' });
-            toast.message('Unpaid split payment discarded.');
-        } catch (requestError) {
-            toast.error(requestError?.response?.data?.message || requestError?.message || 'Unable to discard the unpaid split payment.');
-        } finally {
-            setSplitPaymentDiscarding(false);
-        }
-    }, [
-        activeShiftId,
-        canDiscardUnpaidSplitPayment,
-        selectedLocationId,
-        splitPaymentDiscarding,
-        splitPaymentSession,
-        splitPaymentStorageKey,
-        terminalId
-    ]);
-
     useEffect(() => {
         if (typeof document === 'undefined') return undefined;
         const shouldLockModalScroll = receiptPreviewModalOpen || checkoutConfirmModalOpen || splitPaymentDialogOpen || discountModalOpen || mobileCheckoutPanelOpen;
@@ -1875,6 +1666,7 @@ export default function POSCheckoutTerminal({
                 receiptSettings: nextReceiptSettings
             });
             setDiscountProfiles(normalizeDiscountProfiles(allSettings?.pos_discount_profiles?.value));
+            const { normalizeCommercialPromoConfigs } = await import('../utils/posCommercialPromoConfig.js');
             setCommercialPromoConfig(normalizeCommercialPromoConfigs(allSettings));
         } catch {
             setReceiptSettings({});
@@ -2299,68 +2091,6 @@ export default function POSCheckoutTerminal({
     const normalizedFnbContext = useMemo(() => (
         fnbContext && typeof fnbContext === 'object' ? fnbContext : null
     ), [fnbContext]);
-
-    const splitPaymentCheckoutSnapshot = useMemo(() => ({
-        schema_version: 1,
-        order_method: orderMethod,
-        customer_name: posWorkflow.mode === 'services' ? servicesClientName.trim() || null : null,
-        special_instructions: posWorkflow.mode === 'services' ? servicesNotes.trim() || null : null,
-        scheduled_for: posWorkflow.mode === 'services' && servicesDateTime
-            ? new Date(servicesDateTime).toISOString()
-            : null,
-        discount_mode: appliedDiscount
-            ? 'amount'
-            : (selectedDiscount ? 'preset' : (manualDiscountAmount > 0 ? manualDiscountMode : 'none')),
-        discount_amount: Number(calculatedDiscountAmount || 0),
-        discount_profile_name: appliedDiscount ? null : (selectedDiscount?.name || null),
-        discount_rate: appliedDiscount
-            ? null
-            : selectedDiscount
-                ? Number(selectedDiscount.percentage || 0)
-                : (manualDiscountMode === 'percentage' && manualDiscountRate > 0 ? Number(manualDiscountRate) : null),
-        discount_beneficiary: appliedDiscount && ['senior', 'pwd'].includes(appliedDiscount.type)
-            ? {
-                category: appliedDiscount.type,
-                name: appliedDiscount.customer_name,
-                id_number: appliedDiscount.id_number
-            }
-            : null,
-        governed_discount: appliedDiscount ? { ...appliedDiscount } : null,
-        affiliate_code: affiliateCodeInput.trim() || null,
-        fnb_check_id: normalizedFnbContext?.fnb_check_id || null,
-        fnb_table_id: normalizedFnbContext?.fnb_table_id || null,
-        fnb_table_label_snapshot: normalizedFnbContext?.fnb_table_label_snapshot || null,
-        fnb_guest_count: normalizedFnbContext?.fnb_guest_count || null,
-        fnb_server_id: normalizedFnbContext?.fnb_server_id || null,
-        restaurant_service_charge: normalizedFnbContext?.restaurant_service_charge || null,
-        lines: safeCart.map((line) => ({
-            item_id: Number(line?.item_id),
-            quantity: Number(line?.quantity),
-            sale_price: Number(line?.sale_price),
-            price_override_reason: String(line?.price_override_reason || '').trim() || null,
-            course: line?.course || normalizedFnbContext?.default_course || null,
-            line_modifiers: Array.isArray(line?.line_modifiers) ? line.line_modifiers : [],
-            special_instructions: String(line?.special_instructions || '').trim() || null,
-            kitchen_station_id: line?.kitchen_station_id || null,
-            selected_option_ids: Array.isArray(line?.service_option_ids) ? line.service_option_ids : [],
-            scan_metadata: line?.scan_metadata || null
-        }))
-    }), [
-        affiliateCodeInput,
-        appliedDiscount,
-        calculatedDiscountAmount,
-        manualDiscountAmount,
-        manualDiscountMode,
-        manualDiscountRate,
-        normalizedFnbContext,
-        orderMethod,
-        posWorkflow.mode,
-        safeCart,
-        selectedDiscount,
-        servicesClientName,
-        servicesDateTime,
-        servicesNotes
-    ]);
 
     const restaurantServiceChargeAmount = useMemo(() => {
         const charge = normalizedFnbContext?.restaurant_service_charge;
@@ -2935,7 +2665,7 @@ export default function POSCheckoutTerminal({
         clearSearchBackspaceTimers();
     }, [clearSearchBackspaceTimers]);
 
-    const openCheckoutConfirmModal = useCallback(() => {
+    const openCheckoutConfirmModal = useCallback(async () => {
         if (checkoutBlockedReason) {
             toast.error(checkoutBlockedReason);
             return;
@@ -2948,6 +2678,7 @@ export default function POSCheckoutTerminal({
             toast.error('Add at least one item before checkout.');
             return;
         }
+        const { validateFnbModifierSelections } = await import('../utils/fnbModifierValidation.js');
         const invalidModifierLine = safeCart.find((line) => validateFnbModifierSelections(line.modifier_groups || [], line.line_modifiers || [], selectedLocationId));
         if (invalidModifierLine) {
             toast.error(`${invalidModifierLine.item_name}: ${validateFnbModifierSelections(invalidModifierLine.modifier_groups || [], invalidModifierLine.line_modifiers || [], selectedLocationId)}`);
@@ -3185,7 +2916,11 @@ export default function POSCheckoutTerminal({
         setServiceOptionsModal({ open: false, item: null, groups: [] });
     }, [posWorkflow]);
 
-    const validateParkedSaleForResume = useCallback((parkedSale) => {
+    const validateParkedSaleForResume = useCallback(async (parkedSale) => {
+        const [{ validateParkedSaleResume }, { validateFnbModifierSelections }] = await Promise.all([
+            import('../utils/posParkedSaleResume.js'),
+            import('../utils/fnbModifierValidation.js')
+        ]);
         const validation = validateParkedSaleResume({
             parkedSale,
             catalog: safeCatalog,
@@ -3228,7 +2963,8 @@ export default function POSCheckoutTerminal({
         return { ok: true };
     }, [activeParkedSale?.pos_parked_sale_id, posWorkflow, safeCart.length, safeCatalog, safeCommercialPromoConfig, safeDiscountProfiles, selectedLocationId]);
 
-    const handleParkedSaleClaimed = useCallback((claimedSale) => {
+    const handleParkedSaleClaimed = useCallback(async (claimedSale) => {
+        const { buildResumedCartLines } = await import('../utils/posParkedSaleResume.js');
         const snapshot = claimedSale?.snapshot && typeof claimedSale.snapshot === 'object'
             ? claimedSale.snapshot
             : {};
@@ -3749,6 +3485,10 @@ export default function POSCheckoutTerminal({
                 return;
             }
             const compliancePolicyBlocker = buildCompliancePolicyBlockerMessage(error);
+            const {
+                buildFnbRecipeBlockerMessage,
+                buildValidationDetailMessage
+            } = await import('../utils/posCheckoutErrorMessages.js');
             toast.error(
                 compliancePolicyBlocker?.message
                 || buildMissingFieldsMessage(error)
@@ -4638,62 +4378,56 @@ export default function POSCheckoutTerminal({
                 <div className="col-span-2 flex min-h-0 flex-col overflow-hidden md:h-[clamp(18rem,46vh,26rem)] md:flex-none">
                 <div className="min-h-0 flex-1 overflow-hidden border-b border-slate-200 pb-2">
                     <div data-testid="pos-current-sale-items" className={`space-y-2.5 ${currentSaleItemsListClassName}`}>
-                        {(splitPaymentRecoveryPending || splitPaymentSessionState.active) && (
-                            <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 shadow-sm shadow-blue-100/70" data-testid="pos-current-sale-payment-in-progress">
-                                <div className="flex items-center justify-between gap-2">
-                                    <p className="text-[13px] font-black text-[#0F172A]">
-                                        {splitPaymentRecoveryPending ? 'Checking saved payment…' : 'Saved split payment'}
-                                    </p>
-                                    <span className="rounded-md border border-blue-200 bg-white px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide text-blue-700">
-                                        {splitPaymentRecoveryPending ? 'Checking' : 'Saved'}
-                                    </span>
-                                </div>
-                                {!splitPaymentRecoveryPending && splitPaymentSessionState.recoveryError ? (
-                                    <p className="mt-2 text-[12px] font-semibold leading-5 text-rose-700">
-                                        {splitPaymentSessionState.recoveryError} Resume the payment to try again.
-                                    </p>
-                                ) : !splitPaymentRecoveryPending && splitPaymentSession ? (
-                                    <>
-                                        <p className="mt-2 text-[12px] font-semibold leading-5 text-slate-700">
-                                            {Number(splitPaymentSession.paid_amount || 0) > 0
-                                                ? `PHP ${money(splitPaymentSession.paid_amount)} is already recorded. Resume this payment to finish the sale.`
-                                                : 'No money is recorded. Resume this payment or discard the unpaid draft.'}
-                                        </p>
-                                        <div className="mt-2 flex items-center justify-between rounded-md border border-blue-100 bg-white px-2.5 py-2 text-[11px]">
-                                            <span className="font-semibold text-slate-600">
-                                                {Number(splitPaymentSession?.line_count || splitPaymentSession?.snapshot?.lines?.length || 0)} saved item(s)
-                                            </span>
-                                            <span className="font-black text-[#1A4E8D]">PHP {money(splitPaymentSession?.total_amount)}</span>
-                                        </div>
-                                    </>
-                                ) : null}
-                                {!splitPaymentRecoveryPending && (
-                                    <div className={`mt-3 grid gap-2 ${canDiscardUnpaidSplitPayment ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                                        <Button
-                                            type="button"
-                                            onClick={() => setSplitPaymentDialogOpen(true)}
-                                            disabled={splitPaymentDiscarding}
-                                            className="h-9 bg-[#1A4E8D] text-xs font-extrabold text-white hover:bg-[#143F73]"
-                                            data-testid="pos-resume-split-payment"
-                                        >
-                                            Resume Payment
-                                        </Button>
-                                        {canDiscardUnpaidSplitPayment && (
-                                            <Button
-                                                type="button"
-                                                variant="outline"
-                                                onClick={handleDiscardUnpaidSplitPayment}
-                                                disabled={splitPaymentDiscarding}
-                                                className="h-9 border-slate-300 bg-white text-xs font-extrabold text-slate-700"
-                                                data-testid="pos-discard-unpaid-split-payment"
-                                            >
-                                                {splitPaymentDiscarding ? 'Discarding…' : 'Discard Unpaid'}
-                                            </Button>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        )}
+                        <Suspense fallback={null}>
+                            <POSSplitPaymentWorkflow
+                                open={splitPaymentDialogOpen}
+                                onOpenChange={setSplitPaymentDialogOpen}
+                                cart={safeCart}
+                                catalog={safeCatalog}
+                                subtotalAmount={cartSubtotal}
+                                totalAmount={cartTotal}
+                                shiftId={activeShiftId}
+                                locationId={selectedLocationId}
+                                terminalId={normalizedTerminalId}
+                                parkedSaleId={activeParkedSale?.pos_parked_sale_id || null}
+                                storageScopeKey={splitPaymentStorageScopeKey}
+                                isMsmeMode={isMsmeMode}
+                                checkoutContext={{
+                                    orderMethod,
+                                    posWorkflowMode: posWorkflow.mode,
+                                    servicesClientName,
+                                    servicesNotes,
+                                    servicesDateTime,
+                                    appliedDiscount,
+                                    selectedDiscount,
+                                    manualDiscountAmount,
+                                    manualDiscountMode,
+                                    manualDiscountRate,
+                                    calculatedDiscountAmount,
+                                    affiliateCodeInput,
+                                    fnbContext: normalizedFnbContext,
+                                    cart: safeCart
+                                }}
+                                onCompleted={(result) => {
+                                    const transaction = result?.transaction || null;
+                                    setLastReceipt(transaction);
+                                    setLastReceiptContract(inferReceiptContract(transaction, result?.receipt_contract));
+                                    setCart([]);
+                                    setActiveParkedSale(null);
+                                    setSelectedDiscountProfile('');
+                                    setManualDiscountRateInput('');
+                                    setManualDiscountAmountInput('');
+                                    setAppliedDiscount(null);
+                                    setAffiliateCodeInput('');
+                                    setCustomerPaymentAmountInput('');
+                                    setReceiptPreviewSource('order_preview');
+                                    setReceiptPreviewModalOpen(true);
+                                    loadCatalog();
+                                    loadHistory(historyPage);
+                                    if (typeof onCheckoutCompleted === 'function') onCheckoutCompleted(transaction);
+                                }}
+                            />
+                        </Suspense>
                         {safeCart.length > 0 ? safeCart.map((line) => {
                             const lineKey = getLineKey(line);
                             return (
@@ -4968,30 +4702,32 @@ export default function POSCheckoutTerminal({
                     </div>
                 )}
 
-                <PosCurrentSaleActions
-                    presentationBundle={posPresentationBundle}
-                    onOpenParkedSales={() => setParkedSalesDialogOpen(true)}
-                    openParkedSalesDisabled={sessionLocked || !canViewHistory || !activeShiftId}
-                    onParkAndNewSale={openParkSaleNameDialog}
-                    parkSaleDisabled={posActionsBlocked || checkoutLoading || parkLoading || safeCart.length === 0 || !activeShiftId || !normalizedTerminalId}
-                    parkLoading={parkLoading}
-                    activeParkedSale={activeParkedSale}
-                    onCheckout={openCheckoutConfirmModal}
-                    checkoutDisabled={posActionsBlocked || checkoutLoading || safeCart.length === 0}
-                    checkoutLoading={checkoutLoading}
-                    itemCount={safeCart.length}
-                    onPrintOrder={handlePrintOrder}
-                    printOrderDisabled={posActionsBlocked || safeCart.length === 0 || !isPrinterAvailable}
-                    printerAvailable={isPrinterAvailable}
-                    onOpenCashDrawer={() => handleOpenDrawer({
-                        transactionId: Number(lastReceipt?.pos_transaction_id) || null,
-                        reason: 'manual_drawer_panel'
-                    })}
-                    cashDrawerDisabled={!activeShiftId || drawerOpening}
-                    drawerOpening={drawerOpening}
-                    onApplyDiscount={openDiscountModal}
-                    discountDisabled={posActionsBlocked || safeCart.length === 0}
-                />
+                <Suspense fallback={<div className="h-[46px] w-full animate-pulse rounded-lg bg-slate-100" aria-hidden="true" />}>
+                    <PosCurrentSaleActions
+                        presentationBundle={posPresentationBundle}
+                        onOpenParkedSales={() => setParkedSalesDialogOpen(true)}
+                        openParkedSalesDisabled={sessionLocked || !canViewHistory || !activeShiftId}
+                        onParkAndNewSale={openParkSaleNameDialog}
+                        parkSaleDisabled={posActionsBlocked || checkoutLoading || parkLoading || safeCart.length === 0 || !activeShiftId || !normalizedTerminalId}
+                        parkLoading={parkLoading}
+                        activeParkedSale={activeParkedSale}
+                        onCheckout={openCheckoutConfirmModal}
+                        checkoutDisabled={posActionsBlocked || checkoutLoading || safeCart.length === 0}
+                        checkoutLoading={checkoutLoading}
+                        itemCount={safeCart.length}
+                        onPrintOrder={handlePrintOrder}
+                        printOrderDisabled={posActionsBlocked || safeCart.length === 0 || !isPrinterAvailable}
+                        printerAvailable={isPrinterAvailable}
+                        onOpenCashDrawer={() => handleOpenDrawer({
+                            transactionId: Number(lastReceipt?.pos_transaction_id) || null,
+                            reason: 'manual_drawer_panel'
+                        })}
+                        cashDrawerDisabled={!activeShiftId || drawerOpening}
+                        drawerOpening={drawerOpening}
+                        onApplyDiscount={openDiscountModal}
+                        discountDisabled={posActionsBlocked || safeCart.length === 0}
+                    />
+                </Suspense>
                     </div>
             </section>
             </aside>
@@ -5472,27 +5208,29 @@ export default function POSCheckoutTerminal({
 
                     <div className="pos-modal-scroll-content min-h-0 flex-1 space-y-3 overflow-y-auto overscroll-contain p-4">
                         <div className="space-y-3 rounded-xl border border-slate-200 bg-white p-3" data-testid="pos-checkout-order-settings">
-                            <PosCheckoutDetailsSlot
-                                presentationBundle={posPresentationBundle}
-                                posWorkflow={posWorkflow}
-                                orderMethod={orderMethod}
-                                setOrderMethod={setOrderMethod}
-                                tableNumber={tableNumber}
-                                setTableNumber={setTableNumber}
-                                kitchenNotes={kitchenNotes}
-                                setKitchenNotes={setKitchenNotes}
-                                servicesClientName={servicesClientName}
-                                setServicesClientName={setServicesClientName}
-                                servicesDateTime={servicesDateTime}
-                                setServicesDateTime={setServicesDateTime}
-                                servicesProvider={servicesProvider}
-                                setServicesProvider={setServicesProvider}
-                                servicesResource={servicesResource}
-                                setServicesResource={setServicesResource}
-                                servicesNotes={servicesNotes}
-                                setServicesNotes={setServicesNotes}
-                                disabled={posActionsBlocked || checkoutLoading}
-                            />
+                            <Suspense fallback={<div className="h-10 animate-pulse rounded-lg bg-slate-100" aria-hidden="true" />}>
+                                <PosCheckoutDetailsSlot
+                                    presentationBundle={posPresentationBundle}
+                                    posWorkflow={posWorkflow}
+                                    orderMethod={orderMethod}
+                                    setOrderMethod={setOrderMethod}
+                                    tableNumber={tableNumber}
+                                    setTableNumber={setTableNumber}
+                                    kitchenNotes={kitchenNotes}
+                                    setKitchenNotes={setKitchenNotes}
+                                    servicesClientName={servicesClientName}
+                                    setServicesClientName={setServicesClientName}
+                                    servicesDateTime={servicesDateTime}
+                                    setServicesDateTime={setServicesDateTime}
+                                    servicesProvider={servicesProvider}
+                                    setServicesProvider={setServicesProvider}
+                                    servicesResource={servicesResource}
+                                    setServicesResource={setServicesResource}
+                                    servicesNotes={servicesNotes}
+                                    setServicesNotes={setServicesNotes}
+                                    disabled={posActionsBlocked || checkoutLoading}
+                                />
+                            </Suspense>
                             <label className="block text-[11px] font-medium text-slate-500">
                                 Payment Type
                                 <select
@@ -5686,41 +5424,6 @@ export default function POSCheckoutTerminal({
                 </DialogContent>
             </Dialog>
 
-            <POSSplitPaymentDialog
-                open={splitPaymentDialogOpen}
-                onOpenChange={setSplitPaymentDialogOpen}
-                cart={safeCart}
-                catalog={safeCatalog}
-                subtotalAmount={cartSubtotal}
-                totalAmount={cartTotal}
-                shiftId={activeShiftId}
-                locationId={selectedLocationId}
-                terminalId={normalizedTerminalId}
-                parkedSaleId={activeParkedSale?.pos_parked_sale_id || null}
-                storageScopeKey={splitPaymentStorageScopeKey}
-                isMsmeMode={isMsmeMode}
-                checkoutSnapshot={splitPaymentCheckoutSnapshot}
-                onSessionStateChange={setSplitPaymentSessionState}
-                onCompleted={(result) => {
-                    const transaction = result?.transaction || null;
-                    setLastReceipt(transaction);
-                    setLastReceiptContract(inferReceiptContract(transaction, result?.receipt_contract));
-                    setCart([]);
-                    setActiveParkedSale(null);
-                    setSelectedDiscountProfile('');
-                    setManualDiscountRateInput('');
-                    setManualDiscountAmountInput('');
-                    setAppliedDiscount(null);
-                    setAffiliateCodeInput('');
-                    setCustomerPaymentAmountInput('');
-                    setReceiptPreviewSource('order_preview');
-                    setReceiptPreviewModalOpen(true);
-                    loadCatalog();
-                    loadHistory(historyPage);
-                    if (typeof onCheckoutCompleted === 'function') onCheckoutCompleted(transaction);
-                }}
-            />
-
             <Dialog open={receiptPreviewModalOpen} onOpenChange={(open) => {
                 if (!open) {
                     closeReceiptPreviewModal();
@@ -5913,25 +5616,27 @@ export default function POSCheckoutTerminal({
                 </div>
             ), document.body)}
 
-            {posPresentationBundle.currentSaleActions.showParkedSaleControls && (
-                <POSParkedSalesDialog
-                    open={parkedSalesDialogOpen}
-                    onOpenChange={setParkedSalesDialogOpen}
-                    activeShiftId={activeShiftId}
-                    selectedLocationId={selectedLocationId}
-                    terminalId={normalizedTerminalId}
-                    cartHasItems={safeCart.length > 0}
-                    canView={canViewHistory && !sessionLocked}
-                    canTransact={!posActionsBlocked}
-                    onBeforeClaim={validateParkedSaleForResume}
-                    onClaimed={handleParkedSaleClaimed}
-                    onCancelled={(cancelledSale) => {
-                        if (Number(cancelledSale?.pos_parked_sale_id) !== Number(activeParkedSale?.pos_parked_sale_id)) return;
-                        clearPosCartDraft(offlineSnapshotScope, activeShiftId);
-                        setActiveParkedSale(null);
-                        resetCurrentSaleForNewSale();
-                    }}
-                />
+            {posPresentationBundle.currentSaleActions.showParkedSaleControls && parkedSalesDialogOpen && (
+                <Suspense fallback={<div className="sr-only" role="status">Loading parked sales…</div>}>
+                    <POSParkedSalesDialog
+                        open
+                        onOpenChange={setParkedSalesDialogOpen}
+                        activeShiftId={activeShiftId}
+                        selectedLocationId={selectedLocationId}
+                        terminalId={normalizedTerminalId}
+                        cartHasItems={safeCart.length > 0}
+                        canView={canViewHistory && !sessionLocked}
+                        canTransact={!posActionsBlocked}
+                        onBeforeClaim={validateParkedSaleForResume}
+                        onClaimed={handleParkedSaleClaimed}
+                        onCancelled={(cancelledSale) => {
+                            if (Number(cancelledSale?.pos_parked_sale_id) !== Number(activeParkedSale?.pos_parked_sale_id)) return;
+                            clearPosCartDraft(offlineSnapshotScope, activeShiftId);
+                            setActiveParkedSale(null);
+                            resetCurrentSaleForNewSale();
+                        }}
+                    />
+                </Suspense>
             )}
             <Dialog
                 open={parkSaleNameDialogOpen}
@@ -5995,14 +5700,18 @@ export default function POSCheckoutTerminal({
                 optionGroups={serviceOptionsModal.groups}
                 onConfirmOptions={handleConfirmServiceOptions}
             />
-            <FnbModifierPickerDialog
-                key={fnbModifierLineKey || 'closed'}
-                open={Boolean(fnbModifierLineKey)}
-                line={safeCart.find((line) => getLineKey(line) === fnbModifierLineKey) || null}
-                locationId={selectedLocationId}
-                onClose={() => setFnbModifierLineKey(null)}
-                onSave={saveFnbLineModifiers}
-            />
+            {fnbModifierLineKey && (
+                <Suspense fallback={<div className="sr-only" role="status">Loading item modifiers…</div>}>
+                    <FnbModifierPickerDialog
+                        key={fnbModifierLineKey}
+                        open
+                        line={safeCart.find((line) => getLineKey(line) === fnbModifierLineKey) || null}
+                        locationId={selectedLocationId}
+                        onClose={() => setFnbModifierLineKey(null)}
+                        onSave={saveFnbLineModifiers}
+                    />
+                </Suspense>
+            )}
 
             {imagePreview && (
                 <div
@@ -6061,7 +5770,11 @@ export default function POSCheckoutTerminal({
                     </div>
                 </div>
             ), document.body)}
-            <PosAddToCartToastContainer toasts={addToCartToasts} onDismiss={handleDismissToast} />
+            {addToCartToasts.length > 0 && (
+                <Suspense fallback={null}>
+                    <PosAddToCartToastContainer toasts={addToCartToasts} onDismiss={handleDismissToast} />
+                </Suspense>
+            )}
         </div>
     );
 }

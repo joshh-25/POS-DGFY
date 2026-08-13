@@ -24,6 +24,7 @@ const terminalLockDrawerPath = path.resolve(__dirname, '../components/TerminalLo
 const onlineOrderDetailsModalPath = path.resolve(__dirname, '../components/OnlineOrderDetailsModal.jsx');
 const onlineOrderReceiptModalPath = path.resolve(__dirname, '../components/OnlineOrderReceiptModal.jsx');
 const posServicePath = path.resolve(__dirname, '../services/posService.js');
+const posCheckoutErrorMessagesPath = path.resolve(__dirname, '../utils/posCheckoutErrorMessages.js');
 
 describe('POS terminal view-mode contracts', () => {
   let terminalPageContent = '';
@@ -34,6 +35,7 @@ describe('POS terminal view-mode contracts', () => {
   let posTenantSetupModalContent = '';
   let posReportsAnalyticsWorkspaceContent = '';
   let posCheckoutTerminalContent = '';
+  let posCheckoutErrorMessagesContent = '';
   let skupervisorCheckoutTerminalContent = '';
   let receiptPrintViewContent = '';
   let posBarcodeScannerContent = '';
@@ -55,6 +57,7 @@ describe('POS terminal view-mode contracts', () => {
     posTenantSetupModalContent = fs.readFileSync(posTenantSetupModalPath, 'utf8');
     posReportsAnalyticsWorkspaceContent = fs.readFileSync(posReportsAnalyticsWorkspacePath, 'utf8');
     posCheckoutTerminalContent = fs.readFileSync(posCheckoutTerminalPath, 'utf8');
+    posCheckoutErrorMessagesContent = fs.readFileSync(posCheckoutErrorMessagesPath, 'utf8');
     skupervisorCheckoutTerminalContent = fs.readFileSync(skupervisorCheckoutTerminalPath, 'utf8');
     receiptPrintViewContent = fs.readFileSync(receiptPrintViewPath, 'utf8');
     posBarcodeScannerContent = fs.readFileSync(posBarcodeScannerPath, 'utf8');
@@ -521,7 +524,7 @@ describe('POS terminal view-mode contracts', () => {
     expect(terminalOperationsPanelsContent).toContain('Previous order history page');
     expect(terminalOperationsPanelsContent).toContain('Next order history page');
     expect(posServiceContent).toContain("api.get('/pos/order-history'");
-    expect(terminalPageContent).toContain('fetchOnlineOrderHistory');
+    expect(terminalPageContent).toContain("import('../utils/posOrderHistoryLoader.js')");
   });
 
   it('separates active order details from the printable non-fiscal order receipt', () => {
@@ -634,9 +637,9 @@ describe('POS terminal view-mode contracts', () => {
 
   it('maps F&B recipe checkout blockers to ingredient-specific cashier copy', () => {
     expect(posCheckoutTerminalContent).toContain('buildFnbRecipeBlockerMessage');
-    expect(posCheckoutTerminalContent).toContain('FNB_RECIPE_INGREDIENT_SHORTFALL');
-    expect(posCheckoutTerminalContent).toContain('FNB_RECIPE_UOM_INCOMPATIBLE');
-    expect(posCheckoutTerminalContent).toContain('FNB_KITCHEN_ORDER_UNAVAILABLE');
+    expect(posCheckoutErrorMessagesContent).toContain('FNB_RECIPE_INGREDIENT_SHORTFALL');
+    expect(posCheckoutErrorMessagesContent).toContain('FNB_RECIPE_UOM_INCOMPATIBLE');
+    expect(posCheckoutErrorMessagesContent).toContain('FNB_KITCHEN_ORDER_UNAVAILABLE');
   });
 
   it('requires terminal identity selection and propagates terminal id to checkout payload', () => {

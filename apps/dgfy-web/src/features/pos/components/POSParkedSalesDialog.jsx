@@ -11,7 +11,7 @@ import {
     DialogTitle
 } from '@/components/ui/dialog';
 import { cancelPosParkedSale, claimPosParkedSale, fetchPosParkedSales } from '../services/posService.js';
-import { formatParkedSaleDisplayName } from '../utils/posParkedSaleResume.js';
+import { formatParkedSaleDisplayName } from '../utils/posParkedSaleDisplay.js';
 
 const money = (value) => Number(value || 0).toFixed(2);
 
@@ -105,7 +105,7 @@ export default function POSParkedSalesDialog({
             setActionError('POS transact permission is required to resume a parked sale.');
             return;
         }
-        const preflight = onBeforeClaim(row) || {};
+        const preflight = await onBeforeClaim(row) || {};
         if (preflight.ok === false) {
             setActionError(preflight.message || 'This parked sale needs review before it can be resumed.');
             return;

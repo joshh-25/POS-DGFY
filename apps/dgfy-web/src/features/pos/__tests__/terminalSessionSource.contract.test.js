@@ -6,6 +6,10 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const terminalPagePath = resolve(__dirname, '../pages/TerminalPage.jsx');
 const terminalPageSource = readFileSync(terminalPagePath, 'utf8');
+const terminalCompanyAccessSource = readFileSync(
+  resolve(__dirname, '../utils/posTerminalCompanyAccess.js'),
+  'utf8'
+);
 const standalonePosMainPath = resolve(__dirname, '../../../../apps/pos/src/main.jsx');
 const standalonePosMainSource = readFileSync(standalonePosMainPath, 'utf8');
 
@@ -24,9 +28,9 @@ describe('TerminalPage session contract', () => {
   it('resolves terminal login tenant from email before trusting the current browser company token', () => {
     expect(terminalPageSource).toContain('const currentCompanyToken = String(getCompanyToken() || \'\').trim();');
     expect(terminalPageSource).toContain('lookupCompanyToken(normalizedIdentifier, currentCompanyToken)');
-    expect(terminalPageSource).toContain('normalizeLookupTenantOptions');
-    expect(terminalPageSource).toContain('POS_TERMINAL_LOGIN_ERROR_CODES.MULTIPLE_TENANTS');
-    expect(terminalPageSource).toContain('tenants.some((tenant) => tenant?.company_token === normalizedPreferred)');
+    expect(terminalCompanyAccessSource).toContain('normalizeLookupTenantOptions');
+    expect(terminalCompanyAccessSource).toContain('POS_TERMINAL_LOGIN_ERROR_CODES.MULTIPLE_TENANTS');
+    expect(terminalCompanyAccessSource).toContain('tenants.some((tenant) => tenant?.company_token === normalizedPreferred)');
     expect(terminalPageSource).toContain('shouldFallbackToCurrentCompanyTokenAfterLookupError(lookupError)');
     expect(terminalPageSource).toContain('throw lookupError;');
   });
