@@ -3967,7 +3967,7 @@ parked-sale replay and shift-close resolution.
   issue #389.
 - [x] Architecture guardrails pass across 47 modules and 467 code files; all 86
   controller files preserve model boundaries.
-- [x] Compliance, tenant schema coverage, documentation, and all 69 ADR checks
+- [x] Compliance, tenant schema coverage, documentation, and all 70 ADR checks
   pass.
 - [x] Tenant-location deletion guards cover merchant tender reconciliations and
   contain no duplicate F&B availability references.
@@ -3982,6 +3982,8 @@ parked-sale replay and shift-close resolution.
 - `apps/dgfy-api/src/services/csvExportService.js`
 - `scripts/audit-dependencies.js`
 - `packages/pos-receipt/package.json`
+- [PR #410 - Parked Sales, Split Payment, and release reconciliation](https://github.com/Sieitzz/dgfy-platform/pull/410)
+- [Issue #411 - Developer handoff and workflow documentation](https://github.com/Sieitzz/dgfy-platform/issues/411)
 
 ### Completion Record (2026-08-13)
 
