@@ -1,0 +1,24 @@
+{
+  "$comment": [
+    "Suppressions for scripts/audit-dependencies.js (#381/#380). Each entry",
+    "silences one npm-audit top-level finding for one dependency tree.",
+    "",
+    "Fields:",
+    "  tree      - one of the trees audited by audit-dependencies.js:",
+    "              'root' | 'apps/dgfy-api' | 'apps/dgfy-web' | 'apps/dgfy-migration-runner'",
+    "  package   - the top-level package name as reported by `npm audit --json`",
+    "              (the key under `vulnerabilities`, not necessarily the vulnerable",
+    "              leaf package if the finding is transitive)",
+    "  severity  - informational; the severity npm reported at the time the entry",
+    "              was added, so drift (npm reporting a different/worse severity",
+    "              later) is visible on review",
+    "  reason    - REQUIRED. Why this is safe to ship unpatched right now.",
+    "  reviewBy  - REQUIRED. ISO date this suppression must be re-examined by.",
+    "",
+    "A suppression here means 'known, judged acceptable for now' — not 'fixed'.",
+    "Findings that are actually patched should have the fix applied and the",
+    "entry removed, not left here."
+  ],
+  "version": 1,
+  "entries": []
+}
