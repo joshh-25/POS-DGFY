@@ -26,13 +26,23 @@ actually gates a release today, not an aspirational model.
 
 ## The one fact that matters
 
-**A push to `main` deploys production.** `build-main.yml` fires on `push:
-[main]` and immediately builds and dual-deploys both `beta.dgfy.ph` and
-`dgfy.ph` (shared backend, two frontend builds from two GitHub Environments'
-`VITE_*` vars). There is no separate production-deploy approval step, no
-external signed authorization, and no environment reviewer gate — GitHub Free
-does not support any of those. Merging a PR into `main` **is** the deploy.
-Treat every PR into `main` accordingly.
+**Merging a PR into `main` no longer deploys production by itself.**
+`build-main.yml` (`push: [main]`) was renamed to `deploy-main.yml` and lost
+its push trigger 2026-08-14 (#417), as part of removing every
+auto-build/auto-deploy trigger repo-wide — Pat's explicit ask, to fully
+control when a build/deploy happens rather than have it follow automatically
+from a merge. **Production now deploys only when someone manually dispatches
+`deploy-main.yml`** from the Actions tab, with the branch selector on `main`.
+
+This changes what a merge into `main` means, but does not add any safety net
+that wasn't already missing: there is still no separate production-deploy
+approval step, no external signed authorization, and no environment reviewer
+gate — GitHub Free does not support any of those, and dispatch access is the
+only real gate now. Whoever merges into `main` should still treat it as
+"the next `deploy-main.yml` dispatch will ship this," since nothing else
+distinguishes a reviewed PR from an unreviewed one at merge time (#330
+finding 1). What changed is *when* that ships, not *whether* it's gated on
+anything beyond dispatch access.
 
 ## Flow
 

@@ -1,6 +1,20 @@
 name: Publish POS Receipt Package
 
+# Used to ride inside build-develop.yml's push trigger (no `needs:` between
+# the two, so a source change here without a version bump could never stall
+# the deploy pipeline). build-develop.yml was deleted 2026-08-14 (#417) when
+# every auto-build/auto-deploy trigger came off develop/staging/main -- this
+# workflow gets its own `push` trigger instead of going manual-only like the
+# rest. Reasoning: it's a 16s npm package publish, not a deploy, already
+# path-gated by both this trigger's `paths:` filter and the runtime
+# `changed` check below; frontend builds consume this package, so making it
+# manual risks a stale published version silently breaking a later frontend
+# build. `workflow_call`/`workflow_dispatch` stay for compatibility.
 on:
+  push:
+    branches: [ develop ]
+    paths:
+      - 'packages/pos-receipt/**'
   workflow_call:
     inputs:
       before_sha:
@@ -26,7 +40,10 @@ permissions:
 
 jobs:
   publish:
-    runs-on: ${{ fromJSON(inputs.runner_labels_json) }}
+    # `inputs` is only populated for workflow_call/workflow_dispatch -- for
+    # the direct `push` trigger above it's empty, so fall back explicitly
+    # rather than let fromJSON(null) error the job.
+    runs-on: ${{ fromJSON(inputs.runner_labels_json || '["self-hosted"]') }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
@@ -43,7 +60,9 @@ jobs:
         id: changes
         shell: bash
         env:
-          BEFORE_SHA: ${{ inputs.before_sha }}
+          # inputs.before_sha only exists under workflow_call; for the
+          # direct push trigger, use the push event's own before-SHA.
+          BEFORE_SHA: ${{ inputs.before_sha || github.event.before }}
         run: |
           NULL_SHA="0000000000000000000000000000000000000000"
 
