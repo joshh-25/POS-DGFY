@@ -153,6 +153,31 @@ Before attempting ANY bug fix, the following steps MUST be taken:
 7.  **CSV Imports**: NEVER trust client-supplied validation flags in `confirmImport`. Always re-validate and sanitize row data on the backend before persistence.
 8.  **CSV Exports**: ALWAYS use the `escapeCSVCell` logic (or equivalent prefixing for `=`, `+`, `-`, `@`) when exporting text to CSV to prevent spreadsheet formula injection. Favor export-side sanitization over import-side mutation.
 
+### Secrets Rules (production, `Sieitzz/dgfy-secrets`, `/opt/dgfy-platform`)
+See ADR 0060 and `docs/ops/SOPS_SECRETS_CUTOVER_RUNBOOK.md` for the full
+design. Once the cutover in that runbook has executed:
+1.  **SOPS-encrypted `secrets/*.env` files are safe to read.** Ciphertext
+    only — `KEY=ENC[...]` lines. Reading, listing, or grepping them is fine
+    and expected.
+2.  **Never run `sops decrypt` (or equivalent) to a file, and never `source
+    <(sops decrypt ...)`** — the latter executes decrypted output as shell
+    script and corrupts any value containing a literal `$` (e.g. a bcrypt
+    hash). If a deploy script needs decrypted values, it reads them with a
+    `read -r key value` + `export` loop, per the runbook.
+3.  **Never paste a decrypted value into a commit, PR, issue, doc, or chat
+    message** — this is the exact failure mode that produced #239.
+4.  **Do not migrate an existing real secret value out of a live server's
+    plaintext `.env` into SOPS, even via a command whose output is never
+    displayed.** The execution environment has full read access in that
+    moment regardless of what a transcript shows, and a failed/interrupted
+    command risks the plaintext landing in the transcript itself — worse
+    than the status quo. That one-time migration is a human-operator step.
+    Helping **rotate** a secret to a brand-new value (not extracting an
+    existing one) is fine.
+5.  This repo (`dgfy-platform`) does not hold ciphertext for production
+    secrets — that lives in the separate `Sieitzz/dgfy-secrets` repo. Only
+    `.sops.yaml` (public recipient keys) and deploy tooling live here.
+
 # 📂 Project Structure
 ```text
 /
