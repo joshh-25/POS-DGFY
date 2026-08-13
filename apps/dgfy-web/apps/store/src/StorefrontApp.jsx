@@ -928,8 +928,8 @@ export default function StorefrontApp() {
   }, [isTrackSubpage, checkoutTab]);
   useStorefrontCartPersistence({
     cart,
-    enabled: isFnbMode || isServicesMode,
-    mode: isFnbMode ? 'fnb' : (isServicesMode ? 'services' : ''),
+    enabled: isFnbMode || isServicesMode || isRetailMode,
+    mode: isFnbMode ? 'fnb' : (isServicesMode ? 'services' : (isRetailMode ? 'retail' : '')),
     setCart,
     // Route state changes synchronously when another storefront is selected.
     // Prefer it over the previous async profile so cart hydration/clearing
@@ -2002,6 +2002,7 @@ export default function StorefrontApp() {
     detailRuntime: fnbProductDetailsRuntime,
     isItemAvailable,
     isMobileViewport,
+    modeAdapter,
     onToggleModifier: toggleFnbDetailModifier,
     onModifierQuantityChange: setFnbDetailModifierQuantity,
     navigation: {
@@ -2750,6 +2751,7 @@ export default function StorefrontApp() {
     goStoreOrderPage,
     isCheckoutOpen,
     isMobileViewport,
+    isRetailMode,
     money,
     removeCartItem,
     renderPromoCodePanel,
@@ -2802,11 +2804,13 @@ export default function StorefrontApp() {
     isMobileViewport,
     money,
     orderMethod,
+    promoDiscountSummaryRow,
     pinLocationError,
     pinLocationLoading,
     renderAccountOwnedIdentitySummary,
     renderGuestCheckoutEntry,
     renderGuestIdentityFields,
+    renderPromoCodePanel,
     renderStorefrontClosedNotice,
     selectedStore,
     selectedSavedLocationId,
@@ -2821,6 +2825,7 @@ export default function StorefrontApp() {
     setShowExpandedDeliveryMap,
     showExpandedDeliveryMap,
     storefrontClosedByHours,
+    totalsForDisplay,
     goStoreCatalogPage,
     setCartImageErrors,
     withAssetOrigin,
@@ -3702,7 +3707,7 @@ export default function StorefrontApp() {
   if (isStandaloneAccountPage) return customerDashboardStandaloneRouteNode;
 
   return (
-    <main style={{ fontFamily: isFnbMode ? (modeAdapter.heroTheme?.bodyFont || "'Inter', 'Segoe UI', sans-serif") : (isServicesMode ? servicesBodyFont : STYLES.fonts.body), background: isStorePage ? (isFnbMode ? '#fff' : 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)') : '#ffffff', minHeight: '100vh', color: '#0f172a', overflowX: 'clip' }}>
+    <main style={{ fontFamily: isFnbMode ? (modeAdapter.heroTheme?.bodyFont || "'Inter', 'Segoe UI', sans-serif") : (isServicesMode ? servicesBodyFont : STYLES.fonts.body), background: isStorePage ? (isFnbMode ? '#fff' : (isRetailMode ? 'radial-gradient(circle at 20% 0%, #EEF4FB 0%, #F8FAFC 42%, #EFF4F9 100%)' : 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)')) : '#ffffff', minHeight: '100vh', color: '#0f172a', overflowX: 'clip' }}>
       <div style={{
         maxWidth: 1320,
         width: '100%',

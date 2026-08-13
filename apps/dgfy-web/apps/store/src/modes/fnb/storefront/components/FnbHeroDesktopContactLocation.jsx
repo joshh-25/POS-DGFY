@@ -20,7 +20,10 @@ const FnbHeroDesktopContactLocation = ({
   openStorefrontActionLink,
   setIsExpandedMapOpen,
   visibleContactRows
-}) => (
+}) => {
+  const surfaceAccent = heroTheme.palette?.primary || '#f97316';
+
+  return (
   <div style={{ display: 'grid', gap: 14, paddingLeft: hasAboutOrGallerySection ? 26 : 0, borderLeft: hasAboutOrGallerySection ? '1px solid #eef2f6' : 'none', alignContent: 'start' }}>
     <div style={{ fontSize: 13, fontWeight: 800, color: STYLES.colors.dark, textTransform: 'uppercase', letterSpacing: '0.06em', fontFamily: heroTheme.bodyFont }}>Contact & Location</div>
     <div style={{ display: 'grid', gridTemplateColumns: hasMapData ? STOREFRONT_CONTACT_INFO_COLUMNS : '1fr', gap: 20, alignItems: 'start' }}>
@@ -39,7 +42,7 @@ const FnbHeroDesktopContactLocation = ({
                     <div style={{ fontSize: 13, fontWeight: 600, color: '#334155', whiteSpace: isCompactSingleLine ? 'nowrap' : 'normal', wordBreak: isCompactSingleLine ? 'normal' : 'break-word', lineHeight: 1.35 }}>{row.value}</div>
                   )}
                   {row.actionHref ? (
-                    <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openStorefrontActionLink(row.actionHref); }} style={{ padding: 0, border: 'none', background: 'transparent', color: '#f97316', fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start', fontFamily: heroTheme.bodyFont }}>
+                    <button type="button" onClick={(event) => { event.preventDefault(); event.stopPropagation(); openStorefrontActionLink(row.actionHref); }} style={{ padding: 0, border: 'none', background: 'transparent', color: surfaceAccent, fontSize: 12, fontWeight: 800, cursor: 'pointer', justifySelf: 'start', fontFamily: heroTheme.bodyFont }}>
                       {row.actionLabel || 'Get directions'}
                     </button>
                   ) : null}
@@ -125,6 +128,7 @@ const FnbHeroDesktopContactLocation = ({
       )}
     </div>
   </div>
-);
+  );
+};
 
 export { FnbHeroDesktopContactLocation };
