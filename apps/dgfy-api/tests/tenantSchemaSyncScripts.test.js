@@ -153,10 +153,12 @@ describe('tenant schema sync script contracts', () => {
 
     const columnRepairs = buildTenantSchemaRepairSql([
       { table: 'delivery_jobs', column: 'delivery_personnel_id' },
+      { table: 'delivery_jobs', column: 'delivery_personnel_name' },
       { table: 'delivery_jobs', column: 'assigned_shift_id' }
     ]);
     expect(columnRepairs[0].sql).toContain('ADD COLUMN `delivery_personnel_id`');
-    expect(columnRepairs[1].sql).toContain('ADD COLUMN `assigned_shift_id`');
+    expect(columnRepairs[1].sql).toContain('ADD COLUMN `delivery_personnel_name`');
+    expect(columnRepairs[2].sql).toContain('ADD COLUMN `assigned_shift_id`');
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.delivery_jobs).toHaveProperty('idx_delivery_jobs_personnel_status');
     expect(REQUIRED_TENANT_SCHEMA_INDEXES.delivery_jobs).toHaveProperty('idx_delivery_jobs_assignment_shift');
   });

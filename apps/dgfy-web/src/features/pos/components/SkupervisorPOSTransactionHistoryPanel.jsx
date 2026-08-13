@@ -117,11 +117,6 @@ export default function POSTransactionHistoryPanel({
                                     <tr key={row.pos_transaction_id} className="border-b border-slate-100 hover:bg-slate-50">
                                         <td className="py-2 font-medium text-slate-900">
                                             <div>{row.invoice_number}</div>
-                                            {row.order_source === 'online_store' && (
-                                                <span className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[10px] font-black uppercase tracking-wide ${row.receipt_print_status === 'printed' ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : row.receipt_print_status === 'failed' ? 'border-rose-200 bg-rose-50 text-rose-700' : 'border-amber-200 bg-amber-50 text-amber-700'}`}>
-                                                    Receipt {row.receipt_print_status === 'printed' ? 'Printed' : row.receipt_print_status === 'failed' ? 'Failed' : 'Pending'}
-                                                </span>
-                                            )}
                                         </td>
                                         <td className="py-2 text-slate-600">{new Date(row.created_at).toLocaleString()}</td>
                                         <td className="py-2 text-slate-600">

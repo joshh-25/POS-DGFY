@@ -8,17 +8,18 @@ const componentSource = fs.readFileSync(componentPath, 'utf8');
 const serviceSource = fs.readFileSync(servicePath, 'utf8');
 
 describe('manual delivery assignment UI contract', () => {
-  it('requires an active shift, POS transact permission, and a selected person before saving', () => {
+  it('requires an active shift, POS transact permission, and a typed courier name before saving', () => {
     expect(componentSource).toContain('Open a shift before assigning delivery personnel.');
     expect(componentSource).toContain('POS transact permission is required to assign delivery personnel.');
-    expect(componentSource).toContain('Select delivery personnel');
+    expect(componentSource).toContain('Enter delivery personnel name');
+    expect(componentSource).toContain('Third-party courier name; registration is not required.');
     expect(componentSource).toContain('Mark the order as Out for Delivery before assigning delivery personnel.');
-    expect(componentSource).toContain('onAssign(normalizedOrderId, Number(selectedPersonnelId))');
+    expect(componentSource).toContain('onAssign(normalizedOrderId, normalizedPersonnelName)');
+    expect(componentSource).toContain('type="text"');
   });
 
   it('keeps provider-owned jobs read-only and uses the assignment API', () => {
     expect(componentSource).toContain('Delivery is managed by the external provider.');
-    expect(serviceSource).toContain("api.get('/pos/delivery-personnel'");
     expect(serviceSource).toContain('delivery-job/assignment');
   });
 });

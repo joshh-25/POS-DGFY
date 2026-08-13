@@ -1,4 +1,5 @@
 import { Sequelize } from 'sequelize';
+import { describe, expect, it } from '@jest/globals';
 import defaultDb from '../src/models/index.js';
 import { getTenantModels } from '../src/utils/tenantModelFactory.js';
 import { WORKFLOW_MODE_VALUES, normalizeWorkflowMode } from '../src/modules/shared/constants/workflowModes.js';
@@ -31,6 +32,9 @@ describe('tenantModelFactory contract', () => {
 
             expect(models).toEqual(expect.objectContaining({
                 PosTransaction: expect.any(Function),
+                PosParkedSale: expect.any(Function),
+                PosPaymentSession: expect.any(Function),
+                PosPaymentAllocation: expect.any(Function),
                 PosShiftLocationTransition: expect.any(Function),
                 PosShiftLocationBackfillAudit: expect.any(Function),
                 StorefrontFollow: expect.any(Function),

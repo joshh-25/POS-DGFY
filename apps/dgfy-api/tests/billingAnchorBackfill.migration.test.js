@@ -25,4 +25,3 @@ describe('Billing anchor backfill migration safety', () => {
         expect(content).toContain('DAY(current_period_end)');
     });
 });
-

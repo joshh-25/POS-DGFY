@@ -6,6 +6,10 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const terminalPagePath = resolve(__dirname, '../pages/TerminalPage.jsx');
 const terminalPageSource = readFileSync(terminalPagePath, 'utf8');
+const terminalCompanyAccessSource = readFileSync(
+  resolve(__dirname, '../utils/posTerminalCompanyAccess.js'),
+  'utf8'
+);
 const standalonePosMainPath = resolve(__dirname, '../../../../apps/pos/src/main.jsx');
 const standalonePosMainSource = readFileSync(standalonePosMainPath, 'utf8');
 
@@ -24,9 +28,9 @@ describe('TerminalPage session contract', () => {
   it('resolves terminal login tenant from email before trusting the current browser company token', () => {
     expect(terminalPageSource).toContain('const currentCompanyToken = String(getCompanyToken() || \'\').trim();');
     expect(terminalPageSource).toContain('lookupCompanyToken(normalizedIdentifier, currentCompanyToken)');
-    expect(terminalPageSource).toContain('normalizeLookupTenantOptions');
-    expect(terminalPageSource).toContain('POS_TERMINAL_LOGIN_ERROR_CODES.MULTIPLE_TENANTS');
-    expect(terminalPageSource).toContain('tenants.some((tenant) => tenant?.company_token === normalizedPreferred)');
+    expect(terminalCompanyAccessSource).toContain('normalizeLookupTenantOptions');
+    expect(terminalCompanyAccessSource).toContain('POS_TERMINAL_LOGIN_ERROR_CODES.MULTIPLE_TENANTS');
+    expect(terminalCompanyAccessSource).toContain('tenants.some((tenant) => tenant?.company_token === normalizedPreferred)');
     expect(terminalPageSource).toContain('shouldFallbackToCurrentCompanyTokenAfterLookupError(lookupError)');
     expect(terminalPageSource).toContain('throw lookupError;');
   });
@@ -41,7 +45,7 @@ describe('TerminalPage session contract', () => {
     expect(terminalPageSource).toContain('refreshBrowserSession()');
     expect(terminalPageSource).toContain('storedReason !== \'shift_closed\'');
     expect(terminalPageSource).toContain('storedReason !== \'terminal_reunlock\'');
-    expect(terminalPageSource).toContain('const storedRegistryEntry = terminalRegistryLookup.get(storedTerminalId);');
+    expect(terminalPageSource).toContain('const storedRegistryEntry = restoreTerminalRegistry.find(');
     expect(terminalPageSource).toContain('operatingLocationIdOverride: storedLocationId');
     expect(terminalPageSource).toContain('allowWhileLocked: true');
     expect(terminalPageSource).toContain('if (operationalContext?.shift) {');
@@ -51,6 +55,16 @@ describe('TerminalPage session contract', () => {
     expect(terminalPageSource).toContain('!drawerOpen');
     expect(terminalPageSource).toContain('requiresOpenShift');
     expect(terminalPageSource).toContain('canViewPos');
+  });
+
+  it('hydrates the terminal registry before restoring a saved cashier terminal and relocks the live shell when it is invalid', () => {
+    expect(terminalPageSource).toContain('const terminalBootstrap = await hydrateTerminalMeta({ suppressGlobalErrors: true });');
+    expect(terminalPageSource).toContain('terminalBootstrap?.registry');
+    expect(terminalPageSource).toContain('canViewPosOverride: userCanViewPos');
+    expect(terminalPageSource).toContain("setStoredTerminalLockReason('full_auth');");
+    expect(terminalPageSource).toMatch(
+      /setStoredTerminalLockReason\('full_auth'\);[\s\S]*setLocked\(true\);[\s\S]*setDrawerOpen\(true\);/
+    );
   });
 
   it('falls back to governed legacy POS unlock when DGFY account login rejects tenant-local credentials', () => {

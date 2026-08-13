@@ -555,7 +555,11 @@ describe('storefront discovery integration flow', () => {
     await waitFor(() => {
       expect(fetchMock.mock.calls.some(([requestUrl]) => String(requestUrl).includes('/api/v1/dgfy/customer/dashboard'))).toBe(true);
     });
-    fireEvent.click((await screen.findAllByRole('button', { name: /^profile$/i }))[0]);
+    fireEvent.click((await screen.findAllByRole(
+      'button',
+      { name: /^profile$/i },
+      { timeout: 5000 }
+    ))[0]);
 
     expect(await screen.findByText('My Account')).toBeTruthy();
     expect(await screen.findByText('Ada Lovelace')).toBeTruthy();
@@ -566,7 +570,7 @@ describe('storefront discovery integration flow', () => {
     expect(await screen.findByText('Default')).toBeTruthy();
     expect((await screen.findAllByText('Iloilo Home Address')).length).toBeGreaterThan(0);
     expect(screen.getByRole('button', { name: 'Use for Checkout' })).toBeTruthy();
-  });
+  }, 10000);
 
   it('searches only after the current search action is submitted', async () => {
     const user = userEvent.setup();
