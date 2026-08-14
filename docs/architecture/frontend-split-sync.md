@@ -100,5 +100,38 @@ Recorded here as they're introduced, so they can be re-run on any file absorbed 
 whose merge landed as a conflict or as an `unmapped`/`unmapped-new` sync-report hit rather than
 a clean rename.
 
-_(Populated starting in Phase 1 — casing and alias-form normalization — and Phase 2 — the
-`@sieitzz/web-core/*` alias rewrites.)_
+### Phase 1 — casing and alias-form normalization
+
+The on-disk root `Components/` directory is capitalized, but the vite alias key that maps to
+it is (and always was, in all four vite configs) the lowercase `@/components`. Usage was
+already 520:11 lowercase-favoring, so Phase 1 canonicalized to the existing dominant/aliased
+spelling rather than the directory's capitalization — no vite config changes needed:
+
+```
+sed -i '' "s|@/Components/|@/components/|g" <file> [<file> ...]
+```
+
+Applied to: `Components/suppliers/SupplierDetailsModal.jsx`, `Pages/AiChat.jsx`,
+`src/features/pos/components/TerminalOperationsWorkspace.jsx`,
+`src/features/pos/components/PosTenantSetupModal.jsx`, and the one contract test asserting on
+a literal import string, `src/features/pos/__tests__/menuImportBatchEntry.contract.test.js`.
+
+Separately, `@/src/<dir>/...` and `@/<dir>/...` are equivalent whenever an explicit alias for
+`<dir>` exists (both resolve to the same absolute path — one via the explicit alias, one via
+the bare-`@`-to-root fallback). Collapsed to the shorter alias form wherever a matching alias
+existed:
+
+```
+sed -i '' \
+  -e "s|@/src/services/|@/services/|g" \
+  -e "s|@/src/hooks/|@/hooks/|g" \
+  -e "s|@/src/lib/|@/lib/|g" \
+  <file> [<file> ...]
+```
+
+**Left alone, deliberately:** `@/src/features/...`, `@/src/utils/...`, `@/src/components/...`
+(note: `src/components/`, NOT the same directory as the `@/components` alias target,
+root `Components/`) — no shorter alias exists for any of these today. They still resolve
+correctly via the bare-`@`-to-root fallback; a shorter alias for them doesn't exist until
+Phase 2 introduces `@sieitzz/web-core/*`, at which point they get rewritten directly to the
+package-scoped form rather than to an intermediate app-local alias.

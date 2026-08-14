@@ -33,8 +33,8 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('@/services/onboardingService.js', () => mocks.onboardingServiceMock);
 vi.mock('@/services/settingsService.js', () => mocks.settingsServiceMock);
-vi.mock('@/src/services/tenantLocationService.js', () => mocks.tenantLocationServiceMock);
-vi.mock('@/src/services/storefrontCatalogService.js', () => mocks.storefrontCatalogServiceMock);
+vi.mock('@/services/tenantLocationService.js', () => mocks.tenantLocationServiceMock);
+vi.mock('@/services/storefrontCatalogService.js', () => mocks.storefrontCatalogServiceMock);
 vi.mock('../../../services/onboardingService.js', () => mocks.onboardingServiceMock);
 vi.mock('../../../services/settingsService.js', () => mocks.settingsServiceMock);
 vi.mock('../../../services/tenantLocationService.js', () => mocks.tenantLocationServiceMock);

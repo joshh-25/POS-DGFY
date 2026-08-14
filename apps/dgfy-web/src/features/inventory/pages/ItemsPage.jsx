@@ -74,7 +74,7 @@ import {
   generateStorefrontCatalogImage,
   bulkGenerateStorefrontCatalogImages
 } from '@/services/storefrontCatalogService.js';
-import { replaceItemSuppliers } from '@/src/services/itemService.js';
+import { replaceItemSuppliers } from '@/services/itemService.js';
 import { useWorkflowMode } from '@/src/features/settings/WorkflowModeContext.jsx';
 import { isMsmeWorkflowMode } from '@/src/features/settings/workflowMode.js';
 import {

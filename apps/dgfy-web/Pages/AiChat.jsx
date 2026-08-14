@@ -26,15 +26,15 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import * as aiService from '@/services/aiService';
-import ConfirmActionDialog from '@/Components/ai/ConfirmActionDialog';
-import ActionResultCard from '@/Components/ai/ActionResultCard';
-import DeleteConfirmDialog from '@/Components/ui/DeleteConfirmDialog';
+import ConfirmActionDialog from '@/components/ai/ConfirmActionDialog';
+import ActionResultCard from '@/components/ai/ActionResultCard';
+import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
 import { usePermission } from '@/hooks/usePermission';
 import { toast } from 'sonner';
 import { subscriptionsEnabled } from '../src/utils/subscriptionUi.js';
 
-const MarkdownRenderer = lazy(() => import('@/Components/ai/MarkdownRenderer'));
-const AiDiagnosticsPanel = lazy(() => import('@/Components/ai/AiDiagnosticsPanel'));
+const MarkdownRenderer = lazy(() => import('@/components/ai/MarkdownRenderer'));
+const AiDiagnosticsPanel = lazy(() => import('@/components/ai/AiDiagnosticsPanel'));
 
 const buildWelcomeMessage = () => ({
     id: 'welcome',

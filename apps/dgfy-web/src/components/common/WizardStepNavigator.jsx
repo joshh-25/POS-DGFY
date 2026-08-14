@@ -1,5 +1,5 @@
 import React from 'react';
-import { cn } from '@/src/lib/utils.js';
+import { cn } from '@/lib/utils.js';
 
 const normalizeStep = (step, index) => ({
   id: step?.id ?? index + 1,

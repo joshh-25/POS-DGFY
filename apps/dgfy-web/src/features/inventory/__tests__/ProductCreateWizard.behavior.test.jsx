@@ -6,7 +6,7 @@ import ProductCreateWizard, {
   resolveProductWizardSteps
 } from '../../../../Components/products/ProductCreateWizard.jsx';
 
-vi.mock('@/src/hooks/useLocations.js', () => ({
+vi.mock('@/hooks/useLocations.js', () => ({
   useLocations: (() => {
     const locations = [
       {

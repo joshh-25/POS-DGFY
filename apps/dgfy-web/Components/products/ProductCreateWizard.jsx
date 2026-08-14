@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Check, ArrowRight, ArrowLeft, Package, FileEdit, X } from 'lucide-react';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { validateComposition, showValidationErrors } from '../utils/compositionValidation';
-import { useLocations } from '@/src/hooks/useLocations.js';
+import { useLocations } from '@/hooks/useLocations.js';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
 import { resolveBusinessModeProductDefaults } from '@/src/features/settings/businessModeTemplates.js';
 import { normalizeWorkflowMode } from '@/src/features/settings/workflowMode.js';

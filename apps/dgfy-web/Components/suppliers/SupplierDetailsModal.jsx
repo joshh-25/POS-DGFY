@@ -19,7 +19,7 @@ import {
 import { cn } from "../../src/lib/utils.js";
 import { dummyPurchaseOrders } from '@/components/data/dummyData';
 import { formatNumber } from '../../src/lib/numberUtils.js';
-import SupplierScorecard from '@/Components/SupplierScorecard';
+import SupplierScorecard from '@/components/SupplierScorecard';
 
 export default function SupplierDetailsModal({ supplier, open, onClose }) {
   if (!supplier) return null;

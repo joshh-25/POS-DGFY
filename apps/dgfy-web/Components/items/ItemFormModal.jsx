@@ -23,8 +23,8 @@ import { dummyItems } from '@/components/data/dummyData';
 import ConfirmationDialog from '@/components/ui/ConfirmationDialog';
 import { Badge } from "@/components/ui/badge";
 import { UomSelect } from '@/components/ui/UomSelect';
-import { createSupplier, getSuppliers } from '@/src/services/supplierService.js';
-import { useLocations } from '@/src/hooks/useLocations.js';
+import { createSupplier, getSuppliers } from '@/services/supplierService.js';
+import { useLocations } from '@/hooks/useLocations.js';
 import StorefrontImageCarousel from '@/components/items/StorefrontImageCarousel';
 import SelectedItemImageCarousel from '@/components/items/SelectedItemImageCarousel';
 import { suggestNextSku } from '@/src/features/inventory/utils/skuSuggestion.js';
@@ -35,7 +35,7 @@ import {
   resolveModeItemTaxonomy
 } from '@/src/features/settings/modeItemTaxonomy.js';
 import { resolveItemFinancialPolicy } from '@/src/features/inventory/itemFinancialPolicy.js';
-import { lookupExternalProduct } from '@/src/services/itemService.js';
+import { lookupExternalProduct } from '@/services/itemService.js';
 import {
   getGtinValidationMessage,
   getInternalBarcodeValidationMessage,

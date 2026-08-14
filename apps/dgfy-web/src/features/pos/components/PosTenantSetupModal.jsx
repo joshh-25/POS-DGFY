@@ -19,7 +19,7 @@ import { createTenantLocation, updateTenantLocation } from '@/services/tenantLoc
 import { bulkCreateOnboardingItems } from '@/services/onboardingService.js';
 import { uploadStorefrontCatalogImage } from '@/services/storefrontCatalogService.js';
 import resolveAssetUrl from '@/src/utils/assetUrl.js';
-import UserInvitationModal from '@/Components/users/UserInvitationModal.jsx';
+import UserInvitationModal from '@/components/users/UserInvitationModal.jsx';
 import { createSuggestedTerminalId, normalizeTerminalRegistry, sanitizeTerminalId } from '../utils/terminalIdentity.js';
 import { POS_TERMINAL_SETUP_ORDER, POS_TERMINAL_SETUP_STEPS } from '../utils/setupFlow.js';
 import { filterCustomerFacingPresets, resolveModeItemTaxonomy } from '@/src/features/settings/modeItemTaxonomy.js';
