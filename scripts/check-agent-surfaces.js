@@ -32,6 +32,7 @@ const ROLE_SHIMS = {
   implement: ['.claude/skills/implement/SKILL.md'],
   pm: ['.claude/skills/pm/SKILL.md'],
   'pr-reviewer': ['.claude/agents/pr-reviewer.md'],
+  observer: ['.claude/agents/observer.md'],
 };
 
 const SHIM_LINE_CAP = 25;
