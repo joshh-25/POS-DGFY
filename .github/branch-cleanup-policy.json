@@ -1,5 +1,5 @@
 {
-  "allowedBaseBranches": ["staging", "main"],
+  "allowedBaseBranches": ["develop", "staging", "main"],
   "eligibleHeadPrefixes": [
     "codex/",
     "feature/",
@@ -8,7 +8,10 @@
     "hotfix/",
     "docs/",
     "chore/",
-    "test/"
+    "test/",
+    "ci/",
+    "claude/",
+    "perf/"
   ],
   "protectedBranches": [
     "main",
