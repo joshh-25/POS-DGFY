@@ -88,6 +88,15 @@ risk) or develop added a new file at an old path mid-merge. Each hit is printed 
 destination (or a note that no mapping exists, in which case place it by hand, referencing the
 current phase's target layout).
 
+**Only meaningful from Phase 5 onward.** The whole-tree prefix this checks (`apps/dgfy-web/`)
+is a stand-in for "should be empty," which only becomes true once Phase 5 retires the legacy
+root. Before that, `apps/dgfy-web/` is still the live home for everything not yet migrated
+(currently: `apps/{skupervisor,pos,store}`, `Layout.jsx`, `main.jsx`, most of `Pages/`), so this
+check reports hundreds of expected files as "resurrected." During Phases 0-4, the plain
+`report:frontend-split-sync` (no `--post-merge`) against `origin/develop` is the correct and
+sufficient check — it already scopes to the manifest's actual `prefixMap`/`retired` entries
+rather than the whole legacy root.
+
 Commit any absorbed fixes as `chore: absorb develop into frontend split`.
 
 **Cadence:** after every merge from develop, and at least weekly regardless. Merge cadence
