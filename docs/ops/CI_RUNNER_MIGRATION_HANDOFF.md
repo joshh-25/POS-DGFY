@@ -224,12 +224,13 @@ billing data (`gh api .../actions/runs/<id>/jobs`, `gh api
   session** (a new devDependency + lockfile change felt like it needed its
   own confirmation rather than riding along). Flagged for the user as a
   fast-follow.
-- Not yet done from the full plan (deferred, see the plan file
-  `are-we-using-ubuntu-slim-vectorized-mountain.md` if still on disk, or the
-  conversation this session): dropping the `edited` PR trigger, skipping
-  draft PRs, gating `build-staging.yml`/`build-main.yml` on changed paths,
-  and untracking the ~528 MB of committed `Standalone POS/app/build` +
-  `backups/` (incl. a committed `.sql` dump — separate security finding).
+- ~~Not yet done from the full plan~~ **Update 2026-08-14**: dropping the
+  `edited` PR trigger and skipping draft PRs shipped (#413).
+  `build-staging.yml`/`build-main.yml` are gone entirely (#417/#419), so
+  "gate them on changed paths" is moot — their replacement (`deploy.yml`)
+  takes an explicit `components` input instead. Still not done: untracking
+  the ~528 MB of committed `Standalone POS/app/build` + `backups/` (incl. a
+  committed `.sql` dump — separate security finding), now tracked as #359.
 
 ## What's verified vs. not
 
@@ -248,23 +249,58 @@ billing data (`gh api .../actions/runs/<id>/jobs`, `gh api
   `deploy-production.yml` directly.
 - Pre-commit `check:compliance`/`check:compliance:api-contracts` passed.
 
-**Not yet verified (needs a real GitHub Actions run — do this before merging):**
-- This PR itself should trigger both `frontend-build-check` and
-  `backend-build-check` under the new filter (it touches `.github/workflows/`
-  broadly) — confirm that actually happens and both builds go green on hosted
-  runners.
-- A follow-up PR touching only one domain (e.g. `backend/src/**`) should show
-  the other build check as *skipped*, with the summary gate still green.
-- A `develop` push after merge should exercise the new `changes` job in
-  `build-develop.yml` and correctly skip the untouched image; then confirm the
-  `publish` job still runs and the server ends up healthy.
-- The OpenVPN->SSH deploy path (`publish-platform.yml`, used by
-  `build-develop.yml`/`build-staging.yml` with `vpn_required: true`) has not
-  been run from a GitHub-hosted runner in this repo's actual history despite
-  being designed for it — the user confirmed it *should* work, but watch the
-  first real hosted DEV/STAGING deploy closely. Rollback if it fails: revert
-  `runner_labels_json` in `build-develop.yml`/`build-staging.yml` back to
-  `'["self-hosted"]'`, independent of every other change here.
+**~~Not yet verified~~ Verified 2026-08-13/14 — the section below is obsolete
+and kept only as a historical record.** Every item it named is gone: the
+`push`-triggered build-checks it describes don't exist anymore (`build-develop.yml`/
+`build-staging.yml` are deleted, #417/#419), the `changes` job it references was
+removed along with them, and the "watch the first real hosted DEV/STAGING deploy"
+plan was abandoned when the repo went back to self-hosted (2026-08-13, above). What
+actually got verified, on the current `deploy.yml`/`deploy-main.yml`:
+
+- **DEV**, run [31724177658](https://github.com/Sieitzz/dgfy-platform/actions/runs/31724177658) —
+  build + SSH publish succeeded, deployed `org.opencontainers.image.revision` label
+  matched `develop` HEAD.
+- **STAGING**, run [31727201728](https://github.com/Sieitzz/dgfy-platform/actions/runs/31727201728) —
+  same, against `staging` HEAD. (Not `31726388197` — that run's `guard-ref` job
+  stalled on the self-hosted runner past its own `timeout-minutes: 2` and was
+  cancelled; see #432. The re-dispatch with zero code changes succeeded cleanly,
+  which is the run above.)
+- **BETA+PROD**, run [31728787346](https://github.com/Sieitzz/dgfy-platform/actions/runs/31728787346) —
+  `deploy-main.yml`'s dual-deploy, both frontend variants + shared api/migration-runner,
+  single SSH publish. Hit (and recovered from) a GHCR secondary rate limit on this
+  run — see #427 and the transitive-skip-adjacent lesson below.
+- The self-hosted-vs-VPN question the old bullet asked about is answered, and the
+  opposite way from what it worried about: DEV/STAGING/BETA/PROD are all reached
+  directly over SSH from the self-hosted runner, with `vpn_required: false`
+  everywhere. There is no GitHub-hosted tier anymore for this to matter to — see
+  #386 (closed), which recorded self-hosted as the only CI tier.
+
+### Lesson: a skipped ancestor job propagates through the whole dependent chain
+
+Cost a full deploy cycle on 2026-08-13 and looked completely green while doing
+nothing, so it's worth writing down precisely.
+
+The pre-#421 `deploy.yml` had `build-and-push` depending on `compute-flags`,
+which depended on `changes` — and `changes` only ran for `components: auto`.
+Dispatching with any other `components` value meant `changes` was `skipped`.
+GitHub Actions propagates a `skipped` status **transitively** through `needs`:
+an intermediate job wrapped in `if: always()` (which `compute-flags` was) still
+runs itself, but that does not rescue *its own* dependents — a job's default
+`if` behavior still requires its `needs` to have succeeded, `always()` on an
+ancestor two hops up doesn't reach past the direct parent.
+
+The tell was that **both** `build-and-push` (`if: needs.compute-flags.outputs.should_build == 'true'`)
+and its sibling `nothing-to-build` (`if: needs.compute-flags.outputs.should_build != 'true'`)
+were skipped in the same run — mutually exclusive conditions, so neither `if:`
+was ever evaluated at all, which only happens when the job itself never ran.
+The run still reported success, because nothing in the graph actually failed.
+
+Fixed structurally, not defensively: #421 deleted `changes`/`compute-flags`/
+`nothing-to-build` outright, leaving `resolve-environment → build-and-push`
+with no skippable ancestor in between. The general lesson for any future job
+graph here: a conditionally-skipped job anywhere upstream needs either
+`always()` on **every** job downstream of it (not just the direct child), or —
+better, as this fix did — no conditional job in the chain at all.
 
 ## Known stale references (out of scope for this PR)
 
