@@ -1,4 +1,4 @@
-name: Deploy
+name: Build & Deploy Platform
 
 # Consolidated manual-dispatch build+deploy for DEV/STAGING/BETA, replacing
 # build-develop.yml, build-staging.yml, build-manual.yml, and
