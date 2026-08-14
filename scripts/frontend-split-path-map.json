@@ -1,0 +1,17 @@
+{
+  "version": 1,
+  "description": "Old-path -> new-path mapping for the apps/dgfy-web -> apps/{dgfy-ims,dgfy-pos,dgfy-storefront} + packages/web-core split (issue #322). Updated in the same commit as every git-mv phase of refactor/322-frontend-app-split. Consumed by scripts/report-frontend-split-sync.js.",
+  "prefixMap": [],
+  "specialCases": [],
+  "retired": [],
+  "consumerPathPatterns": [
+    "^\\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|deploy|deploy-main|pr-frontend-build-checks|pr-checks|pr-quality-checks)\\.yml$",
+    "^infrastructure/docker/",
+    "^scripts/deploy\\.sh$",
+    "^scripts/(audit-dependencies|check-compliance-impact|check-batch-inventory|check-merge-adoption-required|check-merge-adoption|check-frontend-budgets|check-frontend-asset-parity|gate-release-local|integrate-prs|lint-docs|run-fnb-readiness-gate|smoke-storefront-delivery-map|record-frontend-build-manifest)\\.(js|cjs)$",
+    "^ecosystem\\.config\\.cjs$",
+    "^package\\.json$",
+    "^security/audit-allowlist\\.json$",
+    "^apps/dgfy-api/tests/.*(contract|Contract).*"
+  ]
+}
