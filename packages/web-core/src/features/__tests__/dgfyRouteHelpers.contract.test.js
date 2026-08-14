@@ -12,7 +12,7 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const routeHelperPath = resolve(__dirname, '../dgfyRouteHelpers.js');
-const skupervisorMainPath = resolve(__dirname, '../../../../../apps/dgfy-web/src/main.jsx');
+const skupervisorMainPath = resolve(__dirname, '../../../../../apps/dgfy-ims/src/main.jsx');
 const routeHelperSource = readFileSync(routeHelperPath, 'utf8');
 const skupervisorMainSource = readFileSync(skupervisorMainPath, 'utf8');
 

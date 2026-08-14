@@ -3,7 +3,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import DgfyAccountManager from '../../../../../apps/dgfy-web/Pages/admin/DgfyAccountManager.jsx';
+import DgfyAccountManager from '../../../../../apps/dgfy-ims/Pages/admin/DgfyAccountManager.jsx';
 
 const mocks = vi.hoisted(() => ({
   adminServiceMock: {

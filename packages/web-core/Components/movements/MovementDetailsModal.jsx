@@ -25,9 +25,9 @@ import { cn } from "../../src/lib/utils.js";
 import { getMovementConfig, isPositiveMovement, lossReasons } from '../utils/movementConfig.js';
 import { formatNumber } from '../../src/lib/numberUtils.js';
 import { Link } from 'react-router-dom';
-// utils.js stays IMS-only (apps/dgfy-web root) -- '@' resolves per-app (see each
+// utils.js stays IMS-only (apps/dgfy-ims root) -- '@' resolves per-app (see each
 // vite.config.js), unlike a hardcoded relative path, which breaks once this file's
-// on-disk depth relative to apps/dgfy-web differs (e.g. Docker's flattened /app layout).
+// on-disk depth relative to apps/dgfy-ims differs (e.g. Docker's flattened /app layout).
 import { createPageUrl } from '@/utils.js';
 
 export default function MovementDetailsModal({ movement, open, onClose, onVoid }) {

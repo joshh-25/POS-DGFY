@@ -9,9 +9,9 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 
 describe('Hospitality frontend contract', () => {
   it('registers the IMS route and navigation behind the Hospitality workflow capability', () => {
-    const main = read('apps/dgfy-web/src/main.jsx');
-    const layout = read('apps/dgfy-web/Layout.jsx');
-    const utils = read('apps/dgfy-web/utils.js');
+    const main = read('apps/dgfy-ims/src/main.jsx');
+    const layout = read('apps/dgfy-ims/Layout.jsx');
+    const utils = read('apps/dgfy-ims/utils.js');
 
     expect(main).toContain("path=\"/hospitality\"");
     expect(main).toContain('requiredCapability="hospitalityReservations"');

@@ -8,8 +8,8 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 
 describe('Food & Beverage frontend contract', () => {
   it('registers the IMS route and navigation behind the F&B workflow capability', () => {
-    const main = read('apps/dgfy-web/src/main.jsx');
-    const layout = read('apps/dgfy-web/Layout.jsx');
+    const main = read('apps/dgfy-ims/src/main.jsx');
+    const layout = read('apps/dgfy-ims/Layout.jsx');
 
     expect(main).toContain("path=\"/fnb\"");
     expect(main).toContain('requiredCapability="fnbDining"');

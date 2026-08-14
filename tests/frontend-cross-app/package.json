@@ -1,0 +1,27 @@
+{
+  "name": "frontend-cross-app",
+  "version": "1.0.0",
+  "description": "Multi-surface e2e specs and k6 load scripts that exercise more than one DGFY frontend app at once (issue #322 split from apps/dgfy-web).",
+  "author": "DGFY",
+  "type": "module",
+  "scripts": {
+    "test:e2e": "playwright test",
+    "test:e2e:headed": "playwright test --headed",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:debug": "playwright test --debug",
+    "test:e2e:report": "playwright show-report",
+    "test:e2e:codegen": "playwright codegen",
+    "test:lighthouse": "lhci autorun",
+    "test:load": "k6 run tests/load/smoke-load.js",
+    "test:load:api": "k6 run tests/load/api-load.js",
+    "test:load:auth": "k6 run tests/load/auth-load.js",
+    "test:load:inventory": "k6 run tests/load/inventory-load.js",
+    "test:load:pos-checkout": "k6 run tests/load/pos-checkout-load.js",
+    "test:load:tenant": "k6 run tests/load/tenant-load.js"
+  },
+  "devDependencies": {
+    "@lhci/cli": "^0.15.1",
+    "@playwright/test": "^1.61.1",
+    "dotenv": "^16.6.1"
+  }
+}

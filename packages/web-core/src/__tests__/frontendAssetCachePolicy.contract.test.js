@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 // Deliberately outside src/features/pos/ -- this is a pure infra/nginx
 // contract, not POS logic, so it must not drag in the compliance gate
-// that apps/dgfy-web/src/features/pos/** triggers.
+// that apps/dgfy-ims/src/features/pos/** triggers.
 const CONF_DIR = path.resolve(process.cwd(), '../../infrastructure/docker/frontend/conf.d');
 const APPS = ['pos', 'store', 'skupervisor'];
 

@@ -33,7 +33,7 @@ export default defineConfig({
     }
   ],
   webServer: {
-    command: 'npm run dev:store',
+    command: 'npm run dev',
     cwd: __dirname,
     url: `${baseURL}/`,
     reuseExistingServer: !process.env.CI,

@@ -14,7 +14,7 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const settingsPagePath = path.resolve(__dirname, '../../../../../../apps/dgfy-web/Pages/Settings.jsx');
+const settingsPagePath = path.resolve(__dirname, '../../../../../../apps/dgfy-ims/Pages/Settings.jsx');
 const compliancePanelPath = path.resolve(__dirname, '../../compliance/components/ComplianceProgramPanel.jsx');
 const compliancePolicyEnginePath = path.resolve(__dirname, '../../../../../../apps/dgfy-api/src/modules/compliance/policy/compliancePolicyEngine.js');
 const posCheckoutTerminalPath = path.resolve(__dirname, '../../pos/components/POSCheckoutTerminal.jsx');

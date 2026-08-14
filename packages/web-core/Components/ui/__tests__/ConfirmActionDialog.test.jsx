@@ -10,7 +10,7 @@ import ConfirmActionDialog from '../ConfirmActionDialog.jsx';
 const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 // Pages/ (other than the 4 DGFY pages) did not move into this package -- see
 // docs/architecture/frontend-split-sync.md.
-const appRoot = path.resolve(frontendRoot, '../../apps/dgfy-web');
+const appRoot = path.resolve(frontendRoot, '../../apps/dgfy-ims');
 
 afterEach(cleanup);
 

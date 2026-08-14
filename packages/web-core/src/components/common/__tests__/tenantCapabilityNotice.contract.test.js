@@ -5,10 +5,10 @@ import { describe, expect, it } from 'vitest';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-// This package's own root (src/, Components/) -- Layout.jsx stayed behind in apps/dgfy-web
+// This package's own root (src/, Components/) -- Layout.jsx stayed behind in apps/dgfy-ims
 // when the shared trunk moved into packages/web-core, see docs/architecture/frontend-split-sync.md.
 const packageRoot = path.resolve(__dirname, '../../../..');
-const appRoot = path.resolve(__dirname, '../../../../../../apps/dgfy-web');
+const appRoot = path.resolve(__dirname, '../../../../../../apps/dgfy-ims');
 
 const read = (relativePath) => fs.readFileSync(path.join(packageRoot, relativePath), 'utf8');
 const readFromApp = (relativePath) => fs.readFileSync(path.join(appRoot, relativePath), 'utf8');

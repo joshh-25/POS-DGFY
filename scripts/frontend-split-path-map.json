@@ -65,7 +65,21 @@
     { "old": "apps/dgfy-web/tests/e2e/storefront-to-pos-service-order.spec.js", "new": "tests/frontend-cross-app/tests/e2e/storefront-to-pos-service-order.spec.js" },
     { "old": "apps/dgfy-web/lighthouserc.js", "new": "tests/frontend-cross-app/lighthouserc.js" }
   ],
-  "retired": [],
+  "retired": [
+    "apps/dgfy-web/index.html",
+    "apps/dgfy-web/package.json",
+    "apps/dgfy-web/package-lock.json",
+    "apps/dgfy-web/vite.config.js",
+    "apps/dgfy-web/tailwind.config.js",
+    "apps/dgfy-web/playwright.config.js",
+    "apps/dgfy-web/.dockerignore",
+    "apps/dgfy-web/apps/skupervisor/src/main.jsx",
+    "apps/dgfy-web/public/logo-icon.png",
+    "apps/dgfy-web/public/logo.png",
+    "apps/dgfy-web/public/manifest.webmanifest",
+    "apps/dgfy-web/apps/skupervisor/public/sw.js",
+    "apps/dgfy-web/tests/e2e/storefront/.gitkeep"
+  ],
   "consumerPathPatterns": [
     "^\\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|deploy|deploy-main|pr-frontend-build-checks|pr-checks|pr-quality-checks)\\.yml$",
     "^infrastructure/docker/",

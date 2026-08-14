@@ -7,10 +7,10 @@ import {
 } from '../../../../../../apps/dgfy-pos/vitePosOfflinePrecachePlugin.js';
 
 const frontendRoot = process.cwd();
-// apps/dgfy-pos and apps/dgfy-storefront (issue #322 split) are siblings of apps/dgfy-web,
+// apps/dgfy-pos and apps/dgfy-storefront (issue #322 split) are siblings of apps/dgfy-ims,
 // not nested under it.
 const posServiceWorkerPath = path.resolve(frontendRoot, '../dgfy-pos/public/sw.js');
-const skupervisorServiceWorkerPath = path.resolve(frontendRoot, 'apps/skupervisor/public/sw.js');
+const skupervisorServiceWorkerPath = path.resolve(frontendRoot, 'public/sw.js');
 const storeServiceWorkerPath = path.resolve(frontendRoot, '../dgfy-storefront/public/sw.js');
 const posMainPath = path.resolve(frontendRoot, '../dgfy-pos/src/main.jsx');
 const posPrecachePluginPath = path.resolve(frontendRoot, '../dgfy-pos/vitePosOfflinePrecachePlugin.js');
@@ -63,7 +63,7 @@ describe('service worker caching contracts', () => {
 
   it('keeps SKUpervisor service worker from caching map proxy resources', () => {
     const source = readSource(skupervisorServiceWorkerPath);
-    expect(source).toContain("const BYPASS_PATH_PREFIXES = ['/api/', '/uploads/', '/openfreemap'];");
+    expect(source).toContain("const BYPASS_PATH_PREFIXES = ['/api/', '/uploads/', '/openfreemap', '/osm'];");
     expect(source).toContain('const STATIC_CACHEABLE_DESTINATIONS = new Set');
     expect(source).toContain('const MAX_RUNTIME_CACHE_ENTRIES = 120;');
     expect(source).toContain('if (!shouldHandleRuntimeRequest(event.request, requestUrl)) return;');

@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { loginToApp, TEST_USER_EMAIL, TEST_USER_PASSWORD } from '../helpers/auth.js';
-import { TEST_COMPANY_TOKEN } from '../helpers/urls.js';
-import { registerCrashDetection } from '../helpers/assertions.js';
+import { loginToApp, TEST_USER_EMAIL, TEST_USER_PASSWORD } from './helpers/auth.js';
+import { TEST_COMPANY_TOKEN } from './helpers/urls.js';
+import { registerCrashDetection } from './helpers/assertions.js';
 
 test.describe('Skupervisor Navigation and Layout Integrity', () => {
   test.beforeEach(async ({ page }) => {

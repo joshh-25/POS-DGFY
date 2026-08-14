@@ -5,7 +5,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const settingsPagePath = path.resolve(__dirname, '../../../../../../apps/dgfy-web/Pages/Settings.jsx');
+const settingsPagePath = path.resolve(__dirname, '../../../../../../apps/dgfy-ims/Pages/Settings.jsx');
 const terminalWorkspacePath = path.resolve(__dirname, '../components/TerminalOperationsWorkspace.jsx');
 
 describe('POS strict location-binding settings visibility contract', () => {

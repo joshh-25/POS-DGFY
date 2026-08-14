@@ -5,10 +5,10 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const mainPath = path.resolve(__dirname, '../../../../../apps/dgfy-web/src/main.jsx');
-const legacyItemsPath = path.resolve(__dirname, '../../../../../apps/dgfy-web/Pages/Items.jsx');
-const legacyJobOrdersPath = path.resolve(__dirname, '../../../../../apps/dgfy-web/Pages/JobOrders.jsx');
-const legacyStockMovementsPath = path.resolve(__dirname, '../../../../../apps/dgfy-web/Pages/StockMovements.jsx');
+const mainPath = path.resolve(__dirname, '../../../../../apps/dgfy-ims/src/main.jsx');
+const legacyItemsPath = path.resolve(__dirname, '../../../../../apps/dgfy-ims/Pages/Items.jsx');
+const legacyJobOrdersPath = path.resolve(__dirname, '../../../../../apps/dgfy-ims/Pages/JobOrders.jsx');
+const legacyStockMovementsPath = path.resolve(__dirname, '../../../../../apps/dgfy-ims/Pages/StockMovements.jsx');
 const featureItemsPath = path.resolve(__dirname, '../inventory/pages/ItemsPage.jsx');
 const featureJobOrdersPath = path.resolve(__dirname, '../jobOrders/pages/JobOrdersPage.jsx');
 const featureStockMovementsPath = path.resolve(__dirname, '../stockMovements/pages/StockMovementsPage.jsx');

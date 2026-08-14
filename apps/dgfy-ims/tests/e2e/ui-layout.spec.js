@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { registerCrashDetection } from '../helpers/assertions.js';
+import { registerCrashDetection } from './helpers/assertions.js';
 
 test.describe('Skupervisor UI Responsive Layout Audits', () => {
   const viewports = [

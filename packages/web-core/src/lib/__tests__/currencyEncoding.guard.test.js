@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 // Components/ moved into packages/web-core (this package); the Pages/ below did not -- see
 // docs/architecture/frontend-split-sync.md.
 const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
-const appRoot = path.resolve(webCoreRoot, '../../apps/dgfy-web');
+const appRoot = path.resolve(webCoreRoot, '../../apps/dgfy-ims');
 const TARGET_FILES = [
   path.join(webCoreRoot, 'Components/items/ItemCard.jsx'),
   path.join(webCoreRoot, 'Components/items/ItemDetailsModal.jsx'),

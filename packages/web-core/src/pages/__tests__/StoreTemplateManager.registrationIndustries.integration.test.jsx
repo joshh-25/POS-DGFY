@@ -6,7 +6,7 @@
 import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import StoreTemplateManager from '../../../../../apps/dgfy-web/Pages/admin/StoreTemplateManager.jsx';
+import StoreTemplateManager from '../../../../../apps/dgfy-ims/Pages/admin/StoreTemplateManager.jsx';
 
 const mocks = vi.hoisted(() => ({
   adminService: {

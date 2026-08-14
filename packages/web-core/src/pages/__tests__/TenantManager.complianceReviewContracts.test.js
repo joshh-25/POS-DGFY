@@ -6,7 +6,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const tenantManagerPath = path.resolve(__dirname, '../../../../../apps/dgfy-web/Pages/admin/TenantManager.jsx');
+const tenantManagerPath = path.resolve(__dirname, '../../../../../apps/dgfy-ims/Pages/admin/TenantManager.jsx');
 
 describe('TenantManager compliance review contracts', () => {
   let tenantManagerContent = '';

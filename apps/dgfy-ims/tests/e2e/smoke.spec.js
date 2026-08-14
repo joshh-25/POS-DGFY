@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { SKUPERVISOR_URL } from '../helpers/urls.js';
-import { registerCrashDetection } from '../helpers/assertions.js';
+import { SKUPERVISOR_URL } from './helpers/urls.js';
+import { registerCrashDetection } from './helpers/assertions.js';
 
 test.describe('Skupervisor Smoke Tests', () => {
   test('Login Page loads successfully', async ({ page }) => {

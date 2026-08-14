@@ -2,6 +2,7 @@
 export default {
   content: [
     "./index.html",
+    "./src/**/*.{js,ts,jsx,tsx}",
     "./*.{js,jsx,ts,tsx}",
     "./Pages/**/*.{js,jsx}",
     // Shared trunk extracted to packages/web-core (issue #322); its src/ and Components/

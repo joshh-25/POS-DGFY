@@ -6,10 +6,10 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../..');
 
 const guardedRoots = [
-  // apps/dgfy-web/src is now just main.jsx -- the shared trunk this guard originally scanned
+  // apps/dgfy-ims/src is now just main.jsx -- the shared trunk this guard originally scanned
   // moved to packages/web-core/src (issue #322 Phase 2). Kept for completeness/safety.
-  'apps/dgfy-web/src',
-  'apps/dgfy-web/Pages',
+  'apps/dgfy-ims/src',
+  'apps/dgfy-ims/Pages',
   'apps/dgfy-storefront/src',
   'apps/dgfy-pos/src',
   'packages/web-core/src',

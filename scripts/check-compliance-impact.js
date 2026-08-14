@@ -116,8 +116,9 @@ const COMPLIANCE_SENSITIVE_RULES = [
     surfaces: ['settings', 'compliance'],
     minimumClassification: 'regulatory'
   },
-  // Shared trunk extracted to packages/web-core (issue #322); apps/dgfy-web/Pages/ (root,
-  // capital-P) was NOT moved -- see docs/architecture/frontend-split-sync.md.
+  // Shared trunk extracted to packages/web-core (issue #322); Pages/ (root, capital-P) moved
+  // to apps/dgfy-ims/Pages/ in Phase 5, not to packages/web-core -- see
+  // docs/architecture/frontend-split-sync.md.
   {
     pattern: /^packages\/web-core\/src\/features\/pos\//,
     surfaces: ['pos', 'terminal'],
@@ -134,7 +135,7 @@ const COMPLIANCE_SENSITIVE_RULES = [
     minimumClassification: 'major'
   },
   {
-    pattern: /^apps\/dgfy-web\/Pages\/Settings\.jsx$/,
+    pattern: /^apps\/dgfy-ims\/Pages\/Settings\.jsx$/,
     surfaces: ['settings'],
     minimumClassification: 'major'
   },
@@ -154,7 +155,7 @@ const COMPLIANCE_SENSITIVE_RULES = [
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^apps\/dgfy-web\/Pages\/admin\/TenantManager\.jsx$/,
+    pattern: /^apps\/dgfy-ims\/Pages\/admin\/TenantManager\.jsx$/,
     surfaces: ['settings', 'compliance'],
     minimumClassification: 'regulatory'
   }

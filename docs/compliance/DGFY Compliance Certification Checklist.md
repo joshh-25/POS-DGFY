@@ -137,7 +137,7 @@ Score formula: `round((runtime*0.35 + tests*0.30 + documentary*0.20 + risk*0.15)
 
 - [x] Breach Notification Tooling
   - Evidence: Immutable `security_signal` incidents support auditable admin workflow and dispatch-attempt metadata.
-  - References: `apps/dgfy-api/src/modules/compliance/usecases/complianceUseCases.js`, `apps/dgfy-api/src/routes/adminTenants.js`, `apps/dgfy-web/Pages/admin/TenantManager.jsx`, `apps/dgfy-api/tests/complianceSecuritySignal.usecase.test.js`, `apps/dgfy-api/tests/complianceSecurityIncidents.usecase.test.js`.
+  - References: `apps/dgfy-api/src/modules/compliance/usecases/complianceUseCases.js`, `apps/dgfy-api/src/routes/adminTenants.js`, `apps/dgfy-ims/Pages/admin/TenantManager.jsx`, `apps/dgfy-api/tests/complianceSecuritySignal.usecase.test.js`, `apps/dgfy-api/tests/complianceSecurityIncidents.usecase.test.js`.
 
 ## 4. Payment Integration (BSP Avoidance Strategy)
 

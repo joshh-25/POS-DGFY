@@ -88,14 +88,16 @@ risk) or develop added a new file at an old path mid-merge. Each hit is printed 
 destination (or a note that no mapping exists, in which case place it by hand, referencing the
 current phase's target layout).
 
-**Only meaningful from Phase 5 onward.** The whole-tree prefix this checks (`apps/dgfy-web/`)
-is a stand-in for "should be empty," which only becomes true once Phase 5 retires the legacy
-root. Before that, `apps/dgfy-web/` is still the live home for everything not yet migrated
-(currently: `apps/{skupervisor,pos,store}`, `Layout.jsx`, `main.jsx`, most of `Pages/`), so this
-check reports hundreds of expected files as "resurrected." During Phases 0-4, the plain
-`report:frontend-split-sync` (no `--post-merge`) against `origin/develop` is the correct and
-sufficient check — it already scopes to the manifest's actual `prefixMap`/`retired` entries
-rather than the whole legacy root.
+**Meaningful from Phase 5 onward.** The whole-tree prefix this checks (`apps/dgfy-web/`) is a
+stand-in for "should be empty," which only became true once Phase 5 retired the legacy root
+(confirmed clean immediately after that phase's commits landed). Before Phase 5, `apps/dgfy-web/`
+was still the live home for everything not yet migrated, so this check would have reported
+hundreds of expected files as "resurrected" -- the plain `report:frontend-split-sync` (no
+`--post-merge`) against `origin/develop` was the correct and sufficient check during Phases 0-4,
+scoped to the manifest's actual `prefixMap`/`retired` entries rather than the whole legacy root.
+Now that `apps/dgfy-web/` no longer exists, any hit here means a develop merge resurrected a file
+at that dead path -- treat it the same as any other unmapped/resurrected file: `git mv` it to its
+mapped destination per the manifest (or place it by hand if unmapped) and re-run the check.
 
 Commit any absorbed fixes as `chore: absorb develop into frontend split`.
 

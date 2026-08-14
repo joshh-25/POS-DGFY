@@ -21,7 +21,7 @@ describe('POS page shell and route ownership', () => {
   });
 
   it('redirects the legacy feedback route and documents integrated versus dedicated POS routes', () => {
-    const main = read('apps/dgfy-web/src/main.jsx');
+    const main = read('apps/dgfy-ims/src/main.jsx');
 
     expect(main).toContain('path="/admin/feedback-old" element={<Navigate to="/admin/feedback" replace />}');
     expect(main).not.toContain('FeedbackViewer');

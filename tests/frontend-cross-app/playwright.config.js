@@ -11,13 +11,14 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '.env.e2e') });
 dotenv.config({ path: path.resolve(__dirname, '.env') });
 
-const baseURL = process.env.E2E_BASE_URL || 'http://localhost:5173';
+const storefrontURL = process.env.STOREFRONT_URL || 'http://localhost:5175';
+const posURL = process.env.E2E_BASE_URL || 'http://localhost:5174';
 const apiURL = process.env.E2E_API_URL || 'http://localhost:5000';
-const isLocalRun = /^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(baseURL);
+const isLocalRun = /^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(storefrontURL);
 
 export default defineConfig({
   testDir: './tests/e2e',
-  timeout: 45_000,
+  timeout: 60_000,
   expect: {
     timeout: 10_000,
   },
@@ -28,7 +29,6 @@ export default defineConfig({
   reporter: [['list'], ['html', { outputFolder: 'playwright-report', open: 'never' }]],
   outputDir: 'test-results',
   use: {
-    baseURL,
     headless: process.env.E2E_HEADLESS !== 'false',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -45,18 +45,28 @@ export default defineConfig({
       },
     },
   ],
+  // These specs build their own storefrontURL/posURL/apiURL per-request rather than
+  // navigating relative to a single Playwright `baseURL` -- see docs/architecture/
+  // frontend-split-sync.md. All three servers below still need to be up.
   webServer: isLocalRun ? [
     {
       command: 'npm run dev',
-      cwd: path.resolve(__dirname, '../dgfy-api'),
+      cwd: path.resolve(__dirname, '../../apps/dgfy-api'),
       url: `${apiURL}/api/v1/health`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },
     {
-      command: 'npm run dev:skupervisor',
-      cwd: __dirname,
-      url: `${baseURL}/login`,
+      command: 'npm run dev',
+      cwd: path.resolve(__dirname, '../../apps/dgfy-storefront'),
+      url: `${storefrontURL}/`,
+      reuseExistingServer: !process.env.CI,
+      timeout: 120_000,
+    },
+    {
+      command: 'npm run dev',
+      cwd: path.resolve(__dirname, '../../apps/dgfy-pos'),
+      url: `${posURL}/login`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },

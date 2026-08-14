@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import Settings from '../../../../../apps/dgfy-web/Pages/Settings.jsx';
+import Settings from '../../../../../apps/dgfy-ims/Pages/Settings.jsx';
 
 const mocks = vi.hoisted(() => ({
   storeState: {

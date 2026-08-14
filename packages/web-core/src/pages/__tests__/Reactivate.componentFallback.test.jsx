@@ -1,7 +1,7 @@
 import React from 'react';
 import { describe, expect, it, vi } from 'vitest';
 import { renderToStaticMarkup } from 'react-dom/server';
-import Reactivate from '../../../../../apps/dgfy-web/Pages/Reactivate.jsx';
+import Reactivate from '../../../../../apps/dgfy-ims/Pages/Reactivate.jsx';
 
 vi.mock('react-router-dom', () => ({
   Link: ({ to, children, ...props }) => React.createElement('a', { href: to, ...props }, children)
