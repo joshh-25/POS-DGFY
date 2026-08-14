@@ -38,7 +38,13 @@
 # below proxies to the `frontend-beta` service, the PRODUCTION domain group
 # further down proxies to `frontend` -- both share the same `dgfy-api`.
 
-resolver 127.0.0.11 valid=10s;
+# ipv6=off: this resolver also serves the runtime-resolved external
+# upstreams below (PostHog /ingest/, OpenFreeMap /openfreemap/). Docker's
+# embedded DNS returns AAAA records for those hostnames, but the
+# dgfy_internal bridge network has no IPv6 egress -- without ipv6=off nginx
+# picks the AAAA record and every request fails with "connect() ... failed
+# (101: Network unreachable)" (#431).
+resolver 127.0.0.11 valid=10s ipv6=off;
 
 # Root-owned provisioning tooling writes one validated server block per active
 # custom storefront. The web application has read-only registry access and never
