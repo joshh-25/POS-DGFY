@@ -5,10 +5,13 @@ import { describe, expect, it } from 'vitest';
 // Deliberately outside src/features/pos/ -- this is a pure infra/nginx
 // contract, not POS logic, so it must not drag in the compliance gate
 // that apps/dgfy-ims/src/features/pos/** triggers.
-const CONF_DIR = path.resolve(process.cwd(), '../../infrastructure/docker/frontend/conf.d');
-const APPS = ['pos', 'store', 'skupervisor'];
+const DOCKER_DIR = path.resolve(process.cwd(), '../../infrastructure/docker');
+// One nginx.conf per app now (issue #322 Phase 6 -- previously a shared
+// infrastructure/docker/frontend/conf.d/<app>.conf per SPA inside one image).
+const APP_DIRS = { pos: 'dgfy-pos', store: 'dgfy-storefront', skupervisor: 'dgfy-ims' };
+const APPS = Object.keys(APP_DIRS);
 
-const readConf = (app) => fs.readFileSync(path.join(CONF_DIR, `${app}.conf`), 'utf8');
+const readConf = (app) => fs.readFileSync(path.join(DOCKER_DIR, APP_DIRS[app], 'nginx.conf'), 'utf8');
 
 describe('frontend container nginx asset cache policy (issue #182)', () => {
   it.each(APPS)('%s.conf serves hashed assets as immutable and rejects missing ones with a real 404', (app) => {
