@@ -51,12 +51,16 @@ on:
           together, never separately -- compose's depends_on:
           service_completed_successfully means a mismatched pair (new api
           schema expectations against an old migration set, or vice versa)
-          is a real failure mode, not just caution.
+          is a real failure mode, not just caution. frontend = all 3 frontend
+          apps; dgfy-ims/dgfy-pos/dgfy-storefront build just one.
         type: choice
         options:
           - all
           - backend
           - frontend
+          - dgfy-ims
+          - dgfy-pos
+          - dgfy-storefront
         default: all
       deploy:
         description: SSH-deploy to the server after images are pushed
@@ -112,7 +116,9 @@ jobs:
       # runners needed would have it tunnel into itself.
       vpn_required: false
       build_api: ${{ inputs.components == 'all' || inputs.components == 'backend' }}
-      build_frontend: ${{ inputs.components == 'all' || inputs.components == 'frontend' }}
+      build_frontend_ims: ${{ inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-ims' }}
+      build_frontend_pos: ${{ inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-pos' }}
+      build_frontend_storefront: ${{ inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-storefront' }}
       runner_labels_json: '["self-hosted"]'
     secrets: inherit
     permissions:

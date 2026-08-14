@@ -3,6 +3,10 @@ name: PR Frontend Build Check
 on:
   workflow_call:
     inputs:
+      app:
+        description: One of dgfy-ims, dgfy-pos, dgfy-storefront
+        required: true
+        type: string
       runner_labels_json:
         description: JSON array passed to runs-on for this job
         required: false
@@ -22,17 +26,17 @@ jobs:
       # image builds cleanly off this PR's code. Deliberately omits the
       # VITE_* build-args block: those resolve from a GitHub Environment's
       # vars.* and aren't needed just to prove the build succeeds -- the
-      # Dockerfile's own ARG defaults are fine here. Reads the canonical
-      # `frontend` cache scope that deploy-frontend.yml writes (usually warm
-      # from the last develop/staging/main build). Deliberately no cache-to:
-      # a per-PR mode=max cache write is full-size and nothing ever reads it
-      # back (each PR only reads the canonical scope), so it was pure
-      # eviction pressure against the repo's 10GB Actions cache quota --
-      # see #412.
+      # Dockerfile's own ARG defaults are fine here. Reads this app's own
+      # cache scope (matching deploy-frontend.yml's per-app scope, issue #322
+      # Phase 6), usually warm from the last develop/staging/main build.
+      # Deliberately no cache-to: a per-PR mode=max cache write is full-size
+      # and nothing ever reads it back (each PR only reads the canonical
+      # scope), so it was pure eviction pressure against the repo's 10GB
+      # Actions cache quota -- see #412.
       - name: Build frontend image (no push)
         uses: docker/build-push-action@v6
         with:
           context: .
-          file: infrastructure/docker/frontend/Dockerfile
+          file: infrastructure/docker/${{ inputs.app }}/Dockerfile
           push: false
-          cache-from: type=gha,scope=frontend
+          cache-from: type=gha,scope=${{ inputs.app }}

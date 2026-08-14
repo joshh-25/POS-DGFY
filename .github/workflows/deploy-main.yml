@@ -11,12 +11,15 @@ on:
   workflow_dispatch:
     inputs:
       components:
-        description: Which images to build. backend = api + migration-runner together (see deploy.yml for why they're never split).
+        description: Which images to build. backend = api + migration-runner together (see deploy.yml for why they're never split). frontend = all 3 frontend apps; dgfy-ims/dgfy-pos/dgfy-storefront build just one.
         type: choice
         options:
           - all
           - backend
           - frontend
+          - dgfy-ims
+          - dgfy-pos
+          - dgfy-storefront
         default: all
       deploy:
         description: SSH-deploy to the server after images are pushed
@@ -33,15 +36,19 @@ permissions:
 
 # DUAL-DEPLOY (2026-07-20): dgfy.ph went live in production alongside
 # beta.dgfy.ph, both domain groups sharing ONE backend/MySQL/Redis on the same
-# server. Dispatching this with components:all (the default) builds BOTH
-# frontends and deploys them together:
+# server. Dispatching this with components:all (the default) builds all 6
+# frontend images and deploys them together:
 #
-#   * frontend:beta    -- built against the BETA GitHub Environment's VITE_*
-#                         (beta.dgfy.ph auth/handoff URLs). Served by the
-#                         `frontend-beta` container -> *.beta.dgfy.ph.
-#   * frontend:latest  -- built against the PROD GitHub Environment's VITE_*
-#                         (dgfy.ph auth/handoff URLs). Served by the `frontend`
-#                         container -> the *.dgfy.ph production domains.
+#   * dgfy-ims:beta / dgfy-pos:beta / dgfy-storefront:beta
+#                         -- built against the BETA GitHub Environment's
+#                         VITE_* (beta.dgfy.ph auth/handoff URLs). Served by
+#                         the `dgfy-{ims,pos,storefront}-beta` containers ->
+#                         *.beta.dgfy.ph.
+#   * dgfy-ims:latest / dgfy-pos:latest / dgfy-storefront:latest
+#                         -- built against the PROD GitHub Environment's
+#                         VITE_* (dgfy.ph auth/handoff URLs). Served by the
+#                         `dgfy-{ims,pos,storefront}` containers -> the
+#                         *.dgfy.ph production domains.
 #   * api:beta         -- built ONCE and shared (from apps/dgfy-api, plus a
 #                         paired migration-runner:beta image). The api image
 #                         is environment-agnostic (deploy-api.yml passes no
@@ -49,10 +56,10 @@ permissions:
 #                         server's hand-maintained .env), so there is no
 #                         separate prod api build.
 #
-# After all three images are pushed, a SINGLE publish job SSH-deploys once
+# After all seven images are pushed, a SINGLE publish job SSH-deploys once
 # (docker compose pull && up -d against the server's own compose), which
-# refreshes frontend-beta:beta, frontend:latest and backend:beta in one go.
-# The deploy is resolved from the PROD Environment's SSH secrets (validated in
+# refreshes all six frontend containers and backend:beta in one go. The
+# deploy is resolved from the PROD Environment's SSH secrets (validated in
 # the 2026-07-20 cutover); BETA and PROD carry the same deploy secrets since it
 # is one server.
 #
@@ -99,11 +106,23 @@ jobs:
       contents: read
       packages: write
 
-  # Beta frontend image (beta.dgfy.ph VITE_* baked in).
-  frontend-beta:
-    if: inputs.components == 'all' || inputs.components == 'frontend'
+  # Six frontend image builds (3 apps x beta/prod), fully serialized into one
+  # chain via `needs`. issue #322 Phase 6 replaced the single combined
+  # `frontend` image with one image per app, so the 2-job beta->prod chain
+  # this workflow used before (added 2026-08-14, #427, after a real GHCR
+  # secondary-rate-limit 403 when two large pushes ran in parallel -- see run
+  # 31728787346) is extended to all six pushes rather than run as 3
+  # independent 2-job chains: all six still push to the same GHCR org around
+  # the same time, so 3 parallel chains would reintroduce the same class of
+  # failure the original serialization fixed. This costs several extra
+  # minutes of wall-clock versus any parallelism, which is the accepted
+  # trade -- see the frontend-pos-beta step comment below for the "if"/needs
+  # mechanics.
+  frontend-ims-beta:
+    if: inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-ims'
     uses: ./.github/workflows/deploy-frontend.yml
     with:
+      app: dgfy-ims
       environment: BETA
       image_tags: "beta"
       # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
@@ -113,29 +132,12 @@ jobs:
       contents: read
       packages: write
 
-  # Prod frontend image (dgfy.ph VITE_* baked in).
-  #
-  # `needs: frontend-beta` added 2026-08-14 (#427): this job and
-  # frontend-beta both push a large image to GHCR, and running them in
-  # parallel is what tripped GHCR's secondary rate limit in run
-  # 31728787346 (frontend-prod's push got a 403 mid-deploy while
-  # frontend-beta, started slightly earlier, succeeded). Serializing them
-  # costs ~4-5 extra minutes of wall-clock on this workflow only.
-  #
-  # Side effect worth knowing: `needs` on a job whose `if:` does not
-  # reference success()/always()/failure()/cancelled() keeps GitHub's
-  # default implicit gate -- frontend-prod now only runs if frontend-beta
-  # actually succeeded, where before they were independent attempts. If
-  # frontend-beta fails, frontend-prod is skipped (not attempted), and the
-  # publish job below correctly refuses to deploy either -- its `if`
-  # requires BOTH frontend-beta.result != 'failure' AND
-  # frontend-prod.result != 'failure', so a beta failure blocks prod's
-  # deploy too even though frontend-prod itself never ran.
-  frontend-prod:
-    needs: frontend-beta
-    if: inputs.components == 'all' || inputs.components == 'frontend'
+  frontend-ims-prod:
+    needs: frontend-ims-beta
+    if: inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-ims'
     uses: ./.github/workflows/deploy-frontend.yml
     with:
+      app: dgfy-ims
       environment: PROD
       image_tags: "latest"
       # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
@@ -145,20 +147,96 @@ jobs:
       contents: read
       packages: write
 
-  # Single SSH deploy that refreshes all three images on the server in one
+  # `needs: frontend-ims-prod` (not just frontend-pos-beta on its own chain):
+  # keeps this whole 6-job build serialized end-to-end. Side effect worth
+  # knowing (applies to every needs: link in this chain): `needs` on a job
+  # whose `if:` does not reference success()/always()/failure()/cancelled()
+  # keeps GitHub's default implicit gate -- a job only runs if the one it
+  # needs actually succeeded. A failure anywhere in the chain skips (not
+  # attempts) everything after it, and the publish job below correctly
+  # refuses to deploy when any job in the chain failed.
+  frontend-pos-beta:
+    needs: frontend-ims-prod
+    if: inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-pos'
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      app: dgfy-pos
+      environment: BETA
+      image_tags: "beta"
+      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
+      runner_labels_json: '["self-hosted"]'
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
+  frontend-pos-prod:
+    needs: frontend-pos-beta
+    if: inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-pos'
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      app: dgfy-pos
+      environment: PROD
+      image_tags: "latest"
+      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
+      runner_labels_json: '["self-hosted"]'
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
+  frontend-storefront-beta:
+    needs: frontend-pos-prod
+    if: inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-storefront'
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      app: dgfy-storefront
+      environment: BETA
+      image_tags: "beta"
+      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
+      runner_labels_json: '["self-hosted"]'
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
+  frontend-storefront-prod:
+    needs: frontend-storefront-beta
+    if: inputs.components == 'all' || inputs.components == 'frontend' || inputs.components == 'dgfy-storefront'
+    uses: ./.github/workflows/deploy-frontend.yml
+    with:
+      app: dgfy-storefront
+      environment: PROD
+      image_tags: "latest"
+      # runner_labels_json: '["ubuntu-latest"]'  # revert to this when hosted runners are back
+      runner_labels_json: '["self-hosted"]'
+    secrets: inherit
+    permissions:
+      contents: read
+      packages: write
+
+  # Single SSH deploy that refreshes all seven images on the server in one
   # `docker compose pull && up -d`. Runs unless any image build actually
-  # failed or was cancelled - a `skipped` result (e.g. once a changed-paths
-  # gate is added here) must still allow publish to proceed with whichever
-  # images did build, matching deployment-orchestrator.yml's publish gate.
+  # failed or was cancelled - a `skipped` result (e.g. a components dispatch
+  # that only picked one app) must still allow publish to proceed with
+  # whichever images did build, matching deployment-orchestrator.yml's
+  # publish gate.
   publish:
-    needs: [ dgfy-api, dgfy-migration-runner, frontend-beta, frontend-prod ]
+    needs: [ dgfy-api, dgfy-migration-runner, frontend-ims-beta, frontend-ims-prod, frontend-pos-beta, frontend-pos-prod, frontend-storefront-beta, frontend-storefront-prod ]
     if: >-
       inputs.deploy && !cancelled() &&
       needs.dgfy-api.result != 'failure' &&
       needs.dgfy-migration-runner.result != 'failure' &&
-      needs.frontend-beta.result != 'failure' &&
-      needs.frontend-prod.result != 'failure' &&
-      (needs.dgfy-api.result == 'success' || needs.dgfy-migration-runner.result == 'success' || needs.frontend-beta.result == 'success' || needs.frontend-prod.result == 'success')
+      needs.frontend-ims-beta.result != 'failure' &&
+      needs.frontend-ims-prod.result != 'failure' &&
+      needs.frontend-pos-beta.result != 'failure' &&
+      needs.frontend-pos-prod.result != 'failure' &&
+      needs.frontend-storefront-beta.result != 'failure' &&
+      needs.frontend-storefront-prod.result != 'failure' &&
+      (needs.dgfy-api.result == 'success' || needs.dgfy-migration-runner.result == 'success' ||
+       needs.frontend-ims-beta.result == 'success' || needs.frontend-ims-prod.result == 'success' ||
+       needs.frontend-pos-beta.result == 'success' || needs.frontend-pos-prod.result == 'success' ||
+       needs.frontend-storefront-beta.result == 'success' || needs.frontend-storefront-prod.result == 'success')
     uses: ./.github/workflows/publish-platform.yml
     with:
       environment: PROD
