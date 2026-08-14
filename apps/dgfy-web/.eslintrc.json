@@ -36,20 +36,13 @@
     },
     "overrides": [
         {
-            "files": ["apps/store/src/StorefrontApp.jsx"],
-            "rules": {
-                "react-hooks/preserve-manual-memoization": "warn",
-                "max-lines": "off"
-            }
-        },
-        {
             "files": ["**/__tests__/**", "**/*.test.js", "**/*.test.jsx"],
             "rules": {
                 "max-lines": "off"
             }
         },
         {
-            "files": ["**/*.config.js", "**/*.config.mjs", "**/*.config.cjs", "apps/pos/vitePosOfflinePrecachePlugin.js"],
+            "files": ["**/*.config.js", "**/*.config.mjs", "**/*.config.cjs"],
             "rules": {
                 "no-restricted-syntax": "off"
             }

@@ -320,7 +320,7 @@ function App() {
   )
 }
 
-// Mirrors apps/pos/src/main.jsx's identity sync: resolves the signed-in
+// Mirrors apps/dgfy-pos/src/main.jsx's identity sync: resolves the signed-in
 // staff member via getCurrentUser() (same call PermissionContext makes) on
 // mount and on auth state changes, without expanding PermissionContext's
 // public API. Feeds both PostHog and Sentry from this single lookup rather

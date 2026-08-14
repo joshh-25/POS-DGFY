@@ -19,7 +19,8 @@
     { "old": "apps/dgfy-web/tests/e2e/store/", "new": "apps/dgfy-storefront/tests/e2e/" },
     { "old": "apps/dgfy-web/apps/pos/", "new": "apps/dgfy-pos/" },
     { "old": "apps/dgfy-web/desktop/pos-electron/", "new": "apps/dgfy-pos/desktop/pos-electron/" },
-    { "old": "apps/dgfy-web/tests/e2e/pos/", "new": "apps/dgfy-pos/tests/e2e/pos/" }
+    { "old": "apps/dgfy-web/tests/e2e/pos/", "new": "apps/dgfy-pos/tests/e2e/pos/" },
+    { "old": "apps/dgfy-web/tests/e2e/auth/", "new": "apps/dgfy-pos/tests/e2e/auth/" }
   ],
   "specialCases": [
     { "old": "apps/dgfy-web/src/index.css", "new": "packages/web-core/src/index.css" },

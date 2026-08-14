@@ -1,25 +1,25 @@
 import React, { lazy, Suspense, useEffect } from 'react';
 import ReactDOM from 'react-dom/client';
 import { HashRouter, Link, Route, Routes, useLocation } from 'react-router-dom';
-import TerminalPage from '../../../../../packages/web-core/src/features/pos/pages/TerminalPage.jsx';
-import ErrorBoundary from '../../../../../packages/web-core/src/components/common/ErrorBoundary.jsx';
-import GlobalApiErrorListener from '../../../../../packages/web-core/src/components/common/GlobalApiErrorListener.jsx';
-import { PermissionProvider } from '../../../../../packages/web-core/src/store/PermissionContext.jsx';
-import { WorkflowModeProvider } from '../../../../../packages/web-core/src/features/settings/WorkflowModeContext.jsx';
+import TerminalPage from '../../../packages/web-core/src/features/pos/pages/TerminalPage.jsx';
+import ErrorBoundary from '../../../packages/web-core/src/components/common/ErrorBoundary.jsx';
+import GlobalApiErrorListener from '../../../packages/web-core/src/components/common/GlobalApiErrorListener.jsx';
+import { PermissionProvider } from '../../../packages/web-core/src/store/PermissionContext.jsx';
+import { WorkflowModeProvider } from '../../../packages/web-core/src/features/settings/WorkflowModeContext.jsx';
 import { Toaster } from '@/components/ui/sonner';
-import { buildSkupervisorPath } from '../../../../../packages/web-core/src/features/pos/utils/skupervisorHandoff.js';
-import { login as loginTenantSession } from '../../../../../packages/web-core/src/services/authService.js';
-import { getCurrentUser } from '../../../../../packages/web-core/src/services/authService.js';
-import { initBrowserSentry, identifySentryUser, resetSentryIdentity, setSentryContext, setSentryRoute } from '../../../../../packages/web-core/src/observability/sentryClient.js';
+import { buildSkupervisorPath } from '../../../packages/web-core/src/features/pos/utils/skupervisorHandoff.js';
+import { login as loginTenantSession } from '../../../packages/web-core/src/services/authService.js';
+import { getCurrentUser } from '../../../packages/web-core/src/services/authService.js';
+import { initBrowserSentry, identifySentryUser, resetSentryIdentity, setSentryContext, setSentryRoute } from '../../../packages/web-core/src/observability/sentryClient.js';
 import {
   capturePageview,
   identifyAnalyticsUser,
   initBrowserAnalytics,
   resetAnalyticsIdentity,
   setAnalyticsContext
-} from '../../../../../packages/web-core/src/observability/analyticsClient.js';
-import { reloadOnceForChunkFailure } from '../../../../../packages/web-core/src/utils/chunkLoadRecovery.js';
-import '../../../../../packages/web-core/src/index.css';
+} from '../../../packages/web-core/src/observability/analyticsClient.js';
+import { reloadOnceForChunkFailure } from '../../../packages/web-core/src/utils/chunkLoadRecovery.js';
+import '../../../packages/web-core/src/index.css';
 
 // Vite's own dynamic-import helper (__vitePreload) fires this event on a
 // chunk-load failure -- it's the only thing that catches the idle-time
@@ -81,10 +81,10 @@ const devAutoLoginCompanyToken = String(import.meta.env.VITE_POS_DEV_COMPANY_TOK
 const devAutoLoginEmail = String(import.meta.env.VITE_POS_DEV_EMAIL || 'admin@test.com').trim();
 const devAutoLoginPassword = String(import.meta.env.VITE_POS_DEV_PASSWORD || 'Admin123!').trim();
 const POS_DEV_SERVICE_WORKER_RESET_MARKER = 'dgfy_pos_dev_service_worker_reset_v1';
-const DgfyAuthPage = lazy(() => import('../../../../../packages/web-core/Pages/DgfyAuthPage.jsx'));
-const DgfyCompanySelect = lazy(() => import('../../../../../packages/web-core/Pages/DgfyCompanySelect.jsx'));
-const RegisterCompany = lazy(() => import('../../../../../packages/web-core/Pages/RegisterCompany.jsx'));
-const CompanyRegistrationStatus = lazy(() => import('../../../../../packages/web-core/Pages/CompanyRegistrationStatus.jsx'));
+const DgfyAuthPage = lazy(() => import('../../../packages/web-core/Pages/DgfyAuthPage.jsx'));
+const DgfyCompanySelect = lazy(() => import('../../../packages/web-core/Pages/DgfyCompanySelect.jsx'));
+const RegisterCompany = lazy(() => import('../../../packages/web-core/Pages/RegisterCompany.jsx'));
+const CompanyRegistrationStatus = lazy(() => import('../../../packages/web-core/Pages/CompanyRegistrationStatus.jsx'));
 
 initBrowserSentry({ surface: 'pos' });
 initBrowserAnalytics({ surface: 'pos' });

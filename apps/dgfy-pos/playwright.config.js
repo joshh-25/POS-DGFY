@@ -11,7 +11,7 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '.env.e2e') });
 dotenv.config({ path: path.resolve(__dirname, '.env') });
 
-const baseURL = process.env.E2E_BASE_URL || 'http://localhost:5173';
+const baseURL = process.env.E2E_BASE_URL || 'http://localhost:5174';
 const apiURL = process.env.E2E_API_URL || 'http://localhost:5000';
 const isLocalRun = /^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(baseURL);
 
@@ -39,9 +39,25 @@ export default defineConfig({
   projects: [
     {
       name: 'google-chrome',
+      testIgnore: [/.*\.setup\.js/, /.*\.authenticated\.spec\.js/],
       use: {
         ...devices['Desktop Chrome'],
         channel: 'chrome',
+      },
+    },
+    {
+      name: 'setup',
+      testMatch: /.*\.setup\.js/,
+      use: { ...devices['Desktop Chrome'], channel: 'chrome' },
+    },
+    {
+      name: 'authenticated-google-chrome',
+      testMatch: /.*\.authenticated\.spec\.js/,
+      dependencies: ['setup'],
+      use: {
+        ...devices['Desktop Chrome'],
+        channel: 'chrome',
+        storageState: 'playwright/.auth/user.json',
       },
     },
   ],
@@ -54,7 +70,7 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: 'npm run dev:skupervisor',
+      command: 'npm run dev',
       cwd: __dirname,
       url: `${baseURL}/login`,
       reuseExistingServer: !process.env.CI,

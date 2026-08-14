@@ -27,8 +27,8 @@ const isDevShell = () => !getApp().isPackaged && Boolean(process.env.POS_ELECTRO
 const getProtocolRoot = () => (getApp().isPackaged ? process.resourcesPath : FRONTEND_ROOT);
 const getDistEntryPath = () => (
   getApp().isPackaged
-    ? path.join(process.resourcesPath, 'dist-apps', 'pos', 'index.html')
-    : path.join(FRONTEND_ROOT, 'dist-apps', 'pos', 'index.html')
+    ? path.join(process.resourcesPath, 'dist', 'index.html')
+    : path.join(FRONTEND_ROOT, 'dist', 'index.html')
 );
 
 const getRuntimeConfigPath = () => path.join(getApp().getPath('userData'), RUNTIME_CONFIG_FILE);
@@ -172,10 +172,10 @@ const loadRenderer = async (windowInstance, runtimeConfig) => {
   const distEntry = getDistEntryPath();
 
   if (!fs.existsSync(distEntry)) {
-    throw new Error(`POS desktop bundle not found at ${distEntry}. Run "npm run build:pos" first.`);
+    throw new Error(`POS desktop bundle not found at ${distEntry}. Run "npm run build" first.`);
   }
 
-  const packagedUrl = `${APP_PROTOCOL}://app/dist-apps/pos/index.html#/terminal`;
+  const packagedUrl = `${APP_PROTOCOL}://app/dist/index.html#/terminal`;
   appendStartupLog('loading-packaged-pos', { distEntry, url: packagedUrl });
   await windowInstance.loadURL(packagedUrl);
 };

@@ -1,20 +1,36 @@
-﻿import { defineConfig } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { configDefaults } from 'vitest/config';
 import { fileURLToPath } from 'url';
 import path from 'path';
-import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../../../packages/web-core/vite/sentryViteConfig.js';
-import { buildWebCoreRuntimeDepAliases } from '../../../../packages/web-core/vite/webCoreRuntimeDeps.js';
+import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../packages/web-core/vite/sentryViteConfig.js';
+import { buildWebCoreRuntimeDepAliases } from '../../packages/web-core/vite/webCoreRuntimeDeps.js';
 import { posOfflinePrecachePlugin } from './vitePosOfflinePrecachePlugin.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const frontendRoot = path.resolve(__dirname, '../..');
-// Shared trunk extracted to packages/web-core (issue #322). Alias keys are unchanged from
-// before the split -- only their targets moved. See docs/architecture/frontend-split-sync.md.
-const webCoreRoot = path.resolve(frontendRoot, '../../packages/web-core');
+// Shared trunk extracted to packages/web-core (issue #322). Alias key is unchanged from
+// before the split -- only its target moved. See docs/architecture/frontend-split-sync.md.
+const webCoreRoot = path.resolve(__dirname, '../../packages/web-core');
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000';
 const allowedHosts = true;
 const appSurface = 'pos';
+const appNodeModules = path.resolve(__dirname, 'node_modules');
+// This app's own src/main.jsx only imports `@/components/ui/sonner` directly, but it also
+// pulls in TerminalPage.jsx and WorkflowModeContext.jsx from packages/web-core, and THEIR
+// own internal code still uses the pre-extraction `@/...` self-referential alias convention
+// (see docs/architecture/frontend-split-sync.md) -- so the full set web-core's source relies
+// on must be aliased here, not just what main.jsx itself references.
+const sharedAliases = [
+  { find: '@/hooks', replacement: path.resolve(webCoreRoot, 'src/hooks') },
+  { find: '@/components', replacement: path.resolve(webCoreRoot, 'Components') },
+  { find: '@/lib', replacement: path.resolve(webCoreRoot, 'src/lib') },
+  { find: '@/services', replacement: path.resolve(webCoreRoot, 'src/services') },
+  { find: '@/src', replacement: path.resolve(webCoreRoot, 'src') },
+  // Bare packages web-core's own source imports -- it has no node_modules of its own,
+  // so these must resolve against this app's instead. See webCoreRuntimeDeps.js.
+  ...buildWebCoreRuntimeDepAliases(appNodeModules)
+];
 const proxyTargets = {
   '/api': {
     target: apiProxyTarget,
@@ -46,20 +62,8 @@ const proxyTargets = {
     rewrite: (path) => path.replace(/^\/ingest/, '')
   }
 };
-const frontendNodeModules = path.resolve(frontendRoot, 'node_modules');
-const reactAliases = [
-  { find: /^react$/, replacement: path.resolve(frontendNodeModules, 'react') },
-  { find: /^react\/jsx-runtime$/, replacement: path.resolve(frontendNodeModules, 'react/jsx-runtime.js') },
-  { find: /^react\/jsx-dev-runtime$/, replacement: path.resolve(frontendNodeModules, 'react/jsx-dev-runtime.js') },
-  { find: /^react-dom$/, replacement: path.resolve(frontendNodeModules, 'react-dom') },
-  { find: /^react-dom\/client$/, replacement: path.resolve(frontendNodeModules, 'react-dom/client.js') },
-  { find: /^react-router$/, replacement: path.resolve(frontendNodeModules, 'react-router') },
-  { find: /^react-router-dom$/, replacement: path.resolve(frontendNodeModules, 'react-router-dom') }
-];
 
 export default defineConfig({
-  root: __dirname,
-  cacheDir: path.resolve(frontendRoot, 'node_modules/.vite-pos'),
   base: './',
   plugins: [react(), posOfflinePrecachePlugin(), ...buildSentryVitePlugins(appSurface)],
   define: {
@@ -67,20 +71,8 @@ export default defineConfig({
   },
   resolve: {
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom'],
-    alias: [
-      ...reactAliases,
-      { find: '@/hooks', replacement: path.resolve(webCoreRoot, 'src/hooks') },
-      { find: '@/components', replacement: path.resolve(webCoreRoot, 'Components') },
-      { find: '@/Pages', replacement: path.resolve(frontendRoot, 'Pages') },
-      { find: '@/lib', replacement: path.resolve(webCoreRoot, 'src/lib') },
-      { find: '@/services', replacement: path.resolve(webCoreRoot, 'src/services') },
-      { find: '@/src', replacement: path.resolve(webCoreRoot, 'src') },
-      // Bare packages web-core's own source imports -- it has no node_modules of its own,
-      // so these must resolve against this app's instead. See webCoreRuntimeDeps.js.
-      ...buildWebCoreRuntimeDepAliases(frontendNodeModules),
-      { find: '@', replacement: frontendRoot }
-    ],
-    extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json']
+    // More specific aliases must come first.
+    alias: sharedAliases
   },
   optimizeDeps: {
     include: ['react', 'react-dom', 'react-router', 'react-router-dom']
@@ -98,7 +90,7 @@ export default defineConfig({
     proxy: proxyTargets
   },
   build: {
-    outDir: path.resolve(__dirname, '../../../../dist-apps/pos'),
+    outDir: path.resolve(__dirname, 'dist'),
     emptyOutDir: true,
     sourcemap: sentrySourcemapBuildValue(appSurface),
     // iMin POS WebView is Chrome 80-84 (no String.replaceAll, ES2021). See DGFY-POS-B.
@@ -116,5 +108,11 @@ export default defineConfig({
         }
       }
     }
-  }
+  },
+  test: {
+    // Playwright owns browser E2E specs (tests/e2e/**); Vitest must run only unit/component
+    // tests. packages/web-core's own tests run from apps/dgfy-ims, not here -- see
+    // docs/architecture/frontend-split-sync.md.
+    exclude: [...configDefaults.exclude, 'tests/e2e/**'],
+  },
 });

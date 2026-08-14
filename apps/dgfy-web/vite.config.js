@@ -14,7 +14,9 @@ const webCoreRoot = path.resolve(__dirname, '../../packages/web-core')
 // files (Vite's JSX-runtime auto-injection pre-bundles them regardless of importer location),
 // but NOT react-router-dom/react-router under Vitest's SSR module runner -- confirmed by every
 // packages/web-core test importing it failing with "Failed to resolve import 'react-router-dom'"
-// until aliased explicitly here, mirroring apps/pos and apps/store's reactAliases.
+// until aliased explicitly here. This app's own vitest suite (the only one left running
+// through Vitest's SSR module runner in the monolith) is why this stays; the split-out apps
+// don't need it since they only ever run `vite build`/`vite dev` against these packages.
 const routerAliases = [
   { find: /^react-router$/, replacement: path.resolve(__dirname, 'node_modules/react-router') },
   { find: /^react-router-dom$/, replacement: path.resolve(__dirname, 'node_modules/react-router-dom') },

@@ -43,10 +43,10 @@ describe('assetUrl utilities', () => {
 
   it('resolves app-bundled assets against the desktop shell location', () => {
     const url = resolveAppAssetUrl('/pos-items/coffee.jpg', {
-      baseHref: 'dgfypos://app/dist-apps/pos/index.html#/terminal'
+      baseHref: 'dgfypos://app/dist/index.html#/terminal'
     });
 
-    expect(url).toBe('dgfypos://app/dist-apps/pos/pos-items/coffee.jpg');
+    expect(url).toBe('dgfypos://app/dist/pos-items/coffee.jpg');
   });
 
   it('resolves optimized asset variant siblings from the stored large url', () => {

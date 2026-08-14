@@ -14,8 +14,8 @@
   ],
   "extraResources": [
     {
-      "from": "../../dist-apps/pos",
-      "to": "dist-apps/pos",
+      "from": "../../dist",
+      "to": "dist",
       "filter": [
         "**/*"
       ]

@@ -4,9 +4,9 @@ Windows desktop packaging for the standalone POS surface.
 
 ## Local commands
 
-- `npm run build:pos`
+- `npm run build`
 - `npm run desktop:pos`
-- `npm run build:pos:desktop`
+- `npm run build:desktop`
 
 ## Runtime config
 

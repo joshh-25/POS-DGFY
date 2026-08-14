@@ -16,6 +16,10 @@ node_modules/
 /apps/dgfy-storefront/test-results/
 /apps/dgfy-storefront/playwright/.auth/
 /apps/dgfy-storefront/.env.e2e
+/apps/dgfy-pos/playwright-report/
+/apps/dgfy-pos/test-results/
+/apps/dgfy-pos/playwright/.auth/
+/apps/dgfy-pos/.env.e2e
 
 # Legacy frontend local artifacts and secrets. The maintained Playwright
 # workspace lives under apps/dgfy-web, but local compatibility runs may still
@@ -98,10 +102,11 @@ htdocs/.htaccess
 .vite/
 .deploy-state/
 /dist-apps/
-/apps/dgfy-web/desktop-dist/
 /apps/dgfy-storefront/src/scratch/
 /apps/dgfy-storefront/.tmp-store-build/
 /apps/dgfy-storefront/dist/
+/apps/dgfy-pos/dist/
+/apps/dgfy-pos/desktop-dist/
 
 nul
 

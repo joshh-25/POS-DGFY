@@ -141,15 +141,15 @@ const buildDesktopHashRedirect = (path, search = '') => {
   const hashTarget = `#${normalizedPath}${normalizedSearch}`;
 
   if (typeof window === 'undefined') {
-    return `/dist-apps/pos/index.html${hashTarget}`;
+    return `/dist/index.html${hashTarget}`;
   }
 
   const protocol = String(window.location?.protocol || '').toLowerCase();
   if (protocol === 'dgfypos:') {
-    return `dgfypos://app/dist-apps/pos/index.html${hashTarget}`;
+    return `dgfypos://app/dist/index.html${hashTarget}`;
   }
 
-  return `/dist-apps/pos/index.html${hashTarget}`;
+  return `/dist/index.html${hashTarget}`;
 };
 
 const getSessionExpiredRedirect = () => {

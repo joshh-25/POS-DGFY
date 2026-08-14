@@ -4,16 +4,17 @@ import { describe, expect, it } from 'vitest';
 import {
   createPosOfflineBuildRevision,
   POS_OFFLINE_BUILD_REVISION_TOKEN
-} from '../../../../../../apps/dgfy-web/apps/pos/vitePosOfflinePrecachePlugin.js';
+} from '../../../../../../apps/dgfy-pos/vitePosOfflinePrecachePlugin.js';
 
 const frontendRoot = process.cwd();
-const posServiceWorkerPath = path.resolve(frontendRoot, 'apps/pos/public/sw.js');
+// apps/dgfy-pos and apps/dgfy-storefront (issue #322 split) are siblings of apps/dgfy-web,
+// not nested under it.
+const posServiceWorkerPath = path.resolve(frontendRoot, '../dgfy-pos/public/sw.js');
 const skupervisorServiceWorkerPath = path.resolve(frontendRoot, 'apps/skupervisor/public/sw.js');
-// apps/dgfy-storefront (issue #322 split) is a sibling of apps/dgfy-web, not nested under it.
 const storeServiceWorkerPath = path.resolve(frontendRoot, '../dgfy-storefront/public/sw.js');
-const posMainPath = path.resolve(frontendRoot, 'apps/pos/src/main.jsx');
-const posPrecachePluginPath = path.resolve(frontendRoot, 'apps/pos/vitePosOfflinePrecachePlugin.js');
-const posViteConfigPath = path.resolve(frontendRoot, 'apps/pos/vite.config.js');
+const posMainPath = path.resolve(frontendRoot, '../dgfy-pos/src/main.jsx');
+const posPrecachePluginPath = path.resolve(frontendRoot, '../dgfy-pos/vitePosOfflinePrecachePlugin.js');
+const posViteConfigPath = path.resolve(frontendRoot, '../dgfy-pos/vite.config.js');
 
 const readSource = (filePath) => fs.readFileSync(filePath, 'utf8');
 

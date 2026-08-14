@@ -135,14 +135,11 @@ ENV VITE_API_URL=${VITE_API_URL} \
     SENTRY_PROJECT_STORE=${SENTRY_PROJECT_STORE} \
     SENTRY_URL=${SENTRY_URL}
 
-# build:all:parallel rather than build:all -- the three apps are independent
-# vite builds (measured at 9.6s + 10.7s + 6.5s sequentially in CI), so running
-# them concurrently roughly halves this layer. The `&`/`wait` form is safe here
-# because this always runs under Alpine's sh; `build:all` stays sequential for
-# local/Windows developers and for ci.yml's test-frontend job.
+# apps/dgfy-pos (issue #322 Phase 4) builds and deploys separately now -- this
+# image builds only skupervisor, so there is nothing left to parallelize.
 RUN --mount=type=secret,id=sentry_auth_token,required=false \
     export SENTRY_AUTH_TOKEN="$(cat /run/secrets/sentry_auth_token 2>/dev/null || true)" \
-    && npm run build:all:parallel
+    && npm run build:all
 
 FROM nginx:alpine AS runtime
 RUN apk add --no-cache curl
@@ -152,16 +149,15 @@ RUN apk add --no-cache curl
 # same __dirname sits at /app/apps/<app> regardless of the extra hop on the
 # host — path.resolve() clamps at the filesystem root either way, landing
 # at /dist-apps, not /app/dist-apps.
-# apps/dgfy-storefront (issue #322 Phase 3) builds and deploys separately now --
-# this image serves only skupervisor + pos until Phase 6 gives it its own
-# Dockerfile/nginx conf/compose service. See docs/architecture/frontend-split-sync.md.
+# apps/dgfy-storefront (issue #322 Phase 3) and apps/dgfy-pos (Phase 4) build
+# and deploy separately now -- this image serves only skupervisor until
+# Phase 6 gives it its own Dockerfile/nginx conf/compose service. See
+# docs/architecture/frontend-split-sync.md.
 COPY --from=builder /dist-apps/skupervisor /usr/share/nginx/html/skupervisor
-COPY --from=builder /dist-apps/pos /usr/share/nginx/html/pos
 COPY infrastructure/docker/frontend/conf.d/skupervisor.conf /etc/nginx/conf.d/skupervisor.conf
-COPY infrastructure/docker/frontend/conf.d/pos.conf /etc/nginx/conf.d/pos.conf
 RUN rm -f /etc/nginx/conf.d/default.conf
 
-EXPOSE 8081 8082
+EXPOSE 8081
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -fsS http://localhost:8081/ || exit 1

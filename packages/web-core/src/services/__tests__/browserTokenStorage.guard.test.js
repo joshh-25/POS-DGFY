@@ -11,6 +11,7 @@ const guardedRoots = [
   'apps/dgfy-web/src',
   'apps/dgfy-web/Pages',
   'apps/dgfy-storefront/src',
+  'apps/dgfy-pos/src',
   'packages/web-core/src',
   'packages/web-core/Components',
   'packages/web-core/Pages'
