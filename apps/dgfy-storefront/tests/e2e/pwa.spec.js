@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
-import { STOREFRONT_URL } from '../helpers/urls.js';
-import { registerCrashDetection } from '../helpers/assertions.js';
+import { STOREFRONT_URL } from './helpers/urls.js';
+import { registerCrashDetection } from './helpers/assertions.js';
 
 test.describe('Storefront PWA Audits', () => {
   test('Storefront links its manifest file', async ({ page }) => {

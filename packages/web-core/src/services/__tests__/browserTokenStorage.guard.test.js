@@ -6,9 +6,14 @@ import { fileURLToPath } from 'node:url';
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../..');
 
 const guardedRoots = [
+  // apps/dgfy-web/src is now just main.jsx -- the shared trunk this guard originally scanned
+  // moved to packages/web-core/src (issue #322 Phase 2). Kept for completeness/safety.
   'apps/dgfy-web/src',
   'apps/dgfy-web/Pages',
-  'apps/dgfy-web/apps/store/src'
+  'apps/dgfy-storefront/src',
+  'packages/web-core/src',
+  'packages/web-core/Components',
+  'packages/web-core/Pages'
 ];
 
 const forbiddenPatterns = [

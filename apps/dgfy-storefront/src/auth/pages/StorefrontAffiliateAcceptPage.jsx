@@ -5,7 +5,7 @@ import {
   acceptAffiliateInvite,
   fetchAffiliateInvitePreview,
   getStoredDgfyToken
-} from '../../../../../../../packages/web-core/src/services/dgfyAuthService.js';
+} from '../../../../../packages/web-core/src/services/dgfyAuthService.js';
 
 // Explicit accept page for affiliate invitees who already have a DGFY account. The email link points
 // here (/affiliate/accept?token=...). If the visitor isn't signed in we bounce them to /login with a

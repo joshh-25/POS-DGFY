@@ -1,4 +1,4 @@
-import { getStorefrontAccessModeMessage } from '../../../../../../../packages/web-core/src/utils/tenantCapabilityMessages.js';
+import { getStorefrontAccessModeMessage } from '../../../../../packages/web-core/src/utils/tenantCapabilityMessages.js';
 
 const DEFAULT_CAPABILITIES = Object.freeze({
   profile: true,

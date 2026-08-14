@@ -1,43 +1,36 @@
-﻿import { defineConfig } from 'vite';
+import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
+import { configDefaults } from 'vitest/config';
 import { fileURLToPath } from 'url';
 import path from 'path';
-import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../../../packages/web-core/vite/sentryViteConfig.js';
-import { buildWebCoreRuntimeDepAliases } from '../../../../packages/web-core/vite/webCoreRuntimeDeps.js';
+import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../packages/web-core/vite/sentryViteConfig.js';
+import { buildWebCoreRuntimeDepAliases } from '../../packages/web-core/vite/webCoreRuntimeDeps.js';
 // Opt-in only (VITE_ANALYZE_BUNDLE=true) -- writes a stats.html treemap next
-// to the build output. Never runs in a normal `build:store` so it can't
-// perturb production build size/timing. See issue #282's Phase A baseline:
+// to the build output. Never runs in a normal `build` so it can't perturb
+// production build size/timing. See issue #282's Phase A baseline:
 // https://github.com/Sieitzz/dgfy-platform/issues/282#issuecomment-5242741151
 const shouldAnalyzeBundle = String(process.env.VITE_ANALYZE_BUNDLE || '').trim() === 'true';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const frontendRoot = path.resolve(__dirname, '../..');
 // Shared trunk extracted to packages/web-core (issue #322). Alias key is unchanged from
 // before the split -- only its target moved. See docs/architecture/frontend-split-sync.md.
-const webCoreRoot = path.resolve(frontendRoot, '../../packages/web-core');
+const webCoreRoot = path.resolve(__dirname, '../../packages/web-core');
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000';
 const configuredBasePath = process.env.VITE_STORE_BASE_PATH || '/';
 const allowedHosts = true;
+// Sentry/PostHog env vars (SENTRY_PROJECT_STORE, VITE_SENTRY_DSN_STORE, ...) all key off
+// 'store', not 'storefront' -- kept as-is pending Phase 6's consumer fanout.
 const appSurface = 'store';
-const frontendNodeModules = path.resolve(frontendRoot, 'node_modules');
-// Mirrors the `@/components` entry in frontend/vite.config.js. The DGFY auth and
+const appNodeModules = path.resolve(__dirname, 'node_modules');
+// Mirrors the `@/components` entry in the other two apps' vite configs. The DGFY auth and
 // business pages ported into this app import the shared shadcn primitives
 // (`@/components/ui/input`, `button`, `label`) that live in packages/web-core/Components.
 const sharedAliases = [
   { find: '@/components', replacement: path.resolve(webCoreRoot, 'Components') },
   // Bare packages web-core's own source imports -- it has no node_modules of its own,
   // so these must resolve against this app's instead. See webCoreRuntimeDeps.js.
-  ...buildWebCoreRuntimeDepAliases(frontendNodeModules)
-];
-const reactAliases = [
-  { find: /^react$/, replacement: path.resolve(frontendNodeModules, 'react') },
-  { find: /^react\/jsx-runtime$/, replacement: path.resolve(frontendNodeModules, 'react/jsx-runtime.js') },
-  { find: /^react\/jsx-dev-runtime$/, replacement: path.resolve(frontendNodeModules, 'react/jsx-dev-runtime.js') },
-  { find: /^react-dom$/, replacement: path.resolve(frontendNodeModules, 'react-dom') },
-  { find: /^react-dom\/client$/, replacement: path.resolve(frontendNodeModules, 'react-dom/client.js') },
-  { find: /^react-router$/, replacement: path.resolve(frontendNodeModules, 'react-router') },
-  { find: /^react-router-dom$/, replacement: path.resolve(frontendNodeModules, 'react-router-dom') }
+  ...buildWebCoreRuntimeDepAliases(appNodeModules)
 ];
 const normalizedBasePath = (() => {
   const trimmed = String(configuredBasePath).trim() || '/';
@@ -88,15 +81,13 @@ const proxyTargets = {
 export default defineConfig(async () => {
   const { visualizer } = shouldAnalyzeBundle ? await import('rollup-plugin-visualizer') : { visualizer: null };
   return {
-  root: __dirname,
-  cacheDir: path.resolve(frontendRoot, 'node_modules/.vite-store'),
   base: normalizedBasePath,
   plugins: [
     react(),
     ...buildSentryVitePlugins(appSurface),
     ...(shouldAnalyzeBundle
       ? [visualizer({
-          filename: path.resolve(__dirname, '../../../../dist-apps/store/stats.html'),
+          filename: path.resolve(__dirname, 'dist/stats.html'),
           gzipSize: true,
           brotliSize: true,
           template: 'treemap'
@@ -110,7 +101,7 @@ export default defineConfig(async () => {
   resolve: {
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom'],
     // More specific aliases must come first.
-    alias: [...sharedAliases, ...reactAliases]
+    alias: sharedAliases
   },
   optimizeDeps: {
     include: ['react', 'react-dom', 'react-router', 'react-router-dom', 'sonner']
@@ -128,7 +119,7 @@ export default defineConfig(async () => {
     proxy: proxyTargets
   },
   build: {
-    outDir: path.resolve(__dirname, '../../../../dist-apps/store'),
+    outDir: path.resolve(__dirname, 'dist'),
     emptyOutDir: true,
     sourcemap: sentrySourcemapBuildValue(appSurface),
     // Older customer handsets can be as old as the iMin POS WebView (Chrome 80-84). See DGFY-POS-B.
@@ -155,6 +146,12 @@ export default defineConfig(async () => {
         }
       }
     }
-  }
+  },
+  test: {
+    // Playwright owns browser E2E specs (tests/e2e/**); Vitest must run only unit/component
+    // tests. packages/web-core's own tests run from apps/dgfy-ims, not here -- see
+    // docs/architecture/frontend-split-sync.md.
+    exclude: [...configDefaults.exclude, 'tests/e2e/**'],
+  },
   };
 });

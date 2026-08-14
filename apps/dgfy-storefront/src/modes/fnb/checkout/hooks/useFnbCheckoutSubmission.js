@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 
-import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../../../packages/web-core/src/observability/analyticsEvents.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../packages/web-core/src/observability/analyticsEvents.js';
 
 /**
  * Submits a standard F&B order. Services and Simple submissions intentionally

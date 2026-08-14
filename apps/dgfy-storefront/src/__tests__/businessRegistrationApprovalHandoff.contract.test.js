@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 const sourcePath = path.resolve(
   process.cwd(),
-  'apps/store/src/business/pages/StorefrontBusinessGrowPage.jsx'
+  'src/business/pages/StorefrontBusinessGrowPage.jsx'
 );
 
 describe('storefront business registration approval handoff', () => {

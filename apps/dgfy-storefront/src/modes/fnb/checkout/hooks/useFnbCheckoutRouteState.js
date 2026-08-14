@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../../../packages/web-core/src/observability/analyticsEvents.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../packages/web-core/src/observability/analyticsEvents.js';
 
 /** Owns F&B-only checkout route state; it has no knowledge of other modes. */
 export function useFnbCheckoutRouteState() {

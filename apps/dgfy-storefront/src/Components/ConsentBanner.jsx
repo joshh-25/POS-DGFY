@@ -3,7 +3,7 @@ import React, { useState } from 'react';
 import {
   getStoredAnalyticsConsent,
   setStoredAnalyticsConsent
-} from '../../../../../../packages/web-core/src/observability/analyticsClient.js';
+} from '../../../../packages/web-core/src/observability/analyticsClient.js';
 
 export function ConsentBanner({ onConsentChange }) {
   const [visible, setVisible] = useState(() => getStoredAnalyticsConsent() === null);

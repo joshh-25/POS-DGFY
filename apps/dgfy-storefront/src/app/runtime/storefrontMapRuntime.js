@@ -1,4 +1,4 @@
-import { DEFAULT_CENTER, rewriteOpenFreeMapUrl } from '../../../../../../../packages/web-core/src/components/maps/mapLibreShared.js';
+import { DEFAULT_CENTER, rewriteOpenFreeMapUrl } from '../../../../../packages/web-core/src/components/maps/mapLibreShared.js';
 
 const DEFAULT_TILE_BASE = 'https://tiles.openfreemap.org';
 

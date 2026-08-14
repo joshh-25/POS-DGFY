@@ -2,11 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { describe, expect, it } from 'vitest';
 
-const readStoreCss = () => {
-  const directPath = path.resolve(process.cwd(), 'apps/store/src/index.css');
-  const repoPath = path.resolve(process.cwd(), 'apps/dgfy-web/apps/store/src/index.css');
-  return fs.readFileSync(fs.existsSync(directPath) ? directPath : repoPath, 'utf8');
-};
+const readStoreCss = () => fs.readFileSync(path.resolve(process.cwd(), 'src/index.css'), 'utf8');
 
 describe('Storefront marker CSS contract', () => {
   it('keeps the MapLibre marker root as a fixed coordinate anchor box', () => {

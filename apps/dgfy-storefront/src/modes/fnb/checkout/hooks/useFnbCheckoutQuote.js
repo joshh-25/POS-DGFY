@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 
 import { buildFnbCheckoutPayload } from '../model/buildFnbCheckoutPayload.js';
-import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../../../packages/web-core/src/observability/analyticsEvents.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../packages/web-core/src/observability/analyticsEvents.js';
 
 const getValidationField = (error) => {
   const validationErrors = [

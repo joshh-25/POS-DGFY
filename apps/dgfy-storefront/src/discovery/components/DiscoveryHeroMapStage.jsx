@@ -4,7 +4,7 @@ import { Info, MapPin, Navigation } from 'lucide-react';
 import { DiscoveryMapCard } from '../../Components/store/DiscoveryResponsiveLayout.jsx';
 import { openStorefrontActionLink, sanitizeExternalLink } from '../../shared/utils/externalLinks.js';
 import { StoresMap } from './StoresMapLazy.jsx';
-import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../packages/web-core/src/observability/analyticsEvents.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../packages/web-core/src/observability/analyticsEvents.js';
 
 export function DiscoveryHeroMapStage({
   discoveryCoords,

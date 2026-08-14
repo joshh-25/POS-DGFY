@@ -1,4 +1,4 @@
-import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../packages/web-core/src/observability/analyticsEvents.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../packages/web-core/src/observability/analyticsEvents.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the checkout-submission handlers

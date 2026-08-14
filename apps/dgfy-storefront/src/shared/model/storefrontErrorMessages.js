@@ -1,4 +1,4 @@
-import { getStorefrontAccessModeMessage } from '../../../../../../../packages/web-core/src/utils/tenantCapabilityMessages.js';
+import { getStorefrontAccessModeMessage } from '../../../../../packages/web-core/src/utils/tenantCapabilityMessages.js';
 
 const getValidationErrors = (error) => {
   const candidates = [

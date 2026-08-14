@@ -1,10 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { listDgfyAccountCompaniesForTenantSession } from '../../../../../../../packages/web-core/src/services/dgfyAuthService.js';
+import { listDgfyAccountCompaniesForTenantSession } from '../../../../../packages/web-core/src/services/dgfyAuthService.js';
 import { requestJson } from '../../services/requestJson.js';
 import { fetchStorefrontAccountBranches } from './storefrontAccountBranches.js';
 
-vi.mock('../../../../../../../packages/web-core/src/services/dgfyAuthService.js', () => ({
+vi.mock('../../../../../packages/web-core/src/services/dgfyAuthService.js', () => ({
   listDgfyAccountCompaniesForTenantSession: vi.fn()
 }));
 

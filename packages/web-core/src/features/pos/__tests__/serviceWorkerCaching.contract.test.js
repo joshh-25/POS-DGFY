@@ -9,7 +9,8 @@ import {
 const frontendRoot = process.cwd();
 const posServiceWorkerPath = path.resolve(frontendRoot, 'apps/pos/public/sw.js');
 const skupervisorServiceWorkerPath = path.resolve(frontendRoot, 'apps/skupervisor/public/sw.js');
-const storeServiceWorkerPath = path.resolve(frontendRoot, 'apps/store/public/sw.js');
+// apps/dgfy-storefront (issue #322 split) is a sibling of apps/dgfy-web, not nested under it.
+const storeServiceWorkerPath = path.resolve(frontendRoot, '../dgfy-storefront/public/sw.js');
 const posMainPath = path.resolve(frontendRoot, 'apps/pos/src/main.jsx');
 const posPrecachePluginPath = path.resolve(frontendRoot, 'apps/pos/vitePosOfflinePrecachePlugin.js');
 const posViteConfigPath = path.resolve(frontendRoot, 'apps/pos/vite.config.js');

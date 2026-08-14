@@ -8,7 +8,7 @@ import {
 } from '../model/storefrontCatalogModel.js';
 import { createStorefrontIdempotencyKey } from '../utils/idempotency.js';
 import { resolveStorefrontImageSources } from '../utils/storefrontImageSources.js';
-import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../packages/web-core/src/observability/analyticsEvents.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../packages/web-core/src/observability/analyticsEvents.js';
 
 const normalizeCartLineModifiers = (entries = []) => (
   (Array.isArray(entries) ? entries : [])

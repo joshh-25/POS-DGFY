@@ -1,12 +1,12 @@
-import { getCsrfToken } from '../../../../../../packages/web-core/src/services/browserSession.js';
-import { tagRequestFailureContext, captureRequestFailure } from '../../../../../../packages/web-core/src/observability/sentryClient.js';
+import { getCsrfToken } from '../../../../packages/web-core/src/services/browserSession.js';
+import { tagRequestFailureContext, captureRequestFailure } from '../../../../packages/web-core/src/observability/sentryClient.js';
 import {
   isRetryableTransientFailure,
   computeTransientRetryDelayMs,
   MAX_TRANSIENT_RETRIES,
   TRANSIENT_RETRY_TOTAL_BUDGET_MS,
   sleep
-} from '../../../../../../packages/web-core/src/services/transientRetry.js';
+} from '../../../../packages/web-core/src/services/transientRetry.js';
 
 const isTestEnvironment = (() => {
   try {

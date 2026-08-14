@@ -4,7 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const repoRoot = path.resolve(appRoot, '..', '..', '..', '..', '..');
+const repoRoot = path.resolve(appRoot, '..', '..', '..');
 const readAppSource = (relativePath) => fs.readFileSync(path.join(appRoot, relativePath), 'utf8');
 const readRepoSource = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
 

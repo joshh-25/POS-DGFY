@@ -11,7 +11,7 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '.env.e2e') });
 dotenv.config({ path: path.resolve(__dirname, '.env') });
 
-const baseURL = process.env.E2E_BASE_URL || 'http://localhost:5174';
+const baseURL = process.env.E2E_BASE_URL || 'http://localhost:5175';
 const apiURL = process.env.E2E_API_URL || 'http://localhost:5000';
 const isLocalRun = /^https?:\/\/(localhost|127\.0\.0\.1)(?::\d+)?$/i.test(baseURL);
 
@@ -70,9 +70,9 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
-      command: 'npm run dev:pos',
+      command: 'npm run dev',
       cwd: __dirname,
-      url: `${baseURL}/login`,
+      url: `${baseURL}/`,
       reuseExistingServer: !process.env.CI,
       timeout: 120_000,
     },

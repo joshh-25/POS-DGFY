@@ -152,15 +152,16 @@ RUN apk add --no-cache curl
 # same __dirname sits at /app/apps/<app> regardless of the extra hop on the
 # host — path.resolve() clamps at the filesystem root either way, landing
 # at /dist-apps, not /app/dist-apps.
+# apps/dgfy-storefront (issue #322 Phase 3) builds and deploys separately now --
+# this image serves only skupervisor + pos until Phase 6 gives it its own
+# Dockerfile/nginx conf/compose service. See docs/architecture/frontend-split-sync.md.
 COPY --from=builder /dist-apps/skupervisor /usr/share/nginx/html/skupervisor
 COPY --from=builder /dist-apps/pos /usr/share/nginx/html/pos
-COPY --from=builder /dist-apps/store /usr/share/nginx/html/store
 COPY infrastructure/docker/frontend/conf.d/skupervisor.conf /etc/nginx/conf.d/skupervisor.conf
 COPY infrastructure/docker/frontend/conf.d/pos.conf /etc/nginx/conf.d/pos.conf
-COPY infrastructure/docker/frontend/conf.d/store.conf /etc/nginx/conf.d/store.conf
 RUN rm -f /etc/nginx/conf.d/default.conf
 
-EXPOSE 8081 8082 8083
+EXPOSE 8081 8082
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
   CMD curl -fsS http://localhost:8081/ || exit 1

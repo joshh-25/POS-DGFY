@@ -1,7 +1,7 @@
 import { getStorefrontModeAdapter } from './modePresentationRegistry.js';
 import { getFoodBeverageStorefrontViewModel } from '../../modes/fnb/storefront/model/fnbStorefrontViewModel.js';
 import { getServicesStorefrontViewModel } from '../../modes/services/storefront/model/servicesStorefrontViewModel.js';
-import { formatStorefrontBusinessHoursDisplay, normalizeStorefrontBusinessHours } from '../../../../../../../packages/web-core/src/features/settings/storefrontBusinessHours.js';
+import { formatStorefrontBusinessHoursDisplay, normalizeStorefrontBusinessHours } from '../../../../../packages/web-core/src/features/settings/storefrontBusinessHours.js';
 import { resolveStorefrontImageSources } from '../../shared/utils/storefrontImageSources.js';
 
 const trimText = (value) => String(value || '').trim();

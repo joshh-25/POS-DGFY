@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input';
 // shared/hooks/useStorefrontSession.js: the DGFY auth service, route helpers,
 // auth-page components and brand assets are shared logic living in
 // frontend/src, not app-specific.
-import * as dgfyAuthService from '../../../../../../../packages/web-core/src/services/dgfyAuthService.js';
+import * as dgfyAuthService from '../../../../../packages/web-core/src/services/dgfyAuthService.js';
 import {
   clearDgfySession,
   fetchAffiliateInvitePreview,
@@ -21,23 +21,23 @@ import {
   registerDgfyAccount,
   requestDgfyEmailVerification,
   verifyDgfyEmail,
-} from '../../../../../../../packages/web-core/src/services/dgfyAuthService.js';
-import DgfyAuthHero from '../../../../../../../packages/web-core/src/features/dgfy/components/DgfyAuthHero.jsx';
-import DgfyLegalAcknowledgementBox from '../../../../../../../packages/web-core/src/features/dgfy/components/DgfyLegalAcknowledgementBox.jsx';
+} from '../../../../../packages/web-core/src/services/dgfyAuthService.js';
+import DgfyAuthHero from '../../../../../packages/web-core/src/features/dgfy/components/DgfyAuthHero.jsx';
+import DgfyLegalAcknowledgementBox from '../../../../../packages/web-core/src/features/dgfy/components/DgfyLegalAcknowledgementBox.jsx';
 import { getCustomerProfileVerificationReminder } from '../../customer-dashboard/model/customerProfileVerification.js';
-import DgfyPasswordInput from '../../../../../../../packages/web-core/src/features/dgfy/components/DgfyPasswordInput.jsx';
-import dgfyLogo from '../../../../../../../packages/web-core/src/assets/dgfy/dgfy-logo.png';
-import phFlag from '../../../../../../../packages/web-core/src/assets/flags/ph.svg';
-import usFlag from '../../../../../../../packages/web-core/src/assets/flags/us.svg';
-import sgFlag from '../../../../../../../packages/web-core/src/assets/flags/sg.svg';
-import auFlag from '../../../../../../../packages/web-core/src/assets/flags/au.svg';
-import caFlag from '../../../../../../../packages/web-core/src/assets/flags/ca.svg';
+import DgfyPasswordInput from '../../../../../packages/web-core/src/features/dgfy/components/DgfyPasswordInput.jsx';
+import dgfyLogo from '../../../../../packages/web-core/src/assets/dgfy/dgfy-logo.png';
+import phFlag from '../../../../../packages/web-core/src/assets/flags/ph.svg';
+import usFlag from '../../../../../packages/web-core/src/assets/flags/us.svg';
+import sgFlag from '../../../../../packages/web-core/src/assets/flags/sg.svg';
+import auFlag from '../../../../../packages/web-core/src/assets/flags/au.svg';
+import caFlag from '../../../../../packages/web-core/src/assets/flags/ca.svg';
 import {
   buildDgfyRouteSearch,
   normalizeDgfyMode,
   readDgfyRouteParams,
   resolveDgfyPostAuthTarget
-} from '../../../../../../../packages/web-core/src/features/dgfyRouteHelpers.js';
+} from '../../../../../packages/web-core/src/features/dgfyRouteHelpers.js';
 
 import { writeDgfyAuthToken } from '../storefrontSessionStorage.js';
 import { sanitizeStorefrontReturnPath, toInternalReturnPath } from '../storefrontAuthReturnPath.js';
