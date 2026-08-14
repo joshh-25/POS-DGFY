@@ -87,7 +87,13 @@ of these triggers actually firing (or correctly not firing) in practice.
    *before* the PR exists, so it lands in the initial body instead, per above.
 5. **Open the PR** against `develop`, following `docs/ai/PR.md`'s body format (`## Summary` +
    `## Testing Evidence` at minimum), with `Closes #N` for the linked issue.
-6. **Stop.** Report what was done and where. Merging is a separate decision by a separate party.
+6. **Picking up review findings**, if the `pr-reviewer` agent (#331/#366) has already run on this
+   PR: read the newest `## Review` comment (`gh pr view <N> --comments`), address every row marked
+   `blocker`, then reply in the same thread naming which `RF-` IDs were fixed and, for any
+   deliberately left unfixed, why — don't fix silently and leave the comment looking unanswered.
+   `should-fix` and `nit` rows are judgment calls, not required, but say what was done with them
+   too rather than ignoring them without comment. Push once addressed.
+7. **Stop.** Report what was done and where. Merging is a separate decision by a separate party.
 
 ## Reference files
 
