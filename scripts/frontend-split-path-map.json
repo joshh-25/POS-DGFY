@@ -16,7 +16,10 @@
     { "old": "apps/dgfy-web/src/utils/", "new": "packages/web-core/src/utils/" },
     { "old": "apps/dgfy-web/Components/", "new": "packages/web-core/Components/" },
     { "old": "apps/dgfy-web/apps/store/", "new": "apps/dgfy-storefront/" },
-    { "old": "apps/dgfy-web/tests/e2e/store/", "new": "apps/dgfy-storefront/tests/e2e/" }
+    { "old": "apps/dgfy-web/tests/e2e/store/", "new": "apps/dgfy-storefront/tests/e2e/" },
+    { "old": "apps/dgfy-web/apps/pos/", "new": "apps/dgfy-pos/" },
+    { "old": "apps/dgfy-web/desktop/pos-electron/", "new": "apps/dgfy-pos/desktop/pos-electron/" },
+    { "old": "apps/dgfy-web/tests/e2e/pos/", "new": "apps/dgfy-pos/tests/e2e/pos/" }
   ],
   "specialCases": [
     { "old": "apps/dgfy-web/src/index.css", "new": "packages/web-core/src/index.css" },
@@ -24,7 +27,9 @@
     { "old": "apps/dgfy-web/Pages/DgfyCompanySelect.jsx", "new": "packages/web-core/Pages/DgfyCompanySelect.jsx" },
     { "old": "apps/dgfy-web/Pages/RegisterCompany.jsx", "new": "packages/web-core/Pages/RegisterCompany.jsx" },
     { "old": "apps/dgfy-web/Pages/CompanyRegistrationStatus.jsx", "new": "packages/web-core/Pages/CompanyRegistrationStatus.jsx" },
-    { "old": "apps/dgfy-web/sentryViteConfig.js", "new": "packages/web-core/vite/sentryViteConfig.js" }
+    { "old": "apps/dgfy-web/sentryViteConfig.js", "new": "packages/web-core/vite/sentryViteConfig.js" },
+    { "old": "apps/dgfy-web/tests/e2e/pos-fnb-modifier-management.spec.js", "new": "apps/dgfy-pos/tests/e2e/pos-fnb-modifier-management.spec.js" },
+    { "old": "apps/dgfy-web/tests/e2e/pos-services-operations.spec.js", "new": "apps/dgfy-pos/tests/e2e/pos-services-operations.spec.js" }
   ],
   "retired": [],
   "consumerPathPatterns": [
