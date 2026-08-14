@@ -1,8 +1,29 @@
 {
   "version": 1,
   "description": "Old-path -> new-path mapping for the apps/dgfy-web -> apps/{dgfy-ims,dgfy-pos,dgfy-storefront} + packages/web-core split (issue #322). Updated in the same commit as every git-mv phase of refactor/322-frontend-app-split. Consumed by scripts/report-frontend-split-sync.js.",
-  "prefixMap": [],
-  "specialCases": [],
+  "prefixMap": [
+    { "old": "apps/dgfy-web/src/__tests__/", "new": "packages/web-core/src/__tests__/" },
+    { "old": "apps/dgfy-web/src/assets/", "new": "packages/web-core/src/assets/" },
+    { "old": "apps/dgfy-web/src/components/", "new": "packages/web-core/src/components/" },
+    { "old": "apps/dgfy-web/src/config/", "new": "packages/web-core/src/config/" },
+    { "old": "apps/dgfy-web/src/features/", "new": "packages/web-core/src/features/" },
+    { "old": "apps/dgfy-web/src/hooks/", "new": "packages/web-core/src/hooks/" },
+    { "old": "apps/dgfy-web/src/lib/", "new": "packages/web-core/src/lib/" },
+    { "old": "apps/dgfy-web/src/observability/", "new": "packages/web-core/src/observability/" },
+    { "old": "apps/dgfy-web/src/pages/", "new": "packages/web-core/src/pages/" },
+    { "old": "apps/dgfy-web/src/services/", "new": "packages/web-core/src/services/" },
+    { "old": "apps/dgfy-web/src/store/", "new": "packages/web-core/src/store/" },
+    { "old": "apps/dgfy-web/src/utils/", "new": "packages/web-core/src/utils/" },
+    { "old": "apps/dgfy-web/Components/", "new": "packages/web-core/Components/" }
+  ],
+  "specialCases": [
+    { "old": "apps/dgfy-web/src/index.css", "new": "packages/web-core/src/index.css" },
+    { "old": "apps/dgfy-web/Pages/DgfyAuthPage.jsx", "new": "packages/web-core/Pages/DgfyAuthPage.jsx" },
+    { "old": "apps/dgfy-web/Pages/DgfyCompanySelect.jsx", "new": "packages/web-core/Pages/DgfyCompanySelect.jsx" },
+    { "old": "apps/dgfy-web/Pages/RegisterCompany.jsx", "new": "packages/web-core/Pages/RegisterCompany.jsx" },
+    { "old": "apps/dgfy-web/Pages/CompanyRegistrationStatus.jsx", "new": "packages/web-core/Pages/CompanyRegistrationStatus.jsx" },
+    { "old": "apps/dgfy-web/sentryViteConfig.js", "new": "packages/web-core/vite/sentryViteConfig.js" }
+  ],
   "retired": [],
   "consumerPathPatterns": [
     "^\\.github/workflows/(shared-changed-paths|deploy-frontend|deployment-orchestrator|deploy|deploy-main|pr-frontend-build-checks|pr-checks|pr-quality-checks)\\.yml$",
