@@ -3,9 +3,13 @@ export default {
   content: [
     "./index.html",
     "./*.{js,jsx,ts,tsx}",
-    "./src/**/*.{js,ts,jsx,tsx}",
-    "./Components/**/*.{js,jsx}",
     "./Pages/**/*.{js,jsx}",
+    // Shared trunk extracted to packages/web-core (issue #322); its src/ and Components/
+    // carry the bulk of the class names previously scanned from this app's own src/ and
+    // Components/. See docs/architecture/frontend-split-sync.md.
+    "../../packages/web-core/src/**/*.{js,ts,jsx,tsx}",
+    "../../packages/web-core/Components/**/*.{js,jsx}",
+    "../../packages/web-core/Pages/**/*.{js,jsx}",
     // The store app's DGFY auth/business pages are ports of Pages/DgfyAuthPage.jsx,
     // Pages/DgfyResetPasswordPage.jsx and Pages/RegisterCompany.jsx, so they need the
     // same utilities generated. Deliberately scoped to those two directories rather

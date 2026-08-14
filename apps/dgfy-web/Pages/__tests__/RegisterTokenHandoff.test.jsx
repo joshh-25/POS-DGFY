@@ -11,11 +11,11 @@ const apiMock = vi.hoisted(() => ({
 const registerMock = vi.hoisted(() => vi.fn());
 const requestEmailOtpMock = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/services/api.js', () => ({
+vi.mock('../../../../packages/web-core/src/services/api.js', () => ({
   default: apiMock
 }));
 
-vi.mock('../../src/services/authService.js', () => ({
+vi.mock('../../../../packages/web-core/src/services/authService.js', () => ({
   register: registerMock,
   requestEmailOtp: requestEmailOtpMock
 }));

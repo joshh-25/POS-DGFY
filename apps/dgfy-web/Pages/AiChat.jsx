@@ -31,7 +31,7 @@ import ActionResultCard from '@/components/ai/ActionResultCard';
 import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
 import { usePermission } from '@/hooks/usePermission';
 import { toast } from 'sonner';
-import { subscriptionsEnabled } from '../src/utils/subscriptionUi.js';
+import { subscriptionsEnabled } from '../../../packages/web-core/src/utils/subscriptionUi.js';
 
 const MarkdownRenderer = lazy(() => import('@/components/ai/MarkdownRenderer'));
 const AiDiagnosticsPanel = lazy(() => import('@/components/ai/AiDiagnosticsPanel'));

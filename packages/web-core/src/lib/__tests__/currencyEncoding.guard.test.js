@@ -1,18 +1,22 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const ROOT = process.cwd();
+// Components/ moved into packages/web-core (this package); the Pages/ below did not -- see
+// docs/architecture/frontend-split-sync.md.
+const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
+const appRoot = path.resolve(webCoreRoot, '../../apps/dgfy-web');
 const TARGET_FILES = [
-  'Components/items/ItemCard.jsx',
-  'Components/items/ItemDetailsModal.jsx',
-  'Components/items/details/CostFinancialSection.jsx',
-  'Components/items/details/StockInventorySection.jsx',
-  'Components/po/POCreateWizard.jsx',
-  'Pages/Dashboard.jsx',
-  'Pages/PurchaseOrders.jsx',
-  'Pages/Reports.jsx'
-].map((relativePath) => path.join(ROOT, relativePath));
+  path.join(webCoreRoot, 'Components/items/ItemCard.jsx'),
+  path.join(webCoreRoot, 'Components/items/ItemDetailsModal.jsx'),
+  path.join(webCoreRoot, 'Components/items/details/CostFinancialSection.jsx'),
+  path.join(webCoreRoot, 'Components/items/details/StockInventorySection.jsx'),
+  path.join(webCoreRoot, 'Components/po/POCreateWizard.jsx'),
+  path.join(appRoot, 'Pages/Dashboard.jsx'),
+  path.join(appRoot, 'Pages/PurchaseOrders.jsx'),
+  path.join(appRoot, 'Pages/Reports.jsx')
+];
 
 const DISALLOWED_TOKENS = [
   'â‚±',

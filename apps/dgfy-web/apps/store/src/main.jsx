@@ -10,13 +10,13 @@ import StorefrontRegisterPage from './auth/pages/StorefrontRegisterPage.jsx';
 import StorefrontAffiliateAcceptPage from './auth/pages/StorefrontAffiliateAcceptPage.jsx';
 import StorefrontResetPasswordPage from './auth/pages/StorefrontResetPasswordPage.jsx';
 import StorefrontBusinessGrowPage from './business/pages/StorefrontBusinessGrowPage.jsx';
-import { initBrowserSentry, setSentryRoute } from '../../../src/observability/sentryClient.js';
-import ErrorBoundary from '../../../src/components/common/ErrorBoundary.jsx';
+import { initBrowserSentry, setSentryRoute } from '../../../../../packages/web-core/src/observability/sentryClient.js';
+import ErrorBoundary from '../../../../../packages/web-core/src/components/common/ErrorBoundary.jsx';
 import {
   capturePageview,
   getStoredAnalyticsConsent,
   initBrowserAnalytics
-} from '../../../src/observability/analyticsClient.js';
+} from '../../../../../packages/web-core/src/observability/analyticsClient.js';
 import { ConsentBanner } from './Components/ConsentBanner.jsx';
 import {
   getCustomStorefrontRouteContext,

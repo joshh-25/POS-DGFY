@@ -4,7 +4,7 @@
 // URL; now that auth lives inside the storefront itself, we only need the
 // path/search/hash portion to call `navigate()` with.
 
-import { sanitizeInternalReturnPath } from '../../../../src/features/dgfyRouteHelpers.js';
+import { sanitizeInternalReturnPath } from '../../../../../../packages/web-core/src/features/dgfyRouteHelpers.js';
 
 export const toInternalReturnPath = (target = '', fallback = '/') => {
   const raw = String(target || '').trim();

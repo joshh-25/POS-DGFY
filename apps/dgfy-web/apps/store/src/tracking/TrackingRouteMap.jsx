@@ -12,7 +12,7 @@ import {
   setRouteLineData
 } from '../discovery/model/discoveryMapLayers.js';
 import { renderDeliveryPinSpriteSvg } from '../discovery/model/businessModePins.js';
-import { applyMapLibreCanvasSizing, safeResizeMap } from '../../../../src/components/maps/mapLibreShared.js';
+import { applyMapLibreCanvasSizing, safeResizeMap } from '../../../../../../packages/web-core/src/components/maps/mapLibreShared.js';
 import { useStoreRoute } from '../shared/hooks/useStoreRoute.js';
 // Re-exported for back-compat with anything importing both the component
 // and the helper from this path (see extractTrackingMapCoordinates.js for

@@ -10,7 +10,7 @@ import React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
-import TenantManager from '../../../Pages/admin/TenantManager.jsx';
+import TenantManager from '../../../../../apps/dgfy-web/Pages/admin/TenantManager.jsx';
 
 const mocks = vi.hoisted(() => ({
   adminService: {

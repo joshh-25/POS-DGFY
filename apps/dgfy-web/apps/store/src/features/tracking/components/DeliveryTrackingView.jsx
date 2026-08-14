@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import { ensureMapImage, ensureRouteLineLayer, setGeoJsonSourceData, setRouteLineData } from '../../../discovery/model/discoveryMapLayers.js';
 import { renderDeliveryPinSpriteSvg } from '../../../discovery/model/businessModePins.js';
-import { applyMapLibreCanvasSizing, safeResizeMap } from '../../../../../../src/components/maps/mapLibreShared.js';
+import { applyMapLibreCanvasSizing, safeResizeMap } from '../../../../../../../../packages/web-core/src/components/maps/mapLibreShared.js';
 import { useStoreRoute } from '../../../shared/hooks/useStoreRoute.js';
 
 const TRACKING_PIN_SOURCE_ID = 'dgfy-tracking-pins';

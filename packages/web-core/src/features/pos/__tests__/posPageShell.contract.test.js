@@ -8,9 +8,9 @@ const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath)
 
 describe('POS page shell and route ownership', () => {
   it('keeps both checkout identities on one shared POS shell', () => {
-    const sharedShell = read('apps/dgfy-web/src/features/pos/pages/PosPageShell.jsx');
-    const posPage = read('apps/dgfy-web/src/features/pos/pages/POSPage.jsx');
-    const skupervisorPage = read('apps/dgfy-web/src/features/pos/pages/SkupervisorPOSPage.jsx');
+    const sharedShell = read('packages/web-core/src/features/pos/pages/PosPageShell.jsx');
+    const posPage = read('packages/web-core/src/features/pos/pages/POSPage.jsx');
+    const skupervisorPage = read('packages/web-core/src/features/pos/pages/SkupervisorPOSPage.jsx');
 
     expect(sharedShell).toContain('export default function PosPageShell');
     expect(posPage).toContain("lazyWithChunkRetry(() => import('../components/POSCheckoutTerminal.jsx'))");

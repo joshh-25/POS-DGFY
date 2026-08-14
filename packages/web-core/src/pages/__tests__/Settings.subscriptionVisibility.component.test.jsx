@@ -57,7 +57,7 @@ vi.mock('../../../Components/users/UserManagementModal.jsx', () => ({
   default: () => React.createElement('div', null, 'UserManagementModal')
 }));
 
-import Settings from '../../../Pages/Settings.jsx';
+import Settings from '../../../../../apps/dgfy-web/Pages/Settings.jsx';
 
 describe('Settings subscription visibility (component)', () => {
   beforeEach(() => {

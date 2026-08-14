@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useSearchParams } from 'react-router-dom';
-import api from '../src/services/api.js';
-import { setBrowserSession } from '../src/services/browserSession.js';
+import api from '../../../packages/web-core/src/services/api.js';
+import { setBrowserSession } from '../../../packages/web-core/src/services/browserSession.js';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { CheckCircle2, XCircle, Mail, Loader2, AlertCircle, UserPlus, Shield, Wand2 } from 'lucide-react';
-import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../src/utils/phoneNumber.js';
-import { generateReadablePassword, isPasswordLongEnough } from '../src/utils/passwordPolicy.js';
+import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../../../packages/web-core/src/utils/phoneNumber.js';
+import { generateReadablePassword, isPasswordLongEnough } from '../../../packages/web-core/src/utils/passwordPolicy.js';
 
 export default function AcceptInvite() {
   const navigate = useNavigate();

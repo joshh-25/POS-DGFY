@@ -2,29 +2,29 @@ import React, { useEffect, lazy, Suspense } from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, HashRouter, Routes, Route, Navigate, useLocation } from 'react-router-dom'
 import Layout from '../Layout.jsx'
-import AdminLayout from '../Components/admin/AdminLayout.jsx'
-import ProtectedRoute from './components/ProtectedRoute.jsx'
-import { PermissionProvider } from './store/PermissionContext.jsx'
-import { WorkflowModeProvider } from './features/settings/WorkflowModeContext.jsx'
-import WorkflowModeRouteGate from './features/settings/components/WorkflowModeRouteGate.jsx'
+import AdminLayout from '../../../packages/web-core/Components/admin/AdminLayout.jsx'
+import ProtectedRoute from '../../../packages/web-core/src/components/ProtectedRoute.jsx'
+import { PermissionProvider } from '../../../packages/web-core/src/store/PermissionContext.jsx'
+import { WorkflowModeProvider } from '../../../packages/web-core/src/features/settings/WorkflowModeContext.jsx'
+import WorkflowModeRouteGate from '../../../packages/web-core/src/features/settings/components/WorkflowModeRouteGate.jsx'
 import { getPageNameFromPath } from '../utils.js'
-import { getAccessToken, refreshBrowserSession, setBrowserSession } from './services/browserSession.js'
-import { login as loginTenantSession, getCurrentUser } from './services/authService.js'
-import { shouldRefreshBrowserSessionForPath } from './services/publicRoutePolicy.js'
-import ErrorBoundary from './components/common/ErrorBoundary.jsx' // Fix 10.3
-import NotFoundPage from './components/common/NotFoundPage.jsx'
-import GlobalApiErrorListener from './components/common/GlobalApiErrorListener.jsx'
+import { getAccessToken, refreshBrowserSession, setBrowserSession } from '../../../packages/web-core/src/services/browserSession.js'
+import { login as loginTenantSession, getCurrentUser } from '../../../packages/web-core/src/services/authService.js'
+import { shouldRefreshBrowserSessionForPath } from '../../../packages/web-core/src/services/publicRoutePolicy.js'
+import ErrorBoundary from '../../../packages/web-core/src/components/common/ErrorBoundary.jsx' // Fix 10.3
+import NotFoundPage from '../../../packages/web-core/src/components/common/NotFoundPage.jsx'
+import GlobalApiErrorListener from '../../../packages/web-core/src/components/common/GlobalApiErrorListener.jsx'
 import { Toaster } from '@/components/ui/sonner'
-import { getRuntimeConfig } from './utils/runtimeConfig.js'
-import { initBrowserSentry, identifySentryUser, resetSentryIdentity, setSentryContext, setSentryRoute } from './observability/sentryClient.js'
+import { getRuntimeConfig } from '../../../packages/web-core/src/utils/runtimeConfig.js'
+import { initBrowserSentry, identifySentryUser, resetSentryIdentity, setSentryContext, setSentryRoute } from '../../../packages/web-core/src/observability/sentryClient.js'
 import {
   capturePageview,
   identifyAnalyticsUser,
   initBrowserAnalytics,
   resetAnalyticsIdentity,
   setAnalyticsContext
-} from './observability/analyticsClient.js'
-import './index.css'
+} from '../../../packages/web-core/src/observability/analyticsClient.js'
+import '../../../packages/web-core/src/index.css'
 
 const appBasePath = String(import.meta.env.BASE_URL || '/').replace(/\/+$/, '') || '/'
 const serviceWorkerUrl = appBasePath === '/' ? '/sw.js' : `${appBasePath}/sw.js`
@@ -96,22 +96,22 @@ const registerAdminServiceWorker = async () => {
 
 // Lazy-loaded pages â€” each page is a separate JS chunk downloaded on first visit
 const Dashboard = lazy(() => import('../Pages/Dashboard.jsx'))
-const Items = lazy(() => import('./features/inventory/pages/ItemsPage.jsx'))
+const Items = lazy(() => import('../../../packages/web-core/src/features/inventory/pages/ItemsPage.jsx'))
 const Suppliers = lazy(() => import('../Pages/Suppliers.jsx'))
 const PurchaseOrders = lazy(() => import('../Pages/PurchaseOrders.jsx'))
-const JobOrders = lazy(() => import('./features/jobOrders/pages/JobOrdersPage.jsx'))
-const StockMovements = lazy(() => import('./features/stockMovements/pages/StockMovementsPage.jsx'))
-const Services = lazy(() => import('./features/services/pages/ServicesPage.jsx'))
-const Fnb = lazy(() => import('./features/fnb/pages/FnbPage.jsx'))
-const Hospitality = lazy(() => import('./features/hospitality/pages/HospitalityPage.jsx'))
+const JobOrders = lazy(() => import('../../../packages/web-core/src/features/jobOrders/pages/JobOrdersPage.jsx'))
+const StockMovements = lazy(() => import('../../../packages/web-core/src/features/stockMovements/pages/StockMovementsPage.jsx'))
+const Services = lazy(() => import('../../../packages/web-core/src/features/services/pages/ServicesPage.jsx'))
+const Fnb = lazy(() => import('../../../packages/web-core/src/features/fnb/pages/FnbPage.jsx'))
+const Hospitality = lazy(() => import('../../../packages/web-core/src/features/hospitality/pages/HospitalityPage.jsx'))
 const Reports = lazy(() => import('../Pages/Reports.jsx'))
 const Settings = lazy(() => import('../Pages/Settings.jsx'))
 const Login = lazy(() => import('../Pages/Login.jsx'))
 const Register = lazy(() => import('../Pages/Register.jsx'))
-const RegisterCompany = lazy(() => import('../Pages/RegisterCompany.jsx'))
-const CompanyRegistrationStatus = lazy(() => import('../Pages/CompanyRegistrationStatus.jsx'))
-const DgfyAuthPage = lazy(() => import('../Pages/DgfyAuthPage.jsx'))
-const DgfyCompanySelect = lazy(() => import('../Pages/DgfyCompanySelect.jsx'))
+const RegisterCompany = lazy(() => import('../../../packages/web-core/Pages/RegisterCompany.jsx'))
+const CompanyRegistrationStatus = lazy(() => import('../../../packages/web-core/Pages/CompanyRegistrationStatus.jsx'))
+const DgfyAuthPage = lazy(() => import('../../../packages/web-core/Pages/DgfyAuthPage.jsx'))
+const DgfyCompanySelect = lazy(() => import('../../../packages/web-core/Pages/DgfyCompanySelect.jsx'))
 const DgfyResetPasswordPage = lazy(() => import('../Pages/DgfyResetPasswordPage.jsx'))
 const LegalDocument = lazy(() => import('../Pages/LegalDocument.jsx'))
 const AcceptInvite = lazy(() => import('../Pages/AcceptInvite.jsx'))
@@ -119,9 +119,9 @@ const Reactivate = lazy(() => import('../Pages/Reactivate.jsx'))
 const MobileReceive = lazy(() => import('../Pages/MobileReceive.jsx'))
 const DispatchOrders = lazy(() => import('../Pages/DispatchOrders.jsx'))
 const AiChat = lazy(() => import('../Pages/AiChat.jsx'))
-const POSPage = lazy(() => import('./features/pos/pages/SkupervisorPOSPage.jsx'))
-const TerminalPage = lazy(() => import('./features/pos/pages/TerminalPage.jsx'))
-const SalesPage = lazy(() => import('./features/sales/pages/SalesPage.jsx'))
+const POSPage = lazy(() => import('../../../packages/web-core/src/features/pos/pages/SkupervisorPOSPage.jsx'))
+const TerminalPage = lazy(() => import('../../../packages/web-core/src/features/pos/pages/TerminalPage.jsx'))
+const SalesPage = lazy(() => import('../../../packages/web-core/src/features/sales/pages/SalesPage.jsx'))
 const FeedbackDashboard = lazy(() => import('../Pages/admin/FeedbackDashboard.jsx'))
 const TenantManager = lazy(() => import('../Pages/admin/TenantManager.jsx'))
 const DgfyAccountManager = lazy(() => import('../Pages/admin/DgfyAccountManager.jsx'))

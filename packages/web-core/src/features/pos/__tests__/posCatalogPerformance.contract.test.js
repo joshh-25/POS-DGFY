@@ -1,11 +1,13 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 
-const checkoutPath = path.resolve(process.cwd(), 'src/features/pos/components/POSCheckoutTerminal.jsx');
-const layoutPath = path.resolve(process.cwd(), 'src/features/pos/components/TerminalPageLayout.jsx');
-const sidebarPath = path.resolve(process.cwd(), 'src/features/pos/components/TerminalWorkspaceSidebar.jsx');
-const operationsPath = path.resolve(process.cwd(), 'src/features/pos/components/TerminalOperationsWorkspace.jsx');
+const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+const checkoutPath = path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminal.jsx');
+const layoutPath = path.resolve(webCoreRoot, 'src/features/pos/components/TerminalPageLayout.jsx');
+const sidebarPath = path.resolve(webCoreRoot, 'src/features/pos/components/TerminalWorkspaceSidebar.jsx');
+const operationsPath = path.resolve(webCoreRoot, 'src/features/pos/components/TerminalOperationsWorkspace.jsx');
 
 const readSource = (filePath) => fs.readFileSync(filePath, 'utf8');
 

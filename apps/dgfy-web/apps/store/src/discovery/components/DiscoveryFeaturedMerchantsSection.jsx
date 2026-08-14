@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ChevronLeft, ChevronRight, Coffee, HeartHandshake, Scissors, ShoppingCart, Store, Wrench } from 'lucide-react';
-import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../src/observability/analyticsEvents.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../packages/web-core/src/observability/analyticsEvents.js';
 
 export function DiscoveryFeaturedMerchantsSection({
   discoveryPinsBySlug,

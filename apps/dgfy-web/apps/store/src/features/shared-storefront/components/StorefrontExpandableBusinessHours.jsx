@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ChevronDown, ChevronUp } from 'lucide-react';
 
-import { STOREFRONT_BUSINESS_DAY_OPTIONS } from '../../../../../../src/features/settings/storefrontBusinessHours.js';
+import { STOREFRONT_BUSINESS_DAY_OPTIONS } from '../../../../../../../../packages/web-core/src/features/settings/storefrontBusinessHours.js';
 
 const formatMinutes = (time) => {
   const [hourRaw, minuteRaw] = String(time || '00:00').split(':');

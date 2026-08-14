@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 async function freshRequestJson() {
   vi.resetModules();
-  vi.doMock('../../../../src/observability/sentryClient.js', () => ({
+  vi.doMock('../../../../../../packages/web-core/src/observability/sentryClient.js', () => ({
     tagRequestFailureContext: vi.fn(),
     captureRequestFailure: vi.fn()
   }));
-  const sentryClient = await import('../../../../src/observability/sentryClient.js');
+  const sentryClient = await import('../../../../../../packages/web-core/src/observability/sentryClient.js');
   const mod = await import('../services/requestJson.js');
   return { requestJson: mod.requestJson, sentryClient };
 }
@@ -23,7 +23,7 @@ describe('Storefront requestJson -- AbortSignal + opt-in retry', () => {
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    vi.doUnmock('../../../../src/observability/sentryClient.js');
+    vi.doUnmock('../../../../../../packages/web-core/src/observability/sentryClient.js');
     vi.restoreAllMocks();
   });
 
@@ -195,7 +195,7 @@ describe('Storefront requestJson -- issue #282 Phase F in-flight GET de-dup', ()
 
   afterEach(() => {
     vi.unstubAllGlobals();
-    vi.doUnmock('../../../../src/observability/sentryClient.js');
+    vi.doUnmock('../../../../../../packages/web-core/src/observability/sentryClient.js');
     vi.restoreAllMocks();
   });
 

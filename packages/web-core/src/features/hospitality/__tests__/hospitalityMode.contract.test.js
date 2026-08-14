@@ -31,7 +31,7 @@ describe('Hospitality frontend contract', () => {
   });
 
   it('exposes Hospitality APIs for rooms, reservations, guests, operations, folios, amenities, rates, and reports', () => {
-    const api = read('apps/dgfy-web/src/features/hospitality/api/hospitalityApi.js');
+    const api = read('packages/web-core/src/features/hospitality/api/hospitalityApi.js');
 
     expect(api).toContain('/hospitality/dashboard');
     expect(api).toContain('/hospitality/room-types');
@@ -56,7 +56,7 @@ describe('Hospitality frontend contract', () => {
   });
 
   it('keeps the Hospitality console PMS-native rather than retail, manufacturing, F&B, or Services-native', () => {
-    const page = read('apps/dgfy-web/src/features/hospitality/pages/HospitalityPage.jsx');
+    const page = read('packages/web-core/src/features/hospitality/pages/HospitalityPage.jsx');
 
     expect(page).toContain('Reservations');
     expect(page).toContain('Rooms');

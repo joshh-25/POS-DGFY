@@ -19,7 +19,7 @@ import {
   resolveTrackingRetryDelayMs
 } from '../../../../tracking/customerTrackingRefresh.js';
 import { buildFnbTrackedOrderEntry, toFnbTrackingViewState } from '../model/fnbTrackingPayload.js';
-import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../src/observability/analyticsEvents.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../../../packages/web-core/src/observability/analyticsEvents.js';
 
 const BACKGROUND_PIN_POLL_MS = { visible: 60000, hidden: 120000 };
 

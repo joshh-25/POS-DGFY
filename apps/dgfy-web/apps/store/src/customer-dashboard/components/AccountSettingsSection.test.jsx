@@ -3,10 +3,10 @@
 import React from 'react';
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { changeDgfyPassword } from '../../../../../src/services/dgfyAuthService.js';
+import { changeDgfyPassword } from '../../../../../../../packages/web-core/src/services/dgfyAuthService.js';
 import { AccountSettingsSection } from './AccountSettingsSection.jsx';
 
-vi.mock('../../../../../src/services/dgfyAuthService.js', () => ({
+vi.mock('../../../../../../../packages/web-core/src/services/dgfyAuthService.js', () => ({
   changeDgfyPassword: vi.fn()
 }));
 

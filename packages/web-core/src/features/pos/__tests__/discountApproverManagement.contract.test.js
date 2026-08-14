@@ -1,10 +1,12 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-const userManagementPath = path.resolve(process.cwd(), 'Components/users/UserManagementModal.jsx');
-const userServicePath = path.resolve(process.cwd(), 'src/services/userService.js');
-const terminalWorkspacePath = path.resolve(process.cwd(), 'src/features/pos/components/TerminalOperationsWorkspace.jsx');
+const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+const userManagementPath = path.resolve(webCoreRoot, 'Components/users/UserManagementModal.jsx');
+const userServicePath = path.resolve(webCoreRoot, 'src/services/userService.js');
+const terminalWorkspacePath = path.resolve(webCoreRoot, 'src/features/pos/components/TerminalOperationsWorkspace.jsx');
 const userManagementContent = fs.readFileSync(userManagementPath, 'utf8');
 const userServiceContent = fs.readFileSync(userServicePath, 'utf8');
 const terminalWorkspaceContent = fs.readFileSync(terminalWorkspacePath, 'utf8');

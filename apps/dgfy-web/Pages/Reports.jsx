@@ -22,14 +22,14 @@ import {
   WalletCards
 } from 'lucide-react';
 import CostAnalysisWidget from '@/components/reports/CostAnalysisWidget';
-import TenantRevenueReadOnlyPanel from '../src/features/reports/TenantRevenueReadOnlyPanel.jsx';
+import TenantRevenueReadOnlyPanel from '../../../packages/web-core/src/features/reports/TenantRevenueReadOnlyPanel.jsx';
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { cn } from "../src/lib/utils.js";
+import { cn } from "../../../packages/web-core/src/lib/utils.js";
 import { useReports } from '@/hooks/useReports.js';
 import { useLocations } from '@/hooks/useLocations.js';
-import { formatNumber, formatPeso } from '../src/lib/numberUtils.js';
+import { formatNumber, formatPeso } from '../../../packages/web-core/src/lib/numberUtils.js';
 import {
   DropdownMenu,
   DropdownMenuContent,

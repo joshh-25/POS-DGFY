@@ -19,14 +19,14 @@ import AnomalyAlertBanner from '@/components/dashboard/AnomalyAlertBanner';
 import RecentMovements from '@/components/dashboard/RecentMovements';
 import LowStockList from '@/components/dashboard/LowStockList';
 import ExpiringBatchesList from '@/components/dashboard/ExpiringBatchesList';
-import ForecastWidget from '../src/components/dashboard/ForecastWidget';
+import ForecastWidget from '../../../packages/web-core/src/components/dashboard/ForecastWidget';
 import { useDashboardStats, useLowStockItems, useRecentMovements } from '@/hooks/useDashboard.js';
 import { usePurchaseOrders } from '@/hooks/usePurchaseOrders.js';
 import { useSuppliers } from '@/hooks/useSuppliers.js';
 import { useExpiryAlerts } from '@/hooks/useAlerts.js';
-import { usePermission } from '../src/hooks/usePermission';
-import { subscriptionsEnabled } from '../src/utils/subscriptionUi.js';
-import { formatPeso } from '../src/lib/numberUtils.js';
+import { usePermission } from '../../../packages/web-core/src/hooks/usePermission';
+import { subscriptionsEnabled } from '../../../packages/web-core/src/utils/subscriptionUi.js';
+import { formatPeso } from '../../../packages/web-core/src/lib/numberUtils.js';
 
 export default function Dashboard() {
   const subscriptionFeaturesEnabled = subscriptionsEnabled();

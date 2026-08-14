@@ -13,7 +13,7 @@ import { resolveEffectiveItemTaxonomy } from '../src/modules/shared/constants/mo
 import { STOREFRONT_ORDER_METHODS, POS_ORDER_METHODS } from '../src/modules/shared/constants/orderMethods.js';
 // Imported through the frontend path deliberately: the harness proves the
 // profile materializes exactly what the admin POS terminal resolves.
-import { resolvePosWorkflow } from '../../dgfy-web/src/features/pos/utils/posWorkflowResolver.js';
+import { resolvePosWorkflow } from '../../../packages/web-core/src/features/pos/utils/posWorkflowResolver.js';
 import {
     POS_DEFAULTS_AND_TERMINOLOGY_VOCABULARY_ALIGNED,
     resolvePosDefaultsAndTerminology

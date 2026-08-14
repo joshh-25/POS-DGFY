@@ -8,9 +8,9 @@ const apiMock = vi.hoisted(() => ({ post: vi.fn() }));
 const loginMock = vi.hoisted(() => vi.fn());
 const clearClientSessionMock = vi.hoisted(() => vi.fn());
 
-vi.mock('../../src/services/api.js', () => ({ default: apiMock }));
-vi.mock('../../src/services/authService.js', () => ({ login: loginMock }));
-vi.mock('../../src/services/sessionCleanup.js', () => ({
+vi.mock('../../../../packages/web-core/src/services/api.js', () => ({ default: apiMock }));
+vi.mock('../../../../packages/web-core/src/services/authService.js', () => ({ login: loginMock }));
+vi.mock('../../../../packages/web-core/src/services/sessionCleanup.js', () => ({
   clearClientSession: clearClientSessionMock
 }));
 

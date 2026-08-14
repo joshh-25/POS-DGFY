@@ -26,11 +26,11 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import { toast } from 'sonner';
-import { validateReceiveToken, receiveViaToken } from '../src/services/receiveTokenService.js';
-import { cn } from "../src/lib/utils.js";
+import { validateReceiveToken, receiveViaToken } from '../../../packages/web-core/src/services/receiveTokenService.js';
+import { cn } from "../../../packages/web-core/src/lib/utils.js";
 import { format, addDays } from 'date-fns';
-import { normalizeApiError } from '../src/utils/errorHandler.js';
-import { useLocations } from '../src/hooks/useLocations.js';
+import { normalizeApiError } from '../../../packages/web-core/src/utils/errorHandler.js';
+import { useLocations } from '../../../packages/web-core/src/hooks/useLocations.js';
 
 export default function MobileReceive() {
     const { token } = useParams();

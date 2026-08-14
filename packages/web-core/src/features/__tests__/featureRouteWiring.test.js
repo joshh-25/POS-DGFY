@@ -5,10 +5,10 @@ import { beforeAll, describe, expect, it } from 'vitest';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const mainPath = path.resolve(__dirname, '../../main.jsx');
-const legacyItemsPath = path.resolve(__dirname, '../../../Pages/Items.jsx');
-const legacyJobOrdersPath = path.resolve(__dirname, '../../../Pages/JobOrders.jsx');
-const legacyStockMovementsPath = path.resolve(__dirname, '../../../Pages/StockMovements.jsx');
+const mainPath = path.resolve(__dirname, '../../../../../apps/dgfy-web/src/main.jsx');
+const legacyItemsPath = path.resolve(__dirname, '../../../../../apps/dgfy-web/Pages/Items.jsx');
+const legacyJobOrdersPath = path.resolve(__dirname, '../../../../../apps/dgfy-web/Pages/JobOrders.jsx');
+const legacyStockMovementsPath = path.resolve(__dirname, '../../../../../apps/dgfy-web/Pages/StockMovements.jsx');
 const featureItemsPath = path.resolve(__dirname, '../inventory/pages/ItemsPage.jsx');
 const featureJobOrdersPath = path.resolve(__dirname, '../jobOrders/pages/JobOrdersPage.jsx');
 const featureStockMovementsPath = path.resolve(__dirname, '../stockMovements/pages/StockMovementsPage.jsx');
@@ -29,21 +29,21 @@ describe('feature route wiring', () => {
   });
 
   it('loads Items page from inventory feature path', () => {
-    expect(mainContent).toContain("const Items = lazy(() => import('./features/inventory/pages/ItemsPage.jsx'))");
+    expect(mainContent).toContain("const Items = lazy(() => import('../../../packages/web-core/src/features/inventory/pages/ItemsPage.jsx'))");
   });
 
   it('loads JobOrders page from jobOrders feature path', () => {
-    expect(mainContent).toContain("const JobOrders = lazy(() => import('./features/jobOrders/pages/JobOrdersPage.jsx'))");
+    expect(mainContent).toContain("const JobOrders = lazy(() => import('../../../packages/web-core/src/features/jobOrders/pages/JobOrdersPage.jsx'))");
   });
 
   it('loads StockMovements page from stockMovements feature path', () => {
-    expect(mainContent).toContain("const StockMovements = lazy(() => import('./features/stockMovements/pages/StockMovementsPage.jsx'))");
+    expect(mainContent).toContain("const StockMovements = lazy(() => import('../../../packages/web-core/src/features/stockMovements/pages/StockMovementsPage.jsx'))");
   });
 
   it('removes retired feature facades while preserving the remaining migration facade', () => {
     expect(fs.existsSync(legacyItemsPath)).toBe(false);
     expect(fs.existsSync(legacyJobOrdersPath)).toBe(false);
-    expect(legacyStockMovementsContent).toContain("import StockMovementsPage from '../src/features/stockMovements/pages/StockMovementsPage.jsx'");
+    expect(legacyStockMovementsContent).toContain("import StockMovementsPage from '../../../packages/web-core/src/features/stockMovements/pages/StockMovementsPage.jsx'");
   });
 
   it('prevents feature pages from importing legacy Pages', () => {

@@ -116,18 +116,20 @@ const COMPLIANCE_SENSITIVE_RULES = [
     surfaces: ['settings', 'compliance'],
     minimumClassification: 'regulatory'
   },
+  // Shared trunk extracted to packages/web-core (issue #322); apps/dgfy-web/Pages/ (root,
+  // capital-P) was NOT moved -- see docs/architecture/frontend-split-sync.md.
   {
-    pattern: /^apps\/dgfy-web\/src\/features\/pos\//,
+    pattern: /^packages\/web-core\/src\/features\/pos\//,
     surfaces: ['pos', 'terminal'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^apps\/dgfy-web\/src\/features\/compliance\//,
+    pattern: /^packages\/web-core\/src\/features\/compliance\//,
     surfaces: ['compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^apps\/dgfy-web\/src\/pages\/Settings(?:\/|\.|$)/,
+    pattern: /^packages\/web-core\/src\/pages\/Settings(?:\/|\.|$)/,
     surfaces: ['settings'],
     minimumClassification: 'major'
   },
@@ -137,17 +139,17 @@ const COMPLIANCE_SENSITIVE_RULES = [
     minimumClassification: 'major'
   },
   {
-    pattern: /^apps\/dgfy-web\/src\/services\/paymentService\.js$/,
+    pattern: /^packages\/web-core\/src\/services\/paymentService\.js$/,
     surfaces: ['payments'],
     minimumClassification: 'major'
   },
   {
-    pattern: /^apps\/dgfy-web\/src\/services\/complianceService\.js$/,
+    pattern: /^packages\/web-core\/src\/services\/complianceService\.js$/,
     surfaces: ['compliance'],
     minimumClassification: 'regulatory'
   },
   {
-    pattern: /^apps\/dgfy-web\/src\/services\/adminService\.js$/,
+    pattern: /^packages\/web-core\/src\/services\/adminService\.js$/,
     surfaces: ['settings', 'compliance'],
     minimumClassification: 'regulatory'
   },

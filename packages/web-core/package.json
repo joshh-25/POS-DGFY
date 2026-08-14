@@ -1,0 +1,30 @@
+{
+  "name": "@sieitzz/web-core",
+  "version": "1.0.0",
+  "description": "Shared trunk (services, hooks, observability, shadcn component library, and the POS terminal feature) consumed by dgfy-ims, dgfy-pos, and dgfy-storefront.",
+  "type": "module",
+  "private": true,
+  "exports": {
+    "./*": "./src/*",
+    "./Components/*": "./Components/*",
+    "./Pages/*": "./Pages/*",
+    "./vite/*": "./vite/*"
+  },
+  "peerDependencies": {
+    "react": "*",
+    "react-dom": "*",
+    "react-router-dom": "*"
+  },
+  "files": [
+    "src",
+    "Components",
+    "Pages",
+    "vite",
+    "README.md"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Sieitzz/dgfy-platform.git",
+    "directory": "packages/web-core"
+  }
+}

@@ -12,16 +12,16 @@ import {
 import {
   hasDgfyBrowserSessionHint,
   markDgfySessionActive
-} from '../../../../../src/services/dgfyAuthService.js';
+} from '../../../../../../../packages/web-core/src/services/dgfyAuthService.js';
 import { getOrCreateStorefrontVisitorId } from '../model/storefrontCustomerStorage.js';
 import {
   identifyAnalyticsUser,
   resetAnalyticsIdentity
-} from '../../../../../src/observability/analyticsClient.js';
+} from '../../../../../../../packages/web-core/src/observability/analyticsClient.js';
 import {
   identifySentryUser,
   resetSentryIdentity
-} from '../../../../../src/observability/sentryClient.js';
+} from '../../../../../../../packages/web-core/src/observability/sentryClient.js';
 
 /**
  * Stateful hook that owns the DGFY customer session bootstrap.

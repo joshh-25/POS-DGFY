@@ -3,8 +3,22 @@ import react from '@vitejs/plugin-react'
 import { configDefaults } from 'vitest/config'
 import path from 'path'
 import { fileURLToPath } from 'url'
+import { buildWebCoreRuntimeDepAliases } from '../../packages/web-core/vite/webCoreRuntimeDeps.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+// Shared trunk extracted to packages/web-core (issue #322). Alias keys are unchanged from
+// before the split -- only their targets moved -- so existing @/... imports need no rewrite.
+// See docs/architecture/frontend-split-sync.md.
+const webCoreRoot = path.resolve(__dirname, '../../packages/web-core')
+// resolve.dedupe resolves bare 'react'/'react-dom' fine even from web-core's node_modules-less
+// files (Vite's JSX-runtime auto-injection pre-bundles them regardless of importer location),
+// but NOT react-router-dom/react-router under Vitest's SSR module runner -- confirmed by every
+// packages/web-core test importing it failing with "Failed to resolve import 'react-router-dom'"
+// until aliased explicitly here, mirroring apps/pos and apps/store's reactAliases.
+const routerAliases = [
+  { find: /^react-router$/, replacement: path.resolve(__dirname, 'node_modules/react-router') },
+  { find: /^react-router-dom$/, replacement: path.resolve(__dirname, 'node_modules/react-router-dom') },
+]
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000'
 const securityHeaders = {
   'Content-Security-Policy': "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https: http:; connect-src 'self' https: http: ws: wss:; font-src 'self' data:; object-src 'none'; base-uri 'self'; frame-ancestors 'none';",
@@ -24,17 +38,27 @@ export default defineConfig({
   resolve: {
     alias: [
       // More specific aliases must come first
-      { find: '@/hooks', replacement: path.resolve(__dirname, './src/hooks') },
-      { find: '@/components', replacement: path.resolve(__dirname, './Components') },
+      ...routerAliases,
+      { find: '@/hooks', replacement: path.resolve(webCoreRoot, './src/hooks') },
+      { find: '@/components', replacement: path.resolve(webCoreRoot, './Components') },
       { find: '@/Pages', replacement: path.resolve(__dirname, './Pages') },
-      { find: '@/lib', replacement: path.resolve(__dirname, './src/lib') },
-      { find: '@/services', replacement: path.resolve(__dirname, './src/services') },
-      // General alias to src folder
+      { find: '@/lib', replacement: path.resolve(webCoreRoot, './src/lib') },
+      { find: '@/services', replacement: path.resolve(webCoreRoot, './src/services') },
+      { find: '@/src', replacement: path.resolve(webCoreRoot, './src') },
+      // Bare packages web-core's own source imports -- it has no node_modules of its own,
+      // so these must resolve against this app's instead. See webCoreRuntimeDeps.js.
+      ...buildWebCoreRuntimeDepAliases(path.resolve(__dirname, 'node_modules')),
+      // General alias to the local app root (main.jsx, Layout.jsx, utils.js, remaining Pages/)
       { find: '@', replacement: path.resolve(__dirname, './') },
     ],
     extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json'],
   },
   server: {
+    // Vitest's per-file `@vitest-environment` pragma re-fetches the test file through
+    // the dev server, which enforces fs.allow -- without this, every packages/web-core
+    // test using the pragma fails with "Cannot find module" since that package lives
+    // outside this app's root. See docs/architecture/frontend-split-sync.md.
+    fs: { allow: [path.resolve(__dirname, '../../')] },
     allowedHosts: ['skupervisor.surebizcorp.com', 'skupervisor.dgfy.ph', '10.123.33.49', 'localhost'],
     headers: devSecurityHeaders,
     proxy: {
@@ -109,5 +133,8 @@ export default defineConfig({
   test: {
     // Playwright owns browser E2E specs; Vitest must run only unit and component tests.
     exclude: [...configDefaults.exclude, 'tests/e2e/**'],
+    // packages/web-core's tests run from here rather than getting their own vitest setup
+    // (that package deliberately has no node_modules of its own -- see its README).
+    include: [...configDefaults.include, '../../packages/web-core/**/*.{test,spec}.?(c|m)[jt]s?(x)'],
   },
 })

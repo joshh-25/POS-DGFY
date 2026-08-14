@@ -15,8 +15,8 @@ const dgfyAuthMock = vi.hoisted(() => ({
   requestDgfySignupOtp: vi.fn(),
 }));
 
-vi.mock('../../src/services/dgfyAuthService.js', async () => {
-  const actual = await vi.importActual('../../src/services/dgfyAuthService.js');
+vi.mock('../../../../packages/web-core/src/services/dgfyAuthService.js', async () => {
+  const actual = await vi.importActual('../../../../packages/web-core/src/services/dgfyAuthService.js');
   return {
     ...actual,
     ...dgfyAuthMock
@@ -27,7 +27,7 @@ vi.mock('@lottiefiles/react-lottie-player', () => ({
   Player: ({ children, ...props }) => <div data-testid="dgfy-auth-lottie" {...props}>{children}</div>
 }));
 
-import DgfyAuthPage from '../DgfyAuthPage.jsx';
+import DgfyAuthPage from '../../../../packages/web-core/Pages/DgfyAuthPage.jsx';
 
 const dgfyLegalTerms = {
   provider_clause: 'Provider clause',

@@ -15,7 +15,7 @@ const browserSession = vi.hoisted(() => ({
 vi.mock('../../../services/browserSession.js', () => browserSession);
 
 import ProtectedRoute from '../../ProtectedRoute.jsx';
-import LegalDocument from '../../../../Pages/LegalDocument.jsx';
+import LegalDocument from '../../../../../../apps/dgfy-web/Pages/LegalDocument.jsx';
 import {
   isWorkflowPageVisible,
   isWorkflowPathBlocked,
@@ -24,7 +24,10 @@ import {
   WORKFLOW_ROUTE_CAPABILITIES
 } from '../../../features/settings/workflowMode.js';
 
-const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../');
+// Both reads below (Layout.jsx, src/main.jsx) target files that stayed behind in
+// apps/dgfy-web when the shared trunk moved into packages/web-core -- see
+// docs/architecture/frontend-split-sync.md.
+const frontendRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../../../../apps/dgfy-web');
 
 afterEach(() => {
   cleanup();

@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { ArrowLeft, Building2, ShieldCheck, Store, UserRound, ChevronRight } from 'lucide-react';
-import NotFoundPage from '../src/components/common/NotFoundPage.jsx';
+import NotFoundPage from '../../../packages/web-core/src/components/common/NotFoundPage.jsx';
 
 const providerClause = 'DGFY is an e-marketplace/platform service provider. The seller owns the product, sets the price, fulfills the order, and remains the seller of record. Online payments are processed by licensed payment partners such as PayMongo; DGFY does not operate a stored-value wallet or hold seller settlement funds. When PayMongo QR Ph checkout is used, the disclosed DGFY platform fee is 1% of the item subtotal and is charged to the customer as an added platform fee. PayMongo/provider processing, payout, bank, dispute, and related provider fees are shouldered by the registered company and reduce the company net settlement unless a separate signed provider contract says otherwise.';
 

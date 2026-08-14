@@ -9,7 +9,7 @@ const apiMock = vi.hoisted(() => ({
   post: vi.fn()
 }));
 
-vi.mock('../../src/services/api.js', () => ({
+vi.mock('../../../../packages/web-core/src/services/api.js', () => ({
   default: apiMock
 }));
 

@@ -6,14 +6,14 @@ import { Input } from '@/components/ui/input';
 // Cross-app imports, same pattern as StorefrontAuthPage.jsx: the DGFY auth
 // service, route helpers, auth-page components and brand assets are shared
 // logic living in frontend/src, not app-specific.
-import { requestDgfyPasswordReset, completeDgfyPasswordReset } from '../../../../../src/services/dgfyAuthService.js';
-import DgfyAuthHero from '../../../../../src/features/dgfy/components/DgfyAuthHero.jsx';
-import DgfyPasswordInput from '../../../../../src/features/dgfy/components/DgfyPasswordInput.jsx';
-import dgfyLogo from '../../../../../src/assets/dgfy/dgfy-logo.png';
+import { requestDgfyPasswordReset, completeDgfyPasswordReset } from '../../../../../../../packages/web-core/src/services/dgfyAuthService.js';
+import DgfyAuthHero from '../../../../../../../packages/web-core/src/features/dgfy/components/DgfyAuthHero.jsx';
+import DgfyPasswordInput from '../../../../../../../packages/web-core/src/features/dgfy/components/DgfyPasswordInput.jsx';
+import dgfyLogo from '../../../../../../../packages/web-core/src/assets/dgfy/dgfy-logo.png';
 import {
   buildDgfyRouteSearch,
   readDgfyRouteParams
-} from '../../../../../src/features/dgfyRouteHelpers.js';
+} from '../../../../../../../packages/web-core/src/features/dgfyRouteHelpers.js';
 
 // Auth is same-origin as the storefront now, so "back to storefront" is the app
 // root and sign-in is the in-app /login route.

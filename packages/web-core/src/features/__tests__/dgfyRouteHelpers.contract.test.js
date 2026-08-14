@@ -12,7 +12,7 @@ import {
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const routeHelperPath = resolve(__dirname, '../dgfyRouteHelpers.js');
-const skupervisorMainPath = resolve(__dirname, '../../main.jsx');
+const skupervisorMainPath = resolve(__dirname, '../../../../../apps/dgfy-web/src/main.jsx');
 const routeHelperSource = readFileSync(routeHelperPath, 'utf8');
 const skupervisorMainSource = readFileSync(skupervisorMainPath, 'utf8');
 
@@ -26,7 +26,7 @@ describe('DGFY route helper contracts', () => {
   });
 
   it('keeps the SKUpervisor terminal route on the governed terminal page', () => {
-    expect(skupervisorMainSource).toContain("const TerminalPage = lazy(() => import('./features/pos/pages/TerminalPage.jsx'))");
+    expect(skupervisorMainSource).toContain("const TerminalPage = lazy(() => import('../../../packages/web-core/src/features/pos/pages/TerminalPage.jsx'))");
     expect(skupervisorMainSource).toContain('<Route path="/terminal" element={<TerminalPage />} />');
   });
 

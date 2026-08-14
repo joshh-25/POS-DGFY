@@ -1,17 +1,19 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 
+const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const dialogSource = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/features/pos/components/POSParkedSalesDialog.jsx'),
+    path.resolve(webCoreRoot, 'src/features/pos/components/POSParkedSalesDialog.jsx'),
     'utf8'
 );
 const terminalSource = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/features/pos/components/POSCheckoutTerminal.jsx'),
+    path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminal.jsx'),
     'utf8'
 );
 const actionComponentSource = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/features/pos/components/PosCurrentSaleActions.jsx'),
+    path.resolve(webCoreRoot, 'src/features/pos/components/PosCurrentSaleActions.jsx'),
     'utf8'
 );
 

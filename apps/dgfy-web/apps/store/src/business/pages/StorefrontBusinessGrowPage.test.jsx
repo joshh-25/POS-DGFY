@@ -24,12 +24,12 @@ const dgfyAuthMock = vi.hoisted(() => ({
   logoutDgfyAccount: vi.fn()
 }));
 
-vi.mock('../../../../../src/services/api.js', () => ({ default: apiMock }));
-vi.mock('../../../../../src/services/dgfyAuthService.js', () => dgfyAuthMock);
+vi.mock('../../../../../../../packages/web-core/src/services/api.js', () => ({ default: apiMock }));
+vi.mock('../../../../../../../packages/web-core/src/services/dgfyAuthService.js', () => dgfyAuthMock);
 vi.mock('sonner', () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
 import StorefrontBusinessGrowPage from './StorefrontBusinessGrowPage.jsx';
-import { resetRegistrationIndustriesCache } from '../../../../../src/features/registration/registrationIndustryService.js';
+import { resetRegistrationIndustriesCache } from '../../../../../../../packages/web-core/src/features/registration/registrationIndustryService.js';
 
 const dgfyAccount = {
   id: 'dgfy-1',

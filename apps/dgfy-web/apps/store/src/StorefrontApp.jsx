@@ -53,9 +53,9 @@ import { useGuestCustomerIdentity } from './shared/hooks/useGuestCustomerIdentit
 import { useStorefrontUiChrome } from './shared/hooks/useStorefrontUiChrome.js';
 import { useStorefrontTrackingIntent } from './shared/hooks/useStorefrontTrackingIntent.js';
 import { useAffiliateAttributionCapture } from './shared/hooks/useAffiliateAttributionCapture.js';
-import { setAnalyticsContext } from '../../../src/observability/analyticsClient.js';
-import { setSentryContext } from '../../../src/observability/sentryClient.js';
-import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../src/observability/analyticsEvents.js';
+import { setAnalyticsContext } from '../../../../../packages/web-core/src/observability/analyticsClient.js';
+import { setSentryContext } from '../../../../../packages/web-core/src/observability/sentryClient.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../packages/web-core/src/observability/analyticsEvents.js';
 import {
   buildCustomerFullName,
   clearCheckoutAuthResumeDraft,
@@ -266,22 +266,22 @@ import {
 import {
   WORKFLOW_MODE_LABELS,
   WORKFLOW_MODE_SELECT_VALUES
-} from '../../../src/features/settings/workflowMode.js';
+} from '../../../../../packages/web-core/src/features/settings/workflowMode.js';
 import {
   buildBusinessRegistrationUrl,
   buildDgfyAuthUrl,
   buildPosAppUrl
 } from './shared/utils/businessRegistrationUrl.js';
-import { resolveStorefrontAccountUrl } from '../../../src/features/dgfyRouteHelpers.js';
+import { resolveStorefrontAccountUrl } from '../../../../../packages/web-core/src/features/dgfyRouteHelpers.js';
 import {
   createDgfyHandoff,
   startDgfyPosSession,
   startDgfyTenantSession
-} from '../../../src/services/dgfyAuthService.js';
+} from '../../../../../packages/web-core/src/services/dgfyAuthService.js';
 import {
   buildPosDgfyHandoffUrl,
   buildSkupervisorHandoffUrl
-} from '../../../src/features/pos/utils/skupervisorHandoff.js';
+} from '../../../../../packages/web-core/src/features/pos/utils/skupervisorHandoff.js';
 import {
   clearDgfyAuthToken,
   clearStoreAuthToken,

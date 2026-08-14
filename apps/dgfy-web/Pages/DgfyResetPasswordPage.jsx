@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { requestDgfyPasswordReset, completeDgfyPasswordReset } from '../src/services/dgfyAuthService.js';
+import { requestDgfyPasswordReset, completeDgfyPasswordReset } from '../../../packages/web-core/src/services/dgfyAuthService.js';
 import { toast } from 'sonner';
 import { Input } from '@/components/ui/input';
-import DgfyAuthHero from '../src/features/dgfy/components/DgfyAuthHero.jsx';
-import DgfyPasswordInput from '../src/features/dgfy/components/DgfyPasswordInput.jsx';
-import dgfyLogo from '../src/assets/dgfy/dgfy-logo.png';
+import DgfyAuthHero from '../../../packages/web-core/src/features/dgfy/components/DgfyAuthHero.jsx';
+import DgfyPasswordInput from '../../../packages/web-core/src/features/dgfy/components/DgfyPasswordInput.jsx';
+import dgfyLogo from '../../../packages/web-core/src/assets/dgfy/dgfy-logo.png';
 import {
   buildDgfyAuthPath,
   readDgfyRouteParams,
   resolveStorefrontHomeUrl
-} from '../src/features/dgfyRouteHelpers.js';
+} from '../../../packages/web-core/src/features/dgfyRouteHelpers.js';
 
 const storefrontHomeUrl = resolveStorefrontHomeUrl();
 

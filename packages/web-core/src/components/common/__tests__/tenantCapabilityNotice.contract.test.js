@@ -5,13 +5,17 @@ import { describe, expect, it } from 'vitest';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const repoRoot = path.resolve(__dirname, '../../../..');
+// This package's own root (src/, Components/) -- Layout.jsx stayed behind in apps/dgfy-web
+// when the shared trunk moved into packages/web-core, see docs/architecture/frontend-split-sync.md.
+const packageRoot = path.resolve(__dirname, '../../../..');
+const appRoot = path.resolve(__dirname, '../../../../../../apps/dgfy-web');
 
-const read = (relativePath) => fs.readFileSync(path.join(repoRoot, relativePath), 'utf8');
+const read = (relativePath) => fs.readFileSync(path.join(packageRoot, relativePath), 'utf8');
+const readFromApp = (relativePath) => fs.readFileSync(path.join(appRoot, relativePath), 'utf8');
 
 describe('tenant capability notice shell contract', () => {
   it('keeps IMS layout subscribed to tenant capability block events', () => {
-    const layout = read('Layout.jsx');
+    const layout = readFromApp('Layout.jsx');
     expect(layout).toContain("window.addEventListener('tenant:capability-blocked'");
     expect(layout).toContain('<TenantCapabilityNotice');
   });

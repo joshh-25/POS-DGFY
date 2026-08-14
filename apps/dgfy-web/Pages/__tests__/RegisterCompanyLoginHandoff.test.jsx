@@ -30,24 +30,24 @@ const dgfyAuthMock = vi.hoisted(() => ({
   startDgfyTenantSession: vi.fn()
 }));
 
-vi.mock('../../src/services/api.js', () => ({
+vi.mock('../../../../packages/web-core/src/services/api.js', () => ({
   default: apiMock
 }));
 
-vi.mock('../../src/services/dgfyAuthService.js', () => dgfyAuthMock);
+vi.mock('../../../../packages/web-core/src/services/dgfyAuthService.js', () => dgfyAuthMock);
 vi.mock('@lottiefiles/react-lottie-player', () => ({
   Player: ({ children, ...props }) => <div data-testid="dgfy-auth-lottie" {...props}>{children}</div>
 }));
 
-import DgfyAuthPage from '../DgfyAuthPage.jsx';
+import DgfyAuthPage from '../../../../packages/web-core/Pages/DgfyAuthPage.jsx';
 import DgfyResetPasswordPage from '../DgfyResetPasswordPage.jsx';
 import LegalDocument from '../LegalDocument.jsx';
-import RegisterCompany from '../RegisterCompany.jsx';
+import RegisterCompany from '../../../../packages/web-core/Pages/RegisterCompany.jsx';
 import {
   appendDgfyHandoffToken,
   normalizeDgfyReturnTarget
-} from '../../src/features/dgfyRouteHelpers.js';
-import { resetRegistrationIndustriesCache } from '../../src/features/registration/registrationIndustryService.js';
+} from '../../../../packages/web-core/src/features/dgfyRouteHelpers.js';
+import { resetRegistrationIndustriesCache } from '../../../../packages/web-core/src/features/registration/registrationIndustryService.js';
 
 const dgfyAccount = {
   id: 'dgfy-1',

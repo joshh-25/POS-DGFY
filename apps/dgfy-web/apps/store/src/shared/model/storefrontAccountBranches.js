@@ -1,4 +1,4 @@
-import { listDgfyAccountCompaniesForTenantSession } from '../../../../../src/services/dgfyAuthService.js';
+import { listDgfyAccountCompaniesForTenantSession } from '../../../../../../../packages/web-core/src/services/dgfyAuthService.js';
 import { requestJson } from '../../services/requestJson.js';
 import { withAssetOrigin } from '../../app/runtime/storefrontRuntime.js';
 

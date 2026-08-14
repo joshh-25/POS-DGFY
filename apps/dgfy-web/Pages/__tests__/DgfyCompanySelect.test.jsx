@@ -17,10 +17,10 @@ const browserSessionMock = vi.hoisted(() => ({
   preparePosDgfyTenantHandoff: vi.fn()
 }));
 
-vi.mock('../../src/services/dgfyAuthService.js', () => dgfyAuthMock);
-vi.mock('../../src/services/browserSession.js', () => browserSessionMock);
+vi.mock('../../../../packages/web-core/src/services/dgfyAuthService.js', () => dgfyAuthMock);
+vi.mock('../../../../packages/web-core/src/services/browserSession.js', () => browserSessionMock);
 
-import DgfyCompanySelect from '../DgfyCompanySelect.jsx';
+import DgfyCompanySelect from '../../../../packages/web-core/Pages/DgfyCompanySelect.jsx';
 
 const ownedCompany = (overrides = {}) => ({
   membership_id: 1,

@@ -31,16 +31,16 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import * as adminService from '@/services/adminService';
 import { toast } from 'sonner';
-import { normalizeApiError } from '../../src/utils/errorHandler.js';
+import { normalizeApiError } from '../../../../packages/web-core/src/utils/errorHandler.js';
 import {
     CAPABILITY_BLOCK_TITLE,
     TENANT_CAPABILITY_MESSAGES,
     getStorefrontAccessModeMessage
-} from '../../src/utils/tenantCapabilityMessages.js';
-import { WORKFLOW_MODE_LABELS } from '../../src/features/settings/workflowMode.js';
-import IndustryPicker from '../../src/features/registration/IndustryPicker.jsx';
-import StorefrontCustomDomainsModal from '../../src/features/admin/components/StorefrontCustomDomainsModal.jsx';
-import TenantRevenueSettlementPanel from '../../src/features/admin/tenantRevenue/TenantRevenueSettlementPanel.jsx';
+} from '../../../../packages/web-core/src/utils/tenantCapabilityMessages.js';
+import { WORKFLOW_MODE_LABELS } from '../../../../packages/web-core/src/features/settings/workflowMode.js';
+import IndustryPicker from '../../../../packages/web-core/src/features/registration/IndustryPicker.jsx';
+import StorefrontCustomDomainsModal from '../../../../packages/web-core/src/features/admin/components/StorefrontCustomDomainsModal.jsx';
+import TenantRevenueSettlementPanel from '../../../../packages/web-core/src/features/admin/tenantRevenue/TenantRevenueSettlementPanel.jsx';
 
 const STATUS_CONFIG = {
     pending: { label: 'Pending', color: 'text-amber-600 bg-amber-50 border-amber-200', icon: Clock },

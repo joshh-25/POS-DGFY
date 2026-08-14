@@ -21,12 +21,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "../src/lib/utils.js";
+import { cn } from "../../../packages/web-core/src/lib/utils.js";
 import { toast } from 'sonner';
-import { usePermission } from '../src/hooks/usePermission';
+import { usePermission } from '../../../packages/web-core/src/hooks/usePermission';
 import { useItems } from '@/hooks/useItems.js';
 import { useDispatchOrders } from '@/hooks/useDispatchOrders.js';
-import * as dispatchOrderService from '../src/services/dispatchOrderService.js';
+import * as dispatchOrderService from '../../../packages/web-core/src/services/dispatchOrderService.js';
 import DOCreateModal from '@/components/dispatch/DOCreateModal';
 import DODetailsModal from '@/components/dispatch/DODetailsModal';
 import DODispatchModal from '@/components/dispatch/DODispatchModal';

@@ -9,7 +9,7 @@ import { Label } from '@/components/ui/label';
 // Cross-app imports — same pattern as StorefrontAuthPage.jsx: the DGFY
 // account/company API layer, workflow-mode labels, auth-page hero and shared
 // UI primitives are shared logic living in frontend/src, not app-specific.
-import api from '../../../../../src/services/api.js';
+import api from '../../../../../../../packages/web-core/src/services/api.js';
 import {
   clearDgfySession,
   dgfyAuthHeader,
@@ -19,10 +19,10 @@ import {
   getStoredDgfyAccount,
   getStoredDgfyToken,
   logoutDgfyAccount
-} from '../../../../../src/services/dgfyAuthService.js';
-import DgfyAuthHero from '../../../../../src/features/dgfy/components/DgfyAuthHero.jsx';
-import { resolvePosTerminalUrl } from '../../../../../src/features/dgfyRouteHelpers.js';
-import IndustrySelect from '../../../../../src/features/registration/IndustrySelect.jsx';
+} from '../../../../../../../packages/web-core/src/services/dgfyAuthService.js';
+import DgfyAuthHero from '../../../../../../../packages/web-core/src/features/dgfy/components/DgfyAuthHero.jsx';
+import { resolvePosTerminalUrl } from '../../../../../../../packages/web-core/src/features/dgfyRouteHelpers.js';
+import IndustrySelect from '../../../../../../../packages/web-core/src/features/registration/IndustrySelect.jsx';
 
 import { writeDgfyAuthToken } from '../../auth/storefrontSessionStorage.js';
 import { resolveSkupervisorUrl } from '../../auth/storefrontSkupervisorLink.js';

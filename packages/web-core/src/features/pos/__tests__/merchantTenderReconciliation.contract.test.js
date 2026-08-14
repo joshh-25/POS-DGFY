@@ -1,9 +1,11 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 
-const workspaceSource = fs.readFileSync(path.resolve(process.cwd(), 'src/features/pos/components/TerminalOperationsWorkspace.jsx'), 'utf8');
-const serviceSource = fs.readFileSync(path.resolve(process.cwd(), 'src/features/pos/services/posService.js'), 'utf8');
+const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+const workspaceSource = fs.readFileSync(path.resolve(webCoreRoot, 'src/features/pos/components/TerminalOperationsWorkspace.jsx'), 'utf8');
+const serviceSource = fs.readFileSync(path.resolve(webCoreRoot, 'src/features/pos/services/posService.js'), 'utf8');
 
 describe('merchant-owned tender reconciliation UI contract', () => {
   it('shows the manager review only to close-day operators and states the non-PayMongo boundary', () => {

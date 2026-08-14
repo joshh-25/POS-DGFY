@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 
-import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../src/observability/analyticsEvents.js';
+import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../../../../../packages/web-core/src/observability/analyticsEvents.js';
 
 /**
  * Owns F&B item-detail navigation while the app shell continues to provide the

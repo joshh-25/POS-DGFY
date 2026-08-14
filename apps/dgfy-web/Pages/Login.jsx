@@ -1,15 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
-import { login } from '../src/services/authService.js';
-import api from '../src/services/api.js';
-import { clearClientSession } from '../src/services/sessionCleanup.js';
+import { login } from '../../../packages/web-core/src/services/authService.js';
+import api from '../../../packages/web-core/src/services/api.js';
+import { clearClientSession } from '../../../packages/web-core/src/services/sessionCleanup.js';
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChevronDown, ChevronUp, Loader2, AlertTriangle, ArrowRight, Eye, EyeOff } from 'lucide-react';
-import dgfyLogo from '../src/assets/dgfy/dgfy-logo.png';
-import { buildDgfyAuthPath, DGFY_COMPANY_SELECT_ROUTE } from '../src/features/dgfyRouteHelpers.js';
+import dgfyLogo from '../../../packages/web-core/src/assets/dgfy/dgfy-logo.png';
+import { buildDgfyAuthPath, DGFY_COMPANY_SELECT_ROUTE } from '../../../packages/web-core/src/features/dgfyRouteHelpers.js';
 
 const handleDgfyLogoError = (event) => {
   const image = event.currentTarget;

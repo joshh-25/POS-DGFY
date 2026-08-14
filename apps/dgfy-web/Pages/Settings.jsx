@@ -38,12 +38,12 @@ import {
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
-import { cn } from "../src/lib/utils.js";
-import useStore from '../src/store/useStore.js';
-import * as userService from '../src/services/userService.js';
-import * as settingsService from '../src/services/settingsService.js';
-import * as paymentService from '../src/services/paymentService.js';
-import * as tenantLocationService from '../src/services/tenantLocationService.js';
+import { cn } from "../../../packages/web-core/src/lib/utils.js";
+import useStore from '../../../packages/web-core/src/store/useStore.js';
+import * as userService from '../../../packages/web-core/src/services/userService.js';
+import * as settingsService from '../../../packages/web-core/src/services/settingsService.js';
+import * as paymentService from '../../../packages/web-core/src/services/paymentService.js';
+import * as tenantLocationService from '../../../packages/web-core/src/services/tenantLocationService.js';
 import {
   fetchESalesReports,
   fetchFiscalLedgerIntegrity,
@@ -51,34 +51,34 @@ import {
   generateESalesReport,
   saveFiscalTerminalRegistration,
   updateESalesReportStatus
-} from '../src/features/pos/services/posService.js';
-import UserManagementModal from '../Components/users/UserManagementModal.jsx';
-import MapPinPicker from '../src/components/maps/MapPinPicker.jsx';
-import ComplianceProgramPanel from '../src/features/compliance/components/ComplianceProgramPanel.jsx';
+} from '../../../packages/web-core/src/features/pos/services/posService.js';
+import UserManagementModal from '../../../packages/web-core/Components/users/UserManagementModal.jsx';
+import MapPinPicker from '../../../packages/web-core/src/components/maps/MapPinPicker.jsx';
+import ComplianceProgramPanel from '../../../packages/web-core/src/features/compliance/components/ComplianceProgramPanel.jsx';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { shouldShowMigrateToPayMongoSection, subscriptionsEnabled } from '../src/utils/subscriptionUi.js';
+import { shouldShowMigrateToPayMongoSection, subscriptionsEnabled } from '../../../packages/web-core/src/utils/subscriptionUi.js';
 import {
   resolveSettingsDeepLink,
   resolveSettingsTab,
   withSettingsTabInSearch
-} from '../src/features/settings/settingsDeepLink.js';
-import { broadcastWorkflowModeChange } from '../src/features/settings/WorkflowModeContext.jsx';
+} from '../../../packages/web-core/src/features/settings/settingsDeepLink.js';
+import { broadcastWorkflowModeChange } from '../../../packages/web-core/src/features/settings/WorkflowModeContext.jsx';
 import {
   DEFAULT_WORKFLOW_MODE,
   getWorkflowModeLabel,
   normalizeWorkflowMode,
   WORKFLOW_MODE_LABELS,
   WORKFLOW_MODE_SELECT_VALUES
-} from '../src/features/settings/workflowMode.js';
+} from '../../../packages/web-core/src/features/settings/workflowMode.js';
 import {
   createDefaultStorefrontBusinessHours,
   normalizeStorefrontBusinessHours,
   serializeStorefrontBusinessHours
-} from '../src/features/settings/storefrontBusinessHours.js';
-import StorefrontBusinessHoursScheduler from '../src/features/settings/StorefrontBusinessHoursScheduler.jsx';
-import resolveAssetUrl from '../src/utils/assetUrl.js';
-import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../src/utils/phoneNumber.js';
-import { generateReadablePassword, isPasswordLongEnough } from '../src/utils/passwordPolicy.js';
+} from '../../../packages/web-core/src/features/settings/storefrontBusinessHours.js';
+import StorefrontBusinessHoursScheduler from '../../../packages/web-core/src/features/settings/StorefrontBusinessHoursScheduler.jsx';
+import resolveAssetUrl from '../../../packages/web-core/src/utils/assetUrl.js';
+import { getPhoneNumberError, normalizePhoneNumber, PHONE_NUMBER_HELP_TEXT } from '../../../packages/web-core/src/utils/phoneNumber.js';
+import { generateReadablePassword, isPasswordLongEnough } from '../../../packages/web-core/src/utils/passwordPolicy.js';
 
 const TERMINAL_ID_PATTERN = /^[A-Za-z0-9._-]{2,100}$/;
 const TERMINAL_REGISTRY_MODE_OPTIONS = ['warn', 'enforce'];

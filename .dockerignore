@@ -25,6 +25,7 @@
 /packages/*
 !/packages/pos-receipt
 !/packages/shared-constants
+!/packages/web-core
 /artifacts
 /nginx
 /skills

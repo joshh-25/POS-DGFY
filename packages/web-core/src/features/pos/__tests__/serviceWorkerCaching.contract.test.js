@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createPosOfflineBuildRevision,
   POS_OFFLINE_BUILD_REVISION_TOKEN
-} from '../../../../apps/pos/vitePosOfflinePrecachePlugin.js';
+} from '../../../../../../apps/dgfy-web/apps/pos/vitePosOfflinePrecachePlugin.js';
 
 const frontendRoot = process.cwd();
 const posServiceWorkerPath = path.resolve(frontendRoot, 'apps/pos/public/sw.js');

@@ -22,10 +22,10 @@ import SupplierExportModal from '@/components/suppliers/SupplierExportModal';
 import SupplierImportModal from '@/components/suppliers/SupplierImportModal';
 import { useSuppliers, useCreateSupplier, useUpdateSupplier, useCreateSupplierDraft, useFinalizeSupplier, useDeleteSupplier } from '@/hooks/useSuppliers.js';
 import { useItemSupplierCoverage } from '@/hooks/useItems.js';
-import { getCurrentUser } from '../src/services/authService.js';
+import { getCurrentUser } from '../../../packages/web-core/src/services/authService.js';
 import { toast } from 'sonner';
-import { usePermission } from '../src/hooks/usePermission';
-import { normalizeApiError } from '../src/utils/errorHandler.js';
+import { usePermission } from '../../../packages/web-core/src/hooks/usePermission';
+import { normalizeApiError } from '../../../packages/web-core/src/utils/errorHandler.js';
 
 export default function Suppliers() {
   const { suppliers, loading, error, refetch } = useSuppliers();

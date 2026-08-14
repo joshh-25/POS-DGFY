@@ -10,21 +10,21 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { cn } from "../src/lib/utils.js";
+import { cn } from "../../../packages/web-core/src/lib/utils.js";
 import { usePurchaseOrders, useCreatePurchaseOrder, useReceivePurchaseOrder, useArchivePurchaseOrder, useRestorePurchaseOrder } from '@/hooks/usePurchaseOrders.js';
 import { useSuppliers } from '@/hooks/useSuppliers.js';
 import { useItems } from '@/hooks/useItems.js';
-import * as purchaseOrderService from '../src/services/purchaseOrderService.js';
+import * as purchaseOrderService from '../../../packages/web-core/src/services/purchaseOrderService.js';
 import POCreateWizard from '@/components/po/POCreateWizard';
 import PODetailsModal from '@/components/po/PODetailsModal';
 import POReceiptModal from '@/components/po/POReceiptModal';
 import DeleteConfirmDialog from '@/components/ui/DeleteConfirmDialog';
 import { toast } from 'sonner';
-import { formatPeso } from '../src/lib/numberUtils.js';
-import { usePermission } from '../src/hooks/usePermission';
+import { formatPeso } from '../../../packages/web-core/src/lib/numberUtils.js';
+import { usePermission } from '../../../packages/web-core/src/hooks/usePermission';
 import QRCodeModal from '@/components/common/QRCodeModal';
-import { generateReceiveToken } from '../src/services/receiveTokenService.js';
-import { normalizeApiError } from '../src/utils/errorHandler.js';
+import { generateReceiveToken } from '../../../packages/web-core/src/services/receiveTokenService.js';
+import { normalizeApiError } from '../../../packages/web-core/src/utils/errorHandler.js';
 
 const statusConfig = {
   draft: { label: "Draft", color: "bg-slate-100 text-slate-700 border-slate-200", icon: FileEdit },

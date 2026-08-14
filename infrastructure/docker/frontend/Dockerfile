@@ -16,6 +16,7 @@ COPY apps/dgfy-web/package*.json ./
 RUN sed -i 's#\.\./\.\./packages/#../packages/#g' package.json package-lock.json
 COPY packages/pos-receipt /packages/pos-receipt
 COPY packages/shared-constants /packages/shared-constants
+COPY packages/web-core /packages/web-core
 RUN --mount=type=cache,target=/root/.npm,sharing=locked \
     npm config set fetch-retries=5 fetch-retry-mintimeout=20000 fetch-retry-maxtimeout=120000 fetch-timeout=300000 \
     && (npm ci || (sleep 10 && npm ci) || (sleep 20 && npm ci))

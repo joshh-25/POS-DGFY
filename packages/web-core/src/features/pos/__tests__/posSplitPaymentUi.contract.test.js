@@ -1,17 +1,19 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 
+const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const checkoutSource = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/features/pos/components/POSCheckoutTerminal.jsx'),
+    path.resolve(webCoreRoot, 'src/features/pos/components/POSCheckoutTerminal.jsx'),
     'utf8'
 );
 const splitDialogSource = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/features/pos/components/POSSplitPaymentDialog.jsx'),
+    path.resolve(webCoreRoot, 'src/features/pos/components/POSSplitPaymentDialog.jsx'),
     'utf8'
 );
 const splitWorkflowSource = fs.readFileSync(
-    path.resolve(process.cwd(), 'src/features/pos/components/POSSplitPaymentWorkflow.jsx'),
+    path.resolve(webCoreRoot, 'src/features/pos/components/POSSplitPaymentWorkflow.jsx'),
     'utf8'
 );
 

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { usePermission } from './src/hooks/usePermission'; // Created next
+import { usePermission } from '../../packages/web-core/src/hooks/usePermission'; // Created next
 import { createPageUrl } from './utils.js';
 import { toast } from 'sonner';
 import {
@@ -26,24 +26,24 @@ import {
   Utensils,
   RefreshCw
 } from 'lucide-react';
-import { cn } from "./src/lib/utils.js";
-import { logout, getCurrentUser } from './src/services/authService.js';
-import FeedbackWidget from './Components/common/FeedbackWidget';
-import GracePeriodBanner from './Components/common/GracePeriodBanner';
-import TenantCapabilityNotice from './src/components/common/TenantCapabilityNotice.jsx';
-import useStore from './src/store/useStore.js';
-import { useWorkflowMode } from './src/features/settings/WorkflowModeContext.jsx';
-import { getWorkflowModeLabel, isWorkflowPageModeSensitive, isWorkflowPageVisible, modeHasCapability } from './src/features/settings/workflowMode.js';
-import OnboardingSetupModal, { OnboardingReminderBanner } from './src/features/onboarding/components/OnboardingSetupModal.jsx';
-import { trackOnboardingEvent } from './src/services/onboardingService.js';
-import { getAllSettings } from './src/services/settingsService.js';
-import { buildTenantCapabilityNoticeFromSettings } from './src/utils/tenantCapabilityMessages.js';
-import { mergeCurrentCompanyWithMemberships } from './src/utils/companySwitcherRows.js';
+import { cn } from "../../packages/web-core/src/lib/utils.js";
+import { logout, getCurrentUser } from '../../packages/web-core/src/services/authService.js';
+import FeedbackWidget from '../../packages/web-core/Components/common/FeedbackWidget';
+import GracePeriodBanner from '../../packages/web-core/Components/common/GracePeriodBanner';
+import TenantCapabilityNotice from '../../packages/web-core/src/components/common/TenantCapabilityNotice.jsx';
+import useStore from '../../packages/web-core/src/store/useStore.js';
+import { useWorkflowMode } from '../../packages/web-core/src/features/settings/WorkflowModeContext.jsx';
+import { getWorkflowModeLabel, isWorkflowPageModeSensitive, isWorkflowPageVisible, modeHasCapability } from '../../packages/web-core/src/features/settings/workflowMode.js';
+import OnboardingSetupModal, { OnboardingReminderBanner } from '../../packages/web-core/src/features/onboarding/components/OnboardingSetupModal.jsx';
+import { trackOnboardingEvent } from '../../packages/web-core/src/services/onboardingService.js';
+import { getAllSettings } from '../../packages/web-core/src/services/settingsService.js';
+import { buildTenantCapabilityNoticeFromSettings } from '../../packages/web-core/src/utils/tenantCapabilityMessages.js';
+import { mergeCurrentCompanyWithMemberships } from '../../packages/web-core/src/utils/companySwitcherRows.js';
 import {
   acceptDgfyCompanyInvitationForTenantSession,
   listDgfyAccountCompaniesForTenantSession,
   switchDgfyCompanyForTenantSession
-} from './src/services/dgfyAuthService.js';
+} from '../../packages/web-core/src/services/dgfyAuthService.js';
 
 const ALL_NAV_ITEMS = [
   { name: 'Dashboard', icon: LayoutDashboard, page: 'Dashboard', permission: null }, // Everyone sees dashboard? Or maybe basic view?

@@ -1,10 +1,13 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
+
+const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 
 describe('CSV import workflow-mode contracts', () => {
   it('uses workflow_mode query param for template downloads', () => {
-    const hookPath = path.resolve(process.cwd(), 'src/hooks/useCSVImport.js');
+    const hookPath = path.resolve(webCoreRoot, 'src/hooks/useCSVImport.js');
     const source = fs.readFileSync(hookPath, 'utf8');
 
     expect(source).toContain('/items/import/template?workflow_mode=');
@@ -14,7 +17,7 @@ describe('CSV import workflow-mode contracts', () => {
   });
 
   it('uses a single workflow-mode-specific template button in the modal', () => {
-    const modalPath = path.resolve(process.cwd(), 'Components/items/CSVImportModal.jsx');
+    const modalPath = path.resolve(webCoreRoot, 'Components/items/CSVImportModal.jsx');
     const source = fs.readFileSync(modalPath, 'utf8');
 
     expect(source).toContain('Download {getWorkflowModeLabel(workflowMode)} Template');
@@ -23,8 +26,8 @@ describe('CSV import workflow-mode contracts', () => {
   });
 
   it('passes workflow_mode query/body values for CSV exports', () => {
-    const hookPath = path.resolve(process.cwd(), 'src/hooks/useCSVExport.js');
-    const modalPath = path.resolve(process.cwd(), 'Components/items/CSVExportModal.jsx');
+    const hookPath = path.resolve(webCoreRoot, 'src/hooks/useCSVExport.js');
+    const modalPath = path.resolve(webCoreRoot, 'Components/items/CSVExportModal.jsx');
     const hookSource = fs.readFileSync(hookPath, 'utf8');
     const modalSource = fs.readFileSync(modalPath, 'utf8');
 

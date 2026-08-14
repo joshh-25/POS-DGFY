@@ -2,7 +2,8 @@
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'url';
 import path from 'path';
-import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../sentryViteConfig.js';
+import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../../../packages/web-core/vite/sentryViteConfig.js';
+import { buildWebCoreRuntimeDepAliases } from '../../../../packages/web-core/vite/webCoreRuntimeDeps.js';
 // Opt-in only (VITE_ANALYZE_BUNDLE=true) -- writes a stats.html treemap next
 // to the build output. Never runs in a normal `build:store` so it can't
 // perturb production build size/timing. See issue #282's Phase A baseline:
@@ -12,6 +13,9 @@ const shouldAnalyzeBundle = String(process.env.VITE_ANALYZE_BUNDLE || '').trim()
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const frontendRoot = path.resolve(__dirname, '../..');
+// Shared trunk extracted to packages/web-core (issue #322). Alias key is unchanged from
+// before the split -- only its target moved. See docs/architecture/frontend-split-sync.md.
+const webCoreRoot = path.resolve(frontendRoot, '../../packages/web-core');
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000';
 const configuredBasePath = process.env.VITE_STORE_BASE_PATH || '/';
 const allowedHosts = true;
@@ -19,9 +23,12 @@ const appSurface = 'store';
 const frontendNodeModules = path.resolve(frontendRoot, 'node_modules');
 // Mirrors the `@/components` entry in frontend/vite.config.js. The DGFY auth and
 // business pages ported into this app import the shared shadcn primitives
-// (`@/components/ui/input`, `button`, `label`) that live in frontend/Components.
+// (`@/components/ui/input`, `button`, `label`) that live in packages/web-core/Components.
 const sharedAliases = [
-  { find: '@/components', replacement: path.resolve(frontendRoot, 'Components') }
+  { find: '@/components', replacement: path.resolve(webCoreRoot, 'Components') },
+  // Bare packages web-core's own source imports -- it has no node_modules of its own,
+  // so these must resolve against this app's instead. See webCoreRuntimeDeps.js.
+  ...buildWebCoreRuntimeDepAliases(frontendNodeModules)
 ];
 const reactAliases = [
   { find: /^react$/, replacement: path.resolve(frontendNodeModules, 'react') },

@@ -2,12 +2,16 @@
 import react from '@vitejs/plugin-react';
 import { fileURLToPath } from 'url';
 import path from 'path';
-import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../sentryViteConfig.js';
+import { buildSentryVitePlugins, sentrySourcemapBuildValue } from '../../../../packages/web-core/vite/sentryViteConfig.js';
+import { buildWebCoreRuntimeDepAliases } from '../../../../packages/web-core/vite/webCoreRuntimeDeps.js';
 import { posOfflinePrecachePlugin } from './vitePosOfflinePrecachePlugin.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const frontendRoot = path.resolve(__dirname, '../..');
+// Shared trunk extracted to packages/web-core (issue #322). Alias keys are unchanged from
+// before the split -- only their targets moved. See docs/architecture/frontend-split-sync.md.
+const webCoreRoot = path.resolve(frontendRoot, '../../packages/web-core');
 const apiProxyTarget = process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:5000';
 const allowedHosts = true;
 const appSurface = 'pos';
@@ -65,11 +69,15 @@ export default defineConfig({
     dedupe: ['react', 'react-dom', 'react-router', 'react-router-dom'],
     alias: [
       ...reactAliases,
-      { find: '@/hooks', replacement: path.resolve(frontendRoot, 'src/hooks') },
-      { find: '@/components', replacement: path.resolve(frontendRoot, 'Components') },
+      { find: '@/hooks', replacement: path.resolve(webCoreRoot, 'src/hooks') },
+      { find: '@/components', replacement: path.resolve(webCoreRoot, 'Components') },
       { find: '@/Pages', replacement: path.resolve(frontendRoot, 'Pages') },
-      { find: '@/lib', replacement: path.resolve(frontendRoot, 'src/lib') },
-      { find: '@/services', replacement: path.resolve(frontendRoot, 'src/services') },
+      { find: '@/lib', replacement: path.resolve(webCoreRoot, 'src/lib') },
+      { find: '@/services', replacement: path.resolve(webCoreRoot, 'src/services') },
+      { find: '@/src', replacement: path.resolve(webCoreRoot, 'src') },
+      // Bare packages web-core's own source imports -- it has no node_modules of its own,
+      // so these must resolve against this app's instead. See webCoreRuntimeDeps.js.
+      ...buildWebCoreRuntimeDepAliases(frontendNodeModules),
       { find: '@', replacement: frontendRoot }
     ],
     extensions: ['.mjs', '.js', '.mts', '.ts', '.jsx', '.tsx', '.json']

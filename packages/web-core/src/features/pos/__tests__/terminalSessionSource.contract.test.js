@@ -10,7 +10,7 @@ const terminalCompanyAccessSource = readFileSync(
   resolve(__dirname, '../utils/posTerminalCompanyAccess.js'),
   'utf8'
 );
-const standalonePosMainPath = resolve(__dirname, '../../../../apps/pos/src/main.jsx');
+const standalonePosMainPath = resolve(__dirname, '../../../../../../apps/dgfy-web/apps/pos/src/main.jsx');
 const standalonePosMainSource = readFileSync(standalonePosMainPath, 'utf8');
 
 describe('TerminalPage session contract', () => {
@@ -132,8 +132,8 @@ describe('TerminalPage session contract', () => {
   });
 
   it('mounts the DGFY SSO handoff routes inside the standalone POS HashRouter', () => {
-    expect(standalonePosMainSource).toContain('const DgfyAuthPage = lazy(() => import(\'../../../Pages/DgfyAuthPage.jsx\'));');
-    expect(standalonePosMainSource).toContain('const DgfyCompanySelect = lazy(() => import(\'../../../Pages/DgfyCompanySelect.jsx\'));');
+    expect(standalonePosMainSource).toContain('const DgfyAuthPage = lazy(() => import(\'../../../../../packages/web-core/Pages/DgfyAuthPage.jsx\'));');
+    expect(standalonePosMainSource).toContain('const DgfyCompanySelect = lazy(() => import(\'../../../../../packages/web-core/Pages/DgfyCompanySelect.jsx\'));');
     expect(standalonePosMainSource).toContain('<Route path="/dgfy/auth" element={<DgfyAuthPage />} />');
     expect(standalonePosMainSource).toContain('<Route path="/dgfy/companies" element={<DgfyCompanySelect targetSurface="pos" />} />');
   });

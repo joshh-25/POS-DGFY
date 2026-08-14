@@ -18,7 +18,7 @@ describe('Food & Beverage frontend contract', () => {
   });
 
   it('exposes F&B APIs for menu, tables, checks, kitchen, reservations, and service charge settings', () => {
-    const api = read('apps/dgfy-web/src/features/fnb/api/fnbApi.js');
+    const api = read('packages/web-core/src/features/fnb/api/fnbApi.js');
 
     expect(api).toContain('/fnb/modifier-groups');
     expect(api).toContain('updateFnbModifierGroup');
@@ -30,7 +30,7 @@ describe('Food & Beverage frontend contract', () => {
   });
 
   it('keeps the F&B console restaurant-native rather than manufacturing-native', () => {
-    const page = read('apps/dgfy-web/src/features/fnb/pages/FnbPage.jsx');
+    const page = read('packages/web-core/src/features/fnb/pages/FnbPage.jsx');
 
     expect(page).toContain('Tables');
     expect(page).toContain('Kitchen');
@@ -46,8 +46,8 @@ describe('Food & Beverage frontend contract', () => {
   });
 
   it('keeps modifier management in standalone POS instead of the SKUpervisor F&B page', () => {
-    const fnbPage = read('apps/dgfy-web/src/features/fnb/pages/FnbPage.jsx');
-    const posWorkspace = read('apps/dgfy-web/src/features/pos/components/TerminalOperationsWorkspace.jsx');
+    const fnbPage = read('packages/web-core/src/features/fnb/pages/FnbPage.jsx');
+    const posWorkspace = read('packages/web-core/src/features/pos/components/TerminalOperationsWorkspace.jsx');
 
     expect(fnbPage).not.toContain('PosFnbModifierManager');
     expect(fnbPage).not.toContain('FnbModifierManager');
@@ -56,12 +56,12 @@ describe('Food & Beverage frontend contract', () => {
   });
 
   it('attaches F&B check context to POS checkout and receipts', () => {
-    const posPageShell = read('apps/dgfy-web/src/features/pos/pages/PosPageShell.jsx');
-    const diningPanel = read('apps/dgfy-web/src/features/fnb/components/FnbDiningPanel.jsx');
-    const terminal = read('apps/dgfy-web/src/features/pos/components/POSCheckoutTerminal.jsx');
-    const checkoutSurfaceContract = read('apps/dgfy-web/src/features/pos/utils/checkoutSurfaceContract.js');
-    const historyPanel = read('apps/dgfy-web/src/features/pos/components/POSTransactionHistoryPanel.jsx');
-    const receipt = read('apps/dgfy-web/src/features/pos/components/ReceiptPrintView.jsx');
+    const posPageShell = read('packages/web-core/src/features/pos/pages/PosPageShell.jsx');
+    const diningPanel = read('packages/web-core/src/features/fnb/components/FnbDiningPanel.jsx');
+    const terminal = read('packages/web-core/src/features/pos/components/POSCheckoutTerminal.jsx');
+    const checkoutSurfaceContract = read('packages/web-core/src/features/pos/utils/checkoutSurfaceContract.js');
+    const historyPanel = read('packages/web-core/src/features/pos/components/POSTransactionHistoryPanel.jsx');
+    const receipt = read('packages/web-core/src/features/pos/components/ReceiptPrintView.jsx');
 
     expect(posPageShell).toContain('FnbDiningPanel');
     expect(diningPanel).toContain('restaurant_service_charge: serviceCharge');

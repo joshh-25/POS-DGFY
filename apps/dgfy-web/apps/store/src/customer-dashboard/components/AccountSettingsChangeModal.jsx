@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Eye, EyeOff, KeyRound, Mail, Phone, ShieldCheck, X } from 'lucide-react';
-import { changeDgfyPassword } from '../../../../../src/services/dgfyAuthService.js';
+import { changeDgfyPassword } from '../../../../../../../packages/web-core/src/services/dgfyAuthService.js';
 import { CUSTOMER_DASHBOARD_TYPOGRAPHY } from '../model/customerDashboardPresentation.jsx';
 
 const MODE_COPY = {

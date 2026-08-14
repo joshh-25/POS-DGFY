@@ -1,3 +1,3 @@
-import StockMovementsPage from '../src/features/stockMovements/pages/StockMovementsPage.jsx';
+import StockMovementsPage from '../../../packages/web-core/src/features/stockMovements/pages/StockMovementsPage.jsx';
 
 export default StockMovementsPage;

@@ -1,14 +1,12 @@
 import fs from 'fs';
 import path from 'path';
+import { fileURLToPath } from 'url';
 import { describe, expect, it } from 'vitest';
 
-const readFrontendFile = (relativePath) => {
-  const directPath = path.resolve(process.cwd(), relativePath);
-  const absolutePath = fs.existsSync(directPath)
-    ? directPath
-    : path.resolve(process.cwd(), 'apps/dgfy-web', relativePath);
-  return fs.readFileSync(absolutePath, 'utf8');
-};
+// All relativePaths below (Components/, src/) live in this package -- see
+// docs/architecture/frontend-split-sync.md.
+const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+const readFrontendFile = (relativePath) => fs.readFileSync(path.resolve(webCoreRoot, relativePath), 'utf8');
 
 describe('Item/Product wizard contracts', () => {
   it('defaults FIFO to enabled for item and product create flows', () => {

@@ -1,9 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
+const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
 const readSource = (relativePath) => fs.readFileSync(
-  path.resolve(process.cwd(), relativePath),
+  path.resolve(webCoreRoot, relativePath),
   'utf8'
 );
 

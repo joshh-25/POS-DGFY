@@ -1,8 +1,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-const readFrontendFile = (relativePath) => fs.readFileSync(path.resolve(process.cwd(), relativePath), 'utf8');
+const webCoreRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+const readFrontendFile = (relativePath) => fs.readFileSync(path.resolve(webCoreRoot, relativePath), 'utf8');
 
 describe('item Senior/PWD discount eligibility controls', () => {
   it('wires POS item create and edit controls to the persisted field', () => {
