@@ -36,6 +36,7 @@
     "generate:adr-index": "node scripts/check-adr.js --write-index",
     "test:adr": "node --test scripts/check-adr.test.js",
     "check:compat-seams": "node scripts/check-compat-seams.js",
+    "check:agent-surfaces": "node scripts/check-agent-surfaces.js",
     "check:pr-quality-workflow": "node scripts/check-pr-quality-workflow.js",
     "test:compat-seams": "node --test scripts/check-compat-seams.test.js",
     "generate:compat-inventory": "node scripts/generate-compat-inventory.js",

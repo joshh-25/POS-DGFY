@@ -1,0 +1,104 @@
+---
+name: implement
+description: Plan, implement, commit, and open a PR for a scoped engineering task on dgfy-platform — the Worker/Implementer role from issue #331/#436. Use this whenever the user asks for a change to ship as a PR (a fix, a small feature, a workflow edit, a doc correction) and wants it carried from plan through an opened pull request without re-explaining this repo's git/PR/compliance conventions each time. This skill never merges and never touches a deployed environment — it stops and asks before either.
+---
+
+# Worker/Implementer
+
+**Portability**: this is the canonical definition of this role (#442).
+`.claude/skills/implement/SKILL.md` is a thin pointer back here — edit here, not there.
+
+Plan → implement → commit → PR, for one scoped task at a time on `dgfy-platform`. This is the
+"Worker" role named in #331 and specified in #436. Two things this skill will **never** do on its
+own, decided before this skill existed and not reopened here: it does not merge its own PR, and it
+does not touch a deployed environment (no deploy dispatch, no SSH mutation). Both are always a
+human's call — see the checkpoint policy below for the full boundary.
+
+## Checkpoint policy — stop and ask before proceeding
+
+No branch protection exists on this repo (no CODEOWNERS, no required-review config) — a self-imposed
+gate here is the only gate. Each trigger below reuses a mechanism that already exists rather than
+inventing new detection:
+
+| Trigger | Why | What "stop" means |
+|---|---|---|
+| New/changed files under `apps/dgfy-migration-runner/migrations/` | High blast radius, effectively irreversible once run | Ask before committing; a human confirms direction/correctness first |
+| `.husky/pre-commit`'s `check:compliance` step reports a missing/required declaration | Classifying `major`/`regulatory` impact is a human judgment call, not something to self-certify | Ask; a human writes or approves the `docs/compliance/impact-declarations/*.md` file (shape: `scripts/check-compliance-impact.js:196-220`) |
+| The PR's base would be `staging` or `main` | Those are promotion PRs — human-initiated every time so far | Never open one; this skill's PRs always target `develop` (already `docs/ai/PR.md`'s rule — never deviate) |
+| Anything that would dispatch a deploy workflow, SSH to a server, or mutate `/opt/dgfy-platform` | No approval gate exists on a deploy dispatch; a mistake there is live | Ask, always. Read-only checks (log tail, `docker buildx imagetools inspect`) are fine — nothing that changes server state runs unattended |
+| Force-push, branch deletion, or rewriting already-pushed shared history | Not recoverable by a second party | Ask |
+| No GitHub issue exists yet for the work | Repo SOP (`docs/process/ISSUE-TAXONOMY.md`) — every PR needs a linked issue | File one first, then proceed |
+
+If a task doesn't trip any of these, proceed through commit/push/PR without pausing — that's the
+default case, not the exception. See `references/checkpoint-examples.md` for four worked examples
+of these triggers actually firing (or correctly not firing) in practice.
+
+## Workflow
+
+1. **Branch off fresh `origin/develop`**, one branch per logical change, in a dedicated worktree
+   when working on more than one thing in parallel (e.g. `git worktree add ../dgfy-platform-<x>`).
+   Never commit directly to a local `develop` — always branch first, even for something small.
+2. **Name the branch** using one of `.github/branch-cleanup-policy.json`'s eligible prefixes —
+   `feature/`, `fix/`, `chore/`, `docs/`, `test/` — matching the change's actual kind. (That file's
+   eligible list doesn't currently include `ci/`, despite it being in heavy real use for
+   workflow-only changes; that's a known gap, not something to route around by inventing a
+   different unlisted prefix.)
+3. **Commit** using Conventional Commits, batched by domain, per `docs/ai/PR.md` — read that file
+   for the exact format rather than relying on this summary; it's short and it's the source of
+   truth, not this skill.
+4. **Self-verify in tiers.** Tier 0 is required, every time. Tiers 1-2 are opportunistic — run them
+   when it's cheap to, skip them to save tokens/time otherwise, but never silently pretend a skip
+   didn't happen.
+
+   **Tier 0 — required, before opening the PR:**
+   - **The code builds / does not break.** What this means differs by app, because only the
+     frontend has a real compiler:
+     - `apps/dgfy-web` changed → `npm run build:<affected-app>` (`build:skupervisor` /
+       `build:pos` / `build:store` — only the app(s) actually touched, not `build:all`, unless
+       more than one is genuinely affected). This is a real Vite/esbuild build: it catches syntax
+       errors, unresolved imports, and JSX errors.
+     - `apps/dgfy-api` or `apps/dgfy-migration-runner` changed → neither app has a real build step
+       (`apps/dgfy-api`'s own `build` script is a literal no-op: `echo 'No backend build
+       required'`). The equivalent minimum check is `node --check <each changed .js file>` —
+       syntax-only, zero side effects, near-zero cost. It will not catch a bad `require()` path or
+       a missing export; that level of confidence is Tier 1/2 (lint, tests), not Tier 0.
+   - **`package-lock.json` is in sync**, only if a `package.json` was touched. This repo has
+     **per-app lockfiles**, not one root lockfile — check the one matching whatever changed
+     (`package-lock.json`, `apps/dgfy-web/package-lock.json`, `apps/dgfy-api/package-lock.json`,
+     `apps/dgfy-migration-runner/package-lock.json`). Run `npm install` in that workspace
+     (**never** `rm` the lockfile first — that regenerates unrelated version drift, not just the
+     intended change; this happened for real earlier tonight and had to be undone), then confirm
+     `git diff --exit-code -- <that lockfile>` is clean before including it in the commit.
+   - Post Tier 0's results in the PR body's `## Testing Evidence` section at creation — it's
+     already a required section per `docs/ai/PR.md`, so this doesn't add new ceremony.
+
+   **Tier 1 — optional, cheap:** lint (`npm run lint` in the affected workspace). Skipped by
+   default to save tokens; run it when asked, or when the diff is lint-relevant and the extra run
+   is genuinely cheap.
+
+   **Tier 2 — optional, heavier:** a local test subset (`npm test` in the affected workspace, or
+   specific `gate:release:local` gates run individually — `scripts/gate-release-local.js` has no
+   `--only` flag, so this means invoking the underlying `npm run <script>` commands directly, not
+   the aggregate). Opt-in only, not run by default — this repo doesn't yet have a documented split
+   between its cheap/fast tests and its slow/DB-reliant ones (tracked in #438), so "run the tests"
+   today means either running all of them or guessing, and guessing isn't Tier 2's job. Once #438
+   lands, prefer whatever fast/no-dependency subset it defines. If a DB-backed check can't run for
+   lack of local credentials, say so explicitly rather than omitting it.
+
+   **Whichever tiers actually ran, post the results as a PR comment** (`gh pr comment`) once the
+   PR exists — not folded into the original body after the fact. Tier 0 is the exception: it runs
+   *before* the PR exists, so it lands in the initial body instead, per above.
+5. **Open the PR** against `develop`, following `docs/ai/PR.md`'s body format (`## Summary` +
+   `## Testing Evidence` at minimum), with `Closes #N` for the linked issue.
+6. **Picking up review findings**, if the `pr-reviewer` agent (#331/#366) has already run on this
+   PR: read the newest `## Review` comment (`gh pr view <N> --comments`), address every row marked
+   `blocker`, then reply in the same thread naming which `RF-` IDs were fixed and, for any
+   deliberately left unfixed, why — don't fix silently and leave the comment looking unanswered.
+   `should-fix` and `nit` rows are judgment calls, not required, but say what was done with them
+   too rather than ignoring them without comment. Push once addressed.
+7. **Stop.** Report what was done and where. Merging is a separate decision by a separate party.
+
+## Reference files
+
+- `references/checkpoint-examples.md` — four worked examples of the checkpoint policy actually
+  firing (or correctly not firing) during a real session, for calibration on borderline cases.

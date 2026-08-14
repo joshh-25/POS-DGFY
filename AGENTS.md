@@ -14,6 +14,44 @@ Before creating, updating, or describing any pull request in this repository, **
 
 If any part of a requested change conflicts with `docs/ai/PR.md`, flag the conflict explicitly rather than silently picking one convention over the other.
 
+## Roles
+
+This repo defines specialized agent roles for repeated jobs — planning, implementing, reviewing —
+instead of re-briefing a general-purpose agent each session. This is #331's roster; each role's
+canonical definition lives under `.agents/skills/`, readable by any tool that reads this file:
+
+- **Worker/Implementer** (#436/#437) — plan → implement → commit → open a PR. Never merges, never
+  touches a deployed environment. @.agents/skills/implement/SKILL.md
+- **Planner/PM** (#367/#439) — files and shapes GitHub issues, maintains the DGFY Project board.
+  @.agents/skills/pm/SKILL.md
+- **PR Reviewer** (#366/#441) — audits an open PR, posts one verdict comment with concrete proposed
+  fixes, auto-merges only on `develop`/`staging` with a clean `APPROVE`, never on `main`.
+  @.agents/skills/pr-reviewer/SKILL.md
+- **Observer** (#368) — ingests Sentry error/performance signals, triages against a noise policy,
+  files at most a defensible number of issues per run. @.agents/skills/observer/SKILL.md
+
+Load the relevant one when a task matches its job. Each file names *where* the actual rules live
+(`docs/ai/PR.md`, `docs/process/ISSUE-TAXONOMY.md`, compliance/architecture scripts) rather than
+restating them — read the role file, then follow its references, don't reconstruct a role's
+procedure from memory or from an older cached copy.
+
+### Surface precedence
+
+Four kinds of file govern behavior here, highest authority first, on any conflict:
+
+1. **`docs/` governed docs**, ranked by their own `authority_level` frontmatter
+   (`authoritative` > `reference` > `historical`, `deprecated` never used for new decisions).
+2. **This file (`AGENTS.md`)** — repo-wide agent rules and the role index above. References `docs/`;
+   never restates it.
+3. **`.agents/skills/<role>/SKILL.md`** — canonical role definitions. Reference rules at runtime,
+   same principle.
+4. **Vendor directories** (`.claude/`, `.cursor/`, `.agent/`) — thin pointers and harness-specific
+   config only (tool allowlists, subagent isolation, IDE-specific glob scoping). Never a rule
+   source in their own right — if a rule is found only in one of these, that's a bug, not a
+   feature. Note the naming trap: `.agent/` (singular, Antigravity workflows) and `.agents/`
+   (plural, the canonical roles above) are two different, unrelated directories — don't conflate
+   or "tidy" one into the other.
+
 ## Communication and Critical Thinking Preferences
 1. Address the user as **BabyBaBab** naturally when starting responses or giving important feedback. Do not overuse the name in every sentence.
 2. Be direct, practical, and precise. Prefer clear, copy-paste-ready answers.
