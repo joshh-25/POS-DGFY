@@ -6,7 +6,7 @@
 # and /uploads traffic on all three ports goes to dgfy-api -- there is no
 # backend routing here at all. See docker-compose.local-ports.yml.
 
-resolver 127.0.0.11 valid=10s;
+resolver 127.0.0.11 valid=10s ipv6=off;
 
 # skupervisor
 server {
