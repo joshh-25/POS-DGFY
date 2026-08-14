@@ -93,17 +93,22 @@ jobs:
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
-          # gha scope stays the fast/default cache. Registry cache is the
-          # portable second target -- same cache reachable from either
-          # runner type. Costs extra GHCR blob traffic; GHCR has hit its
-          # secondary rate limit at least once already (2026-08-13, this
-          # exact job), so watch for that before trusting this on a busy day.
-          cache-from: |
-            type=gha,scope=frontend
-            type=registry,ref=${{ env.IMAGE_NAME }}:buildcache
-          cache-to: |
-            type=gha,mode=max,scope=frontend
-            type=registry,ref=${{ env.IMAGE_NAME }}:buildcache,mode=max
+          # Registry cache (type=registry) removed 2026-08-14 (#427) -- it
+          # was added in #415 as "reachable from either runner type," a
+          # reason that stopped applying once #386 recorded self-hosted as
+          # the only CI tier (type=gha is already reachable from
+          # self-hosted). It was actively harmful for this job specifically:
+          # this workflow is called once per environment (DEV/STAGING/BETA/
+          # PROD) with ~37 differing VITE_* build-args each time, but writes
+          # ONE registry ref (${{ env.IMAGE_NAME }}:buildcache) shared by all
+          # four -- each environment's build evicted the previous one's
+          # cache, so it was rarely a hit (see #428). It also doubled this
+          # job's GHCR push volume on every build, which is what actually
+          # tripped GHCR's secondary rate limit in run 31728787346
+          # (deploy-main.yml's frontend-prod, 2026-08-13). type=gha,scope=
+          # frontend is unaffected and stays as the only cache.
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,mode=max,scope=frontend
           build-args: |
             VITE_API_URL=${{ vars.VITE_API_URL }}
             VITE_STORE_BASE_PATH=${{ vars.VITE_STORE_BASE_PATH }}
