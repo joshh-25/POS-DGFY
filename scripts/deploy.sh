@@ -13,7 +13,12 @@ BACKEND_DIR="$PROJECT_ROOT/apps/dgfy-api"
 # .sequelizerc since the apps/ split (see docs/architecture/backend-absorption.md),
 # so `sequelize-cli db:migrate` must run from here, not from $BACKEND_DIR.
 MIGRATION_RUNNER_DIR="$PROJECT_ROOT/apps/dgfy-migration-runner"
-FRONTEND_DIR="$PROJECT_ROOT/apps/dgfy-web"
+# One root per frontend app (issue #322 Phase 6 -- previously a single
+# FRONTEND_DIR="$PROJECT_ROOT/apps/dgfy-web" containing all 3 as nested
+# apps/{skupervisor,pos,store} surfaces under one package.json/vite config).
+FRONTEND_IMS_DIR="$PROJECT_ROOT/apps/dgfy-ims"
+FRONTEND_POS_DIR="$PROJECT_ROOT/apps/dgfy-pos"
+FRONTEND_STOREFRONT_DIR="$PROJECT_ROOT/apps/dgfy-storefront"
 DEPLOY_LOG_DIR="$PROJECT_ROOT/logs/deploy"
 DEPLOY_STATE_DIR="$PROJECT_ROOT/.deploy-state"
 LOCK_FILE="/tmp/skupervisor_deploy.lock"
@@ -305,48 +310,28 @@ run_windows_lock_cleanup() {
     fi
 }
 
-frontend_script_exists() {
-    local script_name="$1"
-    (
-        cd "$FRONTEND_DIR" && node -e "const pkg=require('./package.json'); process.exit(pkg?.scripts && pkg.scripts['$script_name'] ? 0 : 1);"
-    )
-}
-
 run_frontend_builds() {
-    local skupervisor_config="$FRONTEND_DIR/apps/skupervisor/vite.config.js"
-    local pos_config="$FRONTEND_DIR/apps/pos/vite.config.js"
-    local store_config="$FRONTEND_DIR/apps/store/vite.config.js"
     local ran_any="0"
 
-    if frontend_script_exists "build:skupervisor"; then
-        (cd "$FRONTEND_DIR" && NODE_ENV=production npm run build:skupervisor)
-        ran_any="1"
-    elif [[ -f "$skupervisor_config" ]]; then
-        (cd "$FRONTEND_DIR" && NODE_ENV=production npx vite build --config apps/skupervisor/vite.config.js)
-        ran_any="1"
-    elif frontend_script_exists "build"; then
-        (cd "$FRONTEND_DIR" && NODE_ENV=production npm run build)
-        ran_any="1"
-    fi
-
-    if frontend_script_exists "build:pos"; then
-        (cd "$FRONTEND_DIR" && NODE_ENV=production npm run build:pos)
-        ran_any="1"
-    elif [[ -f "$pos_config" ]]; then
-        (cd "$FRONTEND_DIR" && NODE_ENV=production npx vite build --config apps/pos/vite.config.js)
+    if [[ -f "$FRONTEND_IMS_DIR/package.json" ]]; then
+        (cd "$FRONTEND_IMS_DIR" && NODE_ENV=production npm run build)
         ran_any="1"
     else
-        warn "POS build surface not found (no build:pos script and no apps/pos config)."
+        warn "IMS build surface not found (no apps/dgfy-ims/package.json)."
     fi
 
-    if frontend_script_exists "build:store"; then
-        (cd "$FRONTEND_DIR" && NODE_ENV=production VITE_STORE_BASE_PATH="$STORE_BASE_PATH" npm run build:store)
-        ran_any="1"
-    elif [[ -f "$store_config" ]]; then
-        (cd "$FRONTEND_DIR" && NODE_ENV=production VITE_STORE_BASE_PATH="$STORE_BASE_PATH" npx vite build --config apps/store/vite.config.js)
+    if [[ -f "$FRONTEND_POS_DIR/package.json" ]]; then
+        (cd "$FRONTEND_POS_DIR" && NODE_ENV=production npm run build)
         ran_any="1"
     else
-        warn "Store build surface not found (no build:store script and no apps/store config)."
+        warn "POS build surface not found (no apps/dgfy-pos/package.json)."
+    fi
+
+    if [[ -f "$FRONTEND_STOREFRONT_DIR/package.json" ]]; then
+        (cd "$FRONTEND_STOREFRONT_DIR" && NODE_ENV=production VITE_STORE_BASE_PATH="$STORE_BASE_PATH" npm run build)
+        ran_any="1"
+    else
+        warn "Store build surface not found (no apps/dgfy-storefront/package.json)."
     fi
 
     if [[ "$ran_any" != "1" ]]; then
@@ -571,9 +556,9 @@ run_frontend_asset_parity_checks() {
     [[ -f "$parity_script" ]] || fatal "Frontend asset parity script missing: $parity_script"
 
     log "Running frontend asset parity checks against public endpoints..."
-    node "$parity_script" --label "IMS" --local-index "$PROJECT_ROOT/dist-apps/skupervisor/index.html" --public-url "$ims_url"
-    node "$parity_script" --label "POS" --local-index "$PROJECT_ROOT/dist-apps/pos/index.html" --public-url "$pos_url"
-    node "$parity_script" --label "Tenant Store" --local-index "$PROJECT_ROOT/dist-apps/store/index.html" --public-url "$tenant_store_url"
+    node "$parity_script" --label "IMS" --local-index "$FRONTEND_IMS_DIR/dist/index.html" --public-url "$ims_url"
+    node "$parity_script" --label "POS" --local-index "$FRONTEND_POS_DIR/dist/index.html" --public-url "$pos_url"
+    node "$parity_script" --label "Tenant Store" --local-index "$FRONTEND_STOREFRONT_DIR/dist/index.html" --public-url "$tenant_store_url"
 }
 
 # ---------------------------------------------------------------------------
@@ -595,9 +580,11 @@ rollback_to_commit() {
 
     run_ci_if_lockfile_exists "$PROJECT_ROOT"
     run_ci_if_lockfile_exists "$BACKEND_DIR"
-    run_ci_if_lockfile_exists "$FRONTEND_DIR"
+    run_ci_if_lockfile_exists "$FRONTEND_IMS_DIR"
+    run_ci_if_lockfile_exists "$FRONTEND_POS_DIR"
+    run_ci_if_lockfile_exists "$FRONTEND_STOREFRONT_DIR"
 
-    bash -lc "cd \"$FRONTEND_DIR\" && NODE_ENV=production npm run build"
+    run_frontend_builds
 
     if command -v pm2 >/dev/null 2>&1; then
         if [[ -f "$PROJECT_ROOT/ecosystem.config.cjs" ]]; then
@@ -972,7 +959,7 @@ SCRIPTS_CHANGED_FILES="0"
 if [[ "$PRE_DEPLOY_COMMIT" != "$POST_PULL_COMMIT" ]]; then
     TOTAL_CHANGED_FILES="$(wc -l < "$MANIFEST_FILE" | tr -d '[:space:]')"
     BACKEND_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^apps/dgfy-api/' | wc -l | tr -d '[:space:]')"
-    FRONTEND_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^apps/dgfy-web/' | wc -l | tr -d '[:space:]')"
+    FRONTEND_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^(apps/dgfy-ims/|apps/dgfy-pos/|apps/dgfy-storefront/|packages/web-core/)' | wc -l | tr -d '[:space:]')"
     DOCS_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^docs/' | wc -l | tr -d '[:space:]')"
     SCRIPTS_CHANGED_FILES="$(awk '{print $NF}' "$MANIFEST_FILE" | grep -E '^scripts/' | wc -l | tr -d '[:space:]')"
 fi
@@ -1028,7 +1015,9 @@ fi
 run_step "Installing deterministic dependencies..." run_ci_if_lockfile_exists "$PROJECT_ROOT"
 run_ci_if_lockfile_exists "$BACKEND_DIR"
 run_ci_if_lockfile_exists "$MIGRATION_RUNNER_DIR"
-run_ci_if_lockfile_exists "$FRONTEND_DIR"
+run_ci_if_lockfile_exists "$FRONTEND_IMS_DIR"
+run_ci_if_lockfile_exists "$FRONTEND_POS_DIR"
+run_ci_if_lockfile_exists "$FRONTEND_STOREFRONT_DIR"
 
 run_step "Running documentation governance lint..." npm run lint:docs
 
