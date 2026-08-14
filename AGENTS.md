@@ -27,6 +27,8 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
 - **PR Reviewer** (#366/#441) — audits an open PR, posts one verdict comment with concrete proposed
   fixes, auto-merges only on `develop`/`staging` with a clean `APPROVE`, never on `main`.
   @.agents/skills/pr-reviewer/SKILL.md
+- **Observer** (#368) — ingests Sentry error/performance signals, triages against a noise policy,
+  files at most a defensible number of issues per run. @.agents/skills/observer/SKILL.md
 
 Load the relevant one when a task matches its job. Each file names *where* the actual rules live
 (`docs/ai/PR.md`, `docs/process/ISSUE-TAXONOMY.md`, compliance/architecture scripts) rather than
