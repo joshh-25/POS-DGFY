@@ -14,7 +14,9 @@
     { "old": "apps/dgfy-web/src/services/", "new": "packages/web-core/src/services/" },
     { "old": "apps/dgfy-web/src/store/", "new": "packages/web-core/src/store/" },
     { "old": "apps/dgfy-web/src/utils/", "new": "packages/web-core/src/utils/" },
-    { "old": "apps/dgfy-web/Components/", "new": "packages/web-core/Components/" }
+    { "old": "apps/dgfy-web/Components/", "new": "packages/web-core/Components/" },
+    { "old": "apps/dgfy-web/apps/store/", "new": "apps/dgfy-storefront/" },
+    { "old": "apps/dgfy-web/tests/e2e/store/", "new": "apps/dgfy-storefront/tests/e2e/" }
   ],
   "specialCases": [
     { "old": "apps/dgfy-web/src/index.css", "new": "packages/web-core/src/index.css" },
