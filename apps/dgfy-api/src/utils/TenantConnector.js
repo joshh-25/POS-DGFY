@@ -12,6 +12,14 @@ const IDLE_TIMEOUT_MS = 1000 * 60 * 10; // 10 minutes
 const CLEANUP_INTERVAL_MS = 60000; // Check for idle connections every 60s
 const CONNECTION_WAIT_TIMEOUT_MS = 5000; // Max wait for a pending connection
 
+// How long closeConnection() will wait for an in-flight query to finish before
+// force-closing a still-busy connection anyway (see isBusy()/closeConnection()
+// below — this is the fix for the eviction-closes-a-live-handle bug that
+// produced "ConnectionManager.getConnection was called after the connection
+// manager was closed!" under normal LRU/idle eviction, not just at shutdown).
+const CONNECTION_CLOSE_GRACE_MS = 3000;
+const CONNECTION_CLOSE_POLL_MS = 100;
+
 class TenantConnector {
     constructor() {
         this.connections = new Map(); // tenantId -> { sequelize, lastUsed, tenantName }
@@ -133,19 +141,52 @@ class TenantConnector {
     }
 
     /**
-     * Evict multiple oldest connections by LRU order
+     * True if a cached Sequelize instance has any connection currently checked
+     * out of its pool — i.e. a query is in flight on it right now. Backed by
+     * sequelize-pool's own counters (sequelize.connectionManager.pool.using),
+     * so this needs zero changes at any getConnection() call site.
+     *
+     * If the pool can't be introspected for some reason, this defaults to
+     * "busy" rather than "free" -- an unnecessary deferred close is harmless;
+     * closing a connection a request still holds is not.
+     * @param {Sequelize} sequelize
+     * @returns {boolean}
+     */
+    isBusy(sequelize) {
+        const pool = sequelize?.connectionManager?.pool;
+        if (!pool || typeof pool.using !== 'number') return true;
+        return pool.using > 0;
+    }
+
+    /**
+     * Evict multiple oldest connections by LRU order.
+     *
+     * Only ever selects entries that are currently idle (see isBusy()) — a
+     * busy entry is never chosen for eviction, so this can evict fewer than
+     * `count`, or none, when every cached connection happens to be in use.
+     * That means the cache can briefly exceed MAX_CACHED_CONNECTIONS; that is
+     * intentional and preferred over closing a connection a live request is
+     * still holding.
      * @param {number} count - Number of connections to evict
      */
     async evictConnections(count) {
         if (count <= 0 || this.connections.size === 0) return;
 
-        // Sort by lastUsed ascending (oldest first)
+        // Sort by lastUsed ascending (oldest first), then keep only entries
+        // that are actually idle right now.
         const sorted = Array.from(this.connections.entries())
             .sort(([, a], [, b]) => a.lastUsed - b.lastUsed);
+        const eligible = sorted.filter(([, data]) => !this.isBusy(data.sequelize));
+        const busySkipped = sorted.length - eligible.length;
 
-        const toEvict = sorted.slice(0, Math.min(count, sorted.length));
+        const toEvict = eligible.slice(0, Math.min(count, eligible.length));
 
-        logger.info(`Evicting ${toEvict.length} oldest connections (pool: ${this.connections.size}/${MAX_CACHED_CONNECTIONS})`);
+        if (toEvict.length === 0) {
+            logger.warn(`Evict requested ${count} connection(s) but all ${sorted.length} cached entries are busy -- evicting none this pass (pool: ${this.connections.size}/${MAX_CACHED_CONNECTIONS})`);
+            return;
+        }
+
+        logger.info(`Evicting ${toEvict.length} oldest idle connections (pool: ${this.connections.size}/${MAX_CACHED_CONNECTIONS}${busySkipped > 0 ? `, ${busySkipped} busy skipped` : ''})`);
 
         const results = await Promise.allSettled(
             toEvict.map(([id, data]) => {
@@ -239,18 +280,41 @@ class TenantConnector {
     }
 
     /**
-     * Close a specific connection
+     * Close a specific connection.
+     *
+     * Removes the entry from the cache immediately, so no new caller can be
+     * handed a connection that's in the process of closing. If the
+     * connection is still busy (isBusy()) at that moment, this waits up to
+     * CONNECTION_CLOSE_GRACE_MS for the in-flight query to finish before
+     * closing anyway -- closing out from under an active request is exactly
+     * the "ConnectionManager.getConnection was called after the connection
+     * manager was closed!" failure this exists to prevent.
      */
     async closeConnection(tenantId) {
-        if (this.connections.has(tenantId)) {
-            const { sequelize } = this.connections.get(tenantId);
-            try {
-                await sequelize.close();
-                this.connections.delete(tenantId);
-                logger.info(`Closed DB connection for tenant ID: ${tenantId}`);
-            } catch (err) {
-                logger.error(`Error closing tenant connection ${tenantId}:`, err);
+        if (!this.connections.has(tenantId)) return;
+
+        const { sequelize, tenantName } = this.connections.get(tenantId);
+        // Remove from cache up front: whether or not the close below succeeds
+        // or has to wait out the grace period, no new getConnection() call
+        // should be able to hand this instance out again.
+        this.connections.delete(tenantId);
+
+        if (this.isBusy(sequelize)) {
+            logger.debug(`Deferring close for tenant ${tenantName} (ID: ${tenantId}) -- connection busy`);
+            const deadline = Date.now() + CONNECTION_CLOSE_GRACE_MS;
+            while (this.isBusy(sequelize) && Date.now() < deadline) {
+                await new Promise(resolve => setTimeout(resolve, CONNECTION_CLOSE_POLL_MS));
             }
+            if (this.isBusy(sequelize)) {
+                logger.warn(`Closing tenant connection for ${tenantName} (ID: ${tenantId}) still busy after ${CONNECTION_CLOSE_GRACE_MS}ms grace period -- closing anyway`);
+            }
+        }
+
+        try {
+            await sequelize.close();
+            logger.info(`Closed DB connection for tenant ID: ${tenantId}`);
+        } catch (err) {
+            logger.error(`Error closing tenant connection ${tenantId}:`, err);
         }
     }
 
