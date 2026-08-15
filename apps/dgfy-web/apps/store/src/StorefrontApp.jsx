@@ -91,6 +91,7 @@ import { StorefrontHeroBandContainer } from './app/pages/StorefrontHeroBandConta
 import { useStorefrontHeroBandProps } from './app/hooks/useStorefrontHeroBandProps.js';
 import { StorefrontCartDrawerShellContainer } from './app/pages/StorefrontCartDrawerShellContainer.jsx';
 import { useStorefrontCartDrawerShellProps } from './app/hooks/useStorefrontCartDrawerShellProps.js';
+import { StorefrontLoadBoundary } from './shared/components/storefront/StorefrontLoadBoundary.jsx';
 import { openStorefrontActionLink, sanitizeExternalLink } from './shared/utils/externalLinks.js';
 import { money, toSlug } from './shared/utils/storefrontFormatters.js';
 import { createStorefrontIdempotencyKey } from './shared/utils/idempotency.js';
@@ -116,6 +117,8 @@ import { useCheckoutTotalsAndGating } from './modes/fnb/checkout/hooks/useChecko
 import { useSignedInCheckoutAddresses } from './modes/fnb/checkout/hooks/useSignedInCheckoutAddresses.js';
 import { useFnbTrackingDrawerPresentation } from './modes/fnb/tracking/hooks/useFnbTrackingDrawerPresentation.js';
 import { useFnbTrackingRuntime } from './modes/fnb/tracking/hooks/useFnbTrackingRuntime.js';
+import { useSimpleTrackingRuntime } from './modes/simple/tracking/hooks/useSimpleTrackingRuntime.js';
+import { useRetailTrackingRuntime } from './modes/retail/tracking/hooks/useRetailTrackingRuntime.js';
 import { useFnbCheckoutPresentation } from './modes/fnb/checkout/hooks/useFnbCheckoutPresentation.js';
 import { useFnbCheckoutQuote } from './modes/fnb/checkout/hooks/useFnbCheckoutQuote.js';
 import { useFnbCheckoutRouteState } from './modes/fnb/checkout/hooks/useFnbCheckoutRouteState.js';
@@ -246,6 +249,16 @@ import {
   getTrackingFlowForOrderMethod
 } from './modes/fnb/tracking/model/fnbTrackingAdapter.js';
 import {
+  simpleTrackingAdapter,
+  getSimpleCompletedTrackingLabel,
+  getSimpleTrackingFlowForOrderMethod
+} from './modes/simple/tracking/model/simpleTrackingAdapter.js';
+import {
+  RetailTrackingAdapter,
+  getCompletedTrackingLabel as getRetailCompletedTrackingLabel,
+  getTrackingFlowForOrderMethod as getRetailTrackingFlowForOrderMethod
+} from './modes/retail/tracking/model/retailTrackingAdapter.js';
+import {
   mergeTrackedOrderEntries,
   normalizeTrackedOrderEntry,
   readLastTrackingPinForStore,
@@ -297,6 +310,9 @@ import { requestJson } from './services/requestJson.js';
 import { isKnownDgfyPlatformHost } from './shared/utils/storefrontPlatformHost.js';
 import { hasCustomerName, hasPrimaryContact, isCustomerStepComplete } from './checkout/checkoutValidation.js';
 import { buildFnbTrackingRouteProps } from './modes/fnb/tracking/model/buildFnbTrackingRouteProps.js';
+import { buildSimpleTrackingRouteProps } from './modes/simple/tracking/model/buildSimpleTrackingRouteProps.js';
+import { buildSimpleTrackingDrawerProps } from './modes/simple/tracking/model/buildSimpleTrackingDrawerProps.js';
+import { buildRetailTrackingRouteProps } from './modes/retail/tracking/model/buildRetailTrackingRouteProps.js';
 import {
   formatServicesBookingFailureMessage,
   resolveServicesBookingSubmitContract
@@ -937,6 +953,7 @@ export default function StorefrontApp() {
     storeSlug: routeSlug || selectedStore?.slug
   });
   const isStandaloneTrackingPage = isTrackSubpage || (isOrderSubpage && checkoutTab === 'track');
+  const isSimpleOrderSubpage = isSimpleMode && (isTrackSubpage || (isOrderSubpage && checkoutTab === 'track'));
   const canUseGuestCheckoutFlow = !isDgfyCustomerSignedIn && guestCheckoutUnlocked;
   const isGuestStorefrontUser = !isStorefrontAccountAuthenticated;
   const {
@@ -951,11 +968,53 @@ export default function StorefrontApp() {
     isStandaloneTrackingPage,
     selectedStoreSlug: selectedStore?.slug
   });
-  const trackingMode = isFnbMode ? 'fnb' : (isServicesMode ? 'services' : 'simple');
-  const trackingAdapterRegistry = useMemo(
+  const fnbTrackingMode = isFnbMode ? 'fnb' : 'services';
+  const fnbTrackingAdapterRegistry = useMemo(
     () => createTrackingAdapterRegistry([fnbTrackingAdapter]),
     []
   );
+  const fnbTrackingRuntime = useFnbTrackingRuntime({
+    checkoutTab,
+    isFnbOrderSubpage,
+    normalizeErrorMessage: normalizeStorefrontErrorMessage,
+    requestJson,
+    routeSlug,
+    selectedStore,
+    toSlug,
+    trackingAdapterRegistry: fnbTrackingAdapterRegistry,
+    trackingMode: fnbTrackingMode
+  });
+  const simpleTrackingAdapterRegistry = useMemo(
+    () => createTrackingAdapterRegistry([simpleTrackingAdapter]),
+    []
+  );
+  const simpleTrackingRuntime = useSimpleTrackingRuntime({
+    checkoutTab,
+    enabled: isSimpleMode,
+    isSimpleOrderSubpage,
+    normalizeErrorMessage: normalizeStorefrontErrorMessage,
+    requestJson,
+    routeSlug,
+    selectedStore,
+    toSlug,
+    trackingAdapterRegistry: simpleTrackingAdapterRegistry
+  });
+  const retailTrackingAdapterRegistry = useMemo(
+    () => createTrackingAdapterRegistry([RetailTrackingAdapter]),
+    []
+  );
+  const retailTrackingRuntime = useRetailTrackingRuntime({
+    checkoutTab,
+    isRetailOrderSubpage: isRetailMode && isStandaloneTrackingPage,
+    normalizeErrorMessage: normalizeStorefrontErrorMessage,
+    requestJson,
+    routeSlug,
+    selectedStore,
+    toSlug,
+    trackingAdapterRegistry: retailTrackingAdapterRegistry,
+    trackingMode: 'retail'
+  });
+  const activeTrackingRuntime = isSimpleMode ? simpleTrackingRuntime : (isRetailMode ? retailTrackingRuntime : fnbTrackingRuntime);
   const {
     buildTrackedOrderEntryFromTrackingPayload,
     fetchTrackingPayload,
@@ -972,29 +1031,15 @@ export default function StorefrontApp() {
     trackingError,
     trackingPinInput,
     trackingResult
-  } = useFnbTrackingRuntime({
-    checkoutTab,
-    // useFnbTrackingRuntime's fetch/poll effect only runs when this is true. F&B reaches the
-    // tracking view through its checkout drawer (isFnbOrderSubpage), while retail and MSME reach
-    // it through their own dedicated /order routes (isTrackSubpage, no drawer involved the same
-    // way F&B's is) -- all three need to activate the same shared polling effect.
-    isFnbOrderSubpage: isFnbOrderSubpage || ((isRetailMode || isSimpleMode) && isTrackSubpage),
-    normalizeErrorMessage: normalizeStorefrontErrorMessage,
-    requestJson,
-    routeSlug,
-    selectedStore,
-    toSlug,
-    trackingAdapterRegistry,
-    trackingMode
-  });
+  } = activeTrackingRuntime;
   const servicesPrimary = modeAdapter?.heroTheme?.accent || '#0f766e';
   const servicesPrimaryDark = modeAdapter?.heroTheme?.accentDark || '#134e4a';
   const servicesPrimarySoft = modeAdapter?.heroTheme?.accentSoft || '#ecfeff';
   const servicesBodyFont = modeAdapter?.heroTheme?.bodyFont || "'Avenir Next', 'Segoe UI', sans-serif";
   const servicesDisplayFont = modeAdapter?.heroTheme?.displayFont || servicesBodyFont;
   const servicesPrimaryBorder = `${servicesPrimary}33`;
-  const servicesPrimaryShadow = 'rgba(15,118,110,0.24)';
-  const servicesPrimaryShadowStrong = 'rgba(15,118,110,0.32)';
+  const servicesPrimaryShadow = isSimpleMode ? 'rgba(23,107,58,0.16)' : 'rgba(15,118,110,0.24)';
+  const servicesPrimaryShadowStrong = isSimpleMode ? 'rgba(23,107,58,0.24)' : 'rgba(15,118,110,0.32)';
   const servicesHighlight = '#f59e0b';
   const servicesHighlightSoft = '#fffbeb';
   const {
@@ -3094,7 +3139,6 @@ export default function StorefrontApp() {
     handleGuestCheckoutOtpCodeChange,
     handlePaymentTypeChange,
     handlePinMyLocation,
-    handleQuote,
     handleRequestGuestCheckoutOtp,
     handleVerifyGuestCheckoutOtp,
     handleRemoveDeliveryAddress,
@@ -3109,14 +3153,11 @@ export default function StorefrontApp() {
     pinLocationError,
     pinLocationLoading,
     promoDiscountSummaryRow,
-    quoteError,
-    quoteResult,
     renderAccountOwnedIdentitySummary,
     renderGuestCheckoutEntry,
     renderGuestIdentityFields,
     renderPromoCodePanel,
     renderStorefrontClosedNotice,
-    requireQuoteForCheckout,
     selectedLocation,
     selectedLocationId,
     selectedSavedLocationId,
@@ -3321,20 +3362,102 @@ export default function StorefrontApp() {
     routeSlug,
     selectedLocationId,
     selectedStore,
-    selectedTrackingPin,
+    selectedTrackingPin: fnbTrackingRuntime.selectedTrackingPin,
     servicesBodyFont,
     servicesDisplayFont,
     setCheckoutTab,
-    showCompletedTrackingCard,
+    showCompletedTrackingCard: fnbTrackingRuntime.showCompletedTrackingCard,
     storeLocations,
     storePath,
     tileTransformRequest,
     tilingServer: TILING_SERVER,
     toSlug,
     trackingDrawerOrders,
-    trackingError,
-    trackingPinInput,
-    trackingResult,
+    trackingError: fnbTrackingRuntime.trackingError,
+    trackingPinInput: fnbTrackingRuntime.trackingPinInput,
+    trackingResult: fnbTrackingRuntime.trackingResult,
+    withAssetOrigin
+  });
+  const simpleTrackingRouteProps = buildSimpleTrackingRouteProps({
+    checkoutTab,
+    copyTextToClipboard,
+    formatTicketDate,
+    getCompletedTrackingLabel: getSimpleCompletedTrackingLabel,
+    getTrackingFlowForOrderMethod: getSimpleTrackingFlowForOrderMethod,
+    goStoreCatalogPage,
+    isMobileViewport,
+    money,
+    primaryLocationId,
+    routeSlug,
+    selectedLocationId,
+    selectedStore,
+    selectedTrackingPin: simpleTrackingRuntime.selectedTrackingPin,
+    servicesBodyFont,
+    servicesDisplayFont,
+    setCheckoutTab,
+    showCompletedTrackingCard: simpleTrackingRuntime.showCompletedTrackingCard,
+    storeLocations,
+    storePath,
+    tileTransformRequest,
+    tilingServer: TILING_SERVER,
+    toSlug,
+    trackingError: simpleTrackingRuntime.trackingError,
+    trackingPinInput: simpleTrackingRuntime.trackingPinInput,
+    trackingResult: simpleTrackingRuntime.trackingResult,
+    withAssetOrigin
+  });
+  const simpleTrackingDrawerProps = buildSimpleTrackingDrawerProps({
+    canOpenTrackingDrawer,
+    expandedPins: expandedGuestDrawerPins,
+    isAccountTracking: isDgfyCustomerSignedIn,
+    isMobileViewport,
+    isOpen: isGuestTrackingDrawerOpen,
+    isStandaloneTrackingPage,
+    money,
+    onClose: () => setIsGuestTrackingDrawerOpen(false),
+    onExpandedPinsChange: setExpandedGuestDrawerPins,
+    openFullTrackingForPin,
+    selectedStore,
+    trackingDrawerOrders,
+    withAssetOrigin
+  });
+  const retailTrackingRouteProps = buildRetailTrackingRouteProps({
+    canOpenTrackingDrawer,
+    checkoutTab,
+    copyTextToClipboard,
+    expandedPins: expandedGuestDrawerPins,
+    formatTicketDate,
+    getCompletedTrackingLabel: getRetailCompletedTrackingLabel,
+    getTrackingFlowForOrderMethod: getRetailTrackingFlowForOrderMethod,
+    goStoreCatalogPage,
+    goStoreOrderPage,
+    isAccountTracking: isDgfyCustomerSignedIn,
+    isMobileViewport,
+    isOpen: isGuestTrackingDrawerOpen,
+    isStandaloneTrackingPage,
+    money,
+    onClose: () => setIsGuestTrackingDrawerOpen(false),
+    onExpandedPinsChange: setExpandedGuestDrawerPins,
+    openRetailItemReviewFromInvite: openFnbItemReviewFromInvite,
+    openFullTrackingForPin,
+    primaryLocationId,
+    routeSlug,
+    selectedLocationId,
+    selectedStore,
+    selectedTrackingPin: retailTrackingRuntime.selectedTrackingPin,
+    servicesBodyFont,
+    servicesDisplayFont,
+    setCheckoutTab,
+    showCompletedTrackingCard: retailTrackingRuntime.showCompletedTrackingCard,
+    storeLocations,
+    storePath,
+    tileTransformRequest,
+    tilingServer: TILING_SERVER,
+    toSlug,
+    trackingDrawerOrders,
+    trackingError: retailTrackingRuntime.trackingError,
+    trackingPinInput: retailTrackingRuntime.trackingPinInput,
+    trackingResult: retailTrackingRuntime.trackingResult,
     withAssetOrigin
   });
   const storefrontCheckoutSummaryProps = useStorefrontCheckoutSummaryProps({
@@ -3594,7 +3717,9 @@ export default function StorefrontApp() {
     isRetailMode,
     retailOrderRouteProps,
     isTrackSubpage,
-    fnbTrackingRouteProps
+    fnbTrackingRouteProps,
+    simpleTrackingRouteProps,
+    retailTrackingRouteProps
   });
   const storefrontHeroBandProps = useStorefrontHeroBandProps({
     selectedStore,
@@ -3702,12 +3827,14 @@ export default function StorefrontApp() {
     serviceBookingReviewProps,
     storefrontCheckoutSummaryProps,
     fnbTrackingRouteProps,
+    retailTrackingRouteProps,
+    simpleTrackingDrawerProps,
     showOrderSuccessAnimation
   });
   if (isStandaloneAccountPage) return customerDashboardStandaloneRouteNode;
 
   return (
-    <main style={{ fontFamily: isFnbMode ? (modeAdapter.heroTheme?.bodyFont || "'Inter', 'Segoe UI', sans-serif") : (isServicesMode ? servicesBodyFont : STYLES.fonts.body), background: isStorePage ? (isFnbMode ? '#fff' : (isRetailMode ? 'radial-gradient(circle at 20% 0%, #EEF4FB 0%, #F8FAFC 42%, #EFF4F9 100%)' : 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)')) : '#ffffff', minHeight: '100vh', color: '#0f172a', overflowX: 'clip' }}>
+    <main style={{ fontFamily: isFnbMode ? (modeAdapter.heroTheme?.bodyFont || "'Inter', 'Segoe UI', sans-serif") : (isServicesMode ? servicesBodyFont : STYLES.fonts.body), background: isStorePage ? (isFnbMode ? '#fff' : (isRetailMode ? 'radial-gradient(circle at 20% 0%, #EEF4FB 0%, #F8FAFC 42%, #EFF4F9 100%)' : (isSimpleMode ? 'radial-gradient(circle at 20% 0%, #FFFDF7 0%, #FFF7E6 42%, #F8FAFC 100%)' : 'radial-gradient(circle at 20% 0%, #fff7ed 0%, #f8fafc 40%, #eef2f7 100%)'))) : '#ffffff', minHeight: '100vh', color: '#0f172a', overflowX: 'clip' }}>
       <div style={{
         maxWidth: 1320,
         width: '100%',
@@ -3835,22 +3962,28 @@ export default function StorefrontApp() {
         )}
 
         {isStorePage && (
-          <>
+          <StorefrontLoadBoundary
+            errorMessage={catalogError}
+            hasStoreProfile={Boolean(selectedStore)}
+            isLoading={loadingCatalog}
+            onBackToDiscovery={goDiscovery}
+            onRetry={refreshStorePageForTenantSetup}
+          >
             {!isFnbDetailsSubpage && (
               <StorefrontHeroBandContainer {...storefrontHeroBandProps} />
             )}
 
 
             {/* ZONE 4: Catalog Grid with Sidebar */}
-            {(isFnbDetailsSubpage || (catalogPermitted && selectedStore)) && (
+            {(isFnbDetailsSubpage || loadingCatalog || catalogError || catalogPermitted) && (
               <StorefrontCatalogRouteContainer {...storefrontCatalogRouteProps} />
             )}
-          </>
+          </StorefrontLoadBoundary>
         )}
 
       </div>
 
-  { isStorePage && (checkoutPermitted || bookingPermitted || productCartPermitted) && (
+  { isStorePage && selectedStore && (checkoutPermitted || bookingPermitted || productCartPermitted) && (
     <StorefrontCartDrawerShellContainer {...storefrontCartDrawerShellProps} />
   )}
       {customerDashboardDrawerRouteNode}

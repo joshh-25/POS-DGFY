@@ -72,6 +72,8 @@ import ServiceProviderAssignment from './ServiceProviderAssignment.js';
 import ServiceBooking from './ServiceBooking.js';
 import ServiceBookingHold from './ServiceBookingHold.js';
 import ServiceBookingLine from './ServiceBookingLine.js';
+import ServiceBookingHandoffLeg from './ServiceBookingHandoffLeg.js';
+import ServiceBookingStatusEvent from './ServiceBookingStatusEvent.js';
 import ServiceWaitlistEntry from './ServiceWaitlistEntry.js';
 import ServiceReminderOutbox from './ServiceReminderOutbox.js';
 import WorkflowModeChangeLog from './WorkflowModeChangeLog.js';
@@ -756,6 +758,17 @@ ServiceBooking.hasMany(ServiceBookingLine, { foreignKey: 'booking_id', as: 'line
 ServiceBookingLine.belongsTo(ServiceBooking, { foreignKey: 'booking_id', as: 'booking' });
 ServiceBookingLine.belongsTo(Item, { foreignKey: 'item_id', as: 'item' });
 ServiceBookingLine.belongsTo(PosTransactionLine, { foreignKey: 'pos_transaction_line_id', as: 'posTransactionLine' });
+// Phase 88 of #482 (ADR 0064 decision 2) - the handoff-leg entity keyed to the booking.
+ServiceBooking.hasMany(ServiceBookingHandoffLeg, { foreignKey: 'booking_id', as: 'handoffLegs' });
+ServiceBookingHandoffLeg.belongsTo(ServiceBooking, { foreignKey: 'booking_id', as: 'booking' });
+ServiceBookingHandoffLeg.belongsTo(StoreCustomerAddress, { foreignKey: 'customer_address_id', as: 'customerAddress' });
+ServiceBookingHandoffLeg.belongsTo(TenantLocation, { foreignKey: 'location_id', as: 'location' });
+ServiceBookingHandoffLeg.hasMany(ServiceBookingStatusEvent, { foreignKey: 'handoff_leg_id', as: 'statusEvents' });
+// Phase 88 of #482 (ADR 0064 decision 4) - the transition-event table.
+ServiceBooking.hasMany(ServiceBookingStatusEvent, { foreignKey: 'booking_id', as: 'statusEvents' });
+ServiceBookingStatusEvent.belongsTo(ServiceBooking, { foreignKey: 'booking_id', as: 'booking' });
+ServiceBookingStatusEvent.belongsTo(ServiceBookingHandoffLeg, { foreignKey: 'handoff_leg_id', as: 'handoffLeg' });
+ServiceBookingStatusEvent.belongsTo(User, { foreignKey: 'actor_user_id', as: 'actorUser' });
 ServiceWaitlistEntry.belongsTo(Item, { foreignKey: 'service_item_id', as: 'serviceItem' });
 ServiceWaitlistEntry.belongsTo(StoreCustomer, { foreignKey: 'store_customer_id', as: 'storeCustomer' });
 ServiceOptionGroup.hasMany(ServiceOption, { foreignKey: 'group_id', as: 'options' });
@@ -996,6 +1009,8 @@ const db = {
   ServiceBooking,
   ServiceBookingHold,
   ServiceBookingLine,
+  ServiceBookingHandoffLeg,
+  ServiceBookingStatusEvent,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
   WorkflowModeChangeLog,
@@ -1192,6 +1207,8 @@ export {
   ServiceBooking,
   ServiceBookingHold,
   ServiceBookingLine,
+  ServiceBookingHandoffLeg,
+  ServiceBookingStatusEvent,
   ServiceWaitlistEntry,
   ServiceReminderOutbox,
   WorkflowModeChangeLog,

@@ -197,6 +197,7 @@ export function FnbProductDetailsPage({
   const detailBodyFont = presentation.bodyFont || FNB_BODY_FONT;
   const detailDisplayFont = presentation.displayFont || FNB_DISPLAY_FONT;
   const detailItemNoun = presentation.itemNoun || 'item';
+  const detailMediaObjectFit = presentation.mediaObjectFit || 'cover';
   const detailActionButtonBase = compactTypography ? {
     ...actionButtonBase,
     fontFamily: detailBodyFont,
@@ -378,7 +379,7 @@ export function FnbProductDetailsPage({
         }}>
 
           {/* -- LEFT COLUMN: Image + Info -- */}
-          <div style={{ display: 'grid', gap: sp(2) }}>
+          <div style={{ display: 'grid', gap: sp(2), minWidth: 0, width: '100%' }}>
 
             <FnbProductMediaGallery
               accentColor={detailAccent}
@@ -390,6 +391,7 @@ export function FnbProductDetailsPage({
               imageSources={imageSources}
               imageUrl={imageUrl}
               itemName={item.name}
+              objectFit={detailMediaObjectFit}
               sectionLabel={sectionLabel}
               standardImageHeight={standardImageHeight}
             />

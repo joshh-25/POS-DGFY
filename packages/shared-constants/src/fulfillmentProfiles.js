@@ -156,7 +156,10 @@ export const FULFILLMENT_PROFILES = Object.freeze({
         summary: 'The business collects an item and returns it to the customer after the work.',
         status: 'planned',
         final_action: 'send_booking_request',
-        service_area_types: Object.freeze([]),
+        // Populated by Phase 88 of #482 (ADR 0064 decision 7): 'item_handoff' is the fifth
+        // service_area_type value, added specifically so this profile is reachable via
+        // resolveFulfillmentProfilesForServiceAreaType - it was unreachable by construction before.
+        service_area_types: Object.freeze(['item_handoff']),
         planned_module: 'pickupReturnLogistics',
         checkout_fields: checkoutFields({
             pickup_address: 'required',
@@ -171,9 +174,10 @@ export const FULFILLMENT_PROFILES = Object.freeze({
             photos: 'hidden'
         }),
         tracking_events: Object.freeze(['requested', 'for_pickup', 'pickup_completed', 'in_service', 'out_for_return', 'completed']),
-        notes: 'Good for laundry, shoe cleaning, tailoring, and repair with a round-trip. Not backed today: DeliveryJob is '
-            + 'one-way and 1:1 with a POS transaction, and cannot attach to a ServiceBooking at all. Blocked on the '
-            + "pickupReturnLogistics capability module, currently status: 'planned'."
+        notes: 'Good for laundry, shoe cleaning, tailoring, and repair with a round-trip. Schema now exists '
+            + "(ServiceBookingHandoffLeg, Phase 88) but nothing writes to it yet - still blocked on the "
+            + "pickupReturnLogistics capability module, currently status: 'planned', which flips only once the "
+            + 'API/storefront/POS phases actually ship (ADR 0064 decision 6).'
     }),
     item_pickup_collection: Object.freeze({
         order: 6,
@@ -181,7 +185,8 @@ export const FULFILLMENT_PROFILES = Object.freeze({
         summary: 'The business collects the item, but the customer returns to the store to collect it.',
         status: 'planned',
         final_action: 'send_booking_request',
-        service_area_types: Object.freeze([]),
+        // Populated by Phase 88 of #482 (ADR 0064 decision 7) - see item_pickup_return above.
+        service_area_types: Object.freeze(['item_handoff']),
         planned_module: 'pickupReturnLogistics',
         checkout_fields: checkoutFields({
             pickup_address: 'required',
@@ -272,10 +277,12 @@ export const resolveFulfillmentProfile = (profileKey) => (
 
 /**
  * The Phase 37 entry point: which fulfillment profile(s) a given
- * ServiceItemDetail.service_area_type maps onto. Only ever resolves to
- * `shipped` profiles, since `service_area_type` is itself a live,
- * shipped enum - a `planned` profile has no `service_area_types` entries
- * to match against by construction.
+ * ServiceItemDetail.service_area_type maps onto. Originally resolved only to `shipped` profiles,
+ * since `service_area_type` was itself a live, shipped enum and a `planned` profile had no
+ * `service_area_types` entries to match against by construction. Phase 88 of #482 (ADR 0064
+ * decision 7) is the one deliberate exception: `item_handoff` resolves to two still-`planned`
+ * profiles (`item_pickup_return`, `item_pickup_collection`) at once - the customer picks the
+ * variant at checkout, the legs record which (ADR 0064 decision 3).
  */
 export const resolveFulfillmentProfilesForServiceAreaType = (serviceAreaType) => {
     const normalized = String(serviceAreaType || '').trim();

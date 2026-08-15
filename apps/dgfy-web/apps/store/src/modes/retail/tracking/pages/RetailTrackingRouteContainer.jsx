@@ -1,25 +1,28 @@
 import React from 'react';
 
-import { FnbTrackingRouteContainer } from '../../../fnb/tracking/pages/FnbTrackingRouteContainer.jsx';
-
-const RETAIL_TRACKING_PRESENTATION = Object.freeze({
-  backLabel: 'Back to Items',
-  returnToCatalog: true,
-  showTrustStrip: false,
-});
+import { RetailTrackingDrawerMount } from '../components/RetailTrackingDrawerMount.jsx';
+import { RetailTrackingRouteFrame } from '../components/RetailTrackingRouteFrame.jsx';
+import { RetailTrackingRoutePage } from '../components/RetailTrackingRoutePage.jsx';
 
 /**
- * Retail-owned tracking outlet. The order tracking renderer remains shared
- * while Retail supplies only its catalog terminology and visibility policy.
+ * Retail tracking presentation outlet. Runtime data and shared navigation actions
+ * are injected by the shell until the final route-runtime extraction.
  */
-export function RetailTrackingRouteContainer({ page, ...props }) {
+export function RetailTrackingRouteContainer({
+  drawer,
+  page,
+  renderDrawer = true,
+  route,
+  visible
+}) {
   return (
-    <FnbTrackingRouteContainer
-      {...props}
-      page={{
-        ...page,
-        presentation: RETAIL_TRACKING_PRESENTATION,
-      }}
-    />
+    <>
+      {visible ? (
+        <RetailTrackingRouteFrame {...route}>
+          <RetailTrackingRoutePage {...page} />
+        </RetailTrackingRouteFrame>
+      ) : null}
+      {renderDrawer ? <RetailTrackingDrawerMount {...drawer} /> : null}
+    </>
   );
 }

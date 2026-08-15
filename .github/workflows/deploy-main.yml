@@ -114,7 +114,25 @@ jobs:
       packages: write
 
   # Prod frontend image (dgfy.ph VITE_* baked in).
+  #
+  # `needs: frontend-beta` added 2026-08-14 (#427): this job and
+  # frontend-beta both push a large image to GHCR, and running them in
+  # parallel is what tripped GHCR's secondary rate limit in run
+  # 31728787346 (frontend-prod's push got a 403 mid-deploy while
+  # frontend-beta, started slightly earlier, succeeded). Serializing them
+  # costs ~4-5 extra minutes of wall-clock on this workflow only.
+  #
+  # Side effect worth knowing: `needs` on a job whose `if:` does not
+  # reference success()/always()/failure()/cancelled() keeps GitHub's
+  # default implicit gate -- frontend-prod now only runs if frontend-beta
+  # actually succeeded, where before they were independent attempts. If
+  # frontend-beta fails, frontend-prod is skipped (not attempted), and the
+  # publish job below correctly refuses to deploy either -- its `if`
+  # requires BOTH frontend-beta.result != 'failure' AND
+  # frontend-prod.result != 'failure', so a beta failure blocks prod's
+  # deploy too even though frontend-prod itself never ran.
   frontend-prod:
+    needs: frontend-beta
     if: inputs.components == 'all' || inputs.components == 'frontend'
     uses: ./.github/workflows/deploy-frontend.yml
     with:

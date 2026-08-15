@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { FnbProductDesktopPurchasePanel } from '../modes/fnb/storefront/components/FnbProductDesktopPurchasePanel.jsx';
 import { FnbProductInfoHeader } from '../modes/fnb/storefront/components/FnbProductInfoHeader.jsx';
 import { FnbProductPriceQuantitySelector } from '../modes/fnb/storefront/components/FnbProductPriceQuantitySelector.jsx';
+import { FnbProductMediaGallery } from '../modes/fnb/storefront/components/FnbProductMediaGallery.jsx';
 
 const actionButtonBase = {
   minHeight: 46,
@@ -16,6 +17,31 @@ const actionButtonBase = {
 afterEach(cleanup);
 
 describe('retail product-details presentation', () => {
+  it('keeps large retail images contained inside the fixed media viewport', () => {
+    render(
+      <FnbProductMediaGallery
+        available
+        availabilityLabel="Available"
+        imageSources={{ src: '/large-product.png' }}
+        imageUrl="/large-product.png"
+        itemName="Tall product package"
+        objectFit="contain"
+        sectionLabel="Retail"
+        standardImageHeight={450}
+      />
+    );
+
+    const image = screen.getByAltText('Tall product package');
+    const gallery = image.parentElement.parentElement;
+
+    expect(image.style.objectFit).toBe('contain');
+    expect(image.style.maxWidth).toBe('100%');
+    expect(gallery.style.width).toBe('100%');
+    expect(gallery.style.maxWidth).toBe('100%');
+    expect(gallery.style.minWidth).toBe('0px');
+    expect(gallery.style.height).toBe('450px');
+  });
+
   it('uses retail typography and blue accents for item identity and price', () => {
     render(
       <>

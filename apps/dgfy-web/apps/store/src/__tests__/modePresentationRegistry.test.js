@@ -92,6 +92,22 @@ describe('modePresentationRegistry', () => {
     expect(adapter.catalogCardVariant).toBe('product_simple');
     expect(adapter.journeyVariant).toBe('order');
     expect(adapter.sharedSections.navigation).toBe(true);
+    expect(adapter.heroTheme.accent).toBe('#176B3A');
+    expect(adapter.heroTheme.accentDark).toBe('#0F5A30');
+    expect(adapter.heroTheme.accentSoft).toBe('#FFF8E7');
+    expect(adapter.heroTheme.surfaceInset).toBe('#FFF7E6');
+    expect(adapter.heroTheme.typography).toMatchObject({
+      heroTitle: expect.objectContaining({ desktop: 46, mobile: 24, weight: 800 }),
+      catalogTitle: expect.objectContaining({ desktop: 32, mobile: 16, weight: 700 }),
+      cardTitle: expect.objectContaining({ desktop: 18, mobile: 16, weight: 700 }),
+      action: expect.objectContaining({ desktop: 15, mobile: 13, weight: 700 })
+    });
+    expect(adapter.heroTheme.catalogPalette.surface).toBe('#FFFBF0');
+    expect(adapter.heroTheme.catalogPalette).toEqual(expect.objectContaining({
+      primary: '#176B3A',
+      accentSoft: '#FFF8E7',
+      border: '#E4C98E'
+    }));
   });
 
   it('keeps retail theme/copy but unlocks service grouping when the services capability is composed in', () => {

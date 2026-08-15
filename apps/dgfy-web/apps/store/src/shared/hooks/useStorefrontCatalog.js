@@ -276,6 +276,11 @@ export function useStorefrontCatalog({
     const reviewHighlights = Array.isArray(supportingSectionModel?.reviewHighlights)
       ? supportingSectionModel.reviewHighlights.filter(Boolean)
       : [];
+    const galleryImages = Array.isArray(supportingSectionModel?.galleryImages)
+      ? supportingSectionModel.galleryImages
+        .map((entry) => withAssetOrigin(entry?.url || entry?.path))
+        .filter(Boolean)
+      : [];
     const productGroups = [...new Set(
       (Array.isArray(catalog) ? catalog : [])
         .map((item) => String(item?.categoryMeta?.label || item?.category_name || item?.category || '').trim())
@@ -327,6 +332,9 @@ export function useStorefrontCatalog({
       locationLabel: addressLine || locationName || 'Location details coming soon',
       addressLine,
       aboutText: heroSectionModel?.aboutText || '',
+      galleryImages,
+      galleryImagesFull: galleryImages,
+      galleryOverflowCount: Math.max(0, galleryImages.length - 4),
       whyChooseUs,
       hours,
       reviewSummary,

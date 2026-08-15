@@ -112,12 +112,25 @@ jobs:
           # against the now-frozen `backend:<tag>` image while everything
           # else moves on -- a green deploy that silently leaves the API on
           # stale code. Fail loudly instead.
+          #
+          # `docker compose pull` retry (2026-08-14, #342): the server pulls
+          # mysql:8.0/redis:7-alpine from docker.io ANONYMOUSLY (only GHCR
+          # gets a login above), which is subject to Docker Hub's per-IP
+          # anonymous pull limits and has intermittently timed out
+          # authenticating. 3 attempts with growing backoff (15s, 45s)
+          # before giving up. Deliberately only the pull is retried --
+          # `docker compose up -d` runs once, since blindly repeating a
+          # partial container restart is not safe. Durable fix is either a
+          # Docker Hub account (new secret, not done here) or mirroring
+          # mysql/redis into GHCR -- this retry is the no-new-secrets first
+          # move, not the end state.
           ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=yes "$SSH_TARGET" \
             "docker login ghcr.io -u $GITHUB_ACTOR --password-stdin && \
              cd $DOCKER_DIR && \
              COMPOSE_IMAGES=\$(docker compose config --images) && \
              { echo \"\$COMPOSE_IMAGES\" | grep -q 'dgfy-platform/api' && echo \"\$COMPOSE_IMAGES\" | grep -q 'dgfy-platform/migration-runner'; } || { echo \"::error::\$(pwd) compose has no dgfy-api/migration-runner image reference -- server compose is stale, refusing to deploy.\" >&2; exit 1; } && \
-             docker compose pull && docker compose up -d --remove-orphans && docker logout ghcr.io" \
+             ok=0; for delay in 0 15 45; do [ \"\$delay\" -gt 0 ] && { echo \"::warning::docker compose pull failed, retrying in \${delay}s\" >&2; sleep \"\$delay\"; }; if docker compose pull; then ok=1; break; fi; done; [ \"\$ok\" = 1 ] || { echo \"::error::docker compose pull failed after 3 attempts\" >&2; exit 1; } && \
+             docker compose up -d --remove-orphans && docker logout ghcr.io" \
             <<< "$GITHUB_TOKEN"
 
       # Hosted runners are ephemeral and threw these away for free. On a

@@ -1,4 +1,14 @@
+---
+name: web-performance-qa
+description: Local-only QA, E2E, performance, load, and security testing procedures for the dgfy-platform multi-app codebase — Playwright E2E, Lighthouse CI, k6 load checks, and local security verification (input validation, protected-route redirects, security headers). Use whenever a task involves testing across Skupervisor/POS/Storefront, cross-app communication, or multi-tenant queries.
+---
+
 # Web Performance, QA & Security Testing Skill
+
+**Portability**: this file was previously Codex-only (`.codex/skills/`) with no frontmatter, so it
+was invisible to Claude Code and unusable by this repo's `.agents/skills/` gate
+(`scripts/check-agent-surfaces.js`, #442). Moved to the canonical location and given `name`/
+`description` so every tool that reads `.agents/skills/` can discover it, matching the other roles.
 
 This skill defines the canonical local-only QA, E2E, performance, load, and security testing procedures for the POS-DGFY multi-app codebase.
 

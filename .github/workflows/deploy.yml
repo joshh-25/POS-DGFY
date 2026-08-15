@@ -1,4 +1,4 @@
-name: Deploy
+name: Build & Deploy Platform
 
 # Consolidated manual-dispatch build+deploy for DEV/STAGING/BETA, replacing
 # build-develop.yml, build-staging.yml, build-manual.yml, and
@@ -37,7 +37,11 @@ name: Deploy
 #
 # CONFIRMED end-to-end 2026-08-13: DEV via run 31724177658 (build + SSH
 # publish all succeeded, deployed revision label matched develop HEAD) and
-# STAGING via run 31726388197 (same, against staging HEAD).
+# STAGING via run 31727201728 (same, against staging HEAD -- NOT run
+# 31726388197, which is a real self-hosted-runner stall on `guard-ref`
+# that timed out and was cancelled; see #432. The re-dispatch with no
+# change succeeded, which is 31727201728). BETA+PROD dual-deploy also
+# confirmed via run 31728787346 (deploy-main.yml).
 on:
   workflow_dispatch:
     inputs:
