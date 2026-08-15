@@ -3989,3 +3989,65 @@ parked-sale replay and shift-close resolution.
 
 - Phase 86 is complete. Phase 87 is the next eligible repository phase and
   requires separate approval.
+
+## Phase 87 - Authorise Services Handoff Legs to Reach Schema/API
+
+### Initiative and Release
+
+- Initiative: Services pickup-and-return round trip (laundry handoff legs).
+- Release: unreleased; this phase is a governance decision, not a code change.
+
+### Objective and Scope
+
+- Lift the governance gate blocking issue #482 (laundry pickup-and-return round trip,
+  `pickupReturnLogistics`): ADR 0057 clause 3 (`[binding]`) forbids the fulfillment-profile
+  vocabulary from reaching any database column, API contract, or Store Profile section, which
+  blocks every piece of schema/API work #482 needs.
+- Author ADR 0064, a scoped supersession of ADR 0057 clause 3 for `item_pickup_return` and
+  `item_pickup_collection` only, resolving the tech-lead ruling #482 flagged as open (new ADR vs.
+  an amendment block) in favor of a new ADR — the same route ADR 0058 already used against ADR
+  0057 clause 1.
+- No schema, API, migration, or frontend change ships in this phase. Phases 88-92 (schema,
+  API contract, storefront wiring, services tracking timeline, POS) are authorized by ADR 0064
+  but implemented separately.
+
+### Status
+
+- `completed`
+- Completed on 2026-08-15.
+
+### Dependencies and Governance Note
+
+- ADR 0057 (Services Fulfillment Profiles) - clause 3 scoped-superseded; clauses 1, 2, and 4
+  unaffected.
+- ADR 0058 (Registration Industry Catalog) - the in-tree precedent for a scoped supersession of
+  one of ADR 0057's binding clauses via a new ADR rather than a status flip.
+- ADR 0039 (ADR Lifecycle, Strictness Tiers, and Amendment Path) - governs the binding-clause
+  supersession requirement this phase satisfies.
+- `docs/proposals/2026-08-15-liempyo-laundry-discover-flow-and-gap-analysis.md` - the confirmed
+  customer-facing spec this authorization is scoped against.
+- No compliance impact declaration required: this phase is documentation-only (ADR + ledger),
+  no schema, API, or runtime behavior changes.
+
+### Acceptance and Validation Evidence
+
+- [x] `npm run check:adr` passes: 71 ADRs validated, no topic/binding-authority collisions.
+- [x] `npm run lint:docs` passes: 28 governed docs validated (chains `check:adr`).
+- [x] `docs/architecture/adr/INDEX.md` regenerated via `npm run generate:adr-index` and includes
+  ADR 0064 (`accepted`, topic `services_handoff_legs`, 6 binding-clause count).
+- [x] `docs/features/SERVICES_FULFILLMENT_PROFILES.md` confirmed unchanged, still
+  `authority_level: reference`.
+- [x] ADR 0057 confirmed unchanged except its new `## Related` cross-reference; `status: accepted`
+  and all four clauses byte-identical.
+
+### Implementation Links
+
+- `docs/architecture/adr/0064-services-handoff-legs-and-round-trip-persistence.md`
+- `docs/architecture/adr/0057-services-fulfillment-profiles.md`
+- `docs/architecture/adr/INDEX.md`
+- Issue #482 - Laundry pickup-and-return round trip (`pickupReturnLogistics`)
+
+### Completion Record (2026-08-15)
+
+- Phase 87 is complete. Phase 88 is the next eligible repository phase and requires separate
+  approval; it is authorized by ADR 0064 but not implemented here.
