@@ -86,6 +86,7 @@ clauses have decayed to `default` until someone renews `last_reviewed`.
 | 0061 | [POS Parked Sale Lifecycle and Shift-Safe Resume](0061-pos-parked-sale-lifecycle-and-shift-safe-resume.md) | `amended` | pos_parked_sale_lifecycle_and_shift_safe_resume | 2027-02-12 | 8 |
 | 0062 | [POS Split-Tender Collection and Payment Allocation](0062-pos-split-tender-collection-and-payment-allocation.md) | `superseded` | pos_split_tender_collection | 2027-02-12 | 11 |
 | 0063 | [POS Split Tender and Manual Walk-in Payment Recording](0063-pos-split-tender-and-manual-walk-in-payment-recording.md) | `amended` | pos_split_tender_collection | 2027-02-13 | 14 |
+| 0064 | [Frontend Split into Three Apps](0064-frontend-split-into-three-apps.md) | `accepted` | frontend_split_into_three_apps | 2027-02-15 | 5 |
 
 ## Renumbered (collision stubs)
 
