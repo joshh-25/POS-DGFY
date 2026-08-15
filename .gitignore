@@ -106,7 +106,6 @@ htdocs/.htaccess
 # Build outputs
 .vite/
 .deploy-state/
-/dist-apps/
 /apps/dgfy-storefront/src/scratch/
 /apps/dgfy-storefront/.tmp-store-build/
 /apps/dgfy-storefront/dist/
