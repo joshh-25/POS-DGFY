@@ -7,21 +7,39 @@ This document details how to run, inspect, and generate E2E, performance, load, 
 ## 💻 1. App Development Environments Setup
 Before executing any test suites, verify that your local development servers are running:
 
-* **Backend API**: `cd backend && npm run dev` (starts API on `http://localhost:5000`)
-* **Skupervisor (IMS)**: `cd apps/dgfy-web && npm run dev:skupervisor` (starts IMS on `http://localhost:5173`)
-* **Standalone POS (Cashier)**: `cd apps/dgfy-web && npm run dev:pos` (starts POS on `http://localhost:5174`)
-* **Storefront (Customer)**: `cd apps/dgfy-web && npm run dev:store` (starts Storefront on `http://localhost:5175`)
+Each frontend surface is its own Vite package (issue #322 split); there is no single frontend
+package left. Run each from the repo root, or `cd` into the app itself:
 
-*Alternatively, run `npm run dev` from the project root to run the entire backend, device-bridge, and frontend servers concurrently.*
+* **Backend API**: `cd backend && npm run dev` (starts API on `http://localhost:5000`)
+* **Skupervisor (IMS)**: `npm run dev:skupervisor` from the root, or `cd apps/dgfy-ims && npm run dev` (starts IMS on `http://localhost:5173`)
+* **Standalone POS (Cashier)**: `npm run dev:pos` from the root, or `cd apps/dgfy-pos && npm run dev` (starts POS on `http://localhost:5174`)
+* **Storefront (Customer)**: `npm run dev:store` from the root, or `cd apps/dgfy-storefront && npm run dev` (starts Storefront on `http://localhost:5175`)
+
+All three apps consume the shared trunk from `packages/web-core` (`@sieitzz/web-core`) via a
+`file:` dependency plus a Vite alias. It has no build step of its own — editing a file under
+`packages/web-core/` is picked up by whichever app dev server is running.
+
+*Alternatively, run `npm run dev` from the project root to run the backend, device-bridge, and the
+IMS dev server concurrently, or `npm run dev:local-pos-stack` to run the backend, device-bridge,
+and all three frontend dev servers at once.*
 
 ---
 
 ## 🎭 2. Playwright E2E & Cross-App Tests
 
-All E2E tests are stored under `apps/dgfy-web/tests/e2e/`.
+E2E specs live next to the app they exercise, and each app owns its own `playwright.config.js`:
+
+* `apps/dgfy-ims/tests/e2e/` — Skupervisor (IMS)
+* `apps/dgfy-pos/tests/e2e/` — Standalone POS
+* `apps/dgfy-storefront/tests/e2e/` — Customer Storefront
+* `tests/frontend-cross-app/tests/e2e/` — multi-surface specs that drive more than one app at once
+
+There is no single aggregate `test:e2e:<surface>` script anymore. Pick the package whose surface you
+want and run its own scripts.
 
 ### Commands List
-Run these commands from the `apps/dgfy-web/` directory:
+Run these from the app you want to test — `apps/dgfy-ims/`, `apps/dgfy-pos/`, or
+`apps/dgfy-storefront/`. All three expose the same script names:
 
 1. **Terminal Test Run (Headless)**:
    ```bash
@@ -39,26 +57,24 @@ Run these commands from the `apps/dgfy-web/` directory:
    ```bash
    npm run test:e2e:report
    ```
-5. **Run Only Skupervisor (IMS) Tests**:
+5. **Run Security & Form Input Tests** (the security suite currently lives in `apps/dgfy-ims/tests/e2e/security/` only; POS and Storefront declare a `test:security` script but ship no security specs yet):
    ```bash
-   npm run test:e2e:skupervisor
+   cd apps/dgfy-ims
+   npm run test:security
    ```
-6. **Run Only Standalone POS Tests**:
+
+Cross-app work lives in its own package:
+
+6. **Run Cross-App / BroadcastChannel Sync Tests**:
    ```bash
-   npm run test:e2e:pos
+   cd tests/frontend-cross-app
+   npm run test:e2e
    ```
-7. **Run Only Customer Storefront Tests**:
-   ```bash
-   npm run test:e2e:store
-   ```
-8. **Run Cross-App / BroadcastChannel Sync Tests**:
-   ```bash
-   npm run test:e2e:cross-app
-   ```
-9. **Run Security & Form Input Tests**:
-   ```bash
-   npm run test:e2e:security
-   ```
+
+Unit/component tests (Vitest) are also per app — `cd apps/dgfy-ims && npm test` (the root
+`npm run test:frontend` maps here), `cd apps/dgfy-pos && npm test`, or
+`cd apps/dgfy-storefront && npm test`. Specs for shared `packages/web-core` code are run by
+whichever app package owns them.
 
 ---
 
@@ -81,28 +97,39 @@ You can use Playwright's built-in code generator to record actions and click pat
 ---
 
 ## ⚡ 4. Lighthouse CI (Local Auditing)
-Audit Layout Shifts, Core Web Vitals, and PWA configurations locally:
+Audit Layout Shifts, Core Web Vitals, and PWA configurations locally. Lighthouse CI lives in the
+`tests/frontend-cross-app/` package and drives the per-app `preview` servers, so the apps it audits
+must already be built on disk (each app builds into its own `apps/<app>/dist/`; there is no shared
+`build:all` script anymore):
 
-1. Build preview versions:
+1. Build the surfaces you want audited, from the repo root:
    ```bash
-   npm run build:all
+   npm run build:skupervisor
+   npm run build:store
    ```
+   `tests/frontend-cross-app/lighthouserc.js` collects `http://localhost:5173/login` from IMS
+   always, and adds a storefront URL on `http://localhost:5175/` only when `E2E_STORE_SLUG` names a
+   real seeded tenant. `npm run build:pos` is only needed if you extend that config to POS.
 2. Run Lighthouse CI audits:
    ```bash
+   cd tests/frontend-cross-app
    npm run test:lighthouse
    ```
 
 ---
 
 ## 🚀 5. k6 Local Load Testing
-Target your local backend API using safe, low concurrent stress scripts:
+Target your local backend API using safe, low concurrent stress scripts. These also live in
+`tests/frontend-cross-app/`:
 
 * **General API Smoke Load**:
   ```bash
+  cd tests/frontend-cross-app
   npm run test:load
   ```
 * **Endpoints Profiling**:
   ```bash
+  cd tests/frontend-cross-app
   npm run test:load:api
   ```
 

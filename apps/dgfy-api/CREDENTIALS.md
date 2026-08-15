@@ -206,9 +206,12 @@ When `MOCK_PAYPAL=true` is set in the backend `.env`:
 ### How to Update Production Secrets:
 1.  **SSH into the server:** `ssh root@hermes-cloud`
 2.  **Navigate to the project:** `cd /var/www/skupervisor`
-3.  **Edit Frontend Secrets:** 
+3.  **Edit Frontend Secrets:** the subscription/reactivation screens that read these values are
+    SKUpervisor (IMS) screens, so they belong to the IMS app's build env. Each frontend app
+    (`apps/dgfy-ims`, `apps/dgfy-pos`, `apps/dgfy-storefront`) has its own `.env`; there is no
+    single shared frontend `.env` anymore.
     ```bash
-    nano apps/dgfy-web/.env
+    nano apps/dgfy-ims/.env
     # Update VITE_PAYPAL_CLIENT_ID and VITE_PAYPAL_PLAN_ID with Live values
     ```
 4.  **Edit Backend Secrets:**
@@ -216,6 +219,6 @@ When `MOCK_PAYPAL=true` is set in the backend `.env`:
     nano apps/dgfy-api/.env
     # Update PAYPAL_MODE=live, PAYPAL_CLIENT_ID, and PAYPAL_CLIENT_SECRET
     ```
-5.  **Re-deploy:** `bash scripts/deploy.sh` (This rebuilds the frontend with the new IDs)
+5.  **Re-deploy:** `bash scripts/deploy.sh` (This rebuilds each frontend app with the new IDs)
 
 

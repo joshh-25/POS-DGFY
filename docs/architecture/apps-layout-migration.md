@@ -11,13 +11,21 @@ project differs from the pre-refactor shape.
 If you only need one fact: **`backend/`, `frontend/`, and `android/` are gone. Everything
 lives under `apps/`.** The rest of this doc is detail.
 
+> **Second fact, added later: `apps/dgfy-web/` is gone too.** The single frontend package this
+> migration created was split again into three independent apps plus a shared package
+> (ADR 0064). If you are here because a search hit mentions `apps/dgfy-web`, skip to
+> [The frontend split](#the-frontend-split-adr-0064) — that
+> section supersedes every `apps/dgfy-web` mention above it in this document. The earlier
+> sections are preserved because they are the record of the first migration, not a description
+> of today's tree.
+
 ## The complete path map
 
 | Before | Now |
 | --- | --- |
 | `backend/src`, `backend/config`, `backend/device-bridge`, `backend/tests` | `apps/dgfy-api/…` |
 | `backend/migrations`, `backend/seeders`, `backend/.sequelizerc`, `backend/database-setup.sql` | `apps/dgfy-migration-runner/…` |
-| `frontend/**` | `apps/dgfy-web/**` |
+| `frontend/**` | `apps/dgfy-web/**` (since split again — see [The frontend split](#the-frontend-split-adr-0064)) |
 | `android/imin-wrapper/**` | `apps/dgfy-android-bridge/imin-wrapper/**` |
 | `packages/**` | unchanged — was never under `backend/`/`frontend/` |
 
@@ -38,10 +46,14 @@ Each relocation happened on its own date, in this order: `backend/` was split fi
   `dgfy-web` — all unchanged one directory deeper. A few paths that pointed *outside* the
   tree needed a one-level depth adjustment: the three Vite `outDir:
   '../../../../dist-apps/<app>'` build targets, and the `file:../../packages/*` dependency
-  paths in `package.json`/`package-lock.json`.
+  paths in `package.json`/`package-lock.json`. *(The nested `apps/{skupervisor,pos,store}`
+  shape and the `dist-apps/` output convention described here were both dissolved later by
+  ADR 0064 — see [The frontend
+  split](#the-frontend-split-adr-0064).)*
 - **`packages/`**: never moved. `packages/shared-constants` and `packages/pos-receipt` sit
-  at the same path they always have, consumed identically by `apps/dgfy-api` and
-  `apps/dgfy-web`.
+  at the same path they always have, consumed identically by `apps/dgfy-api` and the frontend
+  apps. ADR 0064 later added a third package at the same level, `packages/web-core`, holding
+  the shared frontend trunk.
 
 ## Running locally, before vs after
 
@@ -50,14 +62,14 @@ manually:
 
 | Before | Now |
 | --- | --- |
-| `cd backend && npm install && cd frontend && npm install` | `npm run install:all` (installs root + all four `apps/` packages) |
+| `cd backend && npm install && cd frontend && npm install` | `npm run install:all` (installs root + `apps/dgfy-ims`, `apps/dgfy-pos`, `apps/dgfy-storefront`, `apps/dgfy-api`, `apps/dgfy-migration-runner`; `packages/web-core` has nothing to install) |
 | `cd backend && npm run dev` | `npm run dev:backend` (or `cd apps/dgfy-api && npm run dev`) |
-| `cd frontend && npm run dev` | `npm run dev:frontend` (or `cd apps/dgfy-web && npm run dev`) |
+| `cd frontend && npm run dev` | `npm run dev:skupervisor` / `npm run dev:pos` / `npm run dev:store` (or `cd apps/dgfy-ims`\|`apps/dgfy-pos`\|`apps/dgfy-storefront` and `npm run dev`). `npm run dev:frontend` still exists and is an alias for `dev:skupervisor`. |
 | `backend/.env` | `apps/dgfy-api/.env` (see `apps/dgfy-api/.env.example`) |
-| n/a — frontend had no separate env file | `apps/dgfy-web/.env` (see `apps/dgfy-web/.env.example`) |
+| n/a — frontend had no separate env file | one per frontend app: `apps/dgfy-ims/.env`, `apps/dgfy-pos/.env`, `apps/dgfy-storefront/.env` |
 | `cd backend && npx sequelize-cli db:migrate` | `cd apps/dgfy-migration-runner && npm run migrate` (wraps `sequelize-cli db:migrate`; config/models/seeders/migrations paths all resolve inside that package via its own `.sequelizerc`) |
 | `cd backend && npx sequelize-cli db:seed:all` | `cd apps/dgfy-migration-runner && npm run seed` |
-| `npm run dev` (whole stack) | unchanged — still `npm run dev`, now internally fanning out to `apps/dgfy-api` + `apps/dgfy-web` |
+| `npm run dev` (whole stack) | still `npm run dev`, now fanning out to `apps/dgfy-api` (API + device bridge) + `apps/dgfy-ims`. Use `npm run dev:local-pos-stack` to bring up all three frontends. |
 
 Bringing up the full local POS stack (API, device-bridge, and all three frontend apps):
 
@@ -69,20 +81,86 @@ npm run dev:local-pos-stack
 ## Deploying, before vs after
 
 - **`ecosystem.config.cjs`** (PM2 process definitions) — each app's `cwd` points at its
-  `apps/` package (`./apps/dgfy-api`, `./apps/dgfy-web`), not `./backend`/`./frontend`.
-- **`scripts/deploy.sh`** — its changed-file detectors (`BACKEND_CHANGED_FILES`,
-  `FRONTEND_CHANGED_FILES`, `MIGRATIONS_CHANGED`) grep the release manifest for
-  `apps/dgfy-api/`, `apps/dgfy-web/`, and `apps/dgfy-migration-runner/migrations/`
-  respectively — not the old `backend/`/`frontend/` prefixes.
-- **Docker images** — `infrastructure/docker/dgfy-api/`, `infrastructure/docker/
-  dgfy-migration-runner/`, and `infrastructure/docker/frontend/` (the frontend image
-  deliberately kept its directory name — see ADR 0059 — while the compose service and
-  nginx upstream also kept their pre-refactor names).
-- **CI path filters** (`.github/workflows/shared-changed-paths.yml`) — the regex that sets
-  `FRONTEND=true` matches `^apps/dgfy-web/`, `^packages/pos-receipt/`,
-  `^packages/shared-constants/`, `^infrastructure/docker/frontend/`, and a handful of
-  named workflow files — not `^frontend/`. The equivalent backend/migration-runner filters
-  key off `apps/dgfy-api/` and `apps/dgfy-migration-runner/`.
+  `apps/` package (`./apps/dgfy-api`, `./apps/dgfy-ims`, `./apps/dgfy-pos`,
+  `./apps/dgfy-storefront`), not `./backend`/`./frontend`.
+- **`scripts/deploy.sh`** — its changed-file detectors grep the release manifest by prefix:
+  `BACKEND_CHANGED_FILES` on `^apps/dgfy-api/`, `FRONTEND_CHANGED_FILES` on
+  `^(apps/dgfy-ims/|apps/dgfy-pos/|apps/dgfy-storefront/|packages/web-core/)`, and
+  `MIGRATIONS_CHANGED` on `apps/dgfy-migration-runner/migrations/` — not the old
+  `backend/`/`frontend/` prefixes. Note that `packages/web-core/` counts as a frontend
+  change for all three apps, because all three consume it.
+- **Docker images** — `infrastructure/docker/dgfy-api/`,
+  `infrastructure/docker/dgfy-migration-runner/`, `infrastructure/docker/dgfy-ims/`,
+  `infrastructure/docker/dgfy-pos/`, and `infrastructure/docker/dgfy-storefront/`. The single
+  `infrastructure/docker/frontend/` image that ADR 0059 kept under its pre-refactor name was
+  retired by ADR 0064 and replaced by the three per-app images above.
+- **CI path filters** (`.github/workflows/shared-changed-paths.yml`) — there is no single
+  `FRONTEND` output anymore. Three independent outputs (`frontend_ims`, `frontend_pos`,
+  `frontend_storefront`) each match their own app directory, their own
+  `infrastructure/docker/dgfy-<app>/` directory, and the shared packages they depend on
+  (`packages/web-core/` and `packages/shared-constants/` for all three;
+  `packages/pos-receipt/` for `dgfy-ims` and `dgfy-pos` only). The backend/migration-runner
+  filters still key off `apps/dgfy-api/` and `apps/dgfy-migration-runner/`.
+
+## The frontend split (ADR 0064)
+
+Everything above describes the *first* migration (`frontend/` → `apps/dgfy-web/`, ADR 0059).
+A second migration then split that single Vite package into three independent apps and one
+shared package — see
+[ADR 0064](adr/0064-frontend-split-into-three-apps.md). **`apps/dgfy-web/` no longer exists on
+disk.** Where this section and any earlier section of this document disagree, this section wins.
+
+### Path map
+
+| Before (`apps/dgfy-web/…`) | Now |
+| --- | --- |
+| `apps/skupervisor/**` | `apps/dgfy-ims/**` |
+| `apps/pos/**` | `apps/dgfy-pos/**` |
+| `apps/pos/desktop/pos-electron/**` | `apps/dgfy-pos/desktop/pos-electron/**` |
+| `apps/store/**` | `apps/dgfy-storefront/**` |
+| `src/**` (the shared trunk) | `packages/web-core/src/**` |
+| `Components/**` | `packages/web-core/Components/**` |
+| `Pages/DgfyAuthPage.jsx`, `Pages/DgfyCompanySelect.jsx`, `Pages/RegisterCompany.jsx`, `Pages/CompanyRegistrationStatus.jsx` | `packages/web-core/Pages/**` |
+| the rest of `Pages/**` | `apps/dgfy-ims/Pages/**` |
+| `sentryViteConfig.js` | `packages/web-core/vite/sentryViteConfig.js` |
+| `dist-apps/skupervisor`, `dist-apps/pos`, `dist-apps/store` | `apps/dgfy-ims/dist`, `apps/dgfy-pos/dist`, `apps/dgfy-storefront/dist` |
+| `infrastructure/docker/frontend/Dockerfile` (one image, three surfaces) | `infrastructure/docker/dgfy-ims/Dockerfile`, `.../dgfy-pos/Dockerfile`, `.../dgfy-storefront/Dockerfile` |
+| image `ghcr.io/sieitzz/dgfy-platform/frontend` | `…/dgfy-ims`, `…/dgfy-pos`, `…/dgfy-storefront` |
+
+Container ports are unchanged: **8081** = IMS, **8082** = POS, **8083** = Storefront. Only the
+number of containers changed — one nginx serving three roots became three single-purpose images.
+
+### Why a split, not another rename
+
+The three surfaces had independent release cadences but one lockfile, one `node_modules`, one
+build graph, and one image. A POS-only change rebuilt and redeployed the Storefront. The split
+gives each surface its own `package.json`, its own `package-lock.json`, its own Vite config and
+dev port, its own Dockerfile and image, and its own CI path filter.
+
+`packages/web-core` (`@sieitzz/web-core`) holds what genuinely is shared — the API client,
+stores, hooks, shared components, the DGFY-auth pages, and the shared Vite helpers. It is
+deliberately **not** a buildable package: no build step, no `node_modules`, no lockfile of its
+own. Each app consumes it as `"@sieitzz/web-core": "file:../../packages/web-core"` and resolves
+its subpaths through Vite aliases, so the source is compiled by whichever app imports it. That
+also means `packages/web-core` has no test runner of its own — its Vitest specs are included by
+`apps/dgfy-ims`'s config and run from that workspace.
+
+### Commands, before vs after
+
+| Before | Now |
+| --- | --- |
+| `npm --prefix apps/dgfy-web run dev:skupervisor` | `npm run dev:skupervisor` (port 5173) |
+| `npm --prefix apps/dgfy-web run dev:pos` | `npm run dev:pos` (port 5174) |
+| `npm --prefix apps/dgfy-web run dev:store` | `npm run dev:store` (port 5175) |
+| `npm --prefix apps/dgfy-web run build:all` | **no equivalent** — run `npm run build:skupervisor`, `npm run build:pos`, `npm run build:store` separately, and only for the apps actually affected |
+| `npm --prefix apps/dgfy-web test -- <spec>` | `npm --prefix apps/dgfy-ims test -- <spec>` for IMS and shared-trunk specs; `npm --prefix apps/dgfy-pos test` / `npm --prefix apps/dgfy-storefront test` for app-owned specs |
+| `npm --prefix apps/dgfy-web run lint` | one lint per app (`apps/dgfy-ims`, `apps/dgfy-pos`, `apps/dgfy-storefront`) |
+
+### Where the old paths still legitimately appear
+
+`scripts/frontend-split-path-map.json` is the machine-readable record of this move and
+intentionally keeps every pre-split path. Same "leave alone" rule as the section below: ADRs,
+archives, compliance impact declarations, and dated narratives keep their original paths.
 
 ## A note for AI agents
 
@@ -148,7 +226,11 @@ mode if you hit it.
   `apps/dgfy-api`/`apps/dgfy-migration-runner`), the android move (undocumented as a
   standalone ADR — see `backend-absorption.md`'s android path map), and
   [0059](adr/0059-frontend-relocation-to-apps-dgfy-web.md) (frontend →
-  `apps/dgfy-web`). ADR 0059 was originally numbered 0054, then 0055, and was renumbered
+  `apps/dgfy-web`), and [0064](adr/0064-frontend-split-into-three-apps.md)
+  (`apps/dgfy-web` → `apps/dgfy-ims` + `apps/dgfy-pos` + `apps/dgfy-storefront` +
+  `packages/web-core`). ADR 0059 was originally numbered 0054, then 0055, and was renumbered
   twice more since — each time `develop` independently added its own ADR at this branch's
   provisional number. It is not stubbed under its earlier numbers because it was never
   published under them.
+- `scripts/frontend-split-path-map.json` — the machine-readable old-path → new-path record for
+  the ADR 0064 split.

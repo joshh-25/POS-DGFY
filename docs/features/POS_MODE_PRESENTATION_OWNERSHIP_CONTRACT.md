@@ -86,7 +86,8 @@ The repository already has the required workflow foundation:
   the F&B workflow panel.
 
 The confirmed gap is the large shared
-`apps/dgfy-web/src/features/pos/components/POSCheckoutTerminal.jsx` component.
+`packages/web-core/src/features/pos/components/POSCheckoutTerminal.jsx` component
+(shared trunk consumed by `apps/dgfy-pos` and `apps/dgfy-ims` via `@sieitzz/web-core`).
 Its Current Sale action block renders Parked Sales and Park & New Sale without
 consulting the resolved workflow. Consequently, Services currently receives
 generic order-oriented wording and future edits to the shared action block can

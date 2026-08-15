@@ -77,6 +77,13 @@ daily, so the same absorb-don't-lose rule applies:
 | ------------------------ | --------------------------- |
 | `frontend/**`            | `apps/dgfy-web/**`          |
 
+> **This table is no longer the whole story.** `apps/dgfy-web` was itself split on 2026-08-14
+> (ADR 0064) into three apps plus a shared package, so a `frontend/**` commit from `develop` now
+> needs a two-hop map, not a one-hop one. Read this section for the mechanics of the first hop,
+> then [The frontend split path map](#the-frontend-split-path-map) for where each file actually
+> lands today. The rest of this section describes the layout as it stood between 2026-08-06 and
+> 2026-08-14.
+
 Nothing is excluded — this is a pure relocation, like the android move and unlike the `backend/`
 split. All 1228 tracked files moved via a single `git mv`; the internal shape (`src/`, `Components/`,
 `Pages/`, `apps/{skupervisor,pos,store}`, one `package.json`, one lockfile) is unchanged, so develop's
@@ -110,6 +117,77 @@ Historical docs (`Implementation.md`, `System_Audit/`, `docs/archive/**`,
 `docs/compliance/impact-declarations/**`, merge-adoption JSON, release batch records, dated feature
 narratives and proposals) deliberately still say `frontend/` — they record what was true at the time,
 same rule the `backend/` and `android/` repoints follow.
+
+## The frontend split path map
+
+As of 2026-08-14 this branch split `apps/dgfy-web` into three independent apps plus a shared
+package (ADR 0064). `apps/dgfy-web/` no longer exists here. `develop` still has a single
+`frontend/` tree and commits to it daily, so absorbing a frontend change is now a **routing**
+decision per file, not a prefix swap:
+
+| Source on `develop`                                             | Destination on this branch                     |
+| --------------------------------------------------------------- | ---------------------------------------------- |
+| `frontend/apps/skupervisor/**`                                    | `apps/dgfy-ims/**`                             |
+| `frontend/apps/pos/**`                                            | `apps/dgfy-pos/**`                             |
+| `frontend/apps/pos/desktop/pos-electron/**`                       | `apps/dgfy-pos/desktop/pos-electron/**`        |
+| `frontend/apps/store/**`                                          | `apps/dgfy-storefront/**`                      |
+| `frontend/src/**`                                                 | `packages/web-core/src/**`                     |
+| `frontend/Components/**`                                          | `packages/web-core/Components/**`              |
+| `frontend/Pages/{DgfyAuthPage,DgfyCompanySelect,RegisterCompany,CompanyRegistrationStatus}.jsx` | `packages/web-core/Pages/**`  |
+| `frontend/Pages/**` (everything else)                             | `apps/dgfy-ims/Pages/**`                       |
+| `frontend/sentryViteConfig.js`                                    | `packages/web-core/vite/sentryViteConfig.js`   |
+| `frontend/package.json`, `frontend/package-lock.json`             | **no single destination** — see below          |
+
+`scripts/frontend-split-path-map.json` is the machine-readable version of the same map and is
+the authority when the two disagree; it deliberately retains every pre-split path and must not
+be "cleaned up."
+
+**This is the first replay surface that is not a pure relocation.** Consequences worth knowing
+before the next absorption cycle:
+
+- **Git's rename detection will not carry you.** The `backend/`, `android/`, and `frontend/`
+  moves were all `git mv`-shaped, so content-based rename detection auto-merged the large
+  majority of each diff. A file that split three ways has no single rename target. Expect to
+  route develop's frontend commits by hand, and expect the "silent reappearance" failure mode
+  documented above to be *more* common here, not less. After every merge:
+
+  ```sh
+  git ls-files -- frontend/ apps/dgfy-web/    # both must be empty
+  ```
+
+- **Dependency changes fan out.** `develop`'s single `frontend/package.json` +
+  `package-lock.json` maps onto four package manifests here (`apps/dgfy-ims`, `apps/dgfy-pos`,
+  `apps/dgfy-storefront`, `packages/web-core`) and three lockfiles — `packages/web-core` has a
+  `package.json` but deliberately **no lockfile and no `node_modules`**, since it is consumed as
+  `file:../../packages/web-core` and compiled by whichever app imports it. A develop dependency
+  bump must be applied to whichever apps actually use the dependency, then each affected app's
+  own lockfile regenerated with `npm install` in that workspace (never by deleting the lockfile
+  first).
+- **A `packages/web-core` change is a three-app change.** Anything landing in the shared trunk
+  affects IMS, POS, and Storefront simultaneously — CI's three frontend path filters all include
+  `packages/web-core/`, and all three images rebuild. Treat a web-core edit as having triple the
+  blast radius of an app-local edit.
+- **`packages/web-core` has no test runner of its own.** Its Vitest specs are included by
+  `apps/dgfy-ims`'s config and run from that workspace
+  (`npm --prefix apps/dgfy-ims test -- --run packages/web-core/<path>`). A develop test file
+  under `frontend/src/**/__tests__/` lands in `packages/web-core` and is run that way, not from a
+  web-core workspace.
+
+**Consumers repointed on this branch by the split** (expect conflicts here whenever develop edits
+them, and re-apply the split-aware paths): the CI path filter
+(`.github/workflows/shared-changed-paths.yml` — the single `frontend` output became three,
+`frontend_ims` / `frontend_pos` / `frontend_storefront`, each keyed to its own app directory,
+its own `infrastructure/docker/dgfy-<app>/`, and the shared packages it consumes), `scripts/
+{deploy.sh,check-frontend-budgets.js,gate-release-local.js,audit-dependencies.js}`,
+`ecosystem.config.cjs` (three frontend PM2 processes, one `cwd` each), and the Docker layer —
+`infrastructure/docker/frontend/` and the `ghcr.io/sieitzz/dgfy-platform/frontend` image were
+retired and replaced by `infrastructure/docker/dgfy-{ims,pos,storefront}/` and three images,
+still on ports 8081 / 8082 / 8083 respectively.
+
+Historical docs follow the same rule as every earlier relocation: `docs/archive/**`,
+`System_Audit/`, `docs/compliance/impact-declarations/**`, `docs/proposals/**`, merge-adoption
+JSON, release batch records, ADRs 0053/0059, and dated feature narratives deliberately still say
+`frontend/` or `apps/dgfy-web/`. Do not repoint them.
 
 ## The baseline anchor
 

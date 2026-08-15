@@ -41,7 +41,9 @@ What it does:
 4. Runs deterministic installs (`npm ci`) with bounded retry/backoff for transient lock failures
 5. On Windows hosts, runs a pre-install process lock cleanup (terminates `node`/`esbuild` holders) before `npm ci` and between retries (configurable)
 6. Runs docs lint and architecture checks
-7. Builds frontend
+7. Builds each frontend app that is present — `apps/dgfy-ims`, `apps/dgfy-pos`, and
+   `apps/dgfy-storefront` — into its own `apps/<app>/dist/` (see `run_frontend_builds` in
+   `scripts/deploy.sh`)
 8. Runs DB migrations
 9. Normalizes the original legacy tenant account path (idempotent)
 10. Audits original legacy tenant invariants (report-only by default; strict when `DEPLOY_STRICT_LEGACY_AUDIT=1`)
@@ -133,15 +135,17 @@ Asset parity guardrail script used by deploy.
 
 Usage:
 ```bash
-node scripts/check-frontend-asset-parity.js --label IMS --local-index dist-apps/skupervisor/index.html --public-url https://skupervisor.surebizcorp.com
-node scripts/check-frontend-asset-parity.js --label POS --local-index dist-apps/pos/index.html --public-url https://pos.surebizcorp.com
-node scripts/check-frontend-asset-parity.js --label "Tenant Store" --local-index dist-apps/store/index.html --public-url https://surebizcorp.com/tenant-store
+node scripts/check-frontend-asset-parity.js --label IMS --local-index apps/dgfy-ims/dist/index.html --public-url https://skupervisor.surebizcorp.com
+node scripts/check-frontend-asset-parity.js --label POS --local-index apps/dgfy-pos/dist/index.html --public-url https://pos.surebizcorp.com
+node scripts/check-frontend-asset-parity.js --label "Tenant Store" --local-index apps/dgfy-storefront/dist/index.html --public-url https://surebizcorp.com/tenant-store
 ```
 
 Behavior:
 - Compares local built entry script/CSS/manifest basenames against served public HTML refs.
 - Returns non-zero on mismatch.
 - Designed to catch stale frontend bundles served after deploy.
+- Each frontend app builds into its own `apps/<app>/dist/`. The former shared `dist-apps/<surface>/`
+  output convention was retired with the three-app split (ADR 0064).
 
 ## 2b. `scripts/check-no-staging-prereqs.js`
 Preflight validator for no-staging release gate prerequisites.

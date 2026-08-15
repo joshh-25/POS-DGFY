@@ -42,7 +42,10 @@ DB_AUTO_SYNC=false
 PAYMENTS_ENABLED=false
 ```
 
-Minimum frontend `.env` values from repo root or `apps/dgfy-web/.env`:
+Minimum frontend env values. Each frontend app has its own env file —
+`apps/dgfy-ims/.env`, `apps/dgfy-pos/.env.local`, and
+`apps/dgfy-storefront/.env.local` — and they take the same values
+(`VITE_STORE_BASE_PATH` only matters for the storefront):
 
 ```env
 VITE_API_URL=http://localhost:5000/api/v1
@@ -90,7 +93,8 @@ For the lighter default stack:
 npm run dev
 ```
 
-This starts backend API, POS device bridge, and the default frontend dev server.
+This starts backend API, POS device bridge, and the default frontend dev server
+(IMS/SKUpervisor, `apps/dgfy-ims`).
 
 To run each service manually from repo root:
 
