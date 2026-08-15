@@ -28,6 +28,70 @@ class TenantConnector {
     }
 
     /**
+     * Build and authenticate a brand-new Sequelize instance for a tenant.
+     * Shared by getConnection() (which caches the result) and
+     * openEphemeralConnection() (which deliberately does not) -- one place
+     * owns host/dialect/pool defaults and the destructive-sync guardrail
+     * instead of two copies drifting apart.
+     *
+     * Caller owns lifecycle: does not touch this.connections/pendingConnections.
+     * @param {Object} tenant - Tenant object (must have db_name)
+     * @param {{ poolMax?: number }} [options] - override the pool's max size;
+     *   defaults to getTenantPoolMax() (the cached-connection budget). Pass a
+     *   smaller value for a connection that will only ever run one query at a
+     *   time (see openEphemeralConnection()) so it doesn't reserve pool slots
+     *   it can't use.
+     * @returns {Promise<Sequelize>} an authenticated, guardrail-wrapped Sequelize instance
+     */
+    async _createSequelizeInstance(tenant, { poolMax = getTenantPoolMax() } = {}) {
+        const sequelize = new Sequelize(
+            tenant.db_name,
+            process.env.DB_USER || 'root',
+            process.env.DB_PASSWORD || '',
+            {
+                host: process.env.DB_HOST || 'localhost',
+                dialect: 'mysql',
+                logging: (msg) => logger.debug(`[Tenant: ${tenant.name}] ${msg}`),
+                pool: {
+                    // 5 users per tenant + 2 buffer for concurrent requests from same user.
+                    // Worst case across all cached tenants is MAX_CACHED_CONNECTIONS × this
+                    // value, plus the landlord pool — src/config/connectionBudget.js owns
+                    // that arithmetic and warns at boot when it exceeds max_connections.
+                    // (Ephemeral connections, below, aren't part of that arithmetic -- they
+                    // pass a tight poolMax instead, see openEphemeralConnection().)
+                    max: poolMax,
+                    min: 0,
+                    // Fail fast (10s) instead of making users wait 30s for a connection slot
+                    acquire: 10000,
+                    idle: 5000,  // Reduced from 10s to 5s for multi-tenant efficiency
+                    evict: 1000  // Check for idle connections every 1s
+                },
+                define: {
+                    underscored: true,
+                    timestamps: true,
+                    createdAt: 'created_at',
+                    updatedAt: 'updated_at'
+                }
+            }
+        );
+
+        // Test connection
+        await sequelize.authenticate();
+
+        // CRITICAL PRODUCTION GUARDRAIL
+        // Intercept sync calls to prevent drop-table sweeps on individual tenant databases
+        const originalSync = sequelize.sync.bind(sequelize);
+        sequelize.sync = async (options = {}) => {
+            if (options.force && !tenant.db_name.includes('test')) {
+                throw new Error(`CRITICAL GUARDRAIL: Destructive sync (force: true) is FORBIDDEN on non-test tenant database: ${tenant.db_name}. Production DB wipes are permanently blocked.`);
+            }
+            return originalSync(options);
+        };
+
+        return sequelize;
+    }
+
+    /**
      * Get or create a database connection for a specific tenant
      * @param {Object} tenant - Tenant object (must have db_name)
      * @returns {Promise<Sequelize>} Sequelize instance
@@ -78,47 +142,7 @@ class TenantConnector {
             // 5. Create new connection
             logger.info(`Creating new DB connection for tenant: ${tenant.name} (${tenant.db_name})`);
 
-            const sequelize = new Sequelize(
-                tenant.db_name,
-                process.env.DB_USER || 'root',
-                process.env.DB_PASSWORD || '',
-                {
-                    host: process.env.DB_HOST || 'localhost',
-                    dialect: 'mysql',
-                    logging: (msg) => logger.debug(`[Tenant: ${tenant.name}] ${msg}`),
-                    pool: {
-                        // 5 users per tenant + 2 buffer for concurrent requests from same user.
-                        // Worst case across all cached tenants is MAX_CACHED_CONNECTIONS × this
-                        // value, plus the landlord pool — src/config/connectionBudget.js owns
-                        // that arithmetic and warns at boot when it exceeds max_connections.
-                        max: getTenantPoolMax(),
-                        min: 0,
-                        // Fail fast (10s) instead of making users wait 30s for a connection slot
-                        acquire: 10000,
-                        idle: 5000,  // Reduced from 10s to 5s for multi-tenant efficiency
-                        evict: 1000  // Check for idle connections every 1s
-                    },
-                    define: {
-                        underscored: true,
-                        timestamps: true,
-                        createdAt: 'created_at',
-                        updatedAt: 'updated_at'
-                    }
-                }
-            );
-
-            // Test connection
-            await sequelize.authenticate();
-
-            // CRITICAL PRODUCTION GUARDRAIL
-            // Intercept sync calls to prevent drop-table sweeps on individual tenant databases
-            const originalSync = sequelize.sync.bind(sequelize);
-            sequelize.sync = async (options = {}) => {
-                if (options.force && !tenant.db_name.includes('test')) {
-                    throw new Error(`CRITICAL GUARDRAIL: Destructive sync (force: true) is FORBIDDEN on non-test tenant database: ${tenant.db_name}. Production DB wipes are permanently blocked.`);
-                }
-                return originalSync(options);
-            };
+            const sequelize = await this._createSequelizeInstance(tenant);
 
             // Cache it
             this.connections.set(tenantId, {
@@ -138,6 +162,37 @@ class TenantConnector {
             // Always remove from pending, even on error
             this.pendingConnections.delete(tenantId);
         }
+    }
+
+    /**
+     * Open a one-off, uncached Sequelize connection for a tenant -- for batch
+     * jobs that touch every tenant in a short window (e.g. the storefront
+     * discovery reconciliation sweep, #524/#527) and would otherwise thrash
+     * the shared MAX_CACHED_CONNECTIONS-slot LRU cache that live POS/storefront
+     * request traffic depends on.
+     *
+     * Unlike getConnection(), this never touches this.connections or
+     * this.pendingConnections and is never subject to eviction -- the caller
+     * owns the full lifecycle and MUST call `.close()` on the returned
+     * instance when done (a try/finally at the call site, not here, since
+     * this method doesn't know how long the caller needs it for).
+     *
+     * Pool size is capped at 1: a batch sweep processes one tenant's queries
+     * sequentially (no reason to reserve more than one slot), and staying
+     * small keeps this genuinely outside connectionBudget.js's worst-case
+     * arithmetic instead of adding a second multiplier to reason about. At
+     * the default sweep concurrency (4 tenants at once,
+     * STOREFRONT_DISCOVERY_INDEX_SYNC_CONCURRENCY), that's at most 4 extra
+     * connections momentarily on top of the documented budget.
+     * @param {Object} tenant - Tenant object (must have db_name)
+     * @returns {Promise<Sequelize>} an authenticated Sequelize instance, uncached
+     */
+    async openEphemeralConnection(tenant) {
+        if (!tenant || !tenant.db_name) {
+            throw new Error('Invalid tenant configuration: missing db_name');
+        }
+        logger.debug(`Opening ephemeral (uncached) DB connection for tenant: ${tenant.name} (${tenant.db_name})`);
+        return this._createSequelizeInstance(tenant, { poolMax: 1 });
     }
 
     /**
