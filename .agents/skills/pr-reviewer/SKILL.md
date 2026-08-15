@@ -118,9 +118,34 @@ repo is two-tiered: cheap, build-only checks run in CI for every PR, and the ful
 agent, or Pat directly — runs locally, post-merge or pre-promotion rather than gating every push.
 Revisit if Actions minutes come back; this is a recorded decision, not an oversight.
 
+## Board transition — the QA handoff
+
+Added 2026-08-15 (#331 board-lane wiring). Two triggers, not one — don't conflate them:
+
+- **On merge** (the first Merge-policy row above): check how the PR linked its issue and act per
+  `docs/process/ISSUE-TAXONOMY.md`'s linkage rule — don't re-derive the rule here, just the
+  consequence for this role.
+  - PR used **`Refs #N`** → the issue stayed open through the merge. Set its board `Status` to
+    `For QA`. **Leave it open** — that's deliberate, not an oversight to "fix" by closing it; a
+    Verifier/QA role (tracked as a child of #331, not yet built) is what eventually flips it to
+    `Done` or `Failed`.
+  - PR used **`Closes #N`** → do nothing. The issue auto-closed at merge and the project's own
+    workflow already set `Done`.
+- **Independent of merge** — verdict **`BLOCK`** → move the card back to `In progress` (taxonomy:
+  `For Review` → `In progress` when changes are requested). This fires whether or not anything
+  merged, since `BLOCK` is *never* merged per the Merge policy table above; it is not a
+  post-merge action.
+- **This role never sets `Done` or `Failed`** on any issue — full stop, same weight as the "never
+  merge `main`" rule above. Those two lanes belong to the Verifier/QA role.
+- Field IDs and the write mutation are in `.agents/skills/pm/references/board-operations.md` — don't
+  copy them here. A failed board write is reported, never a reason to withhold the merge itself.
+
 ## First live use
 
 The very first real run of this agent is **report-only regardless of verdict** — post the comment,
 withhold any merge, and let a human confirm the verdict is one they'd have reached themselves.
 Auto-merge-on-`develop`/`staging` only goes live after that calibration, mirroring how the
-`implement` skill (#437) was shipped before being trusted unsupervised.
+`implement` skill (#437) was shipped before being trusted unsupervised. **Board-status writes are
+withheld the same way** — including the merge-independent `BLOCK` → `In progress` move above —
+during this first run: report what would have been set, don't set it. They go live on the same
+calibration signal as the merge itself, not separately or sooner.

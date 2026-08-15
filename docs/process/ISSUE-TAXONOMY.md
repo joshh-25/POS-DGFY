@@ -2,7 +2,7 @@
 status: authoritative
 authority_level: authoritative
 owner: engineering
-last_reviewed: 2026-08-14
+last_reviewed: 2026-08-15
 applies_to: issue_and_backlog_organization
 topic: issue_taxonomy
 ---
@@ -206,28 +206,69 @@ answering the open checkbox #331 left unresolved ("the 8 existing Status options
 define what moves a card between each"). The `pm` skill (#367) drives this table; it is not
 reinvented per session.
 
-| Status | A card arrives here when | Leaves for |
-|---|---|---|
-| **Backlog** | Filed, not yet scheduled. Default for every new issue. | `Todo`, once accepted into an iteration |
-| **Todo** | Accepted for the current/next iteration, no unresolved blocker | `In progress` |
-| **In progress** | A branch exists or work has genuinely started | `For Review`, when a PR opens |
-| **For Review** | PR open, awaiting review/merge | `For QA` on merge; back to `In progress` if changes are requested |
-| **For QA** | Merged to `develop`, needs verification on a deployed environment | `Done`, or `Failed` |
-| **Failed** | QA rejected it | `In progress` — **never** back to `Backlog`; the failed attempt stays visible rather than disappearing |
-| **Done** | Verified. Issue closes. | — |
-| **Cancelled** | Won't do. Issue closes, **with a reason left as a comment** — a bare status flip with no explanation is not enough. | — |
+**Ownership added 2026-08-15 (#331 board-lane wiring), closing the remaining box on #369** —
+*"decide whether Status transitions should be automated via a project workflow, or stay manual."*
+The answer: **agent-driven, not project-workflow-driven.** See "What the board automates already"
+below for the two transitions that *are* a native GitHub Projects workflow — everything else in the
+`Who moves it` column is an agent or human action, and no new project workflow was added to cover it.
+
+| Status | A card arrives here when | Who moves it | Leaves for |
+|---|---|---|---|
+| **Backlog** | Filed, not yet scheduled. Default for every new issue. | automatic (workflow) | `Todo`, once accepted into an iteration |
+| **Todo** | Accepted for the current/next iteration, no unresolved blocker | `pm` | `In progress` |
+| **In progress** | A branch exists or work has genuinely started | `implement` (Worker) | `For Review`, when a PR opens |
+| **For Review** | PR open, awaiting review/merge | `implement` (Worker) | `For QA` on merge; back to `In progress` if changes are requested |
+| **For QA** | Merged to `develop`, needs verification on a deployed environment | `pr-reviewer` (Reviewer), only when the PR used `Refs #N` — see "Issue linkage" below | `Done`, or `Failed` |
+| **Failed** | QA rejected it | Verifier/QA role — not yet built, tracked as a child of #331 | `In progress` — **never** back to `Backlog`; the failed attempt stays visible rather than disappearing |
+| **Done** | Verified. Issue closes. | Verifier/QA role, or automatic (workflow) when a `Closes #N` PR merges | — |
+| **Cancelled** | Won't do. Issue closes, **with a reason left as a comment** — a bare status flip with no explanation is not enough. | `pm`, or a human | — |
 
 No WIP limit is defined — #331 said "consider" one, but nothing in this repo enforces it, so adding
 one to the table would be decoration rather than policy. Revisit if the board actually needs one in
 practice, not preemptively.
 
+### What the board automates already
+
+Project #10 has 7 built-in GitHub Projects workflows, all enabled. Their exact config isn't exposed
+by the API, so this table is empirical — confirmed 2026-08-15 by cross-referencing every closed
+issue's Status (76/76 closed issues were `Done`, one exception) and every issue with a linked-but-
+unmerged PR (`In progress` in every case checked):
+
+| Workflow | Effect | Row above it satisfies |
+|---|---|---|
+| Auto-add to project / Item added | New issue → `Backlog` | `Backlog`'s "automatic (workflow)" |
+| Pull request linked to issue | → `In progress` | Redundant with Worker's own branch-time write below; harmless, just late (fires only once a PR exists) — but note this fires on the *same* event (PR opened with a linking keyword) as Worker's separate PR-open-time `For Review` write. Which lands last is unconfirmed; if this native workflow lands after `For Review`, it would silently revert the card to `In progress`. No write actually fails in that case, so the existing "report a failed write" clause wouldn't catch it. Flag if seen in practice — not yet observed, not yet mitigated. |
+| Item closed / Auto-close issue / Pull request merged | Closing an issue → `Done` | `Done`'s "automatic (workflow)" |
+
+**The one consequence every agent role must respect:** `Closes #N` on a merging PR closes the issue,
+and closing an issue is forced to `Done` by the workflow above — **there is no way to land on `For
+QA` if the issue closes at merge.** The QA lane only exists for issues that stay open through merge.
+This is why "Issue linkage" below splits `Closes` vs. `Refs` rather than using `Closes` uniformly.
+
 ---
 
 ## Pull requests
 
-Every PR needs a linked issue, and uses `Closes #N` for each distinct piece of work it completes.
-A PR that advances an epic without finishing it should reference the **child** issue, not the epic
-— epics close when their children do.
+Every PR needs a linked issue. A PR that advances an epic without finishing it should reference the
+**child** issue, not the epic — epics close when their children do.
+
+### Issue linkage: `Closes #N` vs. `Refs #N`
+
+Amended 2026-08-15 (#331 board-lane wiring). Which verb a PR uses decides whether its issue passes
+through the `For QA` lane at all — see "What the board automates already" above for why: closing an
+issue forces `Status = Done`, which skips QA entirely.
+
+- **`Closes #N`** — only for a diff that needs no deployed verification: docs-only, CI/workflow-only,
+  or a pure `chore:` with no runtime behavior change. Merge closes the issue immediately, workflow
+  sets `Done`.
+- **`Refs #N`** — everything else, which in practice means anything user-facing or behavior-changing.
+  The issue **stays open** through merge; the Reviewer sets `For QA` on it (see `pr-reviewer`'s merge
+  policy); a Verifier later flips it to `Done` (which closes it) or `Failed`.
+- **When genuinely unsure, use `Refs`.** An issue that lingers in `For QA` an extra day is
+  recoverable; an issue that auto-closes on `Done` without anyone verifying it is not.
+
+This is a repo-wide rule, not just the `implement` skill's — any PR, agent-authored or not, follows
+it.
 
 ---
 

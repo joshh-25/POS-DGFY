@@ -28,6 +28,7 @@ inventing new detection:
 | Anything that would dispatch a deploy workflow, SSH to a server, or mutate `/opt/dgfy-platform` | No approval gate exists on a deploy dispatch; a mistake there is live | Ask, always. Read-only checks (log tail, `docker buildx imagetools inspect`) are fine — nothing that changes server state runs unattended |
 | Force-push, branch deletion, or rewriting already-pushed shared history | Not recoverable by a second party | Ask |
 | No GitHub issue exists yet for the work | Repo SOP (`docs/process/ISSUE-TAXONOMY.md`) — every PR needs a linked issue | File one first, then proceed |
+| Moving the issue's board card (`In progress`, `For Review`) | Not high-risk or hard to reverse — the opposite of every other row here | **Unattended, never a checkpoint.** See "Board transitions" below |
 
 If a task doesn't trip any of these, proceed through commit/push/PR without pausing — that's the
 default case, not the exception. See `references/checkpoint-examples.md` for four worked examples
@@ -38,6 +39,8 @@ of these triggers actually firing (or correctly not firing) in practice.
 1. **Branch off fresh `origin/develop`**, one branch per logical change, in a dedicated worktree
    when working on more than one thing in parallel (e.g. `git worktree add ../dgfy-platform-<x>`).
    Never commit directly to a local `develop` — always branch first, even for something small.
+   Once branched, set the linked issue's board `Status` to `In progress` — see "Board transitions"
+   below.
 2. **Name the branch** using one of `.github/branch-cleanup-policy.json`'s eligible prefixes —
    `feature/`, `fix/`, `chore/`, `docs/`, `test/` — matching the change's actual kind. (That file's
    eligible list doesn't currently include `ci/`, despite it being in heavy real use for
@@ -89,7 +92,9 @@ of these triggers actually firing (or correctly not firing) in practice.
    PR exists — not folded into the original body after the fact. Tier 0 is the exception: it runs
    *before* the PR exists, so it lands in the initial body instead, per above.
 5. **Open the PR** against `develop`, following `docs/ai/PR.md`'s body format (`## Summary` +
-   `## Testing Evidence` at minimum), with `Closes #N` for the linked issue.
+   `## Testing Evidence` at minimum), linking the issue with `Closes #N` or `Refs #N` per
+   `docs/process/ISSUE-TAXONOMY.md`'s linkage rule. Then set the board card to `For Review` — see
+   "Board transitions" below.
 6. **Picking up review findings**, if the `pr-reviewer` agent (#331/#366) has already run on this
    PR: read the newest `## Review` comment (`gh pr view <N> --comments`), address every row marked
    `blocker`, then reply in the same thread naming which `RF-` IDs were fixed and, for any
@@ -97,6 +102,28 @@ of these triggers actually firing (or correctly not firing) in practice.
    `should-fix` and `nit` rows are judgment calls, not required, but say what was done with them
    too rather than ignoring them without comment. Push once addressed.
 7. **Stop.** Report what was done and where. Merging is a separate decision by a separate party.
+
+## Board transitions
+
+Added 2026-08-15 (#331 board-lane wiring). Worker owns two of the eight `Status` lanes on project
+#10 — the full lifecycle and the `Who moves it` ownership table live in
+`docs/process/ISSUE-TAXONOMY.md`'s "Board status semantics"; read it there rather than expecting
+this section to restate it.
+
+- **`In progress`**, at branch time (Workflow step 1). The project's own "Pull request linked to
+  issue" workflow would eventually set this too, but only once a PR exists — too late to reflect
+  that work has actually started. Setting it explicitly at branch time is the point.
+- **`For Review`**, at PR-open time (Workflow step 5). Nothing else in the system sets this lane;
+  without this write it stays permanently empty.
+- **A PR that doesn't finish the issue** (a partial/continuous ticket) stays `In progress` and uses
+  `Refs #N` — do not advance it to `For Review` until a PR that actually completes the work opens.
+  **An epic never moves at all** — epics don't enter iterations and close only when their children
+  do (taxonomy, "Epics never enter an iteration").
+- **Field IDs and the write mutation** are in `.agents/skills/pm/references/board-operations.md`
+  (`Status` field `PVTSSF_lADODOdIe84BfZ_pzhZtHYs`; option IDs for each lane) — don't re-derive or
+  copy them here.
+- **Best-effort.** A failed board write is reported in the final summary, never a reason to hold
+  back the commit, push, or PR.
 
 ## Reference files
 

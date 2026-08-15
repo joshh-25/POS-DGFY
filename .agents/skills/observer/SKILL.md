@@ -116,6 +116,12 @@ Org: <org> | Period: 7d | Release range: <first-sha>..<last-sha>
 | Query Sentry, bucket issues, write the triage summary | **The first live run against real data** — report-only, see below |
 | File up to the noise-policy cap of genuine, deduped defects | A run that would exceed the cap — report it, don't file past it |
 | Resolve confirmed-dead noise directly in the Sentry UI | **Changing the noise-policy thresholds themselves** (the floor, the cap) — that's a policy edit, not a triage action |
+| — | **Starting implementation on an issue this role just filed** — filing and doing the work are different roles; hand off to `implement` (Worker) instead |
+
+Added 2026-08-15 (#331 board-lane wiring): filing needs **no board write** — project #10's own
+"Auto-add to project" workflow lands every new issue in `Backlog` automatically (see
+`docs/process/ISSUE-TAXONOMY.md`, "What the board automates already"). This role never moves a card
+past `Backlog` — scheduling into `Todo` is `pm`'s job, not Observer's.
 
 ## First live use
 
