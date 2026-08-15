@@ -2,8 +2,8 @@
 status: authoritative
 authority_level: authoritative
 owner: product
-last_reviewed: 2026-08-13
-review_by: 2027-02-13
+last_reviewed: 2026-08-15
+review_by: 2027-02-15
 applies_to: governed_multi_phase_initiatives
 topic: implementation_phase_ledger
 ---
@@ -3988,4 +3988,95 @@ parked-sale replay and shift-close resolution.
 ### Completion Record (2026-08-13)
 
 - Phase 86 is complete. Phase 87 is the next eligible repository phase and
+  requires separate approval.
+
+## Phase 87 - Frontend App Split (issue #322)
+
+### Initiative and Release
+
+- Initiative: split the single `apps/dgfy-web` frontend package into three
+  independently deployable apps plus a shared package, per issue
+  Sieitzz/dgfy-platform#322.
+- Release: `refactor/322-frontend-app-split` targeting `develop`.
+
+### Objective and Scope
+
+- Extract the ~1,400-file shared trunk (`src/`, `Components/`, `Pages/`'s
+  DGFY-auth pages, `sentryViteConfig.js`) into `packages/web-core`
+  (`@sieitzz/web-core`) — no build step, no `node_modules`, no lockfile of
+  its own.
+- Split the three former `apps/dgfy-web/apps/{skupervisor,pos,store}` shells
+  into standalone apps: `apps/dgfy-ims`, `apps/dgfy-pos` (with its Electron
+  shell), `apps/dgfy-storefront` — each with its own `package.json`,
+  lockfile, Vite config, and test config.
+- Retire `apps/dgfy-web` entirely once the three apps and web-core cover its
+  full contents.
+- Fan out every consumer of the old single-package/single-image assumption:
+  Docker (one image per app), Docker Compose, nginx upstreams, CI workflows
+  (`shared-changed-paths`, `deploy-frontend`, `deployment-orchestrator`,
+  `deploy`, `deploy-main`, `pr-checks`, `pr-quality-checks`), `deploy.sh` /
+  `deploy-local.sh`, PM2 (`ecosystem.config.cjs`), root `package.json`
+  scripts, the `scripts/` path-check sweep, and
+  `security/audit-allowlist.json`.
+- Document the decision (ADR 0064), sweep the docs and agent-surface files
+  that described the old layout, and open the closing PR against `develop`.
+
+### Status
+
+- `completed`
+- Completed on 2026-08-15.
+
+### Dependencies and Governance Note
+
+- ADR 0064 Frontend Split into Three Apps (`docs/architecture/adr/0064-frontend-split-into-three-apps.md`),
+  `supersedes_in_part` ADR 0059 Frontend Relocation to `apps/dgfy-web`.
+- `docs/architecture/frontend-split-sync.md` — the develop-merge absorption
+  workflow used throughout this initiative
+  (`scripts/frontend-split-path-map.json` +
+  `scripts/report-frontend-split-sync.js`).
+- No compliance impact declaration required: `npm run check:compliance`
+  reports no compliance-sensitive changes for this diff.
+
+### Acceptance and Validation Evidence
+
+- [x] `apps/dgfy-web` fully retired — `git ls-files apps/dgfy-web` empty;
+  `node scripts/report-frontend-split-sync.js --post-merge --strict` reports
+  clean (no tracked files under retired frontend-split paths).
+- [x] All three apps build standalone: `npm run build:skupervisor`,
+  `build:pos`, `build:store`.
+- [x] `apps/dgfy-ims` vitest suite (which also runs `packages/web-core`'s
+  suite, since web-core has no runner of its own): 232 test files, 1,356
+  tests, all passing.
+- [x] `apps/dgfy-storefront` vitest suite: 89 test files, 451 tests, all
+  passing.
+- [x] `scripts/` Node test suite: 164 tests, all passing.
+- [x] All three Docker images build clean:
+  `infrastructure/docker/dgfy-{ims,pos,storefront}/Dockerfile`.
+- [x] `docker compose config --quiet` passes across all four compose
+  combinations (base, +override, +local-ports, local-test).
+- [x] `npm run check:adr` (71 ADRs), `npm run lint:docs` (27 governed docs),
+  `npm run check:compliance`, `npm run check:agent-surfaces` (5 roles, 4
+  shims), `npm run check:architecture` (47 modules / 467 files, 86
+  controllers), `npm run check:frontend-budgets` all pass.
+- [x] `origin/develop` fully absorbed (merge commit `f2f9d2ad`; confirmed no
+  further drift via `git fetch origin develop` before closeout).
+
+### Implementation Links
+
+- `packages/web-core/package.json`
+- `apps/dgfy-ims/package.json`, `apps/dgfy-pos/package.json`,
+  `apps/dgfy-storefront/package.json`
+- `infrastructure/docker/dgfy-ims/Dockerfile`,
+  `infrastructure/docker/dgfy-pos/Dockerfile`,
+  `infrastructure/docker/dgfy-storefront/Dockerfile`
+- `.github/workflows/deploy-frontend.yml`,
+  `.github/workflows/deployment-orchestrator.yml`,
+  `.github/workflows/deploy-main.yml`
+- `scripts/deploy.sh`, `scripts/deploy-local.sh`, `ecosystem.config.cjs`
+- `docs/architecture/adr/0064-frontend-split-into-three-apps.md`
+- [Issue #322 - Split apps/dgfy-web into independently deployable apps](https://github.com/Sieitzz/dgfy-platform/issues/322)
+
+### Completion Record (2026-08-15)
+
+- Phase 87 is complete. Phase 88 is the next eligible repository phase and
   requires separate approval.
