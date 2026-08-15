@@ -204,6 +204,19 @@ class TenantConnector {
      * If the pool can't be introspected for some reason, this defaults to
      * "busy" rather than "free" -- an unnecessary deferred close is harmless;
      * closing a connection a request still holds is not.
+     *
+     * Known residual gap (#526): this only reflects a connection checked out
+     * *mid-query*. A caller that finishes query 1 and issues query 2 on the
+     * same cached instance shortly after (a normal multi-step
+     * repository/service pattern) has a window between the two queries where
+     * `using === 0` even though it logically still needs the connection. If
+     * eviction lands in that gap, the connection closes and the follow-up
+     * query reproduces the original "...called after the connection manager
+     * was closed!" failure -- far less often than before this file's fix,
+     * but not zero. Closing that gap fully would mean a per-request
+     * lease/refcount threaded through every getConnection() call site, which
+     * is a materially bigger change than this file makes today; not done
+     * here, see #526 for the tracked decision not to do it yet.
      * @param {Sequelize} sequelize
      * @returns {boolean}
      */
@@ -344,6 +357,22 @@ class TenantConnector {
      * closing anyway -- closing out from under an active request is exactly
      * the "ConnectionManager.getConnection was called after the connection
      * manager was closed!" failure this exists to prevent.
+     *
+     * While that grace-period wait is in progress -- and through the actual
+     * sequelize.close() call itself -- tenantId is also marked pending
+     * (this.pendingConnections). Both need covering, not just the wait: a
+     * getConnection() call for the *same* tenant that finds neither a cached
+     * entry (just deleted) nor a pending one mints a second Sequelize pool
+     * for a tenant that's already mid-close instead of waiting for it, which
+     * is exactly the connection-pressure #524 was filed over. An earlier
+     * version of this fix (#529) released the pending slot right after the
+     * grace-period wait but before sequelize.close() itself resolved,
+     * reopening that same race for the duration of the physical close --
+     * pr-reviewer reproduced it concretely (a second live pool minted while
+     * the first was still mid-close). Marking it pending for the whole
+     * close, wait and physical close both, routes a concurrent call into
+     * getConnection()'s existing "wait for pending" branch for the entire
+     * window instead.
      */
     async closeConnection(tenantId) {
         if (!this.connections.has(tenantId)) return;
@@ -354,22 +383,37 @@ class TenantConnector {
         // should be able to hand this instance out again.
         this.connections.delete(tenantId);
 
-        if (this.isBusy(sequelize)) {
-            logger.debug(`Deferring close for tenant ${tenantName} (ID: ${tenantId}) -- connection busy`);
-            const deadline = Date.now() + CONNECTION_CLOSE_GRACE_MS;
-            while (this.isBusy(sequelize) && Date.now() < deadline) {
-                await new Promise(resolve => setTimeout(resolve, CONNECTION_CLOSE_POLL_MS));
-            }
-            if (this.isBusy(sequelize)) {
-                logger.warn(`Closing tenant connection for ${tenantName} (ID: ${tenantId}) still busy after ${CONNECTION_CLOSE_GRACE_MS}ms grace period -- closing anyway`);
-            }
-        }
+        const wasBusy = this.isBusy(sequelize);
+        // Claim the pending slot only if nothing else already holds it
+        // (getConnection() itself holds it for a tenant that's still being
+        // created; closeConnection is never called concurrently with that
+        // path for the same tenant, but guard anyway rather than assume).
+        const claimedPending = wasBusy && !this.pendingConnections.has(tenantId);
+        if (claimedPending) this.pendingConnections.add(tenantId);
 
         try {
-            await sequelize.close();
-            logger.info(`Closed DB connection for tenant ID: ${tenantId}`);
-        } catch (err) {
-            logger.error(`Error closing tenant connection ${tenantId}:`, err);
+            if (wasBusy) {
+                logger.debug(`Deferring close for tenant ${tenantName} (ID: ${tenantId}) -- connection busy`);
+                const deadline = Date.now() + CONNECTION_CLOSE_GRACE_MS;
+                while (this.isBusy(sequelize) && Date.now() < deadline) {
+                    await new Promise(resolve => setTimeout(resolve, CONNECTION_CLOSE_POLL_MS));
+                }
+                if (this.isBusy(sequelize)) {
+                    logger.warn(`Closing tenant connection for ${tenantName} (ID: ${tenantId}) still busy after ${CONNECTION_CLOSE_GRACE_MS}ms grace period -- closing anyway`);
+                }
+            }
+
+            try {
+                await sequelize.close();
+                logger.info(`Closed DB connection for tenant ID: ${tenantId}`);
+            } catch (err) {
+                logger.error(`Error closing tenant connection ${tenantId}:`, err);
+            }
+        } finally {
+            // Release the pending slot only after the physical close has
+            // settled (resolved or rejected) -- see the doc comment above
+            // for why releasing it any earlier reopens the race.
+            if (claimedPending) this.pendingConnections.delete(tenantId);
         }
     }
 
