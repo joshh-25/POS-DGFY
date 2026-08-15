@@ -282,6 +282,77 @@ export const REQUIRED_TENANT_SCHEMA_COLUMNS = Object.freeze({
 // (column types, defaults, keys, FK constraints) — declaration order matters, since later tables
 // have foreign keys pointing at earlier ones.
 export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
+    // #539: the three base F&B modifier tables. A tenant provisioned before
+    // 20260505000002-create-fnb-restaurant-mode-tables.cjs and never otherwise migrated forward can
+    // be missing all three entirely - REQUIRED_TENANT_SCHEMA_COLUMNS/_INDEXES already carry entries
+    // for later additions to these tables (visible_in_pos, group_kind, is_sold_out, is_excluded,
+    // idx_fnb_modifier_groups_parent_option, ...) but had no CREATE TABLE fallback for the base
+    // tables themselves. Same failure shape as storefront_catalog_overrides below: the first
+    // column-level ALTER TABLE against a wholly-missing table fails with "table doesn't exist" (or,
+    // observed live, a downstream child table's FK reporting "Failed to open the referenced table"),
+    // which fails the tenant schema preflight and crash-loops the whole backend for every tenant,
+    // not just the one missing these tables. Declared first in this registry, in dependency order,
+    // since fnb_modifier_group_location_availability/fnb_modifier_option_location_availability/
+    // fnb_folder_modifier_groups below all FK-reference fnb_modifier_groups/fnb_modifier_options.
+    //
+    // fnb_modifier_groups deliberately omits parent_modifier_option_id and its FK to
+    // fnb_modifier_options here - fnb_modifier_options doesn't exist yet at this point in the
+    // repair sequence, and the column was genuinely added later in real history (matching how the
+    // original migration created this table before that FK existed). The existing
+    // REQUIRED_TENANT_SCHEMA_COLUMNS.fnb_modifier_groups.parent_modifier_option_id entry and the
+    // existing REQUIRED_TENANT_SCHEMA_INDEXES.fnb_modifier_groups.idx_fnb_modifier_groups_parent_option
+    // entry add the column, its FK, and its index afterward, once both tables exist.
+    fnb_modifier_groups: Object.freeze({
+        sql: "CREATE TABLE `fnb_modifier_groups` ("
+            + " `modifier_group_id` INT NOT NULL AUTO_INCREMENT,"
+            + " `name` VARCHAR(120) NOT NULL, `display_name` VARCHAR(120) DEFAULT NULL,"
+            + " `min_select` INT NOT NULL DEFAULT 0, `max_select` INT NOT NULL DEFAULT 1,"
+            + " `required` TINYINT(1) NOT NULL DEFAULT 0, `is_active` TINYINT(1) NOT NULL DEFAULT 1,"
+            + " `sort_order` INT NOT NULL DEFAULT 0,"
+            + " `created_at` DATETIME NOT NULL, `updated_at` DATETIME NOT NULL,"
+            + " `visible_in_pos` TINYINT(1) NOT NULL DEFAULT 1,"
+            + " `visible_in_storefront` TINYINT(1) NOT NULL DEFAULT 1,"
+            + " `group_kind` VARCHAR(24) NOT NULL DEFAULT 'modifier',"
+            + " PRIMARY KEY (`modifier_group_id`),"
+            + " KEY `fnb_modifier_groups_is_active` (`is_active`),"
+            + " KEY `fnb_modifier_groups_sort_order` (`sort_order`)"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    fnb_modifier_options: Object.freeze({
+        sql: "CREATE TABLE `fnb_modifier_options` ("
+            + " `modifier_option_id` INT NOT NULL AUTO_INCREMENT, `modifier_group_id` INT NOT NULL,"
+            + " `name` VARCHAR(120) NOT NULL, `price_delta` DECIMAL(14,4) NOT NULL DEFAULT 0,"
+            + " `sku_item_id` INT DEFAULT NULL, `is_default` TINYINT(1) NOT NULL DEFAULT 0,"
+            + " `is_active` TINYINT(1) NOT NULL DEFAULT 1,"
+            + " `allergen_notes` LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin,"
+            + " `sort_order` INT NOT NULL DEFAULT 0,"
+            + " `created_at` DATETIME NOT NULL, `updated_at` DATETIME NOT NULL,"
+            + " `visible_in_pos` TINYINT(1) NOT NULL DEFAULT 1,"
+            + " `visible_in_storefront` TINYINT(1) NOT NULL DEFAULT 1,"
+            + " `is_sold_out` TINYINT(1) NOT NULL DEFAULT 0,"
+            + " PRIMARY KEY (`modifier_option_id`),"
+            + " KEY `fnb_modifier_options_modifier_group_id` (`modifier_group_id`),"
+            + " KEY `fnb_modifier_options_sku_item_id` (`sku_item_id`),"
+            + " KEY `fnb_modifier_options_is_active` (`is_active`),"
+            + " CONSTRAINT `fk_fnb_modifier_options_group` FOREIGN KEY (`modifier_group_id`) REFERENCES `fnb_modifier_groups` (`modifier_group_id`) ON DELETE CASCADE ON UPDATE CASCADE,"
+            + " CONSTRAINT `fk_fnb_modifier_options_sku_item` FOREIGN KEY (`sku_item_id`) REFERENCES `items` (`item_id`) ON DELETE SET NULL ON UPDATE CASCADE"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    fnb_item_modifier_groups: Object.freeze({
+        sql: "CREATE TABLE `fnb_item_modifier_groups` ("
+            + " `item_modifier_group_id` INT NOT NULL AUTO_INCREMENT,"
+            + " `item_id` INT NOT NULL, `modifier_group_id` INT NOT NULL,"
+            + " `is_required_override` TINYINT(1) DEFAULT NULL, `sort_order` INT NOT NULL DEFAULT 0,"
+            + " `created_at` DATETIME NOT NULL, `updated_at` DATETIME NOT NULL,"
+            + " `is_excluded` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Explicit item-level opt-out from folder-inherited modifier groups',"
+            + " PRIMARY KEY (`item_modifier_group_id`),"
+            + " UNIQUE KEY `uq_fnb_item_modifier_groups_item_group` (`item_id`,`modifier_group_id`),"
+            + " KEY `fnb_item_modifier_groups_item_id` (`item_id`),"
+            + " KEY `fnb_item_modifier_groups_modifier_group_id` (`modifier_group_id`),"
+            + " CONSTRAINT `fk_fnb_item_modifier_groups_item` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`) ON DELETE CASCADE ON UPDATE CASCADE,"
+            + " CONSTRAINT `fk_fnb_item_modifier_groups_group` FOREIGN KEY (`modifier_group_id`) REFERENCES `fnb_modifier_groups` (`modifier_group_id`) ON DELETE CASCADE ON UPDATE CASCADE"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
     fnb_modifier_group_location_availability: Object.freeze({
         sql: "CREATE TABLE `fnb_modifier_group_location_availability` ("
             + " `modifier_group_location_availability_id` INT NOT NULL AUTO_INCREMENT,"
@@ -1134,7 +1205,7 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
     })
 });
 
-export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-13.1';
+export const TENANT_SCHEMA_CAPABILITY_VERSION = '2026-08-15.1';
 
 export function getTenantSchemaCapabilityChecksum() {
     const manifest = {

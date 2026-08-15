@@ -39,14 +39,22 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    treat it as non-negotiable regardless of how the rest of the diff looks.
 4. **Architecture** — `npm run check:architecture` and `npm run check:adr` (or
    `npm run lint:docs`, which chains `check:adr`, for docs-only PRs) against the merge-result tree.
-5. **Diff review** — read the actual changed files (`gh pr diff <N>`) for correctness, security,
+5. **Tenant schema risk** — if the PR touches `apps/dgfy-migration-runner/migrations/` or
+   `apps/dgfy-api/scripts/sync-tenant-schemas.js`, also read
+   `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md` (#539 is the worked example: a tenant
+   missing required tables entirely crash-loops the whole shared API on the next restart, since the
+   tenant preflight is unconditional and all-or-nothing under `NODE_ENV=production`). Confirm the PR
+   body states whether its migration has a deploy-order dependency on an open fix in that tracker,
+   and flag it as a `should-fix` (not silently pass it through) if a migration PR is missing that
+   check when the tracker has open entries.
+6. **Diff review** — read the actual changed files (`gh pr diff <N>`) for correctness, security,
    and boundary violations. Scope this to files the PR actually touches; don't re-review the whole
    repo.
-6. **Merge readiness** — `gh pr checks <N>` and `gh pr view <N> --json mergeStateStatus,mergeable`.
+7. **Merge readiness** — `gh pr checks <N>` and `gh pr view <N> --json mergeStateStatus,mergeable`.
    A pending or red check is not evidence of a broken PR by itself — this repo has a known pattern
    of transient `docker.io` anonymous-token timeouts unrelated to any given diff — but it is always
    reported, never silently waited past.
-7. **Scope** — does the diff match what the linked issue actually asked for; name any file that
+8. **Scope** — does the diff match what the linked issue actually asked for; name any file that
    looks unrelated to the stated scope rather than silently reviewing it as if it belonged.
 
 ## Output — one PR comment, fixed shape
