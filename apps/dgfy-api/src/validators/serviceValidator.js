@@ -4,10 +4,15 @@ import Joi from 'joi';
 // apps/dgfy-api/tests/fulfillmentProfiles.contract.test.js (issue #178, ADR 0057)
 // - can pin against the real enums instead of a hand-copied duplicate that
 // could silently drift.
-export const BOOKING_STATUSES = ['requested', 'confirmed', 'checked_in', 'in_service', 'completed', 'cancelled', 'no_show'];
+// Phase 88 of #482 (ADR 0064 decision 4) appended the four round-trip lifecycle values.
+export const BOOKING_STATUSES = [
+    'requested', 'confirmed', 'checked_in', 'in_service', 'completed', 'cancelled', 'no_show',
+    'for_pickup', 'pickup_completed', 'out_for_return', 'ready_for_collection'
+];
 const PAYMENT_POLICIES = ['customer_choice', 'prepaid_required', 'postpaid_only', 'deposit_allowed'];
 const PAYMENT_TIMINGS = ['prepaid', 'postpaid', 'deposit'];
-export const SERVICE_AREA_TYPES = ['in_store', 'customer_location', 'online', 'hybrid'];
+// 'item_handoff' added by Phase 88 of #482 (ADR 0064 decision 7).
+export const SERVICE_AREA_TYPES = ['in_store', 'customer_location', 'online', 'hybrid', 'item_handoff'];
 const RESOURCE_TYPES = ['provider', 'room', 'equipment', 'vehicle', 'station'];
 const WAITLIST_STATUSES = ['waiting', 'notified', 'booked', 'expired', 'cancelled'];
 const REMINDER_STATUSES = ['pending', 'sent', 'failed', 'skipped'];

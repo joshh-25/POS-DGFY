@@ -841,7 +841,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `visible_in_pos` tinyint(1) NOT NULL DEFAULT '1',\n"
             + "  `addons_enabled` tinyint(1) NOT NULL DEFAULT '0',\n"
             + "  `payment_policy` enum('customer_choice','prepaid_required','postpaid_only','deposit_allowed') NOT NULL DEFAULT 'customer_choice',\n"
-            + "  `service_area_type` enum('in_store','customer_location','online','hybrid') NOT NULL DEFAULT 'in_store',\n"
+            + "  `service_area_type` enum('in_store','customer_location','online','hybrid','item_handoff') NOT NULL DEFAULT 'in_store',\n"
             + "  `intake_form_schema` json DEFAULT NULL,\n"
             + "  `client_notes_template` text,\n"
             + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
@@ -911,7 +911,7 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  `location_id` int DEFAULT NULL,\n"
             + "  `start_at` datetime NOT NULL,\n"
             + "  `end_at` datetime NOT NULL,\n"
-            + "  `status` enum('requested','confirmed','checked_in','in_service','completed','cancelled','no_show') NOT NULL DEFAULT 'requested',\n"
+            + "  `status` enum('requested','confirmed','checked_in','in_service','completed','cancelled','no_show','for_pickup','pickup_completed','out_for_return','ready_for_collection') NOT NULL DEFAULT 'requested',\n"
             + "  `payment_timing` enum('prepaid','postpaid','deposit') NOT NULL DEFAULT 'postpaid',\n"
             + "  `payment_status` enum('unpaid','payment_pending','paid','deposit_paid','failed','refunded') NOT NULL DEFAULT 'unpaid',\n"
             + "  `payment_reference` varchar(120) DEFAULT NULL,\n"
@@ -996,6 +996,62 @@ export const REQUIRED_TENANT_SCHEMA_TABLES = Object.freeze({
             + "  CONSTRAINT `service_booking_lines_ibfk_1` FOREIGN KEY (`booking_id`) REFERENCES `service_bookings` (`booking_id`) ON DELETE CASCADE,\n"
             + "  CONSTRAINT `service_booking_lines_ibfk_2` FOREIGN KEY (`item_id`) REFERENCES `items` (`item_id`) ON DELETE RESTRICT,\n"
             + "  CONSTRAINT `service_booking_lines_ibfk_3` FOREIGN KEY (`pos_transaction_line_id`) REFERENCES `pos_transaction_lines` (`line_id`) ON DELETE SET NULL\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    // Phase 88 of #482 (ADR 0064 decision 2) - the handoff-leg entity, keyed to service_bookings.
+    service_booking_handoff_legs: Object.freeze({
+        sql: "CREATE TABLE `service_booking_handoff_legs` (\n"
+            + "  `handoff_leg_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `booking_id` int NOT NULL,\n"
+            + "  `direction` enum('inbound','outbound') NOT NULL,\n"
+            + "  `method` enum('business_pickup','business_delivery','customer_dropoff','customer_collection') NOT NULL,\n"
+            + "  `address_line` text,\n"
+            + "  `latitude` decimal(10,8) DEFAULT NULL,\n"
+            + "  `longitude` decimal(11,8) DEFAULT NULL,\n"
+            + "  `customer_address_id` int DEFAULT NULL,\n"
+            + "  `location_id` int DEFAULT NULL,\n"
+            + "  `scheduled_from` datetime DEFAULT NULL,\n"
+            + "  `scheduled_to` datetime DEFAULT NULL,\n"
+            + "  `contact_name` varchar(255) DEFAULT NULL,\n"
+            + "  `contact_phone` varchar(50) DEFAULT NULL,\n"
+            + "  `instructions` varchar(500) DEFAULT NULL,\n"
+            + "  `status` enum('pending','scheduled','in_transit','completed','cancelled') NOT NULL DEFAULT 'pending',\n"
+            + "  `completed_at` datetime DEFAULT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`handoff_leg_id`),\n"
+            + "  UNIQUE KEY `uq_service_booking_handoff_legs_booking_direction` (`booking_id`,`direction`),\n"
+            + "  KEY `idx_service_booking_handoff_legs_customer_address` (`customer_address_id`),\n"
+            + "  KEY `idx_service_booking_handoff_legs_location` (`location_id`),\n"
+            + "  KEY `idx_service_booking_handoff_legs_status` (`status`),\n"
+            + "  KEY `idx_service_booking_handoff_legs_scheduled_from` (`scheduled_from`),\n"
+            + "  CONSTRAINT `service_booking_handoff_legs_ibfk_1` FOREIGN KEY (`booking_id`) REFERENCES `service_bookings` (`booking_id`) ON DELETE CASCADE,\n"
+            + "  CONSTRAINT `service_booking_handoff_legs_ibfk_2` FOREIGN KEY (`customer_address_id`) REFERENCES `customer_addresses` (`address_id`) ON DELETE SET NULL,\n"
+            + "  CONSTRAINT `service_booking_handoff_legs_ibfk_3` FOREIGN KEY (`location_id`) REFERENCES `tenant_locations` (`location_id`) ON DELETE SET NULL\n"
+            + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
+    }),
+    // Phase 88 of #482 (ADR 0064 decision 4) - the status transition-event table.
+    service_booking_status_events: Object.freeze({
+        sql: "CREATE TABLE `service_booking_status_events` (\n"
+            + "  `status_event_id` int NOT NULL AUTO_INCREMENT,\n"
+            + "  `booking_id` int NOT NULL,\n"
+            + "  `from_status` enum('requested','confirmed','checked_in','in_service','completed','cancelled','no_show','for_pickup','pickup_completed','out_for_return','ready_for_collection') DEFAULT NULL,\n"
+            + "  `to_status` enum('requested','confirmed','checked_in','in_service','completed','cancelled','no_show','for_pickup','pickup_completed','out_for_return','ready_for_collection') NOT NULL,\n"
+            + "  `handoff_leg_id` int DEFAULT NULL,\n"
+            + "  `actor_type` enum('customer','staff','system') NOT NULL DEFAULT 'system',\n"
+            + "  `actor_user_id` int DEFAULT NULL,\n"
+            + "  `source` enum('storefront','pos','admin','system') NOT NULL DEFAULT 'system',\n"
+            + "  `reason` varchar(500) DEFAULT NULL,\n"
+            + "  `occurred_at` datetime NOT NULL,\n"
+            + "  `created_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP,\n"
+            + "  `updated_at` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,\n"
+            + "  PRIMARY KEY (`status_event_id`),\n"
+            + "  KEY `idx_service_booking_status_events_booking_occurred` (`booking_id`,`occurred_at`),\n"
+            + "  KEY `idx_service_booking_status_events_handoff_leg` (`handoff_leg_id`),\n"
+            + "  KEY `idx_service_booking_status_events_actor_user` (`actor_user_id`),\n"
+            + "  CONSTRAINT `service_booking_status_events_ibfk_1` FOREIGN KEY (`booking_id`) REFERENCES `service_bookings` (`booking_id`) ON DELETE CASCADE,\n"
+            + "  CONSTRAINT `service_booking_status_events_ibfk_2` FOREIGN KEY (`handoff_leg_id`) REFERENCES `service_booking_handoff_legs` (`handoff_leg_id`) ON DELETE SET NULL,\n"
+            + "  CONSTRAINT `service_booking_status_events_ibfk_3` FOREIGN KEY (`actor_user_id`) REFERENCES `users` (`user_id`) ON DELETE SET NULL\n"
             + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci"
     })
 });
@@ -1201,6 +1257,21 @@ export const REQUIRED_TENANT_SCHEMA_ENUM_CONTRACTS = Object.freeze({
         entry_type: Object.freeze({
             enumValues: Object.freeze(['grant', 'debit', 'charge', 'repayment', 'reversal', 'adjustment', 'expiration']),
             sql: "ALTER TABLE `employee_credit_ledger_entries` MODIFY COLUMN `entry_type` ENUM('grant','debit','charge','repayment','reversal','adjustment','expiration') NOT NULL"
+        })
+    }),
+    // Phase 88 of #482 (ADR 0064): both widened by migration 20260815000001. Older tenant
+    // schemas already have these columns from earlier migrations, just with the narrower enum -
+    // same drift class as items.category above.
+    service_item_details: Object.freeze({
+        service_area_type: Object.freeze({
+            enumValues: Object.freeze(['in_store', 'customer_location', 'online', 'hybrid', 'item_handoff']),
+            sql: "ALTER TABLE `service_item_details` MODIFY COLUMN `service_area_type` ENUM('in_store','customer_location','online','hybrid','item_handoff') NOT NULL DEFAULT 'in_store'"
+        })
+    }),
+    service_bookings: Object.freeze({
+        status: Object.freeze({
+            enumValues: Object.freeze(['requested', 'confirmed', 'checked_in', 'in_service', 'completed', 'cancelled', 'no_show', 'for_pickup', 'pickup_completed', 'out_for_return', 'ready_for_collection']),
+            sql: "ALTER TABLE `service_bookings` MODIFY COLUMN `status` ENUM('requested','confirmed','checked_in','in_service','completed','cancelled','no_show','for_pickup','pickup_completed','out_for_return','ready_for_collection') NOT NULL DEFAULT 'requested'"
         })
     })
 });
