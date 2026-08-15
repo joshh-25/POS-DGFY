@@ -1,10 +1,10 @@
 import { CheckoutHeroHeader } from '../../../../shared/components/checkout/CheckoutHeroHeader.jsx';
 import { CheckoutStepProgressHeader } from '../../../../shared/components/checkout/CheckoutStepProgressHeader.jsx';
 
-const SIMPLE_ACCENT = '#0f766e';
-const SIMPLE_ACCENT_SOFT = '#ecfeff';
-const SIMPLE_ACCENT_BORDER = '#99f6e4';
-const SIMPLE_PROGRESS_COMPLETE = '#14b8a6';
+const SIMPLE_ACCENT = '#176B3A';
+const SIMPLE_ACCENT_SOFT = '#FFF8E7';
+const SIMPLE_ACCENT_BORDER = '#E4C98E';
+const SIMPLE_PROGRESS_COMPLETE = '#176B3A';
 
 /**
  * MSME (Simple) checkout journey header. Structurally mirrors FnbCheckoutJourneyHeader (own
@@ -44,6 +44,7 @@ export function SimpleCheckoutJourneyHeader({
         accentColor={SIMPLE_ACCENT}
         accentSoft={SIMPLE_ACCENT_SOFT}
         accentBorder={SIMPLE_ACCENT_BORDER}
+        titleFontWeight={800}
         displayFont={displayFont}
       />
       <CheckoutStepProgressHeader

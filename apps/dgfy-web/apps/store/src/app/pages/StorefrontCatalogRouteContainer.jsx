@@ -1,7 +1,13 @@
 import React from 'react';
 import { Sparkles } from 'lucide-react';
 import { FnbProductDetailsRoute } from '../../modes/fnb/storefront/pages/FnbProductDetailsRoute.jsx';
-import { RetailProductDetailsRoute } from '../../modes/retail/storefront/pages/RetailProductDetailsRoute.jsx';
+import { FnbCatalogRoutePage } from '../../modes/fnb/storefront/pages/FnbCatalogRoutePage.jsx';
+import { FnbStorefrontRoutePage } from '../../modes/fnb/storefront/pages/FnbStorefrontRoutePage.jsx';
+import { RetailStorefrontRouteContainer } from '../../modes/retail/storefront/pages/RetailStorefrontRouteContainer.jsx';
+import { SimpleStorefrontRoutePage } from '../../modes/simple/storefront/pages/SimpleStorefrontRoutePage.jsx';
+import { SimpleCatalogRoutePage } from '../../modes/simple/storefront/pages/SimpleCatalogRoutePage.jsx';
+import { SimpleCheckoutRoutePage } from '../../modes/simple/checkout/pages/SimpleCheckoutRoutePage.jsx';
+import { SimpleTrackingRouteContainer } from '../../modes/simple/tracking/pages/SimpleTrackingRouteContainer.jsx';
 import { StorefrontServicesCatalog } from '../../modes/services/storefront/components/StorefrontServicesCatalog.jsx';
 import { StorefrontClassicCatalog } from '../../shared/components/storefront/StorefrontClassicCatalog.jsx';
 import { SERVICE_CATEGORY_ICON_MAP } from '../../modes/services/storefront/model/serviceCategoryIconMap.jsx';
@@ -204,7 +210,9 @@ export function StorefrontCatalogRouteContainer(props) {
     isRetailMode,
     retailOrderRouteProps,
     isTrackSubpage,
-    fnbTrackingRouteProps
+    fnbTrackingRouteProps,
+    simpleTrackingRouteProps,
+    retailTrackingRouteProps
   } = props;
 
   // --- Service Tab logic ---
@@ -217,12 +225,11 @@ export function StorefrontCatalogRouteContainer(props) {
   const activeGroup = resolvedTab
     ? (servicesViewModel.serviceGroups.find((g) => g.categoryKey === resolvedTab) || null)
     : null;
-  // F&B and Retail both consume the shared, mode-agnostic sectioned/sorted/
+  // F&B, Retail, and Simple/MSME consume the shared, mode-agnostic sectioned/sorted/
   // paginated view model (useFnbCatalogRuntime.js runs for every mode; the
   // "Fnb" naming predates it being reused outside F&B). Other modes still
   // render the raw filtered catalog with no sort/section/pagination applied.
-  const usesSectionedCatalogPresentation = isFnbMode || isRetailMode;
-  const fnbSections = fnbCatalogPresentation.menuSections;
+  const usesSectionedCatalogPresentation = isFnbMode || isRetailMode || isSimpleMode;
   const resolvedFnbSection = fnbCatalogPresentation.resolvedSection;
   const activeFnbSection = fnbCatalogPresentation.activeSectionModel;
   const rawItemsToRender = isServicesMode
@@ -245,10 +252,23 @@ export function StorefrontCatalogRouteContainer(props) {
   const activeGroupMeta = activeGroup?.categoryMeta;
   const ActiveServiceGroupIcon = activeGroupMeta?.iconToken ? (SERVICE_CATEGORY_ICON_MAP[activeGroupMeta.iconToken] || Sparkles) : Sparkles;
 
-  if (isFnbDetailsSubpage) {
-    const ProductDetailsRoute = isRetailMode ? RetailProductDetailsRoute : FnbProductDetailsRoute;
+  if (isRetailMode && isFnbDetailsSubpage) {
     return (
-      <ProductDetailsRoute
+      <RetailStorefrontRouteContainer
+        detailsProps={{
+          ...fnbProductDetailsRouteProps,
+          loadError: catalogError,
+          loading: loadingCatalog || (!selectedStore && !catalogError),
+          onRetry: refreshStorePageForTenantSetup
+        }}
+        isDetailsSubpage
+      />
+    );
+  }
+
+  if (isFnbDetailsSubpage) {
+    return (
+      <FnbProductDetailsRoute
         isActive
         {...fnbProductDetailsRouteProps}
         loadError={catalogError}
@@ -420,9 +440,195 @@ export function StorefrontCatalogRouteContainer(props) {
     );
   }
 
-  return (
+  if (isSimpleMode && isTrackSubpage && simpleTrackingRouteProps) {
+    return <SimpleTrackingRouteContainer {...simpleTrackingRouteProps} visible />;
+  }
+
+  if (isRetailMode) {
+    return (
+      <RetailStorefrontRouteContainer
+        catalogProps={{
+          addToCart,
+          catalogError,
+          catalogItems: catalogItemsToRender,
+          catalogSearch,
+          catalogState,
+          categoryDropdownRef: fnbCategoryDropdownRef,
+          filteredCatalog,
+          filteredCatalogViewModel: filteredFnbViewModel,
+          getCartFlySourceRect,
+          hasCatalogSearchQuery,
+          isCategoryDropdownOpen: isFnbCategoryDropdownOpen,
+          isMobileViewport,
+          mobileCatalogPadding: fnbMobileCatalogInlinePadding,
+          mobileContentWidth: fnbMobileMenuInnerWidth,
+          modeAdapter,
+          onCategoryChange: setActiveServiceTab,
+          onCategoryDropdownOpenChange: setIsFnbCategoryDropdownOpen,
+          onPageChange: setFnbPage,
+          onPageSizeChange: setFnbPageSize,
+          onSearchChange: setCatalogSearch,
+          onSortChange: setFnbSortOption,
+          onViewDetails: openFnbDetail,
+          onViewModeChange: setFnbViewMode,
+          page: resolvedFnbPage,
+          pageEnd: fnbPageEnd,
+          pageSize: fnbPageSize,
+          pageStart: fnbPageStart,
+          refreshStorePageForTenantSetup,
+          resolvedSection: resolvedFnbSection,
+          sortOption: fnbSortOption,
+          totalItems: itemsToRender.length,
+          totalPages: totalFnbPages,
+          viewMode: fnbViewMode,
+          viewportWidth
+        }}
+        hasStorefrontModel={Boolean(defaultStorefrontModel)}
+        isOrderSubpage={isResolvedOrderSubpage}
+        isTrackSubpage={isTrackSubpage}
+        orderProps={retailOrderRouteProps}
+        sectionsProps={{
+          checkoutPromoCode,
+          handlePromoCardApply,
+          isMobileViewport,
+          isReviewModalOpen,
+          modeAdapter,
+          promoSectionModel,
+          retailStorefrontModel: defaultStorefrontModel,
+          reviewDraft,
+          setIsReviewModalOpen,
+          setReviewDraft,
+          submitReview: submitFnbItemReview,
+          viewportWidth
+        }}
+        trackingProps={retailTrackingRouteProps}
+      />
+    );
+  }
+
+  if (isFnbMode) {
+    return (
+      <>
+        <FnbCatalogRoutePage
+          addToCart={addToCart}
+          catalogError={catalogError}
+          catalogItems={catalogItemsToRender}
+          catalogSearch={catalogSearch}
+          catalogState={catalogState}
+          categoryDropdownRef={fnbCategoryDropdownRef}
+          filteredCatalog={filteredCatalog}
+          filteredCatalogViewModel={filteredFnbViewModel}
+          getCartFlySourceRect={getCartFlySourceRect}
+          hasCatalogSearchQuery={hasCatalogSearchQuery}
+          isCategoryDropdownOpen={isFnbCategoryDropdownOpen}
+          isCompactPaginationViewport={isCompactPaginationViewport}
+          isDesktopViewport={isDesktopViewport}
+          isMobileViewport={isMobileViewport}
+          isTabletPaginationViewport={isTabletPaginationViewport}
+          modeAdapter={modeAdapter}
+          mobileCatalogPadding={fnbMobileCatalogInlinePadding}
+          mobileContentWidth={fnbMobileMenuInnerWidth}
+          onCategoryChange={setActiveServiceTab}
+          onCategoryDropdownOpenChange={setIsFnbCategoryDropdownOpen}
+          onPageChange={setFnbPage}
+          onPageSizeChange={setFnbPageSize}
+          onSearchChange={setCatalogSearch}
+          onSortChange={setFnbSortOption}
+          onViewDetails={openFnbDetail}
+          onViewModeChange={setFnbViewMode}
+          page={resolvedFnbPage}
+          pageEnd={fnbPageEnd}
+          pageSize={fnbPageSize}
+          pageStart={fnbPageStart}
+          refreshStorePageForTenantSetup={refreshStorePageForTenantSetup}
+          resolvedSection={resolvedFnbSection}
+          sortOption={fnbSortOption}
+          totalItems={itemsToRender.length}
+          totalPages={totalFnbPages}
+          viewMode={fnbViewMode}
+        />
+        <FnbStorefrontRoutePage
+          checkoutPromoCode={checkoutPromoCode}
+          fnbCommunityModel={fnbCommunityModel}
+          handlePromoCardApply={handlePromoCardApply}
+          isMobileViewport={isMobileViewport}
+          isReviewModalOpen={isReviewModalOpen}
+          modeAdapter={modeAdapter}
+          onReviewDraftChange={(changes) => setReviewDraft((previous) => ({ ...previous, ...changes }))}
+          onReviewModalClose={() => setIsReviewModalOpen(false)}
+          onReviewSubmit={submitFnbItemReview}
+          promoSectionModel={promoSectionModel}
+          renderCommunity={Boolean(fnbCommunityModel) && !isOrderSubpage && !isFnbDetailsSubpage}
+          reviewDraft={reviewDraft}
+          reviewSubmitLoading={reviewSubmitLoading}
+          setIsReviewModalOpen={setIsReviewModalOpen}
+          viewportWidth={viewportWidth}
+        />
+      </>
+    );
+  }
+
+  if (isSimpleMode && isResolvedOrderSubpage && simpleStorefrontModel) {
+    return <SimpleCheckoutRoutePage {...simpleCheckoutRouteProps} />;
+  }
+
+  if (isSimpleMode && simpleStorefrontModel) {
+    return (
+      <>
+        <SimpleCatalogRoutePage
+          addToCart={addToCart}
+          catalogError={catalogError}
+          catalogItems={catalogItemsToRender}
+          catalogSearch={catalogSearch}
+          catalogState={catalogState}
+          categoryDropdownRef={fnbCategoryDropdownRef}
+          filteredCatalog={filteredCatalog}
+          filteredCatalogViewModel={filteredFnbViewModel}
+          getCartFlySourceRect={getCartFlySourceRect}
+          hasCatalogSearchQuery={hasCatalogSearchQuery}
+          isCategoryDropdownOpen={isFnbCategoryDropdownOpen}
+          isMobileViewport={isMobileViewport}
+          mobileContentWidth={fnbMobileMenuInnerWidth}
+          modeAdapter={modeAdapter}
+          onCategoryChange={setActiveServiceTab}
+          onCategoryDropdownOpenChange={setIsFnbCategoryDropdownOpen}
+          onPageChange={setFnbPage}
+          onPageSizeChange={setFnbPageSize}
+          onSearchChange={setCatalogSearch}
+          onSortChange={setFnbSortOption}
+          onViewDetails={openFnbDetail}
+          onViewModeChange={setFnbViewMode}
+          page={resolvedFnbPage}
+          pageEnd={fnbPageEnd}
+          pageSize={fnbPageSize}
+          pageStart={fnbPageStart}
+          refreshStorePageForTenantSetup={refreshStorePageForTenantSetup}
+          resolvedSection={resolvedFnbSection}
+          sortOption={fnbSortOption}
+          totalItems={itemsToRender.length}
+          totalPages={totalFnbPages}
+          viewMode={fnbViewMode}
+        />
+        <SimpleStorefrontRoutePage
+          checkoutPromoCode={checkoutPromoCode}
+          handlePromoCardApply={handlePromoCardApply}
+          isMobileViewport={isMobileViewport}
+          isReviewModalOpen={isReviewModalOpen}
+          modeAdapter={modeAdapter}
+          promoSectionModel={promoSectionModel}
+          reviewDraft={reviewDraft}
+          setIsReviewModalOpen={setIsReviewModalOpen}
+          setReviewDraft={setReviewDraft}
+          simpleStorefrontModel={simpleStorefrontModel}
+          submitReview={submitFnbItemReview}
+          viewportWidth={viewportWidth}
+        />
+      </>
+    );
+  }
+
+  const classicCatalog = (
     <StorefrontClassicCatalog
-      ActiveServiceGroupIcon={ActiveServiceGroupIcon}
       activeGroupMeta={activeGroupMeta}
       addToCart={addToCart}
       catalogError={catalogError}
@@ -431,67 +637,35 @@ export function StorefrontCatalogRouteContainer(props) {
       catalogState={catalogState}
       checkoutPromoCode={checkoutPromoCode}
       filteredCatalog={filteredCatalog}
-      filteredFnbViewModel={filteredFnbViewModel}
-      fnbCategoryDropdownRef={fnbCategoryDropdownRef}
-      fnbCommunityModel={fnbCommunityModel}
-      fnbMobileCatalogInlinePadding={fnbMobileCatalogInlinePadding}
-      fnbMobileMenuInnerWidth={fnbMobileMenuInnerWidth}
-      fnbPageEnd={fnbPageEnd}
-      fnbPageSize={fnbPageSize}
-      fnbPageStart={fnbPageStart}
-      fnbSortOption={fnbSortOption}
-      fnbViewMode={fnbViewMode}
       getCartFlySourceRect={getCartFlySourceRect}
       handlePromoCardApply={handlePromoCardApply}
       hasCatalogSearchQuery={hasCatalogSearchQuery}
-      isCompactPaginationViewport={isCompactPaginationViewport}
       isDesktopViewport={isDesktopViewport}
-      isFnbCategoryDropdownOpen={isFnbCategoryDropdownOpen}
-      isFnbDetailsSubpage={isFnbDetailsSubpage}
-      isFnbMode={isFnbMode}
       isMobileViewport={isMobileViewport}
       isMultiGroup={isMultiGroup}
-      isOrderSubpage={isOrderSubpage}
-      isResolvedOrderSubpage={isResolvedOrderSubpage}
       isReviewModalOpen={isReviewModalOpen}
       isServicesMode={isServicesMode}
-      isSimpleMode={isSimpleMode}
-      isTabletPaginationViewport={isTabletPaginationViewport}
       itemsToRender={itemsToRender}
       modeAdapter={modeAdapter}
-      openFnbDetail={openFnbDetail}
       openServiceDetail={openServiceDetail}
       promoSectionModel={promoSectionModel}
       refreshStorePageForTenantSetup={refreshStorePageForTenantSetup}
-      resolvedFnbPage={resolvedFnbPage}
-      resolvedFnbSection={resolvedFnbSection}
       resolvedTab={resolvedTab}
       reviewDraft={reviewDraft}
-      reviewSubmitLoading={reviewSubmitLoading}
       selectedStore={selectedStore}
       servicesPrimary={servicesPrimary}
       servicesPrimaryDark={servicesPrimaryDark}
       servicesViewModel={servicesViewModel}
       setActiveServiceTab={setActiveServiceTab}
       setCatalogSearch={setCatalogSearch}
-      setFnbPage={setFnbPage}
-      setFnbPageSize={setFnbPageSize}
-      setFnbSortOption={setFnbSortOption}
-      setFnbViewMode={setFnbViewMode}
-      setIsFnbCategoryDropdownOpen={setIsFnbCategoryDropdownOpen}
       setIsReviewModalOpen={setIsReviewModalOpen}
       setReviewDraft={setReviewDraft}
-      simpleCheckoutRouteProps={simpleCheckoutRouteProps}
-      simpleStorefrontModel={simpleStorefrontModel}
       defaultStorefrontModel={defaultStorefrontModel}
       defaultOrderRouteProps={defaultOrderRouteProps}
-      isRetailMode={isRetailMode}
-      retailOrderRouteProps={retailOrderRouteProps}
-      isTrackSubpage={isTrackSubpage}
-      fnbTrackingRouteProps={fnbTrackingRouteProps}
-      submitFnbItemReview={submitFnbItemReview}
-      totalFnbPages={totalFnbPages}
+      submitReview={submitFnbItemReview}
       viewportWidth={viewportWidth}
     />
   );
+
+  return classicCatalog;
 }

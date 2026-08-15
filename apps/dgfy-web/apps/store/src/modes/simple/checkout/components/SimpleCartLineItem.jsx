@@ -25,7 +25,7 @@ export function SimpleCartLineItem({
     <div style={{ borderBottom: '1px solid #e2e8f0', padding: isMobileViewport ? '2px 0 12px' : '4px 0 14px', display: 'grid', gap: isMobileViewport ? 8 : 10 }}>
       <div style={{ display: 'grid', gridTemplateColumns: `${imageSize}px minmax(0, 1fr)`, gap: isMobileViewport ? 12 : 14, alignItems: 'start' }}>
         <div style={{ position: 'relative', width: imageSize, height: imageSize, borderRadius: 16, overflow: 'hidden', border: '1px solid #e2e8f0', background: '#f8fafc', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-          <div style={{ position: 'absolute', top: 6, right: 6, minWidth: 24, height: 24, padding: '0 7px', borderRadius: 999, background: servicesPrimary, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 900, boxShadow: '0 8px 18px rgba(15,118,110,0.18)', zIndex: 1 }}>
+          <div style={{ position: 'absolute', top: 6, right: 6, minWidth: 24, height: 24, padding: '0 7px', borderRadius: 999, background: servicesPrimary, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 900, boxShadow: '0 8px 18px rgba(23,107,58,0.16)', zIndex: 1 }}>
             {quantity}
           </div>
           {(line.thumbnail_url || line.image_url) && !cartImageErrors.has(Number(line.item_id)) ? (
@@ -47,14 +47,14 @@ export function SimpleCartLineItem({
         <div style={{ minWidth: 0, display: 'grid', gap: 8 }}>
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto auto', alignItems: 'start', gap: 10 }}>
             <div style={{ minWidth: 0, display: 'grid', gap: 4 }}>
-              <div style={{ fontSize: isMobileViewport ? 15 : 16, fontWeight: 900, color: '#0f172a', lineHeight: 1.15 }}>
+              <div style={{ fontSize: isMobileViewport ? 15 : 16, fontWeight: 700, color: '#0f172a', lineHeight: 1.2 }}>
                 {line.name}
               </div>
               <div style={{ fontSize: 12, color: '#64748b' }}>
                 {line.unit_of_measure ? `Per ${line.unit_of_measure}` : 'Per item'}
               </div>
             </div>
-            <div style={{ fontSize: isMobileViewport ? 14 : 15, fontWeight: 900, color: '#0f172a', whiteSpace: 'nowrap', alignSelf: 'center' }}>
+            <div style={{ fontSize: isMobileViewport ? 14 : 15, fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap', alignSelf: 'center' }}>
               {money(lineTotal)}
             </div>
             <button
@@ -75,7 +75,7 @@ export function SimpleCartLineItem({
               >
                 <Minus size={14} strokeWidth={2.5} />
               </button>
-              <span style={{ minWidth: 24, textAlign: 'center', fontSize: 14, fontWeight: 800, color: '#0f172a', lineHeight: 1 }}>
+              <span style={{ minWidth: 24, textAlign: 'center', fontSize: 14, fontWeight: 700, color: '#0f172a', lineHeight: 1 }}>
                 {quantity}
               </span>
               <button

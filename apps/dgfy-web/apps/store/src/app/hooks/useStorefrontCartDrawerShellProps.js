@@ -47,6 +47,8 @@ export function useStorefrontCartDrawerShellProps({
   serviceBookingReviewProps,
   storefrontCheckoutSummaryProps,
   fnbTrackingRouteProps,
+  retailTrackingRouteProps,
+  simpleTrackingDrawerProps,
   showOrderSuccessAnimation
 }) {
   return {
@@ -95,6 +97,8 @@ export function useStorefrontCartDrawerShellProps({
     serviceBookingReviewProps,
     storefrontCheckoutSummaryProps,
     fnbTrackingRouteProps,
+    retailTrackingRouteProps,
+    simpleTrackingDrawerProps,
     showOrderSuccessAnimation
   };
 }

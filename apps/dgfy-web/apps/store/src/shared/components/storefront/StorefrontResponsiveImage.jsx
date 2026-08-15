@@ -8,6 +8,7 @@ export function StorefrontResponsiveImage({
   height,
   loading = 'lazy',
   decoding = 'async',
+  fetchPriority,
   ...imageProps
 }) {
   const placeholderUrl = imageSources?.placeholderUrl || '';
@@ -38,6 +39,9 @@ export function StorefrontResponsiveImage({
         height={height}
         loading={loading}
         decoding={decoding}
+        // React 18 forwards the lowercase HTML attribute; React 19 accepts the camel-cased prop.
+        // eslint-disable-next-line react/no-unknown-property
+        fetchpriority={fetchPriority}
         style={imageStyle}
       />
     </picture>

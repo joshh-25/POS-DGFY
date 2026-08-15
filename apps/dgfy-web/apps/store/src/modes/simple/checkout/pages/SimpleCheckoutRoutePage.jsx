@@ -40,14 +40,11 @@ export function SimpleCheckoutRoutePage({
   pinLocationError = '',
   pinLocationLoading = false,
   promoDiscountSummaryRow = null,
-  quoteError = '',
-  quoteResult = null,
   renderAccountOwnedIdentitySummary,
   renderGuestCheckoutEntry,
   renderGuestIdentityFields,
   renderPromoCodePanel,
   renderStorefrontClosedNotice,
-  requireQuoteForCheckout = false,
   selectedLocation = null,
   selectedSavedLocationId = '',
   selectedStore = null,
@@ -77,7 +74,6 @@ export function SimpleCheckoutRoutePage({
   onPaymentTypeChange,
   onPinChange,
   onPinMyLocation,
-  onQuote,
   onRequestGuestCheckoutOtp,
   onScheduleModeChange,
   onScheduledForChange,
@@ -162,7 +158,7 @@ export function SimpleCheckoutRoutePage({
               money={money}
               onImageError={onImageError}
               promoDiscountSummaryRow={promoDiscountSummaryRow}
-              promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#0f766e', bodyFont: servicesBodyFont })}
+              promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont })}
               scheduleLabel={scheduleLabel}
               totals={totals}
               withAssetOrigin={withAssetOrigin}
@@ -226,7 +222,7 @@ export function SimpleCheckoutRoutePage({
               money={money}
               onImageError={onImageError}
               promoDiscountSummaryRow={promoDiscountSummaryRow}
-              promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#0f766e', bodyFont: servicesBodyFont })}
+              promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont })}
               scheduleLabel={scheduleLabel}
               totals={totals}
               withAssetOrigin={withAssetOrigin}
@@ -251,17 +247,12 @@ export function SimpleCheckoutRoutePage({
             paymentOptions={[
               { value: 'cash', label: 'Cash on delivery/pickup' }
             ]}
-            quoteError={quoteError}
-            quoteResult={quoteResult}
-            requireQuoteForCheckout={requireQuoteForCheckout}
-            selectedStore={selectedStore}
             simpleCheckoutAllowed={simpleCheckoutAllowed}
             storefrontClosedNotice={storefrontClosedByHours ? renderStorefrontClosedNotice({ accent: '#9a3412', background: '#fff7ed', border: '#fdba74' }) : null}
             withAssetOrigin={withAssetOrigin}
             onBack={() => onSetSimpleOrderStep(2)}
             onCheckout={onCheckout}
             onPaymentTypeChange={onPaymentTypeChange}
-            onQuote={onQuote}
           />
           {!isMobileViewport && (
             <SimpleCheckoutSummaryContent
@@ -275,7 +266,7 @@ export function SimpleCheckoutRoutePage({
               money={money}
               onImageError={onImageError}
               promoDiscountSummaryRow={promoDiscountSummaryRow}
-              promoPanel={null}
+              promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont })}
               scheduleLabel={scheduleLabel}
               totals={totals}
               withAssetOrigin={withAssetOrigin}
@@ -320,7 +311,7 @@ export function SimpleCheckoutRoutePage({
           onStepChange={onSetSimpleOrderStep}
           orderStep={simpleOrderStep}
           promoDiscountSummaryRow={promoDiscountSummaryRow}
-          promoPanel={simpleOrderStep === 3 ? null : renderPromoCodePanel({ compact: true, accentColor: '#0f766e', bodyFont: servicesBodyFont, isMobile: true })}
+          promoPanel={renderPromoCodePanel({ compact: true, accentColor: '#176B3A', bodyFont: servicesBodyFont, isMobile: true })}
           scheduleLabel={scheduleLabel}
           setSummaryOpen={setShowSimpleMobileOrderSummary}
           showSummary={showSimpleMobileOrderSummary}

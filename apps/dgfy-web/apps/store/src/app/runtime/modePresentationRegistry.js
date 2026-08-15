@@ -149,14 +149,37 @@ export const ModePresentationRegistry = Object.freeze({
     heroTheme: Object.freeze({
       displayFont: "'Avenir Next', 'Segoe UI', sans-serif",
       bodyFont: "'Avenir Next', 'Segoe UI', sans-serif",
-      accent: '#0f766e',
-      accentDark: '#134e4a',
-      accentSoft: '#ecfeff',
-      surface: '#0f172a',
-      surfaceInset: '#ecfeff',
-      borderSoft: '#bfe8e4',
+      accent: '#176B3A',
+      accentDark: '#0F5A30',
+      accentSoft: '#FFF8E7',
+      accentShadow: 'rgba(23,107,58,0.16)',
+      surface: '#0F3B2A',
+      surfaceInset: '#FFF7E6',
+      borderSoft: '#E4C98E',
       textPrimary: '#0f172a',
-      textMuted: '#64748b'
+      textMuted: '#64748b',
+      typography: Object.freeze({
+        heroTitle: Object.freeze({ desktop: 46, mobile: 24, weight: 800, lineHeight: 1.08 }),
+        catalogTitle: Object.freeze({ desktop: 32, mobile: 16, weight: 700, lineHeight: 1.2 }),
+        cardTitle: Object.freeze({ desktop: 18, mobile: 16, weight: 700, lineHeight: 1.25 }),
+        body: Object.freeze({ desktop: 14, mobile: 13, weight: 400, lineHeight: 1.5 }),
+        label: Object.freeze({ size: 12, weight: 700, lineHeight: 1.3 }),
+        action: Object.freeze({ desktop: 15, mobile: 13, weight: 700 }),
+        price: Object.freeze({ desktop: 15, mobile: 13, weight: 700 }),
+        total: Object.freeze({ desktop: 32, mobile: 26, weight: 800 })
+      }),
+      catalogPalette: Object.freeze({
+        primary: '#176B3A',
+        primaryHover: '#0F5A30',
+        accentSoft: '#FFF8E7',
+        surface: '#FFFBF0',
+        surfaceSubtle: '#FFF7E6',
+        textPrimary: '#0F172A',
+        textSecondary: '#475569',
+        textMuted: '#64748B',
+        border: '#E4C98E',
+        borderStrong: '#D5B36B'
+      })
     })
   }),
   retail: Object.freeze({

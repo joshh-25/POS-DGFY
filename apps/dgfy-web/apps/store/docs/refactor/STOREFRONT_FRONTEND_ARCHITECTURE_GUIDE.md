@@ -53,6 +53,40 @@ It must not own:
 - backend response normalization
 - large JSX sections
 
+## Storefront Ownership Contract
+
+Shared storefront **section-level composition** is limited to presentation that
+has the same responsibility in every industry:
+
+- hero and navigation presentation
+- business information and contact presentation
+- promo presentation
+- reviews presentation
+- footer presentation
+
+Catalog and transaction experiences are mode-owned:
+
+- F&B owns its menu, menu filters, menu cards, item details, checkout, and tracking.
+- Retail owns its product catalog, product filters, product cards, product details,
+  checkout, and tracking.
+- Simple/MSME owns its product catalog, product filters, product cards, product
+  details, checkout, and tracking.
+- Services owns its service catalog, service filters, service cards, booking, and
+  booking tracking.
+
+Shared low-level controls such as buttons, dropdown primitives, address fields,
+summary rows, modal shells, and responsive frames remain allowed when they contain
+no industry copy, status rules, payload assumptions, or mode branching.
+
+Checkout and tracking may share neutral layout primitives only. Their routes,
+state/runtime, adapters, workflow steps, labels, calculations, and navigation stay
+inside the owning mode. A shared layout must use explicit slots or normalized props;
+it must not select behavior through `isFnbMode`, `isRetailMode`, `isSimpleMode`, or
+`isServicesMode` branches.
+
+The app route container may dispatch to a mode-owned page. It must not render an
+industry catalog, checkout, or tracking flow itself.
+
 ## State Management
 
 Shared, cross-cutting runtime state lives in the sliced **zustand** store at
@@ -274,6 +308,10 @@ Examples:
 
 If a shared file starts checking `isFnbMode`, `isServicesMode`, or `isSimpleMode`, it probably belongs in a mode folder.
 
+Shared storefront sections must not import mode-owned product cards, catalog
+toolbars, checkout pages, tracking pages, or adapters. Mode-owned wrappers may
+import shared presentation primitives, never the reverse.
+
 ## File Size Guardrails
 
 Line count is a warning signal, not the only quality metric. Still, these limits prevent another oversized shell file.
@@ -393,6 +431,12 @@ Use mode-owned tracking for mode-specific behavior:
 - F&B tracking stages
 - Services booking stages
 - Simple order stages
+- Retail product-order stages
+
+Each transaction-capable mode owns its tracking route container, runtime state,
+normalization adapter, and presentation mapping. Two modes may reuse a neutral
+frame or status primitive, but one mode must not mount another mode's tracking
+route container as its implementation.
 
 ## Map Ownership
 

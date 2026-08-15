@@ -6,9 +6,9 @@ import { SimpleCheckoutSavedAddressesModal } from './SimpleCheckoutSavedAddresse
 import { SimpleCheckoutSavedAddressSelector } from './SimpleCheckoutSavedAddressSelector.jsx';
 import { SimpleSpecialInstructionsField } from './SimpleSpecialInstructionsField.jsx';
 
-const SIMPLE_BRAND = '#0f766e';
-const SIMPLE_BRAND_DARK = '#134e4a';
-const SIMPLE_BRAND_SOFT = '#99f6e4';
+const SIMPLE_BRAND = '#176B3A';
+const SIMPLE_BRAND_DARK = '#0F5A30';
+const SIMPLE_BRAND_SOFT = '#E4C98E';
 
 export function SimpleCheckoutFulfillmentStep({
   canAddPinnedLocation = false,
@@ -69,7 +69,7 @@ export function SimpleCheckoutFulfillmentStep({
 
   return (
     <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 16 }}>
-      <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>Step 2: Fulfillment</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: '#1e293b' }}>Step 2: Fulfillment</div>
       <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>Choose how and when the customer will receive the order, then add optional notes.</div>
 
       <SimpleCheckoutFulfillmentChoices
@@ -114,14 +114,14 @@ export function SimpleCheckoutFulfillmentStep({
                   height={isMobileViewport ? 'clamp(230px, 34svh, 280px)' : 260}
                   highlighted={deliveryLocationAction === 'map'}
                   highlightColor={SIMPLE_BRAND}
-                  highlightGlow="rgba(15,118,110,0.16)"
+                  highlightGlow="rgba(23,107,58,0.16)"
                   overlayControls={(
                     <>
                       <button
                         type="button"
                         onClick={onPinMyLocation}
                         disabled={pinLocationLoading}
-                        style={{ position: 'absolute', top: 12, left: 12, maxWidth: isMobileViewport ? 'calc(100% - 68px)' : 'none', minHeight: 38, borderRadius: 999, border: `1px solid ${deliveryLocationAction === 'current' ? SIMPLE_BRAND : '#dbe5ee'}`, background: deliveryLocationAction === 'current' ? '#ecfeff' : '#ffffff', color: deliveryLocationAction === 'current' ? SIMPLE_BRAND_DARK : '#1e293b', padding: '0 12px', fontSize: 12, fontWeight: 700, cursor: pinLocationLoading ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: '0 8px 20px rgba(15,23,42,0.12)', zIndex: 11, pointerEvents: 'auto', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
+                        style={{ position: 'absolute', top: 12, left: 12, maxWidth: isMobileViewport ? 'calc(100% - 68px)' : 'none', minHeight: 38, borderRadius: 999, border: `1px solid ${deliveryLocationAction === 'current' ? SIMPLE_BRAND : '#dbe5ee'}`, background: deliveryLocationAction === 'current' ? '#FFF8E7' : '#ffffff', color: deliveryLocationAction === 'current' ? SIMPLE_BRAND_DARK : '#1e293b', padding: '0 12px', fontSize: 12, fontWeight: 700, cursor: pinLocationLoading ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: '0 8px 20px rgba(15,23,42,0.12)', zIndex: 11, pointerEvents: 'auto', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}
                       >
                         <Navigation size={15} />
                         {pinLocationLoading ? 'Locating...' : 'Use Current Location'}
@@ -129,7 +129,7 @@ export function SimpleCheckoutFulfillmentStep({
                       <button
                         type="button"
                         onClick={onStartMapPin}
-                        style={{ position: 'absolute', right: 12, bottom: 12, minHeight: 34, borderRadius: 999, border: `1px solid ${deliveryLocationAction === 'map' ? SIMPLE_BRAND_SOFT : '#dbe5ee'}`, background: deliveryLocationAction === 'map' ? '#ecfeff' : 'rgba(255,255,255,0.96)', color: deliveryLocationAction === 'map' ? SIMPLE_BRAND_DARK : '#334155', padding: '0 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, boxShadow: '0 8px 20px rgba(15,23,42,0.12)', zIndex: 11, pointerEvents: 'auto' }}
+                        style={{ position: 'absolute', right: 12, bottom: 12, minHeight: 34, borderRadius: 999, border: `1px solid ${deliveryLocationAction === 'map' ? SIMPLE_BRAND_SOFT : '#dbe5ee'}`, background: deliveryLocationAction === 'map' ? '#FFF8E7' : 'rgba(255,255,255,0.96)', color: deliveryLocationAction === 'map' ? SIMPLE_BRAND_DARK : '#334155', padding: '0 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, boxShadow: '0 8px 20px rgba(15,23,42,0.12)', zIndex: 11, pointerEvents: 'auto' }}
                       >
                         <MapPin size={14} />
                         Drag to adjust pin
@@ -150,7 +150,7 @@ export function SimpleCheckoutFulfillmentStep({
               <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: 10, alignItems: 'center', width: '100%', maxWidth: '100%', minWidth: 0 }}>
                 <div style={{ minHeight: 38, borderRadius: 12, border: `1px solid ${(deliveryLocationAction === 'saved' || deliveryLocationAction === 'current' || deliveryLocationAction === 'map') && deliveryLocationDisplayAddress ? SIMPLE_BRAND_SOFT : '#dbe5ee'}`, background: '#fff', padding: '0 12px', display: 'flex', alignItems: 'center', gap: 10, color: deliveryLocationDisplayAddress ? '#334155' : '#94a3b8', fontSize: 13, lineHeight: 1.4, minWidth: 0 }}>
                   {isMobileViewport ? (
-                    <span style={{ width: 24, height: 24, borderRadius: '50%', background: '#ecfeff', color: SIMPLE_BRAND, display: 'inline-grid', placeItems: 'center', flexShrink: 0 }}>
+                    <span style={{ width: 24, height: 24, borderRadius: '50%', background: '#FFF8E7', color: SIMPLE_BRAND, display: 'inline-grid', placeItems: 'center', flexShrink: 0 }}>
                       <MapPin size={13} />
                     </span>
                   ) : null}
@@ -158,7 +158,7 @@ export function SimpleCheckoutFulfillmentStep({
                     {deliveryLocationDisplayAddress || 'Pinned delivery address will appear here.'}
                   </span>
                 </div>
-                <button type="button" onClick={onAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ minHeight: 38, borderRadius: 12, border: `1px solid ${SIMPLE_BRAND}`, background: canAddPinnedLocation ? SIMPLE_BRAND : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isMobileViewport ? 116 : 132, width: 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(15,118,110,0.15)' : 'none' }}>
+                <button type="button" onClick={onAddPinnedLocation} disabled={!canAddPinnedLocation} style={{ minHeight: 38, borderRadius: 12, border: `1px solid ${SIMPLE_BRAND}`, background: canAddPinnedLocation ? SIMPLE_BRAND : '#f8fafc', color: canAddPinnedLocation ? '#fff' : '#94a3b8', padding: '0 14px', fontSize: 13, fontWeight: 700, cursor: canAddPinnedLocation ? 'pointer' : 'not-allowed', minWidth: isMobileViewport ? 116 : 132, width: 'auto', boxShadow: canAddPinnedLocation ? '0 8px 16px rgba(23,107,58,0.15)' : 'none' }}>
                   {isDgfyCustomerSignedIn ? 'Add Address' : 'Add Location'}
                 </button>
               </div>
@@ -185,7 +185,7 @@ export function SimpleCheckoutFulfillmentStep({
               height={isMobileViewport ? 'clamp(340px, min(70svh, calc(100svh - 220px)), 620px)' : 520}
               highlighted
               highlightColor={SIMPLE_BRAND}
-              highlightGlow="rgba(15,118,110,0.16)"
+              highlightGlow="rgba(23,107,58,0.16)"
               overlayControls={(
                 <>
                   <button
@@ -198,7 +198,7 @@ export function SimpleCheckoutFulfillmentStep({
                       onPinMyLocation();
                     }}
                     disabled={pinLocationLoading}
-                    style={{ position: 'absolute', top: 12, left: 12, minHeight: 38, borderRadius: 999, border: `1px solid ${deliveryLocationAction === 'current' ? SIMPLE_BRAND : '#dbe5ee'}`, background: deliveryLocationAction === 'current' ? '#ecfeff' : '#ffffff', color: deliveryLocationAction === 'current' ? SIMPLE_BRAND_DARK : '#1e293b', padding: '0 12px', fontSize: 12, fontWeight: 700, cursor: pinLocationLoading ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: '0 8px 20px rgba(15,23,42,0.12)', pointerEvents: 'auto', zIndex: 11 }}
+                    style={{ position: 'absolute', top: 12, left: 12, minHeight: 38, borderRadius: 999, border: `1px solid ${deliveryLocationAction === 'current' ? SIMPLE_BRAND : '#dbe5ee'}`, background: deliveryLocationAction === 'current' ? '#FFF8E7' : '#ffffff', color: deliveryLocationAction === 'current' ? SIMPLE_BRAND_DARK : '#1e293b', padding: '0 12px', fontSize: 12, fontWeight: 700, cursor: pinLocationLoading ? 'wait' : 'pointer', display: 'inline-flex', alignItems: 'center', gap: 8, boxShadow: '0 8px 20px rgba(15,23,42,0.12)', pointerEvents: 'auto', zIndex: 11 }}
                   >
                     <Navigation size={15} />
                     {pinLocationLoading ? 'Locating...' : 'Use Current Location'}
@@ -212,7 +212,7 @@ export function SimpleCheckoutFulfillmentStep({
                       stopMapOverlayInteraction(event);
                       onStartMapPin();
                     }}
-                    style={{ position: 'absolute', right: 12, bottom: 12, minHeight: 34, borderRadius: 999, border: `1px solid ${deliveryLocationAction === 'map' ? SIMPLE_BRAND_SOFT : '#dbe5ee'}`, background: deliveryLocationAction === 'map' ? '#ecfeff' : 'rgba(255,255,255,0.96)', color: deliveryLocationAction === 'map' ? SIMPLE_BRAND_DARK : '#334155', padding: '0 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, boxShadow: '0 8px 20px rgba(15,23,42,0.12)', pointerEvents: 'auto', zIndex: 11 }}
+                    style={{ position: 'absolute', right: 12, bottom: 12, minHeight: 34, borderRadius: 999, border: `1px solid ${deliveryLocationAction === 'map' ? SIMPLE_BRAND_SOFT : '#dbe5ee'}`, background: deliveryLocationAction === 'map' ? '#FFF8E7' : 'rgba(255,255,255,0.96)', color: deliveryLocationAction === 'map' ? SIMPLE_BRAND_DARK : '#334155', padding: '0 10px', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: 6, boxShadow: '0 8px 20px rgba(15,23,42,0.12)', pointerEvents: 'auto', zIndex: 11 }}
                   >
                     <MapPin size={14} />
                     Drag to Pin
