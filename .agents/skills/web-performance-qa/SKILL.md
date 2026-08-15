@@ -27,33 +27,47 @@ Activate this skill whenever a query or task involves:
 ---
 
 ## 2. Project Architecture & Ports
-POS-DGFY is structured as a React multi-app workspace with one backend Express API:
+POS-DGFY is structured as three independently deployable frontend apps (issue #322 split them out
+of the former single `apps/dgfy-web` package) sharing one trunk package, plus one backend Express
+API:
 
-* **Backend API**: `backend/` (runs on `http://localhost:5000`)
+* **Backend API**: `apps/dgfy-api/` (runs on `http://localhost:5000`)
   * Resolves separate tenant databases via the `x-company-token` header.
-* **Skupervisor (IMS Admin)**: `apps/dgfy-web/apps/skupervisor` (runs on `http://localhost:5173`)
-  * Bootstrapped via `apps/dgfy-web/apps/skupervisor/src/main.jsx` (which imports `apps/dgfy-web/src/main.jsx`).
-* **Standalone POS (Cashier PWA)**: `apps/dgfy-web/apps/pos` (runs on `http://localhost:5174`)
-  * Dedicated cashier shell and PWA manifest.
-* **Storefront (Customer Store)**: `apps/dgfy-web/apps/store` (runs on `http://localhost:5175`)
+* **Shared frontend trunk**: `packages/web-core/` (`@sieitzz/web-core`) — no build step, no
+  `node_modules` of its own; every app below depends on it via a `file:` dependency + Vite alias.
+* **Skupervisor (IMS Admin)**: `apps/dgfy-ims` (runs on `http://localhost:5173`)
+  * Bootstrapped via `apps/dgfy-ims/src/main.jsx` (which imports shared trunk code from
+    `@sieitzz/web-core/...`).
+* **Standalone POS (Cashier PWA)**: `apps/dgfy-pos` (runs on `http://localhost:5174`)
+  * Dedicated cashier shell and PWA manifest, plus its own Electron desktop shell
+    (`apps/dgfy-pos/desktop/pos-electron`).
+* **Storefront (Customer Store)**: `apps/dgfy-storefront` (runs on `http://localhost:5175`)
   * Public e-commerce portal (F&B / Hospitality bookings).
 * **Communication**:
-  * Shared state & tokens between Skupervisor and POS are synced via a `BroadcastChannel` named `auth-channel` (defined in `apps/dgfy-web/src/services/api.js`).
+  * Shared state & tokens between Skupervisor and POS are synced via a `BroadcastChannel` named
+    `auth-channel` (defined in `packages/web-core/src/services/api.js`).
   * Storefront customer session states must remain separated from staff tokens.
 
 ---
 
 ## 3. Standard Inspection Checklist
 Before modifying or debugging test specs, check:
-1. `apps/dgfy-web/package.json` and `backend/package.json` for script names.
-2. `apps/dgfy-web/apps/*/vite.config.js` for custom configs and proxy rules.
-3. `apps/dgfy-web/src/services/api.js` for Axios configurations and session key references.
-4. `apps/dgfy-web/playwright.config.js` and `.env` parameters.
+1. Each app's own `package.json` (`apps/dgfy-ims/`, `apps/dgfy-pos/`, `apps/dgfy-storefront/`) and
+   `apps/dgfy-api/package.json` for script names — there is no longer one shared frontend
+   `package.json`.
+2. Each app's own `vite.config.js` for custom configs, proxy rules, and its `@sieitzz/web-core/*`
+   alias.
+3. `packages/web-core/src/services/api.js` for Axios configurations and session key references.
+4. Each app's own `playwright.config.js` and `.env` parameters; `tests/frontend-cross-app/`'s
+   `playwright.config.js` for multi-app specs.
 
 ---
 
 ## 4. Playwright E2E Testing Config
-* **Location**: All tests must be stored under `apps/dgfy-web/tests/e2e/`.
+* **Location**: Single-app tests live under each app's own `tests/e2e/`
+  (`apps/dgfy-ims/tests/e2e/`, `apps/dgfy-pos/tests/e2e/`, `apps/dgfy-storefront/tests/e2e/`).
+  Specs that exercise more than one app at once (cross-app communication, session sync) live in
+  `tests/frontend-cross-app/tests/e2e/`, which has its own `package.json`.
 * **Execution Constraint**: **Strictly Local**. Never configure GitHub Actions or cloud triggers. Use `workers: 1` locally to prevent database locks and race conditions.
 * **Fixtures**: Configure multiple base URLs through Playwright project settings or inline helpers.
 * **Target URLs**:
@@ -64,17 +78,25 @@ Before modifying or debugging test specs, check:
 
 ---
 
-## 5. Required Local scripts (in apps/dgfy-web/package.json)
+## 5. Required Local scripts
+Each app now has its own `test:e2e*` scripts in its own `package.json`
+(`apps/dgfy-ims/package.json`, `apps/dgfy-pos/package.json`, `apps/dgfy-storefront/package.json`),
+plus a `test:security` script running that app's own `tests/e2e/security*` specs:
 ```json
 "test:e2e": "playwright test",
 "test:e2e:headed": "playwright test --headed",
 "test:e2e:ui": "playwright test --ui",
 "test:e2e:report": "playwright show-report",
-"test:e2e:skupervisor": "playwright test tests/e2e/skupervisor",
-"test:e2e:pos": "playwright test tests/e2e/pos",
-"test:e2e:store": "playwright test tests/e2e/store",
-"test:e2e:cross-app": "playwright test tests/e2e/cross-app",
-"test:e2e:security": "playwright test tests/e2e/security",
+"test:security": "playwright test tests/e2e/security-auth.spec.js tests/e2e/security-input.spec.js tests/e2e/security-headers.spec.js"
+```
+
+Cross-app E2E, Lighthouse, and k6 load checks live in `tests/frontend-cross-app/package.json`
+instead (its `webServer` config boots `apps/dgfy-api` plus all three frontend apps):
+```json
+"test:e2e": "playwright test",
+"test:e2e:headed": "playwright test --headed",
+"test:e2e:ui": "playwright test --ui",
+"test:e2e:report": "playwright show-report",
 "test:lighthouse": "lhci autorun",
 "test:load": "k6 run tests/load/smoke-load.js",
 "test:load:api": "k6 run tests/load/api-load.js"
