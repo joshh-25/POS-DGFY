@@ -78,12 +78,21 @@ const SimpleHero = ({
   } = heroStyles;
   const [isExpandedMapOpen, setIsExpandedMapOpen] = useState(false);
   const heroTheme = modeAdapter.heroTheme || {};
+  const typography = heroTheme.typography || {};
+  const heroTitleTypography = typography.heroTitle || {};
+  const heroActionTypography = typography.action || {};
+  const simpleAccentShadow = heroTheme.accentShadow || 'rgba(23,107,58,0.12)';
+  const simpleActionShadow = `0 3px 10px ${simpleAccentShadow}`;
+  const simpleHeroShadow = `0 4px 16px ${simpleAccentShadow}`;
+  const simpleStatusShadow = `0 3px 8px ${simpleAccentShadow}`;
+  const simpleProfileShadow = `0 6px 16px ${simpleAccentShadow}`;
+  const simpleContainerShadow = '0 8px 24px rgba(23,107,58,0.06)';
   const followersLabel = followEnabled ? formatFollowersLabel(followState?.followersCount) : '';
   const selectedBranchLabel = String(selectedLocation?.name || simpleHeroModel.locationLabel || '').trim();
   const desktopHeroMetaItems = [
     simpleHeroModel.ratingLabel ? (
       <span key="rating" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-        <Star size={16} fill="#5eead4" color="#5eead4" />
+        <Star size={16} fill="#D5B36B" color="#D5B36B" />
         {simpleHeroModel.ratingLabel}
       </span>
     ) : null,
@@ -99,7 +108,7 @@ const SimpleHero = ({
   const mobileHeroMetaItems = [
     simpleHeroModel.ratingLabel ? (
       <span key="rating" style={{ display: 'inline-flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-        <Star size={14} fill="#5eead4" color="#5eead4" />
+        <Star size={14} fill="#D5B36B" color="#D5B36B" />
         {simpleHeroModel.ratingLabel}
       </span>
     ) : null,
@@ -108,9 +117,18 @@ const SimpleHero = ({
   ].filter(Boolean);
   const storefrontCityLabel = String(selectedLocation?.city || selectedStore?.city || '').trim();
   const addressText = String(simpleHeroModel.addressLine || simpleHeroModel.locationLabel || '').trim();
-  const aboutText = String(simpleHeroModel.sectionAboutText || '').trim();
+  const aboutText = String(simpleHeroModel.aboutText || '').trim();
   const hasAboutSection = aboutText.length > 0;
   const hasAboutToggle = aboutText.length > 180;
+  const galleryImages = Array.isArray(simpleHeroModel.galleryImages) ? simpleHeroModel.galleryImages : [];
+  const galleryImagesFull = Array.isArray(simpleHeroModel.galleryImagesFull)
+    ? simpleHeroModel.galleryImagesFull
+    : galleryImages;
+  const galleryOverflowCount = Number.isFinite(Number(simpleHeroModel.galleryOverflowCount))
+    ? Number(simpleHeroModel.galleryOverflowCount)
+    : Math.max(0, galleryImagesFull.length - galleryImages.length);
+  const hasGallerySection = galleryImages.length > 0;
+  const hasAboutOrGallerySection = hasAboutSection || hasGallerySection;
   const hasAddress = Boolean(addressText);
   const hasMapData = Array.isArray(simpleHeroModel.mapStores) && simpleHeroModel.mapStores.length > 0;
   const visibleWhyChooseUs = Array.isArray(simpleHeroModel.whyChooseUs) ? simpleHeroModel.whyChooseUs.slice(0, MAX_STOREFRONT_WHY_CHOOSE_US) : [];
@@ -122,7 +140,7 @@ const SimpleHero = ({
   });
   const hasWhyChooseUs = visibleWhyChooseUs.length > 0;
   const hasContactRows = visibleContactRows.length > 0;
-  const desktopColumns = hasAboutSection
+  const desktopColumns = hasAboutOrGallerySection
     ? (hasWhyChooseUs ? '1fr 1.6fr 0.92fr' : '1fr 1.6fr')
     : (hasWhyChooseUs ? '1.6fr 0.92fr' : '1fr');
   const storefrontShareUrl = selectedStore?.slug
@@ -133,7 +151,7 @@ const SimpleHero = ({
     : '';
 
   return (
-    <section style={{ marginBottom: 40 }}>
+    <section style={{ marginBottom: isMobileViewport ? 0 : 40, background: isMobileViewport ? '#fff' : undefined }}>
       <SharedStorefrontHeaderNav
         isMobileViewport={isMobileViewport}
         bodyFont={heroTheme.bodyFont}
@@ -214,7 +232,7 @@ const SimpleHero = ({
           background: simpleHeroModel.coverImageUrl && !isBrandingImageBlocked(`hero-cover:${selectedStore.slug}`)
             ? `url(${simpleHeroModel.coverImageUrl}) center/cover`
             : `linear-gradient(135deg, ${heroTheme.surface || '#0f172a'} 0%, ${heroTheme.accentDark || '#134e4a'} 52%, ${heroTheme.accent || '#0f766e'} 100%)`,
-          boxShadow: STYLES.shadow.lg
+          boxShadow: simpleHeroShadow
         }}
         backgroundChildren={
           <>
@@ -228,8 +246,8 @@ const SimpleHero = ({
                 onError={() => markBrandingImageError(`hero-cover:${selectedStore.slug}`)}
               />
             )}
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(15,23,42,0.22) 0%, rgba(15,23,42,0.72) 76%, rgba(15,23,42,0.92) 100%)' }} />
-            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(6,10,18,0.68) 0%, rgba(6,10,18,0.36) 46%, rgba(6,10,18,0.1) 100%)' }} />
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(180deg, rgba(0,0,0,0.18) 0%, rgba(0,0,0,0.54) 76%, rgba(0,0,0,0.70) 100%)' }} />
+            <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(90deg, rgba(0,0,0,0.48) 0%, rgba(0,0,0,0.22) 46%, rgba(0,0,0,0.08) 100%)' }} />
           </>
         }
       >
@@ -243,7 +261,7 @@ const SimpleHero = ({
         />
         {isMobileViewport && (
           <div style={{ position: 'absolute', top: 16, left: 16, zIndex: 10, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
-            <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff" style={{ fontFamily: heroTheme.bodyFont, boxShadow: '0 4px 12px rgba(0,0,0,0.15)' }}>{simpleHeroModel.statusLabel}</Badge>
+            <Badge background={selectedStore?.storefront_open ? '#22c55e' : '#b45309'} color="#fff" style={{ fontFamily: heroTheme.bodyFont, boxShadow: simpleStatusShadow }}>{simpleHeroModel.statusLabel}</Badge>
           </div>
         )}
         {!isMobileViewport && (
@@ -269,14 +287,15 @@ const SimpleHero = ({
                 <SharedStorefrontHeroNameCluster
                   name={simpleHeroModel.name}
                   textColor="#fff"
-                  fontSize={50}
+                  fontSize={isMobileViewport ? (heroTitleTypography.mobile || 24) : (heroTitleTypography.desktop || 46)}
+                  fontWeight={heroTitleTypography.weight || 800}
                   fontFamily={heroTheme.displayFont}
                   followEnabled={followEnabled}
                   followState={followState}
                   handleFollowAction={handleFollowAction}
                 />
                 {simpleHeroModel.tagline ? (
-                  <p style={{ margin: 0, color: '#ccfbf1', fontSize: 20, fontWeight: 700, lineHeight: 1.3, fontFamily: heroTheme.bodyFont }}>{simpleHeroModel.tagline}</p>
+                  <p style={{ margin: 0, color: heroTheme.accentSoft || '#FFF8E7', fontSize: 20, fontWeight: 700, lineHeight: 1.3, fontFamily: heroTheme.bodyFont }}>{simpleHeroModel.tagline}</p>
                 ) : (
                   <p style={{ margin: 0, color: 'rgba(255,255,255,0.88)', fontSize: 16, maxWidth: 620, lineHeight: 1.6, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
                 )}
@@ -314,7 +333,7 @@ const SimpleHero = ({
                   return;
                 }
                 document.getElementById('storefront-catalog-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-              }} style={{ minWidth: 150, background: heroTheme.accent || '#0f766e', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: '0 10px 25px rgba(15,118,110,0.28)', border: 'none', fontWeight: 900, fontFamily: heroTheme.bodyFont }}>
+              }} style={{ minWidth: 150, background: heroTheme.accent || '#176B3A', color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8, height: 42, borderRadius: 12, boxShadow: simpleActionShadow, border: 'none', fontSize: heroActionTypography.desktop || 15, fontWeight: heroActionTypography.weight || 700, fontFamily: heroTheme.bodyFont }}>
                 <MousePointer2 size={18} />
                 {cartCount > 0 ? 'Open Cart' : (modeAdapter.primaryActionLabel || 'Start Ordering')}
               </PrimaryButton>
@@ -332,7 +351,7 @@ const SimpleHero = ({
           borderRadius: '50%',
           background: '#fff',
           border: '3px solid #fff',
-          boxShadow: '0 10px 30px rgba(0,0,0,0.25)',
+          boxShadow: simpleProfileShadow,
           overflow: 'hidden',
           zIndex: 20,
           display: 'flex',
@@ -347,7 +366,7 @@ const SimpleHero = ({
               onError={() => markBrandingImageError(`hero-profile:${selectedStore.slug}`)}
             />
           ) : (
-            <div style={{ fontSize: isMobileViewport ? 32 : 66, fontWeight: 900, color: heroTheme.accentDark || '#134e4a', fontFamily: heroTheme.displayFont }}>{simpleHeroModel.name.charAt(0)}</div>
+            <div style={{ fontSize: isMobileViewport ? 32 : 66, fontWeight: heroTitleTypography.weight || 800, color: heroTheme.accentDark || '#134e4a', fontFamily: heroTheme.displayFont }}>{simpleHeroModel.name.charAt(0)}</div>
           )}
         </div>
       </StorefrontHeroShell>
@@ -362,7 +381,7 @@ const SimpleHero = ({
                 </GhostButton>
               )}
               {simpleHeroModel.actions?.canCall && (
-                <PrimaryButton onClick={() => openStorefrontActionLink(simpleHeroModel.actions.callHref)} style={{ flex: 1, background: heroTheme.accent || '#0f766e', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, border: 'none', fontWeight: 600, fontSize: 13, fontFamily: heroTheme.bodyFont }}>
+                <PrimaryButton onClick={() => openStorefrontActionLink(simpleHeroModel.actions.callHref)} style={{ flex: 1, background: heroTheme.accent || '#0f766e', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, height: 38, borderRadius: 8, border: 'none', boxShadow: simpleActionShadow, fontWeight: 600, fontSize: 13, fontFamily: heroTheme.bodyFont }}>
                   <Phone size={16} />
                   Call
                 </PrimaryButton>
@@ -373,7 +392,8 @@ const SimpleHero = ({
               <SharedStorefrontHeroNameCluster
                 name={simpleHeroModel.name}
                 textColor="#0f172a"
-                fontSize={24}
+                fontSize={heroTitleTypography.mobile || 24}
+                fontWeight={heroTitleTypography.weight || 800}
                 fontFamily={heroTheme.displayFont}
                 followEnabled={followEnabled}
                 followState={followState}
@@ -381,7 +401,7 @@ const SimpleHero = ({
               />
 
               {simpleHeroModel.tagline ? (
-                <p style={{ margin: 0, color: heroTheme.accent || '#0f766e', fontSize: 14, fontWeight: 600, fontStyle: 'italic', fontFamily: heroTheme.bodyFont }}>{simpleHeroModel.tagline}</p>
+                <p style={{ margin: 0, color: heroTheme.accent || '#0f766e', fontSize: 14, fontWeight: 500, fontStyle: 'italic', fontFamily: heroTheme.bodyFont }}>{simpleHeroModel.tagline}</p>
               ) : (
                 <p style={{ margin: 0, color: '#475569', fontSize: 13, lineHeight: 1.5, fontFamily: heroTheme.bodyFont }}>{modeAdapter.heroDescription}</p>
               )}
@@ -408,16 +428,21 @@ const SimpleHero = ({
             background: '#ffffff',
             border: '1px solid #e8edf3',
             borderRadius: 24,
-            boxShadow: '0 18px 42px rgba(15, 23, 42, 0.07)',
+            boxShadow: simpleContainerShadow,
             display: 'grid',
             gridTemplateColumns: desktopColumns,
             gap: 26
           }}>
-            {hasAboutSection && (
+            {hasAboutOrGallerySection && (
               <SimpleHeroAbout
                 STYLES={STYLES}
                 aboutText={aboutText}
                 hasAboutToggle={hasAboutToggle}
+                galleryImages={galleryImages}
+                galleryImagesFull={galleryImagesFull}
+                galleryOverflowCount={galleryOverflowCount}
+                hasGallerySection={hasGallerySection}
+                isMobileViewport={isMobileViewport}
                 heroTheme={heroTheme}
               />
             )}
@@ -457,6 +482,11 @@ const SimpleHero = ({
           aboutText={aboutText}
           addressText={addressText}
           hasAboutSection={hasAboutSection}
+          hasAboutToggle={hasAboutToggle}
+          hasGallerySection={hasGallerySection}
+          galleryImages={galleryImages}
+          galleryImagesFull={galleryImagesFull}
+          galleryOverflowCount={galleryOverflowCount}
           hasContactRows={hasContactRows}
           hasMapData={hasMapData}
           hasWhyChooseUs={hasWhyChooseUs}

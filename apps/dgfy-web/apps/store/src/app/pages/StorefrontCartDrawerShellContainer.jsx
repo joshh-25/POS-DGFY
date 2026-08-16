@@ -15,6 +15,8 @@ import { FnbCartDrawerHeader } from '../../modes/fnb/checkout/components/FnbCart
 import { FnbCartDrawerSurface } from '../../modes/fnb/checkout/pages/FnbCartDrawerSurface.jsx';
 import { FnbCheckoutRouteContainer } from '../../modes/fnb/checkout/pages/FnbCheckoutRouteContainer.jsx';
 import { FnbTrackingRouteContainer } from '../../modes/fnb/tracking/pages/FnbTrackingRouteContainer.jsx';
+import { RetailTrackingRouteContainer } from '../../modes/retail/tracking/pages/RetailTrackingRouteContainer.jsx';
+import { TrackingDrawerMount } from '../../tracking/components/TrackingDrawerMount.jsx';
 
 // Cart/checkout drawer shell — cross-mode composition (fnb/services/simple/shared) that mounts
 // the follow floating action, cart FABs/drawers per mode, the shared checkout-drawer frame
@@ -69,6 +71,8 @@ export function StorefrontCartDrawerShellContainer(props) {
     fnbCheckoutRouteProps,
     serviceBookingReviewProps,
     fnbTrackingRouteProps,
+    retailTrackingRouteProps,
+    simpleTrackingDrawerProps,
     showOrderSuccessAnimation
   } = props;
 
@@ -81,17 +85,17 @@ export function StorefrontCartDrawerShellContainer(props) {
   // button+drawer are redundant there — hidden the same way isSimpleCartSurfaceMode already
   // hides MSME's equivalent on its own order subpage. Scoped to retail only: the other
   // default-like modes' DefaultOrderPage has no such summary of its own yet.
-  const shouldRenderDefaultCartSurface = isDefaultCartSurfaceMode && !(isRetailMode && isResolvedOrderSubpage);
+  const shouldRenderDefaultCartSurface = isDefaultCartSurfaceMode
+    && !(isRetailMode && (isResolvedOrderSubpage || isFnbDetailsSubpage));
   // Each mode's own cart-fly-animation color/icon — F&B's orange is reproduced explicitly
   // (previously hardcoded inside StorefrontCartFlyAnimations itself); Retail gets its own blue
-  // (matching DefaultProductCartFab.jsx); Services/others fall back to the component's own
-  // default teal, unchanged from before this mode was made configurable.
+  // (matching DefaultProductCartFab.jsx); Simple uses its green/cream presentation palette.
   const cartFlyAnimationProps = isFnbMode
     ? { accentColor: '#ea580c', accentSoft: 'rgba(249,115,22,0.16)', accentStrong: 'rgba(251,146,60,0.32)', borderColor: 'rgba(249,115,22,0.24)', icon: ShoppingCart }
     : isRetailMode
       ? { accentColor: '#1a4e8d', accentSoft: 'rgba(26,78,141,0.16)', accentStrong: 'rgba(26,78,141,0.32)', borderColor: 'rgba(26,78,141,0.24)', icon: ShoppingCart }
       : isSimpleMode
-        ? { accentColor: '#0f766e', accentSoft: 'rgba(15,118,110,0.16)', accentStrong: 'rgba(45,212,191,0.32)', borderColor: 'rgba(15,118,110,0.22)', icon: ShoppingCart }
+        ? { accentColor: '#176B3A', accentSoft: 'rgba(23,107,58,0.14)', accentStrong: 'rgba(23,107,58,0.24)', borderColor: 'rgba(23,107,58,0.22)', icon: ShoppingCart }
         : {};
 
   return (
@@ -102,7 +106,7 @@ export function StorefrontCartDrawerShellContainer(props) {
       {(isServicesMode || isFnbMode || isRetailMode || isSimpleMode) && (
         <StorefrontCartFlyAnimations animations={serviceCartFlyAnimations} {...cartFlyAnimationProps} />
       )}
-      {!isAccountDrawerOpen && isSimpleCartSurfaceMode && (
+      {!isAccountDrawerOpen && isSimpleCartSurfaceMode && !isFnbDetailsSubpage && (
         <>
           <SimpleCartFloatingButton {...simpleCartDrawerProps.floatingButtonProps} />
 
@@ -238,10 +242,13 @@ export function StorefrontCartDrawerShellContainer(props) {
               <ServiceBookingReviewContainer {...serviceBookingReviewProps} />
             )}
 
-            <FnbTrackingRouteContainer {...fnbTrackingRouteProps} renderDrawer={false} />
+            {!isSimpleMode && !isRetailMode && <FnbTrackingRouteContainer {...fnbTrackingRouteProps} renderDrawer={false} />}
+            {isRetailMode && <RetailTrackingRouteContainer {...retailTrackingRouteProps} renderDrawer={false} />}
 
       </StorefrontCheckoutDrawerFrame>
-      <FnbTrackingRouteContainer {...fnbTrackingRouteProps} visible={false} />
+      {!isSimpleMode && !isRetailMode && <FnbTrackingRouteContainer {...fnbTrackingRouteProps} visible={false} />}
+      {isRetailMode && <RetailTrackingRouteContainer {...retailTrackingRouteProps} visible={false} />}
+      {isSimpleMode && <TrackingDrawerMount {...simpleTrackingDrawerProps} />}
       <StorefrontOrderSuccessOverlay visible={showOrderSuccessAnimation} />
     </>
   );

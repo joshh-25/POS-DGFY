@@ -10,7 +10,7 @@ topic: pos_shared_parked_sales_and_cashier_handoff
 supersedes: 0061-pos-parked-sale-lifecycle-and-shift-safe-resume.md
 ---
 
-# ADR 0064: POS Shared Parked Sales and Cashier Handoff
+# ADR 0065: POS Shared Parked Sales and Cashier Handoff
 
 ## Status
 

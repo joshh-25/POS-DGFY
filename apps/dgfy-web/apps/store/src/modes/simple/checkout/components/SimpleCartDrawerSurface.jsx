@@ -29,8 +29,8 @@ export function SimpleCartDrawerSurface({
   servicesPrimaryDark,
   servicesPrimaryShadowStrong
 }) {
-  const primaryTint = '#ecfeff';
-  const primarySoftBorder = '#99f6e4';
+  const primaryTint = '#FFF8E7';
+  const primarySoftBorder = '#E4C98E';
 
   return (
     <div
@@ -80,7 +80,7 @@ export function SimpleCartDrawerSurface({
             {isMobileViewport ? (
               <div style={{ width: 56, height: 5, borderRadius: 999, background: '#d1d5db', margin: '0 auto 10px' }} />
             ) : null}
-            <div style={{ fontSize: 24, fontWeight: 900, color: '#0f172a' }}>Your Cart ({cartCount})</div>
+            <div style={{ fontSize: 24, fontWeight: 800, color: '#0f172a' }}>Your Cart ({cartCount})</div>
             <div style={{ fontSize: 13, color: '#64748b' }}>Review your items before checkout.</div>
           </div>
           <button
@@ -95,7 +95,7 @@ export function SimpleCartDrawerSurface({
         <div style={{ flex: 1, minHeight: 0, overflowY: 'auto', padding: isMobileViewport ? '14px 16px 18px' : '16px 20px 18px', display: 'grid', gap: isMobileViewport ? 10 : 12, alignContent: 'start' }}>
           {cart.length === 0 ? (
             <div style={{ border: '1px dashed #cbd5e1', borderRadius: 20, background: '#f8fafc', padding: '28px 20px', minHeight: isMobileViewport ? 240 : 320, textAlign: 'center', display: 'grid', alignContent: 'center', gap: 8 }}>
-              <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>No product added yet</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#0f172a' }}>No product added yet</div>
               <div style={{ fontSize: 13, lineHeight: 1.6, color: '#64748b' }}>
                 Add a product from the catalog to continue to checkout.
               </div>
@@ -163,10 +163,10 @@ export function SimpleCartDrawerSurface({
 
           <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 14, display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12 }}>
             <div style={{ display: 'grid', gap: 6 }}>
-              <div style={{ fontSize: 18, fontWeight: 900, color: '#0f172a' }}>Total</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#0f172a' }}>Total</div>
               <div style={{ fontSize: 13, color: '#64748b' }}>{cartCount} item{cartCount === 1 ? '' : 's'}</div>
             </div>
-            <div style={{ fontSize: isMobileViewport ? 26 : 32, fontWeight: 900, color: '#0f172a', textAlign: 'right' }}>{money(cartTotal)}</div>
+            <div style={{ fontSize: isMobileViewport ? 26 : 32, fontWeight: 800, color: '#0f172a', textAlign: 'right' }}>{money(cartTotal)}</div>
           </div>
 
           <button
@@ -180,7 +180,7 @@ export function SimpleCartDrawerSurface({
               background: cart.length === 0 ? '#cbd5e1' : `linear-gradient(135deg,${servicesPrimary},${servicesPrimaryDark})`,
               color: '#fff',
               fontSize: 16,
-              fontWeight: 900,
+              fontWeight: 700,
               cursor: cart.length === 0 ? 'not-allowed' : 'pointer',
               boxShadow: cart.length === 0 ? 'none' : `0 14px 30px ${servicesPrimaryShadowStrong}`
             }}

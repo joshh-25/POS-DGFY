@@ -7,7 +7,7 @@ last_reviewed: 2026-08-13
 review_by: 2027-02-12
 applies_to: architecture_decision
 topic: pos_parked_sale_lifecycle_and_shift_safe_resume
-superseded_by: 0064-pos-shared-parked-sales-and-cashier-handoff.md
+superseded_by: 0065-pos-shared-parked-sales-and-cashier-handoff.md
 ---
 
 # ADR 0061: POS Parked Sale Lifecycle and Shift-Safe Resume

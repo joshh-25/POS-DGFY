@@ -1,8 +1,8 @@
 import { ChevronDown, ChevronLeft, ChevronRight, Lock, ShoppingBag, X } from 'lucide-react';
 
-const SIMPLE_BRAND = '#0f766e';
-const SIMPLE_BRAND_DARK = '#134e4a';
-const SIMPLE_BRAND_SHADOW = 'rgba(15,118,110,.28)';
+const SIMPLE_BRAND = '#176B3A';
+const SIMPLE_BRAND_DARK = '#0F5A30';
+const SIMPLE_BRAND_SHADOW = 'rgba(23,107,58,.16)';
 
 /**
  * MSME (Simple) mobile checkout summary sheet and persistent action footer.
@@ -71,7 +71,7 @@ export function SimpleCheckoutMobileSummaryPanel({
             <div style={{ padding: '10px 16px 14px', borderBottom: '1px solid #e2e8f0', display: 'grid', gap: 12 }}>
               <div style={{ width: 56, height: 5, borderRadius: 999, background: '#cbd5e1', margin: '0 auto' }} />
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
-                <div style={{ fontSize: 22, fontWeight: 800, color: '#0f172a' }}>Order Summary</div>
+                <div style={{ fontSize: 22, fontWeight: 700, color: '#0f172a' }}>Order Summary</div>
                 <button type="button" onClick={() => setSummaryOpen(false)} style={{ width: 28, height: 28, borderRadius: 12, border: '1px solid #dbe5ee', background: '#fff', color: '#334155', display: 'grid', placeItems: 'center', cursor: 'pointer' }}>
                   <X size={18} />
                 </button>
@@ -98,7 +98,7 @@ export function SimpleCheckoutMobileSummaryPanel({
                       <div style={{ fontSize: 16, fontWeight: 700, color: '#0f172a', lineHeight: 1.2 }}>{line.name}</div>
                       <div style={{ fontSize: 13, color: '#64748b' }}>x {Math.max(1, Number(line.quantity || 1))}</div>
                     </div>
-                    <div style={{ fontSize: 15, fontWeight: 800, color: '#0f172a', whiteSpace: 'nowrap' }}>{money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0))}</div>
+                    <div style={{ fontSize: 15, fontWeight: 700, color: '#0f172a', whiteSpace: 'nowrap' }}>{money((Number(line.quantity || 0) || 0) * (Number(line.price || 0) || 0))}</div>
                   </div>
                 ))}
               </div>

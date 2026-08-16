@@ -2,8 +2,8 @@ import { CalendarDays, Clock3, Zap } from 'lucide-react';
 import { SelectableOptionCard } from '../../../../shared/components/checkout/SelectableOptionCard.jsx';
 import { SimpleOrderMethodSelector } from './SimpleOrderMethodSelector.jsx';
 
-const SIMPLE_BRAND = '#0f766e';
-const SIMPLE_BRAND_SHADOW_STRONG = 'rgba(15,118,110,0.24)';
+const SIMPLE_BRAND = '#176B3A';
+const SIMPLE_BRAND_SHADOW_STRONG = 'rgba(23,107,58,0.16)';
 
 /**
  * MSME's combined "Order Type + Date/Time" section, mirroring FnbCheckoutFulfillmentChoices.jsx's
@@ -42,9 +42,9 @@ export function SimpleCheckoutFulfillmentChoices({
             icon={({ size }) => <Zap size={size} />}
             active={fnbScheduleMode === 'asap'}
             activeBorderColor={SIMPLE_BRAND}
-            activeBackground="#ecfeff"
+            activeBackground="#FFF8E7"
             activeTextColor={SIMPLE_BRAND}
-            activeIconBackground="#ccfbf1"
+            activeIconBackground="#FFF7E6"
             activeIconColor={SIMPLE_BRAND}
             inactiveBorderColor="#dbe5ee"
             inactiveTextColor="#334155"
@@ -63,9 +63,9 @@ export function SimpleCheckoutFulfillmentChoices({
             icon={({ size }) => <CalendarDays size={size} />}
             active={fnbScheduleMode === 'schedule'}
             activeBorderColor={SIMPLE_BRAND}
-            activeBackground="#ecfeff"
+            activeBackground="#FFF8E7"
             activeTextColor={SIMPLE_BRAND}
-            activeIconBackground="#ccfbf1"
+            activeIconBackground="#FFF7E6"
             activeIconColor={SIMPLE_BRAND}
             inactiveBorderColor="#dbe5ee"
             inactiveTextColor="#334155"

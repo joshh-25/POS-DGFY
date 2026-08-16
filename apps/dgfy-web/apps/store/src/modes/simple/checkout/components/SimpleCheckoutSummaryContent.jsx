@@ -1,8 +1,8 @@
 import { ShieldCheck } from 'lucide-react';
 import { OrderSummaryCard } from '../../../../shared/components/checkout/OrderSummaryCard.jsx';
 
-const SIMPLE_ACCENT = '#0f766e';
-const SIMPLE_ACCENT_SOFT = '#99f6e4';
+const SIMPLE_ACCENT = '#176B3A';
+const SIMPLE_ACCENT_SOFT = '#E4C98E';
 const SIMPLE_ACCENT_TINT = '#f0fdfa';
 
 function SimpleCheckoutTrustCard({ displayFont }) {
@@ -18,7 +18,7 @@ function SimpleCheckoutTrustCard({ displayFont }) {
 }
 
 /** MSME (Simple) checkout order summary. Structurally mirrors FnbCheckoutSummaryContent
- * (shared OrderSummaryCard + trust card) while keeping MSME's own teal accent. */
+ * (shared OrderSummaryCard + trust card) while keeping MSME's own forest-green accent. */
 export function SimpleCheckoutSummaryContent({
   bodyFont,
   cart = [],

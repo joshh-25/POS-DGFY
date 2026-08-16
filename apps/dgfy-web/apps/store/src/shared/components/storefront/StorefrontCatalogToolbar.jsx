@@ -35,26 +35,47 @@ const StorefrontCatalogToolbar = ({
   const itemNounSingular = modeAdapter.catalogItemNounSingular || 'item';
   const itemNounPlural = modeAdapter.catalogItemNounPlural || 'items';
   const toolbarTheme = modeAdapter.heroTheme || {};
-  const toolbarAccent = toolbarTheme.accent || STYLES.colors.dark;
-  const toolbarAccentDark = toolbarTheme.accentDark || STYLES.colors.dark;
-  const toolbarAccentSoft = toolbarTheme.accentSoft || STYLES.colors.border;
-  const toolbarSurface = '#ffffff';
-  const toolbarBorder = modeAdapter.isRetailMode
-    ? (toolbarTheme.palette?.border || toolbarTheme.borderSoft || '#e2e8f0')
+  const isSimpleMode = modeAdapter.isSimpleMode;
+  const isRetailMode = modeAdapter.isRetailMode;
+  const isProductMode = isRetailMode || isSimpleMode;
+  const catalogPalette = toolbarTheme.catalogPalette || toolbarTheme.palette || {};
+  const toolbarAccent = catalogPalette.primary || toolbarTheme.accent || STYLES.colors.dark;
+  const toolbarAccentDark = catalogPalette.primaryHover || toolbarTheme.accentDark || STYLES.colors.dark;
+  const toolbarAccentSoft = catalogPalette.accentSoft || toolbarTheme.accentSoft || STYLES.colors.border;
+  const toolbarSurface = catalogPalette.surface || '#ffffff';
+  const toolbarBorder = isProductMode
+    ? (catalogPalette.border || toolbarTheme.borderSoft || '#e2e8f0')
     : '#edd4bc';
-  const toolbarShadow = modeAdapter.isRetailMode ? 'rgba(26,78,141,0.08)' : 'rgba(73,38,20,0.06)';
-  const toolbarAccentShadow = modeAdapter.isRetailMode ? 'rgba(26,78,141,0.24)' : 'rgba(217,119,6,0.28)';
-  const toolbarCategoryActiveBackground = modeAdapter.isRetailMode ? toolbarAccentSoft : '#fff7ed';
-  const toolbarCategoryActiveBorder = modeAdapter.isRetailMode ? toolbarBorder : '#fed7aa';
+  const toolbarShadow = isRetailMode
+    ? 'rgba(26,78,141,0.08)'
+    : isSimpleMode ? 'rgba(108,75,20,0.07)' : 'rgba(73,38,20,0.06)';
+  const toolbarAccentShadow = isRetailMode
+    ? 'rgba(26,78,141,0.24)'
+    : isSimpleMode ? 'rgba(23,107,58,0.18)' : 'rgba(217,119,6,0.28)';
+  const toolbarCategoryActiveBackground = isProductMode ? toolbarAccentSoft : '#fff7ed';
+  const toolbarCategoryActiveBorder = isProductMode ? (catalogPalette.borderStrong || toolbarBorder) : '#fed7aa';
   const toolbarTextPrimary = toolbarTheme.textPrimary || STYLES.colors.dark;
   const toolbarTextMuted = toolbarTheme.textMuted || STYLES.colors.muted;
   const toolbarBodyFont = toolbarTheme.bodyFont || "'Avenir Next', 'Segoe UI', sans-serif";
   const toolbarDisplayFont = toolbarTheme.displayFont || toolbarBodyFont;
+  const typography = toolbarTheme.typography || {};
+  const catalogTitleTypography = typography.catalogTitle || {};
+  const catalogLabelTypography = typography.label || {};
   const [isMobileSearchOpen, setIsMobileSearchOpen] = useState(false);
 
   if (isMobileViewport) {
     // Keep the category and filter rows aligned with the mobile catalog gutter.
     const mobileToolbarWidth = 'calc(100% - 32px)';
+    const mobileCategoryBorder = isRetailMode
+      ? 'rgba(26,78,141,0.22)'
+      : isSimpleMode ? 'rgba(228,201,142,0.9)' : '#f1f5f9';
+    const mobileCategoryActiveBackground = isRetailMode
+      ? 'rgba(26,78,141,0.14)'
+      : isSimpleMode ? '#FFFBF0' : toolbarCategoryActiveBackground;
+    const mobileCategoryActiveBorder = isRetailMode
+      ? 'rgba(26,78,141,0.38)'
+      : isSimpleMode ? 'rgba(23,107,58,0.42)' : toolbarCategoryActiveBorder;
+    const mobileCategoryBorderWidth = isRetailMode || isSimpleMode ? 1.5 : 1;
     const categoryOptions = [
       { key: '', label: 'All', count: filteredFnbViewModel.menuItems.length, iconToken: 'menu' },
       ...fnbSections.map((section) => ({
@@ -77,6 +98,7 @@ const StorefrontCatalogToolbar = ({
                   value={catalogSearch}
                   onChange={(event) => setCatalogSearch(event.target.value)}
                   placeholder={modeAdapter.catalogSearchPlaceholder}
+                  aria-label="Search catalog products"
                   style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, fontSize: 13, color: toolbarTextPrimary, fontFamily: modeAdapter.heroTheme?.bodyFont }}
                 />
                 <button
@@ -90,7 +112,7 @@ const StorefrontCatalogToolbar = ({
               </label>
             ) : (
               <>
-                <div style={{ fontSize: 16, fontWeight: 700, color: toolbarTextPrimary, fontFamily: toolbarDisplayFont, flexShrink: 0 }}>Browse by Category</div>
+                <div style={{ fontSize: isSimpleMode ? (catalogTitleTypography.mobile || 16) : 16, fontWeight: isSimpleMode ? (catalogTitleTypography.weight || 700) : 700, color: toolbarTextPrimary, fontFamily: toolbarDisplayFont, flexShrink: 0 }}>Browse by Category</div>
                 <button
                   type="button"
                   onClick={() => setIsMobileSearchOpen(true)}
@@ -106,12 +128,17 @@ const StorefrontCatalogToolbar = ({
             {categoryOptions.map((option) => {
               const isActive = option.key === (resolvedFnbSection || '');
               const OptionIcon = FNB_CATEGORY_ICON_MAP[option.iconToken] || Sparkles;
+              const categoryLabelFontSize = isSimpleMode ? (catalogLabelTypography.size || 12) : 12;
+              const categoryLabelFontWeight = isSimpleMode
+                ? (catalogLabelTypography.weight || 700)
+                : (isActive ? 800 : 700);
+              const categoryLabelLineHeight = isSimpleMode ? (catalogLabelTypography.lineHeight || 1.15) : 1.15;
               return (
-                <button key={option.key || 'all'} type="button" onClick={() => setActiveServiceTab(option.key)} style={{ scrollSnapAlign: 'start', flexShrink: 0, width: 80, height: 76, borderRadius: 16, background: isActive ? toolbarCategoryActiveBackground : '#fff', border: isActive ? `1px solid ${toolbarCategoryActiveBorder}` : '1px solid #f1f5f9', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '8px 6px 7px', cursor: 'pointer', boxShadow: isActive ? 'none' : '0 4px 12px rgba(15,23,42,0.03)', transition: 'all 0.2s ease' }}>
+                <button key={option.key || 'all'} type="button" onClick={() => setActiveServiceTab(option.key)} style={{ scrollSnapAlign: 'start', flexShrink: 0, width: 80, height: 76, borderRadius: 16, background: isActive ? mobileCategoryActiveBackground : (isSimpleMode ? '#FFFBF0' : '#fff'), border: `${mobileCategoryBorderWidth}px solid ${isActive ? mobileCategoryActiveBorder : mobileCategoryBorder}`, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '8px 6px 7px', cursor: 'pointer', boxShadow: isActive ? 'none' : '0 4px 12px rgba(15,23,42,0.03)', transition: 'all 0.2s ease' }}>
                   <div style={{ width: 28, height: 28, display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: 6, color: isActive ? toolbarAccent : '#64748b' }}>
                     <OptionIcon size={18} />
                   </div>
-                  <div style={{ fontSize: 12, fontWeight: isActive ? 800 : 700, color: isActive ? toolbarAccent : '#475569', textAlign: 'center', lineHeight: 1.15, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis', minHeight: 28, maxWidth: '100%', fontFamily: modeAdapter.heroTheme?.bodyFont }}>
+                  <div style={{ fontSize: categoryLabelFontSize, fontWeight: categoryLabelFontWeight, color: isActive ? toolbarAccent : '#475569', textAlign: 'center', lineHeight: categoryLabelLineHeight, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', textOverflow: 'ellipsis', minHeight: 28, maxWidth: '100%', fontFamily: modeAdapter.heroTheme?.bodyFont }}>
                     {option.label}
                   </div>
                 </button>
@@ -133,9 +160,9 @@ const StorefrontCatalogToolbar = ({
                 { value: 'price_asc', label: 'Low to High' },
                 { value: 'price_desc', label: 'High to Low' }
               ]}
-              leading={<span style={{ display: 'inline-flex', alignItems: 'center', color: toolbarAccent }}><SlidersHorizontal size={16} /></span>}
+              leading={<span style={{ display: 'inline-flex', alignItems: 'center', color: toolbarAccent }}><Filter size={16} /></span>}
               containerStyle={{ minWidth: 118 }}
-              triggerStyle={{ minHeight: 36, borderRadius: 18, border: '1px solid #e2e8f0', background: '#fff', boxShadow: '0 2px 8px rgba(15,23,42,0.04)', padding: '0 36px 0 10px' }}
+              triggerStyle={{ minHeight: 36, borderRadius: 18, border: `1px solid ${toolbarBorder}`, background: toolbarSurface, boxShadow: isSimpleMode ? '0 2px 8px rgba(108,75,20,0.05)' : '0 2px 8px rgba(15,23,42,0.04)', padding: '0 36px 0 10px' }}
               selectedLabelStyle={{ color: '#0f172a', fontSize: 14, fontWeight: 700, fontFamily: modeAdapter.heroTheme?.bodyFont }}
             />
             {showViewToggle && (
@@ -162,14 +189,14 @@ const StorefrontCatalogToolbar = ({
       count: section.items?.length || 0,
       iconToken: section.visualMeta?.iconToken || 'menu',
       glyph: section.visualMeta?.glyph || String(section.sectionLabel || '').charAt(0).toUpperCase(),
-      accent: modeAdapter.isRetailMode ? toolbarAccent : (section.visualMeta?.accent || '#475569'),
-      accentSoft: modeAdapter.isRetailMode ? toolbarAccentSoft : (section.visualMeta?.accentSoft || '#f1f5f9')
+      accent: isProductMode ? toolbarAccent : (section.visualMeta?.accent || '#475569'),
+      accentSoft: isProductMode ? toolbarAccentSoft : (section.visualMeta?.accentSoft || '#f1f5f9')
     }))
   ];
   const activeCategoryOption = categoryOptions.find((option) => option.key === (resolvedFnbSection || '')) || categoryOptions[0];
   const ActiveCategoryIcon = FNB_CATEGORY_ICON_MAP[activeCategoryOption.iconToken] || Sparkles;
-  const controlHeight = modeAdapter.isRetailMode ? 50 : 56;
-  const controlRadius = modeAdapter.isRetailMode ? 10 : 18;
+  const controlHeight = isProductMode ? 50 : 56;
+  const controlRadius = isProductMode ? 10 : 18;
   const totalItems = filteredFnbViewModel.totalItems || 0;
 
   return (
@@ -180,7 +207,7 @@ const StorefrontCatalogToolbar = ({
             <span style={{ width: 30, height: 1, background: toolbarAccent }} />
             {modeAdapter.catalogEyebrow || 'Curated Catalog'}
           </div>
-          <h2 style={{ margin: 0, fontSize: modeAdapter.isRetailMode ? 34 : 36, fontWeight: modeAdapter.isRetailMode ? 800 : 900, color: toolbarTextPrimary || STYLES.colors.dark, lineHeight: 1.12, letterSpacing: '-0.025em', fontFamily: toolbarDisplayFont }}>{modeAdapter.catalogHeading}</h2>
+          <h2 style={{ margin: 0, fontSize: isSimpleMode ? (catalogTitleTypography.desktop || 32) : (modeAdapter.isRetailMode ? 34 : 36), fontWeight: isSimpleMode ? (catalogTitleTypography.weight || 700) : (modeAdapter.isRetailMode ? 800 : 900), color: toolbarTextPrimary || STYLES.colors.dark, lineHeight: isSimpleMode ? (catalogTitleTypography.lineHeight || 1.2) : 1.12, letterSpacing: '-0.025em', fontFamily: toolbarDisplayFont }}>{modeAdapter.catalogHeading}</h2>
           <p style={{ margin: 0, color: toolbarTextMuted || STYLES.colors.muted, fontSize: 15, lineHeight: 1.5, maxWidth: 720, fontFamily: toolbarBodyFont }}>{modeAdapter.catalogSubtitle}</p>
         </div>
         <div style={{ display: 'inline-flex', alignItems: 'center', gap: 10, padding: '10px 14px', borderRadius: 999, background: toolbarTheme.surfaceInset || '#fff3e8', border: `1px solid ${toolbarBorder}`, color: toolbarTextPrimary || STYLES.colors.dark, fontSize: 13, fontWeight: 700, fontFamily: toolbarBodyFont }}>
@@ -191,11 +218,11 @@ const StorefrontCatalogToolbar = ({
 
       <div style={{ display: 'grid', gap: 14 }}>
         <div style={{ display: 'flex', flexDirection: 'row', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
-          <label style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, border: `1px solid ${toolbarBorder}`, borderRadius: controlRadius, background: '#fff', padding: modeAdapter.isRetailMode ? '4px 4px 4px 18px' : '0 18px 0 42px', minHeight: controlHeight, flex: '1 1 320px', minWidth: 0, boxShadow: modeAdapter.isRetailMode ? 'none' : `0 14px 28px ${toolbarShadow}` }}>
-            {!modeAdapter.isRetailMode ? <span style={{ width: 2, position: 'absolute', left: 28, top: 12, bottom: 12, borderRadius: 999, background: toolbarAccent, opacity: 0.65, pointerEvents: 'none' }} /> : null}
-            <input value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder={modeAdapter.catalogSearchPlaceholder} style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, fontSize: 14, color: toolbarTextPrimary, fontFamily: toolbarBodyFont }} />
-            <span style={{ width: modeAdapter.isRetailMode ? 40 : 42, height: modeAdapter.isRetailMode ? 40 : 42, borderRadius: modeAdapter.isRetailMode ? 8 : 999, background: toolbarAccent, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxShadow: modeAdapter.isRetailMode ? 'none' : `0 10px 20px ${toolbarAccentShadow}`, flexShrink: 0 }}>
-              <Search size={modeAdapter.isRetailMode ? 18 : 20} />
+          <label style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 12, border: `1px solid ${toolbarBorder}`, borderRadius: controlRadius, background: toolbarSurface, padding: isProductMode ? '4px 4px 4px 18px' : '0 18px 0 42px', minHeight: controlHeight, flex: '1 1 320px', minWidth: 0, boxShadow: isProductMode ? 'none' : `0 14px 28px ${toolbarShadow}` }}>
+            {!isProductMode ? <span style={{ width: 2, position: 'absolute', left: 28, top: 12, bottom: 12, borderRadius: 999, background: toolbarAccent, opacity: 0.65, pointerEvents: 'none' }} /> : null}
+            <input aria-label="Search catalog products" value={catalogSearch} onChange={(event) => setCatalogSearch(event.target.value)} placeholder={modeAdapter.catalogSearchPlaceholder} style={{ border: 'none', outline: 'none', background: 'transparent', width: '100%', minWidth: 0, fontSize: 14, color: toolbarTextPrimary, fontFamily: toolbarBodyFont }} />
+            <span style={{ width: isProductMode ? 40 : 42, height: isProductMode ? 40 : 42, borderRadius: isProductMode ? 8 : 999, background: toolbarAccent, color: '#fff', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', boxShadow: isProductMode ? 'none' : `0 10px 20px ${toolbarAccentShadow}`, flexShrink: 0 }}>
+              <Search size={isProductMode ? 18 : 20} />
             </span>
           </label>
 
@@ -207,46 +234,46 @@ const StorefrontCatalogToolbar = ({
               { value: 'price_asc', label: 'Price: Low to High' },
               { value: 'price_desc', label: 'Price: High to Low' }
             ]}
-            leading={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, color: toolbarAccent }}>{modeAdapter.isRetailMode ? <Filter size={18} /> : <><SlidersHorizontal size={18} /><span style={{ width: 1, height: '60%', minHeight: 24, borderRadius: 999, background: 'rgba(201,106,43,0.18)' }} /></>}</span>}
-            containerStyle={{ minWidth: modeAdapter.isRetailMode ? 170 : 240, flex: `0 0 ${modeAdapter.isRetailMode ? 170 : 240}px` }}
-            triggerStyle={{ minHeight: controlHeight, borderRadius: controlRadius, border: `1px solid ${toolbarBorder}`, background: '#fff', boxShadow: modeAdapter.isRetailMode ? 'none' : `0 14px 28px ${toolbarShadow}`, padding: '0 44px 0 16px' }}
+            leading={<span style={{ display: 'inline-flex', alignItems: 'center', gap: 10, color: toolbarAccent }}>{isProductMode ? <Filter size={18} /> : <><SlidersHorizontal size={18} /><span style={{ width: 1, height: '60%', minHeight: 24, borderRadius: 999, background: 'rgba(201,106,43,0.18)' }} /></>}</span>}
+            containerStyle={{ minWidth: isProductMode ? 170 : 240, flex: `0 0 ${isProductMode ? 170 : 240}px` }}
+            triggerStyle={{ minHeight: controlHeight, borderRadius: controlRadius, border: `1px solid ${toolbarBorder}`, background: toolbarSurface, boxShadow: isProductMode ? 'none' : `0 14px 28px ${toolbarShadow}`, padding: '0 44px 0 16px' }}
             selectedLabelStyle={{ color: toolbarTextPrimary, fontSize: 14, fontWeight: 700 }}
           />
 
-          <div ref={fnbCategoryDropdownRef} style={{ position: 'relative', width: modeAdapter.isRetailMode ? 240 : 290, flex: `0 0 ${modeAdapter.isRetailMode ? 240 : 290}px` }}>
-            <button type="button" onClick={() => setIsFnbCategoryDropdownOpen((previous) => !previous)} style={{ position: 'relative', width: '100%', minHeight: controlHeight, borderRadius: controlRadius, border: `1px solid ${toolbarBorder}`, background: '#fff', padding: modeAdapter.isRetailMode ? '0 16px' : '0 18px 0 20px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', boxShadow: modeAdapter.isRetailMode ? 'none' : `0 14px 28px ${toolbarShadow}` }}>
-              <span style={{ width: modeAdapter.isRetailMode ? 22 : 38, height: modeAdapter.isRetailMode ? 22 : 38, borderRadius: modeAdapter.isRetailMode ? 0 : 14, background: modeAdapter.isRetailMode ? 'transparent' : activeCategoryOption.accentSoft, color: activeCategoryOption.accent, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', position: 'relative', flexShrink: 0 }}>
-                {modeAdapter.isRetailMode ? <Box size={18} /> : React.createElement(ActiveCategoryIcon, { size: 18 })}
-                {!modeAdapter.isRetailMode ? (
+          <div ref={fnbCategoryDropdownRef} style={{ position: 'relative', width: isProductMode ? 240 : 290, flex: `0 0 ${isProductMode ? 240 : 290}px` }}>
+            <button type="button" onClick={() => setIsFnbCategoryDropdownOpen((previous) => !previous)} style={{ position: 'relative', width: '100%', minHeight: controlHeight, borderRadius: controlRadius, border: `1px solid ${toolbarBorder}`, background: toolbarSurface, padding: isProductMode ? '0 16px' : '0 18px 0 20px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer', boxShadow: isProductMode ? 'none' : `0 14px 28px ${toolbarShadow}` }}>
+              <span style={{ width: isProductMode ? 22 : 38, height: isProductMode ? 22 : 38, borderRadius: isProductMode ? 0 : 14, background: isProductMode ? 'transparent' : activeCategoryOption.accentSoft, color: activeCategoryOption.accent, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', position: 'relative', flexShrink: 0 }}>
+                {isProductMode ? <Box size={18} /> : React.createElement(ActiveCategoryIcon, { size: 18 })}
+                {!isProductMode ? (
                 <span style={{ position: 'absolute', right: -4, bottom: -4, width: 18, height: 18, borderRadius: 999, background: '#fff', border: `1px solid ${toolbarBorder}`, color: toolbarTextPrimary, fontSize: 10, fontWeight: 900, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                   {String(activeCategoryOption.glyph || 'A').slice(0, 1)}
                 </span>
                 ) : null}
               </span>
               <span style={{ display: 'grid', gap: 2, minWidth: 0, textAlign: 'left', flex: 1 }}>
-                <span style={{ fontSize: modeAdapter.isRetailMode ? 10 : 12, fontWeight: 800, color: toolbarAccentDark, textTransform: 'uppercase', letterSpacing: '0.06em', lineHeight: 1 }}>{modeAdapter.isRetailMode ? 'Product Categories' : 'Category'}</span>
-                <span style={{ fontSize: 14, fontWeight: modeAdapter.isRetailMode ? 700 : 800, color: toolbarTextPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.15 }}>{modeAdapter.isRetailMode && !activeCategoryOption.key ? 'All products' : activeCategoryOption.label}</span>
+                <span style={{ fontSize: isProductMode ? 10 : 12, fontWeight: 800, color: toolbarAccentDark, textTransform: 'uppercase', letterSpacing: '0.06em', lineHeight: 1 }}>{isProductMode ? 'Product Categories' : 'Category'}</span>
+                <span style={{ fontSize: 14, fontWeight: isProductMode ? 700 : 800, color: toolbarTextPrimary, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', lineHeight: 1.15 }}>{isProductMode && !activeCategoryOption.key ? 'All products' : activeCategoryOption.label}</span>
               </span>
-              {!modeAdapter.isRetailMode ? <span style={{ fontSize: 12, fontWeight: 800, color: toolbarTextMuted }}>{activeCategoryOption.count}</span> : null}
+              {!isProductMode ? <span style={{ fontSize: 12, fontWeight: 800, color: toolbarTextMuted }}>{activeCategoryOption.count}</span> : null}
               <ChevronDown size={18} color={toolbarTextMuted} />
             </button>
 
             {isFnbCategoryDropdownOpen && (
-              <div style={{ position: 'absolute', top: 'calc(100% + 10px)', left: 0, right: 0, zIndex: 40, padding: 10, borderRadius: 18, border: `1px solid ${toolbarBorder}`, background: toolbarSurface, boxShadow: '0 22px 48px rgba(15,23,42,0.14)', display: 'grid', gap: 8, maxHeight: 360, overflowY: 'auto' }}>
+              <div style={{ position: 'absolute', top: 'calc(100% + 10px)', left: 0, right: 0, zIndex: 40, padding: 10, borderRadius: isProductMode ? 12 : 18, border: `1px solid ${toolbarBorder}`, background: toolbarSurface, boxShadow: '0 22px 48px rgba(15,23,42,0.14)', display: 'grid', gap: 8, maxHeight: 360, overflowY: 'auto' }}>
                 {categoryOptions.map((option) => {
                   const isActive = option.key === (resolvedFnbSection || '');
                   const OptionIcon = FNB_CATEGORY_ICON_MAP[option.iconToken] || Sparkles;
                   return (
-                    <button key={`catalog-category-dropdown-${option.key || 'all'}`} type="button" onClick={() => { setActiveServiceTab(option.key); setIsFnbCategoryDropdownOpen(false); }} style={{ width: '100%', borderRadius: 16, border: isActive ? '1px solid transparent' : `1px solid ${toolbarBorder}`, background: isActive ? toolbarAccent : toolbarSurface, color: isActive ? '#fff' : toolbarTextPrimary, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
-                      <span style={{ width: 38, height: 38, borderRadius: 14, background: isActive ? 'rgba(255,255,255,0.16)' : option.accentSoft, color: isActive ? '#fff' : option.accent, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', position: 'relative', flexShrink: 0 }}>
+                    <button key={`catalog-category-dropdown-${option.key || 'all'}`} type="button" onClick={() => { setActiveServiceTab(option.key); setIsFnbCategoryDropdownOpen(false); }} style={{ width: '100%', borderRadius: isProductMode ? 10 : 16, border: isActive ? '1px solid transparent' : `1px solid ${toolbarBorder}`, background: isActive ? toolbarAccent : toolbarSurface, color: isActive ? '#fff' : toolbarTextPrimary, padding: '10px 12px', display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}>
+                      <span style={{ width: isProductMode ? 28 : 38, height: isProductMode ? 28 : 38, borderRadius: isProductMode ? 8 : 14, background: isActive ? 'rgba(255,255,255,0.16)' : option.accentSoft, color: isActive ? '#fff' : option.accent, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', position: 'relative', flexShrink: 0 }}>
                         {React.createElement(OptionIcon, { size: 18 })}
                         <span style={{ position: 'absolute', right: -4, bottom: -4, width: 18, height: 18, borderRadius: 999, background: '#fff', border: `1px solid ${isActive ? 'rgba(255,255,255,0.3)' : toolbarBorder}`, color: toolbarTextPrimary, fontSize: 10, fontWeight: 900, display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}>
                           {String(option.glyph || 'A').slice(0, 1)}
                         </span>
                       </span>
                       <span style={{ display: 'grid', gap: 2, minWidth: 0, textAlign: 'left', flex: 1 }}>
-                        <span style={{ fontSize: modeAdapter.isRetailMode ? 12 : 14, fontWeight: modeAdapter.isRetailMode ? 700 : 800, lineHeight: 1.2, fontFamily: toolbarBodyFont }}>{option.label}</span>
-                        <span style={{ fontSize: modeAdapter.isRetailMode ? 10 : 11, fontWeight: 700, opacity: isActive ? 0.82 : 0.6, fontFamily: toolbarBodyFont }}>{option.count} item{option.count === 1 ? '' : 's'}</span>
+                        <span style={{ fontSize: isProductMode ? 12 : 14, fontWeight: isProductMode ? 700 : 800, lineHeight: 1.2, fontFamily: toolbarBodyFont }}>{option.label}</span>
+                        <span style={{ fontSize: isProductMode ? 10 : 11, fontWeight: 700, opacity: isActive ? 0.82 : 0.6, fontFamily: toolbarBodyFont }}>{option.count} item{option.count === 1 ? '' : 's'}</span>
                       </span>
                     </button>
                   );

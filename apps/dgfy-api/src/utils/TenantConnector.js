@@ -12,11 +12,83 @@ const IDLE_TIMEOUT_MS = 1000 * 60 * 10; // 10 minutes
 const CLEANUP_INTERVAL_MS = 60000; // Check for idle connections every 60s
 const CONNECTION_WAIT_TIMEOUT_MS = 5000; // Max wait for a pending connection
 
+// How long closeConnection() will wait for an in-flight query to finish before
+// force-closing a still-busy connection anyway (see isBusy()/closeConnection()
+// below — this is the fix for the eviction-closes-a-live-handle bug that
+// produced "ConnectionManager.getConnection was called after the connection
+// manager was closed!" under normal LRU/idle eviction, not just at shutdown).
+const CONNECTION_CLOSE_GRACE_MS = 3000;
+const CONNECTION_CLOSE_POLL_MS = 100;
+
 class TenantConnector {
     constructor() {
         this.connections = new Map(); // tenantId -> { sequelize, lastUsed, tenantName }
         this.pendingConnections = new Set(); // tenantIds currently being created
         this.cleanupInterval = null;
+    }
+
+    /**
+     * Build and authenticate a brand-new Sequelize instance for a tenant.
+     * Shared by getConnection() (which caches the result) and
+     * openEphemeralConnection() (which deliberately does not) -- one place
+     * owns host/dialect/pool defaults and the destructive-sync guardrail
+     * instead of two copies drifting apart.
+     *
+     * Caller owns lifecycle: does not touch this.connections/pendingConnections.
+     * @param {Object} tenant - Tenant object (must have db_name)
+     * @param {{ poolMax?: number }} [options] - override the pool's max size;
+     *   defaults to getTenantPoolMax() (the cached-connection budget). Pass a
+     *   smaller value for a connection that will only ever run one query at a
+     *   time (see openEphemeralConnection()) so it doesn't reserve pool slots
+     *   it can't use.
+     * @returns {Promise<Sequelize>} an authenticated, guardrail-wrapped Sequelize instance
+     */
+    async _createSequelizeInstance(tenant, { poolMax = getTenantPoolMax() } = {}) {
+        const sequelize = new Sequelize(
+            tenant.db_name,
+            process.env.DB_USER || 'root',
+            process.env.DB_PASSWORD || '',
+            {
+                host: process.env.DB_HOST || 'localhost',
+                dialect: 'mysql',
+                logging: (msg) => logger.debug(`[Tenant: ${tenant.name}] ${msg}`),
+                pool: {
+                    // 5 users per tenant + 2 buffer for concurrent requests from same user.
+                    // Worst case across all cached tenants is MAX_CACHED_CONNECTIONS × this
+                    // value, plus the landlord pool — src/config/connectionBudget.js owns
+                    // that arithmetic and warns at boot when it exceeds max_connections.
+                    // (Ephemeral connections, below, aren't part of that arithmetic -- they
+                    // pass a tight poolMax instead, see openEphemeralConnection().)
+                    max: poolMax,
+                    min: 0,
+                    // Fail fast (10s) instead of making users wait 30s for a connection slot
+                    acquire: 10000,
+                    idle: 5000,  // Reduced from 10s to 5s for multi-tenant efficiency
+                    evict: 1000  // Check for idle connections every 1s
+                },
+                define: {
+                    underscored: true,
+                    timestamps: true,
+                    createdAt: 'created_at',
+                    updatedAt: 'updated_at'
+                }
+            }
+        );
+
+        // Test connection
+        await sequelize.authenticate();
+
+        // CRITICAL PRODUCTION GUARDRAIL
+        // Intercept sync calls to prevent drop-table sweeps on individual tenant databases
+        const originalSync = sequelize.sync.bind(sequelize);
+        sequelize.sync = async (options = {}) => {
+            if (options.force && !tenant.db_name.includes('test')) {
+                throw new Error(`CRITICAL GUARDRAIL: Destructive sync (force: true) is FORBIDDEN on non-test tenant database: ${tenant.db_name}. Production DB wipes are permanently blocked.`);
+            }
+            return originalSync(options);
+        };
+
+        return sequelize;
     }
 
     /**
@@ -70,47 +142,7 @@ class TenantConnector {
             // 5. Create new connection
             logger.info(`Creating new DB connection for tenant: ${tenant.name} (${tenant.db_name})`);
 
-            const sequelize = new Sequelize(
-                tenant.db_name,
-                process.env.DB_USER || 'root',
-                process.env.DB_PASSWORD || '',
-                {
-                    host: process.env.DB_HOST || 'localhost',
-                    dialect: 'mysql',
-                    logging: (msg) => logger.debug(`[Tenant: ${tenant.name}] ${msg}`),
-                    pool: {
-                        // 5 users per tenant + 2 buffer for concurrent requests from same user.
-                        // Worst case across all cached tenants is MAX_CACHED_CONNECTIONS × this
-                        // value, plus the landlord pool — src/config/connectionBudget.js owns
-                        // that arithmetic and warns at boot when it exceeds max_connections.
-                        max: getTenantPoolMax(),
-                        min: 0,
-                        // Fail fast (10s) instead of making users wait 30s for a connection slot
-                        acquire: 10000,
-                        idle: 5000,  // Reduced from 10s to 5s for multi-tenant efficiency
-                        evict: 1000  // Check for idle connections every 1s
-                    },
-                    define: {
-                        underscored: true,
-                        timestamps: true,
-                        createdAt: 'created_at',
-                        updatedAt: 'updated_at'
-                    }
-                }
-            );
-
-            // Test connection
-            await sequelize.authenticate();
-
-            // CRITICAL PRODUCTION GUARDRAIL
-            // Intercept sync calls to prevent drop-table sweeps on individual tenant databases
-            const originalSync = sequelize.sync.bind(sequelize);
-            sequelize.sync = async (options = {}) => {
-                if (options.force && !tenant.db_name.includes('test')) {
-                    throw new Error(`CRITICAL GUARDRAIL: Destructive sync (force: true) is FORBIDDEN on non-test tenant database: ${tenant.db_name}. Production DB wipes are permanently blocked.`);
-                }
-                return originalSync(options);
-            };
+            const sequelize = await this._createSequelizeInstance(tenant);
 
             // Cache it
             this.connections.set(tenantId, {
@@ -133,19 +165,96 @@ class TenantConnector {
     }
 
     /**
-     * Evict multiple oldest connections by LRU order
+     * Open a one-off, uncached Sequelize connection for a tenant -- for batch
+     * jobs that touch every tenant in a short window (e.g. the storefront
+     * discovery reconciliation sweep, #524/#527) and would otherwise thrash
+     * the shared MAX_CACHED_CONNECTIONS-slot LRU cache that live POS/storefront
+     * request traffic depends on.
+     *
+     * Unlike getConnection(), this never touches this.connections or
+     * this.pendingConnections and is never subject to eviction -- the caller
+     * owns the full lifecycle and MUST call `.close()` on the returned
+     * instance when done (a try/finally at the call site, not here, since
+     * this method doesn't know how long the caller needs it for).
+     *
+     * Pool size is capped at 1: a batch sweep processes one tenant's queries
+     * sequentially (no reason to reserve more than one slot), and staying
+     * small keeps this genuinely outside connectionBudget.js's worst-case
+     * arithmetic instead of adding a second multiplier to reason about. At
+     * the default sweep concurrency (4 tenants at once,
+     * STOREFRONT_DISCOVERY_INDEX_SYNC_CONCURRENCY), that's at most 4 extra
+     * connections momentarily on top of the documented budget.
+     * @param {Object} tenant - Tenant object (must have db_name)
+     * @returns {Promise<Sequelize>} an authenticated Sequelize instance, uncached
+     */
+    async openEphemeralConnection(tenant) {
+        if (!tenant || !tenant.db_name) {
+            throw new Error('Invalid tenant configuration: missing db_name');
+        }
+        logger.debug(`Opening ephemeral (uncached) DB connection for tenant: ${tenant.name} (${tenant.db_name})`);
+        return this._createSequelizeInstance(tenant, { poolMax: 1 });
+    }
+
+    /**
+     * True if a cached Sequelize instance has any connection currently checked
+     * out of its pool — i.e. a query is in flight on it right now. Backed by
+     * sequelize-pool's own counters (sequelize.connectionManager.pool.using),
+     * so this needs zero changes at any getConnection() call site.
+     *
+     * If the pool can't be introspected for some reason, this defaults to
+     * "busy" rather than "free" -- an unnecessary deferred close is harmless;
+     * closing a connection a request still holds is not.
+     *
+     * Known residual gap (#526): this only reflects a connection checked out
+     * *mid-query*. A caller that finishes query 1 and issues query 2 on the
+     * same cached instance shortly after (a normal multi-step
+     * repository/service pattern) has a window between the two queries where
+     * `using === 0` even though it logically still needs the connection. If
+     * eviction lands in that gap, the connection closes and the follow-up
+     * query reproduces the original "...called after the connection manager
+     * was closed!" failure -- far less often than before this file's fix,
+     * but not zero. Closing that gap fully would mean a per-request
+     * lease/refcount threaded through every getConnection() call site, which
+     * is a materially bigger change than this file makes today; not done
+     * here, see #526 for the tracked decision not to do it yet.
+     * @param {Sequelize} sequelize
+     * @returns {boolean}
+     */
+    isBusy(sequelize) {
+        const pool = sequelize?.connectionManager?.pool;
+        if (!pool || typeof pool.using !== 'number') return true;
+        return pool.using > 0;
+    }
+
+    /**
+     * Evict multiple oldest connections by LRU order.
+     *
+     * Only ever selects entries that are currently idle (see isBusy()) — a
+     * busy entry is never chosen for eviction, so this can evict fewer than
+     * `count`, or none, when every cached connection happens to be in use.
+     * That means the cache can briefly exceed MAX_CACHED_CONNECTIONS; that is
+     * intentional and preferred over closing a connection a live request is
+     * still holding.
      * @param {number} count - Number of connections to evict
      */
     async evictConnections(count) {
         if (count <= 0 || this.connections.size === 0) return;
 
-        // Sort by lastUsed ascending (oldest first)
+        // Sort by lastUsed ascending (oldest first), then keep only entries
+        // that are actually idle right now.
         const sorted = Array.from(this.connections.entries())
             .sort(([, a], [, b]) => a.lastUsed - b.lastUsed);
+        const eligible = sorted.filter(([, data]) => !this.isBusy(data.sequelize));
+        const busySkipped = sorted.length - eligible.length;
 
-        const toEvict = sorted.slice(0, Math.min(count, sorted.length));
+        const toEvict = eligible.slice(0, Math.min(count, eligible.length));
 
-        logger.info(`Evicting ${toEvict.length} oldest connections (pool: ${this.connections.size}/${MAX_CACHED_CONNECTIONS})`);
+        if (toEvict.length === 0) {
+            logger.warn(`Evict requested ${count} connection(s) but all ${sorted.length} cached entries are busy -- evicting none this pass (pool: ${this.connections.size}/${MAX_CACHED_CONNECTIONS})`);
+            return;
+        }
+
+        logger.info(`Evicting ${toEvict.length} oldest idle connections (pool: ${this.connections.size}/${MAX_CACHED_CONNECTIONS}${busySkipped > 0 ? `, ${busySkipped} busy skipped` : ''})`);
 
         const results = await Promise.allSettled(
             toEvict.map(([id, data]) => {
@@ -239,18 +348,72 @@ class TenantConnector {
     }
 
     /**
-     * Close a specific connection
+     * Close a specific connection.
+     *
+     * Removes the entry from the cache immediately, so no new caller can be
+     * handed a connection that's in the process of closing. If the
+     * connection is still busy (isBusy()) at that moment, this waits up to
+     * CONNECTION_CLOSE_GRACE_MS for the in-flight query to finish before
+     * closing anyway -- closing out from under an active request is exactly
+     * the "ConnectionManager.getConnection was called after the connection
+     * manager was closed!" failure this exists to prevent.
+     *
+     * While that grace-period wait is in progress -- and through the actual
+     * sequelize.close() call itself -- tenantId is also marked pending
+     * (this.pendingConnections). Both need covering, not just the wait: a
+     * getConnection() call for the *same* tenant that finds neither a cached
+     * entry (just deleted) nor a pending one mints a second Sequelize pool
+     * for a tenant that's already mid-close instead of waiting for it, which
+     * is exactly the connection-pressure #524 was filed over. An earlier
+     * version of this fix (#529) released the pending slot right after the
+     * grace-period wait but before sequelize.close() itself resolved,
+     * reopening that same race for the duration of the physical close --
+     * pr-reviewer reproduced it concretely (a second live pool minted while
+     * the first was still mid-close). Marking it pending for the whole
+     * close, wait and physical close both, routes a concurrent call into
+     * getConnection()'s existing "wait for pending" branch for the entire
+     * window instead.
      */
     async closeConnection(tenantId) {
-        if (this.connections.has(tenantId)) {
-            const { sequelize } = this.connections.get(tenantId);
+        if (!this.connections.has(tenantId)) return;
+
+        const { sequelize, tenantName } = this.connections.get(tenantId);
+        // Remove from cache up front: whether or not the close below succeeds
+        // or has to wait out the grace period, no new getConnection() call
+        // should be able to hand this instance out again.
+        this.connections.delete(tenantId);
+
+        const wasBusy = this.isBusy(sequelize);
+        // Claim the pending slot only if nothing else already holds it
+        // (getConnection() itself holds it for a tenant that's still being
+        // created; closeConnection is never called concurrently with that
+        // path for the same tenant, but guard anyway rather than assume).
+        const claimedPending = wasBusy && !this.pendingConnections.has(tenantId);
+        if (claimedPending) this.pendingConnections.add(tenantId);
+
+        try {
+            if (wasBusy) {
+                logger.debug(`Deferring close for tenant ${tenantName} (ID: ${tenantId}) -- connection busy`);
+                const deadline = Date.now() + CONNECTION_CLOSE_GRACE_MS;
+                while (this.isBusy(sequelize) && Date.now() < deadline) {
+                    await new Promise(resolve => setTimeout(resolve, CONNECTION_CLOSE_POLL_MS));
+                }
+                if (this.isBusy(sequelize)) {
+                    logger.warn(`Closing tenant connection for ${tenantName} (ID: ${tenantId}) still busy after ${CONNECTION_CLOSE_GRACE_MS}ms grace period -- closing anyway`);
+                }
+            }
+
             try {
                 await sequelize.close();
-                this.connections.delete(tenantId);
                 logger.info(`Closed DB connection for tenant ID: ${tenantId}`);
             } catch (err) {
                 logger.error(`Error closing tenant connection ${tenantId}:`, err);
             }
+        } finally {
+            // Release the pending slot only after the physical close has
+            // settled (resolved or rejected) -- see the doc comment above
+            // for why releasing it any earlier reopens the race.
+            if (claimedPending) this.pendingConnections.delete(tenantId);
         }
     }
 

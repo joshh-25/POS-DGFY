@@ -12,7 +12,7 @@ rollback_note: Revert the hosted checkout capability mapping, payment-session cr
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-08-16T17:30:00+08:00
-preflight_request_ref: PHASE-94
+preflight_request_ref: PHASE-95
 ---
 
 # Storefront Hosted Wallet Payments

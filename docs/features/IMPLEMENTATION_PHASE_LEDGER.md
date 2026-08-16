@@ -3990,7 +3990,169 @@ parked-sale replay and shift-close resolution.
 - Phase 86 is complete. Phase 87 is the next eligible repository phase and
   requires separate approval.
 
-## Phase 87 - POS Items Gallery and IMS CSV Import Foundation
+## Phase 87 - Authorise Services Handoff Legs to Reach Schema/API
+
+### Initiative and Release
+
+- Initiative: Services pickup-and-return round trip (laundry handoff legs).
+- Release: unreleased; this phase is a governance decision, not a code change.
+
+### Objective and Scope
+
+- Lift the governance gate blocking issue #482 (laundry pickup-and-return round trip,
+  `pickupReturnLogistics`): ADR 0057 clause 3 (`[binding]`) forbids the fulfillment-profile
+  vocabulary from reaching any database column, API contract, or Store Profile section, which
+  blocks every piece of schema/API work #482 needs.
+- Author ADR 0064, a scoped supersession of ADR 0057 clause 3 for `item_pickup_return` and
+  `item_pickup_collection` only, resolving the tech-lead ruling #482 flagged as open (new ADR vs.
+  an amendment block) in favor of a new ADR — the same route ADR 0058 already used against ADR
+  0057 clause 1.
+- No schema, API, migration, or frontend change ships in this phase. Phases 88-92 (schema,
+  API contract, storefront wiring, services tracking timeline, POS) are authorized by ADR 0064
+  but implemented separately.
+
+### Status
+
+- `completed`
+- Completed on 2026-08-15.
+
+### Dependencies and Governance Note
+
+- ADR 0057 (Services Fulfillment Profiles) - clause 3 scoped-superseded; clauses 1, 2, and 4
+  unaffected.
+- ADR 0058 (Registration Industry Catalog) - the in-tree precedent for a scoped supersession of
+  one of ADR 0057's binding clauses via a new ADR rather than a status flip.
+- ADR 0039 (ADR Lifecycle, Strictness Tiers, and Amendment Path) - governs the binding-clause
+  supersession requirement this phase satisfies.
+- `docs/proposals/2026-08-15-liempyo-laundry-discover-flow-and-gap-analysis.md` - the confirmed
+  customer-facing spec this authorization is scoped against.
+- No compliance impact declaration required: this phase is documentation-only (ADR + ledger),
+  no schema, API, or runtime behavior changes.
+
+### Acceptance and Validation Evidence
+
+- [x] `npm run check:adr` passes: 71 ADRs validated, no topic/binding-authority collisions.
+- [x] `npm run lint:docs` passes: 28 governed docs validated (chains `check:adr`).
+- [x] `docs/architecture/adr/INDEX.md` regenerated via `npm run generate:adr-index` and includes
+  ADR 0064 (`accepted`, topic `services_handoff_legs`, 6 binding-clause count).
+- [x] `docs/features/SERVICES_FULFILLMENT_PROFILES.md` confirmed unchanged, still
+  `authority_level: reference`.
+- [x] ADR 0057 confirmed unchanged except its new `## Related` cross-reference; `status: accepted`
+  and all four clauses byte-identical.
+
+### Implementation Links
+
+- `docs/architecture/adr/0064-services-handoff-legs-and-round-trip-persistence.md`
+- `docs/architecture/adr/0057-services-fulfillment-profiles.md`
+- `docs/architecture/adr/INDEX.md`
+- Issue #482 - Laundry pickup-and-return round trip (`pickupReturnLogistics`)
+
+### Completion Record (2026-08-15)
+
+- Phase 87 is complete. Phase 88 is the next eligible repository phase and requires separate
+  approval; it is authorized by ADR 0064 but not implemented here.
+
+## Phase 88 - Services Handoff-Leg Schema
+
+### Initiative and Release
+
+- Initiative: Services pickup-and-return round trip (laundry handoff legs), continuing #482.
+- Release: unreleased; schema-only, no API contract or frontend wiring in this phase.
+
+### Objective and Scope
+
+- Authorized by ADR 0064 (Phase 87). Adds the schema #482 needs: a widened
+  `service_bookings.status` enum (+4 round-trip lifecycle values), a fifth
+  `service_item_details.service_area_type` value (`item_handoff`, ADR 0064 decision 7's grain
+  answer), the handoff-leg entity (`service_booking_handoff_legs`, ADR 0064 decision 2), and a
+  transition-event table (`service_booking_status_events`, ADR 0064 decision 4).
+- Updates the per-tenant schema baseline (`apps/dgfy-api/scripts/sync-tenant-schemas.js`) so newly
+  provisioned tenants and drift-repair on existing ones both carry the new shape - not just the
+  migration path.
+- Populates `service_area_types: ['item_handoff']` on `item_pickup_return` and
+  `item_pickup_collection` in `packages/shared-constants/src/fulfillmentProfiles.js`, closing the
+  ADR 0064 decision 7 gap (both profiles were unreachable via
+  `resolveFulfillmentProfilesForServiceAreaType` by construction before this phase).
+- No API contract, payload field, or frontend change ships in this phase. Nothing writes rows to
+  either new table yet - persistence wiring is Phase 89. `pickupReturnLogistics` stays
+  `status: 'planned'` per ADR 0064 decision 6.
+- Assessed against PR #535 (storefront modularization, merged the same day as Phase 87) before
+  starting: #535 touched zero files under `modes/services/` and does not affect this phase's scope.
+
+### Status
+
+- `in_progress`
+- Migration checkpoint reached 2026-08-15: three new files under
+  `apps/dgfy-migration-runner/migrations/` trip the Worker/Implementer skill's mandatory
+  human-confirmation trigger. Code written and Tier 0-verified; not yet committed pending review.
+
+### Dependencies and Governance Note
+
+- ADR 0064 (Services Handoff Legs and Round-Trip Persistence) - authorizes this phase in full;
+  decisions 2, 4, and 7 are implemented directly, decision 3 (no profile key on the wire) is
+  structurally enforced by the new table's `(booking_id, direction)` unique index rather than
+  implemented here (the derivation function is Phase 89).
+- ADR 0057 (Services Fulfillment Profiles) clause 4 (`[binding]`) - unaffected; `item_handoff`
+  keeps the vocabulary keyed off `ServiceItemDetail.service_area_type`, a per-item field.
+- No compliance impact declaration required: `modules/services/` and
+  `apps/dgfy-migration-runner/migrations/` are not in
+  `scripts/check-compliance-impact.js`'s `COMPLIANCE_SENSITIVE_RULES`; `check:compliance` reports
+  no compliance-sensitive changes. Flagged anyway in the PR: the new leg table stores customer
+  addresses, which the mechanical guardrail does not classify, though `ServiceBooking` already
+  holds name/email/phone so this is incremental exposure, not a new category.
+- **Deploy-order dependency on PR #540 / issue #539, kept as a separate PR deliberately** (different
+  domain - an unrelated F&B modifier schema-repair bug, found by dry-running this phase's migration
+  locally, not caused by it). Applying this phase's migration to any live environment restarts
+  `dgfy-api` there, and `sync-tenant-schemas.js`'s tenant preflight is unconditional and
+  all-or-nothing under `NODE_ENV=production` - if any real tenant in that environment has the
+  `fnb_modifier_groups`-shaped gap #539 documents, that restart crash-loops the whole shared API for
+  every tenant, independent of whether this phase's own schema is correct. **#540 should be applied
+  to an environment before or alongside this phase**, not because they're the same change, but
+  because they share the same restart trigger. See
+  `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md` (once #540 merges) for the pre-deploy
+  `--mode report` census this recommends running first.
+
+### Acceptance and Validation Evidence
+
+- [x] `node --check` on every changed/new `.js`/`.cjs` file (Tier 0; `apps/dgfy-api` has no real
+  build step).
+- [x] `npm run check:architecture` passes: 47 modules / 467 files checked, 86 controllers checked.
+- [x] `npm run check:compliance` passes: no compliance-sensitive changes detected.
+- [x] `npm run lint:docs` passes (chains `check:adr`): 28 governed docs, 71 ADRs - unaffected by
+  this phase's code-only diff, run as a sanity check.
+- [x] Targeted Jest: `fulfillmentProfiles.contract.test.js` (15/15, updated for the new
+  `item_handoff` resolution and the now-expressible `out_for_return` status) and
+  `servicesMode.usecases.test.js` (54/54, including the existing "rejects invalid booking status
+  jumps" transition-map test, unaffected) both pass; 63/63 across all `services`/`fulfillment`
+  suites.
+- [x] `sync-tenant-schemas.js` loads cleanly post-edit; `getTenantSchemaCapabilityChecksum()`
+  computes without error under the bumped `TENANT_SCHEMA_CAPABILITY_VERSION` (`2026-08-15.1`); the
+  two new tables and two new enum contracts are present in the registries at runtime.
+- [x] `models/index.js` loads cleanly; `ServiceBookingHandoffLeg`/`ServiceBookingStatusEvent`
+  associations resolve as designed (`handoffLegs`, `statusEvents` on both sides); confirmed neither
+  new model is in `tenantModelFactory.js`'s `NON_TENANT_MODEL_EXPORTS` exclusion set, matching
+  `ServiceBookingLine`'s treatment.
+- [ ] Migration dry-run against a live tenant database - blocked on local DB credentials in this
+  session; needs a human or a later session with DB access before merge.
+
+### Implementation Links
+
+- `apps/dgfy-migration-runner/migrations/20260815000001-widen-services-handoff-enums.cjs`
+- `apps/dgfy-migration-runner/migrations/20260815000002-create-service-booking-handoff-legs.cjs`
+- `apps/dgfy-migration-runner/migrations/20260815000003-create-service-booking-status-events.cjs`
+- `apps/dgfy-api/src/models/ServiceBookingHandoffLeg.js`
+- `apps/dgfy-api/src/models/ServiceBookingStatusEvent.js`
+- `apps/dgfy-api/src/models/ServiceBooking.js`, `ServiceItemDetail.js`, `index.js`
+- `apps/dgfy-api/scripts/sync-tenant-schemas.js`
+- `apps/dgfy-api/src/modules/services/usecases/serviceUseCases.js`,
+  `src/validators/serviceValidator.js`
+- `packages/shared-constants/src/fulfillmentProfiles.js`
+- `apps/dgfy-api/tests/fulfillmentProfiles.contract.test.js`
+- Issue #482 - Laundry pickup-and-return round trip (`pickupReturnLogistics`)
+- Issue #538 - Services storefront route ownership (#535 follow-through, filed alongside this
+  phase, not part of it)
+
+## Phase 89 - POS Items Gallery and IMS CSV Import Foundation
 
 ### Initiative and Release
 
@@ -4027,7 +4189,7 @@ parked-sale replay and shift-close resolution.
 - [x] Successful CSV imports refresh the current POS and publish the existing
   tenant-scoped catalog invalidation for other POS terminals.
 - [x] Feature-level frontend, backend, architecture, API, and guide validation
-  passes; final release-wide gates are tracked in Phase 91.
+  passes; final release-wide gates are tracked in Phase 93.
 
 ### Implementation Links
 
@@ -4041,11 +4203,11 @@ parked-sale replay and shift-close resolution.
 
 ### Completion Record (2026-08-14)
 
-- Phase 87 completed after the gallery, POS CSV entry point, catalog invalidation,
+- Phase 89 completed after the gallery, POS CSV entry point, catalog invalidation,
   focused tests, production POS build, architecture checks, and unauthenticated
-  browser smoke passed. Phase 88 is the next eligible phase.
+  browser smoke passed. Phase 90 is the next eligible phase.
 
-## Phase 88 - POS Items Multi-Image Gallery Delivery
+## Phase 90 - POS Items Multi-Image Gallery Delivery
 
 ### Initiative and Release
 
@@ -4063,7 +4225,7 @@ parked-sale replay and shift-close resolution.
 
 ### Dependencies and Governance Note
 
-- Depends on Phase 87 permission and contract foundation.
+- Depends on Phase 89 permission and contract foundation.
 - ADR 0029 and the existing Storefront gallery API remain authoritative.
 
 ### Acceptance and Validation Evidence
@@ -4075,10 +4237,10 @@ parked-sale replay and shift-close resolution.
 
 ### Completion Record (2026-08-14)
 
-- Phase 88 completed with the POS shared-gallery controls and focused frontend
-  contracts passing. Phase 89 is the next eligible phase.
+- Phase 90 completed with the POS shared-gallery controls and focused frontend
+  contracts passing. Phase 91 is the next eligible phase.
 
-## Phase 89 - POS Items IMS CSV Import Delivery
+## Phase 91 - POS Items IMS CSV Import Delivery
 
 ### Initiative and Release
 
@@ -4096,7 +4258,7 @@ parked-sale replay and shift-close resolution.
 
 ### Dependencies and Governance Note
 
-- Depends on Phase 87 permission wiring.
+- Depends on Phase 89 permission wiring.
 - `docs/guides/csv_import_guide.md` and the existing CSV import module govern
   templates, limits, SKU upsert behavior, and workflow-mode validation.
 
@@ -4109,11 +4271,11 @@ parked-sale replay and shift-close resolution.
 
 ### Completion Record (2026-08-14)
 
-- Phase 89 completed with the existing IMS wizard reused in POS, the permission
+- Phase 91 completed with the existing IMS wizard reused in POS, the permission
   gate wired through the terminal page, and frontend/backend focused tests
-  passing. Phase 90 is the next eligible phase.
+  passing. Phase 92 is the next eligible phase.
 
-## Phase 90 - POS Catalog Refresh After CSV Import
+## Phase 92 - POS Catalog Refresh After CSV Import
 
 ### Initiative and Release
 
@@ -4132,7 +4294,7 @@ parked-sale replay and shift-close resolution.
 
 ### Dependencies and Governance Note
 
-- Depends on Phase 89 import confirmation behavior.
+- Depends on Phase 91 import confirmation behavior.
 - ADR 0055 governs event publication and client re-fetch behavior.
 
 ### Acceptance and Validation Evidence
@@ -4143,11 +4305,11 @@ parked-sale replay and shift-close resolution.
 
 ### Completion Record (2026-08-14)
 
-- Phase 90 completed with `csv_items_imported` publication for created/updated
+- Phase 92 completed with `csv_items_imported` publication for created/updated
   item IDs and a transport test proving the tenant-scoped event payload. Phase
   91 is the next eligible phase.
 
-## Phase 91 - POS Items Gallery and Import Release Hardening
+## Phase 93 - POS Items Gallery and Import Release Hardening
 
 ### Initiative and Release
 
@@ -4157,7 +4319,7 @@ parked-sale replay and shift-close resolution.
 ### Objective and Scope
 
 - Complete responsive browser proof, regression testing, governed documentation,
-  and release evidence for Phases 87-90.
+  and release evidence for Phases 89-92.
 
 ### Status
 
@@ -4165,7 +4327,7 @@ parked-sale replay and shift-close resolution.
 
 ### Dependencies and Governance Note
 
-- Depends on Phases 88, 89, and 90.
+- Depends on Phases 90, 91, and 92.
 - Requires architecture, compliance, docs, frontend, backend, and POS smoke
   validation before completion.
 
@@ -4176,7 +4338,7 @@ parked-sale replay and shift-close resolution.
 - [x] Architecture and controller-boundary checks pass, and API/CSV guide/phase
   documentation are updated.
 - [x] Compliance, API-contract, documentation-lint, and strict ADR checks pass;
-  the Phase 91 impact declaration is recorded at
+  the Phase 93 impact declaration is recorded at
   `docs/compliance/impact-declarations/2026-08-14-pos-items-gallery-csv-import.md`.
 - [x] Unauthenticated desktop browser smoke reaches the POS login screen with
   no page errors, failed requests, or 5xx responses; the only console error is
@@ -4207,12 +4369,12 @@ parked-sale replay and shift-close resolution.
 
 ### Completion Record
 
-- Phase 91 remains an in-progress hardening phase with its existing release
-  gates unchanged. On 2026-08-15, the user explicitly directed Phase 92 to
+- Phase 93 remains an in-progress hardening phase with its existing release
+  gates unchanged. On 2026-08-15, the user explicitly directed Phase 94 to
   start as a separately tracked POS payment follow-up without treating Phase
   91 as completed.
 
-## Phase 92 - Current Sale Split Payment and Automatic Order Overview
+## Phase 94 - Current Sale Split Payment and Automatic Order Overview
 
 ### Initiative and Release
 
@@ -4236,7 +4398,7 @@ parked-sale replay and shift-close resolution.
 - `in_progress`
 - User approval received on 2026-08-15.
 - User explicitly directed implementation to start alongside the still-open
-  Phase 91 validation work on 2026-08-15.
+  Phase 93 validation work on 2026-08-15.
 
 ### Dependencies and Governance Note
 
@@ -4248,7 +4410,7 @@ parked-sale replay and shift-close resolution.
 - Classified `within-existing-boundary`: this phase changes frontend entry and
   orchestration only. It adds no database migration, provider checkout, or
   PayMongo behavior.
-- Phase 91 remains open and is not implied complete by Phase 92 work.
+- Phase 93 remains open and is not implied complete by Phase 94 work.
 
 ### Acceptance and Validation Evidence
 
@@ -4285,12 +4447,12 @@ parked-sale replay and shift-close resolution.
 
 ### Completion Record
 
-- Phase 92 remains in progress until authenticated rendered proof and the
+- Phase 94 remains in progress until authenticated rendered proof and the
   combined branch bundle-budget gate pass. On 2026-08-15, the user approved
-  Phase 93 as a separately tracked Storefront PayMongo correction; that work
-  does not imply Phase 92 completion.
+  Phase 95 as a separately tracked Storefront PayMongo correction; that work
+  does not imply Phase 94 completion.
 
-## Phase 93 - Simple Storefront PayMongo Payment Methods
+## Phase 95 - Simple Storefront PayMongo Payment Methods
 
 ### Initiative and Release
 
@@ -4325,7 +4487,7 @@ parked-sale replay and shift-close resolution.
 - Classified `within-existing-boundary`: the phase reuses existing Storefront
   and commerce-payment boundaries and introduces no database migration or new
   settlement decision.
-- Phase 92 remains open and is not implied complete by this separately approved
+- Phase 94 remains open and is not implied complete by this separately approved
   Storefront correction.
 
 ### Acceptance and Validation Evidence
@@ -4375,13 +4537,13 @@ parked-sale replay and shift-close resolution.
 
 ### Completion Record
 
-- Phase 93 remains in progress until authenticated rendered proof passes and
+- Phase 95 remains in progress until authenticated rendered proof passes and
   the Masu Cafe sandbox capability response enables at least one PayMongo online
-  method through the governed readiness contract. Phase 94 was explicitly
+  method through the governed readiness contract. Phase 96 was explicitly
   approved as a parallel POS discount/split-tender correction and does not
-  imply Phase 93 completion.
+  imply Phase 95 completion.
 
-## Phase 94 - POS Discount Visibility and Safe Split-Tender Correction
+## Phase 96 - POS Discount Visibility and Safe Split-Tender Correction
 
 ### Initiative and Release
 
@@ -4452,10 +4614,10 @@ parked-sale replay and shift-close resolution.
 
 ### Completion Record
 
-- Phase 94 remains in progress until authenticated rendered desktop/mobile proof
-  passes. Phase 95 is the next eligible phase after this correction closes.
+- Phase 96 remains in progress until authenticated rendered desktop/mobile proof
+  passes. Phase 97 is the next eligible phase after this correction closes.
 
-## Phase 95 - Shared Parked Sales and Cashier Handoff
+## Phase 97 - Shared Parked Sales and Cashier Handoff
 
 ### Initiative and Release
 
@@ -4476,11 +4638,11 @@ parked-sale replay and shift-close resolution.
 
 - `in_progress`
 - User approval received on 2026-08-15.
-- Started on 2026-08-15 alongside the still-open Phases 91, 92, 93, and 94.
+- Started on 2026-08-15 alongside the still-open Phases 93, 94, 95, and 96.
 
 ### Dependencies and Governance Note
 
-- ADR 0064 POS Shared Parked Sales and Cashier Handoff supersedes ADR 0061 for
+- ADR 0065 POS Shared Parked Sales and Cashier Handoff supersedes ADR 0061 for
   parked-sale visibility and ownership.
 - ADR 0031 continues to govern terminal occupancy and cash-drawer ownership;
   this phase does not create parallel open shifts or reassign drawers.
@@ -4520,14 +4682,14 @@ parked-sale replay and shift-close resolution.
 - `apps/dgfy-web/src/features/pos/utils/posShiftCloseResolution.js`
 - `apps/dgfy-web/src/features/pos/utils/__tests__/posShiftCloseResolution.test.js`
 - `apps/dgfy-migration-runner/migrations/20260815000002-add-pos-parked-sale-origin-ownership.cjs`
-- `docs/architecture/adr/0064-pos-shared-parked-sales-and-cashier-handoff.md`
+- `docs/architecture/adr/0065-pos-shared-parked-sales-and-cashier-handoff.md`
 
 ### Completion Record
 
-- Phase 95 remains in progress until all acceptance gates and authenticated
-  rendered proof pass. Phase 96 is the next eligible phase after completion.
+- Phase 97 remains in progress until all acceptance gates and authenticated
+  rendered proof pass. Phase 98 is the next eligible phase after completion.
 
-## Phase 96 - PIN-Driven Discount Accountability
+## Phase 98 - PIN-Driven Discount Accountability
 
 ### Initiative and Release
 
@@ -4601,10 +4763,10 @@ parked-sale replay and shift-close resolution.
 
 ### Completion Record
 
-- Phase 96 remains in progress until focused validation and authenticated
-  rendered proof pass. Phase 97 is the next eligible phase after completion.
+- Phase 98 remains in progress until focused validation and authenticated
+  rendered proof pass. Phase 99 is the next eligible phase after completion.
 
-## Phase 97 - POS-Native Discount Authorization Setup
+## Phase 99 - POS-Native Discount Authorization Setup
 
 ### Initiative and Release
 
@@ -4629,7 +4791,7 @@ parked-sale replay and shift-close resolution.
 
 ### Dependencies and Governance Note
 
-- Depends on Phase 96's `pos:discount_authorize` permission and server-owned
+- Depends on Phase 98's `pos:discount_authorize` permission and server-owned
   PIN verification boundary.
 - Uses the existing users permission and POS approval PIN endpoints; no raw PIN
   is exposed or stored and no new authorization table is introduced.
@@ -4673,5 +4835,5 @@ parked-sale replay and shift-close resolution.
 
 ### Completion Record
 
-- Phase 97 remains in progress until authenticated rendered POS proof passes.
-- Phase 98 is the next eligible phase after completion.
+- Phase 99 remains in progress until authenticated rendered POS proof passes.
+- Phase 100 is the next eligible phase after completion.

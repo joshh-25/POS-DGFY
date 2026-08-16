@@ -12,7 +12,7 @@ rollback_note: Revert the POS Items gallery controls, CSV import entry-point wir
 preflight_result: no_breach
 preflight_reason_code: ALLOWED
 preflight_run_at: 2026-08-14T13:00:00+08:00
-preflight_request_ref: PHASE-91
+preflight_request_ref: PHASE-93
 ---
 
 # POS Items Gallery and IMS CSV Import

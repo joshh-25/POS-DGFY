@@ -22,9 +22,9 @@ export function SimpleCartFloatingButton({
         height: isMobileViewport ? 62 : 68,
         borderRadius: '50%',
         border: '1px solid rgba(255,255,255,0.18)',
-        background: 'linear-gradient(135deg,#1a4586,#1a4e8d)',
+        background: 'linear-gradient(135deg,#176B3A,#0F5A30)',
         color: '#fff',
-        boxShadow: '0 18px 38px rgba(26,69,134,.34)',
+        boxShadow: '0 18px 38px rgba(23,107,58,.24)',
         cursor: 'pointer',
         display: 'grid',
         placeItems: 'center'
