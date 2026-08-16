@@ -130,10 +130,10 @@ flip board state unattended.
 
 ## Where this runs
 
-Local/manual invocation only, for now. #543 (not yet built, needs #512 first) describes chaining
-this role to run automatically as the next step after Reviewer merges — deliberately not built
-here; this role's own procedure is what #543 would eventually invoke, not something #543's absence
-blocks.
+Local/manual invocation only, for now. #543 (built alongside `promoter`, #512) documents the
+composite-flow convention that chains roles across one instruction — see `AGENTS.md`'s "Role
+handoffs and composite instructions". This role's own procedure is what such a chain would invoke;
+running it as an automated next step after `promoter` deploys is not itself built here.
 
 ## Reference files
 

@@ -34,6 +34,8 @@ const ROLE_SHIMS = {
   'pr-reviewer': ['.claude/agents/pr-reviewer.md'],
   observer: ['.claude/agents/observer.md'],
   verifier: ['.claude/agents/verifier.md'],
+  promoter: ['.claude/skills/promoter/SKILL.md'],
+  'incident-responder': ['.claude/skills/incident-responder/SKILL.md'],
 };
 
 const SHIM_LINE_CAP = 25;

@@ -108,14 +108,16 @@ compliance-bypass mechanism above, none of which are specific to deletion risk, 
 apply equally to `develop → staging`.
 
 Reconsidered 2026-08-16: keeping `develop → staging` as the one direct-head exception meant #512
-(the Promoter/Release agent, not yet built) would need to implement *two* separate promotion
-mechanisms — a special-cased direct merge for one leg, cut-branch-and-PR for the other — for no
-benefit beyond avoiding one extra branch-cut step on the leg that happens to be safe from deletion.
-A single uniform mechanism is simpler to build and reason about, and is already resilient to the
-residual risk the original version of this section named: if the default branch is ever repointed
-away from `develop`, nothing about this flow needs to change, because it was never depending on
-that protection to begin with. Direct-head is retired for this leg; `to-staging/<label>` replaces
-it.
+(the Promoter/Release agent) would need to implement *two* separate promotion mechanisms — a
+special-cased direct merge for one leg, cut-branch-and-PR for the other — for no benefit beyond
+avoiding one extra branch-cut step on the leg that happens to be safe from deletion. A single
+uniform mechanism is simpler to build and reason about, and is already resilient to the residual
+risk the original version of this section named: if the default branch is ever repointed away from
+`develop`, nothing about this flow needs to change, because it was never depending on that
+protection to begin with. Direct-head is retired for this leg; `to-staging/<label>` replaces it.
+
+#512 is built: `.agents/skills/promoter/SKILL.md` implements exactly this single mechanism for both
+legs.
 
 ## What actually gates a release into `main` today
 

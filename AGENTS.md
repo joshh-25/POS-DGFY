@@ -8,7 +8,10 @@ Before creating, updating, or describing any pull request in this repository, **
 
 1. **Commit message format** — Conventional Commits (`type(scope): subject`), types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, `build`, `ci`, `revert`.
 2. **PR body format** — base the body on `.github/pull_request_template.md`; at minimum it must include `## Summary` and `## Testing Evidence` sections (no separate `## Motivation` header exists in the template).
-3. **PR base branch** — non-`rc/*` branches (features, fixes, chores, docs) target `develop`; `rc/*` branches target `main`.
+3. **PR base branch** — ordinary branches (features, fixes, chores, docs) target `develop`; a
+   promotion PR targets `staging` from a `to-staging/<label>` head, or `main` from a `release/<label>`
+   head, per `docs/ops/RELEASE_CANDIDATE_POLICY.md` (authoritative) — corrected 2026-08-16 from a
+   stale `rc/*` reference that named a prefix used nowhere else in the repo.
 4. **Pre-commit safety check** — scan for `DO NOT COMMIT` markers (`rg "DO NOT COMMIT"`) across changed files before staging/committing, and exclude any matches.
 5. **Batch commits by domain** — group changed files into logical batches (new modules → dependents → docs → CI config) and commit each batch separately with its own Conventional Commits message, so history stays bisectable and reviewable.
 
@@ -49,11 +52,48 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
   files at most a defensible number of issues per run. @.agents/skills/observer/SKILL.md
 - **Verifier/QA** (#331/#536) — verifies a merged, deployed change against a live environment,
   then flips `For QA` to `Done` or `Failed`. @.agents/skills/verifier/SKILL.md
+- **Promoter/Release** (#331/#512) — runs a `develop → staging → main` promotion end to end,
+  cutting the intermediate promotion branch itself. Dispatches DEV/STAGING deploys unattended;
+  never merges `main` or dispatches a `main`/PROD deploy without an explicit go each time.
+  @.agents/skills/promoter/SKILL.md
+- **Incident Responder** (#331/#546) — autonomous production incident-response loop (monitor → PM
+  files → Worker fixes → fast-track Reviewer → Promoter redeploys). Carries a narrow, phrase-gated
+  override to merge a hotfix into `main` during an open incident; every other case keeps "never
+  merge `main`" absolute. Only runs when explicitly authorized to start an incident session.
+  @.agents/skills/incident-responder/SKILL.md
 
 Load the relevant one when a task matches its job. Each file names *where* the actual rules live
 (`docs/ai/PR.md`, `docs/process/ISSUE-TAXONOMY.md`, compliance/architecture scripts) rather than
 restating them — read the role file, then follow its references, don't reconstruct a role's
 procedure from memory or from an older cached copy.
+
+### Role handoffs and composite instructions
+
+Added 2026-08-16 (#543), resolving the open question of what a chained instruction like "review,
+merge, and deploy" concretely does and where it stops.
+
+**What the chain actually does.** `pr-reviewer` reviews and merges (`develop`/`staging`, unattended
+per its own merge policy) → `promoter` cuts/promotes and dispatches the DEV/STAGING deploy
+(unattended) → the moment `main` is the actual target, the chain **stops**, restates the
+never-merge-`main` rule out loud, and hands the physical merge to Pat — every time, not just until
+he says go once. This is unchanged from the standing rule already in `implement` and `pr-reviewer`,
+with one narrow exception: `incident-responder`'s phrase-gated override
+(`.agents/skills/incident-responder/SKILL.md`), which supersedes this file's earlier "no exception"
+framing *only* for that role, *only* mid-incident, *only* on Pat's explicit real-time phrase.
+
+**Why this is main-session sequencing, not literal nesting.** A Claude Code subagent's tool
+allowlist has no Agent tool (`pr-reviewer`'s is `Read, Grep, Glob, Bash`) — it cannot itself invoke
+`promoter`. "Reviewer invokes Deploy/Release as the next step" is implemented as the acting session
+running each role's procedure in sequence, not one role programmatically calling another. This is
+also why `promoter` and `incident-responder` are Claude Code **skills**
+(`.claude/skills/<role>/SKILL.md`, auto-invoked in the main session) rather than isolated subagents
+like `pr-reviewer`/`observer`/`verifier`.
+
+**PM is callable by any role, mid-task, not just as the flow's entry point.** Worker, Reviewer, or
+Promoter — any role that finds work outside its own current scope (a correction, a bug, a gap) hands
+off to `pm` to shape and file it properly, rather than improvising its own `gh issue create`. This
+generalizes the pattern `observer` already follows (deferring to `pm`'s search-before-filing
+discipline) to every role in the roster, not just Observer's Sentry-triage entry point.
 
 ### Surface precedence
 

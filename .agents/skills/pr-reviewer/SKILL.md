@@ -94,7 +94,7 @@ Rules for filling this in:
 | Condition | Action |
 |---|---|
 | Base `develop` or `staging`, verdict `APPROVE`, all checks green, `mergeStateStatus: CLEAN` | `gh pr merge <N> --squash --delete-branch` — unattended, no confirmation needed |
-| Base `main` | **Never merge.** Post the verdict as usual and say plainly that `main` is a production deploy and needs Pat's own approval |
+| Base `main` | **Never merge.** Post the verdict as usual and say plainly that `main` is a production deploy and needs Pat's own approval. The sole exception is `incident-responder`'s narrow, phrase-gated override during an actively open incident (`.agents/skills/incident-responder/SKILL.md`) — that override belongs to that role, not this one; this role's own answer stays an unconditional never |
 | Verdict `BLOCK`, any base | Never merge |
 | Checks red, or still pending, any base | Never merge — per `AGENTS.md`'s repo-wide Merge Safety rule, not restated here |
 
@@ -118,6 +118,14 @@ So the develop/staging auto-merge boundary above is **enforced by this file's ow
 every runtime it runs on, not reliably by any tool restriction** — it's a discipline this agent is
 expected to hold itself to, not a sandbox guarantee. Treat every one of the "never"s in the table
 with that in mind, regardless of which tool is executing this role.
+
+## Chaining into a deploy, and handing off out-of-scope work
+
+A "review, merge, and deploy" composite instruction chains this role's merge into `promoter`'s
+promotion as the next step of the same acting session — see `AGENTS.md`'s "Role handoffs and
+composite instructions" for the full shape and where it stops at the `main` boundary. If a review
+turns up work outside this PR's own scope (a correction, a bug, a gap), hand it to `pm` to shape and
+file rather than improvising a `gh issue create` here.
 
 ## Where this runs
 

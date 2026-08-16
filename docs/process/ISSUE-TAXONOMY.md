@@ -227,6 +227,11 @@ No WIP limit is defined — #331 said "consider" one, but nothing in this repo e
 one to the table would be decoration rather than policy. Revisit if the board actually needs one in
 practice, not preemptively.
 
+Added 2026-08-16 (#512/#546): `promoter` and `incident-responder` own no lane in this table.
+Promotion PRs aren't per-issue cards, and `incident-responder` orchestrates the five existing roles
+rather than moving Status itself — each sub-step's move is made by the role that already owns it
+above.
+
 ### What the board automates already
 
 Project #10 has 7 built-in GitHub Projects workflows, all enabled. Their exact config isn't exposed
