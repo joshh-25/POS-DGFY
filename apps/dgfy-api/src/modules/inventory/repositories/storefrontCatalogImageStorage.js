@@ -32,7 +32,8 @@ const createLocalStorefrontCatalogImageStorage = () => ({
             assetBaseName: `item-${itemId}`,
             originalName,
             reportedMime,
-            tempPath
+            tempPath,
+            retainOriginal: false
         });
     },
 

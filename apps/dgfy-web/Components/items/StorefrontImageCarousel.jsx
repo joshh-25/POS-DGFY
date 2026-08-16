@@ -1,6 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
+import { Switch } from '@/components/ui/switch';
 
 const normalizeGalleryEntryKey = (entry, index) => `${entry?.url || entry?.path || 'storefront-image'}-${index}`;
 
@@ -8,6 +9,7 @@ export default function StorefrontImageCarousel({
   gallery = [],
   itemName = 'Item',
   variant = 'wizard',
+  showPrimaryToggle = false,
   onSetPrimary,
   onRemove
 }) {
@@ -16,16 +18,13 @@ export default function StorefrontImageCarousel({
     () => (Array.isArray(gallery) ? gallery.filter((entry) => entry?.url || entry?.path) : []),
     [gallery]
   );
-  const activeEntry = normalizedGallery[activeIndex] || normalizedGallery[0] || null;
+  const resolvedActiveIndex = normalizedGallery.length > 0
+    ? Math.min(activeIndex, normalizedGallery.length - 1)
+    : 0;
+  const activeEntry = normalizedGallery[resolvedActiveIndex] || normalizedGallery[0] || null;
   const hasMultipleImages = normalizedGallery.length > 1;
   const isTableVariant = variant === 'table';
-
-  useEffect(() => {
-    setActiveIndex((index) => {
-      if (normalizedGallery.length === 0) return 0;
-      return Math.min(index, normalizedGallery.length - 1);
-    });
-  }, [normalizedGallery.length]);
+  const activeImageIsPrimary = resolvedActiveIndex === 0;
 
   const goToImage = (nextIndex) => {
     if (!hasMultipleImages) return;
@@ -46,10 +45,10 @@ export default function StorefrontImageCarousel({
       <div className="relative overflow-hidden rounded-md border border-slate-200 bg-white">
         <img
           src={resolveAssetUrl(activeEntry.url || activeEntry.path)}
-          alt={`${itemName} storefront image ${activeIndex + 1}`}
+          alt={`${itemName} storefront image ${resolvedActiveIndex + 1}`}
           className={isTableVariant ? 'h-16 w-24 object-cover' : 'h-32 w-full object-cover sm:h-36'}
         />
-        {activeIndex === 0 && (
+        {activeImageIsPrimary && !showPrimaryToggle && (
           <span className="absolute left-1.5 top-1.5 rounded bg-emerald-600 px-1.5 py-0.5 text-[10px] font-semibold text-white">
             Primary
           </span>
@@ -60,7 +59,7 @@ export default function StorefrontImageCarousel({
               type="button"
               aria-label="Previous item image"
               className="absolute left-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full border border-white/70 bg-white/90 text-slate-900 shadow-sm hover:bg-white"
-              onClick={() => goToImage(activeIndex - 1)}
+              onClick={() => goToImage(resolvedActiveIndex - 1)}
             >
               <ChevronLeft className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -68,7 +67,7 @@ export default function StorefrontImageCarousel({
               type="button"
               aria-label="Next item image"
               className="absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full border border-white/70 bg-white/90 text-slate-900 shadow-sm hover:bg-white"
-              onClick={() => goToImage(activeIndex + 1)}
+              onClick={() => goToImage(resolvedActiveIndex + 1)}
             >
               <ChevronRight className="h-4 w-4" aria-hidden="true" />
             </button>
@@ -78,8 +77,8 @@ export default function StorefrontImageCarousel({
                   key={`item-carousel-dot-${normalizeGalleryEntryKey(entry, index)}`}
                   type="button"
                   aria-label={`Show item image ${index + 1}`}
-                  aria-current={index === activeIndex ? 'true' : undefined}
-                  className={`h-1.5 rounded-full transition-all ${index === activeIndex ? 'w-4 bg-white' : 'w-1.5 bg-white/60'}`}
+                  aria-current={index === resolvedActiveIndex ? 'true' : undefined}
+                  className={`h-1.5 rounded-full transition-all ${index === resolvedActiveIndex ? 'w-4 bg-white' : 'w-1.5 bg-white/60'}`}
                   onClick={() => goToImage(index)}
                 />
               ))}
@@ -89,13 +88,33 @@ export default function StorefrontImageCarousel({
       </div>
       <div className="flex items-center gap-1">
         <span className="min-w-0 flex-1 text-[11px] text-slate-500">
-          {activeIndex + 1}/{normalizedGallery.length}
+          {resolvedActiveIndex + 1}/{normalizedGallery.length}
         </span>
-        {activeIndex > 0 && (
+        {showPrimaryToggle ? (
+          <label className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-600">
+            <Switch
+              checked={activeImageIsPrimary}
+              onCheckedChange={(checked) => {
+                if (checked && !activeImageIsPrimary) {
+                  setActiveIndex(0);
+                  onSetPrimary && onSetPrimary(resolvedActiveIndex);
+                }
+              }}
+              disabled={!onSetPrimary || activeImageIsPrimary}
+              aria-label={`Make item image ${resolvedActiveIndex + 1} primary`}
+              className="h-5 w-9 [&>span]:h-4 [&>span]:w-4 [&[aria-checked=true]>span]:translate-x-4"
+            />
+            <span>{activeImageIsPrimary ? 'Primary' : 'Make primary'}</span>
+          </label>
+        ) : null}
+        {!showPrimaryToggle && resolvedActiveIndex > 0 && (
           <button
             type="button"
             className="rounded border border-slate-200 px-1.5 py-0.5 text-[10px] text-slate-600 hover:bg-slate-50"
-            onClick={() => onSetPrimary && onSetPrimary(activeIndex)}
+            onClick={() => {
+              setActiveIndex(0);
+              onSetPrimary && onSetPrimary(resolvedActiveIndex);
+            }}
             disabled={!onSetPrimary}
           >
             Set first
@@ -104,7 +123,7 @@ export default function StorefrontImageCarousel({
         <button
           type="button"
           className="rounded border border-red-200 px-1.5 py-0.5 text-[10px] text-red-700 hover:bg-red-50"
-          onClick={() => onRemove && onRemove(activeIndex)}
+          onClick={() => onRemove && onRemove(resolvedActiveIndex)}
           disabled={!onRemove}
         >
           Remove

@@ -1,30 +1,81 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, X } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { resolveAssetUrl } from '@/src/utils/assetUrl.js';
 
-const buildFileKey = (file, index) => `${file?.name || 'item-image'}-${file?.size || 0}-${index}`;
+const buildFileKey = (file, index) => (
+  `${file?.name || 'item-image'}-${file?.size || 0}-${file?.lastModified || 0}-${index}`
+);
+
+const buildSavedImageKey = (entry, index) => (
+  `saved:${entry?.url || entry?.path || `image-${index}`}`
+);
 
 export default function SelectedItemImageCarousel({
   files = [],
+  savedGallery = [],
   itemName = 'Item',
   disabled = false,
-  onRemove
+  showPrimaryToggle = false,
+  onRemove,
+  onSetSavedPrimary,
+  onRemoveSaved,
+  onSetPendingPrimary
 }) {
   const [activeIndex, setActiveIndex] = useState(0);
+  const [primaryEntryKey, setPrimaryEntryKey] = useState('');
   const normalizedFiles = useMemo(
     () => (Array.isArray(files) ? files.filter(Boolean) : []),
     [files]
   );
+  const normalizedSavedGallery = useMemo(
+    () => (Array.isArray(savedGallery)
+      ? savedGallery.filter((entry) => entry?.url || entry?.path)
+      : []),
+    [savedGallery]
+  );
   const previews = useMemo(() => {
     const canCreateObjectUrl = typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function';
     return normalizedFiles.map((file, index) => ({
+      kind: 'pending',
       file,
-      index,
-      key: buildFileKey(file, index),
+      pendingIndex: index,
+      key: `pending:${buildFileKey(file, index)}`,
+      label: file?.name || `selected image ${index + 1}`,
       url: canCreateObjectUrl ? URL.createObjectURL(file) : ''
     }));
   }, [normalizedFiles]);
-  const activeEntry = previews[activeIndex] || previews[0] || null;
-  const hasMultipleImages = previews.length > 1;
+  const savedEntries = useMemo(
+    () => normalizedSavedGallery.map((entry, index) => ({
+      kind: 'saved',
+      savedIndex: index,
+      key: buildSavedImageKey(entry, index),
+      label: entry?.name || `saved image ${index + 1}`,
+      url: resolveAssetUrl(entry?.url || entry?.path)
+    })),
+    [normalizedSavedGallery]
+  );
+  const baseEntries = useMemo(
+    () => [...savedEntries, ...previews],
+    [previews, savedEntries]
+  );
+  const fallbackPrimaryKey = baseEntries[0]?.key || '';
+  const selectedPrimaryKey = baseEntries.some((entry) => entry.key === primaryEntryKey)
+    ? primaryEntryKey
+    : fallbackPrimaryKey;
+  const orderedEntries = selectedPrimaryKey
+    ? [
+      baseEntries.find((entry) => entry.key === selectedPrimaryKey),
+      ...baseEntries.filter((entry) => entry.key !== selectedPrimaryKey)
+    ].filter(Boolean)
+    : baseEntries;
+  const resolvedActiveIndex = orderedEntries.length > 0
+    ? Math.min(activeIndex, orderedEntries.length - 1)
+    : 0;
+  const activeEntry = orderedEntries[resolvedActiveIndex] || null;
+  const hasMultipleImages = orderedEntries.length > 1;
+  const combinedGallery = normalizedSavedGallery.length > 0;
+  const imageLabel = combinedGallery ? 'item' : 'selected item';
 
   useEffect(() => () => {
     previews.forEach((entry) => {
@@ -34,67 +85,86 @@ export default function SelectedItemImageCarousel({
     });
   }, [previews]);
 
-  useEffect(() => {
-    setActiveIndex((index) => {
-      if (previews.length === 0) return 0;
-      return Math.min(index, previews.length - 1);
-    });
-  }, [previews.length]);
-
   const goToImage = (nextIndex) => {
     if (!hasMultipleImages) return;
-    setActiveIndex(((nextIndex % previews.length) + previews.length) % previews.length);
+    setActiveIndex(((nextIndex % orderedEntries.length) + orderedEntries.length) % orderedEntries.length);
+  };
+
+  const handleSetPrimary = (entry) => {
+    if (!entry || entry.key === selectedPrimaryKey) return;
+    setPrimaryEntryKey(entry.key);
+    setActiveIndex(0);
+    if (entry.kind === 'saved') {
+      onSetSavedPrimary && onSetSavedPrimary(entry.savedIndex);
+    } else {
+      onSetPendingPrimary && onSetPendingPrimary(entry.file, entry.pendingIndex);
+    }
+  };
+
+  const handleRemoveCurrent = () => {
+    if (!activeEntry) return;
+    if (activeEntry.kind === 'saved') {
+      onRemoveSaved && onRemoveSaved(activeEntry.savedIndex);
+      return;
+    }
+    onRemove && onRemove(activeEntry.pendingIndex);
   };
 
   if (!activeEntry) return null;
+
+  const isPrimary = activeEntry.key === selectedPrimaryKey;
+  const canRemoveCurrent = activeEntry.kind === 'saved' ? Boolean(onRemoveSaved) : Boolean(onRemove);
+  const activeImageLabel = activeEntry.kind === 'saved'
+    ? `${itemName} storefront image ${resolvedActiveIndex + 1}`
+    : `${itemName} selected image ${resolvedActiveIndex + 1}`;
 
   return (
     <div
       className="mt-3 max-w-md space-y-2"
       role="region"
       aria-roledescription="carousel"
-      aria-label={`${itemName} selected image carousel`}
+      aria-label={`${itemName} ${combinedGallery ? 'item image gallery' : 'selected image carousel'}`}
     >
       <div className="relative overflow-hidden rounded-md border border-slate-200 bg-white">
         {activeEntry.url ? (
           <img
             src={activeEntry.url}
-            alt={`${itemName} selected image ${activeIndex + 1}`}
+            alt={activeImageLabel}
             className="h-32 w-full object-cover sm:h-36"
           />
         ) : (
           <div className="grid h-32 place-items-center px-4 text-center text-xs text-slate-500 sm:h-36">
-            {activeEntry.file?.name || `Selected image ${activeIndex + 1}`}
+            {activeEntry.label}
           </div>
         )}
         {hasMultipleImages && (
           <>
             <button
               type="button"
-              aria-label="Previous selected item image"
+              aria-label={`Previous ${imageLabel} image`}
               className="absolute left-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full border border-white/70 bg-white/90 text-slate-900 shadow-sm hover:bg-white"
-              onClick={() => goToImage(activeIndex - 1)}
+              onClick={() => goToImage(resolvedActiveIndex - 1)}
               disabled={disabled}
             >
               <ChevronLeft className="h-4 w-4" aria-hidden="true" />
             </button>
             <button
               type="button"
-              aria-label="Next selected item image"
+              aria-label={`Next ${imageLabel} image`}
               className="absolute right-1 top-1/2 grid h-7 w-7 -translate-y-1/2 place-items-center rounded-full border border-white/70 bg-white/90 text-slate-900 shadow-sm hover:bg-white"
-              onClick={() => goToImage(activeIndex + 1)}
+              onClick={() => goToImage(resolvedActiveIndex + 1)}
               disabled={disabled}
             >
               <ChevronRight className="h-4 w-4" aria-hidden="true" />
             </button>
             <div className="absolute bottom-1 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-full bg-slate-950/65 px-2 py-1">
-              {previews.map((entry, index) => (
+              {orderedEntries.map((entry, index) => (
                 <button
                   key={`selected-item-carousel-dot-${entry.key}`}
                   type="button"
-                  aria-label={`Show selected item image ${index + 1}`}
-                  aria-current={index === activeIndex ? 'true' : undefined}
-                  className={`h-1.5 rounded-full transition-all ${index === activeIndex ? 'w-4 bg-white' : 'w-1.5 bg-white/60'}`}
+                  aria-label={`Show ${imageLabel} image ${index + 1}`}
+                  aria-current={index === resolvedActiveIndex ? 'true' : undefined}
+                  className={`h-1.5 rounded-full transition-all ${index === resolvedActiveIndex ? 'w-4 bg-white' : 'w-1.5 bg-white/60'}`}
                   onClick={() => goToImage(index)}
                   disabled={disabled}
                 />
@@ -106,15 +176,15 @@ export default function SelectedItemImageCarousel({
       {hasMultipleImages && (
         <div
           className="flex gap-2 overflow-x-auto pb-1"
-          aria-label="Selected item image thumbnails"
+          aria-label={`${combinedGallery ? 'Item' : 'Selected item'} image thumbnails`}
         >
-          {previews.map((entry, index) => (
+          {orderedEntries.map((entry, index) => (
             <button
               key={`selected-item-carousel-thumb-${entry.key}`}
               type="button"
-              aria-label={`Focus selected item image ${index + 1}`}
-              aria-current={index === activeIndex ? 'true' : undefined}
-              className={`h-14 w-16 flex-shrink-0 overflow-hidden rounded-md border bg-white text-[10px] text-slate-500 transition ${index === activeIndex ? 'border-teal-500 ring-2 ring-teal-100' : 'border-slate-200 hover:border-slate-300'}`}
+              aria-label={`Focus ${imageLabel} image ${index + 1}`}
+              aria-current={index === resolvedActiveIndex ? 'true' : undefined}
+              className={`relative h-14 w-16 flex-shrink-0 overflow-hidden rounded-md border bg-white text-[10px] text-slate-500 transition ${index === resolvedActiveIndex ? 'border-teal-500 ring-2 ring-teal-100' : 'border-slate-200 hover:border-slate-300'}`}
               onClick={() => setActiveIndex(index)}
               disabled={disabled}
             >
@@ -130,25 +200,42 @@ export default function SelectedItemImageCarousel({
                   {index + 1}
                 </span>
               )}
+              {showPrimaryToggle && entry.key === selectedPrimaryKey ? (
+                <span className="absolute left-0.5 top-0.5 rounded bg-teal-600 px-1 text-[8px] font-bold text-white">Primary</span>
+              ) : null}
             </button>
           ))}
         </div>
       )}
       <div className="flex items-center gap-2">
-        <span className="min-w-0 flex-1 truncate text-[11px] text-slate-500">
-          Showing {activeIndex + 1}/{previews.length}: {activeEntry.file?.name || 'selected image'}
-        </span>
+        {showPrimaryToggle ? (
+          <label className="flex shrink-0 items-center gap-1.5 text-[11px] font-semibold text-slate-600">
+            <Switch
+              checked={isPrimary}
+              onCheckedChange={(checked) => {
+                if (checked) handleSetPrimary(activeEntry);
+              }}
+              disabled={disabled || isPrimary}
+              aria-label={`Make item image ${resolvedActiveIndex + 1} primary`}
+              className="h-5 w-9 [&>span]:h-4 [&>span]:w-4 [&[aria-checked=true]>span]:translate-x-4"
+            />
+            <span>Primary</span>
+          </label>
+        ) : null}
         <button
           type="button"
-          className="inline-flex items-center gap-1 rounded border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
-          onClick={() => onRemove && onRemove(activeIndex)}
-          disabled={disabled || !onRemove}
-          aria-label={`Remove selected item image ${activeIndex + 1}`}
+          className="inline-flex shrink-0 items-center gap-1 rounded border border-red-200 px-2 py-1 text-[11px] font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50"
+          onClick={handleRemoveCurrent}
+          disabled={disabled || !canRemoveCurrent}
+          aria-label={`${combinedGallery ? 'Remove item image' : 'Remove selected item image'} ${resolvedActiveIndex + 1}`}
         >
           <X className="h-3 w-3" aria-hidden="true" />
           Remove current image
         </button>
       </div>
+      {combinedGallery && showPrimaryToggle ? (
+        <p className="text-[10px] text-slate-400">Choose Primary on any image. The selected image will be used first in POS and Storefront.</p>
+      ) : null}
     </div>
   );
 }

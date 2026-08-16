@@ -7,7 +7,7 @@ applies_to: items_csv_import_export
 topic: workflow_mode_csv_templates
 ---
 
-# CSV Import/Export Guide for Inventory Items
+# CSV Import/Export Guide for Inventory Items and POS Items
 
 ## Overview
 Use CSV import/export to manage inventory items in bulk. CSV import now enforces tenant workflow mode compatibility:
@@ -17,6 +17,8 @@ Use CSV import/export to manage inventory items in bulk. CSV import now enforces
 3. Mismatch is blocked during both preview and confirm import with a deterministic validation error.
 
 Workflow mode behavior is aligned with ADR 0008 (`manufacturing` vs `msme`) and remains independent from compliance lifecycle.
+
+The POS Items workspace uses this same import contract as IMS. Users with `items:import` permission see **Import Items** in POS Items; the wizard downloads the active mode template and follows Upload → Preview → Result. The POS entry point is online-only and does not create or replace item images.
 
 ## Limits
 
@@ -75,6 +77,8 @@ Endpoints:
 
 1. `POST /items/import/preview`
 2. `POST /items/import/confirm`
+
+After a successful confirmation, the API publishes `pos.catalog.changed` with reason `csv_items_imported` for the created and updated item IDs. POS catalog consumers use that event to refresh item data. Item image galleries remain a separate create/edit workflow and support up to five shared Storefront images per item; CSV rows do not contain image files.
 
 Upsert behavior:
 

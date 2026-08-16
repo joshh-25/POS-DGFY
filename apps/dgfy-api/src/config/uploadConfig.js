@@ -178,5 +178,5 @@ export const storefrontAssetUpload = buildStrictImageUpload({ maxBytes: STOREFRO
 export const posCatalogImageUpload = buildStrictImageUpload({ maxBytes: CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES, maxFiles: 1 });
 export const posCatalogBulkImageUpload = buildBulkCatalogImageUpload({ maxBytes: BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES, maxFiles: BULK_CATALOG_IMAGE_TRANSPORT_MAX_FILES });
 export const storefrontCatalogImageUpload = buildStrictImageUpload({ maxBytes: CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES, maxFiles: 1 });
-export const storefrontCatalogGalleryImageUpload = buildStrictImageUpload({ maxBytes: IMAGE_UPLOAD_MAX_BYTES, maxFiles: 10 });
+export const storefrontCatalogGalleryImageUpload = buildStrictImageUpload({ maxBytes: CATALOG_SINGLE_IMAGE_SOURCE_MAX_BYTES, maxFiles: 10 });
 export const storefrontCatalogBulkImageUpload = buildBulkCatalogImageUpload({ maxBytes: BULK_CATALOG_IMAGE_TRANSPORT_MAX_BYTES, maxFiles: BULK_CATALOG_IMAGE_TRANSPORT_MAX_FILES });
