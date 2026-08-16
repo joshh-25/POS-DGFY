@@ -10,6 +10,7 @@ node_modules/
 # Playwright local artifacts and secrets
 /apps/dgfy-web/playwright-report/
 /apps/dgfy-web/test-results/
+/test-results/
 /apps/dgfy-web/playwright/.auth/
 /apps/dgfy-web/.env.e2e
 
@@ -72,6 +73,7 @@ Thumbs.db
 *.log
 /\.tmp/
 backend/storage/temp-ai-exports/
+apps/dgfy-api/storage/temp-ai-exports/
 backend/storage/platform-invoices/
 
 # Local compatibility-backend runtime media. Uploaded tenant/customer files

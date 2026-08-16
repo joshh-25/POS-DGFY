@@ -3989,3 +3989,689 @@ parked-sale replay and shift-close resolution.
 
 - Phase 86 is complete. Phase 87 is the next eligible repository phase and
   requires separate approval.
+
+## Phase 87 - POS Items Gallery and IMS CSV Import Foundation
+
+### Initiative and Release
+
+- Initiative: POS Items multi-image management and IMS-equivalent item bulk import.
+- Release: `codex/pos-items-gallery-csv-import` targeting `develop`.
+
+### Objective and Scope
+
+- Expose the existing five-image Storefront item gallery inside the POS Items
+  create and edit flows.
+- Reuse the existing IMS CSV import wizard and `/items/import/*` contracts in
+  POS Items with the dedicated `items:import` permission.
+- Preserve Catalog/Inventory ownership and the existing POS primary-image
+  presentation behavior.
+
+### Status
+
+- `completed`
+- User approval received on 2026-08-14.
+
+### Dependencies and Governance Note
+
+- ADR 0029 Catalog, Inventory, POS, and Storefront Ownership Boundaries.
+- ADR 0055 Tenant-Scoped POS Catalog Realtime Invalidation.
+- `docs/guides/csv_import_guide.md`.
+- Existing `storefront_image_gallery` contract and CSV import APIs.
+
+### Acceptance and Validation Evidence
+
+- [x] POS create and edit flows support up to five images with primary-image
+  ordering, individual removal, and per-file validation.
+- [x] POS exposes the IMS CSV Upload -> Preview -> Confirm -> Result flow only
+  to users with `items:import`.
+- [x] Successful CSV imports refresh the current POS and publish the existing
+  tenant-scoped catalog invalidation for other POS terminals.
+- [x] Feature-level frontend, backend, architecture, API, and guide validation
+  passes; final release-wide gates are tracked in Phase 91.
+
+### Implementation Links
+
+- `apps/dgfy-web/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `apps/dgfy-web/src/features/pos/components/TerminalPageLayout.jsx`
+- `apps/dgfy-web/src/features/pos/pages/TerminalPage.jsx`
+- `apps/dgfy-web/Components/items/CSVImportModal.jsx`
+- `apps/dgfy-api/src/modules/csv/controllers/itemCsvImportHandlers.js`
+- `docs/api/specification.md`
+- `docs/guides/csv_import_guide.md`
+
+### Completion Record (2026-08-14)
+
+- Phase 87 completed after the gallery, POS CSV entry point, catalog invalidation,
+  focused tests, production POS build, architecture checks, and unauthenticated
+  browser smoke passed. Phase 88 is the next eligible phase.
+
+## Phase 88 - POS Items Multi-Image Gallery Delivery
+
+### Initiative and Release
+
+- Initiative: POS item create/edit gallery controls.
+- Release: POS Items gallery delivery.
+
+### Objective and Scope
+
+- Replace the current first-file-only UI behavior with the existing five-image
+  gallery contract while keeping the first image as POS primary presentation.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 87 permission and contract foundation.
+- ADR 0029 and the existing Storefront gallery API remain authoritative.
+
+### Acceptance and Validation Evidence
+
+- [x] Create and edit modal gallery flows are covered by component contracts.
+- [x] The five-image gallery limit and the backend 100 MB source-image policy
+  are enforced; the POS does not reject large files before server optimization.
+- [x] Primary-image reorder and individual deletion are persisted.
+
+### Completion Record (2026-08-14)
+
+- Phase 88 completed with the POS shared-gallery controls and focused frontend
+  contracts passing. Phase 89 is the next eligible phase.
+
+## Phase 89 - POS Items IMS CSV Import Delivery
+
+### Initiative and Release
+
+- Initiative: POS Items bulk catalog import.
+- Release: IMS-equivalent CSV import delivery.
+
+### Objective and Scope
+
+- Add the existing IMS CSV import wizard to POS Items without duplicating
+  import parsing, validation, or persistence logic.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 87 permission wiring.
+- `docs/guides/csv_import_guide.md` and the existing CSV import module govern
+  templates, limits, SKU upsert behavior, and workflow-mode validation.
+
+### Acceptance and Validation Evidence
+
+- [x] Correct workflow-mode template is downloadable from POS.
+- [x] Preview, confirmation, row errors, partial results, and refresh are
+  covered by UI and transport tests.
+- [x] Import remains gated by `items:import`, not `items:create`.
+
+### Completion Record (2026-08-14)
+
+- Phase 89 completed with the existing IMS wizard reused in POS, the permission
+  gate wired through the terminal page, and frontend/backend focused tests
+  passing. Phase 90 is the next eligible phase.
+
+## Phase 90 - POS Catalog Refresh After CSV Import
+
+### Initiative and Release
+
+- Initiative: Cross-terminal catalog consistency.
+- Release: CSV import invalidation hardening.
+
+### Objective and Scope
+
+- Publish the existing `pos.catalog.changed` invalidation after successful item
+  CSV creates or updates and preserve current cart/search/filter state on
+  refresh.
+
+### Status
+
+- `completed`
+
+### Dependencies and Governance Note
+
+- Depends on Phase 89 import confirmation behavior.
+- ADR 0055 governs event publication and client re-fetch behavior.
+
+### Acceptance and Validation Evidence
+
+- [x] Current POS refreshes after import.
+- [x] Other connected POS terminals receive the invalidation and re-fetch.
+- [x] Failed-only imports do not publish a false catalog update.
+
+### Completion Record (2026-08-14)
+
+- Phase 90 completed with `csv_items_imported` publication for created/updated
+  item IDs and a transport test proving the tenant-scoped event payload. Phase
+  91 is the next eligible phase.
+
+## Phase 91 - POS Items Gallery and Import Release Hardening
+
+### Initiative and Release
+
+- Initiative: POS Items feature verification and documentation closure.
+- Release: POS Items gallery/import readiness.
+
+### Objective and Scope
+
+- Complete responsive browser proof, regression testing, governed documentation,
+  and release evidence for Phases 87-90.
+
+### Status
+
+- `in_progress`
+
+### Dependencies and Governance Note
+
+- Depends on Phases 88, 89, and 90.
+- Requires architecture, compliance, docs, frontend, backend, and POS smoke
+  validation before completion.
+
+### Acceptance and Validation Evidence
+
+- [x] Targeted frontend and backend suites pass; the production POS build also
+  passes.
+- [x] Architecture and controller-boundary checks pass, and API/CSV guide/phase
+  documentation are updated.
+- [x] Compliance, API-contract, documentation-lint, and strict ADR checks pass;
+  the Phase 91 impact declaration is recorded at
+  `docs/compliance/impact-declarations/2026-08-14-pos-items-gallery-csv-import.md`.
+- [x] Unauthenticated desktop browser smoke reaches the POS login screen with
+  no page errors, failed requests, or 5xx responses; the only console error is
+  the expected 401 from `/api/v1/pos/device/status`.
+- [x] Frontend bundle-budget gate passes: POS checkout is 152.98 KB / 154 KB
+  and SKUpervisor `TerminalPage-` is 115.99 KB / 116 KB after keeping the
+  `items:import` check inside the POS-only Items workspace.
+- [x] POS accepts large image sources without a local byte rejection; the
+  gallery transport and use case enforce the backend 100 MB source policy,
+  while shared image storage generates optimized delivery variants.
+- [x] Existing POS item edits show an immediate local image preview,
+  automatically persist the upload, and replace the preview with the optimized
+  delivery asset. New item drafts continue queuing files until item creation.
+- [x] Existing-item image uploads now acknowledge quickly with a background
+  job, keep Save Item independent from image optimization, and refresh the
+  item/gallery through catalog-change invalidation after the optimized asset
+  replaces the temporary preview. The interactive POS does not poll the job;
+  the same API path is used by the POS browser and iMin WebView.
+- [ ] Full frontend regression remains open: 316 files and 1,798 tests passed;
+  6 unrelated files failed with 11 timeout or contract failures outside the
+  POS Items gallery/import scope.
+- [ ] Full backend regression remains open because the repository-wide Jest run
+  exceeded the 304-second execution window; the focused CSV transport suite
+  passes.
+- [ ] Authenticated responsive desktop/mobile proof remains open because no
+  approved E2E credentials are available in this workspace. Unauthenticated
+  desktop proof is complete.
+
+### Completion Record
+
+- Phase 91 remains an in-progress hardening phase with its existing release
+  gates unchanged. On 2026-08-15, the user explicitly directed Phase 92 to
+  start as a separately tracked POS payment follow-up without treating Phase
+  91 as completed.
+
+## Phase 92 - Current Sale Split Payment and Automatic Order Overview
+
+### Initiative and Release
+
+- Initiative: POS cashier split-payment flow simplification.
+- Release: Current Sale payment shortcut and canonical receipt handoff.
+
+### Objective and Scope
+
+- Add a Split Payment action beside Apply Discount in Current Sale while
+  retaining the existing split-payment entry inside checkout.
+- Rename the split allocation action from Apply Split Payment to Record
+  Payment.
+- After the server reports zero remaining, call the existing idempotent
+  completion operation automatically and open the canonical Order Overview
+  only when a transaction is returned.
+- Keep merchant-owned walk-in GCash outside PayMongo and preserve Services mode
+  without F&B-only parked-sale controls.
+
+### Status
+
+- `in_progress`
+- User approval received on 2026-08-15.
+- User explicitly directed implementation to start alongside the still-open
+  Phase 91 validation work on 2026-08-15.
+
+### Dependencies and Governance Note
+
+- Depends on the completed automatic-finalization, recovery, and configurable
+  payment-row contracts in Phases 69, 74, and 84.
+- Governed by
+  `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`
+  and `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`.
+- Classified `within-existing-boundary`: this phase changes frontend entry and
+  orchestration only. It adds no database migration, provider checkout, or
+  PayMongo behavior.
+- Phase 91 remains open and is not implied complete by Phase 92 work.
+
+### Acceptance and Validation Evidence
+
+- [x] Current Sale renders Split Payment beside Apply Discount and the existing
+  checkout Split Payment action remains available.
+- [x] Record Payment persists non-cash rows before cash through the existing
+  idempotent allocation operations and hands the server-returned ready session
+  to the existing idempotent completion operation.
+- [x] A missing or failed completion result keeps the recorded session
+  recoverable, exposes Retry Finish Sale, and does not open a receipt.
+- [x] Successful completion clears the current sale and opens the canonical
+  `order_preview` receipt source used by normal checkout.
+- [x] Focused split-payment, presentation, and responsive validation passes: 4
+  files and 38 tests, including desktop/mobile mixed tender, completion
+  failure/retry, Services-mode presentation, and terminal scroll contracts.
+- [x] Changed-file frontend lint reports zero errors (8 pre-existing warnings
+  in `POSCheckoutTerminal.jsx`) and the production POS build passes.
+- [ ] Authenticated rendered desktop and mobile proof remains required for the
+  direct Current Sale action, Record Payment, automatic Order Overview, and
+  failure recovery.
+- [ ] The combined dirty branch frontend bundle gate remains open: POS checkout
+  is 161.7 KB / 154 KB and SKUpervisor Terminal is 116.03 KB / 116 KB. The
+  limit must not be increased to close this gate.
+
+### Implementation Links
+
+- `apps/dgfy-web/src/features/pos/components/PosCurrentSaleActions.jsx`
+- `apps/dgfy-web/src/features/pos/components/POSCheckoutTerminal.jsx`
+- `apps/dgfy-web/src/features/pos/components/POSSplitPaymentWorkflow.jsx`
+- `apps/dgfy-web/src/features/pos/components/POSSplitPaymentDialog.jsx`
+- `apps/dgfy-web/src/features/pos/__tests__/posModePresentationMatrix.behavior.test.jsx`
+- `apps/dgfy-web/src/features/pos/__tests__/posSplitPaymentUi.contract.test.js`
+- `apps/dgfy-web/src/features/pos/__tests__/posSplitPaymentManualTender.behavior.test.jsx`
+
+### Completion Record
+
+- Phase 92 remains in progress until authenticated rendered proof and the
+  combined branch bundle-budget gate pass. On 2026-08-15, the user approved
+  Phase 93 as a separately tracked Storefront PayMongo correction; that work
+  does not imply Phase 92 completion.
+
+## Phase 93 - Simple Storefront PayMongo Payment Methods
+
+### Initiative and Release
+
+- Initiative: Storefront online-payment template parity and channel safety.
+- Release: Simple/MSME checkout Card, GCash, Maya, and QR Ph integration.
+
+### Objective and Scope
+
+- Replace the Simple/MSME checkout's hardcoded Cash-only payment list with the
+  existing server-resolved Storefront payment capability contract.
+- Route every enabled online Card, GCash, Maya, and QR Ph selection through the
+  PayMongo commerce payment-session endpoint.
+- Preserve walk-in POS GCash as a merchant-owned physical-QR tender that never
+  enters PayMongo.
+- Restore PayMongo hosted-checkout return sessions on both F&B and Simple order
+  routes without creating duplicate orders.
+
+### Status
+
+- `in_progress`
+- User approval received on 2026-08-15.
+- The user explicitly confirmed the channel rule on 2026-08-15: all online
+  wallet/card methods use PayMongo; only walk-in POS uses the store's physical
+  GCash QR.
+
+### Dependencies and Governance Note
+
+- Depends on ADR 0052's landlord-owned commerce payment-session and verified
+  provider-finalization contract.
+- Depends on the existing Storefront catalog `payment_capabilities` response and
+  the PayMongo payment-session polling/finalization workflow.
+- Classified `within-existing-boundary`: the phase reuses existing Storefront
+  and commerce-payment boundaries and introduces no database migration or new
+  settlement decision.
+- Phase 92 remains open and is not implied complete by this separately approved
+  Storefront correction.
+
+### Acceptance and Validation Evidence
+
+- [x] Simple checkout builds Cash, Card, GCash, Maya, and QR Ph choices from
+  `selectedStore.payment_capabilities`; disabled online methods remain hidden
+  in production, with the existing explicit QR Ph sandbox override retained.
+- [x] A shared online-payment helper routes Card, GCash, Maya, and QR Ph through
+  `POST /api/v1/store/checkout/payment-sessions` and rejects Cash.
+- [x] Simple checkout renders the shared PayMongo status/QR panel, prevents a
+  duplicate submit while a payment session is active, and offers Cash recovery.
+- [x] Hosted PayMongo return parameters restore the payment session on both F&B
+  and Simple order routes before status polling resumes. DGFY-hosted stores use
+  a store-specific `/tenant-store/:slug/order` return instead of the generic
+  `/payment-return` discovery fallback; verified custom domains retain `/order`.
+- [x] After the verified session becomes `finalized` and exposes its server-owned
+  tracking PIN, both manual **Return to Merchant** and PayMongo's automatic
+  redirect continue through the existing Storefront polling flow and navigate
+  to that order's tracking route without creating a duplicate order.
+- [ ] Exact Masu Cafe sandbox session `CPS-BBF4RAYCYN` reaches the corrected
+  store order route, but remains `awaiting_payment` because the configured
+  `PAYMONGO_WEBHOOK_ENDPOINT_URL` is still a placeholder and no signed PayMongo
+  webhook was received. End-to-end tracking proof remains blocked until a real
+  public webhook endpoint is configured and PayMongo delivery succeeds.
+- [x] Focused Storefront payment validation passes: 2 files and 25 tests.
+- [x] Changed-file frontend lint reports zero errors; the Storefront production
+  build passes.
+- [ ] The combined dirty-branch frontend budget gate remains blocked by the
+  existing POS Checkout 161.7 KB / 154 KB and SKUpervisor Terminal 116.03 KB /
+  116 KB overruns. Storefront builds successfully; budget limits were not
+  increased.
+- [ ] Authenticated rendered desktop and mobile proof remains required for the
+  Simple checkout selection, QR/status panel, hosted return, and Cash recovery.
+- [ ] Masu Cafe currently reports `FEATURE_DISABLED` for Card, GCash, Maya, and
+  QR Ph. Sandbox feature flags, PayMongo configuration, and tenant revenue
+  policy/readiness must pass before these methods become customer-visible.
+
+### Implementation Links
+
+- `apps/dgfy-web/apps/store/src/shared/model/storefrontCheckoutPaymentOptions.js`
+- `apps/dgfy-web/apps/store/src/shared/services/storefrontOnlinePaymentSession.js`
+- `apps/dgfy-web/apps/store/src/shared/components/checkout/StorefrontOnlinePaymentPanel.jsx`
+- `apps/dgfy-web/apps/store/src/shared/hooks/useCheckoutSubmission.js`
+- `apps/dgfy-web/apps/store/src/modes/simple/checkout/pages/SimpleCheckoutRoutePage.jsx`
+- `apps/dgfy-web/apps/store/src/modes/simple/checkout/hooks/useSimpleCheckoutRouteProps.js`
+- `apps/dgfy-web/apps/store/src/__tests__/simpleCheckoutOnlinePayments.contract.test.js`
+
+### Completion Record
+
+- Phase 93 remains in progress until authenticated rendered proof passes and
+  the Masu Cafe sandbox capability response enables at least one PayMongo online
+  method through the governed readiness contract. Phase 94 was explicitly
+  approved as a parallel POS discount/split-tender correction and does not
+  imply Phase 93 completion.
+
+## Phase 94 - POS Discount Visibility and Safe Split-Tender Correction
+
+### Initiative and Release
+
+- Initiative: POS checkout discount clarity and payment-method safety.
+- Release: POS Confirm Checkout discount summary and governed split-tender
+  compatibility.
+
+### Objective and Scope
+
+- Show the applied discount label and amount inside Confirm Checkout.
+- Allow the cashier to remove an unsaved discount with an explicit trash action
+  and immediately restore the canonical total.
+- Permit split tender for every valid governed discount. The server-owned quote
+  applies the discounted total before allocations and the final checkout
+  revalidates the discount against current rules and lines.
+- Verify employee/manual approval PINs during split-session creation, store only
+  a non-secret server approval proof, and never transport or persist the raw PIN
+  in a payment session. Senior/PWD beneficiary validation remains server
+  authoritative.
+
+### Status
+
+- `in_progress`
+- User approval received on 2026-08-15.
+
+### Dependencies and Governance Note
+
+- Depends on ADR 0033's server-authoritative commercial promo and statutory
+  discount rules, ADR 0063's server-owned split-payment session, and the POS
+  split-payment feature contract.
+- Classified `within-existing-boundary`: no database migration, provider
+  integration, or payment-ledger change is introduced.
+- The frontend display/removal is additive. Split tender reuses the existing
+  governed discount snapshot and server quote; approval-protected discounts
+  use the server-only proof handoff at completion.
+
+### Acceptance and Validation Evidence
+
+- [x] Confirm Checkout renders a discount summary with label, amount, and
+  accessible trash removal control.
+- [x] Removing an unsaved discount clears governed, preset, and manual discount
+  state and recalculates the sale total.
+- [x] Split tender remains enabled after applying any valid discount, while the
+  server quote and completion path preserve governed validation.
+- [x] Employee/manual approval PIN verification occurs at session creation and
+  completion uses only the server-owned proof; the raw PIN is absent from the
+  stored snapshot and checkout payload.
+- [x] Checkout confirmation no longer auto-focuses or scrolls to Total Payment;
+  the cashier must click the field before entering tender.
+- [x] Focused split-session and UI contract suites pass: backend split-session
+  coverage is 26 tests and the changed POS UI contract is 9 tests; adjacent
+  split-tender behavior suites also pass (28 tests across 3 files).
+- [x] Changed-file ESLint reports zero errors; existing warnings remain
+  unchanged.
+- [x] POS production build passes.
+- [x] Local rendered POS route loads without an error boundary; terminal login
+  is required before an authenticated checkout-modal proof can be captured.
+- [ ] Authenticated rendered desktop and mobile proof of discount removal and
+  discounted split tender remains required.
+
+### Implementation Links
+
+- `apps/dgfy-web/src/features/pos/components/POSCheckoutTerminal.jsx`
+- `apps/dgfy-web/src/features/pos/__tests__/posSplitPaymentUi.contract.test.js`
+- `docs/features/POS_SPLIT_PAYMENT_CONTRACT.md`
+- `docs/architecture/adr/0033-commercial-promo-and-statutory-pos-discount-boundaries.md`
+- `docs/architecture/adr/0063-pos-split-tender-and-manual-walk-in-payment-recording.md`
+
+### Completion Record
+
+- Phase 94 remains in progress until authenticated rendered desktop/mobile proof
+  passes. Phase 95 is the next eligible phase after this correction closes.
+
+## Phase 95 - Shared Parked Sales and Cashier Handoff
+
+### Initiative and Release
+
+- Initiative: POS cashier handoff and shared parked-sale recovery.
+- Release: current POS cashier hardening sequence.
+
+### Objective and Scope
+
+- Show active parked sales to authorized cashiers within the same branch,
+  regardless of which cashier or shift originally parked them.
+- Allow a cashier with an open shift at that branch to explicitly resume an
+  unclaimed parked sale and become its current operational owner.
+- Preserve original cashier/shift identity, prevent cross-branch access, keep
+  claimed-sale leases exclusive, and allow unclaimed handoff work to outlive
+  the originating shift while maintaining shift-close accounting.
+
+### Status
+
+- `in_progress`
+- User approval received on 2026-08-15.
+- Started on 2026-08-15 alongside the still-open Phases 91, 92, 93, and 94.
+
+### Dependencies and Governance Note
+
+- ADR 0064 POS Shared Parked Sales and Cashier Handoff supersedes ADR 0061 for
+  parked-sale visibility and ownership.
+- ADR 0031 continues to govern terminal occupancy and cash-drawer ownership;
+  this phase does not create parallel open shifts or reassign drawers.
+- Classified `cross-boundary`: additive tenant migration, POS API/use-case
+  ownership change, frontend queue behavior, audit evidence, and shift-close
+  validation.
+
+### Acceptance and Validation Evidence
+
+- [x] Additive origin-ownership migration applies to every tenant schema and
+  backfills existing parked rows; the landlord migration and all 14 active
+  tenant schemas are healthy after repair.
+- [x] Same-location cashiers can list and resume unclaimed parked sales;
+  different-location claims fail closed, while cancellation remains limited to
+  the current parked-sale owner.
+- [x] Origin ownership remains visible in the parked record and audit event;
+  current ownership moves to the resuming cashier/shift.
+- [x] Claimed carts remain exclusive and cannot be edited concurrently.
+- [x] Re-park, split-payment creation, checkout, and cancellation use current
+  operational ownership; shift-close blockers count only claimed carts owned
+  by the current shift, while unclaimed carts remain available for handoff.
+- [x] Pending offline parked-sale syncs and claimed carts still block normal and
+  stale-recovery shift close with actionable copy.
+- [x] Focused backend/frontend tests, targeted lint, POS build, migration/
+  runtime-schema checks, and architecture/doc gates pass; unauthenticated POS
+  smoke reaches the locked terminal without a runtime error boundary.
+- [ ] Authenticated rendered desktop/mobile proof remains required.
+
+### Implementation Links
+
+- `apps/dgfy-api/src/models/PosParkedSale.js`
+- `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`
+- `apps/dgfy-api/src/modules/pos/usecases/parkedSaleUseCases.js`
+- `apps/dgfy-api/src/services/runtimeSchemaAuditService.js`
+- `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`
+- `apps/dgfy-web/src/features/pos/components/POSParkedSalesDialog.jsx`
+- `apps/dgfy-web/src/features/pos/utils/posShiftCloseResolution.js`
+- `apps/dgfy-web/src/features/pos/utils/__tests__/posShiftCloseResolution.test.js`
+- `apps/dgfy-migration-runner/migrations/20260815000002-add-pos-parked-sale-origin-ownership.cjs`
+- `docs/architecture/adr/0064-pos-shared-parked-sales-and-cashier-handoff.md`
+
+### Completion Record
+
+- Phase 95 remains in progress until all acceptance gates and authenticated
+  rendered proof pass. Phase 96 is the next eligible phase after completion.
+
+## Phase 96 - PIN-Driven Discount Accountability
+
+### Initiative and Release
+
+- Initiative: POS discount authorization and audit accountability.
+- Release: current POS checkout hardening sequence.
+
+### Objective and Scope
+
+- Remove the mandatory manual discount reason so a valid discount is not blocked
+  by free-text entry.
+- Require a server-verified PIN from an active authorized employee for every
+  governed POS discount type: Senior, PWD, Employee, Promo, and Manual.
+- Record the canonical PIN owner separately from the cashier handling the sale,
+  including discount type/rate/amount, order reference, and approval time.
+- Expose authorization evidence in POS transaction history and the Admin audit
+  workspace; never persist the raw PIN.
+- Reject legacy generic discount fields when they are not backed by a governed
+  discount and verified employee PIN.
+
+### Status
+
+- `in_progress`
+- User approval received on 2026-08-15.
+
+### Dependencies and Governance Note
+
+- Depends on ADR 0033's server-authoritative POS discount rules and approval
+  boundary, the existing `manager_approval_id` relation, and the POS split-
+  tender server-owned quote/proof contract.
+- Classified `within-existing-boundary`: one idempotent audit-log compatibility
+  migration is required because the existing audit model already depends on
+  actor/context columns that older tenant schemas do not contain. No new
+  discount table or PIN-storage column is introduced; existing discount
+  approval identity and immutable audit JSON are reused.
+- Existing Admin/Manager defaults remain compatible. The new
+  `pos:discount_authorize` permission delegates authorization to an explicitly
+  permitted employee without changing PIN storage ownership.
+
+### Acceptance and Validation Evidence
+
+- [x] Manual reason is optional in the POS UI and backend policy.
+- [x] The server requires and verifies an active authorized employee PIN for
+  every governed discount type; Admin users no longer bypass approval.
+- [x] The audit record stores PIN owner, cashier, discount type/rate/amount,
+  transaction reference, and approval timestamp; raw PIN is not persisted.
+- [x] POS transaction history shows discount amount/type and the authorizing
+  employee; Admin audit labels show authorizer and cashier separately.
+- [x] Split-payment session creation and completion retain only a server-owned
+  approval proof and revalidate the PIN owner before posting the sale.
+- [x] Focused backend/frontend tests, changed-file lint, and POS build pass.
+- [ ] Authenticated rendered POS proof confirms the authorization modal,
+  optional reason, history evidence, and Admin audit evidence.
+
+### Implementation Links
+
+- `apps/dgfy-api/src/config/permissions.js`
+- `apps/dgfy-api/src/modules/pos/domain/posDiscountApprovalPolicy.js`
+- `apps/dgfy-api/src/modules/pos/domain/posDiscountPolicy.js`
+- `apps/dgfy-api/src/modules/pos/repositories/posRepository.js`
+- `apps/dgfy-api/src/modules/pos/usecases/posUseCases.js`
+- `apps/dgfy-api/src/modules/pos/usecases/splitPaymentUseCases.js`
+- `apps/dgfy-api/src/validators/posValidator.js`
+- `apps/dgfy-web/src/features/pos/components/POSCheckoutTerminal.jsx`
+- `apps/dgfy-web/src/features/pos/components/POSSplitPaymentWorkflow.jsx`
+- `apps/dgfy-web/src/features/pos/components/POSTransactionHistoryPanel.jsx`
+- `apps/dgfy-web/src/features/pos/components/AuditWorkspacePanel.jsx`
+- `apps/dgfy-web/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `apps/dgfy-web/Components/users/UserManagementModal.jsx`
+- `apps/dgfy-migration-runner/migrations/20260815000003-align-audit-log-context.cjs`
+- `docs/architecture/adr/0033-commercial-promo-and-statutory-pos-discount-boundaries.md`
+
+### Completion Record
+
+- Phase 96 remains in progress until focused validation and authenticated
+  rendered proof pass. Phase 97 is the next eligible phase after completion.
+
+## Phase 97 - POS-Native Discount Authorization Setup
+
+### Initiative and Release
+
+- Initiative: Move POS discount authorization setup into the POS surface.
+- Release: current POS checkout hardening sequence.
+
+### Objective and Scope
+
+- Let the Master Admin enable or disable explicit discount authorization for
+  cashiers and staff from POS Settings.
+- Let the Master Admin configure or reset the authorized employee's POS
+  approval PIN from the same POS Settings section.
+- Allow an active cashier or explicitly authorized employee to hold a PIN;
+  preserve server-side role, permission, active-user, and PIN validation.
+- Remove the specialized discount-PIN control from SKUpervisor User Management
+  so the operational setup has one POS-native home.
+
+### Status
+
+- `in_progress`
+- User approval received on 2026-08-15.
+
+### Dependencies and Governance Note
+
+- Depends on Phase 96's `pos:discount_authorize` permission and server-owned
+  PIN verification boundary.
+- Uses the existing users permission and POS approval PIN endpoints; no raw PIN
+  is exposed or stored and no new authorization table is introduced.
+- Permission changes remain Master Admin-only, while discount authorization at
+  checkout remains enforced by the API.
+
+### Acceptance and Validation Evidence
+
+- [x] POS Settings lists active employees and shows built-in versus explicit
+  discount authorization.
+- [x] POS Settings can grant or revoke `pos:discount_authorize` for a cashier
+  or staff employee.
+- [x] POS Settings can set or reset a PIN after authorization is enabled.
+- [x] POS checkout keeps authorized employees visible when PIN setup is
+  incomplete, marks them as unavailable, and blocks unconfigured selection.
+- [x] The discount PIN input is cleared on modal open and resists browser
+  password autofill.
+- [x] POS PIN inputs are treated as masked one-time numeric codes rather than
+  account passwords, preventing browser breach-password warnings while keeping
+  the PIN hidden and server-verified.
+- [x] An empty optional Employee ID is normalized to `null` before PIN
+  verification, preventing a false 422 `Validation failed` response.
+- [x] Applying a discount from Current Sale returns the cashier to the
+  Checkout confirmation modal after successful authorization.
+- [x] Employee is the first discount type with a default 15% rate, and a new
+  discount preselects the active shift cashier when that cashier is authorized
+  and has a configured PIN.
+- [x] The API permits PIN configuration for active explicitly authorized
+  employees while preserving the Master Admin-only management boundary.
+- [x] SKUpervisor no longer exposes the specialized discount-PIN control.
+- [x] Focused frontend/backend tests and changed-file lint pass.
+- [ ] Authenticated rendered POS proof confirms the toggle, PIN setup, and
+  cashier visibility in the Apply Discount modal.
+
+### Implementation Links
+
+- `apps/dgfy-api/src/services/userService.js`
+- `apps/dgfy-web/src/features/pos/components/TerminalOperationsWorkspace.jsx`
+- `apps/dgfy-web/Components/users/UserManagementModal.jsx`
+- `apps/dgfy-web/src/features/pos/__tests__/discountApproverManagement.contract.test.js`
+
+### Completion Record
+
+- Phase 97 remains in progress until authenticated rendered POS proof passes.
+- Phase 98 is the next eligible phase after completion.
