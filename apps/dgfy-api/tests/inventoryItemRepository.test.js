@@ -872,7 +872,12 @@ describe('inventory itemRepository', () => {
     const ProductComposition = { findAll: jest.fn().mockResolvedValue([]) };
     const POLineItem = { findAll: jest.fn().mockResolvedValue([]) };
     const JOIngredient = { findAll: jest.fn().mockResolvedValue([]) };
+    const transaction = {};
+    const sequelize = {
+      transaction: jest.fn(async (callback) => callback(transaction))
+    };
 
+    jest.spyOn(dbStore, 'getStore').mockReturnValue({ sequelize, tenantId: 'tenant-delete-item' });
     jest.spyOn(dbStore, 'get').mockImplementation((name) => {
       if (name === 'Item') return Item;
       if (name === 'ProductComposition') return ProductComposition;
@@ -892,6 +897,8 @@ describe('inventory itemRepository', () => {
       deleted_by: 42
     });
     expect(updatePayload.deleted_at).toBeInstanceOf(Date);
+    expect(itemRecord.update.mock.calls[0][1]).toEqual({ transaction });
+    expect(sequelize.transaction).toHaveBeenCalledTimes(1);
   });
 
   it('creates item with fifo initial stock via stock movement', async () => {

@@ -555,7 +555,7 @@ const auditInventoryEvent = async ({
     transaction = null
 } = {}) => {
     const AuditLog = dbStore.get('AuditLog');
-    if (!AuditLog || !eventType) return null;
+    if (typeof AuditLog?.create !== 'function' || !eventType) return null;
     return AuditLog.create({
         user_id: userId || null,
         entity_type: entityType,
@@ -1616,7 +1616,7 @@ export const itemRepository = {
             if (!item) {
                 throw notFoundError('Item not found');
             }
-            const beforeSnapshot = item.get({ plain: true });
+            const beforeSnapshot = { ...toPlain(item) };
 
             assertMsmePricingRequirements({
                 workflowMode,
@@ -1757,8 +1757,10 @@ export const itemRepository = {
                 });
             }
 
-            await item.reload({ transaction });
-            const changedFields = buildItemAuditChanges(beforeSnapshot, item.get({ plain: true }), itemData);
+            if (typeof item.reload === 'function') {
+                await item.reload({ transaction });
+            }
+            const changedFields = buildItemAuditChanges(beforeSnapshot, toPlain(item), itemData);
             await auditInventoryEvent({
                 userId,
                 entityId: item.item_id,
