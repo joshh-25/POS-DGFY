@@ -97,7 +97,9 @@ describe('Food & Beverage storefront contract', () => {
     const unavailableStateIndex = detailsSource.indexOf('if (!item) {');
 
     expect(appSource).toContain('!isFnbDetailsSubpage && (');
-    expect(appSource).toContain('(isFnbDetailsSubpage || (catalogPermitted && selectedStore))');
+    expect(appSource).toContain('<StorefrontLoadBoundary');
+    expect(appSource).toContain('hasStoreProfile={Boolean(selectedStore)}');
+    expect(appSource).toContain('(isFnbDetailsSubpage || loadingCatalog || catalogError || catalogPermitted)');
     expect(containerSource).toContain('if (isFnbDetailsSubpage)');
     expect(containerSource).toContain('loading={loadingCatalog || (!selectedStore && !catalogError)}');
     expect(containerSource).toContain('loadError={catalogError}');
@@ -118,6 +120,18 @@ describe('Food & Beverage storefront contract', () => {
     expect(cartMutations).toContain('Boolean(options?.openCart) || (!isFnbMode && !isSimpleMode && !isRetailMode)');
     expect(productCard).toContain('sourceRect: getCartFlySourceRect(event)');
     expect(productCard).not.toContain('openCart: true');
+  });
+
+  it('hides the redundant floating cart on retail product-details and order routes', () => {
+    const cartShell = cartDrawerShellContainerSource();
+
+    expect(cartShell).toContain('isRetailMode && (isResolvedOrderSubpage || isFnbDetailsSubpage)');
+  });
+
+  it('hides the Simple cart surface on product-details routes', () => {
+    const cartShell = cartDrawerShellContainerSource();
+
+    expect(cartShell).toContain('isSimpleCartSurfaceMode && !isFnbDetailsSubpage');
   });
 
   it('gates required add-ons behind customization and supports cart editing', () => {

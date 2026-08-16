@@ -3990,7 +3990,169 @@ parked-sale replay and shift-close resolution.
 - Phase 86 is complete. Phase 87 is the next eligible repository phase and
   requires separate approval.
 
-## Phase 87 - Frontend App Split (issue #322)
+## Phase 87 - Authorise Services Handoff Legs to Reach Schema/API
+
+### Initiative and Release
+
+- Initiative: Services pickup-and-return round trip (laundry handoff legs).
+- Release: unreleased; this phase is a governance decision, not a code change.
+
+### Objective and Scope
+
+- Lift the governance gate blocking issue #482 (laundry pickup-and-return round trip,
+  `pickupReturnLogistics`): ADR 0057 clause 3 (`[binding]`) forbids the fulfillment-profile
+  vocabulary from reaching any database column, API contract, or Store Profile section, which
+  blocks every piece of schema/API work #482 needs.
+- Author ADR 0064, a scoped supersession of ADR 0057 clause 3 for `item_pickup_return` and
+  `item_pickup_collection` only, resolving the tech-lead ruling #482 flagged as open (new ADR vs.
+  an amendment block) in favor of a new ADR — the same route ADR 0058 already used against ADR
+  0057 clause 1.
+- No schema, API, migration, or frontend change ships in this phase. Phases 88-92 (schema,
+  API contract, storefront wiring, services tracking timeline, POS) are authorized by ADR 0064
+  but implemented separately.
+
+### Status
+
+- `completed`
+- Completed on 2026-08-15.
+
+### Dependencies and Governance Note
+
+- ADR 0057 (Services Fulfillment Profiles) - clause 3 scoped-superseded; clauses 1, 2, and 4
+  unaffected.
+- ADR 0058 (Registration Industry Catalog) - the in-tree precedent for a scoped supersession of
+  one of ADR 0057's binding clauses via a new ADR rather than a status flip.
+- ADR 0039 (ADR Lifecycle, Strictness Tiers, and Amendment Path) - governs the binding-clause
+  supersession requirement this phase satisfies.
+- `docs/proposals/2026-08-15-liempyo-laundry-discover-flow-and-gap-analysis.md` - the confirmed
+  customer-facing spec this authorization is scoped against.
+- No compliance impact declaration required: this phase is documentation-only (ADR + ledger),
+  no schema, API, or runtime behavior changes.
+
+### Acceptance and Validation Evidence
+
+- [x] `npm run check:adr` passes: 71 ADRs validated, no topic/binding-authority collisions.
+- [x] `npm run lint:docs` passes: 28 governed docs validated (chains `check:adr`).
+- [x] `docs/architecture/adr/INDEX.md` regenerated via `npm run generate:adr-index` and includes
+  ADR 0064 (`accepted`, topic `services_handoff_legs`, 6 binding-clause count).
+- [x] `docs/features/SERVICES_FULFILLMENT_PROFILES.md` confirmed unchanged, still
+  `authority_level: reference`.
+- [x] ADR 0057 confirmed unchanged except its new `## Related` cross-reference; `status: accepted`
+  and all four clauses byte-identical.
+
+### Implementation Links
+
+- `docs/architecture/adr/0064-services-handoff-legs-and-round-trip-persistence.md`
+- `docs/architecture/adr/0057-services-fulfillment-profiles.md`
+- `docs/architecture/adr/INDEX.md`
+- Issue #482 - Laundry pickup-and-return round trip (`pickupReturnLogistics`)
+
+### Completion Record (2026-08-15)
+
+- Phase 87 is complete. Phase 88 is the next eligible repository phase and requires separate
+  approval; it is authorized by ADR 0064 but not implemented here.
+
+## Phase 88 - Services Handoff-Leg Schema
+
+### Initiative and Release
+
+- Initiative: Services pickup-and-return round trip (laundry handoff legs), continuing #482.
+- Release: unreleased; schema-only, no API contract or frontend wiring in this phase.
+
+### Objective and Scope
+
+- Authorized by ADR 0064 (Phase 87). Adds the schema #482 needs: a widened
+  `service_bookings.status` enum (+4 round-trip lifecycle values), a fifth
+  `service_item_details.service_area_type` value (`item_handoff`, ADR 0064 decision 7's grain
+  answer), the handoff-leg entity (`service_booking_handoff_legs`, ADR 0064 decision 2), and a
+  transition-event table (`service_booking_status_events`, ADR 0064 decision 4).
+- Updates the per-tenant schema baseline (`apps/dgfy-api/scripts/sync-tenant-schemas.js`) so newly
+  provisioned tenants and drift-repair on existing ones both carry the new shape - not just the
+  migration path.
+- Populates `service_area_types: ['item_handoff']` on `item_pickup_return` and
+  `item_pickup_collection` in `packages/shared-constants/src/fulfillmentProfiles.js`, closing the
+  ADR 0064 decision 7 gap (both profiles were unreachable via
+  `resolveFulfillmentProfilesForServiceAreaType` by construction before this phase).
+- No API contract, payload field, or frontend change ships in this phase. Nothing writes rows to
+  either new table yet - persistence wiring is Phase 89. `pickupReturnLogistics` stays
+  `status: 'planned'` per ADR 0064 decision 6.
+- Assessed against PR #535 (storefront modularization, merged the same day as Phase 87) before
+  starting: #535 touched zero files under `modes/services/` and does not affect this phase's scope.
+
+### Status
+
+- `in_progress`
+- Migration checkpoint reached 2026-08-15: three new files under
+  `apps/dgfy-migration-runner/migrations/` trip the Worker/Implementer skill's mandatory
+  human-confirmation trigger. Code written and Tier 0-verified; not yet committed pending review.
+
+### Dependencies and Governance Note
+
+- ADR 0064 (Services Handoff Legs and Round-Trip Persistence) - authorizes this phase in full;
+  decisions 2, 4, and 7 are implemented directly, decision 3 (no profile key on the wire) is
+  structurally enforced by the new table's `(booking_id, direction)` unique index rather than
+  implemented here (the derivation function is Phase 89).
+- ADR 0057 (Services Fulfillment Profiles) clause 4 (`[binding]`) - unaffected; `item_handoff`
+  keeps the vocabulary keyed off `ServiceItemDetail.service_area_type`, a per-item field.
+- No compliance impact declaration required: `modules/services/` and
+  `apps/dgfy-migration-runner/migrations/` are not in
+  `scripts/check-compliance-impact.js`'s `COMPLIANCE_SENSITIVE_RULES`; `check:compliance` reports
+  no compliance-sensitive changes. Flagged anyway in the PR: the new leg table stores customer
+  addresses, which the mechanical guardrail does not classify, though `ServiceBooking` already
+  holds name/email/phone so this is incremental exposure, not a new category.
+- **Deploy-order dependency on PR #540 / issue #539, kept as a separate PR deliberately** (different
+  domain - an unrelated F&B modifier schema-repair bug, found by dry-running this phase's migration
+  locally, not caused by it). Applying this phase's migration to any live environment restarts
+  `dgfy-api` there, and `sync-tenant-schemas.js`'s tenant preflight is unconditional and
+  all-or-nothing under `NODE_ENV=production` - if any real tenant in that environment has the
+  `fnb_modifier_groups`-shaped gap #539 documents, that restart crash-loops the whole shared API for
+  every tenant, independent of whether this phase's own schema is correct. **#540 should be applied
+  to an environment before or alongside this phase**, not because they're the same change, but
+  because they share the same restart trigger. See
+  `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md` (once #540 merges) for the pre-deploy
+  `--mode report` census this recommends running first.
+
+### Acceptance and Validation Evidence
+
+- [x] `node --check` on every changed/new `.js`/`.cjs` file (Tier 0; `apps/dgfy-api` has no real
+  build step).
+- [x] `npm run check:architecture` passes: 47 modules / 467 files checked, 86 controllers checked.
+- [x] `npm run check:compliance` passes: no compliance-sensitive changes detected.
+- [x] `npm run lint:docs` passes (chains `check:adr`): 28 governed docs, 71 ADRs - unaffected by
+  this phase's code-only diff, run as a sanity check.
+- [x] Targeted Jest: `fulfillmentProfiles.contract.test.js` (15/15, updated for the new
+  `item_handoff` resolution and the now-expressible `out_for_return` status) and
+  `servicesMode.usecases.test.js` (54/54, including the existing "rejects invalid booking status
+  jumps" transition-map test, unaffected) both pass; 63/63 across all `services`/`fulfillment`
+  suites.
+- [x] `sync-tenant-schemas.js` loads cleanly post-edit; `getTenantSchemaCapabilityChecksum()`
+  computes without error under the bumped `TENANT_SCHEMA_CAPABILITY_VERSION` (`2026-08-15.1`); the
+  two new tables and two new enum contracts are present in the registries at runtime.
+- [x] `models/index.js` loads cleanly; `ServiceBookingHandoffLeg`/`ServiceBookingStatusEvent`
+  associations resolve as designed (`handoffLegs`, `statusEvents` on both sides); confirmed neither
+  new model is in `tenantModelFactory.js`'s `NON_TENANT_MODEL_EXPORTS` exclusion set, matching
+  `ServiceBookingLine`'s treatment.
+- [ ] Migration dry-run against a live tenant database - blocked on local DB credentials in this
+  session; needs a human or a later session with DB access before merge.
+
+### Implementation Links
+
+- `apps/dgfy-migration-runner/migrations/20260815000001-widen-services-handoff-enums.cjs`
+- `apps/dgfy-migration-runner/migrations/20260815000002-create-service-booking-handoff-legs.cjs`
+- `apps/dgfy-migration-runner/migrations/20260815000003-create-service-booking-status-events.cjs`
+- `apps/dgfy-api/src/models/ServiceBookingHandoffLeg.js`
+- `apps/dgfy-api/src/models/ServiceBookingStatusEvent.js`
+- `apps/dgfy-api/src/models/ServiceBooking.js`, `ServiceItemDetail.js`, `index.js`
+- `apps/dgfy-api/scripts/sync-tenant-schemas.js`
+- `apps/dgfy-api/src/modules/services/usecases/serviceUseCases.js`,
+  `src/validators/serviceValidator.js`
+- `packages/shared-constants/src/fulfillmentProfiles.js`
+- `apps/dgfy-api/tests/fulfillmentProfiles.contract.test.js`
+- Issue #482 - Laundry pickup-and-return round trip (`pickupReturnLogistics`)
+- Issue #538 - Services storefront route ownership (#535 follow-through, filed alongside this
+  phase, not part of it)
+
+## Phase 89 - Frontend App Split (issue #322)
 
 ### Initiative and Release
 
@@ -4036,6 +4198,10 @@ parked-sale replay and shift-close resolution.
   `scripts/report-frontend-split-sync.js`).
 - No compliance impact declaration required: `npm run check:compliance`
   reports no compliance-sensitive changes for this diff.
+- Absorbed `origin/develop`'s Phase 87 (ADR 0064, services handoff legs governance) and Phase 88
+  (services handoff-leg schema) in the same merge that lands this phase. Phase 88 is `in_progress`
+  as absorbed — its migration dry-run acceptance box is unchecked pending DB credentials — and
+  stays that way; this phase does not complete it.
 
 ### Acceptance and Validation Evidence
 
@@ -4054,11 +4220,12 @@ parked-sale replay and shift-close resolution.
   `infrastructure/docker/dgfy-{ims,pos,storefront}/Dockerfile`.
 - [x] `docker compose config --quiet` passes across all four compose
   combinations (base, +override, +local-ports, local-test).
-- [x] `npm run check:adr` (71 ADRs), `npm run lint:docs` (27 governed docs),
+- [x] `npm run check:adr` (72 ADRs), `npm run lint:docs` (27 governed docs),
   `npm run check:compliance`, `npm run check:agent-surfaces` (5 roles, 4
   shims), `npm run check:architecture` (47 modules / 467 files, 86
   controllers), `npm run check:frontend-budgets` all pass.
-- [x] `origin/develop` fully absorbed (merge commit `f2f9d2ad`; confirmed no
+- [x] `origin/develop` fully absorbed (merge commit TBD — corrected in the
+  follow-up `chore: absorb develop into frontend split` commit; confirmed no
   further drift via `git fetch origin develop` before closeout).
 
 ### Implementation Links
@@ -4078,5 +4245,5 @@ parked-sale replay and shift-close resolution.
 
 ### Completion Record (2026-08-15)
 
-- Phase 87 is complete. Phase 88 is the next eligible repository phase and
+- Phase 89 is complete. Phase 90 is the next eligible repository phase and
   requires separate approval.

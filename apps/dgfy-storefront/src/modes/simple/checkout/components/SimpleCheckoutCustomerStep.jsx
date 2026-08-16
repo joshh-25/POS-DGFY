@@ -1,8 +1,8 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { SimpleCheckoutGuestEmailVerification } from './SimpleCheckoutGuestEmailVerification.jsx';
 
-const SIMPLE_BRAND = '#0f766e';
-const SIMPLE_BRAND_DARK = '#134e4a';
+const SIMPLE_BRAND = '#176B3A';
+const SIMPLE_BRAND_DARK = '#0F5A30';
 
 /**
  * MSME (Simple) order page's Account step. Mirrors
@@ -49,7 +49,7 @@ export function SimpleCheckoutCustomerStep({
 
   return (
     <section style={{ border: '1px solid #e2e8f0', borderRadius: 20, background: '#fff', padding: isMobileViewport ? 16 : 18, display: 'grid', gap: 14 }}>
-      <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>Step 1: Customer Details</div>
+      <div style={{ fontSize: 18, fontWeight: 700, color: '#1e293b' }}>Step 1: Customer Details</div>
       <div style={{ marginTop: -4, fontSize: 12, color: '#64748b' }}>
         {isDgfyCustomerSignedIn
           ? 'Your account details are already linked. Only order-specific instructions remain editable here.'

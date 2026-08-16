@@ -39,14 +39,22 @@ moment that doc changes). This file names *where* each rule lives; go read it th
    treat it as non-negotiable regardless of how the rest of the diff looks.
 4. **Architecture** — `npm run check:architecture` and `npm run check:adr` (or
    `npm run lint:docs`, which chains `check:adr`, for docs-only PRs) against the merge-result tree.
-5. **Diff review** — read the actual changed files (`gh pr diff <N>`) for correctness, security,
+5. **Tenant schema risk** — if the PR touches `apps/dgfy-migration-runner/migrations/` or
+   `apps/dgfy-api/scripts/sync-tenant-schemas.js`, also read
+   `docs/ops/TENANT_SCHEMA_SYNC_RESIDUAL_RISK_TRACKER.md` (#539 is the worked example: a tenant
+   missing required tables entirely crash-loops the whole shared API on the next restart, since the
+   tenant preflight is unconditional and all-or-nothing under `NODE_ENV=production`). Confirm the PR
+   body states whether its migration has a deploy-order dependency on an open fix in that tracker,
+   and flag it as a `should-fix` (not silently pass it through) if a migration PR is missing that
+   check when the tracker has open entries.
+6. **Diff review** — read the actual changed files (`gh pr diff <N>`) for correctness, security,
    and boundary violations. Scope this to files the PR actually touches; don't re-review the whole
    repo.
-6. **Merge readiness** — `gh pr checks <N>` and `gh pr view <N> --json mergeStateStatus,mergeable`.
+7. **Merge readiness** — `gh pr checks <N>` and `gh pr view <N> --json mergeStateStatus,mergeable`.
    A pending or red check is not evidence of a broken PR by itself — this repo has a known pattern
    of transient `docker.io` anonymous-token timeouts unrelated to any given diff — but it is always
    reported, never silently waited past.
-7. **Scope** — does the diff match what the linked issue actually asked for; name any file that
+8. **Scope** — does the diff match what the linked issue actually asked for; name any file that
    looks unrelated to the stated scope rather than silently reviewing it as if it belonged.
 
 ## Output — one PR comment, fixed shape
@@ -118,9 +126,34 @@ repo is two-tiered: cheap, build-only checks run in CI for every PR, and the ful
 agent, or Pat directly — runs locally, post-merge or pre-promotion rather than gating every push.
 Revisit if Actions minutes come back; this is a recorded decision, not an oversight.
 
+## Board transition — the QA handoff
+
+Added 2026-08-15 (#331 board-lane wiring). Two triggers, not one — don't conflate them:
+
+- **On merge** (the first Merge-policy row above): check how the PR linked its issue and act per
+  `docs/process/ISSUE-TAXONOMY.md`'s linkage rule — don't re-derive the rule here, just the
+  consequence for this role.
+  - PR used **`Refs #N`** → the issue stayed open through the merge. Set its board `Status` to
+    `For QA`. **Leave it open** — that's deliberate, not an oversight to "fix" by closing it; a
+    Verifier/QA role (tracked as a child of #331, not yet built) is what eventually flips it to
+    `Done` or `Failed`.
+  - PR used **`Closes #N`** → do nothing. The issue auto-closed at merge and the project's own
+    workflow already set `Done`.
+- **Independent of merge** — verdict **`BLOCK`** → move the card back to `In progress` (taxonomy:
+  `For Review` → `In progress` when changes are requested). This fires whether or not anything
+  merged, since `BLOCK` is *never* merged per the Merge policy table above; it is not a
+  post-merge action.
+- **This role never sets `Done` or `Failed`** on any issue — full stop, same weight as the "never
+  merge `main`" rule above. Those two lanes belong to the Verifier/QA role.
+- Field IDs and the write mutation are in `.agents/skills/pm/references/board-operations.md` — don't
+  copy them here. A failed board write is reported, never a reason to withhold the merge itself.
+
 ## First live use
 
 The very first real run of this agent is **report-only regardless of verdict** — post the comment,
 withhold any merge, and let a human confirm the verdict is one they'd have reached themselves.
 Auto-merge-on-`develop`/`staging` only goes live after that calibration, mirroring how the
-`implement` skill (#437) was shipped before being trusted unsupervised.
+`implement` skill (#437) was shipped before being trusted unsupervised. **Board-status writes are
+withheld the same way** — including the merge-independent `BLOCK` → `In progress` move above —
+during this first run: report what would have been set, don't set it. They go live on the same
+calibration signal as the merge itself, not separately or sooner.

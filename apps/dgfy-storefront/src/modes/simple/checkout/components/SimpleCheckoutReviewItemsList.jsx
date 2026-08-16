@@ -1,4 +1,4 @@
-const SIMPLE_BRAND = '#0f766e';
+const SIMPLE_BRAND = '#176B3A';
 
 /** MSME payment-step read-only order recap. Mirrors FnbCheckoutReviewItemsList.jsx's
  * thumbnail/row treatment so it reads as one system with F&B's — kept as MSME's own

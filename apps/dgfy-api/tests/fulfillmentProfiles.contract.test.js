@@ -28,13 +28,27 @@ describe('fulfillment profile catalog contracts', () => {
         }
     });
 
-    it('covers every SERVICE_AREA_TYPES value with exactly one shipped profile', () => {
+    it('covers every shipped-reachable SERVICE_AREA_TYPES value with exactly one shipped profile', () => {
+        // 'item_handoff' (Phase 88 of #482, ADR 0064 decision 7) is the one deliberate exception:
+        // it maps onto two still-planned profiles at once (the customer picks the variant at
+        // checkout), not one shipped profile - see the dedicated test below.
         for (const areaType of SERVICE_AREA_TYPES) {
+            if (areaType === 'item_handoff') continue;
             const matches = FULFILLMENT_PROFILE_KEYS.filter((key) => (
                 FULFILLMENT_PROFILES[key].service_area_types.includes(areaType)
             ));
             expect(matches).toHaveLength(1);
             expect(FULFILLMENT_PROFILES[matches[0]].status).toBe('shipped');
+        }
+    });
+
+    it("maps 'item_handoff' onto exactly item_pickup_return and item_pickup_collection, both still planned", () => {
+        const matches = FULFILLMENT_PROFILE_KEYS.filter((key) => (
+            FULFILLMENT_PROFILES[key].service_area_types.includes('item_handoff')
+        ));
+        expect([...matches].sort()).toEqual(['item_pickup_collection', 'item_pickup_return']);
+        for (const key of matches) {
+            expect(FULFILLMENT_PROFILES[key].status).toBe('planned');
         }
     });
 
@@ -53,12 +67,21 @@ describe('fulfillment profile catalog contracts', () => {
         ]);
     });
 
-    it('gives every shipped profile at least one service_area_types entry, and every planned profile none', () => {
+    it('gives every shipped profile at least one service_area_types entry, and every unauthorized planned profile none', () => {
+        // item_pickup_return and item_pickup_collection are the deliberate exception, populated by
+        // Phase 88 of #482 (ADR 0064 decision 7) precisely so they stop being unreachable by
+        // construction. item_dropoff_collection and quote_request remain untouched - ADR 0064
+        // authorizes nothing for them (decision 1).
+        const HANDOFF_AUTHORIZED_PLANNED_PROFILES = Object.freeze(['item_pickup_collection', 'item_pickup_return']);
         for (const key of SHIPPED_FULFILLMENT_PROFILE_KEYS) {
             expect(FULFILLMENT_PROFILES[key].service_area_types.length).toBeGreaterThan(0);
         }
         for (const key of PLANNED_FULFILLMENT_PROFILE_KEYS) {
-            expect(FULFILLMENT_PROFILES[key].service_area_types).toEqual([]);
+            if (HANDOFF_AUTHORIZED_PLANNED_PROFILES.includes(key)) {
+                expect(FULFILLMENT_PROFILES[key].service_area_types).toEqual(['item_handoff']);
+            } else {
+                expect(FULFILLMENT_PROFILES[key].service_area_types).toEqual([]);
+            }
         }
     });
 
@@ -100,13 +123,20 @@ describe('fulfillment profile catalog contracts', () => {
     });
 
     it("does not require a planned profile's tracking_events to map onto BOOKING_STATUSES (declarative-only preview)", () => {
-        // Planned profiles (e.g. the pickup/return round trip) declare a
-        // richer timeline than the current 7-value BOOKING_STATUSES enum
-        // can express - that's the point (ADR 0057 clause 2: planned means
-        // "not backed yet", not "must already fit the current schema").
+        // Planned profiles generally declare a richer timeline than BOOKING_STATUSES can express -
+        // that's the point (ADR 0057 clause 2: planned means "not backed yet", not "must already
+        // fit the current schema"). item_pickup_return is no longer an example of this specific
+        // gap: Phase 88 of #482 (ADR 0064 decision 4) widened BOOKING_STATUSES to include its full
+        // tracking_events timeline - the enum caught up, even though the profile itself is still
+        // 'planned' (nothing writes these statuses yet; that's Phase 89). quote_request remains an
+        // untouched example of the general point.
         const pickupReturn = FULFILLMENT_PROFILES.item_pickup_return;
         expect(pickupReturn.tracking_events).toContain('out_for_return');
-        expect(BOOKING_STATUSES).not.toContain('out_for_return');
+        expect(BOOKING_STATUSES).toContain('out_for_return');
+
+        const quoteRequest = FULFILLMENT_PROFILES.quote_request;
+        expect(quoteRequest.tracking_events).toContain('quoted');
+        expect(BOOKING_STATUSES).not.toContain('quoted');
     });
 
     it('gives every planned profile a non-empty notes field explaining the blocker', () => {
@@ -127,11 +157,18 @@ describe('fulfillment profile catalog contracts', () => {
         expect(resolveFulfillmentProfile('  appointment_at_business  ')).toEqual(FULFILLMENT_PROFILES.appointment_at_business);
     });
 
-    it('resolveFulfillmentProfilesForServiceAreaType resolves each real service_area_type to its one shipped profile', () => {
+    it('resolveFulfillmentProfilesForServiceAreaType resolves each real service_area_type to its shipped profile(s)', () => {
         expect(resolveFulfillmentProfilesForServiceAreaType('in_store')).toEqual(['appointment_at_business']);
         expect(resolveFulfillmentProfilesForServiceAreaType('customer_location')).toEqual(['service_at_customer_address']);
         expect(resolveFulfillmentProfilesForServiceAreaType('online')).toEqual(['online_service']);
         expect(resolveFulfillmentProfilesForServiceAreaType('hybrid')).toEqual(['customer_choice_of_location']);
+        // 'item_handoff' (Phase 88 of #482) is the one value that resolves to more than one
+        // profile - the function's own docblock says "only ever resolves to shipped profiles"
+        // because service_area_type was itself always shipped before; that assumption no longer
+        // holds for this one value, on purpose, per ADR 0064 decision 7.
+        expect([...resolveFulfillmentProfilesForServiceAreaType('item_handoff')].sort()).toEqual([
+            'item_pickup_collection', 'item_pickup_return'
+        ]);
         expect(resolveFulfillmentProfilesForServiceAreaType('bogus')).toEqual([]);
         expect(resolveFulfillmentProfilesForServiceAreaType(null)).toEqual([]);
     });

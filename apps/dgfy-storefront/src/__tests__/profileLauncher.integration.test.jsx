@@ -273,7 +273,8 @@ describe('storefront profile launcher', () => {
 
     await waitFor(() => {
       expect(screen.getAllByRole('button', { name: /Back to Discovery/i }).length).toBeGreaterThan(0);
-      expect(screen.getByRole('button', { name: /Order Now/i })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /^Shop$/i })).toBeTruthy();
+      expect(screen.getByRole('button', { name: /^Track Order$/i })).toBeTruthy();
     });
   }, 10000);
 });

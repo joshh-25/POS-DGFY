@@ -41,7 +41,7 @@ const renderOverview = (heroTheme, modeAdapter = { heroDescription: '' }) => ren
   />
 );
 
-const renderAboutCard = (heroTheme, modeAdapter) => render(
+const renderAboutCard = (heroTheme, modeAdapter, whyChooseUs = []) => render(
   <FnbHeroMobileInfoCards
     aboutText="A neighborhood retail store with everyday essentials and convenient pickup."
     addressText=""
@@ -55,7 +55,7 @@ const renderAboutCard = (heroTheme, modeAdapter) => render(
     hasGallerySection={false}
     hasMapData={false}
     hasMobileStoreDetailsSummary={false}
-    hasWhyChooseUs={false}
+    hasWhyChooseUs={whyChooseUs.length > 0}
     heroTheme={heroTheme}
     modeAdapter={modeAdapter}
     mapSelectedKey=""
@@ -65,7 +65,7 @@ const renderAboutCard = (heroTheme, modeAdapter) => render(
     setIsExpandedMapOpen={vi.fn()}
     storefrontCityLabel=""
     visibleContactRows={[]}
-    visibleWhyChooseUs={[]}
+    visibleWhyChooseUs={whyChooseUs}
   />
 );
 
@@ -113,5 +113,15 @@ describe('retail hero palette isolation', () => {
     const seeMore = screen.getByRole('button', { name: /See more/i });
     expect(seeMore.style.color).toBe('rgb(249, 115, 22)');
     expect(seeMore.style.background).toBe('none');
+  });
+
+  it('uses a text-only retail control for the mobile Why Choose Us list', () => {
+    renderAboutCard(retailTheme, { usesConnectedHeroSurface: true }, ['Reason one', 'Reason two', 'Reason three']);
+
+    const seeAll = screen.getByRole('button', { name: /See all/i });
+    expect(seeAll.style.background).toBe('none');
+    expect(seeAll.style.borderStyle).toBe('none');
+    expect(seeAll.style.padding).toBe('0px');
+    expect(seeAll.style.fontSize).toBe('12px');
   });
 });
