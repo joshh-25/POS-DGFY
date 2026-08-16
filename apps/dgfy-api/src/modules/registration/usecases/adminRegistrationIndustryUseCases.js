@@ -5,6 +5,7 @@ import {
     WORKFLOW_MODE_ALIASES,
     getWorkflowModeEngine
 } from '../../shared/constants/workflowModes.js';
+import { normalizeRegistrationIndustryNiches } from '../registrationIndustryNiches.js';
 
 const notFound = (industryKey) => new DomainError(
     DomainErrorCode.RESOURCE_NOT_FOUND,
@@ -51,7 +52,7 @@ const describeRow = (row) => ({
     order: row.display_order,
     label: row.label,
     summary: row.summary,
-    niches: row.niches,
+    niches: normalizeRegistrationIndustryNiches(row.niches),
     workflow_mode: row.workflow_mode,
     template_key: row.template_key,
     is_system: row.is_system === true,
@@ -61,12 +62,6 @@ const describeRow = (row) => ({
     hidden_updated_at: row.updated_at ?? null,
     ...withEngineClassification(row)
 });
-
-const normalizeNiches = (niches) => (
-    Array.isArray(niches)
-        ? niches.map((niche) => String(niche || '').trim()).filter(Boolean).slice(0, 24)
-        : []
-);
 
 // Every non-alias member of WORKFLOW_MODE_VALUES - the same "offered modes"
 // accounting registrationIndustries.contract.test.js pins the seed baseline
@@ -168,7 +163,7 @@ export const buildCreateRegistrationIndustryUseCase = ({ repository, templateRep
         industryKey: normalizedKey,
         label: String(label || '').trim().slice(0, 120),
         summary: String(summary || '').trim().slice(0, 500),
-        niches: normalizeNiches(niches),
+        niches: normalizeRegistrationIndustryNiches(niches),
         workflowMode: validated.workflowMode,
         templateKey: validated.templateKey,
         displayOrder: resolvedOrder,
@@ -224,7 +219,7 @@ export const buildUpdateRegistrationIndustryUseCase = ({ repository, templateRep
         if (nextSummary !== existing.summary) fields.summary = nextSummary;
     }
     if (niches !== undefined) {
-        const nextNiches = normalizeNiches(niches);
+        const nextNiches = normalizeRegistrationIndustryNiches(niches);
         if (JSON.stringify(nextNiches) !== JSON.stringify(existing.niches)) fields.niches = nextNiches;
     }
     if (displayOrder !== undefined) {
