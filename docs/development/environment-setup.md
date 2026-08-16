@@ -3,7 +3,7 @@
 This guide covers setting up the development environment for the SKU Inventory Manager project.
 
 Current frontend surfaces — three independent apps plus a shared package since issue #322's split
-(ADR 0064, `docs/architecture/adr/0064-frontend-split-into-three-apps.md`):
+(ADR 0065, `docs/architecture/adr/0065-frontend-split-into-three-apps.md`):
 
 - `apps/dgfy-ims` (`skupervisor`) for tenant/admin workflows
 - `apps/dgfy-pos` (`pos`) for cashier and terminal operations

@@ -92,6 +92,6 @@ A large `occupied_age_hours` is the DGFY-283 pattern: not a genuine concurrent-c
 ## Reference: dev environment topology
 
 - Host: `ssh sieitz-dgfy-remote` (resolves to `vm-sieitzstaging`)
-- Compose dir: `/opt/dgfy-dev` (a hand-diverged copy of `infrastructure/docker/docker-compose.yml`; no containerized nginx -- see `infrastructure/nginx-host/dev.dgfy.ph.conf`). Since the three-app split (ADR 0064) the frontend is no longer one service/image: the repo compose file defines `dgfy-ims`, `dgfy-pos`, and `dgfy-storefront` alongside `mysql`, `redis`, and the backend. Confirm the live service names with `docker compose ps` before assuming either shape.
+- Compose dir: `/opt/dgfy-dev` (a hand-diverged copy of `infrastructure/docker/docker-compose.yml`; no containerized nginx -- see `infrastructure/nginx-host/dev.dgfy.ph.conf`). Since the three-app split (ADR 0065) the frontend is no longer one service/image: the repo compose file defines `dgfy-ims`, `dgfy-pos`, and `dgfy-storefront` alongside `mysql`, `redis`, and the backend. Confirm the live service names with `docker compose ps` before assuming either shape.
 - Backend: `127.0.0.1:5000`; frontend surfaces (ports unchanged by the split): `:8081` (`dgfy-ims`/skupervisor), `:8082` (`dgfy-pos`), `:8083` (`dgfy-storefront`)
 - TLS terminates upstream of the host nginx; every vhost block is plain `listen 80`

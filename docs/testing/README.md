@@ -7,8 +7,8 @@ When to use:
 
 ## Frontend Workspace Layout (read before running any frontend command)
 
-The frontend is three independent Vite apps plus one shared package (ADR 0064,
-`docs/architecture/adr/0064-frontend-split-into-three-apps.md`):
+The frontend is three independent Vite apps plus one shared package (ADR 0065,
+`docs/architecture/adr/0065-frontend-split-into-three-apps.md`):
 
 | Workspace | Surface | Dev port | Root dev script | Root build script |
 |---|---|---|---|---|

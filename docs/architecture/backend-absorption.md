@@ -78,7 +78,7 @@ daily, so the same absorb-don't-lose rule applies:
 | `frontend/**`            | `apps/dgfy-web/**`          |
 
 > **This table is no longer the whole story.** `apps/dgfy-web` was itself split on 2026-08-14
-> (ADR 0064) into three apps plus a shared package, so a `frontend/**` commit from `develop` now
+> (ADR 0065) into three apps plus a shared package, so a `frontend/**` commit from `develop` now
 > needs a two-hop map, not a one-hop one. Read this section for the mechanics of the first hop,
 > then [The frontend split path map](#the-frontend-split-path-map) for where each file actually
 > lands today. The rest of this section describes the layout as it stood between 2026-08-06 and
@@ -121,7 +121,7 @@ same rule the `backend/` and `android/` repoints follow.
 ## The frontend split path map
 
 As of 2026-08-14 this branch split `apps/dgfy-web` into three independent apps plus a shared
-package (ADR 0064). `apps/dgfy-web/` no longer exists here. `develop` still has a single
+package (ADR 0065). `apps/dgfy-web/` no longer exists here. `develop` still has a single
 `frontend/` tree and commits to it daily, so absorbing a frontend change is now a **routing**
 decision per file, not a prefix swap:
 

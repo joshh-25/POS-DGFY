@@ -13,8 +13,8 @@ lives under `apps/`.** The rest of this doc is detail.
 
 > **Second fact, added later: `apps/dgfy-web/` is gone too.** The single frontend package this
 > migration created was split again into three independent apps plus a shared package
-> (ADR 0064). If you are here because a search hit mentions `apps/dgfy-web`, skip to
-> [The frontend split](#the-frontend-split-adr-0064) — that
+> (ADR 0065). If you are here because a search hit mentions `apps/dgfy-web`, skip to
+> [The frontend split](#the-frontend-split-adr-0065) — that
 > section supersedes every `apps/dgfy-web` mention above it in this document. The earlier
 > sections are preserved because they are the record of the first migration, not a description
 > of today's tree.
@@ -25,7 +25,7 @@ lives under `apps/`.** The rest of this doc is detail.
 | --- | --- |
 | `backend/src`, `backend/config`, `backend/device-bridge`, `backend/tests` | `apps/dgfy-api/…` |
 | `backend/migrations`, `backend/seeders`, `backend/.sequelizerc`, `backend/database-setup.sql` | `apps/dgfy-migration-runner/…` |
-| `frontend/**` | `apps/dgfy-web/**` (since split again — see [The frontend split](#the-frontend-split-adr-0064)) |
+| `frontend/**` | `apps/dgfy-web/**` (since split again — see [The frontend split](#the-frontend-split-adr-0065)) |
 | `android/imin-wrapper/**` | `apps/dgfy-android-bridge/imin-wrapper/**` |
 | `packages/**` | unchanged — was never under `backend/`/`frontend/` |
 
@@ -48,11 +48,11 @@ Each relocation happened on its own date, in this order: `backend/` was split fi
   '../../../../dist-apps/<app>'` build targets, and the `file:../../packages/*` dependency
   paths in `package.json`/`package-lock.json`. *(The nested `apps/{skupervisor,pos,store}`
   shape and the `dist-apps/` output convention described here were both dissolved later by
-  ADR 0064 — see [The frontend
-  split](#the-frontend-split-adr-0064).)*
+  ADR 0065 — see [The frontend
+  split](#the-frontend-split-adr-0065).)*
 - **`packages/`**: never moved. `packages/shared-constants` and `packages/pos-receipt` sit
   at the same path they always have, consumed identically by `apps/dgfy-api` and the frontend
-  apps. ADR 0064 later added a third package at the same level, `packages/web-core`, holding
+  apps. ADR 0065 later added a third package at the same level, `packages/web-core`, holding
   the shared frontend trunk.
 
 ## Running locally, before vs after
@@ -93,7 +93,7 @@ npm run dev:local-pos-stack
   `infrastructure/docker/dgfy-migration-runner/`, `infrastructure/docker/dgfy-ims/`,
   `infrastructure/docker/dgfy-pos/`, and `infrastructure/docker/dgfy-storefront/`. The single
   `infrastructure/docker/frontend/` image that ADR 0059 kept under its pre-refactor name was
-  retired by ADR 0064 and replaced by the three per-app images above.
+  retired by ADR 0065 and replaced by the three per-app images above.
 - **CI path filters** (`.github/workflows/shared-changed-paths.yml`) — there is no single
   `FRONTEND` output anymore. Three independent outputs (`frontend_ims`, `frontend_pos`,
   `frontend_storefront`) each match their own app directory, their own
@@ -102,12 +102,12 @@ npm run dev:local-pos-stack
   `packages/pos-receipt/` for `dgfy-ims` and `dgfy-pos` only). The backend/migration-runner
   filters still key off `apps/dgfy-api/` and `apps/dgfy-migration-runner/`.
 
-## The frontend split (ADR 0064)
+## The frontend split (ADR 0065)
 
 Everything above describes the *first* migration (`frontend/` → `apps/dgfy-web/`, ADR 0059).
 A second migration then split that single Vite package into three independent apps and one
 shared package — see
-[ADR 0064](adr/0064-frontend-split-into-three-apps.md). **`apps/dgfy-web/` no longer exists on
+[ADR 0065](adr/0065-frontend-split-into-three-apps.md). **`apps/dgfy-web/` no longer exists on
 disk.** Where this section and any earlier section of this document disagree, this section wins.
 
 ### Path map
@@ -226,11 +226,11 @@ mode if you hit it.
   `apps/dgfy-api`/`apps/dgfy-migration-runner`), the android move (undocumented as a
   standalone ADR — see `backend-absorption.md`'s android path map), and
   [0059](adr/0059-frontend-relocation-to-apps-dgfy-web.md) (frontend →
-  `apps/dgfy-web`), and [0064](adr/0064-frontend-split-into-three-apps.md)
+  `apps/dgfy-web`), and [0065](adr/0065-frontend-split-into-three-apps.md)
   (`apps/dgfy-web` → `apps/dgfy-ims` + `apps/dgfy-pos` + `apps/dgfy-storefront` +
   `packages/web-core`). ADR 0059 was originally numbered 0054, then 0055, and was renumbered
   twice more since — each time `develop` independently added its own ADR at this branch's
   provisional number. It is not stubbed under its earlier numbers because it was never
   published under them.
 - `scripts/frontend-split-path-map.json` — the machine-readable old-path → new-path record for
-  the ADR 0064 split.
+  the ADR 0065 split.

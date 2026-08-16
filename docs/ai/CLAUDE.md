@@ -51,7 +51,7 @@ Capability Modules rather than hard-coding one behavior set per industry.
 > ([ADR 0059](../architecture/adr/0059-frontend-relocation-to-apps-dgfy-web.md)), which has
 > since been split into three independent frontend apps — `apps/dgfy-ims/`,
 > `apps/dgfy-pos/`, `apps/dgfy-storefront/` — plus the shared `packages/web-core/` trunk
-> ([ADR 0064](../architecture/adr/0064-frontend-split-into-three-apps.md)).
+> ([ADR 0065](../architecture/adr/0065-frontend-split-into-three-apps.md)).
 > `apps/dgfy-web/` no longer exists on disk. For
 > the full path map and how local run/deploy commands changed, read
 > [docs/architecture/apps-layout-migration.md](../architecture/apps-layout-migration.md).

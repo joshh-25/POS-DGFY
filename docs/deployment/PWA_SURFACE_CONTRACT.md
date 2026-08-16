@@ -19,14 +19,14 @@ Planning and validation for PWA behavior must start with:
 4. ADR references:
    - `docs/architecture/adr/0006-skupervisor-expansion-program-boundaries.md`
    - `docs/architecture/adr/0014-multi-template-modes-pos-offline-sync-and-storefront-cache-contracts.md`
-   - `docs/architecture/adr/0064-frontend-split-into-three-apps.md`
+   - `docs/architecture/adr/0065-frontend-split-into-three-apps.md`
 5. Domain references:
    - `docs/features/SETTINGS_INFORMATION_ARCHITECTURE.md`
    - `docs/testing/manual-qa-readiness-runbook-pos-ims-store.md`
 
 ## Current PWA Surfaces
 
-Each surface is now its own independent Vite app (ADR 0064). There is no longer a shared
+Each surface is now its own independent Vite app (ADR 0065). There is no longer a shared
 admin shell package with a second nested SKUpervisor build — SKUpervisor/IMS owns exactly one
 manifest and one service worker.
 

@@ -145,7 +145,7 @@ Behavior:
 - Returns non-zero on mismatch.
 - Designed to catch stale frontend bundles served after deploy.
 - Each frontend app builds into its own `apps/<app>/dist/`. The former shared `dist-apps/<surface>/`
-  output convention was retired with the three-app split (ADR 0064).
+  output convention was retired with the three-app split (ADR 0065).
 
 ## 2b. `scripts/check-no-staging-prereqs.js`
 Preflight validator for no-staging release gate prerequisites.

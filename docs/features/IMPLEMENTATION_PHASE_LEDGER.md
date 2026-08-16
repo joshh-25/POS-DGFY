@@ -4018,7 +4018,7 @@ parked-sale replay and shift-close resolution.
   `deploy-local.sh`, PM2 (`ecosystem.config.cjs`), root `package.json`
   scripts, the `scripts/` path-check sweep, and
   `security/audit-allowlist.json`.
-- Document the decision (ADR 0064), sweep the docs and agent-surface files
+- Document the decision (ADR 0065), sweep the docs and agent-surface files
   that described the old layout, and open the closing PR against `develop`.
 
 ### Status
@@ -4028,7 +4028,7 @@ parked-sale replay and shift-close resolution.
 
 ### Dependencies and Governance Note
 
-- ADR 0064 Frontend Split into Three Apps (`docs/architecture/adr/0064-frontend-split-into-three-apps.md`),
+- ADR 0065 Frontend Split into Three Apps (`docs/architecture/adr/0065-frontend-split-into-three-apps.md`),
   `supersedes_in_part` ADR 0059 Frontend Relocation to `apps/dgfy-web`.
 - `docs/architecture/frontend-split-sync.md` — the develop-merge absorption
   workflow used throughout this initiative
@@ -4073,7 +4073,7 @@ parked-sale replay and shift-close resolution.
   `.github/workflows/deployment-orchestrator.yml`,
   `.github/workflows/deploy-main.yml`
 - `scripts/deploy.sh`, `scripts/deploy-local.sh`, `ecosystem.config.cjs`
-- `docs/architecture/adr/0064-frontend-split-into-three-apps.md`
+- `docs/architecture/adr/0065-frontend-split-into-three-apps.md`
 - [Issue #322 - Split apps/dgfy-web into independently deployable apps](https://github.com/Sieitzz/dgfy-platform/issues/322)
 
 ### Completion Record (2026-08-15)
