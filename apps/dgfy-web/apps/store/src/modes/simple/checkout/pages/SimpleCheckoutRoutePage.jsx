@@ -6,6 +6,10 @@ import { SimpleCheckoutPaymentStep } from '../components/SimpleCheckoutPaymentSt
 import { SimpleCheckoutStoreHeader } from '../components/SimpleCheckoutStoreHeader.jsx';
 import { SimpleCheckoutSuccessStep } from '../components/SimpleCheckoutSuccessStep.jsx';
 import { SimpleCheckoutSummaryContent } from '../components/SimpleCheckoutSummaryContent.jsx';
+import { StorefrontOnlinePaymentPanel } from '../../../../shared/components/checkout/StorefrontOnlinePaymentPanel.jsx';
+import { buildStorefrontCheckoutPaymentOptions } from '../../../../shared/model/storefrontCheckoutPaymentOptions.js';
+
+const ONLINE_PAYMENT_TYPES = new Set(['qrph', 'card', 'gcash', 'maya']);
 
 export function SimpleCheckoutRoutePage({
   canAddPinnedLocation = false,
@@ -40,6 +44,8 @@ export function SimpleCheckoutRoutePage({
   pinLocationError = '',
   pinLocationLoading = false,
   promoDiscountSummaryRow = null,
+  qrphPaymentSession = null,
+  qrphPaymentStatusLoading = false,
   quoteError = '',
   quoteResult = null,
   renderAccountOwnedIdentitySummary,
@@ -75,6 +81,7 @@ export function SimpleCheckoutRoutePage({
   onOpenExpandedMap,
   onOrderMethodChange,
   onPaymentTypeChange,
+  onConfirmQrphTestPayment,
   onPinChange,
   onPinMyLocation,
   onQuote,
@@ -87,6 +94,7 @@ export function SimpleCheckoutRoutePage({
   onSpecialInstructionsChange,
   onStartMapPin,
   onVerifyGuestCheckoutOtp,
+  resetQrphPaymentSession,
   setShowSimpleMobileAddressModal,
   setShowSimpleMobileOrderSummary
 }) {
@@ -100,6 +108,13 @@ export function SimpleCheckoutRoutePage({
   const scheduleLabel = fnbScheduleMode === 'schedule' && fnbScheduledFor
     ? new Date(fnbScheduledFor).toLocaleString()
     : 'NOW';
+  const isOnlinePayment = ONLINE_PAYMENT_TYPES.has(fnbPaymentType);
+  const onlinePaymentPending = Boolean(qrphPaymentSession?.payment_session_id);
+  const paymentSubmitLabel = fnbPaymentType === 'qrph'
+    ? 'Generate QR Ph'
+    : isOnlinePayment
+      ? 'Continue to payment'
+      : 'Place Order';
 
   return (
     <div style={{ display: 'grid', gap: 18, maxWidth: '100%', width: '100%', padding: isMobileViewport ? '0px 0px 18px' : '0px 0px 28px' }}>
@@ -248,14 +263,30 @@ export function SimpleCheckoutRoutePage({
             money={money}
             onImageError={onImageError}
             paymentType={fnbPaymentType}
-            paymentOptions={[
-              { value: 'cash', label: 'Cash on delivery/pickup' }
-            ]}
+            paymentOptions={buildStorefrontCheckoutPaymentOptions(selectedStore?.payment_capabilities)}
+            onlinePaymentPanel={isOnlinePayment ? (
+              <StorefrontOnlinePaymentPanel
+                onConfirmTestPayment={import.meta.env.DEV
+                  && fnbPaymentType === 'qrph'
+                  && selectedStore?.payment_capabilities?.qrph?.environment === 'test'
+                  ? onConfirmQrphTestPayment
+                  : null}
+                onUseCash={() => {
+                  resetQrphPaymentSession?.();
+                  onPaymentTypeChange('cash');
+                }}
+                paymentSession={qrphPaymentSession}
+                paymentEnvironment={selectedStore?.payment_capabilities?.[fnbPaymentType]?.environment}
+                paymentType={fnbPaymentType}
+                refreshing={qrphPaymentStatusLoading}
+              />
+            ) : null}
             quoteError={quoteError}
             quoteResult={quoteResult}
             requireQuoteForCheckout={requireQuoteForCheckout}
             selectedStore={selectedStore}
-            simpleCheckoutAllowed={simpleCheckoutAllowed}
+            simpleCheckoutAllowed={simpleCheckoutAllowed && !onlinePaymentPending}
+            submitLabel={paymentSubmitLabel}
             storefrontClosedNotice={storefrontClosedByHours ? renderStorefrontClosedNotice({ accent: '#9a3412', background: '#fff7ed', border: '#fdba74' }) : null}
             withAssetOrigin={withAssetOrigin}
             onBack={() => onSetSimpleOrderStep(2)}
@@ -308,7 +339,7 @@ export function SimpleCheckoutRoutePage({
           cart={cart}
           cartCount={cartCount}
           cartImageErrors={cartImageErrors}
-          checkoutAllowed={simpleCheckoutAllowed}
+          checkoutAllowed={simpleCheckoutAllowed && !onlinePaymentPending}
           checkoutLoading={checkoutLoading}
           customerStepComplete={simpleCustomerStepComplete}
           fulfillmentStepComplete={simpleStepOneReady}
@@ -324,6 +355,7 @@ export function SimpleCheckoutRoutePage({
           scheduleLabel={scheduleLabel}
           setSummaryOpen={setShowSimpleMobileOrderSummary}
           showSummary={showSimpleMobileOrderSummary}
+          submitLabel={paymentSubmitLabel}
           totals={totals}
           withAssetOrigin={withAssetOrigin}
         />

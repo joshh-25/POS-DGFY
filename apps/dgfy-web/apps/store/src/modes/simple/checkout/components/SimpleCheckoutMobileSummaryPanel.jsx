@@ -30,6 +30,7 @@ export function SimpleCheckoutMobileSummaryPanel({
   scheduleLabel = 'NOW',
   setSummaryOpen,
   showSummary,
+  submitLabel = 'Place Order',
   totals = {},
   withAssetOrigin,
 }) {
@@ -133,7 +134,7 @@ export function SimpleCheckoutMobileSummaryPanel({
               Back
             </button>
             <button type="button" onClick={handlePrimary} disabled={isPrimaryDisabled} style={{ ...primaryButtonStyle, background: `linear-gradient(180deg, ${SIMPLE_BRAND} 0%, ${SIMPLE_BRAND_DARK} 100%)`, boxShadow: `0 12px 24px ${SIMPLE_BRAND_SHADOW}`, opacity: isPrimaryDisabled ? 0.6 : 1 }}>
-              {orderStep === 3 ? <><Lock size={18} />{checkoutLoading ? 'Processing...' : 'Place Order'}</> : <>Continue<ChevronRight size={20} /></>}
+              {orderStep === 3 ? <><Lock size={18} />{checkoutLoading ? 'Processing...' : submitLabel}</> : <>Continue<ChevronRight size={20} /></>}
             </button>
           </div>
         </div>

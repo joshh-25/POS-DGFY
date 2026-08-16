@@ -14,11 +14,13 @@ export function SimpleCheckoutPaymentStep({
   onImageError,
   paymentType = 'cash',
   paymentOptions = [],
+  onlinePaymentPanel = null,
   quoteError = '',
   quoteResult = null,
   requireQuoteForCheckout = false,
   selectedStore = null,
   simpleCheckoutAllowed = false,
+  submitLabel = 'Place Order',
   storefrontClosedNotice = null,
   withAssetOrigin,
   onBack,
@@ -41,6 +43,7 @@ export function SimpleCheckoutPaymentStep({
         cashInfoAccent="#0f766e"
         bodyFont={bodyFont}
       />
+      {onlinePaymentPanel}
       <SimpleCheckoutReviewItemsList
         cart={cart}
         cartImageErrors={cartImageErrors}
@@ -59,6 +62,7 @@ export function SimpleCheckoutPaymentStep({
         requireQuoteForCheckout={requireQuoteForCheckout}
         selectedStore={selectedStore}
         simpleCheckoutAllowed={simpleCheckoutAllowed}
+        submitLabel={submitLabel}
         storefrontClosedNotice={storefrontClosedNotice}
         onBack={onBack}
         onCheckout={onCheckout}

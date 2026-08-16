@@ -30,6 +30,7 @@ export function useSimpleCheckoutRouteProps({
   handleDownloadCheckoutImage,
   handleGuestCheckoutOtpCodeChange,
   handlePaymentTypeChange,
+  handleConfirmQrphTestPayment,
   handlePinMyLocation,
   handleQuote,
   handleRemoveDeliveryAddress,
@@ -46,6 +47,8 @@ export function useSimpleCheckoutRouteProps({
   pinLocationError = '',
   pinLocationLoading = false,
   promoDiscountSummaryRow = null,
+  qrphPaymentSession = null,
+  qrphPaymentStatusLoading = false,
   quoteError = '',
   quoteResult = null,
   renderAccountOwnedIdentitySummary,
@@ -77,6 +80,7 @@ export function useSimpleCheckoutRouteProps({
   setShowSimpleMobileAddressModal,
   setShowSimpleMobileOrderSummary,
   setSimpleOrderStep,
+  resetQrphPaymentSession,
   showExpandedDeliveryMap = false,
   showSimpleMobileAddressModal = false,
   showSimpleMobileOrderSummary = false,
@@ -126,6 +130,8 @@ export function useSimpleCheckoutRouteProps({
     pinLocationError,
     pinLocationLoading,
     promoDiscountSummaryRow,
+    qrphPaymentSession,
+    qrphPaymentStatusLoading,
     quoteError,
     quoteResult,
     renderAccountOwnedIdentitySummary,
@@ -178,6 +184,7 @@ export function useSimpleCheckoutRouteProps({
     },
     onOpenExpandedMap: () => setShowExpandedDeliveryMap(true),
     onPaymentTypeChange: handlePaymentTypeChange,
+    onConfirmQrphTestPayment: handleConfirmQrphTestPayment,
     onPinChange: (nextPin) => {
       setDeliveryLocationAction('map');
       setSelectedSavedLocationId('');
@@ -206,6 +213,7 @@ export function useSimpleCheckoutRouteProps({
     onSetCheckoutResult: setCheckoutResult,
     onSetDefaultDeliveryAddress: handleSetDefaultDeliveryAddress,
     onSetSimpleOrderStep: setSimpleOrderStep,
+    resetQrphPaymentSession,
     onSpecialInstructionsChange: setFnbSpecialInstructions,
     onStartMapPin: () => {
       setDeliveryLocationAction('map');

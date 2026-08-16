@@ -9,6 +9,7 @@ export function SimpleCheckoutPaymentActions({
   isMobileViewport = false,
   quoteError = '',
   quoteResult = null,
+  submitLabel = 'Place Order',
   storefrontClosedNotice = null,
   requireQuoteForCheckout = false,
   selectedStore = null,
@@ -28,7 +29,7 @@ export function SimpleCheckoutPaymentActions({
             <RefreshCw size={16} /> {quoteResult ? 'Refresh Quote' : 'Get Quote'}
           </button>
           <button type="button" onClick={onCheckout} disabled={!simpleCheckoutAllowed} style={{ minHeight: actionHeight, borderRadius: 12, border: 'none', background: simpleCheckoutAllowed ? SIMPLE_BRAND : '#cbd5e1', color: '#fff', fontWeight: 700, cursor: simpleCheckoutAllowed ? 'pointer' : 'not-allowed', fontSize: actionFontSize }}>
-            {checkoutLoading ? 'Processing...' : 'Place Order'}
+            {checkoutLoading ? 'Processing...' : submitLabel}
           </button>
         </div>
       )}

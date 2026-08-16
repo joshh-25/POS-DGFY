@@ -83,6 +83,12 @@ REFRESH_TOKEN_EXPIRY=7d
 CORS_ORIGIN=http://localhost:5173,http://localhost:5174,http://localhost:5175,https://skupervisor.surebizcorp.com,https://surebizcorp.com,https://pos.surebizcorp.com,https://store.surebizcorp.com,https://skupervisor.dgfy.ph,https://pos.dgfy.ph,https://dgfy.ph,https://store.dgfy.ph
 REDIS_URL=redis://localhost:6379
 DB_AUTO_SYNC=false
+# Keep the local connection budget below MySQL's default max_connections (151):
+# 20 cached tenant pools * 5 connections + 20 landlord connections = 120.
+DB_MAX_CONNECTIONS=151
+LANDLORD_DB_POOL_MAX=20
+TENANT_MAX_CACHED_CONNECTIONS=20
+TENANT_DB_POOL_MAX=5
 # Auto-bootstrap storefront pin for newly activated tenants
 # - latitude: -90 to 90
 # - longitude: -180 to 180
