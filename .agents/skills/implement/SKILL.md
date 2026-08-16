@@ -43,10 +43,10 @@ of these triggers actually firing (or correctly not firing) in practice.
    Once branched, set the linked issue's board `Status` to `In progress` — see "Board transitions"
    below.
 2. **Name the branch** using one of `.github/branch-cleanup-policy.json`'s eligible prefixes —
-   `feature/`, `fix/`, `chore/`, `docs/`, `test/` — matching the change's actual kind. (That file's
-   eligible list doesn't currently include `ci/`, despite it being in heavy real use for
-   workflow-only changes; that's a known gap, not something to route around by inventing a
-   different unlisted prefix.)
+   `feature/`, `fix/`, `chore/`, `docs/`, `test/`, `ci/`, among others — matching the change's
+   actual kind. (`ci/` was previously missing from that file despite being in heavy real use for
+   workflow-only changes; it has since been added — confirmed live in the file, 2026-08-16 — so
+   this is no longer a gap to route around.)
 3. **Commit** using Conventional Commits, batched by domain, per `docs/ai/PR.md` — read that file
    for the exact format rather than relying on this summary; it's short and it's the source of
    truth, not this skill.
