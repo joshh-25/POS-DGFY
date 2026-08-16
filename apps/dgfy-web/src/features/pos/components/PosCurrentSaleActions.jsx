@@ -1,11 +1,9 @@
 import React from 'react';
-import { BookmarkPlus, ClipboardList, Printer, ShoppingCart } from 'lucide-react';
+import { BookmarkPlus, CreditCard, Printer, ShoppingCart } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 
 export function PosCurrentSaleActions({
   presentationBundle,
-  onOpenParkedSales,
-  openParkedSalesDisabled = false,
   onParkAndNewSale,
   parkSaleDisabled = false,
   parkLoading = false,
@@ -13,7 +11,6 @@ export function PosCurrentSaleActions({
   onCheckout,
   checkoutDisabled = false,
   checkoutLoading = false,
-  itemCount = 0,
   onPrintOrder,
   printOrderDisabled = false,
   printerAvailable = false,
@@ -21,33 +18,24 @@ export function PosCurrentSaleActions({
   cashDrawerDisabled = false,
   drawerOpening = false,
   onApplyDiscount,
-  discountDisabled = false
+  discountDisabled = false,
+  onSplitPayment,
+  splitPaymentDisabled = false,
+  splitPaymentLoading = false,
+  tabletLayout = false
 }) {
   const showParkedSaleControls = presentationBundle?.currentSaleActions?.showParkedSaleControls === true;
-  const gridClassName = showParkedSaleControls ? 'sm:grid-cols-3' : 'sm:grid-cols-2';
+  const gridClassName = showParkedSaleControls && !tabletLayout ? 'sm:grid-cols-3' : 'sm:grid-cols-2';
 
   return (
     <div
       data-testid="pos-current-sale-actions"
       data-presentation-bundle={presentationBundle?.key || 'counter'}
       data-has-parked-sale-controls={showParkedSaleControls ? 'true' : 'false'}
-      className={`dgfy-pos-current-sale-actions grid shrink-0 grid-cols-2 ${gridClassName} gap-2 border-t border-slate-200 pt-2`}
+      className={`dgfy-pos-current-sale-actions ${tabletLayout ? 'dgfy-pos-tablet-action-grid' : ''} grid shrink-0 grid-cols-2 ${gridClassName} gap-2 border-t border-slate-200 pt-2`}
     >
       {showParkedSaleControls && (
-        <>
-          <Button
-            type="button"
-            variant="outline"
-            data-testid="pos-open-parked-sales-button"
-            onClick={onOpenParkedSales}
-            disabled={openParkedSalesDisabled}
-            title="Choose a parked sale to resume. The current cart must be empty."
-            className="flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-xl border border-blue-200 bg-blue-50 p-1.5 text-center text-blue-800 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            <ClipboardList size={14} className="mb-0.5 shrink-0" />
-            <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">Parked Sales</span>
-          </Button>
-          <Button
+        <Button
             type="button"
             variant="outline"
             data-testid="pos-park-sale-button"
@@ -57,11 +45,10 @@ export function PosCurrentSaleActions({
             className="flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-xl border border-amber-300 bg-amber-50 p-1.5 text-center text-amber-800 hover:bg-amber-100 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <BookmarkPlus size={14} className="mb-0.5 shrink-0" />
-            <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">
-              {parkLoading ? 'Parking...' : (activeParkedSale ? 'Update Park & New' : 'Park & New Sale')}
+            <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] sm:text-[11px] xl:text-xs">
+              {parkLoading ? 'Parking...' : activeParkedSale ? 'Update Parked Sale' : 'Park'}
             </span>
-          </Button>
-        </>
+        </Button>
       )}
       <Button
         type="button"
@@ -71,7 +58,7 @@ export function PosCurrentSaleActions({
       >
         <ShoppingCart size={14} className="mb-0.5 shrink-0" />
         <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">
-          {checkoutLoading ? 'Processing...' : `Checkout (${itemCount} ${itemCount === 1 ? 'Item' : 'Items'})`}
+          {checkoutLoading ? 'Processing...' : 'Checkout'}
         </span>
       </Button>
       <Button
@@ -103,6 +90,19 @@ export function PosCurrentSaleActions({
         disabled={discountDisabled}
       >
         <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">Apply Discount</span>
+      </Button>
+      <Button
+        type="button"
+        variant="outline"
+        data-testid="pos-current-sale-split-payment"
+        className="flex min-h-[46px] w-full min-w-0 flex-col items-center justify-center rounded-lg border border-[#1A4E8D] bg-blue-50 p-1.5 text-center text-[#1A4E8D] hover:bg-blue-100"
+        onClick={onSplitPayment}
+        disabled={splitPaymentDisabled}
+      >
+        <CreditCard size={14} className="mb-0.5 shrink-0" aria-hidden="true" />
+        <span className="w-full min-w-0 break-words text-center text-[10px] font-extrabold leading-[1.15] line-clamp-2 sm:text-[11px] xl:text-xs">
+          {splitPaymentLoading ? 'Processing...' : 'Split Payment'}
+        </span>
       </Button>
     </div>
   );

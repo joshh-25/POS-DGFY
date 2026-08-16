@@ -8,9 +8,9 @@ import {
     ChevronDown,
     ChevronLeft,
     ChevronRight,
+    ClipboardList,
     CreditCard,
     Delete,
-    Filter,
     Folder,
     Info,
     Lock,
@@ -54,7 +54,10 @@ import {
     voidPosTransaction,
     fetchPosDiscountApprovers,
     verifyPosDiscountApproval,
-    fetchPosItemOptionGroups
+    fetchPosItemOptionGroups,
+    cancelPosPaymentAllocation,
+    cancelPosPaymentSession,
+    completePosPaymentSession
 } from '../services/posService';
 import { fetchEmployeeCreditAccount } from '../services/employeeCreditService.js';
 import {
@@ -96,6 +99,7 @@ import { calculateCatalogGridCapacity } from '../utils/catalogGridCapacity.js';
 import { resolvePosWorkflow } from '../utils/posWorkflowResolver.js';
 import { resolvePosPresentationBundle } from '../utils/posPresentationBundle.js';
 import { COMMON_POS_ITEM_IMAGE_MAP } from '../utils/posItemImageMap.js';
+import { clearPosSplitPaymentSessionPointer } from '../services/posSplitPaymentSessionStore.js';
 
 const ReceiptPrintView = lazyWithChunkRetry(() => import('./ReceiptPrintView'));
 const OrderPreviewView = lazyWithChunkRetry(() => import('./OrderPreviewView.jsx'));
@@ -117,7 +121,6 @@ const CATALOG_TABLET_CARD_MIN_WIDTH_PX = 160;
 const POSBarcodeScanner = lazyWithChunkRetry(() => import('./POSBarcodeScanner.jsx'));
 const POSTransactionHistoryPanel = lazyWithChunkRetry(() => import('./POSTransactionHistoryPanel.jsx'));
 const IS_DGFY_POS_SURFACE = import.meta.env.VITE_APP_SURFACE === 'pos';
-const POS_ITEM_FALLBACK_IMAGE = '/dgfy-horizontal_logo-removebg-preview.png';
 const POS_ITEM_IMAGE_MAP = [
     ...COMMON_POS_ITEM_IMAGE_MAP.slice(0, 2),
     { match: ['mango float', 'mangofloat'], src: '/pos-items/mangofloat.jpg' },
@@ -136,6 +139,20 @@ const RECEIPT_PAPER_OPTIONS = [
 
 const money = (value) => Number(value || 0).toFixed(2);
 const round4 = (value) => Math.round((Number(value) || 0) * 10000) / 10000;
+const SPLIT_PAYMENT_METHOD_LABELS = {
+    cash: 'Cash',
+    gcash: 'GCash',
+    maya: 'Maya',
+    card: 'Card',
+    bank_transfer: 'Bank Transfer',
+    qrph: 'QR Ph'
+};
+const formatSplitPaymentMethod = (value) => {
+    const normalizedValue = String(value || '').trim().toLowerCase();
+    return SPLIT_PAYMENT_METHOD_LABELS[normalizedValue]
+        || normalizedValue.replace(/_/g, ' ').replace(/\b\w/g, (character) => character.toUpperCase())
+        || 'Payment';
+};
 // Manual quantity typing sanitizer: integer-only items keep the pre-existing
 // digits-only filter untouched; decimal-eligible items (weight/volume UOM,
 // e.g. weighed_goods sold per kg) additionally allow a single decimal point.
@@ -149,18 +166,14 @@ const sanitizeQuantityInput = (rawValue, allowDecimal) => {
 const toArray = (value) => (Array.isArray(value) ? value : []);
 const isSeniorPwdDiscountEligible = (value) => value === true || value === 1 || value === '1';
 const normalizePromoCode = (value) => String(value || '').trim().toUpperCase().slice(0, 40);
-const resolveCompanyIconFallbackUrl = (settings = {}) => (
-    resolveAssetUrl(settings?.storefront_profile_image_url || settings?.profile_image_url || '')
-    || resolveAppAssetUrl(POS_ITEM_FALLBACK_IMAGE)
-);
 const EMPTY_DISCOUNT_DRAFT = {
-    type: 'senior', method: 'percentage', rate: '20', amount: '', customer_name: '',
+    type: 'employee', method: 'percentage', rate: '15', amount: '', customer_name: '',
     id_number: '', employee_name: '', employee_id: '', reason: '', manager_pin: '', approver_user_id: '', eligible_item_ids: [], eligible_items: [], promo_code: ''
 };
 const DISCOUNT_TYPE_OPTIONS = [
+    { value: 'employee', label: 'Employee', icon: BadgeCheck },
     { value: 'senior', label: 'Senior Citizen', icon: UserRound },
     { value: 'pwd', label: 'PWD', icon: Accessibility },
-    { value: 'employee', label: 'Employee', icon: BadgeCheck },
     { value: 'promo', label: 'Promo', icon: Tag },
     { value: 'manual', label: 'Manual', icon: Pencil }
 ];
@@ -169,7 +182,7 @@ const DISCOUNT_INFO_MESSAGES = {
     pwd: 'Select a discount type to see the required fields. Other discount types will show different verification details.',
     employee: 'Employee discount requires valid employee verification and authorization.',
     promo: 'Provide the promo details below to apply the discount.',
-    manual: 'Manual discounts require a valid reason and admin authorization.'
+    manual: 'Manual discounts require an authorized employee PIN.'
 };
 const calculateGovernedDiscount = (cart, application) => {
     const cartRows = toArray(cart);
@@ -598,7 +611,7 @@ const resolveMappedPosItemImage = (item = {}) => {
     return mapped?.src || '';
 };
 
-const resolvePosCatalogImageSources = (item = {}, settings = {}) => {
+const resolvePosCatalogImageSources = (item = {}) => {
     const variants = item?.storefront_image_variants || item?.pos_image_variants || {};
     const resolveVariantSet = (variantSet = {}) => {
         const thumbnailUrl = resolveAssetUrl(variantSet?.thumbnail_url || '');
@@ -625,17 +638,13 @@ const resolvePosCatalogImageSources = (item = {}, settings = {}) => {
     };
     const configuredSrc = resolveAssetVariantUrl(item?.storefront_image_url, 'thumbnail');
     const configuredLargeSrc = resolveAssetVariantUrl(item?.storefront_image_url, 'large');
-    const mappedSrc = resolveAssetVariantUrl(resolveAppAssetUrl(resolveMappedPosItemImage(item)), 'thumbnail');
-    const fallbackSrc = resolveCompanyIconFallbackUrl(settings);
     const fallbackVariants = resolveVariantSet(variants);
     const avifVariants = resolveVariantSet(variants?.avif);
     const webpVariants = resolveVariantSet(variants?.webp);
     return {
         configuredSrc,
         configuredLargeSrc,
-        mappedSrc,
-        fallbackSrc,
-        src: fallbackVariants.thumbnailUrl || configuredSrc || mappedSrc || fallbackSrc,
+        src: fallbackVariants.thumbnailUrl || configuredSrc || '',
         srcSet: fallbackVariants.srcSet,
         avifSrcSet: avifVariants.srcSet,
         webpSrcSet: webpVariants.srcSet,
@@ -750,6 +759,7 @@ export default function POSCheckoutTerminal({
     terminalUser = null,
     selectedLocationId = null,
     activeShiftId = null,
+    activeShiftCashierId = null,
     terminalId = '',
     terminalMeta = null,
     offlineSnapshotScope: providedOfflineSnapshotScope = {},
@@ -841,7 +851,6 @@ export default function POSCheckoutTerminal({
     const qtyMeterGestureRef = useRef(null);
     const [posFolders, setPosFolders] = useState([]);
     const [selectedFolderId, setSelectedFolderId] = useState(null);
-    const [catalogFiltersOpen, setCatalogFiltersOpen] = useState(false);
     const [mobileSearchExpanded, setMobileSearchExpanded] = useState(false);
     const [posFoldersLoading, setPosFoldersLoading] = useState(true);
     const [posFoldersError, setPosFoldersError] = useState('');
@@ -893,8 +902,10 @@ export default function POSCheckoutTerminal({
     const [manualDiscountRateInput, setManualDiscountRateInput] = useState('');
     const [manualDiscountAmountInput, setManualDiscountAmountInput] = useState('');
     const [discountModalOpen, setDiscountModalOpen] = useState(false);
+    const discountReturnToCheckoutRef = useRef(false);
     const [discountDraft, setDiscountDraft] = useState(EMPTY_DISCOUNT_DRAFT);
     const [appliedDiscount, setAppliedDiscount] = useState(null);
+    const discountApprovalRef = useRef(null);
     const [discountApplying, setDiscountApplying] = useState(false);
     const [affiliateCodeInput, setAffiliateCodeInput] = useState('');
     const [showDiscountPin, setShowDiscountPin] = useState(false);
@@ -940,6 +951,8 @@ export default function POSCheckoutTerminal({
     const receiptSettingsSnapshotRef = useRef({});
     const catalogHasLoadedRef = useRef(false);
     const catalogRefreshDebounceRef = useRef(null);
+    const catalogRequestInFlightKeyRef = useRef('');
+    const catalogRequestSequenceRef = useRef(0);
 
     useEffect(() => {
         catalogSnapshotRef.current = catalog;
@@ -956,6 +969,8 @@ export default function POSCheckoutTerminal({
         setCatalogLoading(false);
         setCatalogRefreshing(false);
         catalogHasLoadedRef.current = false;
+        catalogRequestInFlightKeyRef.current = '';
+        catalogRequestSequenceRef.current += 1;
     }, [sessionLocked]);
 
     const closeReceiptPreviewModal = useCallback(() => {
@@ -979,7 +994,25 @@ export default function POSCheckoutTerminal({
     }, [receiptPreviewModalOpen, lastReceipt]);
     const [checkoutConfirmModalOpen, setCheckoutConfirmModalOpen] = useState(false);
     const [splitPaymentDialogOpen, setSplitPaymentDialogOpen] = useState(false);
+    const [splitPaymentSession, setSplitPaymentSession] = useState(null);
+    const [splitPaymentCancelModalOpen, setSplitPaymentCancelModalOpen] = useState(false);
+    const [splitPaymentCancelLoading, setSplitPaymentCancelLoading] = useState(false);
+    const [splitPaymentWorkflowVersion, setSplitPaymentWorkflowVersion] = useState(0);
     const [mobileCheckoutPanelOpen, setMobileCheckoutPanelOpen] = useState(false);
+    const splitPaymentReturnToCheckoutRef = useRef(false);
+
+    const handleSplitPaymentOpenChange = useCallback((nextOpen) => {
+        setSplitPaymentDialogOpen(nextOpen);
+        if (nextOpen) {
+            setCheckoutConfirmModalOpen(false);
+            return;
+        }
+        setCheckoutConfirmModalOpen(splitPaymentReturnToCheckoutRef.current);
+        splitPaymentReturnToCheckoutRef.current = false;
+    }, []);
+    const handleSplitPaymentSessionStateChange = useCallback((nextState) => {
+        setSplitPaymentSession(nextState?.active && nextState?.session ? nextState.session : null);
+    }, []);
 
     const splitPaymentStorageScopeKey = useMemo(() => (
         [
@@ -1009,6 +1042,7 @@ export default function POSCheckoutTerminal({
 
     const [customerPaymentAmountInput, setCustomerPaymentAmountInput] = useState('');
     const [currentSaleHelpOpen, setCurrentSaleHelpOpen] = useState(false);
+    const [clearSaleConfirmOpen, setClearSaleConfirmOpen] = useState(false);
     const [isTabletViewport, setIsTabletViewport] = useState(false);
     const [catalogPage, setCatalogPage] = useState(1);
     const [catalogGridLayout, setCatalogGridLayout] = useState({
@@ -1021,13 +1055,18 @@ export default function POSCheckoutTerminal({
     const catalogSectionRef = useRef(null);
     const catalogViewportRef = useRef(null);
     const catalogCapacityViewportRef = useRef(null);
+    const folderStripRef = useRef(null);
+    const folderStripDragStateRef = useRef(null);
+    const folderStripDragMovedRef = useRef(false);
     const catalogGridRef = useRef(null);
     const searchBackspaceTimeoutRef = useRef(null);
     const searchBackspaceIntervalRef = useRef(null);
     const catalogSwipeStartXRef = useRef(null);
     const catalogSwipePointerIdRef = useRef(null);
     const shellClassName = 'h-full min-h-0 overflow-hidden';
-    const checkoutGridClassName = 'grid h-full min-h-0 grid-cols-1 gap-4 overflow-hidden pb-20 md:grid-cols-[minmax(0,1fr)_325px] md:pb-0 2xl:gap-6';
+    const checkoutGridClassName = isTabletViewport
+        ? 'grid h-full min-h-0 grid-cols-1 gap-3 overflow-hidden pb-20 md:grid-cols-[minmax(0,1fr)_minmax(320px,360px)] md:pb-0 2xl:gap-4'
+        : 'grid h-full min-h-0 grid-cols-1 gap-4 overflow-hidden pb-20 md:grid-cols-[minmax(0,1fr)_325px] md:pb-0 2xl:gap-6';
     const catalogGridClassName = 'grid';
     const catalogViewportClassName = 'flex min-h-0 flex-1 flex-col overflow-hidden';
     const currentSaleBodyClassName = 'dgfy-pos-current-sale-panel-scroll grid min-h-0 flex-1 grid-cols-2 grid-rows-[minmax(0,1fr)_auto_auto] gap-2 overflow-hidden md:grid-rows-[auto_auto_auto] md:overflow-y-auto md:overscroll-contain md:pr-1 md:touch-pan-y';
@@ -1061,13 +1100,6 @@ export default function POSCheckoutTerminal({
         isSeniorPwdDiscountEligible(line?.senior_pwd_discount_eligible)
         || isSeniorPwdDiscountEligible(safeCatalog.find((item) => Number(item?.item_id) === Number(line?.item_id))?.senior_pwd_discount_eligible)
     );
-    const signedInUserIsAdminLike = terminalUser?.is_master_admin === true
-        || String(terminalUser?.role || '').trim().toLowerCase() === 'admin';
-    const currentUserIsConfiguredDiscountApprover = safeDiscountApprovers.some((approver) => (
-        Number(approver?.user_id) > 0
-        && Number(approver.user_id) === Number(terminalUser?.user_id)
-    ));
-    const signedInUserCanApproveManualDiscount = currentUserIsConfiguredDiscountApprover;
     const terminalPermissionList = useMemo(() => {
         if (Array.isArray(terminalUser?.permissions)) return terminalUser.permissions;
         if (typeof terminalUser?.permissions !== 'string') return [];
@@ -1092,6 +1124,9 @@ export default function POSCheckoutTerminal({
         : isTabletViewport
             ? 'flex h-16 w-full shrink-0 items-center justify-center overflow-hidden rounded-md'
             : 'flex h-24 w-full shrink-0 items-center justify-center overflow-hidden rounded-md max-sm:h-full max-sm:w-24 max-sm:self-stretch max-sm:rounded-r-none max-sm:rounded-l-[calc(0.5rem-1px)] md:h-16 xl:h-24';
+    const folderButtonClassName = isTabletViewport
+        ? 'inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-[13px] font-extrabold transition-all shadow-xs'
+        : 'inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-[12px] font-extrabold transition-all shadow-xs';
     const isViewModeControlled = typeof controlledViewMode === 'string' && controlledViewMode.length > 0;
     const currentViewMode = isViewModeControlled ? controlledViewMode : viewMode;
     const normalizedTerminalId = String(terminalId || '').trim();
@@ -1101,9 +1136,6 @@ export default function POSCheckoutTerminal({
     // Keep pagination for predictable loading while rendering two measured viewports per page.
     // That guarantees the product-card region remains the catalog's only scroll owner.
     const catalogPageSize = Math.max(1, catalogGridLayout.pageSize * 2);
-    const selectedFolder = useMemo(() => (
-        safePosFolders.find((folder) => Number(folder.folder_id) === Number(selectedFolderId)) || null
-    ), [safePosFolders, selectedFolderId]);
     const catalogForDisplay = useMemo(() => {
         if (!selectedFolderId) return availableCatalog;
         return availableCatalog.filter((item) => Number(item?.folder_id) === Number(selectedFolderId));
@@ -1194,6 +1226,76 @@ export default function POSCheckoutTerminal({
             handleCatalogPageChange('previous');
         }
     }, [catalogPage, handleCatalogPageChange, totalCatalogPages]);
+
+    const handleFolderStripPointerDown = useCallback((event) => {
+        if (event.pointerType !== 'mouse' || event.button !== 0) return;
+
+        const strip = event.currentTarget;
+        if (strip.scrollWidth <= strip.clientWidth) return;
+
+        folderStripDragStateRef.current = {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startScrollLeft: strip.scrollLeft,
+            hasPointerCapture: false
+        };
+        folderStripDragMovedRef.current = false;
+    }, []);
+
+    const handleFolderStripPointerMove = useCallback((event) => {
+        const drag = folderStripDragStateRef.current;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+
+        const deltaX = event.clientX - drag.startX;
+        if (!folderStripDragMovedRef.current && Math.abs(deltaX) < 4) return;
+
+        folderStripDragMovedRef.current = true;
+        if (!drag.hasPointerCapture) {
+            event.currentTarget.setPointerCapture?.(event.pointerId);
+            drag.hasPointerCapture = true;
+        }
+        event.currentTarget.scrollLeft = drag.startScrollLeft - deltaX;
+        event.preventDefault();
+    }, []);
+
+    const handleFolderStripPointerEnd = useCallback((event) => {
+        const drag = folderStripDragStateRef.current;
+        if (!drag || drag.pointerId !== event.pointerId) return;
+
+        if (event.currentTarget.hasPointerCapture?.(event.pointerId)) {
+            event.currentTarget.releasePointerCapture(event.pointerId);
+        }
+        folderStripDragStateRef.current = null;
+
+        if (folderStripDragMovedRef.current && typeof window !== 'undefined') {
+            window.setTimeout(() => {
+                folderStripDragMovedRef.current = false;
+            }, 0);
+        }
+    }, []);
+
+    const handleFolderStripClickCapture = useCallback((event) => {
+        if (!folderStripDragMovedRef.current) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+        folderStripDragMovedRef.current = false;
+    }, []);
+
+    const handleFolderStripWheel = useCallback((event) => {
+        if (Math.abs(event.deltaY) <= Math.abs(event.deltaX)) return;
+
+        const strip = event.currentTarget;
+        const maxScrollLeft = strip.scrollWidth - strip.clientWidth;
+        if (maxScrollLeft <= 0) return;
+
+        const nextScrollLeft = Math.min(maxScrollLeft, Math.max(0, strip.scrollLeft + event.deltaY));
+        if (nextScrollLeft === strip.scrollLeft) return;
+
+        strip.scrollLeft = nextScrollLeft;
+        event.preventDefault();
+    }, []);
+
     const setupMeta = terminalMeta && typeof terminalMeta === 'object' ? terminalMeta : {};
     const setupCurrency = String(setupMeta.pettyCashSymbol || 'PHP').trim() || 'PHP';
     const setupReadiness = setupMeta.locationBindingReadiness && typeof setupMeta.locationBindingReadiness === 'object'
@@ -1365,6 +1467,8 @@ export default function POSCheckoutTerminal({
 
     const loadCatalog = useCallback(async () => {
         if (sessionLocked) {
+            catalogRequestInFlightKeyRef.current = '';
+            catalogRequestSequenceRef.current += 1;
             setCatalog([]);
             setCatalogError('');
             setCatalogLoading(false);
@@ -1373,6 +1477,8 @@ export default function POSCheckoutTerminal({
             return;
         }
         if (!canViewHistory) {
+            catalogRequestInFlightKeyRef.current = '';
+            catalogRequestSequenceRef.current += 1;
             setCatalog([]);
             setCatalogError('You need POS view permission to load the POS catalog.');
             setCatalogLoading(false);
@@ -1380,6 +1486,11 @@ export default function POSCheckoutTerminal({
             catalogHasLoadedRef.current = false;
             return;
         }
+        const requestKey = `${String(search || '').trim()}::${String(selectedLocationId || '')}`;
+        if (catalogRequestInFlightKeyRef.current === requestKey) return;
+        catalogRequestInFlightKeyRef.current = requestKey;
+        const requestSequence = catalogRequestSequenceRef.current + 1;
+        catalogRequestSequenceRef.current = requestSequence;
         const isInitialLoad = !catalogHasLoadedRef.current;
         setCatalogLoading(isInitialLoad);
         setCatalogRefreshing(!isInitialLoad);
@@ -1388,12 +1499,14 @@ export default function POSCheckoutTerminal({
             const params = { search: search || '', limit: 200 };
             if (selectedLocationId) params.location_id = selectedLocationId;
             const data = await fetchPosCatalog(params);
+            if (catalogRequestSequenceRef.current !== requestSequence) return;
             setCatalog(data || []);
             setCatalogImageErrors(new Set());
             if (!search) {
                 saveCatalogSnapshot(data || []);
             }
         } catch (error) {
+            if (catalogRequestSequenceRef.current !== requestSequence) return;
             const offlineSnapshot = loadOfflinePosSnapshot(offlineSnapshotScope);
             if (!error?.response && offlineSnapshot?.catalog?.length) {
                 setCatalog(offlineSnapshot.catalog);
@@ -1413,9 +1526,14 @@ export default function POSCheckoutTerminal({
             setCatalogError(message);
             toast.error(message);
         } finally {
-            catalogHasLoadedRef.current = true;
-            setCatalogLoading(false);
-            setCatalogRefreshing(false);
+            if (catalogRequestSequenceRef.current === requestSequence) {
+                catalogHasLoadedRef.current = true;
+                setCatalogLoading(false);
+                setCatalogRefreshing(false);
+            }
+            if (catalogRequestInFlightKeyRef.current === requestKey) {
+                catalogRequestInFlightKeyRef.current = '';
+            }
         }
     }, [canViewHistory, offlineSnapshotScope, saveCatalogSnapshot, search, selectedLocationId, sessionLocked]);
 
@@ -1813,15 +1931,6 @@ export default function POSCheckoutTerminal({
         // fetch was.
     }, [loadReceiptSettings, loadPosFolders, sessionLocked]);
 
-    // Folders/catalog are otherwise only loaded once on mount, so a category added or edited
-    // elsewhere (e.g. Items management) after this terminal session started would never appear.
-    // Re-fetch both whenever the category filter panel is opened, so it's always current.
-    useEffect(() => {
-        if (sessionLocked || !catalogFiltersOpen) return;
-        loadPosFolders();
-        loadCatalog();
-    }, [catalogFiltersOpen, loadPosFolders, loadCatalog, sessionLocked]);
-
     const refreshCatalogAfterInvalidation = useCallback(() => {
         if (catalogRefreshDebounceRef.current) {
             window.clearTimeout(catalogRefreshDebounceRef.current);
@@ -1962,7 +2071,7 @@ export default function POSCheckoutTerminal({
                 window.cancelAnimationFrame(animationFrameId);
             }
         };
-    }, [catalogFiltersOpen, currentViewMode, isTabletViewport, sidebarCollapsed]);
+    }, [currentViewMode, isTabletViewport, sidebarCollapsed]);
 
     useEffect(() => {
         setCatalogPage(1);
@@ -2073,6 +2182,9 @@ export default function POSCheckoutTerminal({
     const calculatedDiscountAmount = appliedDiscount
         ? governedDiscountTotals.discountAmount
         : (selectedDiscount ? round4(Math.min((cartSubtotal * selectedDiscount.percentage) / 100, cartSubtotal)) : manualDiscountAmount);
+    const checkoutDiscountLabel = safeAppliedDiscount?.label
+        || selectedDiscount?.name
+        || (calculatedDiscountAmount > 0 ? 'Discount' : '');
 
     useEffect(() => {
         if (selectedDiscountProfile && (manualDiscountRateInput || manualDiscountAmountInput)) {
@@ -2177,6 +2289,24 @@ export default function POSCheckoutTerminal({
     const isCustomerPaymentSufficient = isEmployeeCreditPayment
         ? employeeCreditReady
         : customerPaymentAmount >= cartTotal;
+    const splitPaymentReady = splitPaymentSession?.status === 'ready_to_complete'
+        && round4(splitPaymentSession?.remaining_amount) === 0;
+    const splitPaymentAllocations = Array.isArray(splitPaymentSession?.allocations)
+        ? splitPaymentSession.allocations
+        : [];
+    const splitPaymentSummaryAllocations = splitPaymentAllocations.filter((allocation) => (
+        !['failed', 'cancelled', 'reversed'].includes(String(allocation?.status || '').toLowerCase())
+    ));
+    const hasSplitPaymentSummary = splitPaymentSummaryAllocations.length > 0;
+    const splitPaymentSummaryPaidAmount = round4(splitPaymentSession?.paid_amount);
+    const splitPaymentSummaryRemainingAmount = round4(splitPaymentSession?.remaining_amount);
+    const splitPaymentSummaryChangeAmount = round4(splitPaymentSummaryAllocations.reduce(
+        (sum, allocation) => sum + Number(allocation?.change_amount || 0),
+        0
+    ));
+    const splitPaymentSuccessfulAllocations = splitPaymentAllocations.filter((allocation) => (
+        String(allocation?.status || '').toLowerCase() === 'successful'
+    ));
     const posActionsBlocked = Boolean(checkoutBlockedReason);
     const notifyPosActionBlocked = () => {
         toast.error(checkoutBlockedReason || 'You cannot use the POS because the shift is closed.');
@@ -2705,6 +2835,54 @@ export default function POSCheckoutTerminal({
         setMobileCheckoutPanelOpen(false);
     }, [safeCart, checkoutBlockedReason, normalizedTerminalId, paymentType, selectedLocationId, isCheckoutWorkflowValid, orderMethod]);
 
+    const openSplitPaymentModal = useCallback(async () => {
+        if (checkoutBlockedReason) {
+            toast.error(checkoutBlockedReason);
+            return;
+        }
+        if (!normalizedTerminalId) {
+            toast.error('Select a terminal ID before recording payment.');
+            return;
+        }
+        if (safeCart.length === 0) {
+            toast.error('Add at least one item before recording payment.');
+            return;
+        }
+        if (isEmployeeCreditPayment) {
+            toast.error('Employee Credit cannot be combined with split payment.');
+            return;
+        }
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+            toast.error('Split Payment requires an online connection.');
+            return;
+        }
+        const { validateFnbModifierSelections } = await import('../utils/fnbModifierValidation.js');
+        const invalidModifierLine = safeCart.find((line) => validateFnbModifierSelections(line.modifier_groups || [], line.line_modifiers || [], selectedLocationId));
+        if (invalidModifierLine) {
+            toast.error(`${invalidModifierLine.item_name}: ${validateFnbModifierSelections(invalidModifierLine.modifier_groups || [], invalidModifierLine.line_modifiers || [], selectedLocationId)}`);
+            setFnbModifierLineKey(getLineKey(invalidModifierLine));
+            return;
+        }
+        if (!isCheckoutWorkflowValid) {
+            toast.error(orderMethod === 'appointment'
+                ? 'Enter the client name and appointment time before recording payment.'
+                : 'Enter the client name before recording payment.');
+            return;
+        }
+        splitPaymentReturnToCheckoutRef.current = false;
+        handleSplitPaymentOpenChange(true);
+        setMobileCheckoutPanelOpen(false);
+    }, [
+        checkoutBlockedReason,
+        handleSplitPaymentOpenChange,
+        isCheckoutWorkflowValid,
+        isEmployeeCreditPayment,
+        normalizedTerminalId,
+        orderMethod,
+        safeCart,
+        selectedLocationId
+    ]);
+
     const handleSelectEmployeeCredit = async (employeeOption) => {
         const accountCode = String(employeeOption?.account_code || '').trim().toUpperCase();
         const sameSelectedAccount = Boolean(
@@ -2756,16 +2934,42 @@ export default function POSCheckoutTerminal({
         }
     };
 
-    const openDiscountModal = async () => {
-        setDiscountDraft(appliedDiscount ? { ...EMPTY_DISCOUNT_DRAFT, ...appliedDiscount, manager_pin: '' } : {
-            ...EMPTY_DISCOUNT_DRAFT
-        });
+    const closeDiscountModal = useCallback(() => {
+        setDiscountModalOpen(false);
+        if (discountReturnToCheckoutRef.current) {
+            discountReturnToCheckoutRef.current = false;
+            setCheckoutConfirmModalOpen(true);
+        }
+    }, []);
+
+    const openDiscountModal = async ({ returnToCheckout = false } = {}) => {
+        discountReturnToCheckoutRef.current = returnToCheckout;
+        if (returnToCheckout) {
+            setCheckoutConfirmModalOpen(false);
+        }
+        const draftToOpen = appliedDiscount
+            ? { ...EMPTY_DISCOUNT_DRAFT, ...appliedDiscount, manager_pin: '' }
+            : { ...EMPTY_DISCOUNT_DRAFT };
+        setShowDiscountPin(false);
         setDiscountModalOpen(true);
         setDiscountApproversLoading(true);
         try {
-            setDiscountApprovers(await fetchPosDiscountApprovers());
+            const approvers = await fetchPosDiscountApprovers();
+            setDiscountApprovers(approvers);
+            if (!appliedDiscount) {
+                const shiftCashierId = Number(activeShiftCashierId);
+                const shiftCashierApprover = Number.isInteger(shiftCashierId) && shiftCashierId > 0
+                    ? toArray(approvers).find((approver) => (
+                        Number(approver?.user_id) === shiftCashierId
+                        && approver?.pos_approval_pin_configured === true
+                    ))
+                    : null;
+                draftToOpen.approver_user_id = shiftCashierApprover?.user_id || '';
+            }
+            setDiscountDraft(draftToOpen);
         } catch (error) {
             setDiscountApprovers([]);
+            setDiscountDraft(draftToOpen);
             toast.error(error?.response?.data?.message || 'Failed to load POS discount approvers.');
         } finally {
             setDiscountApproversLoading(false);
@@ -2775,23 +2979,26 @@ export default function POSCheckoutTerminal({
     const handleApplyGovernedDiscount = async () => {
         const type = discountDraft.type;
         const statutory = type === 'senior' || type === 'pwd';
-        const employeeDiscountRequiresApproval = type === 'employee' && !signedInUserIsAdminLike;
-        const manualDiscountRequiresApproval = type === 'manual';
-        const discountRequiresApproval = employeeDiscountRequiresApproval || manualDiscountRequiresApproval;
-        const manualDiscountUsesCurrentPosApprover = type === 'manual' && signedInUserCanApproveManualDiscount;
-        const approvalUserId = manualDiscountUsesCurrentPosApprover
-            ? Number(terminalUser?.user_id)
-            : Number(discountDraft.approver_user_id);
-        if (discountRequiresApproval && (!Number.isInteger(approvalUserId) || approvalUserId <= 0)) {
-            toast.error('Select a configured POS discount approver, or ask the Master Admin to configure an approval PIN.');
+        const approvalUserId = Number(discountDraft.approver_user_id);
+        if (!Number.isInteger(approvalUserId) || approvalUserId <= 0) {
+            toast.error('Select the employee who is authorizing this discount.');
             return;
         }
-        if (!statutory && !discountDraft.customer_name.trim()) {
+        const selectedApprover = safeDiscountApprovers.find((approver) => Number(approver?.user_id) === approvalUserId);
+        if (!selectedApprover?.pos_approval_pin_configured) {
+            toast.error('This employee does not have a POS approval PIN configured yet.');
+            return;
+        }
+        if (!/^\d{4,12}$/.test(String(discountDraft.manager_pin || '').trim())) {
+            toast.error('Enter the authorizing employee PIN.');
+            return;
+        }
+        if (type === 'employee' && !discountDraft.employee_name.trim()) {
+            toast.error('Employee name is required.');
+            return;
+        }
+        if (!statutory && type !== 'employee' && !discountDraft.customer_name.trim()) {
             toast.error('Customer name is required for this discount.');
-            return;
-        }
-        if (type === 'manual' && discountDraft.reason.trim().length < 3) {
-            toast.error('Enter a reason of at least 3 characters for this manual discount.');
             return;
         }
         if (statutory && (!discountDraft.customer_name.trim() || !discountDraft.id_number.trim())) {
@@ -2818,20 +3025,18 @@ export default function POSCheckoutTerminal({
         }
         setDiscountApplying(true);
         try {
-            const verifiedApprover = discountRequiresApproval
-                ? await verifyPosDiscountApproval({
-                    discount_type: type,
-                    approver_user_id: approvalUserId,
-                    manager_pin: discountDraft.manager_pin,
-                    employee_user_id: type === 'employee' ? Number(discountDraft.employee_id) : null
-                })
-                : (type === 'employee' && signedInUserIsAdminLike
-                    ? {
-                        user_id: Number(terminalUser?.user_id) || null,
-                        username: String(terminalUser?.username || '').trim() || null,
-                        bypassed_pin: true
-                    }
-                    : null);
+            const parsedEmployeeUserId = type === 'employee'
+                ? Number(discountDraft.employee_id)
+                : null;
+            const employeeUserId = Number.isInteger(parsedEmployeeUserId) && parsedEmployeeUserId > 0
+                ? parsedEmployeeUserId
+                : null;
+            const verifiedApprover = await verifyPosDiscountApproval({
+                discount_type: type,
+                approver_user_id: approvalUserId,
+                manager_pin: discountDraft.manager_pin,
+                employee_user_id: employeeUserId
+            });
             const labels = { senior: 'Senior Citizen', pwd: 'PWD', employee: 'Employee Discount', promo: 'Promo Discount', manual: 'Manual Discount' };
             const resolvedApproverUserId = Number(verifiedApprover?.user_id ?? approvalUserId);
             const governedDiscountApproverUserId = Number.isInteger(resolvedApproverUserId) && resolvedApproverUserId > 0
@@ -2862,6 +3067,7 @@ export default function POSCheckoutTerminal({
             }
             setAppliedDiscount({
                 ...discountDraft,
+                manager_pin: undefined,
                 label: labels[type],
                 method: type === 'promo' ? 'percentage' : discountDraft.method,
                 rate: statutory ? 20 : (type === 'promo' ? configuredPromoRate : rate),
@@ -2872,18 +3078,39 @@ export default function POSCheckoutTerminal({
                 eligible_item_ids: type === 'promo' ? promoEligibleItemIds : safeEligibleDiscountItemIds,
                 eligible_items: statutory ? safeEligibleDiscountItems : []
             });
+            discountApprovalRef.current = {
+                discount_type: type,
+                approver_user_id: governedDiscountApproverUserId,
+                employee_user_id: type === 'employee' ? Number(discountDraft.employee_id) || null : null,
+                manager_pin: String(discountDraft.manager_pin || '').trim()
+            };
             setSelectedDiscountProfile('');
             setManualDiscountMode('none');
             setManualDiscountRateInput('');
             setManualDiscountAmountInput('');
-            setDiscountModalOpen(false);
+            closeDiscountModal();
             toast.success(`${labels[type]} applied.`);
         } catch (error) {
-            toast.error(error?.response?.data?.message || 'Admin PIN approval failed.');
+            toast.error(error?.response?.data?.message || 'Employee PIN authorization failed.');
         } finally {
             setDiscountApplying(false);
         }
     };
+
+    const clearAppliedDiscount = useCallback(() => {
+        if (splitPaymentDialogOpen || hasSplitPaymentSummary) {
+            toast.error('Finish or cancel the active payment before changing the discount.');
+            return;
+        }
+        setAppliedDiscount(null);
+        discountApprovalRef.current = null;
+        setSelectedDiscountProfile('');
+        setManualDiscountMode('none');
+        setManualDiscountRateInput('');
+        setManualDiscountAmountInput('');
+        setDiscountDraft(EMPTY_DISCOUNT_DRAFT);
+        toast.success('Discount removed.');
+    }, [hasSplitPaymentSummary, splitPaymentDialogOpen]);
 
     const resetCurrentSaleForNewSale = useCallback(() => {
         setCart([]);
@@ -2906,7 +3133,9 @@ export default function POSCheckoutTerminal({
         setManualDiscountRateInput('');
         setManualDiscountAmountInput('');
         setAppliedDiscount(null);
+        discountApprovalRef.current = null;
         setDiscountDraft(EMPTY_DISCOUNT_DRAFT);
+        discountReturnToCheckoutRef.current = false;
         setDiscountModalOpen(false);
         setShowDiscountPin(false);
         setAffiliateCodeInput('');
@@ -2916,7 +3145,26 @@ export default function POSCheckoutTerminal({
         setServiceOptionsModal({ open: false, item: null, groups: [] });
     }, [posWorkflow]);
 
-    const validateParkedSaleForResume = useCallback(async (parkedSale) => {
+    const openClearCurrentSale = () => {
+        if (posActionsBlocked || safeCart.length === 0 || activeParkedSale?.pos_parked_sale_id) return;
+        setCurrentSaleHelpOpen(false);
+        setClearSaleConfirmOpen(true);
+    };
+
+    const confirmClearCurrentSale = () => {
+        if (posActionsBlocked || safeCart.length === 0 || activeParkedSale?.pos_parked_sale_id) {
+            setClearSaleConfirmOpen(false);
+            return;
+        }
+        clearPosCartDraft(offlineSnapshotScope, activeShiftId);
+        setActiveParkedSale(null);
+        resetCurrentSaleForNewSale();
+        setClearSaleConfirmOpen(false);
+        toast.success('Current sale cleared.');
+    };
+
+    const validateParkedSaleForResume = useCallback(async (parkedSale, action = 'pay') => {
+        const normalizedAction = action === 'resume' ? 'resume' : 'pay';
         const [{ validateParkedSaleResume }, { validateFnbModifierSelections }] = await Promise.all([
             import('../utils/posParkedSaleResume.js'),
             import('../utils/fnbModifierValidation.js')
@@ -2948,10 +3196,20 @@ export default function POSCheckoutTerminal({
                 message: 'Finish, update, or cancel the currently resumed parked sale before opening another one.'
             };
         }
+        if (normalizedAction === 'resume'
+            && activeParkedSale?.pos_parked_sale_id
+            && Number(activeParkedSale.pos_parked_sale_id) === Number(parkedSale?.pos_parked_sale_id)) {
+            return {
+                ok: false,
+                message: 'This parked sale is already active in the current cart.'
+            };
+        }
         if (safeCart.length > 0) {
             return {
                 ok: false,
-                message: 'Start with an empty sale before resuming a parked sale. Park or complete the current cart first.'
+                message: normalizedAction === 'resume'
+                    ? 'Resume requires an empty current sale. Park or clear the current sale first.'
+                    : 'Pay requires an empty current sale. Park or clear the current sale first.'
             };
         }
         if (!validation.ok) {
@@ -2963,7 +3221,8 @@ export default function POSCheckoutTerminal({
         return { ok: true };
     }, [activeParkedSale?.pos_parked_sale_id, posWorkflow, safeCart.length, safeCatalog, safeCommercialPromoConfig, safeDiscountProfiles, selectedLocationId]);
 
-    const handleParkedSaleClaimed = useCallback(async (claimedSale) => {
+    const handleParkedSaleClaimed = useCallback(async (claimedSale, action = 'pay') => {
+        const normalizedAction = action === 'resume' ? 'resume' : 'pay';
         const { buildResumedCartLines } = await import('../utils/posParkedSaleResume.js');
         const snapshot = claimedSale?.snapshot && typeof claimedSale.snapshot === 'object'
             ? claimedSale.snapshot
@@ -2983,16 +3242,7 @@ export default function POSCheckoutTerminal({
         const resumedOrderMethod = posWorkflow.allowedMethods.includes(snapshot.order_method)
             ? snapshot.order_method
             : defaultOrderMethod;
-
         setCart(resumedLines);
-        setOrderMethod(resumedOrderMethod);
-        setTableNumber(String(snapshot.table_number || ''));
-        setKitchenNotes(String(snapshot.kitchen_notes || ''));
-        setServicesClientName(String(services.client_name || ''));
-        setServicesDateTime(String(services.scheduled_for || '').slice(0, 16));
-        setServicesProvider(String(services.provider || ''));
-        setServicesResource(String(services.resource || ''));
-        setServicesNotes(String(services.notes || ''));
         setPaymentType('cash');
         setEmployeeCreditAccountCode('');
         setEmployeeCreditAccount(null);
@@ -3000,7 +3250,6 @@ export default function POSCheckoutTerminal({
         setEmployeeCreditLookupLoading(false);
         employeeCreditValidationSequenceRef.current += 1;
         setCustomerPaymentAmountInput('');
-        setAffiliateCodeInput('');
         setCheckoutConfirmModalOpen(false);
         setMobileCheckoutPanelOpen(false);
         setFnbModifierLineKey(null);
@@ -3013,24 +3262,28 @@ export default function POSCheckoutTerminal({
         });
 
         let approvalResetMessage = '';
-        if (applied && ['employee', 'manual'].includes(String(applied.type || '').toLowerCase())) {
+        setOrderMethod(resumedOrderMethod);
+        setTableNumber(String(snapshot.table_number || ''));
+        setKitchenNotes(String(snapshot.kitchen_notes || ''));
+        setServicesClientName(String(services.client_name || ''));
+        setServicesDateTime(String(services.scheduled_for || '').slice(0, 16));
+        setServicesProvider(String(services.provider || ''));
+        setServicesResource(String(services.resource || ''));
+        setServicesNotes(String(services.notes || ''));
+        setAffiliateCodeInput('');
+
+        if (applied) {
             setAppliedDiscount(null);
+            discountApprovalRef.current = null;
             setDiscountDraft({ ...EMPTY_DISCOUNT_DRAFT, ...applied, manager_pin: '' });
             setSelectedDiscountProfile('');
             setManualDiscountMode('none');
             setManualDiscountRateInput('');
             setManualDiscountAmountInput('');
             approvalResetMessage = ' Re-enter discount approval before checkout.';
-        } else if (applied) {
-            const safeApplied = { ...applied, manager_pin: '' };
-            setAppliedDiscount(safeApplied);
-            setDiscountDraft({ ...EMPTY_DISCOUNT_DRAFT, ...safeApplied, manager_pin: '' });
-            setSelectedDiscountProfile('');
-            setManualDiscountMode('none');
-            setManualDiscountRateInput('');
-            setManualDiscountAmountInput('');
         } else if (selectedProfile?.name) {
             setAppliedDiscount(null);
+            discountApprovalRef.current = null;
             setDiscountDraft(EMPTY_DISCOUNT_DRAFT);
             setSelectedDiscountProfile(String(selectedProfile.name));
             setManualDiscountMode('none');
@@ -3038,18 +3291,29 @@ export default function POSCheckoutTerminal({
             setManualDiscountAmountInput('');
         } else {
             setAppliedDiscount(null);
+            discountApprovalRef.current = null;
             setDiscountDraft(EMPTY_DISCOUNT_DRAFT);
             setSelectedDiscountProfile('');
             setManualDiscountMode(String(discountContext.manual_mode || 'none'));
             setManualDiscountRateInput(discountContext.manual_rate ? String(discountContext.manual_rate) : '');
             setManualDiscountAmountInput(discountContext.manual_amount ? String(discountContext.manual_amount) : '');
         }
-
-        setCurrentViewMode('checkout');
-        toast.success(`Resumed ${formatParkedSaleDisplayName(claimedSale)}. Review the cart before checkout.${approvalResetMessage}`);
+        if (normalizedAction === 'pay') {
+            setCurrentViewMode('checkout');
+            setCustomerPaymentAmountInput('0');
+            setCheckoutConfirmModalOpen(true);
+            setMobileCheckoutPanelOpen(false);
+            toast.success(`Ready to pay ${formatParkedSaleDisplayName(claimedSale)}. Review the cart before checkout.${approvalResetMessage}`);
+        } else {
+            toast.success(`Resumed ${formatParkedSaleDisplayName(claimedSale)}. Add items as needed, then checkout.`);
+        }
     }, [posWorkflow, safeCatalog, setCurrentViewMode]);
 
     const openParkSaleNameDialog = () => {
+        if (activeParkedSale?.pos_parked_sale_id) {
+            void handleParkAndNewSale(activeParkedSale.parked_sale_name || formatParkedSaleDisplayName(activeParkedSale));
+            return;
+        }
         const suggestedName = activeParkedSale?.parked_sale_name
             || servicesClientName.trim()
             || (tableNumber.trim() ? `Table ${tableNumber.trim()}` : '');
@@ -3057,8 +3321,8 @@ export default function POSCheckoutTerminal({
         setParkSaleNameDialogOpen(true);
     };
 
-    const handleParkAndNewSale = async () => {
-        const parkedSaleName = parkSaleNameInput.trim();
+    const handleParkAndNewSale = async (nameOverride = null) => {
+        const parkedSaleName = String(nameOverride ?? parkSaleNameInput).trim();
         if (!parkedSaleName) {
             toast.error('Enter a customer or order name before parking this sale.');
             return;
@@ -3197,6 +3461,163 @@ export default function POSCheckoutTerminal({
         }
     };
 
+    const clearSplitPaymentState = useCallback(() => {
+        clearPosSplitPaymentSessionPointer(splitPaymentStorageScopeKey);
+        splitPaymentReturnToCheckoutRef.current = false;
+        setSplitPaymentSession(null);
+        setSplitPaymentDialogOpen(false);
+        setSplitPaymentWorkflowVersion((version) => version + 1);
+    }, [splitPaymentStorageScopeKey]);
+
+    const handleCancelCheckout = useCallback(async () => {
+        const sessionId = Number(splitPaymentSession?.pos_payment_session_id || splitPaymentSession?.id || 0);
+        if (!sessionId) {
+            setCheckoutConfirmModalOpen(false);
+            return;
+        }
+        if (splitPaymentSuccessfulAllocations.length > 0) {
+            setSplitPaymentCancelModalOpen(true);
+            return;
+        }
+
+        setSplitPaymentCancelLoading(true);
+        try {
+            await cancelPosPaymentSession(sessionId, {
+                shift_id: activeShiftId,
+                terminal_id: normalizedTerminalId,
+                location_id: selectedLocationId || undefined,
+                reason: 'Cashier cancelled split-payment checkout before payment was recorded.'
+            });
+            clearSplitPaymentState();
+            setCheckoutConfirmModalOpen(false);
+            toast.success('Split-payment draft cancelled. New checkout ready.');
+        } catch (error) {
+            toast.error(error?.response?.data?.message || error?.message || 'Unable to cancel the split-payment draft.');
+        } finally {
+            setSplitPaymentCancelLoading(false);
+        }
+    }, [activeShiftId, clearSplitPaymentState, normalizedTerminalId, selectedLocationId, splitPaymentSession, splitPaymentSuccessfulAllocations.length]);
+
+    const handleKeepSplitPaymentAndClose = useCallback(() => {
+        setSplitPaymentCancelModalOpen(false);
+        setCheckoutConfirmModalOpen(false);
+        toast.message('Saved split payment kept. Resume it from checkout to finish the sale.');
+    }, []);
+
+    const handleReverseSplitPaymentAndStartNew = useCallback(async () => {
+        const sessionId = Number(splitPaymentSession?.pos_payment_session_id || splitPaymentSession?.id || 0);
+        if (!sessionId || splitPaymentSuccessfulAllocations.length === 0) return;
+
+        setSplitPaymentCancelLoading(true);
+        try {
+            for (const allocation of splitPaymentSuccessfulAllocations) {
+                const allocationId = Number(allocation?.pos_payment_allocation_id || allocation?.id || 0);
+                if (!allocationId) throw new Error('A split-payment allocation identifier is missing.');
+                await cancelPosPaymentAllocation(sessionId, allocationId, {
+                    shift_id: activeShiftId,
+                    terminal_id: normalizedTerminalId,
+                    location_id: selectedLocationId || undefined,
+                    reason: 'Cashier cancelled split-payment checkout before sale completion.'
+                });
+            }
+            await cancelPosPaymentSession(sessionId, {
+                shift_id: activeShiftId,
+                terminal_id: normalizedTerminalId,
+                location_id: selectedLocationId || undefined,
+                reason: 'All split-payment allocations were reversed before starting a new checkout.'
+            });
+            clearSplitPaymentState();
+            setSplitPaymentCancelModalOpen(false);
+            setCheckoutConfirmModalOpen(false);
+            toast.success('Split payment reversed and cancelled. New checkout ready.');
+        } catch (error) {
+            toast.error(error?.response?.data?.message || error?.message || 'Unable to reverse the split payment. Review the saved payment and try again.');
+        } finally {
+            setSplitPaymentCancelLoading(false);
+        }
+    }, [activeShiftId, clearSplitPaymentState, normalizedTerminalId, selectedLocationId, splitPaymentSession, splitPaymentSuccessfulAllocations]);
+
+    const handleCompletePreparedSplitPayment = useCallback(async (preparedSession = null) => {
+        const sessionToComplete = preparedSession || splitPaymentSession;
+        const sessionId = Number(sessionToComplete?.pos_payment_session_id || sessionToComplete?.id || 0);
+        const isReady = round4(sessionToComplete?.remaining_amount) === 0;
+        if (!sessionId || !isReady) {
+            toast.error('Complete the split payment allocation before confirming.');
+            return false;
+        }
+
+        setCheckoutLoading(true);
+        try {
+            const result = await completePosPaymentSession(sessionId, {
+                idempotency_key: `split-complete:${sessionId}`,
+                shift_id: activeShiftId,
+                terminal_id: normalizedTerminalId,
+                location_id: selectedLocationId || undefined
+            });
+            const transaction = result?.transaction || null;
+            if (!transaction) {
+                throw new Error('The server completed no transaction. Resume the saved payment and try again.');
+            }
+            clearSplitPaymentState();
+            setLastReceipt(transaction);
+            setLastReceiptContract(inferReceiptContract(transaction, result?.receipt_contract));
+            setCart([]);
+            setActiveParkedSale(null);
+            setSelectedDiscountProfile('');
+            setManualDiscountRateInput('');
+            setManualDiscountAmountInput('');
+            setAppliedDiscount(null);
+            discountApprovalRef.current = null;
+            setAffiliateCodeInput('');
+            setCustomerPaymentAmountInput('');
+            setCheckoutConfirmModalOpen(false);
+            setReceiptPreviewSource('order_preview');
+            setReceiptPreviewModalOpen(true);
+            loadCatalog();
+            loadHistory(historyPage);
+            if (typeof onCheckoutCompleted === 'function') onCheckoutCompleted(transaction);
+            return true;
+        } catch (error) {
+            toast.error(error?.response?.data?.message || error?.message || 'Unable to finish the split payment. Review the payment and try again.');
+            return false;
+        } finally {
+            setCheckoutLoading(false);
+        }
+    }, [activeShiftId, clearSplitPaymentState, historyPage, loadCatalog, loadHistory, normalizedTerminalId, onCheckoutCompleted, selectedLocationId, splitPaymentSession]);
+
+    const splitPaymentCheckoutContext = useMemo(() => ({
+        orderMethod,
+        posWorkflowMode: posWorkflow.mode,
+        servicesClientName,
+        servicesNotes,
+        servicesDateTime,
+        appliedDiscount,
+        discountApproval: discountApprovalRef.current,
+        selectedDiscount,
+        manualDiscountAmount,
+        manualDiscountMode,
+        manualDiscountRate,
+        calculatedDiscountAmount,
+        affiliateCodeInput,
+        fnbContext: normalizedFnbContext,
+        cart: safeCart
+    }), [
+        affiliateCodeInput,
+        appliedDiscount,
+        calculatedDiscountAmount,
+        manualDiscountAmount,
+        manualDiscountMode,
+        manualDiscountRate,
+        normalizedFnbContext,
+        orderMethod,
+        posWorkflow.mode,
+        safeCart,
+        selectedDiscount,
+        servicesClientName,
+        servicesDateTime,
+        servicesNotes
+    ]);
+
     const handleCheckout = async () => {
         if (checkoutBlockedReason) {
             toast.error(checkoutBlockedReason);
@@ -3257,6 +3678,12 @@ export default function POSCheckoutTerminal({
                 category: appliedDiscount.type,
                 name: appliedDiscount.customer_name,
                 id_number: appliedDiscount.id_number
+            } : undefined,
+            discount_approval: appliedDiscount && discountApprovalRef.current ? {
+                discount_type: appliedDiscount.type,
+                approver_user_id: appliedDiscount.approver_user_id,
+                employee_user_id: appliedDiscount.type === 'employee' ? Number(appliedDiscount.employee_id) || null : null,
+                manager_pin: discountApprovalRef.current.manager_pin
             } : undefined,
             governed_discount: appliedDiscount ? {
                 ...appliedDiscount,
@@ -3375,6 +3802,7 @@ export default function POSCheckoutTerminal({
             setManualDiscountRateInput('');
             setManualDiscountAmountInput('');
             setAppliedDiscount(null);
+            discountApprovalRef.current = null;
             setAffiliateCodeInput('');
             setEmployeeCreditAccountCode('');
             setEmployeeCreditAccount(null);
@@ -3417,6 +3845,7 @@ export default function POSCheckoutTerminal({
             setManualDiscountRateInput('');
             setManualDiscountAmountInput('');
             setAppliedDiscount(null);
+            discountApprovalRef.current = null;
             setAffiliateCodeInput('');
             setCustomerPaymentAmountInput('');
             setCheckoutConfirmModalOpen(false);
@@ -3697,7 +4126,7 @@ export default function POSCheckoutTerminal({
                     {isTabletViewport && renderViewModeControls()}
                     <div ref={catalogViewportRef} className={catalogViewportClassName} role="region" aria-label="POS catalog contents">
                 <div data-testid="pos-catalog-controls" className={`${isTabletViewport ? 'mb-3 gap-2.5' : 'mb-5 gap-4'} flex min-w-0 shrink-0 flex-col ${IS_DGFY_POS_SURFACE ? 'xl:flex-row xl:items-start' : 'lg:flex-row lg:items-start'}`}>
-                    <div className={`${isTabletViewport ? 'flex-col items-stretch sm:flex-col' : 'flex-wrap items-center sm:flex-nowrap'} flex min-w-0 flex-1 gap-3 max-sm:relative`}>
+                    <div className={`${isTabletViewport ? 'flex-row items-center' : 'flex-wrap items-center sm:flex-nowrap'} flex min-w-0 flex-1 gap-3 max-sm:relative`}>
                         {/* Mobile: collapsed search icon button */}
                         {!isTabletViewport && !(mobileSearchExpanded || search) && (
                             <button
@@ -3742,7 +4171,7 @@ export default function POSCheckoutTerminal({
                             </div>
                         )}
                         {/* Desktop / tablet: original search label */}
-                        <label className={`flex h-11 min-w-0 items-center gap-3 rounded-lg border border-slate-300 bg-white px-4 text-[13px] text-[#64748B] shadow-sm focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-100 max-sm:hidden ${isTabletViewport ? 'w-full' : 'flex-1'}`}>
+                        <label className="flex h-11 min-w-0 flex-1 items-center gap-3 rounded-lg border border-slate-300 bg-white px-4 text-[13px] text-[#64748B] shadow-sm focus-within:border-blue-400 focus-within:ring-4 focus-within:ring-blue-100 max-sm:hidden">
                             <Search size={20} className="shrink-0 text-[#1A4E8D]" />
                             <span className="sr-only">Search POS-visible items</span>
                             <input
@@ -3771,12 +4200,12 @@ export default function POSCheckoutTerminal({
                             </button>
                         </label>
                         {isTabletViewport ? (
-                            <div className="grid grid-cols-2 gap-3">
+                            <div className="flex shrink-0">
                                 <Suspense fallback={(
                                     <button
                                         type="button"
                                         disabled
-                                        className="flex h-11 w-full shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-5 text-[13px] font-bold text-slate-400"
+                                        className="flex h-11 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white px-5 text-[13px] font-bold text-slate-400"
                                     >
                                         Scan
                                     </button>
@@ -3786,44 +4215,12 @@ export default function POSCheckoutTerminal({
                                         selectedLocationId={selectedLocationId}
                                         terminalId={normalizedTerminalId}
                                         onAddToCart={addToCart}
-                                        className="w-full"
+                                        className="w-auto"
                                     />
                                 </Suspense>
-                                <button
-                                    type="button"
-                                    className={`flex h-11 w-full shrink-0 items-center justify-center gap-3 rounded-lg border px-5 text-[13px] font-bold shadow-sm transition ${
-                                        catalogFiltersOpen || selectedFolder
-                                            ? 'border-[#1A4E8D] bg-blue-50 text-[#1A4E8D] hover:bg-blue-100'
-                                            : 'border-slate-300 bg-white text-[#0F172A] hover:bg-slate-50'
-                                    }`}
-                                    onClick={() => setCatalogFiltersOpen((open) => !open)}
-                                    aria-expanded={catalogFiltersOpen}
-                                    aria-controls="pos-catalog-category-filters"
-                                    title="Show or hide catalog filters"
-                                >
-                                    <Filter size={18} />
-                                    {selectedFolder ? selectedFolder.name : 'Filter'}
-                                    <ChevronDown className={`h-4 w-4 transition-transform ${catalogFiltersOpen ? 'rotate-180' : ''}`} />
-                                </button>
                             </div>
                         ) : (
                             <>
-                                <button
-                                    type="button"
-                                    className={`flex h-11 shrink-0 items-center justify-center gap-3 rounded-lg border px-5 text-[13px] font-bold shadow-sm transition max-sm:flex-1 max-sm:min-w-0 ${
-                                        catalogFiltersOpen || selectedFolder
-                                            ? 'border-[#1A4E8D] bg-blue-50 text-[#1A4E8D] hover:bg-blue-100'
-                                            : 'border-slate-300 bg-white text-[#0F172A] hover:bg-slate-50'
-                                    }`}
-                                    onClick={() => setCatalogFiltersOpen((open) => !open)}
-                                    aria-expanded={catalogFiltersOpen}
-                                    aria-controls="pos-catalog-category-filters"
-                                    title="Show or hide catalog filters"
-                                >
-                                    <Filter size={18} />
-                                    {selectedFolder ? selectedFolder.name : 'Filter'}
-                                    <ChevronDown className={`h-4 w-4 transition-transform ${catalogFiltersOpen ? 'rotate-180' : ''}`} />
-                                </button>
                             <Suspense fallback={(
                                 <button
                                     type="button"
@@ -3845,11 +4242,20 @@ export default function POSCheckoutTerminal({
                         )}
                 </div>
                 </div>
-                <div className="mb-4 flex items-center gap-2 overflow-x-auto pb-1 pt-0.5 dgfy-pos-scrollbar-hidden">
+                <div
+                    ref={folderStripRef}
+                    className="mb-4 flex cursor-grab items-center gap-2 overflow-x-auto pb-1 pt-0.5 dgfy-pos-scrollbar-hidden"
+                    onPointerDown={handleFolderStripPointerDown}
+                    onPointerMove={handleFolderStripPointerMove}
+                    onPointerUp={handleFolderStripPointerEnd}
+                    onPointerCancel={handleFolderStripPointerEnd}
+                    onClickCapture={handleFolderStripClickCapture}
+                    onWheel={handleFolderStripWheel}
+                >
                     <button
                         type="button"
                         onClick={() => setSelectedFolderId(null)}
-                        className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-[12px] font-extrabold transition-all shadow-xs ${
+                        className={`${folderButtonClassName} ${
                             !selectedFolderId
                                 ? 'border border-[#0B449C] bg-[#0B449C] text-white shadow-blue-900/15'
                                 : 'border border-slate-200/80 bg-white text-slate-700 hover:bg-slate-50'
@@ -3865,7 +4271,7 @@ export default function POSCheckoutTerminal({
                                 key={folder.folder_id}
                                 type="button"
                                 onClick={() => toggleFolderFilter(folder.folder_id)}
-                                className={`inline-flex shrink-0 items-center gap-2 rounded-xl px-4 py-2 text-[12px] font-extrabold transition-all shadow-xs ${
+                                className={`${folderButtonClassName} ${
                                     active
                                         ? 'border border-[#0B449C] bg-[#0B449C] text-white shadow-blue-900/15'
                                         : 'border border-slate-200/80 bg-white text-slate-700 hover:bg-slate-50'
@@ -3877,89 +4283,22 @@ export default function POSCheckoutTerminal({
                         );
                     })}
                 </div>
-                {catalogFiltersOpen && (
-                <div id="pos-catalog-category-filters" className="mb-4">
-                    <div className="flex items-center justify-between gap-2">
-                        <h3 className="text-sm font-bold text-[#0F172A]">POS Categories</h3>
-                        {selectedFolderId && (
-                            <button
-                                type="button"
-                                onClick={() => setSelectedFolderId(null)}
-                                className="text-xs font-semibold text-[#1A4E8D] hover:text-[#143F73]"
-                            >
-                                Clear
-                            </button>
-                        )}
-                    </div>
-                    <p className="mt-1 text-xs text-[#64748B]">Click category to filter. Click again to cancel.</p>
-                    <div className={`${isTabletViewport ? 'mt-2 gap-2' : 'mt-3 gap-3'} flex flex-wrap`}>
-                        <button
+                {posFoldersLoading && (
+                    <span className="sr-only" role="status">Loading POS categories...</span>
+                )}
+                {!posFoldersLoading && posFoldersError && (
+                    <div className="mb-4 flex items-center justify-between gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+                        <span>{posFoldersError}</span>
+                        <Button
                             type="button"
-                            onClick={() => setSelectedFolderId(null)}
-                            className={`inline-flex h-9 min-w-[112px] items-center justify-center gap-2 rounded-lg border px-4 text-[12px] font-extrabold transition sm:min-w-[120px] ${
-                                !selectedFolderId
-                                    ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-lg shadow-blue-900/10'
-                                    : 'border-slate-200 bg-slate-50 text-[#0F172A] hover:border-blue-200 hover:bg-white'
-                            }`}
+                            variant="outline"
+                            size="sm"
+                            className="h-7 shrink-0 px-2 text-[11px]"
+                            onClick={loadPosFolders}
                         >
-                            <span>All Items</span>
-                            {!selectedFolderId && <X className="h-3.5 w-3.5 opacity-70" />}
-                        </button>
-                        {availableCategories.map((folder) => {
-                            const active = selectedFolderId === folder.folder_id;
-                            return (
-                                <button
-                                    key={folder.folder_id}
-                                    type="button"
-                                    onClick={() => toggleFolderFilter(folder.folder_id)}
-                                    className={`inline-flex h-9 min-w-[112px] items-center justify-center gap-2 rounded-lg border px-4 text-[12px] font-extrabold transition sm:min-w-[120px] ${
-                                        active
-                                            ? 'border-[#1A4E8D] bg-[#1A4E8D] text-white shadow-lg shadow-blue-900/10'
-                                            : 'border-slate-200 bg-slate-50 text-[#0F172A] hover:border-blue-200 hover:bg-white'
-                                    }`}
-                                >
-                                    <Folder className="h-3.5 w-3.5" />
-                                    <span>{folder.name}</span>
-                                    {active && <X className="h-3.5 w-3.5 opacity-70" />}
-                                </button>
-                            );
-                        })}
+                            Retry categories
+                        </Button>
                     </div>
-                    {posFoldersLoading && (
-                        <p className="mt-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-500">
-                            Loading POS categories...
-                        </p>
-                    )}
-                    {!posFoldersLoading && posFoldersError && (
-                        <div className="mt-2 rounded-lg border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
-                            <p>{posFoldersError}</p>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="mt-2 h-7 px-2 text-[11px]"
-                                onClick={loadPosFolders}
-                            >
-                                Retry
-                            </Button>
-                        </div>
-                    )}
-                    {!posFoldersLoading && !posFoldersError && !canViewHistory && (
-                        <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-xs text-amber-700">
-                            You need POS view permission to load POS categories.
-                        </p>
-                    )}
-                    {!posFoldersLoading && !posFoldersError && canViewHistory && safePosFolders.length === 0 && (
-                        <p className="mt-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-500">
-                            No POS folder filters available yet.
-                        </p>
-                    )}
-                    {!posFoldersLoading && !posFoldersError && canViewHistory && safePosFolders.length > 0 && availableCategories.length === 0 && (
-                        <p className="mt-2 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-xs text-slate-500">
-                            No categories currently have available items.
-                        </p>
-                    )}
-                </div>
                 )}
                 <div
                     ref={catalogCapacityViewportRef}
@@ -3993,13 +4332,13 @@ export default function POSCheckoutTerminal({
                 ) : (
                     <>
                     {catalogRefreshing && (
-                        <p role="status" className="absolute right-2 top-2 z-20 rounded-md bg-blue-50/95 px-2 py-1 text-xs font-semibold text-blue-700 shadow-sm">
+                        <p role="status" className="sr-only">
                             Refreshing catalog...
                         </p>
                     )}
                     <div
                         ref={catalogGridRef}
-                        className={`${catalogGridClassName} ${catalogRefreshing ? 'pointer-events-none opacity-70' : ''}`}
+                        className={catalogGridClassName}
                         data-catalog-columns={catalogGridLayout.columns}
                         data-catalog-rows={catalogGridLayout.rows}
                         data-catalog-page-size={catalogPageSize}
@@ -4018,7 +4357,6 @@ export default function POSCheckoutTerminal({
                             const imageSources = resolvePosCatalogImageSources(item, receiptSettings);
                             const {
                                 configuredLargeSrc: largePosImageSrc,
-                                fallbackSrc: fallbackPosImageSrc,
                                 src: posImageSrc
                             } = imageSources;
                             const hasImage = Boolean(posImageSrc) && !catalogImageErrors.has(item.item_id);
@@ -4051,6 +4389,7 @@ export default function POSCheckoutTerminal({
                                     role={isOutOfStock || posActionsBlocked || isLoadingServiceOptions ? 'group' : 'button'}
                                     tabIndex={isOutOfStock || posActionsBlocked || isLoadingServiceOptions ? -1 : 0}
                                     aria-disabled={isOutOfStock || posActionsBlocked || isLoadingServiceOptions}
+                                    aria-label={item.name}
                                     className={`${catalogCardClassName} ${
                                         isOutOfStock || posActionsBlocked || isLoadingServiceOptions
                                             ? 'cursor-not-allowed opacity-75 blur-[0.5px]'
@@ -4074,7 +4413,7 @@ export default function POSCheckoutTerminal({
                                                 sizes="(max-width: 640px) 118px, (max-width: 1024px) 33vw, 25vw"
                                                 className="product-image h-full w-full object-cover object-center"
                                                 onError={(event) => {
-                                                    if (advanceAssetImageFallback(event, [largePosImageSrc, fallbackPosImageSrc])) return;
+                                                    if (advanceAssetImageFallback(event, [largePosImageSrc])) return;
                                                     setCatalogImageErrors((previous) => {
                                                         const next = new Set(previous);
                                                         next.add(item.item_id);
@@ -4084,7 +4423,9 @@ export default function POSCheckoutTerminal({
                                             />
                                         ) : (
                                             <div className="flex h-full w-full items-center justify-center text-center">
-                                                <span className="px-2 text-xs font-semibold text-[#64748B]">{isLoadingServiceOptions ? 'Loading options…' : 'No POS Image'}</span>
+                                                {isLoadingServiceOptions ? (
+                                                    <span className="px-2 text-xs font-semibold text-[#64748B]">Loading options…</span>
+                                                ) : null}
                                             </div>
                                         )}
                                         {isOutOfStock && (
@@ -4092,7 +4433,7 @@ export default function POSCheckoutTerminal({
                                                 Out of stock
                                             </span>
                                         )}
-                                        {IS_DGFY_POS_SURFACE && isTabletViewport && (
+                                        {IS_DGFY_POS_SURFACE && (
                                             <>
                                                 <div className="absolute left-1.5 top-1.5 z-10 max-w-[calc(100%-0.75rem)]">
                                                     <CatalogItemBadges
@@ -4102,8 +4443,8 @@ export default function POSCheckoutTerminal({
                                                         overlay
                                                     />
                                                 </div>
-                                                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-slate-950/85 via-slate-950/45 to-transparent px-2 py-1.5">
-                                                    <p className="min-w-0 text-[11px] font-black leading-tight text-white line-clamp-2">
+                                                <div className={`absolute inset-0 flex items-center justify-center px-2 py-1.5 ${hasImage ? 'bg-transparent' : 'bg-[#1A4E8D]/85'}`}>
+                                                    <p className="min-w-0 text-center text-[14px] font-black leading-tight text-white line-clamp-2 drop-shadow-sm">
                                                         {item.name}
                                                     </p>
                                                 </div>
@@ -4111,102 +4452,96 @@ export default function POSCheckoutTerminal({
                                         )}
                                     </div>
                                 </div>
-                                {!(IS_DGFY_POS_SURFACE && isTabletViewport) && (
-                                    <>
-                                        {/* Mobile layout (<640px): name on top (full text, no clamp), with
-                                            price/availability/quantity-control encased in one div below it. */}
-                                        {/* Mobile-only simplification: VAT row, stock dot indicator, and product
-                                            code (sku_code) removed. "Always available" renders only when true —
-                                            no placeholder when it doesn't apply. */}
-                                        <div className="flex flex-1 min-w-0 flex-col justify-between gap-1.5 p-2.5 sm:hidden">
-                                            <p className={`min-w-0 text-[13px] font-black leading-tight ${stockColorClassName}`}>{item.name}</p>
-                                            <div className="flex items-center justify-between gap-x-2 gap-y-1.5">
-                                                <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
-                                                    <CatalogItemBadges
-                                                        isServiceItem={isServiceItem}
-                                                        isAlwaysAvailable={isAlwaysAvailable}
-                                                        isBestSeller={isBestSeller}
-                                                    />
-                                                    <span className="font-black text-[#1A4E8D] whitespace-nowrap text-[10.5px]">
-                                                        {Number(item.default_sale_price || 0) > 0 ? `PHP ${money(item.default_sale_price)}` : 'Not set'}
-                                                    </span>
-                                                </div>
-                                                {/* Quantity control, laid out horizontally as [ - ] [ item count ] [ + ].
-                                                    stopPropagation keeps taps here from also firing the card's own
-                                                    onClick (which would otherwise double-add the item). Manual entry
-                                                    uses a sanitized text input (not type="number") so no native
-                                                    increment/decrement spinner buttons render inside the field. */}
-                                                <div
-                                                    className="flex shrink-0 items-center gap-1"
-                                                    onClick={(event) => event.stopPropagation()}
-                                                >
-                                                    <button
-                                                        type="button"
-                                                        onClick={() => adjustCartQuantity(item, -1)}
-                                                        disabled={cartQuantityForItem <= 0 || posActionsBlocked}
-                                                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-base font-black leading-none text-slate-500 active:scale-95 active:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                                        aria-label={`Decrease quantity for ${item.name}`}
-                                                    >
-                                                        −
-                                                    </button>
-                                                    {isEditingThisQuantity ? (
-                                                        <input
-                                                            type="text"
-                                                            inputMode={allowsDecimalQuantity(item.unit_of_measure) ? 'decimal' : 'numeric'}
-                                                            pattern={allowsDecimalQuantity(item.unit_of_measure) ? '[0-9]*\\.?[0-9]*' : '[0-9]*'}
-                                                            autoFocus
-                                                            value={quantityInputValue}
-                                                            onChange={(event) => setQuantityInputValue(sanitizeQuantityInput(event.target.value, allowsDecimalQuantity(item.unit_of_measure)))}
-                                                            onBlur={() => commitManualCartQuantity(item)}
-                                                            onKeyDown={(event) => {
-                                                                if (event.key === 'Enter') {
-                                                                    event.preventDefault();
-                                                                    // Without this, the keydown bubbles to the card's
-                                                                    // own onKeyDown (Enter/Space -> addToCart), which
-                                                                    // would re-add the item right after committing.
-                                                                    event.stopPropagation();
-                                                                    commitManualCartQuantity(item);
-                                                                }
-                                                            }}
-                                                            className="h-8 w-9 shrink-0 rounded-md border border-slate-200 text-center text-[13px] font-black text-[#0F172A]"
-                                                            aria-label={`Set quantity for ${item.name}`}
-                                                        />
-                                                    ) : (
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => {
-                                                                if (isOutOfStock || posActionsBlocked) return;
-                                                                setEditingQuantityItemId(item.item_id);
-                                                                setQuantityInputValue(String(cartQuantityForItem));
-                                                            }}
-                                                            disabled={isOutOfStock || posActionsBlocked}
-                                                            className="flex h-8 w-9 shrink-0 items-center justify-center rounded-md text-[13px] font-black text-[#0F172A] disabled:cursor-not-allowed disabled:opacity-40"
-                                                            aria-label={`Quantity for ${item.name}, tap to type a value`}
-                                                        >
-                                                            {cartQuantityForItem}
-                                                        </button>
-                                                    )}
-                                                    <button
-                                                        type="button"
-                                                        onPointerDown={(event) => {
-                                                            if (isOutOfStock || posActionsBlocked) return;
-                                                            handleQtyButtonPointerDown(event, item);
-                                                        }}
-                                                        onPointerMove={(event) => handleQtyButtonPointerMove(event, item)}
-                                                        onPointerUp={(event) => {
-                                                            if (isOutOfStock || posActionsBlocked) return;
-                                                            handleQtyButtonPointerUp(event, item);
-                                                        }}
-                                                        onPointerCancel={handleQtyButtonPointerCancel}
-                                                        disabled={isOutOfStock || posActionsBlocked}
-                                                        className="flex h-8 w-8 shrink-0 touch-none select-none items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-base font-black leading-none text-[#1A4E8D] active:scale-95 active:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
-                                                        aria-label={`Increase quantity for ${item.name}. Tap to add one, or press and hold then drag up to add more.`}
-                                                    >
-                                                        +
-                                                    </button>
-                                                </div>
-                                            </div>
+                                <div className="flex flex-1 min-w-0 flex-col justify-between gap-1.5 p-2.5 sm:hidden">
+                                    {!IS_DGFY_POS_SURFACE && (
+                                        <p className={`min-w-0 text-[13px] font-black leading-tight ${stockColorClassName}`}>{item.name}</p>
+                                    )}
+                                    <div className="flex items-center justify-between gap-x-2 gap-y-1.5">
+                                        <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
+                                            <CatalogItemBadges
+                                                isServiceItem={isServiceItem}
+                                                isAlwaysAvailable={isAlwaysAvailable}
+                                                isBestSeller={isBestSeller}
+                                            />
+                                            <span className="font-black text-[#1A4E8D] whitespace-nowrap text-[10.5px]">
+                                                {Number(item.default_sale_price || 0) > 0 ? `PHP ${money(item.default_sale_price)}` : 'Not set'}
+                                            </span>
                                         </div>
+                                        {/* Quantity control, laid out horizontally as [ - ] [ item count ] [ + ].
+                                            stopPropagation keeps taps here from also firing the card's own
+                                            onClick (which would otherwise double-add the item). Manual entry
+                                            uses a sanitized text input (not type="number") so no native
+                                            increment/decrement spinner buttons render inside the field. */}
+                                        <div
+                                            className="flex shrink-0 items-center gap-1"
+                                            onClick={(event) => event.stopPropagation()}
+                                        >
+                                            <button
+                                                type="button"
+                                                onClick={() => adjustCartQuantity(item, -1)}
+                                                disabled={cartQuantityForItem <= 0 || posActionsBlocked}
+                                                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-slate-50 text-base font-black leading-none text-slate-500 active:scale-95 active:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                aria-label={`Decrease quantity for ${item.name}`}
+                                            >
+                                                −
+                                            </button>
+                                            {isEditingThisQuantity ? (
+                                                <input
+                                                    type="text"
+                                                    inputMode={allowsDecimalQuantity(item.unit_of_measure) ? 'decimal' : 'numeric'}
+                                                    pattern={allowsDecimalQuantity(item.unit_of_measure) ? '[0-9]*\\.?[0-9]*' : '[0-9]*'}
+                                                    autoFocus
+                                                    value={quantityInputValue}
+                                                    onChange={(event) => setQuantityInputValue(sanitizeQuantityInput(event.target.value, allowsDecimalQuantity(item.unit_of_measure)))}
+                                                    onBlur={() => commitManualCartQuantity(item)}
+                                                    onKeyDown={(event) => {
+                                                        if (event.key === 'Enter') {
+                                                            event.preventDefault();
+                                                            event.stopPropagation();
+                                                            commitManualCartQuantity(item);
+                                                        }
+                                                    }}
+                                                    className="h-8 w-9 shrink-0 rounded-md border border-slate-200 text-center text-[13px] font-black text-[#0F172A]"
+                                                    aria-label={`Set quantity for ${item.name}`}
+                                                />
+                                            ) : (
+                                                <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                        if (isOutOfStock || posActionsBlocked) return;
+                                                        setEditingQuantityItemId(item.item_id);
+                                                        setQuantityInputValue(String(cartQuantityForItem));
+                                                    }}
+                                                    disabled={isOutOfStock || posActionsBlocked}
+                                                    className="flex h-8 w-9 shrink-0 items-center justify-center rounded-md text-[13px] font-black text-[#0F172A] disabled:cursor-not-allowed disabled:opacity-40"
+                                                    aria-label={`Quantity for ${item.name}, tap to type a value`}
+                                                >
+                                                    {cartQuantityForItem}
+                                                </button>
+                                            )}
+                                            <button
+                                                type="button"
+                                                onPointerDown={(event) => {
+                                                    if (isOutOfStock || posActionsBlocked) return;
+                                                    handleQtyButtonPointerDown(event, item);
+                                                }}
+                                                onPointerMove={(event) => handleQtyButtonPointerMove(event, item)}
+                                                onPointerUp={(event) => {
+                                                    if (isOutOfStock || posActionsBlocked) return;
+                                                    handleQtyButtonPointerUp(event, item);
+                                                }}
+                                                onPointerCancel={handleQtyButtonPointerCancel}
+                                                disabled={isOutOfStock || posActionsBlocked}
+                                                className="flex h-8 w-8 shrink-0 touch-none select-none items-center justify-center rounded-lg border border-blue-200 bg-blue-50 text-base font-black leading-none text-[#1A4E8D] active:scale-95 active:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                                aria-label={`Increase quantity for ${item.name}. Tap to add one, or press and hold then drag up to add more.`}
+                                            >
+                                                +
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                                {!IS_DGFY_POS_SURFACE && (
+                                    <>
                                         <div className="flex min-w-0 flex-col gap-1.5 max-sm:hidden">
                                             <div className="flex min-w-0 items-start gap-1.5">
                                                 <p className={`min-w-0 flex-1 text-[13.5px] font-black leading-tight line-clamp-2 ${stockColorClassName}`}>{item.name}</p>
@@ -4278,12 +4613,11 @@ export default function POSCheckoutTerminal({
                     </div>
                     <div
                         data-testid="pos-catalog-footer"
-                        className="mt-auto shrink-0 border-t border-slate-200 bg-slate-50/80 px-1 py-2 supports-[backdrop-filter]:bg-white/80"
+                        className="mt-auto shrink-0 border-t border-slate-200 bg-slate-50/80 px-1 py-1.5 supports-[backdrop-filter]:bg-white/80"
                     >
                             <div className="flex flex-col items-center justify-between gap-1 sm:flex-row">
                                 <div className="text-center sm:text-left">
-                                    <p className="text-[11px] font-black uppercase tracking-[0.14em] text-[#64748B]">Catalog Footer</p>
-                                    <p className="text-xs font-semibold text-[#334155]">
+                                    <p className="text-[11px] font-semibold text-[#334155]">
                                     Showing {visibleCatalogRange.start}-{visibleCatalogRange.end} of {catalogForDisplay.length || 0} items
                                     </p>
                                 </div>
@@ -4339,6 +4673,33 @@ export default function POSCheckoutTerminal({
                     <div className="flex items-center justify-between gap-2">
                         <h2 className="text-[21px] font-black tracking-tight text-[#0F172A]">Current Sale</h2>
                         <div className="flex items-center gap-1">
+                        {posPresentationBundle.currentSaleActions.showParkedSaleControls && (
+                            <button
+                                type="button"
+                                data-testid="pos-header-open-parked-sales"
+                                onClick={() => {
+                                    setCurrentSaleHelpOpen(false);
+                                    setParkedSalesDialogOpen(true);
+                                }}
+                                disabled={sessionLocked || !canViewHistory || !activeShiftId}
+                                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-[#1A4E8D] transition-colors hover:bg-blue-50 hover:text-[#143F73] disabled:cursor-not-allowed disabled:opacity-40"
+                                aria-label="Open parked sales"
+                                title="Open parked sales"
+                            >
+                                <ClipboardList className="h-4 w-4" />
+                            </button>
+                        )}
+                        <button
+                            type="button"
+                            data-testid="pos-clear-current-sale"
+                            onClick={openClearCurrentSale}
+                            disabled={posActionsBlocked || safeCart.length === 0 || Boolean(activeParkedSale?.pos_parked_sale_id)}
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-rose-500 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:cursor-not-allowed disabled:opacity-40"
+                            aria-label="Clear all items from current sale"
+                            title={activeParkedSale?.pos_parked_sale_id ? 'Finish or cancel the active parked sale first' : 'Clear current sale'}
+                        >
+                            <Trash2 className="h-4 w-4" />
+                        </button>
                         <button
                             type="button"
                             onClick={() => setCurrentSaleHelpOpen((open) => !open)}
@@ -4378,56 +4739,6 @@ export default function POSCheckoutTerminal({
                 <div className="col-span-2 flex min-h-0 flex-col overflow-hidden md:h-[clamp(18rem,46vh,26rem)] md:flex-none">
                 <div className="min-h-0 flex-1 overflow-hidden border-b border-slate-200 pb-2">
                     <div data-testid="pos-current-sale-items" className={`space-y-2.5 ${currentSaleItemsListClassName}`}>
-                        <Suspense fallback={null}>
-                            <POSSplitPaymentWorkflow
-                                open={splitPaymentDialogOpen}
-                                onOpenChange={setSplitPaymentDialogOpen}
-                                cart={safeCart}
-                                catalog={safeCatalog}
-                                subtotalAmount={cartSubtotal}
-                                totalAmount={cartTotal}
-                                shiftId={activeShiftId}
-                                locationId={selectedLocationId}
-                                terminalId={normalizedTerminalId}
-                                parkedSaleId={activeParkedSale?.pos_parked_sale_id || null}
-                                storageScopeKey={splitPaymentStorageScopeKey}
-                                isMsmeMode={isMsmeMode}
-                                checkoutContext={{
-                                    orderMethod,
-                                    posWorkflowMode: posWorkflow.mode,
-                                    servicesClientName,
-                                    servicesNotes,
-                                    servicesDateTime,
-                                    appliedDiscount,
-                                    selectedDiscount,
-                                    manualDiscountAmount,
-                                    manualDiscountMode,
-                                    manualDiscountRate,
-                                    calculatedDiscountAmount,
-                                    affiliateCodeInput,
-                                    fnbContext: normalizedFnbContext,
-                                    cart: safeCart
-                                }}
-                                onCompleted={(result) => {
-                                    const transaction = result?.transaction || null;
-                                    setLastReceipt(transaction);
-                                    setLastReceiptContract(inferReceiptContract(transaction, result?.receipt_contract));
-                                    setCart([]);
-                                    setActiveParkedSale(null);
-                                    setSelectedDiscountProfile('');
-                                    setManualDiscountRateInput('');
-                                    setManualDiscountAmountInput('');
-                                    setAppliedDiscount(null);
-                                    setAffiliateCodeInput('');
-                                    setCustomerPaymentAmountInput('');
-                                    setReceiptPreviewSource('order_preview');
-                                    setReceiptPreviewModalOpen(true);
-                                    loadCatalog();
-                                    loadHistory(historyPage);
-                                    if (typeof onCheckoutCompleted === 'function') onCheckoutCompleted(transaction);
-                                }}
-                            />
-                        </Suspense>
                         {safeCart.length > 0 ? safeCart.map((line) => {
                             const lineKey = getLineKey(line);
                             return (
@@ -4570,8 +4881,8 @@ export default function POSCheckoutTerminal({
                 <div data-testid="pos-current-sale-totals" className="col-span-2 border-b border-slate-200 pb-2 text-[11px]">
                     <div className="grid grid-cols-2 gap-x-3 gap-y-1 md:hidden">
                         <div className="flex justify-between">
-                            <span className="text-[#334155]">Items Subtotal</span>
-                            <span className="font-extrabold text-[#0F172A]">PHP {money(cartSubtotal)}</span>
+                            <span className="text-[13px] text-[#334155]">Items Subtotal</span>
+                            <span className="text-[13px] font-extrabold text-[#0F172A]">PHP {money(cartSubtotal)}</span>
                         </div>
                         <div className="flex justify-between">
                             <span className="text-[#334155]">
@@ -4603,15 +4914,15 @@ export default function POSCheckoutTerminal({
                             <span className="font-medium">PHP {money(vatBreakdown.zeroRatedSales)}</span>
                         </div>
                         <div className="col-span-2 mt-1 flex items-baseline justify-between border-t border-slate-200 pt-1">
-                            <span className="text-[15px] font-black text-[#0F172A]">Total</span>
+                            <span className="text-[18px] font-black text-[#0F172A]">Total</span>
                             <span className="text-[18px] font-black text-[#1A4E8D]">PHP {money(cartTotal)}</span>
                         </div>
                     </div>
 
                     <div data-testid="pos-current-sale-desktop-summary" className="hidden gap-y-0.5 md:grid">
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
-                            <span className="min-w-0 text-[#334155]">Items Subtotal</span>
-                            <span className="whitespace-nowrap text-right font-extrabold tabular-nums text-[#0F172A]">PHP {money(cartSubtotal)}</span>
+                            <span className="min-w-0 text-[13px] text-[#334155]">Items Subtotal</span>
+                            <span className="whitespace-nowrap text-right text-[13px] font-extrabold tabular-nums text-[#0F172A]">PHP {money(cartSubtotal)}</span>
                         </div>
                         <div className="grid grid-cols-[minmax(0,1fr)_auto] items-baseline gap-3 leading-4">
                             <span className="min-w-0 text-[#334155]">Net Items</span>
@@ -4651,7 +4962,7 @@ export default function POSCheckoutTerminal({
                             <span className="whitespace-nowrap text-right font-medium tabular-nums">PHP {money(vatBreakdown.zeroRatedSales)}</span>
                         </div>
                         <div className="mt-1 flex items-baseline justify-between border-t border-slate-200 pt-1">
-                            <span className="text-[15px] font-black text-[#0F172A]">Total</span>
+                            <span className="text-[18px] font-black text-[#0F172A]">Total</span>
                             <span className="whitespace-nowrap text-[18px] font-black tabular-nums text-[#1A4E8D]">PHP {money(cartTotal)}</span>
                         </div>
                     </div>
@@ -4705,8 +5016,6 @@ export default function POSCheckoutTerminal({
                 <Suspense fallback={<div className="h-[46px] w-full animate-pulse rounded-lg bg-slate-100" aria-hidden="true" />}>
                     <PosCurrentSaleActions
                         presentationBundle={posPresentationBundle}
-                        onOpenParkedSales={() => setParkedSalesDialogOpen(true)}
-                        openParkedSalesDisabled={sessionLocked || !canViewHistory || !activeShiftId}
                         onParkAndNewSale={openParkSaleNameDialog}
                         parkSaleDisabled={posActionsBlocked || checkoutLoading || parkLoading || safeCart.length === 0 || !activeShiftId || !normalizedTerminalId}
                         parkLoading={parkLoading}
@@ -4724,8 +5033,12 @@ export default function POSCheckoutTerminal({
                         })}
                         cashDrawerDisabled={!activeShiftId || drawerOpening}
                         drawerOpening={drawerOpening}
-                        onApplyDiscount={openDiscountModal}
+                        onApplyDiscount={() => openDiscountModal({ returnToCheckout: true })}
                         discountDisabled={posActionsBlocked || safeCart.length === 0}
+                        onSplitPayment={openSplitPaymentModal}
+                        splitPaymentDisabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || isEmployeeCreditPayment}
+                        splitPaymentLoading={checkoutLoading}
+                        tabletLayout={isTabletViewport}
                     />
                 </Suspense>
                     </div>
@@ -4799,6 +5112,7 @@ export default function POSCheckoutTerminal({
                             <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Loading order preview...</div>}>
                                 <OrderPreviewView
                                     transaction={lastReceipt}
+                                    mobileResponsive
                                 />
                             </Suspense>
                         </div>
@@ -4822,11 +5136,34 @@ export default function POSCheckoutTerminal({
             )}
             </section>
 
-            <Dialog open={discountModalOpen} onOpenChange={setDiscountModalOpen}>
+            <div data-testid="pos-split-payment-modal-host">
+                <Suspense fallback={null}>
+                    <POSSplitPaymentWorkflow
+                        key={splitPaymentWorkflowVersion}
+                        open={splitPaymentDialogOpen}
+                        onOpenChange={handleSplitPaymentOpenChange}
+                        cart={safeCart}
+                        catalog={safeCatalog}
+                        subtotalAmount={cartSubtotal}
+                        totalAmount={cartTotal}
+                        shiftId={activeShiftId}
+                        locationId={selectedLocationId}
+                        terminalId={normalizedTerminalId}
+                        parkedSaleId={activeParkedSale?.pos_parked_sale_id || null}
+                        storageScopeKey={splitPaymentStorageScopeKey}
+                        isMsmeMode={isMsmeMode}
+                        checkoutContext={splitPaymentCheckoutContext}
+                        onSessionStateChange={handleSplitPaymentSessionStateChange}
+                        onReadyToComplete={handleCompletePreparedSplitPayment}
+                    />
+                </Suspense>
+            </div>
+
+            <Dialog open={discountModalOpen} onOpenChange={(nextOpen) => (nextOpen ? setDiscountModalOpen(true) : closeDiscountModal())}>
                 <DialogContent className="relative flex max-h-[90dvh] w-[calc(100vw-1rem)] max-w-[480px] flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white p-0 shadow-xl shadow-slate-950/20 sm:w-[calc(100vw-2rem)]">
                     <button
                         type="button"
-                        onClick={() => setDiscountModalOpen(false)}
+                        onClick={closeDiscountModal}
                         className="absolute right-3.5 top-3.5 flex h-7 w-7 items-center justify-center rounded-full border border-slate-100 bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-colors focus-visible:outline-none"
                         aria-label="Close discount modal"
                     >
@@ -4858,7 +5195,9 @@ export default function POSCheckoutTerminal({
                                         onClick={() => setDiscountDraft((previous) => ({
                                             ...previous,
                                             type: option.value,
-                                            rate: ['senior', 'pwd'].includes(option.value) ? '20' : previous.rate
+                                            rate: option.value === 'employee'
+                                                ? '15'
+                                                : (['senior', 'pwd'].includes(option.value) ? '20' : previous.rate)
                                         }))}
                                     >
                                         <TypeIcon className={`h-4 w-4 shrink-0 transition-colors ${active ? 'text-teal-600' : 'text-slate-500'}`} aria-hidden="true" />
@@ -4875,18 +5214,20 @@ export default function POSCheckoutTerminal({
 
                         <div id="discount-type-panel" role="tabpanel" className="space-y-3">
                             <div className="grid gap-2.5 grid-cols-2">
-                                <div className={`space-y-1 ${['senior', 'pwd', 'promo'].includes(discountDraft.type) ? 'col-span-1' : 'col-span-2'}`}>
-                                    <label className="text-xs font-semibold text-[#0F172A]">Customer Name <span className="text-rose-500">*</span></label>
-                                    <div className="relative">
-                                        <UserRound className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                        <Input
-                                            className="h-8 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500"
-                                            placeholder="Enter customer name"
-                                            value={discountDraft.customer_name}
-                                            onChange={(e) => setDiscountDraft((p) => ({ ...p, customer_name: e.target.value }))}
-                                        />
+                                {discountDraft.type !== 'employee' && (
+                                    <div className={`space-y-1 ${['senior', 'pwd', 'promo'].includes(discountDraft.type) ? 'col-span-1' : 'col-span-2'}`}>
+                                        <label className="text-xs font-semibold text-[#0F172A]">Customer Name <span className="text-rose-500">*</span></label>
+                                        <div className="relative">
+                                            <UserRound className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            <Input
+                                                className="h-8 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500"
+                                                placeholder="Enter customer name"
+                                                value={discountDraft.customer_name}
+                                                onChange={(e) => setDiscountDraft((p) => ({ ...p, customer_name: e.target.value }))}
+                                            />
+                                        </div>
                                     </div>
-                                </div>
+                                )}
 
                                 {['senior', 'pwd'].includes(discountDraft.type) && (
                                     <div className="space-y-1 col-span-1">
@@ -5022,7 +5363,7 @@ export default function POSCheckoutTerminal({
                             {discountDraft.type === 'employee' && (
                                 <div className="grid gap-2.5 grid-cols-2">
                                     <div className="space-y-1">
-                                        <label className="text-xs font-semibold text-[#0F172A]">Employee Name <span className="font-medium text-slate-400">(optional)</span></label>
+                                        <label className="text-xs font-semibold text-[#0F172A]">Employee Name <span className="text-rose-500">*</span></label>
                                         <div className="relative">
                                             <UserRound className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
                                             <Input className="h-8 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter employee name" value={discountDraft.employee_name} onChange={(e) => setDiscountDraft((p) => ({ ...p, employee_name: e.target.value }))} />
@@ -5085,47 +5426,35 @@ export default function POSCheckoutTerminal({
                                 </div>
                             )}
 
-                            {['employee', 'manual'].includes(discountDraft.type) && (
+                            {discountDraft.type === 'manual' && (
                                 <div className="space-y-1">
-                                    <label className="text-xs font-semibold text-[#0F172A]">
-                                        Reason {discountDraft.type === 'manual'
-                                            ? <span className="text-rose-500">*</span>
-                                            : <span className="font-medium text-slate-400">(optional)</span>}
-                                    </label>
+                                    <label className="text-xs font-semibold text-[#0F172A]">Reason <span className="text-[10px] font-medium text-slate-400">(optional)</span></label>
                                     <div className="relative">
                                         <MessageSquare className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                        <Input className="h-8 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder={discountDraft.type === 'manual' ? 'Enter manual discount reason' : 'Enter reason'} value={discountDraft.reason} onChange={(e) => setDiscountDraft((p) => ({ ...p, reason: e.target.value }))} />
+                                        <Input className="h-8 rounded-lg border-slate-200 pl-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter manual discount reason" value={discountDraft.reason} onChange={(e) => setDiscountDraft((p) => ({ ...p, reason: e.target.value }))} />
                                     </div>
                                 </div>
                             )}
-                            {(discountDraft.type === 'manual' || (discountDraft.type === 'employee' && !signedInUserIsAdminLike)) && (
+                            {discountDraft.type && (
                                 <div className="grid gap-2.5 grid-cols-2">
-                                    {discountDraft.type === 'manual' && signedInUserCanApproveManualDiscount ? (
-                                        <div className="space-y-1 col-span-2">
-                                            <label className="text-xs font-semibold text-[#0F172A]">Approving as</label>
-                                            <div className="h-8 rounded-lg border border-slate-200 bg-slate-50 px-3 text-xs font-semibold leading-8 text-slate-700">
-                                                {String(terminalUser?.username || 'Current POS approver').trim() || 'Current POS approver'}
-                                            </div>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-1 col-span-2">
-                                            <label className="text-xs font-semibold text-[#0F172A]">Approver <span className="text-rose-500">*</span></label>
-                                            <div className="relative">
-                                                <BadgeCheck className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                                <select value={discountDraft.approver_user_id} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, approver_user_id: event.target.value }))} disabled={discountApproversLoading} className="h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-8 pr-7 text-xs font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2">
-                                                    <option value="">{discountApproversLoading ? 'Loading approvers...' : 'Select configured manager or admin'}</option>
-                                                    {safeDiscountApprovers.map((approver) => <option key={approver.user_id} value={approver.user_id}>{approver.username} ({approver.role})</option>)}
-                                                </select>
-                                                <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            </div>
-                                            {!discountApproversLoading && safeDiscountApprovers.length === 0 && <p className="text-[10px] font-medium text-amber-700 mt-0.5">No POS approval PIN is configured. Ask the Master Admin to configure one.</p>}
-                                        </div>
-                                    )}
                                     <div className="space-y-1 col-span-2">
-                                        <label className="text-xs font-semibold text-[#0F172A]">Approver PIN <span className="text-rose-500">*</span></label>
+                                        <label className="text-xs font-semibold text-[#0F172A]">Authorizing employee <span className="text-rose-500">*</span></label>
+                                        <div className="relative">
+                                            <BadgeCheck className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                            <select autoComplete="off" value={discountDraft.approver_user_id} onChange={(event) => setDiscountDraft((previous) => ({ ...previous, approver_user_id: event.target.value }))} disabled={discountApproversLoading} className="h-8 w-full appearance-none rounded-lg border border-slate-200 bg-white pl-8 pr-7 text-xs font-medium focus:border-teal-500 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:ring-offset-2">
+                                                <option value="">{discountApproversLoading ? 'Loading authorized employees...' : 'Select authorized employee'}</option>
+                                                {safeDiscountApprovers.map((approver) => <option key={approver.user_id} value={approver.user_id} disabled={approver.pos_approval_pin_configured !== true}>{approver.username} ({approver.role}){approver.pos_approval_pin_configured === true ? '' : ' — PIN not configured'}</option>)}
+                                            </select>
+                                            <ChevronDown className="pointer-events-none absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
+                                        </div>
+                                        {!discountApproversLoading && safeDiscountApprovers.length === 0 && <p className="text-[10px] font-medium text-amber-700 mt-0.5">No authorized employees are configured. Ask an administrator to grant discount authorization.</p>}
+                                        {!discountApproversLoading && safeDiscountApprovers.length > 0 && !safeDiscountApprovers.some((approver) => approver.pos_approval_pin_configured === true) && <p className="text-[10px] font-medium text-amber-700 mt-0.5">Authorized employees are listed, but each needs a POS approval PIN before they can approve a discount.</p>}
+                                    </div>
+                                    <div className="space-y-1 col-span-2">
+                                        <label className="text-xs font-semibold text-[#0F172A]">Employee PIN <span className="text-rose-500">*</span></label>
                                         <div className="relative">
                                             <Lock className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" aria-hidden="true" />
-                                            <Input className="h-8 rounded-lg border-slate-200 pl-8 pr-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter approver PIN" type={showDiscountPin ? 'text' : 'password'} inputMode="numeric" value={discountDraft.manager_pin} onChange={(e) => setDiscountDraft((p) => ({ ...p, manager_pin: e.target.value }))} />
+                                            <Input name="pos_discount_approval_pin" autoComplete="one-time-code" autoCorrect="off" spellCheck={false} data-1p-ignore="true" data-lpignore="true" data-bwignore="true" style={{ WebkitTextSecurity: showDiscountPin ? 'none' : 'disc' }} className="h-8 rounded-lg border-slate-200 pl-8 pr-8 text-xs font-medium focus:border-teal-500 focus:ring-teal-500" placeholder="Enter employee PIN" type="text" inputMode="numeric" value={discountDraft.manager_pin} onChange={(e) => setDiscountDraft((p) => ({ ...p, manager_pin: e.target.value }))} />
                                             <button type="button" onClick={() => setShowDiscountPin((prev) => !prev)} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none">
                                                 {showDiscountPin ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
                                             </button>
@@ -5160,7 +5489,7 @@ export default function POSCheckoutTerminal({
                             type="button"
                             variant="outline"
                             className="h-8 rounded-lg px-3 text-xs font-semibold text-slate-600 border-slate-200 hover:bg-slate-50 transition-colors"
-                            onClick={() => setDiscountModalOpen(false)}
+                            onClick={closeDiscountModal}
                         >
                             Cancel
                         </Button>
@@ -5196,8 +5525,8 @@ export default function POSCheckoutTerminal({
                             </div>
                             <button
                                 type="button"
-                                onClick={() => setCheckoutConfirmModalOpen(false)}
-                                disabled={checkoutLoading}
+                                onClick={handleCancelCheckout}
+                                disabled={checkoutLoading || splitPaymentCancelLoading}
                                 className="rounded-md p-1 text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 focus:outline-none disabled:opacity-50"
                                 aria-label="Close checkout confirmation"
                             >
@@ -5228,50 +5557,137 @@ export default function POSCheckoutTerminal({
                                     setServicesResource={setServicesResource}
                                     servicesNotes={servicesNotes}
                                     setServicesNotes={setServicesNotes}
+                                    paymentTypeField={!hasSplitPaymentSummary ? (
+                                        <label className="block text-[11px] font-medium text-slate-500">
+                                            Payment Type
+                                            <select
+                                                value={paymentType}
+                                                onChange={(event) => {
+                                                    setPaymentType(event.target.value);
+                                                    setEmployeeCreditAccountCode('');
+                                                    setEmployeeCreditAccount(null);
+                                                    setSelectedEmployeeCreditOption(null);
+                                                    setEmployeeCreditLookupLoading(false);
+                                                    employeeCreditValidationSequenceRef.current += 1;
+                                                }}
+                                                disabled={posActionsBlocked || checkoutLoading}
+                                                className={`mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 py-1 text-[12px] ${POS_FORM_SELECT_CLASS}`}
+                                            >
+                                                <option value="cash">Cash</option>
+                                                <option value="gcash">{isMsmeMode ? 'GCash (Manual)' : 'GCash'}</option>
+                                                <option value="maya">{isMsmeMode ? 'Maya (Manual)' : 'Maya'}</option>
+                                                <option value="card">{isMsmeMode ? 'Card (Manual)' : 'Card'}</option>
+                                                <option value="bank_transfer">{isMsmeMode ? 'Bank Transfer (Manual)' : 'Bank Transfer'}</option>
+                                                <option value="employee_credit">Employee Credit</option>
+                                            </select>
+                                        </label>
+                                    ) : null}
                                     disabled={posActionsBlocked || checkoutLoading}
                                 />
                             </Suspense>
-                            <label className="block text-[11px] font-medium text-slate-500">
-                                Payment Type
-                                <select
-                                    value={paymentType}
-                                    onChange={(event) => {
-                                        setPaymentType(event.target.value);
-                                        setEmployeeCreditAccountCode('');
-                                        setEmployeeCreditAccount(null);
-                                        setSelectedEmployeeCreditOption(null);
-                                        setEmployeeCreditLookupLoading(false);
-                                        employeeCreditValidationSequenceRef.current += 1;
-                                    }}
-                                    disabled={posActionsBlocked || checkoutLoading}
-                                    className={`mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 py-1 text-[12px] ${POS_FORM_SELECT_CLASS}`}
-                                >
-                                    <option value="cash">Cash</option>
-                                    <option value="gcash">{isMsmeMode ? 'GCash (Manual)' : 'GCash'}</option>
-                                    <option value="maya">{isMsmeMode ? 'Maya (Manual)' : 'Maya'}</option>
-                                    <option value="card">{isMsmeMode ? 'Card (Manual)' : 'Card'}</option>
-                                    <option value="bank_transfer">{isMsmeMode ? 'Bank Transfer (Manual)' : 'Bank Transfer'}</option>
-                                    <option value="employee_credit">Employee Credit</option>
-                                </select>
-                            </label>
-                            <Button
-                                type="button"
-                                variant="outline"
-                                onClick={() => {
-                                    setCheckoutConfirmModalOpen(false);
-                                    setSplitPaymentDialogOpen(true);
-                                }}
-                                disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || Boolean(appliedDiscount) || isEmployeeCreditPayment}
-                                title={appliedDiscount
-                                    ? 'Governed discounts require the standard single-tender checkout.'
-                                    : (isEmployeeCreditPayment ? 'Employee Credit cannot be combined with split tender.' : undefined)}
-                                data-testid="pos-open-split-payment"
-                                className="h-10 w-full rounded-lg border-[#1A4E8D] text-sm font-extrabold text-[#1A4E8D] hover:bg-blue-50"
-                            >
-                                <CreditCard className="mr-2 h-4 w-4" aria-hidden="true" />
-                                Split Payment
-                            </Button>
                         </div>
+
+                        {hasSplitPaymentSummary && (
+                            <div className="space-y-3 rounded-xl border border-blue-200 bg-blue-50/40 p-3" data-testid="pos-checkout-split-payment-summary">
+                                <div>
+                                    <p className="text-[11px] font-black uppercase tracking-wide text-[#1A4E8D]">Payment Summary</p>
+                                    <p className="mt-1 text-xs font-medium text-slate-600">Payment methods received for this sale.</p>
+                                </div>
+                                <div className="space-y-2" data-testid="pos-checkout-split-payment-methods">
+                                    {splitPaymentSummaryAllocations.map((allocation, index) => {
+                                        const paymentMethod = String(allocation?.payment_method || '').trim().toLowerCase();
+                                        const appliedAmount = round4(allocation?.applied_amount);
+                                        const cashTendered = round4(allocation?.cash_tendered ?? appliedAmount);
+                                        const displayedAmount = paymentMethod === 'cash' ? cashTendered : appliedAmount;
+                                        const cashChange = round4(allocation?.change_amount);
+                                        const hasCashAdjustment = paymentMethod === 'cash' && cashTendered !== appliedAmount;
+                                        return (
+                                            <div key={`${paymentMethod || 'payment'}-${index}`} className="rounded-lg border border-slate-200 bg-white px-3 py-2" data-testid={`pos-checkout-split-payment-method-${index + 1}`}>
+                                                <div className="flex items-center justify-between gap-3 text-sm">
+                                                    <span className="font-extrabold text-slate-800">{formatSplitPaymentMethod(paymentMethod)}</span>
+                                                    <span className="font-black text-[#1A4E8D]">PHP {money(displayedAmount)}</span>
+                                                </div>
+                                                {hasCashAdjustment && (
+                                                    <p className="mt-1 text-[11px] font-semibold text-slate-500">
+                                                        Applied PHP {money(appliedAmount)} · Change PHP {money(cashChange)}
+                                                    </p>
+                                                )}
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                                <div className="grid grid-cols-3 gap-2" data-testid="pos-checkout-split-payment-totals">
+                                    <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-2.5 py-2">
+                                        <p className="text-[10px] font-bold uppercase tracking-wide text-emerald-700">Paid</p>
+                                        <p className="mt-1 text-sm font-black text-emerald-800">PHP {money(splitPaymentSummaryPaidAmount)}</p>
+                                    </div>
+                                    <div className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2">
+                                        <p className="text-[10px] font-bold uppercase tracking-wide text-amber-700">Remaining</p>
+                                        <p className="mt-1 text-sm font-black text-amber-800">PHP {money(splitPaymentSummaryRemainingAmount)}</p>
+                                    </div>
+                                    <div className="rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-2" data-testid="pos-checkout-split-payment-change">
+                                        <p className="text-[10px] font-bold uppercase tracking-wide text-sky-700">Change</p>
+                                        <p className="mt-1 text-sm font-black text-sky-800">PHP {money(splitPaymentSummaryChangeAmount)}</p>
+                                    </div>
+                                </div>
+                            </div>
+                        )}
+
+                        {calculatedDiscountAmount > 0 ? (
+                            <div className="rounded-lg border border-amber-200 bg-amber-50/60 p-3" data-testid="pos-checkout-discount-summary">
+                                <div className="flex items-start justify-between gap-3">
+                                    <div className="min-w-0">
+                                        <div className="flex items-center justify-between gap-3 text-[13px]">
+                                            <span className="truncate font-semibold text-[#334155]">{checkoutDiscountLabel}</span>
+                                            <span className="shrink-0 font-black text-emerald-700">-PHP {money(calculatedDiscountAmount)}</span>
+                                        </div>
+                                        <p className="mt-1 text-[11px] font-medium text-slate-500">Applied to this sale</p>
+                                    </div>
+                                    <div className="flex shrink-0 items-center gap-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => openDiscountModal({ returnToCheckout: true })}
+                                            disabled={checkoutLoading || splitPaymentDialogOpen || hasSplitPaymentSummary}
+                                            className="flex h-8 items-center gap-1 rounded-lg px-2 text-[11px] font-bold text-[#1A4E8D] transition-colors hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-40"
+                                            aria-label={`Edit ${checkoutDiscountLabel}`}
+                                            title={splitPaymentDialogOpen || hasSplitPaymentSummary ? 'Finish or cancel the active payment first' : 'Edit discount'}
+                                            data-testid="pos-edit-checkout-discount"
+                                        >
+                                            <Pencil className="h-3.5 w-3.5" />
+                                            Edit
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={clearAppliedDiscount}
+                                            disabled={checkoutLoading || splitPaymentDialogOpen || hasSplitPaymentSummary}
+                                            className="flex h-8 w-8 items-center justify-center rounded-lg text-rose-500 transition-colors hover:bg-rose-100 hover:text-rose-700 disabled:cursor-not-allowed disabled:opacity-40"
+                                            aria-label={`Remove ${checkoutDiscountLabel}`}
+                                            title={splitPaymentDialogOpen || hasSplitPaymentSummary ? 'Finish or cancel the active payment first' : 'Remove discount'}
+                                            data-testid="pos-remove-checkout-discount"
+                                        >
+                                            <Trash2 className="h-4 w-4" />
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        ) : (
+                            <button
+                                type="button"
+                                onClick={() => openDiscountModal({ returnToCheckout: true })}
+                                disabled={checkoutLoading || splitPaymentDialogOpen || hasSplitPaymentSummary}
+                                className="flex w-full items-center gap-3 rounded-lg border border-dashed border-slate-300 bg-slate-50 p-3 text-left transition-colors hover:border-[#1A4E8D] hover:bg-blue-50/40 disabled:cursor-not-allowed disabled:opacity-50"
+                                data-testid="pos-checkout-add-discount"
+                            >
+                                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-blue-100 bg-blue-50 text-[#1A4E8D]">
+                                    <Tag className="h-4 w-4" />
+                                </span>
+                                <span className="min-w-0 flex-1">
+                                    <span className="block text-[13px] font-extrabold text-[#1A4E8D]">Add Discount</span>
+                                    <span className="mt-0.5 block text-[11px] font-medium text-slate-500">Apply a promo or approved discount before payment.</span>
+                                </span>
+                                <ChevronRight className="h-4 w-4 shrink-0 text-slate-400" aria-hidden="true" />
+                            </button>
+                        )}
 
                         {!isEmployeeCreditPayment && <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px]">
                             <div className="flex justify-between gap-2">
@@ -5351,7 +5767,7 @@ export default function POSCheckoutTerminal({
                                 />
                             </Suspense>
                         )}
-                        {!isEmployeeCreditPayment && (
+                        {!isEmployeeCreditPayment && !splitPaymentReady && (
                         <label className="block text-[11px] font-bold uppercase tracking-wide text-[#64748B]">
                             {customerPaymentFieldLabel}
                             <Input
@@ -5360,14 +5776,16 @@ export default function POSCheckoutTerminal({
                                 step="0.01"
                                 value={customerPaymentAmountInput}
                                 onChange={(event) => setCustomerPaymentAmountInput(event.target.value)}
+                                onFocus={(event) => {
+                                    if (event.currentTarget.value === '0') setCustomerPaymentAmountInput('');
+                                }}
                                 placeholder="0.00"
                                 className="mt-2 h-11 rounded-lg border border-slate-200 bg-white px-3 text-[15px] font-extrabold text-[#0F172A] focus-visible:border-[#1A4E8D] focus-visible:ring-2 focus-visible:ring-blue-100"
-                                autoFocus
                             />
                         </label>
                         )}
 
-                        {!isEmployeeCreditPayment && (
+                        {!isEmployeeCreditPayment && !splitPaymentReady && (
                         <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px]">
                             <div className="flex justify-between gap-2">
                                 <span className="text-[#334155]">{isCashPayment ? 'Change' : 'Excess Payment'}</span>
@@ -5382,21 +5800,14 @@ export default function POSCheckoutTerminal({
                         </div>
                         )}
 
-                        {!isCustomerPaymentSufficient && (
-                            <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
-                                {isEmployeeCreditPayment
-                                    ? 'Verify an active, eligible employee account with enough available balance.'
-                                    : `${customerPaymentFieldLabel} must be at least PHP ${money(cartTotal)}.`}
-                            </p>
-                        )}
                     </div>
 
                     <DialogFooter className="shrink-0 grid grid-cols-3 gap-2 border-t border-slate-200 px-4 py-3 bg-white">
                         <Button
                             type="button"
                             variant="outline"
-                            onClick={() => setCheckoutConfirmModalOpen(false)}
-                            disabled={checkoutLoading}
+                            onClick={handleCancelCheckout}
+                            disabled={checkoutLoading || splitPaymentCancelLoading}
                             className="h-10 rounded-lg border border-slate-300 bg-white px-3 text-[13px] font-extrabold text-[#0F172A] hover:bg-slate-50"
                         >
                             Cancel
@@ -5414,11 +5825,53 @@ export default function POSCheckoutTerminal({
                         </Button>
                         <Button
                             type="button"
-                            onClick={handleCheckout}
-                            disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isCheckoutWorkflowValid || !isCustomerPaymentSufficient}
+                            onClick={splitPaymentReady ? () => handleCompletePreparedSplitPayment() : handleCheckout}
+                            disabled={posActionsBlocked || checkoutLoading || safeCart.length === 0 || !isCheckoutWorkflowValid || (!splitPaymentReady && !isCustomerPaymentSufficient)}
                             className="h-10 rounded-lg bg-[#1A4E8D] px-3 text-[13px] font-extrabold text-white shadow-lg shadow-blue-900/20 transition hover:bg-[#143F73] disabled:cursor-not-allowed disabled:bg-[#1A4E8D] disabled:opacity-60"
                         >
-                            {checkoutLoading ? 'Processing...' : 'Confirm'}
+                            {checkoutLoading ? 'Processing...' : (splitPaymentReady ? 'Confirm Sale' : 'Confirm')}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={splitPaymentCancelModalOpen} onOpenChange={(nextOpen) => {
+                if (splitPaymentCancelLoading) return;
+                setSplitPaymentCancelModalOpen(nextOpen);
+            }}>
+                <DialogContent className="w-[calc(100vw-1.5rem)] max-w-md rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:w-full" data-testid="pos-split-payment-cancel-dialog">
+                    <DialogHeader className="border-b border-slate-200 px-5 py-4 text-left">
+                        <DialogTitle className="text-lg font-black text-slate-900">Cancel split payment?</DialogTitle>
+                        <DialogDescription className="text-sm leading-5 text-slate-600">
+                            This sale already has recorded payment. Keep it saved to resume later, or reverse the recorded allocations before starting a new checkout.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <DialogFooter className="flex flex-wrap justify-end gap-2 border-t border-slate-200 px-5 py-4">
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={() => setSplitPaymentCancelModalOpen(false)}
+                            disabled={splitPaymentCancelLoading}
+                            className="font-extrabold"
+                        >
+                            Back
+                        </Button>
+                        <Button
+                            type="button"
+                            variant="outline"
+                            onClick={handleKeepSplitPaymentAndClose}
+                            disabled={splitPaymentCancelLoading}
+                            className="font-extrabold text-[#1A4E8D]"
+                        >
+                            Keep Saved Payment
+                        </Button>
+                        <Button
+                            type="button"
+                            onClick={handleReverseSplitPaymentAndStartNew}
+                            disabled={splitPaymentCancelLoading}
+                            className="bg-rose-600 font-extrabold text-white hover:bg-rose-700"
+                        >
+                            {splitPaymentCancelLoading ? 'Reversing…' : 'Reverse & Start New'}
                         </Button>
                     </DialogFooter>
                 </DialogContent>
@@ -5473,6 +5926,7 @@ export default function POSCheckoutTerminal({
                                     <Suspense fallback={<div className="rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-500">Loading order preview...</div>}>
                                         <OrderPreviewView
                                             transaction={lastReceipt}
+                                            mobileResponsive
                                         />
                                     </Suspense>
                                 </div>
@@ -5624,6 +6078,7 @@ export default function POSCheckoutTerminal({
                         activeShiftId={activeShiftId}
                         selectedLocationId={selectedLocationId}
                         terminalId={normalizedTerminalId}
+                        currentUserId={terminalUser?.user_id || terminalUser?.id || null}
                         cartHasItems={safeCart.length > 0}
                         canView={canViewHistory && !sessionLocked}
                         canTransact={!posActionsBlocked}
@@ -5646,46 +6101,91 @@ export default function POSCheckoutTerminal({
                 }}
             >
                 <DialogContent className="w-[calc(100vw-1.5rem)] max-w-md rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:w-full" data-testid="pos-park-sale-name-dialog">
+                    <form
+                        className="flex flex-col"
+                        onSubmit={(event) => {
+                            event.preventDefault();
+                            if (parkLoading || !parkSaleNameInput.trim()) return;
+                            handleParkAndNewSale();
+                        }}
+                    >
+                        <DialogHeader className="border-b border-slate-200 px-5 py-4 text-left">
+                            <DialogTitle className="text-lg font-black text-slate-900">Name Parked Sale</DialogTitle>
+                            <DialogDescription className="text-sm text-slate-600">
+                                Enter the customer or order name so staff know who this parked sale belongs to.
+                            </DialogDescription>
+                        </DialogHeader>
+                        <div className="px-5 py-4">
+                            <label className="block text-xs font-bold text-slate-700" htmlFor="parked-sale-name">
+                                Customer / Order Name <span className="text-rose-600">*</span>
+                            </label>
+                            <Input
+                                id="parked-sale-name"
+                                value={parkSaleNameInput}
+                                onChange={(event) => setParkSaleNameInput(event.target.value)}
+                                maxLength={100}
+                                autoFocus
+                                disabled={parkLoading}
+                                placeholder="e.g., Maria Santos or Table 4"
+                                className="mt-2 h-11"
+                                data-testid="pos-park-sale-name-input"
+                            />
+                            <p className="mt-1.5 text-right text-[11px] text-slate-500">{parkSaleNameInput.length}/100</p>
+                        </div>
+                        <DialogFooter className="border-t border-slate-200 px-5 py-4 sm:justify-end">
+                            <Button
+                                type="button"
+                                variant="outline"
+                                onClick={() => setParkSaleNameDialogOpen(false)}
+                                disabled={parkLoading}
+                            >
+                                Cancel
+                            </Button>
+                            <Button
+                                type="submit"
+                                disabled={parkLoading || !parkSaleNameInput.trim()}
+                                className="bg-[#1A4E8D] hover:bg-[#143F73]"
+                                data-testid="pos-confirm-park-sale"
+                            >
+                                {parkLoading ? 'Parking Sale…' : 'Park'}
+                            </Button>
+                        </DialogFooter>
+                    </form>
+                </DialogContent>
+            </Dialog>
+            <Dialog
+                open={clearSaleConfirmOpen}
+                onOpenChange={setClearSaleConfirmOpen}
+            >
+                <DialogContent
+                    className="w-[calc(100vw-1.5rem)] max-w-md rounded-xl border border-slate-200 bg-white p-0 shadow-2xl shadow-slate-950/25 sm:w-full"
+                    data-testid="pos-clear-current-sale-dialog"
+                >
                     <DialogHeader className="border-b border-slate-200 px-5 py-4 text-left">
-                        <DialogTitle className="text-lg font-black text-slate-900">Name Parked Sale</DialogTitle>
+                        <DialogTitle className="flex items-center gap-2 text-lg font-black text-slate-900">
+                            <Trash2 className="h-5 w-5 text-rose-600" />
+                            Clear current sale?
+                        </DialogTitle>
                         <DialogDescription className="text-sm text-slate-600">
-                            Enter the customer or order name so staff know who this parked sale belongs to.
+                            This removes all items and unsaved sale details from the current sale. This cannot be undone.
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="px-5 py-4">
-                        <label className="block text-xs font-bold text-slate-700" htmlFor="parked-sale-name">
-                            Customer / Order Name <span className="text-rose-600">*</span>
-                        </label>
-                        <Input
-                            id="parked-sale-name"
-                            value={parkSaleNameInput}
-                            onChange={(event) => setParkSaleNameInput(event.target.value)}
-                            maxLength={100}
-                            autoFocus
-                            disabled={parkLoading}
-                            placeholder="e.g., Maria Santos or Table 4"
-                            className="mt-2 h-11"
-                            data-testid="pos-park-sale-name-input"
-                        />
-                        <p className="mt-1.5 text-right text-[11px] text-slate-500">{parkSaleNameInput.length}/100</p>
-                    </div>
                     <DialogFooter className="border-t border-slate-200 px-5 py-4 sm:justify-end">
                         <Button
                             type="button"
                             variant="outline"
-                            onClick={() => setParkSaleNameDialogOpen(false)}
-                            disabled={parkLoading}
+                            onClick={() => setClearSaleConfirmOpen(false)}
                         >
                             Cancel
                         </Button>
                         <Button
                             type="button"
-                            onClick={handleParkAndNewSale}
-                            disabled={parkLoading || !parkSaleNameInput.trim()}
-                            className="bg-[#1A4E8D] hover:bg-[#143F73]"
-                            data-testid="pos-confirm-park-sale"
+                            onClick={confirmClearCurrentSale}
+                            className="bg-rose-600 text-white hover:bg-rose-700"
+                            data-testid="pos-confirm-clear-current-sale"
                         >
-                            {parkLoading ? 'Parking Sale…' : 'Park & Start New Sale'}
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Clear sale
                         </Button>
                     </DialogFooter>
                 </DialogContent>

@@ -532,14 +532,6 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     });
 
     await setSetting('pos_strict_compliance_enabled', 'false', 'boolean');
-    await setSetting(
-      'pos_discount_profiles',
-      JSON.stringify([
-        { name: 'Employee Discount', percentage: 6.9767, active: true }
-      ]),
-      'json'
-    );
-
     const checkoutResult = await runInTenantContext(async () => checkoutPosUseCase({
       userId: cashier.user_id,
       user: cashier,
@@ -547,8 +539,6 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
         idempotency_key: `recon-${crypto.randomUUID()}`,
         payment_type: 'cash',
         order_method: 'dine_in',
-        discount_profile_name: 'Employee Discount',
-        discount_rate: 6.9767,
         lines: [
           { item_id: vatableItem.item_id, quantity: 2, sale_price: 12 },
           { item_id: exemptItem.item_id, quantity: 1, sale_price: 10 },
@@ -776,7 +766,7 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
     expect(result.success).toBe(true);
   });
 
-  itRuntimeReady('accepts legacy string-encoded discount profiles for checkout discount resolution', async () => {
+  itRuntimeReady('parses legacy string-encoded discount profiles but rejects unapproved legacy discounts', async () => {
     const cashier = await createCashier();
     const product = await createFinishedGood({ vat_type: 'vatable', default_sale_price: 100 });
 
@@ -800,13 +790,14 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       })
     }));
 
-    expect(checkout.success).toBe(true);
-    expect(money4(checkout.data.transaction.discount_amount)).toBe(20);
-    expect(checkout.data.transaction.discount_label_snapshot).toBe('Legacy Employee');
-    expect(money4(checkout.data.transaction.discount_rate_snapshot)).toBe(20);
+    expect(checkout.success).toBe(false);
+    expect(checkout.error.code).toBe('AUTHORIZATION_FAILED');
+    expect(checkout.error.details).toEqual(expect.objectContaining({
+      reason_code: 'DISCOUNT_APPROVAL_REQUIRED'
+    }));
   });
 
-  itRuntimeReady('auto-repairs double-encoded POS JSON settings on read path and still computes discounts/fees correctly', async () => {
+  itRuntimeReady('auto-repairs double-encoded POS JSON settings while rejecting an unapproved legacy discount', async () => {
     const cashier = await createCashier();
     const product = await createFinishedGood({ vat_type: 'vatable', default_sale_price: 100 });
 
@@ -829,9 +820,11 @@ describe('POS reconciliation integration (checkout vs Z-reading vs unified sales
       })
     }));
 
-    expect(checkout.success).toBe(true);
-    expect(money4(checkout.data.transaction.discount_amount)).toBe(10);
-    expect(money4(checkout.data.transaction.service_fee_amount)).toBe(0);
+    expect(checkout.success).toBe(false);
+    expect(checkout.error.code).toBe('AUTHORIZATION_FAILED');
+    expect(checkout.error.details).toEqual(expect.objectContaining({
+      reason_code: 'DISCOUNT_APPROVAL_REQUIRED'
+    }));
 
     const repairedDiscountSetting = await models.SystemSetting.findOne({ where: { setting_key: 'pos_discount_profiles' } });
 

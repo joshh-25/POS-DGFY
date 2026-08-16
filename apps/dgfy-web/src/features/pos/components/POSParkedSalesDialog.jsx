@@ -1,7 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { AlertCircle, Ban, Bookmark, CheckCircle2, Clock3, RefreshCcw, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import {
     Dialog,
     DialogContent,
@@ -28,6 +27,7 @@ const formatDateTime = (value) => {
 };
 
 const normalizeTerminalId = (value) => String(value || '').trim().toUpperCase();
+const PARKED_SALE_AUTO_CANCEL_REASON = 'Cancelled from Parked Sales';
 
 const statusClassName = {
     parked: 'border-amber-200 bg-amber-50 text-amber-800',
@@ -40,6 +40,7 @@ export default function POSParkedSalesDialog({
     activeShiftId = null,
     selectedLocationId = null,
     terminalId = '',
+    currentUserId = null,
     cartHasItems = false,
     canView = true,
     canTransact = true,
@@ -49,11 +50,10 @@ export default function POSParkedSalesDialog({
 }) {
     const [rows, setRows] = useState([]);
     const [loading, setLoading] = useState(false);
-    const [refreshing, setRefreshing] = useState(false);
     const [claimLoadingId, setClaimLoadingId] = useState(null);
+    const [claimAction, setClaimAction] = useState(null);
     const [cancelLoadingId, setCancelLoadingId] = useState(null);
     const [cancelTarget, setCancelTarget] = useState(null);
-    const [cancelReason, setCancelReason] = useState('');
     const [error, setError] = useState('');
     const [actionError, setActionError] = useState('');
 
@@ -63,14 +63,13 @@ export default function POSParkedSalesDialog({
         [rows]
     );
 
-    const loadParkedSales = useCallback(async ({ silent = false } = {}) => {
+    const loadParkedSales = useCallback(async () => {
         if (!activeShiftId || !canView) {
             setRows([]);
             setError('');
             return;
         }
-        if (silent) setRefreshing(true);
-        else setLoading(true);
+        setLoading(true);
         setError('');
         try {
             const result = await fetchPosParkedSales({
@@ -84,7 +83,6 @@ export default function POSParkedSalesDialog({
             setError(requestError?.response?.data?.message || requestError?.message || 'Unable to load parked sales.');
         } finally {
             setLoading(false);
-            setRefreshing(false);
         }
     }, [activeShiftId, canView, selectedLocationId]);
 
@@ -94,24 +92,26 @@ export default function POSParkedSalesDialog({
         return undefined;
     }, [loadParkedSales, open]);
 
-    const handleClaim = async (row) => {
+    const handleClaim = async (row, action = 'pay') => {
         const parkedSaleId = Number(row?.pos_parked_sale_id);
         if (!Number.isInteger(parkedSaleId) || parkedSaleId <= 0) return;
+        const normalizedAction = action === 'resume' ? 'resume' : 'pay';
         if (cartHasItems) {
-            setActionError('Start with an empty sale before resuming a parked sale. Park or complete the current cart first.');
+            setActionError('Pay or Resume requires an empty current sale. Park or clear the current sale first.');
             return;
         }
         if (!canTransact) {
             setActionError('POS transact permission is required to resume a parked sale.');
             return;
         }
-        const preflight = await onBeforeClaim(row) || {};
+        const preflight = await onBeforeClaim(row, normalizedAction) || {};
         if (preflight.ok === false) {
             setActionError(preflight.message || 'This parked sale needs review before it can be resumed.');
             return;
         }
 
         setClaimLoadingId(parkedSaleId);
+        setClaimAction(normalizedAction);
         setActionError('');
         try {
             const claimed = await claimPosParkedSale(parkedSaleId, {
@@ -119,13 +119,14 @@ export default function POSParkedSalesDialog({
                 terminal_id: normalizedTerminalId,
                 location_id: selectedLocationId ? Number(selectedLocationId) : undefined
             });
-            await onClaimed(claimed);
+            await onClaimed(claimed, normalizedAction);
             onOpenChange(false);
         } catch (requestError) {
             setActionError(requestError?.response?.data?.message || requestError?.message || 'Unable to resume this parked sale. It may already be claimed on another terminal.');
-            await loadParkedSales({ silent: true });
+            await loadParkedSales();
         } finally {
             setClaimLoadingId(null);
+            setClaimAction(null);
         }
     };
 
@@ -136,12 +137,6 @@ export default function POSParkedSalesDialog({
             setActionError('POS transact permission is required to cancel a parked sale.');
             return;
         }
-        const reason = String(cancelReason || '').trim();
-        if (reason.length < 3) {
-            setActionError('Enter a short cancellation reason (at least 3 characters).');
-            return;
-        }
-
         setCancelLoadingId(parkedSaleId);
         setActionError('');
         try {
@@ -149,12 +144,11 @@ export default function POSParkedSalesDialog({
                 shift_id: Number(activeShiftId),
                 terminal_id: normalizedTerminalId,
                 location_id: selectedLocationId ? Number(selectedLocationId) : undefined,
-                reason
+                reason: PARKED_SALE_AUTO_CANCEL_REASON
             });
             await onCancelled(cancelled);
             setCancelTarget(null);
-            setCancelReason('');
-            await loadParkedSales({ silent: true });
+            await loadParkedSales();
         } catch (requestError) {
             setActionError(requestError?.response?.data?.message || requestError?.message || 'Unable to cancel this parked sale.');
         } finally {
@@ -166,7 +160,6 @@ export default function POSParkedSalesDialog({
         if (claimLoadingId !== null || cancelLoadingId !== null) return;
         setActionError('');
         setCancelTarget(null);
-        setCancelReason('');
         onOpenChange(false);
     };
 
@@ -181,13 +174,9 @@ export default function POSParkedSalesDialog({
                                 Parked Sales
                             </DialogTitle>
                             <DialogDescription className="mt-1 text-sm text-slate-600">
-                                Choose a parked sale to resume it explicitly. Nothing is loaded into the active cart automatically.
+                                Shared with authorized cashiers at this branch. Pay a parked sale now or resume it to add more items.
                             </DialogDescription>
                         </div>
-                        <Button type="button" variant="outline" size="sm" onClick={() => loadParkedSales({ silent: true })} disabled={loading || refreshing || claimLoadingId !== null || cancelLoadingId !== null} aria-label="Refresh parked sales">
-                            <RefreshCcw className={`mr-2 h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
-                            Refresh
-                        </Button>
                     </div>
                 </DialogHeader>
 
@@ -195,7 +184,7 @@ export default function POSParkedSalesDialog({
                     {cartHasItems && (
                         <div className="mb-3 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800" role="alert">
                             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-                            <span>Park or complete the current cart before resuming a parked sale. The active cart will never be replaced.</span>
+                            <span>Pay or Resume requires an empty current sale. Park or clear the current sale first.</span>
                         </div>
                     )}
                     {actionError && (
@@ -219,16 +208,22 @@ export default function POSParkedSalesDialog({
                         <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 px-4 py-10 text-center" data-testid="pos-parked-sales-empty">
                             <RotateCcw className="mx-auto h-7 w-7 text-slate-400" />
                             <p className="mt-2 text-sm font-bold text-slate-800">No active parked sales</p>
-                            <p className="mt-1 text-xs text-slate-500">Parked carts from this open shift will appear here.</p>
+                            <p className="mt-1 text-xs text-slate-500">Parked carts from this branch will appear here for any authorized cashier.</p>
                         </div>
                     ) : (
                         <div className="space-y-3">
                             {activeRows.map((row) => {
                                 const parkedSaleId = Number(row?.pos_parked_sale_id);
                                 const status = String(row?.status || 'parked').toLowerCase();
+                                const claimedByAnotherUser = Boolean(row?.claimed_by)
+                                    && Number(row.claimed_by) !== Number(currentUserId);
                                 const claimedElsewhere = status === 'claimed'
-                                    && Boolean(row?.claimed_terminal_id)
-                                    && normalizeTerminalId(row.claimed_terminal_id) !== normalizedTerminalId;
+                                    && (claimedByAnotherUser
+                                        || (Boolean(row?.claimed_terminal_id)
+                                            && normalizeTerminalId(row.claimed_terminal_id) !== normalizedTerminalId));
+                                const ownedByCurrentCashier = Number(row?.cashier_id) === Number(currentUserId)
+                                    && Number(row?.shift_id) === Number(activeShiftId);
+                                const cancellationLocked = claimedElsewhere || !ownedByCurrentCashier;
                                 const lines = Array.isArray(row?.snapshot?.lines) ? row.snapshot.lines : [];
                                 const linePreview = lines.slice(0, 3).map((line) => line?.item_name || `Item #${line?.item_id || ''}`).filter(Boolean).join(', ');
                                 const loadingThisRow = claimLoadingId === parkedSaleId;
@@ -246,28 +241,39 @@ export default function POSParkedSalesDialog({
                                                 <p className="mt-1 text-xs text-slate-500">{formatDateTime(row?.created_at)} · {Number(row?.line_count || lines.length)} line{Number(row?.line_count || lines.length) === 1 ? '' : 's'} · PHP {money(row?.total_amount)}</p>
                                                 <p className="mt-2 line-clamp-2 text-sm font-medium text-slate-700">{linePreview || 'No line preview available.'}</p>
                                             </div>
-                                            <div className="flex shrink-0 items-center gap-2">
+                                            <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                                                 <Button
                                                     type="button"
-                                                    onClick={() => handleClaim(row)}
+                                                    onClick={() => handleClaim(row, 'pay')}
                                                     disabled={loadingThisRow || claimLoadingId !== null || cancelLoadingId !== null || cartHasItems || !canTransact || claimedElsewhere || !normalizedTerminalId}
                                                     className="rounded-lg bg-[#1A4E8D] px-4 text-xs font-extrabold text-white hover:bg-[#143F73] disabled:cursor-not-allowed disabled:opacity-60"
+                                                    data-testid={`pos-parked-sale-pay-${parkedSaleId}`}
+                                                    title={claimedElsewhere ? 'This parked sale is claimed on another terminal.' : undefined}
+                                                >
+                                                    {loadingThisRow && claimAction === 'pay' ? 'Opening...' : claimedElsewhere ? 'In use' : 'Pay'}
+                                                </Button>
+                                                <Button
+                                                    type="button"
+                                                    variant="outline"
+                                                    onClick={() => handleClaim(row, 'resume')}
+                                                    disabled={loadingThisRow || claimLoadingId !== null || cancelLoadingId !== null || cartHasItems || !canTransact || claimedElsewhere || !normalizedTerminalId}
+                                                    className="rounded-lg border-blue-200 px-4 text-xs font-extrabold text-blue-800 hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-60"
                                                     data-testid={`pos-parked-sale-resume-${parkedSaleId}`}
                                                     title={claimedElsewhere ? 'This parked sale is claimed on another terminal.' : undefined}
                                                 >
-                                                    {loadingThisRow ? 'Resuming...' : claimedElsewhere ? 'In use' : 'Resume'}
+                                                    {loadingThisRow && claimAction === 'resume' ? 'Resuming...' : 'Resume'}
                                                 </Button>
                                                 <Button
                                                     type="button"
                                                     variant="outline"
                                                     onClick={() => {
                                                         setCancelTarget(row);
-                                                        setCancelReason('');
                                                         setActionError('');
                                                     }}
-                                                    disabled={claimLoadingId !== null || cancelLoadingId !== null || !canTransact || claimedElsewhere || !normalizedTerminalId}
+                                                    disabled={claimLoadingId !== null || cancelLoadingId !== null || !canTransact || cancellationLocked || !normalizedTerminalId}
                                                     className="rounded-lg border-rose-200 px-3 text-xs font-extrabold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
                                                     data-testid={`pos-parked-sale-cancel-${parkedSaleId}`}
+                                                    title={cancellationLocked ? 'Only the current cashier can cancel this parked sale.' : undefined}
                                                 >
                                                     <Ban className="mr-1.5 h-3.5 w-3.5" />
                                                     Cancel
@@ -276,21 +282,12 @@ export default function POSParkedSalesDialog({
                                         </div>
                                         {cancelTarget && Number(cancelTarget?.pos_parked_sale_id) === parkedSaleId && (
                                             <div className="mt-3 rounded-lg border border-rose-200 bg-rose-50 p-3">
-                                                <label htmlFor={`pos-parked-sale-cancel-reason-${parkedSaleId}`} className="text-xs font-extrabold text-rose-900">Cancellation reason</label>
-                                                <div className="mt-2 flex flex-col gap-2 sm:flex-row">
-                                                    <Input
-                                                        id={`pos-parked-sale-cancel-reason-${parkedSaleId}`}
-                                                        value={cancelReason}
-                                                        onChange={(event) => setCancelReason(event.target.value)}
-                                                        placeholder="Customer left, duplicate cart, etc."
-                                                        disabled={cancelLoadingId !== null}
-                                                        maxLength={255}
-                                                        className="h-9 bg-white text-xs"
-                                                    />
+                                                <p className="text-xs font-extrabold text-rose-900">Cancel this parked sale?</p>
+                                                <div className="mt-2 flex justify-end">
                                                     <Button
                                                         type="button"
                                                         onClick={() => handleCancel(row)}
-                                                        disabled={cancelLoadingId !== null || cancelReason.trim().length < 3}
+                                                        disabled={cancelLoadingId !== null}
                                                         className="h-9 shrink-0 bg-rose-700 px-3 text-xs font-extrabold text-white hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-60"
                                                     >
                                                         {cancelLoadingId === parkedSaleId ? 'Cancelling...' : 'Confirm cancel'}

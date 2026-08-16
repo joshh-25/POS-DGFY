@@ -62,6 +62,7 @@ export const PERMISSIONS = {
         actions: {
             VIEW_POS: "pos:view",           // View POS transactions and reports
             TRANSACT_POS: "pos:transact",   // Execute POS checkout transactions
+            AUTHORIZE_DISCOUNTS: "pos:discount_authorize", // Authorize POS discounts with an individual PIN
             PRICE_OVERRIDE_POS: "pos:price_override", // Override line-item sale price during checkout
             ADJUST_CASH_DRAWER: "pos:cash_drawer_adjust", // Record cash in/out and shift cash adjustments
             CLOSE_SHIFT_POS: "pos:shift_close", // Close the cashier's current terminal shift

@@ -10,12 +10,11 @@ afterEach(() => {
   cleanup();
 });
 
-const renderActions = (workflowMode, effectiveCapabilities = null) => {
+const renderActions = (workflowMode, effectiveCapabilities = null, activeParkedSale = null) => {
   const presentationBundle = resolvePosPresentationBundle(
     resolvePosWorkflow(workflowMode, effectiveCapabilities)
   );
   const actions = {
-    onOpenParkedSales: vi.fn(),
     onParkAndNewSale: vi.fn(),
     onCheckout: vi.fn(),
     onPrintOrder: vi.fn(),
@@ -27,6 +26,7 @@ const renderActions = (workflowMode, effectiveCapabilities = null) => {
     <PosCurrentSaleActions
       presentationBundle={presentationBundle}
       {...actions}
+      activeParkedSale={activeParkedSale}
       itemCount={2}
       printerAvailable
     />
@@ -40,9 +40,9 @@ describe('PosCurrentSaleActions', () => {
     const { presentationBundle } = renderActions('fnb');
 
     expect(presentationBundle.key).toBe('fnb');
-    expect(screen.getByTestId('pos-open-parked-sales-button')).toBeDefined();
     expect(screen.getByTestId('pos-park-sale-button')).toBeDefined();
-    expect(screen.getByText('Checkout (2 Items)')).toBeDefined();
+    expect(screen.getByText('Park')).toBeDefined();
+    expect(screen.getByText('Checkout')).toBeDefined();
     expect(screen.getByText('Print Order')).toBeDefined();
     expect(screen.getByText('Open Cash Drawer')).toBeDefined();
     expect(screen.getByText('Apply Discount')).toBeDefined();
@@ -52,19 +52,23 @@ describe('PosCurrentSaleActions', () => {
     const { presentationBundle } = renderActions('fnb', []);
 
     expect(presentationBundle.key).toBe('counter');
-    expect(screen.getByTestId('pos-open-parked-sales-button')).toBeDefined();
     expect(screen.getByTestId('pos-park-sale-button')).toBeDefined();
+  });
+
+  it('labels the park action as Update Parked Sale while editing a resumed sale', () => {
+    renderActions('fnb', null, { pos_parked_sale_id: 17 });
+
+    expect(screen.getByText('Update Parked Sale')).toBeDefined();
   });
 
   it('hides unchanged order-oriented parked-sale controls in Services', () => {
     const { presentationBundle } = renderActions('services');
 
     expect(presentationBundle.key).toBe('services');
-    expect(screen.queryByTestId('pos-open-parked-sales-button')).toBeNull();
     expect(screen.queryByTestId('pos-park-sale-button')).toBeNull();
     expect(screen.queryByText('Parked Sales')).toBeNull();
     expect(screen.queryByText('Park & New Sale')).toBeNull();
-    expect(screen.getByText('Checkout (2 Items)')).toBeDefined();
+    expect(screen.getByText('Checkout')).toBeDefined();
     expect(screen.getByText('Print Order')).toBeDefined();
     expect(screen.getByText('Open Cash Drawer')).toBeDefined();
     expect(screen.getByText('Apply Discount')).toBeDefined();
@@ -73,7 +77,7 @@ describe('PosCurrentSaleActions', () => {
   it('keeps shared cashier action callbacks intact for Services', () => {
     const { actions } = renderActions('services');
 
-    fireEvent.click(screen.getByText('Checkout (2 Items)'));
+    fireEvent.click(screen.getByText('Checkout'));
     fireEvent.click(screen.getByText('Print Order'));
     fireEvent.click(screen.getByText('Open Cash Drawer'));
     fireEvent.click(screen.getByText('Apply Discount'));
@@ -82,7 +86,6 @@ describe('PosCurrentSaleActions', () => {
     expect(actions.onPrintOrder).toHaveBeenCalledOnce();
     expect(actions.onOpenCashDrawer).toHaveBeenCalledOnce();
     expect(actions.onApplyDiscount).toHaveBeenCalledOnce();
-    expect(actions.onOpenParkedSales).not.toHaveBeenCalled();
     expect(actions.onParkAndNewSale).not.toHaveBeenCalled();
   });
 
@@ -91,7 +94,6 @@ describe('PosCurrentSaleActions', () => {
       <PosCurrentSaleActions
         presentationBundle={null}
         onCheckout={vi.fn()}
-        onPrintOrder={vi.fn()}
         onOpenCashDrawer={vi.fn()}
         onApplyDiscount={vi.fn()}
       />
@@ -99,6 +101,6 @@ describe('PosCurrentSaleActions', () => {
 
     expect(screen.queryByTestId('pos-open-parked-sales-button')).toBeNull();
     expect(screen.queryByTestId('pos-park-sale-button')).toBeNull();
-    expect(screen.getByText('Checkout (0 Items)')).toBeDefined();
+    expect(screen.getByText('Checkout')).toBeDefined();
   });
 });

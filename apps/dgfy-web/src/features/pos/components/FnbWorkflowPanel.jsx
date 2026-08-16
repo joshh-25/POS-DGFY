@@ -7,10 +7,11 @@ export function FnbWorkflowPanel({
   setTableNumber,
   kitchenNotes = '',
   setKitchenNotes,
+  paymentTypeField = null,
   disabled = false
 }) {
   return (
-    <div data-testid="fnb-workflow-panel" className="space-y-2">
+    <div data-testid="fnb-workflow-panel" className="grid grid-cols-2 gap-2 max-[360px]:grid-cols-1">
       <label className="text-[11px] text-slate-500 block font-medium">
         Order Method
         <select
@@ -53,6 +54,8 @@ export function FnbWorkflowPanel({
           />
         </label>
       )}
+
+      {paymentTypeField}
     </div>
   );
 }

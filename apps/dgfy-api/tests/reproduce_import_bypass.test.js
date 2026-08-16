@@ -18,6 +18,7 @@ const requiredAuthMockExports = [
     'requireTenantCapability',
     'authorizeAdminFinancialRoles',
     'requireTenantAdmin',
+    'requireTenantAdminRole',
     'requireAdminPermission',
     'requirePlatformMaster'
 ];
@@ -38,6 +39,7 @@ const buildAuthModuleMock = () => {
         requireTenantCapability: () => (req, res, next) => next(),
         authorizeAdminFinancialRoles: () => (req, res, next) => next(),
         requireTenantAdmin: (req, res, next) => next(),
+        requireTenantAdminRole: (req, res, next) => next(),
         requireAdminPermission: () => (req, res, next) => next(),
         requirePlatformMaster: (req, res, next) => next()
     };

@@ -103,7 +103,7 @@ describe('setupFlow', () => {
     }));
   });
 
-  it('advances tenant setup from profile to storefront setup to POS setup', () => {
+  it('advances tenant setup from profile to storefront setup to POS setup without a starter-item gate', () => {
     expect(resolveTenantSetupStep({
       requested: true,
       isMasterAdmin: true,
@@ -130,7 +130,7 @@ describe('setupFlow', () => {
       posSetupReady: false,
       storefrontSetupReady: true,
       starterItemReady: false
-    })).toBe(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM);
+    })).toBe(POS_TERMINAL_SETUP_STEPS.POS_SETUP);
 
     expect(resolveTenantSetupStep({
       requested: true,
@@ -141,6 +141,16 @@ describe('setupFlow', () => {
       storefrontSetupReady: true,
       starterItemReady: true
     })).toBe(POS_TERMINAL_SETUP_STEPS.POS_SETUP);
+
+    expect(resolveTenantSetupStep({
+      requested: true,
+      isMasterAdmin: true,
+      requestedStep: POS_TERMINAL_SETUP_STEPS.COMPLETE,
+      profileReady: true,
+      posSetupReady: true,
+      storefrontSetupReady: true,
+      starterItemReady: false
+    })).toBe(POS_TERMINAL_SETUP_STEPS.COMPLETE);
   });
 
   it('honors the requested step even when that step is already technically ready', () => {
@@ -186,11 +196,11 @@ describe('setupFlow', () => {
   it('centralizes onboarding navigation order and settings targets', () => {
     expect(getPreviousTenantSetupStep(POS_TERMINAL_SETUP_STEPS.PROFILE)).toBe('');
     expect(getNextTenantSetupStep(POS_TERMINAL_SETUP_STEPS.PROFILE)).toBe(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP);
-    expect(getPreviousTenantSetupStep(POS_TERMINAL_SETUP_STEPS.POS_SETUP)).toBe(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM);
-    expect(getNextTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP)).toBe(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM);
+    expect(getPreviousTenantSetupStep(POS_TERMINAL_SETUP_STEPS.POS_SETUP)).toBe(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP);
+    expect(getNextTenantSetupStep(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP)).toBe(POS_TERMINAL_SETUP_STEPS.POS_SETUP);
     expect(resolveTenantSetupViewMode(POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP)).toBe('settings_storefront');
-    expect(resolveTenantSetupViewMode(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM)).toBe('items');
     expect(resolveTenantSetupViewMode(POS_TERMINAL_SETUP_STEPS.POS_SETUP)).toBe('settings_pos');
+    expect(resolveTenantSetupStepValue(POS_TERMINAL_SETUP_STEPS.STARTER_ITEM)).toBe(POS_TERMINAL_SETUP_STEPS.POS_SETUP);
   });
 
   it('centralizes onboarding query creation and cleanup', () => {

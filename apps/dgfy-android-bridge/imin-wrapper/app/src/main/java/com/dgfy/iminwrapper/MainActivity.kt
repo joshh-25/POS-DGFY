@@ -48,6 +48,8 @@ class MainActivity : AppCompatActivity() {
     private var catalog: List<NativePosApiClient.CatalogItem> = emptyList()
     private var transactions: List<NativePosApiClient.TransactionSummary> = emptyList()
     private val cart = mutableListOf<NativeCartLine>()
+    private val compactBridgeLayout: Boolean
+        get() = resources.configuration.screenWidthDp in 1..899
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -184,12 +186,18 @@ class MainActivity : AppCompatActivity() {
 
     private fun buildWorkspace(): View {
         return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
+            orientation = if (compactBridgeLayout) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
             isBaselineAligned = false
 
             val catalogPanel = panel().apply {
-                layoutParams = LinearLayout.LayoutParams(0, wrap(), 1.45f).apply {
-                    marginEnd = dp(10)
+                layoutParams = if (compactBridgeLayout) {
+                    LinearLayout.LayoutParams(match(), wrap()).apply {
+                        bottomMargin = dp(10)
+                    }
+                } else {
+                    LinearLayout.LayoutParams(0, wrap(), 1.45f).apply {
+                        marginEnd = dp(10)
+                    }
                 }
                 addView(sectionTitle("Sales"))
                 catalogContainer = LinearLayout(context).apply {
@@ -199,7 +207,11 @@ class MainActivity : AppCompatActivity() {
             }
 
             val cartPanel = panel().apply {
-                layoutParams = LinearLayout.LayoutParams(0, wrap(), 1f)
+                layoutParams = if (compactBridgeLayout) {
+                    LinearLayout.LayoutParams(match(), wrap())
+                } else {
+                    LinearLayout.LayoutParams(0, wrap(), 1f)
+                }
                 addView(sectionTitle("Current Sale"))
                 cartContainer = LinearLayout(context).apply {
                     orientation = LinearLayout.VERTICAL
@@ -904,6 +916,9 @@ class MainActivity : AppCompatActivity() {
             text = textValue
             setTextColor(Color.WHITE)
             textSize = 13f
+            minHeight = dp(52)
+            setPadding(dp(8), 0, dp(8), 0)
+            gravity = Gravity.CENTER
             background = rounded(PALETTE_PRIMARY, 8)
             setOnClickListener { action() }
         }
@@ -911,13 +926,22 @@ class MainActivity : AppCompatActivity() {
 
     private fun row(left: View, right: View): LinearLayout {
         return LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            (left.layoutParams as? ViewGroup.MarginLayoutParams)?.marginEnd = dp(6)
-            left.layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
-                marginEnd = dp(6)
+            orientation = if (compactBridgeLayout) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
+            layoutParams = LinearLayout.LayoutParams(match(), wrap()).apply {
+                bottomMargin = if (compactBridgeLayout) dp(8) else 0
             }
-            right.layoutParams = LinearLayout.LayoutParams(0, dp(48), 1f).apply {
-                marginStart = dp(6)
+            if (compactBridgeLayout) {
+                left.layoutParams = LinearLayout.LayoutParams(match(), dp(52)).apply {
+                    bottomMargin = dp(8)
+                }
+                right.layoutParams = LinearLayout.LayoutParams(match(), dp(52))
+            } else {
+                left.layoutParams = LinearLayout.LayoutParams(0, dp(52), 1f).apply {
+                    marginEnd = dp(6)
+                }
+                right.layoutParams = LinearLayout.LayoutParams(0, dp(52), 1f).apply {
+                    marginStart = dp(6)
+                }
             }
             addView(left)
             addView(right)

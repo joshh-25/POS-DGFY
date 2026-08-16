@@ -454,8 +454,8 @@ function PosReportsAnalyticsWorkspace({
   ));
 
   return (
-    <div id={sectionId} className="space-y-4">
-      <div className="flex flex-col gap-4">
+    <div id={sectionId} className="min-w-0 max-w-full overflow-x-hidden space-y-4">
+      <div className="flex min-w-0 max-w-full flex-col gap-4">
       <div className="flex flex-col gap-3 sm:hidden">
         <div className="flex items-center gap-2">
           <label className="min-w-0 flex-1 space-y-1.5">
@@ -483,32 +483,32 @@ function PosReportsAnalyticsWorkspace({
           POS-only reporting with IMS cost data
         </div>
       </div>
-      <section className="order-2 md:order-1 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-[1.2fr_1.2fr_1fr_1fr_auto_auto]">
-          <div className="grid grid-cols-2 gap-3 sm:contents">
-            <label className="space-y-1.5">
+      <section className="order-2 min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm shadow-slate-200/70 md:order-1">
+        <div className="grid min-w-0 gap-3 md:grid-cols-2 xl:grid-cols-[1.2fr_1.2fr_1fr_1fr_auto_auto]">
+          <div className="grid min-w-0 grid-cols-1 gap-3 sm:contents">
+            <label className="min-w-0 space-y-1.5">
               <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Date from</span>
               <div className="relative">
-                <Input type="date" value={dateRange.dateFrom} onChange={(event) => setDateRange((prev) => ({ ...prev, dateFrom: event.target.value }))} className="pos-report-date-input h-11 rounded-xl pr-9 md:pr-3" />
+                <Input type="date" value={dateRange.dateFrom} onChange={(event) => setDateRange((prev) => ({ ...prev, dateFrom: event.target.value }))} className="pos-report-date-input h-11 w-full min-w-0 max-w-full rounded-xl pr-9 md:pr-3" />
                 <Calendar className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 md:hidden" />
               </div>
             </label>
-            <label className="space-y-1.5">
+            <label className="min-w-0 space-y-1.5">
               <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Date to</span>
               <div className="relative">
-                <Input type="date" value={dateRange.dateTo} min={dateRange.dateFrom} onChange={(event) => setDateRange((prev) => ({ ...prev, dateTo: event.target.value }))} className="pos-report-date-input h-11 rounded-xl pr-9 md:pr-3" />
+                <Input type="date" value={dateRange.dateTo} min={dateRange.dateFrom} onChange={(event) => setDateRange((prev) => ({ ...prev, dateTo: event.target.value }))} className="pos-report-date-input h-11 w-full min-w-0 max-w-full rounded-xl pr-9 md:pr-3" />
                 <Calendar className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 md:hidden" />
               </div>
             </label>
           </div>
-          <div className="grid grid-cols-2 gap-3 sm:contents">
-            <label className="space-y-1.5">
+          <div className="grid min-w-0 grid-cols-1 gap-3 sm:contents">
+            <label className="min-w-0 space-y-1.5">
               <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Range</span>
               <select className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900" value={granularity} onChange={(event) => setGranularity(event.target.value)}>
                 {GRANULARITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
               </select>
             </label>
-            <label className="space-y-1.5">
+            <label className="min-w-0 space-y-1.5">
               <span className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Cashier</span>
               <select className="h-11 w-full rounded-xl border border-slate-200 px-3 text-sm font-semibold text-slate-900" value={cashierId} onChange={(event) => setCashierId(event.target.value)}>
                 <option value="">All cashiers</option>
@@ -516,11 +516,11 @@ function PosReportsAnalyticsWorkspace({
               </select>
             </label>
           </div>
-          <Button type="button" variant="outline" className="h-11 rounded-xl border-slate-200 px-4 font-extrabold" onClick={handleExportCsv} disabled={!reportData}>
+          <Button type="button" variant="outline" className="h-11 min-w-0 rounded-xl border-slate-200 px-4 font-extrabold" onClick={handleExportCsv} disabled={!reportData}>
             <Download className="mr-2 h-4 w-4" />
             Export CSV
           </Button>
-          <Button type="button" className="h-11 rounded-xl bg-[#2563EB] px-4 font-extrabold text-white hover:bg-[#1D4ED8]" onClick={handlePrint} disabled={!reportData}>
+          <Button type="button" className="h-11 min-w-0 rounded-xl bg-[#2563EB] px-4 font-extrabold text-white hover:bg-[#1D4ED8]" onClick={handlePrint} disabled={!reportData}>
             <Printer className="mr-2 h-4 w-4" />
             Print / Save PDF
           </Button>

@@ -10,6 +10,7 @@ import {
   ADMIN_FINANCIAL_ROLES,
   getAdminAccounts
 } from '../config/adminAuthConfig.js';
+import { isAdminLikeRole } from '../config/userRoles.js';
 
 const resolveAdminFinancialRole = (username, isMaster = false) => {
   const normalizedUsername = String(username || '').trim().toLowerCase();
@@ -357,6 +358,23 @@ export const checkPermission = (requiredPermission) => {
       required: requiredPermission
     });
   };
+};
+
+// Audit history is intentionally narrower than the generic audit:view
+// permission: only tenant admins and master admins may inspect the complete
+// activity stream because it includes cashier, terminal, and discount data.
+export const requireTenantAdminRole = (req, res, next) => {
+  if (!req.user) {
+    return res.status(401).json({ success: false, message: 'Authentication required' });
+  }
+  if (req.user.is_master_admin || isAdminLikeRole(req.user.role)) {
+    return next();
+  }
+  return res.status(403).json({
+    success: false,
+    message: 'Tenant admin role is required to view audit history.',
+    error_code: 'AUDIT_ADMIN_ROLE_REQUIRED'
+  });
 };
 
 /**

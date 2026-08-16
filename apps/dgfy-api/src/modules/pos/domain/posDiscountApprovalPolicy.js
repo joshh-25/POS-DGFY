@@ -1,6 +1,8 @@
 import bcrypt from 'bcryptjs';
 import { DomainError, DomainErrorCode } from '../../shared/contracts/domainErrors.js';
 
+const POS_DISCOUNT_AUTHORIZATION_PERMISSION = 'pos:discount_authorize';
+
 const approvalError = (message, reasonCode, statusCode = 422) => {
     throw new DomainError(DomainErrorCode.AUTHORIZATION_FAILED, message, {
         statusCode,
@@ -13,8 +15,24 @@ export const verifyPosDiscountApprover = async ({ approver, pin, employeeUserId 
         approvalError('Select an active POS discount approver.', 'DISCOUNT_APPROVER_INACTIVE');
     }
     const role = String(approver.role || '').trim().toLowerCase();
-    if (!['admin', 'manager'].includes(role)) {
-        approvalError('Selected user is not authorized to approve POS discounts.', 'DISCOUNT_APPROVER_ROLE_INVALID', 403);
+    const permissions = Array.isArray(approver.permissions)
+        ? approver.permissions
+        : (typeof approver.permissions === 'string'
+            ? (() => {
+                try {
+                    const parsed = JSON.parse(approver.permissions);
+                    return Array.isArray(parsed) ? parsed : [];
+                } catch {
+                    return [];
+                }
+            })()
+            : []);
+    const hasDiscountAuthorization = approver.can_authorize_discounts === true
+        || approver.is_master_admin === true
+        || ['admin', 'manager'].includes(role)
+        || permissions.includes(POS_DISCOUNT_AUTHORIZATION_PERMISSION);
+    if (!hasDiscountAuthorization) {
+        approvalError('Selected employee is not authorized to approve POS discounts.', 'DISCOUNT_APPROVER_ROLE_INVALID', 403);
     }
     const pinHash = String(approver.pos_approval_pin_hash || '').trim();
     if (!pinHash) {

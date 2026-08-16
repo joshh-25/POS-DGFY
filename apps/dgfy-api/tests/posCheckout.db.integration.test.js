@@ -318,6 +318,14 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
 
     it('persists governed discount allocations against the real transaction line primary key', async () => {
         const cashier = await createCashier();
+        const approver = await models.User.create({
+            username: `senior_approver_${crypto.randomUUID().slice(0, 8)}`,
+            email: `senior_approver_${crypto.randomUUID().slice(0, 8)}@pos.test`,
+            password_hash: 'test-hash',
+            pos_approval_pin_hash: await bcrypt.hash('2468', 4),
+            role: 'manager',
+            is_active: true
+        });
         const product = await createFinishedGood({
             current_stock: 10,
             senior_pwd_discount_eligible: true
@@ -339,7 +347,9 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
                     rate: 20,
                     customer_name: 'Integration Customer',
                     id_number: 'SC-INTEGRATION',
-                    eligible_item_ids: [product.item_id]
+                    eligible_item_ids: [product.item_id],
+                    approver_user_id: approver.user_id,
+                    manager_pin: '2468'
                 },
                 lines: [{ item_id: product.item_id, quantity: 1, sale_price: null }]
         });
@@ -414,11 +424,15 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
             selected_employee_name: cashier.username,
             applied_by_user_id: cashier.user_id,
             approved_by_user_id: approver.user_id,
+            authorized_by_name: approver.username,
+            cashier_name: cashier.username,
+            discount_amount: expect.any(Number),
             self_approved: false
         }));
+        expect(JSON.stringify(audit.changes)).not.toContain('2468');
     });
 
-    it('allows admin operators to apply employee discounts without approver PIN and without employee identity fields', async () => {
+    it('requires an authorized employee PIN even when the cashier is an admin', async () => {
         const adminOperator = await createCashier({ role: 'admin' });
         const product = await createFinishedGood({ current_stock: 10 });
 
@@ -430,34 +444,16 @@ describe('POS checkout DB integration (migrations + transactional stock writes)'
                 type: 'employee',
                 method: 'percentage',
                 rate: 10,
-                customer_name: 'Employee Buyer'
+                customer_name: 'Employee Buyer',
+                employee_name: 'Admin employee',
+                employee_id: String(adminOperator.user_id)
             },
             lines: [{ item_id: product.item_id, quantity: 1, sale_price: null }]
         });
 
-        expect(checkoutResult.success).toBe(true);
-        const discount = await models.PosTransactionDiscount.findOne({
-            where: { transaction_id: checkoutResult.data.transaction.pos_transaction_id }
-        });
-        const audit = await models.AuditLog.findOne({
-            where: {
-                entity_type: 'pos_discount',
-                entity_id: checkoutResult.data.transaction.pos_transaction_id
-            }
-        });
-        expect(discount.manager_approval_id).toBe(adminOperator.user_id);
-        expect(discount.manager_approved_at).toBeInstanceOf(Date);
-        expect(discount.employee_id).toBeNull();
-        expect(discount.employee_name).toBeNull();
-        expect(discount.self_approved).toBe(true);
-        expect(audit.user_id).toBe(adminOperator.user_id);
-        expect(typeof audit.changes === 'string' ? JSON.parse(audit.changes) : audit.changes).toEqual(expect.objectContaining({
-            selected_employee_id: null,
-            selected_employee_name: null,
-            applied_by_user_id: adminOperator.user_id,
-            approved_by_user_id: adminOperator.user_id,
-            self_approved: true
-        }));
+        expect(checkoutResult.success).toBe(false);
+        expect(checkoutResult.error.code).toBe('VALIDATION_FAILED');
+        expect(checkoutResult.error.details).toEqual(expect.objectContaining({ reason_code: 'DISCOUNT_APPROVER_REQUIRED' }));
     });
 
     it('sells an always-available POS item at zero stock without creating a stock movement', async () => {

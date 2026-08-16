@@ -1,19 +1,21 @@
 ---
-status: amended
-authority_level: authoritative
+status: superseded
+authority_level: historical
 owner: pos
 date: 2026-08-12
 last_reviewed: 2026-08-13
 review_by: 2027-02-12
 applies_to: architecture_decision
 topic: pos_parked_sale_lifecycle_and_shift_safe_resume
+superseded_by: 0064-pos-shared-parked-sales-and-cashier-handoff.md
 ---
 
 # ADR 0061: POS Parked Sale Lifecycle and Shift-Safe Resume
 
 ## Status
 
-Amended (2026-08-13; accepted 2026-08-12)
+Superseded on 2026-08-15 by ADR 0064. Use ADR 0064 for current parked-sale
+visibility, ownership, and cashier-handoff decisions.
 
 ## Context
 

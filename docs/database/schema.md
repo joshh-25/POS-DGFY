@@ -1310,17 +1310,31 @@ CREATE TABLE audit_logs (
     entity_type VARCHAR(50) NOT NULL,
     entity_id INT,
     action ENUM('CREATE', 'UPDATE', 'DELETE', 'VIEW') NOT NULL,
+    event_type VARCHAR(100),
+    actor_username VARCHAR(120),
+    terminal_id VARCHAR(100),
+    shift_id BIGINT,
+    location_id INT,
+    reason VARCHAR(500),
+    request_id VARCHAR(100),
     changes JSON,
     ip_address VARCHAR(45),
     user_agent TEXT,
-    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
     
     FOREIGN KEY (user_id) REFERENCES users(user_id) ON DELETE SET NULL,
     INDEX idx_user_id (user_id),
     INDEX idx_entity_type (entity_type),
-    INDEX idx_timestamp (timestamp)
+    INDEX idx_timestamp (timestamp),
+    INDEX idx_audit_event_timestamp (event_type, timestamp),
+    INDEX idx_audit_terminal_timestamp (terminal_id, timestamp),
+    INDEX idx_audit_shift_timestamp (shift_id, timestamp)
 );
 ```
+
+`audit_logs` is tenant-local. The API tenant schema repair registry in
+`apps/dgfy-api/scripts/sync-tenant-schemas.js` is authoritative for backfilling the
+table, POS event-context columns, and supporting indexes on existing tenant databases.
 
 ### 18. System Settings Table
 
@@ -1537,6 +1551,8 @@ CREATE TABLE pos_parked_sales (
     revision INT UNSIGNED NOT NULL DEFAULT 1,
     cashier_id INT NOT NULL,
     shift_id INT NOT NULL,
+    origin_cashier_id INT NULL,
+    origin_shift_id INT NULL,
     terminal_id VARCHAR(100) NOT NULL,
     location_id INT NOT NULL,
     snapshot JSON NOT NULL,
@@ -1565,6 +1581,8 @@ CREATE TABLE pos_parked_sales (
     INDEX idx_pos_parked_sales_shift_status (shift_id, status),
     INDEX idx_pos_parked_sales_cashier_status (cashier_id, status),
     INDEX idx_pos_parked_sales_location_status (location_id, status),
+    INDEX idx_pos_parked_sales_origin_cashier_status (origin_cashier_id, status),
+    INDEX idx_pos_parked_sales_origin_shift_status (origin_shift_id, status),
     INDEX idx_pos_parked_sales_created_at (created_at)
 );
 ```
@@ -1574,6 +1592,13 @@ CREATE TABLE pos_parked_sales (
   replaces the snapshot on the same claimed record using optimistic revision
   protection. Parking and re-parking create no payment, sale, receipt,
   Z-reading, or stock movement.
+- `cashier_id` and `shift_id` identify the current operational owner. The
+  nullable `origin_cashier_id` and `origin_shift_id` preserve the cashier and
+  shift that originally parked the cart when another authorized cashier
+  resumes it from the same location.
+- Active parked carts are listed by location. Claiming a parked cart transfers
+  its operational owner to the authenticated cashier's open shift while
+  retaining the immutable origin fields and an audit event.
 - `idempotency_key` and `request_hash` make retries deterministic. Active
   cashier operations are scoped to the open shift, terminal, and location.
 - Secret-like snapshot keys are removed before persistence, and the snapshot

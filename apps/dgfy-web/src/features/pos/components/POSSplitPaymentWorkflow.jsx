@@ -42,7 +42,15 @@ const buildCheckoutSnapshot = (context = {}) => ({
         id_number: context.appliedDiscount.id_number
       }
     : null,
-  governed_discount: context.appliedDiscount ? { ...context.appliedDiscount } : null,
+  governed_discount: context.appliedDiscount ? {
+    ...context.appliedDiscount,
+    ...(context.discountApproval?.manager_pin
+      ? {
+          manager_pin: context.discountApproval.manager_pin,
+          approver_user_id: context.discountApproval.approver_user_id || context.appliedDiscount.approver_user_id
+        }
+      : {})
+  } : null,
   affiliate_code: context.affiliateCodeInput?.trim() || null,
   fnb_check_id: context.fnbContext?.fnb_check_id || null,
   fnb_table_id: context.fnbContext?.fnb_table_id || null,
@@ -78,7 +86,8 @@ export default function POSSplitPaymentWorkflow({
   storageScopeKey,
   isMsmeMode,
   checkoutContext,
-  onCompleted
+  onSessionStateChange,
+  onReadyToComplete
 }) {
   const [sessionState, setSessionState] = useState({
     active: false,
@@ -96,6 +105,10 @@ export default function POSSplitPaymentWorkflow({
     () => buildCheckoutSnapshot(checkoutContext),
     [checkoutContext]
   );
+  const handleSessionStateChange = useCallback((nextState) => {
+    setSessionState(nextState);
+    onSessionStateChange?.(nextState);
+  }, [onSessionStateChange]);
 
   useEffect(() => {
     if (!storageKey) return undefined;
@@ -106,7 +119,7 @@ export default function POSSplitPaymentWorkflow({
       if (!stored?.sessionId) {
         if (!shiftId || !String(terminalId || '').trim()) {
           clearPosSplitPaymentSessionPointer(storageKey);
-          setSessionState({ active: false, recovered: false, session: null, recoveryError: '' });
+          handleSessionStateChange({ active: false, recovered: false, session: null, recoveryError: '' });
           setRecoveryPending(false);
           return;
         }
@@ -122,12 +135,12 @@ export default function POSSplitPaymentWorkflow({
               session_id: Number(activeSession.pos_payment_session_id || activeSession.id),
               idempotency_key: ''
             });
-            setSessionState({ active: true, recovered: true, session: activeSession, recoveryError: '' });
+            handleSessionStateChange({ active: true, recovered: true, session: activeSession, recoveryError: '' });
             return;
           }
         } catch (requestError) {
           if (!mounted) return;
-          setSessionState({
+          handleSessionStateChange({
             active: false,
             recovered: false,
             session: null,
@@ -138,7 +151,7 @@ export default function POSSplitPaymentWorkflow({
           if (mounted) setRecoveryPending(false);
         }
         clearPosSplitPaymentSessionPointer(storageKey);
-        setSessionState({ active: false, recovered: false, session: null, recoveryError: '' });
+        handleSessionStateChange({ active: false, recovered: false, session: null, recoveryError: '' });
         return;
       }
 
@@ -152,18 +165,18 @@ export default function POSSplitPaymentWorkflow({
         if (!mounted) return;
         if (isTerminalPosPaymentSession(session)) {
           clearPosSplitPaymentSessionPointer(storageKey);
-          setSessionState({ active: false, recovered: false, session: null, recoveryError: '' });
+          handleSessionStateChange({ active: false, recovered: false, session: null, recoveryError: '' });
           return;
         }
-        setSessionState({ active: true, recovered: true, session, recoveryError: '' });
+        handleSessionStateChange({ active: true, recovered: true, session, recoveryError: '' });
       } catch (requestError) {
         if (!mounted) return;
         if (requestError?.response?.status === 404) {
           clearPosSplitPaymentSessionPointer(storageKey);
-          setSessionState({ active: false, recovered: false, session: null, recoveryError: '' });
+          handleSessionStateChange({ active: false, recovered: false, session: null, recoveryError: '' });
           return;
         }
-        setSessionState({
+        handleSessionStateChange({
           active: true,
           recovered: true,
           session: null,
@@ -178,7 +191,7 @@ export default function POSSplitPaymentWorkflow({
     return () => {
       mounted = false;
     };
-  }, [locationId, shiftId, storageKey, terminalId]);
+  }, [handleSessionStateChange, locationId, shiftId, storageKey, terminalId]);
 
   const session = sessionState.session;
   const allocations = Array.isArray(session?.allocations) ? session.allocations : [];
@@ -201,14 +214,14 @@ export default function POSSplitPaymentWorkflow({
         reason: 'Cashier discarded unpaid split-payment draft.'
       });
       clearPosSplitPaymentSessionPointer(storageKey);
-      setSessionState({ active: false, recovered: false, session: null, recoveryError: '' });
+      handleSessionStateChange({ active: false, recovered: false, session: null, recoveryError: '' });
       toast.message('Unpaid split payment discarded.');
     } catch (requestError) {
       toast.error(requestError?.response?.data?.message || requestError?.message || 'Unable to discard the unpaid split payment.');
     } finally {
       setDiscarding(false);
     }
-  }, [canDiscardUnpaid, discarding, locationId, session, shiftId, storageKey, terminalId]);
+  }, [canDiscardUnpaid, discarding, handleSessionStateChange, locationId, session, shiftId, storageKey, terminalId]);
 
   return (
     <>
@@ -269,8 +282,8 @@ export default function POSSplitPaymentWorkflow({
           storageScopeKey={storageScopeKey}
           isMsmeMode={isMsmeMode}
           checkoutSnapshot={checkoutSnapshot}
-          onSessionStateChange={setSessionState}
-          onCompleted={onCompleted}
+          onSessionStateChange={handleSessionStateChange}
+          onReadyToComplete={onReadyToComplete}
         />
       )}
     </>

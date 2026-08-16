@@ -71,4 +71,31 @@ describe('close-report payment breakdown rendering', () => {
         });
         expect(zReadingText).toContain('Provider refunds reconciled separately.');
     });
+
+    it('does not show zero closing cash or variance before an open shift is closed', () => {
+        const markup = renderToStaticMarkup(
+            <ShiftCloseSummaryPrintView
+                report={{
+                    shift: { status: 'open' },
+                    cash_summary: {
+                        opening_float_amount: 1000,
+                        cash_sales_amount: 123,
+                        expected_cash_amount: 1123,
+                        closing_cash_amount: null,
+                        cash_variance_amount: null
+                    },
+                    sales_summary: {
+                        transaction_count: 1,
+                        total_amount: 123,
+                        payment_breakdown: [{ payment_type: 'cash', count: 1, amount: 123 }]
+                    }
+                }}
+            />
+        );
+
+        expect(markup).toContain('Closing cash</span><span class="whitespace-nowrap text-right tabular-nums">Not closed');
+        expect(markup).toContain('Variance</span><span class="whitespace-nowrap text-right tabular-nums">Pending close');
+        expect(markup).not.toContain('Closing cash</span><span class="whitespace-nowrap text-right tabular-nums">PHP 0.00');
+        expect(markup).not.toContain('Variance</span><span class="whitespace-nowrap text-right tabular-nums">PHP 0.00');
+    });
 });

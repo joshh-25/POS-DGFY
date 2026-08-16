@@ -43,6 +43,7 @@ const REQUIRED_METHODS = [
     'findPosPaymentAllocationByProviderRefundEventId',
     'updatePosPaymentAllocation',
     'findOpenTerminalShift',
+    'listCashierShiftHistory',
     'listOpenTerminalShiftsForLocation',
     'createTerminalShift',
     'createShiftLocationTransition',
