@@ -9,7 +9,8 @@ import {
     commerceQrphEnabled,
     commercePaymongoSplitEnabled,
     getPayMongoMode,
-    requireCommerceQrphConfig
+    requireCommerceQrphConfig,
+    requireCommercePaymentConfig
 } from '../../config/commercePaymentsFeature.js';
 import {
     buildListStoreCatalogUseCase,
@@ -45,7 +46,9 @@ export const listStoreCatalogUseCase = buildListStoreCatalogUseCase({
     tenantRevenueRepository,
     commercePaymentsEnabled,
     commerceQrphEnabled,
+    paymongoService,
     requireCommerceQrphConfig,
+    requireCommercePaymentConfig,
     paymongoMode: getPayMongoMode()
 });
 export const resolveStoreQrUseCase = buildResolveStoreQrUseCase({ storeRepository });
@@ -70,7 +73,8 @@ export const storeCheckoutPaymentSessionUseCase = buildStoreCheckoutPaymentSessi
     commercePaymentsEnabled,
     commerceQrphEnabled,
     commercePaymongoSplitEnabled,
-    requireCommerceQrphConfig
+    requireCommerceQrphConfig,
+    requireCommercePaymentConfig
 });
 export const getStoreCheckoutPaymentSessionUseCase = buildGetStoreCheckoutPaymentSessionUseCase({
     commercePaymentRepository

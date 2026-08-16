@@ -1,4 +1,5 @@
 import { normalizeTerminalRegistry } from './terminalIdentity.js';
+import { normalizeStorefrontBusinessHours } from '@/src/features/settings/storefrontBusinessHours.js';
 
 export const POS_TERMINAL_SETUP_FLOW_QUERY_KEY = 'setup_flow';
 export const POS_TERMINAL_SETUP_STEP_QUERY_KEY = 'setup_step';
@@ -15,14 +16,12 @@ export const POS_TERMINAL_SETUP_STEPS = Object.freeze({
 export const POS_TERMINAL_SETUP_ORDER = Object.freeze([
   POS_TERMINAL_SETUP_STEPS.PROFILE,
   POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP,
-  POS_TERMINAL_SETUP_STEPS.STARTER_ITEM,
   POS_TERMINAL_SETUP_STEPS.POS_SETUP
 ]);
 
 export const POS_TERMINAL_SETUP_VIEW_MODES = Object.freeze({
   [POS_TERMINAL_SETUP_STEPS.PROFILE]: 'settings_profile',
   [POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP]: 'settings_storefront',
-  [POS_TERMINAL_SETUP_STEPS.STARTER_ITEM]: 'items',
   [POS_TERMINAL_SETUP_STEPS.POS_SETUP]: 'settings_pos'
 });
 
@@ -96,6 +95,7 @@ const isValidCoordinate = (value, min, max) => {
 export const resolveStorefrontSetupReadiness = (settingsPayload = {}, locationsPayload = null) => {
   const storefrontCoverImageUrl = String(settingsPayload?.storefront_cover_image_url?.value || '').trim();
   const storefrontProfileImageUrl = String(settingsPayload?.storefront_profile_image_url?.value || '').trim();
+  const businessHours = normalizeStorefrontBusinessHours(settingsPayload?.storefront_hours?.value);
   const locationCheckRequired = Array.isArray(locationsPayload);
   const primaryLocation = locationCheckRequired
     ? locationsPayload.find((location) => (
@@ -115,7 +115,8 @@ export const resolveStorefrontSetupReadiness = (settingsPayload = {}, locationsP
     locationReady,
     primaryLocationId: Number(primaryLocation?.location_id || 0) || null,
     coverImageUrl: storefrontCoverImageUrl,
-    profileImageUrl: storefrontProfileImageUrl
+    profileImageUrl: storefrontProfileImageUrl,
+    businessHours
   };
 };
 
@@ -147,6 +148,10 @@ export const resolveTenantSetupViewMode = (step = '') => (
 
 export const resolveTenantSetupStepValue = (step = '') => {
   const normalizedStep = String(step || '').trim().toLowerCase();
+  // Preserve old POS onboarding links after the starter-item screen is removed.
+  if (normalizedStep === POS_TERMINAL_SETUP_STEPS.STARTER_ITEM) {
+    return POS_TERMINAL_SETUP_STEPS.POS_SETUP;
+  }
   return (
     POS_TERMINAL_SETUP_ORDER.includes(normalizedStep)
     || normalizedStep === POS_TERMINAL_SETUP_STEPS.COMPLETE
@@ -176,8 +181,7 @@ export const resolveTenantSetupStep = ({
   requestedStep = '',
   profileReady = false,
   posSetupReady = false,
-  storefrontSetupReady = false,
-  starterItemReady = false
+  storefrontSetupReady = false
 } = {}) => {
   if (!requested || locked || isMasterAdmin !== true) {
     return POS_TERMINAL_SETUP_STEPS.COMPLETE;
@@ -188,14 +192,12 @@ export const resolveTenantSetupStep = ({
   }
   const normalizedRequestedStep = String(requestedStep || '').trim().toLowerCase();
   if (normalizedRequestedStep === POS_TERMINAL_SETUP_STEPS.COMPLETE) {
-    return (profileReady && storefrontSetupReady && starterItemReady && posSetupReady)
+    return (profileReady && storefrontSetupReady && posSetupReady)
       ? POS_TERMINAL_SETUP_STEPS.COMPLETE
       : (
         !storefrontSetupReady
           ? POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP
-          : (!starterItemReady
-            ? POS_TERMINAL_SETUP_STEPS.STARTER_ITEM
-            : (!posSetupReady ? POS_TERMINAL_SETUP_STEPS.POS_SETUP : POS_TERMINAL_SETUP_STEPS.COMPLETE))
+          : (!posSetupReady ? POS_TERMINAL_SETUP_STEPS.POS_SETUP : POS_TERMINAL_SETUP_STEPS.COMPLETE)
       );
   }
   if (normalizedRequestedStep === POS_TERMINAL_SETUP_STEPS.PROFILE) {
@@ -206,12 +208,6 @@ export const resolveTenantSetupStep = ({
   }
   if (!storefrontSetupReady) {
     return POS_TERMINAL_SETUP_STEPS.STOREFRONT_SETUP;
-  }
-  if (normalizedRequestedStep === POS_TERMINAL_SETUP_STEPS.STARTER_ITEM) {
-    return POS_TERMINAL_SETUP_STEPS.STARTER_ITEM;
-  }
-  if (!starterItemReady) {
-    return POS_TERMINAL_SETUP_STEPS.STARTER_ITEM;
   }
   if (normalizedRequestedStep === POS_TERMINAL_SETUP_STEPS.POS_SETUP) {
     return POS_TERMINAL_SETUP_STEPS.POS_SETUP;

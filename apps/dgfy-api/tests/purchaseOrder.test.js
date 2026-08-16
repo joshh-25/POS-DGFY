@@ -7,7 +7,8 @@ import { PERMISSIONS } from '../src/config/permissions.js';
 import { createTestTenant, destroyTestTenant } from './helpers/testTenantHelper.js';
 import { generateToken, hashPassword } from '../src/services/authService.js';
 
-jest.setTimeout(120000);
+// Tenant schema creation can approach two minutes on Windows/MySQL developer machines.
+jest.setTimeout(180000);
 
 describe('Purchase Order API', () => {
     let token;

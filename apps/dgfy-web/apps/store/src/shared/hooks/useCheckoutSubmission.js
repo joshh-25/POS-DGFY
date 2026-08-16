@@ -1,4 +1,8 @@
 import { ANALYTICS_EVENTS, trackFunnelEvent } from '../../../../../src/observability/analyticsEvents.js';
+import {
+  createStorefrontOnlinePaymentSession,
+  isStorefrontOnlinePaymentType
+} from '../services/storefrontOnlinePaymentSession.js';
 
 /**
  * Moved verbatim from `StorefrontApp.jsx`: the checkout-submission handlers
@@ -54,6 +58,8 @@ export function useCheckoutSubmission({
   orderMethod,
   orderSuccessAnimationTimerRef,
   productCartLines,
+  qrphIdempotencyKey,
+  qrphPaymentSession,
   readDgfyAuthToken,
   readStoreAuthToken,
   rememberCustomerDetails,
@@ -82,6 +88,7 @@ export function useCheckoutSubmission({
   setQuoteError,
   setQuoteNeedsRefresh,
   setQuoteResult,
+  setQrphPaymentSession,
   setSavedCustomerDetails,
   setSelectedServiceCartLineId,
   setSelectedTrackingPin,
@@ -277,6 +284,35 @@ export function useCheckoutSubmission({
             guest_checkout_proof: guestCheckoutProofValue
           }
         };
+      }
+      if (!wantsServicesSubmission && isSimpleMode && isStorefrontOnlinePaymentType(fnbPaymentType)) {
+        if (qrphPaymentSession?.payment_session_id) {
+          const message = 'An online payment is already awaiting confirmation. Refresh its status or choose cash instead.';
+          setCheckoutError(message);
+          toast.error(message);
+          return;
+        }
+
+        const paymentSession = await createStorefrontOnlinePaymentSession({
+          authToken,
+          checkoutPayload: checkoutPayload(),
+          guestCheckoutProof: guestCheckoutProofValue,
+          idempotencyKey: isDgfyCustomerSignedIn
+            ? qrphIdempotencyKey
+            : guestCheckoutIntentId,
+          paymentType: fnbPaymentType,
+          requestJson,
+          storeSlug: selectedStore.slug
+        });
+        setQrphPaymentSession(paymentSession);
+        if (['card', 'gcash', 'maya'].includes(fnbPaymentType) && paymentSession.checkout_url && typeof window !== 'undefined') {
+          window.location.assign(paymentSession.checkout_url);
+        } else {
+          toast.success(fnbPaymentType === 'qrph'
+            ? 'QR Ph payment created. Complete the PayMongo test payment to continue.'
+            : `${fnbPaymentType === 'gcash' ? 'GCash' : fnbPaymentType === 'maya' ? 'Maya' : 'Card'} payment created. Complete it on PayMongo to continue.`);
+        }
+        return;
       }
       const submitProductCheckout = () => requestJson('/api/v1/store/checkout', {
         method: 'POST',

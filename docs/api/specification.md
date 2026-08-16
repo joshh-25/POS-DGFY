@@ -1011,6 +1011,14 @@ The item CSV endpoints share the same workflow-mode template contract for correc
 - Hospitality exports preserve PMS preset keys such as `room_night`, `paid_amenity`, `facility_booking`, `minibar_retail_product`, `housekeeping_supply`, `linen_reusable_asset`, and `physical_add_on`.
 - Export preview returns `workflowMode` and `templateType` metadata so the frontend can label the active export template before download.
 
+**Import contract and POS entry point**
+- `POST /items/import/preview` accepts the uploaded CSV content and returns row-level validation and create/update counts.
+- `POST /items/import/confirm` accepts the preview rows and upserts items by normalized SKU.
+- Both import endpoints require `items:import`; the POS Items workspace exposes the same three-step Upload → Preview → Result wizard used by IMS.
+- The POS wizard downloads the active tenant workflow-mode template and is disabled while the terminal is offline.
+- CSV import does not include image binaries. POS item images are managed through the shared Storefront gallery endpoints below, capped at five images per item.
+- After a successful import, the API publishes a tenant-scoped `pos.catalog.changed` event with reason `csv_items_imported` and the created/updated item IDs so POS catalog consumers refresh without a manual reload.
+
 ### GET /items/supplier-coverage
 Get item-supplier coverage statistics showing which items have/lack supplier assignments
 
@@ -1163,7 +1171,7 @@ Upload/replace the Storefront catalog primary image override. This endpoint rema
 - `image/avif`
 
 **Security Contract**
-- A single primary image source may be up to 100 MB. The backend validates it, stores the original privately, and generates public delivery variants. The public large variant is always 10 MB or smaller.
+- A single primary image source may be up to 100 MB. The backend validates it, uses the source as temporary processing input, and generates public delivery variants. The source is removed after successful variant generation; the public large variant is always 10 MB or smaller.
 - Backend validates both reported MIME type and binary signature.
 - Stored paths are served through `/uploads` with `nosniff` static serving.
 - Upload preserves existing `storefront_visible`; it must not silently show a hidden Storefront item.
@@ -1179,8 +1187,70 @@ Append images to the ordered Storefront catalog image gallery for one item.
 - If no gallery exists, the first accepted image becomes the primary `storefront_image_url`.
 - If a gallery already exists, accepted images are appended after the existing ordered entries and the existing first image remains primary.
 - The response includes `storefront_image_gallery` ordered by `sort_order`.
-- Gallery uploads remain capped at 10 MB per source image and use the same safe MIME/signature checks. The public large variant is always 10 MB or smaller.
+- Gallery uploads accept source images up to 100 MB per file and use the same safe MIME/signature checks. The backend uses each source as temporary processing input and removes it after generating optimized public delivery variants; the public large variant is always 10 MB or smaller.
 - Appending to the gallery preserves `storefront_visible` and does not mutate POS menu images.
+- If server-side image processing fails, the endpoint returns HTTP 500 with `error_code=STOREFRONT_IMAGE_PROCESSING_FAILED`; if the optimized image cannot be committed to the catalog, it returns `error_code=STOREFRONT_IMAGE_PERSIST_FAILED`. Both responses include `request_id` for log correlation and clean up temporary/newly stored files before returning.
+
+### POST /items/:item_id/storefront-image/async
+Queue a Storefront catalog primary-image upload for background optimization. This is the POS interactive upload path for an existing item.
+
+**Permission**: `items:edit`
+**Request**: `multipart/form-data` with one `image` file field.
+
+**Response (202)**
+```json
+{
+  "success": true,
+  "message": "Image received. It will be optimized in the background.",
+  "data": {
+    "job_id": "uuid",
+    "item_id": 22,
+    "queued": true
+  }
+}
+```
+
+**Processing Contract**
+- The API validates the item and accepts the source file, then returns without waiting for image compression or gallery persistence.
+- The POS may show a local temporary preview immediately. The temporary preview is not a public catalog asset and is not stored in browser, WebView, or Redis cache as the source of truth.
+- A backend worker validates and optimizes the staged file, updates the ordered gallery, and removes the temporary source after successful delivery-variant generation. Existing catalog data remains authoritative until the new job completes.
+- The worker uses the shared Redis queue in production. A process-local queue is available only for local development when Redis is unavailable; it is not a durable production queue.
+
+### POST /items/:item_id/storefront-images/async
+Queue one or more images for background append to the Storefront catalog gallery.
+
+**Permission**: `items:edit`
+**Request**: `multipart/form-data` with up to 5 `images` file fields.
+
+**Response**: Same `202` acknowledgement shape as the single-image endpoint. The returned `job_id` identifies the queued gallery operation.
+
+**Notes**
+- The worker preserves gallery ordering and primary-image rules defined by `POST /items/:item_id/storefront-images`.
+- A failed job leaves the previously persisted gallery authoritative and reports the failure through the status endpoint.
+- This endpoint is asynchronous only; it does not change the synchronous endpoint contract used by existing callers.
+
+### GET /items/:item_id/storefront-image/async-status
+Read the latest interactive catalog-image job for an item.
+
+**Permission**: `items:edit`
+
+**Response (200)**
+```json
+{
+  "success": true,
+  "data": {
+    "tenant_id": 1,
+    "item_id": 22,
+    "job_id": "uuid",
+    "status": "queued|processing|completed|failed",
+    "error_code": null,
+    "error_message": null,
+    "updated_at": "2026-08-14T00:00:00.000Z"
+  }
+}
+```
+
+The status record is short-lived and is an acknowledgement mechanism, not a replacement for the persisted item/gallery response. Interactive POS clients do not need to poll this endpoint; the worker emits the existing catalog-change invalidation event after successful persistence, and the POS refreshes the item catalog through its normal catalog path to obtain the optimized public image URL and gallery metadata. Diagnostic or administrative clients may still read the status record. If no job exists, `data` is `null`.
 
 ### POST /items/storefront-images/bulk
 Upload Storefront catalog images in bulk by SKU filename stem.
@@ -2567,7 +2637,7 @@ Upload/replace POS catalog image override (multipart file upload).
 **Validation Contract**
 - Endpoint accepts image files only.
 - Unsupported upload types are rejected with `422 Validation failed`.
-- A single primary image source may be up to 100 MB; the backend retains the original privately and publishes a large delivery variant at or below 10 MB.
+- A single primary image source may be up to 100 MB; the backend uses the source as temporary processing input and publishes a large delivery variant at or below 10 MB before removing the source.
 - Existing image is replaced atomically when a valid new image is uploaded.
 
 **Image URL Contract**

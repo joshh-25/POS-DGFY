@@ -41,6 +41,7 @@ jest.unstable_mockModule('../src/modules/pos/index.js', () => ({
     loginPosCashierUseCase: jest.fn(),
     switchTerminalShiftLocationUseCase: jest.fn(),
     getCurrentTerminalShiftUseCase: jest.fn(),
+    getCashierShiftHistoryUseCase: jest.fn(),
     recordCashDrawerEventUseCase: jest.fn(),
     closeTerminalShiftUseCase: jest.fn(),
     forceCloseStaleTerminalShiftUseCase: jest.fn(),

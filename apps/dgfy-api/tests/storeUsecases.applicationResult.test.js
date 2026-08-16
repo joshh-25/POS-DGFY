@@ -7,6 +7,8 @@ import {
     buildLoginStoreCustomerUseCase,
     buildStoreCartQuoteUseCase,
     buildStoreCheckoutUseCase,
+    buildStorefrontPaymentCallbackUrl,
+    resolveStorefrontPaymentReturnUrl,
     buildTrackStoreOrderUseCase,
     buildCancelStoreOrderUseCase,
     buildGetStorefrontFollowStatusUseCase,
@@ -43,6 +45,44 @@ describe('store use-cases application result contract', () => {
         } else {
             process.env.CUSTOMER_ACCESS_MODES_ENABLED = originalCustomerAccessFlag;
         }
+    });
+
+    it('builds a store-specific hosted payment return from the configured DGFY origin', () => {
+        expect(resolveStorefrontPaymentReturnUrl({
+            configuredReturnUrl: 'https://dgfy.ph/payment-return',
+            storeSlug: 'Masu-Cafe-ED841F'
+        })).toBe('https://dgfy.ph/tenant-store/masu-cafe-ed841f/order');
+    });
+
+    it('keeps verified custom-domain payment returns on the custom storefront order route', () => {
+        expect(resolveStorefrontPaymentReturnUrl({
+            configuredReturnUrl: 'https://dgfy.ph/payment-return',
+            storeSlug: 'grand-matador',
+            trustedReturnUrl: 'https://grandmatador.com/order'
+        })).toBe('https://grandmatador.com/order');
+    });
+
+    it('adds the hosted session details to the store-specific PayMongo success return', () => {
+        expect(buildStorefrontPaymentCallbackUrl({
+            paymentMethod: 'gcash',
+            paymentSession: 'CPS-BBF4RAYCYN',
+            paymentStatus: 'success',
+            returnUrl: 'https://dgfy.ph/tenant-store/masu-cafe-ed841f/order'
+        })).toBe(
+            'https://dgfy.ph/tenant-store/masu-cafe-ed841f/order'
+            + '?payment_session=CPS-BBF4RAYCYN&payment_status=success&payment_method=gcash'
+        );
+    });
+
+    it('rejects an invalid or credential-bearing payment return URL', () => {
+        expect(resolveStorefrontPaymentReturnUrl({
+            configuredReturnUrl: 'javascript:alert(1)',
+            storeSlug: 'masu-cafe-ed841f'
+        })).toBeNull();
+        expect(resolveStorefrontPaymentReturnUrl({
+            configuredReturnUrl: 'https://user:password@dgfy.ph/payment-return',
+            storeSlug: 'masu-cafe-ed841f'
+        })).toBeNull();
     });
 
     it('listStoreCatalog returns availability-only fields without exposing current_stock', async () => {

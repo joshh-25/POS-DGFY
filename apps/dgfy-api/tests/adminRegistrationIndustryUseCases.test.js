@@ -139,6 +139,17 @@ describe('admin registration-industry catalog use cases (issue #316)', () => {
             expect(retail.hidden).toBe(false);
         });
 
+        it('normalizes a JSON-encoded niches string from a legacy catalog row', async () => {
+            const repository = buildFakeRepository();
+            repository.byKey.get('retail').niches = '["Supermarket", "Grocery store"]';
+
+            const listUseCase = buildListAdminRegistrationIndustriesUseCase({ repository });
+            const industries = await listUseCase();
+
+            expect(industries.find((entry) => entry.key === 'retail').niches)
+                .toEqual(['Supermarket', 'Grocery store']);
+        });
+
         it('includes an admin-created row alongside the seeded baseline', async () => {
             const repository = buildFakeRepository();
             byKeySet(repository, 'pet_grooming', {

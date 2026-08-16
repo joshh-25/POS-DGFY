@@ -91,7 +91,7 @@ const posDiscountApprovalSchema = Joi.object({
     approver_user_id: Joi.number().integer().positive().allow(null).optional(),
     manager_pin: Joi.string().trim().pattern(/^[0-9]{4,12}$/).allow('', null).optional(),
     employee_user_id: Joi.number().integer().positive().allow(null).optional(),
-    discount_type: Joi.string().valid('employee', 'manual').optional()
+    discount_type: Joi.string().valid('senior', 'pwd', 'employee', 'promo', 'manual').optional()
 });
 
 const checkoutPosSchema = Joi.object({
@@ -139,6 +139,7 @@ const checkoutPosSchema = Joi.object({
     special_instructions: Joi.string().trim().max(500).allow('', null).optional(),
     scheduled_for: Joi.date().iso().allow(null).optional(),
     discount_beneficiary: discountBeneficiarySchema.optional(),
+    discount_approval: posDiscountApprovalSchema.optional(),
     governed_discount: governedDiscountSchema.optional(),
     lines: Joi.array().items(checkoutLineSchema).min(1).required().messages({
         'array.min': 'At least one line item is required'
@@ -467,6 +468,15 @@ const governedResetSchema = Joi.object({
 const terminalCurrentShiftQuerySchema = Joi.object({
     terminal_id: Joi.string().trim().max(100).allow(null, '').optional(),
     location_id: Joi.number().integer().positive().optional()
+});
+
+const terminalShiftHistoryQuerySchema = Joi.object({
+    date_from: Joi.date().iso().optional(),
+    date_to: Joi.date().iso().min(Joi.ref('date_from')).optional(),
+    location_id: Joi.number().integer().positive().optional(),
+    status: Joi.string().valid('all', 'open', 'closed').default('all'),
+    page: Joi.number().integer().min(1).max(100000).default(1),
+    limit: Joi.number().integer().min(1).max(50).default(20)
 });
 
 const terminalDashboardTodayQuerySchema = Joi.object({
@@ -874,6 +884,7 @@ export const validateCloseDayBody = validateSchema(closeDaySchema, 'body', 'vali
 export const validateXReadingQuery = validateSchema(xReadingQuerySchema, 'query', 'validatedQuery');
 export const validateGovernedResetBody = validateSchema(governedResetSchema, 'body', 'validatedData');
 export const validateTerminalCurrentShiftQuery = validateSchema(terminalCurrentShiftQuerySchema, 'query', 'validatedQuery');
+export const validateTerminalShiftHistoryQuery = validateSchema(terminalShiftHistoryQuerySchema, 'query', 'validatedQuery');
 export const validateTerminalDashboardTodayQuery = validateSchema(terminalDashboardTodayQuerySchema, 'query', 'validatedQuery');
 export const validatePosReportsExportQuery = validateSchema(posReportsExportQuerySchema, 'query', 'validatedQuery');
 export const validateIncomingOnlineOrdersQuery = validateSchema(incomingOnlineOrdersQuerySchema, 'query', 'validatedQuery');

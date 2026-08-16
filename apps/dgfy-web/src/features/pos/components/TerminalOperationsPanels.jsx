@@ -9,6 +9,7 @@ import {
   DELIVERY_JOB_STATUS_LABELS,
   hasCompleteDeliveryAssignment,
   isManualDeliveryJob,
+  isCompletionPaymentPending,
   getDeliveryJobActionLabel,
   getFulfillmentActionLabel,
   getIncomingOrderUtilityActions,
@@ -387,9 +388,9 @@ function IncomingQueueWorkspace({
     : (locations.find((location) => Number(location.location_id) === Number(queueLocationScopeId))?.name || 'Selected Location');
 
   React.useEffect(() => {
-    if (activeView !== 'history' || orderHistoryState?.accessState !== 'idle') return;
+    if (activeView !== 'history') return;
     refreshOrderHistory?.();
-  }, [activeView, orderHistoryState?.accessState, refreshOrderHistory]);
+  }, [activeView, refreshOrderHistory]);
 
   if (activeView === 'history') {
     return (
@@ -583,7 +584,7 @@ function IncomingQueueWorkspace({
                   type="button"
                   size="sm"
                   variant={status === 'rejected' ? 'destructive' : 'outline'}
-                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift}
+                  disabled={Boolean(actionLoading) || !canTransactPos || locked || !isOnline || !hasActiveShift || (status === 'completed' && isCompletionPaymentPending(order))}
                   onClick={() => {
                     if (status === 'rejected') {
                       setPendingRejectionOrderId(Number(order.pos_transaction_id));

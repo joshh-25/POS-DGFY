@@ -337,17 +337,20 @@ describe('Item/Product wizard contracts', () => {
     expect(itemsPageSource).toContain('gallery images must be 10 MB or smaller');
     expect(itemsPageSource).toContain('<StorefrontImageCarousel');
     expect(itemsPageSource).toContain('variant="table"');
+    expect(storefrontImageCarouselSource).toContain('showPrimaryToggle = false');
+    expect(storefrontImageCarouselSource).toContain('Make item image ${resolvedActiveIndex + 1} primary');
     expect(storefrontImageCarouselSource).toContain('Set first');
     expect(storefrontImageCarouselSource).toContain('Remove');
     expect(storefrontImageCarouselSource).toContain('aria-label="Previous item image"');
     expect(storefrontImageCarouselSource).toContain('aria-label="Next item image"');
     expect(storefrontImageCarouselSource).toContain('item-carousel-dot');
-    expect(selectedImageCarouselSource).toContain('aria-label="Previous selected item image"');
-    expect(selectedImageCarouselSource).toContain('aria-label="Next selected item image"');
+    expect(selectedImageCarouselSource).toContain("const imageLabel = combinedGallery ? 'item' : 'selected item';");
+    expect(selectedImageCarouselSource).toContain('aria-label={`Previous ${imageLabel} image`}');
+    expect(selectedImageCarouselSource).toContain('aria-label={`Next ${imageLabel} image`}');
     expect(selectedImageCarouselSource).toContain('selected-item-carousel-dot');
-    expect(selectedImageCarouselSource).toContain('Selected item image thumbnails');
+    expect(selectedImageCarouselSource).toContain("combinedGallery ? 'Item' : 'Selected item'");
     expect(selectedImageCarouselSource).toContain('Remove current image');
-    expect(selectedImageCarouselSource).toContain('Focus selected item image');
+    expect(selectedImageCarouselSource).toContain('aria-label={`Focus ${imageLabel} image ${index + 1}`}');
   });
 
   it('uses mode-aware item taxonomy and filtered UOM options in the item form', () => {

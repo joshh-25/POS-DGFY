@@ -22,13 +22,30 @@ describe('registrationIndustryService', () => {
   });
 
   it('returns the live catalog from the endpoint on success', async () => {
-    const liveIndustries = [{ key: 'retail', label: 'Retail (live)' }];
+    const liveIndustries = [{
+      key: 'retail',
+      label: 'Retail (live)',
+      niches: '["Supermarket", "Grocery store"]'
+    }];
     apiMock.get.mockResolvedValueOnce({ data: { data: { industries: liveIndustries } } });
 
     const result = await fetchRegistrationIndustries();
 
-    expect(result).toEqual(liveIndustries);
+    expect(result).toEqual([{
+      ...liveIndustries[0],
+      niches: ['Supermarket', 'Grocery store']
+    }]);
     expect(apiMock.get).toHaveBeenCalledWith('/registration/industries', { skipTenantAuthHeaders: true });
+  });
+
+  it('uses an empty niches array for malformed live catalog values', async () => {
+    apiMock.get.mockResolvedValueOnce({
+      data: { data: { industries: [{ key: 'retail', niches: '{"not":"an array"}' }] } }
+    });
+
+    await expect(fetchRegistrationIndustries()).resolves.toEqual([
+      { key: 'retail', niches: [] }
+    ]);
   });
 
   it('falls back to the local catalog constant, never blocking, when the request fails', async () => {

@@ -183,7 +183,7 @@ export default function PosFnbModifiersWorkspace({
 
   if (!isOnline) {
     return (
-      <div id={sectionId} className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
+      <div id={sectionId} className="min-w-0 max-w-full rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">
         <p className="font-black">F&amp;B modifier management is available online only.</p>
         <p className="mt-1">Reconnect to create add-ons or assign them to menu items.</p>
       </div>
@@ -191,26 +191,26 @@ export default function PosFnbModifiersWorkspace({
   }
 
   return (
-    <div id={sectionId} className="space-y-4">
-      <section className="rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-teal-50/60 p-5 shadow-sm">
+    <div id={sectionId} className="min-w-0 max-w-full space-y-4">
+      <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-blue-100 bg-gradient-to-br from-blue-50 via-white to-teal-50/60 p-5 shadow-sm">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
             <div className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-blue-100 text-[#1A4E8D]">
               <SlidersHorizontal className="h-5 w-5" aria-hidden="true" />
             </div>
-            <div>
-              <h2 className="text-lg font-black text-[#0F172A]">Menu modifiers</h2>
-              <p className="mt-1 text-sm text-slate-600">Create F&amp;B add-ons here, assign them to a folder, then override individual menu items only when needed.</p>
+            <div className="min-w-0">
+              <h2 className="break-words text-lg font-black text-[#0F172A]">Menu modifiers</h2>
+              <p className="mt-1 break-words text-sm text-slate-600">Create F&amp;B add-ons here, assign them to a folder, then override individual menu items only when needed.</p>
             </div>
           </div>
-          <Button type="button" variant="outline" onClick={loadWorkspace} disabled={loading || Boolean(busy)} className="rounded-xl">
+          <Button type="button" variant="outline" onClick={loadWorkspace} disabled={loading || Boolean(busy)} className="shrink-0 rounded-xl">
             <RefreshCcw className={`mr-2 h-4 w-4 ${loading ? 'animate-spin' : ''}`} aria-hidden="true" />
             Refresh
           </Button>
         </div>
       </section>
 
-      {error ? <div role="alert" className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{error}</div> : null}
+      {error ? <div role="alert" className="min-w-0 max-w-full break-words rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-semibold text-rose-800">{error}</div> : null}
 
       {!loading && !error ? (
         <>
@@ -224,7 +224,7 @@ export default function PosFnbModifiersWorkspace({
             onUpdate={(groupId, payload) => runMutation('update', () => updateFnbModifierGroup(groupId, payload), 'Modifier group updated in POS.')}
           />
 
-          <section className="rounded-2xl border border-teal-200 bg-teal-50/40 p-5 shadow-sm">
+          <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-teal-200 bg-teal-50/40 p-5 shadow-sm">
             <h2 className="text-lg font-black text-[#0F172A]">Assign add-ons to a folder</h2>
             <p className="mt-1 text-sm text-slate-600">Every active menu item in the folder inherits these groups. Item-level assignments can override or exclude one later.</p>
             <div className="mt-4 max-w-xl">
@@ -250,7 +250,7 @@ export default function PosFnbModifiersWorkspace({
             ) : <p role="status" className="mt-4 rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm text-slate-600">You can review folder inheritance, but your role cannot change it.</p>}
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <section className="min-w-0 max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-black text-[#0F172A]">Override add-ons for an item</h2>
             <p className="mt-1 text-sm text-slate-600">Choose one menu item for direct assignments. Folder groups are inherited automatically; use the exclusion controls to opt out for this item.</p>
             <div className="mt-4 max-w-xl">

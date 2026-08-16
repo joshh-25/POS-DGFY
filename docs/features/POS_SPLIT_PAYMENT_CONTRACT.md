@@ -354,3 +354,22 @@ change is calculated against the final digital balance. Successful earlier
 rows remain visible and are cleared from the retry form if a later row fails.
 The server-owned allocation, recovery, automatic-completion, and PayMongo
 boundaries are unchanged.
+
+## Phase 94 status
+
+Phase 94 adds a visible discount summary to Confirm Checkout with the applied
+discount label, amount, and an explicit trash action for unsaved discounts.
+Removing the discount clears the local governed, preset, and manual discount
+state and recalculates the server-bound checkout snapshot before payment is
+recorded.
+
+All valid discounts may use split tender. The server-owned quote applies the
+discount before calculating the split-session total, and the final checkout
+revalidates the governed discount against the current rules and lines. For
+every governed POS discount type (Senior, PWD, Employee, Promo, and Manual),
+the split-session request verifies the selected authorized employee PIN once
+and stores only a non-secret server approval proof; the raw PIN is never
+stored, returned, or sent to the completion checkout. Senior/PWD beneficiary
+validation remains server-authoritative. An active split-payment session
+prevents changing or removing the discount until the session is completed or
+cancelled.

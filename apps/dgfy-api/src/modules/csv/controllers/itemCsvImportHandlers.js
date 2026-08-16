@@ -6,10 +6,9 @@ import {
 } from '../index.js';
 import { sendUseCaseResult } from '../../shared/controllers/useCaseResponder.js';
 import { trackProductUsageFromResult } from '../../../services/productUsageTelemetryService.js';
+import { publishCatalogChange } from '../../shared/services/catalogChangeEventBus.js';
 
 const readCsvContentFromRequest = async (req) => {
-  console.log('DEBUG CSV UPLOAD - req.body:', Object.keys(req.body));
-  console.log('DEBUG CSV UPLOAD - req.file:', req.file);
 
   if (!req.body.csvContent && !req.file) {
     const error = new Error('No CSV content provided. Send csvContent in body or upload a file.');
@@ -43,6 +42,15 @@ const cleanupTempFile = async (req) => {
 
 const timestamp = () => new Date().toISOString();
 const requestId = (req, res) => req.requestId || res.locals?.requestId || null;
+const publishCatalogInvalidation = async (req, itemIds = []) => {
+  const tenantId = req.user?.tenant_id || req.tenant?.id;
+  if (!tenantId || itemIds.length === 0) return;
+  await publishCatalogChange({
+    tenantId,
+    reason: 'csv_items_imported',
+    itemIds
+  });
+};
 const defaultErrorPayload = (req, res, failure) => ({
   success: false,
   data: null,
@@ -120,6 +128,13 @@ export const confirmImport = async (req, res) => {
     }
 
     const importData = result.data || {};
+    const importedItemIds = [
+      ...(importData.results?.created || []),
+      ...(importData.results?.updated || [])
+    ]
+      .map((entry) => entry?.item_id)
+      .filter(Boolean);
+    await publishCatalogInvalidation(req, importedItemIds);
 
     return res.status(200).json({
       success: true,

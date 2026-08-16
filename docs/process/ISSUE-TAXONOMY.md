@@ -219,13 +219,18 @@ below for the two transitions that *are* a native GitHub Projects workflow — e
 | **In progress** | A branch exists or work has genuinely started | `implement` (Worker) | `For Review`, when a PR opens |
 | **For Review** | PR open, awaiting review/merge | `implement` (Worker) | `For QA` on merge; back to `In progress` if changes are requested |
 | **For QA** | Merged to `develop`, needs verification on a deployed environment | `pr-reviewer` (Reviewer), only when the PR used `Refs #N` — see "Issue linkage" below | `Done`, or `Failed` |
-| **Failed** | QA rejected it | Verifier/QA role — not yet built, tracked as a child of #331 | `In progress` — **never** back to `Backlog`; the failed attempt stays visible rather than disappearing |
-| **Done** | Verified. Issue closes. | Verifier/QA role, or automatic (workflow) when a `Closes #N` PR merges | — |
+| **Failed** | QA rejected it | `verifier` (Verifier/QA) | `In progress` — **never** back to `Backlog`; the failed attempt stays visible rather than disappearing |
+| **Done** | Verified. Issue closes. | `verifier` (Verifier/QA), or automatic (workflow) when a `Closes #N` PR merges | — |
 | **Cancelled** | Won't do. Issue closes, **with a reason left as a comment** — a bare status flip with no explanation is not enough. | `pm`, or a human | — |
 
 No WIP limit is defined — #331 said "consider" one, but nothing in this repo enforces it, so adding
 one to the table would be decoration rather than policy. Revisit if the board actually needs one in
 practice, not preemptively.
+
+Added 2026-08-16 (#512/#546): `promoter` and `incident-responder` own no lane in this table.
+Promotion PRs aren't per-issue cards, and `incident-responder` orchestrates the five existing roles
+rather than moving Status itself — each sub-step's move is made by the role that already owns it
+above.
 
 ### What the board automates already
 
@@ -244,6 +249,14 @@ unmerged PR (`In progress` in every case checked):
 and closing an issue is forced to `Done` by the workflow above — **there is no way to land on `For
 QA` if the issue closes at merge.** The QA lane only exists for issues that stay open through merge.
 This is why "Issue linkage" below splits `Closes` vs. `Refs` rather than using `Closes` uniformly.
+
+**The reverse direction does not happen automatically.** A `For QA` issue is still *open* when
+`verifier` acts on it — none of the three native workflows above fire from a Status field write
+alone, only from the issue actually closing. So a `verifier` `Done` write is **two actions, not
+one**: the project Status field write (`Done`, option `98236657`) *and* an explicit `gh issue close
+<N>` on the issue itself. Skipping the second half leaves the card reading `Done` while the issue
+stays open indefinitely — a `Failed` write, by contrast, is Status-only, since the issue is
+supposed to stay open in that case.
 
 ---
 

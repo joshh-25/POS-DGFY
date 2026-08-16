@@ -12,7 +12,7 @@ const actionComponentSource = fs.readFileSync(
 describe('POS Park & New Sale cashier flow', () => {
     it('renders an explicit add-only park action', () => {
         expect(actionComponentSource).toContain('data-testid="pos-park-sale-button"');
-        expect(actionComponentSource).toContain('Park & New Sale');
+        expect(actionComponentSource).toContain(": 'Park'");
         expect(componentSource).toContain('createPosParkedSale');
     });
 
@@ -20,10 +20,24 @@ describe('POS Park & New Sale cashier flow', () => {
         expect(componentSource).toContain('setActiveParkedSale({');
         expect(componentSource).toContain('reparkPosParkedSale(activeParkedSale.pos_parked_sale_id');
         expect(componentSource).toContain('expected_revision: Number(activeParkedSale.revision)');
-        expect(actionComponentSource).toContain("activeParkedSale ? 'Update Park & New' : 'Park & New Sale'");
         expect(componentSource).toContain('parked_sale_id: activeParkedSale?.pos_parked_sale_id || undefined');
         expect(componentSource).toContain('parkedSaleId={activeParkedSale?.pos_parked_sale_id || null}');
         expect(componentSource).toContain('Reconnect before parking this resumed sale again. Your cart is still open.');
+        expect(componentSource).toContain('void handleParkAndNewSale(activeParkedSale.parked_sale_name || formatParkedSaleDisplayName(activeParkedSale));');
+        expect(componentSource).toContain('const parkedSaleName = String(nameOverride ?? parkSaleNameInput).trim();');
+    });
+
+    it('opens payment immediately for Pay while Resume stays edit-only', () => {
+        const payBranch = componentSource.indexOf("if (normalizedAction === 'pay') {");
+        const paymentModalOpen = componentSource.indexOf('setCheckoutConfirmModalOpen(true);', payBranch);
+        const paymentAmountReset = componentSource.indexOf("setCustomerPaymentAmountInput('0');", payBranch);
+        const resumeToast = componentSource.indexOf('Resumed ${formatParkedSaleDisplayName(claimedSale)}', payBranch);
+
+        expect(payBranch).toBeGreaterThan(-1);
+        expect(paymentAmountReset).toBeGreaterThan(payBranch);
+        expect(paymentModalOpen).toBeGreaterThan(paymentAmountReset);
+        expect(componentSource).toContain('setMobileCheckoutPanelOpen(false);');
+        expect(resumeToast).toBeGreaterThan(paymentModalOpen);
     });
 
     it('only clears the current cart after the parked-sale request succeeds', () => {
@@ -45,5 +59,25 @@ describe('POS Park & New Sale cashier flow', () => {
         expect(componentSource).not.toContain('fetchPosParkedSales');
         expect(componentSource).not.toContain('claimPosParkedSale');
         expect(componentSource).not.toContain('listPosParkedSales');
+    });
+
+    it('provides header parked-sale actions and a guarded clear-current-sale action', () => {
+        expect(componentSource).toContain('data-testid="pos-header-open-parked-sales"');
+        expect(componentSource).toContain('setParkedSalesDialogOpen(true);');
+        expect(componentSource).not.toContain('data-testid="pos-header-park"');
+        expect(componentSource).toContain('data-testid="pos-clear-current-sale"');
+        expect(componentSource).toContain('data-testid="pos-clear-current-sale-dialog"');
+        expect(componentSource).toContain('data-testid="pos-confirm-clear-current-sale"');
+        expect(componentSource).toContain('clearPosCartDraft(offlineSnapshotScope, activeShiftId);');
+        expect(componentSource).toContain('setClearSaleConfirmOpen(true);');
+        expect(componentSource).toContain('Boolean(activeParkedSale?.pos_parked_sale_id)');
+    });
+
+    it('submits the park name dialog from Enter using the same park handler', () => {
+        expect(componentSource).toContain('onSubmit={(event) => {');
+        expect(componentSource).toContain('event.preventDefault();');
+        expect(componentSource).toContain('type="submit"');
+        expect(componentSource).toContain('handleParkAndNewSale();');
+        expect(componentSource).toContain("'Park'");
     });
 });

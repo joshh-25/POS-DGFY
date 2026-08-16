@@ -1,9 +1,9 @@
 ---
-status: accepted
+status: amended
 authority_level: authoritative
 owner: architecture
 date: 2026-05-03
-last_reviewed: 2026-06-03
+last_reviewed: 2026-08-14
 review_by: 2026-11-03
 applies_to: architecture_decision
 topic: customer_access_modes_and_inventory_display
@@ -168,3 +168,45 @@ Storefront and POS image upload paths now support additive image derivation with
 - Photo-like uploads may be re-encoded to `WebP` with default quality `80`. Graphic/text-heavy uploads remain on a conservative lossless/public-safe path (currently PNG-family output) instead of being blindly converted.
 - Variant discovery is additive. Backend responses may expose `image_variants`-style metadata, but existing `storefront_image_url`, `pos_image_url`, `storefront_cover_image_url`, `storefront_profile_image_url`, and gallery primary ordering remain backward-compatible.
 - Cleanup remains fail-safe. If a DB/catalog/settings write fails after asset generation, newly stored public/original files must be removed best-effort so the old persisted asset remains authoritative.
+
+## Amendments (2026-08-14)
+
+The interactive POS and Storefront catalog upload flow now uses the source file
+only as a temporary processing input. For new uploads through the
+`storefront-catalog` and `pos-catalog` image storage paths, the backend removes
+the source after the optimized delivery variants and manifest are written. The
+persisted public image URL and ordered gallery contract are unchanged. If the
+later catalog write fails, the generated new asset is removed best-effort and
+the prior catalog record remains authoritative; the source is not retained for
+rollback or reprocessing. Existing retained originals are not deleted by this
+change. Storefront profile/cover/gallery settings assets and other callers that
+explicitly retain originals remain governed by the original-preserving default.
+
+The POS item editor also shows a browser-local preview immediately after file
+selection and uploads the image automatically for existing items. The returned
+optimized asset replaces the temporary preview. New items continue to queue
+selected images until the item receives an ID.
+
+### Interactive POS Image Upload Acknowledgement (2026-08-14)
+
+Interactive POS item-image uploads now use the asynchronous catalog upload
+endpoints for existing items. The POS or iMin Android WebView displays the
+selected source image locally and receives a fast `202 Accepted` acknowledgement
+while the backend worker performs image validation, compression, gallery
+persistence, and temporary-source cleanup. The interactive client does not
+poll the compression job.
+
+The persisted catalog record remains the source of truth. On completion, the
+backend emits the existing catalog-change invalidation event. The POS refreshes
+the item through its normal catalog path and replaces the local preview with
+the optimized public asset; on failure, the prior persisted gallery remains
+authoritative. Save Item is independent of background image optimization, so
+the modal does not show a full form-saving state while the worker is processing
+an image. The same API and behavior apply in a browser and in the APK's WebView;
+no APK-specific image implementation is introduced.
+
+The Redis queue is required for durable multi-process production processing.
+The in-process queue fallback is limited to local development when Redis is
+unavailable. Service-worker caching continues to bypass `/api/` and
+`/uploads/`; image binaries are not placed in the browser, WebView, or Redis
+cache as a substitute for the persisted catalog asset.

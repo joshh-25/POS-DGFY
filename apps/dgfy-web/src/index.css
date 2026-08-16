@@ -15,6 +15,18 @@ body {
   box-sizing: border-box;
 }
 
+/* POS amount and numeric fields require deliberate manual entry. */
+.dgfy-number-input {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+.dgfy-number-input::-webkit-outer-spin-button,
+.dgfy-number-input::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
 /* Desktop shell spacing guard: keep main content out from under fixed sidebar. */
 @media (min-width: 1024px) {
   .app-main {
@@ -276,6 +288,25 @@ body {
   }
 }
 
+/* Portrait tablets need two comfortable action columns. The parked-sale
+ * variant otherwise switches to three columns at the `sm` breakpoint, which
+ * leaves labels such as "Open Cash Drawer" compressed into narrow targets. */
+@media (min-width: 640px) and (max-width: 1023.98px) {
+  .dgfy-pos-tablet-action-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .dgfy-pos-tablet-action-grid > button {
+    min-height: 54px;
+    padding: 0.5rem;
+  }
+
+  .dgfy-pos-tablet-action-grid > button > span {
+    font-size: 0.75rem;
+    line-height: 1.2;
+  }
+}
+
 .dgfy-pos-y-auto {
   overflow-y: auto;
 }
@@ -403,6 +434,32 @@ body {
   }
 }
 
+/* POS add-to-cart toast: enter from the right without relying on an optional
+   Tailwind animation plugin that is not part of this workspace. */
+.pos-add-to-cart-toast {
+  animation: pos-add-to-cart-toast-enter 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
+  will-change: transform, opacity;
+}
+
+@keyframes pos-add-to-cart-toast-enter {
+  from {
+    transform: translate3d(28px, 0, 0);
+    opacity: 0;
+  }
+
+  to {
+    transform: translate3d(0, 0, 0);
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pos-add-to-cart-toast {
+    animation-duration: 1ms;
+    animation-iteration-count: 1;
+  }
+}
+
 /* "+" button long-press quantity meter (mobile only, portaled to document.body). */
 .qty-meter {
   position: fixed;
@@ -450,7 +507,20 @@ body {
 }
 
 @media (max-width: 767.98px) {
+  .pos-report-date-input {
+    box-sizing: border-box;
+    display: block;
+    inline-size: 100%;
+    max-inline-size: 100%;
+    min-inline-size: 0;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+
   .pos-report-date-input::-webkit-calendar-picker-indicator {
+    position: static;
+    width: auto;
+    height: auto;
     opacity: 0;
   }
 }
@@ -616,12 +686,6 @@ body.pos-receipt-print-mode {
    native browser calendar-picker-indicator so it doesn't render a second,
    overlapping calendar affordance inside the same input. */
 .pos-report-date-input::-webkit-calendar-picker-indicator {
-  position: absolute;
-  right: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  opacity: 0;
   cursor: pointer;
 }
 

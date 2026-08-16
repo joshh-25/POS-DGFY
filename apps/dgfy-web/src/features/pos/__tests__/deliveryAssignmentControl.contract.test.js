@@ -16,6 +16,7 @@ describe('manual delivery assignment UI contract', () => {
     expect(componentSource).toContain('Mark the order as Out for Delivery before assigning delivery personnel.');
     expect(componentSource).toContain('onAssign(normalizedOrderId, normalizedPersonnelName)');
     expect(componentSource).toContain('type="text"');
+    expect(componentSource).not.toContain('<select');
   });
 
   it('keeps provider-owned jobs read-only and uses the assignment API', () => {

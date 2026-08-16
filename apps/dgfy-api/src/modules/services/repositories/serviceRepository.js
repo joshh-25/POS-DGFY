@@ -114,6 +114,28 @@ const bookingInclude = () => ([
             as: 'options',
             required: false
         }]
+    },
+    // Phase 100 of #482 (ADR 0064). `separate: true` so this hasMany does not multiply the
+    // parent row the way a plain nested include of an unbounded child collection would (the
+    // `lines` include above is bounded per booking; legs are capped at 2 by the unique
+    // (booking_id, direction) index, but separate keeps this include's query independent of
+    // that assumption). statusEvents is deliberately NOT included here -- bookingInclude() is
+    // shared by listBookings (limit 300) and getDashboardMetrics (limit 2000), and the status
+    // event history is an unbounded child collection; load it only via listBookingStatusEvents
+    // where a timeline is actually being built.
+    {
+        model: dbStore.get('ServiceBookingHandoffLeg'),
+        as: 'handoffLegs',
+        required: false,
+        separate: true,
+        include: [
+            {
+                model: dbStore.get('TenantLocation'),
+                as: 'location',
+                required: false,
+                attributes: ['location_id', 'name', 'address_line']
+            }
+        ]
     }
 ]);
 
@@ -682,7 +704,13 @@ export const serviceRepository = {
         const now = new Date();
         const todayKey = now.toISOString().slice(0, 10);
         const next24Hours = new Date(now.getTime() + (24 * 60 * 60 * 1000));
-        const activeStatuses = ['requested', 'confirmed', 'checked_in', 'in_service'];
+        // Phase 100 of #482 (ADR 0064 decision 4) appended the four round-trip lifecycle values;
+        // without them a handoff booking vanishes from the staff dashboard the moment it leaves
+        // 'requested' or 'confirmed'.
+        const activeStatuses = [
+            'requested', 'confirmed', 'checked_in', 'in_service',
+            'for_pickup', 'pickup_completed', 'out_for_return', 'ready_for_collection'
+        ];
         const rows = await ServiceBooking.findAll({
             where: {
                 status: { [Op.in]: activeStatuses }
@@ -900,6 +928,84 @@ export const serviceRepository = {
             transaction: options.transaction
         });
         return created.map(toPlain);
+    },
+
+    // Phase 100 of #482 (ADR 0064 decision 2). The handoff-leg entity, keyed to booking_id --
+    // mirrors createBookingLines above, not the DeliveryJob 1:1-with-transaction shape.
+    async createBookingHandoffLegs(rows = [], options = {}) {
+        const ServiceBookingHandoffLeg = dbStore.get('ServiceBookingHandoffLeg');
+        if (!ServiceBookingHandoffLeg?.bulkCreate || !Array.isArray(rows) || rows.length === 0) return [];
+        const created = await ServiceBookingHandoffLeg.bulkCreate(rows, {
+            transaction: options.transaction
+        });
+        return created.map(toPlain);
+    },
+
+    async listBookingHandoffLegs(bookingId, options = {}) {
+        const ServiceBookingHandoffLeg = dbStore.get('ServiceBookingHandoffLeg');
+        const rows = await ServiceBookingHandoffLeg.findAll({
+            where: { booking_id: bookingId },
+            order: [['direction', 'ASC']],
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        return rows.map(toPlain);
+    },
+
+    // Drives a leg's own status (pending -> scheduled -> in_transit -> completed / cancelled) off
+    // a booking-status transition. Mirrors updateHoldById's shape.
+    async updateBookingHandoffLegById(handoffLegId, payload = {}, options = {}) {
+        const ServiceBookingHandoffLeg = dbStore.get('ServiceBookingHandoffLeg');
+        const row = await ServiceBookingHandoffLeg.findByPk(handoffLegId, {
+            transaction: options.transaction,
+            lock: options.lock && options.transaction ? options.transaction.LOCK.UPDATE : undefined
+        });
+        if (!row) return null;
+        await row.update(payload, { transaction: options.transaction });
+        return toPlain(row);
+    },
+
+    // Phase 100 of #482 (ADR 0064 decision 4). One row per transition, including the creation
+    // seed (from_status: null). Bulk so a single call can write the seed event alongside any
+    // other per-creation bookkeeping in the same transaction.
+    async createBookingStatusEvents(rows = [], options = {}) {
+        const ServiceBookingStatusEvent = dbStore.get('ServiceBookingStatusEvent');
+        if (!ServiceBookingStatusEvent?.bulkCreate || !Array.isArray(rows) || rows.length === 0) return [];
+        const created = await ServiceBookingStatusEvent.bulkCreate(rows, {
+            transaction: options.transaction
+        });
+        return created.map(toPlain);
+    },
+
+    async listBookingStatusEvents(bookingId, options = {}) {
+        const ServiceBookingStatusEvent = dbStore.get('ServiceBookingStatusEvent');
+        const rows = await ServiceBookingStatusEvent.findAll({
+            where: { booking_id: bookingId },
+            order: [['occurred_at', 'ASC']],
+            transaction: options.transaction
+        });
+        return rows.map(toPlain);
+    },
+
+    // Existence/active check for a handoff leg's collection branch. Mirrors
+    // storeRepository.findAddressById's shape.
+    async findTenantLocationById(locationId, options = {}) {
+        const TenantLocation = dbStore.get('TenantLocation');
+        const row = await TenantLocation.findByPk(locationId, {
+            transaction: options.transaction
+        });
+        return toPlain(row);
+    },
+
+    // Ownership check for a handoff leg's customer_address_id -- the same trust-boundary shape
+    // as pos_transaction_id (serviceValidator.js's note): a public caller must not be able to
+    // attach an address it does not own. Mirrors storeRepository.findAddressById.
+    async findCustomerAddressById(addressId, options = {}) {
+        const StoreCustomerAddress = dbStore.get('StoreCustomerAddress');
+        const row = await StoreCustomerAddress.findByPk(addressId, {
+            transaction: options.transaction
+        });
+        return toPlain(row);
     },
 
     async updateBookingLineById(bookingLineId, payload = {}, options = {}) {

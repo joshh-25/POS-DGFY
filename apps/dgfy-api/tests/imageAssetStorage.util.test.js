@@ -66,6 +66,39 @@ describe('imageAssetStorage utility', () => {
         expect(stored.variants.large.size).toBeLessThanOrEqual(MAX_PUBLIC_IMAGE_BYTES);
     });
 
+    it('discards the temporary original after optimized variants are committed when requested', async () => {
+        const tempPath = path.join(uploadsRoot, 'upload-photo-discard.jpg');
+        await sharp({
+            create: {
+                width: 1200,
+                height: 900,
+                channels: 3,
+                background: { r: 80, g: 140, b: 200 }
+            }
+        }).jpeg({ quality: 92 }).toFile(tempPath);
+
+        const stored = await storeOptimizedImageAsset({
+            uploadsRoot,
+            surfaceFolder: 'storefront-catalog',
+            scopeSegments: ['tenant-discard'],
+            assetBaseName: 'item-11',
+            originalName: 'menu-photo.jpg',
+            reportedMime: 'image/jpeg',
+            tempPath,
+            retainOriginal: false
+        });
+
+        expect(stored.original.path).toBeNull();
+        await expect(fs.access(path.join(uploadsRoot, stored.path))).resolves.toBeUndefined();
+        await expect(fs.access(path.join(
+            uploadsRoot,
+            'originals',
+            path.dirname(stored.path),
+            'original.jpg'
+        )))
+            .rejects.toThrow();
+    });
+
     it('creates every delivery variant for small graphics without upscaling', async () => {
         const tempPath = path.join(uploadsRoot, 'upload-graphic.png');
         await sharp({

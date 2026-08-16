@@ -14,7 +14,7 @@ export function PosAddToCartToastContainer({ toasts = [], onDismiss }) {
       {toasts.map((toast) => (
         <div
           key={toast.id}
-          className="pointer-events-auto flex items-center gap-3 rounded-2xl bg-[#0F172A]/95 text-white backdrop-blur-md p-3 pr-3.5 shadow-2xl border border-slate-700/60 transition-all duration-300 animate-in slide-in-from-right-5 fade-in"
+          className="pos-add-to-cart-toast pointer-events-auto flex items-center gap-3 rounded-2xl bg-[#0F172A]/95 p-3 pr-3.5 text-white shadow-2xl backdrop-blur-md border border-slate-700/60"
         >
           {/* Thumbnail */}
           <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-xl bg-slate-800 border border-slate-700/80 flex items-center justify-center">

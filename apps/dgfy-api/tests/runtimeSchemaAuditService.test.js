@@ -74,7 +74,8 @@ const buildHealthySequelizeMock = () => ({
         { name: '20260812000007-add-pos-payment-confirmation-and-breakdown.cjs' },
         { name: '20260812000008-add-pos-provider-refund-reconciliation.cjs' },
         { name: '20260813000001-create-pos-merchant-tender-reconciliations.cjs' },
-        { name: '20260813000002-add-pos-parked-sale-revision.cjs' }
+        { name: '20260813000002-add-pos-parked-sale-revision.cjs' },
+        { name: '20260815000002-add-pos-parked-sale-origin-ownership.cjs' }
     ])),
     getQueryInterface: () => ({
         describeTable: jest.fn(async (tableName) => {
@@ -226,6 +227,8 @@ const buildHealthySequelizeMock = () => ({
                     revision: {},
                     cashier_id: {},
                     shift_id: {},
+                    origin_cashier_id: {},
+                    origin_shift_id: {},
                     terminal_id: {},
                     location_id: {},
                     snapshot: {}

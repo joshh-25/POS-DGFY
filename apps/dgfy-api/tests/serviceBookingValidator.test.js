@@ -4,7 +4,8 @@ import {
     validateServiceAvailabilityQuery,
     validateCreateServiceBookingHold,
     validateCreateServiceBookingBatch,
-    validateSettleServiceBooking
+    validateSettleServiceBooking,
+    validateUpdateServiceBookingStatus
 } from '../src/validators/serviceValidator.js';
 import { jest } from '@jest/globals';
 
@@ -259,6 +260,262 @@ describe('serviceValidator booking schemas', () => {
 
             expect(next).not.toHaveBeenCalled();
             expect(res.statusCode).toBe(422);
+        });
+    });
+
+    // Phase 100 of #482 (ADR 0064). handoff_legs is on serviceBookingCoreSchema, so it is
+    // reachable from both the public and admin booking routes -- exercised on the public one,
+    // which is the stricter of the two.
+    describe('handoff legs (ADR 0064)', () => {
+        const pickupReturnLegs = () => ([
+            { direction: 'inbound', method: 'business_pickup', address_line: '123 Sample St' },
+            { direction: 'outbound', method: 'business_delivery', address_line: '456 Other Ave' }
+        ]);
+        const pickupCollectionLegs = () => ([
+            { direction: 'inbound', method: 'business_pickup', customer_address_id: 5 },
+            { direction: 'outbound', method: 'customer_collection', location_id: 3 }
+        ]);
+
+        it('accepts the item_pickup_return leg shape (business_pickup / business_delivery)', () => {
+            const req = { body: { ...storefrontBookingBody(), handoff_legs: pickupReturnLegs() } };
+            const { res, next } = runMiddleware(validateCreateServiceBooking, req);
+
+            expect(next).toHaveBeenCalledTimes(1);
+            expect(res.statusCode).toBe(200);
+            expect(req.validatedData.handoff_legs).toHaveLength(2);
+        });
+
+        it('accepts the item_pickup_collection leg shape (business_pickup / customer_collection)', () => {
+            const req = { body: { ...storefrontBookingBody(), handoff_legs: pickupCollectionLegs() } };
+            const { res, next } = runMiddleware(validateCreateServiceBooking, req);
+
+            expect(next).toHaveBeenCalledTimes(1);
+            expect(res.statusCode).toBe(200);
+            expect(req.validatedData.handoff_legs[1].location_id).toBe(3);
+        });
+
+        it('survives stripUnknown:true (the same class of bug idempotency_key hit before)', () => {
+            const req = { body: { ...storefrontBookingBody(), handoff_legs: pickupReturnLegs() } };
+            const { next } = runMiddleware(validateCreateServiceBooking, req);
+
+            expect(next).toHaveBeenCalledTimes(1);
+            expect(req.validatedData.handoff_legs).toBeDefined();
+        });
+
+        it('is accepted per draft on the batch schema, not at the batch level', () => {
+            const req = {
+                body: {
+                    customer_name: 'Jane Doe',
+                    customer_email: 'jane@example.com',
+                    idempotency_key: 'store-service-batch-abc123',
+                    bookings: [
+                        { service_item_id: 10, start_at: '2026-08-01T09:00:00.000Z', handoff_legs: pickupReturnLegs() }
+                    ]
+                }
+            };
+            const { res, next } = runMiddleware(validateCreateServiceBookingBatch, req);
+
+            expect(next).toHaveBeenCalledTimes(1);
+            expect(res.statusCode).toBe(200);
+            expect(req.validatedData.bookings[0].handoff_legs).toHaveLength(2);
+        });
+
+        it('is not accepted on the hold schema', () => {
+            const req = {
+                body: {
+                    service_item_id: 10,
+                    start_at: '2026-08-01T09:00:00.000Z',
+                    handoff_legs: pickupReturnLegs()
+                }
+            };
+            const { next } = runMiddleware(validateCreateServiceBookingHold, req);
+
+            expect(next).toHaveBeenCalledTimes(1);
+            expect(req.validatedData.handoff_legs).toBeUndefined();
+        });
+
+        it('rejects an inbound leg using customer_dropoff (item_dropoff_collection is unauthorized, ADR 0064 decision 1)', () => {
+            const req = {
+                body: {
+                    ...storefrontBookingBody(),
+                    handoff_legs: [
+                        { direction: 'inbound', method: 'customer_dropoff' },
+                        { direction: 'outbound', method: 'customer_collection', location_id: 3 }
+                    ]
+                }
+            };
+            const { res, next } = runMiddleware(validateCreateServiceBooking, req);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.statusCode).toBe(422);
+        });
+
+        it('rejects an outbound leg using business_pickup', () => {
+            const req = {
+                body: {
+                    ...storefrontBookingBody(),
+                    handoff_legs: [
+                        { direction: 'inbound', method: 'business_pickup', address_line: 'x' },
+                        { direction: 'outbound', method: 'business_pickup', address_line: 'y' }
+                    ]
+                }
+            };
+            const { res, next } = runMiddleware(validateCreateServiceBooking, req);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.statusCode).toBe(422);
+        });
+
+        it('rejects a single leg', () => {
+            const req = {
+                body: {
+                    ...storefrontBookingBody(),
+                    handoff_legs: [{ direction: 'inbound', method: 'business_pickup', address_line: 'x' }]
+                }
+            };
+            const { res, next } = runMiddleware(validateCreateServiceBooking, req);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.statusCode).toBe(422);
+        });
+
+        it('rejects three legs', () => {
+            const req = {
+                body: {
+                    ...storefrontBookingBody(),
+                    handoff_legs: [...pickupReturnLegs(), { direction: 'outbound', method: 'customer_collection', location_id: 3 }]
+                }
+            };
+            const { res, next } = runMiddleware(validateCreateServiceBooking, req);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.statusCode).toBe(422);
+        });
+
+        it('rejects two inbound legs (no outbound)', () => {
+            const req = {
+                body: {
+                    ...storefrontBookingBody(),
+                    handoff_legs: [
+                        { direction: 'inbound', method: 'business_pickup', address_line: 'x' },
+                        { direction: 'inbound', method: 'business_pickup', address_line: 'y' }
+                    ]
+                }
+            };
+            const { res, next } = runMiddleware(validateCreateServiceBooking, req);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.statusCode).toBe(422);
+        });
+
+        it('rejects customer_collection without location_id', () => {
+            const req = {
+                body: {
+                    ...storefrontBookingBody(),
+                    handoff_legs: [
+                        { direction: 'inbound', method: 'business_pickup', address_line: 'x' },
+                        { direction: 'outbound', method: 'customer_collection' }
+                    ]
+                }
+            };
+            const { res, next } = runMiddleware(validateCreateServiceBooking, req);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.statusCode).toBe(422);
+        });
+
+        it('rejects customer_collection carrying an address_line', () => {
+            const req = {
+                body: {
+                    ...storefrontBookingBody(),
+                    handoff_legs: [
+                        { direction: 'inbound', method: 'business_pickup', address_line: 'x' },
+                        { direction: 'outbound', method: 'customer_collection', location_id: 3, address_line: 'nope' }
+                    ]
+                }
+            };
+            const { res, next } = runMiddleware(validateCreateServiceBooking, req);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.statusCode).toBe(422);
+        });
+
+        it('rejects business_delivery with neither address_line nor customer_address_id', () => {
+            const req = {
+                body: {
+                    ...storefrontBookingBody(),
+                    handoff_legs: [
+                        { direction: 'inbound', method: 'business_pickup', address_line: 'x' },
+                        { direction: 'outbound', method: 'business_delivery' }
+                    ]
+                }
+            };
+            const { res, next } = runMiddleware(validateCreateServiceBooking, req);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.statusCode).toBe(422);
+        });
+
+        it('rejects scheduled_to before scheduled_from', () => {
+            const req = {
+                body: {
+                    ...storefrontBookingBody(),
+                    handoff_legs: [
+                        {
+                            direction: 'inbound',
+                            method: 'business_pickup',
+                            address_line: 'x',
+                            scheduled_from: '2026-08-02T00:00:00.000Z',
+                            scheduled_to: '2026-08-01T00:00:00.000Z'
+                        },
+                        { direction: 'outbound', method: 'business_delivery', address_line: 'y' }
+                    ]
+                }
+            };
+            const { res, next } = runMiddleware(validateCreateServiceBooking, req);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.statusCode).toBe(422);
+        });
+
+        it.each(['status', 'completed_at', 'handoff_leg_id'])('rejects a client-supplied %s on a leg', (field) => {
+            const req = {
+                body: {
+                    ...storefrontBookingBody(),
+                    handoff_legs: [
+                        { direction: 'inbound', method: 'business_pickup', address_line: 'x', [field]: field === 'completed_at' ? '2026-08-01T00:00:00.000Z' : (field === 'handoff_leg_id' ? 1 : 'completed') },
+                        { direction: 'outbound', method: 'business_delivery', address_line: 'y' }
+                    ]
+                }
+            };
+            const { res, next } = runMiddleware(validateCreateServiceBooking, req);
+
+            expect(next).not.toHaveBeenCalled();
+            expect(res.statusCode).toBe(422);
+        });
+
+        it('still strips pos_transaction_id from a public request that also carries handoff_legs', () => {
+            const req = {
+                body: {
+                    ...storefrontBookingBody(),
+                    handoff_legs: pickupReturnLegs(),
+                    pos_transaction_id: 999
+                }
+            };
+            const { res, next } = runMiddleware(validateCreateServiceBooking, req);
+
+            expect(next).toHaveBeenCalledTimes(1);
+            expect(res.statusCode).toBe(200);
+            expect(req.validatedData.pos_transaction_id).toBeUndefined();
+        });
+
+        it('accepts handoff_leg_id on a status-transition payload', () => {
+            const req = { body: { status: 'pickup_completed', handoff_leg_id: 7 } };
+            const { res, next } = runMiddleware(validateUpdateServiceBookingStatus, req);
+
+            expect(next).toHaveBeenCalledTimes(1);
+            expect(res.statusCode).toBe(200);
+            expect(req.validatedData.handoff_leg_id).toBe(7);
         });
     });
 });

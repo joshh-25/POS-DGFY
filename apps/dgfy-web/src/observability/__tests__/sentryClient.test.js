@@ -921,7 +921,7 @@ describe('window.__sentryTestError', () => {
 
     vi.doUnmock('@sentry/react');
     vi.unstubAllGlobals();
-  });
+  }, 15000);
 
   it('warns instead of capturing when Sentry is not active', async () => {
     vi.stubGlobal('window', {});

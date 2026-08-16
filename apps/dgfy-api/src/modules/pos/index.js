@@ -51,6 +51,7 @@ import {
     buildLoginPosCashierUseCase,
     buildSwitchTerminalShiftLocationUseCase,
     buildGetCurrentTerminalShiftUseCase,
+    buildGetCashierShiftHistoryUseCase,
     buildRecordCashDrawerEventUseCase,
     buildCloseTerminalShiftUseCase,
     buildForceCloseStaleTerminalShiftUseCase,
@@ -198,6 +199,7 @@ export const listPosSetupCashiersUseCase = buildListPosSetupCashiersUseCase({ us
 export const loginPosCashierUseCase = buildLoginPosCashierUseCase({ authService });
 export const switchTerminalShiftLocationUseCase = buildSwitchTerminalShiftLocationUseCase({ posRepository });
 export const getCurrentTerminalShiftUseCase = buildGetCurrentTerminalShiftUseCase({ posRepository });
+export const getCashierShiftHistoryUseCase = buildGetCashierShiftHistoryUseCase({ posRepository });
 export const recordCashDrawerEventUseCase = buildRecordCashDrawerEventUseCase({ posRepository });
 export const closeTerminalShiftUseCase = buildCloseTerminalShiftUseCase({ posRepository });
 export const forceCloseStaleTerminalShiftUseCase = buildForceCloseStaleTerminalShiftUseCase({ posRepository });

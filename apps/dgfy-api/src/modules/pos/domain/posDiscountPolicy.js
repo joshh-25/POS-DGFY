@@ -45,7 +45,7 @@ export const resolvePosGovernedDiscount = async ({
 }) => {
     if (!draft || typeof draft !== 'object') return null;
     const type = text(draft.type).toLowerCase();
-    if (type && !STATUTORY_TYPES.has(type) && !text(draft.customer_name)) {
+    if (type && type !== 'employee' && !STATUTORY_TYPES.has(type) && !text(draft.customer_name)) {
         validationError('Customer name is required for this discount.', 'DISCOUNT_CUSTOMER_NAME_REQUIRED');
     }
 
@@ -114,6 +114,10 @@ export const resolvePosGovernedDiscount = async ({
     }
 
     if (type === 'employee') {
+        const employeeName = text(draft.employee_name);
+        if (!employeeName) {
+            validationError('Employee name is required.', 'EMPLOYEE_NAME_REQUIRED');
+        }
         const employeeId = positiveInt(draft.employee_id);
         if (employeeId) {
             if (typeof findActiveEmployee !== 'function') {
@@ -125,12 +129,8 @@ export const resolvePosGovernedDiscount = async ({
             application.employee_name = text(employee.username);
         } else {
             application.employee_id = null;
-            application.employee_name = null;
+            application.employee_name = employeeName;
         }
-    }
-
-    if (type === 'manual' && text(draft.reason).length < 3) {
-        validationError('A reason is required for a manual discount.', 'MANUAL_DISCOUNT_REASON_REQUIRED');
     }
 
     if (['employee', 'manual'].includes(type)) {

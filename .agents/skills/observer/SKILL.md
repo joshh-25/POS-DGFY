@@ -34,7 +34,9 @@ not as something this file restates.
   precisely because Sentry alone is insufficient there.
 - Filing an issue, once a finding clears the noise policy below, is governed by `pm`'s own
   search-before-filing discipline (`.agents/skills/pm/SKILL.md`) and
-  `docs/process/ISSUE-TAXONOMY.md` — don't re-derive a separate filing procedure here.
+  `docs/process/ISSUE-TAXONOMY.md` — don't re-derive a separate filing procedure here. This is the
+  pattern every other role now follows for out-of-scope findings too — see `AGENTS.md`'s "Role
+  handoffs and composite instructions" (#543).
 
 ## Target
 

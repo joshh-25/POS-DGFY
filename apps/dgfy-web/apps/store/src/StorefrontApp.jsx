@@ -681,6 +681,7 @@ export default function StorefrontApp() {
     showMobileAddressModal,
   } = useFnbCheckoutRouteState();
   const [simpleOrderStep, setSimpleOrderStep] = useState(1);
+  const paymentReturnSessionRef = useRef('');
   const [showSimpleMobileOrderSummary, setShowSimpleMobileOrderSummary] = useState(false);
   const [showSimpleMobileAddressModal, setShowSimpleMobileAddressModal] = useState(false);
   const isOnlinePaymentModalOpen = useStorefrontStore(selectIsOnlinePaymentModalOpen);
@@ -697,7 +698,7 @@ export default function StorefrontApp() {
       uiOpenOnlinePaymentModal();
       setFnbPaymentType('cash');
     } else {
-      if (val !== 'qrph') resetQrphPaymentSession();
+      if (!['qrph', 'card', 'gcash', 'maya'].includes(val)) resetQrphPaymentSession();
       setFnbPaymentType(val);
     }
   }, [resetQrphPaymentSession, setFnbPaymentType, uiOpenOnlinePaymentModal]);
@@ -1390,6 +1391,28 @@ export default function StorefrontApp() {
     setPendingOrderInitialTab('');
     setIsCheckoutOpen(false);
   }, [currentPathSubpage, isFnbOrderSubpage, pendingOrderInitialTab, routeSlug, routeSubpage, selectedStore?.slug, trackingPinInput, selectedTrackingPin]);
+
+  useEffect(() => {
+    const supportsProductPaymentReturn = isFnbOrderSubpage || (isSimpleMode && isResolvedOrderSubpage);
+    if (!supportsProductPaymentReturn || typeof window === 'undefined' || qrphPaymentSession) return;
+    const params = new URLSearchParams(window.location.search);
+    const paymentSessionId = String(params.get('payment_session') || '').trim().toUpperCase();
+    if (!/^CPS-[A-Z0-9]{10}$/.test(paymentSessionId)) return;
+    if (paymentReturnSessionRef.current === paymentSessionId) return;
+    const paymentMethod = String(params.get('payment_method') || '').trim().toLowerCase();
+    if (!['qrph', 'card', 'gcash', 'maya'].includes(paymentMethod)) return;
+    paymentReturnSessionRef.current = paymentSessionId;
+    const returnedStatus = String(params.get('payment_status') || '').trim().toLowerCase();
+    if (isFnbOrderSubpage) setFnbOrderStep(4);
+    if (isSimpleMode && isResolvedOrderSubpage) setSimpleOrderStep(3);
+    setCheckoutTab('checkout');
+    setFnbPaymentType(paymentMethod);
+    setQrphPaymentSession({
+      payment_session_id: paymentSessionId,
+      payment_method: paymentMethod,
+      status: returnedStatus === 'cancelled' ? 'cancelled' : 'awaiting_payment'
+    });
+  }, [isFnbOrderSubpage, isResolvedOrderSubpage, isSimpleMode, qrphPaymentSession, setCheckoutTab, setFnbOrderStep, setFnbPaymentType, setQrphPaymentSession, setSimpleOrderStep]);
 
   useEffect(() => {
     const isSignedIn = Boolean(readStoreAuthToken() || readDgfyAuthToken() || dgfySessionAccount?.id);
@@ -2356,7 +2379,7 @@ export default function StorefrontApp() {
         setCheckoutError(message);
         if (!silent) toast.error(message);
       } else if (['failed', 'expired', 'cancelled'].includes(paymentSession?.status)) {
-        const message = paymentSession?.failure_reason || 'This QR Ph payment can no longer be completed.';
+        const message = paymentSession?.failure_reason || 'This online payment can no longer be completed.';
         setCheckoutError(message);
         if (!silent) toast.error(message);
       } else if (!silent) {
@@ -2440,6 +2463,7 @@ export default function StorefrontApp() {
         handleRefreshQrphPaymentSession({ silent: true });
       }
     };
+    pollPaymentStatus();
     const timer = window.setInterval(pollPaymentStatus, QRPH_PAYMENT_POLL_INTERVAL_MS);
     return () => window.clearInterval(timer);
   }, [handleRefreshQrphPaymentSession, qrphPaymentSession?.status]);
@@ -2558,6 +2582,8 @@ export default function StorefrontApp() {
     orderMethod,
     orderSuccessAnimationTimerRef,
     productCartLines,
+    qrphIdempotencyKey,
+    qrphPaymentSession,
     readDgfyAuthToken,
     readStoreAuthToken,
     rememberCustomerDetails,
@@ -2586,6 +2612,7 @@ export default function StorefrontApp() {
     setQuoteError,
     setQuoteNeedsRefresh,
     setQuoteResult,
+    setQrphPaymentSession,
     setSavedCustomerDetails,
     setSelectedServiceCartLineId,
     setSelectedTrackingPin,
@@ -2937,8 +2964,8 @@ export default function StorefrontApp() {
     handleDownloadCheckoutImage,
     handleGuestCheckoutOtpCodeChange,
     handlePaymentTypeChange,
-    handlePinMyLocation,
     handleConfirmQrphTestPayment,
+    handlePinMyLocation,
     handleRemoveDeliveryAddress,
     handleRequestGuestCheckoutOtp,
     handleSetDefaultDeliveryAddress,
@@ -3138,6 +3165,7 @@ export default function StorefrontApp() {
     handleDownloadCheckoutImage,
     handleGuestCheckoutOtpCodeChange,
     handlePaymentTypeChange,
+    handleConfirmQrphTestPayment,
     handlePinMyLocation,
     handleRequestGuestCheckoutOtp,
     handleVerifyGuestCheckoutOtp,
@@ -3153,6 +3181,8 @@ export default function StorefrontApp() {
     pinLocationError,
     pinLocationLoading,
     promoDiscountSummaryRow,
+    qrphPaymentSession,
+    qrphPaymentStatusLoading,
     renderAccountOwnedIdentitySummary,
     renderGuestCheckoutEntry,
     renderGuestIdentityFields,
@@ -3186,6 +3216,7 @@ export default function StorefrontApp() {
     simpleHasPrimaryIdentityContact,
     setShowSimpleMobileAddressModal,
     setShowSimpleMobileOrderSummary,
+    resetQrphPaymentSession,
     showSimpleMobileAddressModal,
     showSimpleMobileOrderSummary,
     simpleOrderMethodOptions,

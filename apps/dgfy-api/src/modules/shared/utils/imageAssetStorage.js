@@ -227,7 +227,8 @@ export const storeOptimizedImageAsset = async ({
     assetBaseName = 'asset',
     originalName,
     reportedMime,
-    tempPath
+    tempPath,
+    retainOriginal = true
 }) => {
     if (!uploadsRoot || !surfaceFolder || !tempPath) {
         throw new Error('uploadsRoot, surfaceFolder, and tempPath are required');
@@ -310,6 +311,9 @@ export const storeOptimizedImageAsset = async ({
             throw new Error('Large image variant was not generated');
         }
 
+        const originalPath = retainOriginal
+            ? toPosixRelative(path.relative(uploadsRoot, originalAbsolutePath))
+            : null;
         const manifest = {
             version: RESPONSIVE_ASSET_VERSION,
             asset_id: assetId,
@@ -317,7 +321,8 @@ export const storeOptimizedImageAsset = async ({
             scope_segments: normalizedScopeSegments,
             classification,
             original: {
-                path: toPosixRelative(path.relative(uploadsRoot, originalAbsolutePath)),
+                path: originalPath,
+                retained: Boolean(retainOriginal),
                 filename: originalFilename,
                 mime: String(reportedMime || '').trim().toLowerCase() || null,
                 width: sourceWidth,
@@ -337,6 +342,10 @@ export const storeOptimizedImageAsset = async ({
         };
         const manifestPath = path.join(publicAssetDir, 'asset.json');
         await fsPromises.writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+
+        if (!retainOriginal) {
+            await fsPromises.rm(originalAssetDir, { recursive: true, force: true });
+        }
 
         return {
             path: largeVariant.path,

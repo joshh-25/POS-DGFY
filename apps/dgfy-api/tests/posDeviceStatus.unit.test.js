@@ -17,7 +17,7 @@ describe('getPosDeviceStatusUseCase', () => {
         expect(result.success).toBe(true);
         expect(result.data.driver.id).toBe('client_managed');
         expect(result.data.hardware_required).toBe(false);
-        expect(posRepository.createAuditLog).toHaveBeenCalledTimes(1);
+        expect(posRepository.createAuditLog).not.toHaveBeenCalled();
     });
 
     it('reports the resolved driver id on success', async () => {

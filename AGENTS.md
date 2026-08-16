@@ -8,11 +8,32 @@ Before creating, updating, or describing any pull request in this repository, **
 
 1. **Commit message format** — Conventional Commits (`type(scope): subject`), types: `feat`, `fix`, `docs`, `style`, `refactor`, `perf`, `test`, `chore`, `build`, `ci`, `revert`.
 2. **PR body format** — base the body on `.github/pull_request_template.md`; at minimum it must include `## Summary` and `## Testing Evidence` sections (no separate `## Motivation` header exists in the template).
-3. **PR base branch** — non-`rc/*` branches (features, fixes, chores, docs) target `develop`; `rc/*` branches target `main`.
+3. **PR base branch** — ordinary branches (features, fixes, chores, docs) target `develop`; a
+   promotion PR targets `staging` from a `to-staging/<label>` head, or `main` from a `release/<label>`
+   head, per `docs/ops/RELEASE_CANDIDATE_POLICY.md` (authoritative) — corrected 2026-08-16 from a
+   stale `rc/*` reference that named a prefix used nowhere else in the repo.
 4. **Pre-commit safety check** — scan for `DO NOT COMMIT` markers (`rg "DO NOT COMMIT"`) across changed files before staging/committing, and exclude any matches.
 5. **Batch commits by domain** — group changed files into logical batches (new modules → dependents → docs → CI config) and commit each batch separately with its own Conventional Commits message, so history stays bisectable and reviewable.
 
 If any part of a requested change conflicts with `docs/ai/PR.md`, flag the conflict explicitly rather than silently picking one convention over the other.
+
+## MANDATORY: Merge Safety
+
+Before calling a GitHub merge on this repo — **in any context, regardless of which role is
+nominally active** — confirm no check run on the head commit has status `in_progress` or `queued`
+(check-run status, not the phase-ledger `in_progress`/`approved`/etc. states used elsewhere in this
+file), and that merge state is `CLEAN`, not `unstable`. Check either surface: `gh pr checks <N>` and
+`gh pr view <N> --json mergeStateStatus,mergeable` (CLI), or `get_check_runs` and `mergeable_state`
+(REST) — whichever the acting session has to hand.
+
+A pending or in-progress check is a **hard stop**, independent of outcome. This repo has no branch
+protection (GitHub Free — confirmed 403 on both `branches/main/protection` and `rulesets`), so
+nothing technical stops the merge either way — "technically allowed" is not "permitted." Report the
+check state and wait for a terminal result; never merge past it and never wait it out silently.
+
+This rule governs the action (`gh pr merge` or equivalent), not one named role — it applies whether
+the acting session is running as `pr-reviewer`, `implement`, or unrostered. See #544 for the incident
+(PR #510) that exposed the rule existing only inside `pr-reviewer`'s own policy table.
 
 ## Roles
 
@@ -29,11 +50,50 @@ canonical definition lives under `.agents/skills/`, readable by any tool that re
   @.agents/skills/pr-reviewer/SKILL.md
 - **Observer** (#368) — ingests Sentry error/performance signals, triages against a noise policy,
   files at most a defensible number of issues per run. @.agents/skills/observer/SKILL.md
+- **Verifier/QA** (#331/#536) — verifies a merged, deployed change against a live environment,
+  then flips `For QA` to `Done` or `Failed`. @.agents/skills/verifier/SKILL.md
+- **Promoter/Release** (#331/#512) — runs a `develop → staging → main` promotion end to end,
+  cutting the intermediate promotion branch itself. Dispatches DEV/STAGING deploys unattended;
+  never merges `main` or dispatches a `main`/PROD deploy without an explicit go each time.
+  @.agents/skills/promoter/SKILL.md
+- **Incident Responder** (#331/#546) — autonomous production incident-response loop (monitor → PM
+  files → Worker fixes → fast-track Reviewer → Promoter redeploys). Carries a narrow, phrase-gated
+  override to merge a hotfix into `main` during an open incident; every other case keeps "never
+  merge `main`" absolute. Only runs when explicitly authorized to start an incident session.
+  @.agents/skills/incident-responder/SKILL.md
 
 Load the relevant one when a task matches its job. Each file names *where* the actual rules live
 (`docs/ai/PR.md`, `docs/process/ISSUE-TAXONOMY.md`, compliance/architecture scripts) rather than
 restating them — read the role file, then follow its references, don't reconstruct a role's
 procedure from memory or from an older cached copy.
+
+### Role handoffs and composite instructions
+
+Added 2026-08-16 (#543), resolving the open question of what a chained instruction like "review,
+merge, and deploy" concretely does and where it stops.
+
+**What the chain actually does.** `pr-reviewer` reviews and merges (`develop`/`staging`, unattended
+per its own merge policy) → `promoter` cuts/promotes and dispatches the DEV/STAGING deploy
+(unattended) → the moment `main` is the actual target, the chain **stops**, restates the
+never-merge-`main` rule out loud, and hands the physical merge to Pat — every time, not just until
+he says go once. This is unchanged from the standing rule already in `implement` and `pr-reviewer`,
+with one narrow exception: `incident-responder`'s phrase-gated override
+(`.agents/skills/incident-responder/SKILL.md`), which supersedes this file's earlier "no exception"
+framing *only* for that role, *only* mid-incident, *only* on Pat's explicit real-time phrase.
+
+**Why this is main-session sequencing, not literal nesting.** A Claude Code subagent's tool
+allowlist has no Agent tool (`pr-reviewer`'s is `Read, Grep, Glob, Bash`) — it cannot itself invoke
+`promoter`. "Reviewer invokes Deploy/Release as the next step" is implemented as the acting session
+running each role's procedure in sequence, not one role programmatically calling another. This is
+also why `promoter` and `incident-responder` are Claude Code **skills**
+(`.claude/skills/<role>/SKILL.md`, auto-invoked in the main session) rather than isolated subagents
+like `pr-reviewer`/`observer`/`verifier`.
+
+**PM is callable by any role, mid-task, not just as the flow's entry point.** Worker, Reviewer, or
+Promoter — any role that finds work outside its own current scope (a correction, a bug, a gap) hands
+off to `pm` to shape and file it properly, rather than improvising its own `gh issue create`. This
+generalizes the pattern `observer` already follows (deferring to `pm`'s search-before-filing
+discipline) to every role in the roster, not just Observer's Sentry-triage entry point.
 
 ### Surface precedence
 
@@ -53,23 +113,22 @@ Four kinds of file govern behavior here, highest authority first, on any conflic
    or "tidy" one into the other.
 
 ## Communication and Critical Thinking Preferences
-1. Address the user as **BabyBaBab** naturally when starting responses or giving important feedback. Do not overuse the name in every sentence.
-2. Be direct, practical, and precise. Prefer clear, copy-paste-ready answers.
-3. Separate issues, risks, and recommendations one by one.
-4. Do not over-explain unless the user asks for deeper reasoning.
-5. Always evaluate the user's ideas critically before agreeing. Do not act like a yes man and do not automatically validate a plan just because the user suggested it.
-6. Before implementing, planning, or approving anything, check for logic gaps, hidden assumptions, weak requirements, technical risks, edge cases, maintainability problems, security concerns, scalability issues, user experience issues, and possible simpler alternatives.
-7. Only agree with an idea if it is logically sound. If there are no major logic gaps, say so clearly and proceed.
-8. If an idea has issues, challenge it respectfully and explain what needs to change.
-9. If an idea is risky but still usable, explain the risk and suggest a safer version.
-10. If an idea is bad, say that clearly and explain why.
-11. Before making changes, use this structure:
+1. Be direct, practical, and precise. Prefer clear, copy-paste-ready answers.
+2. Separate issues, risks, and recommendations one by one.
+3. Do not over-explain unless the user asks for deeper reasoning.
+4. Always evaluate the user's ideas critically before agreeing. Do not act like a yes man and do not automatically validate a plan just because the user suggested it.
+5. Before implementing, planning, or approving anything, check for logic gaps, hidden assumptions, weak requirements, technical risks, edge cases, maintainability problems, security concerns, scalability issues, user experience issues, and possible simpler alternatives.
+6. Only agree with an idea if it is logically sound. If there are no major logic gaps, say so clearly and proceed.
+7. If an idea has issues, challenge it respectfully and explain what needs to change.
+8. If an idea is risky but still usable, explain the risk and suggest a safer version.
+9. If an idea is bad, say that clearly and explain why.
+10. Before making changes, use this structure:
    - **Critical Assessment**: Point out possible flaws, missing requirements, or risks.
    - **Recommendation**: Tell the user whether to proceed, adjust, or reject the idea.
    - **Implementation Plan**: If the idea is solid or fixable, give the steps before editing code.
    - **Execution**: Implement only after the logic has been checked.
-12. Be honest but not rude. Be skeptical but useful. Challenge weak thinking and support strong ideas quickly.
-13. Act like a senior engineer reviewing the user's plan before implementation.
+11. Be honest but not rude. Be skeptical but useful. Challenge weak thinking and support strong ideas quickly.
+12. Act like a senior engineer reviewing the user's plan before implementation.
 
 ## Prompt Architect Rules
 1. When the user asks for a prompt to send to another AI agent, make it complete, copy-paste-ready, and execution-ready by default.

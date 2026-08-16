@@ -1,0 +1,10 @@
+{
+  "ignore": [
+    "logs/**",
+    "uploads/**",
+    "storage/**",
+    "coverage/**",
+    "test-results/**",
+    ".tmp/**"
+  ]
+}

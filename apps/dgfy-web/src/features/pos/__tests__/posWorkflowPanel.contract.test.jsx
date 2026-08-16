@@ -16,10 +16,19 @@ describe('POS Workflow Panels Contract', () => {
         setOrderMethod={setMethod}
         tableNumber="T-10"
         kitchenNotes="No spice"
+        paymentTypeField={(
+          <label>
+            Payment Type
+            <select aria-label="Payment Type">
+              <option value="cash">Cash</option>
+            </select>
+          </label>
+        )}
       />
     );
 
     expect(screen.getByTestId('fnb-workflow-panel')).toBeDefined();
+    expect(screen.getByTestId('fnb-workflow-panel').getAttribute('class')).toContain('grid-cols-2');
     expect(screen.getByText('Order Method')).toBeDefined();
     expect(screen.getByText('Dine In')).toBeDefined();
     expect(screen.getByText('Takeout')).toBeDefined();
@@ -27,6 +36,7 @@ describe('POS Workflow Panels Contract', () => {
     expect(screen.getByText('Delivery')).toBeDefined();
     expect(screen.getByText('Table # (Optional)')).toBeDefined();
     expect(screen.getByPlaceholderText('e.g. T-04')).toBeDefined();
+    expect(screen.getByText('Payment Type')).toBeDefined();
 
     const textContent = screen.getByTestId('fnb-workflow-panel').textContent;
     expect(textContent).not.toContain('Guest Count');

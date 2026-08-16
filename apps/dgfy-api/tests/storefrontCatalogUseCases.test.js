@@ -771,6 +771,81 @@ describe('storefront catalog use cases', () => {
         await fs.rm(tempPath, { force: true });
     });
 
+    it('classifies image processing failures with a safe diagnostic code and cleans the upload', async () => {
+        const tempPath = await writeTempUpload({ prefix: 'storefront-gallery-processing-error' });
+        const store = jest.fn().mockRejectedValue(new Error('Input image exceeds pixel limit'));
+        const remove = jest.fn();
+        const useCase = buildUploadStorefrontCatalogGalleryImagesUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({
+                    item_id: 94,
+                    name: 'Processing error item',
+                    default_sale_price: 125
+                }),
+                findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue(null),
+                getStorefrontCatalogReadinessByItemId: jest.fn().mockResolvedValue({
+                    storefront_visible: true
+                }),
+                updateStorefrontCatalogImage: jest.fn()
+            },
+            imageStorage: { store, remove }
+        });
+
+        await expect(useCase({
+            itemId: 94,
+            files: [{ path: tempPath, mimetype: 'image/png', originalname: 'large.png', size: PNG_BYTES.length }],
+            user: editableUser
+        })).rejects.toMatchObject({
+            code: 'STOREFRONT_IMAGE_PROCESSING_FAILED',
+            statusCode: 500,
+            details: { reason_code: 'STOREFRONT_IMAGE_PROCESSING_FAILED', item_id: 94 },
+            cause: expect.objectContaining({ message: 'Input image exceeds pixel limit' })
+        });
+
+        expect(await pathExists(tempPath)).toBe(false);
+        expect(remove).not.toHaveBeenCalled();
+    });
+
+    it('classifies gallery persistence failures separately and removes stored assets', async () => {
+        const tempPath = await writeTempUpload({ prefix: 'storefront-gallery-persist-error' });
+        const stored = {
+            path: 'storefront-catalog/tenant/persist-error.png',
+            url: '/uploads/persist-error.png'
+        };
+        const store = jest.fn().mockResolvedValue(stored);
+        const remove = jest.fn().mockResolvedValue(undefined);
+        const updateStorefrontCatalogImage = jest.fn().mockRejectedValue(new Error('Database unavailable'));
+        const useCase = buildUploadStorefrontCatalogGalleryImagesUseCase({
+            itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({
+                    item_id: 95,
+                    name: 'Persistence error item',
+                    default_sale_price: 125
+                }),
+                findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue(null),
+                getStorefrontCatalogReadinessByItemId: jest.fn().mockResolvedValue({
+                    storefront_visible: true
+                }),
+                updateStorefrontCatalogImage
+            },
+            imageStorage: { store, remove }
+        });
+
+        await expect(useCase({
+            itemId: 95,
+            files: [{ path: tempPath, mimetype: 'image/png', originalname: 'persist-error.png', size: PNG_BYTES.length }],
+            user: editableUser
+        })).rejects.toMatchObject({
+            code: 'STOREFRONT_IMAGE_PERSIST_FAILED',
+            statusCode: 500,
+            details: { reason_code: 'STOREFRONT_IMAGE_PERSIST_FAILED', item_id: 95 },
+            cause: expect.objectContaining({ message: 'Database unavailable' })
+        });
+
+        expect(remove).toHaveBeenCalledWith({ path: stored.path });
+        expect(await pathExists(tempPath)).toBe(false);
+    });
+
     it('uploadStorefrontCatalogGalleryImages rejects requests that exceed five total item images', async () => {
         const store = jest.fn();
         const updateStorefrontCatalogImage = jest.fn();
@@ -869,6 +944,7 @@ describe('storefront catalog use cases', () => {
         const remove = jest.fn().mockResolvedValue(undefined);
         const useCase = buildDeleteStorefrontCatalogGalleryImageUseCase({
             itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 90, name: 'Gallery item' }),
                 findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({
                     item_id: 90,
                     storefront_image_path: 'storefront-catalog/tenant/first.png',
@@ -904,6 +980,7 @@ describe('storefront catalog use cases', () => {
         const remove = jest.fn().mockResolvedValue(undefined);
         const useCase = buildDeleteStorefrontCatalogGalleryImageUseCase({
             itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 92, name: 'Legacy gallery item' }),
                 findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({
                     item_id: 92,
                     storefront_image_path: 'storefront-catalog/tenant/legacy-primary.png',
@@ -1144,6 +1221,7 @@ describe('storefront catalog use cases', () => {
         });
         const useCase = buildDeleteStorefrontCatalogImageUseCase({
             itemRepository: {
+                getItemById: jest.fn().mockResolvedValue({ item_id: 99, name: 'Catalog item' }),
                 findStorefrontCatalogOverrideByItemId: jest.fn().mockResolvedValue({
                     item_id: 99,
                     storefront_visible: false,

@@ -30,8 +30,14 @@ describe('hosted POS catalog performance contracts', () => {
     expect(checkoutSource).toContain('const isInitialLoad = !catalogHasLoadedRef.current;');
     expect(checkoutSource).toContain('setCatalogRefreshing(!isInitialLoad);');
     expect(checkoutSource).toContain('if (!sessionLocked) return;');
+    expect(checkoutSource).toContain('className="sr-only">');
     expect(checkoutSource).toContain('Refreshing catalog...');
+    expect(checkoutSource).not.toContain('pointer-events-none opacity-70');
     expect(checkoutSource).toContain('aria-busy={catalogRefreshing}');
+    expect(checkoutSource).toContain('catalogRequestInFlightKeyRef');
+    expect(checkoutSource).toContain('catalogRequestSequenceRef');
+    expect(checkoutSource).toContain('if (catalogRequestInFlightKeyRef.current === requestKey) return;');
+    expect(checkoutSource).toContain('if (catalogRequestSequenceRef.current !== requestSequence) return;');
   });
 
   it('initializes receipt settings before callbacks that use them', () => {
@@ -41,6 +47,31 @@ describe('hosted POS catalog performance contracts', () => {
 
     expect(receiptSettingsStateIndex).toBeGreaterThanOrEqual(0);
     expect(addToCartToastIndex).toBeGreaterThan(receiptSettingsStateIndex);
+  });
+
+  it('keeps image-less POS cards blank and centers item names over item images', () => {
+    const checkoutSource = readSource(checkoutPath);
+
+    expect(checkoutSource).toContain("src: fallbackVariants.thumbnailUrl || configuredSrc || '',");
+    expect(checkoutSource).not.toContain('src: fallbackVariants.thumbnailUrl || configuredSrc || mappedSrc || fallbackSrc');
+    expect(checkoutSource).toContain("hasImage ? 'bg-transparent' : 'bg-[#1A4E8D]/85'");
+    expect(checkoutSource).not.toContain('flex items-center justify-center bg-[#1A4E8D]/85');
+    expect(checkoutSource).toContain('text-center text-[14px] font-black leading-tight text-white');
+    expect(checkoutSource).not.toContain('No POS Image');
+  });
+
+  it('keeps direct POS category chips without a redundant filter button', () => {
+    const checkoutSource = readSource(checkoutPath);
+
+    expect(checkoutSource).toContain('data-testid="pos-catalog-controls"');
+    expect(checkoutSource).toContain('<span>All Items</span>');
+    expect(checkoutSource).toContain('<POSBarcodeScanner');
+    expect(checkoutSource).toContain("isTabletViewport ? 'flex-row items-center'");
+    expect(checkoutSource).toContain('className="flex h-11 min-w-0 flex-1 items-center');
+    expect(checkoutSource).toContain('<div className="flex shrink-0">');
+    expect(checkoutSource).toContain('className="w-auto"');
+    expect(checkoutSource).not.toContain('title="Show or hide catalog filters"');
+    expect(checkoutSource).not.toContain('<Filter size={18} />');
   });
 
   it('preloads lazy workspaces on idle and navigation intent', () => {
