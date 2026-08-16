@@ -61,6 +61,7 @@
     { "old": "apps/dgfy-web/tests/e2e/storefront-fnb-conditional-modifiers.spec.js", "new": "apps/dgfy-storefront/tests/e2e/storefront-fnb-conditional-modifiers.spec.js" },
     { "old": "apps/dgfy-web/tests/e2e/storefront-fnb-modifiers-runtime.spec.js", "new": "apps/dgfy-storefront/tests/e2e/storefront-fnb-modifiers-runtime.spec.js" },
     { "old": "apps/dgfy-web/playwright.fnb-contract.config.js", "new": "apps/dgfy-storefront/playwright.fnb-contract.config.js" },
+    { "old": "apps/dgfy-web/tests/e2e/storefront-mode-boundary.smoke.spec.js", "new": "apps/dgfy-storefront/tests/e2e/storefront-mode-boundary.smoke.spec.js" },
     { "old": "apps/dgfy-web/tests/e2e/storefront-service-booking-lifecycle.spec.js", "new": "tests/frontend-cross-app/tests/e2e/storefront-service-booking-lifecycle.spec.js" },
     { "old": "apps/dgfy-web/tests/e2e/storefront-to-pos-service-order.spec.js", "new": "tests/frontend-cross-app/tests/e2e/storefront-to-pos-service-order.spec.js" },
     { "old": "apps/dgfy-web/lighthouserc.js", "new": "tests/frontend-cross-app/lighthouserc.js" }

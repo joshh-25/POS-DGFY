@@ -4224,9 +4224,9 @@ parked-sale replay and shift-close resolution.
   `npm run check:compliance`, `npm run check:agent-surfaces` (5 roles, 4
   shims), `npm run check:architecture` (47 modules / 467 files, 86
   controllers), `npm run check:frontend-budgets` all pass.
-- [x] `origin/develop` fully absorbed (merge commit TBD — corrected in the
-  follow-up `chore: absorb develop into frontend split` commit; confirmed no
-  further drift via `git fetch origin develop` before closeout).
+- [x] `origin/develop` fully absorbed (merge commit `1c9066a8`, absorbing
+  `f8e56c71`; confirmed no further drift via `git fetch origin develop`
+  before closeout).
 
 ### Implementation Links
 
